@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -20,6 +20,9 @@ class Orcamento(Base):
     """Stable commercial budget record."""
 
     __tablename__ = "orcamentos"
+    __table_args__ = (
+        UniqueConstraint("ano", "num_orcamento", name="uq_orcamentos_ano_num_orcamento"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ano: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

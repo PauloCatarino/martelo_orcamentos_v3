@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,11 +19,15 @@ class OrcamentoItemVariavel(Base):
     """Variable attached to one budget line item."""
 
     __tablename__ = "orcamento_item_variaveis"
+    __table_args__ = (
+        UniqueConstraint("item_id", "nome", name="uq_orcamento_item_variaveis_item_nome"),
+        UniqueConstraint("item_id", "ordem", name="uq_orcamento_item_variaveis_item_ordem"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     item_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("orcamento_itens.id"),
+        ForeignKey("orcamento_items.id"),
         nullable=False,
         index=True,
     )

@@ -6,7 +6,17 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +31,10 @@ class OrcamentoVersao(Base):
     """Independent version of a budget."""
 
     __tablename__ = "orcamento_versoes"
+    __table_args__ = (
+        UniqueConstraint("orcamento_id", "numero_versao", name="uq_orcamento_versoes_orcamento_numero"),
+        UniqueConstraint("codigo_versao", name="uq_orcamento_versoes_codigo"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     orcamento_id: Mapped[int] = mapped_column(

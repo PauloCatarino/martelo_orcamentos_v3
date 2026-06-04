@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 class OrcamentoItem(Base):
     """Line item that belongs to one budget version."""
 
-    __tablename__ = "orcamento_itens"
+    __tablename__ = "orcamento_items"
+    __table_args__ = (
+        UniqueConstraint("orcamento_versao_id", "ordem", name="uq_orcamento_items_versao_ordem"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     orcamento_versao_id: Mapped[int] = mapped_column(

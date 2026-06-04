@@ -22,13 +22,13 @@ def test_models_import_and_mapper_configuration() -> None:
     assert Cliente.__tablename__ == "clientes"
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
-    assert OrcamentoItem.__tablename__ == "orcamento_itens"
+    assert OrcamentoItem.__tablename__ == "orcamento_items"
     assert OrcamentoItemVariavel.__tablename__ == "orcamento_item_variaveis"
     assert {
         "users",
         "clientes",
         "orcamentos",
         "orcamento_versoes",
-        "orcamento_itens",
+        "orcamento_items",
         "orcamento_item_variaveis",
     }.issubset(Base.metadata.tables)
