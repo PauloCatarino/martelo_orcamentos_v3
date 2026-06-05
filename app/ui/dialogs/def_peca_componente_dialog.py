@@ -99,10 +99,16 @@ class DefPecaComponenteDialog(QDialog):
         self.referencia_label = QLabel("Referência componente")
         self.ordem_label = QLabel("Ordem")
 
+        self.tipo_hint_label = QLabel()
+        self.tipo_hint_label.setObjectName("defPecaComponenteTipoHint")
+        self.tipo_hint_label.setWordWrap(True)
+        self.tipo_hint_label.setStyleSheet("color: #666666; font-size: 11px;")
+
         form = QFormLayout()
         form.addRow("Tipo de componente", self.tipo_componente_input)
         form.addRow(self.peca_componente_label, self.peca_componente_input)
         form.addRow(self.referencia_label, self.referencia_input)
+        form.addRow(self.tipo_hint_label)
         form.addRow("Descrição", self.descricao_input)
         form.addRow(self.ordem_label, self.ordem_input)
         form.addRow("Quantidade", self.quantidade_input)
@@ -159,6 +165,13 @@ class DefPecaComponenteDialog(QDialog):
         self.peca_componente_input.setVisible(is_peca)
         self.referencia_label.setVisible(not is_peca)
         self.referencia_input.setVisible(not is_peca)
+
+        if is_peca:
+            self.tipo_hint_label.setText("Selecione uma peça existente da biblioteca.")
+        else:
+            self.tipo_hint_label.setText(
+                "Enquanto não existir tabela própria, indique a referência manualmente."
+            )
 
     def _select_combo_data(self, combo: QComboBox, value: object) -> None:
         """Select the combo entry matching value when present."""

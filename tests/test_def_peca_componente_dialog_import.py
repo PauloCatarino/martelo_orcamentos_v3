@@ -66,6 +66,18 @@ def test_componente_dialog_toggles_peca_vs_referencia() -> None:
     assert "setVisible" in source
 
 
+def test_componente_dialog_shows_type_hint() -> None:
+    from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
+
+    init_source = inspect.getsource(DefPecaComponenteDialog.__init__)
+    assert "tipo_hint_label" in init_source
+
+    toggle_source = inspect.getsource(DefPecaComponenteDialog._update_tipo_fields)
+    assert "setText" in toggle_source
+    assert "biblioteca" in toggle_source
+    assert "manualmente" in toggle_source
+
+
 def test_componente_dialog_validates_before_save() -> None:
     from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 
