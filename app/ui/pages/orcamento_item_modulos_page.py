@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -27,6 +28,7 @@ from app.services.orcamento_item_modulo_service import (
     OrcamentoItemModuloService,
 )
 from app.ui.dialogs.novo_modulo_dialog import NovoModuloDialog, NovoModuloDialogData
+from app.ui.pages.orcamento_item_modulo_detail_page import OrcamentoItemModuloDetailPage
 from app.utils.formatters import format_mm, format_quantity
 
 
@@ -54,6 +56,8 @@ class OrcamentoItemModulosPage(QWidget):
         self.orcamento_item_id = orcamento_item_id
         self.item_label = item_label
         self.on_back = on_back
+        self._modulos_by_row: dict[int, OrcamentoItemModuloResumo] = {}
+        self._detail_page: OrcamentoItemModuloDetailPage | None = None
 
         title_text = "M\u00f3dulos do item"
         if item_label:
@@ -73,6 +77,9 @@ class OrcamentoItemModulosPage(QWidget):
         self.new_button = QPushButton("Novo M\u00f3dulo")
         self.new_button.clicked.connect(self.abrir_novo_modulo)
 
+        self.open_button = QPushButton("Abrir M\u00f3dulo")
+        self.open_button.clicked.connect(self.abrir_modulo_selecionado)
+
         self.edit_button = QPushButton("Editar M\u00f3dulo")
         self.edit_button.clicked.connect(self.editar_modulo_selecionado)
 
@@ -84,6 +91,7 @@ class OrcamentoItemModulosPage(QWidget):
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
@@ -101,13 +109,22 @@ class OrcamentoItemModulosPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
 
+        self.modulos_list_widget = QWidget()
+        list_layout = QVBoxLayout()
+        list_layout.setContentsMargins(12, 12, 12, 12)
+        list_layout.setSpacing(10)
+        list_layout.addLayout(header_layout)
+        list_layout.addLayout(actions_layout)
+        list_layout.addWidget(self.status_label)
+        list_layout.addWidget(self.table, stretch=1)
+        self.modulos_list_widget.setLayout(list_layout)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.modulos_list_widget)
+
         layout = QVBoxLayout()
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-        layout.addLayout(header_layout)
-        layout.addLayout(actions_layout)
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
 
         self.setLayout(layout)
         self.carregar_modulos()
@@ -201,6 +218,44 @@ class OrcamentoItemModulosPage(QWidget):
         self.carregar_modulos()
         self.status_label.setText("Modulo atualizado.")
 
+    def abrir_modulo_selecionado(self) -> None:
+        """Open the currently selected module detail page."""
+        modulo_id = self._get_selected_modulo_id()
+        if modulo_id is None:
+            self.status_label.setText("Selecione um modulo para abrir.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                modulo = OrcamentoItemModuloService(session).get_modulo_by_id(modulo_id)
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel abrir o modulo.")
+            return
+
+        if modulo is None:
+            self.status_label.setText("Modulo selecionado nao foi encontrado.")
+            return
+
+        self.status_label.clear()
+        self._show_detail_page(modulo)
+
+    def _show_detail_page(self, modulo: OrcamentoItemModuloResumo) -> None:
+        """Replace the module list with the module detail page."""
+        if self._detail_page is not None:
+            self.stack.removeWidget(self._detail_page)
+            self._detail_page.deleteLater()
+
+        self._detail_page = OrcamentoItemModuloDetailPage(
+            modulo,
+            on_back=self._voltar_aos_modulos,
+        )
+        self.stack.addWidget(self._detail_page)
+        self.stack.setCurrentWidget(self._detail_page)
+
+    def _voltar_aos_modulos(self) -> None:
+        """Return to the already-loaded modules table."""
+        self.stack.setCurrentWidget(self.modulos_list_widget)
+
     def remover_modulo_selecionado(self) -> None:
         """Remove the currently selected module after confirmation."""
         modulo_id = self._get_selected_modulo_id()
@@ -235,9 +290,11 @@ class OrcamentoItemModulosPage(QWidget):
 
     def _preencher_tabela(self, modulos: list[OrcamentoItemModuloResumo]) -> None:
         """Fill the modules table."""
+        self._modulos_by_row = {}
         self.table.setRowCount(len(modulos))
 
         for row_index, modulo in enumerate(modulos):
+            self._modulos_by_row[row_index] = modulo
             values = [
                 str(modulo.ordem),
                 modulo.nome,
@@ -256,6 +313,10 @@ class OrcamentoItemModulosPage(QWidget):
 
     def _get_selected_modulo_id(self) -> int | None:
         """Return the selected module id from the table."""
+        modulo = self._get_selected_modulo()
+        if modulo is not None:
+            return modulo.id
+
         row = self.table.currentRow()
         if row < 0:
             return None
@@ -267,10 +328,18 @@ class OrcamentoItemModulosPage(QWidget):
         modulo_id = table_item.data(Qt.ItemDataRole.UserRole)
         return int(modulo_id) if modulo_id is not None else None
 
+    def _get_selected_modulo(self) -> OrcamentoItemModuloResumo | None:
+        """Return the selected module read model from the table."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        return self._modulos_by_row.get(row)
+
     def _handle_row_double_click(self, row: int, _column: int) -> None:
-        """Edit a module when the user double-clicks its row."""
+        """Open a module when the user double-clicks its row."""
         self.table.selectRow(row)
-        self.editar_modulo_selecionado()
+        self.abrir_modulo_selecionado()
 
     def _dialog_data_from_modulo(self, modulo: OrcamentoItemModuloResumo) -> NovoModuloDialogData:
         """Convert a module read model into dialog data."""
