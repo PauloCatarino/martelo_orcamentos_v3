@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,6 +29,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
+from app.ui.pages.orcamento_item_modulos_page import OrcamentoItemModulosPage
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
@@ -54,6 +56,8 @@ class OrcamentoItemsPage(QWidget):
 
         self.orcamento_versao_id = orcamento_versao_id
         self.on_items_changed = on_items_changed
+        self._items_by_row: dict[int, OrcamentoItemResumo] = {}
+        self._modulos_page: OrcamentoItemModulosPage | None = None
 
         title = QLabel("Items do or\u00e7amento")
         title.setObjectName("orcamentoItemsTitle")
@@ -64,6 +68,9 @@ class OrcamentoItemsPage(QWidget):
         self.edit_button = QPushButton("Editar Item")
         self.edit_button.clicked.connect(self.editar_item_selecionado)
 
+        self.modules_button = QPushButton("M\u00f3dulos")
+        self.modules_button.clicked.connect(self.abrir_modulos_item_selecionado)
+
         self.remove_button = QPushButton("Remover Item")
         self.remove_button.clicked.connect(self.remover_item_selecionado)
 
@@ -73,6 +80,7 @@ class OrcamentoItemsPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.modules_button)
         actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -89,13 +97,22 @@ class OrcamentoItemsPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
 
+        self.items_list_widget = QWidget()
+        items_layout = QVBoxLayout()
+        items_layout.setContentsMargins(12, 12, 12, 12)
+        items_layout.setSpacing(10)
+        items_layout.addWidget(title)
+        items_layout.addLayout(actions_layout)
+        items_layout.addWidget(self.status_label)
+        items_layout.addWidget(self.table, stretch=1)
+        self.items_list_widget.setLayout(items_layout)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.items_list_widget)
+
         layout = QVBoxLayout()
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-        layout.addWidget(title)
-        layout.addLayout(actions_layout)
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
 
         self.setLayout(layout)
         self.carregar_items()
@@ -227,11 +244,41 @@ class OrcamentoItemsPage(QWidget):
         self.status_label.setText("Item removido.")
         self._notify_items_changed()
 
+    def abrir_modulos_item_selecionado(self) -> None:
+        """Open modules for the selected item inside this tab."""
+        item = self._get_selected_item()
+        if item is None:
+            self.status_label.setText("Selecione um item para gerir modulos.")
+            return
+
+        self.status_label.clear()
+        self._show_modulos_page(item)
+
+    def _show_modulos_page(self, item: OrcamentoItemResumo) -> None:
+        """Replace the list view with the selected item's modules page."""
+        if self._modulos_page is not None:
+            self.stack.removeWidget(self._modulos_page)
+            self._modulos_page.deleteLater()
+
+        self._modulos_page = OrcamentoItemModulosPage(
+            item.id,
+            item_label=self._format_item_label(item),
+            on_back=self._voltar_aos_items,
+        )
+        self.stack.addWidget(self._modulos_page)
+        self.stack.setCurrentWidget(self._modulos_page)
+
+    def _voltar_aos_items(self) -> None:
+        """Return to the already-loaded items table."""
+        self.stack.setCurrentWidget(self.items_list_widget)
+
     def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
         """Fill the items table."""
+        self._items_by_row = {}
         self.table.setRowCount(len(items))
 
         for row_index, item in enumerate(items):
+            self._items_by_row[row_index] = item
             values = [
                 str(item.ordem),
                 item.codigo or "",
@@ -255,6 +302,10 @@ class OrcamentoItemsPage(QWidget):
 
     def _get_selected_item_id(self) -> int | None:
         """Return the selected item id from the table."""
+        item = self._get_selected_item()
+        if item is not None:
+            return item.id
+
         row = self.table.currentRow()
         if row < 0:
             return None
@@ -266,6 +317,14 @@ class OrcamentoItemsPage(QWidget):
         item_id = table_item.data(Qt.ItemDataRole.UserRole)
         return int(item_id) if item_id is not None else None
 
+    def _get_selected_item(self) -> OrcamentoItemResumo | None:
+        """Return the selected item read model from the table."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        return self._items_by_row.get(row)
+
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Edit an item when the user double-clicks its row."""
         self.table.selectRow(row)
@@ -275,6 +334,16 @@ class OrcamentoItemsPage(QWidget):
         """Notify the parent page that item data changed."""
         if self.on_items_changed is not None:
             self.on_items_changed()
+
+    @staticmethod
+    def _format_item_label(item: OrcamentoItemResumo) -> str:
+        """Return a short label for the selected item."""
+        parts = [item.item.strip()]
+        if item.codigo:
+            parts.append(item.codigo.strip())
+
+        label = " - ".join(part for part in parts if part)
+        return label or f"Item {item.id}"
 
     def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
         """Convert an item read model into dialog data."""

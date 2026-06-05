@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
@@ -42,13 +43,32 @@ class OrcamentoItemModulosPage(QWidget):
         "Quantidade",
     ]
 
-    def __init__(self, orcamento_item_id: int) -> None:
+    def __init__(
+        self,
+        orcamento_item_id: int,
+        item_label: str | None = None,
+        on_back: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.orcamento_item_id = orcamento_item_id
+        self.item_label = item_label
+        self.on_back = on_back
 
-        title = QLabel("M\u00f3dulos do item")
+        title_text = "M\u00f3dulos do item"
+        if item_label:
+            title_text = f"{title_text}: {item_label}"
+
+        title = QLabel(title_text)
         title.setObjectName("orcamentoItemModulosTitle")
+
+        self.back_button = QPushButton("Voltar aos Items")
+        self.back_button.clicked.connect(self._handle_back)
+        self.back_button.setVisible(on_back is not None)
+
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(title, stretch=1)
+        header_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         self.new_button = QPushButton("Novo M\u00f3dulo")
         self.new_button.clicked.connect(self.abrir_novo_modulo)
@@ -84,7 +104,7 @@ class OrcamentoItemModulosPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(title)
+        layout.addLayout(header_layout)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
@@ -108,6 +128,11 @@ class OrcamentoItemModulosPage(QWidget):
 
         if not modulos:
             self.status_label.setText("Sem modulos para mostrar.")
+
+    def _handle_back(self) -> None:
+        """Call the optional back callback."""
+        if self.on_back is not None:
+            self.on_back()
 
     def abrir_novo_modulo(self) -> None:
         """Open the new module dialog and create the module."""
