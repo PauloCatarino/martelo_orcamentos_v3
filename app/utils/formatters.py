@@ -16,16 +16,12 @@ def format_mm(value: Any) -> str:
 
 
 def format_quantity(value: Any, unidade: str | None = None) -> str:
-    """Format a quantity, optionally including its unit."""
+    """Format a quantity without appending its unit."""
     number = _to_decimal(value)
     if number is None:
         return ""
 
-    formatted = _format_decimal_trimmed(number)
-    if unidade:
-        return f"{formatted} {unidade}"
-
-    return formatted
+    return _format_decimal_trimmed(number)
 
 
 def format_currency(value: Any) -> str:

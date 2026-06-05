@@ -236,7 +236,7 @@ class OrcamentoItemsPage(QWidget):
                 format_mm(item.altura),
                 format_mm(item.largura),
                 format_mm(item.profundidade),
-                format_quantity(item.quantidade, item.unidade),
+                format_quantity(item.quantidade),
                 item.unidade or "",
                 format_currency(item.preco_unitario),
                 format_currency(item.preco_total),

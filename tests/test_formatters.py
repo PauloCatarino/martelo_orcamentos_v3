@@ -13,9 +13,9 @@ def test_format_mm() -> None:
 
 
 def test_format_quantity() -> None:
-    assert format_quantity(Decimal("1.000"), "un") == "1 un"
-    assert format_quantity(Decimal("2.500"), "un") == "2,5 un"
+    assert format_quantity(Decimal("1.000")) == "1"
     assert format_quantity(Decimal("2.500")) == "2,5"
+    assert format_quantity(Decimal("2.500"), "un") == "2,5"
     assert format_quantity(None, "un") == ""
 
 
