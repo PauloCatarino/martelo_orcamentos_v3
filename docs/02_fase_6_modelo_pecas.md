@@ -25,6 +25,54 @@ Exemplos de definicoes possiveis:
 
 A definicao da peca guarda a identidade tecnica e as regras base da peca. Por exemplo, uma definicao `Lateral` pode futuramente ter regras de medidas, materiais possiveis, operacoes associadas e relacao com ferragens. Essa definicao continua a ser reutilizavel e nao fica presa a um item, modulo ou orcamento concreto.
 
+## Peca composta
+
+Uma peca composta e uma definicao de peca que, quando usada, gera automaticamente uma peca principal e uma ou mais pecas ou componentes associados.
+
+Exemplos:
+
+- Fundo + pes;
+- Porta + dobradica + puxador;
+- Varao + suportes de varao;
+- Prateleira + suportes prateleira.
+
+A peca composta evita que o utilizador tenha de inserir manualmente, linha a linha, as pecas simples ou acessorios que normalmente acompanham a peca principal. Em vez de lancar uma porta, depois dobradicas, depois puxador e eventuais operacoes associadas, o utilizador pode escolher a definicao composta e deixar que o sistema gere a estrutura tecnica inicial.
+
+Uma peca composta deve ter:
+
+- uma peca principal;
+- um ou mais componentes secundarios.
+
+Os componentes secundarios podem futuramente ser:
+
+- outras pecas;
+- ferragens;
+- acessorios;
+- SPP;
+- operacoes de producao;
+- mao de obra.
+
+Numa primeira fase tecnica, os componentes podem comecar por apontar para outras `def_pecas`. No entanto, o modelo deve ficar pensado para evoluir para componentes de naturezas diferentes, como ferragens, acessorios, SPP, operacoes e mao de obra.
+
+## Componentes de peca composta
+
+A entidade conceptual futura `def_peca_componentes` deve representar os componentes associados a uma peca composta.
+
+Campos conceptuais previstos:
+
+- `id`;
+- `def_peca_pai_id`;
+- `def_peca_componente_id`;
+- `ordem`;
+- `quantidade`;
+- `regra_quantidade`;
+- `obrigatorio`;
+- `observacoes`.
+
+`def_peca_pai_id` representa a peca composta. `def_peca_componente_id` representa a peca ou componente anexado.
+
+A `quantidade` pode ser fixa ou calculada por regra. O campo `regra_quantidade` deve permitir evoluir para logicas como por porta, por modulo, por largura, por altura, por quantidade do item ou por outra condicao tecnica.
+
 ## Peca aplicada ao orcamento
 
 Quando uma definicao de peca e usada num orcamento, passa a existir como peca aplicada ao orcamento.
@@ -81,6 +129,7 @@ O modelo conceptual deve considerar a separacao entre definicoes reutilizaveis e
 | Entidade conceptual | Funcao | Observacoes |
 | --- | --- | --- |
 | `def_peca` | Define a peca reutilizavel da biblioteca, como Lateral, Tampo, Fundo, Costa, Porta ou Peca composta. | Nao pertence a modulo nem a orcamento especifico. |
+| `def_peca_componentes` | Define os componentes associados a uma peca composta. | Pode comecar por componentes que apontam para outras `def_pecas`, mas deve permitir evolucao futura. |
 | `def_peca_operacao` | Associa operacoes, maquinas ou tempos padrao a uma definicao de peca. | Pode suportar producao futura por tipo de peca. |
 | `def_peca_material_regra` | Define regras de materiais, ferragens ou consumos associados a uma definicao de peca. | Pode incluir regras condicionais ou formulas numa fase posterior. |
 | `orcamento_item_peca` | Representa uma peca aplicada a um item de orcamento. | Deve guardar medidas, quantidades e dados usados para custo naquele orcamento. |
@@ -132,6 +181,11 @@ Antes de criar models, migrations e interface para pecas, devem ficar respondida
 
 - quais campos minimos de `def_peca`?
 - como representar pecas compostas?
+- componentes devem apontar apenas para `def_pecas` ou tambem para ferragens/acessorios?
+- como representar regras de quantidade?
+- componentes associados devem poder ser editados localmente quando usados no orcamento?
+- quando uma peca composta e usada, as pecas geradas ficam ligadas a peca principal?
+- como distinguir peca principal de componente associado no custeio?
 - como associar operacoes/maquinas a peca?
 - como associar regras de materiais/ferragens a peca?
 - como representar formulas de medidas?
