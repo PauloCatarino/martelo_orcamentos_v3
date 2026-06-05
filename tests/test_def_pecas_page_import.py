@@ -15,6 +15,7 @@ def test_def_pecas_page_loads_on_init() -> None:
     source_names = DefPecasPage.__init__.__code__.co_names
 
     assert "carregar_pecas" in source_names
+    assert "QStackedWidget" in source_names
 
 
 def test_def_pecas_page_table_headers() -> None:
@@ -27,3 +28,12 @@ def test_def_pecas_page_table_headers() -> None:
         "Grupo",
         "Ativo",
     ]
+
+
+def test_def_pecas_page_supports_open_detail() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    assert hasattr(DefPecasPage, "abrir_peca_selecionada")
+    assert hasattr(DefPecasPage, "_show_detail_page")
+    assert hasattr(DefPecasPage, "_voltar_a_lista")
+    assert hasattr(DefPecasPage, "_handle_row_double_click")

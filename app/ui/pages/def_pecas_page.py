@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -17,7 +19,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.peca_types import get_peca_type_label
 from app.repositories.def_peca_repository import DefPecaResumo
+from app.services.def_peca_componente_service import DefPecaComponenteService
 from app.services.def_peca_service import DefPecaService
+from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 
 
 class DefPecasPage(QWidget):
@@ -34,6 +38,9 @@ class DefPecasPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._pecas_by_row: dict[int, DefPecaResumo] = {}
+        self._detail_page: DefPecaDetailPage | None = None
+
         title = QLabel("Defini\u00e7\u00f5es de Pe\u00e7as")
         title.setObjectName("pageTitle")
 
@@ -43,7 +50,11 @@ class DefPecasPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_pecas)
 
+        self.open_button = QPushButton("Abrir Pe\u00e7a")
+        self.open_button.clicked.connect(self.abrir_peca_selecionada)
+
         actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -57,15 +68,25 @@ class DefPecasPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+
+        self.list_widget = QWidget()
+        list_layout = QVBoxLayout()
+        list_layout.setContentsMargins(18, 18, 18, 18)
+        list_layout.setSpacing(12)
+        list_layout.addWidget(title)
+        list_layout.addWidget(subtitle)
+        list_layout.addLayout(actions_layout)
+        list_layout.addWidget(self.status_label)
+        list_layout.addWidget(self.table, stretch=1)
+        self.list_widget.setLayout(list_layout)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.list_widget)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
-        layout.addLayout(actions_layout)
-        layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
 
         self.setLayout(layout)
         self.carregar_pecas()
@@ -89,9 +110,11 @@ class DefPecasPage(QWidget):
 
     def _preencher_tabela(self, pecas: list[DefPecaResumo]) -> None:
         """Fill the table with piece definition read models."""
+        self._pecas_by_row = {}
         self.table.setRowCount(len(pecas))
 
         for row_index, peca in enumerate(pecas):
+            self._pecas_by_row[row_index] = peca
             values = [
                 peca.codigo,
                 peca.nome,
@@ -101,4 +124,67 @@ class DefPecasPage(QWidget):
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                table_item = QTableWidgetItem(value)
+                if column_index == 0:
+                    table_item.setData(Qt.ItemDataRole.UserRole, peca.id)
+                self.table.setItem(row_index, column_index, table_item)
+
+    def abrir_peca_selecionada(self) -> None:
+        """Open the currently selected piece definition detail."""
+        peca = self._get_selected_peca()
+        if peca is None:
+            self.status_label.setText("Selecione uma pe\u00e7a para abrir.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                componentes = DefPecaComponenteService(session).listar_componentes(peca.id)
+                all_pecas = DefPecaService(session).listar_pecas()
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel abrir a definicao de peca.")
+            return
+
+        component_labels = {
+            item.id: f"{item.codigo} - {item.nome}"
+            for item in all_pecas
+        }
+
+        self.status_label.clear()
+        self._show_detail_page(peca, componentes, component_labels)
+
+    def _show_detail_page(
+        self,
+        peca: DefPecaResumo,
+        componentes: list,
+        component_labels: dict[int, str],
+    ) -> None:
+        """Replace the list with the piece definition detail page."""
+        if self._detail_page is not None:
+            self.stack.removeWidget(self._detail_page)
+            self._detail_page.deleteLater()
+
+        self._detail_page = DefPecaDetailPage(
+            peca,
+            componentes=componentes,
+            component_labels=component_labels,
+            on_back=self._voltar_a_lista,
+        )
+        self.stack.addWidget(self._detail_page)
+        self.stack.setCurrentWidget(self._detail_page)
+
+    def _voltar_a_lista(self) -> None:
+        """Return to the already-loaded piece definition table."""
+        self.stack.setCurrentWidget(self.list_widget)
+
+    def _get_selected_peca(self) -> DefPecaResumo | None:
+        """Return the selected piece definition read model."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        return self._pecas_by_row.get(row)
+
+    def _handle_row_double_click(self, row: int, _column: int) -> None:
+        """Open a piece definition when the user double-clicks its row."""
+        self.table.selectRow(row)
+        self.abrir_peca_selecionada()
