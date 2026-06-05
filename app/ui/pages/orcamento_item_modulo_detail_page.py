@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from app.repositories.orcamento_item_modulo_repository import OrcamentoItemModuloResumo
+from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_mm, format_quantity
 
 
@@ -19,11 +20,16 @@ class OrcamentoItemModuloDetailPage(QWidget):
         self,
         modulo: OrcamentoItemModuloResumo,
         on_back: Callable[[], None] | None = None,
+        orcamento_codigo: str | None = None,
+        item_label: str | None = None,
     ) -> None:
         super().__init__()
 
         self.modulo = modulo
         self.on_back = on_back
+        self.orcamento_codigo = orcamento_codigo
+        self.item_label = item_label
+        self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         title = QLabel(f"M\u00f3dulo: {modulo.nome}")
         title.setObjectName("orcamentoItemModuloDetailTitle")
@@ -43,6 +49,7 @@ class OrcamentoItemModuloDetailPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
+        layout.addWidget(self.breadcrumb)
         layout.addLayout(header_layout)
         layout.addWidget(tabs, stretch=1)
 
@@ -52,6 +59,17 @@ class OrcamentoItemModuloDetailPage(QWidget):
         """Call the optional back callback."""
         if self.on_back is not None:
             self.on_back()
+
+    def _build_breadcrumb_items(self) -> list[str]:
+        """Return breadcrumb items for the module detail page."""
+        items: list[str] = []
+        if self.orcamento_codigo:
+            items.append(f"Or\u00e7amento {self.orcamento_codigo}")
+        if self.item_label:
+            items.append(f"Item: {self.item_label}")
+
+        items.append(f"M\u00f3dulo: {self.modulo.nome}")
+        return items
 
     def _create_dados_gerais_tab(self) -> QWidget:
         """Create the general data tab."""

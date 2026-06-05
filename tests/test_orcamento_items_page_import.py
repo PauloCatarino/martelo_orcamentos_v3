@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from decimal import Decimal
 
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
@@ -44,3 +45,11 @@ def test_orcamento_items_page_formats_modulos_count() -> None:
     assert OrcamentoItemsPage._format_modulos_count(0) == "0 m\u00f3dulos"
     assert OrcamentoItemsPage._format_modulos_count(1) == "1 m\u00f3dulo"
     assert OrcamentoItemsPage._format_modulos_count(2) == "2 m\u00f3dulos"
+
+
+def test_orcamento_items_page_accepts_orcamento_codigo() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    parameters = inspect.signature(OrcamentoItemsPage).parameters
+
+    assert "orcamento_codigo" in parameters

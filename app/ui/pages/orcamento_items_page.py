@@ -31,6 +31,7 @@ from app.services.orcamento_item_service import (
 from app.services.orcamento_item_modulo_service import OrcamentoItemModuloService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.pages.orcamento_item_modulos_page import OrcamentoItemModulosPage
+from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
@@ -53,13 +54,20 @@ class OrcamentoItemsPage(QWidget):
         "Pre\u00e7o Total",
     ]
 
-    def __init__(self, orcamento_versao_id: int, on_items_changed: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        orcamento_versao_id: int,
+        orcamento_codigo: str | None = None,
+        on_items_changed: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.orcamento_versao_id = orcamento_versao_id
+        self.orcamento_codigo = orcamento_codigo
         self.on_items_changed = on_items_changed
         self._items_by_row: dict[int, OrcamentoItemResumo] = {}
         self._modulos_page: OrcamentoItemModulosPage | None = None
+        self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         title = QLabel("Items do or\u00e7amento")
         title.setObjectName("orcamentoItemsTitle")
@@ -103,6 +111,7 @@ class OrcamentoItemsPage(QWidget):
         items_layout = QVBoxLayout()
         items_layout.setContentsMargins(12, 12, 12, 12)
         items_layout.setSpacing(10)
+        items_layout.addWidget(self.breadcrumb)
         items_layout.addWidget(title)
         items_layout.addLayout(actions_layout)
         items_layout.addWidget(self.status_label)
@@ -268,6 +277,7 @@ class OrcamentoItemsPage(QWidget):
         self._modulos_page = OrcamentoItemModulosPage(
             item.id,
             item_label=self._format_item_label(item),
+            orcamento_codigo=self.orcamento_codigo,
             on_back=self._voltar_aos_items,
         )
         self.stack.addWidget(self._modulos_page)
@@ -364,6 +374,15 @@ class OrcamentoItemsPage(QWidget):
             return "1 m\u00f3dulo"
 
         return f"{count} m\u00f3dulos"
+
+    def _build_breadcrumb_items(self) -> list[str]:
+        """Return breadcrumb items for the items page."""
+        items: list[str] = []
+        if self.orcamento_codigo:
+            items.append(f"Or\u00e7amento {self.orcamento_codigo}")
+
+        items.append("Items")
+        return items
 
     def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
         """Convert an item read model into dialog data."""

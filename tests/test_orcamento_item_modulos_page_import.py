@@ -20,4 +20,5 @@ def test_orcamento_item_modulos_page_accepts_item_label_and_back_callback() -> N
     parameters = inspect.signature(OrcamentoItemModulosPage).parameters
 
     assert "item_label" in parameters
+    assert "orcamento_codigo" in parameters
     assert "on_back" in parameters

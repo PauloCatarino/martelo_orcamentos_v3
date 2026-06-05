@@ -29,6 +29,7 @@ from app.services.orcamento_item_modulo_service import (
 )
 from app.ui.dialogs.novo_modulo_dialog import NovoModuloDialog, NovoModuloDialogData
 from app.ui.pages.orcamento_item_modulo_detail_page import OrcamentoItemModuloDetailPage
+from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_mm, format_quantity
 
 
@@ -49,15 +50,18 @@ class OrcamentoItemModulosPage(QWidget):
         self,
         orcamento_item_id: int,
         item_label: str | None = None,
+        orcamento_codigo: str | None = None,
         on_back: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
         self.orcamento_item_id = orcamento_item_id
         self.item_label = item_label
+        self.orcamento_codigo = orcamento_codigo
         self.on_back = on_back
         self._modulos_by_row: dict[int, OrcamentoItemModuloResumo] = {}
         self._detail_page: OrcamentoItemModuloDetailPage | None = None
+        self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         title_text = "M\u00f3dulos do item"
         if item_label:
@@ -113,6 +117,7 @@ class OrcamentoItemModulosPage(QWidget):
         list_layout = QVBoxLayout()
         list_layout.setContentsMargins(12, 12, 12, 12)
         list_layout.setSpacing(10)
+        list_layout.addWidget(self.breadcrumb)
         list_layout.addLayout(header_layout)
         list_layout.addLayout(actions_layout)
         list_layout.addWidget(self.status_label)
@@ -248,6 +253,8 @@ class OrcamentoItemModulosPage(QWidget):
         self._detail_page = OrcamentoItemModuloDetailPage(
             modulo,
             on_back=self._voltar_aos_modulos,
+            orcamento_codigo=self.orcamento_codigo,
+            item_label=self.item_label,
         )
         self.stack.addWidget(self._detail_page)
         self.stack.setCurrentWidget(self._detail_page)
@@ -335,6 +342,17 @@ class OrcamentoItemModulosPage(QWidget):
             return None
 
         return self._modulos_by_row.get(row)
+
+    def _build_breadcrumb_items(self) -> list[str]:
+        """Return breadcrumb items for the modules page."""
+        items: list[str] = []
+        if self.orcamento_codigo:
+            items.append(f"Or\u00e7amento {self.orcamento_codigo}")
+        if self.item_label:
+            items.append(f"Item: {self.item_label}")
+
+        items.append("M\u00f3dulos")
+        return items
 
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Open a module when the user double-clicks its row."""

@@ -19,3 +19,5 @@ def test_orcamento_item_modulo_detail_page_accepts_back_callback() -> None:
 
     assert "modulo" in parameters
     assert "on_back" in parameters
+    assert "orcamento_codigo" in parameters
+    assert "item_label" in parameters

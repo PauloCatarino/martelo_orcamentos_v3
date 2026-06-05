@@ -12,6 +12,7 @@ from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
 
 
@@ -24,6 +25,7 @@ class OrcamentoDetailPage(QWidget):
         self.orcamento = orcamento
         self.on_back = on_back
         self._dados_gerais_labels: dict[str, QLabel] = {}
+        self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         self.title_label = QLabel(f"Or\u00e7amento {orcamento.codigo_versao}")
         self.title_label.setObjectName("orcamentoDetailTitle")
@@ -40,6 +42,7 @@ class OrcamentoDetailPage(QWidget):
         tabs.addTab(
             OrcamentoItemsPage(
                 orcamento.orcamento_versao_id,
+                orcamento_codigo=orcamento.codigo_versao,
                 on_items_changed=self._handle_items_changed,
             ),
             "Items",
@@ -52,6 +55,7 @@ class OrcamentoDetailPage(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addLayout(header_layout)
+        layout.addWidget(self.breadcrumb)
         layout.addWidget(tabs, stretch=1)
 
         self.setLayout(layout)
@@ -112,6 +116,7 @@ class OrcamentoDetailPage(QWidget):
     def _update_dados_gerais_labels(self) -> None:
         """Update the labels in the general data tab."""
         self.title_label.setText(f"Or\u00e7amento {self.orcamento.codigo_versao}")
+        self.breadcrumb.set_items(self._build_breadcrumb_items())
         values = {
             "codigo_versao": self.orcamento.codigo_versao,
             "ano": str(self.orcamento.ano),
@@ -131,6 +136,10 @@ class OrcamentoDetailPage(QWidget):
             label = self._dados_gerais_labels.get(key)
             if label is not None:
                 label.setText(value)
+
+    def _build_breadcrumb_items(self) -> list[str]:
+        """Return breadcrumb items for the active budget."""
+        return [f"Or\u00e7amento {self.orcamento.codigo_versao}"]
 
     def _create_placeholder_tab(self, text: str) -> QWidget:
         """Create a simple placeholder tab."""
