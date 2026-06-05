@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
@@ -46,10 +47,11 @@ class OrcamentoItemsPage(QWidget):
         "Pre\u00e7o Total",
     ]
 
-    def __init__(self, orcamento_versao_id: int) -> None:
+    def __init__(self, orcamento_versao_id: int, on_items_changed: Callable[[], None] | None = None) -> None:
         super().__init__()
 
         self.orcamento_versao_id = orcamento_versao_id
+        self.on_items_changed = on_items_changed
 
         title = QLabel("Items do or\u00e7amento")
         title.setObjectName("orcamentoItemsTitle")
@@ -142,8 +144,9 @@ class OrcamentoItemsPage(QWidget):
             self.status_label.setText("Nao foi possivel criar o item.")
             return
 
-        self.status_label.setText("Item criado.")
         self.carregar_items()
+        self.status_label.setText("Item criado.")
+        self._notify_items_changed()
 
     def editar_item_selecionado(self) -> None:
         """Edit the currently selected item."""
@@ -183,8 +186,9 @@ class OrcamentoItemsPage(QWidget):
             self.status_label.setText("Nao foi possivel editar o item.")
             return
 
-        self.status_label.setText("Item atualizado.")
         self.carregar_items()
+        self.status_label.setText("Item atualizado.")
+        self._notify_items_changed()
 
     def remover_item_selecionado(self) -> None:
         """Remove the currently selected item after confirmation."""
@@ -215,8 +219,9 @@ class OrcamentoItemsPage(QWidget):
             self.status_label.setText("Item selecionado nao foi encontrado.")
             return
 
-        self.status_label.setText("Item removido.")
         self.carregar_items()
+        self.status_label.setText("Item removido.")
+        self._notify_items_changed()
 
     def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
         """Fill the items table."""
@@ -260,6 +265,11 @@ class OrcamentoItemsPage(QWidget):
         """Edit an item when the user double-clicks its row."""
         self.table.selectRow(row)
         self.editar_item_selecionado()
+
+    def _notify_items_changed(self) -> None:
+        """Notify the parent page that item data changed."""
+        if self.on_items_changed is not None:
+            self.on_items_changed()
 
     def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
         """Convert an item read model into dialog data."""

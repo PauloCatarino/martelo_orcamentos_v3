@@ -21,6 +21,13 @@ class _FakeRepository:
     def list_orcamentos(self) -> list[OrcamentoResumo]:
         return self.rows
 
+    def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
+        for row in self.rows:
+            if row.orcamento_versao_id == orcamento_versao_id:
+                return row
+
+        return None
+
     def get_next_num_orcamento(self, ano: int) -> str:
         self.__class__.next_ano = ano
         return self.next_number
@@ -76,6 +83,32 @@ def test_orcamento_service_returns_repository_rows(monkeypatch) -> None:
     service = service_module.OrcamentoService(session=object())
 
     assert service.list_orcamentos() == [row]
+
+
+def test_orcamento_service_get_orcamento_by_versao_id(monkeypatch) -> None:
+    row = OrcamentoResumo(
+        orcamento_id=1,
+        orcamento_versao_id=10,
+        ano=2026,
+        num_orcamento="260001",
+        numero_versao=1,
+        codigo_versao="260001_01",
+        cliente_nome="Cliente Teste",
+        obra="Obra Teste",
+        descricao="Descricao Teste",
+        localizacao="Local Teste",
+        ref_cliente="REF-TESTE",
+        estado="rascunho",
+        preco_total=Decimal("200.00"),
+        created_at=datetime(2026, 6, 5, 10, 30),
+    )
+    _FakeRepository.rows = [row]
+    monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
+
+    service = service_module.OrcamentoService(session=object())
+
+    assert service.get_orcamento_by_versao_id(10) == row
+    assert service.get_orcamento_by_versao_id(999) is None
 
 
 def test_orcamento_service_cria_orcamento_com_proximo_numero(monkeypatch) -> None:
