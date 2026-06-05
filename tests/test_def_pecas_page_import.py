@@ -71,3 +71,29 @@ def test_def_pecas_page_forwards_orlas_to_service() -> None:
     assert "orla_c2=form_data.orla_c2" in source
     assert "orla_l1=form_data.orla_l1" in source
     assert "orla_l2=form_data.orla_l2" in source
+
+
+def test_def_pecas_page_supports_edit() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    assert hasattr(DefPecasPage, "abrir_editar_peca")
+
+
+def test_def_pecas_page_edit_uses_service_and_dialog() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    source = inspect.getsource(DefPecasPage.abrir_editar_peca)
+
+    assert "EditarDefPecaDialog" in source
+    assert "editar_peca" in source
+    assert "EditarDefPecaData" in source
+    assert "carregar_pecas" in source
+    assert "orla_c1=form_data.orla_c1" in source
+
+
+def test_def_pecas_page_double_click_edits() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    source = inspect.getsource(DefPecasPage._handle_row_double_click)
+
+    assert "abrir_editar_peca" in source

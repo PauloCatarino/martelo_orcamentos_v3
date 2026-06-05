@@ -211,6 +211,24 @@ def test_def_peca_service_valida_nome_obrigatorio(monkeypatch) -> None:
     assert session.committed is False
 
 
+def test_def_peca_service_valida_codigo_obrigatorio_ao_editar(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+    service = service_module.DefPecaService(session=session)
+
+    try:
+        service.editar_peca(
+            5,
+            service_module.EditarDefPecaData(codigo="   ", nome="Porta"),
+        )
+    except ValueError as error:
+        assert "codigo" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
+
+
 def test_def_peca_service_desativa_peca_existente(monkeypatch) -> None:
     _FakeRepository.deactivate_result = True
     _FakeRepository.deactivated_id = None
