@@ -22,7 +22,7 @@ from app.models import User  # noqa: E402
 
 ADMIN_USERNAME = "admin"
 ADMIN_NOME = "Administrador Martelo"
-ADMIN_EMAIL = "projetos@lancaencanto.pt"
+ADMIN_EMAIL = "admin@martelo.local"
 ADMIN_ROLE = "admin"
 DEFAULT_ADMIN_PASSWORD = "admin"
 
