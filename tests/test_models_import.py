@@ -9,6 +9,7 @@ def test_models_import_and_mapper_configuration() -> None:
     from app.db.base import Base
     from app.models import (
         Cliente,
+        DefPeca,
         Orcamento,
         OrcamentoItem,
         OrcamentoItemModulo,
@@ -21,6 +22,7 @@ def test_models_import_and_mapper_configuration() -> None:
 
     assert User.__tablename__ == "users"
     assert Cliente.__tablename__ == "clientes"
+    assert DefPeca.__tablename__ == "def_pecas"
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
     assert OrcamentoItem.__tablename__ == "orcamento_items"
@@ -29,6 +31,7 @@ def test_models_import_and_mapper_configuration() -> None:
     assert {
         "users",
         "clientes",
+        "def_pecas",
         "orcamentos",
         "orcamento_versoes",
         "orcamento_items",
