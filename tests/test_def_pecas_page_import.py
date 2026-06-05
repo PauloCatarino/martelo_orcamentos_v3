@@ -28,8 +28,17 @@ def test_def_pecas_page_table_headers() -> None:
         "Nome",
         "Tipo",
         "Grupo",
+        "Orlas",
         "Ativo",
     ]
+
+
+def test_def_pecas_page_shows_orla_code() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    source = inspect.getsource(DefPecasPage._preencher_tabela)
+
+    assert "format_orla_code" in source
 
 
 def test_def_pecas_page_supports_open_detail() -> None:

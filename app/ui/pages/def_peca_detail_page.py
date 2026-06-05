@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.componente_types import get_componente_type_label
+from app.domain.orla_types import format_orla_code, get_orla_type_label
 from app.domain.peca_types import get_peca_type_label
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_repository import DefPecaResumo
@@ -101,6 +102,19 @@ class DefPecaDetailPage(QWidget):
             ("Descri\u00e7\u00e3o", self.peca.descricao or ""),
             ("Tipo", get_peca_type_label(self.peca.tipo_peca)),
             ("Grupo", self.peca.grupo or ""),
+            (
+                "C\u00f3digo de orlas",
+                format_orla_code(
+                    self.peca.orla_c1,
+                    self.peca.orla_c2,
+                    self.peca.orla_l1,
+                    self.peca.orla_l2,
+                ),
+            ),
+            ("C1", get_orla_type_label(self.peca.orla_c1)),
+            ("C2", get_orla_type_label(self.peca.orla_c2)),
+            ("L1", get_orla_type_label(self.peca.orla_l1)),
+            ("L2", get_orla_type_label(self.peca.orla_l2)),
             ("Ativo", self._format_bool(self.peca.ativo)),
             ("Criado em", self._format_datetime(self.peca.created_at)),
             ("Atualizado em", self._format_datetime(self.peca.updated_at)),

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 
 def test_def_peca_detail_page_imports() -> None:
     from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
@@ -32,3 +34,13 @@ def test_def_peca_detail_page_component_headers() -> None:
         "Obrigat\u00f3rio",
         "Ativo",
     ]
+
+
+def test_def_peca_detail_page_shows_orlas() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._create_dados_gerais_tab)
+
+    assert "format_orla_code" in source
+    assert "get_orla_type_label" in source
+    assert "de orlas" in source

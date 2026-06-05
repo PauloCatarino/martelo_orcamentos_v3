@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.orla_types import format_orla_code
 from app.domain.peca_types import get_peca_type_label
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_componente_service import DefPecaComponenteService
@@ -33,6 +34,7 @@ class DefPecasPage(QWidget):
         "Nome",
         "Tipo",
         "Grupo",
+        "Orlas",
         "Ativo",
     ]
 
@@ -167,6 +169,7 @@ class DefPecasPage(QWidget):
                 peca.nome,
                 get_peca_type_label(peca.tipo_peca),
                 peca.grupo or "",
+                format_orla_code(peca.orla_c1, peca.orla_c2, peca.orla_l1, peca.orla_l2),
                 "Sim" if peca.ativo else "N\u00e3o",
             ]
 
