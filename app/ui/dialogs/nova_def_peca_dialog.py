@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
@@ -34,8 +35,14 @@ class NovaDefPecaDialogData:
 class NovaDefPecaDialog(QDialog):
     """Simple modal dialog for creating a reusable piece definition."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        on_save: Callable[[NovaDefPecaDialogData], bool] | None = None,
+    ) -> None:
         super().__init__(parent)
+
+        self.on_save = on_save
 
         self.setWindowTitle("Nova Pe\u00e7a")
         self.setModal(True)
@@ -102,7 +109,15 @@ class NovaDefPecaDialog(QDialog):
             self.error_label.setText("O nome \u00e9 obrigat\u00f3rio.")
             return
 
+        self.error_label.clear()
+        if self.on_save is not None and not self.on_save(data):
+            return
+
         self.accept()
+
+    def set_error(self, message: str) -> None:
+        """Show a user-facing error while keeping the dialog open."""
+        self.error_label.setText(message)
 
     def _empty_to_none(self, value: str) -> str | None:
         """Normalize empty text input."""

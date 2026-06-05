@@ -117,34 +117,43 @@ class DefPecasPage(QWidget):
 
     def abrir_nova_peca(self) -> None:
         """Open the new piece definition dialog."""
-        dialog = NovaDefPecaDialog(self)
+        created_codigo: str | None = None
+
+        def handle_save(form_data) -> bool:
+            nonlocal created_codigo
+
+            try:
+                with SessionLocal() as session:
+                    DefPecaService(session).criar_peca(
+                        CriarDefPecaData(
+                            codigo=form_data.codigo,
+                            nome=form_data.nome,
+                            descricao=form_data.descricao,
+                            grupo=form_data.grupo,
+                            tipo_peca=form_data.tipo_peca,
+                            ativo=form_data.ativo,
+                        )
+                    )
+            except IntegrityError:
+                dialog.set_error("J\u00e1 existe uma pe\u00e7a com esse c\u00f3digo.")
+                return False
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("N\u00e3o foi poss\u00edvel criar a pe\u00e7a.")
+                return False
+
+            created_codigo = form_data.codigo
+            return True
+
+        dialog = NovaDefPecaDialog(self, on_save=handle_save)
 
         if not dialog.exec():
             return
 
-        form_data = dialog.get_data()
-
-        try:
-            with SessionLocal() as session:
-                DefPecaService(session).criar_peca(
-                    CriarDefPecaData(
-                        codigo=form_data.codigo,
-                        nome=form_data.nome,
-                        descricao=form_data.descricao,
-                        grupo=form_data.grupo,
-                        tipo_peca=form_data.tipo_peca,
-                        ativo=form_data.ativo,
-                    )
-                )
-        except IntegrityError:
-            self.status_label.setText("Ja existe uma pe\u00e7a com esse c\u00f3digo.")
-            return
-        except (SQLAlchemyError, ValueError):
-            self.status_label.setText("Nao foi possivel criar a pe\u00e7a.")
+        if created_codigo is None:
             return
 
-        self.carregar_pecas(select_codigo=form_data.codigo)
-        self.status_label.setText(f"Pe\u00e7a {form_data.codigo} criada.")
+        self.carregar_pecas(select_codigo=created_codigo)
+        self.status_label.setText(f"Pe\u00e7a {created_codigo} criada.")
 
     def _preencher_tabela(self, pecas: list[DefPecaResumo]) -> None:
         """Fill the table with piece definition read models."""

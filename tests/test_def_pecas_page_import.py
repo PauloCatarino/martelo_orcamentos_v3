@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 
 def test_def_pecas_page_imports() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
@@ -39,3 +41,13 @@ def test_def_pecas_page_supports_open_detail() -> None:
     assert hasattr(DefPecasPage, "_voltar_a_lista")
     assert hasattr(DefPecasPage, "_select_peca_by_codigo")
     assert hasattr(DefPecasPage, "_handle_row_double_click")
+
+
+def test_def_pecas_page_creates_piece_through_dialog_callback() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    source = inspect.getsource(DefPecasPage.abrir_nova_peca)
+
+    assert "NovaDefPecaDialog" in source
+    assert "on_save=handle_save" in source
+    assert "set_error" in source
