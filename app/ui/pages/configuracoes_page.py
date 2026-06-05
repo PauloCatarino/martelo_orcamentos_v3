@@ -17,16 +17,22 @@ class ConfiguracoesPage(QWidget):
 
     TECHNICAL_AREAS = [
         "Defini\u00e7\u00f5es de Pe\u00e7as",
+        "Mat\u00e9rias-Primas",
         "Materiais",
         "Ferragens",
         "Opera\u00e7\u00f5es / M\u00e1quinas",
         "Regras de Custeio",
     ]
 
-    def __init__(self, on_open_def_pecas: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        on_open_def_pecas: Callable[[], None] | None = None,
+        on_open_materias_primas: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.on_open_def_pecas = on_open_def_pecas
+        self.on_open_materias_primas = on_open_materias_primas
 
         title = QLabel("Configura\u00e7\u00f5es")
         title.setObjectName("pageTitle")
@@ -44,6 +50,9 @@ class ConfiguracoesPage(QWidget):
 
         self.def_pecas_button = QPushButton("Defini\u00e7\u00f5es de Pe\u00e7as")
         self.def_pecas_button.clicked.connect(self._open_def_pecas)
+
+        self.materias_primas_button = QPushButton("Mat\u00e9rias-Primas")
+        self.materias_primas_button.clicked.connect(self._open_materias_primas)
 
         materiais_button = QPushButton("Materiais")
         materiais_button.clicked.connect(self._show_future_message)
@@ -64,6 +73,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(info)
         layout.addSpacing(8)
         layout.addWidget(self.def_pecas_button)
+        layout.addWidget(self.materias_primas_button)
         layout.addWidget(materiais_button)
         layout.addWidget(ferragens_button)
         layout.addWidget(operacoes_button)
@@ -77,6 +87,11 @@ class ConfiguracoesPage(QWidget):
         """Open the piece definitions page through the optional callback."""
         if self.on_open_def_pecas is not None:
             self.on_open_def_pecas()
+
+    def _open_materias_primas(self) -> None:
+        """Open the raw materials page through the optional callback."""
+        if self.on_open_materias_primas is not None:
+            self.on_open_materias_primas()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""
