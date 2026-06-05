@@ -12,6 +12,7 @@ from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.ui.pages.orcamento_modulos_tab import OrcamentoModulosTab
 from app.utils.formatters import format_currency, format_version
 
 
@@ -35,15 +36,19 @@ class OrcamentoDetailPage(QWidget):
         header_layout.addWidget(self.title_label, stretch=1)
         header_layout.addWidget(back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
+        self.modulos_tab = OrcamentoModulosTab()
+
         tabs = QTabWidget()
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
         tabs.addTab(
             OrcamentoItemsPage(
                 orcamento.orcamento_versao_id,
                 on_items_changed=self._handle_items_changed,
+                on_item_selected=self.modulos_tab.set_item,
             ),
             "Items",
         )
+        tabs.addTab(self.modulos_tab, "M\u00f3dulos")
         tabs.addTab(self._create_placeholder_tab("Custeio ser\u00e1 desenvolvido numa fase posterior."), "Custeio")
         tabs.addTab(self._create_placeholder_tab("Resumo do or\u00e7amento ser\u00e1 apresentado aqui."), "Resumo")
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")

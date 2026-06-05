@@ -49,11 +49,17 @@ class OrcamentoItemsPage(QWidget):
         "Pre\u00e7o Total",
     ]
 
-    def __init__(self, orcamento_versao_id: int, on_items_changed: Callable[[], None] | None = None) -> None:
+    def __init__(
+        self,
+        orcamento_versao_id: int,
+        on_items_changed: Callable[[], None] | None = None,
+        on_item_selected: Callable[[int | None, str], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.orcamento_versao_id = orcamento_versao_id
         self.on_items_changed = on_items_changed
+        self.on_item_selected = on_item_selected
 
         title = QLabel("Items do or\u00e7amento")
         title.setObjectName("orcamentoItemsTitle")
@@ -88,6 +94,7 @@ class OrcamentoItemsPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+        self.table.itemSelectionChanged.connect(self._handle_selection_changed)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -275,6 +282,25 @@ class OrcamentoItemsPage(QWidget):
         """Notify the parent page that item data changed."""
         if self.on_items_changed is not None:
             self.on_items_changed()
+
+    def _handle_selection_changed(self) -> None:
+        """Notify the parent page that the selected item changed."""
+        if self.on_item_selected is None:
+            return
+
+        self.on_item_selected(self._get_selected_item_id(), self._get_selected_item_label())
+
+    def _get_selected_item_label(self) -> str:
+        """Build a short label for the selected item (codigo + item)."""
+        row = self.table.currentRow()
+        if row < 0:
+            return ""
+
+        codigo_item = self.table.item(row, 1)
+        nome_item = self.table.item(row, 3)
+        codigo = codigo_item.text() if codigo_item is not None else ""
+        nome = nome_item.text() if nome_item is not None else ""
+        return " ".join(part for part in (codigo, nome) if part).strip()
 
     def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
         """Convert an item read model into dialog data."""
