@@ -49,6 +49,14 @@ class OrcamentoItemModuloService:
         """List modules for one budget item."""
         return self.repository.list_by_item_id(orcamento_item_id)
 
+    def count_by_item_id(self, orcamento_item_id: int) -> int:
+        """Count modules for one budget item."""
+        return self.repository.count_by_item_id(orcamento_item_id)
+
+    def get_counts_by_item_ids(self, item_ids: list[int]) -> dict[int, int]:
+        """Return module counts keyed by budget item id."""
+        return self.repository.get_counts_by_item_ids(item_ids)
+
     def get_modulo_by_id(self, modulo_id: int) -> OrcamentoItemModuloResumo | None:
         """Get one module by id."""
         return self.repository.get_modulo_by_id(modulo_id)

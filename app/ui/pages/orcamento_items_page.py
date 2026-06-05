@@ -28,6 +28,7 @@ from app.services.orcamento_item_service import (
     EditarOrcamentoItemSimplesData,
     OrcamentoItemService,
 )
+from app.services.orcamento_item_modulo_service import OrcamentoItemModuloService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.pages.orcamento_item_modulos_page import OrcamentoItemModulosPage
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -40,6 +41,7 @@ class OrcamentoItemsPage(QWidget):
         "Ordem",
         "C\u00f3digo",
         "Tipo",
+        "M\u00f3dulos",
         "Item",
         "Descri\u00e7\u00e3o",
         "Altura",
@@ -125,11 +127,14 @@ class OrcamentoItemsPage(QWidget):
         try:
             with SessionLocal() as session:
                 items = OrcamentoItemService(session).list_items_by_versao(self.orcamento_versao_id)
+                module_counts = OrcamentoItemModuloService(session).get_counts_by_item_ids(
+                    [item.id for item in items]
+                )
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os items.")
             return
 
-        self._preencher_tabela(items)
+        self._preencher_tabela(items, module_counts)
 
         if not items:
             self.status_label.setText("Sem items para mostrar.")
@@ -269,11 +274,17 @@ class OrcamentoItemsPage(QWidget):
         self.stack.setCurrentWidget(self._modulos_page)
 
     def _voltar_aos_items(self) -> None:
-        """Return to the already-loaded items table."""
+        """Return to the items table and refresh module counts."""
         self.stack.setCurrentWidget(self.items_list_widget)
+        self.carregar_items()
 
-    def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
+    def _preencher_tabela(
+        self,
+        items: list[OrcamentoItemResumo],
+        module_counts: dict[int, int] | None = None,
+    ) -> None:
         """Fill the items table."""
+        module_counts = module_counts or {}
         self._items_by_row = {}
         self.table.setRowCount(len(items))
 
@@ -283,6 +294,7 @@ class OrcamentoItemsPage(QWidget):
                 str(item.ordem),
                 item.codigo or "",
                 get_item_type_label(item.tipo_item),
+                self._format_modulos_count(module_counts.get(item.id, 0)),
                 item.item,
                 item.descricao or "",
                 format_mm(item.altura),
@@ -344,6 +356,14 @@ class OrcamentoItemsPage(QWidget):
 
         label = " - ".join(part for part in parts if part)
         return label or f"Item {item.id}"
+
+    @staticmethod
+    def _format_modulos_count(count: int) -> str:
+        """Return a friendly module count."""
+        if count == 1:
+            return "1 m\u00f3dulo"
+
+        return f"{count} m\u00f3dulos"
 
     def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
         """Convert an item read model into dialog data."""

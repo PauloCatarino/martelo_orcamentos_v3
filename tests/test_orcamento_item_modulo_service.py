@@ -19,6 +19,10 @@ class _FakeRepository:
     updated_payload: dict[str, object] | None = None
     delete_result = True
     deleted_modulo_id: int | None = None
+    count_result = 0
+    counted_item_id: int | None = None
+    counts_by_item_ids_result: dict[int, int] = {}
+    counted_item_ids: list[int] | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -26,6 +30,14 @@ class _FakeRepository:
     def list_by_item_id(self, orcamento_item_id: int) -> list[OrcamentoItemModuloResumo]:
         self.__class__.requested_item_id = orcamento_item_id
         return self.rows
+
+    def count_by_item_id(self, orcamento_item_id: int) -> int:
+        self.__class__.counted_item_id = orcamento_item_id
+        return self.count_result
+
+    def get_counts_by_item_ids(self, item_ids: list[int]) -> dict[int, int]:
+        self.__class__.counted_item_ids = item_ids
+        return self.counts_by_item_ids_result
 
     def get_next_ordem(self, orcamento_item_id: int) -> int:
         self.__class__.next_order_item_id = orcamento_item_id
@@ -85,6 +97,28 @@ def test_modulo_service_returns_empty_list(monkeypatch) -> None:
 
     assert service.listar_modulos(10) == []
     assert _FakeRepository.requested_item_id == 10
+
+
+def test_modulo_service_conta_modulos_por_item(monkeypatch) -> None:
+    _FakeRepository.count_result = 2
+    _FakeRepository.counted_item_id = None
+    monkeypatch.setattr(service_module, "OrcamentoItemModuloRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemModuloService(session=object())
+
+    assert service.count_by_item_id(10) == 2
+    assert _FakeRepository.counted_item_id == 10
+
+
+def test_modulo_service_obtem_contagens_por_items(monkeypatch) -> None:
+    _FakeRepository.counts_by_item_ids_result = {10: 2, 11: 0}
+    _FakeRepository.counted_item_ids = None
+    monkeypatch.setattr(service_module, "OrcamentoItemModuloRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemModuloService(session=object())
+
+    assert service.get_counts_by_item_ids([10, 11]) == {10: 2, 11: 0}
+    assert _FakeRepository.counted_item_ids == [10, 11]
 
 
 def test_modulo_service_cria_modulo_com_proxima_ordem(monkeypatch) -> None:

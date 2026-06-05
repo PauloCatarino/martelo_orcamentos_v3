@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import OrcamentoItemModulo
@@ -42,6 +42,32 @@ class OrcamentoItemModuloRepository:
         modulos = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(modulo) for modulo in modulos]
+
+    def count_by_item_id(self, orcamento_item_id: int) -> int:
+        """Count modules for one budget item."""
+        statement = select(func.count(OrcamentoItemModulo.id)).where(
+            OrcamentoItemModulo.orcamento_item_id == orcamento_item_id
+        )
+
+        return int(self.session.execute(statement).scalar_one())
+
+    def get_counts_by_item_ids(self, item_ids: list[int]) -> dict[int, int]:
+        """Return module counts keyed by budget item id."""
+        if not item_ids:
+            return {}
+
+        statement = (
+            select(
+                OrcamentoItemModulo.orcamento_item_id,
+                func.count(OrcamentoItemModulo.id),
+            )
+            .where(OrcamentoItemModulo.orcamento_item_id.in_(item_ids))
+            .group_by(OrcamentoItemModulo.orcamento_item_id)
+        )
+        rows = self.session.execute(statement).all()
+        counts = {int(item_id): int(count) for item_id, count in rows}
+
+        return {item_id: counts.get(item_id, 0) for item_id in item_ids}
 
     def get_next_ordem(self, orcamento_item_id: int) -> int:
         """Return the next module order for an item."""

@@ -11,6 +11,7 @@ def test_orcamento_items_page_imports() -> None:
     from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 
     assert OrcamentoItemsPage is not None
+    assert "M\u00f3dulos" in OrcamentoItemsPage.TABLE_HEADERS
     assert hasattr(OrcamentoItemsPage, "abrir_modulos_item_selecionado")
 
 
@@ -35,3 +36,11 @@ def test_orcamento_items_page_formats_item_label() -> None:
     )
 
     assert OrcamentoItemsPage._format_item_label(item) == "4 PORTAS - RP_01"
+
+
+def test_orcamento_items_page_formats_modulos_count() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert OrcamentoItemsPage._format_modulos_count(0) == "0 m\u00f3dulos"
+    assert OrcamentoItemsPage._format_modulos_count(1) == "1 m\u00f3dulo"
+    assert OrcamentoItemsPage._format_modulos_count(2) == "2 m\u00f3dulos"
