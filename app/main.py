@@ -7,6 +7,7 @@ import sys
 from PySide6.QtWidgets import QApplication, QDialog
 
 from app.config.logging_config import configure_logging
+from app.core.session import app_session
 from app.ui.login_window import LoginWindow
 from app.ui.main_window import MainWindow
 
@@ -17,14 +18,34 @@ def main() -> int:
 
     qt_app = QApplication(sys.argv)
 
-    login_window = LoginWindow()
-    if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
+    while True:
+        login_window = LoginWindow()
+        if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
+            app_session.clear_current_user()
+            return 0
+
+        app_session.set_current_user(login_window.authenticated_user)
+
+        logout_requested = False
+
+        window = MainWindow(authenticated_user=app_session.current_user)
+
+        def handle_logout() -> None:
+            nonlocal logout_requested
+            logout_requested = True
+            app_session.clear_current_user()
+            window.close()
+
+        window.logout_requested.connect(handle_logout)
+        window.show()
+
+        qt_app.exec()
+
+        if logout_requested:
+            continue
+
+        app_session.clear_current_user()
         return 0
-
-    window = MainWindow(authenticated_user=login_window.authenticated_user)
-    window.show()
-
-    return qt_app.exec()
 
 
 if __name__ == "__main__":

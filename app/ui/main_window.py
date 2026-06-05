@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -18,6 +18,8 @@ from app.models import User
 
 class MainWindow(QMainWindow):
     """Application shell window."""
+
+    logout_requested = Signal()
 
     def __init__(self, authenticated_user: User | None = None) -> None:
         super().__init__()
@@ -41,8 +43,13 @@ class MainWindow(QMainWindow):
         user_label.setObjectName("authenticatedUserInfo")
         user_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+        logout_button = QPushButton("Sair")
+        logout_button.setObjectName("logoutButton")
+        logout_button.clicked.connect(self.request_logout)
+
         header_layout.addWidget(title, stretch=1)
         header_layout.addWidget(user_label, stretch=1)
+        header_layout.addWidget(logout_button)
 
         content_layout = QHBoxLayout()
         content_layout.setSpacing(16)
@@ -90,3 +97,7 @@ class MainWindow(QMainWindow):
             f"{self.authenticated_user.nome}\n"
             f"@{self.authenticated_user.username} | {self.authenticated_user.role}"
         )
+
+    def request_logout(self) -> None:
+        """Emit a logout request."""
+        self.logout_requested.emit()
