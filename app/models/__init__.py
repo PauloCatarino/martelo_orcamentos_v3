@@ -1,6 +1,7 @@
 """SQLAlchemy models package."""
 
 from app.models.cliente import Cliente
+from app.models.def_materia_prima import DefMateriaPrima
 from app.models.def_peca import DefPeca
 from app.models.def_peca_componente import DefPecaComponente
 from app.models.orcamento import Orcamento
@@ -12,6 +13,7 @@ from app.models.user import User
 
 __all__ = [
     "Cliente",
+    "DefMateriaPrima",
     "DefPeca",
     "DefPecaComponente",
     "Orcamento",
