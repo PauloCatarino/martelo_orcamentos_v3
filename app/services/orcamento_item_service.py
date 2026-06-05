@@ -7,8 +7,8 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.domain.item_types import normalize_item_type
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
-from app.utils.formatters import normalize_tipo_item
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ class OrcamentoItemService:
         """Create a simple budget item."""
         item_name = data.item.strip()
         unidade = data.unidade.strip() or "un"
-        tipo_item = normalize_tipo_item(data.tipo_item)
+        tipo_item = normalize_item_type(data.tipo_item)
 
         if not item_name:
             raise ValueError("item is required")
@@ -102,7 +102,7 @@ class OrcamentoItemService:
         """Edit a simple budget item."""
         item_name = data.item.strip()
         unidade = data.unidade.strip() or "un"
-        tipo_item = normalize_tipo_item(data.tipo_item)
+        tipo_item = normalize_item_type(data.tipo_item)
 
         if not item_name:
             raise ValueError("item is required")

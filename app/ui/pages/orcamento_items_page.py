@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.item_types import get_item_type_label
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_service import (
     CriarOrcamentoItemSimplesData,
@@ -27,7 +28,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
-from app.utils.formatters import format_currency, format_mm, format_quantity, format_tipo_item
+from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
 class OrcamentoItemsPage(QWidget):
@@ -234,7 +235,7 @@ class OrcamentoItemsPage(QWidget):
             values = [
                 str(item.ordem),
                 item.codigo or "",
-                format_tipo_item(item.tipo_item),
+                get_item_type_label(item.tipo_item),
                 item.item,
                 item.descricao or "",
                 format_mm(item.altura),

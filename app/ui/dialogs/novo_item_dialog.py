@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from app.utils.formatters import ITEM_TYPE_OPTIONS, normalize_tipo_item
+from app.domain.item_types import OUTRO, get_item_type_options, normalize_item_type
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ class NovoItemDialog(QDialog):
 
         self.codigo_input = QLineEdit()
         self.tipo_item_input = QComboBox()
-        for code, label in ITEM_TYPE_OPTIONS:
+        for code, label in get_item_type_options():
             self.tipo_item_input.addItem(label, code)
         self.item_input = QLineEdit()
         self.descricao_input = QTextEdit()
@@ -105,7 +105,7 @@ class NovoItemDialog(QDialog):
             quantidade=self._parse_decimal(self.quantidade_input.text()),
             unidade=self.unidade_input.text().strip() or "un",
             preco_unitario=self._parse_decimal(self.preco_unitario_input.text()),
-            tipo_item=self.tipo_item_input.currentData() or "OUTRO",
+            tipo_item=self.tipo_item_input.currentData() or OUTRO,
         )
 
     def _validate_and_accept(self) -> None:
@@ -171,7 +171,7 @@ class NovoItemDialog(QDialog):
 
     def _set_tipo_item(self, value: str | None) -> None:
         """Select an item type in the combo box."""
-        tipo_item = normalize_tipo_item(value)
+        tipo_item = normalize_item_type(value)
         index = self.tipo_item_input.findData(tipo_item)
         if index >= 0:
             self.tipo_item_input.setCurrentIndex(index)
