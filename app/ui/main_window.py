@@ -9,11 +9,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.models import User
+from app.ui.pages import OrcamentosPage
 
 
 class MainWindow(QMainWindow):
@@ -62,25 +64,33 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
         sidebar_layout.setSpacing(8)
 
-        for label in ("In\u00edcio", "Or\u00e7amentos", "Clientes", "Configura\u00e7\u00f5es"):
-            button = QPushButton(label)
-            button.setEnabled(False)
+        inicio_button = QPushButton("In\u00edcio")
+        inicio_button.clicked.connect(lambda: self.show_page("inicio"))
+
+        orcamentos_button = QPushButton("Or\u00e7amentos")
+        orcamentos_button.clicked.connect(lambda: self.show_page("orcamentos"))
+
+        clientes_button = QPushButton("Clientes")
+        clientes_button.clicked.connect(lambda: self.show_page("clientes"))
+
+        configuracoes_button = QPushButton("Configura\u00e7\u00f5es")
+        configuracoes_button.clicked.connect(lambda: self.show_page("configuracoes"))
+
+        for button in (inicio_button, orcamentos_button, clientes_button, configuracoes_button):
             sidebar_layout.addWidget(button)
 
         sidebar_layout.addStretch()
         sidebar.setLayout(sidebar_layout)
 
-        workspace = QFrame()
-        workspace.setFrameShape(QFrame.Shape.StyledPanel)
-
-        workspace_layout = QVBoxLayout()
-        welcome_label = QLabel("Bem-vindo ao Martelo Or\u00e7amentos V3")
-        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        workspace_layout.addWidget(welcome_label)
-        workspace.setLayout(workspace_layout)
+        self.pages = QStackedWidget()
+        self._page_indexes: dict[str, int] = {}
+        self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
+        self._add_page("orcamentos", OrcamentosPage())
+        self._add_page("clientes", self._create_text_page("Clientes"))
+        self._add_page("configuracoes", self._create_text_page("Configura\u00e7\u00f5es"))
 
         content_layout.addWidget(sidebar)
-        content_layout.addWidget(workspace, stretch=1)
+        content_layout.addWidget(self.pages, stretch=1)
 
         main_layout.addLayout(header_layout)
         main_layout.addLayout(content_layout, stretch=1)
@@ -101,3 +111,25 @@ class MainWindow(QMainWindow):
     def request_logout(self) -> None:
         """Emit a logout request."""
         self.logout_requested.emit()
+
+    def _add_page(self, name: str, page: QWidget) -> None:
+        """Add a page to the central workspace."""
+        self._page_indexes[name] = self.pages.addWidget(page)
+
+    def show_page(self, name: str) -> None:
+        """Show one central workspace page."""
+        page_index = self._page_indexes[name]
+        self.pages.setCurrentIndex(page_index)
+
+    def _create_text_page(self, text: str) -> QWidget:
+        """Create a simple placeholder page."""
+        page = QFrame()
+        page.setFrameShape(QFrame.Shape.StyledPanel)
+
+        layout = QVBoxLayout()
+        label = QLabel(text)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+        page.setLayout(layout)
+
+        return page
