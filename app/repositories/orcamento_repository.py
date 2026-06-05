@@ -16,11 +16,17 @@ from app.models import Cliente, Orcamento, OrcamentoVersao
 class OrcamentoResumo:
     """Read model for listing budget versions in the UI."""
 
+    orcamento_id: int
+    orcamento_versao_id: int
     ano: int
     num_orcamento: str
     numero_versao: int
+    codigo_versao: str
     cliente_nome: str
     obra: str | None
+    descricao: str | None
+    localizacao: str | None
+    ref_cliente: str | None
     estado: str
     preco_total: Decimal | None
     created_at: datetime
@@ -47,11 +53,17 @@ class OrcamentoRepository:
         """List budget versions with customer and budget data."""
         statement = (
             select(
+                Orcamento.id.label("orcamento_id"),
+                OrcamentoVersao.id.label("orcamento_versao_id"),
                 Orcamento.ano.label("ano"),
                 Orcamento.num_orcamento.label("num_orcamento"),
                 OrcamentoVersao.numero_versao.label("numero_versao"),
+                OrcamentoVersao.codigo_versao.label("codigo_versao"),
                 Cliente.nome.label("cliente_nome"),
                 Orcamento.obra.label("obra"),
+                Orcamento.descricao.label("descricao"),
+                Orcamento.localizacao.label("localizacao"),
+                Orcamento.ref_cliente.label("ref_cliente"),
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
@@ -69,11 +81,17 @@ class OrcamentoRepository:
 
         return [
             OrcamentoResumo(
+                orcamento_id=row["orcamento_id"],
+                orcamento_versao_id=row["orcamento_versao_id"],
                 ano=row["ano"],
                 num_orcamento=row["num_orcamento"],
                 numero_versao=row["numero_versao"],
+                codigo_versao=row["codigo_versao"],
                 cliente_nome=row["cliente_nome"],
                 obra=row["obra"],
+                descricao=row["descricao"],
+                localizacao=row["localizacao"],
+                ref_cliente=row["ref_cliente"],
                 estado=row["estado"],
                 preco_total=row["preco_total"],
                 created_at=row["created_at"],

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -38,8 +40,11 @@ class OrcamentosPage(QWidget):
         "Criado em",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None) -> None:
         super().__init__()
+
+        self.on_open_orcamento = on_open_orcamento
+        self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
 
         title = QLabel("Or\u00e7amentos")
         title.setObjectName("pageTitle")
@@ -50,11 +55,15 @@ class OrcamentosPage(QWidget):
         self.new_button = QPushButton("Novo Or\u00e7amento")
         self.new_button.clicked.connect(self.abrir_novo_orcamento)
 
+        self.open_button = QPushButton("Abrir Or\u00e7amento")
+        self.open_button.clicked.connect(self.abrir_orcamento_selecionado)
+
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -68,6 +77,7 @@ class OrcamentosPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.cellDoubleClicked.connect(self._handle_row_double_click)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -132,9 +142,11 @@ class OrcamentosPage(QWidget):
 
     def _preencher_tabela(self, orcamentos: list[OrcamentoResumo]) -> None:
         """Fill the table with budget read models."""
+        self._orcamentos_by_row = {}
         self.table.setRowCount(len(orcamentos))
 
         for row_index, orcamento in enumerate(orcamentos):
+            self._orcamentos_by_row[row_index] = orcamento
             values = [
                 str(orcamento.ano),
                 orcamento.num_orcamento,
@@ -147,7 +159,33 @@ class OrcamentosPage(QWidget):
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                if column_index == 0:
+                    item.setData(
+                        Qt.ItemDataRole.UserRole,
+                        {
+                            "orcamento_id": orcamento.orcamento_id,
+                            "orcamento_versao_id": orcamento.orcamento_versao_id,
+                        },
+                    )
+                self.table.setItem(row_index, column_index, item)
+
+    def abrir_orcamento_selecionado(self) -> None:
+        """Open the currently selected budget through the callback."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um orcamento para abrir.")
+            return
+
+        if self.on_open_orcamento is not None:
+            self.on_open_orcamento(orcamento)
+
+    def _handle_row_double_click(self, row: int, _column: int) -> None:
+        """Open a budget when the user double-clicks its table row."""
+        self.table.selectRow(row)
+        self.abrir_orcamento_selecionado()
 
     def _format_decimal(self, value: Decimal | None) -> str:
         """Format a decimal value for table display."""

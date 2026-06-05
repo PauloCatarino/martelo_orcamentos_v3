@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.models import User
-from app.ui.pages import OrcamentosPage
+from app.repositories.orcamento_repository import OrcamentoResumo
+from app.ui.pages import OrcamentoDetailPage, OrcamentosPage
 
 
 class MainWindow(QMainWindow):
@@ -84,8 +85,10 @@ class MainWindow(QMainWindow):
 
         self.pages = QStackedWidget()
         self._page_indexes: dict[str, int] = {}
+        self._pages_by_name: dict[str, QWidget] = {}
+        self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
-        self._add_page("orcamentos", OrcamentosPage())
+        self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
         self._add_page("configuracoes", self._create_text_page("Configura\u00e7\u00f5es"))
 
@@ -114,12 +117,37 @@ class MainWindow(QMainWindow):
 
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""
+        self._pages_by_name[name] = page
         self._page_indexes[name] = self.pages.addWidget(page)
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
+
+    def open_orcamento_detail(self, orcamento: OrcamentoResumo) -> None:
+        """Open the detail page for a selected budget."""
+        detail_page = OrcamentoDetailPage(orcamento, on_back=lambda: self.show_page("orcamentos"))
+        self._replace_page("orcamento_detail", detail_page)
+        self.show_page("orcamento_detail")
+
+    def _replace_page(self, name: str, page: QWidget) -> None:
+        """Replace a named page in the central workspace."""
+        old_page = self._pages_by_name.get(name)
+        if old_page is not None:
+            self.pages.removeWidget(old_page)
+            old_page.deleteLater()
+
+        self._pages_by_name[name] = page
+        self.pages.addWidget(page)
+        self._rebuild_page_indexes()
+
+    def _rebuild_page_indexes(self) -> None:
+        """Rebuild page indexes after adding or removing widgets."""
+        self._page_indexes = {
+            name: self.pages.indexOf(page)
+            for name, page in self._pages_by_name.items()
+        }
 
     def _create_text_page(self, text: str) -> QWidget:
         """Create a simple placeholder page."""

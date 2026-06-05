@@ -55,11 +55,17 @@ def test_orcamento_service_returns_empty_list_when_repository_is_empty(monkeypat
 
 def test_orcamento_service_returns_repository_rows(monkeypatch) -> None:
     row = OrcamentoResumo(
+        orcamento_id=1,
+        orcamento_versao_id=10,
         ano=2026,
         num_orcamento="260001",
         numero_versao=1,
+        codigo_versao="260001_01",
         cliente_nome="Cliente Teste",
         obra="Obra Teste",
+        descricao="Descricao Teste",
+        localizacao="Local Teste",
+        ref_cliente="REF-TESTE",
         estado="rascunho",
         preco_total=Decimal("123.45"),
         created_at=datetime(2026, 6, 5, 10, 30),
