@@ -80,6 +80,7 @@ class OrcamentoItemService:
             preco_unitario=data.preco_unitario,
             preco_total=preco_total,
         )
+        self.recalcular_total_versao(data.orcamento_versao_id)
         self.session.commit()
 
         return result
@@ -118,14 +119,27 @@ class OrcamentoItemService:
             preco_unitario=data.preco_unitario,
             preco_total=preco_total,
         )
+        self.recalcular_total_versao(result.orcamento_versao_id)
         self.session.commit()
 
         return result
 
     def remover_item(self, item_id: int) -> bool:
         """Remove one budget item."""
+        item = self.repository.get_item_by_id(item_id)
+        if item is None:
+            return False
+
         deleted = self.repository.delete_item(item_id)
         if deleted:
+            self.recalcular_total_versao(item.orcamento_versao_id)
             self.session.commit()
 
         return deleted
+
+    def recalcular_total_versao(self, orcamento_versao_id: int) -> Decimal:
+        """Recalculate and store the total for a budget version."""
+        total = self.repository.sum_preco_total_by_versao(orcamento_versao_id)
+        self.repository.update_preco_total_versao(orcamento_versao_id, total)
+
+        return total

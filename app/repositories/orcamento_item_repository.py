@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import OrcamentoItem
+from app.models import OrcamentoItem, OrcamentoVersao
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,7 @@ class OrcamentoItemResumo:
     """Read model for listing budget items."""
 
     id: int
+    orcamento_versao_id: int
     ordem: int
     codigo: str | None
     item: str
@@ -48,6 +49,7 @@ class OrcamentoItemRepository:
         return [
             OrcamentoItemResumo(
                 id=item.id,
+                orcamento_versao_id=item.orcamento_versao_id,
                 ordem=item.ordem,
                 codigo=item.codigo,
                 item=item.item,
@@ -164,10 +166,31 @@ class OrcamentoItemRepository:
 
         return True
 
+    def sum_preco_total_by_versao(self, orcamento_versao_id: int) -> Decimal:
+        """Return the sum of item totals for one budget version."""
+        statement = select(func.coalesce(func.sum(OrcamentoItem.preco_total), 0)).where(
+            OrcamentoItem.orcamento_versao_id == orcamento_versao_id
+        )
+        value = self.session.execute(statement).scalar_one()
+
+        return Decimal(value)
+
+    def update_preco_total_versao(self, orcamento_versao_id: int, preco_total: Decimal) -> bool:
+        """Update a budget version total."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.preco_total = preco_total
+        self.session.flush()
+
+        return True
+
     def _to_resumo(self, item: OrcamentoItem) -> OrcamentoItemResumo:
         """Convert an ORM item to the read model."""
         return OrcamentoItemResumo(
             id=item.id,
+            orcamento_versao_id=item.orcamento_versao_id,
             ordem=item.ordem,
             codigo=item.codigo,
             item=item.item,
