@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,24 +54,7 @@ class OrcamentoRepository:
     def list_orcamentos(self) -> list[OrcamentoResumo]:
         """List budget versions with customer and budget data."""
         statement = (
-            select(
-                Orcamento.id.label("orcamento_id"),
-                OrcamentoVersao.id.label("orcamento_versao_id"),
-                Orcamento.ano.label("ano"),
-                Orcamento.num_orcamento.label("num_orcamento"),
-                OrcamentoVersao.numero_versao.label("numero_versao"),
-                OrcamentoVersao.codigo_versao.label("codigo_versao"),
-                Cliente.nome.label("cliente_nome"),
-                Orcamento.obra.label("obra"),
-                Orcamento.descricao.label("descricao"),
-                Orcamento.localizacao.label("localizacao"),
-                Orcamento.ref_cliente.label("ref_cliente"),
-                OrcamentoVersao.estado.label("estado"),
-                OrcamentoVersao.preco_total.label("preco_total"),
-                OrcamentoVersao.created_at.label("created_at"),
-            )
-            .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
-            .join(Cliente, Orcamento.cliente_id == Cliente.id)
+            self._select_orcamento_resumo()
             .order_by(
                 Orcamento.ano.desc(),
                 Orcamento.num_orcamento.desc(),
@@ -79,25 +64,17 @@ class OrcamentoRepository:
 
         rows = self.session.execute(statement).mappings().all()
 
-        return [
-            OrcamentoResumo(
-                orcamento_id=row["orcamento_id"],
-                orcamento_versao_id=row["orcamento_versao_id"],
-                ano=row["ano"],
-                num_orcamento=row["num_orcamento"],
-                numero_versao=row["numero_versao"],
-                codigo_versao=row["codigo_versao"],
-                cliente_nome=row["cliente_nome"],
-                obra=row["obra"],
-                descricao=row["descricao"],
-                localizacao=row["localizacao"],
-                ref_cliente=row["ref_cliente"],
-                estado=row["estado"],
-                preco_total=row["preco_total"],
-                created_at=row["created_at"],
-            )
-            for row in rows
-        ]
+        return [self._row_to_orcamento_resumo(row) for row in rows]
+
+    def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
+        """Return one budget version summary by version id."""
+        statement = self._select_orcamento_resumo().where(OrcamentoVersao.id == orcamento_versao_id)
+        row = self.session.execute(statement).mappings().one_or_none()
+
+        if row is None:
+            return None
+
+        return self._row_to_orcamento_resumo(row)
 
     def get_next_num_orcamento(self, ano: int) -> str:
         """Return the next budget number for a year."""
@@ -211,3 +188,45 @@ class OrcamentoRepository:
     def _format_codigo_versao(self, num_orcamento: str, numero_versao: int) -> str:
         """Format a budget version code."""
         return f"{num_orcamento}_{numero_versao:02d}"
+
+    def _select_orcamento_resumo(self):
+        """Build the base summary select used by listings and detail refresh."""
+        return (
+            select(
+                Orcamento.id.label("orcamento_id"),
+                OrcamentoVersao.id.label("orcamento_versao_id"),
+                Orcamento.ano.label("ano"),
+                Orcamento.num_orcamento.label("num_orcamento"),
+                OrcamentoVersao.numero_versao.label("numero_versao"),
+                OrcamentoVersao.codigo_versao.label("codigo_versao"),
+                Cliente.nome.label("cliente_nome"),
+                Orcamento.obra.label("obra"),
+                Orcamento.descricao.label("descricao"),
+                Orcamento.localizacao.label("localizacao"),
+                Orcamento.ref_cliente.label("ref_cliente"),
+                OrcamentoVersao.estado.label("estado"),
+                OrcamentoVersao.preco_total.label("preco_total"),
+                OrcamentoVersao.created_at.label("created_at"),
+            )
+            .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
+            .join(Cliente, Orcamento.cliente_id == Cliente.id)
+        )
+
+    def _row_to_orcamento_resumo(self, row: Mapping[str, Any]) -> OrcamentoResumo:
+        """Convert a database row mapping into the UI read model."""
+        return OrcamentoResumo(
+            orcamento_id=row["orcamento_id"],
+            orcamento_versao_id=row["orcamento_versao_id"],
+            ano=row["ano"],
+            num_orcamento=row["num_orcamento"],
+            numero_versao=row["numero_versao"],
+            codigo_versao=row["codigo_versao"],
+            cliente_nome=row["cliente_nome"],
+            obra=row["obra"],
+            descricao=row["descricao"],
+            localizacao=row["localizacao"],
+            ref_cliente=row["ref_cliente"],
+            estado=row["estado"],
+            preco_total=row["preco_total"],
+            created_at=row["created_at"],
+        )

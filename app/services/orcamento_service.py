@@ -36,6 +36,10 @@ class OrcamentoService:
         """List available budget versions."""
         return self.repository.list_orcamentos()
 
+    def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
+        """Return one budget version by id."""
+        return self.repository.get_orcamento_by_versao_id(orcamento_versao_id)
+
     def criar_orcamento_simples(self, data: CriarOrcamentoSimplesData) -> OrcamentoCriado:
         """Create a simple budget with version 01."""
         nome_cliente = data.nome_cliente.strip()
