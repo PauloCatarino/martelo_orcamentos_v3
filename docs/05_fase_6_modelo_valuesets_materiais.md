@@ -116,7 +116,11 @@ A linha deve poder registar:
 - descricao local;
 - preco original;
 - preco local;
-- indicacao de que a linha foi alterada manualmente.
+- margem original;
+- margem local;
+- indicacao de que a linha foi alterada manualmente;
+- data da alteracao;
+- utilizador que alterou, se possivel no futuro.
 
 Isto permite comparar o valor de catalogo com o valor usado e identificar facilmente as linhas ajustadas.
 
@@ -200,6 +204,7 @@ Estrutura conceptual (nao final) de uma linha de custeio que suporta override lo
 | `id` | Identificador da linha. |
 | `orcamento_item_id` | Item de orcamento a que a linha pertence. |
 | `origem_material_id` | Materia-prima base selecionada, se existir (nullable). |
+| `origem_material` | Origem do material da linha: `ORCAMENTO`, `ITEM`, `CATALOGO` ou `MANUAL`. |
 | `grupo_material` | Grupo de configuracao, por exemplo `PORTAS` ou `DOBRADICAS`. |
 | `descricao_original` | Descricao herdada da materia-prima base. |
 | `descricao_local` | Descricao ajustada para esta linha. |
@@ -216,6 +221,72 @@ Estrutura conceptual (nao final) de uma linha de custeio que suporta override lo
 | `observacoes` | Notas livres sobre a linha. |
 
 As medidas seguem a logica de peca horizontal (Comp / Larg / Esp), sem usar a designacao Altura.
+
+## Origem da materia-prima na linha de custeio
+
+Uma linha de custeio pode usar uma materia-prima ou ferragem vinda de varias origens:
+
+- configuracao do orcamento;
+- configuracao do item;
+- materia-prima selecionada diretamente do catalogo;
+- edicao manual / local.
+
+Para tornar esta origem explicita, propoe-se o campo conceptual `origem_material`, com os valores possiveis:
+
+| Valor | Significado |
+| --- | --- |
+| `ORCAMENTO` | O material veio da configuracao geral do orcamento. |
+| `ITEM` | O material veio da configuracao especifica do item. |
+| `CATALOGO` | O material foi selecionado diretamente do catalogo de materias-primas. |
+| `MANUAL` | O material foi editado manualmente na linha de custeio. |
+
+Em complemento, propoe-se o campo conceptual `override_manual` (booleano), que indica se a linha foi alterada manualmente, mesmo que tenha partido de uma das outras origens.
+
+## Marcacao de linhas editadas manualmente
+
+Se o utilizador editar localmente qualquer um dos seguintes valores de uma linha:
+
+- descricao;
+- preco;
+- margem;
+- medidas;
+- fornecedor;
+- referencia;
+- observacoes;
+
+entao a linha deve ficar marcada como editada manualmente (`override_manual = true` e `origem_material = MANUAL`).
+
+Esta marcacao e importante porque a linha ja nao corresponde exatamente:
+
+- a materia-prima original do catalogo;
+- a configuracao do orcamento;
+- a configuracao do item.
+
+Sem esta marcacao, seria facil confundir uma linha ajustada manualmente com uma linha resolvida automaticamente, e perder a nocao do que foi alterado.
+
+## Identificacao visual no custeio
+
+Na interface de custeio deve existir uma indicacao visual clara da origem e do estado de cada linha. Pode ser, por exemplo:
+
+- uma coluna "Origem";
+- ou uma coluna "Estado";
+- ou um icone / aviso "Editado manualmente".
+
+Exemplo de apresentacao:
+
+```text
+PORTA      -> MDF Branco 19mm          -> Config. orcamento
+DOBRADICA  -> BLUM 75B7250             -> Config. orcamento
+PUXADOR    -> Puxador especial cliente -> Manual
+```
+
+A linha do `PUXADOR` mostra claramente que foi ajustada manualmente, enquanto as restantes foram resolvidas pela configuracao do orcamento.
+
+## Protecao de linhas manuais
+
+Linhas marcadas como `MANUAL` nao devem ser sobrescritas automaticamente quando a configuracao do orcamento ou do item for alterada.
+
+Se uma alteracao de configuracao afetar uma linha manual, o sistema deve pedir confirmacao ao utilizador antes de substituir os valores locais, em vez de apagar silenciosamente o ajuste manual. Isto protege o trabalho do utilizador e evita perder ajustes especificos de um orcamento.
 
 ## Fora do ambito deste documento
 
@@ -241,3 +312,7 @@ Antes de criar tabelas, models e migrations para esta logica, devem ficar respon
 - como permitir override manual sem perder rastreabilidade?
 - quando uma materia-prima usada localmente deve passar a materia-prima global?
 - como proteger orcamentos antigos contra alteracoes futuras da tabela global?
+- como representar visualmente o estado manual de uma linha?
+- alteracoes manuais devem pedir confirmacao antes de sobrepor a configuracao?
+- linhas manuais devem poder voltar a herdar a configuracao do orcamento/item?
+- como tratar atualizacoes de preco em materias-primas ja usadas em orcamentos antigos?
