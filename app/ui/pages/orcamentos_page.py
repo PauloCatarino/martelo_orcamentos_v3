@@ -89,6 +89,7 @@ class OrcamentosPage(QWidget):
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
+        self.carregar_orcamentos()
 
     def carregar_orcamentos(self) -> None:
         """Load budget versions into the table."""
