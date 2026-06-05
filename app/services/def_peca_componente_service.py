@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.componente_types import PECA, normalize_componente_type
+from app.domain.regra_quantidade_types import normalize_regra_quantidade
 from app.repositories.def_peca_componente_repository import (
     DefPecaComponenteRepository,
     DefPecaComponenteResumo,
@@ -62,7 +63,7 @@ class DefPecaComponenteService:
         """Create a composite piece component."""
         def_peca_pai_id = self._validate_parent_id(data.def_peca_pai_id)
         tipo_componente = normalize_componente_type(data.tipo_componente)
-        regra_quantidade = self._normalize_regra_quantidade(data.regra_quantidade)
+        regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
@@ -95,7 +96,7 @@ class DefPecaComponenteService:
         """Edit a composite piece component."""
         def_peca_pai_id = self._validate_parent_id(data.def_peca_pai_id)
         tipo_componente = normalize_componente_type(data.tipo_componente)
-        regra_quantidade = self._normalize_regra_quantidade(data.regra_quantidade)
+        regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
@@ -146,10 +147,3 @@ class DefPecaComponenteService:
 
         if tipo_componente == PECA and not def_peca_componente_id:
             raise ValueError("def_peca_componente_id is required for PECA components")
-
-    def _normalize_regra_quantidade(self, regra_quantidade: str | None) -> str:
-        if not regra_quantidade:
-            return "FIXA"
-
-        normalized = regra_quantidade.strip()
-        return normalized or "FIXA"

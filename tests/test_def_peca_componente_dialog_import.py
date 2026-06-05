@@ -25,6 +25,16 @@ def test_componente_dialog_uses_componente_type_options() -> None:
     assert "QComboBox" in source_names
 
 
+def test_componente_dialog_uses_regra_quantidade_options() -> None:
+    from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
+
+    source_names = DefPecaComponenteDialog.__init__.__code__.co_names
+    assert "get_regra_quantidade_options" in source_names
+
+    get_data_source = inspect.getsource(DefPecaComponenteDialog.get_data)
+    assert "regra_quantidade_input.currentData" in get_data_source
+
+
 def test_componente_dialog_accepts_componente_and_callback() -> None:
     from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 

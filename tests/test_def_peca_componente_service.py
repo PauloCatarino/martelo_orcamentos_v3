@@ -129,14 +129,35 @@ def test_componente_service_cria_componente_nao_peca_sem_def_peca(monkeypatch) -
             referencia_componente="DOB-01",
             descricao="Dobradica",
             quantidade=Decimal("3"),
-            regra_quantidade=" por_porta ",
+            regra_quantidade=" por_comprimento ",
         )
     )
 
     assert _FakeRepository.created_payload is not None
     assert _FakeRepository.created_payload["tipo_componente"] == "FERRAGEM"
-    assert _FakeRepository.created_payload["regra_quantidade"] == "por_porta"
+    assert _FakeRepository.created_payload["regra_quantidade"] == "POR_COMPRIMENTO"
     assert result.referencia_componente == "DOB-01"
+    assert session.committed is True
+
+
+def test_componente_service_normaliza_regra_legacy_altura(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    _FakeRepository.next_order = 1
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaComponenteService(session=session)
+    service.criar_componente(
+        service_module.CriarDefPecaComponenteData(
+            def_peca_pai_id=10,
+            tipo_componente="PECA",
+            def_peca_componente_id=20,
+            regra_quantidade="POR_ALTURA_LARGURA",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["regra_quantidade"] == "POR_COMPRIMENTO_LARGURA"
     assert session.committed is True
 
 

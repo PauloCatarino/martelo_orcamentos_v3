@@ -24,6 +24,11 @@ from app.domain.componente_types import (
     get_componente_type_options,
     normalize_componente_type,
 )
+from app.domain.regra_quantidade_types import (
+    FIXA,
+    get_regra_quantidade_options,
+    normalize_regra_quantidade,
+)
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_repository import DefPecaResumo
 
@@ -82,8 +87,9 @@ class DefPecaComponenteDialog(QDialog):
         self.quantidade_input.setRange(0.001, 1_000_000)
         self.quantidade_input.setValue(1)
 
-        self.regra_quantidade_input = QLineEdit()
-        self.regra_quantidade_input.setText("FIXA")
+        self.regra_quantidade_input = QComboBox()
+        for code, label in get_regra_quantidade_options():
+            self.regra_quantidade_input.addItem(label, code)
 
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
@@ -154,7 +160,10 @@ class DefPecaComponenteDialog(QDialog):
         self.descricao_input.setText(componente.descricao or "")
         self.ordem_input.setValue(componente.ordem)
         self.quantidade_input.setValue(float(componente.quantidade))
-        self.regra_quantidade_input.setText(componente.regra_quantidade or "FIXA")
+        self._select_combo_data(
+            self.regra_quantidade_input,
+            normalize_regra_quantidade(componente.regra_quantidade),
+        )
         self.obrigatorio_input.setChecked(componente.obrigatorio)
         self.ativo_input.setChecked(componente.ativo)
 
@@ -192,7 +201,7 @@ class DefPecaComponenteDialog(QDialog):
             descricao=self._empty_to_none(self.descricao_input.text()),
             ordem=self.ordem_input.value(),
             quantidade=Decimal(str(self.quantidade_input.value())),
-            regra_quantidade=self.regra_quantidade_input.text().strip() or "FIXA",
+            regra_quantidade=self.regra_quantidade_input.currentData() or FIXA,
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )

@@ -25,6 +25,7 @@ from app.db.session import SessionLocal
 from app.domain.componente_types import get_componente_type_label
 from app.domain.orla_types import format_orla_code, get_orla_type_label
 from app.domain.peca_types import COMPOSTA, get_peca_type_label, normalize_peca_type
+from app.domain.regra_quantidade_types import get_regra_quantidade_label
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_componente_service import (
@@ -205,7 +206,7 @@ class DefPecaDetailPage(QWidget):
                 self._format_componente_ref(componente),
                 componente.descricao or "",
                 format_quantity(componente.quantidade),
-                componente.regra_quantidade or "",
+                get_regra_quantidade_label(componente.regra_quantidade),
                 self._format_bool(componente.obrigatorio),
                 self._format_bool(componente.ativo),
             ]

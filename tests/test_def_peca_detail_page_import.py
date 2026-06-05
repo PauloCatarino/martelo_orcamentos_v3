@@ -80,3 +80,11 @@ def test_def_peca_detail_page_disables_actions_for_simples() -> None:
 
     assert "_is_composta" in source
     assert "setEnabled" in source
+
+
+def test_def_peca_detail_page_shows_regra_label() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._preencher_componentes)
+
+    assert "get_regra_quantidade_label" in source
