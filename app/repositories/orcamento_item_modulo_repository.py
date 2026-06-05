@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -24,6 +25,8 @@ class OrcamentoItemModuloResumo:
     largura: Decimal | None
     profundidade: Decimal | None
     quantidade: Decimal
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class OrcamentoItemModuloRepository:
@@ -166,4 +169,6 @@ class OrcamentoItemModuloRepository:
             largura=modulo.largura,
             profundidade=modulo.profundidade,
             quantidade=modulo.quantidade,
+            created_at=modulo.created_at,
+            updated_at=modulo.updated_at,
         )
