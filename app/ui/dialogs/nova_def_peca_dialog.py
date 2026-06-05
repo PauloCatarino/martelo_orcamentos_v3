@@ -11,12 +11,14 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QTextEdit,
     QVBoxLayout,
 )
 
+from app.domain.orla_types import format_orla_code, get_orla_type_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options
 
 
@@ -29,6 +31,10 @@ class NovaDefPecaDialogData:
     descricao: str | None
     tipo_peca: str
     grupo: str | None
+    orla_c1: int
+    orla_c2: int
+    orla_l1: int
+    orla_l2: int
     ativo: bool
 
 
@@ -59,6 +65,27 @@ class NovaDefPecaDialog(QDialog):
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
 
+        self.orla_c1_input = QComboBox()
+        self.orla_c2_input = QComboBox()
+        self.orla_l1_input = QComboBox()
+        self.orla_l2_input = QComboBox()
+        orla_combos = (
+            self.orla_c1_input,
+            self.orla_c2_input,
+            self.orla_l1_input,
+            self.orla_l2_input,
+        )
+        for combo in orla_combos:
+            for code, label in get_orla_type_options():
+                combo.addItem(label, code)
+
+        self.orla_preview_label = QLabel()
+        self.orla_preview_label.setObjectName("novaDefPecaOrlaPreview")
+
+        for combo in orla_combos:
+            combo.currentIndexChanged.connect(self._update_orla_preview)
+        self._update_orla_preview()
+
         self.error_label = QLabel("")
         self.error_label.setObjectName("novaDefPecaError")
         self.error_label.setStyleSheet("color: #b00020;")
@@ -80,8 +107,18 @@ class NovaDefPecaDialog(QDialog):
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
 
+        orla_group = QGroupBox("Orlas")
+        orla_form = QFormLayout()
+        orla_form.addRow("C1 - Comprimento lado 1", self.orla_c1_input)
+        orla_form.addRow("C2 - Comprimento lado 2", self.orla_c2_input)
+        orla_form.addRow("L1 - Largura lado 1", self.orla_l1_input)
+        orla_form.addRow("L2 - Largura lado 2", self.orla_l2_input)
+        orla_form.addRow(self.orla_preview_label)
+        orla_group.setLayout(orla_form)
+
         layout = QVBoxLayout()
         layout.addLayout(form_layout)
+        layout.addWidget(orla_group)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
@@ -94,6 +131,10 @@ class NovaDefPecaDialog(QDialog):
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             tipo_peca=self.tipo_peca_input.currentData() or SIMPLES,
             grupo=self._empty_to_none(self.grupo_input.text()),
+            orla_c1=self.orla_c1_input.currentData(),
+            orla_c2=self.orla_c2_input.currentData(),
+            orla_l1=self.orla_l1_input.currentData(),
+            orla_l2=self.orla_l2_input.currentData(),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -114,6 +155,16 @@ class NovaDefPecaDialog(QDialog):
             return
 
         self.accept()
+
+    def _update_orla_preview(self) -> None:
+        """Refresh the edge banding code preview from the combo boxes."""
+        code = format_orla_code(
+            self.orla_c1_input.currentData(),
+            self.orla_c2_input.currentData(),
+            self.orla_l1_input.currentData(),
+            self.orla_l2_input.currentData(),
+        )
+        self.orla_preview_label.setText(f"Código de orlas: {code}")
 
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""

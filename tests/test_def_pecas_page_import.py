@@ -60,3 +60,14 @@ def test_def_pecas_page_creates_piece_through_dialog_callback() -> None:
     assert "NovaDefPecaDialog" in source
     assert "on_save=handle_save" in source
     assert "set_error" in source
+
+
+def test_def_pecas_page_forwards_orlas_to_service() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    source = inspect.getsource(DefPecasPage.abrir_nova_peca)
+
+    assert "orla_c1=form_data.orla_c1" in source
+    assert "orla_c2=form_data.orla_c2" in source
+    assert "orla_l1=form_data.orla_l1" in source
+    assert "orla_l2=form_data.orla_l2" in source

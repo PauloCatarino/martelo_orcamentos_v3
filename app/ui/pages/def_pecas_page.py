@@ -133,6 +133,10 @@ class DefPecasPage(QWidget):
                             descricao=form_data.descricao,
                             grupo=form_data.grupo,
                             tipo_peca=form_data.tipo_peca,
+                            orla_c1=form_data.orla_c1,
+                            orla_c2=form_data.orla_c2,
+                            orla_l1=form_data.orla_l1,
+                            orla_l2=form_data.orla_l2,
                             ativo=form_data.ativo,
                         )
                     )
