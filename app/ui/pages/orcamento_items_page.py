@@ -27,7 +27,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
-from app.utils.formatters import format_currency, format_mm, format_quantity
+from app.utils.formatters import format_currency, format_mm, format_quantity, format_tipo_item
 
 
 class OrcamentoItemsPage(QWidget):
@@ -36,6 +36,7 @@ class OrcamentoItemsPage(QWidget):
     TABLE_HEADERS = [
         "Ordem",
         "C\u00f3digo",
+        "Tipo",
         "Item",
         "Descri\u00e7\u00e3o",
         "Altura",
@@ -130,6 +131,7 @@ class OrcamentoItemsPage(QWidget):
                     CriarOrcamentoItemSimplesData(
                         orcamento_versao_id=self.orcamento_versao_id,
                         codigo=form_data.codigo,
+                        tipo_item=form_data.tipo_item,
                         item=form_data.item,
                         descricao=form_data.descricao,
                         altura=form_data.altura,
@@ -172,6 +174,7 @@ class OrcamentoItemsPage(QWidget):
                     item_id,
                     EditarOrcamentoItemSimplesData(
                         codigo=form_data.codigo,
+                        tipo_item=form_data.tipo_item,
                         item=form_data.item,
                         descricao=form_data.descricao,
                         altura=form_data.altura,
@@ -231,6 +234,7 @@ class OrcamentoItemsPage(QWidget):
             values = [
                 str(item.ordem),
                 item.codigo or "",
+                format_tipo_item(item.tipo_item),
                 item.item,
                 item.descricao or "",
                 format_mm(item.altura),
@@ -283,4 +287,5 @@ class OrcamentoItemsPage(QWidget):
             quantidade=item.quantidade,
             unidade=item.unidade or "un",
             preco_unitario=item.preco_unitario or Decimal("0"),
+            tipo_item=item.tipo_item,
         )

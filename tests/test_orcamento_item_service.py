@@ -41,6 +41,7 @@ class _FakeRepository:
             orcamento_versao_id=kwargs["orcamento_versao_id"],
             ordem=kwargs["ordem"],
             codigo=kwargs["codigo"],
+            tipo_item=kwargs["tipo_item"],
             item=kwargs["item"],
             descricao=kwargs["descricao"],
             altura=kwargs["altura"],
@@ -63,6 +64,7 @@ class _FakeRepository:
             orcamento_versao_id=20,
             ordem=2,
             codigo=kwargs["codigo"],
+            tipo_item=kwargs["tipo_item"],
             item=kwargs["item"],
             descricao=kwargs["descricao"],
             altura=kwargs["altura"],
@@ -112,6 +114,7 @@ def test_orcamento_item_service_returns_repository_rows(monkeypatch) -> None:
         orcamento_versao_id=11,
         ordem=1,
         codigo="ITEM-001",
+        tipo_item="ROUPEIRO_CORRER",
         item="Roupeiro",
         descricao="Teste",
         altura=Decimal("2400"),
@@ -155,17 +158,46 @@ def test_orcamento_item_service_cria_item_com_proxima_ordem_e_preco_total(monkey
             quantidade=Decimal("2"),
             unidade="un",
             preco_unitario=Decimal("15.50"),
+            tipo_item="ROUPEIRO_ABRIR",
         )
     )
 
     assert _FakeRepository.next_order_versao_id == 20
     assert _FakeRepository.created_payload is not None
     assert _FakeRepository.created_payload["ordem"] == 3
+    assert _FakeRepository.created_payload["tipo_item"] == "ROUPEIRO_ABRIR"
     assert _FakeRepository.created_payload["preco_total"] == Decimal("31.00")
     assert _FakeRepository.summed_versao_id == 20
     assert _FakeRepository.updated_versao_total == (20, Decimal("75.25"))
     assert result.preco_total == Decimal("31.00")
+    assert result.tipo_item == "ROUPEIRO_ABRIR"
     assert session.committed is True
+
+
+def test_orcamento_item_service_usa_tipo_outro_por_defeito(monkeypatch) -> None:
+    _FakeRepository.next_order = 1
+    _FakeRepository.created_payload = None
+    _FakeRepository.sum_total = Decimal("10.00")
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+    service.criar_item_simples(
+        service_module.CriarOrcamentoItemSimplesData(
+            orcamento_versao_id=20,
+            codigo=None,
+            item="Item Sem Tipo",
+            descricao=None,
+            altura=None,
+            largura=None,
+            profundidade=None,
+            quantidade=Decimal("1"),
+            unidade="un",
+            preco_unitario=Decimal("10"),
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["tipo_item"] == "OUTRO"
 
 
 def test_orcamento_item_service_valida_item_obrigatorio(monkeypatch) -> None:
@@ -257,6 +289,7 @@ def test_orcamento_item_service_edita_item_e_recalcula_preco_total(monkeypatch) 
         8,
         service_module.EditarOrcamentoItemSimplesData(
             codigo="ITEM-008",
+            tipo_item="MOVEL_WC",
             item="Mesa",
             descricao="Editado",
             altura=None,
@@ -270,10 +303,12 @@ def test_orcamento_item_service_edita_item_e_recalcula_preco_total(monkeypatch) 
 
     assert _FakeRepository.updated_payload is not None
     assert _FakeRepository.updated_payload["item_id"] == 8
+    assert _FakeRepository.updated_payload["tipo_item"] == "MOVEL_WC"
     assert _FakeRepository.updated_payload["preco_total"] == Decimal("37.50")
     assert _FakeRepository.summed_versao_id == 20
     assert _FakeRepository.updated_versao_total == (20, Decimal("50.00"))
     assert result.preco_total == Decimal("37.50")
+    assert result.tipo_item == "MOVEL_WC"
     assert session.committed is True
 
 

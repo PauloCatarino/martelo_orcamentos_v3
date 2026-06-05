@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -14,6 +15,8 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+
+from app.utils.formatters import ITEM_TYPE_OPTIONS, normalize_tipo_item
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class NovoItemDialogData:
     quantidade: Decimal
     unidade: str
     preco_unitario: Decimal
+    tipo_item: str = "OUTRO"
 
 
 class NovoItemDialog(QDialog):
@@ -42,6 +46,9 @@ class NovoItemDialog(QDialog):
         self.setMinimumWidth(460)
 
         self.codigo_input = QLineEdit()
+        self.tipo_item_input = QComboBox()
+        for code, label in ITEM_TYPE_OPTIONS:
+            self.tipo_item_input.addItem(label, code)
         self.item_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
@@ -59,6 +66,7 @@ class NovoItemDialog(QDialog):
 
         form_layout = QFormLayout()
         form_layout.addRow("C\u00f3digo", self.codigo_input)
+        form_layout.addRow("Tipo de item", self.tipo_item_input)
         form_layout.addRow("Item", self.item_input)
         form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
         form_layout.addRow("Altura", self.altura_input)
@@ -97,6 +105,7 @@ class NovoItemDialog(QDialog):
             quantidade=self._parse_decimal(self.quantidade_input.text()),
             unidade=self.unidade_input.text().strip() or "un",
             preco_unitario=self._parse_decimal(self.preco_unitario_input.text()),
+            tipo_item=self.tipo_item_input.currentData() or "OUTRO",
         )
 
     def _validate_and_accept(self) -> None:
@@ -143,6 +152,7 @@ class NovoItemDialog(QDialog):
     def _fill_from_data(self, item_data: NovoItemDialogData) -> None:
         """Fill dialog fields from existing item data."""
         self.codigo_input.setText(item_data.codigo or "")
+        self._set_tipo_item(item_data.tipo_item)
         self.item_input.setText(item_data.item)
         self.descricao_input.setPlainText(item_data.descricao or "")
         self.altura_input.setText(self._format_decimal(item_data.altura))
@@ -158,3 +168,10 @@ class NovoItemDialog(QDialog):
             return ""
 
         return f"{value:g}"
+
+    def _set_tipo_item(self, value: str | None) -> None:
+        """Select an item type in the combo box."""
+        tipo_item = normalize_tipo_item(value)
+        index = self.tipo_item_input.findData(tipo_item)
+        if index >= 0:
+            self.tipo_item_input.setCurrentIndex(index)

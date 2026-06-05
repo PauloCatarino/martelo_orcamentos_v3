@@ -33,6 +33,7 @@ class OrcamentoItem(Base):
     )
     ordem: Mapped[int] = mapped_column(Integer, nullable=False)
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    tipo_item: Mapped[str] = mapped_column(String(50), nullable=False, default="OUTRO", server_default="OUTRO")
     item: Mapped[str] = mapped_column(String(255), nullable=False)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     altura: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)

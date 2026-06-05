@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
+from app.utils.formatters import normalize_tipo_item
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class CriarOrcamentoItemSimplesData:
     quantidade: Decimal
     unidade: str
     preco_unitario: Decimal
+    tipo_item: str | None = None
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,7 @@ class EditarOrcamentoItemSimplesData:
     quantidade: Decimal
     unidade: str
     preco_unitario: Decimal
+    tipo_item: str | None = None
 
 
 class OrcamentoItemService:
@@ -56,6 +59,7 @@ class OrcamentoItemService:
         """Create a simple budget item."""
         item_name = data.item.strip()
         unidade = data.unidade.strip() or "un"
+        tipo_item = normalize_tipo_item(data.tipo_item)
 
         if not item_name:
             raise ValueError("item is required")
@@ -70,6 +74,7 @@ class OrcamentoItemService:
             orcamento_versao_id=data.orcamento_versao_id,
             ordem=ordem,
             codigo=data.codigo,
+            tipo_item=tipo_item,
             item=item_name,
             descricao=data.descricao,
             altura=data.altura,
@@ -97,6 +102,7 @@ class OrcamentoItemService:
         """Edit a simple budget item."""
         item_name = data.item.strip()
         unidade = data.unidade.strip() or "un"
+        tipo_item = normalize_tipo_item(data.tipo_item)
 
         if not item_name:
             raise ValueError("item is required")
@@ -109,6 +115,7 @@ class OrcamentoItemService:
         result = self.repository.update_item(
             item_id=item_id,
             codigo=data.codigo,
+            tipo_item=tipo_item,
             item=item_name,
             descricao=data.descricao,
             altura=data.altura,

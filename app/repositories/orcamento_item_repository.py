@@ -28,6 +28,7 @@ class OrcamentoItemResumo:
     unidade: str | None
     preco_unitario: Decimal | None
     preco_total: Decimal | None
+    tipo_item: str = "OUTRO"
 
 
 class OrcamentoItemRepository:
@@ -61,6 +62,7 @@ class OrcamentoItemRepository:
                 unidade=item.unidade,
                 preco_unitario=item.preco_unitario,
                 preco_total=item.preco_total,
+                tipo_item=item.tipo_item,
             )
             for item in items
         ]
@@ -91,6 +93,7 @@ class OrcamentoItemRepository:
         orcamento_versao_id: int,
         ordem: int,
         codigo: str | None,
+        tipo_item: str,
         item: str,
         descricao: str | None,
         altura: Decimal | None,
@@ -106,6 +109,7 @@ class OrcamentoItemRepository:
             orcamento_versao_id=orcamento_versao_id,
             ordem=ordem,
             codigo=codigo,
+            tipo_item=tipo_item,
             item=item,
             descricao=descricao,
             altura=altura,
@@ -126,6 +130,7 @@ class OrcamentoItemRepository:
         *,
         item_id: int,
         codigo: str | None,
+        tipo_item: str,
         item: str,
         descricao: str | None,
         altura: Decimal | None,
@@ -142,6 +147,7 @@ class OrcamentoItemRepository:
             raise ValueError("item not found")
 
         orcamento_item.codigo = codigo
+        orcamento_item.tipo_item = tipo_item
         orcamento_item.item = item
         orcamento_item.descricao = descricao
         orcamento_item.altura = altura
@@ -202,4 +208,5 @@ class OrcamentoItemRepository:
             unidade=item.unidade,
             preco_unitario=item.preco_unitario,
             preco_total=item.preco_total,
+            tipo_item=item.tipo_item,
         )
