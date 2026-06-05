@@ -75,6 +75,14 @@ class OrcamentoItemRepository:
 
         return max(existing_orders) + 1
 
+    def get_item_by_id(self, item_id: int) -> OrcamentoItemResumo | None:
+        """Get one item by id."""
+        item = self.session.get(OrcamentoItem, item_id)
+        if item is None:
+            return None
+
+        return self._to_resumo(item)
+
     def create_item(
         self,
         *,
@@ -109,17 +117,55 @@ class OrcamentoItemRepository:
         self.session.add(orcamento_item)
         self.session.flush()
 
+        return self._to_resumo(orcamento_item)
+
+    def update_item(
+        self,
+        *,
+        item_id: int,
+        codigo: str | None,
+        item: str,
+        descricao: str | None,
+        altura: Decimal | None,
+        largura: Decimal | None,
+        profundidade: Decimal | None,
+        quantidade: Decimal,
+        unidade: str,
+        preco_unitario: Decimal,
+        preco_total: Decimal,
+    ) -> OrcamentoItemResumo:
+        """Update one budget item."""
+        orcamento_item = self.session.get(OrcamentoItem, item_id)
+        if orcamento_item is None:
+            raise ValueError("item not found")
+
+        orcamento_item.codigo = codigo
+        orcamento_item.item = item
+        orcamento_item.descricao = descricao
+        orcamento_item.altura = altura
+        orcamento_item.largura = largura
+        orcamento_item.profundidade = profundidade
+        orcamento_item.quantidade = quantidade
+        orcamento_item.unidade = unidade
+        orcamento_item.preco_unitario = preco_unitario
+        orcamento_item.preco_total = preco_total
+        self.session.flush()
+
+        return self._to_resumo(orcamento_item)
+
+    def _to_resumo(self, item: OrcamentoItem) -> OrcamentoItemResumo:
+        """Convert an ORM item to the read model."""
         return OrcamentoItemResumo(
-            id=orcamento_item.id,
-            ordem=orcamento_item.ordem,
-            codigo=orcamento_item.codigo,
-            item=orcamento_item.item,
-            descricao=orcamento_item.descricao,
-            altura=orcamento_item.altura,
-            largura=orcamento_item.largura,
-            profundidade=orcamento_item.profundidade,
-            quantidade=orcamento_item.quantidade,
-            unidade=orcamento_item.unidade,
-            preco_unitario=orcamento_item.preco_unitario,
-            preco_total=orcamento_item.preco_total,
+            id=item.id,
+            ordem=item.ordem,
+            codigo=item.codigo,
+            item=item.item,
+            descricao=item.descricao,
+            altura=item.altura,
+            largura=item.largura,
+            profundidade=item.profundidade,
+            quantidade=item.quantidade,
+            unidade=item.unidade,
+            preco_unitario=item.preco_unitario,
+            preco_total=item.preco_total,
         )

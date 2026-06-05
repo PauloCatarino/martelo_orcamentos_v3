@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -18,8 +19,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
-from app.services.orcamento_item_service import CriarOrcamentoItemSimplesData, OrcamentoItemService
-from app.ui.dialogs.novo_item_dialog import NovoItemDialog
+from app.services.orcamento_item_service import (
+    CriarOrcamentoItemSimplesData,
+    EditarOrcamentoItemSimplesData,
+    OrcamentoItemService,
+)
+from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 
 
 class OrcamentoItemsPage(QWidget):
@@ -50,11 +55,15 @@ class OrcamentoItemsPage(QWidget):
         self.new_button = QPushButton("Novo Item")
         self.new_button.clicked.connect(self.abrir_novo_item)
 
+        self.edit_button = QPushButton("Editar Item")
+        self.edit_button.clicked.connect(self.editar_item_selecionado)
+
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_items)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -68,6 +77,7 @@ class OrcamentoItemsPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.cellDoubleClicked.connect(self._handle_row_double_click)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -129,6 +139,47 @@ class OrcamentoItemsPage(QWidget):
         self.status_label.setText("Item criado.")
         self.carregar_items()
 
+    def editar_item_selecionado(self) -> None:
+        """Edit the currently selected item."""
+        item_id = self._get_selected_item_id()
+        if item_id is None:
+            self.status_label.setText("Selecione um item para editar.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemService(session)
+                item = service.get_item_by_id(item_id)
+                if item is None:
+                    self.status_label.setText("Item selecionado nao foi encontrado.")
+                    return
+
+                dialog = NovoItemDialog(self, item_data=self._dialog_data_from_item(item))
+                if not dialog.exec():
+                    return
+
+                form_data = dialog.get_data()
+                service.editar_item_simples(
+                    item_id,
+                    EditarOrcamentoItemSimplesData(
+                        codigo=form_data.codigo,
+                        item=form_data.item,
+                        descricao=form_data.descricao,
+                        altura=form_data.altura,
+                        largura=form_data.largura,
+                        profundidade=form_data.profundidade,
+                        quantidade=form_data.quantidade,
+                        unidade=form_data.unidade,
+                        preco_unitario=form_data.preco_unitario,
+                    ),
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel editar o item.")
+            return
+
+        self.status_label.setText("Item atualizado.")
+        self.carregar_items()
+
     def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
         """Fill the items table."""
         self.table.setRowCount(len(items))
@@ -149,7 +200,10 @@ class OrcamentoItemsPage(QWidget):
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                table_item = QTableWidgetItem(value)
+                if column_index == 0:
+                    table_item.setData(Qt.ItemDataRole.UserRole, item.id)
+                self.table.setItem(row_index, column_index, table_item)
 
     def _format_decimal(self, value: Decimal | None) -> str:
         """Format decimal values for table display."""
@@ -157,3 +211,35 @@ class OrcamentoItemsPage(QWidget):
             return ""
 
         return f"{value:g}"
+
+    def _get_selected_item_id(self) -> int | None:
+        """Return the selected item id from the table."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        table_item = self.table.item(row, 0)
+        if table_item is None:
+            return None
+
+        item_id = table_item.data(Qt.ItemDataRole.UserRole)
+        return int(item_id) if item_id is not None else None
+
+    def _handle_row_double_click(self, row: int, _column: int) -> None:
+        """Edit an item when the user double-clicks its row."""
+        self.table.selectRow(row)
+        self.editar_item_selecionado()
+
+    def _dialog_data_from_item(self, item: OrcamentoItemResumo) -> NovoItemDialogData:
+        """Convert an item read model into dialog data."""
+        return NovoItemDialogData(
+            codigo=item.codigo,
+            item=item.item,
+            descricao=item.descricao,
+            altura=item.altura,
+            largura=item.largura,
+            profundidade=item.profundidade,
+            quantidade=item.quantidade,
+            unidade=item.unidade or "un",
+            preco_unitario=item.preco_unitario or Decimal("0"),
+        )

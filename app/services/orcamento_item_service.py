@@ -26,6 +26,21 @@ class CriarOrcamentoItemSimplesData:
     preco_unitario: Decimal
 
 
+@dataclass(frozen=True)
+class EditarOrcamentoItemSimplesData:
+    """Input data for editing a simple budget item."""
+
+    codigo: str | None
+    item: str
+    descricao: str | None
+    altura: Decimal | None
+    largura: Decimal | None
+    profundidade: Decimal | None
+    quantidade: Decimal
+    unidade: str
+    preco_unitario: Decimal
+
+
 class OrcamentoItemService:
     """Application service for OrcamentoItem workflows."""
 
@@ -54,6 +69,44 @@ class OrcamentoItemService:
         result = self.repository.create_item(
             orcamento_versao_id=data.orcamento_versao_id,
             ordem=ordem,
+            codigo=data.codigo,
+            item=item_name,
+            descricao=data.descricao,
+            altura=data.altura,
+            largura=data.largura,
+            profundidade=data.profundidade,
+            quantidade=data.quantidade,
+            unidade=unidade,
+            preco_unitario=data.preco_unitario,
+            preco_total=preco_total,
+        )
+        self.session.commit()
+
+        return result
+
+    def get_item_by_id(self, item_id: int) -> OrcamentoItemResumo | None:
+        """Get one item by id."""
+        return self.repository.get_item_by_id(item_id)
+
+    def editar_item_simples(
+        self,
+        item_id: int,
+        data: EditarOrcamentoItemSimplesData,
+    ) -> OrcamentoItemResumo:
+        """Edit a simple budget item."""
+        item_name = data.item.strip()
+        unidade = data.unidade.strip() or "un"
+
+        if not item_name:
+            raise ValueError("item is required")
+
+        if data.quantidade <= 0:
+            raise ValueError("quantidade must be greater than 0")
+
+        preco_total = data.quantidade * data.preco_unitario
+
+        result = self.repository.update_item(
+            item_id=item_id,
             codigo=data.codigo,
             item=item_name,
             descricao=data.descricao,

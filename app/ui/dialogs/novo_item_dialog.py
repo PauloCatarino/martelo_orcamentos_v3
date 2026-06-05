@@ -34,10 +34,10 @@ class NovoItemDialogData:
 class NovoItemDialog(QDialog):
     """Simple modal dialog for creating a budget item."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, item_data: NovoItemDialogData | None = None) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle("Novo Item")
+        self.setWindowTitle("Editar Item" if item_data is not None else "Novo Item")
         self.setModal(True)
         self.setMinimumWidth(460)
 
@@ -81,6 +81,9 @@ class NovoItemDialog(QDialog):
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
+
+        if item_data is not None:
+            self._fill_from_data(item_data)
 
     def get_data(self) -> NovoItemDialogData:
         """Return normalized dialog data."""
@@ -136,3 +139,22 @@ class NovoItemDialog(QDialog):
         """Normalize empty text input."""
         normalized = value.strip()
         return normalized or None
+
+    def _fill_from_data(self, item_data: NovoItemDialogData) -> None:
+        """Fill dialog fields from existing item data."""
+        self.codigo_input.setText(item_data.codigo or "")
+        self.item_input.setText(item_data.item)
+        self.descricao_input.setPlainText(item_data.descricao or "")
+        self.altura_input.setText(self._format_decimal(item_data.altura))
+        self.largura_input.setText(self._format_decimal(item_data.largura))
+        self.profundidade_input.setText(self._format_decimal(item_data.profundidade))
+        self.quantidade_input.setText(self._format_decimal(item_data.quantidade))
+        self.unidade_input.setText(item_data.unidade)
+        self.preco_unitario_input.setText(self._format_decimal(item_data.preco_unitario))
+
+    def _format_decimal(self, value: Decimal | None) -> str:
+        """Format decimal values for dialog fields."""
+        if value is None:
+            return ""
+
+        return f"{value:g}"
