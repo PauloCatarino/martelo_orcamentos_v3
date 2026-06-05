@@ -35,3 +35,8 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Source data spreadsheets (analysed, not versioned)
+*.xlsm
+*.xlsx
+*.xls
+
