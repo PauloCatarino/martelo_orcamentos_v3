@@ -1,5 +1,5 @@
 """Service layer package."""
 
-from app.services.orcamento_service import OrcamentoService
+from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
 
-__all__ = ["OrcamentoService"]
+__all__ = ["CriarOrcamentoSimplesData", "OrcamentoService"]

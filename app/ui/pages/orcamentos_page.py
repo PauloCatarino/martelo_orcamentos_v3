@@ -138,7 +138,7 @@ class OrcamentosPage(QWidget):
             values = [
                 str(orcamento.ano),
                 orcamento.num_orcamento,
-                str(orcamento.numero_versao),
+                self._format_numero_versao(orcamento.numero_versao),
                 orcamento.cliente_nome,
                 orcamento.obra or "",
                 orcamento.estado,
@@ -162,3 +162,8 @@ class OrcamentosPage(QWidget):
             return ""
 
         return value.strftime("%Y-%m-%d %H:%M")
+
+    @staticmethod
+    def _format_numero_versao(value: int) -> str:
+        """Format a version number for table display."""
+        return f"{value:02d}"
