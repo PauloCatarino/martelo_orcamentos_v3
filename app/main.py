@@ -21,7 +21,7 @@ def main() -> int:
     if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
         return 0
 
-    window = MainWindow()
+    window = MainWindow(authenticated_user=login_window.authenticated_user)
     window.show()
 
     return qt_app.exec()
