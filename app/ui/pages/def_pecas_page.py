@@ -14,13 +14,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.peca_types import get_peca_type_label
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_componente_service import DefPecaComponenteService
-from app.services.def_peca_service import DefPecaService
+from app.services.def_peca_service import CriarDefPecaData, DefPecaService
+from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 
 
@@ -50,10 +51,14 @@ class DefPecasPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_pecas)
 
+        self.new_button = QPushButton("Nova Pe\u00e7a")
+        self.new_button.clicked.connect(self.abrir_nova_peca)
+
         self.open_button = QPushButton("Abrir Pe\u00e7a")
         self.open_button.clicked.connect(self.abrir_peca_selecionada)
 
         actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -91,7 +96,7 @@ class DefPecasPage(QWidget):
         self.setLayout(layout)
         self.carregar_pecas()
 
-    def carregar_pecas(self) -> None:
+    def carregar_pecas(self, select_codigo: str | None = None) -> None:
         """Load piece definitions into the table."""
         self.table.setRowCount(0)
         self.status_label.clear()
@@ -104,9 +109,42 @@ class DefPecasPage(QWidget):
             return
 
         self._preencher_tabela(pecas)
+        if select_codigo:
+            self._select_peca_by_codigo(select_codigo)
 
         if not pecas:
             self.status_label.setText("Sem definicoes de pecas para mostrar.")
+
+    def abrir_nova_peca(self) -> None:
+        """Open the new piece definition dialog."""
+        dialog = NovaDefPecaDialog(self)
+
+        if not dialog.exec():
+            return
+
+        form_data = dialog.get_data()
+
+        try:
+            with SessionLocal() as session:
+                DefPecaService(session).criar_peca(
+                    CriarDefPecaData(
+                        codigo=form_data.codigo,
+                        nome=form_data.nome,
+                        descricao=form_data.descricao,
+                        grupo=form_data.grupo,
+                        tipo_peca=form_data.tipo_peca,
+                        ativo=form_data.ativo,
+                    )
+                )
+        except IntegrityError:
+            self.status_label.setText("Ja existe uma pe\u00e7a com esse c\u00f3digo.")
+            return
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel criar a pe\u00e7a.")
+            return
+
+        self.carregar_pecas(select_codigo=form_data.codigo)
+        self.status_label.setText(f"Pe\u00e7a {form_data.codigo} criada.")
 
     def _preencher_tabela(self, pecas: list[DefPecaResumo]) -> None:
         """Fill the table with piece definition read models."""
@@ -183,6 +221,13 @@ class DefPecasPage(QWidget):
             return None
 
         return self._pecas_by_row.get(row)
+
+    def _select_peca_by_codigo(self, codigo: str) -> None:
+        """Select one table row by piece code."""
+        for row_index, peca in self._pecas_by_row.items():
+            if peca.codigo == codigo:
+                self.table.selectRow(row_index)
+                return
 
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Open a piece definition when the user double-clicks its row."""

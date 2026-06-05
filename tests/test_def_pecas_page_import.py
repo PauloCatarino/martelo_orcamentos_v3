@@ -33,7 +33,9 @@ def test_def_pecas_page_table_headers() -> None:
 def test_def_pecas_page_supports_open_detail() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
+    assert hasattr(DefPecasPage, "abrir_nova_peca")
     assert hasattr(DefPecasPage, "abrir_peca_selecionada")
     assert hasattr(DefPecasPage, "_show_detail_page")
     assert hasattr(DefPecasPage, "_voltar_a_lista")
+    assert hasattr(DefPecasPage, "_select_peca_by_codigo")
     assert hasattr(DefPecasPage, "_handle_row_double_click")
