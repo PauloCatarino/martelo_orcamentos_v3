@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
+
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
     QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db.session import SessionLocal
+from app.repositories.orcamento_repository import OrcamentoResumo
+from app.services.orcamento_service import OrcamentoService
 
 
 class OrcamentosPage(QWidget):
@@ -36,16 +45,19 @@ class OrcamentosPage(QWidget):
         subtitle = QLabel("Gest\u00e3o de or\u00e7amentos do Martelo V3")
         subtitle.setObjectName("pageSubtitle")
 
-        new_button = QPushButton("Novo Or\u00e7amento")
-        new_button.setEnabled(False)
+        self.new_button = QPushButton("Novo Or\u00e7amento")
+        self.new_button.setEnabled(False)
 
-        refresh_button = QPushButton("Atualizar")
-        refresh_button.setEnabled(False)
+        self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
         actions_layout = QHBoxLayout()
-        actions_layout.addWidget(new_button)
-        actions_layout.addWidget(refresh_button)
+        actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("orcamentosStatus")
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -61,6 +73,57 @@ class OrcamentosPage(QWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addLayout(actions_layout)
+        layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
+
+    def carregar_orcamentos(self) -> None:
+        """Load budget versions into the table."""
+        self.table.setRowCount(0)
+        self.status_label.clear()
+
+        try:
+            with SessionLocal() as session:
+                orcamentos = OrcamentoService(session).list_orcamentos()
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel carregar os orcamentos.")
+            return
+
+        self._preencher_tabela(orcamentos)
+
+        if not orcamentos:
+            self.status_label.setText("Sem orcamentos para mostrar.")
+
+    def _preencher_tabela(self, orcamentos: list[OrcamentoResumo]) -> None:
+        """Fill the table with budget read models."""
+        self.table.setRowCount(len(orcamentos))
+
+        for row_index, orcamento in enumerate(orcamentos):
+            values = [
+                str(orcamento.ano),
+                orcamento.num_orcamento,
+                str(orcamento.numero_versao),
+                orcamento.cliente_nome,
+                orcamento.obra or "",
+                orcamento.estado,
+                self._format_decimal(orcamento.preco_total),
+                self._format_datetime(orcamento.created_at),
+            ]
+
+            for column_index, value in enumerate(values):
+                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+
+    def _format_decimal(self, value: Decimal | None) -> str:
+        """Format a decimal value for table display."""
+        if value is None:
+            return ""
+
+        return f"{value:.2f}"
+
+    def _format_datetime(self, value: datetime | None) -> str:
+        """Format a datetime value for table display."""
+        if value is None:
+            return ""
+
+        return value.strftime("%Y-%m-%d %H:%M")
