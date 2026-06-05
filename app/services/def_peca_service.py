@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.domain.orla_types import normalize_orla_type
 from app.domain.peca_types import normalize_peca_type
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 
@@ -19,6 +20,10 @@ class CriarDefPecaData:
     descricao: str | None = None
     grupo: str | None = None
     tipo_peca: str | None = None
+    orla_c1: int | str | None = None
+    orla_c2: int | str | None = None
+    orla_l1: int | str | None = None
+    orla_l2: int | str | None = None
     ativo: bool = True
 
 
@@ -31,6 +36,10 @@ class EditarDefPecaData:
     descricao: str | None = None
     grupo: str | None = None
     tipo_peca: str | None = None
+    orla_c1: int | str | None = None
+    orla_c2: int | str | None = None
+    orla_l1: int | str | None = None
+    orla_l2: int | str | None = None
     ativo: bool = True
 
 
@@ -50,6 +59,10 @@ class DefPecaService:
         codigo = data.codigo.strip()
         nome = data.nome.strip()
         tipo_peca = normalize_peca_type(data.tipo_peca)
+        orla_c1 = normalize_orla_type(data.orla_c1)
+        orla_c2 = normalize_orla_type(data.orla_c2)
+        orla_l1 = normalize_orla_type(data.orla_l1)
+        orla_l2 = normalize_orla_type(data.orla_l2)
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.create_def_peca(
@@ -58,6 +71,10 @@ class DefPecaService:
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
+            orla_c1=orla_c1,
+            orla_c2=orla_c2,
+            orla_l1=orla_l1,
+            orla_l2=orla_l2,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -69,6 +86,10 @@ class DefPecaService:
         codigo = data.codigo.strip()
         nome = data.nome.strip()
         tipo_peca = normalize_peca_type(data.tipo_peca)
+        orla_c1 = normalize_orla_type(data.orla_c1)
+        orla_c2 = normalize_orla_type(data.orla_c2)
+        orla_l1 = normalize_orla_type(data.orla_l1)
+        orla_l2 = normalize_orla_type(data.orla_l2)
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.update_def_peca(
@@ -78,6 +99,10 @@ class DefPecaService:
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
+            orla_c1=orla_c1,
+            orla_c2=orla_c2,
+            orla_l1=orla_l1,
+            orla_l2=orla_l2,
             ativo=data.ativo,
         )
         self.session.commit()

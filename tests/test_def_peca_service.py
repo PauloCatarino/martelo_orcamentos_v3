@@ -29,6 +29,10 @@ class _FakeRepository:
             grupo=kwargs["grupo"],
             tipo_peca=kwargs["tipo_peca"],
             ativo=kwargs["ativo"],
+            orla_c1=kwargs["orla_c1"],
+            orla_c2=kwargs["orla_c2"],
+            orla_l1=kwargs["orla_l1"],
+            orla_l2=kwargs["orla_l2"],
         )
 
     def update_def_peca(self, **kwargs) -> DefPecaResumo:
@@ -41,6 +45,10 @@ class _FakeRepository:
             grupo=kwargs["grupo"],
             tipo_peca=kwargs["tipo_peca"],
             ativo=kwargs["ativo"],
+            orla_c1=kwargs["orla_c1"],
+            orla_c2=kwargs["orla_c2"],
+            orla_l1=kwargs["orla_l1"],
+            orla_l2=kwargs["orla_l2"],
         )
 
     def deactivate_def_peca(self, id: int) -> bool:
@@ -85,6 +93,10 @@ def test_def_peca_service_cria_peca_com_tipo_default(monkeypatch) -> None:
     assert _FakeRepository.created_payload["codigo"] == "LAT"
     assert _FakeRepository.created_payload["nome"] == "Lateral"
     assert _FakeRepository.created_payload["tipo_peca"] == "SIMPLES"
+    assert _FakeRepository.created_payload["orla_c1"] == 0
+    assert _FakeRepository.created_payload["orla_c2"] == 0
+    assert _FakeRepository.created_payload["orla_l1"] == 0
+    assert _FakeRepository.created_payload["orla_l2"] == 0
     assert result.tipo_peca == "SIMPLES"
     assert session.committed is True
 
@@ -111,6 +123,61 @@ def test_def_peca_service_normaliza_tipo_ao_editar(monkeypatch) -> None:
     assert _FakeRepository.updated_payload["id"] == 8
     assert _FakeRepository.updated_payload["tipo_peca"] == "COMPOSTA"
     assert result.tipo_peca == "COMPOSTA"
+    assert session.committed is True
+
+
+def test_def_peca_service_normaliza_orlas_ao_criar(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="TAMPO",
+            nome="Tampo",
+            orla_c1="2",
+            orla_c2=2,
+            orla_l1="x",
+            orla_l2="1",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["orla_c1"] == 2
+    assert _FakeRepository.created_payload["orla_c2"] == 2
+    assert _FakeRepository.created_payload["orla_l1"] == 0
+    assert _FakeRepository.created_payload["orla_l2"] == 1
+    assert result.orla_c1 == 2
+    assert result.orla_l2 == 1
+    assert session.committed is True
+
+
+def test_def_peca_service_normaliza_orlas_ao_editar(monkeypatch) -> None:
+    _FakeRepository.updated_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.editar_peca(
+        8,
+        service_module.EditarDefPecaData(
+            codigo="PORTA",
+            nome="Porta",
+            orla_c1="2",
+            orla_c2="2",
+            orla_l1="2",
+            orla_l2="2",
+        ),
+    )
+
+    assert _FakeRepository.updated_payload is not None
+    assert _FakeRepository.updated_payload["orla_c1"] == 2
+    assert _FakeRepository.updated_payload["orla_c2"] == 2
+    assert _FakeRepository.updated_payload["orla_l1"] == 2
+    assert _FakeRepository.updated_payload["orla_l2"] == 2
+    assert result.orla_c1 == 2
+    assert result.orla_l2 == 2
     assert session.committed is True
 
 

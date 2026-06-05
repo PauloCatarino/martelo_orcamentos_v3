@@ -22,6 +22,10 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    orla_c1: int = 0
+    orla_c2: int = 0
+    orla_l1: int = 0
+    orla_l2: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -64,6 +68,10 @@ class DefPecaRepository:
         descricao: str | None,
         grupo: str | None,
         tipo_peca: str,
+        orla_c1: int = 0,
+        orla_c2: int = 0,
+        orla_l1: int = 0,
+        orla_l2: int = 0,
         ativo: bool = True,
     ) -> DefPecaResumo:
         """Create one reusable piece definition."""
@@ -73,6 +81,10 @@ class DefPecaRepository:
             descricao=descricao,
             grupo=grupo,
             tipo_peca=tipo_peca,
+            orla_c1=orla_c1,
+            orla_c2=orla_c2,
+            orla_l1=orla_l1,
+            orla_l2=orla_l2,
             ativo=ativo,
         )
         self.session.add(peca)
@@ -89,6 +101,10 @@ class DefPecaRepository:
         descricao: str | None,
         grupo: str | None,
         tipo_peca: str,
+        orla_c1: int = 0,
+        orla_c2: int = 0,
+        orla_l1: int = 0,
+        orla_l2: int = 0,
         ativo: bool,
     ) -> DefPecaResumo:
         """Update one reusable piece definition."""
@@ -101,6 +117,10 @@ class DefPecaRepository:
         peca.descricao = descricao
         peca.grupo = grupo
         peca.tipo_peca = tipo_peca
+        peca.orla_c1 = orla_c1
+        peca.orla_c2 = orla_c2
+        peca.orla_l1 = orla_l1
+        peca.orla_l2 = orla_l2
         peca.ativo = ativo
         self.session.flush()
 
@@ -127,6 +147,10 @@ class DefPecaRepository:
             grupo=peca.grupo,
             tipo_peca=peca.tipo_peca,
             ativo=peca.ativo,
+            orla_c1=peca.orla_c1,
+            orla_c2=peca.orla_c2,
+            orla_l1=peca.orla_l1,
+            orla_l2=peca.orla_l2,
             created_at=peca.created_at,
             updated_at=peca.updated_at,
         )

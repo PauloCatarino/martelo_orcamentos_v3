@@ -24,6 +24,7 @@ def test_models_import_and_mapper_configuration() -> None:
     assert User.__tablename__ == "users"
     assert Cliente.__tablename__ == "clientes"
     assert DefPeca.__tablename__ == "def_pecas"
+    assert DefPeca.orla_c1.property.columns[0].default.arg == 0
     assert DefPecaComponente.__tablename__ == "def_peca_componentes"
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
