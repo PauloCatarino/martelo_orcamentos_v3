@@ -26,6 +26,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
+from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
 class OrcamentoItemsPage(QWidget):
@@ -227,13 +228,13 @@ class OrcamentoItemsPage(QWidget):
                 item.codigo or "",
                 item.item,
                 item.descricao or "",
-                self._format_decimal(item.altura),
-                self._format_decimal(item.largura),
-                self._format_decimal(item.profundidade),
-                self._format_decimal(item.quantidade),
+                format_mm(item.altura),
+                format_mm(item.largura),
+                format_mm(item.profundidade),
+                format_quantity(item.quantidade, item.unidade),
                 item.unidade or "",
-                self._format_decimal(item.preco_unitario),
-                self._format_decimal(item.preco_total),
+                format_currency(item.preco_unitario),
+                format_currency(item.preco_total),
             ]
 
             for column_index, value in enumerate(values):
@@ -241,13 +242,6 @@ class OrcamentoItemsPage(QWidget):
                 if column_index == 0:
                     table_item.setData(Qt.ItemDataRole.UserRole, item.id)
                 self.table.setItem(row_index, column_index, table_item)
-
-    def _format_decimal(self, value: Decimal | None) -> str:
-        """Format decimal values for table display."""
-        if value is None:
-            return ""
-
-        return f"{value:g}"
 
     def _get_selected_item_id(self) -> int | None:
         """Return the selected item id from the table."""

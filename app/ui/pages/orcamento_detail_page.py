@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.utils.formatters import format_currency, format_version
 
 
 class OrcamentoDetailPage(QWidget):
@@ -58,14 +58,14 @@ class OrcamentoDetailPage(QWidget):
         form_layout.addRow("C\u00f3digo da vers\u00e3o", QLabel(self.orcamento.codigo_versao))
         form_layout.addRow("Ano", QLabel(str(self.orcamento.ano)))
         form_layout.addRow("N\u00ba Or\u00e7amento", QLabel(self.orcamento.num_orcamento))
-        form_layout.addRow("Vers\u00e3o", QLabel(self._format_numero_versao(self.orcamento.numero_versao)))
+        form_layout.addRow("Vers\u00e3o", QLabel(format_version(self.orcamento.numero_versao)))
         form_layout.addRow("Cliente", QLabel(self.orcamento.cliente_nome))
         form_layout.addRow("Obra", QLabel(self.orcamento.obra or ""))
         form_layout.addRow("Descri\u00e7\u00e3o", QLabel(self.orcamento.descricao or ""))
         form_layout.addRow("Localiza\u00e7\u00e3o", QLabel(self.orcamento.localizacao or ""))
         form_layout.addRow("Refer\u00eancia cliente", QLabel(self.orcamento.ref_cliente or ""))
         form_layout.addRow("Estado", QLabel(self.orcamento.estado))
-        form_layout.addRow("Pre\u00e7o total", QLabel(self._format_decimal(self.orcamento.preco_total)))
+        form_layout.addRow("Pre\u00e7o total", QLabel(format_currency(self.orcamento.preco_total)))
         form_layout.addRow("Criado em", QLabel(self._format_datetime(self.orcamento.created_at)))
 
         layout = QVBoxLayout()
@@ -86,19 +86,6 @@ class OrcamentoDetailPage(QWidget):
         tab.setLayout(layout)
 
         return tab
-
-    @staticmethod
-    def _format_numero_versao(value: int) -> str:
-        """Format version number for display."""
-        return f"{value:02d}"
-
-    @staticmethod
-    def _format_decimal(value: Decimal | None) -> str:
-        """Format a decimal value for display."""
-        if value is None:
-            return ""
-
-        return f"{value:.2f}"
 
     @staticmethod
     def _format_datetime(value: datetime | None) -> str:

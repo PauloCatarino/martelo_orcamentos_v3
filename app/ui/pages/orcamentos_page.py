@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -24,6 +23,7 @@ from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
+from app.utils.formatters import format_currency, format_version
 
 
 class OrcamentosPage(QWidget):
@@ -150,11 +150,11 @@ class OrcamentosPage(QWidget):
             values = [
                 str(orcamento.ano),
                 orcamento.num_orcamento,
-                self._format_numero_versao(orcamento.numero_versao),
+                format_version(orcamento.numero_versao),
                 orcamento.cliente_nome,
                 orcamento.obra or "",
                 orcamento.estado,
-                self._format_decimal(orcamento.preco_total),
+                format_currency(orcamento.preco_total),
                 self._format_datetime(orcamento.created_at),
             ]
 
@@ -187,21 +187,9 @@ class OrcamentosPage(QWidget):
         self.table.selectRow(row)
         self.abrir_orcamento_selecionado()
 
-    def _format_decimal(self, value: Decimal | None) -> str:
-        """Format a decimal value for table display."""
-        if value is None:
-            return ""
-
-        return f"{value:.2f}"
-
     def _format_datetime(self, value: datetime | None) -> str:
         """Format a datetime value for table display."""
         if value is None:
             return ""
 
         return value.strftime("%Y-%m-%d %H:%M")
-
-    @staticmethod
-    def _format_numero_versao(value: int) -> str:
-        """Format a version number for table display."""
-        return f"{value:02d}"
