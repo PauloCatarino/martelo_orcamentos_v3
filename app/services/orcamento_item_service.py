@@ -121,3 +121,11 @@ class OrcamentoItemService:
         self.session.commit()
 
         return result
+
+    def remover_item(self, item_id: int) -> bool:
+        """Remove one budget item."""
+        deleted = self.repository.delete_item(item_id)
+        if deleted:
+            self.session.commit()
+
+        return deleted

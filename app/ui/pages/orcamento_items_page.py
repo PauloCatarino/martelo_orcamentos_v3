@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -58,12 +59,16 @@ class OrcamentoItemsPage(QWidget):
         self.edit_button = QPushButton("Editar Item")
         self.edit_button.clicked.connect(self.editar_item_selecionado)
 
+        self.remove_button = QPushButton("Remover Item")
+        self.remove_button.clicked.connect(self.remover_item_selecionado)
+
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_items)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -178,6 +183,38 @@ class OrcamentoItemsPage(QWidget):
             return
 
         self.status_label.setText("Item atualizado.")
+        self.carregar_items()
+
+    def remover_item_selecionado(self) -> None:
+        """Remove the currently selected item after confirmation."""
+        item_id = self._get_selected_item_id()
+        if item_id is None:
+            self.status_label.setText("Selecione um item para remover.")
+            return
+
+        response = QMessageBox.question(
+            self,
+            "Remover Item",
+            "Tem a certeza que pretende remover este item?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if response != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                deleted = OrcamentoItemService(session).remover_item(item_id)
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel remover o item.")
+            return
+
+        if not deleted:
+            self.status_label.setText("Item selecionado nao foi encontrado.")
+            return
+
+        self.status_label.setText("Item removido.")
         self.carregar_items()
 
     def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:

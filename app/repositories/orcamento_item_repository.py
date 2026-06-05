@@ -153,6 +153,17 @@ class OrcamentoItemRepository:
 
         return self._to_resumo(orcamento_item)
 
+    def delete_item(self, item_id: int) -> bool:
+        """Delete one budget item."""
+        orcamento_item = self.session.get(OrcamentoItem, item_id)
+        if orcamento_item is None:
+            return False
+
+        self.session.delete(orcamento_item)
+        self.session.flush()
+
+        return True
+
     def _to_resumo(self, item: OrcamentoItem) -> OrcamentoItemResumo:
         """Convert an ORM item to the read model."""
         return OrcamentoItemResumo(

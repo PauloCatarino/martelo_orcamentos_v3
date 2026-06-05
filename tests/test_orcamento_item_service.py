@@ -17,6 +17,8 @@ class _FakeRepository:
     item_by_id: OrcamentoItemResumo | None = None
     requested_item_id: int | None = None
     updated_payload: dict[str, object] | None = None
+    delete_result = True
+    deleted_item_id: int | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -66,6 +68,10 @@ class _FakeRepository:
             preco_unitario=kwargs["preco_unitario"],
             preco_total=kwargs["preco_total"],
         )
+
+    def delete_item(self, item_id: int) -> bool:
+        self.__class__.deleted_item_id = item_id
+        return self.delete_result
 
 
 class _FakeSession:
@@ -244,3 +250,29 @@ def test_orcamento_item_service_edita_item_e_recalcula_preco_total(monkeypatch) 
     assert _FakeRepository.updated_payload["preco_total"] == Decimal("37.50")
     assert result.preco_total == Decimal("37.50")
     assert session.committed is True
+
+
+def test_orcamento_item_service_remove_item_existente(monkeypatch) -> None:
+    _FakeRepository.delete_result = True
+    _FakeRepository.deleted_item_id = None
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.OrcamentoItemService(session=session)
+
+    assert service.remover_item(12) is True
+    assert _FakeRepository.deleted_item_id == 12
+    assert session.committed is True
+
+
+def test_orcamento_item_service_remove_item_inexistente_sem_commit(monkeypatch) -> None:
+    _FakeRepository.delete_result = False
+    _FakeRepository.deleted_item_id = None
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.OrcamentoItemService(session=session)
+
+    assert service.remover_item(13) is False
+    assert _FakeRepository.deleted_item_id == 13
+    assert session.committed is False
