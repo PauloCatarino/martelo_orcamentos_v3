@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
+
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -36,6 +40,8 @@ class MateriasPrimasPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
+        self._materias_primas: list[DefMateriaPrimaResumo] = []
+
         title = QLabel("Mat\u00e9rias-Primas")
         title.setObjectName("pageTitle")
 
@@ -57,6 +63,10 @@ class MateriasPrimasPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("materiasPrimasStatus")
 
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Pesquisar mat\u00e9ria-prima...")
+        self.search_input.textChanged.connect(self.aplicar_pesquisa)
+
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
         self.table.verticalHeader().setVisible(False)
@@ -72,6 +82,7 @@ class MateriasPrimasPage(QWidget):
         layout.addWidget(info)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.search_input)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
@@ -81,6 +92,7 @@ class MateriasPrimasPage(QWidget):
         """Load raw materials into the table."""
         self.table.setRowCount(0)
         self.status_label.clear()
+        self._materias_primas = []
 
         try:
             with SessionLocal() as session:
@@ -89,10 +101,32 @@ class MateriasPrimasPage(QWidget):
             self.status_label.setText("Nao foi possivel carregar as materias-primas.")
             return
 
-        self._preencher_tabela(materias_primas)
+        self._materias_primas = materias_primas
+        self.aplicar_pesquisa()
 
         if not materias_primas:
             self.status_label.setText("Sem materias-primas para mostrar.")
+
+    def aplicar_pesquisa(self, _text: str | None = None) -> None:
+        """Filter the loaded raw materials according to the search text."""
+        self.status_label.clear()
+        search_text = self.search_input.text()
+
+        if not search_text.strip():
+            filtered = self._materias_primas
+        else:
+            filtered = [
+                materia
+                for materia in self._materias_primas
+                if materia_matches_search(materia, search_text)
+            ]
+
+        self._preencher_tabela(filtered)
+
+        if not self._materias_primas:
+            self.status_label.setText("Sem materias-primas para mostrar.")
+        elif search_text.strip() and not filtered:
+            self.status_label.setText("Sem resultados para a pesquisa.")
 
     def _preencher_tabela(self, materias_primas: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw material read models."""
@@ -111,3 +145,35 @@ class MateriasPrimasPage(QWidget):
 
             for column_index, value in enumerate(values):
                 self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+
+
+def normalize_search_text(value: object) -> str:
+    """Normalize text for accent-insensitive, case-insensitive search."""
+    if value is None:
+        return ""
+
+    text = unicodedata.normalize("NFKD", str(value))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def materia_matches_search(materia: DefMateriaPrimaResumo, search_text: str) -> bool:
+    """Return whether a raw material matches all search tokens."""
+    tokens = normalize_search_text(search_text).split()
+    if not tokens:
+        return True
+
+    searchable_text = normalize_search_text(
+        " ".join(
+            [
+                materia.ref_le or "",
+                materia.descricao,
+                materia.tipo_original_excel or "",
+                materia.familia_original_excel or "",
+                materia.unidade or "",
+                materia.fornecedor or "",
+            ]
+        )
+    )
+
+    return all(token in searchable_text for token in tokens)
