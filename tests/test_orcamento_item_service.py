@@ -11,6 +11,9 @@ from app.services import orcamento_item_service as service_module
 class _FakeRepository:
     rows: list[OrcamentoItemResumo] = []
     requested_versao_id: int | None = None
+    next_order = 1
+    next_order_versao_id: int | None = None
+    created_payload: dict[str, object] | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -18,6 +21,35 @@ class _FakeRepository:
     def list_items_by_versao(self, orcamento_versao_id: int) -> list[OrcamentoItemResumo]:
         self.__class__.requested_versao_id = orcamento_versao_id
         return self.rows
+
+    def get_next_ordem(self, orcamento_versao_id: int) -> int:
+        self.__class__.next_order_versao_id = orcamento_versao_id
+        return self.next_order
+
+    def create_item(self, **kwargs) -> OrcamentoItemResumo:
+        self.__class__.created_payload = kwargs
+        return OrcamentoItemResumo(
+            id=99,
+            ordem=kwargs["ordem"],
+            codigo=kwargs["codigo"],
+            item=kwargs["item"],
+            descricao=kwargs["descricao"],
+            altura=kwargs["altura"],
+            largura=kwargs["largura"],
+            profundidade=kwargs["profundidade"],
+            quantidade=kwargs["quantidade"],
+            unidade=kwargs["unidade"],
+            preco_unitario=kwargs["preco_unitario"],
+            preco_total=kwargs["preco_total"],
+        )
+
+
+class _FakeSession:
+    def __init__(self) -> None:
+        self.committed = False
+
+    def commit(self) -> None:
+        self.committed = True
 
 
 def test_orcamento_item_service_returns_empty_list(monkeypatch) -> None:
@@ -54,3 +86,84 @@ def test_orcamento_item_service_returns_repository_rows(monkeypatch) -> None:
 
     assert service.list_items_by_versao(11) == [row]
     assert _FakeRepository.requested_versao_id == 11
+
+
+def test_orcamento_item_service_cria_item_com_proxima_ordem_e_preco_total(monkeypatch) -> None:
+    _FakeRepository.next_order = 3
+    _FakeRepository.next_order_versao_id = None
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.OrcamentoItemService(session=session)
+    result = service.criar_item_simples(
+        service_module.CriarOrcamentoItemSimplesData(
+            orcamento_versao_id=20,
+            codigo="ITEM-003",
+            item="Roupeiro",
+            descricao="Teste",
+            altura=Decimal("2400"),
+            largura=Decimal("1800"),
+            profundidade=Decimal("600"),
+            quantidade=Decimal("2"),
+            unidade="un",
+            preco_unitario=Decimal("15.50"),
+        )
+    )
+
+    assert _FakeRepository.next_order_versao_id == 20
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["ordem"] == 3
+    assert _FakeRepository.created_payload["preco_total"] == Decimal("31.00")
+    assert result.preco_total == Decimal("31.00")
+    assert session.committed is True
+
+
+def test_orcamento_item_service_valida_item_obrigatorio(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    try:
+        service.criar_item_simples(
+            service_module.CriarOrcamentoItemSimplesData(
+                orcamento_versao_id=20,
+                codigo=None,
+                item="",
+                descricao=None,
+                altura=None,
+                largura=None,
+                profundidade=None,
+                quantidade=Decimal("1"),
+                unidade="un",
+                preco_unitario=Decimal("0"),
+            )
+        )
+    except ValueError as error:
+        assert "item" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_orcamento_item_service_valida_quantidade_positiva(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    try:
+        service.criar_item_simples(
+            service_module.CriarOrcamentoItemSimplesData(
+                orcamento_versao_id=20,
+                codigo=None,
+                item="Roupeiro",
+                descricao=None,
+                altura=None,
+                largura=None,
+                profundidade=None,
+                quantidade=Decimal("0"),
+                unidade="un",
+                preco_unitario=Decimal("0"),
+            )
+        )
+    except ValueError as error:
+        assert "quantidade" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")

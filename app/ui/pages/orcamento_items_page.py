@@ -18,7 +18,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
-from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.orcamento_item_service import CriarOrcamentoItemSimplesData, OrcamentoItemService
+from app.ui.dialogs.novo_item_dialog import NovoItemDialog
 
 
 class OrcamentoItemsPage(QWidget):
@@ -47,7 +48,7 @@ class OrcamentoItemsPage(QWidget):
         title.setObjectName("orcamentoItemsTitle")
 
         self.new_button = QPushButton("Novo Item")
-        self.new_button.setEnabled(False)
+        self.new_button.clicked.connect(self.abrir_novo_item)
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_items)
@@ -95,6 +96,38 @@ class OrcamentoItemsPage(QWidget):
 
         if not items:
             self.status_label.setText("Sem items para mostrar.")
+
+    def abrir_novo_item(self) -> None:
+        """Open the new item dialog and create the item."""
+        dialog = NovoItemDialog(self)
+
+        if not dialog.exec():
+            return
+
+        form_data = dialog.get_data()
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemService(session).criar_item_simples(
+                    CriarOrcamentoItemSimplesData(
+                        orcamento_versao_id=self.orcamento_versao_id,
+                        codigo=form_data.codigo,
+                        item=form_data.item,
+                        descricao=form_data.descricao,
+                        altura=form_data.altura,
+                        largura=form_data.largura,
+                        profundidade=form_data.profundidade,
+                        quantidade=form_data.quantidade,
+                        unidade=form_data.unidade,
+                        preco_unitario=form_data.preco_unitario,
+                    )
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel criar o item.")
+            return
+
+        self.status_label.setText("Item criado.")
+        self.carregar_items()
 
     def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
         """Fill the items table."""

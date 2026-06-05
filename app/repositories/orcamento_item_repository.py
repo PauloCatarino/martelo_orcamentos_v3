@@ -62,3 +62,64 @@ class OrcamentoItemRepository:
             )
             for item in items
         ]
+
+    def get_next_ordem(self, orcamento_versao_id: int) -> int:
+        """Return the next item order for a budget version."""
+        statement = select(OrcamentoItem.ordem).where(
+            OrcamentoItem.orcamento_versao_id == orcamento_versao_id
+        )
+        existing_orders = self.session.execute(statement).scalars().all()
+
+        if not existing_orders:
+            return 1
+
+        return max(existing_orders) + 1
+
+    def create_item(
+        self,
+        *,
+        orcamento_versao_id: int,
+        ordem: int,
+        codigo: str | None,
+        item: str,
+        descricao: str | None,
+        altura: Decimal | None,
+        largura: Decimal | None,
+        profundidade: Decimal | None,
+        quantidade: Decimal,
+        unidade: str,
+        preco_unitario: Decimal,
+        preco_total: Decimal,
+    ) -> OrcamentoItemResumo:
+        """Create one budget item."""
+        orcamento_item = OrcamentoItem(
+            orcamento_versao_id=orcamento_versao_id,
+            ordem=ordem,
+            codigo=codigo,
+            item=item,
+            descricao=descricao,
+            altura=altura,
+            largura=largura,
+            profundidade=profundidade,
+            quantidade=quantidade,
+            unidade=unidade,
+            preco_unitario=preco_unitario,
+            preco_total=preco_total,
+        )
+        self.session.add(orcamento_item)
+        self.session.flush()
+
+        return OrcamentoItemResumo(
+            id=orcamento_item.id,
+            ordem=orcamento_item.ordem,
+            codigo=orcamento_item.codigo,
+            item=orcamento_item.item,
+            descricao=orcamento_item.descricao,
+            altura=orcamento_item.altura,
+            largura=orcamento_item.largura,
+            profundidade=orcamento_item.profundidade,
+            quantidade=orcamento_item.quantidade,
+            unidade=orcamento_item.unidade,
+            preco_unitario=orcamento_item.preco_unitario,
+            preco_total=orcamento_item.preco_total,
+        )
