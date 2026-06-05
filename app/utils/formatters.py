@@ -5,16 +5,6 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-ITEM_TYPE_LABELS = {
-    "ROUPEIRO_ABRIR": "Roupeiro Abrir",
-    "ROUPEIRO_CORRER": "Roupeiro Correr",
-    "MOVEL_WC": "M\u00f3vel WC",
-    "COZINHA": "Cozinha",
-    "OUTRO": "Outro",
-}
-
-ITEM_TYPE_OPTIONS = tuple(ITEM_TYPE_LABELS.items())
-
 
 def format_mm(value: Any) -> str:
     """Format a millimeter value for display."""
@@ -53,23 +43,6 @@ def format_version(numero_versao: Any) -> str:
         return f"{int(numero_versao):02d}"
     except (TypeError, ValueError):
         return str(numero_versao)
-
-
-def normalize_tipo_item(value: str | None) -> str:
-    """Normalize an item type code."""
-    if not value:
-        return "OUTRO"
-
-    normalized = value.strip().upper()
-    if normalized in ITEM_TYPE_LABELS:
-        return normalized
-
-    return "OUTRO"
-
-
-def format_tipo_item(value: str | None) -> str:
-    """Format an item type code for display."""
-    return ITEM_TYPE_LABELS[normalize_tipo_item(value)]
 
 
 def _to_decimal(value: Any) -> Decimal | None:
