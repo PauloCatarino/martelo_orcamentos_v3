@@ -1,0 +1,259 @@
+"""Budget item modules page."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db.session import SessionLocal
+from app.repositories.orcamento_item_modulo_repository import OrcamentoItemModuloResumo
+from app.services.orcamento_item_modulo_service import (
+    CriarOrcamentoItemModuloSimplesData,
+    EditarOrcamentoItemModuloSimplesData,
+    OrcamentoItemModuloService,
+)
+from app.ui.dialogs.novo_modulo_dialog import NovoModuloDialog, NovoModuloDialogData
+from app.utils.formatters import format_mm, format_quantity
+
+
+class OrcamentoItemModulosPage(QWidget):
+    """Modules page for one budget item."""
+
+    TABLE_HEADERS = [
+        "Ordem",
+        "Nome",
+        "Descri\u00e7\u00e3o",
+        "Altura",
+        "Largura",
+        "Profundidade",
+        "Quantidade",
+    ]
+
+    def __init__(self, orcamento_item_id: int) -> None:
+        super().__init__()
+
+        self.orcamento_item_id = orcamento_item_id
+
+        title = QLabel("M\u00f3dulos do item")
+        title.setObjectName("orcamentoItemModulosTitle")
+
+        self.new_button = QPushButton("Novo M\u00f3dulo")
+        self.new_button.clicked.connect(self.abrir_novo_modulo)
+
+        self.edit_button = QPushButton("Editar M\u00f3dulo")
+        self.edit_button.clicked.connect(self.editar_modulo_selecionado)
+
+        self.remove_button = QPushButton("Remover M\u00f3dulo")
+        self.remove_button.clicked.connect(self.remover_modulo_selecionado)
+
+        self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.clicked.connect(self.carregar_modulos)
+
+        actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.remove_button)
+        actions_layout.addWidget(self.refresh_button)
+        actions_layout.addStretch()
+
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("orcamentoItemModulosStatus")
+
+        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
+        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        layout.addWidget(title)
+        layout.addLayout(actions_layout)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.table, stretch=1)
+
+        self.setLayout(layout)
+        self.carregar_modulos()
+
+    def carregar_modulos(self) -> None:
+        """Load item modules into the table."""
+        self.table.setRowCount(0)
+        self.status_label.clear()
+
+        try:
+            with SessionLocal() as session:
+                modulos = OrcamentoItemModuloService(session).listar_modulos(self.orcamento_item_id)
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel carregar os modulos.")
+            return
+
+        self._preencher_tabela(modulos)
+
+        if not modulos:
+            self.status_label.setText("Sem modulos para mostrar.")
+
+    def abrir_novo_modulo(self) -> None:
+        """Open the new module dialog and create the module."""
+        dialog = NovoModuloDialog(self)
+
+        if not dialog.exec():
+            return
+
+        form_data = dialog.get_data()
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemModuloService(session).criar_modulo_simples(
+                    CriarOrcamentoItemModuloSimplesData(
+                        orcamento_item_id=self.orcamento_item_id,
+                        nome=form_data.nome,
+                        descricao=form_data.descricao,
+                        altura=form_data.altura,
+                        largura=form_data.largura,
+                        profundidade=form_data.profundidade,
+                        quantidade=form_data.quantidade,
+                    )
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel criar o modulo.")
+            return
+
+        self.carregar_modulos()
+        self.status_label.setText("Modulo criado.")
+
+    def editar_modulo_selecionado(self) -> None:
+        """Edit the currently selected module."""
+        modulo_id = self._get_selected_modulo_id()
+        if modulo_id is None:
+            self.status_label.setText("Selecione um modulo para editar.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemModuloService(session)
+                modulo = service.get_modulo_by_id(modulo_id)
+                if modulo is None:
+                    self.status_label.setText("Modulo selecionado nao foi encontrado.")
+                    return
+
+                dialog = NovoModuloDialog(self, modulo_data=self._dialog_data_from_modulo(modulo))
+                if not dialog.exec():
+                    return
+
+                form_data = dialog.get_data()
+                service.editar_modulo_simples(
+                    modulo_id,
+                    EditarOrcamentoItemModuloSimplesData(
+                        nome=form_data.nome,
+                        descricao=form_data.descricao,
+                        altura=form_data.altura,
+                        largura=form_data.largura,
+                        profundidade=form_data.profundidade,
+                        quantidade=form_data.quantidade,
+                    ),
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel editar o modulo.")
+            return
+
+        self.carregar_modulos()
+        self.status_label.setText("Modulo atualizado.")
+
+    def remover_modulo_selecionado(self) -> None:
+        """Remove the currently selected module after confirmation."""
+        modulo_id = self._get_selected_modulo_id()
+        if modulo_id is None:
+            self.status_label.setText("Selecione um modulo para remover.")
+            return
+
+        response = QMessageBox.question(
+            self,
+            "Remover M\u00f3dulo",
+            "Tem a certeza que pretende remover este m\u00f3dulo?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if response != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                deleted = OrcamentoItemModuloService(session).remover_modulo(modulo_id)
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel remover o modulo.")
+            return
+
+        if not deleted:
+            self.status_label.setText("Modulo selecionado nao foi encontrado.")
+            return
+
+        self.carregar_modulos()
+        self.status_label.setText("Modulo removido.")
+
+    def _preencher_tabela(self, modulos: list[OrcamentoItemModuloResumo]) -> None:
+        """Fill the modules table."""
+        self.table.setRowCount(len(modulos))
+
+        for row_index, modulo in enumerate(modulos):
+            values = [
+                str(modulo.ordem),
+                modulo.nome,
+                modulo.descricao or "",
+                format_mm(modulo.altura),
+                format_mm(modulo.largura),
+                format_mm(modulo.profundidade),
+                format_quantity(modulo.quantidade),
+            ]
+
+            for column_index, value in enumerate(values):
+                table_item = QTableWidgetItem(value)
+                if column_index == 0:
+                    table_item.setData(Qt.ItemDataRole.UserRole, modulo.id)
+                self.table.setItem(row_index, column_index, table_item)
+
+    def _get_selected_modulo_id(self) -> int | None:
+        """Return the selected module id from the table."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        table_item = self.table.item(row, 0)
+        if table_item is None:
+            return None
+
+        modulo_id = table_item.data(Qt.ItemDataRole.UserRole)
+        return int(modulo_id) if modulo_id is not None else None
+
+    def _handle_row_double_click(self, row: int, _column: int) -> None:
+        """Edit a module when the user double-clicks its row."""
+        self.table.selectRow(row)
+        self.editar_modulo_selecionado()
+
+    def _dialog_data_from_modulo(self, modulo: OrcamentoItemModuloResumo) -> NovoModuloDialogData:
+        """Convert a module read model into dialog data."""
+        return NovoModuloDialogData(
+            nome=modulo.nome,
+            descricao=modulo.descricao,
+            altura=modulo.altura,
+            largura=modulo.largura,
+            profundidade=modulo.profundidade,
+            quantidade=modulo.quantidade or Decimal("1"),
+        )

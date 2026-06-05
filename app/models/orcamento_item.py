@@ -12,6 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.orcamento_item_modulo import OrcamentoItemModulo
     from app.models.orcamento_item_variavel import OrcamentoItemVariavel
     from app.models.orcamento_versao import OrcamentoVersao
 
@@ -58,5 +59,9 @@ class OrcamentoItem(Base):
     )
     variaveis: Mapped[list["OrcamentoItemVariavel"]] = relationship(
         "OrcamentoItemVariavel",
+        back_populates="item",
+    )
+    modulos: Mapped[list["OrcamentoItemModulo"]] = relationship(
+        "OrcamentoItemModulo",
         back_populates="item",
     )

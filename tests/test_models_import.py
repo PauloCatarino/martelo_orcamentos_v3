@@ -11,6 +11,7 @@ def test_models_import_and_mapper_configuration() -> None:
         Cliente,
         Orcamento,
         OrcamentoItem,
+        OrcamentoItemModulo,
         OrcamentoItemVariavel,
         OrcamentoVersao,
         User,
@@ -23,6 +24,7 @@ def test_models_import_and_mapper_configuration() -> None:
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
     assert OrcamentoItem.__tablename__ == "orcamento_items"
+    assert OrcamentoItemModulo.__tablename__ == "orcamento_item_modulos"
     assert OrcamentoItemVariavel.__tablename__ == "orcamento_item_variaveis"
     assert {
         "users",
@@ -30,5 +32,6 @@ def test_models_import_and_mapper_configuration() -> None:
         "orcamentos",
         "orcamento_versoes",
         "orcamento_items",
+        "orcamento_item_modulos",
         "orcamento_item_variaveis",
     }.issubset(Base.metadata.tables)
