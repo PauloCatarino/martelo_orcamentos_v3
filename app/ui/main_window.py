@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
-from app.ui.pages import DefPecasPage, OrcamentoDetailPage, OrcamentosPage
+from app.ui.pages import ConfiguracoesPage, DefPecasPage, OrcamentoDetailPage, OrcamentosPage
 
 
 class MainWindow(QMainWindow):
@@ -71,16 +71,13 @@ class MainWindow(QMainWindow):
         orcamentos_button = QPushButton("Or\u00e7amentos")
         orcamentos_button.clicked.connect(lambda: self.show_page("orcamentos"))
 
-        pecas_button = QPushButton("Pe\u00e7as")
-        pecas_button.clicked.connect(lambda: self.show_page("pecas"))
-
         clientes_button = QPushButton("Clientes")
         clientes_button.clicked.connect(lambda: self.show_page("clientes"))
 
         configuracoes_button = QPushButton("Configura\u00e7\u00f5es")
         configuracoes_button.clicked.connect(lambda: self.show_page("configuracoes"))
 
-        for button in (inicio_button, orcamentos_button, pecas_button, clientes_button, configuracoes_button):
+        for button in (inicio_button, orcamentos_button, clientes_button, configuracoes_button):
             sidebar_layout.addWidget(button)
 
         sidebar_layout.addStretch()
@@ -91,11 +88,12 @@ class MainWindow(QMainWindow):
         self._pages_by_name: dict[str, QWidget] = {}
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
         self.def_pecas_page = DefPecasPage()
+        self.configuracoes_page = ConfiguracoesPage(on_open_def_pecas=lambda: self.show_page("pecas"))
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
-        self._add_page("configuracoes", self._create_text_page("Configura\u00e7\u00f5es"))
+        self._add_page("configuracoes", self.configuracoes_page)
 
         content_layout.addWidget(sidebar)
         content_layout.addWidget(self.pages, stretch=1)
