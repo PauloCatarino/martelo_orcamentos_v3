@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Index, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.domain.peca_types import SIMPLES
+
+if TYPE_CHECKING:
+    from app.models.def_peca_componente import DefPecaComponente
 
 
 class DefPeca(Base):
@@ -36,4 +40,10 @@ class DefPeca(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    componentes: Mapped[list["DefPecaComponente"]] = relationship(
+        "DefPecaComponente",
+        back_populates="def_peca_pai",
+        foreign_keys="DefPecaComponente.def_peca_pai_id",
     )
