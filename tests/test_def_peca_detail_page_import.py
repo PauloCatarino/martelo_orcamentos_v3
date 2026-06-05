@@ -44,3 +44,39 @@ def test_def_peca_detail_page_shows_orlas() -> None:
     assert "format_orla_code" in source
     assert "get_orla_type_label" in source
     assert "de orlas" in source
+
+
+def test_def_peca_detail_page_has_component_actions() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    for method in (
+        "abrir_novo_componente",
+        "abrir_editar_componente",
+        "remover_componente",
+        "recarregar_componentes",
+    ):
+        assert hasattr(DefPecaDetailPage, method)
+
+
+def test_def_peca_detail_page_components_use_service() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    novo = inspect.getsource(DefPecaDetailPage.abrir_novo_componente)
+    assert "DefPecaComponenteDialog" in novo
+    assert "CriarDefPecaComponenteData" in novo
+
+    editar = inspect.getsource(DefPecaDetailPage.abrir_editar_componente)
+    assert "EditarDefPecaComponenteData" in editar
+
+    remover = inspect.getsource(DefPecaDetailPage.remover_componente)
+    assert "desativar_componente" in remover
+    assert "QMessageBox" in remover
+
+
+def test_def_peca_detail_page_disables_actions_for_simples() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._create_componentes_tab)
+
+    assert "_is_composta" in source
+    assert "setEnabled" in source
