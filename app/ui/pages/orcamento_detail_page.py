@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
 
 from app.repositories.orcamento_repository import OrcamentoResumo
+from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 
 
 class OrcamentoDetailPage(QWidget):
@@ -32,7 +33,7 @@ class OrcamentoDetailPage(QWidget):
 
         tabs = QTabWidget()
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
-        tabs.addTab(self._create_placeholder_tab("Items do or\u00e7amento ser\u00e3o geridos aqui."), "Items")
+        tabs.addTab(OrcamentoItemsPage(orcamento.orcamento_versao_id), "Items")
         tabs.addTab(self._create_placeholder_tab("Custeio ser\u00e1 desenvolvido numa fase posterior."), "Custeio")
         tabs.addTab(self._create_placeholder_tab("Resumo do or\u00e7amento ser\u00e1 apresentado aqui."), "Resumo")
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
