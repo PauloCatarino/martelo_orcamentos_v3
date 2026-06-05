@@ -17,9 +17,11 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
-from app.services.orcamento_service import OrcamentoService
+from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
+from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 
 
 class OrcamentosPage(QWidget):
@@ -46,7 +48,7 @@ class OrcamentosPage(QWidget):
         subtitle.setObjectName("pageSubtitle")
 
         self.new_button = QPushButton("Novo Or\u00e7amento")
-        self.new_button.setEnabled(False)
+        self.new_button.clicked.connect(self.abrir_novo_orcamento)
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
@@ -94,6 +96,39 @@ class OrcamentosPage(QWidget):
 
         if not orcamentos:
             self.status_label.setText("Sem orcamentos para mostrar.")
+
+    def abrir_novo_orcamento(self) -> None:
+        """Open the simple new budget dialog."""
+        dialog = NovoOrcamentoDialog(self)
+
+        if not dialog.exec():
+            return
+
+        form_data = dialog.get_data()
+        current_user = app_session.current_user
+        created_by_id = current_user.id if current_user is not None else None
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoService(session)
+                result = service.criar_orcamento_simples(
+                    CriarOrcamentoSimplesData(
+                        nome_cliente=form_data.nome_cliente,
+                        email_cliente=form_data.email_cliente,
+                        telefone_cliente=form_data.telefone_cliente,
+                        obra=form_data.obra,
+                        descricao=form_data.descricao,
+                        localizacao=form_data.localizacao,
+                        ref_cliente=form_data.ref_cliente,
+                        created_by_id=created_by_id,
+                    )
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel criar o orcamento.")
+            return
+
+        self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
+        self.carregar_orcamentos()
 
     def _preencher_tabela(self, orcamentos: list[OrcamentoResumo]) -> None:
         """Fill the table with budget read models."""

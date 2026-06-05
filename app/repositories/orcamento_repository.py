@@ -26,6 +26,17 @@ class OrcamentoResumo:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class OrcamentoCriado:
+    """Result of creating a simple budget."""
+
+    ano: int
+    num_orcamento: str
+    numero_versao: int
+    codigo_versao: str
+    cliente_nome: str
+
+
 class OrcamentoRepository:
     """Repository for Orcamento read operations."""
 
@@ -69,3 +80,116 @@ class OrcamentoRepository:
             )
             for row in rows
         ]
+
+    def get_next_num_orcamento(self, ano: int) -> str:
+        """Return the next budget number for a year."""
+        statement = select(Orcamento.num_orcamento).where(Orcamento.ano == ano)
+        existing_numbers = self.session.execute(statement).scalars().all()
+
+        numeric_numbers = [
+            int(str(value))
+            for value in existing_numbers
+            if str(value).isdigit()
+        ]
+
+        if numeric_numbers:
+            return str(max(numeric_numbers) + 1)
+
+        return f"{ano % 100:02d}0001"
+
+    def create_orcamento_com_versao_01(
+        self,
+        *,
+        ano: int,
+        num_orcamento: str,
+        nome_cliente: str,
+        email_cliente: str | None,
+        telefone_cliente: str | None,
+        obra: str,
+        descricao: str | None,
+        localizacao: str | None,
+        ref_cliente: str | None,
+        created_by_id: int | None,
+    ) -> OrcamentoCriado:
+        """Create a simple budget with version 01."""
+        cliente = self._get_or_create_cliente_temporario(
+            nome_cliente=nome_cliente,
+            email_cliente=email_cliente,
+            telefone_cliente=telefone_cliente,
+        )
+
+        orcamento = Orcamento(
+            ano=ano,
+            num_orcamento=num_orcamento,
+            cliente_id=cliente.id,
+            descricao=descricao,
+            obra=obra,
+            localizacao=localizacao,
+            ref_cliente=ref_cliente,
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
+        )
+        self.session.add(orcamento)
+        self.session.flush()
+
+        codigo_versao = self._format_codigo_versao(num_orcamento, 1)
+        versao = OrcamentoVersao(
+            orcamento_id=orcamento.id,
+            numero_versao=1,
+            codigo_versao=codigo_versao,
+            estado="rascunho",
+            preco_total=Decimal("0"),
+            preco_origem=Decimal("0"),
+            is_locked=False,
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
+        )
+        self.session.add(versao)
+        self.session.flush()
+
+        return OrcamentoCriado(
+            ano=ano,
+            num_orcamento=num_orcamento,
+            numero_versao=versao.numero_versao,
+            codigo_versao=codigo_versao,
+            cliente_nome=cliente.nome,
+        )
+
+    def _get_or_create_cliente_temporario(
+        self,
+        *,
+        nome_cliente: str,
+        email_cliente: str | None,
+        telefone_cliente: str | None,
+    ) -> Cliente:
+        """Create or reuse a temporary customer."""
+        if email_cliente:
+            cliente = self.session.execute(
+                select(Cliente).where(Cliente.email == email_cliente)
+            ).scalar_one_or_none()
+        else:
+            cliente = self.session.execute(
+                select(Cliente).where(
+                    Cliente.nome == nome_cliente,
+                    Cliente.is_temporary.is_(True),
+                )
+            ).scalar_one_or_none()
+
+        if cliente is not None:
+            return cliente
+
+        cliente = Cliente(
+            nome=nome_cliente,
+            email=email_cliente,
+            telefone=telefone_cliente,
+            source_system="manual",
+            is_temporary=True,
+        )
+        self.session.add(cliente)
+        self.session.flush()
+
+        return cliente
+
+    def _format_codigo_versao(self, num_orcamento: str, numero_versao: int) -> str:
+        """Format a budget version code."""
+        return f"{num_orcamento}_{numero_versao:02d}"
