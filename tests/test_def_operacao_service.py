@@ -38,6 +38,8 @@ class _FakeRepository:
     updated_payload: dict | None = None
     deactivate_result = True
     deactivated_id: int | None = None
+    activate_result = True
+    activated_id: int | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -67,6 +69,10 @@ class _FakeRepository:
         self.__class__.deactivated_id = id
         return self.deactivate_result
 
+    def activate_operacao(self, id: int) -> bool:
+        self.__class__.activated_id = id
+        return self.activate_result
+
 
 class _FakeSession:
     def __init__(self) -> None:
@@ -86,6 +92,8 @@ def _reset() -> None:
     _FakeRepository.updated_payload = None
     _FakeRepository.deactivate_result = True
     _FakeRepository.deactivated_id = None
+    _FakeRepository.activate_result = True
+    _FakeRepository.activated_id = None
 
 
 def _service(monkeypatch):
@@ -201,4 +209,21 @@ def test_desativar_operacao_inexistente_sem_commit(monkeypatch) -> None:
 
     assert service.desativar_operacao(11) is False
     assert _FakeRepository.deactivated_id == 11
+    assert session.committed is False
+
+
+def test_ativar_operacao_existente(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    assert service.ativar_operacao(7) is True
+    assert _FakeRepository.activated_id == 7
+    assert session.committed is True
+
+
+def test_ativar_operacao_inexistente_sem_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.activate_result = False
+
+    assert service.ativar_operacao(8) is False
+    assert _FakeRepository.activated_id == 8
     assert session.committed is False

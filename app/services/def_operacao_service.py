@@ -131,6 +131,14 @@ class DefOperacaoService:
 
         return deactivated
 
+    def ativar_operacao(self, id: int) -> bool:
+        """Reactivate an operation."""
+        activated = self.repository.activate_operacao(id)
+        if activated:
+            self.session.commit()
+
+        return activated
+
     def _normalize_codigo(self, codigo: str | None, required: bool = True) -> str | None:
         normalized = (codigo or "").strip().upper()
         if not normalized and required:

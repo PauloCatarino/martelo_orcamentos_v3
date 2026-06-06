@@ -162,6 +162,17 @@ class DefOperacaoRepository:
 
         return True
 
+    def activate_operacao(self, id: int) -> bool:
+        """Reactivate one operation."""
+        operacao = self.session.get(DefOperacao, id)
+        if operacao is None:
+            return False
+
+        operacao.ativo = True
+        self.session.flush()
+
+        return True
+
     def _to_resumo(self, operacao: DefOperacao) -> DefOperacaoResumo:
         """Convert an ORM operation to the read model."""
         return DefOperacaoResumo(

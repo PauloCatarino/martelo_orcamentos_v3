@@ -71,3 +71,60 @@ def test_operacoes_maquinas_page_has_expected_methods() -> None:
 
     for method in ("carregar", "_preencher_operacoes", "_preencher_maquinas"):
         assert hasattr(OperacoesMaquinasPage, method)
+
+
+def test_operacoes_maquinas_page_has_machine_actions() -> None:
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    for method in (
+        "abrir_nova_maquina",
+        "abrir_editar_maquina",
+        "alternar_maquina_ativa",
+        "_get_selected_maquina",
+    ):
+        assert hasattr(OperacoesMaquinasPage, method)
+
+
+def test_operacoes_maquinas_page_machine_actions_use_service_and_dialog() -> None:
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    nova = inspect.getsource(OperacoesMaquinasPage.abrir_nova_maquina)
+    assert "MaquinaDialog" in nova
+    assert "CriarDefMaquinaData" in nova
+
+    editar = inspect.getsource(OperacoesMaquinasPage.abrir_editar_maquina)
+    assert "EditarDefMaquinaData" in editar
+
+    toggle = inspect.getsource(OperacoesMaquinasPage.alternar_maquina_ativa)
+    assert "ativar_maquina" in toggle
+    assert "desativar_maquina" in toggle
+    assert "QMessageBox" in toggle
+
+
+def test_operacoes_maquinas_page_has_operation_actions() -> None:
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    for method in (
+        "abrir_nova_operacao",
+        "abrir_editar_operacao",
+        "alternar_operacao_ativa",
+        "_get_selected_operacao",
+        "_carregar_maquinas_disponiveis",
+    ):
+        assert hasattr(OperacoesMaquinasPage, method)
+
+
+def test_operacoes_maquinas_page_operation_actions_use_service_and_dialog() -> None:
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    nova = inspect.getsource(OperacoesMaquinasPage.abrir_nova_operacao)
+    assert "OperacaoDialog" in nova
+    assert "CriarDefOperacaoData" in nova
+
+    editar = inspect.getsource(OperacoesMaquinasPage.abrir_editar_operacao)
+    assert "EditarDefOperacaoData" in editar
+
+    toggle = inspect.getsource(OperacoesMaquinasPage.alternar_operacao_ativa)
+    assert "ativar_operacao" in toggle
+    assert "desativar_operacao" in toggle
+    assert "QMessageBox" in toggle

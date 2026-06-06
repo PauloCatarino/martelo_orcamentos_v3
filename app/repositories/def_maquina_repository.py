@@ -134,6 +134,17 @@ class DefMaquinaRepository:
 
         return True
 
+    def activate_maquina(self, id: int) -> bool:
+        """Reactivate one machine."""
+        maquina = self.session.get(DefMaquina, id)
+        if maquina is None:
+            return False
+
+        maquina.ativo = True
+        self.session.flush()
+
+        return True
+
     def _to_resumo(self, maquina: DefMaquina) -> DefMaquinaResumo:
         """Convert an ORM machine to the read model."""
         return DefMaquinaResumo(
