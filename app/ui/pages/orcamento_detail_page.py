@@ -5,13 +5,24 @@ from __future__ import annotations
 from datetime import datetime
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
 from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
+from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
@@ -26,6 +37,7 @@ class OrcamentoDetailPage(QWidget):
         self.orcamento = orcamento
         self.on_back = on_back
         self._dados_gerais_labels: dict[str, QLabel] = {}
+        self._item_custeio_page: OrcamentoItemCusteioPage | None = None
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         self.title_label = QLabel(f"Or\u00e7amento {orcamento.codigo_versao}")
@@ -38,16 +50,18 @@ class OrcamentoDetailPage(QWidget):
         header_layout.addWidget(self.title_label, stretch=1)
         header_layout.addWidget(back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
+        self.items_stack = QStackedWidget()
+        self.items_page = OrcamentoItemsPage(
+            orcamento.orcamento_versao_id,
+            orcamento_codigo=orcamento.codigo_versao,
+            on_items_changed=self._handle_items_changed,
+            on_open_item_custeio=self._open_item_custeio,
+        )
+        self.items_stack.addWidget(self.items_page)
+
         tabs = QTabWidget()
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
-        tabs.addTab(
-            OrcamentoItemsPage(
-                orcamento.orcamento_versao_id,
-                orcamento_codigo=orcamento.codigo_versao,
-                on_items_changed=self._handle_items_changed,
-            ),
-            "Items",
-        )
+        tabs.addTab(self.items_stack, "Items")
         tabs.addTab(OrcamentoCusteioPage(orcamento.orcamento_versao_id), "Custeio")
         tabs.addTab(self._create_placeholder_tab("Resumo do or\u00e7amento ser\u00e1 apresentado aqui."), "Resumo")
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
@@ -113,6 +127,26 @@ class OrcamentoDetailPage(QWidget):
 
         self.orcamento = orcamento
         self._update_dados_gerais_labels()
+
+    def _open_item_custeio(self, item: OrcamentoItemResumo) -> None:
+        """Open costing for one selected item inside the Items tab."""
+        if self._item_custeio_page is not None:
+            self.items_stack.removeWidget(self._item_custeio_page)
+            self._item_custeio_page.deleteLater()
+
+        self._item_custeio_page = OrcamentoItemCusteioPage(
+            item,
+            orcamento_codigo=self.orcamento.codigo_versao,
+            orcamento_versao_id=self.orcamento.orcamento_versao_id,
+            on_back=self._voltar_aos_items,
+        )
+        self.items_stack.addWidget(self._item_custeio_page)
+        self.items_stack.setCurrentWidget(self._item_custeio_page)
+
+    def _voltar_aos_items(self) -> None:
+        """Return from item costing to the items table."""
+        self.items_stack.setCurrentWidget(self.items_page)
+        self.items_page.carregar_items()
 
     def _update_dados_gerais_labels(self) -> None:
         """Update the labels in the general data tab."""

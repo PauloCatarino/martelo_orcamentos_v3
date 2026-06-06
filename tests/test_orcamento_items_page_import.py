@@ -14,6 +14,7 @@ def test_orcamento_items_page_imports() -> None:
     assert OrcamentoItemsPage is not None
     assert "M\u00f3dulos" in OrcamentoItemsPage.TABLE_HEADERS
     assert hasattr(OrcamentoItemsPage, "abrir_modulos_item_selecionado")
+    assert hasattr(OrcamentoItemsPage, "abrir_custeio_item_selecionado")
 
 
 def test_orcamento_items_page_formats_item_label() -> None:
@@ -53,3 +54,14 @@ def test_orcamento_items_page_accepts_orcamento_codigo() -> None:
     parameters = inspect.signature(OrcamentoItemsPage).parameters
 
     assert "orcamento_codigo" in parameters
+    assert "on_open_item_custeio" in parameters
+
+
+def test_orcamento_items_page_has_custeio_button_and_message() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    init_source = inspect.getsource(OrcamentoItemsPage.__init__)
+    open_source = inspect.getsource(OrcamentoItemsPage.abrir_custeio_item_selecionado)
+
+    assert "Custeio do Item" in init_source
+    assert "Selecione um item para abrir o custeio." in open_source

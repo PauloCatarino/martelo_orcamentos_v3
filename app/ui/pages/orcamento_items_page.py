@@ -59,12 +59,14 @@ class OrcamentoItemsPage(QWidget):
         orcamento_versao_id: int,
         orcamento_codigo: str | None = None,
         on_items_changed: Callable[[], None] | None = None,
+        on_open_item_custeio: Callable[[OrcamentoItemResumo], None] | None = None,
     ) -> None:
         super().__init__()
 
         self.orcamento_versao_id = orcamento_versao_id
         self.orcamento_codigo = orcamento_codigo
         self.on_items_changed = on_items_changed
+        self.on_open_item_custeio = on_open_item_custeio
         self._items_by_row: dict[int, OrcamentoItemResumo] = {}
         self._modulos_page: OrcamentoItemModulosPage | None = None
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
@@ -81,6 +83,9 @@ class OrcamentoItemsPage(QWidget):
         self.modules_button = QPushButton("M\u00f3dulos")
         self.modules_button.clicked.connect(self.abrir_modulos_item_selecionado)
 
+        self.item_custeio_button = QPushButton("Custeio do Item")
+        self.item_custeio_button.clicked.connect(self.abrir_custeio_item_selecionado)
+
         self.remove_button = QPushButton("Remover Item")
         self.remove_button.clicked.connect(self.remover_item_selecionado)
 
@@ -91,6 +96,7 @@ class OrcamentoItemsPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.modules_button)
+        actions_layout.addWidget(self.item_custeio_button)
         actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -267,6 +273,20 @@ class OrcamentoItemsPage(QWidget):
 
         self.status_label.clear()
         self._show_modulos_page(item)
+
+    def abrir_custeio_item_selecionado(self) -> None:
+        """Open costing for the selected item through the optional callback."""
+        item = self._get_selected_item()
+        if item is None:
+            self.status_label.setText("Selecione um item para abrir o custeio.")
+            return
+
+        if self.on_open_item_custeio is None:
+            self.status_label.setText("Custeio do item indisponivel.")
+            return
+
+        self.status_label.clear()
+        self.on_open_item_custeio(item)
 
     def _show_modulos_page(self, item: OrcamentoItemResumo) -> None:
         """Replace the list view with the selected item's modules page."""

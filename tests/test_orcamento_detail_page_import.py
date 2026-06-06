@@ -19,3 +19,14 @@ def test_orcamento_detail_page_custeio_tab_is_real() -> None:
 
     assert "OrcamentoCusteioPage" in source
     assert '"Custeio"' in source
+
+
+def test_orcamento_detail_page_supports_item_custeio_navigation() -> None:
+    from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
+
+    init_source = inspect.getsource(OrcamentoDetailPage.__init__)
+
+    assert "QStackedWidget" in init_source
+    assert "on_open_item_custeio=self._open_item_custeio" in init_source
+    assert hasattr(OrcamentoDetailPage, "_open_item_custeio")
+    assert hasattr(OrcamentoDetailPage, "_voltar_aos_items")
