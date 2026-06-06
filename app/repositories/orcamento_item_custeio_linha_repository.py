@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import OrcamentoItemCusteioLinha
+from app.models import OrcamentoItem, OrcamentoItemCusteioLinha
 
 
 @dataclass(frozen=True)
@@ -81,6 +81,23 @@ class OrcamentoItemCusteioLinhaRepository:
                 OrcamentoItemCusteioLinha.ativo.is_(True),
             )
             .order_by(OrcamentoItemCusteioLinha.id.asc())
+        )
+        linhas = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(linha) for linha in linhas]
+
+    def list_by_orcamento_versao(
+        self, orcamento_versao_id: int
+    ) -> list[OrcamentoItemCusteioLinhaResumo]:
+        """List cost lines of all items in one budget version."""
+        statement = (
+            select(OrcamentoItemCusteioLinha)
+            .join(
+                OrcamentoItem,
+                OrcamentoItemCusteioLinha.orcamento_item_id == OrcamentoItem.id,
+            )
+            .where(OrcamentoItem.orcamento_versao_id == orcamento_versao_id)
+            .order_by(OrcamentoItem.ordem.asc(), OrcamentoItemCusteioLinha.id.asc())
         )
         linhas = self.session.execute(statement).scalars().all()
 

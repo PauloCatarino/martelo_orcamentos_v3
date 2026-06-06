@@ -113,6 +113,12 @@ class OrcamentoItemCusteioLinhaService:
         """List active cost lines of one budget item."""
         return self.repository.list_active_by_orcamento_item(orcamento_item_id)
 
+    def listar_linhas_da_versao(
+        self, orcamento_versao_id: int
+    ) -> list[OrcamentoItemCusteioLinhaResumo]:
+        """List cost lines of all items in one budget version."""
+        return self.repository.list_by_orcamento_versao(orcamento_versao_id)
+
     def obter_por_id(self, id: int) -> OrcamentoItemCusteioLinhaResumo | None:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
