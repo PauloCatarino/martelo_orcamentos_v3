@@ -11,6 +11,7 @@ from app.repositories.orcamento_item_modulo_repository import (
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoCriado, OrcamentoRepository, OrcamentoResumo
+from app.repositories.system_setting_repository import SystemSettingRepository, SystemSettingResumo
 
 __all__ = [
     "DefPecaRepository",
@@ -24,4 +25,6 @@ __all__ = [
     "OrcamentoItemResumo",
     "OrcamentoRepository",
     "OrcamentoResumo",
+    "SystemSettingRepository",
+    "SystemSettingResumo",
 ]

@@ -17,6 +17,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
+from app.services.system_setting_service import SystemSettingService
 
 __all__ = [
     "CriarDefPecaData",
@@ -33,4 +34,5 @@ __all__ = [
     "OrcamentoItemModuloService",
     "OrcamentoItemService",
     "OrcamentoService",
+    "SystemSettingService",
 ]

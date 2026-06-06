@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui.pages import (
+    CaminhosSistemaPage,
     ConfiguracoesPage,
     DefPecasPage,
     MateriasPrimasPage,
@@ -95,14 +96,17 @@ class MainWindow(QMainWindow):
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
         self.def_pecas_page = DefPecasPage()
         self.materias_primas_page = MateriasPrimasPage()
+        self.caminhos_sistema_page = CaminhosSistemaPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
+            on_open_caminhos_sistema=lambda: self.show_page("caminhos_sistema"),
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("materias_primas", self.materias_primas_page)
+        self._add_page("caminhos_sistema", self.caminhos_sistema_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
         self._add_page("configuracoes", self.configuracoes_page)
 

@@ -21,6 +21,8 @@ def test_main_window_has_def_pecas_navigation_inside_configuracoes() -> None:
     assert "ConfiguracoesPage" in source
     assert "DefPecasPage" in source
     assert "MateriasPrimasPage" in source
+    assert "CaminhosSistemaPage" in source
     assert '"pecas"' in source
     assert '"materias_primas"' in source
+    assert '"caminhos_sistema"' in source
     assert "pecas_button" not in source
