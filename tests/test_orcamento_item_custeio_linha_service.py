@@ -53,6 +53,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
 class _FakeRepository:
     all_rows: list[OrcamentoItemCusteioLinhaResumo] = []
     active_rows: list[OrcamentoItemCusteioLinhaResumo] = []
+    versao_rows: list[OrcamentoItemCusteioLinhaResumo] = []
     by_id: OrcamentoItemCusteioLinhaResumo | None = None
     created_payload: dict | None = None
     updated_payload: dict | None = None
@@ -69,6 +70,9 @@ class _FakeRepository:
 
     def list_active_by_orcamento_item(self, orcamento_item_id: int):
         return self.active_rows
+
+    def list_by_orcamento_versao(self, orcamento_versao_id: int):
+        return self.versao_rows
 
     def get_by_id(self, id: int):
         return self.by_id
@@ -101,6 +105,7 @@ class _FakeSession:
 def _reset() -> None:
     _FakeRepository.all_rows = []
     _FakeRepository.active_rows = []
+    _FakeRepository.versao_rows = []
     _FakeRepository.by_id = None
     _FakeRepository.created_payload = None
     _FakeRepository.updated_payload = None
@@ -122,6 +127,13 @@ def test_listar_linhas_do_item(monkeypatch) -> None:
     _FakeRepository.all_rows = [_resumo(id=3)]
 
     assert service.listar_linhas_do_item(10) == [_resumo(id=3)]
+
+
+def test_listar_linhas_da_versao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.versao_rows = [_resumo(id=4, orcamento_item_id=20)]
+
+    assert service.listar_linhas_da_versao(99) == [_resumo(id=4, orcamento_item_id=20)]
 
 
 def test_criar_linha_default_tipo_manual(monkeypatch) -> None:

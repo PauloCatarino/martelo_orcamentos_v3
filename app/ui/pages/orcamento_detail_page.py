@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
+from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
@@ -47,7 +48,7 @@ class OrcamentoDetailPage(QWidget):
             ),
             "Items",
         )
-        tabs.addTab(self._create_placeholder_tab("Custeio ser\u00e1 desenvolvido numa fase posterior."), "Custeio")
+        tabs.addTab(OrcamentoCusteioPage(orcamento.orcamento_versao_id), "Custeio")
         tabs.addTab(self._create_placeholder_tab("Resumo do or\u00e7amento ser\u00e1 apresentado aqui."), "Resumo")
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
 
