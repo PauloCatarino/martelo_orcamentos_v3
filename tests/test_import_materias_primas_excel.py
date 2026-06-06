@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 
 from scripts import import_materias_primas_excel as importer
 
@@ -115,6 +116,17 @@ class _FakeService:
         self.updated.append((id, data))
 
 
+class _FakeSystemSettingService:
+    value: str | None = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def obter_valor(self, chave: str, default: str | None = None) -> str | None:
+        assert chave == importer.SYSTEM_SETTING_PASTA_MATERIAS_PRIMAS
+        return self.value if self.value is not None else default
+
+
 def test_run_import_creates_updates_and_ignores_missing_ref_le() -> None:
     headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "PRECO_TABELA"]
     rows = [
@@ -148,3 +160,76 @@ def test_run_import_dry_run_does_not_write() -> None:
     assert summary.atualizadas == 1
     assert service.created == []
     assert service.updated == []
+
+
+def test_resolve_excel_path_manual_has_priority(tmp_path: Path) -> None:
+    manual_file = tmp_path / "manual.xlsm"
+    manual_file.write_text("x")
+
+    resolution = importer.resolve_excel_path(session=object(), override=manual_file)
+
+    assert resolution is not None
+    assert resolution.path == manual_file
+    assert resolution.source == importer.PATH_SOURCE_MANUAL
+
+
+def test_resolve_excel_path_uses_configured_folder(monkeypatch, tmp_path: Path) -> None:
+    from app.services import system_setting_service
+
+    configured_folder = tmp_path / "materias"
+    configured_folder.mkdir()
+    expected_file = configured_folder / importer.DEFAULT_FILENAME
+    expected_file.write_text("x")
+    _FakeSystemSettingService.value = str(configured_folder)
+    monkeypatch.setattr(
+        system_setting_service,
+        "SystemSettingService",
+        _FakeSystemSettingService,
+    )
+
+    resolution = importer.resolve_excel_path(session=object())
+
+    assert resolution is not None
+    assert resolution.path == expected_file
+    assert resolution.source == importer.PATH_SOURCE_SYSTEM_SETTING
+    assert importer.get_default_excel_path(object()) == expected_file
+
+
+def test_resolve_excel_path_falls_back_to_cwd(monkeypatch, tmp_path: Path) -> None:
+    from app.services import system_setting_service
+
+    fallback_file = tmp_path / importer.DEFAULT_FILENAME
+    fallback_file.write_text("x")
+    monkeypatch.chdir(tmp_path)
+    _FakeSystemSettingService.value = None
+    monkeypatch.setattr(
+        system_setting_service,
+        "SystemSettingService",
+        _FakeSystemSettingService,
+    )
+
+    resolution = importer.resolve_excel_path(session=object())
+
+    assert resolution is not None
+    assert resolution.path == fallback_file
+    assert resolution.source == importer.PATH_SOURCE_FALLBACK
+
+
+def test_resolve_excel_path_empty_config_falls_back_to_cwd(monkeypatch, tmp_path: Path) -> None:
+    from app.services import system_setting_service
+
+    fallback_file = tmp_path / importer.DEFAULT_FILENAME
+    fallback_file.write_text("x")
+    monkeypatch.chdir(tmp_path)
+    _FakeSystemSettingService.value = "   "
+    monkeypatch.setattr(
+        system_setting_service,
+        "SystemSettingService",
+        _FakeSystemSettingService,
+    )
+
+    resolution = importer.resolve_excel_path(session=object())
+
+    assert resolution is not None
+    assert resolution.path == fallback_file
+    assert resolution.source == importer.PATH_SOURCE_FALLBACK

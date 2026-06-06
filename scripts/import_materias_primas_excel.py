@@ -13,11 +13,12 @@ openpyxl, without the real Excel file and without a database.
 Usage:
     python scripts/import_materias_primas_excel.py --dry-run
     python scripts/import_materias_primas_excel.py
-    python scripts/import_materias_primas_excel.py "C:/path/TAB_MATERIAS_PRIMAS.xlsm"
+    python scripts/import_materias_primas_excel.py --excel-path "C:/path/TAB_MATERIAS_PRIMAS.xlsm"
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 import unicodedata
@@ -38,6 +39,10 @@ from app.services.def_materia_prima_service import (  # noqa: E402
 )
 
 DEFAULT_FILENAME = "TAB_MATERIAS_PRIMAS.xlsm"
+SYSTEM_SETTING_PASTA_MATERIAS_PRIMAS = "pasta_materias_primas"
+PATH_SOURCE_MANUAL = "argumento manual"
+PATH_SOURCE_SYSTEM_SETTING = "configuracao do sistema"
+PATH_SOURCE_FALLBACK = "fallback"
 HEADER_SCAN_LIMIT = 15
 HEADER_MIN_NONEMPTY = 3
 ORIGEM_DADOS = "EXCEL"
@@ -73,6 +78,14 @@ class ImportSummary:
     ignoradas_sem_ref_le: int = 0
     erros: int = 0
     avisos: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ExcelPathResolution:
+    """Selected Excel path and the source that provided it."""
+
+    path: Path
+    source: str
 
 
 def normalize_header(name: object) -> str:
@@ -234,17 +247,50 @@ def run_import(service, headers: list, data_rows: list, dry_run: bool) -> Import
     return summary
 
 
-def resolve_excel_path(override: str | Path | None = None) -> Path | None:
-    """Return the first existing Excel path, or None."""
-    candidates: list[Path] = []
-    if override:
-        candidates.append(Path(override))
-    candidates.append(Path.cwd() / DEFAULT_FILENAME)
-    candidates.append(PROJECT_ROOT / DEFAULT_FILENAME)
+def get_default_excel_path(session) -> Path:
+    """Return the configured Excel path, or the current-directory fallback."""
+    return get_default_excel_path_resolution(session).path
 
-    for path in candidates:
-        if path.is_file():
-            return path
+
+def get_default_excel_path_resolution(session) -> ExcelPathResolution:
+    """Return the default Excel path and its source."""
+    from app.services.system_setting_service import SystemSettingService
+
+    configured_folder = SystemSettingService(session).obter_valor(
+        SYSTEM_SETTING_PASTA_MATERIAS_PRIMAS,
+        default=None,
+    )
+    configured_folder = (configured_folder or "").strip()
+
+    if configured_folder:
+        return ExcelPathResolution(
+            path=Path(configured_folder) / DEFAULT_FILENAME,
+            source=PATH_SOURCE_SYSTEM_SETTING,
+        )
+
+    return ExcelPathResolution(
+        path=Path.cwd() / DEFAULT_FILENAME,
+        source=PATH_SOURCE_FALLBACK,
+    )
+
+
+def resolve_excel_path(
+    session=None,
+    override: str | Path | None = None,
+) -> ExcelPathResolution | None:
+    """Return the selected existing Excel path, or None when it is missing."""
+    if override:
+        resolution = ExcelPathResolution(path=Path(override), source=PATH_SOURCE_MANUAL)
+    elif session is not None:
+        resolution = get_default_excel_path_resolution(session)
+    else:
+        resolution = ExcelPathResolution(
+            path=Path.cwd() / DEFAULT_FILENAME,
+            source=PATH_SOURCE_FALLBACK,
+        )
+
+    if resolution.path.is_file():
+        return resolution
 
     return None
 
@@ -285,29 +331,33 @@ def print_summary(summary: ImportSummary, dry_run: bool) -> None:
         print(f"  ... e mais {len(summary.avisos) - 20} avisos")
 
 
+def parse_args(argv: list | None = None) -> argparse.Namespace:
+    """Parse command-line arguments for the import script."""
+    parser = argparse.ArgumentParser(
+        description="Importar materias-primas do Excel para def_materias_primas.",
+    )
+    parser.add_argument(
+        "legacy_excel_path",
+        nargs="?",
+        help="Caminho manual do Excel, mantido por compatibilidade.",
+    )
+    parser.add_argument(
+        "--excel-path",
+        dest="excel_path",
+        help="Caminho manual do ficheiro TAB_MATERIAS_PRIMAS.xlsm.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Analisa o ficheiro sem gravar na base de dados.",
+    )
+    return parser.parse_args(sys.argv[1:] if argv is None else argv)
+
+
 def main(argv: list | None = None) -> int:
     """Resolve the Excel file, read it and import / sync the rows."""
-    args = list(sys.argv[1:] if argv is None else argv)
-    dry_run = "--dry-run" in args
-    positional = [arg for arg in args if not arg.startswith("--")]
-    override = positional[0] if positional else None
-
-    excel_path = resolve_excel_path(override)
-    if excel_path is None:
-        print("Ficheiro Excel de materias-primas nao encontrado.")
-        print(f"Esperado em: {Path.cwd() / DEFAULT_FILENAME}")
-        print("Indique o caminho como argumento, por exemplo:")
-        print(
-            '  python scripts/import_materias_primas_excel.py '
-            '"C:/caminho/TAB_MATERIAS_PRIMAS.xlsm"'
-        )
-        return 1
-
-    try:
-        headers, data_rows = read_rows(excel_path)
-    except RuntimeError as error:
-        print(str(error))
-        return 1
+    args = parse_args(argv)
+    override = args.excel_path or args.legacy_excel_path
 
     from app.config.settings import settings
     from app.db.session import SessionLocal
@@ -315,11 +365,37 @@ def main(argv: list | None = None) -> int:
     _ = settings.database_url
 
     with SessionLocal() as session:
-        service = DefMateriaPrimaService(session)
-        summary = run_import(service, headers, data_rows, dry_run)
+        resolution = resolve_excel_path(session=session, override=override)
+        expected = (
+            ExcelPathResolution(path=Path(override), source=PATH_SOURCE_MANUAL)
+            if override
+            else get_default_excel_path_resolution(session)
+        )
 
-    print(f"Ficheiro: {excel_path}")
-    print_summary(summary, dry_run)
+        print(f"Origem do caminho Excel: {expected.source}")
+        print(f"Caminho usado para procurar o Excel: {expected.path}")
+
+        if resolution is None:
+            print("Ficheiro Excel de materias-primas nao encontrado.")
+            print(f"Procurado em: {expected.path}")
+            print("Indique o caminho como argumento, por exemplo:")
+            print(
+                '  python scripts/import_materias_primas_excel.py '
+                '--excel-path "C:/caminho/TAB_MATERIAS_PRIMAS.xlsm" --dry-run'
+            )
+            return 1
+
+        try:
+            headers, data_rows = read_rows(resolution.path)
+        except RuntimeError as error:
+            print(str(error))
+            return 1
+
+        service = DefMateriaPrimaService(session)
+        summary = run_import(service, headers, data_rows, args.dry_run)
+
+    print(f"Ficheiro: {resolution.path}")
+    print_summary(summary, args.dry_run)
     return 0
 
 
