@@ -167,7 +167,10 @@ class OrcamentoItemCusteioLinhaService:
         tipo_linha = self._normalize_tipo_linha(data.tipo_linha)
         quantidade = self._normalize_quantidade(data.quantidade)
         custo_total = self._compute_total(data.custo_total, data.custo_unitario, quantidade)
-        preco_total = self._compute_total(data.preco_total, data.preco_unitario, quantidade)
+        preco_unitario = self._compute_preco_unitario(
+            data.preco_unitario, data.custo_unitario, data.margem_percentagem
+        )
+        preco_total = self._compute_total(data.preco_total, preco_unitario, quantidade)
 
         return {
             "orcamento_item_id": orcamento_item_id,
@@ -192,7 +195,7 @@ class OrcamentoItemCusteioLinhaService:
             "custo_unitario": data.custo_unitario,
             "custo_total": custo_total,
             "margem_percentagem": data.margem_percentagem,
-            "preco_unitario": data.preco_unitario,
+            "preco_unitario": preco_unitario,
             "preco_total": preco_total,
             "def_operacao_id": data.def_operacao_id,
             "def_maquina_id": data.def_maquina_id,
@@ -240,5 +243,19 @@ class OrcamentoItemCusteioLinhaService:
 
         if unitario is not None:
             return unitario * quantidade
+
+        return None
+
+    def _compute_preco_unitario(
+        self,
+        preco_unitario: Decimal | None,
+        custo_unitario: Decimal | None,
+        margem_percentagem: Decimal | None,
+    ) -> Decimal | None:
+        if preco_unitario is not None:
+            return preco_unitario
+
+        if custo_unitario is not None and margem_percentagem is not None:
+            return custo_unitario * (Decimal("1") + margem_percentagem / Decimal("100"))
 
         return None

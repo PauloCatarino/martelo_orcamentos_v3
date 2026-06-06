@@ -69,3 +69,33 @@ def test_orcamento_custeio_page_formats_lines() -> None:
 
     assert "get_custeio_linha_type_label" in source
     assert "format_currency" in source
+
+
+def test_orcamento_custeio_page_has_line_actions() -> None:
+    from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
+
+    for method in (
+        "abrir_nova_linha",
+        "abrir_editar_linha",
+        "alternar_linha_ativa",
+        "_get_selected_linha",
+    ):
+        assert hasattr(OrcamentoCusteioPage, method)
+
+
+def test_orcamento_custeio_page_line_actions_use_service_and_dialog() -> None:
+    from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
+
+    nova = inspect.getsource(OrcamentoCusteioPage.abrir_nova_linha)
+    assert "CusteioLinhaManualDialog" in nova
+    assert "criar_linha_manual" in nova
+    assert "override_manual=True" in nova
+
+    editar = inspect.getsource(OrcamentoCusteioPage.abrir_editar_linha)
+    assert "editar_linha" in editar
+    assert "editado_localmente=True" in editar
+
+    toggle = inspect.getsource(OrcamentoCusteioPage.alternar_linha_ativa)
+    assert "ativar_linha" in toggle
+    assert "desativar_linha" in toggle
+    assert "QMessageBox" in toggle

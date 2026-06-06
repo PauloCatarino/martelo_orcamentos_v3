@@ -227,6 +227,40 @@ def test_criar_respeita_total_explicito(monkeypatch) -> None:
     assert _FakeRepository.created_payload["custo_total"] == Decimal("99")
 
 
+def test_criar_calcula_preco_unitario_por_margem(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha_manual(
+        service_module.CriarLinhaCusteioData(
+            orcamento_item_id=10,
+            descricao="Placa",
+            quantidade=Decimal("2"),
+            custo_unitario=Decimal("10"),
+            margem_percentagem=Decimal("20"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_unitario"] == Decimal("12")
+    assert _FakeRepository.created_payload["preco_total"] == Decimal("24")
+
+
+def test_criar_respeita_preco_unitario_explicito(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha_manual(
+        service_module.CriarLinhaCusteioData(
+            orcamento_item_id=10,
+            descricao="Placa",
+            quantidade=Decimal("2"),
+            custo_unitario=Decimal("10"),
+            margem_percentagem=Decimal("20"),
+            preco_unitario=Decimal("99"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_unitario"] == Decimal("99")
+
+
 def test_editar_linha(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 
