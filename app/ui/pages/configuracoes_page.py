@@ -30,12 +30,14 @@ class ConfiguracoesPage(QWidget):
         on_open_def_pecas: Callable[[], None] | None = None,
         on_open_materias_primas: Callable[[], None] | None = None,
         on_open_caminhos_sistema: Callable[[], None] | None = None,
+        on_open_operacoes_maquinas: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
         self.on_open_def_pecas = on_open_def_pecas
         self.on_open_materias_primas = on_open_materias_primas
         self.on_open_caminhos_sistema = on_open_caminhos_sistema
+        self.on_open_operacoes_maquinas = on_open_operacoes_maquinas
 
         title = QLabel("Configura\u00e7\u00f5es")
         title.setObjectName("pageTitle")
@@ -66,8 +68,8 @@ class ConfiguracoesPage(QWidget):
         ferragens_button = QPushButton("Ferragens")
         ferragens_button.clicked.connect(self._show_future_message)
 
-        operacoes_button = QPushButton("Opera\u00e7\u00f5es / M\u00e1quinas")
-        operacoes_button.clicked.connect(self._show_future_message)
+        self.operacoes_maquinas_button = QPushButton("Opera\u00e7\u00f5es / M\u00e1quinas")
+        self.operacoes_maquinas_button.clicked.connect(self._open_operacoes_maquinas)
 
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
@@ -83,7 +85,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.caminhos_sistema_button)
         layout.addWidget(materiais_button)
         layout.addWidget(ferragens_button)
-        layout.addWidget(operacoes_button)
+        layout.addWidget(self.operacoes_maquinas_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -104,6 +106,11 @@ class ConfiguracoesPage(QWidget):
         """Open the system paths page through the optional callback."""
         if self.on_open_caminhos_sistema is not None:
             self.on_open_caminhos_sistema()
+
+    def _open_operacoes_maquinas(self) -> None:
+        """Open the operations / machines page through the optional callback."""
+        if self.on_open_operacoes_maquinas is not None:
+            self.on_open_operacoes_maquinas()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""

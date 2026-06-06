@@ -21,6 +21,7 @@ from app.ui.pages import (
     ConfiguracoesPage,
     DefPecasPage,
     MateriasPrimasPage,
+    OperacoesMaquinasPage,
     OrcamentoDetailPage,
     OrcamentosPage,
 )
@@ -97,16 +98,19 @@ class MainWindow(QMainWindow):
         self.def_pecas_page = DefPecasPage()
         self.materias_primas_page = MateriasPrimasPage()
         self.caminhos_sistema_page = CaminhosSistemaPage()
+        self.operacoes_maquinas_page = OperacoesMaquinasPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
             on_open_caminhos_sistema=lambda: self.show_page("caminhos_sistema"),
+            on_open_operacoes_maquinas=lambda: self.show_page("operacoes_maquinas"),
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("materias_primas", self.materias_primas_page)
         self._add_page("caminhos_sistema", self.caminhos_sistema_page)
+        self._add_page("operacoes_maquinas", self.operacoes_maquinas_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
         self._add_page("configuracoes", self.configuracoes_page)
 

@@ -40,6 +40,7 @@ class DefMaquinaSeed:
     nome: str
     tipo: str | None = None
     custo_hora: Decimal | None = None
+    descricao: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class DefaultOperacoesResult:
 
     maquinas_criadas: int
     maquinas_reutilizadas: int
+    maquinas_desativadas: int
     operacoes_criadas: int
     operacoes_reutilizadas: int
 
@@ -78,10 +80,48 @@ class DefaultOperacoesResult:
 DEFAULT_MAQUINAS: tuple[DefMaquinaSeed, ...] = (
     DefMaquinaSeed(codigo="CORTE", nome="Corte", tipo=CORTE),
     DefMaquinaSeed(codigo="ORLAGEM", nome="Orlagem", tipo=ORLAGEM),
-    DefMaquinaSeed(codigo="CNC", nome="CNC", tipo=CNC),
+    DefMaquinaSeed(
+        codigo="CNC_ABD",
+        nome="CNC ABD",
+        tipo=CNC,
+        descricao="Pecas pequenas e trabalhos simples, por exemplo caixas de gavetas.",
+    ),
+    DefMaquinaSeed(
+        codigo="CNC_VERTICAL",
+        nome="CNC Vertical",
+        tipo=CNC,
+        descricao=(
+            "Versatil para mobiliario geral, roupeiros e cozinhas; boa para pequenas "
+            "quantidades e pecas sem grande complexidade; furacao, cavilhas, rasgos com "
+            "disco/fresa e algumas operacoes de milling."
+        ),
+    ),
+    DefMaquinaSeed(
+        codigo="CNC_HORIZONTAL",
+        nome="CNC Horizontal",
+        tipo=CNC,
+        descricao=(
+            "Pecas em serie ou maior quantidade, sem grande complexidade; furacao, "
+            "cavilhas, rasgos com disco e fresagens limitadas."
+        ),
+    ),
+    DefMaquinaSeed(
+        codigo="CNC_5_EIXOS_ORLAGEM",
+        nome="CNC 5 Eixos / Orlagem",
+        tipo=CNC,
+        descricao=(
+            "Maquina complexa/multitarefas para pecas 2D/3D, formas especiais, tampos "
+            "redondos, recortes e orlagem de formas nao retangulares; custo mais elevado "
+            "e menos orientada para producao em serie."
+        ),
+    ),
     DefMaquinaSeed(codigo="MONTAGEM", nome="Montagem", tipo=MONTAGEM),
     DefMaquinaSeed(codigo="MANUAL", nome="Manual", tipo=MANUAL),
 )
+
+# Machine codes that existed in earlier seeds and are now replaced. They are
+# deactivated (not deleted) when the seed runs again.
+OBSOLETE_MAQUINA_CODIGOS: tuple[str, ...] = ("CNC",)
 
 DEFAULT_OPERACOES: tuple[DefOperacaoSeed, ...] = (
     DefOperacaoSeed(
@@ -103,7 +143,7 @@ DEFAULT_OPERACOES: tuple[DefOperacaoSeed, ...] = (
         nome="CNC / Mecanizacao",
         tipo_operacao=CNC,
         unidade_calculo="PECA",
-        maquina_codigo="CNC",
+        maquina_codigo="CNC_VERTICAL",
     ),
     DefOperacaoSeed(
         codigo="FURACAO_MANUAL",
@@ -174,6 +214,7 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
     if maquina is not None:
         maquina.nome = seed.nome
         maquina.tipo = seed.tipo
+        maquina.descricao = seed.descricao
         maquina.custo_hora = seed.custo_hora
         maquina.ativo = True
         session.flush()
@@ -183,6 +224,7 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
         codigo=seed.codigo,
         nome=seed.nome,
         tipo=seed.tipo,
+        descricao=seed.descricao,
         custo_hora=seed.custo_hora,
         ativo=True,
     )
@@ -228,6 +270,21 @@ def get_or_create_operacao(session: Session, seed: DefOperacaoSeed) -> EntityRes
     return EntityResult(status="criada", entity=operacao)
 
 
+def deactivate_obsolete_maquinas(session: Session) -> int:
+    """Deactivate machines that were replaced and are no longer default."""
+    desativadas = 0
+
+    for codigo in OBSOLETE_MAQUINA_CODIGOS:
+        maquina = get_maquina_by_codigo(session, codigo)
+        if maquina is not None and maquina.ativo:
+            maquina.ativo = False
+            session.flush()
+            desativadas += 1
+            print(f"Maquina {codigo} desativada (obsoleta)")
+
+    return desativadas
+
+
 def ensure_default_operacoes(session: Session) -> DefaultOperacoesResult:
     """Create or reuse default machines and operations."""
     maquinas_criadas = 0
@@ -243,6 +300,8 @@ def ensure_default_operacoes(session: Session) -> DefaultOperacoesResult:
         else:
             maquinas_reutilizadas += 1
 
+    maquinas_desativadas = deactivate_obsolete_maquinas(session)
+
     for seed in DEFAULT_OPERACOES:
         result = get_or_create_operacao(session, seed)
         print(f"Operacao {seed.codigo} {result.status}")
@@ -256,6 +315,7 @@ def ensure_default_operacoes(session: Session) -> DefaultOperacoesResult:
     return DefaultOperacoesResult(
         maquinas_criadas=maquinas_criadas,
         maquinas_reutilizadas=maquinas_reutilizadas,
+        maquinas_desativadas=maquinas_desativadas,
         operacoes_criadas=operacoes_criadas,
         operacoes_reutilizadas=operacoes_reutilizadas,
     )
@@ -266,6 +326,7 @@ def print_summary(result: DefaultOperacoesResult) -> None:
     print("Resumo final")
     print(f"Maquinas criadas: {result.maquinas_criadas}")
     print(f"Maquinas reutilizadas: {result.maquinas_reutilizadas}")
+    print(f"Maquinas desativadas: {result.maquinas_desativadas}")
     print(f"Operacoes criadas: {result.operacoes_criadas}")
     print(f"Operacoes reutilizadas: {result.operacoes_reutilizadas}")
 

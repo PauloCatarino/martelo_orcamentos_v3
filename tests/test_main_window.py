@@ -26,3 +26,14 @@ def test_main_window_has_def_pecas_navigation_inside_configuracoes() -> None:
     assert '"materias_primas"' in source
     assert '"caminhos_sistema"' in source
     assert "pecas_button" not in source
+
+
+def test_main_window_has_operacoes_maquinas_navigation_inside_configuracoes() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "OperacoesMaquinasPage" in source
+    assert '"operacoes_maquinas"' in source
+    assert "on_open_operacoes_maquinas" in source
+    assert "operacoes_button" not in source

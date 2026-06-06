@@ -45,3 +45,12 @@ def test_configuracoes_page_has_caminhos_sistema_shortcut() -> None:
     from app.ui.pages.configuracoes_page import ConfiguracoesPage
 
     assert hasattr(ConfiguracoesPage, "_open_caminhos_sistema")
+
+
+def test_configuracoes_page_has_operacoes_maquinas_shortcut() -> None:
+    from app.ui.pages.configuracoes_page import ConfiguracoesPage
+
+    signature = inspect.signature(ConfiguracoesPage)
+
+    assert "on_open_operacoes_maquinas" in signature.parameters
+    assert hasattr(ConfiguracoesPage, "_open_operacoes_maquinas")
