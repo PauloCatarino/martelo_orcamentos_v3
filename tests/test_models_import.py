@@ -11,6 +11,7 @@ def test_models_import_and_mapper_configuration() -> None:
         Cliente,
         DefPeca,
         DefPecaComponente,
+        DefPecaOperacao,
         Orcamento,
         OrcamentoItem,
         OrcamentoItemModulo,
@@ -26,6 +27,7 @@ def test_models_import_and_mapper_configuration() -> None:
     assert DefPeca.__tablename__ == "def_pecas"
     assert DefPeca.orla_c1.property.columns[0].default.arg == 0
     assert DefPecaComponente.__tablename__ == "def_peca_componentes"
+    assert DefPecaOperacao.__tablename__ == "def_peca_operacoes"
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
     assert OrcamentoItem.__tablename__ == "orcamento_items"
@@ -36,6 +38,7 @@ def test_models_import_and_mapper_configuration() -> None:
         "clientes",
         "def_pecas",
         "def_peca_componentes",
+        "def_peca_operacoes",
         "orcamentos",
         "orcamento_versoes",
         "orcamento_items",

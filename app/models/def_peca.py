@@ -14,6 +14,7 @@ from app.domain.peca_types import SIMPLES
 
 if TYPE_CHECKING:
     from app.models.def_peca_componente import DefPecaComponente
+    from app.models.def_peca_operacao import DefPecaOperacao
 
 
 class DefPeca(Base):
@@ -51,4 +52,9 @@ class DefPeca(Base):
         "DefPecaComponente",
         back_populates="def_peca_pai",
         foreign_keys="DefPecaComponente.def_peca_pai_id",
+    )
+    operacoes: Mapped[list["DefPecaOperacao"]] = relationship(
+        "DefPecaOperacao",
+        back_populates="def_peca",
+        foreign_keys="DefPecaOperacao.def_peca_id",
     )

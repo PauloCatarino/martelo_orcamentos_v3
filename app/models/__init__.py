@@ -6,6 +6,7 @@ from app.models.def_materia_prima import DefMateriaPrima
 from app.models.def_operacao import DefOperacao
 from app.models.def_peca import DefPeca
 from app.models.def_peca_componente import DefPecaComponente
+from app.models.def_peca_operacao import DefPecaOperacao
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
 from app.models.orcamento_item_modulo import OrcamentoItemModulo
@@ -21,6 +22,7 @@ __all__ = [
     "DefOperacao",
     "DefPeca",
     "DefPecaComponente",
+    "DefPecaOperacao",
     "Orcamento",
     "OrcamentoItem",
     "OrcamentoItemModulo",
