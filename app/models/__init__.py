@@ -9,6 +9,7 @@ from app.models.def_peca_componente import DefPecaComponente
 from app.models.def_peca_operacao import DefPecaOperacao
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
+from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
 from app.models.orcamento_item_modulo import OrcamentoItemModulo
 from app.models.orcamento_item_variavel import OrcamentoItemVariavel
 from app.models.orcamento_versao import OrcamentoVersao
@@ -25,6 +26,7 @@ __all__ = [
     "DefPecaOperacao",
     "Orcamento",
     "OrcamentoItem",
+    "OrcamentoItemCusteioLinha",
     "OrcamentoItemModulo",
     "OrcamentoItemVariavel",
     "OrcamentoVersao",

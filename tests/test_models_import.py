@@ -14,6 +14,7 @@ def test_models_import_and_mapper_configuration() -> None:
         DefPecaOperacao,
         Orcamento,
         OrcamentoItem,
+        OrcamentoItemCusteioLinha,
         OrcamentoItemModulo,
         OrcamentoItemVariavel,
         OrcamentoVersao,
@@ -31,6 +32,7 @@ def test_models_import_and_mapper_configuration() -> None:
     assert Orcamento.__tablename__ == "orcamentos"
     assert OrcamentoVersao.__tablename__ == "orcamento_versoes"
     assert OrcamentoItem.__tablename__ == "orcamento_items"
+    assert OrcamentoItemCusteioLinha.__tablename__ == "orcamento_item_custeio_linhas"
     assert OrcamentoItemModulo.__tablename__ == "orcamento_item_modulos"
     assert OrcamentoItemVariavel.__tablename__ == "orcamento_item_variaveis"
     assert {
@@ -42,6 +44,7 @@ def test_models_import_and_mapper_configuration() -> None:
         "orcamentos",
         "orcamento_versoes",
         "orcamento_items",
+        "orcamento_item_custeio_linhas",
         "orcamento_item_modulos",
         "orcamento_item_variaveis",
     }.issubset(Base.metadata.tables)
