@@ -46,6 +46,18 @@ def test_def_peca_detail_page_shows_orlas() -> None:
     assert "de orlas" in source
 
 
+def test_def_peca_detail_page_shows_valuesets() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._create_dados_gerais_tab)
+
+    assert "get_valueset_key_label" in inspect.getsource(DefPecaDetailPage._format_valueset_key)
+    assert "Chave material ValueSet" in source
+    assert "Permite acabamento" in source
+    assert "Chave acabamento face superior" in source
+    assert "Chave acabamento face inferior" in source
+
+
 def test_def_peca_detail_page_has_component_actions() -> None:
     from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 

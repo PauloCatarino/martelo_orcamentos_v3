@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.orla_types import normalize_orla_type
 from app.domain.peca_types import normalize_peca_type
+from app.domain.valueset_types import normalize_valueset_key
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 
 
@@ -24,6 +25,10 @@ class CriarDefPecaData:
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
     orla_l2: int | str | None = None
+    chave_valueset_material: str | None = None
+    permite_acabamento: bool = False
+    chave_valueset_acabamento_sup: str | None = None
+    chave_valueset_acabamento_inf: str | None = None
     ativo: bool = True
 
 
@@ -40,6 +45,10 @@ class EditarDefPecaData:
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
     orla_l2: int | str | None = None
+    chave_valueset_material: str | None = None
+    permite_acabamento: bool = False
+    chave_valueset_acabamento_sup: str | None = None
+    chave_valueset_acabamento_inf: str | None = None
     ativo: bool = True
 
 
@@ -63,6 +72,15 @@ class DefPecaService:
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
         orla_l2 = normalize_orla_type(data.orla_l2)
+        chave_valueset_material = self._normalize_optional_valueset_key(
+            data.chave_valueset_material
+        )
+        chave_valueset_acabamento_sup = self._normalize_optional_valueset_key(
+            data.chave_valueset_acabamento_sup
+        )
+        chave_valueset_acabamento_inf = self._normalize_optional_valueset_key(
+            data.chave_valueset_acabamento_inf
+        )
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.create_def_peca(
@@ -75,6 +93,10 @@ class DefPecaService:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            chave_valueset_material=chave_valueset_material,
+            permite_acabamento=data.permite_acabamento,
+            chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
+            chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -90,6 +112,15 @@ class DefPecaService:
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
         orla_l2 = normalize_orla_type(data.orla_l2)
+        chave_valueset_material = self._normalize_optional_valueset_key(
+            data.chave_valueset_material
+        )
+        chave_valueset_acabamento_sup = self._normalize_optional_valueset_key(
+            data.chave_valueset_acabamento_sup
+        )
+        chave_valueset_acabamento_inf = self._normalize_optional_valueset_key(
+            data.chave_valueset_acabamento_inf
+        )
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.update_def_peca(
@@ -103,6 +134,10 @@ class DefPecaService:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            chave_valueset_material=chave_valueset_material,
+            permite_acabamento=data.permite_acabamento,
+            chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
+            chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -123,3 +158,13 @@ class DefPecaService:
 
         if not nome:
             raise ValueError("nome is required")
+
+    def _normalize_optional_valueset_key(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if not normalized:
+            return None
+
+        return normalize_valueset_key(normalized)

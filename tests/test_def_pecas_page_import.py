@@ -73,6 +73,25 @@ def test_def_pecas_page_forwards_orlas_to_service() -> None:
     assert "orla_l2=form_data.orla_l2" in source
 
 
+def test_def_pecas_page_forwards_valuesets_to_service() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    create_source = inspect.getsource(DefPecasPage.abrir_nova_peca)
+    edit_source = inspect.getsource(DefPecasPage.abrir_editar_peca)
+
+    for source in (create_source, edit_source):
+        assert "chave_valueset_material=form_data.chave_valueset_material" in source
+        assert "permite_acabamento=form_data.permite_acabamento" in source
+        assert (
+            "chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup"
+            in source
+        )
+        assert (
+            "chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf"
+            in source
+        )
+
+
 def test_def_pecas_page_supports_edit() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 

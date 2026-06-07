@@ -27,6 +27,7 @@ from app.domain.orla_types import format_orla_code, get_orla_type_label
 from app.domain.peca_types import COMPOSTA, get_peca_type_label, normalize_peca_type
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
+from app.domain.valueset_types import get_valueset_key_label
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
@@ -149,6 +150,19 @@ class DefPecaDetailPage(QWidget):
             ("C2", get_orla_type_label(self.peca.orla_c2)),
             ("L1", get_orla_type_label(self.peca.orla_l1)),
             ("L2", get_orla_type_label(self.peca.orla_l2)),
+            (
+                "Chave material ValueSet",
+                self._format_valueset_key(self.peca.chave_valueset_material),
+            ),
+            ("Permite acabamento", self._format_bool(self.peca.permite_acabamento)),
+            (
+                "Chave acabamento face superior",
+                self._format_valueset_key(self.peca.chave_valueset_acabamento_sup),
+            ),
+            (
+                "Chave acabamento face inferior",
+                self._format_valueset_key(self.peca.chave_valueset_acabamento_inf),
+            ),
             ("Ativo", self._format_bool(self.peca.ativo)),
             ("Criado em", self._format_datetime(self.peca.created_at)),
             ("Atualizado em", self._format_datetime(self.peca.updated_at)),
@@ -700,6 +714,13 @@ class DefPecaDetailPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "N\u00e3o"
+
+    def _format_valueset_key(self, value: str | None) -> str:
+        """Format an optional ValueSet key for display."""
+        if value is None or not value.strip():
+            return ""
+
+        return get_valueset_key_label(value)
 
     def _format_datetime(self, value: datetime | None) -> str:
         """Format a datetime value for display."""

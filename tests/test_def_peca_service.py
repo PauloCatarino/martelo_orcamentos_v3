@@ -33,6 +33,10 @@ class _FakeRepository:
             orla_c2=kwargs["orla_c2"],
             orla_l1=kwargs["orla_l1"],
             orla_l2=kwargs["orla_l2"],
+            chave_valueset_material=kwargs["chave_valueset_material"],
+            permite_acabamento=kwargs["permite_acabamento"],
+            chave_valueset_acabamento_sup=kwargs["chave_valueset_acabamento_sup"],
+            chave_valueset_acabamento_inf=kwargs["chave_valueset_acabamento_inf"],
         )
 
     def update_def_peca(self, **kwargs) -> DefPecaResumo:
@@ -49,6 +53,10 @@ class _FakeRepository:
             orla_c2=kwargs["orla_c2"],
             orla_l1=kwargs["orla_l1"],
             orla_l2=kwargs["orla_l2"],
+            chave_valueset_material=kwargs["chave_valueset_material"],
+            permite_acabamento=kwargs["permite_acabamento"],
+            chave_valueset_acabamento_sup=kwargs["chave_valueset_acabamento_sup"],
+            chave_valueset_acabamento_inf=kwargs["chave_valueset_acabamento_inf"],
         )
 
     def deactivate_def_peca(self, id: int) -> bool:
@@ -153,6 +161,33 @@ def test_def_peca_service_normaliza_orlas_ao_criar(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_def_peca_service_normaliza_valuesets_ao_criar(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="PORTA",
+            nome="Porta",
+            chave_valueset_material=" material_portas ",
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+            chave_valueset_acabamento_inf="",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["chave_valueset_material"] == "MATERIAL_PORTAS"
+    assert _FakeRepository.created_payload["permite_acabamento"] is True
+    assert _FakeRepository.created_payload["chave_valueset_acabamento_sup"] == "ACABAMENTO_FACE_SUP"
+    assert _FakeRepository.created_payload["chave_valueset_acabamento_inf"] is None
+    assert result.chave_valueset_material == "MATERIAL_PORTAS"
+    assert result.permite_acabamento is True
+    assert session.committed is True
+
+
 def test_def_peca_service_normaliza_orlas_ao_editar(monkeypatch) -> None:
     _FakeRepository.updated_payload = None
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
@@ -178,6 +213,33 @@ def test_def_peca_service_normaliza_orlas_ao_editar(monkeypatch) -> None:
     assert _FakeRepository.updated_payload["orla_l2"] == 2
     assert result.orla_c1 == 2
     assert result.orla_l2 == 2
+    assert session.committed is True
+
+
+def test_def_peca_service_normaliza_valuesets_ao_editar(monkeypatch) -> None:
+    _FakeRepository.updated_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.editar_peca(
+        8,
+        service_module.EditarDefPecaData(
+            codigo="LAT",
+            nome="Lateral",
+            chave_valueset_material="MATERIAL_LATERAIS",
+            permite_acabamento=False,
+            chave_valueset_acabamento_sup=None,
+            chave_valueset_acabamento_inf="ACABAMENTO_FACE_INF",
+        ),
+    )
+
+    assert _FakeRepository.updated_payload is not None
+    assert _FakeRepository.updated_payload["chave_valueset_material"] == "MATERIAL_LATERAIS"
+    assert _FakeRepository.updated_payload["permite_acabamento"] is False
+    assert _FakeRepository.updated_payload["chave_valueset_acabamento_sup"] is None
+    assert _FakeRepository.updated_payload["chave_valueset_acabamento_inf"] == "ACABAMENTO_FACE_INF"
+    assert result.chave_valueset_acabamento_inf == "ACABAMENTO_FACE_INF"
     assert session.committed is True
 
 

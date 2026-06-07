@@ -26,6 +26,10 @@ class DefPecaResumo:
     orla_c2: int = 0
     orla_l1: int = 0
     orla_l2: int = 0
+    chave_valueset_material: str | None = None
+    permite_acabamento: bool = False
+    chave_valueset_acabamento_sup: str | None = None
+    chave_valueset_acabamento_inf: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -72,6 +76,10 @@ class DefPecaRepository:
         orla_c2: int = 0,
         orla_l1: int = 0,
         orla_l2: int = 0,
+        chave_valueset_material: str | None = None,
+        permite_acabamento: bool = False,
+        chave_valueset_acabamento_sup: str | None = None,
+        chave_valueset_acabamento_inf: str | None = None,
         ativo: bool = True,
     ) -> DefPecaResumo:
         """Create one reusable piece definition."""
@@ -85,6 +93,10 @@ class DefPecaRepository:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            chave_valueset_material=chave_valueset_material,
+            permite_acabamento=permite_acabamento,
+            chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
+            chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
             ativo=ativo,
         )
         self.session.add(peca)
@@ -105,6 +117,10 @@ class DefPecaRepository:
         orla_c2: int = 0,
         orla_l1: int = 0,
         orla_l2: int = 0,
+        chave_valueset_material: str | None = None,
+        permite_acabamento: bool = False,
+        chave_valueset_acabamento_sup: str | None = None,
+        chave_valueset_acabamento_inf: str | None = None,
         ativo: bool,
     ) -> DefPecaResumo:
         """Update one reusable piece definition."""
@@ -121,6 +137,10 @@ class DefPecaRepository:
         peca.orla_c2 = orla_c2
         peca.orla_l1 = orla_l1
         peca.orla_l2 = orla_l2
+        peca.chave_valueset_material = chave_valueset_material
+        peca.permite_acabamento = permite_acabamento
+        peca.chave_valueset_acabamento_sup = chave_valueset_acabamento_sup
+        peca.chave_valueset_acabamento_inf = chave_valueset_acabamento_inf
         peca.ativo = ativo
         self.session.flush()
 
@@ -151,6 +171,10 @@ class DefPecaRepository:
             orla_c2=peca.orla_c2,
             orla_l1=peca.orla_l1,
             orla_l2=peca.orla_l2,
+            chave_valueset_material=peca.chave_valueset_material,
+            permite_acabamento=peca.permite_acabamento,
+            chave_valueset_acabamento_sup=peca.chave_valueset_acabamento_sup,
+            chave_valueset_acabamento_inf=peca.chave_valueset_acabamento_inf,
             created_at=peca.created_at,
             updated_at=peca.updated_at,
         )

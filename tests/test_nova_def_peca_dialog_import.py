@@ -48,6 +48,19 @@ def test_nova_def_peca_dialog_data_has_orla_fields() -> None:
     assert {"orla_c1", "orla_c2", "orla_l1", "orla_l2"} <= field_names
 
 
+def test_nova_def_peca_dialog_data_has_valueset_fields() -> None:
+    from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialogData
+
+    field_names = {field.name for field in dataclasses.fields(NovaDefPecaDialogData)}
+
+    assert {
+        "chave_valueset_material",
+        "permite_acabamento",
+        "chave_valueset_acabamento_sup",
+        "chave_valueset_acabamento_inf",
+    } <= field_names
+
+
 def test_nova_def_peca_dialog_previews_orla_code() -> None:
     from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 
@@ -65,3 +78,18 @@ def test_nova_def_peca_dialog_get_data_includes_orlas() -> None:
 
     for field in ("orla_c1", "orla_c2", "orla_l1", "orla_l2"):
         assert field in source
+
+
+def test_nova_def_peca_dialog_uses_valueset_options() -> None:
+    from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
+
+    source_names = NovaDefPecaDialog.__init__.__code__.co_names
+    source_populate = inspect.getsource(NovaDefPecaDialog._populate_valueset_combo)
+    source_get_data = inspect.getsource(NovaDefPecaDialog.get_data)
+
+    assert "_populate_valueset_combo" in source_names
+    assert "get_valueset_key_options" in source_populate
+    assert "ACABAMENTO_" in source_populate
+    assert "chave_valueset_material" in source_get_data
+    assert "chave_valueset_acabamento_sup" in source_get_data
+    assert "chave_valueset_acabamento_inf" in source_get_data

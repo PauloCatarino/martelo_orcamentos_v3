@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from app.domain.orla_types import format_orla_code, get_orla_type_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options
+from app.domain.valueset_types import get_valueset_key_options
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,10 @@ class NovaDefPecaDialogData:
     orla_c2: int
     orla_l1: int
     orla_l2: int
+    chave_valueset_material: str | None
+    permite_acabamento: bool
+    chave_valueset_acabamento_sup: str | None
+    chave_valueset_acabamento_inf: str | None
     ativo: bool
 
 
@@ -64,6 +69,22 @@ class NovaDefPecaDialog(QDialog):
         self.grupo_input = QLineEdit()
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
+        self.chave_valueset_material_input = QComboBox()
+        self.permite_acabamento_input = QCheckBox()
+        self.chave_valueset_acabamento_sup_input = QComboBox()
+        self.chave_valueset_acabamento_inf_input = QComboBox()
+
+        self._populate_valueset_combo(self.chave_valueset_material_input)
+        self._populate_valueset_combo(
+            self.chave_valueset_acabamento_sup_input,
+            only_acabamentos=True,
+        )
+        self._populate_valueset_combo(
+            self.chave_valueset_acabamento_inf_input,
+            only_acabamentos=True,
+        )
+        self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
+        self._update_acabamento_enabled()
 
         self.orla_c1_input = QComboBox()
         self.orla_c2_input = QComboBox()
@@ -116,9 +137,24 @@ class NovaDefPecaDialog(QDialog):
         orla_form.addRow(self.orla_preview_label)
         orla_group.setLayout(orla_form)
 
+        valueset_group = QGroupBox("ValueSets")
+        valueset_form = QFormLayout()
+        valueset_form.addRow("Chave material ValueSet", self.chave_valueset_material_input)
+        valueset_form.addRow("Permite acabamento", self.permite_acabamento_input)
+        valueset_form.addRow(
+            "Chave acabamento face superior",
+            self.chave_valueset_acabamento_sup_input,
+        )
+        valueset_form.addRow(
+            "Chave acabamento face inferior",
+            self.chave_valueset_acabamento_inf_input,
+        )
+        valueset_group.setLayout(valueset_form)
+
         layout = QVBoxLayout()
         layout.addLayout(form_layout)
         layout.addWidget(orla_group)
+        layout.addWidget(valueset_group)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
@@ -135,6 +171,10 @@ class NovaDefPecaDialog(QDialog):
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),
             orla_l2=self.orla_l2_input.currentData(),
+            chave_valueset_material=self.chave_valueset_material_input.currentData(),
+            permite_acabamento=self.permite_acabamento_input.isChecked(),
+            chave_valueset_acabamento_sup=self.chave_valueset_acabamento_sup_input.currentData(),
+            chave_valueset_acabamento_inf=self.chave_valueset_acabamento_inf_input.currentData(),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -169,6 +209,26 @@ class NovaDefPecaDialog(QDialog):
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
+
+    def _populate_valueset_combo(
+        self, combo: QComboBox, *, only_acabamentos: bool = False
+    ) -> None:
+        """Fill one ValueSet key combo box."""
+        combo.addItem("Sem chave", None)
+        options = get_valueset_key_options()
+        if only_acabamentos:
+            options = tuple(
+                (code, label) for code, label in options if code.startswith("ACABAMENTO_")
+            )
+
+        for code, label in options:
+            combo.addItem(label, code)
+
+    def _update_acabamento_enabled(self) -> None:
+        """Enable or disable finish ValueSet combos."""
+        enabled = self.permite_acabamento_input.isChecked()
+        self.chave_valueset_acabamento_sup_input.setEnabled(enabled)
+        self.chave_valueset_acabamento_inf_input.setEnabled(enabled)
 
     def _empty_to_none(self, value: str) -> str | None:
         """Normalize empty text input."""

@@ -146,6 +146,10 @@ class DefPecasPage(QWidget):
                             orla_c2=form_data.orla_c2,
                             orla_l1=form_data.orla_l1,
                             orla_l2=form_data.orla_l2,
+                            chave_valueset_material=form_data.chave_valueset_material,
+                            permite_acabamento=form_data.permite_acabamento,
+                            chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
+                            chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
                             ativo=form_data.ativo,
                         )
                     )
@@ -196,6 +200,10 @@ class DefPecasPage(QWidget):
                             orla_c2=form_data.orla_c2,
                             orla_l1=form_data.orla_l1,
                             orla_l2=form_data.orla_l2,
+                            chave_valueset_material=form_data.chave_valueset_material,
+                            permite_acabamento=form_data.permite_acabamento,
+                            chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
+                            chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
                             ativo=form_data.ativo,
                         ),
                     )
