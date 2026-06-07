@@ -39,6 +39,12 @@ class DefPeca(Base):
     orla_c2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
+    chave_valueset_material: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    permite_acabamento: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    chave_valueset_acabamento_sup: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    chave_valueset_acabamento_inf: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
