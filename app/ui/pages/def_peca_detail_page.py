@@ -27,13 +27,14 @@ from app.domain.orla_types import format_orla_code, get_orla_type_label
 from app.domain.peca_types import COMPOSTA, get_peca_type_label, normalize_peca_type
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
-from app.domain.valueset_types import get_valueset_key_label
+from app.domain.valueset_types import VALUESET_KEY_LABELS
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_maquina_service import DefMaquinaService
 from app.services.def_operacao_service import DefOperacaoService
+from app.services.def_valueset_chave_service import DefValuesetChaveService
 from app.services.def_peca_componente_service import (
     CriarDefPecaComponenteData,
     DefPecaComponenteService,
@@ -130,6 +131,8 @@ class DefPecaDetailPage(QWidget):
         form = QFormLayout()
         form.setContentsMargins(12, 12, 12, 12)
         form.setSpacing(10)
+
+        self._valueset_labels = self._carregar_valueset_labels()
 
         fields = [
             ("C\u00f3digo", self.peca.codigo),
@@ -716,11 +719,25 @@ class DefPecaDetailPage(QWidget):
         return "Sim" if value else "N\u00e3o"
 
     def _format_valueset_key(self, value: str | None) -> str:
-        """Format an optional ValueSet key for display."""
+        """Format an optional ValueSet key, preferring the configured label."""
         if value is None or not value.strip():
             return ""
 
-        return get_valueset_key_label(value)
+        label = self._valueset_labels.get(value)
+        if label:
+            return label
+
+        return VALUESET_KEY_LABELS.get(value, value)
+
+    def _carregar_valueset_labels(self) -> dict[str, str]:
+        """Load active ValueSet key labels (codigo -> nome) from the database."""
+        try:
+            with SessionLocal() as session:
+                chaves = DefValuesetChaveService(session).listar_chaves_ativas()
+        except SQLAlchemyError:
+            return {}
+
+        return {chave.codigo: chave.nome for chave in chaves}
 
     def _format_datetime(self, value: datetime | None) -> str:
         """Format a datetime value for display."""

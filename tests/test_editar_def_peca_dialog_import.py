@@ -72,17 +72,16 @@ def test_editar_def_peca_dialog_get_data_includes_orlas() -> None:
         assert field in source
 
 
-def test_editar_def_peca_dialog_uses_valueset_options() -> None:
+def test_editar_def_peca_dialog_uses_valueset_combo_helper() -> None:
     from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
 
-    source_names = EditarDefPecaDialog.__init__.__code__.co_names
-    source_populate = inspect.getsource(EditarDefPecaDialog._populate_valueset_combo)
-    source_load = inspect.getsource(EditarDefPecaDialog._load_peca)
+    source_init = inspect.getsource(EditarDefPecaDialog.__init__)
     source_get_data = inspect.getsource(EditarDefPecaDialog.get_data)
 
-    assert "_populate_valueset_combo" in source_names
-    assert "get_valueset_key_options" in source_populate
-    assert "ACABAMENTO_" in source_populate
-    assert "chave_valueset_material" in source_load
-    assert "chave_valueset_acabamento_sup" in source_load
+    assert "carregar_chaves_valueset_combo" in source_init
+    assert "valor_atual" in source_init
+    assert "ACABAMENTO" in source_init
+    assert "obter_valor_chave_combo" in source_get_data
+    assert "chave_valueset_material" in source_get_data
+    assert "chave_valueset_acabamento_sup" in source_get_data
     assert "chave_valueset_acabamento_inf" in source_get_data

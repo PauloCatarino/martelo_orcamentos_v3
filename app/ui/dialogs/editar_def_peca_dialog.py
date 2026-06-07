@@ -24,8 +24,11 @@ from app.domain.orla_types import (
     normalize_orla_type,
 )
 from app.domain.peca_types import SIMPLES, get_peca_type_options, normalize_peca_type
-from app.domain.valueset_types import get_valueset_key_options
 from app.repositories.def_peca_repository import DefPecaResumo
+from app.ui.helpers.valueset_combo_helper import (
+    carregar_chaves_valueset_combo,
+    obter_valor_chave_combo,
+)
 
 
 @dataclass(frozen=True)
@@ -80,14 +83,19 @@ class EditarDefPecaDialog(QDialog):
         self.chave_valueset_acabamento_sup_input = QComboBox()
         self.chave_valueset_acabamento_inf_input = QComboBox()
 
-        self._populate_valueset_combo(self.chave_valueset_material_input)
-        self._populate_valueset_combo(
-            self.chave_valueset_acabamento_sup_input,
-            only_acabamentos=True,
+        carregar_chaves_valueset_combo(
+            self.chave_valueset_material_input,
+            valor_atual=peca.chave_valueset_material,
         )
-        self._populate_valueset_combo(
+        carregar_chaves_valueset_combo(
+            self.chave_valueset_acabamento_sup_input,
+            tipo="ACABAMENTO",
+            valor_atual=peca.chave_valueset_acabamento_sup,
+        )
+        carregar_chaves_valueset_combo(
             self.chave_valueset_acabamento_inf_input,
-            only_acabamentos=True,
+            tipo="ACABAMENTO",
+            valor_atual=peca.chave_valueset_acabamento_inf,
         )
         self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
 
@@ -177,19 +185,7 @@ class EditarDefPecaDialog(QDialog):
         self._select_combo_data(self.orla_c2_input, normalize_orla_type(self.peca.orla_c2))
         self._select_combo_data(self.orla_l1_input, normalize_orla_type(self.peca.orla_l1))
         self._select_combo_data(self.orla_l2_input, normalize_orla_type(self.peca.orla_l2))
-        self._select_combo_data(
-            self.chave_valueset_material_input,
-            self.peca.chave_valueset_material,
-        )
         self.permite_acabamento_input.setChecked(self.peca.permite_acabamento)
-        self._select_combo_data(
-            self.chave_valueset_acabamento_sup_input,
-            self.peca.chave_valueset_acabamento_sup,
-        )
-        self._select_combo_data(
-            self.chave_valueset_acabamento_inf_input,
-            self.peca.chave_valueset_acabamento_inf,
-        )
         self._update_acabamento_enabled()
         self._update_orla_preview()
 
@@ -210,10 +206,14 @@ class EditarDefPecaDialog(QDialog):
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),
             orla_l2=self.orla_l2_input.currentData(),
-            chave_valueset_material=self.chave_valueset_material_input.currentData(),
+            chave_valueset_material=obter_valor_chave_combo(self.chave_valueset_material_input),
             permite_acabamento=self.permite_acabamento_input.isChecked(),
-            chave_valueset_acabamento_sup=self.chave_valueset_acabamento_sup_input.currentData(),
-            chave_valueset_acabamento_inf=self.chave_valueset_acabamento_inf_input.currentData(),
+            chave_valueset_acabamento_sup=obter_valor_chave_combo(
+                self.chave_valueset_acabamento_sup_input
+            ),
+            chave_valueset_acabamento_inf=obter_valor_chave_combo(
+                self.chave_valueset_acabamento_inf_input
+            ),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -248,20 +248,6 @@ class EditarDefPecaDialog(QDialog):
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
-
-    def _populate_valueset_combo(
-        self, combo: QComboBox, *, only_acabamentos: bool = False
-    ) -> None:
-        """Fill one ValueSet key combo box."""
-        combo.addItem("Sem chave", None)
-        options = get_valueset_key_options()
-        if only_acabamentos:
-            options = tuple(
-                (code, label) for code, label in options if code.startswith("ACABAMENTO_")
-            )
-
-        for code, label in options:
-            combo.addItem(label, code)
 
     def _update_acabamento_enabled(self) -> None:
         """Enable or disable finish ValueSet combos."""

@@ -50,12 +50,23 @@ def test_def_peca_detail_page_shows_valuesets() -> None:
     from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 
     source = inspect.getsource(DefPecaDetailPage._create_dados_gerais_tab)
+    format_source = inspect.getsource(DefPecaDetailPage._format_valueset_key)
 
-    assert "get_valueset_key_label" in inspect.getsource(DefPecaDetailPage._format_valueset_key)
+    assert "_valueset_labels" in format_source
+    assert "VALUESET_KEY_LABELS" in format_source
     assert "Chave material ValueSet" in source
     assert "Permite acabamento" in source
     assert "Chave acabamento face superior" in source
     assert "Chave acabamento face inferior" in source
+
+
+def test_def_peca_detail_page_loads_valueset_labels_from_db() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._carregar_valueset_labels)
+
+    assert "DefValuesetChaveService" in source
+    assert "listar_chaves_ativas" in source
 
 
 def test_def_peca_detail_page_has_component_actions() -> None:

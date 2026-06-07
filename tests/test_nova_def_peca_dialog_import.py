@@ -80,16 +80,15 @@ def test_nova_def_peca_dialog_get_data_includes_orlas() -> None:
         assert field in source
 
 
-def test_nova_def_peca_dialog_uses_valueset_options() -> None:
+def test_nova_def_peca_dialog_uses_valueset_combo_helper() -> None:
     from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 
-    source_names = NovaDefPecaDialog.__init__.__code__.co_names
-    source_populate = inspect.getsource(NovaDefPecaDialog._populate_valueset_combo)
+    source_init = inspect.getsource(NovaDefPecaDialog.__init__)
     source_get_data = inspect.getsource(NovaDefPecaDialog.get_data)
 
-    assert "_populate_valueset_combo" in source_names
-    assert "get_valueset_key_options" in source_populate
-    assert "ACABAMENTO_" in source_populate
+    assert "carregar_chaves_valueset_combo" in source_init
+    assert "ACABAMENTO" in source_init
+    assert "obter_valor_chave_combo" in source_get_data
     assert "chave_valueset_material" in source_get_data
     assert "chave_valueset_acabamento_sup" in source_get_data
     assert "chave_valueset_acabamento_inf" in source_get_data

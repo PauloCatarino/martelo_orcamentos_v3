@@ -20,7 +20,10 @@ from PySide6.QtWidgets import (
 
 from app.domain.orla_types import format_orla_code, get_orla_type_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options
-from app.domain.valueset_types import get_valueset_key_options
+from app.ui.helpers.valueset_combo_helper import (
+    carregar_chaves_valueset_combo,
+    obter_valor_chave_combo,
+)
 
 
 @dataclass(frozen=True)
@@ -74,14 +77,12 @@ class NovaDefPecaDialog(QDialog):
         self.chave_valueset_acabamento_sup_input = QComboBox()
         self.chave_valueset_acabamento_inf_input = QComboBox()
 
-        self._populate_valueset_combo(self.chave_valueset_material_input)
-        self._populate_valueset_combo(
-            self.chave_valueset_acabamento_sup_input,
-            only_acabamentos=True,
+        carregar_chaves_valueset_combo(self.chave_valueset_material_input)
+        carregar_chaves_valueset_combo(
+            self.chave_valueset_acabamento_sup_input, tipo="ACABAMENTO"
         )
-        self._populate_valueset_combo(
-            self.chave_valueset_acabamento_inf_input,
-            only_acabamentos=True,
+        carregar_chaves_valueset_combo(
+            self.chave_valueset_acabamento_inf_input, tipo="ACABAMENTO"
         )
         self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
         self._update_acabamento_enabled()
@@ -171,10 +172,14 @@ class NovaDefPecaDialog(QDialog):
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),
             orla_l2=self.orla_l2_input.currentData(),
-            chave_valueset_material=self.chave_valueset_material_input.currentData(),
+            chave_valueset_material=obter_valor_chave_combo(self.chave_valueset_material_input),
             permite_acabamento=self.permite_acabamento_input.isChecked(),
-            chave_valueset_acabamento_sup=self.chave_valueset_acabamento_sup_input.currentData(),
-            chave_valueset_acabamento_inf=self.chave_valueset_acabamento_inf_input.currentData(),
+            chave_valueset_acabamento_sup=obter_valor_chave_combo(
+                self.chave_valueset_acabamento_sup_input
+            ),
+            chave_valueset_acabamento_inf=obter_valor_chave_combo(
+                self.chave_valueset_acabamento_inf_input
+            ),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -209,20 +214,6 @@ class NovaDefPecaDialog(QDialog):
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
-
-    def _populate_valueset_combo(
-        self, combo: QComboBox, *, only_acabamentos: bool = False
-    ) -> None:
-        """Fill one ValueSet key combo box."""
-        combo.addItem("Sem chave", None)
-        options = get_valueset_key_options()
-        if only_acabamentos:
-            options = tuple(
-                (code, label) for code, label in options if code.startswith("ACABAMENTO_")
-            )
-
-        for code, label in options:
-            combo.addItem(label, code)
 
     def _update_acabamento_enabled(self) -> None:
         """Enable or disable finish ValueSet combos."""
