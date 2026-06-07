@@ -18,6 +18,10 @@ class DefValuesetModeloLinhaResumo:
     id: int
     def_valueset_modelo_id: int
     chave: str
+    codigo_opcao: str | None
+    nome_opcao: str | None
+    padrao: bool
+    ordem: int
     descricao: str | None
     materia_prima_id: int | None
     ref_materia_prima: str | None
@@ -60,7 +64,27 @@ class DefValuesetModeloLinhaRepository:
         statement = (
             select(DefValuesetModeloLinha)
             .where(DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id)
-            .order_by(DefValuesetModeloLinha.chave.asc(), DefValuesetModeloLinha.id.asc())
+            .order_by(
+                DefValuesetModeloLinha.chave.asc(),
+                DefValuesetModeloLinha.ordem.asc(),
+                DefValuesetModeloLinha.id.asc(),
+            )
+        )
+        linhas = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(linha) for linha in linhas]
+
+    def list_by_modelo_chave(
+        self, modelo_id: int, chave: str
+    ) -> list[DefValuesetModeloLinhaResumo]:
+        """List all options for one model and key, ordered by ordem."""
+        statement = (
+            select(DefValuesetModeloLinha)
+            .where(
+                DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
+                DefValuesetModeloLinha.chave == chave,
+            )
+            .order_by(DefValuesetModeloLinha.ordem.asc(), DefValuesetModeloLinha.id.asc())
         )
         linhas = self.session.execute(statement).scalars().all()
 
@@ -77,10 +101,49 @@ class DefValuesetModeloLinhaRepository:
     def get_by_modelo_chave(
         self, modelo_id: int, chave: str
     ) -> DefValuesetModeloLinhaResumo | None:
-        """Get one line by model and key."""
+        """Get the first line for one model and key."""
+        statement = (
+            select(DefValuesetModeloLinha)
+            .where(
+                DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
+                DefValuesetModeloLinha.chave == chave,
+            )
+            .order_by(DefValuesetModeloLinha.ordem.asc(), DefValuesetModeloLinha.id.asc())
+        )
+        linha = self.session.execute(statement).scalars().first()
+        if linha is None:
+            return None
+
+        return self._to_resumo(linha)
+
+    def get_by_modelo_chave_opcao(
+        self, modelo_id: int, chave: str, codigo_opcao: str
+    ) -> DefValuesetModeloLinhaResumo | None:
+        """Get one line by model, key and option code."""
         statement = select(DefValuesetModeloLinha).where(
             DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
             DefValuesetModeloLinha.chave == chave,
+            DefValuesetModeloLinha.codigo_opcao == codigo_opcao,
+        )
+        linha = self.session.execute(statement).scalars().first()
+        if linha is None:
+            return None
+
+        return self._to_resumo(linha)
+
+    def get_default_by_modelo_chave(
+        self, modelo_id: int, chave: str
+    ) -> DefValuesetModeloLinhaResumo | None:
+        """Get the active default option for one model and key."""
+        statement = (
+            select(DefValuesetModeloLinha)
+            .where(
+                DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
+                DefValuesetModeloLinha.chave == chave,
+                DefValuesetModeloLinha.padrao.is_(True),
+                DefValuesetModeloLinha.ativo.is_(True),
+            )
+            .order_by(DefValuesetModeloLinha.ordem.asc(), DefValuesetModeloLinha.id.asc())
         )
         linha = self.session.execute(statement).scalars().first()
         if linha is None:
@@ -130,12 +193,42 @@ class DefValuesetModeloLinhaRepository:
 
         return True
 
+    def set_padrao(self, id: int, padrao: bool) -> bool:
+        """Set the default flag on one line."""
+        linha = self.session.get(DefValuesetModeloLinha, id)
+        if linha is None:
+            return False
+
+        linha.padrao = padrao
+        self.session.flush()
+
+        return True
+
+    def clear_padrao_for_chave(
+        self, modelo_id: int, chave: str, exclude_id: int | None = None
+    ) -> None:
+        """Clear the default flag on the other options of one model and key."""
+        statement = select(DefValuesetModeloLinha).where(
+            DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
+            DefValuesetModeloLinha.chave == chave,
+            DefValuesetModeloLinha.padrao.is_(True),
+        )
+        for linha in self.session.execute(statement).scalars().all():
+            if exclude_id is not None and linha.id == exclude_id:
+                continue
+            linha.padrao = False
+        self.session.flush()
+
     def _to_resumo(self, linha: DefValuesetModeloLinha) -> DefValuesetModeloLinhaResumo:
         """Convert an ORM line to the read model."""
         return DefValuesetModeloLinhaResumo(
             id=linha.id,
             def_valueset_modelo_id=linha.def_valueset_modelo_id,
             chave=linha.chave,
+            codigo_opcao=linha.codigo_opcao,
+            nome_opcao=linha.nome_opcao,
+            padrao=linha.padrao,
+            ordem=linha.ordem,
             descricao=linha.descricao,
             materia_prima_id=linha.materia_prima_id,
             ref_materia_prima=linha.ref_materia_prima,

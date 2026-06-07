@@ -10,7 +10,11 @@ def _resumo(**kwargs) -> DefValuesetModeloLinhaResumo:
     base = {
         "id": 1,
         "def_valueset_modelo_id": 10,
-        "chave": "MATERIAL_CAIXOTE",
+        "chave": "FERRAGEM_DOBRADICA",
+        "codigo_opcao": "FERRAGEM_DOBRADICA",
+        "nome_opcao": None,
+        "padrao": False,
+        "ordem": 1,
         "descricao": None,
         "materia_prima_id": None,
         "ref_materia_prima": None,
@@ -27,9 +31,13 @@ def _resumo(**kwargs) -> DefValuesetModeloLinhaResumo:
 
 class _FakeRepository:
     rows: list[DefValuesetModeloLinhaResumo] = []
-    duplicate: DefValuesetModeloLinhaResumo | None = None
+    opcao_existing: DefValuesetModeloLinhaResumo | None = None
+    default_existing: DefValuesetModeloLinhaResumo | None = None
+    by_id: DefValuesetModeloLinhaResumo | None = None
     created_payload: dict | None = None
     updated_payload: dict | None = None
+    set_padrao_calls: list = []
+    clear_calls: list = []
     deactivate_result = True
     activate_result = True
 
@@ -45,11 +53,20 @@ class _FakeRepository:
     def list_by_modelo(self, modelo_id: int):
         return self.rows
 
+    def list_by_modelo_chave(self, modelo_id: int, chave: str):
+        return self.rows
+
     def get_by_id(self, id: int):
-        return _resumo(id=id)
+        return self.by_id if self.by_id is not None else _resumo(id=id)
 
     def get_by_modelo_chave(self, modelo_id: int, chave: str):
-        return self.duplicate
+        return None
+
+    def get_by_modelo_chave_opcao(self, modelo_id: int, chave: str, codigo_opcao: str):
+        return self.opcao_existing
+
+    def get_default_by_modelo_chave(self, modelo_id: int, chave: str):
+        return self.default_existing
 
     def create(self, **fields):
         self.__class__.created_payload = fields
@@ -65,6 +82,13 @@ class _FakeRepository:
     def activate(self, id: int) -> bool:
         return self.activate_result
 
+    def set_padrao(self, id: int, padrao: bool) -> bool:
+        self.__class__.set_padrao_calls.append((id, padrao))
+        return True
+
+    def clear_padrao_for_chave(self, modelo_id: int, chave: str, exclude_id=None) -> None:
+        self.__class__.clear_calls.append((modelo_id, chave, exclude_id))
+
 
 class _FakeSession:
     def __init__(self) -> None:
@@ -76,9 +100,13 @@ class _FakeSession:
 
 def _reset() -> None:
     _FakeRepository.rows = []
-    _FakeRepository.duplicate = None
+    _FakeRepository.opcao_existing = None
+    _FakeRepository.default_existing = None
+    _FakeRepository.by_id = None
     _FakeRepository.created_payload = None
     _FakeRepository.updated_payload = None
+    _FakeRepository.set_padrao_calls = []
+    _FakeRepository.clear_calls = []
     _FakeRepository.deactivate_result = True
     _FakeRepository.activate_result = True
 
@@ -90,23 +118,39 @@ def _service(monkeypatch):
     return service_module.DefValuesetModeloLinhaService(session=session), session
 
 
-def test_criar_linha_normaliza_chave_e_defaults(monkeypatch) -> None:
+def test_criar_linha_normaliza_chave_e_opcao_defaults(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 
-    result = service.criar_linha(
+    service.criar_linha(
         service_module.CriarDefValuesetModeloLinhaData(
             def_valueset_modelo_id=10,
-            chave=" material_caixote ",
-            ref_materia_prima="PLACA-01",
+            chave=" ferragem_dobradica ",
         )
     )
 
-    assert _FakeRepository.created_payload is not None
-    assert _FakeRepository.created_payload["chave"] == "MATERIAL_CAIXOTE"
-    assert _FakeRepository.created_payload["editado_localmente"] is False
-    assert _FakeRepository.created_payload["ativo"] is True
-    assert result.ref_materia_prima == "PLACA-01"
+    payload = _FakeRepository.created_payload
+    assert payload is not None
+    assert payload["chave"] == "FERRAGEM_DOBRADICA"
+    assert payload["codigo_opcao"] == "FERRAGEM_DOBRADICA"
+    assert payload["padrao"] is False
+    assert payload["ordem"] == 1
     assert session.committed is True
+
+
+def test_criar_linha_normaliza_codigo_opcao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao=" blum_reta ",
+            nome_opcao="Blum dobradiça reta",
+        )
+    )
+
+    assert _FakeRepository.created_payload["codigo_opcao"] == "BLUM_RETA"
+    assert _FakeRepository.created_payload["nome_opcao"] == "Blum dobradiça reta"
 
 
 def test_criar_linha_valida_chave_obrigatoria(monkeypatch) -> None:
@@ -127,40 +171,129 @@ def test_criar_linha_valida_chave_obrigatoria(monkeypatch) -> None:
     assert session.committed is False
 
 
-def test_criar_linha_recusa_chave_duplicada(monkeypatch) -> None:
+def test_varias_opcoes_mesma_chave_permitidas(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeRepository.duplicate = _resumo(id=2)
+    _FakeRepository.opcao_existing = None
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="EMUCA_RETA",
+        )
+    )
+
+    assert _FakeRepository.created_payload["codigo_opcao"] == "EMUCA_RETA"
+    assert session.committed is True
+
+
+def test_duplicar_chave_e_opcao_recusada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.opcao_existing = _resumo(id=2, codigo_opcao="BLUM_RETA")
 
     try:
         service.criar_linha(
             service_module.CriarDefValuesetModeloLinhaData(
                 def_valueset_modelo_id=10,
-                chave="MATERIAL_CAIXOTE",
+                chave="FERRAGEM_DOBRADICA",
+                codigo_opcao="BLUM_RETA",
             )
         )
     except ValueError as error:
-        assert "chave" in str(error)
+        assert "opcao" in str(error)
     else:
         raise AssertionError("Expected ValueError")
 
     assert session.committed is False
 
 
-def test_editar_linha_permite_a_propria_chave(monkeypatch) -> None:
+def test_so_uma_padrao_por_chave(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeRepository.duplicate = _resumo(id=7)
+    _FakeRepository.default_existing = _resumo(id=5, padrao=True, codigo_opcao="BLUM_RETA")
 
-    result = service.editar_linha(
+    try:
+        service.criar_linha(
+            service_module.CriarDefValuesetModeloLinhaData(
+                def_valueset_modelo_id=10,
+                chave="FERRAGEM_DOBRADICA",
+                codigo_opcao="EMUCA_RETA",
+                padrao=True,
+            )
+        )
+    except ValueError as error:
+        assert "padrao" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
+
+
+def test_criar_padrao_quando_nao_existe(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.default_existing = None
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="BLUM_RETA",
+            padrao=True,
+        )
+    )
+
+    assert _FakeRepository.created_payload["padrao"] is True
+    assert session.committed is True
+
+
+def test_obter_padrao_por_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.default_existing = _resumo(id=7, padrao=True, codigo_opcao="BLUM_RETA")
+
+    result = service.obter_padrao_por_chave(10, "ferragem_dobradica")
+
+    assert result is not None
+    assert result.id == 7
+
+
+def test_listar_por_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.rows = [
+        _resumo(id=1, codigo_opcao="BLUM_RETA"),
+        _resumo(id=2, codigo_opcao="EMUCA_RETA"),
+    ]
+
+    result = service.listar_por_chave(10, "FERRAGEM_DOBRADICA")
+
+    assert len(result) == 2
+
+
+def test_definir_como_padrao(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5, def_valueset_modelo_id=10, chave="FERRAGEM_DOBRADICA", codigo_opcao="EMUCA_RETA"
+    )
+
+    assert service.definir_como_padrao(5) is True
+    assert (10, "FERRAGEM_DOBRADICA", 5) in _FakeRepository.clear_calls
+    assert (5, True) in _FakeRepository.set_padrao_calls
+    assert session.committed is True
+
+
+def test_editar_linha_permite_a_propria_opcao(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.opcao_existing = _resumo(id=7, codigo_opcao="BLUM_RETA")
+
+    service.editar_linha(
         7,
         service_module.EditarDefValuesetModeloLinhaData(
             def_valueset_modelo_id=10,
-            chave="ORLA_FINA",
-            valor_texto="orla fina default",
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="BLUM_RETA",
+            valor_texto="dobradica default",
         ),
     )
 
     assert _FakeRepository.updated_payload is not None
     assert _FakeRepository.updated_payload["id"] == 7
-    assert _FakeRepository.updated_payload["chave"] == "ORLA_FINA"
-    assert result.valor_texto == "orla fina default"
+    assert _FakeRepository.updated_payload["codigo_opcao"] == "BLUM_RETA"
     assert session.committed is True

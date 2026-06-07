@@ -18,6 +18,10 @@ class OrcamentoValuesetLinhaResumo:
     id: int
     orcamento_versao_id: int
     chave: str
+    codigo_opcao: str | None
+    nome_opcao: str | None
+    padrao: bool
+    ordem: int
     descricao: str | None
     materia_prima_id: int | None
     ref_materia_prima: str | None
@@ -62,7 +66,27 @@ class OrcamentoValuesetLinhaRepository:
         statement = (
             select(OrcamentoValuesetLinha)
             .where(OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id)
-            .order_by(OrcamentoValuesetLinha.chave.asc(), OrcamentoValuesetLinha.id.asc())
+            .order_by(
+                OrcamentoValuesetLinha.chave.asc(),
+                OrcamentoValuesetLinha.ordem.asc(),
+                OrcamentoValuesetLinha.id.asc(),
+            )
+        )
+        linhas = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(linha) for linha in linhas]
+
+    def list_by_versao_chave(
+        self, orcamento_versao_id: int, chave: str
+    ) -> list[OrcamentoValuesetLinhaResumo]:
+        """List all options for one budget version and key, ordered by ordem."""
+        statement = (
+            select(OrcamentoValuesetLinha)
+            .where(
+                OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
+                OrcamentoValuesetLinha.chave == chave,
+            )
+            .order_by(OrcamentoValuesetLinha.ordem.asc(), OrcamentoValuesetLinha.id.asc())
         )
         linhas = self.session.execute(statement).scalars().all()
 
@@ -79,10 +103,49 @@ class OrcamentoValuesetLinhaRepository:
     def get_by_versao_chave(
         self, orcamento_versao_id: int, chave: str
     ) -> OrcamentoValuesetLinhaResumo | None:
-        """Get one line by budget version and key."""
+        """Get the first line for one budget version and key."""
+        statement = (
+            select(OrcamentoValuesetLinha)
+            .where(
+                OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
+                OrcamentoValuesetLinha.chave == chave,
+            )
+            .order_by(OrcamentoValuesetLinha.ordem.asc(), OrcamentoValuesetLinha.id.asc())
+        )
+        linha = self.session.execute(statement).scalars().first()
+        if linha is None:
+            return None
+
+        return self._to_resumo(linha)
+
+    def get_by_versao_chave_opcao(
+        self, orcamento_versao_id: int, chave: str, codigo_opcao: str
+    ) -> OrcamentoValuesetLinhaResumo | None:
+        """Get one line by budget version, key and option code."""
         statement = select(OrcamentoValuesetLinha).where(
             OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
             OrcamentoValuesetLinha.chave == chave,
+            OrcamentoValuesetLinha.codigo_opcao == codigo_opcao,
+        )
+        linha = self.session.execute(statement).scalars().first()
+        if linha is None:
+            return None
+
+        return self._to_resumo(linha)
+
+    def get_default_by_versao_chave(
+        self, orcamento_versao_id: int, chave: str
+    ) -> OrcamentoValuesetLinhaResumo | None:
+        """Get the active default option for one budget version and key."""
+        statement = (
+            select(OrcamentoValuesetLinha)
+            .where(
+                OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
+                OrcamentoValuesetLinha.chave == chave,
+                OrcamentoValuesetLinha.padrao.is_(True),
+                OrcamentoValuesetLinha.ativo.is_(True),
+            )
+            .order_by(OrcamentoValuesetLinha.ordem.asc(), OrcamentoValuesetLinha.id.asc())
         )
         linha = self.session.execute(statement).scalars().first()
         if linha is None:
@@ -132,12 +195,42 @@ class OrcamentoValuesetLinhaRepository:
 
         return True
 
+    def set_padrao(self, id: int, padrao: bool) -> bool:
+        """Set the default flag on one line."""
+        linha = self.session.get(OrcamentoValuesetLinha, id)
+        if linha is None:
+            return False
+
+        linha.padrao = padrao
+        self.session.flush()
+
+        return True
+
+    def clear_padrao_for_chave(
+        self, orcamento_versao_id: int, chave: str, exclude_id: int | None = None
+    ) -> None:
+        """Clear the default flag on the other options of one version and key."""
+        statement = select(OrcamentoValuesetLinha).where(
+            OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
+            OrcamentoValuesetLinha.chave == chave,
+            OrcamentoValuesetLinha.padrao.is_(True),
+        )
+        for linha in self.session.execute(statement).scalars().all():
+            if exclude_id is not None and linha.id == exclude_id:
+                continue
+            linha.padrao = False
+        self.session.flush()
+
     def _to_resumo(self, linha: OrcamentoValuesetLinha) -> OrcamentoValuesetLinhaResumo:
         """Convert an ORM line to the read model."""
         return OrcamentoValuesetLinhaResumo(
             id=linha.id,
             orcamento_versao_id=linha.orcamento_versao_id,
             chave=linha.chave,
+            codigo_opcao=linha.codigo_opcao,
+            nome_opcao=linha.nome_opcao,
+            padrao=linha.padrao,
+            ordem=linha.ordem,
             descricao=linha.descricao,
             materia_prima_id=linha.materia_prima_id,
             ref_materia_prima=linha.ref_materia_prima,

@@ -25,6 +25,10 @@ def test_tablename_columns_and_foreign_keys() -> None:
         "id",
         "def_valueset_modelo_id",
         "chave",
+        "codigo_opcao",
+        "nome_opcao",
+        "padrao",
+        "ordem",
         "materia_prima_id",
         "ref_materia_prima",
         "descricao_materia_prima",
@@ -49,7 +53,7 @@ def test_unique_indexes_and_relationships() -> None:
         for constraint in table.constraints
         if constraint.__class__.__name__ == "UniqueConstraint"
     }
-    assert ("def_valueset_modelo_id", "chave") in unique_sets
+    assert ("def_valueset_modelo_id", "chave", "codigo_opcao") in unique_sets
 
     indexed_columns = {tuple(column.name for column in index.columns) for index in table.indexes}
     assert ("def_valueset_modelo_id",) in indexed_columns

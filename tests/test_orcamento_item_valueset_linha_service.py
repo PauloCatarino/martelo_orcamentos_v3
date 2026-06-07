@@ -14,6 +14,10 @@ def _item_resumo(**kwargs) -> OrcamentoItemValuesetLinhaResumo:
         "id": 1,
         "orcamento_item_id": 30,
         "chave": "MATERIAL_CAIXOTE",
+        "codigo_opcao": "MATERIAL_CAIXOTE",
+        "nome_opcao": None,
+        "padrao": False,
+        "ordem": 1,
         "descricao": None,
         "materia_prima_id": None,
         "ref_materia_prima": None,
@@ -34,6 +38,10 @@ def _versao_resumo(**kwargs) -> OrcamentoValuesetLinhaResumo:
         "id": 2,
         "orcamento_versao_id": 20,
         "chave": "MATERIAL_CAIXOTE",
+        "codigo_opcao": "MATERIAL_CAIXOTE",
+        "nome_opcao": None,
+        "padrao": False,
+        "ordem": 1,
         "descricao": None,
         "materia_prima_id": None,
         "ref_materia_prima": None,
@@ -49,10 +57,14 @@ def _versao_resumo(**kwargs) -> OrcamentoValuesetLinhaResumo:
 
 
 class _FakeItemRepository:
-    duplicate: OrcamentoItemValuesetLinhaResumo | None = None
+    rows: list[OrcamentoItemValuesetLinhaResumo] = []
+    opcao_existing: OrcamentoItemValuesetLinhaResumo | None = None
+    item_default: OrcamentoItemValuesetLinhaResumo | None = None
+    by_id: OrcamentoItemValuesetLinhaResumo | None = None
     created_payload: dict | None = None
     updated_payload: dict | None = None
-    rows: list[OrcamentoItemValuesetLinhaResumo] = []
+    set_padrao_calls: list = []
+    clear_calls: list = []
     deactivate_result = True
     activate_result = True
 
@@ -68,11 +80,20 @@ class _FakeItemRepository:
     def list_by_orcamento_item(self, orcamento_item_id: int):
         return self.rows
 
+    def list_by_item_chave(self, orcamento_item_id: int, chave: str):
+        return self.rows
+
     def get_by_id(self, id: int):
-        return _item_resumo(id=id)
+        return self.by_id if self.by_id is not None else _item_resumo(id=id)
 
     def get_by_item_chave(self, orcamento_item_id: int, chave: str):
-        return self.duplicate
+        return None
+
+    def get_by_item_chave_opcao(self, orcamento_item_id: int, chave: str, codigo_opcao: str):
+        return self.opcao_existing
+
+    def get_default_by_item_chave(self, orcamento_item_id: int, chave: str):
+        return self.item_default
 
     def create(self, **fields):
         self.__class__.created_payload = fields
@@ -88,15 +109,22 @@ class _FakeItemRepository:
     def activate(self, id: int) -> bool:
         return self.activate_result
 
+    def set_padrao(self, id: int, padrao: bool) -> bool:
+        self.__class__.set_padrao_calls.append((id, padrao))
+        return True
+
+    def clear_padrao_for_chave(self, orcamento_item_id: int, chave: str, exclude_id=None) -> None:
+        self.__class__.clear_calls.append((orcamento_item_id, chave, exclude_id))
+
 
 class _FakeOrcamentoRepository:
-    duplicate: OrcamentoValuesetLinhaResumo | None = None
+    versao_default: OrcamentoValuesetLinhaResumo | None = None
 
     def __init__(self, _session: object) -> None:
         pass
 
-    def get_by_versao_chave(self, orcamento_versao_id: int, chave: str):
-        return self.duplicate
+    def get_default_by_versao_chave(self, orcamento_versao_id: int, chave: str):
+        return self.versao_default
 
 
 class _FakeSession:
@@ -108,13 +136,17 @@ class _FakeSession:
 
 
 def _reset() -> None:
-    _FakeItemRepository.duplicate = None
+    _FakeItemRepository.rows = []
+    _FakeItemRepository.opcao_existing = None
+    _FakeItemRepository.item_default = None
+    _FakeItemRepository.by_id = None
     _FakeItemRepository.created_payload = None
     _FakeItemRepository.updated_payload = None
-    _FakeItemRepository.rows = []
+    _FakeItemRepository.set_padrao_calls = []
+    _FakeItemRepository.clear_calls = []
     _FakeItemRepository.deactivate_result = True
     _FakeItemRepository.activate_result = True
-    _FakeOrcamentoRepository.duplicate = None
+    _FakeOrcamentoRepository.versao_default = None
 
 
 def _service(monkeypatch):
@@ -140,56 +172,118 @@ def test_criar_linha_do_item(monkeypatch) -> None:
         )
     )
 
-    assert _FakeItemRepository.created_payload is not None
-    assert _FakeItemRepository.created_payload["chave"] == "MATERIAL_PORTAS"
-    assert _FakeItemRepository.created_payload["herdado_do_orcamento"] is True
-    assert _FakeItemRepository.created_payload["editado_localmente"] is False
+    payload = _FakeItemRepository.created_payload
+    assert payload is not None
+    assert payload["chave"] == "MATERIAL_PORTAS"
+    assert payload["codigo_opcao"] == "MATERIAL_PORTAS"
+    assert payload["herdado_do_orcamento"] is True
+    assert payload["editado_localmente"] is False
     assert result.ref_materia_prima == "PORTA-01"
     assert session.committed is True
 
 
-def test_criar_linha_recusa_chave_duplicada_no_item(monkeypatch) -> None:
+def test_duplicar_chave_e_opcao_recusada_no_item(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeItemRepository.duplicate = _item_resumo(id=2)
+    _FakeItemRepository.opcao_existing = _item_resumo(id=2, codigo_opcao="BLUM_RETA")
 
     try:
         service.criar_linha(
             service_module.CriarOrcamentoItemValuesetLinhaData(
                 orcamento_item_id=30,
-                chave="MATERIAL_PORTAS",
+                chave="FERRAGEM_DOBRADICA",
+                codigo_opcao="BLUM_RETA",
             )
         )
     except ValueError as error:
-        assert "chave" in str(error)
+        assert "opcao" in str(error)
     else:
         raise AssertionError("Expected ValueError")
 
     assert session.committed is False
 
 
-def test_resolver_prefere_linha_ativa_do_item(monkeypatch) -> None:
+def test_varias_opcoes_mesma_chave_permitidas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeItemRepository.opcao_existing = None
+
+    service.criar_linha(
+        service_module.CriarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="SALICE_RETA",
+        )
+    )
+
+    assert _FakeItemRepository.created_payload["codigo_opcao"] == "SALICE_RETA"
+    assert session.committed is True
+
+
+def test_so_uma_padrao_por_chave(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeItemRepository.item_default = _item_resumo(id=5, padrao=True, codigo_opcao="BLUM_RETA")
+
+    try:
+        service.criar_linha(
+            service_module.CriarOrcamentoItemValuesetLinhaData(
+                orcamento_item_id=30,
+                chave="FERRAGEM_DOBRADICA",
+                codigo_opcao="SALICE_RETA",
+                padrao=True,
+            )
+        )
+    except ValueError as error:
+        assert "padrao" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
+
+
+def test_obter_padrao_por_chave(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakeItemRepository.duplicate = _item_resumo(id=3, ref_materia_prima="ITEM")
-    _FakeOrcamentoRepository.duplicate = _versao_resumo(id=4, ref_materia_prima="VERSAO")
+    _FakeItemRepository.item_default = _item_resumo(id=7, padrao=True, codigo_opcao="BLUM_RETA")
+
+    result = service.obter_padrao_por_chave(30, "ferragem_dobradica")
+
+    assert result is not None
+    assert result.id == 7
+
+
+def test_definir_como_padrao(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeItemRepository.by_id = _item_resumo(
+        id=5, orcamento_item_id=30, chave="FERRAGEM_DOBRADICA", codigo_opcao="SALICE_RETA"
+    )
+
+    assert service.definir_como_padrao(5) is True
+    assert (30, "FERRAGEM_DOBRADICA", 5) in _FakeItemRepository.clear_calls
+    assert (5, True) in _FakeItemRepository.set_padrao_calls
+    assert session.committed is True
+
+
+def test_resolver_prefere_padrao_do_item(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemRepository.item_default = _item_resumo(id=3, ref_materia_prima="ITEM")
+    _FakeOrcamentoRepository.versao_default = _versao_resumo(id=4, ref_materia_prima="VERSAO")
 
     result = service.obter_valor_resolvido(30, 20, "material_caixote")
 
     assert result == _item_resumo(id=3, ref_materia_prima="ITEM")
 
 
-def test_resolver_usa_orcamento_quando_item_nao_existe_ou_inativo(monkeypatch) -> None:
+def test_resolver_usa_orcamento_quando_item_nao_tem_padrao(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakeItemRepository.duplicate = _item_resumo(id=3, ativo=False)
-    _FakeOrcamentoRepository.duplicate = _versao_resumo(id=4, ref_materia_prima="VERSAO")
+    _FakeItemRepository.item_default = None
+    _FakeOrcamentoRepository.versao_default = _versao_resumo(id=4, ref_materia_prima="VERSAO")
 
     result = service.obter_valor_resolvido(30, 20, "material_caixote")
 
     assert result == _versao_resumo(id=4, ref_materia_prima="VERSAO")
 
 
-def test_resolver_devolve_none_sem_linha_ativa(monkeypatch) -> None:
+def test_resolver_devolve_none_sem_padrao(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakeItemRepository.duplicate = _item_resumo(id=3, ativo=False)
-    _FakeOrcamentoRepository.duplicate = _versao_resumo(id=4, ativo=False)
+    _FakeItemRepository.item_default = None
+    _FakeOrcamentoRepository.versao_default = None
 
     assert service.obter_valor_resolvido(30, 20, "material_caixote") is None

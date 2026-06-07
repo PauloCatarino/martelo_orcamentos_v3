@@ -25,13 +25,14 @@ from app.db.session import SessionLocal  # noqa: E402
 from app.domain.valueset_types import (  # noqa: E402
     ACABAMENTO_FACE_INF,
     ACABAMENTO_FACE_SUP,
-    MATERIAL_CAIXOTE,
     MATERIAL_COSTAS,
     MATERIAL_FRENTES,
     MATERIAL_FUNDOS,
     MATERIAL_GAVETAS,
+    MATERIAL_LATERAIS,
     MATERIAL_PORTAS,
     MATERIAL_PRATELEIRAS,
+    MATERIAL_TAMPOS,
     normalize_valueset_key,
 )
 from app.models import DefPeca  # noqa: E402
@@ -64,8 +65,8 @@ _COM_ACABAMENTO_INF = ACABAMENTO_FACE_INF
 # Piece code -> default ValueSet keys. Pieces that do not exist are skipped.
 DEFAULT_DEF_PECA_VALUESET_KEYS: dict[str, DefPecaValuesetSeed] = {
     "COSTA": DefPecaValuesetSeed(MATERIAL_COSTAS),
-    "LATERAL": DefPecaValuesetSeed(MATERIAL_CAIXOTE),
-    "TAMPO": DefPecaValuesetSeed(MATERIAL_CAIXOTE),
+    "LATERAL": DefPecaValuesetSeed(MATERIAL_LATERAIS),
+    "TAMPO": DefPecaValuesetSeed(MATERIAL_TAMPOS),
     "FUNDO": DefPecaValuesetSeed(MATERIAL_FUNDOS),
     "PORTA": DefPecaValuesetSeed(
         MATERIAL_PORTAS, True, _COM_ACABAMENTO_SUP, _COM_ACABAMENTO_INF

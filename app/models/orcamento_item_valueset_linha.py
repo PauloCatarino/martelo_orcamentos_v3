@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,7 +23,8 @@ class OrcamentoItemValuesetLinha(Base):
         UniqueConstraint(
             "orcamento_item_id",
             "chave",
-            name="uq_orcamento_item_valueset_linhas_item_chave",
+            "codigo_opcao",
+            name="uq_orcamento_item_valueset_linhas_item_chave_opcao",
         ),
     )
 
@@ -35,6 +36,10 @@ class OrcamentoItemValuesetLinha(Base):
         index=True,
     )
     chave: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    codigo_opcao: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    nome_opcao: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    padrao: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     descricao: Mapped[str | None] = mapped_column(String(200), nullable=True)
     materia_prima_id: Mapped[int | None] = mapped_column(
         BigInteger,

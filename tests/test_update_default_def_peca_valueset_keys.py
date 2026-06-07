@@ -57,8 +57,8 @@ def test_specific_mappings() -> None:
     mapping = DEFAULT_DEF_PECA_VALUESET_KEYS
 
     assert mapping["COSTA"].chave_valueset_material == "MATERIAL_COSTAS"
-    assert mapping["LATERAL"].chave_valueset_material == "MATERIAL_CAIXOTE"
-    assert mapping["TAMPO"].chave_valueset_material == "MATERIAL_CAIXOTE"
+    assert mapping["LATERAL"].chave_valueset_material == "MATERIAL_LATERAIS"
+    assert mapping["TAMPO"].chave_valueset_material == "MATERIAL_TAMPOS"
     assert mapping["FUNDO"].chave_valueset_material == "MATERIAL_FUNDOS"
     assert mapping["PRATELEIRA"].chave_valueset_material == "MATERIAL_PRATELEIRAS"
     assert mapping["LADO_GAVETA"].chave_valueset_material == "MATERIAL_GAVETAS"
