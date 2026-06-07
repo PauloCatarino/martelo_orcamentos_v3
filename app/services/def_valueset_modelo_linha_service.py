@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -29,6 +30,22 @@ class CriarDefValuesetModeloLinhaData:
     descricao_materia_prima: str | None = None
     valor_texto: str | None = None
     origem: str | None = None
+    ref_le: str | None = None
+    descricao_no_orcamento: str | None = None
+    preco_tabela: Decimal | None = None
+    margem_percentagem: Decimal | None = None
+    desconto_percentagem: Decimal | None = None
+    preco_liquido: Decimal | None = None
+    unidade: str | None = None
+    desperdicio_percentagem: Decimal | None = None
+    tipo_materia_prima: str | None = None
+    familia_materia_prima: str | None = None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    comp_mp: Decimal | None = None
+    larg_mp: Decimal | None = None
+    esp_mp: Decimal | None = None
+    origem_dados: str | None = None
     editado_localmente: bool = False
     ativo: bool = True
     observacoes: str | None = None
@@ -50,6 +67,22 @@ class EditarDefValuesetModeloLinhaData:
     descricao_materia_prima: str | None = None
     valor_texto: str | None = None
     origem: str | None = None
+    ref_le: str | None = None
+    descricao_no_orcamento: str | None = None
+    preco_tabela: Decimal | None = None
+    margem_percentagem: Decimal | None = None
+    desconto_percentagem: Decimal | None = None
+    preco_liquido: Decimal | None = None
+    unidade: str | None = None
+    desperdicio_percentagem: Decimal | None = None
+    tipo_materia_prima: str | None = None
+    familia_materia_prima: str | None = None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    comp_mp: Decimal | None = None
+    larg_mp: Decimal | None = None
+    esp_mp: Decimal | None = None
+    origem_dados: str | None = None
     editado_localmente: bool = False
     ativo: bool = True
     observacoes: str | None = None
@@ -179,6 +212,12 @@ class DefValuesetModeloLinhaService:
             data.def_valueset_modelo_id, "def_valueset_modelo_id"
         )
         chave = self._normalize_required_chave(data.chave)
+        preco_liquido = self._compute_preco_liquido(
+            data.preco_tabela,
+            data.margem_percentagem,
+            data.desconto_percentagem,
+            data.preco_liquido,
+        )
 
         return {
             "def_valueset_modelo_id": modelo_id,
@@ -193,10 +232,45 @@ class DefValuesetModeloLinhaService:
             "descricao_materia_prima": data.descricao_materia_prima,
             "valor_texto": data.valor_texto,
             "origem": data.origem,
+            "ref_le": data.ref_le,
+            "descricao_no_orcamento": data.descricao_no_orcamento,
+            "preco_tabela": data.preco_tabela,
+            "margem_percentagem": data.margem_percentagem,
+            "desconto_percentagem": data.desconto_percentagem,
+            "preco_liquido": preco_liquido,
+            "unidade": data.unidade,
+            "desperdicio_percentagem": data.desperdicio_percentagem,
+            "tipo_materia_prima": data.tipo_materia_prima,
+            "familia_materia_prima": data.familia_materia_prima,
+            "coresp_orla_0_4": data.coresp_orla_0_4,
+            "coresp_orla_1_0": data.coresp_orla_1_0,
+            "comp_mp": data.comp_mp,
+            "larg_mp": data.larg_mp,
+            "esp_mp": data.esp_mp,
+            "origem_dados": data.origem_dados,
             "editado_localmente": data.editado_localmente,
             "ativo": data.ativo,
             "observacoes": data.observacoes,
         }
+
+    def _compute_preco_liquido(
+        self,
+        preco_tabela: Decimal | None,
+        margem: Decimal | None,
+        desconto: Decimal | None,
+        preco_liquido: Decimal | None,
+    ) -> Decimal | None:
+        """Compute preco_liquido from table price, discount and margin.
+
+        preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100).
+        When there is no table price, the manually entered preco_liquido is kept.
+        """
+        if preco_tabela is None:
+            return preco_liquido
+
+        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
+        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
+        return preco_tabela * desconto_factor * margem_factor
 
     def _validate_required_id(self, value: int | None, field_name: str) -> int:
         if not value:

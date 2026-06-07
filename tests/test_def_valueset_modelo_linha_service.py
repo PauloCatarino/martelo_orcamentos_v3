@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.services import def_valueset_modelo_linha_service as service_module
 
@@ -21,6 +23,22 @@ def _resumo(**kwargs) -> DefValuesetModeloLinhaResumo:
         "descricao_materia_prima": None,
         "valor_texto": None,
         "origem": None,
+        "ref_le": None,
+        "descricao_no_orcamento": None,
+        "preco_tabela": None,
+        "margem_percentagem": None,
+        "desconto_percentagem": None,
+        "preco_liquido": None,
+        "unidade": None,
+        "desperdicio_percentagem": None,
+        "tipo_materia_prima": None,
+        "familia_materia_prima": None,
+        "coresp_orla_0_4": None,
+        "coresp_orla_1_0": None,
+        "comp_mp": None,
+        "larg_mp": None,
+        "esp_mp": None,
+        "origem_dados": None,
         "editado_localmente": False,
         "ativo": True,
         "observacoes": None,
@@ -297,3 +315,59 @@ def test_editar_linha_permite_a_propria_opcao(monkeypatch) -> None:
     assert _FakeRepository.updated_payload["id"] == 7
     assert _FakeRepository.updated_payload["codigo_opcao"] == "BLUM_RETA"
     assert session.committed is True
+
+
+def test_calcula_preco_liquido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="MDF_19",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("15"),
+            desconto_percentagem=Decimal("10"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("10.35")
+
+
+def test_preco_tabela_none_mantem_preco_liquido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="MDF_19",
+            preco_liquido=Decimal("99"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("99")
+
+
+def test_editado_localmente_default_false() -> None:
+    data = service_module.CriarDefValuesetModeloLinhaData(
+        def_valueset_modelo_id=10, chave="MATERIAL_PORTAS"
+    )
+
+    assert data.editado_localmente is False
+
+
+def test_origem_dados_aceita_texto(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    for origem in ("LIVRE", "MATERIA_PRIMA", "EDITADO_LOCALMENTE"):
+        service.criar_linha(
+            service_module.CriarDefValuesetModeloLinhaData(
+                def_valueset_modelo_id=10,
+                chave="MATERIAL_PORTAS",
+                codigo_opcao=f"OP_{origem}",
+                origem_dados=origem,
+            )
+        )
+
+        assert _FakeRepository.created_payload["origem_dados"] == origem

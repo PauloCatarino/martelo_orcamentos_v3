@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -51,6 +63,22 @@ class DefValuesetModeloLinha(Base):
     descricao_materia_prima: Mapped[str | None] = mapped_column(Text, nullable=True)
     valor_texto: Mapped[str | None] = mapped_column(Text, nullable=True)
     origem: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ref_le: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    descricao_no_orcamento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preco_tabela: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    margem_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    desconto_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    preco_liquido: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    unidade: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    tipo_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    familia_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    coresp_orla_0_4: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    coresp_orla_1_0: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    comp_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    larg_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    esp_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    origem_dados: Mapped[str | None] = mapped_column(String(100), nullable=True)
     editado_localmente: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )

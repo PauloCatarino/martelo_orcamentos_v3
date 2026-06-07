@@ -27,6 +27,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+from app.utils.formatters import format_currency, format_quantity
 
 
 class DefValuesetModeloDetailPage(QWidget):
@@ -36,9 +37,19 @@ class DefValuesetModeloDetailPage(QWidget):
         "Chave",
         "Opção",
         "Nome opção",
-        "Matéria-prima",
+        "Ref LE",
+        "Descrição orçamento",
+        "Unidade",
+        "Preço tabela",
+        "Margem %",
+        "Desconto %",
+        "Preço líquido",
+        "Desp %",
+        "Tipo",
+        "Família",
         "Padrão",
         "Ordem",
+        "Editado localmente",
         "Ativo",
     ]
 
@@ -97,7 +108,7 @@ class DefValuesetModeloDetailPage(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         layout = QVBoxLayout()
@@ -143,9 +154,19 @@ class DefValuesetModeloDetailPage(QWidget):
                 linha.chave,
                 linha.codigo_opcao or "",
                 linha.nome_opcao or "",
-                self._format_materia_prima(linha),
+                linha.ref_le or "",
+                linha.descricao_no_orcamento or "",
+                linha.unidade or "",
+                format_currency(linha.preco_tabela),
+                format_quantity(linha.margem_percentagem),
+                format_quantity(linha.desconto_percentagem),
+                format_currency(linha.preco_liquido),
+                format_quantity(linha.desperdicio_percentagem),
+                linha.tipo_materia_prima or "",
+                linha.familia_materia_prima or "",
                 self._format_bool(linha.padrao),
                 str(linha.ordem),
+                self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
             ]
 
@@ -175,6 +196,23 @@ class DefValuesetModeloDetailPage(QWidget):
                             ordem=form_data.ordem,
                             observacoes=form_data.observacoes,
                             ativo=form_data.ativo,
+                            ref_le=form_data.ref_le,
+                            descricao_no_orcamento=form_data.descricao_no_orcamento,
+                            preco_tabela=form_data.preco_tabela,
+                            margem_percentagem=form_data.margem_percentagem,
+                            desconto_percentagem=form_data.desconto_percentagem,
+                            preco_liquido=form_data.preco_liquido,
+                            unidade=form_data.unidade,
+                            desperdicio_percentagem=form_data.desperdicio_percentagem,
+                            tipo_materia_prima=form_data.tipo_materia_prima,
+                            familia_materia_prima=form_data.familia_materia_prima,
+                            coresp_orla_0_4=form_data.coresp_orla_0_4,
+                            coresp_orla_1_0=form_data.coresp_orla_1_0,
+                            comp_mp=form_data.comp_mp,
+                            larg_mp=form_data.larg_mp,
+                            esp_mp=form_data.esp_mp,
+                            origem_dados=form_data.origem_dados,
+                            editado_localmente=form_data.editado_localmente,
                         )
                     )
                     if form_data.padrao:
@@ -223,6 +261,23 @@ class DefValuesetModeloDetailPage(QWidget):
                             ordem=form_data.ordem,
                             observacoes=form_data.observacoes,
                             ativo=form_data.ativo,
+                            ref_le=form_data.ref_le,
+                            descricao_no_orcamento=form_data.descricao_no_orcamento,
+                            preco_tabela=form_data.preco_tabela,
+                            margem_percentagem=form_data.margem_percentagem,
+                            desconto_percentagem=form_data.desconto_percentagem,
+                            preco_liquido=form_data.preco_liquido,
+                            unidade=form_data.unidade,
+                            desperdicio_percentagem=form_data.desperdicio_percentagem,
+                            tipo_materia_prima=form_data.tipo_materia_prima,
+                            familia_materia_prima=form_data.familia_materia_prima,
+                            coresp_orla_0_4=form_data.coresp_orla_0_4,
+                            coresp_orla_1_0=form_data.coresp_orla_1_0,
+                            comp_mp=form_data.comp_mp,
+                            larg_mp=form_data.larg_mp,
+                            esp_mp=form_data.esp_mp,
+                            origem_dados=form_data.origem_dados,
+                            editado_localmente=form_data.editado_localmente,
                         ),
                     )
                     if form_data.padrao:

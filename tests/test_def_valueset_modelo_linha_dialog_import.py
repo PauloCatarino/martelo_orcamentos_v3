@@ -47,6 +47,34 @@ def test_dialog_data_fields() -> None:
     } <= field_names
 
 
+def test_dialog_data_has_snapshot_fields() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialogData
+
+    field_names = {
+        field.name for field in dataclasses.fields(DefValuesetModeloLinhaDialogData)
+    }
+
+    assert {
+        "ref_le",
+        "descricao_no_orcamento",
+        "preco_tabela",
+        "margem_percentagem",
+        "desconto_percentagem",
+        "preco_liquido",
+        "unidade",
+        "desperdicio_percentagem",
+        "tipo_materia_prima",
+        "familia_materia_prima",
+        "coresp_orla_0_4",
+        "coresp_orla_1_0",
+        "comp_mp",
+        "larg_mp",
+        "esp_mp",
+        "origem_dados",
+        "editado_localmente",
+    } <= field_names
+
+
 def test_dialog_uses_chave_helper() -> None:
     from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
 
