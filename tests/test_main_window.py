@@ -37,3 +37,13 @@ def test_main_window_has_operacoes_maquinas_navigation_inside_configuracoes() ->
     assert '"operacoes_maquinas"' in source
     assert "on_open_operacoes_maquinas" in source
     assert "operacoes_button" not in source
+
+
+def test_main_window_has_valueset_chaves_navigation_inside_configuracoes() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "DefValuesetChavesPage" in source
+    assert '"valueset_chaves"' in source
+    assert "on_open_valueset_chaves" in source

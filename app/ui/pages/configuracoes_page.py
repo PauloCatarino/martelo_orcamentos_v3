@@ -22,6 +22,7 @@ class ConfiguracoesPage(QWidget):
         "Materiais",
         "Ferragens",
         "Opera\u00e7\u00f5es / M\u00e1quinas",
+        "Chaves ValueSet",
         "Regras de Custeio",
     ]
 
@@ -31,6 +32,7 @@ class ConfiguracoesPage(QWidget):
         on_open_materias_primas: Callable[[], None] | None = None,
         on_open_caminhos_sistema: Callable[[], None] | None = None,
         on_open_operacoes_maquinas: Callable[[], None] | None = None,
+        on_open_valueset_chaves: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -38,6 +40,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_materias_primas = on_open_materias_primas
         self.on_open_caminhos_sistema = on_open_caminhos_sistema
         self.on_open_operacoes_maquinas = on_open_operacoes_maquinas
+        self.on_open_valueset_chaves = on_open_valueset_chaves
 
         title = QLabel("Configura\u00e7\u00f5es")
         title.setObjectName("pageTitle")
@@ -71,6 +74,9 @@ class ConfiguracoesPage(QWidget):
         self.operacoes_maquinas_button = QPushButton("Opera\u00e7\u00f5es / M\u00e1quinas")
         self.operacoes_maquinas_button.clicked.connect(self._open_operacoes_maquinas)
 
+        self.valueset_chaves_button = QPushButton("Chaves ValueSet")
+        self.valueset_chaves_button.clicked.connect(self._open_valueset_chaves)
+
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
 
@@ -86,6 +92,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(materiais_button)
         layout.addWidget(ferragens_button)
         layout.addWidget(self.operacoes_maquinas_button)
+        layout.addWidget(self.valueset_chaves_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -111,6 +118,11 @@ class ConfiguracoesPage(QWidget):
         """Open the operations / machines page through the optional callback."""
         if self.on_open_operacoes_maquinas is not None:
             self.on_open_operacoes_maquinas()
+
+    def _open_valueset_chaves(self) -> None:
+        """Open the ValueSet keys page through the optional callback."""
+        if self.on_open_valueset_chaves is not None:
+            self.on_open_valueset_chaves()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""
