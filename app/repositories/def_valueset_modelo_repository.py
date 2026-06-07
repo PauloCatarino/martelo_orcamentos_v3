@@ -20,6 +20,9 @@ class DefValuesetModeloResumo:
     nome: str
     descricao: str | None
     tipo: str | None
+    ambito: str
+    user_id: int | None
+    visivel_para_todos: bool
     ativo: bool
     observacoes: str | None
     created_at: datetime | None = None
@@ -119,6 +122,9 @@ class DefValuesetModeloRepository:
             nome=modelo.nome,
             descricao=modelo.descricao,
             tipo=modelo.tipo,
+            ambito=modelo.ambito,
+            user_id=modelo.user_id,
+            visivel_para_todos=modelo.visivel_para_todos,
             ativo=modelo.ativo,
             observacoes=modelo.observacoes,
             created_at=modelo.created_at,

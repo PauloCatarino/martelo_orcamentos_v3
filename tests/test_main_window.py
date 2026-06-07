@@ -47,3 +47,13 @@ def test_main_window_has_valueset_chaves_navigation_inside_configuracoes() -> No
     assert "DefValuesetChavesPage" in source
     assert '"valueset_chaves"' in source
     assert "on_open_valueset_chaves" in source
+
+
+def test_main_window_has_valueset_modelos_navigation_inside_configuracoes() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "DefValuesetModelosPage" in source
+    assert '"valueset_modelos"' in source
+    assert "on_open_valueset_modelos" in source

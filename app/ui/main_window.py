@@ -21,6 +21,7 @@ from app.ui.pages import (
     ConfiguracoesPage,
     DefPecasPage,
     DefValuesetChavesPage,
+    DefValuesetModelosPage,
     MateriasPrimasPage,
     OperacoesMaquinasPage,
     OrcamentoDetailPage,
@@ -101,12 +102,14 @@ class MainWindow(QMainWindow):
         self.caminhos_sistema_page = CaminhosSistemaPage()
         self.operacoes_maquinas_page = OperacoesMaquinasPage()
         self.valueset_chaves_page = DefValuesetChavesPage()
+        self.valueset_modelos_page = DefValuesetModelosPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
             on_open_caminhos_sistema=lambda: self.show_page("caminhos_sistema"),
             on_open_operacoes_maquinas=lambda: self.show_page("operacoes_maquinas"),
             on_open_valueset_chaves=lambda: self.show_page("valueset_chaves"),
+            on_open_valueset_modelos=lambda: self.show_page("valueset_modelos"),
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
@@ -115,6 +118,7 @@ class MainWindow(QMainWindow):
         self._add_page("caminhos_sistema", self.caminhos_sistema_page)
         self._add_page("operacoes_maquinas", self.operacoes_maquinas_page)
         self._add_page("valueset_chaves", self.valueset_chaves_page)
+        self._add_page("valueset_modelos", self.valueset_modelos_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
         self._add_page("configuracoes", self.configuracoes_page)
 

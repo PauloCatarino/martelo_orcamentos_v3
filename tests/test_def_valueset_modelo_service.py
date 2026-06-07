@@ -13,6 +13,9 @@ def _resumo(**kwargs) -> DefValuesetModeloResumo:
         "nome": "Base",
         "descricao": None,
         "tipo": None,
+        "ambito": "UTILIZADOR",
+        "user_id": None,
+        "visivel_para_todos": False,
         "ativo": True,
         "observacoes": None,
     }
@@ -114,6 +117,24 @@ def test_criar_modelo_normaliza_campos(monkeypatch) -> None:
     assert _FakeRepository.created_payload["tipo"] == "roupeiro"
     assert result.codigo == "BASE"
     assert session.committed is True
+
+
+def test_criar_modelo_inclui_ambito_e_codigo_upper(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_modelo(
+        service_module.CriarDefValuesetModeloData(
+            codigo="roupeiro standard",
+            nome="Roupeiro standard",
+            ambito="global",
+            visivel_para_todos=True,
+        )
+    )
+
+    payload = _FakeRepository.created_payload
+    assert payload["codigo"] == "ROUPEIRO_STANDARD"
+    assert payload["ambito"] == "GLOBAL"
+    assert payload["visivel_para_todos"] is True
 
 
 def test_criar_modelo_recusa_codigo_duplicado(monkeypatch) -> None:

@@ -20,6 +20,9 @@ class CriarDefValuesetModeloData:
     nome: str
     descricao: str | None = None
     tipo: str | None = None
+    ambito: str = "UTILIZADOR"
+    user_id: int | None = None
+    visivel_para_todos: bool = False
     ativo: bool = True
     observacoes: str | None = None
 
@@ -32,6 +35,9 @@ class EditarDefValuesetModeloData:
     nome: str
     descricao: str | None = None
     tipo: str | None = None
+    ambito: str = "UTILIZADOR"
+    user_id: int | None = None
+    visivel_para_todos: bool = False
     ativo: bool = True
     observacoes: str | None = None
 
@@ -102,7 +108,7 @@ class DefValuesetModeloService:
         return activated
 
     def _build_fields(self, data) -> dict:
-        codigo = self._normalize_required_text(data.codigo, "codigo")
+        codigo = self._normalize_codigo(data.codigo)
         nome = self._normalize_required_text(data.nome, "nome")
 
         return {
@@ -110,9 +116,23 @@ class DefValuesetModeloService:
             "nome": nome,
             "descricao": data.descricao,
             "tipo": self._normalize_optional_text(data.tipo),
+            "ambito": self._normalize_ambito(data.ambito),
+            "user_id": data.user_id,
+            "visivel_para_todos": data.visivel_para_todos,
             "ativo": data.ativo,
             "observacoes": data.observacoes,
         }
+
+    def _normalize_codigo(self, codigo: str | None) -> str:
+        normalized = (codigo or "").strip().upper()
+        if not normalized:
+            raise ValueError("codigo is required")
+
+        return "_".join(normalized.split())
+
+    def _normalize_ambito(self, ambito: str | None) -> str:
+        normalized = (ambito or "").strip().upper()
+        return normalized or "UTILIZADOR"
 
     def _normalize_required_text(self, value: str | None, field_name: str) -> str:
         normalized = (value or "").strip()
