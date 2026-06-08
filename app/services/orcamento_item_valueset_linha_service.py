@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,29 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
 from app.repositories.orcamento_valueset_linha_repository import (
     OrcamentoValuesetLinhaRepository,
     OrcamentoValuesetLinhaResumo,
+)
+
+# Materia-prima snapshot fields that can be edited, copied, pasted and cleared
+# on an item ValueSet line (its key/option/order/active state are preserved).
+SNAPSHOT_FIELDS = (
+    "ref_le",
+    "descricao_no_orcamento",
+    "ref_materia_prima",
+    "descricao_materia_prima",
+    "valor_texto",
+    "preco_tabela",
+    "margem_percentagem",
+    "desconto_percentagem",
+    "preco_liquido",
+    "unidade",
+    "desperdicio_percentagem",
+    "tipo_materia_prima",
+    "familia_materia_prima",
+    "coresp_orla_0_4",
+    "coresp_orla_1_0",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
 )
 
 
@@ -36,6 +60,22 @@ class CriarOrcamentoItemValuesetLinhaData:
     descricao_materia_prima: str | None = None
     valor_texto: str | None = None
     origem: str | None = None
+    ref_le: str | None = None
+    descricao_no_orcamento: str | None = None
+    preco_tabela: Decimal | None = None
+    margem_percentagem: Decimal | None = None
+    desconto_percentagem: Decimal | None = None
+    preco_liquido: Decimal | None = None
+    unidade: str | None = None
+    desperdicio_percentagem: Decimal | None = None
+    tipo_materia_prima: str | None = None
+    familia_materia_prima: str | None = None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    comp_mp: Decimal | None = None
+    larg_mp: Decimal | None = None
+    esp_mp: Decimal | None = None
+    origem_dados: str | None = None
     herdado_do_orcamento: bool = True
     editado_localmente: bool = False
     ativo: bool = True
@@ -58,6 +98,22 @@ class EditarOrcamentoItemValuesetLinhaData:
     descricao_materia_prima: str | None = None
     valor_texto: str | None = None
     origem: str | None = None
+    ref_le: str | None = None
+    descricao_no_orcamento: str | None = None
+    preco_tabela: Decimal | None = None
+    margem_percentagem: Decimal | None = None
+    desconto_percentagem: Decimal | None = None
+    preco_liquido: Decimal | None = None
+    unidade: str | None = None
+    desperdicio_percentagem: Decimal | None = None
+    tipo_materia_prima: str | None = None
+    familia_materia_prima: str | None = None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    comp_mp: Decimal | None = None
+    larg_mp: Decimal | None = None
+    esp_mp: Decimal | None = None
+    origem_dados: str | None = None
     herdado_do_orcamento: bool = True
     editado_localmente: bool = False
     ativo: bool = True
@@ -147,6 +203,55 @@ class OrcamentoItemValuesetLinhaService:
         """Get one budget item ValueSet line by id."""
         return self.repository.get_by_id(id)
 
+    def copiar_snapshot_linha(self, id: int) -> dict:
+        """Return the materia-prima snapshot of one line (key/option excluded)."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        return {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+
+    def aplicar_snapshot_linha(
+        self, id: int, snapshot: dict
+    ) -> OrcamentoItemValuesetLinhaResumo:
+        """Apply a snapshot to one line, keeping its key, option, order and state.
+
+        preco_liquido is recomputed and the line is flagged as locally edited.
+        """
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        fields = {field: snapshot.get(field) for field in SNAPSHOT_FIELDS}
+        fields["preco_liquido"] = self._compute_preco_liquido(
+            fields["preco_tabela"],
+            fields["margem_percentagem"],
+            fields["desconto_percentagem"],
+            fields["preco_liquido"],
+        )
+        fields["origem_dados"] = "EDITADO_LOCALMENTE"
+        fields["editado_localmente"] = True
+
+        result = self.repository.update(id=id, **fields)
+        self.session.commit()
+
+        return result
+
+    def limpar_snapshot_linha(self, id: int) -> OrcamentoItemValuesetLinhaResumo:
+        """Clear the materia-prima snapshot of one line, keeping key and option."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        fields = {field: None for field in SNAPSHOT_FIELDS}
+        fields["origem_dados"] = "EDITADO_LOCALMENTE"
+        fields["editado_localmente"] = True
+
+        result = self.repository.update(id=id, **fields)
+        self.session.commit()
+
+        return result
+
     def criar_linha(
         self, data: CriarOrcamentoItemValuesetLinhaData
     ) -> OrcamentoItemValuesetLinhaResumo:
@@ -196,20 +301,26 @@ class OrcamentoItemValuesetLinhaService:
         return result
 
     def desativar_linha(self, id: int) -> bool:
-        """Deactivate one budget item ValueSet line."""
-        deactivated = self.repository.deactivate(id)
-        if deactivated:
-            self.session.commit()
+        """Deactivate one budget item ValueSet line (marks it locally edited)."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            return False
 
-        return deactivated
+        self.repository.update(id=id, ativo=False, editado_localmente=True)
+        self.session.commit()
+
+        return True
 
     def ativar_linha(self, id: int) -> bool:
-        """Reactivate one budget item ValueSet line."""
-        activated = self.repository.activate(id)
-        if activated:
-            self.session.commit()
+        """Reactivate one budget item ValueSet line (marks it locally edited)."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            return False
 
-        return activated
+        self.repository.update(id=id, ativo=True, editado_localmente=True)
+        self.session.commit()
+
+        return True
 
     def definir_como_padrao(self, id: int) -> bool:
         """Make one line the default option of its key, clearing the others."""
@@ -484,6 +595,12 @@ class OrcamentoItemValuesetLinhaService:
             data.orcamento_item_id, "orcamento_item_id"
         )
         chave = self._normalize_required_chave(data.chave)
+        preco_liquido = self._compute_preco_liquido(
+            data.preco_tabela,
+            data.margem_percentagem,
+            data.desconto_percentagem,
+            data.preco_liquido,
+        )
 
         return {
             "orcamento_item_id": orcamento_item_id,
@@ -498,11 +615,46 @@ class OrcamentoItemValuesetLinhaService:
             "descricao_materia_prima": data.descricao_materia_prima,
             "valor_texto": data.valor_texto,
             "origem": data.origem,
+            "ref_le": data.ref_le,
+            "descricao_no_orcamento": data.descricao_no_orcamento,
+            "preco_tabela": data.preco_tabela,
+            "margem_percentagem": data.margem_percentagem,
+            "desconto_percentagem": data.desconto_percentagem,
+            "preco_liquido": preco_liquido,
+            "unidade": data.unidade,
+            "desperdicio_percentagem": data.desperdicio_percentagem,
+            "tipo_materia_prima": data.tipo_materia_prima,
+            "familia_materia_prima": data.familia_materia_prima,
+            "coresp_orla_0_4": data.coresp_orla_0_4,
+            "coresp_orla_1_0": data.coresp_orla_1_0,
+            "comp_mp": data.comp_mp,
+            "larg_mp": data.larg_mp,
+            "esp_mp": data.esp_mp,
+            "origem_dados": data.origem_dados,
             "herdado_do_orcamento": data.herdado_do_orcamento,
             "editado_localmente": data.editado_localmente,
             "ativo": data.ativo,
             "observacoes": data.observacoes,
         }
+
+    def _compute_preco_liquido(
+        self,
+        preco_tabela: Decimal | None,
+        margem: Decimal | None,
+        desconto: Decimal | None,
+        preco_liquido: Decimal | None,
+    ) -> Decimal | None:
+        """preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100).
+
+        Recomputed whenever a table price exists (empty margin/discount are
+        treated as 0). Without a table price, the provided value is kept.
+        """
+        if preco_tabela is None:
+            return preco_liquido
+
+        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
+        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
+        return preco_tabela * desconto_factor * margem_factor
 
     def _validate_required_id(self, value: int | None, field_name: str) -> int:
         if not value:

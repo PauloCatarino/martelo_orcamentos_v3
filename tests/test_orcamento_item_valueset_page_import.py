@@ -97,3 +97,40 @@ def test_page_formats_percentages() -> None:
     source = inspect.getsource(OrcamentoItemValuesetPage._preencher)
 
     assert "formatar_percentagem" in source
+
+
+def test_page_has_edit_and_snapshot_tools() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    for method in (
+        "abrir_editar_linha",
+        "copiar_dados",
+        "colar_dados",
+        "limpar_dados",
+        "alternar_linha_ativa",
+        "_abrir_menu_contexto",
+        "_handle_double_click",
+        "_get_selected_linha",
+    ):
+        assert hasattr(OrcamentoItemValuesetPage, method)
+
+    editar = inspect.getsource(OrcamentoItemValuesetPage.abrir_editar_linha)
+    assert "OrcamentoItemValuesetLinhaDialog" in editar
+    assert "editar_linha" in editar
+    assert "Linha ValueSet atualizada." in editar
+
+    copiar = inspect.getsource(OrcamentoItemValuesetPage.copiar_dados)
+    assert "SNAPSHOT_FIELDS" in copiar
+    assert "Dados da linha copiados." in copiar
+
+    colar = inspect.getsource(OrcamentoItemValuesetPage.colar_dados)
+    assert "aplicar_snapshot_linha" in colar
+    assert "Não existem dados copiados." in colar
+
+    limpar = inspect.getsource(OrcamentoItemValuesetPage.limpar_dados)
+    assert "limpar_snapshot_linha" in limpar
+    assert "Tem a certeza" in limpar
+
+    toggle = inspect.getsource(OrcamentoItemValuesetPage.alternar_linha_ativa)
+    assert "Linha ativada." in toggle
+    assert "Linha desativada." in toggle

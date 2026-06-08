@@ -660,3 +660,125 @@ def test_substituir_por_modelo_reativa_colisao(monkeypatch) -> None:
     assert payload["id"] == 5
     assert payload["ativo"] is True
     assert payload["origem_dados"] == "MODELO_VALUESET"
+
+
+def test_editar_linha_item_recalcula_preco_liquido(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.editar_linha(
+        5,
+        service_module.EditarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="MATERIAL_FRENTES",
+            codigo_opcao="MDF",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("10"),
+            desconto_percentagem=Decimal("10"),
+        ),
+    )
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["preco_liquido"] == Decimal("9.90")
+    assert session.committed is True
+
+
+def test_editar_linha_item_marca_editado(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.editar_linha(
+        5,
+        service_module.EditarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="MATERIAL_FRENTES",
+            codigo_opcao="MDF",
+            origem_dados="EDITADO_LOCALMENTE",
+            editado_localmente=True,
+        ),
+    )
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+
+
+def test_copiar_snapshot_item_sem_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemRepository.by_id = _item_resumo(
+        id=5, ref_le="FRT0001", preco_tabela=Decimal("10"), comp_mp=Decimal("2750")
+    )
+
+    snapshot = service.copiar_snapshot_linha(5)
+
+    assert snapshot["ref_le"] == "FRT0001"
+    assert snapshot["preco_tabela"] == Decimal("10")
+    assert snapshot["comp_mp"] == Decimal("2750")
+    assert "chave" not in snapshot
+    assert "codigo_opcao" not in snapshot
+
+
+def test_colar_snapshot_item_mantem_chave_e_recalcula(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    snapshot = {
+        "ref_le": "FRT0001",
+        "unidade": "m2",
+        "comp_mp": Decimal("2750"),
+        "preco_tabela": Decimal("10"),
+        "margem_percentagem": Decimal("10"),
+        "desconto_percentagem": Decimal("10"),
+    }
+
+    service.aplicar_snapshot_linha(5, snapshot)
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] == "FRT0001"
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["preco_liquido"] == Decimal("9.90")
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+    assert "chave" not in payload
+    assert "codigo_opcao" not in payload
+    assert session.committed is True
+
+
+def test_limpar_snapshot_item_mantem_chave(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.limpar_snapshot_linha(5)
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] is None
+    assert payload["preco_tabela"] is None
+    assert payload["preco_liquido"] is None
+    assert payload["comp_mp"] is None
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+    assert "chave" not in payload
+    assert "codigo_opcao" not in payload
+    assert session.committed is True
+
+
+def test_desativar_linha_item_marca_editado(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    assert service.desativar_linha(5) is True
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ativo"] is False
+    assert payload["editado_localmente"] is True
+    assert session.committed is True
+
+
+def test_ativar_linha_item_marca_editado(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    assert service.ativar_linha(5) is True
+
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ativo"] is True
+    assert payload["editado_localmente"] is True
+    assert session.committed is True

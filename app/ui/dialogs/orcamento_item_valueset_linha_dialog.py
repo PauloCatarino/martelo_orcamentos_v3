@@ -1,0 +1,430 @@
+"""Dialog for editing one ValueSet line of a budget item."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from decimal import Decimal
+
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
+from app.repositories.orcamento_item_valueset_linha_repository import (
+    OrcamentoItemValuesetLinhaResumo,
+)
+from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+from app.ui.helpers.valueset_combo_helper import (
+    carregar_chaves_valueset_combo,
+    obter_valor_chave_combo,
+)
+
+ORIGEM_DADOS_OPCOES = (
+    "VALUESET_ORCAMENTO",
+    "MODELO_VALUESET",
+    "MATERIA_PRIMA",
+    "LIVRE",
+    "EDITADO_LOCALMENTE",
+)
+
+
+@dataclass(frozen=True)
+class OrcamentoItemValuesetLinhaDialogData:
+    """Data collected by the budget item ValueSet line dialog."""
+
+    chave: str | None
+    codigo_opcao: str
+    nome_opcao: str
+    ref_le: str | None
+    descricao_no_orcamento: str | None
+    ref_materia_prima: str | None
+    descricao_materia_prima: str | None
+    valor_texto: str | None
+    preco_tabela: Decimal | None
+    margem_percentagem: Decimal | None
+    desconto_percentagem: Decimal | None
+    preco_liquido: Decimal | None
+    unidade: str | None
+    desperdicio_percentagem: Decimal | None
+    tipo_materia_prima: str | None
+    familia_materia_prima: str | None
+    coresp_orla_0_4: str | None
+    coresp_orla_1_0: str | None
+    comp_mp: Decimal | None
+    larg_mp: Decimal | None
+    esp_mp: Decimal | None
+    origem_dados: str | None
+    editado_localmente: bool
+    padrao: bool
+    ordem: int
+    observacoes: str | None
+    ativo: bool
+
+
+class OrcamentoItemValuesetLinhaDialog(QDialog):
+    """Modal dialog for editing one budget item ValueSet line locally."""
+
+    def __init__(
+        self,
+        linha: OrcamentoItemValuesetLinhaResumo,
+        parent=None,
+        on_save: Callable[[OrcamentoItemValuesetLinhaDialogData], bool] | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        self.linha = linha
+        self.on_save = on_save
+        self._suppress = False
+
+        self.setWindowTitle("Editar Linha ValueSet do Item")
+        self.setModal(True)
+        self.setMinimumWidth(520)
+
+        self.chave_input = QComboBox()
+        carregar_chaves_valueset_combo(self.chave_input, valor_atual=linha.chave)
+        self.chave_input.setEnabled(False)
+
+        self.codigo_opcao_input = QLineEdit()
+        self.nome_opcao_input = QLineEdit()
+        self.ref_le_input = QLineEdit()
+        self.descricao_no_orcamento_input = QLineEdit()
+        self.ref_materia_prima_input = QLineEdit()
+        self.descricao_materia_prima_input = QLineEdit()
+        self.valor_texto_input = QLineEdit()
+        self.preco_tabela_input = QLineEdit()
+        self.margem_input = QLineEdit()
+        self.desconto_input = QLineEdit()
+        self.preco_liquido_input = QLineEdit()
+        self.unidade_input = QLineEdit()
+        self.desperdicio_input = QLineEdit()
+        self.tipo_mp_input = QLineEdit()
+        self.familia_mp_input = QLineEdit()
+        self.orla_0_4_input = QLineEdit()
+        self.orla_1_0_input = QLineEdit()
+        self.comp_mp_input = QLineEdit()
+        self.larg_mp_input = QLineEdit()
+        self.esp_mp_input = QLineEdit()
+        self.origem_dados_input = QComboBox()
+        self.origem_dados_input.setEditable(True)
+        for origem in ORIGEM_DADOS_OPCOES:
+            self.origem_dados_input.addItem(origem)
+        self.editado_localmente_input = QCheckBox()
+        self.padrao_input = QCheckBox()
+        self.ordem_input = QLineEdit()
+        self.ordem_input.setText("1")
+        self.observacoes_input = QLineEdit()
+        self.ativo_input = QCheckBox()
+        self.ativo_input.setChecked(True)
+
+        self.selecionar_mp_button = QPushButton("Selecionar Matéria-Prima")
+        self.selecionar_mp_button.clicked.connect(self.abrir_picker_materia_prima)
+
+        self.error_label = QLabel("")
+        self.error_label.setObjectName("orcamentoItemValuesetLinhaError")
+        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setWordWrap(True)
+
+        form = QFormLayout()
+        form.addRow("Chave ValueSet", self.chave_input)
+        form.addRow("Código opção", self.codigo_opcao_input)
+        form.addRow("Nome opção", self.nome_opcao_input)
+        form.addRow("", self.selecionar_mp_button)
+        form.addRow("Ref LE", self.ref_le_input)
+        form.addRow("Descrição no orçamento", self.descricao_no_orcamento_input)
+        form.addRow("Ref. matéria-prima", self.ref_materia_prima_input)
+        form.addRow("Descrição matéria-prima", self.descricao_materia_prima_input)
+        form.addRow("Valor texto", self.valor_texto_input)
+        form.addRow("Preço tabela", self.preco_tabela_input)
+        form.addRow("Margem %", self.margem_input)
+        form.addRow("Desconto %", self.desconto_input)
+        form.addRow("Preço líquido", self.preco_liquido_input)
+        form.addRow("Unidade", self.unidade_input)
+        form.addRow("Desperdício %", self.desperdicio_input)
+        form.addRow("Tipo matéria-prima", self.tipo_mp_input)
+        form.addRow("Família matéria-prima", self.familia_mp_input)
+        form.addRow("Orla 0.4", self.orla_0_4_input)
+        form.addRow("Orla 1.0", self.orla_1_0_input)
+        form.addRow("Comp MP", self.comp_mp_input)
+        form.addRow("Larg MP", self.larg_mp_input)
+        form.addRow("Esp MP", self.esp_mp_input)
+        form.addRow("Origem dados", self.origem_dados_input)
+        form.addRow("Editado localmente", self.editado_localmente_input)
+        form.addRow("Padrão", self.padrao_input)
+        form.addRow("Ordem", self.ordem_input)
+        form.addRow("Observações", self.observacoes_input)
+        form.addRow("Ativo", self.ativo_input)
+
+        form_widget = QWidget()
+        form_widget.setLayout(form)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(form_widget)
+
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
+        self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.button_box.accepted.connect(self._validate_and_accept)
+        self.button_box.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(scroll, stretch=1)
+        layout.addWidget(self.error_label)
+        layout.addWidget(self.button_box)
+        self.setLayout(layout)
+
+        self._load_linha(linha)
+        self._connect_recalculo()
+
+    def _connect_recalculo(self) -> None:
+        """Wire price recompute and local-edit detection to the input fields."""
+        for widget in (self.preco_tabela_input, self.margem_input, self.desconto_input):
+            widget.textChanged.connect(self._recalcular_preco_liquido)
+
+        for widget in (
+            self.ref_le_input,
+            self.descricao_no_orcamento_input,
+            self.ref_materia_prima_input,
+            self.descricao_materia_prima_input,
+            self.valor_texto_input,
+            self.preco_tabela_input,
+            self.margem_input,
+            self.desconto_input,
+            self.preco_liquido_input,
+            self.unidade_input,
+            self.desperdicio_input,
+            self.tipo_mp_input,
+            self.familia_mp_input,
+            self.orla_0_4_input,
+            self.orla_1_0_input,
+            self.comp_mp_input,
+            self.larg_mp_input,
+            self.esp_mp_input,
+            self.codigo_opcao_input,
+            self.nome_opcao_input,
+        ):
+            widget.textChanged.connect(self._marcar_editado_se_necessario)
+
+    def _load_linha(self, linha: OrcamentoItemValuesetLinhaResumo) -> None:
+        """Populate the form with the line values."""
+        self._suppress = True
+        try:
+            self.codigo_opcao_input.setText(linha.codigo_opcao or "")
+            self.nome_opcao_input.setText(linha.nome_opcao or "")
+            self.ref_le_input.setText(linha.ref_le or "")
+            self.descricao_no_orcamento_input.setText(linha.descricao_no_orcamento or "")
+            self.ref_materia_prima_input.setText(linha.ref_materia_prima or "")
+            self.descricao_materia_prima_input.setText(linha.descricao_materia_prima or "")
+            self.valor_texto_input.setText(linha.valor_texto or "")
+            self.preco_tabela_input.setText(self._format_decimal(linha.preco_tabela))
+            self.margem_input.setText(self._format_decimal(linha.margem_percentagem))
+            self.desconto_input.setText(self._format_decimal(linha.desconto_percentagem))
+            self.preco_liquido_input.setText(self._format_decimal(linha.preco_liquido))
+            self.unidade_input.setText(linha.unidade or "")
+            self.desperdicio_input.setText(self._format_decimal(linha.desperdicio_percentagem))
+            self.tipo_mp_input.setText(linha.tipo_materia_prima or "")
+            self.familia_mp_input.setText(linha.familia_materia_prima or "")
+            self.orla_0_4_input.setText(linha.coresp_orla_0_4 or "")
+            self.orla_1_0_input.setText(linha.coresp_orla_1_0 or "")
+            self.comp_mp_input.setText(self._format_decimal(linha.comp_mp))
+            self.larg_mp_input.setText(self._format_decimal(linha.larg_mp))
+            self.esp_mp_input.setText(self._format_decimal(linha.esp_mp))
+            self.origem_dados_input.setCurrentText(linha.origem_dados or "")
+            self.editado_localmente_input.setChecked(linha.editado_localmente)
+            self.padrao_input.setChecked(linha.padrao)
+            self.ordem_input.setText(str(linha.ordem))
+            self.observacoes_input.setText(linha.observacoes or "")
+            self.ativo_input.setChecked(linha.ativo)
+        finally:
+            self._suppress = False
+
+    def abrir_picker_materia_prima(self) -> None:
+        """Open the raw material picker and copy the selection into the line."""
+        picker = MateriaPrimaPickerDialog(parent=self)
+        if picker.exec() and picker.selected_materia is not None:
+            self._preencher_de_materia_prima(picker.selected_materia)
+
+    def _preencher_de_materia_prima(self, materia) -> None:
+        """Copy the raw material snapshot into the line (marks it locally chosen)."""
+        self._suppress = True
+        try:
+            margem = normalize_percentagem_humana(materia.margem)
+            desconto = normalize_percentagem_humana(materia.desconto)
+
+            self.ref_le_input.setText(materia.ref_le or "")
+            self.descricao_no_orcamento_input.setText(materia.descricao or "")
+            self.ref_materia_prima_input.setText(materia.ref_le or "")
+            self.descricao_materia_prima_input.setText(materia.descricao or "")
+            self.preco_tabela_input.setText(self._format_decimal(materia.preco_tabela))
+            self.margem_input.setText(self._format_decimal(margem))
+            self.desconto_input.setText(self._format_decimal(desconto))
+            self.preco_liquido_input.setText(
+                self._format_decimal(
+                    self._calcular_preco_liquido(materia.preco_tabela, margem, desconto)
+                    if materia.preco_tabela is not None
+                    else materia.preco_liquido
+                )
+            )
+            self.unidade_input.setText(materia.unidade or "")
+            self.desperdicio_input.setText("")
+            self.tipo_mp_input.setText(materia.tipo_martelo or "")
+            self.familia_mp_input.setText(materia.familia_martelo or "")
+            self.orla_0_4_input.setText("")
+            self.orla_1_0_input.setText("")
+            self.comp_mp_input.setText(self._format_decimal(materia.comprimento))
+            self.larg_mp_input.setText(self._format_decimal(materia.largura))
+            self.esp_mp_input.setText(self._format_decimal(materia.espessura))
+            self.origem_dados_input.setCurrentText("MATERIA_PRIMA")
+            self.editado_localmente_input.setChecked(True)
+        finally:
+            self._suppress = False
+
+    def _calcular_preco_liquido(
+        self, preco_tabela: Decimal | None, margem: Decimal | None, desconto: Decimal | None
+    ) -> Decimal | None:
+        """preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100)."""
+        if preco_tabela is None:
+            return None
+
+        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
+        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
+        return preco_tabela * desconto_factor * margem_factor
+
+    def _recalcular_preco_liquido(self, *_args) -> None:
+        """Recompute preco_liquido from table price, margin and discount."""
+        if self._suppress:
+            return
+
+        try:
+            preco_tabela = parse_decimal_humano(self.preco_tabela_input.text())
+            margem = parse_decimal_humano(self.margem_input.text())
+            desconto = parse_decimal_humano(self.desconto_input.text())
+        except ValueError:
+            return
+
+        resultado = self._calcular_preco_liquido(preco_tabela, margem, desconto)
+        if resultado is None:
+            return
+
+        self._suppress = True
+        try:
+            self.preco_liquido_input.setText(self._format_decimal(resultado))
+        finally:
+            self._suppress = False
+
+    def _marcar_editado_se_necessario(self, *_args) -> None:
+        """Flag the line as locally edited when a relevant field changes."""
+        if self._suppress:
+            return
+
+        if self.origem_dados_input.currentText().strip().upper() != "EDITADO_LOCALMENTE":
+            self._suppress = True
+            try:
+                self.origem_dados_input.setCurrentText("EDITADO_LOCALMENTE")
+                self.editado_localmente_input.setChecked(True)
+            finally:
+                self._suppress = False
+
+    def get_data(self) -> OrcamentoItemValuesetLinhaDialogData:
+        """Return dialog data (raises ValueError on invalid numbers)."""
+        return OrcamentoItemValuesetLinhaDialogData(
+            chave=obter_valor_chave_combo(self.chave_input),
+            codigo_opcao=self.codigo_opcao_input.text().strip(),
+            nome_opcao=self.nome_opcao_input.text().strip(),
+            ref_le=self._empty_to_none(self.ref_le_input.text()),
+            descricao_no_orcamento=self._empty_to_none(
+                self.descricao_no_orcamento_input.text()
+            ),
+            ref_materia_prima=self._empty_to_none(self.ref_materia_prima_input.text()),
+            descricao_materia_prima=self._empty_to_none(
+                self.descricao_materia_prima_input.text()
+            ),
+            valor_texto=self._empty_to_none(self.valor_texto_input.text()),
+            preco_tabela=self._parse_optional_decimal(self.preco_tabela_input, "Preço tabela"),
+            margem_percentagem=self._parse_optional_decimal(self.margem_input, "Margem %"),
+            desconto_percentagem=self._parse_optional_decimal(self.desconto_input, "Desconto %"),
+            preco_liquido=self._parse_optional_decimal(self.preco_liquido_input, "Preço líquido"),
+            unidade=self._empty_to_none(self.unidade_input.text()),
+            desperdicio_percentagem=self._parse_optional_decimal(
+                self.desperdicio_input, "Desperdício %"
+            ),
+            tipo_materia_prima=self._empty_to_none(self.tipo_mp_input.text()),
+            familia_materia_prima=self._empty_to_none(self.familia_mp_input.text()),
+            coresp_orla_0_4=self._empty_to_none(self.orla_0_4_input.text()),
+            coresp_orla_1_0=self._empty_to_none(self.orla_1_0_input.text()),
+            comp_mp=self._parse_optional_decimal(self.comp_mp_input, "Comp MP"),
+            larg_mp=self._parse_optional_decimal(self.larg_mp_input, "Larg MP"),
+            esp_mp=self._parse_optional_decimal(self.esp_mp_input, "Esp MP"),
+            origem_dados=self._empty_to_none(self.origem_dados_input.currentText()),
+            editado_localmente=self.editado_localmente_input.isChecked(),
+            padrao=self.padrao_input.isChecked(),
+            ordem=self._parse_ordem(),
+            observacoes=self._empty_to_none(self.observacoes_input.text()),
+            ativo=self.ativo_input.isChecked(),
+        )
+
+    def _validate_and_accept(self) -> None:
+        """Validate required fields before accepting."""
+        if not self.codigo_opcao_input.text().strip():
+            self.set_error("O código da opção é obrigatório.")
+            return
+
+        if not self.nome_opcao_input.text().strip():
+            self.set_error("O nome da opção é obrigatório.")
+            return
+
+        self._recalcular_preco_liquido()
+
+        try:
+            data = self.get_data()
+        except ValueError as error:
+            self.set_error(str(error))
+            return
+
+        self.error_label.clear()
+        if self.on_save is not None and not self.on_save(data):
+            return
+
+        self.accept()
+
+    def set_error(self, message: str) -> None:
+        """Show a user-facing error while keeping the dialog open."""
+        self.error_label.setText(message)
+
+    def _parse_ordem(self) -> int:
+        text = self.ordem_input.text().strip()
+        if not text:
+            return 1
+
+        try:
+            return int(text)
+        except ValueError as error:
+            raise ValueError("Ordem inválida. Use um número inteiro.") from error
+
+    def _parse_optional_decimal(self, widget: QLineEdit, label: str) -> Decimal | None:
+        try:
+            return parse_decimal_humano(widget.text())
+        except ValueError as error:
+            raise ValueError(f"{label} inválido. Use um número, por exemplo 1.5.") from error
+
+    def _format_decimal(self, value: Decimal | None) -> str:
+        if value is None:
+            return ""
+
+        return format(value.normalize(), "f")
+
+    def _empty_to_none(self, value: str) -> str | None:
+        normalized = value.strip()
+        return normalized or None
