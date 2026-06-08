@@ -85,6 +85,18 @@ class ImportarModeloParaItemResult:
     total_origem: int
 
 
+@dataclass(frozen=True)
+class SubstituirPorModeloResult:
+    """Summary of replacing an item ValueSet with a ValueSet model."""
+
+    modelo_codigo: str
+    desativadas: int
+    criadas: int
+    atualizadas: int
+    ignoradas: int
+    total_origem: int
+
+
 class OrcamentoItemValuesetLinhaService:
     """Application service for budget item ValueSet lines."""
 
@@ -368,6 +380,62 @@ class OrcamentoItemValuesetLinhaService:
             criadas=criadas,
             atualizadas=atualizadas,
             ignoradas=ignoradas,
+            total_origem=total_origem,
+        )
+
+    def substituir_por_modelo(
+        self, orcamento_item_id: int, def_valueset_modelo_id: int
+    ) -> SubstituirPorModeloResult:
+        """Replace an item's ValueSet with a model: deactivate then import.
+
+        Currently active lines are deactivated (kept in the table as inactive),
+        and the model's active lines become the new active lines. Because the
+        (item, chave, codigo_opcao) uniqueness also covers inactive rows, a
+        model line that matches a just-deactivated row reactivates and
+        overwrites it instead of creating a duplicate.
+        """
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+
+        modelo = self.modelo_repository.get_by_id(def_valueset_modelo_id)
+        if modelo is None:
+            raise ValueError("modelo nao encontrado")
+
+        desativadas = 0
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if self.repository.deactivate(linha.id):
+                desativadas += 1
+
+        criadas = 0
+        atualizadas = 0
+        total_origem = 0
+
+        for linha in self.modelo_linha_repository.list_by_modelo(def_valueset_modelo_id):
+            if not linha.ativo:
+                continue
+
+            total_origem += 1
+            existing = self.repository.get_by_item_chave_opcao(
+                orcamento_item_id, linha.chave, linha.codigo_opcao
+            )
+            fields = self._build_modelo_import_fields(orcamento_item_id, modelo, linha)
+
+            if existing is None:
+                self.repository.create(**fields)
+                criadas += 1
+            else:
+                self.repository.update(id=existing.id, **fields)
+                atualizadas += 1
+
+        self.session.commit()
+
+        return SubstituirPorModeloResult(
+            modelo_codigo=modelo.codigo,
+            desativadas=desativadas,
+            criadas=criadas,
+            atualizadas=atualizadas,
+            ignoradas=0,
             total_origem=total_origem,
         )
 

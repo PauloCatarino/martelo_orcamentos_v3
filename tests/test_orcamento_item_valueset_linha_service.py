@@ -148,6 +148,7 @@ class _FakeItemRepository:
     updated_payload: dict | None = None
     set_padrao_calls: list = []
     clear_calls: list = []
+    deactivated_ids: list = []
     deactivate_result = True
     activate_result = True
 
@@ -190,6 +191,7 @@ class _FakeItemRepository:
         return _item_resumo(id=id, **fields)
 
     def deactivate(self, id: int) -> bool:
+        self.__class__.deactivated_ids.append(id)
         return self.deactivate_result
 
     def activate(self, id: int) -> bool:
@@ -258,6 +260,7 @@ def _reset() -> None:
     _FakeItemRepository.updated_payload = None
     _FakeItemRepository.set_padrao_calls = []
     _FakeItemRepository.clear_calls = []
+    _FakeItemRepository.deactivated_ids = []
     _FakeItemRepository.deactivate_result = True
     _FakeItemRepository.activate_result = True
     _FakeOrcamentoRepository.versao_default = None
@@ -590,3 +593,70 @@ def test_importar_modelo_para_item_modelo_inexistente_levanta(monkeypatch) -> No
         assert "modelo" in str(error)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_substituir_por_modelo_desativa_ativas_e_cria(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo(id=88, codigo="COZINHA_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [
+        _modelo_linha(id=1, chave="MATERIAL_FRENTES", codigo_opcao="MDF"),
+        _modelo_linha(id=2, chave="FERRAGEM_CORREDICA", codigo_opcao="SILVER"),
+    ]
+    _FakeItemRepository.rows = [
+        _item_resumo(id=5, chave="MATERIAL_LATERAIS", codigo_opcao="AGL"),
+        _item_resumo(id=6, chave="FERRAGEM_DOBRADICA", codigo_opcao="BLUM"),
+    ]
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.substituir_por_modelo(30, 88)
+
+    assert result.modelo_codigo == "COZINHA_STANDARD"
+    assert result.desativadas == 2
+    assert result.criadas == 2
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert result.total_origem == 2
+    assert 5 in _FakeItemRepository.deactivated_ids
+    assert 6 in _FakeItemRepository.deactivated_ids
+
+    payload = _FakeItemRepository.created_payload
+    assert payload["origem_dados"] == "MODELO_VALUESET"
+    assert payload["origem_modelo_codigo"] == "COZINHA_STANDARD"
+    assert payload["ativo"] is True
+    assert payload["editado_localmente"] is False
+    assert session.committed is True
+
+
+def test_substituir_por_modelo_sem_linhas_ativas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeItemRepository.rows = []
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.substituir_por_modelo(30, 88)
+
+    assert result.desativadas == 0
+    assert result.criadas == 1
+    assert _FakeItemRepository.deactivated_ids == []
+
+
+def test_substituir_por_modelo_reativa_colisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeItemRepository.rows = [_item_resumo(id=5)]
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, ativo=False)
+
+    result = service.substituir_por_modelo(30, 88)
+
+    assert result.desativadas == 1
+    assert result.criadas == 0
+    assert result.atualizadas == 1
+    payload = _FakeItemRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ativo"] is True
+    assert payload["origem_dados"] == "MODELO_VALUESET"

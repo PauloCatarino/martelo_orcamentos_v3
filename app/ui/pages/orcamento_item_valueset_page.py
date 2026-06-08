@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -114,9 +115,9 @@ class OrcamentoItemValuesetPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                linhas = OrcamentoItemValuesetLinhaService(session).listar_linhas_do_item(
-                    self.orcamento_item_id
-                )
+                linhas = OrcamentoItemValuesetLinhaService(
+                    session
+                ).listar_linhas_ativas_do_item(self.orcamento_item_id)
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar o ValueSet do item.")
             return
@@ -185,13 +186,45 @@ class OrcamentoItemValuesetPage(QWidget):
         )
 
     def importar_modelo(self) -> None:
-        """Open the model picker and import the selected model into the item."""
+        """Open the model picker and import the selected model into the item.
+
+        When the item already has active ValueSet lines, ask the user to
+        confirm replacing them before importing.
+        """
         dialog = ImportarValuesetModeloDialog(parent=self)
         if not dialog.exec() or dialog.selected_modelo is None:
             return
 
         modelo = dialog.selected_modelo
 
+        try:
+            with SessionLocal() as session:
+                tem_ativas = bool(
+                    OrcamentoItemValuesetLinhaService(session).listar_linhas_ativas_do_item(
+                        self.orcamento_item_id
+                    )
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível importar o modelo.")
+            return
+
+        if tem_ativas:
+            confirm = QMessageBox.question(
+                self,
+                "Substituir ValueSet do Item",
+                "Este item já tem linhas de ValueSet. Pretende substituir os "
+                "dados atuais pelos dados do modelo selecionado?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
+
+            self._substituir_por_modelo(modelo)
+        else:
+            self._importar_modelo_novo(modelo)
+
+    def _importar_modelo_novo(self, modelo) -> None:
+        """Import the model into an item with no active ValueSet lines."""
         try:
             with SessionLocal() as session:
                 result = OrcamentoItemValuesetLinhaService(session).importar_modelo_para_item(
@@ -206,6 +239,24 @@ class OrcamentoItemValuesetPage(QWidget):
             f"Modelo {result.modelo_codigo} importado: "
             f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
             f"{result.ignoradas} ignoradas."
+        )
+
+    def _substituir_por_modelo(self, modelo) -> None:
+        """Replace the item's active ValueSet with the selected model."""
+        try:
+            with SessionLocal() as session:
+                result = OrcamentoItemValuesetLinhaService(session).substituir_por_modelo(
+                    self.orcamento_item_id, modelo.id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível importar o modelo.")
+            return
+
+        self.carregar()
+        self.status_label.setText(
+            f"Modelo {result.modelo_codigo} importado: "
+            f"{result.desativadas} linhas anteriores desativadas, "
+            f"{result.criadas + result.atualizadas} criadas."
         )
 
     def _format_bool(self, value: bool) -> str:

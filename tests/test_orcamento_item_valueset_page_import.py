@@ -64,17 +64,31 @@ def test_page_uses_service() -> None:
 
     carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
     assert "OrcamentoItemValuesetLinhaService" in carregar
-    assert "listar_linhas_do_item" in carregar
+    assert "listar_linhas_ativas_do_item" in carregar
 
 
 def test_page_import_modelo_uses_dialog_and_service() -> None:
     from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 
-    source = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
+    importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
+    assert "ImportarValuesetModeloDialog" in importar
 
-    assert "ImportarValuesetModeloDialog" in source
-    assert "importar_modelo_para_item" in source
-    assert "importado" in source
+    novo = inspect.getsource(OrcamentoItemValuesetPage._importar_modelo_novo)
+    assert "importar_modelo_para_item" in novo
+    assert "importado" in novo
+
+
+def test_page_import_modelo_confirms_replace() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
+    assert "listar_linhas_ativas_do_item" in importar
+    assert "Substituir ValueSet do Item" in importar
+    assert "QMessageBox" in importar
+
+    substituir = inspect.getsource(OrcamentoItemValuesetPage._substituir_por_modelo)
+    assert "substituir_por_modelo" in substituir
+    assert "desativadas" in substituir
 
 
 def test_page_formats_percentages() -> None:
