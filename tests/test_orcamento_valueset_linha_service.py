@@ -466,3 +466,70 @@ def test_editar_linha_preserva_dimensoes_e_origem_modelo(monkeypatch) -> None:
     assert payload["esp_mp"] == Decimal("19")
     assert payload["origem_modelo_id"] == 99
     assert payload["origem_modelo_codigo"] == "ROUPEIRO_STANDARD"
+
+
+def test_copiar_snapshot_devolve_campos_sem_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5,
+        ref_le="FRT0001",
+        preco_tabela=Decimal("10"),
+        unidade="m2",
+        comp_mp=Decimal("2750"),
+    )
+
+    snapshot = service.copiar_snapshot_linha(5)
+
+    assert snapshot["ref_le"] == "FRT0001"
+    assert snapshot["preco_tabela"] == Decimal("10")
+    assert snapshot["unidade"] == "m2"
+    assert snapshot["comp_mp"] == Decimal("2750")
+    assert "chave" not in snapshot
+    assert "codigo_opcao" not in snapshot
+
+
+def test_colar_snapshot_mantem_chave_e_recalcula(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    snapshot = {
+        "ref_le": "FRT0001",
+        "unidade": "m2",
+        "comp_mp": Decimal("2750"),
+        "preco_tabela": Decimal("10"),
+        "margem_percentagem": Decimal("10"),
+        "desconto_percentagem": Decimal("10"),
+    }
+
+    service.aplicar_snapshot_linha(5, snapshot)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] == "FRT0001"
+    assert payload["unidade"] == "m2"
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["preco_liquido"] == Decimal("9.90")
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+    assert "chave" not in payload
+    assert "codigo_opcao" not in payload
+    assert session.committed is True
+
+
+def test_limpar_snapshot_remove_campos_mantendo_chave(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.limpar_snapshot_linha(5)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] is None
+    assert payload["preco_tabela"] is None
+    assert payload["preco_liquido"] is None
+    assert payload["unidade"] is None
+    assert payload["comp_mp"] is None
+    assert payload["larg_mp"] is None
+    assert payload["esp_mp"] is None
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+    assert "chave" not in payload
+    assert "codigo_opcao" not in payload
+    assert session.committed is True

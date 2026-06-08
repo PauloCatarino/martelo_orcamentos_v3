@@ -15,6 +15,29 @@ from app.repositories.orcamento_valueset_linha_repository import (
     OrcamentoValuesetLinhaResumo,
 )
 
+# Materia-prima snapshot fields that can be copied, pasted and cleared between
+# budget ValueSet lines (their key/option/order/active state is preserved).
+SNAPSHOT_FIELDS = (
+    "ref_le",
+    "descricao_no_orcamento",
+    "ref_materia_prima",
+    "descricao_materia_prima",
+    "valor_texto",
+    "preco_tabela",
+    "margem_percentagem",
+    "desconto_percentagem",
+    "preco_liquido",
+    "unidade",
+    "desperdicio_percentagem",
+    "tipo_materia_prima",
+    "familia_materia_prima",
+    "coresp_orla_0_4",
+    "coresp_orla_1_0",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
+)
+
 
 @dataclass(frozen=True)
 class CriarOrcamentoValuesetLinhaData:
@@ -146,6 +169,56 @@ class OrcamentoValuesetLinhaService:
     def obter_por_id(self, id: int) -> OrcamentoValuesetLinhaResumo | None:
         """Get one budget version ValueSet line by id."""
         return self.repository.get_by_id(id)
+
+    def copiar_snapshot_linha(self, id: int) -> dict:
+        """Return the materia-prima snapshot of one line (key/option excluded)."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        return {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+
+    def aplicar_snapshot_linha(
+        self, id: int, snapshot: dict
+    ) -> OrcamentoValuesetLinhaResumo:
+        """Apply a snapshot to one line, keeping its key, option, order and state.
+
+        preco_liquido is recomputed from the pasted table price, margin and
+        discount. The line is flagged as locally edited.
+        """
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        fields = {field: snapshot.get(field) for field in SNAPSHOT_FIELDS}
+        fields["preco_liquido"] = self._compute_preco_liquido(
+            fields["preco_tabela"],
+            fields["margem_percentagem"],
+            fields["desconto_percentagem"],
+            fields["preco_liquido"],
+        )
+        fields["origem_dados"] = "EDITADO_LOCALMENTE"
+        fields["editado_localmente"] = True
+
+        result = self.repository.update(id=id, **fields)
+        self.session.commit()
+
+        return result
+
+    def limpar_snapshot_linha(self, id: int) -> OrcamentoValuesetLinhaResumo:
+        """Clear the materia-prima snapshot of one line, keeping key and option."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        fields = {field: None for field in SNAPSHOT_FIELDS}
+        fields["origem_dados"] = "EDITADO_LOCALMENTE"
+        fields["editado_localmente"] = True
+
+        result = self.repository.update(id=id, **fields)
+        self.session.commit()
+
+        return result
 
     def criar_linha(
         self, data: CriarOrcamentoValuesetLinhaData

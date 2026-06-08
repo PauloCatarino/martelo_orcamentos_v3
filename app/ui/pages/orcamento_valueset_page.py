@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -19,6 +21,7 @@ from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
 from app.repositories.orcamento_valueset_linha_repository import OrcamentoValuesetLinhaResumo
 from app.services.orcamento_valueset_linha_service import (
+    SNAPSHOT_FIELDS,
     EditarOrcamentoValuesetLinhaData,
     OrcamentoValuesetLinhaService,
 )
@@ -61,6 +64,7 @@ class OrcamentoValuesetPage(QWidget):
 
         self.orcamento_versao_id = orcamento_versao_id
         self._linhas_by_row: dict[int, OrcamentoValuesetLinhaResumo] = {}
+        self._copied_snapshot: dict | None = None
 
         title = QLabel("ValueSet do Orçamento")
         title.setObjectName("pageTitle")
@@ -76,6 +80,12 @@ class OrcamentoValuesetPage(QWidget):
         self.import_button.clicked.connect(self.importar_modelo)
         self.edit_button = QPushButton("Editar Linha")
         self.edit_button.clicked.connect(self.abrir_editar_linha)
+        self.copy_button = QPushButton("Copiar Dados")
+        self.copy_button.clicked.connect(self.copiar_dados)
+        self.paste_button = QPushButton("Colar Dados")
+        self.paste_button.clicked.connect(self.colar_dados)
+        self.clear_button = QPushButton("Limpar Dados")
+        self.clear_button.clicked.connect(self.limpar_dados)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.refresh_button = QPushButton("Atualizar")
@@ -84,6 +94,9 @@ class OrcamentoValuesetPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.import_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.copy_button)
+        actions_layout.addWidget(self.paste_button)
+        actions_layout.addWidget(self.clear_button)
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -99,6 +112,8 @@ class OrcamentoValuesetPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -291,6 +306,79 @@ class OrcamentoValuesetPage(QWidget):
     def _handle_double_click(self, _row: int, _column: int) -> None:
         """Edit a line when the user double-clicks its row."""
         self.abrir_editar_linha()
+
+    def copiar_dados(self) -> None:
+        """Copy the materia-prima snapshot of the selected line into memory."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+
+        self._copied_snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        self.status_label.setText("Dados da linha copiados.")
+
+    def colar_dados(self) -> None:
+        """Apply the copied snapshot to the selected line."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+
+        if self._copied_snapshot is None:
+            self.status_label.setText("Não existem dados copiados.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoValuesetLinhaService(session).aplicar_snapshot_linha(
+                    linha.id, self._copied_snapshot
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível colar os dados.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Dados colados na linha.")
+
+    def limpar_dados(self) -> None:
+        """Clear the materia-prima snapshot of the selected line."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirmar",
+            "Tem a certeza que pretende limpar os dados desta linha?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoValuesetLinhaService(session).limpar_snapshot_linha(linha.id)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível limpar os dados.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Dados da linha limpos.")
+
+    def _abrir_menu_contexto(self, pos) -> None:
+        """Show a right-click menu with the quick line actions."""
+        item = self.table.itemAt(pos)
+        if item is not None:
+            self.table.selectRow(item.row())
+
+        menu = QMenu(self)
+        menu.addAction("Editar Linha", self.abrir_editar_linha)
+        menu.addAction("Copiar Dados", self.copiar_dados)
+        menu.addAction("Colar Dados", self.colar_dados)
+        menu.addAction("Limpar Dados", self.limpar_dados)
+        menu.addAction("Ativar/Desativar", self.alternar_linha_ativa)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _get_selected_linha(self) -> OrcamentoValuesetLinhaResumo | None:
         """Return the selected ValueSet line."""

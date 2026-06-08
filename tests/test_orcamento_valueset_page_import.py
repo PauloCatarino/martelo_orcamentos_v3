@@ -91,3 +91,22 @@ def test_page_formats_percentages() -> None:
     source = inspect.getsource(OrcamentoValuesetPage._preencher)
 
     assert "formatar_percentagem" in source
+
+
+def test_page_has_snapshot_tools() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    for method in ("copiar_dados", "colar_dados", "limpar_dados", "_abrir_menu_contexto"):
+        assert hasattr(OrcamentoValuesetPage, method)
+
+    copiar = inspect.getsource(OrcamentoValuesetPage.copiar_dados)
+    assert "SNAPSHOT_FIELDS" in copiar
+    assert "Dados da linha copiados." in copiar
+
+    colar = inspect.getsource(OrcamentoValuesetPage.colar_dados)
+    assert "aplicar_snapshot_linha" in colar
+    assert "Não existem dados copiados." in colar
+
+    limpar = inspect.getsource(OrcamentoValuesetPage.limpar_dados)
+    assert "limpar_snapshot_linha" in limpar
+    assert "Tem a certeza" in limpar
