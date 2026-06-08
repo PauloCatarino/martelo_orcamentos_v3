@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -160,6 +161,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
 
+        self.recalc_measures_button = QPushButton("Recalcular Medidas")
+        self.recalc_measures_button.clicked.connect(self.recalcular_medidas)
+
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
         self.import_module_button.setEnabled(False)
 
@@ -175,6 +179,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.insert_piece_button)
@@ -257,6 +262,20 @@ class OrcamentoItemCusteioPage(QWidget):
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
+
+    def recalcular_medidas(self) -> None:
+        """Recompute quantities, real measures, area and perimeter of the item."""
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).recalcular_medidas_do_item(
+                    self.item_id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível recalcular as medidas.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Medidas recalculadas.")
 
     def _create_library_panel(self) -> QWidget:
         """Build the parts library panel (search + tree + selection tools)."""
@@ -506,8 +525,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Comp": format_quantity(linha.comp),
             "Larg": format_quantity(linha.larg),
             "Esp": format_quantity(linha.esp),
-            "Área m²": format_quantity(linha.area_m2),
-            "Perímetro ML": format_quantity(linha.perimetro_ml),
+            "Comp real": format_quantity(linha.comp_real),
+            "Larg real": format_quantity(linha.larg_real),
+            "Esp real": format_quantity(linha.esp_real),
+            "Área m²": self._format_medida3(linha.area_m2),
+            "Perímetro ML": self._format_medida3(linha.perimetro_ml),
             "Chave ValueSet": linha.chave_valueset or "",
             "Mat. default": linha.mat_default or "",
             "Ref LE": linha.ref_le or "",
@@ -561,6 +583,18 @@ class OrcamentoItemCusteioPage(QWidget):
             return f"{item.codigo} - {item.item}"
 
         return item.item
+
+    def _format_medida3(self, value) -> str:
+        """Format an area/perimeter value with three decimals."""
+        if value is None:
+            return ""
+
+        try:
+            numero = Decimal(str(value)).quantize(Decimal("0.001"))
+        except (InvalidOperation, ValueError):
+            return ""
+
+        return format(numero, "f").replace(".", ",")
 
     @staticmethod
     def _format_bool(value: bool) -> str:

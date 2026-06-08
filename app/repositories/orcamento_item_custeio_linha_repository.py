@@ -70,6 +70,9 @@ class OrcamentoItemCusteioLinhaResumo:
     esp_mp: Decimal | None = None
     qt_mod: Decimal | None = None
     qt_und: Decimal | None = None
+    comp_real: Decimal | None = None
+    larg_real: Decimal | None = None
+    esp_real: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -231,6 +234,9 @@ class OrcamentoItemCusteioLinhaRepository:
             esp_mp=linha.esp_mp,
             qt_mod=linha.qt_mod,
             qt_und=linha.qt_und,
+            comp_real=linha.comp_real,
+            larg_real=linha.larg_real,
+            esp_real=linha.esp_real,
             created_at=linha.created_at,
             updated_at=linha.updated_at,
         )

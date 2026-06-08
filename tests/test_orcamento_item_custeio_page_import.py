@@ -152,3 +152,21 @@ def test_orcamento_item_custeio_page_maps_hierarchy_columns() -> None:
 
     assert '"Nível"' in source
     assert '"Linha pai"' in source
+
+
+def test_orcamento_item_custeio_page_recalcular_medidas() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "recalcular_medidas")
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "Recalcular Medidas" in init
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.recalcular_medidas)
+    assert "recalcular_medidas_do_item" in source
+    assert "Medidas recalculadas." in source
+
+    valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
+    assert '"Comp real"' in valores
+    assert "comp_real" in valores
+    assert '"Área m²"' in valores

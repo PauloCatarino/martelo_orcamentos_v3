@@ -209,6 +209,10 @@ class _FakeItemValuesetRepository:
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.item = None
+
+    def get(self, _model, _id):
+        return self.item
 
     def commit(self) -> None:
         self.committed = True
@@ -583,6 +587,86 @@ def test_adicionar_componente_sem_def_peca_associada(monkeypatch) -> None:
     assert sub["nivel"] == 1
     assert sub["linha_pai_id"] == 1
     assert "sem definição de peça associada" in sub["observacoes"]
+
+
+def test_recalcular_medidas_do_item(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=5,
+            qt_mod=Decimal("2"),
+            qt_und=Decimal("3"),
+            comp=Decimal("1000"),
+            larg=Decimal("500"),
+            esp=Decimal("19"),
+        )
+    ]
+
+    atualizadas = service.recalcular_medidas_do_item(30)
+
+    assert atualizadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["quantidade"] == Decimal("6")
+    assert payload["comp_real"] == Decimal("1000")
+    assert payload["larg_real"] == Decimal("500")
+    assert payload["esp_real"] == Decimal("19")
+    assert payload["area_m2"] == Decimal("0.5")
+    assert payload["perimetro_ml"] == Decimal("3")
+    assert session.committed is True
+
+
+def test_recalcular_medidas_qt_total_default_e_sem_medidas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(altura=None, largura=None, profundidade=None)
+    _FakeRepository.active_rows = [_resumo(id=5, qt_mod=None, qt_und=None)]
+
+    service.recalcular_medidas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["quantidade"] == Decimal("1")
+    assert payload["comp_real"] is None
+    assert payload["area_m2"] is None
+    assert payload["perimetro_ml"] is None
+
+
+def test_recalcular_medidas_so_altera_campos_de_medida(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.active_rows = [_resumo(id=5, ref_le="LE01", chave_valueset="MATERIAL_X")]
+
+    service.recalcular_medidas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # Only quantity/measure fields are updated; ValueSet snapshot is untouched.
+    assert set(payload.keys()) == {
+        "id",
+        "qt_mod",
+        "qt_und",
+        "quantidade",
+        "comp_real",
+        "larg_real",
+        "esp_real",
+        "area_m2",
+        "perimetro_ml",
+    }
+
+
+def test_recalcular_medidas_item_inexistente_levanta(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = None
+
+    try:
+        service.recalcular_medidas_do_item(999)
+    except ValueError as error:
+        assert "item" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:

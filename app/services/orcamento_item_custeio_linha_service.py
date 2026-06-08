@@ -17,8 +17,15 @@ from app.domain.custeio_linha_types import (
     PECA_COMPOSTA,
     normalize_custeio_linha_type,
 )
+from app.domain.medidas import (
+    avaliar_medida,
+    calcular_area_m2,
+    calcular_perimetro_ml,
+    construir_contexto_item,
+)
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
+from app.models import OrcamentoItem
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -148,6 +155,70 @@ class OrcamentoItemCusteioLinhaService:
     def obter_por_id(self, id: int) -> OrcamentoItemCusteioLinhaResumo | None:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
+
+    def recalcular_medidas_do_item(self, orcamento_item_id: int) -> int:
+        """Recompute quantities, real measures, area and perimeter for an item.
+
+        Updates only the active cost lines of the item, using the item's
+        measures as the variable context. Returns how many lines were updated.
+        """
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+
+        contexto = construir_contexto_item(item.altura, item.largura, item.profundidade)
+
+        atualizadas = 0
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            fields = self._calcular_medidas_fields(linha, contexto)
+            self.repository.update_linha(id=linha.id, **fields)
+            atualizadas += 1
+
+        self.session.commit()
+
+        return atualizadas
+
+    def recalcular_medidas_linha(
+        self, linha_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Recompute quantities and measures of one cost line."""
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
+        contexto = (
+            construir_contexto_item(item.altura, item.largura, item.profundidade)
+            if item is not None
+            else {}
+        )
+
+        fields = self._calcular_medidas_fields(linha, contexto)
+        result = self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return result
+
+    def _calcular_medidas_fields(self, linha, contexto: dict) -> dict:
+        """Build the recomputed quantity/measure fields for one line."""
+        qt_mod = linha.qt_mod if linha.qt_mod is not None else Decimal("1")
+        qt_und = linha.qt_und if linha.qt_und is not None else Decimal("1")
+        qt_total = qt_mod * qt_und
+
+        comp_real = avaliar_medida(linha.comp, contexto)
+        larg_real = avaliar_medida(linha.larg, contexto)
+        esp_real = avaliar_medida(linha.esp, contexto)
+
+        return {
+            "qt_mod": qt_mod,
+            "qt_und": qt_und,
+            "quantidade": qt_total,
+            "comp_real": comp_real,
+            "larg_real": larg_real,
+            "esp_real": esp_real,
+            "area_m2": calcular_area_m2(comp_real, larg_real),
+            "perimetro_ml": calcular_perimetro_ml(comp_real, larg_real),
+        }
 
     def adicionar_pecas_da_biblioteca(
         self, orcamento_item_id: int, def_peca_ids: list[int]
