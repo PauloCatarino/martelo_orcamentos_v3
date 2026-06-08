@@ -401,3 +401,68 @@ def test_importar_modelo_inexistente_levanta(monkeypatch) -> None:
         assert "modelo" in str(error)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_editar_linha_recalcula_preco_liquido(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.editar_linha(
+        5,
+        service_module.EditarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="MDF",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("10"),
+            desconto_percentagem=Decimal("10"),
+        ),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["preco_liquido"] == Decimal("9.90")
+    assert session.committed is True
+
+
+def test_editar_linha_marca_editado_localmente(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.editar_linha(
+        5,
+        service_module.EditarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="MDF",
+            origem_dados="EDITADO_LOCALMENTE",
+            editado_localmente=True,
+        ),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["editado_localmente"] is True
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+
+
+def test_editar_linha_preserva_dimensoes_e_origem_modelo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.editar_linha(
+        5,
+        service_module.EditarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="MDF",
+            comp_mp=Decimal("2750"),
+            larg_mp=Decimal("1830"),
+            esp_mp=Decimal("19"),
+            origem_modelo_id=99,
+            origem_modelo_codigo="ROUPEIRO_STANDARD",
+        ),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["larg_mp"] == Decimal("1830")
+    assert payload["esp_mp"] == Decimal("19")
+    assert payload["origem_modelo_id"] == 99
+    assert payload["origem_modelo_codigo"] == "ROUPEIRO_STANDARD"

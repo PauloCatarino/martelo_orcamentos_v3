@@ -13,14 +13,18 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
 from app.repositories.orcamento_valueset_linha_repository import OrcamentoValuesetLinhaResumo
-from app.services.orcamento_valueset_linha_service import OrcamentoValuesetLinhaService
+from app.services.orcamento_valueset_linha_service import (
+    EditarOrcamentoValuesetLinhaData,
+    OrcamentoValuesetLinhaService,
+)
 from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModeloDialog
-from app.utils.formatters import format_currency
+from app.ui.dialogs.orcamento_valueset_linha_dialog import OrcamentoValuesetLinhaDialog
+from app.utils.formatters import format_currency, format_quantity
 
 
 class OrcamentoValuesetPage(QWidget):
@@ -40,6 +44,11 @@ class OrcamentoValuesetPage(QWidget):
         "Desp %",
         "Tipo",
         "Família",
+        "Orla 0.4",
+        "Orla 1.0",
+        "Comp MP",
+        "Larg MP",
+        "Esp MP",
         "Padrão",
         "Ordem",
         "Origem",
@@ -65,6 +74,8 @@ class OrcamentoValuesetPage(QWidget):
 
         self.import_button = QPushButton("Importar Modelo")
         self.import_button.clicked.connect(self.importar_modelo)
+        self.edit_button = QPushButton("Editar Linha")
+        self.edit_button.clicked.connect(self.abrir_editar_linha)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.refresh_button = QPushButton("Atualizar")
@@ -72,6 +83,7 @@ class OrcamentoValuesetPage(QWidget):
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.import_button)
+        actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -86,6 +98,7 @@ class OrcamentoValuesetPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -141,6 +154,11 @@ class OrcamentoValuesetPage(QWidget):
                 formatar_percentagem(linha.desperdicio_percentagem),
                 linha.tipo_materia_prima or "",
                 linha.familia_materia_prima or "",
+                linha.coresp_orla_0_4 or "",
+                linha.coresp_orla_1_0 or "",
+                format_quantity(linha.comp_mp),
+                format_quantity(linha.larg_mp),
+                format_quantity(linha.esp_mp),
                 self._format_bool(linha.padrao),
                 str(linha.ordem),
                 linha.origem_modelo_codigo or linha.origem_dados or "",
@@ -206,6 +224,73 @@ class OrcamentoValuesetPage(QWidget):
         estado = "desativada" if linha.ativo else "reativada"
         self.carregar()
         self.status_label.setText(f"Linha {estado}.")
+
+    def abrir_editar_linha(self) -> None:
+        """Open the edit dialog for the selected ValueSet line."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha para editar.")
+            return
+
+        saved = False
+
+        def handle_save(form_data) -> bool:
+            nonlocal saved
+            try:
+                with SessionLocal() as session:
+                    OrcamentoValuesetLinhaService(session).editar_linha(
+                        linha.id,
+                        EditarOrcamentoValuesetLinhaData(
+                            orcamento_versao_id=self.orcamento_versao_id,
+                            chave=form_data.chave or linha.chave,
+                            codigo_opcao=form_data.codigo_opcao,
+                            nome_opcao=form_data.nome_opcao,
+                            descricao=linha.descricao,
+                            materia_prima_id=linha.materia_prima_id,
+                            ref_materia_prima=form_data.ref_materia_prima,
+                            descricao_materia_prima=form_data.descricao_materia_prima,
+                            valor_texto=form_data.valor_texto,
+                            origem=linha.origem,
+                            ref_le=form_data.ref_le,
+                            descricao_no_orcamento=form_data.descricao_no_orcamento,
+                            preco_tabela=form_data.preco_tabela,
+                            margem_percentagem=form_data.margem_percentagem,
+                            desconto_percentagem=form_data.desconto_percentagem,
+                            preco_liquido=form_data.preco_liquido,
+                            unidade=form_data.unidade,
+                            desperdicio_percentagem=form_data.desperdicio_percentagem,
+                            tipo_materia_prima=form_data.tipo_materia_prima,
+                            familia_materia_prima=form_data.familia_materia_prima,
+                            coresp_orla_0_4=form_data.coresp_orla_0_4,
+                            coresp_orla_1_0=form_data.coresp_orla_1_0,
+                            comp_mp=form_data.comp_mp,
+                            larg_mp=form_data.larg_mp,
+                            esp_mp=form_data.esp_mp,
+                            origem_dados=form_data.origem_dados,
+                            origem_modelo_id=linha.origem_modelo_id,
+                            origem_modelo_codigo=linha.origem_modelo_codigo,
+                            editado_localmente=form_data.editado_localmente,
+                            padrao=form_data.padrao,
+                            ordem=form_data.ordem,
+                            observacoes=form_data.observacoes,
+                            ativo=form_data.ativo,
+                        ),
+                    )
+            except (IntegrityError, ValueError):
+                dialog.set_error("Não foi possível guardar a linha. Verifique os dados.")
+                return False
+
+            saved = True
+            return True
+
+        dialog = OrcamentoValuesetLinhaDialog(linha, parent=self, on_save=handle_save)
+        if dialog.exec() and saved:
+            self.carregar()
+            self.status_label.setText("Linha ValueSet atualizada.")
+
+    def _handle_double_click(self, _row: int, _column: int) -> None:
+        """Edit a line when the user double-clicks its row."""
+        self.abrir_editar_linha()
 
     def _get_selected_linha(self) -> OrcamentoValuesetLinhaResumo | None:
         """Return the selected ValueSet line."""

@@ -36,6 +36,11 @@ def test_page_headers() -> None:
         "Desp %",
         "Tipo",
         "Família",
+        "Orla 0.4",
+        "Orla 1.0",
+        "Comp MP",
+        "Larg MP",
+        "Esp MP",
         "Padrão",
         "Ordem",
         "Origem",
@@ -49,11 +54,23 @@ def test_page_has_actions() -> None:
 
     for method in (
         "importar_modelo",
+        "abrir_editar_linha",
         "alternar_linha_ativa",
         "carregar",
         "_get_selected_linha",
+        "_handle_double_click",
     ):
         assert hasattr(OrcamentoValuesetPage, method)
+
+
+def test_page_edit_uses_dialog_and_service() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    source = inspect.getsource(OrcamentoValuesetPage.abrir_editar_linha)
+
+    assert "OrcamentoValuesetLinhaDialog" in source
+    assert "editar_linha" in source
+    assert "Linha ValueSet atualizada." in source
 
 
 def test_page_uses_service_and_dialog() -> None:
