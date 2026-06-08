@@ -234,6 +234,7 @@ class _FakeMateriaPrimaRepository:
 class _FakeItemValuesetRepository:
     default_linha = None
     chave_rows: list = []
+    by_id = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -243,6 +244,9 @@ class _FakeItemValuesetRepository:
 
     def list_by_item_chave(self, orcamento_item_id: int, chave: str):
         return self.chave_rows
+
+    def get_by_id(self, id: int):
+        return self.by_id
 
 
 class _FakeSession:
@@ -274,6 +278,7 @@ def _reset() -> None:
     _FakeComponenteRepository.componentes = []
     _FakeItemValuesetRepository.default_linha = None
     _FakeItemValuesetRepository.chave_rows = []
+    _FakeItemValuesetRepository.by_id = None
     _FakeMateriaPrimaRepository.materia = None
 
 
@@ -970,6 +975,93 @@ def test_atualizar_material_local_linha(monkeypatch) -> None:
     # Fields not sent are not touched.
     assert "mat_default" not in payload
     assert session.committed is True
+
+
+def test_listar_linhas_custeio_por_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", chave_valueset="MATERIAL_COSTAS"),
+        _resumo(id=2, tipo_linha="PECA", chave_valueset="FERRAGEM_DOBRADICA"),
+        _resumo(id=3, tipo_linha="DIVISAO_INDEPENDENTE", chave_valueset="MATERIAL_COSTAS"),
+        _resumo(id=4, tipo_linha="PECA_COMPOSTA", chave_valueset="MATERIAL_COSTAS"),
+        _resumo(id=5, tipo_linha="PECA", chave_valueset=None),
+        _resumo(id=6, tipo_linha="FERRAGEM", chave_valueset="MATERIAL_COSTAS"),
+    ]
+
+    result = service.listar_linhas_custeio_por_chave(30, "material_costas")
+
+    assert [linha.id for linha in result] == [1, 6]
+
+
+def test_listar_linhas_custeio_por_chave_vazia(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    assert service.listar_linhas_custeio_por_chave(30, None) == []
+
+
+def test_aplicar_valueset_item_em_linhas_custeio(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeItemValuesetRepository.by_id = _vs_linha(
+        id=9,
+        ref_le="LE99",
+        descricao_no_orcamento="MDF B3002",
+        unidade="m2",
+        preco_liquido=Decimal("3.5"),
+        comp_mp=Decimal("2750"),
+        coresp_orla_0_4="ORLA_A",
+    )
+    _FakeRepository.by_id = _resumo(
+        id=5,
+        tipo_linha="PECA",
+        chave_valueset="MATERIAL_COSTAS",
+        comp="1000",
+        qt_und=Decimal("2"),
+        def_peca_id=3,
+    )
+
+    atualizadas = service.aplicar_valueset_item_em_linhas_custeio(9, [5])
+
+    assert atualizadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] == "LE99"
+    assert payload["descricao_no_orcamento"] == "MDF B3002"
+    assert payload["unidade"] == "m2"
+    assert payload["preco_liquido"] == Decimal("3.5")
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["coresp_orla_0_4"] == "ORLA_A"
+    assert payload["mat_default"] == "AGL_19"
+    assert payload["origem_material"] == "VALUESET_ITEM"
+    assert payload["material_editado_localmente"] is False
+    # Measures, quantities, key and def_peca are preserved (not in the update).
+    assert "comp" not in payload
+    assert "qt_und" not in payload
+    assert "chave_valueset" not in payload
+    assert "def_peca_id" not in payload
+    assert "editado_localmente" not in payload
+    assert session.committed is True
+
+
+def test_aplicar_valueset_ignora_divisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.by_id = _vs_linha(id=9)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="DIVISAO_INDEPENDENTE")
+
+    atualizadas = service.aplicar_valueset_item_em_linhas_custeio(9, [5])
+
+    assert atualizadas == 0
+    assert _FakeRepository.updated_payload is None
+
+
+def test_aplicar_valueset_linha_inexistente_levanta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.by_id = None
+
+    try:
+        service.aplicar_valueset_item_em_linhas_custeio(999, [5])
+    except ValueError as error:
+        assert "valueset" in str(error).lower()
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:

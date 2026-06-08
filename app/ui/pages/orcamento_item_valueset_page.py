@@ -22,6 +22,9 @@ from app.domain.numeros import formatar_percentagem
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
+from app.services.orcamento_item_custeio_linha_service import (
+    OrcamentoItemCusteioLinhaService,
+)
 from app.services.orcamento_item_valueset_linha_service import (
     SNAPSHOT_FIELDS,
     EditarOrcamentoItemValuesetLinhaData,
@@ -31,6 +34,7 @@ from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModel
 from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
     OrcamentoItemValuesetLinhaDialog,
 )
+from app.ui.dialogs.propagar_valueset_custeio_dialog import PropagarValuesetCusteioDialog
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -94,6 +98,8 @@ class OrcamentoItemValuesetPage(QWidget):
         self.clear_button.clicked.connect(self.limpar_dados)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
+        self.propagate_button = QPushButton("Atualizar Custeio")
+        self.propagate_button.clicked.connect(self.atualizar_custeio_da_linha)
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
 
@@ -105,6 +111,7 @@ class OrcamentoItemValuesetPage(QWidget):
         actions_layout.addWidget(self.paste_button)
         actions_layout.addWidget(self.clear_button)
         actions_layout.addWidget(self.toggle_button)
+        actions_layout.addWidget(self.propagate_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -346,6 +353,77 @@ class OrcamentoItemValuesetPage(QWidget):
         if dialog.exec() and saved:
             self.carregar()
             self.status_label.setText("Linha ValueSet atualizada.")
+            self._perguntar_propagar_custeio(linha.id)
+
+    def atualizar_custeio_da_linha(self) -> None:
+        """Compare and propagate the selected ValueSet line into cost lines."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+
+        self._propagar_para_custeio(linha)
+
+    def _perguntar_propagar_custeio(self, valueset_linha_id: int) -> None:
+        """Ask whether to review the cost lines using this ValueSet key."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Rever custeio")
+        box.setText(
+            "Quer rever as linhas de custeio associadas a esta chave ValueSet?"
+        )
+        rever_button = box.addButton("Rever linhas", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Não agora", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not rever_button:
+            return
+
+        try:
+            with SessionLocal() as session:
+                linha = OrcamentoItemValuesetLinhaService(session).obter_por_id(
+                    valueset_linha_id
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível carregar a linha ValueSet.")
+            return
+
+        if linha is not None:
+            self._propagar_para_custeio(linha)
+
+    def _propagar_para_custeio(self, valueset_linha) -> None:
+        """Open the comparison dialog and apply the ValueSet to chosen cost lines."""
+        try:
+            with SessionLocal() as session:
+                linhas = OrcamentoItemCusteioLinhaService(
+                    session
+                ).listar_linhas_custeio_por_chave(
+                    self.orcamento_item_id, valueset_linha.chave
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível atualizar as linhas de custeio.")
+            return
+
+        if not linhas:
+            self.status_label.setText(
+                "Não existem linhas de custeio associadas a esta chave ValueSet."
+            )
+            return
+
+        dialog = PropagarValuesetCusteioDialog(linhas, valueset_linha, parent=self)
+        if not dialog.exec() or not dialog.selected_ids:
+            return
+
+        try:
+            with SessionLocal() as session:
+                atualizadas = OrcamentoItemCusteioLinhaService(
+                    session
+                ).aplicar_valueset_item_em_linhas_custeio(
+                    valueset_linha.id, dialog.selected_ids
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar as linhas de custeio.")
+            return
+
+        self.status_label.setText(f"Linhas de custeio atualizadas: {atualizadas}.")
 
     def copiar_dados(self) -> None:
         """Copy the materia-prima snapshot of the selected line into memory."""

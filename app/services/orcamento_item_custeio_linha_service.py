@@ -275,6 +275,80 @@ class OrcamentoItemCusteioLinhaService:
         if linha.tipo_linha == PECA_COMPOSTA:
             raise ValueError("A linha de peça composta não usa material.")
 
+    def listar_linhas_custeio_por_chave(
+        self, orcamento_item_id: int, chave_valueset: str | None
+    ) -> list[OrcamentoItemCusteioLinhaResumo]:
+        """List active cost lines of an item that use a given ValueSet key.
+
+        Excludes division and composite-parent lines and lines without a key.
+        """
+        if not chave_valueset:
+            return []
+
+        chave = normalize_valueset_key(chave_valueset)
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+
+        return [
+            linha
+            for linha in linhas
+            if linha.chave_valueset
+            and normalize_valueset_key(linha.chave_valueset) == chave
+            and linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+        ]
+
+    def aplicar_valueset_item_em_linhas_custeio(
+        self, valueset_linha_id: int, custeio_linha_ids: list[int]
+    ) -> int:
+        """Copy one item ValueSet line snapshot into the selected cost lines.
+
+        Only the material fields are updated (key, def_peca, type, quantities,
+        measures and hierarchy are preserved). Returns how many lines changed.
+        The item ValueSet and the raw material catalog are not modified.
+        """
+        vs_linha = self.item_valueset_repository.get_by_id(valueset_linha_id)
+        if vs_linha is None:
+            raise ValueError("linha valueset nao encontrada")
+
+        fields = self._build_valueset_material_fields(vs_linha)
+
+        atualizadas = 0
+        for custeio_id in custeio_linha_ids:
+            linha = self.repository.get_by_id(custeio_id)
+            if linha is None:
+                continue
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                continue
+
+            self.repository.update_linha(id=custeio_id, **fields)
+            atualizadas += 1
+
+        self.session.commit()
+
+        return atualizadas
+
+    def _build_valueset_material_fields(self, vs_linha) -> dict:
+        """Build the material fields to copy from an item ValueSet line."""
+        return {
+            "mat_default": vs_linha.codigo_opcao or vs_linha.nome_opcao,
+            "ref_le": vs_linha.ref_le,
+            "descricao_no_orcamento": vs_linha.descricao_no_orcamento,
+            "unidade": vs_linha.unidade,
+            "preco_liquido": vs_linha.preco_liquido,
+            "desperdicio_percentagem": vs_linha.desperdicio_percentagem,
+            "tipo_materia_prima": vs_linha.tipo_materia_prima,
+            "familia_materia_prima": vs_linha.familia_materia_prima,
+            "coresp_orla_0_4": vs_linha.coresp_orla_0_4,
+            "coresp_orla_1_0": vs_linha.coresp_orla_1_0,
+            "comp_mp": vs_linha.comp_mp,
+            "larg_mp": vs_linha.larg_mp,
+            "esp_mp": vs_linha.esp_mp,
+            "materia_prima_id": vs_linha.materia_prima_id,
+            "ref_materia_prima": vs_linha.ref_materia_prima,
+            "descricao_materia_prima": vs_linha.descricao_materia_prima,
+            "origem_material": "VALUESET_ITEM",
+            "material_editado_localmente": False,
+        }
+
     def recalcular_medidas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute quantities, real measures, area and perimeter for an item.
 

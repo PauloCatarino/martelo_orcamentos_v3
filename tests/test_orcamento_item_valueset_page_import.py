@@ -134,3 +134,24 @@ def test_page_has_edit_and_snapshot_tools() -> None:
     toggle = inspect.getsource(OrcamentoItemValuesetPage.alternar_linha_ativa)
     assert "Linha ativada." in toggle
     assert "Linha desativada." in toggle
+
+
+def test_page_propaga_para_custeio() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    for method in (
+        "atualizar_custeio_da_linha",
+        "_propagar_para_custeio",
+        "_perguntar_propagar_custeio",
+    ):
+        assert hasattr(OrcamentoItemValuesetPage, method)
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+    assert "Atualizar Custeio" in init
+
+    propagar = inspect.getsource(OrcamentoItemValuesetPage._propagar_para_custeio)
+    assert "PropagarValuesetCusteioDialog" in propagar
+    assert "listar_linhas_custeio_por_chave" in propagar
+    assert "aplicar_valueset_item_em_linhas_custeio" in propagar
+    assert "Não existem linhas de custeio associadas a esta chave ValueSet." in propagar
+    assert "Linhas de custeio atualizadas:" in propagar
