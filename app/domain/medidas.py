@@ -8,6 +8,7 @@ without raising, to be handled in a future phase.
 
 from __future__ import annotations
 
+import ast
 from decimal import Decimal, InvalidOperation
 
 # Item variable aliases accepted in a measure expression.
@@ -22,6 +23,10 @@ VARIAVEIS_ITEM = (
     "PROF",
     "PROFUNDIDADE",
 )
+
+# Local (independent division / module) variable aliases. These only exist
+# after an independent-division line and override nothing in the global context.
+VARIAVEIS_LOCAIS = ("HM", "LM", "PM")
 
 
 def normalizar_numero(valor) -> Decimal | None:
@@ -74,11 +79,31 @@ def construir_contexto_item(
     }
 
 
+# AST node types allowed in a safe measure expression.
+_NOS_PERMITIDOS = (
+    ast.Expression,
+    ast.BinOp,
+    ast.UnaryOp,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.USub,
+    ast.UAdd,
+    ast.Constant,
+    ast.Name,
+    ast.Load,
+)
+
+
 def avaliar_medida(valor, contexto: dict | None = None) -> Decimal | None:
     """Evaluate one measure value.
 
     Returns None for empty/None/unresolved values (never raises). Resolves
-    numbers, numeric strings and single item variables (H/L/P and aliases).
+    numbers, numeric strings, single variables (global H/L/P aliases and local
+    HM/LM/PM) and simple math expressions (``H/2``, ``L*2``, ``(H-50)/2`` ...)
+    using a safe AST evaluator (no eval). Unknown variables, invalid operations
+    and division by zero all return None.
     """
     if valor is None:
         return None
@@ -96,11 +121,83 @@ def avaliar_medida(valor, contexto: dict | None = None) -> Decimal | None:
     if not texto:
         return None
 
+    contexto = contexto or {}
+
+    # Single variable shortcut.
     chave = texto.upper()
-    if contexto and chave in contexto:
+    if chave in contexto:
         return normalizar_numero(contexto[chave])
 
-    return normalizar_numero(texto)
+    # Plain numeric value (handles comma decimals).
+    numero = normalizar_numero(texto)
+    if numero is not None:
+        return numero
+
+    # Safe math expression with variables.
+    return _avaliar_expressao(texto, contexto)
+
+
+def _avaliar_expressao(texto: str, contexto: dict) -> Decimal | None:
+    """Evaluate a simple math expression safely, or None on any problem."""
+    expressao = texto.replace(",", ".")
+    try:
+        arvore = ast.parse(expressao, mode="eval")
+    except (SyntaxError, ValueError):
+        return None
+
+    if not all(isinstance(no, _NOS_PERMITIDOS) for no in ast.walk(arvore)):
+        return None
+
+    try:
+        return _avaliar_no(arvore.body, contexto)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
+def _avaliar_no(no, contexto: dict) -> Decimal | None:
+    """Recursively evaluate one whitelisted AST node into a Decimal or None."""
+    if isinstance(no, ast.BinOp):
+        esquerda = _avaliar_no(no.left, contexto)
+        direita = _avaliar_no(no.right, contexto)
+        if esquerda is None or direita is None:
+            return None
+
+        if isinstance(no.op, ast.Add):
+            return esquerda + direita
+        if isinstance(no.op, ast.Sub):
+            return esquerda - direita
+        if isinstance(no.op, ast.Mult):
+            return esquerda * direita
+        if isinstance(no.op, ast.Div):
+            if direita == 0:
+                return None
+            return esquerda / direita
+        return None
+
+    if isinstance(no, ast.UnaryOp):
+        operando = _avaliar_no(no.operand, contexto)
+        if operando is None:
+            return None
+        if isinstance(no.op, ast.USub):
+            return -operando
+        if isinstance(no.op, ast.UAdd):
+            return operando
+        return None
+
+    if isinstance(no, ast.Constant):
+        if isinstance(no.value, bool):
+            return None
+        if isinstance(no.value, (int, float)):
+            return Decimal(str(no.value))
+        return None
+
+    if isinstance(no, ast.Name):
+        chave = no.id.upper()
+        if chave in contexto:
+            return normalizar_numero(contexto[chave])
+        return None
+
+    return None
 
 
 def calcular_area_m2(comp_real, larg_real) -> Decimal | None:

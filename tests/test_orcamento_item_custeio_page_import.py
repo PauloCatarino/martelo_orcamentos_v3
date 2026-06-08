@@ -189,3 +189,20 @@ def test_orcamento_item_custeio_page_editable_measure_columns() -> None:
     assert "_carregando_tabela" in source
     assert "atualizar_medidas_linha" in source
     assert "Não foi possível atualizar a linha de custeio." in source
+
+
+def test_orcamento_item_custeio_page_inserir_divisao() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "inserir_divisao")
+    assert hasattr(OrcamentoItemCusteioPage, "_coluna_editavel")
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "Inserir Divis" in init
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.inserir_divisao)
+    assert "inserir_divisao_independente" in source
+
+    editavel = inspect.getsource(OrcamentoItemCusteioPage._coluna_editavel)
+    assert "Descri" in editavel and "livre" in editavel
+    assert "DIVISAO_INDEPENDENTE" in editavel

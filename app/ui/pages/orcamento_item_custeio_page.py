@@ -25,7 +25,10 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
-from app.domain.custeio_linha_types import get_custeio_linha_type_label
+from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
+    get_custeio_linha_type_label,
+)
 from app.domain.item_types import get_item_type_label
 from app.domain.numeros import formatar_percentagem
 from app.domain.peca_types import COMPOSTA
@@ -175,6 +178,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.recalc_measures_button = QPushButton("Recalcular Medidas")
         self.recalc_measures_button.clicked.connect(self.recalcular_medidas)
 
+        self.insert_division_button = QPushButton("Inserir Divis\u00e3o")
+        self.insert_division_button.clicked.connect(self.inserir_divisao)
+
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
         self.import_module_button.setEnabled(False)
 
@@ -191,6 +197,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.recalc_measures_button)
+        actions_layout.addWidget(self.insert_division_button)
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.insert_piece_button)
@@ -291,6 +298,32 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Medidas recalculadas.")
+
+    def inserir_divisao(self) -> None:
+        """Insert an independent-division line (local HM/LM/PM measure context)."""
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).inserir_divisao_independente(
+                    self.item_id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível inserir a divisão.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Divisão independente inserida.")
+
+    def _coluna_editavel(
+        self, header: str, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> bool:
+        """Return True when the given column is editable for the given line."""
+        if header in self.EDITABLE_COLUMNS:
+            return True
+
+        if header == "Descrição livre" and linha.tipo_linha == DIVISAO_INDEPENDENTE:
+            return True
+
+        return False
 
     def _create_library_panel(self) -> QWidget:
         """Build the parts library panel (search + tree + selection tools)."""
@@ -518,7 +551,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 valores = self._linha_para_valores(linha)
                 for column_index, header in enumerate(self.TABLE_HEADERS):
                     item = QTableWidgetItem(str(valores.get(header, "")))
-                    if header in self.EDITABLE_COLUMNS:
+                    if self._coluna_editavel(header, linha):
                         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                     else:
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -532,11 +565,8 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         header = self.TABLE_HEADERS[column]
-        if header not in self.EDITABLE_COLUMNS:
-            return
-
         linha = self._custeio_by_row.get(row)
-        if linha is None:
+        if linha is None or not self._coluna_editavel(header, linha):
             return
 
         item = self.table.item(row, column)
@@ -549,7 +579,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "larg": linha.larg,
             "esp": linha.esp,
         }
-        valores[self.EDITABLE_COLUMNS[header]] = novo_valor
+        descricao = None
+        if header == "Descrição livre":
+            descricao = novo_valor
+        else:
+            valores[self.EDITABLE_COLUMNS[header]] = novo_valor
 
         try:
             with SessionLocal() as session:
@@ -560,6 +594,7 @@ class OrcamentoItemCusteioPage(QWidget):
                     comp=valores["comp"],
                     larg=valores["larg"],
                     esp=valores["esp"],
+                    descricao=descricao,
                 )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível atualizar a linha de custeio.")
@@ -572,15 +607,22 @@ class OrcamentoItemCusteioPage(QWidget):
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> dict[str, str]:
         """Map a costing line to the known columns; unknown columns stay empty."""
+        eh_divisao = linha.tipo_linha == DIVISAO_INDEPENDENTE
         nivel = linha.nivel or 0
-        descricao = ("  - " + linha.descricao) if nivel else linha.descricao
+        if eh_divisao:
+            descricao_col = ""
+            descricao_livre = linha.descricao or ""
+        else:
+            descricao_col = ("  - " + linha.descricao) if nivel else linha.descricao
+            descricao_livre = ""
         return {
             "Ordem": "" if linha.ordem is None else str(linha.ordem),
             "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),
             "Código": linha.codigo or "",
+            "Descrição livre": descricao_livre,
             "Def. Peça": linha.def_peca_codigo
             or ("" if linha.def_peca_id is None else str(linha.def_peca_id)),
-            "Descrição": descricao,
+            "Descrição": descricao_col,
             "Linha pai": "" if linha.linha_pai_id is None else str(linha.linha_pai_id),
             "Nível": str(nivel),
             "Módulo": "" if linha.orcamento_item_modulo_id is None

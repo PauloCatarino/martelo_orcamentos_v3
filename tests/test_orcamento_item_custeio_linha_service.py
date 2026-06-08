@@ -128,6 +128,7 @@ class _FakeRepository:
     created_payload: dict | None = None
     created_payloads: list = []
     updated_payload: dict | None = None
+    updated_payloads: list = []
     deactivate_result = True
     deactivated_id: int | None = None
     activate_result = True
@@ -155,6 +156,7 @@ class _FakeRepository:
 
     def update_linha(self, *, id: int, **fields):
         self.__class__.updated_payload = {"id": id, **fields}
+        self.__class__.updated_payloads.append({"id": id, **fields})
         return _resumo(id=id, **fields)
 
     def deactivate_linha(self, id: int) -> bool:
@@ -226,6 +228,7 @@ def _reset() -> None:
     _FakeRepository.created_payload = None
     _FakeRepository.created_payloads = []
     _FakeRepository.updated_payload = None
+    _FakeRepository.updated_payloads = []
     _FakeRepository.deactivate_result = True
     _FakeRepository.deactivated_id = None
     _FakeRepository.activate_result = True
@@ -738,6 +741,93 @@ def test_atualizar_medidas_linha_nao_altera_valueset(monkeypatch) -> None:
     assert "ref_le" not in payload
     assert "chave_valueset" not in payload
     assert "preco_liquido" not in payload
+
+
+def test_inserir_divisao_independente(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.inserir_divisao_independente(30)
+
+    payload = _FakeRepository.created_payload
+    assert payload["tipo_linha"] == "DIVISAO_INDEPENDENTE"
+    assert payload["codigo"] == "DIVISAO"
+    assert payload["descricao"] == "Divisão independente"
+    assert payload["origem_tipo"] == "MANUAL"
+    assert payload["comp"] == "H"
+    assert payload["larg"] == "L"
+    assert payload["esp"] == "P"
+    assert payload["editado_localmente"] is True
+    assert payload["ativo"] is True
+    # The division line does not carry material/ValueSet data.
+    assert "chave_valueset" not in payload
+    assert "ref_le" not in payload
+    assert "preco_liquido" not in payload
+    assert session.committed is True
+
+
+def test_recalcular_com_divisao_propaga_contexto_local(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="L", esp="P"),
+        _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM", esp="PM"),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payloads = {p["id"]: p for p in _FakeRepository.updated_payloads}
+    # Division computes HM/LM/PM from the global context.
+    assert payloads[1]["comp_real"] == Decimal("2750")
+    assert payloads[1]["larg_real"] == Decimal("1830")
+    assert payloads[1]["esp_real"] == Decimal("560")
+    assert payloads[1]["area_m2"] == Decimal("5.0325")
+    # Line below uses the division's local context.
+    assert payloads[2]["comp_real"] == Decimal("2750")
+    assert payloads[2]["larg_real"] == Decimal("1830")
+    assert payloads[2]["esp_real"] == Decimal("560")
+    assert session.committed is True
+
+
+def test_recalcular_linha_antes_de_divisao_com_hm_nao_rebenta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", comp="HM", larg="LM", esp="PM"),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payload = _FakeRepository.updated_payloads[0]
+    assert payload["comp_real"] is None
+    assert payload["larg_real"] is None
+    assert payload["area_m2"] is None
+
+
+def test_recalcular_nova_divisao_altera_contexto(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="1000", larg="500", esp="20"),
+        _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM", esp="PM"),
+        _resumo(id=3, tipo_linha="DIVISAO_INDEPENDENTE", comp="2000", larg="800", esp="30"),
+        _resumo(id=4, tipo_linha="PECA", comp="HM", larg="LM", esp="PM"),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payloads = {p["id"]: p for p in _FakeRepository.updated_payloads}
+    assert payloads[2]["comp_real"] == Decimal("1000")
+    assert payloads[2]["larg_real"] == Decimal("500")
+    assert payloads[2]["esp_real"] == Decimal("20")
+    assert payloads[4]["comp_real"] == Decimal("2000")
+    assert payloads[4]["larg_real"] == Decimal("800")
+    assert payloads[4]["esp_real"] == Decimal("30")
 
 
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:

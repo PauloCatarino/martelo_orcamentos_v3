@@ -27,6 +27,22 @@ def test_avaliar_medida_variaveis_do_item() -> None:
     assert avaliar_medida("profundidade", contexto) == Decimal("560")
 
 
+def test_avaliar_medida_variaveis_locais_hm_lm_pm() -> None:
+    contexto = construir_contexto_item(Decimal("2750"), Decimal("1830"), Decimal("560"))
+    contexto_com_local = {
+        **contexto,
+        "HM": Decimal("1000"),
+        "LM": Decimal("500"),
+        "PM": Decimal("20"),
+    }
+
+    assert avaliar_medida("HM", contexto_com_local) == Decimal("1000")
+    assert avaliar_medida("LM", contexto_com_local) == Decimal("500")
+    assert avaliar_medida("PM", contexto_com_local) == Decimal("20")
+    # Without a division context, HM/LM/PM are unresolved and do not raise.
+    assert avaliar_medida("HM", contexto) is None
+
+
 def test_avaliar_medida_numeros() -> None:
     assert avaliar_medida("1452", None) == Decimal("1452")
     assert avaliar_medida("1452,5", None) == Decimal("1452.5")
@@ -40,9 +56,38 @@ def test_avaliar_medida_vazio_e_invalido_nao_rebenta() -> None:
     assert avaliar_medida("", None) is None
     assert avaliar_medida("   ", None) is None
     assert avaliar_medida("abc", None) is None
-    # Complex formulas are left unresolved in this phase.
-    assert avaliar_medida("H/2", {"H": Decimal("2750")}) is None
-    assert avaliar_medida("L-50", {"L": Decimal("1830")}) is None
+
+
+def test_avaliar_medida_expressoes_matematicas() -> None:
+    contexto = {
+        "H": Decimal("1452"),
+        "L": Decimal("236"),
+        "P": Decimal("253"),
+        "HM": Decimal("1452"),
+        "LM": Decimal("236"),
+        "PM": Decimal("253"),
+    }
+
+    assert avaliar_medida("H/2", contexto) == Decimal("726")
+    assert avaliar_medida("L*2", contexto) == Decimal("472")
+    assert avaliar_medida("P-20", contexto) == Decimal("233")
+    assert avaliar_medida("HM/2", contexto) == Decimal("726")
+    assert avaliar_medida("LM-50", contexto) == Decimal("186")
+    assert avaliar_medida("PM+10", contexto) == Decimal("263")
+    assert avaliar_medida("(H-50)/2", contexto) == Decimal("701")
+    assert avaliar_medida("1452,5/2", contexto) == Decimal("726.25")
+    assert avaliar_medida("1452/2", contexto) == Decimal("726")
+
+
+def test_avaliar_medida_expressoes_invalidas_nao_rebentam() -> None:
+    contexto = {"H": Decimal("1452")}
+
+    assert avaliar_medida("abc", contexto) is None
+    assert avaliar_medida("H//2", contexto) is None
+    assert avaliar_medida("__import__('os')", contexto) is None
+    assert avaliar_medida("H/0", contexto) is None
+    # Unknown / future variables resolve to None instead of raising.
+    assert avaliar_medida("H1/2", contexto) is None
 
 
 def test_normalizar_numero() -> None:

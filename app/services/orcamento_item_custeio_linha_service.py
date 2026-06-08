@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
     MANUAL,
     PECA,
     PECA_COMPOSTA,
@@ -167,11 +168,23 @@ class OrcamentoItemCusteioLinhaService:
         if item is None:
             raise ValueError("item nao encontrado")
 
-        contexto = construir_contexto_item(item.altura, item.largura, item.profundidade)
+        contexto_global = construir_contexto_item(
+            item.altura, item.largura, item.profundidade
+        )
+        contexto_local: dict = {}
 
         atualizadas = 0
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            contexto = {**contexto_global, **contexto_local}
             fields = self._calcular_medidas_fields(linha, contexto)
+
+            if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+                contexto_local = {
+                    "HM": fields["comp_real"],
+                    "LM": fields["larg_real"],
+                    "PM": fields["esp_real"],
+                }
+
             self.repository.update_linha(id=linha.id, **fields)
             atualizadas += 1
 
@@ -208,13 +221,15 @@ class OrcamentoItemCusteioLinhaService:
         comp=None,
         larg=None,
         esp=None,
+        descricao=None,
     ) -> OrcamentoItemCusteioLinhaResumo | None:
-        """Save edited quantities and measures of one cost line and recompute.
+        """Save edited quantities/measures of one cost line, then recompute.
 
         Comp/Larg/Esp keep the raw text/expression written by the user, while
         comp_real/larg_real/esp_real (and area/perimeter) hold the evaluated
-        result. The line is flagged as locally edited. ValueSet data is not
-        touched.
+        result. The line is flagged as locally edited. The whole item is
+        recomputed afterwards because changing an independent division affects
+        the lines below it. ValueSet data is not touched.
         """
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
@@ -254,8 +269,39 @@ class OrcamentoItemCusteioLinhaService:
             "perimetro_ml": calcular_perimetro_ml(comp_real, larg_real),
             "editado_localmente": True,
         }
+        if descricao is not None:
+            fields["descricao"] = self._normalizar_expressao(descricao) or "Divisão independente"
 
-        result = self.repository.update_linha(id=linha_id, **fields)
+        self.repository.update_linha(id=linha_id, **fields)
+
+        # Recompute the whole item so independent-division context (HM/LM/PM)
+        # propagates to the lines below.
+        self.recalcular_medidas_do_item(linha.orcamento_item_id)
+
+        return self.repository.get_by_id(linha_id)
+
+    def inserir_divisao_independente(
+        self, orcamento_item_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo:
+        """Insert an independent-division line that defines a local measure context."""
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+
+        result = self.repository.create_linha(
+            orcamento_item_id=item_id,
+            tipo_linha=DIVISAO_INDEPENDENTE,
+            codigo="DIVISAO",
+            descricao="Divisão independente",
+            origem_tipo="MANUAL",
+            nivel=0,
+            qt_mod=Decimal("1"),
+            qt_und=Decimal("1"),
+            quantidade=Decimal("1"),
+            comp="H",
+            larg="L",
+            esp="P",
+            editado_localmente=True,
+            ativo=True,
+        )
         self.session.commit()
 
         return result

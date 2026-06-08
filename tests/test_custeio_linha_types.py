@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.domain.custeio_linha_types import (
     ACABAMENTO,
     ACESSORIO,
+    DIVISAO_INDEPENDENTE,
     FERRAGEM,
     MANUAL,
     MAO_OBRA,
@@ -39,6 +40,7 @@ def test_normalize_accepts_known_values_case_insensitive() -> None:
 def test_labels_for_known_types() -> None:
     assert get_custeio_linha_type_label(PECA) == "Peça"
     assert get_custeio_linha_type_label(PECA_COMPOSTA) == "Peça composta"
+    assert get_custeio_linha_type_label(DIVISAO_INDEPENDENTE) == "Divisão independente"
     assert get_custeio_linha_type_label(MATERIAL_PECA) == "Material da peça"
     assert get_custeio_linha_type_label(ORLA_PECA) == "Orla da peça"
     assert get_custeio_linha_type_label(FERRAGEM) == "Ferragem"
@@ -63,6 +65,7 @@ def test_options_list_all_types_in_order() -> None:
     assert codes == [
         PECA,
         PECA_COMPOSTA,
+        DIVISAO_INDEPENDENTE,
         MATERIAL_PECA,
         ORLA_PECA,
         FERRAGEM,
