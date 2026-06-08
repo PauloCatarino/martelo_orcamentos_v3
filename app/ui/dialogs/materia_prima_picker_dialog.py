@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
-from app.domain.numeros import normalize_percentagem_humana
+from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.utils.formatters import format_currency, format_quantity
@@ -130,8 +130,8 @@ class MateriaPrimaPickerDialog(QDialog):
                 materia.descricao or "",
                 materia.unidade or "",
                 format_currency(materia.preco_tabela),
-                format_quantity(normalize_percentagem_humana(materia.margem)),
-                format_quantity(normalize_percentagem_humana(materia.desconto)),
+                formatar_percentagem(normalize_percentagem_humana(materia.margem)),
+                formatar_percentagem(normalize_percentagem_humana(materia.desconto)),
                 format_currency(materia.preco_liquido),
                 "",
                 materia.tipo_martelo or "",
