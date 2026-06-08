@@ -49,6 +49,24 @@ class OrcamentoItemCusteioLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    def_peca_id: int | None = None
+    def_peca_codigo: str | None = None
+    chave_valueset: str | None = None
+    codigo_orlas: str | None = None
+    mat_default: str | None = None
+    ref_le: str | None = None
+    descricao_no_orcamento: str | None = None
+    preco_liquido: Decimal | None = None
+    desperdicio_percentagem: Decimal | None = None
+    tipo_materia_prima: str | None = None
+    familia_materia_prima: str | None = None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    comp_mp: Decimal | None = None
+    larg_mp: Decimal | None = None
+    esp_mp: Decimal | None = None
+    qt_mod: Decimal | None = None
+    qt_und: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -189,6 +207,24 @@ class OrcamentoItemCusteioLinhaRepository:
             editado_localmente=linha.editado_localmente,
             ativo=linha.ativo,
             observacoes=linha.observacoes,
+            def_peca_id=linha.def_peca_id,
+            def_peca_codigo=linha.def_peca_codigo,
+            chave_valueset=linha.chave_valueset,
+            codigo_orlas=linha.codigo_orlas,
+            mat_default=linha.mat_default,
+            ref_le=linha.ref_le,
+            descricao_no_orcamento=linha.descricao_no_orcamento,
+            preco_liquido=linha.preco_liquido,
+            desperdicio_percentagem=linha.desperdicio_percentagem,
+            tipo_materia_prima=linha.tipo_materia_prima,
+            familia_materia_prima=linha.familia_materia_prima,
+            coresp_orla_0_4=linha.coresp_orla_0_4,
+            coresp_orla_1_0=linha.coresp_orla_1_0,
+            comp_mp=linha.comp_mp,
+            larg_mp=linha.larg_mp,
+            esp_mp=linha.esp_mp,
+            qt_mod=linha.qt_mod,
+            qt_und=linha.qt_und,
             created_at=linha.created_at,
             updated_at=linha.updated_at,
         )

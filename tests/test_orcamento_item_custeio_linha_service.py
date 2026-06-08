@@ -3,11 +3,59 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
 from app.services import orcamento_item_custeio_linha_service as service_module
+
+
+def _peca(**kwargs):
+    base = {
+        "id": 1,
+        "codigo": "COSTA",
+        "nome": "Costa",
+        "descricao": None,
+        "grupo": "COSTAS",
+        "tipo_peca": "SIMPLES",
+        "ativo": True,
+        "orla_c1": 2,
+        "orla_c2": 2,
+        "orla_l1": 0,
+        "orla_l2": 0,
+        "chave_valueset_material": "MATERIAL_COSTAS",
+        "permite_acabamento": False,
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
+def _vs_linha(**kwargs):
+    base = {
+        "id": 1,
+        "ativo": True,
+        "padrao": True,
+        "codigo_opcao": "AGL_19",
+        "nome_opcao": "AGL 19mm",
+        "materia_prima_id": 5,
+        "ref_materia_prima": "MP01",
+        "descricao_materia_prima": "AGL",
+        "ref_le": "LE01",
+        "descricao_no_orcamento": "AGL Linho Cancun",
+        "unidade": "m2",
+        "preco_liquido": Decimal("5.79"),
+        "desperdicio_percentagem": Decimal("5"),
+        "tipo_materia_prima": "PLACA",
+        "familia_materia_prima": "AGLOMERADO",
+        "coresp_orla_0_4": "ORLA04",
+        "coresp_orla_1_0": "ORLA10",
+        "comp_mp": Decimal("2750"),
+        "larg_mp": Decimal("1830"),
+        "esp_mp": Decimal("19"),
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
 
 
 def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
@@ -94,6 +142,30 @@ class _FakeRepository:
         return self.activate_result
 
 
+class _FakePecaRepository:
+    pecas: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.pecas.get(id)
+
+
+class _FakeItemValuesetRepository:
+    default_linha = None
+    chave_rows: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_default_by_item_chave(self, orcamento_item_id: int, chave: str):
+        return self.default_linha
+
+    def list_by_item_chave(self, orcamento_item_id: int, chave: str):
+        return self.chave_rows
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -113,11 +185,18 @@ def _reset() -> None:
     _FakeRepository.deactivated_id = None
     _FakeRepository.activate_result = True
     _FakeRepository.activated_id = None
+    _FakePecaRepository.pecas = {}
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = []
 
 
 def _service(monkeypatch):
     _reset()
     monkeypatch.setattr(service_module, "OrcamentoItemCusteioLinhaRepository", _FakeRepository)
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakePecaRepository)
+    monkeypatch.setattr(
+        service_module, "OrcamentoItemValuesetLinhaRepository", _FakeItemValuesetRepository
+    )
     session = _FakeSession()
     return service_module.OrcamentoItemCusteioLinhaService(session=session), session
 
@@ -273,3 +352,102 @@ def test_ativar_inexistente_sem_commit(monkeypatch) -> None:
 
     assert service.ativar_linha(8) is False
     assert session.committed is False
+
+
+def test_adicionar_peca_simples_cria_linha_com_valueset(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="COSTA", chave_valueset_material="MATERIAL_COSTAS")
+    }
+    _FakeItemValuesetRepository.default_linha = _vs_linha(ref_le="LE01")
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    assert result.ignoradas == 0
+
+    payload = _FakeRepository.created_payload
+    assert payload["tipo_linha"] == "PECA"
+    assert payload["def_peca_id"] == 1
+    assert payload["def_peca_codigo"] == "COSTA"
+    assert payload["chave_valueset"] == "MATERIAL_COSTAS"
+    assert payload["origem_tipo"] == "BIBLIOTECA_PECA"
+    assert payload["qt_mod"] == Decimal("1")
+    assert payload["qt_und"] == Decimal("1")
+    assert payload["editado_localmente"] is False
+    assert payload["ativo"] is True
+    # ValueSet data copied
+    assert payload["ref_le"] == "LE01"
+    assert payload["preco_liquido"] == Decimal("5.79")
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["coresp_orla_0_4"] == "ORLA04"
+    assert payload["mat_default"] == "AGL_19"
+    assert session.committed is True
+
+
+def test_adicionar_peca_composta_ignorada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {2: _peca(id=2, tipo_peca="COMPOSTA")}
+
+    result = service.adicionar_pecas_da_biblioteca(10, [2])
+
+    assert result.criadas == 0
+    assert result.ignoradas == 1
+    assert _FakeRepository.created_payload is None
+    assert any("composta" in aviso.lower() for aviso in result.avisos)
+
+
+def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, chave_valueset_material="MATERIAL_COSTAS")
+    }
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = []
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    payload = _FakeRepository.created_payload
+    assert payload["chave_valueset"] == "MATERIAL_COSTAS"
+    assert "ref_le" not in payload
+    assert "Sem ValueSet" in payload["observacoes"]
+
+
+def test_adicionar_peca_sem_chave_valueset(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1, chave_valueset_material=None)}
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    payload = _FakeRepository.created_payload
+    assert payload["chave_valueset"] is None
+    assert "sem chave ValueSet" in payload["observacoes"]
+
+
+def test_resolver_valueset_prefere_padrao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.default_linha = _vs_linha(id=9)
+    _FakeItemValuesetRepository.chave_rows = [_vs_linha(id=8)]
+
+    resolvido = service.resolver_valueset_para_def_peca(
+        10, _peca(chave_valueset_material="MATERIAL_COSTAS")
+    )
+
+    assert resolvido.id == 9
+
+
+def test_resolver_valueset_usa_primeira_ativa_sem_padrao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = [
+        _vs_linha(id=7, ativo=False),
+        _vs_linha(id=8, ativo=True),
+    ]
+
+    resolvido = service.resolver_valueset_para_def_peca(
+        10, _peca(chave_valueset_material="MATERIAL_COSTAS")
+    )
+
+    assert resolvido.id == 8

@@ -404,14 +404,25 @@ class OrcamentoItemCusteioPage(QWidget):
         self.selecionados_label.setText(f"Selecionados: {len(self._selecionados)}")
 
     def adicionar_selecoes(self) -> None:
-        """Placeholder action: inserting pieces into costing is a future phase."""
+        """Create cost lines for the selected simple library pieces."""
         if not self._selecionados:
             self.status_label.setText("Selecione pelo menos uma peça.")
             return
 
+        def_peca_ids = list(self._selecionados)
+        try:
+            with SessionLocal() as session:
+                result = OrcamentoItemCusteioLinhaService(
+                    session
+                ).adicionar_pecas_da_biblioteca(self.item_id, def_peca_ids)
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível adicionar as peças ao custeio.")
+            return
+
+        self._selecionados.clear()
+        self.carregar()
         self.status_label.setText(
-            f"Peças selecionadas: {len(self._selecionados)}. "
-            "Inserção de peças no custeio será implementada na próxima fase."
+            f"Peças adicionadas: {result.criadas}. Ignoradas: {result.ignoradas}."
         )
 
     def _create_item_info_widget(self) -> QWidget:
@@ -477,16 +488,34 @@ class OrcamentoItemCusteioPage(QWidget):
         return {
             "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),
             "Código": linha.codigo or "",
+            "Def. Peça": linha.def_peca_codigo
+            or ("" if linha.def_peca_id is None else str(linha.def_peca_id)),
             "Descrição": linha.descricao,
             "Módulo": "" if linha.orcamento_item_modulo_id is None
             else str(linha.orcamento_item_modulo_id),
+            "QT mod": format_quantity(linha.qt_mod),
+            "QT und": format_quantity(linha.qt_und),
             "QT total": format_quantity(linha.quantidade),
             "Comp": format_quantity(linha.comp),
             "Larg": format_quantity(linha.larg),
             "Esp": format_quantity(linha.esp),
             "Área m²": format_quantity(linha.area_m2),
             "Perímetro ML": format_quantity(linha.perimetro_ml),
+            "Chave ValueSet": linha.chave_valueset or "",
+            "Mat. default": linha.mat_default or "",
+            "Ref LE": linha.ref_le or "",
+            "Descrição no orçamento": linha.descricao_no_orcamento or "",
             "Unidade": linha.unidade or "",
+            "Preço líquido": format_currency(linha.preco_liquido),
+            "Desp %": formatar_percentagem(linha.desperdicio_percentagem),
+            "Tipo MP": linha.tipo_materia_prima or "",
+            "Família": linha.familia_materia_prima or "",
+            "Comp MP": format_quantity(linha.comp_mp),
+            "Larg MP": format_quantity(linha.larg_mp),
+            "Esp MP": format_quantity(linha.esp_mp),
+            "Código orlas": linha.codigo_orlas or "",
+            "Orla 0.4": linha.coresp_orla_0_4 or "",
+            "Orla 1.0": linha.coresp_orla_1_0 or "",
             "ML orla fina": format_quantity(linha.ml_orla_fina),
             "ML orla grossa": format_quantity(linha.ml_orla_grossa),
             "Tempo manual": format_quantity(linha.tempo_manual),

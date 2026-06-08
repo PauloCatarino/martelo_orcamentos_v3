@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from app.models.def_maquina import DefMaquina
     from app.models.def_materia_prima import DefMateriaPrima
     from app.models.def_operacao import DefOperacao
+    from app.models.def_peca import DefPeca
     from app.models.orcamento_item import OrcamentoItem
     from app.models.orcamento_item_modulo import OrcamentoItemModulo
 
@@ -53,6 +54,17 @@ class OrcamentoItemCusteioLinha(Base):
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     descricao: Mapped[str] = mapped_column(Text, nullable=False)
 
+    def_peca_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("def_pecas.id"),
+        nullable=True,
+        index=True,
+    )
+    def_peca_codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    chave_valueset: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    codigo_orlas: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    mat_default: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
     materia_prima_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("def_materias_primas.id"),
@@ -62,7 +74,20 @@ class OrcamentoItemCusteioLinha(Base):
     ref_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
     descricao_materia_prima: Mapped[str | None] = mapped_column(Text, nullable=True)
     unidade: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    ref_le: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    descricao_no_orcamento: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preco_liquido: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    tipo_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    familia_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    coresp_orla_0_4: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    coresp_orla_1_0: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    comp_mp: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    larg_mp: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    esp_mp: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
 
+    qt_mod: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    qt_und: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     quantidade: Mapped[Decimal] = mapped_column(
         Numeric(14, 4),
         nullable=False,
@@ -119,6 +144,10 @@ class OrcamentoItemCusteioLinha(Base):
     orcamento_item: Mapped["OrcamentoItem"] = relationship(
         "OrcamentoItem",
         foreign_keys=[orcamento_item_id],
+    )
+    def_peca: Mapped["DefPeca | None"] = relationship(
+        "DefPeca",
+        foreign_keys=[def_peca_id],
     )
     orcamento_item_modulo: Mapped["OrcamentoItemModulo | None"] = relationship(
         "OrcamentoItemModulo",

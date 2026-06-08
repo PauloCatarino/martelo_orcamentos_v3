@@ -133,10 +133,12 @@ def test_orcamento_item_custeio_page_has_parts_library_tree() -> None:
     assert "listar_ativas_para_biblioteca" in carregar
 
 
-def test_orcamento_item_custeio_page_add_selections_is_placeholder() -> None:
+def test_orcamento_item_custeio_page_add_selections_inserts_pieces() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
     source = inspect.getsource(OrcamentoItemCusteioPage.adicionar_selecoes)
 
     assert "Selecione pelo menos uma pe" in source
-    assert "próxima fase" in source
+    assert "adicionar_pecas_da_biblioteca" in source
+    assert "Peças adicionadas" in source
+    assert "Ignoradas" in source

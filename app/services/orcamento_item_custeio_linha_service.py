@@ -11,10 +11,17 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.domain.custeio_linha_types import MANUAL, normalize_custeio_linha_type
+from app.domain.custeio_linha_types import MANUAL, PECA, normalize_custeio_linha_type
+from app.domain.peca_types import COMPOSTA
+from app.domain.valueset_types import normalize_valueset_key
+from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
     OrcamentoItemCusteioLinhaResumo,
+)
+from app.repositories.orcamento_item_valueset_linha_repository import (
+    OrcamentoItemValuesetLinhaRepository,
+    OrcamentoItemValuesetLinhaResumo,
 )
 
 
@@ -94,12 +101,23 @@ class EditarLinhaCusteioData:
     observacoes: str | None = None
 
 
+@dataclass(frozen=True)
+class AdicionarPecasResult:
+    """Summary of adding library pieces as cost lines."""
+
+    criadas: int
+    ignoradas: int
+    avisos: list[str]
+
+
 class OrcamentoItemCusteioLinhaService:
     """Application service for OrcamentoItemCusteioLinha workflows."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = OrcamentoItemCusteioLinhaRepository(session)
+        self.peca_repository = DefPecaRepository(session)
+        self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -122,6 +140,129 @@ class OrcamentoItemCusteioLinhaService:
     def obter_por_id(self, id: int) -> OrcamentoItemCusteioLinhaResumo | None:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
+
+    def adicionar_pecas_da_biblioteca(
+        self, orcamento_item_id: int, def_peca_ids: list[int]
+    ) -> AdicionarPecasResult:
+        """Create PECA cost lines from selected simple library pieces.
+
+        Composite pieces are ignored in this phase. The material data is
+        resolved from the item ValueSet (default option of the piece key).
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+
+        criadas = 0
+        ignoradas = 0
+        avisos: list[str] = []
+
+        for def_peca_id in def_peca_ids:
+            peca = self.peca_repository.get_by_id(def_peca_id)
+            if peca is None:
+                ignoradas += 1
+                continue
+
+            if peca.tipo_peca == COMPOSTA:
+                ignoradas += 1
+                self._adicionar_aviso(
+                    avisos, "Peças compostas serão implementadas na próxima fase."
+                )
+                continue
+
+            fields, aviso = self._build_peca_line_fields(item_id, peca)
+            if aviso:
+                self._adicionar_aviso(avisos, aviso)
+
+            self.repository.create_linha(**fields)
+            criadas += 1
+
+        self.session.commit()
+
+        return AdicionarPecasResult(criadas=criadas, ignoradas=ignoradas, avisos=avisos)
+
+    def resolver_valueset_para_def_peca(
+        self, orcamento_item_id: int, peca: DefPecaResumo
+    ) -> OrcamentoItemValuesetLinhaResumo | None:
+        """Resolve the item ValueSet line for a piece key (default option first)."""
+        if not peca.chave_valueset_material:
+            return None
+
+        chave = normalize_valueset_key(peca.chave_valueset_material)
+
+        padrao = self.item_valueset_repository.get_default_by_item_chave(
+            orcamento_item_id, chave
+        )
+        if padrao is not None:
+            return padrao
+
+        for linha in self.item_valueset_repository.list_by_item_chave(
+            orcamento_item_id, chave
+        ):
+            if linha.ativo:
+                return linha
+
+        return None
+
+    def _build_peca_line_fields(
+        self, orcamento_item_id: int, peca: DefPecaResumo
+    ) -> tuple[dict, str | None]:
+        """Build the cost line fields for one simple piece."""
+        fields: dict = {
+            "orcamento_item_id": orcamento_item_id,
+            "tipo_linha": PECA,
+            "codigo": peca.codigo,
+            "def_peca_id": peca.id,
+            "def_peca_codigo": peca.codigo,
+            "descricao": peca.nome or peca.descricao or peca.codigo,
+            "codigo_orlas": self._format_codigo_orlas(peca),
+            "chave_valueset": peca.chave_valueset_material,
+            "origem_tipo": "BIBLIOTECA_PECA",
+            "qt_mod": Decimal("1"),
+            "qt_und": Decimal("1"),
+            "quantidade": Decimal("1"),
+            "editado_localmente": False,
+            "ativo": True,
+        }
+
+        if not peca.chave_valueset_material:
+            fields["observacoes"] = "Definição de peça sem chave ValueSet."
+            return fields, None
+
+        linha_vs = self.resolver_valueset_para_def_peca(orcamento_item_id, peca)
+        if linha_vs is None:
+            aviso = f"Sem ValueSet encontrado para a chave {peca.chave_valueset_material}"
+            fields["observacoes"] = aviso
+            return fields, aviso
+
+        fields.update(
+            {
+                "materia_prima_id": linha_vs.materia_prima_id,
+                "ref_materia_prima": linha_vs.ref_materia_prima,
+                "descricao_materia_prima": linha_vs.descricao_materia_prima,
+                "mat_default": linha_vs.codigo_opcao or linha_vs.nome_opcao,
+                "ref_le": linha_vs.ref_le,
+                "descricao_no_orcamento": linha_vs.descricao_no_orcamento,
+                "unidade": linha_vs.unidade,
+                "preco_liquido": linha_vs.preco_liquido,
+                "desperdicio_percentagem": linha_vs.desperdicio_percentagem,
+                "tipo_materia_prima": linha_vs.tipo_materia_prima,
+                "familia_materia_prima": linha_vs.familia_materia_prima,
+                "coresp_orla_0_4": linha_vs.coresp_orla_0_4,
+                "coresp_orla_1_0": linha_vs.coresp_orla_1_0,
+                "comp_mp": linha_vs.comp_mp,
+                "larg_mp": linha_vs.larg_mp,
+                "esp_mp": linha_vs.esp_mp,
+            }
+        )
+        return fields, None
+
+    def _format_codigo_orlas(self, peca: DefPecaResumo) -> str:
+        """Build the orla code (e.g. 2200) from the four orla sides."""
+        return f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
+
+    def _adicionar_aviso(self, avisos: list[str], mensagem: str) -> None:
+        """Append a warning message, avoiding duplicates."""
+        if mensagem not in avisos:
+            avisos.append(mensagem)
 
     def criar_linha_manual(
         self, data: CriarLinhaCusteioData
