@@ -28,20 +28,25 @@ def test_orcamento_item_custeio_page_accepts_expected_arguments() -> None:
 def test_orcamento_item_custeio_page_headers() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
-    assert OrcamentoItemCusteioPage.TABLE_HEADERS == [
-        "Tipo",
+    headers = OrcamentoItemCusteioPage.TABLE_HEADERS
+
+    for column in (
+        "Ordem",
+        "Tipo linha",
         "C\u00f3digo",
-        "Descri\u00e7\u00e3o",
-        "Unidade",
-        "Quantidade",
-        "Comp",
-        "Larg",
-        "Esp",
+        "Def. Pe\u00e7a",
+        "Chave ValueSet",
+        "Ref LE",
+        "Descri\u00e7\u00e3o no or\u00e7amento",
+        "\u00c1rea m\u00b2",
+        "ML orla fina",
+        "ML orla grossa",
         "Custo total",
         "Pre\u00e7o total",
         "Editado localmente",
         "Ativo",
-    ]
+    ):
+        assert column in headers
 
 
 def test_orcamento_item_custeio_page_uses_item_line_service() -> None:

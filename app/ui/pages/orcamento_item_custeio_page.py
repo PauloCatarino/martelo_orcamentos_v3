@@ -26,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.custeio_linha_types import get_custeio_linha_type_label
 from app.domain.item_types import get_item_type_label
+from app.domain.numeros import formatar_percentagem
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -46,16 +47,87 @@ class OrcamentoItemCusteioPage(QWidget):
     """Page for the costing workspace of one budget item."""
 
     TABLE_HEADERS = [
-        "Tipo",
+        # Identificacao
+        "Ordem",
+        "Tipo linha",
         "C\u00f3digo",
+        "Descri\u00e7\u00e3o livre",
+        "Def. Pe\u00e7a",
         "Descri\u00e7\u00e3o",
-        "Unidade",
-        "Quantidade",
+        "M\u00f3dulo",
+        "Linha pai",
+        "N\u00edvel",
+        # Quantidades e medidas
+        "QT mod",
+        "QT und",
+        "QT total",
         "Comp",
         "Larg",
         "Esp",
+        "Comp real",
+        "Larg real",
+        "Esp real",
+        "\u00c1rea m\u00b2",
+        "Per\u00edmetro ML",
+        # ValueSet / materia-prima
+        "Chave ValueSet",
+        "Mat. default",
+        "Ref LE",
+        "Descri\u00e7\u00e3o no or\u00e7amento",
+        "Unidade",
+        "Pre\u00e7o l\u00edquido",
+        "Desp %",
+        "Tipo MP",
+        "Fam\u00edlia",
+        "Comp MP",
+        "Larg MP",
+        "Esp MP",
+        # Orlas
+        "C\u00f3digo orlas",
+        "Orla 0.4",
+        "Orla 1.0",
+        "ML orla fina",
+        "ML orla grossa",
+        "Custo orla fina",
+        "Custo orla grossa",
+        # Acabamentos
+        "Acab. face sup",
+        "Acab. face inf",
+        "\u00c1rea acab. sup",
+        "\u00c1rea acab. inf",
+        "Custo acabamento",
+        # Operacoes / producao
+        "M\u00e1quina",
+        "Opera\u00e7\u00f5es",
+        "Tempo corte",
+        "Tempo orlagem",
+        "Tempo CNC",
+        "Tempo montagem",
+        "Tempo manual",
+        "Tempo setup",
+        "Custo produ\u00e7\u00e3o",
+        # Flags de inclusao
+        "Inclui MP",
+        "Inclui Orla",
+        "Inclui Ferragem",
+        "Inclui Produ\u00e7\u00e3o",
+        "Inclui Acabamento",
+        "Inclui MO",
+        # Serie / STD
+        "Tipo produ\u00e7\u00e3o",
+        "Fator s\u00e9rie",
+        "Observa\u00e7\u00f5es produ\u00e7\u00e3o",
+        # Custos
+        "Custo MP",
+        "Custo ferragem",
+        "Custo orlas",
+        "Custo acabamento",
+        "Custo opera\u00e7\u00f5es",
         "Custo total",
+        "Margem %",
         "Pre\u00e7o total",
+        # Controlo
+        "Origem",
         "Editado localmente",
         "Ativo",
     ]
@@ -388,27 +460,44 @@ class OrcamentoItemCusteioPage(QWidget):
                 label.setText(value)
 
     def _preencher_tabela(self, linhas: list[OrcamentoItemCusteioLinhaResumo]) -> None:
-        """Fill the costing lines table."""
+        """Fill the costing lines table, mapping known fields to columns."""
         self.table.setRowCount(len(linhas))
 
         for row_index, linha in enumerate(linhas):
-            values = [
-                get_custeio_linha_type_label(linha.tipo_linha),
-                linha.codigo or "",
-                linha.descricao,
-                linha.unidade or "",
-                format_quantity(linha.quantidade),
-                format_quantity(linha.comp),
-                format_quantity(linha.larg),
-                format_quantity(linha.esp),
-                format_currency(linha.custo_total),
-                format_currency(linha.preco_total),
-                self._format_bool(linha.editado_localmente),
-                self._format_bool(linha.ativo),
-            ]
+            valores = self._linha_para_valores(linha)
+            for column_index, header in enumerate(self.TABLE_HEADERS):
+                self.table.setItem(
+                    row_index, column_index, QTableWidgetItem(valores.get(header, ""))
+                )
 
-            for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+    def _linha_para_valores(
+        self, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> dict[str, str]:
+        """Map a costing line to the known columns; unknown columns stay empty."""
+        return {
+            "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),
+            "Código": linha.codigo or "",
+            "Descrição": linha.descricao,
+            "Módulo": "" if linha.orcamento_item_modulo_id is None
+            else str(linha.orcamento_item_modulo_id),
+            "QT total": format_quantity(linha.quantidade),
+            "Comp": format_quantity(linha.comp),
+            "Larg": format_quantity(linha.larg),
+            "Esp": format_quantity(linha.esp),
+            "Área m²": format_quantity(linha.area_m2),
+            "Perímetro ML": format_quantity(linha.perimetro_ml),
+            "Unidade": linha.unidade or "",
+            "ML orla fina": format_quantity(linha.ml_orla_fina),
+            "ML orla grossa": format_quantity(linha.ml_orla_grossa),
+            "Tempo manual": format_quantity(linha.tempo_manual),
+            "Observações produção": linha.observacoes or "",
+            "Custo total": format_currency(linha.custo_total),
+            "Margem %": formatar_percentagem(linha.margem_percentagem),
+            "Preço total": format_currency(linha.preco_total),
+            "Origem": linha.origem_tipo or "",
+            "Editado localmente": self._format_bool(linha.editado_localmente),
+            "Ativo": self._format_bool(linha.ativo),
+        }
 
     def _handle_back(self) -> None:
         """Return to the items page through the optional callback."""
