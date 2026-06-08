@@ -22,6 +22,7 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
 from app.services.orcamento_item_valueset_linha_service import (
     OrcamentoItemValuesetLinhaService,
 )
+from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModeloDialog
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -72,11 +73,14 @@ class OrcamentoItemValuesetPage(QWidget):
 
         self.create_button = QPushButton("Criar a partir do Orçamento")
         self.create_button.clicked.connect(self.criar_do_orcamento)
+        self.import_button = QPushButton("Importar Modelo")
+        self.import_button.clicked.connect(self.importar_modelo)
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.create_button)
+        actions_layout.addWidget(self.import_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -152,7 +156,7 @@ class OrcamentoItemValuesetPage(QWidget):
                 format_quantity(linha.esp_mp),
                 self._format_bool(linha.padrao),
                 str(linha.ordem),
-                linha.origem_dados or "",
+                linha.origem_modelo_codigo or linha.origem_dados or "",
                 self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
             ]
@@ -178,6 +182,30 @@ class OrcamentoItemValuesetPage(QWidget):
             f"ValueSet do item criado a partir do orçamento: "
             f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
             f"{result.ignoradas} ignoradas (de {result.total_origem} linhas)."
+        )
+
+    def importar_modelo(self) -> None:
+        """Open the model picker and import the selected model into the item."""
+        dialog = ImportarValuesetModeloDialog(parent=self)
+        if not dialog.exec() or dialog.selected_modelo is None:
+            return
+
+        modelo = dialog.selected_modelo
+
+        try:
+            with SessionLocal() as session:
+                result = OrcamentoItemValuesetLinhaService(session).importar_modelo_para_item(
+                    self.orcamento_item_id, modelo.id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível importar o modelo.")
+            return
+
+        self.carregar()
+        self.status_label.setText(
+            f"Modelo {result.modelo_codigo} importado: "
+            f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
+            f"{result.ignoradas} ignoradas."
         )
 
     def _format_bool(self, value: bool) -> str:

@@ -46,6 +46,8 @@ class OrcamentoItemValuesetLinhaResumo:
     esp_mp: Decimal | None
     origem_orcamento_valueset_linha_id: int | None
     origem_orcamento_versao_id: int | None
+    origem_modelo_id: int | None
+    origem_modelo_codigo: str | None
     origem_dados: str | None
     herdado_do_orcamento: bool
     editado_localmente: bool
@@ -296,6 +298,8 @@ class OrcamentoItemValuesetLinhaRepository:
             esp_mp=linha.esp_mp,
             origem_orcamento_valueset_linha_id=linha.origem_orcamento_valueset_linha_id,
             origem_orcamento_versao_id=linha.origem_orcamento_versao_id,
+            origem_modelo_id=linha.origem_modelo_id,
+            origem_modelo_codigo=linha.origem_modelo_codigo,
             origem_dados=linha.origem_dados,
             herdado_do_orcamento=linha.herdado_do_orcamento,
             editado_localmente=linha.editado_localmente,

@@ -68,13 +68,19 @@ def test_model_has_snapshot_and_origin_columns() -> None:
         "esp_mp",
         "origem_orcamento_valueset_linha_id",
         "origem_orcamento_versao_id",
+        "origem_modelo_id",
+        "origem_modelo_codigo",
         "origem_dados",
     } <= columns
 
     fk_targets = {
         fk.column.table.name for fk in OrcamentoItemValuesetLinha.__table__.foreign_keys
     }
-    assert {"orcamento_valueset_linhas", "orcamento_versoes"} <= fk_targets
+    assert {
+        "orcamento_valueset_linhas",
+        "orcamento_versoes",
+        "def_valueset_modelos",
+    } <= fk_targets
 
 
 def test_unique_indexes_and_relationships() -> None:

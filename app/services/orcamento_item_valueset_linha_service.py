@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
+from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaRepository
+from app.repositories.def_valueset_modelo_repository import DefValuesetModeloRepository
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaRepository,
     OrcamentoItemValuesetLinhaResumo,
@@ -72,6 +74,17 @@ class CriarItemValuesetDoOrcamentoResult:
     total_origem: int
 
 
+@dataclass(frozen=True)
+class ImportarModeloParaItemResult:
+    """Summary of importing a ValueSet model into one item."""
+
+    modelo_codigo: str
+    criadas: int
+    atualizadas: int
+    ignoradas: int
+    total_origem: int
+
+
 class OrcamentoItemValuesetLinhaService:
     """Application service for budget item ValueSet lines."""
 
@@ -79,6 +92,8 @@ class OrcamentoItemValuesetLinhaService:
         self.session = session
         self.repository = OrcamentoItemValuesetLinhaRepository(session)
         self.orcamento_repository = OrcamentoValuesetLinhaRepository(session)
+        self.modelo_repository = DefValuesetModeloRepository(session)
+        self.modelo_linha_repository = DefValuesetModeloLinhaRepository(session)
 
     def listar_linhas(self) -> list[OrcamentoItemValuesetLinhaResumo]:
         """List all budget item ValueSet lines."""
@@ -297,8 +312,100 @@ class OrcamentoItemValuesetLinhaService:
             "esp_mp": linha.esp_mp,
             "origem_orcamento_valueset_linha_id": linha.id,
             "origem_orcamento_versao_id": orcamento_versao_id,
+            "origem_modelo_id": None,
+            "origem_modelo_codigo": None,
             "origem_dados": "VALUESET_ORCAMENTO",
             "herdado_do_orcamento": True,
+            "editado_localmente": False,
+            "ativo": True,
+            "observacoes": linha.observacoes,
+        }
+
+    def importar_modelo_para_item(
+        self, orcamento_item_id: int, def_valueset_modelo_id: int
+    ) -> ImportarModeloParaItemResult:
+        """Copy the active lines of a ValueSet model into one item's ValueSet.
+
+        Existing item lines (same chave + codigo_opcao) are updated when not
+        locally edited, and kept untouched when editado_localmente is True.
+        """
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+
+        modelo = self.modelo_repository.get_by_id(def_valueset_modelo_id)
+        if modelo is None:
+            raise ValueError("modelo nao encontrado")
+
+        criadas = 0
+        atualizadas = 0
+        ignoradas = 0
+        total_origem = 0
+
+        for linha in self.modelo_linha_repository.list_by_modelo(def_valueset_modelo_id):
+            if not linha.ativo:
+                continue
+
+            total_origem += 1
+            existing = self.repository.get_by_item_chave_opcao(
+                orcamento_item_id, linha.chave, linha.codigo_opcao
+            )
+            fields = self._build_modelo_import_fields(orcamento_item_id, modelo, linha)
+
+            if existing is None:
+                self.repository.create(**fields)
+                criadas += 1
+            elif existing.editado_localmente:
+                ignoradas += 1
+            else:
+                self.repository.update(id=existing.id, **fields)
+                atualizadas += 1
+
+        self.session.commit()
+
+        return ImportarModeloParaItemResult(
+            modelo_codigo=modelo.codigo,
+            criadas=criadas,
+            atualizadas=atualizadas,
+            ignoradas=ignoradas,
+            total_origem=total_origem,
+        )
+
+    def _build_modelo_import_fields(self, orcamento_item_id: int, modelo, linha) -> dict:
+        return {
+            "orcamento_item_id": orcamento_item_id,
+            "chave": linha.chave,
+            "codigo_opcao": linha.codigo_opcao,
+            "nome_opcao": linha.nome_opcao,
+            "padrao": linha.padrao,
+            "ordem": linha.ordem,
+            "descricao": linha.descricao,
+            "materia_prima_id": linha.materia_prima_id,
+            "ref_materia_prima": linha.ref_materia_prima,
+            "descricao_materia_prima": linha.descricao_materia_prima,
+            "valor_texto": linha.valor_texto,
+            "origem": linha.origem,
+            "ref_le": linha.ref_le,
+            "descricao_no_orcamento": linha.descricao_no_orcamento,
+            "preco_tabela": linha.preco_tabela,
+            "margem_percentagem": linha.margem_percentagem,
+            "desconto_percentagem": linha.desconto_percentagem,
+            "preco_liquido": linha.preco_liquido,
+            "unidade": linha.unidade,
+            "desperdicio_percentagem": linha.desperdicio_percentagem,
+            "tipo_materia_prima": linha.tipo_materia_prima,
+            "familia_materia_prima": linha.familia_materia_prima,
+            "coresp_orla_0_4": linha.coresp_orla_0_4,
+            "coresp_orla_1_0": linha.coresp_orla_1_0,
+            "comp_mp": linha.comp_mp,
+            "larg_mp": linha.larg_mp,
+            "esp_mp": linha.esp_mp,
+            "origem_orcamento_valueset_linha_id": None,
+            "origem_orcamento_versao_id": None,
+            "origem_modelo_id": modelo.id,
+            "origem_modelo_codigo": modelo.codigo,
+            "origem_dados": "MODELO_VALUESET",
+            "herdado_do_orcamento": False,
             "editado_localmente": False,
             "ativo": True,
             "observacoes": linha.observacoes,

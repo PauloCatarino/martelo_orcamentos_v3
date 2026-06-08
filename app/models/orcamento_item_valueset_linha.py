@@ -90,6 +90,13 @@ class OrcamentoItemValuesetLinha(Base):
         nullable=True,
         index=True,
     )
+    origem_modelo_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("def_valueset_modelos.id"),
+        nullable=True,
+        index=True,
+    )
+    origem_modelo_codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     origem_dados: Mapped[str | None] = mapped_column(String(100), nullable=True)
     herdado_do_orcamento: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"

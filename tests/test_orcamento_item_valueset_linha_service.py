@@ -44,6 +44,8 @@ def _item_resumo(**kwargs) -> OrcamentoItemValuesetLinhaResumo:
         "esp_mp": None,
         "origem_orcamento_valueset_linha_id": None,
         "origem_orcamento_versao_id": None,
+        "origem_modelo_id": None,
+        "origem_modelo_codigo": None,
         "origem_dados": None,
         "herdado_do_orcamento": True,
         "editado_localmente": False,
@@ -93,6 +95,48 @@ def _versao_resumo(**kwargs) -> OrcamentoValuesetLinhaResumo:
     }
     base.update(kwargs)
     return OrcamentoValuesetLinhaResumo(**base)
+
+
+def _modelo(**kwargs):
+    base = {"id": 88, "codigo": "COZINHA_STANDARD"}
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
+def _modelo_linha(**kwargs):
+    base = {
+        "id": 1,
+        "chave": "MATERIAL_FRENTES",
+        "codigo_opcao": "MDF",
+        "nome_opcao": "MDF B3002",
+        "padrao": True,
+        "ordem": 1,
+        "descricao": None,
+        "materia_prima_id": None,
+        "ref_materia_prima": "FRT0001",
+        "descricao_materia_prima": "MDF B3002",
+        "valor_texto": None,
+        "origem": None,
+        "ref_le": "FRT0001",
+        "descricao_no_orcamento": "MDF B3002 19mm",
+        "preco_tabela": Decimal("10"),
+        "margem_percentagem": Decimal("10"),
+        "desconto_percentagem": Decimal("32"),
+        "preco_liquido": Decimal("7.48"),
+        "unidade": "m2",
+        "desperdicio_percentagem": None,
+        "tipo_materia_prima": "MDF",
+        "familia_materia_prima": "LACADO",
+        "coresp_orla_0_4": "ORLA_A",
+        "coresp_orla_1_0": None,
+        "comp_mp": Decimal("2750"),
+        "larg_mp": Decimal("1830"),
+        "esp_mp": Decimal("19"),
+        "observacoes": None,
+        "ativo": True,
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
 
 
 class _FakeItemRepository:
@@ -173,6 +217,26 @@ class _FakeOrcamentoRepository:
         return self.versao_rows
 
 
+class _FakeModeloRepository:
+    modelo = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.modelo
+
+
+class _FakeModeloLinhaRepository:
+    linhas: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_modelo(self, modelo_id: int):
+        return self.linhas
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -198,6 +262,8 @@ def _reset() -> None:
     _FakeItemRepository.activate_result = True
     _FakeOrcamentoRepository.versao_default = None
     _FakeOrcamentoRepository.versao_rows = []
+    _FakeModeloRepository.modelo = None
+    _FakeModeloLinhaRepository.linhas = []
 
 
 def _service(monkeypatch):
@@ -207,6 +273,10 @@ def _service(monkeypatch):
     )
     monkeypatch.setattr(
         service_module, "OrcamentoValuesetLinhaRepository", _FakeOrcamentoRepository
+    )
+    monkeypatch.setattr(service_module, "DefValuesetModeloRepository", _FakeModeloRepository)
+    monkeypatch.setattr(
+        service_module, "DefValuesetModeloLinhaRepository", _FakeModeloLinhaRepository
     )
     session = _FakeSession()
     return service_module.OrcamentoItemValuesetLinhaService(session=session), session
@@ -429,5 +499,94 @@ def test_criar_a_partir_item_inexistente_levanta(monkeypatch) -> None:
         service.criar_a_partir_do_orcamento(999)
     except ValueError as error:
         assert "item" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_importar_modelo_para_item_cria_linhas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo(id=88, codigo="COZINHA_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.importar_modelo_para_item(30, 88)
+
+    assert result.modelo_codigo == "COZINHA_STANDARD"
+    assert result.criadas == 1
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert result.total_origem == 1
+
+    payload = _FakeItemRepository.created_payload
+    assert payload["origem_dados"] == "MODELO_VALUESET"
+    assert payload["origem_modelo_id"] == 88
+    assert payload["origem_modelo_codigo"] == "COZINHA_STANDARD"
+    assert payload["origem_orcamento_valueset_linha_id"] is None
+    assert payload["origem_orcamento_versao_id"] is None
+    assert payload["editado_localmente"] is False
+    assert payload["ativo"] is True
+    assert payload["preco_liquido"] == Decimal("7.48")
+    assert payload["margem_percentagem"] == Decimal("10")
+    assert payload["desconto_percentagem"] == Decimal("32")
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["coresp_orla_0_4"] == "ORLA_A"
+    assert session.committed is True
+
+
+def test_importar_modelo_para_item_atualiza_nao_editada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=False)
+
+    result = service.importar_modelo_para_item(30, 88)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 1
+    assert result.ignoradas == 0
+    assert _FakeItemRepository.updated_payload is not None
+    assert _FakeItemRepository.updated_payload["id"] == 5
+
+
+def test_importar_modelo_para_item_protege_editada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    result = service.importar_modelo_para_item(30, 88)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 0
+    assert result.ignoradas == 1
+    assert _FakeItemRepository.updated_payload is None
+
+
+def test_importar_modelo_para_item_ignora_inativas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(ativo=False)]
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.importar_modelo_para_item(30, 88)
+
+    assert result.criadas == 0
+    assert result.total_origem == 0
+    assert _FakeItemRepository.created_payload is None
+
+
+def test_importar_modelo_para_item_modelo_inexistente_levanta(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = None
+
+    try:
+        service.importar_modelo_para_item(30, 999)
+    except ValueError as error:
+        assert "modelo" in str(error)
     else:
         raise AssertionError("Expected ValueError")

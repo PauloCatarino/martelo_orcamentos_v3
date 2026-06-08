@@ -52,7 +52,7 @@ def test_page_headers() -> None:
 def test_page_has_actions() -> None:
     from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 
-    for method in ("criar_do_orcamento", "carregar"):
+    for method in ("criar_do_orcamento", "importar_modelo", "carregar"):
         assert hasattr(OrcamentoItemValuesetPage, method)
 
 
@@ -65,6 +65,16 @@ def test_page_uses_service() -> None:
     carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
     assert "OrcamentoItemValuesetLinhaService" in carregar
     assert "listar_linhas_do_item" in carregar
+
+
+def test_page_import_modelo_uses_dialog_and_service() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    source = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
+
+    assert "ImportarValuesetModeloDialog" in source
+    assert "importar_modelo_para_item" in source
+    assert "importado" in source
 
 
 def test_page_formats_percentages() -> None:
