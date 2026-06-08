@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.domain.valueset_types import normalize_valueset_key
+from app.models import OrcamentoItem
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaRepository,
     OrcamentoItemValuesetLinhaResumo,
@@ -61,6 +62,16 @@ class EditarOrcamentoItemValuesetLinhaData:
     observacoes: str | None = None
 
 
+@dataclass(frozen=True)
+class CriarItemValuesetDoOrcamentoResult:
+    """Summary of building an item ValueSet from the budget ValueSet."""
+
+    criadas: int
+    atualizadas: int
+    ignoradas: int
+    total_origem: int
+
+
 class OrcamentoItemValuesetLinhaService:
     """Application service for budget item ValueSet lines."""
 
@@ -82,6 +93,12 @@ class OrcamentoItemValuesetLinhaService:
     ) -> list[OrcamentoItemValuesetLinhaResumo]:
         """List ValueSet lines of one budget item."""
         return self.repository.list_by_orcamento_item(orcamento_item_id)
+
+    def listar_linhas_ativas_do_item(
+        self, orcamento_item_id: int
+    ) -> list[OrcamentoItemValuesetLinhaResumo]:
+        """List active ValueSet lines of one budget item."""
+        return self.repository.list_active_by_orcamento_item(orcamento_item_id)
 
     def listar_por_chave(
         self, orcamento_item_id: int, chave: str
@@ -199,6 +216,93 @@ class OrcamentoItemValuesetLinhaService:
             return versao_linha
 
         return None
+
+    def criar_a_partir_do_orcamento(
+        self, orcamento_item_id: int
+    ) -> CriarItemValuesetDoOrcamentoResult:
+        """Copy the budget version ValueSet lines into one item's ValueSet.
+
+        Existing item lines (same chave + codigo_opcao) are updated when not
+        locally edited, and kept untouched when editado_localmente is True.
+        """
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+
+        orcamento_versao_id = item.orcamento_versao_id
+
+        criadas = 0
+        atualizadas = 0
+        ignoradas = 0
+        total_origem = 0
+
+        for linha in self.orcamento_repository.list_by_orcamento_versao(orcamento_versao_id):
+            if not linha.ativo:
+                continue
+
+            total_origem += 1
+            existing = self.repository.get_by_item_chave_opcao(
+                orcamento_item_id, linha.chave, linha.codigo_opcao
+            )
+            fields = self._build_import_fields(orcamento_item_id, orcamento_versao_id, linha)
+
+            if existing is None:
+                self.repository.create(**fields)
+                criadas += 1
+            elif existing.editado_localmente:
+                ignoradas += 1
+            else:
+                self.repository.update(id=existing.id, **fields)
+                atualizadas += 1
+
+        self.session.commit()
+
+        return CriarItemValuesetDoOrcamentoResult(
+            criadas=criadas,
+            atualizadas=atualizadas,
+            ignoradas=ignoradas,
+            total_origem=total_origem,
+        )
+
+    def _build_import_fields(
+        self, orcamento_item_id: int, orcamento_versao_id: int, linha
+    ) -> dict:
+        return {
+            "orcamento_item_id": orcamento_item_id,
+            "chave": linha.chave,
+            "codigo_opcao": linha.codigo_opcao,
+            "nome_opcao": linha.nome_opcao,
+            "padrao": linha.padrao,
+            "ordem": linha.ordem,
+            "descricao": linha.descricao,
+            "materia_prima_id": linha.materia_prima_id,
+            "ref_materia_prima": linha.ref_materia_prima,
+            "descricao_materia_prima": linha.descricao_materia_prima,
+            "valor_texto": linha.valor_texto,
+            "origem": linha.origem,
+            "ref_le": linha.ref_le,
+            "descricao_no_orcamento": linha.descricao_no_orcamento,
+            "preco_tabela": linha.preco_tabela,
+            "margem_percentagem": linha.margem_percentagem,
+            "desconto_percentagem": linha.desconto_percentagem,
+            "preco_liquido": linha.preco_liquido,
+            "unidade": linha.unidade,
+            "desperdicio_percentagem": linha.desperdicio_percentagem,
+            "tipo_materia_prima": linha.tipo_materia_prima,
+            "familia_materia_prima": linha.familia_materia_prima,
+            "coresp_orla_0_4": linha.coresp_orla_0_4,
+            "coresp_orla_1_0": linha.coresp_orla_1_0,
+            "comp_mp": linha.comp_mp,
+            "larg_mp": linha.larg_mp,
+            "esp_mp": linha.esp_mp,
+            "origem_orcamento_valueset_linha_id": linha.id,
+            "origem_orcamento_versao_id": orcamento_versao_id,
+            "origem_dados": "VALUESET_ORCAMENTO",
+            "herdado_do_orcamento": True,
+            "editado_localmente": False,
+            "ativo": True,
+            "observacoes": linha.observacoes,
+        }
 
     def _build_fields(self, data) -> dict:
         orcamento_item_id = self._validate_required_id(

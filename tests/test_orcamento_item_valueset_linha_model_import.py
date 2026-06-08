@@ -46,6 +46,37 @@ def test_tablename_columns_and_foreign_keys() -> None:
     assert {"orcamento_items", "def_materias_primas"} <= fk_targets
 
 
+def test_model_has_snapshot_and_origin_columns() -> None:
+    from app.models.orcamento_item_valueset_linha import OrcamentoItemValuesetLinha
+
+    columns = set(OrcamentoItemValuesetLinha.__table__.columns.keys())
+    assert {
+        "ref_le",
+        "descricao_no_orcamento",
+        "preco_tabela",
+        "margem_percentagem",
+        "desconto_percentagem",
+        "preco_liquido",
+        "unidade",
+        "desperdicio_percentagem",
+        "tipo_materia_prima",
+        "familia_materia_prima",
+        "coresp_orla_0_4",
+        "coresp_orla_1_0",
+        "comp_mp",
+        "larg_mp",
+        "esp_mp",
+        "origem_orcamento_valueset_linha_id",
+        "origem_orcamento_versao_id",
+        "origem_dados",
+    } <= columns
+
+    fk_targets = {
+        fk.column.table.name for fk in OrcamentoItemValuesetLinha.__table__.foreign_keys
+    }
+    assert {"orcamento_valueset_linhas", "orcamento_versoes"} <= fk_targets
+
+
 def test_unique_indexes_and_relationships() -> None:
     from app.models.orcamento_item_valueset_linha import OrcamentoItemValuesetLinha
 

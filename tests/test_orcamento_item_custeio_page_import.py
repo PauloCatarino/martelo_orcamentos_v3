@@ -92,3 +92,12 @@ def test_orcamento_item_custeio_page_has_future_layout_placeholders() -> None:
     assert "Inserir Pe" in source
     assert "Inserir Opera" in source
     assert "Guardar Custeio" in source
+
+
+def test_orcamento_item_custeio_page_has_valueset_tab() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+
+    assert "OrcamentoItemValuesetPage" in source
+    assert '"ValueSet"' in source

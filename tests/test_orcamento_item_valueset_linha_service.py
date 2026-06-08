@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from types import SimpleNamespace
+
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
@@ -24,6 +27,24 @@ def _item_resumo(**kwargs) -> OrcamentoItemValuesetLinhaResumo:
         "descricao_materia_prima": None,
         "valor_texto": None,
         "origem": None,
+        "ref_le": None,
+        "descricao_no_orcamento": None,
+        "preco_tabela": None,
+        "margem_percentagem": None,
+        "desconto_percentagem": None,
+        "preco_liquido": None,
+        "unidade": None,
+        "desperdicio_percentagem": None,
+        "tipo_materia_prima": None,
+        "familia_materia_prima": None,
+        "coresp_orla_0_4": None,
+        "coresp_orla_1_0": None,
+        "comp_mp": None,
+        "larg_mp": None,
+        "esp_mp": None,
+        "origem_orcamento_valueset_linha_id": None,
+        "origem_orcamento_versao_id": None,
+        "origem_dados": None,
         "herdado_do_orcamento": True,
         "editado_localmente": False,
         "ativo": True,
@@ -98,6 +119,9 @@ class _FakeItemRepository:
     def list_by_orcamento_item(self, orcamento_item_id: int):
         return self.rows
 
+    def list_active_by_orcamento_item(self, orcamento_item_id: int):
+        return self.rows
+
     def list_by_item_chave(self, orcamento_item_id: int, chave: str):
         return self.rows
 
@@ -137,6 +161,7 @@ class _FakeItemRepository:
 
 class _FakeOrcamentoRepository:
     versao_default: OrcamentoValuesetLinhaResumo | None = None
+    versao_rows: list = []
 
     def __init__(self, _session: object) -> None:
         pass
@@ -144,10 +169,17 @@ class _FakeOrcamentoRepository:
     def get_default_by_versao_chave(self, orcamento_versao_id: int, chave: str):
         return self.versao_default
 
+    def list_by_orcamento_versao(self, orcamento_versao_id: int):
+        return self.versao_rows
+
 
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.item = None
+
+    def get(self, _model, _id):
+        return self.item
 
     def commit(self) -> None:
         self.committed = True
@@ -165,6 +197,7 @@ def _reset() -> None:
     _FakeItemRepository.deactivate_result = True
     _FakeItemRepository.activate_result = True
     _FakeOrcamentoRepository.versao_default = None
+    _FakeOrcamentoRepository.versao_rows = []
 
 
 def _service(monkeypatch):
@@ -305,3 +338,96 @@ def test_resolver_devolve_none_sem_padrao(monkeypatch) -> None:
     _FakeOrcamentoRepository.versao_default = None
 
     assert service.obter_valor_resolvido(30, 20, "material_caixote") is None
+
+
+def test_criar_a_partir_do_orcamento_cria_linhas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [
+        _versao_resumo(
+            id=7,
+            chave="MATERIAL_FRENTES",
+            codigo_opcao="MDF",
+            preco_liquido=Decimal("7.48"),
+            margem_percentagem=Decimal("10"),
+            desconto_percentagem=Decimal("32"),
+            comp_mp=Decimal("2750"),
+            coresp_orla_0_4="ORLA_A",
+        )
+    ]
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.criar_a_partir_do_orcamento(30)
+
+    assert result.criadas == 1
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert result.total_origem == 1
+
+    payload = _FakeItemRepository.created_payload
+    assert payload["origem_dados"] == "VALUESET_ORCAMENTO"
+    assert payload["origem_orcamento_valueset_linha_id"] == 7
+    assert payload["origem_orcamento_versao_id"] == 20
+    assert payload["herdado_do_orcamento"] is True
+    assert payload["editado_localmente"] is False
+    assert payload["ativo"] is True
+    assert payload["preco_liquido"] == Decimal("7.48")
+    assert payload["margem_percentagem"] == Decimal("10")
+    assert payload["desconto_percentagem"] == Decimal("32")
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["coresp_orla_0_4"] == "ORLA_A"
+    assert session.committed is True
+
+
+def test_criar_a_partir_atualiza_linha_nao_editada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7)]
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=False)
+
+    result = service.criar_a_partir_do_orcamento(30)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 1
+    assert result.ignoradas == 0
+    assert _FakeItemRepository.updated_payload is not None
+    assert _FakeItemRepository.updated_payload["id"] == 5
+
+
+def test_criar_a_partir_protege_linha_editada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7)]
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    result = service.criar_a_partir_do_orcamento(30)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 0
+    assert result.ignoradas == 1
+    assert _FakeItemRepository.updated_payload is None
+
+
+def test_criar_a_partir_ignora_linhas_inativas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7, ativo=False)]
+    _FakeItemRepository.opcao_existing = None
+
+    result = service.criar_a_partir_do_orcamento(30)
+
+    assert result.criadas == 0
+    assert result.total_origem == 0
+    assert _FakeItemRepository.created_payload is None
+
+
+def test_criar_a_partir_item_inexistente_levanta(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = None
+
+    try:
+        service.criar_a_partir_do_orcamento(999)
+    except ValueError as error:
+        assert "item" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")

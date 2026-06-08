@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -29,6 +30,7 @@ from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
@@ -138,6 +140,13 @@ class OrcamentoItemCusteioPage(QWidget):
         workspace_layout.addWidget(self.library_panel)
         workspace_layout.addWidget(center_widget, stretch=1)
 
+        custeio_tab = QWidget()
+        custeio_tab.setLayout(workspace_layout)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(custeio_tab, "Custeio")
+        self.tabs.addTab(OrcamentoItemValuesetPage(item.id), "ValueSet")
+
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
@@ -146,7 +155,7 @@ class OrcamentoItemCusteioPage(QWidget):
         layout.addLayout(actions_layout)
         layout.addWidget(item_info_widget)
         layout.addWidget(self.status_label)
-        layout.addLayout(workspace_layout, stretch=1)
+        layout.addWidget(self.tabs, stretch=1)
 
         self.setLayout(layout)
         self._update_item_info()

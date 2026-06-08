@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,6 +29,24 @@ class OrcamentoItemValuesetLinhaResumo:
     descricao_materia_prima: str | None
     valor_texto: str | None
     origem: str | None
+    ref_le: str | None
+    descricao_no_orcamento: str | None
+    preco_tabela: Decimal | None
+    margem_percentagem: Decimal | None
+    desconto_percentagem: Decimal | None
+    preco_liquido: Decimal | None
+    unidade: str | None
+    desperdicio_percentagem: Decimal | None
+    tipo_materia_prima: str | None
+    familia_materia_prima: str | None
+    coresp_orla_0_4: str | None
+    coresp_orla_1_0: str | None
+    comp_mp: Decimal | None
+    larg_mp: Decimal | None
+    esp_mp: Decimal | None
+    origem_orcamento_valueset_linha_id: int | None
+    origem_orcamento_versao_id: int | None
+    origem_dados: str | None
     herdado_do_orcamento: bool
     editado_localmente: bool
     ativo: bool
@@ -69,6 +88,26 @@ class OrcamentoItemValuesetLinhaRepository:
         statement = (
             select(OrcamentoItemValuesetLinha)
             .where(OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id)
+            .order_by(
+                OrcamentoItemValuesetLinha.chave.asc(),
+                OrcamentoItemValuesetLinha.ordem.asc(),
+                OrcamentoItemValuesetLinha.id.asc(),
+            )
+        )
+        linhas = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(linha) for linha in linhas]
+
+    def list_active_by_orcamento_item(
+        self, orcamento_item_id: int
+    ) -> list[OrcamentoItemValuesetLinhaResumo]:
+        """List active ValueSet lines of one budget item."""
+        statement = (
+            select(OrcamentoItemValuesetLinha)
+            .where(
+                OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id,
+                OrcamentoItemValuesetLinha.ativo.is_(True),
+            )
             .order_by(
                 OrcamentoItemValuesetLinha.chave.asc(),
                 OrcamentoItemValuesetLinha.ordem.asc(),
@@ -240,6 +279,24 @@ class OrcamentoItemValuesetLinhaRepository:
             descricao_materia_prima=linha.descricao_materia_prima,
             valor_texto=linha.valor_texto,
             origem=linha.origem,
+            ref_le=linha.ref_le,
+            descricao_no_orcamento=linha.descricao_no_orcamento,
+            preco_tabela=linha.preco_tabela,
+            margem_percentagem=linha.margem_percentagem,
+            desconto_percentagem=linha.desconto_percentagem,
+            preco_liquido=linha.preco_liquido,
+            unidade=linha.unidade,
+            desperdicio_percentagem=linha.desperdicio_percentagem,
+            tipo_materia_prima=linha.tipo_materia_prima,
+            familia_materia_prima=linha.familia_materia_prima,
+            coresp_orla_0_4=linha.coresp_orla_0_4,
+            coresp_orla_1_0=linha.coresp_orla_1_0,
+            comp_mp=linha.comp_mp,
+            larg_mp=linha.larg_mp,
+            esp_mp=linha.esp_mp,
+            origem_orcamento_valueset_linha_id=linha.origem_orcamento_valueset_linha_id,
+            origem_orcamento_versao_id=linha.origem_orcamento_versao_id,
+            origem_dados=linha.origem_dados,
             herdado_do_orcamento=linha.herdado_do_orcamento,
             editado_localmente=linha.editado_localmente,
             ativo=linha.ativo,
