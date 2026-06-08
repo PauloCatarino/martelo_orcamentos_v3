@@ -47,6 +47,17 @@ class DefPecaRepository:
 
         return [self._to_resumo(peca) for peca in pecas]
 
+    def list_ativas_para_biblioteca(self) -> list[DefPecaResumo]:
+        """List active piece definitions for the costing library tree."""
+        statement = (
+            select(DefPeca)
+            .where(DefPeca.ativo.is_(True))
+            .order_by(DefPeca.grupo.asc(), DefPeca.nome.asc(), DefPeca.codigo.asc())
+        )
+        pecas = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(peca) for peca in pecas]
+
     def get_by_id(self, id: int) -> DefPecaResumo | None:
         """Get one piece definition by id."""
         peca = self.session.get(DefPeca, id)

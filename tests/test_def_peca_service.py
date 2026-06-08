@@ -19,6 +19,9 @@ class _FakeRepository:
     def list_all(self) -> list[DefPecaResumo]:
         return self.rows
 
+    def list_ativas_para_biblioteca(self) -> list[DefPecaResumo]:
+        return [row for row in self.rows if row.ativo]
+
     def create_def_peca(self, **kwargs) -> DefPecaResumo:
         self.__class__.created_payload = kwargs
         return DefPecaResumo(
@@ -79,6 +82,35 @@ def test_def_peca_service_lista_pecas(monkeypatch) -> None:
     service = service_module.DefPecaService(session=object())
 
     assert service.listar_pecas() == []
+
+
+def test_def_peca_service_lista_ativas_para_biblioteca(monkeypatch) -> None:
+    _FakeRepository.rows = [
+        DefPecaResumo(
+            id=1,
+            codigo="COSTA",
+            nome="Costa",
+            descricao=None,
+            grupo="COSTAS",
+            tipo_peca="SIMPLES",
+            ativo=True,
+        ),
+        DefPecaResumo(
+            id=2,
+            codigo="VELHA",
+            nome="Peca velha",
+            descricao=None,
+            grupo="COSTAS",
+            tipo_peca="SIMPLES",
+            ativo=False,
+        ),
+    ]
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+
+    service = service_module.DefPecaService(session=object())
+    result = service.listar_ativas_para_biblioteca()
+
+    assert [peca.codigo for peca in result] == ["COSTA"]
 
 
 def test_def_peca_service_cria_peca_com_tipo_default(monkeypatch) -> None:

@@ -63,6 +63,10 @@ class DefPecaService:
         """List reusable piece definitions."""
         return self.repository.list_all()
 
+    def listar_ativas_para_biblioteca(self) -> list[DefPecaResumo]:
+        """List active piece definitions for the costing library."""
+        return self.repository.list_ativas_para_biblioteca()
+
     def criar_peca(self, data: CriarDefPecaData) -> DefPecaResumo:
         """Create a reusable piece definition."""
         codigo = data.codigo.strip()

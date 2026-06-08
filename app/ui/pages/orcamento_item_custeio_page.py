@@ -6,14 +6,18 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +26,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.custeio_linha_types import get_custeio_linha_type_label
 from app.domain.item_types import get_item_type_label
+from app.domain.peca_types import COMPOSTA
+from app.repositories.def_peca_repository import DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
@@ -29,6 +35,7 @@ from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
+from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
@@ -68,6 +75,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self.orcamento_versao_id = orcamento_versao_id
         self.on_back = on_back
         self._item_info_labels: dict[str, QLabel] = {}
+        self._biblioteca_pecas: list[DefPecaResumo] = []
+        self._selecionados: set[int] = set()
 
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
         self.title_label = QLabel(self._build_title())
@@ -106,18 +115,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
         item_info_widget = self._create_item_info_widget()
 
-        self.library_panel = QWidget()
-        library_layout = QVBoxLayout()
-        library_layout.setContentsMargins(8, 8, 8, 8)
-        library_title = QLabel("Biblioteca de pe\u00e7as")
-        library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
-        library_placeholder = QLabel("Pe\u00e7as, componentes e m\u00f3dulos ser\u00e3o listados aqui.")
-        library_placeholder.setWordWrap(True)
-        library_layout.addWidget(library_title)
-        library_layout.addWidget(library_placeholder)
-        library_layout.addStretch()
-        self.library_panel.setLayout(library_layout)
-        self.library_panel.setMinimumWidth(220)
+        self.library_panel = self._create_library_panel()
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -162,8 +160,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.carregar()
 
     def carregar(self) -> None:
-        """Reload the item data and its costing lines."""
+        """Reload the item data, its costing lines and the parts library."""
         self.status_label.clear()
+        self._carregar_biblioteca()
 
         try:
             with SessionLocal() as session:
@@ -186,6 +185,162 @@ class OrcamentoItemCusteioPage(QWidget):
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
+
+    def _create_library_panel(self) -> QWidget:
+        """Build the parts library panel (search + tree + selection tools)."""
+        panel = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        title = QLabel("Biblioteca de peças")
+        title.setObjectName("orcamentoItemCusteioLibraryTitle")
+
+        self.library_search = QLineEdit()
+        self.library_search.setPlaceholderText("Pesquisar peça...")
+        self.library_search.textChanged.connect(self._aplicar_filtro_biblioteca)
+
+        self.tree_biblioteca_pecas = QTreeWidget()
+        self.tree_biblioteca_pecas.setHeaderLabel("Peças")
+        self.tree_biblioteca_pecas.setAlternatingRowColors(True)
+        self.tree_biblioteca_pecas.itemChanged.connect(self._on_biblioteca_item_changed)
+
+        self.so_selecionados_check = QCheckBox("Só selecionados")
+        self.so_selecionados_check.stateChanged.connect(self._aplicar_filtro_biblioteca)
+
+        self.selecionados_label = QLabel("Selecionados: 0")
+        self.selecionados_label.setObjectName("orcamentoItemCusteioSelecionados")
+
+        self.add_selections_button = QPushButton("Adicionar Seleções")
+        self.add_selections_button.clicked.connect(self.adicionar_selecoes)
+
+        layout.addWidget(title)
+        layout.addWidget(self.library_search)
+        layout.addWidget(self.tree_biblioteca_pecas, stretch=1)
+        layout.addWidget(self.so_selecionados_check)
+        layout.addWidget(self.selecionados_label)
+        layout.addWidget(self.add_selections_button)
+
+        panel.setLayout(layout)
+        panel.setMinimumWidth(300)
+        return panel
+
+    def _carregar_biblioteca(self) -> None:
+        """Load active piece definitions for the library tree."""
+        try:
+            with SessionLocal() as session:
+                self._biblioteca_pecas = DefPecaService(
+                    session
+                ).listar_ativas_para_biblioteca()
+        except SQLAlchemyError:
+            self._biblioteca_pecas = []
+
+        self._preencher_biblioteca()
+
+    def _preencher_biblioteca(self) -> None:
+        """Fill the library tree, grouped by piece group and filtered."""
+        termo = self.library_search.text().strip().lower()
+        so_selecionados = self.so_selecionados_check.isChecked()
+
+        self.tree_biblioteca_pecas.blockSignals(True)
+        self.tree_biblioteca_pecas.clear()
+
+        grupos: dict[str, QTreeWidgetItem] = {}
+        for peca in self._biblioteca_pecas:
+            codigo_orlas = self._format_codigo_orlas(peca)
+
+            if termo and not self._peca_matches(peca, codigo_orlas, termo):
+                continue
+            if so_selecionados and peca.id not in self._selecionados:
+                continue
+
+            grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
+            parent = grupos.get(grupo)
+            if parent is None:
+                parent = QTreeWidgetItem([grupo])
+                self.tree_biblioteca_pecas.addTopLevelItem(parent)
+                grupos[grupo] = parent
+
+            texto = f"{peca.codigo} - {peca.nome} [{codigo_orlas}]"
+            if peca.tipo_peca == COMPOSTA:
+                texto += " (composta)"
+
+            leaf = QTreeWidgetItem([texto])
+            leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            leaf.setCheckState(
+                0,
+                Qt.CheckState.Checked
+                if peca.id in self._selecionados
+                else Qt.CheckState.Unchecked,
+            )
+            leaf.setData(
+                0, Qt.ItemDataRole.UserRole, self._peca_para_dados(peca, codigo_orlas)
+            )
+            parent.addChild(leaf)
+
+        self.tree_biblioteca_pecas.expandAll()
+        self.tree_biblioteca_pecas.blockSignals(False)
+        self._atualizar_contador()
+
+    def _peca_para_dados(self, peca: DefPecaResumo, codigo_orlas: str) -> dict:
+        """Build the data stored on a leaf tree item."""
+        return {
+            "def_peca_id": peca.id,
+            "codigo": peca.codigo,
+            "nome": peca.nome,
+            "tipo": peca.tipo_peca,
+            "grupo": peca.grupo,
+            "codigo_orlas": codigo_orlas,
+            "chave_valueset_material": peca.chave_valueset_material,
+            "permite_acabamento": peca.permite_acabamento,
+        }
+
+    def _format_codigo_orlas(self, peca: DefPecaResumo) -> str:
+        """Build the orla code (e.g. 2200) from the four orla sides."""
+        return f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
+
+    def _peca_matches(self, peca: DefPecaResumo, codigo_orlas: str, termo: str) -> bool:
+        """Return True when a piece matches the search term."""
+        campos = [
+            peca.codigo,
+            peca.nome,
+            peca.grupo or "",
+            peca.tipo_peca,
+            codigo_orlas,
+        ]
+        return any(termo in (campo or "").lower() for campo in campos)
+
+    def _aplicar_filtro_biblioteca(self, *_args) -> None:
+        """Re-fill the library tree applying the search and selection filter."""
+        self._preencher_biblioteca()
+
+    def _on_biblioteca_item_changed(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Track the selected pieces when a leaf checkbox changes."""
+        dados = item.data(0, Qt.ItemDataRole.UserRole)
+        if dados is None:
+            return
+
+        peca_id = dados["def_peca_id"]
+        if item.checkState(0) == Qt.CheckState.Checked:
+            self._selecionados.add(peca_id)
+        else:
+            self._selecionados.discard(peca_id)
+
+        self._atualizar_contador()
+
+    def _atualizar_contador(self) -> None:
+        """Update the selected pieces counter label."""
+        self.selecionados_label.setText(f"Selecionados: {len(self._selecionados)}")
+
+    def adicionar_selecoes(self) -> None:
+        """Placeholder action: inserting pieces into costing is a future phase."""
+        if not self._selecionados:
+            self.status_label.setText("Selecione pelo menos uma peça.")
+            return
+
+        self.status_label.setText(
+            f"Peças selecionadas: {len(self._selecionados)}. "
+            "Inserção de peças no custeio será implementada na próxima fase."
+        )
 
     def _create_item_info_widget(self) -> QWidget:
         """Create the item base data form."""

@@ -86,7 +86,6 @@ def test_orcamento_item_custeio_page_has_future_layout_placeholders() -> None:
 
     source = inspect.getsource(OrcamentoItemCusteioPage.__init__)
 
-    assert "Biblioteca de pe" in source
     assert "Linhas de custeio do item" in source
     assert "Importar M" in source
     assert "Inserir Pe" in source
@@ -101,3 +100,38 @@ def test_orcamento_item_custeio_page_has_valueset_tab() -> None:
 
     assert "OrcamentoItemValuesetPage" in source
     assert '"ValueSet"' in source
+
+
+def test_orcamento_item_custeio_page_has_parts_library_tree() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "_create_library_panel",
+        "_carregar_biblioteca",
+        "_preencher_biblioteca",
+        "adicionar_selecoes",
+        "_atualizar_contador",
+        "_peca_matches",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    panel = inspect.getsource(OrcamentoItemCusteioPage._create_library_panel)
+    assert "Biblioteca de pe" in panel
+    assert "QTreeWidget" in panel
+    assert "tree_biblioteca_pecas" in panel
+    assert "Pesquisar pe" in panel
+    assert "Adicionar Sele" in panel
+    assert "Selecionados: 0" in panel
+
+    carregar = inspect.getsource(OrcamentoItemCusteioPage._carregar_biblioteca)
+    assert "DefPecaService" in carregar
+    assert "listar_ativas_para_biblioteca" in carregar
+
+
+def test_orcamento_item_custeio_page_add_selections_is_placeholder() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.adicionar_selecoes)
+
+    assert "Selecione pelo menos uma pe" in source
+    assert "próxima fase" in source
