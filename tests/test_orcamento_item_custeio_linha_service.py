@@ -669,6 +669,77 @@ def test_recalcular_medidas_item_inexistente_levanta(monkeypatch) -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_atualizar_medidas_linha_recalcula_qt_total(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    service.atualizar_medidas_linha(5, qt_mod="2", qt_und="3", comp=None, larg=None, esp=None)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["qt_mod"] == Decimal("2")
+    assert payload["qt_und"] == Decimal("3")
+    assert payload["quantidade"] == Decimal("6")
+    assert payload["editado_localmente"] is True
+    assert session.committed is True
+
+
+def test_atualizar_medidas_linha_resolve_variaveis_e_area(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    service.atualizar_medidas_linha(5, qt_mod="1", qt_und="1", comp="H", larg="L", esp="19")
+
+    payload = _FakeRepository.updated_payload
+    # Raw text/expression is kept.
+    assert payload["comp"] == "H"
+    assert payload["larg"] == "L"
+    assert payload["esp"] == "19"
+    # Evaluated results.
+    assert payload["comp_real"] == Decimal("2750")
+    assert payload["larg_real"] == Decimal("1830")
+    assert payload["esp_real"] == Decimal("19")
+    assert payload["area_m2"] == Decimal("5.0325")
+    assert payload["perimetro_ml"] == Decimal("9.16")
+    assert payload["editado_localmente"] is True
+
+
+def test_atualizar_medidas_linha_valor_invalido_nao_rebenta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    service.atualizar_medidas_linha(5, qt_mod="1", qt_und="1", comp="xyz", larg=None, esp=None)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["comp"] == "xyz"
+    assert payload["comp_real"] is None
+    assert payload["area_m2"] is None
+
+
+def test_atualizar_medidas_linha_nao_altera_valueset(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.by_id = _resumo(id=5, ref_le="LE01", chave_valueset="MATERIAL_X")
+
+    service.atualizar_medidas_linha(5, qt_mod="1", qt_und="1", comp=None, larg=None, esp=None)
+
+    payload = _FakeRepository.updated_payload
+    assert "ref_le" not in payload
+    assert "chave_valueset" not in payload
+    assert "preco_liquido" not in payload
+
+
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {

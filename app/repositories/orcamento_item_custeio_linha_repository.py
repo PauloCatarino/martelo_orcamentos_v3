@@ -32,9 +32,9 @@ class OrcamentoItemCusteioLinhaResumo:
     descricao_materia_prima: str | None
     unidade: str | None
     quantidade: Decimal
-    comp: Decimal | None
-    larg: Decimal | None
-    esp: Decimal | None
+    comp: str | None
+    larg: str | None
+    esp: str | None
     area_m2: Decimal | None
     perimetro_ml: Decimal | None
     ml_orla_fina: Decimal | None

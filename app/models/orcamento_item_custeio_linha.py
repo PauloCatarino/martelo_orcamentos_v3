@@ -102,9 +102,9 @@ class OrcamentoItemCusteioLinha(Base):
         default=Decimal("1"),
         server_default="1",
     )
-    comp: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
-    larg: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
-    esp: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    comp: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    larg: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    esp: Mapped[str | None] = mapped_column(String(100), nullable=True)
     comp_real: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     larg_real: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     esp_real: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)

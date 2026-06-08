@@ -170,3 +170,22 @@ def test_orcamento_item_custeio_page_recalcular_medidas() -> None:
     assert '"Comp real"' in valores
     assert "comp_real" in valores
     assert '"Área m²"' in valores
+
+
+def test_orcamento_item_custeio_page_editable_measure_columns() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert OrcamentoItemCusteioPage.EDITABLE_COLUMNS == {
+        "QT mod": "qt_mod",
+        "QT und": "qt_und",
+        "Comp": "comp",
+        "Larg": "larg",
+        "Esp": "esp",
+    }
+
+    assert hasattr(OrcamentoItemCusteioPage, "_on_cell_changed")
+
+    source = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "_carregando_tabela" in source
+    assert "atualizar_medidas_linha" in source
+    assert "Não foi possível atualizar a linha de custeio." in source

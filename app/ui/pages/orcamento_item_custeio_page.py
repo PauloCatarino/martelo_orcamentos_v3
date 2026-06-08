@@ -133,6 +133,15 @@ class OrcamentoItemCusteioPage(QWidget):
         "Ativo",
     ]
 
+    # Editable columns mapped to the cost line field they update.
+    EDITABLE_COLUMNS = {
+        "QT mod": "qt_mod",
+        "QT und": "qt_und",
+        "Comp": "comp",
+        "Larg": "larg",
+        "Esp": "esp",
+    }
+
     def __init__(
         self,
         item: OrcamentoItemResumo,
@@ -150,6 +159,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self._item_info_labels: dict[str, QLabel] = {}
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._selecionados: set[int] = set()
+        self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
+        self._carregando_tabela = False
 
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
         self.title_label = QLabel(self._build_title())
@@ -199,8 +210,12 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
+        )
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.cellChanged.connect(self._on_cell_changed)
 
         lines_layout = QVBoxLayout()
         lines_title = QLabel("Linhas de custeio do item")
@@ -493,14 +508,65 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _preencher_tabela(self, linhas: list[OrcamentoItemCusteioLinhaResumo]) -> None:
         """Fill the costing lines table, mapping known fields to columns."""
-        self.table.setRowCount(len(linhas))
+        self._carregando_tabela = True
+        try:
+            self._custeio_by_row = {}
+            self.table.setRowCount(len(linhas))
 
-        for row_index, linha in enumerate(linhas):
-            valores = self._linha_para_valores(linha)
-            for column_index, header in enumerate(self.TABLE_HEADERS):
-                self.table.setItem(
-                    row_index, column_index, QTableWidgetItem(valores.get(header, ""))
+            for row_index, linha in enumerate(linhas):
+                self._custeio_by_row[row_index] = linha
+                valores = self._linha_para_valores(linha)
+                for column_index, header in enumerate(self.TABLE_HEADERS):
+                    item = QTableWidgetItem(str(valores.get(header, "")))
+                    if header in self.EDITABLE_COLUMNS:
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    else:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.table.setItem(row_index, column_index, item)
+        finally:
+            self._carregando_tabela = False
+
+    def _on_cell_changed(self, row: int, column: int) -> None:
+        """Save an edited quantity/measure cell and recompute the line."""
+        if self._carregando_tabela:
+            return
+
+        header = self.TABLE_HEADERS[column]
+        if header not in self.EDITABLE_COLUMNS:
+            return
+
+        linha = self._custeio_by_row.get(row)
+        if linha is None:
+            return
+
+        item = self.table.item(row, column)
+        novo_valor = item.text().strip() if item is not None else ""
+
+        valores = {
+            "qt_mod": linha.qt_mod,
+            "qt_und": linha.qt_und,
+            "comp": linha.comp,
+            "larg": linha.larg,
+            "esp": linha.esp,
+        }
+        valores[self.EDITABLE_COLUMNS[header]] = novo_valor
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).atualizar_medidas_linha(
+                    linha.id,
+                    qt_mod=valores["qt_mod"],
+                    qt_und=valores["qt_und"],
+                    comp=valores["comp"],
+                    larg=valores["larg"],
+                    esp=valores["esp"],
                 )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar a linha de custeio.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Linha de custeio atualizada.")
 
     def _linha_para_valores(
         self, linha: OrcamentoItemCusteioLinhaResumo
@@ -522,9 +588,9 @@ class OrcamentoItemCusteioPage(QWidget):
             "QT mod": format_quantity(linha.qt_mod),
             "QT und": format_quantity(linha.qt_und),
             "QT total": format_quantity(linha.quantidade),
-            "Comp": format_quantity(linha.comp),
-            "Larg": format_quantity(linha.larg),
-            "Esp": format_quantity(linha.esp),
+            "Comp": "" if linha.comp is None else str(linha.comp),
+            "Larg": "" if linha.larg is None else str(linha.larg),
+            "Esp": "" if linha.esp is None else str(linha.esp),
             "Comp real": format_quantity(linha.comp_real),
             "Larg real": format_quantity(linha.larg_real),
             "Esp real": format_quantity(linha.esp_real),

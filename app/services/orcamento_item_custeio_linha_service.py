@@ -22,6 +22,7 @@ from app.domain.medidas import (
     calcular_area_m2,
     calcular_perimetro_ml,
     construir_contexto_item,
+    normalizar_numero,
 )
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
@@ -198,6 +199,74 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return result
+
+    def atualizar_medidas_linha(
+        self,
+        linha_id: int,
+        qt_mod=None,
+        qt_und=None,
+        comp=None,
+        larg=None,
+        esp=None,
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Save edited quantities and measures of one cost line and recompute.
+
+        Comp/Larg/Esp keep the raw text/expression written by the user, while
+        comp_real/larg_real/esp_real (and area/perimeter) hold the evaluated
+        result. The line is flagged as locally edited. ValueSet data is not
+        touched.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
+        contexto = (
+            construir_contexto_item(item.altura, item.largura, item.profundidade)
+            if item is not None
+            else {}
+        )
+
+        comp_texto = self._normalizar_expressao(comp)
+        larg_texto = self._normalizar_expressao(larg)
+        esp_texto = self._normalizar_expressao(esp)
+
+        qt_mod_valor = normalizar_numero(qt_mod)
+        qt_und_valor = normalizar_numero(qt_und)
+        qt_mod_final = qt_mod_valor if qt_mod_valor is not None else Decimal("1")
+        qt_und_final = qt_und_valor if qt_und_valor is not None else Decimal("1")
+
+        comp_real = avaliar_medida(comp_texto, contexto)
+        larg_real = avaliar_medida(larg_texto, contexto)
+        esp_real = avaliar_medida(esp_texto, contexto)
+
+        fields = {
+            "qt_mod": qt_mod_final,
+            "qt_und": qt_und_final,
+            "quantidade": qt_mod_final * qt_und_final,
+            "comp": comp_texto,
+            "larg": larg_texto,
+            "esp": esp_texto,
+            "comp_real": comp_real,
+            "larg_real": larg_real,
+            "esp_real": esp_real,
+            "area_m2": calcular_area_m2(comp_real, larg_real),
+            "perimetro_ml": calcular_perimetro_ml(comp_real, larg_real),
+            "editado_localmente": True,
+        }
+
+        result = self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return result
+
+    def _normalizar_expressao(self, valor) -> str | None:
+        """Normalize a measure expression: trimmed text, or None when empty."""
+        if valor is None:
+            return None
+
+        texto = str(valor).strip()
+        return texto or None
 
     def _calcular_medidas_fields(self, linha, contexto: dict) -> dict:
         """Build the recomputed quantity/measure fields for one line."""
