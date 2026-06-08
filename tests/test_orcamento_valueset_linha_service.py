@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from types import SimpleNamespace
+
 from app.repositories.orcamento_valueset_linha_repository import OrcamentoValuesetLinhaResumo
 from app.services import orcamento_valueset_linha_service as service_module
 
@@ -21,12 +24,75 @@ def _resumo(**kwargs) -> OrcamentoValuesetLinhaResumo:
         "descricao_materia_prima": None,
         "valor_texto": None,
         "origem": None,
+        "ref_le": None,
+        "descricao_no_orcamento": None,
+        "preco_tabela": None,
+        "margem_percentagem": None,
+        "desconto_percentagem": None,
+        "preco_liquido": None,
+        "unidade": None,
+        "desperdicio_percentagem": None,
+        "tipo_materia_prima": None,
+        "familia_materia_prima": None,
+        "coresp_orla_0_4": None,
+        "coresp_orla_1_0": None,
+        "comp_mp": None,
+        "larg_mp": None,
+        "esp_mp": None,
+        "origem_dados": None,
+        "origem_modelo_id": None,
+        "origem_modelo_codigo": None,
         "editado_localmente": False,
         "ativo": True,
         "observacoes": None,
     }
     base.update(kwargs)
     return OrcamentoValuesetLinhaResumo(**base)
+
+
+def _modelo(**kwargs):
+    base = {"id": 99, "codigo": "ROUPEIRO_STANDARD"}
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
+def _modelo_linha(**kwargs):
+    base = {
+        "id": 1,
+        "def_valueset_modelo_id": 99,
+        "chave": "MATERIAL_PORTAS",
+        "codigo_opcao": "MDF_19",
+        "nome_opcao": "MDF 19mm",
+        "padrao": True,
+        "ordem": 1,
+        "descricao": None,
+        "materia_prima_id": None,
+        "ref_materia_prima": "FRT0001",
+        "descricao_materia_prima": "MDF lacado",
+        "valor_texto": None,
+        "origem": None,
+        "ref_le": "FRT0001",
+        "descricao_no_orcamento": "MDF lacado branco",
+        "preco_tabela": Decimal("10"),
+        "margem_percentagem": Decimal("10"),
+        "desconto_percentagem": Decimal("32"),
+        "preco_liquido": Decimal("7.48"),
+        "unidade": "m2",
+        "desperdicio_percentagem": None,
+        "tipo_materia_prima": "MDF",
+        "familia_materia_prima": "LACADO",
+        "coresp_orla_0_4": None,
+        "coresp_orla_1_0": None,
+        "comp_mp": None,
+        "larg_mp": None,
+        "esp_mp": None,
+        "origem_dados": "MATERIA_PRIMA",
+        "editado_localmente": False,
+        "ativo": True,
+        "observacoes": None,
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
 
 
 class _FakeRepository:
@@ -90,6 +156,26 @@ class _FakeRepository:
         self.__class__.clear_calls.append((orcamento_versao_id, chave, exclude_id))
 
 
+class _FakeModeloRepository:
+    modelo = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.modelo
+
+
+class _FakeModeloLinhaRepository:
+    linhas: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_modelo(self, modelo_id: int):
+        return self.linhas
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -109,11 +195,17 @@ def _reset() -> None:
     _FakeRepository.clear_calls = []
     _FakeRepository.deactivate_result = True
     _FakeRepository.activate_result = True
+    _FakeModeloRepository.modelo = None
+    _FakeModeloLinhaRepository.linhas = []
 
 
 def _service(monkeypatch):
     _reset()
     monkeypatch.setattr(service_module, "OrcamentoValuesetLinhaRepository", _FakeRepository)
+    monkeypatch.setattr(service_module, "DefValuesetModeloRepository", _FakeModeloRepository)
+    monkeypatch.setattr(
+        service_module, "DefValuesetModeloLinhaRepository", _FakeModeloLinhaRepository
+    )
     session = _FakeSession()
     return service_module.OrcamentoValuesetLinhaService(session=session), session
 
@@ -231,3 +323,81 @@ def test_definir_como_padrao(monkeypatch) -> None:
     assert (20, "FERRAGEM_CORREDICA", 5) in _FakeRepository.clear_calls
     assert (5, True) in _FakeRepository.set_padrao_calls
     assert session.committed is True
+
+
+def test_importar_modelo_cria_linhas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo(id=99, codigo="ROUPEIRO_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeRepository.opcao_existing = None
+
+    result = service.importar_modelo_para_orcamento(20, 99)
+
+    assert result.modelo_codigo == "ROUPEIRO_STANDARD"
+    assert result.criadas == 1
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+
+    payload = _FakeRepository.created_payload
+    assert payload["origem_dados"] == "MODELO_VALUESET"
+    assert payload["origem_modelo_id"] == 99
+    assert payload["origem_modelo_codigo"] == "ROUPEIRO_STANDARD"
+    assert payload["editado_localmente"] is False
+    assert payload["ativo"] is True
+    assert payload["preco_liquido"] == Decimal("7.48")
+    assert payload["margem_percentagem"] == Decimal("10")
+    assert payload["desconto_percentagem"] == Decimal("32")
+    assert session.committed is True
+
+
+def test_importar_modelo_atualiza_linha_nao_editada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeRepository.opcao_existing = _resumo(id=5, editado_localmente=False)
+
+    result = service.importar_modelo_para_orcamento(20, 99)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 1
+    assert result.ignoradas == 0
+    assert _FakeRepository.updated_payload is not None
+    assert _FakeRepository.updated_payload["id"] == 5
+
+
+def test_importar_modelo_protege_linha_editada_localmente(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha()]
+    _FakeRepository.opcao_existing = _resumo(id=5, editado_localmente=True)
+
+    result = service.importar_modelo_para_orcamento(20, 99)
+
+    assert result.criadas == 0
+    assert result.atualizadas == 0
+    assert result.ignoradas == 1
+    assert _FakeRepository.updated_payload is None
+
+
+def test_importar_modelo_ignora_linhas_inativas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(ativo=False)]
+    _FakeRepository.opcao_existing = None
+
+    result = service.importar_modelo_para_orcamento(20, 99)
+
+    assert result.criadas == 0
+    assert _FakeRepository.created_payload is None
+
+
+def test_importar_modelo_inexistente_levanta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = None
+
+    try:
+        service.importar_modelo_para_orcamento(20, 999)
+    except ValueError as error:
+        assert "modelo" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")

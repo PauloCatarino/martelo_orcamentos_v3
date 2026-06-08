@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.domain.valueset_types import normalize_valueset_key
+from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaRepository
+from app.repositories.def_valueset_modelo_repository import DefValuesetModeloRepository
 from app.repositories.orcamento_valueset_linha_repository import (
     OrcamentoValuesetLinhaRepository,
     OrcamentoValuesetLinhaResumo,
@@ -55,12 +57,24 @@ class EditarOrcamentoValuesetLinhaData:
     observacoes: str | None = None
 
 
+@dataclass(frozen=True)
+class ImportarModeloResult:
+    """Summary of importing a ValueSet model into a budget version."""
+
+    modelo_codigo: str
+    criadas: int
+    atualizadas: int
+    ignoradas: int
+
+
 class OrcamentoValuesetLinhaService:
     """Application service for budget version ValueSet lines."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = OrcamentoValuesetLinhaRepository(session)
+        self.modelo_repository = DefValuesetModeloRepository(session)
+        self.modelo_linha_repository = DefValuesetModeloLinhaRepository(session)
 
     def listar_linhas(self) -> list[OrcamentoValuesetLinhaResumo]:
         """List all budget version ValueSet lines."""
@@ -173,6 +187,86 @@ class OrcamentoValuesetLinhaService:
         self.session.commit()
 
         return True
+
+    def importar_modelo_para_orcamento(
+        self, orcamento_versao_id: int, def_valueset_modelo_id: int
+    ) -> ImportarModeloResult:
+        """Copy the active lines of a ValueSet model into a budget version.
+
+        Existing lines (same chave + codigo_opcao) are updated when they are
+        not locally edited, and kept untouched when editado_localmente is True.
+        """
+        modelo = self.modelo_repository.get_by_id(def_valueset_modelo_id)
+        if modelo is None:
+            raise ValueError("modelo nao encontrado")
+
+        criadas = 0
+        atualizadas = 0
+        ignoradas = 0
+
+        for linha in self.modelo_linha_repository.list_by_modelo(def_valueset_modelo_id):
+            if not linha.ativo:
+                continue
+
+            existing = self.repository.get_by_versao_chave_opcao(
+                orcamento_versao_id, linha.chave, linha.codigo_opcao
+            )
+            fields = self._build_import_fields(orcamento_versao_id, modelo, linha)
+
+            if existing is None:
+                self.repository.create(**fields)
+                criadas += 1
+            elif existing.editado_localmente:
+                ignoradas += 1
+            else:
+                self.repository.update(id=existing.id, **fields)
+                atualizadas += 1
+
+        self.session.commit()
+
+        return ImportarModeloResult(
+            modelo_codigo=modelo.codigo,
+            criadas=criadas,
+            atualizadas=atualizadas,
+            ignoradas=ignoradas,
+        )
+
+    def _build_import_fields(self, orcamento_versao_id: int, modelo, linha) -> dict:
+        return {
+            "orcamento_versao_id": orcamento_versao_id,
+            "chave": linha.chave,
+            "codigo_opcao": linha.codigo_opcao,
+            "nome_opcao": linha.nome_opcao,
+            "padrao": linha.padrao,
+            "ordem": linha.ordem,
+            "descricao": linha.descricao,
+            "materia_prima_id": linha.materia_prima_id,
+            "ref_materia_prima": linha.ref_materia_prima,
+            "descricao_materia_prima": linha.descricao_materia_prima,
+            "valor_texto": linha.valor_texto,
+            "origem": linha.origem,
+            "ref_le": linha.ref_le,
+            "descricao_no_orcamento": linha.descricao_no_orcamento,
+            "preco_tabela": linha.preco_tabela,
+            "margem_percentagem": linha.margem_percentagem,
+            "desconto_percentagem": linha.desconto_percentagem,
+            "preco_liquido": linha.preco_liquido,
+            "unidade": linha.unidade,
+            "desperdicio_percentagem": linha.desperdicio_percentagem,
+            "tipo_materia_prima": linha.tipo_materia_prima,
+            "familia_materia_prima": linha.familia_materia_prima,
+            "coresp_orla_0_4": linha.coresp_orla_0_4,
+            "coresp_orla_1_0": linha.coresp_orla_1_0,
+            "comp_mp": linha.comp_mp,
+            "larg_mp": linha.larg_mp,
+            "esp_mp": linha.esp_mp,
+            "origem_dados": "MODELO_VALUESET",
+            "origem_modelo_id": modelo.id,
+            "origem_modelo_codigo": modelo.codigo,
+            "editado_localmente": False,
+            "ativo": True,
+            "observacoes": linha.observacoes,
+        }
 
     def _build_fields(self, data) -> dict:
         orcamento_versao_id = self._validate_required_id(

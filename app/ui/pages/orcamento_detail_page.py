@@ -24,6 +24,7 @@ from app.services.orcamento_service import OrcamentoService
 from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
 
@@ -63,6 +64,7 @@ class OrcamentoDetailPage(QWidget):
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
         tabs.addTab(self.items_stack, "Items")
         tabs.addTab(OrcamentoCusteioPage(orcamento.orcamento_versao_id), "Custeio")
+        tabs.addTab(OrcamentoValuesetPage(orcamento.orcamento_versao_id), "ValueSet")
         tabs.addTab(self._create_placeholder_tab("Resumo do or\u00e7amento ser\u00e1 apresentado aqui."), "Resumo")
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
 

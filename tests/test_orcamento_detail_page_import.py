@@ -21,6 +21,15 @@ def test_orcamento_detail_page_custeio_tab_is_real() -> None:
     assert '"Custeio"' in source
 
 
+def test_orcamento_detail_page_has_valueset_tab() -> None:
+    from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
+
+    source = inspect.getsource(OrcamentoDetailPage.__init__)
+
+    assert "OrcamentoValuesetPage" in source
+    assert '"ValueSet"' in source
+
+
 def test_orcamento_detail_page_supports_item_custeio_navigation() -> None:
     from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
 
