@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models import DefMateriaPrima
@@ -62,6 +62,34 @@ class DefMateriaPrimaRepository:
             .where(DefMateriaPrima.ativo.is_(True))
             .order_by(DefMateriaPrima.descricao.asc(), DefMateriaPrima.id.asc())
         )
+        materias = self.session.execute(statement).scalars().all()
+
+        return [self._to_resumo(materia) for materia in materias]
+
+    def pesquisar(
+        self, termo: str | None = None, limite: int = 200
+    ) -> list[DefMateriaPrimaResumo]:
+        """Search active raw materials by reference, description, type or family.
+
+        An empty term lists the first ``limite`` active materials.
+        """
+        statement = select(DefMateriaPrima).where(DefMateriaPrima.ativo.is_(True))
+
+        if termo and termo.strip():
+            like = f"%{termo.strip()}%"
+            statement = statement.where(
+                or_(
+                    DefMateriaPrima.ref_le.ilike(like),
+                    DefMateriaPrima.descricao.ilike(like),
+                    DefMateriaPrima.referencia_fornecedor.ilike(like),
+                    DefMateriaPrima.tipo_martelo.ilike(like),
+                    DefMateriaPrima.familia_martelo.ilike(like),
+                )
+            )
+
+        statement = statement.order_by(
+            DefMateriaPrima.descricao.asc(), DefMateriaPrima.id.asc()
+        ).limit(limite)
         materias = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(materia) for materia in materias]

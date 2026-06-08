@@ -21,6 +21,7 @@ def test_repository_has_expected_methods() -> None:
     for method in (
         "list_all",
         "list_active",
+        "pesquisar",
         "get_by_id",
         "get_by_ref_le",
         "create_materia_prima",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -14,12 +14,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
+from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
+from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     obter_valor_chave_combo,
@@ -75,6 +78,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.linha = linha
         self.on_save = on_save
         self._is_edit = linha is not None
+        self._suppress = False
 
         self.setWindowTitle(
             "Editar Linha do Modelo" if self._is_edit else "Nova Linha do Modelo"
@@ -126,6 +130,9 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.origem_dados_input.setCurrentText("LIVRE")
         self.editado_localmente_input = QCheckBox()
 
+        self.selecionar_mp_button = QPushButton("Selecionar Matéria-Prima")
+        self.selecionar_mp_button.clicked.connect(self.abrir_picker_materia_prima)
+
         self.error_label = QLabel("")
         self.error_label.setObjectName("defValuesetModeloLinhaError")
         self.error_label.setStyleSheet("color: #b00020;")
@@ -135,6 +142,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         form.addRow("Chave ValueSet", self.chave_input)
         form.addRow("Código opção", self.codigo_opcao_input)
         form.addRow("Nome opção", self.nome_opcao_input)
+        form.addRow("", self.selecionar_mp_button)
         form.addRow("Ref LE", self.ref_le_input)
         form.addRow("Descrição no orçamento", self.descricao_no_orcamento_input)
         form.addRow("Ref. matéria-prima", self.ref_materia_prima_input)
@@ -180,11 +188,82 @@ class DefValuesetModeloLinhaDialog(QDialog):
         layout.addWidget(self.button_box)
         self.setLayout(layout)
 
+        self._connect_recalculo()
+
         if linha is not None:
             self._load_linha(linha)
 
+    def _connect_recalculo(self) -> None:
+        """Wire price recompute and local-edit detection to the input fields."""
+        for widget in (self.preco_tabela_input, self.margem_input, self.desconto_input):
+            widget.textChanged.connect(self._recalcular_preco_liquido)
+
+        for widget in (
+            self.ref_le_input,
+            self.descricao_no_orcamento_input,
+            self.ref_materia_prima_input,
+            self.descricao_materia_prima_input,
+            self.valor_texto_input,
+            self.preco_tabela_input,
+            self.margem_input,
+            self.desconto_input,
+            self.preco_liquido_input,
+            self.unidade_input,
+            self.desperdicio_input,
+            self.tipo_mp_input,
+            self.familia_mp_input,
+            self.orla_0_4_input,
+            self.orla_1_0_input,
+            self.comp_mp_input,
+            self.larg_mp_input,
+            self.esp_mp_input,
+        ):
+            widget.textChanged.connect(self._marcar_editado_se_necessario)
+
+    def _recalcular_preco_liquido(self, *_args) -> None:
+        """Recompute preco_liquido from table price, margin and discount."""
+        if self._suppress:
+            return
+
+        try:
+            preco_tabela = parse_decimal_humano(self.preco_tabela_input.text())
+            margem = parse_decimal_humano(self.margem_input.text())
+            desconto = parse_decimal_humano(self.desconto_input.text())
+        except ValueError:
+            return
+
+        resultado = self._calcular_preco_liquido(preco_tabela, margem, desconto)
+        if resultado is None:
+            return
+
+        self._suppress = True
+        try:
+            self.preco_liquido_input.setText(self._format_decimal(resultado))
+        finally:
+            self._suppress = False
+
+    def _marcar_editado_se_necessario(self, *_args) -> None:
+        """Flag a previously imported line as locally edited when changed."""
+        if self._suppress:
+            return
+
+        if self.origem_dados_input.currentText().strip().upper() == "MATERIA_PRIMA":
+            self._suppress = True
+            try:
+                self.origem_dados_input.setCurrentText("EDITADO_LOCALMENTE")
+                self.editado_localmente_input.setChecked(True)
+            finally:
+                self._suppress = False
+
     def _load_linha(self, linha: DefValuesetModeloLinhaResumo) -> None:
         """Populate the form with an existing model line."""
+        self._suppress = True
+        try:
+            self._fill_from_linha(linha)
+        finally:
+            self._suppress = False
+
+    def _fill_from_linha(self, linha: DefValuesetModeloLinhaResumo) -> None:
         self.codigo_opcao_input.setText(linha.codigo_opcao or "")
         self.nome_opcao_input.setText(linha.nome_opcao or "")
         self.ref_materia_prima_input.setText(linha.ref_materia_prima or "")
@@ -212,6 +291,63 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.esp_mp_input.setText(self._format_decimal(linha.esp_mp))
         self.origem_dados_input.setCurrentText(linha.origem_dados or "")
         self.editado_localmente_input.setChecked(linha.editado_localmente)
+
+    def abrir_picker_materia_prima(self) -> None:
+        """Open the raw material picker and copy the selection into the line."""
+        picker = MateriaPrimaPickerDialog(parent=self)
+        if picker.exec() and picker.selected_materia is not None:
+            self._preencher_de_materia_prima(picker.selected_materia)
+
+    def _preencher_de_materia_prima(self, materia) -> None:
+        """Copy the raw material snapshot into the line fields (still editable)."""
+        self._suppress = True
+        try:
+            margem = normalize_percentagem_humana(materia.margem)
+            desconto = normalize_percentagem_humana(materia.desconto)
+
+            self.ref_le_input.setText(materia.ref_le or "")
+            self.descricao_no_orcamento_input.setText(materia.descricao or "")
+            self.ref_materia_prima_input.setText(materia.ref_le or "")
+            self.descricao_materia_prima_input.setText(materia.descricao or "")
+            self.preco_tabela_input.setText(self._format_decimal(materia.preco_tabela))
+            self.margem_input.setText(self._format_decimal(margem))
+            self.desconto_input.setText(self._format_decimal(desconto))
+            self.preco_liquido_input.setText(
+                self._format_decimal(
+                    self._calcular_preco_liquido(materia.preco_tabela, margem, desconto)
+                    if materia.preco_tabela is not None
+                    else materia.preco_liquido
+                )
+            )
+            self.unidade_input.setText(materia.unidade or "")
+            self.desperdicio_input.setText("")
+            self.tipo_mp_input.setText(materia.tipo_martelo or "")
+            self.familia_mp_input.setText(materia.familia_martelo or "")
+            self.orla_0_4_input.setText("")
+            self.orla_1_0_input.setText("")
+            self.comp_mp_input.setText(self._format_decimal(materia.comprimento))
+            self.larg_mp_input.setText(self._format_decimal(materia.largura))
+            self.esp_mp_input.setText(self._format_decimal(materia.espessura))
+            self.origem_dados_input.setCurrentText("MATERIA_PRIMA")
+            self.editado_localmente_input.setChecked(False)
+
+            if not self.nome_opcao_input.text().strip():
+                self.nome_opcao_input.setText(materia.descricao or "")
+            if not self.valor_texto_input.text().strip():
+                self.valor_texto_input.setText(materia.descricao or "")
+        finally:
+            self._suppress = False
+
+    def _calcular_preco_liquido(
+        self, preco_tabela: Decimal | None, margem: Decimal | None, desconto: Decimal | None
+    ) -> Decimal | None:
+        """preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100)."""
+        if preco_tabela is None:
+            return None
+
+        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
+        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
+        return preco_tabela * desconto_factor * margem_factor
 
     def get_data(self) -> DefValuesetModeloLinhaDialogData:
         """Return dialog data (raises ValueError on invalid numbers)."""
@@ -265,6 +401,8 @@ class DefValuesetModeloLinhaDialog(QDialog):
             self.set_error("O nome da opção é obrigatório.")
             return
 
+        self._recalcular_preco_liquido()
+
         try:
             data = self.get_data()
         except ValueError as error:
@@ -292,21 +430,16 @@ class DefValuesetModeloLinhaDialog(QDialog):
             raise ValueError("Ordem inválida. Use um número inteiro.") from error
 
     def _parse_optional_decimal(self, widget: QLineEdit, label: str) -> Decimal | None:
-        text = widget.text().strip()
-        if not text:
-            return None
-
-        normalized = text.replace(" ", "").replace("€", "").replace("%", "").replace(",", ".")
         try:
-            return Decimal(normalized)
-        except InvalidOperation as error:
+            return parse_decimal_humano(widget.text())
+        except ValueError as error:
             raise ValueError(f"{label} inválido. Use um número, por exemplo 1.5.") from error
 
     def _format_decimal(self, value: Decimal | None) -> str:
         if value is None:
             return ""
 
-        return format(value, "f")
+        return format(value.normalize(), "f")
 
     def _empty_to_none(self, value: str) -> str | None:
         normalized = value.strip()

@@ -263,7 +263,10 @@ class DefValuesetModeloLinhaService:
         """Compute preco_liquido from table price, discount and margin.
 
         preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100).
-        When there is no table price, the manually entered preco_liquido is kept.
+
+        When a table price exists, preco_liquido is always recomputed from the
+        (human) margin and discount percentages, treating empty values as 0.
+        When there is no table price, the provided preco_liquido is kept.
         """
         if preco_tabela is None:
             return preco_liquido

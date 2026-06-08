@@ -38,6 +38,9 @@ def _resumo(**kwargs) -> DefMateriaPrimaResumo:
 class _FakeRepository:
     all_rows: list[DefMateriaPrimaResumo] = []
     active_rows: list[DefMateriaPrimaResumo] = []
+    search_rows: list[DefMateriaPrimaResumo] = []
+    requested_termo: str | None = None
+    requested_limite: int | None = None
     by_ref_le: DefMateriaPrimaResumo | None = None
     by_id: DefMateriaPrimaResumo | None = None
     requested_ref_le: str | None = None
@@ -62,6 +65,11 @@ class _FakeRepository:
         self.__class__.requested_ref_le = ref_le
         return self.by_ref_le
 
+    def pesquisar(self, termo=None, limite=200) -> list[DefMateriaPrimaResumo]:
+        self.__class__.requested_termo = termo
+        self.__class__.requested_limite = limite
+        return self.search_rows
+
     def create_materia_prima(self, **kwargs) -> DefMateriaPrimaResumo:
         self.__class__.created_payload = kwargs
         return _resumo(id=1, **kwargs)
@@ -84,6 +92,9 @@ class _FakeSession:
 
 
 def _reset() -> None:
+    _FakeRepository.search_rows = []
+    _FakeRepository.requested_termo = None
+    _FakeRepository.requested_limite = None
     _FakeRepository.by_ref_le = None
     _FakeRepository.by_id = None
     _FakeRepository.requested_ref_le = None
@@ -105,6 +116,33 @@ def test_listar_materias_primas(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
 
     assert service.listar_materias_primas() == [_resumo(id=3)]
+
+
+def test_pesquisar_termo_vazio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.search_rows = [_resumo(id=1)]
+
+    result = service.pesquisar("")
+
+    assert result == [_resumo(id=1)]
+    assert _FakeRepository.requested_termo == ""
+
+
+def test_pesquisar_com_texto(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.search_rows = [_resumo(id=2, descricao="AGL 19MM")]
+
+    result = service.pesquisar("agl")
+
+    assert result == [_resumo(id=2, descricao="AGL 19MM")]
+    assert _FakeRepository.requested_termo == "agl"
+
+
+def test_pesquisar_sem_resultados(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.search_rows = []
+
+    assert service.pesquisar("inexistente") == []
 
 
 def test_listar_materias_primas_ativas(monkeypatch) -> None:

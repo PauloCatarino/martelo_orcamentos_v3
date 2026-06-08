@@ -79,6 +79,12 @@ class DefMateriaPrimaService:
         """List active raw materials."""
         return self.repository.list_active()
 
+    def pesquisar(
+        self, termo: str | None = None, limite: int = 200
+    ) -> list[DefMateriaPrimaResumo]:
+        """Search active raw materials (an empty term lists the first results)."""
+        return self.repository.pesquisar(termo, limite)
+
     def obter_por_id(self, id: int) -> DefMateriaPrimaResumo | None:
         """Get one raw material by id."""
         return self.repository.get_by_id(id)

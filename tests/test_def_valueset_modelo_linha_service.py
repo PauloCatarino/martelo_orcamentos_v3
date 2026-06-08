@@ -334,6 +334,73 @@ def test_calcula_preco_liquido(monkeypatch) -> None:
     assert _FakeRepository.created_payload["preco_liquido"] == Decimal("10.35")
 
 
+def test_calcula_preco_liquido_percentagens_humanas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="X",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("10"),
+            desconto_percentagem=Decimal("32"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("7.48")
+
+
+def test_calcula_preco_liquido_8_62(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="X",
+            preco_tabela=Decimal("8.62"),
+            margem_percentagem=Decimal("5"),
+            desconto_percentagem=Decimal("36"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("5.79264")
+
+
+def test_recalcula_ignorando_preco_liquido_fornecido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="X",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("10"),
+            desconto_percentagem=Decimal("32"),
+            preco_liquido=Decimal("99"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("7.48")
+
+
+def test_preco_liquido_campos_vazios_usam_zero(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            codigo_opcao="X",
+            preco_tabela=Decimal("10"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["preco_liquido"] == Decimal("10")
+
+
 def test_preco_tabela_none_mantem_preco_liquido(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
 

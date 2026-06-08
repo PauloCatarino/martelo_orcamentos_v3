@@ -91,3 +91,33 @@ def test_dialog_validates_ordem() -> None:
     source = inspect.getsource(DefValuesetModeloLinhaDialog._parse_ordem)
 
     assert "int" in source
+
+
+def test_dialog_has_materia_prima_picker() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+
+    assert hasattr(DefValuesetModeloLinhaDialog, "abrir_picker_materia_prima")
+    assert hasattr(DefValuesetModeloLinhaDialog, "_preencher_de_materia_prima")
+
+    abrir = inspect.getsource(DefValuesetModeloLinhaDialog.abrir_picker_materia_prima)
+    assert "MateriaPrimaPickerDialog" in abrir
+
+    fill = inspect.getsource(DefValuesetModeloLinhaDialog._preencher_de_materia_prima)
+    assert "MATERIA_PRIMA" in fill
+
+
+def test_dialog_normaliza_recalcula_e_marca_editado() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+
+    for method in (
+        "_recalcular_preco_liquido",
+        "_calcular_preco_liquido",
+        "_marcar_editado_se_necessario",
+    ):
+        assert hasattr(DefValuesetModeloLinhaDialog, method)
+
+    fill = inspect.getsource(DefValuesetModeloLinhaDialog._preencher_de_materia_prima)
+    assert "normalize_percentagem_humana" in fill
+
+    marcar = inspect.getsource(DefValuesetModeloLinhaDialog._marcar_editado_se_necessario)
+    assert "EDITADO_LOCALMENTE" in marcar
