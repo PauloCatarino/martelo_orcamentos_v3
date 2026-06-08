@@ -57,6 +57,26 @@ class DefValuesetModeloService:
         """List active reusable ValueSet models."""
         return self.repository.list_active()
 
+    def listar_modelos_utilizador(self) -> list[DefValuesetModeloResumo]:
+        """List active models scoped to the user (not global / not shared)."""
+        return [
+            modelo
+            for modelo in self.repository.list_active()
+            if not self._e_global(modelo)
+        ]
+
+    def listar_modelos_globais(self) -> list[DefValuesetModeloResumo]:
+        """List active models that are global or shared with everyone."""
+        return [
+            modelo
+            for modelo in self.repository.list_active()
+            if self._e_global(modelo)
+        ]
+
+    def _e_global(self, modelo: DefValuesetModeloResumo) -> bool:
+        ambito = (modelo.ambito or "").strip().upper()
+        return ambito == "GLOBAL" or bool(modelo.visivel_para_todos)
+
     def obter_por_id(self, id: int) -> DefValuesetModeloResumo | None:
         """Get one reusable ValueSet model by id."""
         return self.repository.get_by_id(id)

@@ -11,7 +11,9 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -21,36 +23,29 @@ from app.services.def_valueset_modelo_service import DefValuesetModeloService
 
 
 class ImportarValuesetModeloDialog(QDialog):
-    """Modal dialog to search and select an active ValueSet model."""
+    """Modal dialog to search and select an active ValueSet model.
 
-    TABLE_HEADERS = ["Código", "Nome", "Tipo", "Âmbito", "Ativo"]
+    Models are split into two tabs: user models and global/shared models.
+    """
+
+    TABLE_HEADERS = ["Código", "Nome", "Tipo", "Ativo"]
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
         self.selected_modelo: DefValuesetModeloResumo | None = None
-        self._all_modelos: list[DefValuesetModeloResumo] = []
-        self._modelos_by_row: dict[int, DefValuesetModeloResumo] = {}
+        self._abas: dict[str, dict] = {}
 
         self.setWindowTitle("Importar Modelo ValueSet")
         self.setModal(True)
-        self.setMinimumSize(640, 420)
-
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Pesquisar modelo...")
-        self.search_input.textChanged.connect(self._aplicar_filtro)
+        self.setMinimumSize(660, 460)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("importarValuesetModeloStatus")
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.cellDoubleClicked.connect(self._handle_double_click)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_aba("user"), "Utilizador")
+        self.tabs.addTab(self._build_aba("global"), "Global")
 
         self.import_button = QPushButton("Importar")
         self.import_button.clicked.connect(self._importar)
@@ -63,84 +58,120 @@ class ImportarValuesetModeloDialog(QDialog):
         buttons_layout.addWidget(self.cancel_button)
 
         layout = QVBoxLayout()
-        layout.addWidget(self.search_input)
+        layout.addWidget(self.tabs, stretch=1)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
 
         self._carregar()
 
+    def _build_aba(self, key: str) -> QWidget:
+        """Build one tab (search field + table) and register its state."""
+        search = QLineEdit()
+        search.setPlaceholderText("Pesquisar modelo...")
+        search.textChanged.connect(lambda _text, aba_key=key: self._filtrar(aba_key))
+
+        table = QTableWidget(0, len(self.TABLE_HEADERS))
+        table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.cellDoubleClicked.connect(
+            lambda row, _column, aba_key=key: self._selecionar_da_aba(aba_key, row)
+        )
+
+        container = QWidget()
+        container_layout = QVBoxLayout()
+        container_layout.addWidget(search)
+        container_layout.addWidget(table, stretch=1)
+        container.setLayout(container_layout)
+
+        self._abas[key] = {"search": search, "table": table, "modelos": [], "by_row": {}}
+        return container
+
     def _carregar(self) -> None:
-        """Load active ValueSet models."""
+        """Load user and global active ValueSet models."""
         self.status_label.clear()
 
         try:
             with SessionLocal() as session:
-                self._all_modelos = DefValuesetModeloService(session).listar_modelos_ativos()
+                service = DefValuesetModeloService(session)
+                self._abas["user"]["modelos"] = service.listar_modelos_utilizador()
+                self._abas["global"]["modelos"] = service.listar_modelos_globais()
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os modelos ValueSet.")
             return
 
-        self._aplicar_filtro()
+        self._filtrar("user")
+        self._filtrar("global")
 
-    def _aplicar_filtro(self) -> None:
-        """Filter the loaded models by the search term."""
-        termo = self.search_input.text().strip().lower()
+    def _filtrar(self, key: str) -> None:
+        """Filter one tab's models by its own search term."""
+        aba = self._abas[key]
+        termo = aba["search"].text().strip().lower()
         if termo:
             modelos = [
                 modelo
-                for modelo in self._all_modelos
+                for modelo in aba["modelos"]
                 if termo in (modelo.codigo or "").lower()
                 or termo in (modelo.nome or "").lower()
                 or termo in (modelo.tipo or "").lower()
             ]
         else:
-            modelos = list(self._all_modelos)
+            modelos = list(aba["modelos"])
 
-        self._preencher(modelos)
+        self._preencher(key, modelos)
 
-        if not modelos:
-            self.status_label.setText("Sem modelos ValueSet para mostrar.")
-        else:
-            self.status_label.clear()
-
-    def _preencher(self, modelos: list[DefValuesetModeloResumo]) -> None:
-        """Fill the table with ValueSet models."""
-        self._modelos_by_row = {}
-        self.table.setRowCount(len(modelos))
+    def _preencher(self, key: str, modelos: list[DefValuesetModeloResumo]) -> None:
+        """Fill one tab's table with ValueSet models."""
+        aba = self._abas[key]
+        table = aba["table"]
+        aba["by_row"] = {}
+        table.setRowCount(len(modelos))
 
         for row_index, modelo in enumerate(modelos):
-            self._modelos_by_row[row_index] = modelo
+            aba["by_row"][row_index] = modelo
             values = [
                 modelo.codigo,
                 modelo.nome,
                 modelo.tipo or "",
-                modelo.ambito,
                 "Sim" if modelo.ativo else "Não",
             ]
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                table.setItem(row_index, column_index, QTableWidgetItem(value))
+
+    def _aba_ativa(self) -> str:
+        """Return the key of the currently selected tab."""
+        return "global" if self.tabs.currentIndex() == 1 else "user"
 
     def _get_selected(self) -> DefValuesetModeloResumo | None:
-        """Return the selected model."""
-        row = self.table.currentRow()
+        """Return the model selected in the active tab."""
+        aba = self._abas[self._aba_ativa()]
+        row = aba["table"].currentRow()
         if row < 0:
             return None
 
-        return self._modelos_by_row.get(row)
+        return aba["by_row"].get(row)
 
     def _importar(self) -> None:
-        """Confirm the selected model and close the dialog."""
+        """Confirm the model selected in the active tab and close the dialog."""
         modelo = self._get_selected()
         if modelo is None:
-            self.status_label.setText("Selecione um modelo para importar.")
+            self.status_label.setText("Selecione um modelo.")
             return
 
         self.selected_modelo = modelo
         self.accept()
 
-    def _handle_double_click(self, row: int, _column: int) -> None:
-        """Select a model when the user double-clicks its row."""
-        self.table.selectRow(row)
-        self._importar()
+    def _selecionar_da_aba(self, key: str, row: int) -> None:
+        """Select and accept a model when its row is double-clicked."""
+        aba = self._abas[key]
+        aba["table"].selectRow(row)
+        modelo = aba["by_row"].get(row)
+        if modelo is None:
+            return
+
+        self.selected_modelo = modelo
+        self.accept()

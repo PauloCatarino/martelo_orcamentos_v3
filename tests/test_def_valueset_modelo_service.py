@@ -100,6 +100,21 @@ def test_listar_modelos(monkeypatch) -> None:
     assert service.listar_modelos() == [_resumo(id=3)]
 
 
+def test_listar_modelos_utilizador_e_globais(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, codigo="USER", ambito="UTILIZADOR", visivel_para_todos=False),
+        _resumo(id=2, codigo="GLOB", ambito="GLOBAL", visivel_para_todos=False),
+        _resumo(id=3, codigo="SHARED", ambito="UTILIZADOR", visivel_para_todos=True),
+    ]
+
+    utilizador = service.listar_modelos_utilizador()
+    globais = service.listar_modelos_globais()
+
+    assert [modelo.codigo for modelo in utilizador] == ["USER"]
+    assert sorted(modelo.codigo for modelo in globais) == ["GLOB", "SHARED"]
+
+
 def test_criar_modelo_normaliza_campos(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 
