@@ -19,6 +19,9 @@ class OrcamentoItemCusteioLinhaResumo:
     id: int
     orcamento_item_id: int
     orcamento_item_modulo_id: int | None
+    linha_pai_id: int | None
+    nivel: int
+    ordem: int | None
     origem_tipo: str | None
     origem_id: int | None
     tipo_linha: str
@@ -177,6 +180,9 @@ class OrcamentoItemCusteioLinhaRepository:
             id=linha.id,
             orcamento_item_id=linha.orcamento_item_id,
             orcamento_item_modulo_id=linha.orcamento_item_modulo_id,
+            linha_pai_id=linha.linha_pai_id,
+            nivel=linha.nivel,
+            ordem=linha.ordem,
             origem_tipo=linha.origem_tipo,
             origem_id=linha.origem_id,
             tipo_linha=linha.tipo_linha,

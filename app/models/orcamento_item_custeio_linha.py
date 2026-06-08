@@ -48,6 +48,14 @@ class OrcamentoItemCusteioLinha(Base):
         nullable=True,
         index=True,
     )
+    linha_pai_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("orcamento_item_custeio_linhas.id"),
+        nullable=True,
+        index=True,
+    )
+    nivel: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    ordem: Mapped[int | None] = mapped_column(Integer, nullable=True)
     origem_tipo: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     origem_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tipo_linha: Mapped[str] = mapped_column(String(100), nullable=False, index=True)

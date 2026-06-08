@@ -141,4 +141,14 @@ def test_orcamento_item_custeio_page_add_selections_inserts_pieces() -> None:
     assert "Selecione pelo menos uma pe" in source
     assert "adicionar_pecas_da_biblioteca" in source
     assert "Peças adicionadas" in source
+    assert "Componentes adicionados" in source
     assert "Ignoradas" in source
+
+
+def test_orcamento_item_custeio_page_maps_hierarchy_columns() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
+
+    assert '"Nível"' in source
+    assert '"Linha pai"' in source

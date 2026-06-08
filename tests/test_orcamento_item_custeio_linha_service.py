@@ -31,6 +31,25 @@ def _peca(**kwargs):
     return SimpleNamespace(**base)
 
 
+def _componente(**kwargs):
+    base = {
+        "id": 1,
+        "def_peca_pai_id": 1,
+        "tipo_componente": "PECA",
+        "def_peca_componente_id": None,
+        "referencia_componente": None,
+        "descricao": "Componente",
+        "ordem": 1,
+        "quantidade": Decimal("1"),
+        "regra_quantidade": "FIXA",
+        "obrigatorio": True,
+        "ativo": True,
+        "observacoes": None,
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
 def _vs_linha(**kwargs):
     base = {
         "id": 1,
@@ -63,6 +82,9 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "id": 1,
         "orcamento_item_id": 10,
         "orcamento_item_modulo_id": None,
+        "linha_pai_id": None,
+        "nivel": 0,
+        "ordem": None,
         "origem_tipo": None,
         "origem_id": None,
         "tipo_linha": "MANUAL",
@@ -104,6 +126,7 @@ class _FakeRepository:
     versao_rows: list[OrcamentoItemCusteioLinhaResumo] = []
     by_id: OrcamentoItemCusteioLinhaResumo | None = None
     created_payload: dict | None = None
+    created_payloads: list = []
     updated_payload: dict | None = None
     deactivate_result = True
     deactivated_id: int | None = None
@@ -127,7 +150,8 @@ class _FakeRepository:
 
     def create_linha(self, **fields):
         self.__class__.created_payload = fields
-        return _resumo(id=1, **fields)
+        self.__class__.created_payloads.append(fields)
+        return _resumo(id=len(self.created_payloads), **fields)
 
     def update_linha(self, *, id: int, **fields):
         self.__class__.updated_payload = {"id": id, **fields}
@@ -150,6 +174,22 @@ class _FakePecaRepository:
 
     def get_by_id(self, id: int):
         return self.pecas.get(id)
+
+    def get_by_codigo(self, codigo: str):
+        for peca in self.pecas.values():
+            if peca.codigo == codigo:
+                return peca
+        return None
+
+
+class _FakeComponenteRepository:
+    componentes: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_peca_pai_id(self, def_peca_pai_id: int):
+        return self.componentes
 
 
 class _FakeItemValuesetRepository:
@@ -180,12 +220,14 @@ def _reset() -> None:
     _FakeRepository.versao_rows = []
     _FakeRepository.by_id = None
     _FakeRepository.created_payload = None
+    _FakeRepository.created_payloads = []
     _FakeRepository.updated_payload = None
     _FakeRepository.deactivate_result = True
     _FakeRepository.deactivated_id = None
     _FakeRepository.activate_result = True
     _FakeRepository.activated_id = None
     _FakePecaRepository.pecas = {}
+    _FakeComponenteRepository.componentes = []
     _FakeItemValuesetRepository.default_linha = None
     _FakeItemValuesetRepository.chave_rows = []
 
@@ -194,6 +236,9 @@ def _service(monkeypatch):
     _reset()
     monkeypatch.setattr(service_module, "OrcamentoItemCusteioLinhaRepository", _FakeRepository)
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakePecaRepository)
+    monkeypatch.setattr(
+        service_module, "DefPecaComponenteRepository", _FakeComponenteRepository
+    )
     monkeypatch.setattr(
         service_module, "OrcamentoItemValuesetLinhaRepository", _FakeItemValuesetRepository
     )
@@ -385,16 +430,159 @@ def test_adicionar_peca_simples_cria_linha_com_valueset(monkeypatch) -> None:
     assert session.committed is True
 
 
-def test_adicionar_peca_composta_ignorada(monkeypatch) -> None:
+def test_adicionar_peca_composta_cria_principal_e_componentes(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="GAVETA", tipo_peca="COMPOSTA", chave_valueset_material=None),
+        2: _peca(id=2, codigo="FRENTE_GAV", chave_valueset_material="MATERIAL_FRENTES"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=10, tipo_componente="PECA", def_peca_componente_id=2, quantidade=Decimal("2")
+        )
+    ]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(ref_le="LE_FR")
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    assert result.componentes == 1
+    assert result.ignoradas == 0
+
+    payloads = _FakeRepository.created_payloads
+    assert len(payloads) == 2
+
+    principal = payloads[0]
+    assert principal["tipo_linha"] == "PECA_COMPOSTA"
+    assert principal["nivel"] == 0
+    assert principal["linha_pai_id"] is None
+    assert principal["def_peca_id"] == 1
+
+    sub = payloads[1]
+    assert sub["tipo_linha"] == "PECA"
+    assert sub["nivel"] == 1
+    assert sub["linha_pai_id"] == 1
+    assert sub["def_peca_id"] == 2
+    assert sub["chave_valueset"] == "MATERIAL_FRENTES"
+    assert sub["ref_le"] == "LE_FR"
+    assert sub["qt_und"] == Decimal("2")
+    assert sub["origem_tipo"] == "PECA_COMPOSTA"
+    assert session.committed is True
+
+
+def test_adicionar_peca_composta_sem_componentes(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakePecaRepository.pecas = {2: _peca(id=2, tipo_peca="COMPOSTA")}
+    _FakePecaRepository.pecas = {1: _peca(id=1, codigo="GAVETA", tipo_peca="COMPOSTA")}
+    _FakeComponenteRepository.componentes = []
 
-    result = service.adicionar_pecas_da_biblioteca(10, [2])
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
 
-    assert result.criadas == 0
-    assert result.ignoradas == 1
-    assert _FakeRepository.created_payload is None
-    assert any("composta" in aviso.lower() for aviso in result.avisos)
+    assert result.criadas == 1
+    assert result.componentes == 0
+    assert any("sem componentes" in aviso.lower() for aviso in result.avisos)
+    assert len(_FakeRepository.created_payloads) == 1
+    assert _FakeRepository.created_payloads[0]["tipo_linha"] == "PECA_COMPOSTA"
+
+
+def test_adicionar_componente_sem_valueset(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="COMPOSTA"),
+        2: _peca(id=2, chave_valueset_material="MATERIAL_FRENTES"),
+    }
+    _FakeComponenteRepository.componentes = [_componente(def_peca_componente_id=2)]
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = []
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.componentes == 1
+    sub = _FakeRepository.created_payloads[1]
+    assert "Sem ValueSet" in sub["observacoes"]
+
+
+def test_adicionar_componente_ferragem_resolve_chave_da_def_peca_filha(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            codigo="PORTA+DOBRADICA",
+            tipo_peca="COMPOSTA",
+            chave_valueset_material=None,
+        ),
+        3: _peca(id=3, codigo="DOBRADICA", chave_valueset_material="FERRAGEM_DOBRADICA"),
+    }
+    # The DOBRADICA component links by code (referencia_componente), not by id.
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=20,
+            tipo_componente="FERRAGEM",
+            def_peca_componente_id=None,
+            referencia_componente="DOBRADICA",
+            descricao="Dobradiça",
+        )
+    ]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(
+        codigo_opcao="DOBRADICA_STANDARD",
+        ref_le="FER0015",
+        descricao_no_orcamento="Dobradiça reta Blum",
+        unidade="UND",
+        preco_liquido=Decimal("1.25"),
+    )
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.componentes == 1
+    sub = _FakeRepository.created_payloads[1]
+    assert sub["tipo_linha"] == "FERRAGEM"
+    assert sub["chave_valueset"] == "FERRAGEM_DOBRADICA"
+    assert sub["mat_default"] == "DOBRADICA_STANDARD"
+    assert sub["ref_le"] == "FER0015"
+    assert sub["descricao_no_orcamento"] == "Dobradiça reta Blum"
+    assert sub["unidade"] == "UND"
+    assert sub["preco_liquido"] == Decimal("1.25")
+    assert sub["origem_tipo"] == "PECA_COMPOSTA"
+    assert sub["linha_pai_id"] == 1
+    assert sub["nivel"] == 1
+    assert sub["editado_localmente"] is False
+    assert sub["ativo"] is True
+
+
+def test_adicionar_componente_def_peca_sem_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="COMPOSTA"),
+        2: _peca(id=2, codigo="PUXADOR", chave_valueset_material=None),
+    }
+    _FakeComponenteRepository.componentes = [_componente(def_peca_componente_id=2)]
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.componentes == 1
+    sub = _FakeRepository.created_payloads[1]
+    assert "Componente sem chave ValueSet" in sub["observacoes"]
+
+
+def test_adicionar_componente_sem_def_peca_associada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1, tipo_peca="COMPOSTA")}
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            tipo_componente="FERRAGEM",
+            def_peca_componente_id=None,
+            referencia_componente="DESCONHECIDO",
+            descricao="Peça livre",
+        )
+    ]
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.componentes == 1
+    sub = _FakeRepository.created_payloads[1]
+    assert sub["tipo_linha"] == "FERRAGEM"
+    assert sub["nivel"] == 1
+    assert sub["linha_pai_id"] == 1
+    assert "sem definição de peça associada" in sub["observacoes"]
 
 
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:

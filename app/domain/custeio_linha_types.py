@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 PECA = "PECA"
+PECA_COMPOSTA = "PECA_COMPOSTA"
 MATERIAL_PECA = "MATERIAL_PECA"
 ORLA_PECA = "ORLA_PECA"
 FERRAGEM = "FERRAGEM"
@@ -17,6 +18,7 @@ OUTRO = "OUTRO"
 
 CUSTEIO_LINHA_TYPE_LABELS = {
     PECA: "Peça",
+    PECA_COMPOSTA: "Peça composta",
     MATERIAL_PECA: "Material da peça",
     ORLA_PECA: "Orla da peça",
     FERRAGEM: "Ferragem",

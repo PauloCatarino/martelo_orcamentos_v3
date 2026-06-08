@@ -422,7 +422,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self._selecionados.clear()
         self.carregar()
         self.status_label.setText(
-            f"Peças adicionadas: {result.criadas}. Ignoradas: {result.ignoradas}."
+            f"Peças adicionadas: {result.criadas}. "
+            f"Componentes adicionados: {result.componentes}. "
+            f"Ignoradas: {result.ignoradas}."
         )
 
     def _create_item_info_widget(self) -> QWidget:
@@ -485,12 +487,17 @@ class OrcamentoItemCusteioPage(QWidget):
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> dict[str, str]:
         """Map a costing line to the known columns; unknown columns stay empty."""
+        nivel = linha.nivel or 0
+        descricao = ("  - " + linha.descricao) if nivel else linha.descricao
         return {
+            "Ordem": "" if linha.ordem is None else str(linha.ordem),
             "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),
             "Código": linha.codigo or "",
             "Def. Peça": linha.def_peca_codigo
             or ("" if linha.def_peca_id is None else str(linha.def_peca_id)),
-            "Descrição": linha.descricao,
+            "Descrição": descricao,
+            "Linha pai": "" if linha.linha_pai_id is None else str(linha.linha_pai_id),
+            "Nível": str(nivel),
             "Módulo": "" if linha.orcamento_item_modulo_id is None
             else str(linha.orcamento_item_modulo_id),
             "QT mod": format_quantity(linha.qt_mod),

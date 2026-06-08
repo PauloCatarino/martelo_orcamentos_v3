@@ -11,9 +11,15 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.domain.custeio_linha_types import MANUAL, PECA, normalize_custeio_linha_type
+from app.domain.custeio_linha_types import (
+    MANUAL,
+    PECA,
+    PECA_COMPOSTA,
+    normalize_custeio_linha_type,
+)
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
+from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
@@ -106,6 +112,7 @@ class AdicionarPecasResult:
     """Summary of adding library pieces as cost lines."""
 
     criadas: int
+    componentes: int
     ignoradas: int
     avisos: list[str]
 
@@ -117,6 +124,7 @@ class OrcamentoItemCusteioLinhaService:
         self.session = session
         self.repository = OrcamentoItemCusteioLinhaRepository(session)
         self.peca_repository = DefPecaRepository(session)
+        self.componente_repository = DefPecaComponenteRepository(session)
         self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
 
     def listar_linhas_do_item(
@@ -144,14 +152,16 @@ class OrcamentoItemCusteioLinhaService:
     def adicionar_pecas_da_biblioteca(
         self, orcamento_item_id: int, def_peca_ids: list[int]
     ) -> AdicionarPecasResult:
-        """Create PECA cost lines from selected simple library pieces.
+        """Create cost lines for selected library pieces.
 
-        Composite pieces are ignored in this phase. The material data is
-        resolved from the item ValueSet (default option of the piece key).
+        Simple pieces create one PECA line. Composite pieces create a main
+        PECA_COMPOSTA line plus one sub-line per active component. Material data
+        is resolved from the item ValueSet (default option of each key).
         """
         item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
 
         criadas = 0
+        componentes = 0
         ignoradas = 0
         avisos: list[str] = []
 
@@ -162,22 +172,166 @@ class OrcamentoItemCusteioLinhaService:
                 continue
 
             if peca.tipo_peca == COMPOSTA:
-                ignoradas += 1
-                self._adicionar_aviso(
-                    avisos, "Peças compostas serão implementadas na próxima fase."
-                )
-                continue
-
-            fields, aviso = self._build_peca_line_fields(item_id, peca)
-            if aviso:
-                self._adicionar_aviso(avisos, aviso)
-
-            self.repository.create_linha(**fields)
+                componentes += self._adicionar_peca_composta(item_id, peca, avisos)
+            else:
+                self._adicionar_peca_simples(item_id, peca, avisos)
             criadas += 1
 
         self.session.commit()
 
-        return AdicionarPecasResult(criadas=criadas, ignoradas=ignoradas, avisos=avisos)
+        return AdicionarPecasResult(
+            criadas=criadas,
+            componentes=componentes,
+            ignoradas=ignoradas,
+            avisos=avisos,
+        )
+
+    def _adicionar_peca_simples(
+        self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]
+    ) -> None:
+        """Create one PECA cost line for a simple library piece."""
+        fields, aviso = self._build_peca_line_fields(
+            orcamento_item_id,
+            peca,
+            tipo_linha=PECA,
+            origem="BIBLIOTECA_PECA",
+            nivel=0,
+            linha_pai_id=None,
+            ordem=None,
+            qt_und=Decimal("1"),
+        )
+        if aviso:
+            self._adicionar_aviso(avisos, aviso)
+
+        self.repository.create_linha(**fields)
+
+    def _adicionar_peca_composta(
+        self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]
+    ) -> int:
+        """Create the main line plus component sub-lines of a composite piece.
+
+        Returns the number of component sub-lines created.
+        """
+        principal = self._criar_linha_principal_composta(orcamento_item_id, peca)
+
+        componentes = [
+            componente
+            for componente in self.componente_repository.list_by_peca_pai_id(peca.id)
+            if componente.ativo
+        ]
+        if not componentes:
+            self._adicionar_aviso(
+                avisos, f"Peça composta {peca.codigo} sem componentes configurados."
+            )
+            return 0
+
+        return self._criar_linhas_componentes(
+            orcamento_item_id, componentes, principal.id, avisos
+        )
+
+    def _criar_linha_principal_composta(
+        self, orcamento_item_id: int, peca: DefPecaResumo
+    ) -> OrcamentoItemCusteioLinhaResumo:
+        """Create the main (grouping) line of a composite piece."""
+        return self.repository.create_linha(
+            orcamento_item_id=orcamento_item_id,
+            tipo_linha=PECA_COMPOSTA,
+            codigo=peca.codigo,
+            def_peca_id=peca.id,
+            def_peca_codigo=peca.codigo,
+            descricao=peca.nome or peca.descricao or peca.codigo,
+            codigo_orlas=self._format_codigo_orlas(peca),
+            chave_valueset=peca.chave_valueset_material,
+            origem_tipo="BIBLIOTECA_PECA",
+            nivel=0,
+            linha_pai_id=None,
+            ordem=None,
+            qt_mod=Decimal("1"),
+            qt_und=Decimal("1"),
+            quantidade=Decimal("1"),
+            editado_localmente=False,
+            ativo=True,
+        )
+
+    def _criar_linhas_componentes(
+        self,
+        orcamento_item_id: int,
+        componentes: list,
+        linha_pai_id: int,
+        avisos: list[str],
+    ) -> int:
+        """Create one sub-line per component, returning how many were created."""
+        criadas = 0
+        for ordem, componente in enumerate(componentes, start=1):
+            fields, aviso = self._build_componente_line_fields(
+                orcamento_item_id, componente, linha_pai_id, ordem
+            )
+            if aviso:
+                self._adicionar_aviso(avisos, aviso)
+            self.repository.create_linha(**fields)
+            criadas += 1
+
+        return criadas
+
+    def _build_componente_line_fields(
+        self, orcamento_item_id: int, componente, linha_pai_id: int, ordem: int
+    ) -> tuple[dict, str | None]:
+        """Build the cost line fields for one composite component sub-line."""
+        qt_und = (
+            componente.quantidade if componente.quantidade is not None else Decimal("1")
+        )
+        tipo_linha = normalize_custeio_linha_type(componente.tipo_componente)
+
+        peca_filha = self._obter_def_peca_filha(componente)
+
+        if peca_filha is not None:
+            return self._build_peca_line_fields(
+                orcamento_item_id,
+                peca_filha,
+                tipo_linha=tipo_linha,
+                origem="PECA_COMPOSTA",
+                nivel=1,
+                linha_pai_id=linha_pai_id,
+                ordem=ordem,
+                qt_und=qt_und,
+                sem_chave_observacao="Componente sem chave ValueSet.",
+            )
+
+        fields: dict = {
+            "orcamento_item_id": orcamento_item_id,
+            "tipo_linha": tipo_linha,
+            "codigo": componente.referencia_componente,
+            "descricao": componente.descricao
+            or componente.referencia_componente
+            or "Componente",
+            "origem_tipo": "PECA_COMPOSTA",
+            "nivel": 1,
+            "linha_pai_id": linha_pai_id,
+            "ordem": ordem,
+            "qt_mod": Decimal("1"),
+            "qt_und": qt_und,
+            "quantidade": qt_und,
+            "editado_localmente": False,
+            "ativo": True,
+            "observacoes": "Componente sem definição de peça associada.",
+        }
+        return fields, None
+
+    def _obter_def_peca_filha(self, componente) -> DefPecaResumo | None:
+        """Resolve the child piece definition of a component.
+
+        Prefers the explicit def_peca_componente_id link; falls back to looking
+        the definition up by code (referencia_componente).
+        """
+        if componente.def_peca_componente_id is not None:
+            peca = self.peca_repository.get_by_id(componente.def_peca_componente_id)
+            if peca is not None:
+                return peca
+
+        if componente.referencia_componente:
+            return self.peca_repository.get_by_codigo(componente.referencia_componente)
+
+        return None
 
     def resolver_valueset_para_def_peca(
         self, orcamento_item_id: int, peca: DefPecaResumo
@@ -203,28 +357,43 @@ class OrcamentoItemCusteioLinhaService:
         return None
 
     def _build_peca_line_fields(
-        self, orcamento_item_id: int, peca: DefPecaResumo
+        self,
+        orcamento_item_id: int,
+        peca: DefPecaResumo,
+        *,
+        tipo_linha: str = PECA,
+        origem: str = "BIBLIOTECA_PECA",
+        nivel: int = 0,
+        linha_pai_id: int | None = None,
+        ordem: int | None = None,
+        qt_und: Decimal = Decimal("1"),
+        sem_chave_observacao: str = "Definição de peça sem chave ValueSet.",
     ) -> tuple[dict, str | None]:
-        """Build the cost line fields for one simple piece."""
+        """Build the cost line fields for one piece, resolving the item ValueSet."""
+        qt_und = qt_und if qt_und is not None else Decimal("1")
+
         fields: dict = {
             "orcamento_item_id": orcamento_item_id,
-            "tipo_linha": PECA,
+            "tipo_linha": tipo_linha,
             "codigo": peca.codigo,
             "def_peca_id": peca.id,
             "def_peca_codigo": peca.codigo,
             "descricao": peca.nome or peca.descricao or peca.codigo,
             "codigo_orlas": self._format_codigo_orlas(peca),
             "chave_valueset": peca.chave_valueset_material,
-            "origem_tipo": "BIBLIOTECA_PECA",
+            "origem_tipo": origem,
+            "nivel": nivel,
+            "linha_pai_id": linha_pai_id,
+            "ordem": ordem,
             "qt_mod": Decimal("1"),
-            "qt_und": Decimal("1"),
-            "quantidade": Decimal("1"),
+            "qt_und": qt_und,
+            "quantidade": qt_und,
             "editado_localmente": False,
             "ativo": True,
         }
 
         if not peca.chave_valueset_material:
-            fields["observacoes"] = "Definição de peça sem chave ValueSet."
+            fields["observacoes"] = sem_chave_observacao
             return fields, None
 
         linha_vs = self.resolver_valueset_para_def_peca(orcamento_item_id, peca)
