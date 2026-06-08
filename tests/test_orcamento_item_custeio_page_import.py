@@ -206,3 +206,36 @@ def test_orcamento_item_custeio_page_inserir_divisao() -> None:
     editavel = inspect.getsource(OrcamentoItemCusteioPage._coluna_editavel)
     assert "Descri" in editavel and "livre" in editavel
     assert "DIVISAO_INDEPENDENTE" in editavel
+
+
+def test_orcamento_item_custeio_page_material_menu() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "_menu_contexto_material",
+        "selecionar_materia_prima_linha",
+        "editar_dados_material_linha",
+        "limpar_dados_material_linha",
+        "_linha_aceita_material",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Selecionar Mat" in menu
+    assert "Editar Dados do Material" in menu
+    assert "Limpar Dados do Material" in menu
+
+    selecionar = inspect.getsource(OrcamentoItemCusteioPage.selecionar_materia_prima_linha)
+    assert "MateriaPrimaPickerDialog" in selecionar
+    assert "aplicar_materia_prima_na_linha" in selecionar
+
+    editar = inspect.getsource(OrcamentoItemCusteioPage.editar_dados_material_linha)
+    assert "CusteioLinhaMaterialDialog" in editar
+    assert "atualizar_material_local_linha" in editar
+
+    limpar = inspect.getsource(OrcamentoItemCusteioPage.limpar_dados_material_linha)
+    assert "limpar_material_linha" in limpar
+
+    aceita = inspect.getsource(OrcamentoItemCusteioPage._linha_aceita_material)
+    assert "DIVISAO_INDEPENDENTE" in aceita
+    assert "PECA_COMPOSTA" in aceita

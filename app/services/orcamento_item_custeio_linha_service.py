@@ -28,6 +28,7 @@ from app.domain.medidas import (
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
+from app.repositories.def_materia_prima_repository import DefMateriaPrimaRepository
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -116,6 +117,25 @@ class EditarLinhaCusteioData:
     observacoes: str | None = None
 
 
+# Material snapshot fields of a cost line that can be picked, edited and cleared
+# locally (the line keeps its key, def_peca, type, quantities, measures...).
+MATERIAL_FIELDS = (
+    "mat_default",
+    "ref_le",
+    "descricao_no_orcamento",
+    "unidade",
+    "preco_liquido",
+    "desperdicio_percentagem",
+    "tipo_materia_prima",
+    "familia_materia_prima",
+    "coresp_orla_0_4",
+    "coresp_orla_1_0",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
+)
+
+
 @dataclass(frozen=True)
 class AdicionarPecasResult:
     """Summary of adding library pieces as cost lines."""
@@ -135,6 +155,7 @@ class OrcamentoItemCusteioLinhaService:
         self.peca_repository = DefPecaRepository(session)
         self.componente_repository = DefPecaComponenteRepository(session)
         self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
+        self.materia_prima_repository = DefMateriaPrimaRepository(session)
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -157,6 +178,102 @@ class OrcamentoItemCusteioLinhaService:
     def obter_por_id(self, id: int) -> OrcamentoItemCusteioLinhaResumo | None:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
+
+    def aplicar_materia_prima_na_linha(
+        self, linha_id: int, materia_prima_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Copy a raw material snapshot into one cost line (local override).
+
+        Keeps the line's key, def_peca, type, quantities, measures and
+        hierarchy. Marks the line material as locally edited. Does not change
+        the item ValueSet nor the raw material catalog.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        self._validar_linha_aceita_material(linha)
+
+        materia = self.materia_prima_repository.get_by_id(materia_prima_id)
+        if materia is None:
+            raise ValueError("materia-prima nao encontrada")
+
+        fields = {
+            "mat_default": materia.ref_le,
+            "ref_le": materia.ref_le,
+            "descricao_no_orcamento": materia.descricao,
+            "unidade": materia.unidade,
+            "preco_liquido": materia.preco_liquido,
+            "desperdicio_percentagem": None,
+            "tipo_materia_prima": materia.tipo_martelo,
+            "familia_materia_prima": materia.familia_martelo,
+            "coresp_orla_0_4": None,
+            "coresp_orla_1_0": None,
+            "comp_mp": materia.comprimento,
+            "larg_mp": materia.largura,
+            "esp_mp": materia.espessura,
+            "materia_prima_id": materia.id,
+            "ref_materia_prima": materia.ref_le,
+            "descricao_materia_prima": materia.descricao,
+            "origem_material": "MATERIA_PRIMA_LOCAL",
+            "material_editado_localmente": True,
+            "editado_localmente": True,
+        }
+
+        result = self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return result
+
+    def atualizar_material_local_linha(
+        self, linha_id: int, dados: dict
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Manually update the material fields of one cost line."""
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        self._validar_linha_aceita_material(linha)
+
+        fields = {field: dados.get(field) for field in MATERIAL_FIELDS if field in dados}
+        fields["origem_material"] = "EDITADO_LOCALMENTE"
+        fields["material_editado_localmente"] = True
+        fields["editado_localmente"] = True
+
+        result = self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return result
+
+    def limpar_material_linha(
+        self, linha_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Clear the material fields of one cost line (keeps key/def_peca/etc.)."""
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        self._validar_linha_aceita_material(linha)
+
+        fields = {field: None for field in MATERIAL_FIELDS}
+        fields["materia_prima_id"] = None
+        fields["ref_materia_prima"] = None
+        fields["descricao_materia_prima"] = None
+        fields["origem_material"] = "LIMPO_LOCALMENTE"
+        fields["material_editado_localmente"] = True
+        fields["editado_localmente"] = True
+
+        result = self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return result
+
+    def _validar_linha_aceita_material(self, linha) -> None:
+        """Raise when the line type does not use material (division/composite)."""
+        if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+            raise ValueError("Linhas de divisão não usam material.")
+        if linha.tipo_linha == PECA_COMPOSTA:
+            raise ValueError("A linha de peça composta não usa material.")
 
     def recalcular_medidas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute quantities, real measures, area and perimeter for an item.

@@ -50,6 +50,33 @@ def _componente(**kwargs):
     return SimpleNamespace(**base)
 
 
+def _materia(**kwargs):
+    base = {
+        "id": 7,
+        "ref_le": "MP0001",
+        "referencia_fornecedor": None,
+        "descricao": "AGL Linho Cancun 19mm",
+        "tipo_original_excel": None,
+        "familia_original_excel": None,
+        "tipo_martelo": "PLACA",
+        "familia_martelo": "AGLOMERADO",
+        "unidade": "m2",
+        "preco_tabela": Decimal("8.62"),
+        "desconto": Decimal("0.36"),
+        "margem": Decimal("0.05"),
+        "preco_liquido": Decimal("5.79"),
+        "comprimento": Decimal("2750"),
+        "largura": Decimal("1830"),
+        "espessura": Decimal("19"),
+        "fornecedor": None,
+        "origem_dados": "EXCEL",
+        "ativo": True,
+        "observacoes": None,
+    }
+    base.update(kwargs)
+    return SimpleNamespace(**base)
+
+
 def _vs_linha(**kwargs):
     base = {
         "id": 1,
@@ -194,6 +221,16 @@ class _FakeComponenteRepository:
         return self.componentes
 
 
+class _FakeMateriaPrimaRepository:
+    materia = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.materia
+
+
 class _FakeItemValuesetRepository:
     default_linha = None
     chave_rows: list = []
@@ -237,6 +274,7 @@ def _reset() -> None:
     _FakeComponenteRepository.componentes = []
     _FakeItemValuesetRepository.default_linha = None
     _FakeItemValuesetRepository.chave_rows = []
+    _FakeMateriaPrimaRepository.materia = None
 
 
 def _service(monkeypatch):
@@ -248,6 +286,9 @@ def _service(monkeypatch):
     )
     monkeypatch.setattr(
         service_module, "OrcamentoItemValuesetLinhaRepository", _FakeItemValuesetRepository
+    )
+    monkeypatch.setattr(
+        service_module, "DefMateriaPrimaRepository", _FakeMateriaPrimaRepository
     )
     session = _FakeSession()
     return service_module.OrcamentoItemCusteioLinhaService(session=session), session
@@ -828,6 +869,107 @@ def test_recalcular_nova_divisao_altera_contexto(monkeypatch) -> None:
     assert payloads[4]["comp_real"] == Decimal("2000")
     assert payloads[4]["larg_real"] == Decimal("800")
     assert payloads[4]["esp_real"] == Decimal("30")
+
+
+def test_aplicar_materia_prima_na_linha(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5, tipo_linha="PECA", chave_valueset="MATERIAL_COSTAS", def_peca_id=3
+    )
+    _FakeMateriaPrimaRepository.materia = _materia(id=7)
+
+    service.aplicar_materia_prima_na_linha(5, 7)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["ref_le"] == "MP0001"
+    assert payload["descricao_no_orcamento"] == "AGL Linho Cancun 19mm"
+    assert payload["unidade"] == "m2"
+    assert payload["preco_liquido"] == Decimal("5.79")
+    assert payload["tipo_materia_prima"] == "PLACA"
+    assert payload["familia_materia_prima"] == "AGLOMERADO"
+    assert payload["comp_mp"] == Decimal("2750")
+    assert payload["larg_mp"] == Decimal("1830")
+    assert payload["esp_mp"] == Decimal("19")
+    assert payload["origem_material"] == "MATERIA_PRIMA_LOCAL"
+    assert payload["material_editado_localmente"] is True
+    assert payload["editado_localmente"] is True
+    # Structure is preserved (not part of the update).
+    assert "chave_valueset" not in payload
+    assert "def_peca_id" not in payload
+    assert "tipo_linha" not in payload
+    assert "quantidade" not in payload
+    assert session.committed is True
+
+
+def test_aplicar_materia_prima_divisao_recusada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="DIVISAO_INDEPENDENTE")
+    _FakeMateriaPrimaRepository.materia = _materia()
+
+    try:
+        service.aplicar_materia_prima_na_linha(5, 7)
+    except ValueError as error:
+        assert "divis" in str(error).lower()
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert _FakeRepository.updated_payload is None
+
+
+def test_aplicar_materia_prima_composta_recusada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA_COMPOSTA")
+
+    try:
+        service.aplicar_materia_prima_na_linha(5, 7)
+    except ValueError as error:
+        assert "composta" in str(error).lower()
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert _FakeRepository.updated_payload is None
+
+
+def test_limpar_material_linha(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA", chave_valueset="MATERIAL_COSTAS")
+
+    service.limpar_material_linha(5)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["ref_le"] is None
+    assert payload["preco_liquido"] is None
+    assert payload["comp_mp"] is None
+    assert payload["mat_default"] is None
+    assert payload["tipo_materia_prima"] is None
+    assert payload["origem_material"] == "LIMPO_LOCALMENTE"
+    assert payload["material_editado_localmente"] is True
+    assert payload["editado_localmente"] is True
+    # Key/def_peca are preserved.
+    assert "chave_valueset" not in payload
+    assert "def_peca_id" not in payload
+    assert session.committed is True
+
+
+def test_atualizar_material_local_linha(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="FERRAGEM")
+
+    service.atualizar_material_local_linha(
+        5, {"ref_le": "FER0015", "preco_liquido": Decimal("1.25"), "unidade": "UND"}
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["ref_le"] == "FER0015"
+    assert payload["preco_liquido"] == Decimal("1.25")
+    assert payload["unidade"] == "UND"
+    assert payload["origem_material"] == "EDITADO_LOCALMENTE"
+    assert payload["material_editado_localmente"] is True
+    assert payload["editado_localmente"] is True
+    # Fields not sent are not touched.
+    assert "mat_default" not in payload
+    assert session.committed is True
 
 
 def test_adicionar_peca_sem_valueset_cria_sem_mp(monkeypatch) -> None:

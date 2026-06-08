@@ -140,6 +140,10 @@ class OrcamentoItemCusteioLinha(Base):
     editado_localmente: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    material_editado_localmente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    origem_material: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1", index=True
     )

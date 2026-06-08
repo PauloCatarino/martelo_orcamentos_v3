@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QTabWidget,
     QTableWidget,
@@ -27,6 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    PECA_COMPOSTA,
     get_custeio_linha_type_label,
 )
 from app.domain.item_types import get_item_type_label
@@ -42,6 +45,8 @@ from app.services.orcamento_item_custeio_linha_service import (
 )
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
+from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -223,6 +228,8 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellChanged.connect(self._on_cell_changed)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._menu_contexto_material)
 
         lines_layout = QVBoxLayout()
         lines_title = QLabel("Linhas de custeio do item")
@@ -602,6 +609,116 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Linha de custeio atualizada.")
+
+    def _get_linha_selecionada(self) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Return the cost line of the selected table row."""
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+
+        return self._custeio_by_row.get(row)
+
+    def _linha_aceita_material(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
+        """Return True when the line type can carry material (not division/composite)."""
+        return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+
+    def _menu_contexto_material(self, pos) -> None:
+        """Show a right-click menu with the line material actions."""
+        item = self.table.itemAt(pos)
+        if item is not None:
+            self.table.selectRow(item.row())
+
+        menu = QMenu(self)
+        menu.addAction("Selecionar Matéria-Prima", self.selecionar_materia_prima_linha)
+        menu.addAction("Editar Dados do Material", self.editar_dados_material_linha)
+        menu.addAction("Limpar Dados do Material", self.limpar_dados_material_linha)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def selecionar_materia_prima_linha(self) -> None:
+        """Pick a raw material and copy its snapshot into the selected line."""
+        linha = self._get_linha_selecionada()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+        if not self._linha_aceita_material(linha):
+            self.status_label.setText("Linhas de divisão não usam material.")
+            return
+
+        picker = MateriaPrimaPickerDialog(parent=self)
+        if not picker.exec() or picker.selected_materia is None:
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).aplicar_materia_prima_na_linha(
+                    linha.id, picker.selected_materia.id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar o material da linha.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Material da linha atualizado.")
+
+    def editar_dados_material_linha(self) -> None:
+        """Open the dialog to manually edit the selected line's material."""
+        linha = self._get_linha_selecionada()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+        if not self._linha_aceita_material(linha):
+            self.status_label.setText("Linhas de divisão não usam material.")
+            return
+
+        saved = False
+
+        def handle_save(dados) -> bool:
+            nonlocal saved
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(session).atualizar_material_local_linha(
+                        linha.id, dados
+                    )
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("Não foi possível atualizar o material da linha.")
+                return False
+
+            saved = True
+            return True
+
+        dialog = CusteioLinhaMaterialDialog(linha, parent=self, on_save=handle_save)
+        if dialog.exec() and saved:
+            self.carregar()
+            self.status_label.setText("Material da linha atualizado.")
+
+    def limpar_dados_material_linha(self) -> None:
+        """Clear the material fields of the selected line after confirmation."""
+        linha = self._get_linha_selecionada()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+        if not self._linha_aceita_material(linha):
+            self.status_label.setText("Linhas de divisão não usam material.")
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Confirmar",
+            "Tem a certeza que pretende limpar os dados de material desta linha?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).limpar_material_linha(linha.id)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar o material da linha.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Material da linha limpo.")
 
     def _linha_para_valores(
         self, linha: OrcamentoItemCusteioLinhaResumo
