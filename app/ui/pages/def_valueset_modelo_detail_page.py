@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.numeros import formatar_percentagem
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_linha_service import (
@@ -27,7 +28,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
-from app.utils.formatters import format_currency, format_quantity
+from app.utils.formatters import format_currency
 
 
 class DefValuesetModeloDetailPage(QWidget):
@@ -158,10 +159,10 @@ class DefValuesetModeloDetailPage(QWidget):
                 linha.descricao_no_orcamento or "",
                 linha.unidade or "",
                 format_currency(linha.preco_tabela),
-                format_quantity(linha.margem_percentagem),
-                format_quantity(linha.desconto_percentagem),
+                formatar_percentagem(linha.margem_percentagem),
+                formatar_percentagem(linha.desconto_percentagem),
                 format_currency(linha.preco_liquido),
-                format_quantity(linha.desperdicio_percentagem),
+                formatar_percentagem(linha.desperdicio_percentagem),
                 linha.tipo_materia_prima or "",
                 linha.familia_materia_prima or "",
                 self._format_bool(linha.padrao),

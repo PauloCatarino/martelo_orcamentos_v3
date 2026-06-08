@@ -68,3 +68,11 @@ def test_page_uses_line_service_and_dialog() -> None:
     carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
     assert "DefValuesetModeloLinhaService" in carregar
     assert "listar_linhas_do_modelo" in carregar
+
+
+def test_page_formats_percentages() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    source = inspect.getsource(DefValuesetModeloDetailPage._preencher)
+
+    assert "formatar_percentagem" in source

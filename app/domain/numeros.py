@@ -33,6 +33,18 @@ def parse_decimal_humano(texto: str | None) -> Decimal | None:
         raise ValueError("numero invalido") from error
 
 
+def formatar_percentagem(valor: Decimal | None) -> str:
+    """Format a human percentage for display, dropping needless decimals.
+
+    Examples: None -> "", 10 -> "10%", 10.0 -> "10%", 6.8 -> "6.8%",
+    12.50 -> "12.5%".
+    """
+    if valor is None:
+        return ""
+
+    return f"{format(valor.normalize(), 'f')}%"
+
+
 def normalize_percentagem_humana(value: Decimal | None) -> Decimal | None:
     """Normalize an imported percentage into a human percentage.
 

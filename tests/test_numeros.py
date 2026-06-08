@@ -6,7 +6,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
+from app.domain.numeros import (
+    formatar_percentagem,
+    normalize_percentagem_humana,
+    parse_decimal_humano,
+)
 
 
 def test_normalizar_fracao_para_percentagem() -> None:
@@ -40,3 +44,11 @@ def test_parse_vazio_devolve_none() -> None:
 def test_parse_invalido_levanta_value_error() -> None:
     with pytest.raises(ValueError):
         parse_decimal_humano("abc")
+
+
+def test_formatar_percentagem() -> None:
+    assert formatar_percentagem(None) == ""
+    assert formatar_percentagem(Decimal("10")) == "10%"
+    assert formatar_percentagem(Decimal("10.0")) == "10%"
+    assert formatar_percentagem(Decimal("6.8")) == "6.8%"
+    assert formatar_percentagem(Decimal("12.50")) == "12.5%"
