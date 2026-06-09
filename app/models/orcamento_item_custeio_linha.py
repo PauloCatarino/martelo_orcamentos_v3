@@ -126,6 +126,27 @@ class OrcamentoItemCusteioLinha(Base):
     preco_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
+    # Cost-exclusion flags: True (checked) -> the matching cost is NOT summed
+    # into custo_total. Default False -> the cost is included.
+    excluir_mp: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    excluir_orla: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    excluir_ferragem: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    excluir_producao: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    excluir_acabamento: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    excluir_mo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+
     def_operacao_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("def_operacoes.id"),

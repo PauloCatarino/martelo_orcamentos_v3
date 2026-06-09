@@ -82,6 +82,12 @@ class OrcamentoItemCusteioLinhaResumo:
     esp_real: Decimal | None = None
     material_editado_localmente: bool = False
     origem_material: str | None = None
+    excluir_mp: bool = False
+    excluir_orla: bool = False
+    excluir_ferragem: bool = False
+    excluir_producao: bool = False
+    excluir_acabamento: bool = False
+    excluir_mo: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -244,6 +250,12 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_ferragem=linha.custo_ferragem,
             consumo_ml_unitario=linha.consumo_ml_unitario,
             consumo_ml_total=linha.consumo_ml_total,
+            excluir_mp=linha.excluir_mp,
+            excluir_orla=linha.excluir_orla,
+            excluir_ferragem=linha.excluir_ferragem,
+            excluir_producao=linha.excluir_producao,
+            excluir_acabamento=linha.excluir_acabamento,
+            excluir_mo=linha.excluir_mo,
             custo_unitario=linha.custo_unitario,
             custo_total=linha.custo_total,
             margem_percentagem=linha.margem_percentagem,

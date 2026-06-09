@@ -30,6 +30,7 @@ from app.domain.custos import (
     calcular_custo_ferragem,
     calcular_custo_ml,
     calcular_custo_mp,
+    calcular_custo_total_linha,
 )
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
@@ -184,6 +185,25 @@ class CustoMlResult:
 
     processadas: int
     calculadas: int
+    ignoradas: int
+
+
+# Cost-exclusion flag fields (True -> the matching cost is left out of the total).
+EXCLUSAO_FIELDS = (
+    "excluir_mp",
+    "excluir_orla",
+    "excluir_ferragem",
+    "excluir_producao",
+    "excluir_acabamento",
+    "excluir_mo",
+)
+
+
+@dataclass(frozen=True)
+class CustoTotalResult:
+    """Summary of one total-cost recompute over an item."""
+
+    processadas: int
     ignoradas: int
 
 
@@ -667,6 +687,75 @@ class OrcamentoItemCusteioLinhaService:
 
         return CustoMlResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def recalcular_custo_total_do_item(
+        self, orcamento_item_id: int
+    ) -> CustoTotalResult:
+        """Recompute custo_total for an item's lines from the partial costs.
+
+        Sums the existing partial costs (MP, orlas, ferragem; acabamento and
+        produção count as 0 until implemented) honouring the per-line exclusion
+        flags. Skips division and composite-parent lines. Does not change
+        measures, ValueSet, materials nor the partial costs.
+        """
+        processadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                ignoradas += 1
+                continue
+
+            processadas += 1
+            total = self._custo_total_da_linha(linha)
+            self.repository.update_linha(id=linha.id, custo_total=total)
+
+        self.session.commit()
+
+        return CustoTotalResult(processadas=processadas, ignoradas=ignoradas)
+
+    def atualizar_exclusao_linha(
+        self, linha_id: int, campo: str, excluir: bool
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Set one cost-exclusion flag of a line and recompute its custo_total."""
+        if campo not in EXCLUSAO_FIELDS:
+            raise ValueError("campo de exclusao invalido")
+
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        fields: dict = {campo: bool(excluir)}
+        if linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            fields["custo_total"] = self._custo_total_da_linha(
+                linha, **{campo: bool(excluir)}
+            )
+
+        self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return self.repository.get_by_id(linha_id)
+
+    def _custo_total_da_linha(self, linha, **exclusao_overrides) -> Decimal:
+        """Build the total cost of one line, honouring (overridable) exclusions."""
+
+        def excluido(campo: str) -> bool:
+            if campo in exclusao_overrides:
+                return bool(exclusao_overrides[campo])
+            return bool(getattr(linha, campo, False))
+
+        return calcular_custo_total_linha(
+            custo_mp=linha.custo_mp,
+            custo_orlas=linha.custo_orlas,
+            custo_ferragem=linha.custo_ferragem,
+            custo_acabamento=getattr(linha, "custo_acabamento", None),
+            custo_producao=getattr(linha, "custo_producao", None),
+            excluir_mp=excluido("excluir_mp"),
+            excluir_orla=excluido("excluir_orla"),
+            excluir_ferragem=excluido("excluir_ferragem"),
+            excluir_acabamento=excluido("excluir_acabamento"),
+            excluir_producao=excluido("excluir_producao"),
         )
 
     def _mesclar_observacao(

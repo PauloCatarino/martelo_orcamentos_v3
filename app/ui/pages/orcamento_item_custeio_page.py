@@ -118,12 +118,12 @@ class OrcamentoItemCusteioPage(QWidget):
         "Tempo setup",
         "Custo produ\u00e7\u00e3o",
         # Flags de inclusao
-        "Inclui MP",
-        "Inclui Orla",
-        "Inclui Ferragem",
-        "Inclui Produ\u00e7\u00e3o",
-        "Inclui Acabamento",
-        "Inclui MO",
+        "Excluir MP",
+        "Excluir Orla",
+        "Excluir Ferragem",
+        "Excluir Produ\u00e7\u00e3o",
+        "Excluir Acabamento",
+        "Excluir MO",
         # Serie / STD
         "Tipo produ\u00e7\u00e3o",
         "Fator s\u00e9rie",
@@ -151,6 +151,20 @@ class OrcamentoItemCusteioPage(QWidget):
         "Larg": "larg",
         "Esp": "esp",
     }
+
+    # Cost-exclusion checkbox columns mapped to the line flag they toggle.
+    # Checked = exclude that cost from custo_total; unchecked = include it.
+    EXCLUSAO_COLUMNS = {
+        "Excluir MP": "excluir_mp",
+        "Excluir Orla": "excluir_orla",
+        "Excluir Ferragem": "excluir_ferragem",
+        "Excluir Produção": "excluir_producao",
+        "Excluir Acabamento": "excluir_acabamento",
+        "Excluir MO": "excluir_mo",
+    }
+    EXCLUSAO_TOOLTIP = (
+        "Visto ativo = excluir este custo do cálculo. Sem visto = incluir no cálculo."
+    )
 
     def __init__(
         self,
@@ -221,6 +235,11 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            if header in self.EXCLUSAO_COLUMNS:
+                header_item = self.table.horizontalHeaderItem(column_index)
+                if header_item is not None:
+                    header_item.setToolTip(self.EXCLUSAO_TOOLTIP)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -319,6 +338,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custo_materia_prima_do_item(self.item_id)
                 service.recalcular_custos_ferragens_do_item(self.item_id)
                 service.recalcular_custos_ml_do_item(self.item_id)
+                service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
@@ -326,7 +346,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText(
-            "Item atualizado (medidas, orlas, custo de material, ferragens e ML "
+            "Item atualizado (medidas, orlas, custos parciais e custo total "
             "recalculados)."
         )
 
@@ -581,14 +601,40 @@ class OrcamentoItemCusteioPage(QWidget):
                 self._custeio_by_row[row_index] = linha
                 valores = self._linha_para_valores(linha)
                 for column_index, header in enumerate(self.TABLE_HEADERS):
-                    item = QTableWidgetItem(str(valores.get(header, "")))
-                    if self._coluna_editavel(header, linha):
-                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    if header in self.EXCLUSAO_COLUMNS:
+                        item = self._criar_item_exclusao(header, linha)
                     else:
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                        item = QTableWidgetItem(str(valores.get(header, "")))
+                        if self._coluna_editavel(header, linha):
+                            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                        else:
+                            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.table.setItem(row_index, column_index, item)
         finally:
             self._carregando_tabela = False
+
+    def _linha_calcula_total(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
+        """Return True when the line computes a total (not division/composite)."""
+        return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+
+    def _criar_item_exclusao(
+        self, header: str, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> QTableWidgetItem:
+        """Build a checkbox cell for a cost-exclusion column."""
+        item = QTableWidgetItem()
+        item.setToolTip(self.EXCLUSAO_TOOLTIP)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+        if self._linha_calcula_total(linha):
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            excluido = bool(getattr(linha, self.EXCLUSAO_COLUMNS[header], False))
+            item.setCheckState(
+                Qt.CheckState.Checked if excluido else Qt.CheckState.Unchecked
+            )
+        else:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+
+        return item
 
     def _on_cell_changed(self, row: int, column: int) -> None:
         """Save an edited quantity/measure cell and recompute the line."""
@@ -597,7 +643,14 @@ class OrcamentoItemCusteioPage(QWidget):
 
         header = self.TABLE_HEADERS[column]
         linha = self._custeio_by_row.get(row)
-        if linha is None or not self._coluna_editavel(header, linha):
+        if linha is None:
+            return
+
+        if header in self.EXCLUSAO_COLUMNS:
+            self._on_exclusao_changed(row, column, header, linha)
+            return
+
+        if not self._coluna_editavel(header, linha):
             return
 
         # On a normal piece/material line, Esp normally comes from the material:
@@ -643,6 +696,28 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Linha de custeio atualizada.")
+
+    def _on_exclusao_changed(
+        self, row: int, column: int, header: str, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Save a cost-exclusion checkbox change and recompute the total."""
+        if not self._linha_calcula_total(linha):
+            return
+
+        item = self.table.item(row, column)
+        excluir = item is not None and item.checkState() == Qt.CheckState.Checked
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).atualizar_exclusao_linha(
+                    linha.id, self.EXCLUSAO_COLUMNS[header], excluir
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar a exclusão de custo.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Custo total recalculado.")
 
     def _confirmar_edicao_espessura(self) -> bool:
         """Ask before letting the user override the material-derived Esp."""

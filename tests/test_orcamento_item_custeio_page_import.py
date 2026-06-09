@@ -45,8 +45,46 @@ def test_orcamento_item_custeio_page_headers() -> None:
         "Pre\u00e7o total",
         "Editado localmente",
         "Ativo",
+        # Exclusion headers renamed from "Inclui X" -> "Excluir X".
+        "Excluir MP",
+        "Excluir Orla",
+        "Excluir Ferragem",
+        "Excluir Produ\u00e7\u00e3o",
+        "Excluir Acabamento",
+        "Excluir MO",
     ):
         assert column in headers
+
+    # The old "Inclui X" headers must be gone.
+    for antigo in ("Inclui MP", "Inclui Orla", "Inclui Ferragem"):
+        assert antigo not in headers
+
+
+def test_orcamento_item_custeio_page_exclusao_checkboxes() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert OrcamentoItemCusteioPage.EXCLUSAO_COLUMNS == {
+        "Excluir MP": "excluir_mp",
+        "Excluir Orla": "excluir_orla",
+        "Excluir Ferragem": "excluir_ferragem",
+        "Excluir Produ\u00e7\u00e3o": "excluir_producao",
+        "Excluir Acabamento": "excluir_acabamento",
+        "Excluir MO": "excluir_mo",
+    }
+
+    for method in ("_criar_item_exclusao", "_on_exclusao_changed", "_linha_calcula_total"):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    criar = inspect.getsource(OrcamentoItemCusteioPage._criar_item_exclusao)
+    assert "ItemIsUserCheckable" in criar
+    assert "setCheckState" in criar
+
+    handler = inspect.getsource(OrcamentoItemCusteioPage._on_exclusao_changed)
+    assert "atualizar_exclusao_linha" in handler
+    assert "checkState" in handler
+
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "EXCLUSAO_COLUMNS" in on_changed
 
 
 def test_orcamento_item_custeio_page_uses_item_line_service() -> None:
@@ -270,6 +308,7 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_custo_materia_prima_do_item" in source
     assert "recalcular_custos_ferragens_do_item" in source
     assert "recalcular_custos_ml_do_item" in source
+    assert "recalcular_custo_total_do_item" in source
 
     valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
     assert '"Custo orlas"' in valores

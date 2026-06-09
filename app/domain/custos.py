@@ -118,6 +118,42 @@ def calcular_custo_ferragem(
     return custo, None
 
 
+def calcular_custo_total_linha(
+    *,
+    custo_mp=None,
+    custo_orlas=None,
+    custo_ferragem=None,
+    custo_acabamento=None,
+    custo_producao=None,
+    excluir_mp: bool = False,
+    excluir_orla: bool = False,
+    excluir_ferragem: bool = False,
+    excluir_acabamento: bool = False,
+    excluir_producao: bool = False,
+) -> Decimal:
+    """Sum the partial costs of one line, honouring the exclusion flags.
+
+    A True ``excluir_*`` flag means the matching cost is NOT summed. Missing /
+    not-yet-implemented partial costs count as 0. Never raises.
+    """
+    total = Decimal("0")
+    parcelas = (
+        (excluir_mp, custo_mp),
+        (excluir_orla, custo_orlas),
+        (excluir_ferragem, custo_ferragem),
+        (excluir_acabamento, custo_acabamento),
+        (excluir_producao, custo_producao),
+    )
+    for excluido, custo in parcelas:
+        if excluido:
+            continue
+        valor = normalizar_numero(custo)
+        if valor is not None:
+            total += valor
+
+    return total
+
+
 def calcular_custo_ml(
     unidade,
     consumo_ml_unitario,

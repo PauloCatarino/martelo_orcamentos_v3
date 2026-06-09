@@ -15,9 +15,65 @@ from app.domain.custos import (
     calcular_custo_ferragem,
     calcular_custo_ml,
     calcular_custo_mp,
+    calcular_custo_total_linha,
     desperdicio_para_fracao,
     fator_desperdicio,
 )
+
+
+def test_custo_total_sem_exclusoes() -> None:
+    total = calcular_custo_total_linha(
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+    )
+    assert total == Decimal("13.50")
+
+
+def test_custo_total_excluir_mp() -> None:
+    total = calcular_custo_total_linha(
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+        excluir_mp=True,
+    )
+    assert total == Decimal("3.50")
+
+
+def test_custo_total_excluir_orla() -> None:
+    total = calcular_custo_total_linha(
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+        excluir_orla=True,
+    )
+    assert total == Decimal("12.00")
+
+
+def test_custo_total_excluir_ferragem() -> None:
+    total = calcular_custo_total_linha(
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+        excluir_ferragem=True,
+    )
+    assert total == Decimal("11.50")
+
+
+def test_custo_total_excluir_mp_e_orla() -> None:
+    total = calcular_custo_total_linha(
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+        excluir_mp=True,
+        excluir_orla=True,
+    )
+    assert total == Decimal("2.00")
+
+
+def test_custo_total_campos_vazios() -> None:
+    assert calcular_custo_total_linha() == Decimal("0")
+    assert calcular_custo_total_linha(custo_mp=None, custo_orlas=None) == Decimal("0")
 
 
 def test_desperdicio_para_fracao_normaliza() -> None:

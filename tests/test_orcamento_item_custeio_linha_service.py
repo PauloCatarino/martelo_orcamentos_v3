@@ -1661,6 +1661,89 @@ def test_recalcular_ml_so_altera_campos_ml(monkeypatch) -> None:
     assert "custo_mp" not in payload
 
 
+def test_recalcular_custo_total_sem_exclusoes(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            custo_mp=Decimal("10"),
+            custo_ferragem=Decimal("2"),
+            custo_orlas=Decimal("1.50"),
+        ),
+    ]
+
+    result = service.recalcular_custo_total_do_item(30)
+
+    assert result.processadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_total"] == Decimal("13.50")
+
+
+def test_recalcular_custo_total_com_exclusao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            custo_mp=Decimal("10"),
+            custo_ferragem=Decimal("2"),
+            custo_orlas=Decimal("1.50"),
+            excluir_mp=True,
+            excluir_orla=True,
+        ),
+    ]
+
+    service.recalcular_custo_total_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_total"] == Decimal("2.00")
+
+
+def test_recalcular_custo_total_ignora_divisao_e_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", custo_mp=Decimal("10")),
+        _resumo(id=2, tipo_linha="PECA_COMPOSTA", custo_mp=Decimal("10")),
+    ]
+
+    result = service.recalcular_custo_total_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 2
+    assert _FakeRepository.updated_payload is None
+
+
+def test_atualizar_exclusao_linha_recalcula_total(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5,
+        tipo_linha="PECA",
+        custo_mp=Decimal("10"),
+        custo_ferragem=Decimal("2"),
+        custo_orlas=Decimal("1.50"),
+    )
+
+    service.atualizar_exclusao_linha(5, "excluir_mp", True)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["excluir_mp"] is True
+    assert payload["custo_total"] == Decimal("3.50")
+    assert session.committed is True
+
+
+def test_atualizar_exclusao_linha_campo_invalido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+
+    try:
+        service.atualizar_exclusao_linha(5, "excluir_xpto", True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+
 def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
