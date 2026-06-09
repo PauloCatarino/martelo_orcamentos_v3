@@ -53,6 +53,23 @@ def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
     assert '"Sim" if materia.ativo else "N\\u00e3o"' in table_source
 
 
+def test_materias_primas_page_has_excel_import() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    assert hasattr(MateriasPrimasPage, "importar_do_excel")
+
+    init = inspect.getsource(MateriasPrimasPage.__init__)
+    assert "Atualizar P" in init  # "Atualizar Página"
+    assert "Importar/Atualizar Excel" in init
+
+    source = inspect.getsource(MateriasPrimasPage.importar_do_excel)
+    assert "QMessageBox" in source
+    assert "Deseja continuar?" in source
+    assert "importar_materias_primas" in source
+    assert "carregar_materias_primas" in source
+    assert "atualizadas" in source
+
+
 def test_materias_primas_page_reapplies_search_on_refresh() -> None:
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 

@@ -323,6 +323,27 @@ def read_rows(path: str | Path) -> tuple[list, list]:
     return headers, data_rows
 
 
+def importar_materias_primas(session, override: str | Path | None = None) -> ImportSummary:
+    """Resolve the configured Excel, read it and import/sync raw materials.
+
+    Reuses the same logic as the CLI (upsert by ref_le, no duplicates). Raises
+    FileNotFoundError when the Excel is missing and RuntimeError when openpyxl is
+    unavailable, so the caller (CLI or UI) can show a friendly message.
+    """
+    resolution = resolve_excel_path(session=session, override=override)
+    if resolution is None:
+        expected = (
+            ExcelPathResolution(path=Path(override), source=PATH_SOURCE_MANUAL)
+            if override
+            else get_default_excel_path_resolution(session)
+        )
+        raise FileNotFoundError(str(expected.path))
+
+    headers, data_rows = read_rows(resolution.path)
+    service = DefMateriaPrimaService(session)
+    return run_import(service, headers, data_rows, dry_run=False)
+
+
 def print_summary(summary: ImportSummary, dry_run: bool) -> None:
     """Print the final user-facing import summary."""
     modo = "DRY-RUN (sem gravar)" if dry_run else "IMPORTACAO REAL"

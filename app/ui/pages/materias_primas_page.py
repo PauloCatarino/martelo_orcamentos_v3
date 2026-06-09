@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -60,11 +61,15 @@ class MateriasPrimasPage(QWidget):
         info.setObjectName("pageSubtitle")
         info.setWordWrap(True)
 
-        self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button = QPushButton("Atualizar Página")
         self.refresh_button.clicked.connect(self.carregar_materias_primas)
+
+        self.import_button = QPushButton("Importar/Atualizar Excel")
+        self.import_button.clicked.connect(self.importar_do_excel)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.import_button)
         actions_layout.addStretch()
 
         self.status_label = QLabel("")
@@ -113,6 +118,44 @@ class MateriasPrimasPage(QWidget):
 
         if not materias_primas:
             self.status_label.setText("Sem materias-primas para mostrar.")
+
+    def importar_do_excel(self) -> None:
+        """Run the real raw-material import from the configured Excel (upsert by ref_le)."""
+        confirm = QMessageBox.question(
+            self,
+            "Importar/Atualizar Excel",
+            "Esta operação vai atualizar as matérias-primas a partir do Excel "
+            "configurado. As referências existentes serão atualizadas e não "
+            "duplicadas. Deseja continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            from scripts.import_materias_primas_excel import importar_materias_primas
+
+            with SessionLocal() as session:
+                summary = importar_materias_primas(session)
+        except FileNotFoundError as error:
+            print(f"[Materias-Primas] Excel nao encontrado: {error}")
+            self.status_label.setText(
+                "Ficheiro Excel de matérias-primas não encontrado. "
+                "Verifique a configuração."
+            )
+            return
+        except (ImportError, SQLAlchemyError, RuntimeError, OSError) as error:
+            print(f"[Materias-Primas] Erro ao importar do Excel: {error}")
+            self.status_label.setText(
+                "Não foi possível importar as matérias-primas do Excel."
+            )
+            return
+
+        self.carregar_materias_primas()
+        self.status_label.setText(
+            f"Importação concluída: {summary.criadas} criadas, "
+            f"{summary.atualizadas} atualizadas, {summary.erros} erros."
+        )
 
     def aplicar_pesquisa(self, _text: str | None = None) -> None:
         """Filter the loaded raw materials according to the search text."""

@@ -253,6 +253,49 @@ def test_run_import_updates_existing_with_desp_and_orlas() -> None:
     assert data.coresp_orla_1_0 == "ORL0003"
 
 
+def test_importar_materias_primas_reuses_run_import(monkeypatch) -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "DESP", "CORESP_ORLA_0", "CORESP_ORLA_1"]
+    rows = [("PLC0001", "Material novo", "0,15", "ORL0002", "ORL0003")]
+    service = _FakeService()
+
+    monkeypatch.setattr(
+        importer,
+        "resolve_excel_path",
+        lambda session=None, override=None: importer.ExcelPathResolution(
+            path=Path("x.xlsm"), source="teste"
+        ),
+    )
+    monkeypatch.setattr(importer, "read_rows", lambda path: (headers, rows))
+    monkeypatch.setattr(importer, "DefMateriaPrimaService", lambda session: service)
+
+    summary = importer.importar_materias_primas(object())
+
+    assert summary.criadas == 1
+    assert service.created[0].coresp_orla_0_4 == "ORL0002"
+    assert service.created[0].coresp_orla_1_0 == "ORL0003"
+    assert service.created[0].desperdicio_percentagem == Decimal("0.15")
+
+
+def test_importar_materias_primas_raises_when_excel_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        importer, "resolve_excel_path", lambda session=None, override=None: None
+    )
+    monkeypatch.setattr(
+        importer,
+        "get_default_excel_path_resolution",
+        lambda session: importer.ExcelPathResolution(
+            path=Path("missing.xlsm"), source="teste"
+        ),
+    )
+
+    try:
+        importer.importar_materias_primas(object())
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError("Expected FileNotFoundError")
+
+
 def test_run_import_dry_run_does_not_write() -> None:
     headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO"]
     rows = [("PLC0001", "Material novo"), ("PLC0002", "Material existente")]
