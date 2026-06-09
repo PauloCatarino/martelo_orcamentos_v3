@@ -26,7 +26,7 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
-from app.domain.acabamentos import calcular_areas_acabamento
+from app.domain.acabamentos import SEM_ACABAMENTO, calcular_areas_acabamento
 from app.domain.custos import (
     calcular_custo_ferragem,
     calcular_custo_ml,
@@ -214,6 +214,15 @@ class AreasAcabamentoResult:
 
     processadas: int
     calculadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class AcabamentoResult:
+    """Summary of one automatic finishing-application over an item."""
+
+    processadas: int
+    aplicadas: int
     ignoradas: int
 
 
@@ -734,6 +743,87 @@ class OrcamentoItemCusteioLinhaService:
 
         return CustoTotalResult(processadas=processadas, ignoradas=ignoradas)
 
+    def aplicar_acabamentos_do_item(self, orcamento_item_id: int) -> AcabamentoResult:
+        """Fill acabamento_face_sup/inf of PECA lines from def_peca + ValueSet.
+
+        A piece declares which faces it finishes via ``permite_acabamento`` and
+        ``chave_valueset_acabamento_sup`` / ``chave_valueset_acabamento_inf``; the
+        finish code comes from the item ValueSet line of that key. Faces without a
+        finish get SEM_ACABAMENTO. Only PECA lines with a def_peca are processed
+        (ferragens, ML, divisions and composite parents are skipped). Does not
+        compute areas/costs here (areas are recomputed in the next step) and does
+        not touch material, orlas, ValueSet nor measures.
+        """
+        processadas = 0
+        aplicadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._linha_recebe_acabamento(linha):
+                ignoradas += 1
+                continue
+
+            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            acab_sup, aviso_sup = self._resolver_acabamento_face(
+                orcamento_item_id, peca, face_superior=True
+            )
+            acab_inf, aviso_inf = self._resolver_acabamento_face(
+                orcamento_item_id, peca, face_superior=False
+            )
+
+            processadas += 1
+            fields: dict = {
+                "acabamento_face_sup": acab_sup,
+                "acabamento_face_inf": acab_inf,
+            }
+            aviso = aviso_sup or aviso_inf
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Acabamento não aplicado", aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if acab_sup != SEM_ACABAMENTO or acab_inf != SEM_ACABAMENTO:
+                aplicadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return AcabamentoResult(
+            processadas=processadas, aplicadas=aplicadas, ignoradas=ignoradas
+        )
+
+    def _linha_recebe_acabamento(self, linha) -> bool:
+        """Return True for real piece lines that can receive a finish."""
+        return linha.tipo_linha == PECA and linha.def_peca_id is not None
+
+    def _resolver_acabamento_face(
+        self, orcamento_item_id: int, peca, *, face_superior: bool
+    ) -> tuple[str, str | None]:
+        """Resolve one face finish (value, aviso) from the piece + item ValueSet."""
+        if peca is None or not peca.permite_acabamento:
+            return SEM_ACABAMENTO, None
+
+        chave = (
+            peca.chave_valueset_acabamento_sup
+            if face_superior
+            else peca.chave_valueset_acabamento_inf
+        )
+        if not chave:
+            return SEM_ACABAMENTO, None
+
+        linha_vs = self._resolver_valueset_por_chave(orcamento_item_id, chave)
+        valor = None
+        if linha_vs is not None:
+            valor = linha_vs.codigo_opcao or linha_vs.nome_opcao or linha_vs.valor_texto
+
+        if not valor:
+            return SEM_ACABAMENTO, (
+                f"Acabamento não aplicado: chave {chave} sem valor no ValueSet."
+            )
+
+        return valor, None
+
     def recalcular_areas_acabamento_do_item(
         self, orcamento_item_id: int
     ) -> AreasAcabamentoResult:
@@ -1198,20 +1288,28 @@ class OrcamentoItemCusteioLinhaService:
     def resolver_valueset_para_def_peca(
         self, orcamento_item_id: int, peca: DefPecaResumo
     ) -> OrcamentoItemValuesetLinhaResumo | None:
-        """Resolve the item ValueSet line for a piece key (default option first)."""
-        if not peca.chave_valueset_material:
+        """Resolve the item ValueSet line for a piece material key."""
+        return self._resolver_valueset_por_chave(
+            orcamento_item_id, peca.chave_valueset_material
+        )
+
+    def _resolver_valueset_por_chave(
+        self, orcamento_item_id: int, chave: str | None
+    ) -> OrcamentoItemValuesetLinhaResumo | None:
+        """Resolve one item ValueSet line for a key (default option first)."""
+        if not chave:
             return None
 
-        chave = normalize_valueset_key(peca.chave_valueset_material)
+        chave_norm = normalize_valueset_key(chave)
 
         padrao = self.item_valueset_repository.get_default_by_item_chave(
-            orcamento_item_id, chave
+            orcamento_item_id, chave_norm
         )
         if padrao is not None:
             return padrao
 
         for linha in self.item_valueset_repository.list_by_item_chave(
-            orcamento_item_id, chave
+            orcamento_item_id, chave_norm
         ):
             if linha.ativo:
                 return linha

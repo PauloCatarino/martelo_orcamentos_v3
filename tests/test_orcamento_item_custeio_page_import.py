@@ -327,6 +327,7 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_custo_materia_prima_do_item" in source
     assert "recalcular_custos_ferragens_do_item" in source
     assert "recalcular_custos_ml_do_item" in source
+    assert "aplicar_acabamentos_do_item" in source
     assert "recalcular_areas_acabamento_do_item" in source
     assert "recalcular_custo_total_do_item" in source
 

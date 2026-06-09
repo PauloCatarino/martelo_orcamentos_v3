@@ -334,11 +334,12 @@ class OrcamentoItemCusteioPage(QWidget):
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
                 service.recalcular_medidas_do_item(self.item_id)
+                service.aplicar_acabamentos_do_item(self.item_id)
+                service.recalcular_areas_acabamento_do_item(self.item_id)
                 service.recalcular_orlas_do_item(self.item_id)
                 service.recalcular_custo_materia_prima_do_item(self.item_id)
                 service.recalcular_custos_ferragens_do_item(self.item_id)
                 service.recalcular_custos_ml_do_item(self.item_id)
-                service.recalcular_areas_acabamento_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()

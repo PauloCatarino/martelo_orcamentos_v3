@@ -26,6 +26,8 @@ def _peca(**kwargs):
         "orla_l2": 0,
         "chave_valueset_material": "MATERIAL_COSTAS",
         "permite_acabamento": False,
+        "chave_valueset_acabamento_sup": None,
+        "chave_valueset_acabamento_inf": None,
     }
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -260,11 +262,14 @@ class _FakeItemValuesetRepository:
     default_linha = None
     chave_rows: list = []
     by_id = None
+    defaults_by_chave: dict = {}
 
     def __init__(self, _session: object) -> None:
         pass
 
     def get_default_by_item_chave(self, orcamento_item_id: int, chave: str):
+        if chave in self.defaults_by_chave:
+            return self.defaults_by_chave[chave]
         return self.default_linha
 
     def list_by_item_chave(self, orcamento_item_id: int, chave: str):
@@ -310,6 +315,7 @@ def _reset() -> None:
     _FakeItemValuesetRepository.default_linha = None
     _FakeItemValuesetRepository.chave_rows = []
     _FakeItemValuesetRepository.by_id = None
+    _FakeItemValuesetRepository.defaults_by_chave = {}
     _FakeMateriaPrimaRepository.materia = None
     _FakeMateriaPrimaRepository.materias_por_ref = {}
 
@@ -1857,6 +1863,103 @@ def test_recalcular_areas_acabamento_ignora_divisao_e_composta(monkeypatch) -> N
     assert result.processadas == 0
     assert result.ignoradas == 2
     assert _FakeRepository.updated_payload is None
+
+
+def test_aplicar_acabamento_face_superior(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(codigo_opcao="LACADO_BRANCO")
+    }
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    result = service.aplicar_acabamentos_do_item(30)
+
+    assert result.processadas == 1
+    assert result.aplicadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["acabamento_face_sup"] == "LACADO_BRANCO"
+    assert payload["acabamento_face_inf"] == "SEM_ACABAMENTO"
+    assert "observacoes" not in payload
+
+
+def test_aplicar_acabamento_ambas_as_faces(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+            chave_valueset_acabamento_inf="ACABAMENTO_FACE_INF",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(codigo_opcao="LACADO_BRANCO"),
+        "ACABAMENTO_FACE_INF": _vs_linha(codigo_opcao="LACADO_BRANCO"),
+    }
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    service.aplicar_acabamentos_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["acabamento_face_sup"] == "LACADO_BRANCO"
+    assert payload["acabamento_face_inf"] == "LACADO_BRANCO"
+
+
+def test_aplicar_acabamento_peca_sem_acabamento(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1, permite_acabamento=False)}
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    result = service.aplicar_acabamentos_do_item(30)
+
+    assert result.aplicadas == 0
+    payload = _FakeRepository.updated_payload
+    assert payload["acabamento_face_sup"] == "SEM_ACABAMENTO"
+    assert payload["acabamento_face_inf"] == "SEM_ACABAMENTO"
+
+
+def test_aplicar_acabamento_ignora_ferragem_divisao_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="FERRAGEM", def_peca_id=3),
+        _resumo(id=2, tipo_linha="DIVISAO_INDEPENDENTE"),
+        _resumo(id=3, tipo_linha="PECA_COMPOSTA", def_peca_id=1),
+        _resumo(id=4, tipo_linha="PECA", def_peca_id=None),  # no def_peca
+    ]
+
+    result = service.aplicar_acabamentos_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 4
+    assert _FakeRepository.updated_payload is None
+
+
+def test_aplicar_acabamento_valueset_sem_valor(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {}
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = []
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    service.aplicar_acabamentos_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["acabamento_face_sup"] == "SEM_ACABAMENTO"
+    assert "ACABAMENTO_FACE_SUP sem valor no ValueSet" in payload["observacoes"]
 
 
 def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:
