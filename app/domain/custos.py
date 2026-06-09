@@ -13,22 +13,24 @@ from decimal import Decimal
 from app.domain.medidas import normalizar_numero
 from app.domain.numeros import normalize_percentagem_humana
 
-AVISO_MP_UNIDADE_ML = "Custo MP não calculado nesta fase: unidade ML."
-AVISO_MP_UNIDADE_UND = "Custo MP não calculado nesta fase: unidade UND."
-AVISO_MP_UNIDADE_INVALIDA = "Custo MP não calculado: unidade não validada."
 AVISO_MP_DADOS_INCOMPLETOS = "Custo MP não calculado: área ou preço em falta."
-
-AVISO_FERRAGEM_UNIDADE_INVALIDA = "Custo ferragem não calculado: unidade não validada."
 AVISO_FERRAGEM_DADOS_INCOMPLETOS = (
     "Custo ferragem não calculado: quantidade ou preço em falta."
 )
-
 AVISO_ML_DADOS_INCOMPLETOS = "Custo ML não calculado: consumo ou preço em falta."
-AVISO_ML_UNIDADE_INVALIDA = "Custo ML não calculado: unidade não validada."
+# Written once (by the MP recompute) only for lines whose unit none of the cost
+# rules (M2/ML/UND) can handle.
+AVISO_UNIDADE_INVALIDA = "Custo não calculado: unidade não validada."
 
 _UNIDADES_M2 = ("M2", "M²", "M^2", "MTQ", "METRO2")
 _UNIDADES_ML = ("ML", "M", "MTL")
 _UNIDADES_UND = ("UND", "UN", "UNI", "UNID", "PC", "PCS", "UNIDADE")
+
+
+def unidade_custo_valida(unidade) -> bool:
+    """Return True when the unit is handled by one of the cost rules (M2/ML/UND)."""
+    unid = (unidade or "").strip().upper()
+    return unid in _UNIDADES_M2 or unid in _UNIDADES_ML or unid in _UNIDADES_UND
 
 
 def desperdicio_para_fracao(desperdicio_percentagem) -> Decimal:
@@ -57,20 +59,17 @@ def calcular_custo_mp(
     desperdicio_percentagem,
     unidade,
 ) -> tuple[Decimal | None, str | None]:
-    """Return (custo_mp, aviso) for one line. Only M2 is costed in this phase.
+    """Return (custo_mp, aviso) for one line. Only M2 is costed here.
 
-    M2: ``area_m2 * qt_total * preco_liquido * (1 + desperdicio)``.
-    ML / UND / unknown unit: no cost + an explanatory warning.
+    M2: ``area_m2 * qt_total * preco_liquido * (1 + desperdicio)``. ML / UND /
+    unknown units are NOT MP's concern -> (None, None) with no warning (UND/ML are
+    costed as Custo ferragem; the unit-invalid diagnostic is written elsewhere).
     Missing area or price (with M2): no cost + warning. Never raises.
     """
     unid = (unidade or "").strip().upper()
 
-    if unid in _UNIDADES_ML:
-        return None, AVISO_MP_UNIDADE_ML
-    if unid in _UNIDADES_UND:
-        return None, AVISO_MP_UNIDADE_UND
     if unid not in _UNIDADES_M2:
-        return None, AVISO_MP_UNIDADE_INVALIDA
+        return None, None
 
     area = normalizar_numero(area_m2)
     preco = normalizar_numero(preco_liquido)
@@ -96,18 +95,14 @@ def calcular_custo_ferragem(
     UND: ``qt_total * preco_liquido * (1 + desperdicio)`` — here the waste % is a
     technical safety coefficient (miscounts, damaged/lost parts), not material
     waste; orlas are intentionally excluded (they have their own +100 mm margin).
-    M2 -> no cost, no warning (handled by Custo MP). ML / unknown unit -> no cost
-    + warning. Missing quantity or price (with UND) -> no cost + warning.
+    Non-UND units -> (None, None) with no warning: M2 is handled by Custo MP, ML
+    by calcular_custo_ml, and the unit-invalid diagnostic is written elsewhere.
+    Missing quantity or price (with UND) -> no cost + warning.
     """
     unid = (unidade or "").strip().upper()
 
-    if unid in _UNIDADES_M2:
-        return None, None
-    if unid in _UNIDADES_ML:
-        # ML lines are costed by calcular_custo_ml (also into custo_ferragem).
-        return None, None
     if unid not in _UNIDADES_UND:
-        return None, AVISO_FERRAGEM_UNIDADE_INVALIDA
+        return None, None
 
     qt = normalizar_numero(qt_total)
     preco = normalizar_numero(preco_liquido)

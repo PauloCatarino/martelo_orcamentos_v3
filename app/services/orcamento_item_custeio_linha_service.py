@@ -32,11 +32,13 @@ from app.domain.acabamentos import (
     tem_acabamento,
 )
 from app.domain.custos import (
+    AVISO_UNIDADE_INVALIDA,
     calcular_custo_acabamento_face,
     calcular_custo_ferragem,
     calcular_custo_ml,
     calcular_custo_mp,
     calcular_custo_total_linha,
+    unidade_custo_valida,
 )
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
@@ -640,6 +642,14 @@ class OrcamentoItemCusteioLinhaService:
 
             fields: dict = {"custo_mp": custo}
             nova_obs = self._mesclar_observacao(linha.observacoes, "Custo MP", aviso)
+            # Single unit-invalid diagnostic (units M2/UND/ML do not trigger it);
+            # cleaned automatically once the line gets a valid unit.
+            aviso_unidade = (
+                None if unidade_custo_valida(linha.unidade) else AVISO_UNIDADE_INVALIDA
+            )
+            nova_obs = self._mesclar_observacao(
+                nova_obs, "Custo não calculado: unidade", aviso_unidade
+            )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
             if custo is not None:
@@ -981,7 +991,9 @@ class OrcamentoItemCusteioLinhaService:
             linha.area_acabamento_sup if face_superior else linha.area_acabamento_inf
         )
         if normalizar_numero(area) is None:
-            return None, "Acabamento não calculado: área de acabamento em falta."
+            # The missing-area cause ("dimensões Comp/Larg em falta") is already
+            # diagnosed by recalcular_areas_acabamento_do_item; do not duplicate it.
+            return None, None
 
         preco, desp = self._preco_desp_acabamento_face(
             orcamento_item_id, peca, linha, face_superior=face_superior

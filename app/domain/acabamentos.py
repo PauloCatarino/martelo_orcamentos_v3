@@ -13,7 +13,7 @@ from app.domain.medidas import normalizar_numero
 
 SEM_ACABAMENTO = "SEM_ACABAMENTO"
 AVISO_ACABAMENTO_DADOS_INCOMPLETOS = (
-    "Área de acabamento não calculada: área ou quantidade em falta."
+    "Área de acabamento não calculada: dimensões Comp/Larg em falta."
 )
 
 

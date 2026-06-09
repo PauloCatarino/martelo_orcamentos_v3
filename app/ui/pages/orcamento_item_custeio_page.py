@@ -51,6 +51,7 @@ from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDia
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
@@ -609,7 +610,8 @@ class OrcamentoItemCusteioPage(QWidget):
                     if header in self.EXCLUSAO_COLUMNS:
                         item = self._criar_item_exclusao(header, linha)
                     else:
-                        item = QTableWidgetItem(str(valores.get(header, "")))
+                        # Tooltip with the full content (helps narrow text columns).
+                        item = criar_item_tabela(valores.get(header, ""))
                         if self._coluna_editavel(header, linha):
                             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                         else:

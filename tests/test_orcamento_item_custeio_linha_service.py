@@ -1428,7 +1428,8 @@ def test_recalcular_custo_mp_ignora_divisao_e_composta(monkeypatch) -> None:
     assert _FakeRepository.updated_payload is None
 
 
-def test_recalcular_custo_mp_und_preenche_observacao(monkeypatch) -> None:
+def test_recalcular_custo_mp_und_nao_avisa(monkeypatch) -> None:
+    # UND is costed as Custo ferragem -> the MP recompute writes no UND note.
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
         _resumo(id=1, tipo_linha="FERRAGEM", unidade="UND", preco_liquido=Decimal("6.50")),
@@ -1439,7 +1440,40 @@ def test_recalcular_custo_mp_und_preenche_observacao(monkeypatch) -> None:
     assert result.calculadas == 0
     payload = _FakeRepository.updated_payload
     assert payload["custo_mp"] is None
-    assert "unidade UND" in payload["observacoes"]
+    assert "unidade UND" not in (payload.get("observacoes") or "")
+    assert "unidade não validada" not in (payload.get("observacoes") or "")
+
+
+def test_recalcular_custo_mp_limpa_observacao_obsoleta(monkeypatch) -> None:
+    # An old obsolete MP note on a UND line is removed on the next recompute.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            preco_liquido=Decimal("6.50"),
+            observacoes="Custo MP não calculado nesta fase: unidade UND.",
+        ),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["observacoes"] is None  # obsolete note cleared
+
+
+def test_recalcular_custo_mp_unidade_desconhecida(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", unidade="XPTO", preco_liquido=Decimal("6.50")),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_mp"] is None
+    assert "Custo não calculado: unidade não validada." in payload["observacoes"]
 
 
 def test_recalcular_custo_mp_so_altera_custo_mp(monkeypatch) -> None:
@@ -1512,9 +1546,12 @@ def test_recalcular_custo_mp_preserva_observacao_de_orla(monkeypatch) -> None:
 
     service.recalcular_custo_materia_prima_do_item(30)
 
-    obs = _FakeRepository.updated_payload["observacoes"]
-    assert "Custo de orla" in obs  # existing orla note preserved
-    assert "unidade UND" in obs  # new material-cost note added
+    payload = _FakeRepository.updated_payload
+    # The orla note is preserved; no obsolete UND material-cost note is added (so
+    # the observation may even be left unchanged).
+    obs = payload.get("observacoes", _FakeRepository.active_rows[0].observacoes)
+    assert "Custo de orla" in obs
+    assert "unidade UND" not in obs
 
 
 def test_recalcular_ferragens_und(monkeypatch) -> None:
@@ -2033,7 +2070,10 @@ def test_recalcular_custo_acabamento_sem_acabamento(monkeypatch) -> None:
     assert "observacoes" not in payload
 
 
-def test_recalcular_custo_acabamento_sem_area_observacao(monkeypatch) -> None:
+def test_recalcular_custo_acabamento_sem_area_nao_duplica(monkeypatch) -> None:
+    # With a finish but no area, the cost recompute leaves the cost empty and does
+    # NOT add an "área de acabamento" note (the dimensions diagnostic is written by
+    # recalcular_areas_acabamento_do_item).
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {
         1: _peca(
@@ -2056,7 +2096,25 @@ def test_recalcular_custo_acabamento_sem_area_observacao(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["custo_acabamento"] is None
-    assert "área de acabamento em falta" in payload["observacoes"]
+    assert "observacoes" not in payload  # no duplicate finishing note
+
+
+def test_recalcular_areas_acabamento_sem_area_avisa_dimensoes(monkeypatch) -> None:
+    # The clear "dimensões Comp/Larg em falta" note comes from the area recompute.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            acabamento_face_sup="LACAGEM",
+            area_m2=None,
+        ),
+    ]
+
+    service.recalcular_areas_acabamento_do_item(30)
+
+    obs = _FakeRepository.updated_payload["observacoes"]
+    assert "dimensões Comp/Larg em falta" in obs
 
 
 def test_recalcular_custo_acabamento_sem_preco_observacao(monkeypatch) -> None:

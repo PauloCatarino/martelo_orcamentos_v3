@@ -6,12 +6,8 @@ from decimal import Decimal
 
 from app.domain.custos import (
     AVISO_FERRAGEM_DADOS_INCOMPLETOS,
-    AVISO_FERRAGEM_UNIDADE_INVALIDA,
     AVISO_ML_DADOS_INCOMPLETOS,
     AVISO_MP_DADOS_INCOMPLETOS,
-    AVISO_MP_UNIDADE_INVALIDA,
-    AVISO_MP_UNIDADE_ML,
-    AVISO_MP_UNIDADE_UND,
     calcular_custo_acabamento_face,
     calcular_custo_ferragem,
     calcular_custo_ml,
@@ -19,6 +15,7 @@ from app.domain.custos import (
     calcular_custo_total_linha,
     desperdicio_para_fracao,
     fator_desperdicio,
+    unidade_custo_valida,
 )
 
 
@@ -155,28 +152,39 @@ def test_custo_mp_preco_vazio() -> None:
     assert aviso == AVISO_MP_DADOS_INCOMPLETOS
 
 
-def test_custo_mp_unidade_ml() -> None:
+def test_custo_mp_unidade_ml_sem_aviso() -> None:
+    # ML is costed as Custo ferragem -> MP says nothing (no obsolete warning).
     custo, aviso = calcular_custo_mp(
         Decimal("0.5"), Decimal("6"), Decimal("10"), None, "ML"
     )
     assert custo is None
-    assert aviso == AVISO_MP_UNIDADE_ML
+    assert aviso is None
 
 
-def test_custo_mp_unidade_und() -> None:
+def test_custo_mp_unidade_und_sem_aviso() -> None:
     custo, aviso = calcular_custo_mp(
         Decimal("0.5"), Decimal("6"), Decimal("10"), None, "UND"
     )
     assert custo is None
-    assert aviso == AVISO_MP_UNIDADE_UND
+    assert aviso is None
 
 
-def test_custo_mp_unidade_vazia() -> None:
+def test_custo_mp_unidade_vazia_sem_aviso() -> None:
+    # The unit-invalid diagnostic is written by the service, not by calcular_custo_mp.
     custo, aviso = calcular_custo_mp(
         Decimal("0.5"), Decimal("6"), Decimal("10"), None, ""
     )
     assert custo is None
-    assert aviso == AVISO_MP_UNIDADE_INVALIDA
+    assert aviso is None
+
+
+def test_unidade_custo_valida() -> None:
+    assert unidade_custo_valida("M2") is True
+    assert unidade_custo_valida("und") is True
+    assert unidade_custo_valida("ML") is True
+    assert unidade_custo_valida("") is False
+    assert unidade_custo_valida(None) is False
+    assert unidade_custo_valida("XPTO") is False
 
 
 def test_custo_mp_unidade_m2_variacoes() -> None:
@@ -245,10 +253,11 @@ def test_custo_ferragem_unidade_ml_deferido() -> None:
     assert aviso is None
 
 
-def test_custo_ferragem_unidade_desconhecida() -> None:
+def test_custo_ferragem_unidade_desconhecida_sem_aviso() -> None:
+    # Unknown unit -> ferragem says nothing; the diagnostic is written by the service.
     custo, aviso = calcular_custo_ferragem(Decimal("5"), Decimal("2.53"), None, "")
     assert custo is None
-    assert aviso == AVISO_FERRAGEM_UNIDADE_INVALIDA
+    assert aviso is None
 
 
 def test_custo_ferragem_und_variacoes() -> None:

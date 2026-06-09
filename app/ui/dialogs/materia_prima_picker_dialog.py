@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
 )
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +26,7 @@ from app.domain.materia_prima_snapshot import (
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
+from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -288,7 +288,7 @@ class MateriaPrimaPickerDialog(QDialog):
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                self.table.setItem(row_index, column_index, criar_item_tabela(value))
 
     def _get_selected(self) -> DefMateriaPrimaResumo | None:
         """Return the selected raw material."""
