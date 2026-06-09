@@ -245,6 +245,36 @@ class _FakeComponenteRepository:
         return self.componentes
 
 
+class _FakePecaOperacaoRepository:
+    ligacoes_por_peca: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_active_by_def_peca(self, def_peca_id: int):
+        return self.ligacoes_por_peca.get(def_peca_id, [])
+
+
+class _FakeOperacaoRepository:
+    operacoes: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.operacoes.get(id)
+
+
+class _FakeMaquinaRepository:
+    maquinas: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.maquinas.get(id)
+
+
 class _FakeMateriaPrimaRepository:
     materia = None
     materias_por_ref: dict = {}
@@ -319,6 +349,9 @@ def _reset() -> None:
     _FakeItemValuesetRepository.defaults_by_chave = {}
     _FakeMateriaPrimaRepository.materia = None
     _FakeMateriaPrimaRepository.materias_por_ref = {}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {}
+    _FakeOperacaoRepository.operacoes = {}
+    _FakeMaquinaRepository.maquinas = {}
 
 
 def _service(monkeypatch):
@@ -334,6 +367,11 @@ def _service(monkeypatch):
     monkeypatch.setattr(
         service_module, "DefMateriaPrimaRepository", _FakeMateriaPrimaRepository
     )
+    monkeypatch.setattr(
+        service_module, "DefPecaOperacaoRepository", _FakePecaOperacaoRepository
+    )
+    monkeypatch.setattr(service_module, "DefOperacaoRepository", _FakeOperacaoRepository)
+    monkeypatch.setattr(service_module, "DefMaquinaRepository", _FakeMaquinaRepository)
     session = _FakeSession()
     return service_module.OrcamentoItemCusteioLinhaService(session=session), session
 
@@ -2115,6 +2153,89 @@ def test_recalcular_areas_acabamento_sem_area_avisa_dimensoes(monkeypatch) -> No
 
     obs = _FakeRepository.updated_payload["observacoes"]
     assert "dimensões Comp/Larg em falta" in obs
+
+
+def _ligacao_op(def_operacao_id: int):
+    return SimpleNamespace(def_operacao_id=def_operacao_id)
+
+
+def _operacao(codigo: str, maquina_id=None):
+    return SimpleNamespace(codigo=codigo, nome=codigo, maquina_id=maquina_id)
+
+
+def test_aplicar_operacoes_preenche_operacoes_e_maquina(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1, codigo="PORTA_SIMPLES")}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2), _ligacao_op(3)]}
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE", maquina_id=10),
+        3: _operacao("ORLAGEM", maquina_id=11),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        10: SimpleNamespace(codigo="SECCIONADORA", nome="Seccionadora"),
+        11: SimpleNamespace(codigo="ORLADORA", nome="Orladora"),
+    }
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    result = service.aplicar_operacoes_do_item(30)
+
+    assert result.processadas == 1
+    assert result.aplicadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["operacoes"] == "CORTE; ORLAGEM"
+    assert payload["maquina"] == "SECCIONADORA; ORLADORA"
+
+
+def test_aplicar_operacoes_sem_operacoes_fica_vazio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {}
+    _FakeRepository.active_rows = [_resumo(id=1, tipo_linha="PECA", def_peca_id=1)]
+
+    result = service.aplicar_operacoes_do_item(30)
+
+    assert result.aplicadas == 0
+    payload = _FakeRepository.updated_payload
+    assert payload["operacoes"] is None
+    assert payload["maquina"] is None
+
+
+def test_aplicar_operacoes_ignora_ferragem_divisao_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="FERRAGEM", def_peca_id=1),
+        _resumo(id=2, tipo_linha="DIVISAO_INDEPENDENTE"),
+        _resumo(id=3, tipo_linha="PECA_COMPOSTA", def_peca_id=1),
+        _resumo(id=4, tipo_linha="PECA", def_peca_id=None),
+    ]
+
+    result = service.aplicar_operacoes_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 4
+    assert _FakeRepository.updated_payload is None
+
+
+def test_aplicar_operacoes_preserva_edicao_local(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {2: _operacao("CORTE")}
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            operacoes="OP MANUAL",
+            editado_localmente=True,
+        ),
+    ]
+
+    result = service.aplicar_operacoes_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 1
+    assert _FakeRepository.updated_payload is None  # manual operations preserved
 
 
 def test_recalcular_custo_acabamento_sem_preco_observacao(monkeypatch) -> None:

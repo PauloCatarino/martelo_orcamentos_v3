@@ -191,6 +191,12 @@ class OrcamentoItemCusteioLinha(Base):
     tempo_calculado: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_manual: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
+    # Production operations mapped from the piece definition (text list, e.g.
+    # "CORTE; ORLAGEM; CNC"); no times/costs are computed in this phase.
+    operacoes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    maquina: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tipo_producao: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     override_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )

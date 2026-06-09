@@ -344,6 +344,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custos_ferragens_do_item(self.item_id)
                 service.recalcular_custos_ml_do_item(self.item_id)
                 service.recalcular_custo_acabamento_do_item(self.item_id)
+                service.aplicar_operacoes_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
@@ -1023,6 +1024,9 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo MP": format_currency(linha.custo_mp),
             "Custo ferragem": format_currency(linha.custo_ferragem),
             "Custo acabamento": format_currency(linha.custo_acabamento),
+            "Máquina": linha.maquina or "",
+            "Operações": linha.operacoes or "",
+            "Tipo produção": linha.tipo_producao or "",
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

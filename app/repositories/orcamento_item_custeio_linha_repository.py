@@ -104,6 +104,9 @@ class OrcamentoItemCusteioLinhaResumo:
     acabamento_inf_unidade: str | None = None
     acabamento_inf_preco_liquido: Decimal | None = None
     acabamento_inf_desperdicio_percentagem: Decimal | None = None
+    operacoes: str | None = None
+    maquina: str | None = None
+    tipo_producao: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -306,6 +309,9 @@ class OrcamentoItemCusteioLinhaRepository:
             acabamento_inf_desperdicio_percentagem=(
                 linha.acabamento_inf_desperdicio_percentagem
             ),
+            operacoes=linha.operacoes,
+            maquina=linha.maquina,
+            tipo_producao=linha.tipo_producao,
             excluir_mp=linha.excluir_mp,
             excluir_orla=linha.excluir_orla,
             excluir_ferragem=linha.excluir_ferragem,

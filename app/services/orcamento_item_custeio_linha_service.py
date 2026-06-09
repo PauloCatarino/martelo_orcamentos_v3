@@ -51,8 +51,11 @@ from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
+from app.repositories.def_maquina_repository import DefMaquinaRepository
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaRepository
+from app.repositories.def_operacao_repository import DefOperacaoRepository
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
+from app.repositories.def_peca_operacao_repository import DefPecaOperacaoRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
@@ -260,6 +263,15 @@ class CustoAcabamentoResult:
 
 
 @dataclass(frozen=True)
+class OperacoesResult:
+    """Summary of one production-operations mapping over an item."""
+
+    processadas: int
+    aplicadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
 class ExclusaoLoteResult:
     """Summary of one bulk cost-exclusion flag change over an item."""
 
@@ -278,6 +290,9 @@ class OrcamentoItemCusteioLinhaService:
         self.componente_repository = DefPecaComponenteRepository(session)
         self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
         self.materia_prima_repository = DefMateriaPrimaRepository(session)
+        self.peca_operacao_repository = DefPecaOperacaoRepository(session)
+        self.operacao_repository = DefOperacaoRepository(session)
+        self.maquina_repository = DefMaquinaRepository(session)
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -974,6 +989,74 @@ class OrcamentoItemCusteioLinhaService:
         return CustoAcabamentoResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
+
+    def aplicar_operacoes_do_item(self, orcamento_item_id: int) -> OperacoesResult:
+        """Map the piece-definition operations onto an item's PECA lines.
+
+        Fills the textual ``operacoes`` (e.g. "CORTE; ORLAGEM; CNC") and the
+        ``maquina`` involved, from DefPecaOperacao + DefOperacao. Only PECA lines
+        with a def_peca are processed (ferragens, ML, divisions and composite
+        parents are skipped). A line whose operations were already filled and is
+        edited locally is preserved. No times/costs are computed; measures,
+        materials, ValueSet, acabamentos and existing costs are not touched.
+        """
+        processadas = 0
+        aplicadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._linha_recebe_operacoes(linha):
+                ignoradas += 1
+                continue
+            if linha.operacoes and linha.editado_localmente:
+                # Preserve a locally edited operations cell.
+                ignoradas += 1
+                continue
+
+            operacoes_texto, maquina_texto = self._operacoes_da_peca(linha.def_peca_id)
+
+            processadas += 1
+            fields: dict = {
+                "operacoes": operacoes_texto or None,
+                "maquina": maquina_texto or None,
+            }
+            if operacoes_texto:
+                aplicadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return OperacoesResult(
+            processadas=processadas, aplicadas=aplicadas, ignoradas=ignoradas
+        )
+
+    def _linha_recebe_operacoes(self, linha) -> bool:
+        """Return True for real piece lines (with a def_peca) that take operations."""
+        return linha.tipo_linha == PECA and linha.def_peca_id is not None
+
+    def _operacoes_da_peca(self, def_peca_id: int) -> tuple[str, str]:
+        """Build the "; "-joined operation codes and the distinct machines of a piece."""
+        nomes: list[str] = []
+        maquinas: list[str] = []
+
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(def_peca_id):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is None:
+                continue
+
+            nome = operacao.codigo or operacao.nome
+            if nome:
+                nomes.append(nome)
+
+            if operacao.maquina_id is not None:
+                maquina = self.maquina_repository.get_by_id(operacao.maquina_id)
+                if maquina is not None:
+                    nome_maquina = maquina.codigo or maquina.nome
+                    if nome_maquina and nome_maquina not in maquinas:
+                        maquinas.append(nome_maquina)
+
+        return "; ".join(nomes), "; ".join(maquinas)
 
     def _custo_acabamento_face(
         self, orcamento_item_id: int, peca, linha, *, face_superior: bool
