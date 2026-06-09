@@ -125,6 +125,30 @@ class OrcamentoItemCusteioLinha(Base):
     area_acabamento_sup: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     area_acabamento_inf: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
+    # Local finishing edits: when True the line's own finishing price/waste
+    # prevail over the item ValueSet (the code stays in acabamento_face_sup/inf).
+    acabamento_editado_localmente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    acabamento_sup_ref_le: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    acabamento_sup_descricao: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    acabamento_sup_unidade: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    acabamento_sup_preco_liquido: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    acabamento_sup_desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )
+    acabamento_inf_ref_le: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    acabamento_inf_descricao: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    acabamento_inf_unidade: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    acabamento_inf_preco_liquido: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    acabamento_inf_desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )
+
     custo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     margem_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)

@@ -50,6 +50,19 @@ def test_dialog_uses_service() -> None:
     assert "pesquisar" in source
 
 
+def test_dialog_aceita_filtro_familia() -> None:
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    assert "familia" in inspect.signature(MateriaPrimaPickerDialog).parameters
+    assert hasattr(MateriaPrimaPickerDialog, "_pertence_familia")
+
+    pesquisar = inspect.getsource(MateriaPrimaPickerDialog.pesquisar)
+    assert "_familia_filtro" in pesquisar
+
+    pertence = inspect.getsource(MateriaPrimaPickerDialog._pertence_familia)
+    assert "familia_materia_prima" in pertence
+
+
 def test_dialog_normaliza_percentagens() -> None:
     from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 

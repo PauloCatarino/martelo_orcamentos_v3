@@ -2088,6 +2088,161 @@ def test_recalcular_custo_acabamento_sem_preco_observacao(monkeypatch) -> None:
     assert "preço do acabamento não encontrado" in payload["observacoes"]
 
 
+def test_custo_acabamento_local_prevalece(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(
+            preco_liquido=Decimal("18.0"), desperdicio_percentagem=Decimal("1")
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+            acabamento_face_inf="SEM_ACABAMENTO",
+            acabamento_editado_localmente=True,
+            acabamento_sup_preco_liquido=Decimal("20.0"),
+            acabamento_sup_desperdicio_percentagem=Decimal("1"),
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    # Local price 20 prevails over the ValueSet 18: 2 x 20 x 1.01 = 40.40.
+    assert _FakeRepository.updated_payload["custo_acabamento"] == Decimal("40.40")
+
+
+def test_custo_acabamento_local_desperdicio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+            acabamento_editado_localmente=True,
+            acabamento_sup_preco_liquido=Decimal("18.0"),
+            acabamento_sup_desperdicio_percentagem=Decimal("5"),
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    # 2 x 18 x 1.05 = 37.80.
+    assert _FakeRepository.updated_payload["custo_acabamento"] == Decimal("37.80")
+
+
+def test_custo_acabamento_local_sem_preco_fallback_valueset(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(
+            preco_liquido=Decimal("18.0"), desperdicio_percentagem=Decimal("1")
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+            acabamento_editado_localmente=True,
+            acabamento_sup_preco_liquido=None,  # empty local price -> ValueSet
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    assert _FakeRepository.updated_payload["custo_acabamento"] == Decimal("36.36")
+
+
+def test_aplicar_acabamento_nao_sobrescreve_local(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(codigo_opcao="LACADO_BRANCO")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM_ESPECIAL",
+            acabamento_editado_localmente=True,
+        ),
+    ]
+
+    result = service.aplicar_acabamentos_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 1
+    assert _FakeRepository.updated_payload is None  # local edit preserved
+
+
+def test_atualizar_acabamento_local_linha_marca_flag(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA", def_peca_id=1)
+    _FakeRepository.active_rows = [_FakeRepository.by_id]
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+
+    service.atualizar_acabamento_local_linha(
+        5,
+        {
+            "acabamento_face_sup": "LACAGEM",
+            "acabamento_sup_preco_liquido": Decimal("20.0"),
+            "acabamento_sup_desperdicio_percentagem": Decimal("1"),
+        },
+    )
+
+    saves = [
+        p
+        for p in _FakeRepository.updated_payloads
+        if p.get("acabamento_editado_localmente") is True
+    ]
+    assert saves, "expected a local-finish save"
+    assert saves[0]["acabamento_sup_preco_liquido"] == Decimal("20.0")
+    assert saves[0]["acabamento_face_sup"] == "LACAGEM"
+    # Editing finishing data also flips the visual "Editado localmente" flag.
+    assert saves[0]["editado_localmente"] is True
+
+
+def test_atualizar_acabamento_local_linha_nao_peca(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="FERRAGEM")
+
+    try:
+        service.atualizar_acabamento_local_linha(5, {"acabamento_face_sup": "LACAGEM"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+
 def test_recalcular_custo_acabamento_ignora_ferragem(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [

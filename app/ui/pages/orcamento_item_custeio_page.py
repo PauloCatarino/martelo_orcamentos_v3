@@ -29,6 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    PECA,
     PECA_COMPOSTA,
     get_custeio_linha_type_label,
 )
@@ -45,6 +46,7 @@ from app.services.orcamento_item_custeio_linha_service import (
 )
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
@@ -760,6 +762,8 @@ class OrcamentoItemCusteioPage(QWidget):
         menu.addAction("Editar Dados do Material", self.editar_dados_material_linha)
         menu.addAction("Limpar Dados do Material", self.limpar_dados_material_linha)
         menu.addSeparator()
+        menu.addAction("Editar Dados do Acabamento", self.editar_dados_acabamento_linha)
+        menu.addSeparator()
         self._preencher_menu_exclusoes(menu.addMenu("Exclusões"))
         menu.addSeparator()
         menu.addAction("Eliminar linha(s)", self.eliminar_linhas_selecionadas)
@@ -917,6 +921,37 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Material da linha limpo.")
+
+    def editar_dados_acabamento_linha(self) -> None:
+        """Open the dialog to edit the selected line's finishing data locally."""
+        linha = self._get_linha_selecionada()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha.")
+            return
+        if linha.tipo_linha != PECA:
+            self.status_label.setText("Esta linha não suporta acabamento.")
+            return
+
+        saved = False
+
+        def handle_save(dados) -> bool:
+            nonlocal saved
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(
+                        session
+                    ).atualizar_acabamento_local_linha(linha.id, dados)
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("Não foi possível atualizar o acabamento da linha.")
+                return False
+
+            saved = True
+            return True
+
+        dialog = CusteioLinhaAcabamentoDialog(linha, parent=self, on_save=handle_save)
+        if dialog.exec() and saved:
+            self.carregar()
+            self.status_label.setText("Acabamento da linha atualizado.")
 
     def _linha_para_valores(
         self, linha: OrcamentoItemCusteioLinhaResumo

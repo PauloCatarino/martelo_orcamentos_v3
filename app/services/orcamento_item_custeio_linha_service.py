@@ -156,6 +156,23 @@ MATERIAL_FIELDS = (
     "esp_mp",
 )
 
+# Local finishing fields edited via "Editar Dados do Acabamento" (kept separate
+# from the main material snapshot). The code/option stays in acabamento_face_*.
+ACABAMENTO_LOCAL_FIELDS = (
+    "acabamento_face_sup",
+    "acabamento_sup_ref_le",
+    "acabamento_sup_descricao",
+    "acabamento_sup_unidade",
+    "acabamento_sup_preco_liquido",
+    "acabamento_sup_desperdicio_percentagem",
+    "acabamento_face_inf",
+    "acabamento_inf_ref_le",
+    "acabamento_inf_descricao",
+    "acabamento_inf_unidade",
+    "acabamento_inf_preco_liquido",
+    "acabamento_inf_desperdicio_percentagem",
+)
+
 
 @dataclass(frozen=True)
 class AdicionarPecasResult:
@@ -776,6 +793,10 @@ class OrcamentoItemCusteioLinhaService:
             if not self._linha_recebe_acabamento(linha):
                 ignoradas += 1
                 continue
+            if linha.acabamento_editado_localmente:
+                # Local finishing edits prevail: do not overwrite them.
+                ignoradas += 1
+                continue
 
             peca = self.peca_repository.get_by_id(linha.def_peca_id)
             acab_sup, aviso_sup = self._resolver_acabamento_face(
@@ -808,8 +829,17 @@ class OrcamentoItemCusteioLinhaService:
         )
 
     def _linha_recebe_acabamento(self, linha) -> bool:
-        """Return True for real piece lines that can receive a finish."""
-        return linha.tipo_linha == PECA and linha.def_peca_id is not None
+        """Return True for real piece lines that can receive a finish.
+
+        Normal pieces resolve the finish from their def_peca + ValueSet; a line
+        edited locally keeps its own finishing data even without a def_peca.
+        """
+        if linha.tipo_linha != PECA:
+            return False
+        return (
+            linha.def_peca_id is not None
+            or getattr(linha, "acabamento_editado_localmente", False)
+        )
 
     def _resolver_acabamento_face(
         self, orcamento_item_id: int, peca, *, face_superior: bool
@@ -938,7 +968,11 @@ class OrcamentoItemCusteioLinhaService:
     def _custo_acabamento_face(
         self, orcamento_item_id: int, peca, linha, *, face_superior: bool
     ) -> tuple[Decimal | None, str | None]:
-        """Cost (value, aviso) of one finishing face from its area + ValueSet price."""
+        """Cost (value, aviso) of one finishing face from its area + price.
+
+        Local finishing edits (acabamento_editado_localmente) take priority over
+        the item ValueSet; an empty local price falls back to the ValueSet.
+        """
         acab = linha.acabamento_face_sup if face_superior else linha.acabamento_face_inf
         if not tem_acabamento(acab):
             return Decimal("0"), None
@@ -949,6 +983,28 @@ class OrcamentoItemCusteioLinhaService:
         if normalizar_numero(area) is None:
             return None, "Acabamento não calculado: área de acabamento em falta."
 
+        preco, desp = self._preco_desp_acabamento_face(
+            orcamento_item_id, peca, linha, face_superior=face_superior
+        )
+        if normalizar_numero(preco) is None:
+            return None, "Acabamento não calculado: preço do acabamento não encontrado."
+
+        return calcular_custo_acabamento_face(area, preco, desp), None
+
+    def _preco_desp_acabamento_face(
+        self, orcamento_item_id: int, peca, linha, *, face_superior: bool
+    ) -> tuple[object, object]:
+        """Return (preco_liquido, desperdicio) for a face: local first, else ValueSet."""
+        if getattr(linha, "acabamento_editado_localmente", False):
+            if face_superior:
+                preco_local = linha.acabamento_sup_preco_liquido
+                desp_local = linha.acabamento_sup_desperdicio_percentagem
+            else:
+                preco_local = linha.acabamento_inf_preco_liquido
+                desp_local = linha.acabamento_inf_desperdicio_percentagem
+            if normalizar_numero(preco_local) is not None:
+                return preco_local, desp_local
+
         chave = None
         if peca is not None:
             chave = (
@@ -957,12 +1013,10 @@ class OrcamentoItemCusteioLinhaService:
                 else peca.chave_valueset_acabamento_inf
             )
         linha_vs = self._resolver_valueset_por_chave(orcamento_item_id, chave)
-        preco = linha_vs.preco_liquido if linha_vs is not None else None
-        if normalizar_numero(preco) is None:
-            return None, "Acabamento não calculado: preço do acabamento não encontrado."
+        if linha_vs is None:
+            return None, None
 
-        desp = linha_vs.desperdicio_percentagem if linha_vs is not None else None
-        return calcular_custo_acabamento_face(area, preco, desp), None
+        return linha_vs.preco_liquido, linha_vs.desperdicio_percentagem
 
     def _somar_custos_acabamento(self, *custos) -> Decimal | None:
         """Total of the face finishing costs, or None when any face is unresolved."""
@@ -970,6 +1024,45 @@ class OrcamentoItemCusteioLinhaService:
             return None
 
         return sum(custos, Decimal("0"))
+
+    def linha_suporta_acabamento(self, linha) -> bool:
+        """Return True when the line can carry a finish (real piece lines only)."""
+        return linha.tipo_linha == PECA
+
+    def atualizar_acabamento_local_linha(
+        self, linha_id: int, dados: dict
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Save local finishing data of one line, then recompute areas/cost/total.
+
+        Marks ``acabamento_editado_localmente`` (so the automatic finishing
+        application no longer overwrites the line; local price/waste then prevail
+        in Custo acabamento) AND the visual ``editado_localmente`` flag, so the
+        "Editado localmente" column reads Yes — just like editing the material.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+
+        if not self.linha_suporta_acabamento(linha):
+            raise ValueError("Esta linha não suporta acabamento.")
+
+        fields = {
+            field: dados.get(field)
+            for field in ACABAMENTO_LOCAL_FIELDS
+            if field in dados
+        }
+        fields["acabamento_editado_localmente"] = True
+        fields["editado_localmente"] = True
+
+        self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        item_id = linha.orcamento_item_id
+        self.recalcular_areas_acabamento_do_item(item_id)
+        self.recalcular_custo_acabamento_do_item(item_id)
+        self.recalcular_custo_total_do_item(item_id)
+
+        return self.repository.get_by_id(linha_id)
 
     def atualizar_exclusao_linha(
         self, linha_id: int, campo: str, excluir: bool

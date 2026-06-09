@@ -106,6 +106,21 @@ def test_orcamento_item_custeio_page_menu_exclusoes_em_lote() -> None:
     assert "carregar" in aplicar
 
 
+def test_orcamento_item_custeio_page_menu_acabamento() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Editar Dados do Acabamento" in menu
+
+    assert hasattr(OrcamentoItemCusteioPage, "editar_dados_acabamento_linha")
+    handler = inspect.getsource(
+        OrcamentoItemCusteioPage.editar_dados_acabamento_linha
+    )
+    assert "atualizar_acabamento_local_linha" in handler
+    assert "suporta acabamento" in handler  # message for unsupported lines
+    assert "CusteioLinhaAcabamentoDialog" in handler
+
+
 def test_orcamento_item_custeio_page_uses_item_line_service() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

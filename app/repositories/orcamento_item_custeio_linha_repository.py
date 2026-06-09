@@ -93,6 +93,17 @@ class OrcamentoItemCusteioLinhaResumo:
     acabamento_face_inf: str | None = None
     area_acabamento_sup: Decimal | None = None
     area_acabamento_inf: Decimal | None = None
+    acabamento_editado_localmente: bool = False
+    acabamento_sup_ref_le: str | None = None
+    acabamento_sup_descricao: str | None = None
+    acabamento_sup_unidade: str | None = None
+    acabamento_sup_preco_liquido: Decimal | None = None
+    acabamento_sup_desperdicio_percentagem: Decimal | None = None
+    acabamento_inf_ref_le: str | None = None
+    acabamento_inf_descricao: str | None = None
+    acabamento_inf_unidade: str | None = None
+    acabamento_inf_preco_liquido: Decimal | None = None
+    acabamento_inf_desperdicio_percentagem: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -280,6 +291,21 @@ class OrcamentoItemCusteioLinhaRepository:
             acabamento_face_inf=linha.acabamento_face_inf,
             area_acabamento_sup=linha.area_acabamento_sup,
             area_acabamento_inf=linha.area_acabamento_inf,
+            acabamento_editado_localmente=linha.acabamento_editado_localmente,
+            acabamento_sup_ref_le=linha.acabamento_sup_ref_le,
+            acabamento_sup_descricao=linha.acabamento_sup_descricao,
+            acabamento_sup_unidade=linha.acabamento_sup_unidade,
+            acabamento_sup_preco_liquido=linha.acabamento_sup_preco_liquido,
+            acabamento_sup_desperdicio_percentagem=(
+                linha.acabamento_sup_desperdicio_percentagem
+            ),
+            acabamento_inf_ref_le=linha.acabamento_inf_ref_le,
+            acabamento_inf_descricao=linha.acabamento_inf_descricao,
+            acabamento_inf_unidade=linha.acabamento_inf_unidade,
+            acabamento_inf_preco_liquido=linha.acabamento_inf_preco_liquido,
+            acabamento_inf_desperdicio_percentagem=(
+                linha.acabamento_inf_desperdicio_percentagem
+            ),
             excluir_mp=linha.excluir_mp,
             excluir_orla=linha.excluir_orla,
             excluir_ferragem=linha.excluir_ferragem,

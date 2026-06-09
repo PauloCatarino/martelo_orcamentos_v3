@@ -50,13 +50,17 @@ class MateriaPrimaPickerDialog(QDialog):
         "Ativo",
     ]
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, familia: str | None = None) -> None:
         super().__init__(parent)
 
         self.selected_materia: DefMateriaPrimaResumo | None = None
         self._materias_by_row: dict[int, DefMateriaPrimaResumo] = {}
+        self._familia_filtro = (familia or "").strip().upper() or None
 
-        self.setWindowTitle("Selecionar Matéria-Prima")
+        if self._familia_filtro:
+            self.setWindowTitle(f"Selecionar Acabamento ({self._familia_filtro})")
+        else:
+            self.setWindowTitle("Selecionar Matéria-Prima")
         self.setModal(True)
         self.setMinimumSize(900, 500)
 
@@ -119,10 +123,33 @@ class MateriaPrimaPickerDialog(QDialog):
             self.status_label.setText("Nao foi possivel pesquisar as materias-primas.")
             return
 
+        if self._familia_filtro:
+            materias = [m for m in materias if self._pertence_familia(m)]
+
         self._preencher(materias)
 
         if not materias:
-            self.status_label.setText("Sem materias-primas para mostrar.")
+            if self._familia_filtro:
+                self.status_label.setText(
+                    f"Não foram encontrados acabamentos na família "
+                    f"{self._familia_filtro}."
+                )
+            else:
+                self.status_label.setText("Sem materias-primas para mostrar.")
+
+    def _pertence_familia(self, materia: DefMateriaPrimaResumo) -> bool:
+        """Return True when the raw material belongs to the active family filter.
+
+        Case-insensitive and tolerant of singular/plural (the filter "ACABAMENTO"
+        matches the catalog family "ACABAMENTOS").
+        """
+        familia = (familia_materia_prima(materia) or "").strip().upper()
+        if not familia or self._familia_filtro is None:
+            return False
+
+        return familia.startswith(self._familia_filtro) or self._familia_filtro.startswith(
+            familia
+        )
 
     def _preencher(self, materias: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw materials."""
