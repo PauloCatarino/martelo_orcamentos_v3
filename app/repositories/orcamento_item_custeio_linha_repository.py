@@ -44,6 +44,8 @@ class OrcamentoItemCusteioLinhaResumo:
     custo_orlas: Decimal | None
     custo_mp: Decimal | None
     custo_ferragem: Decimal | None
+    consumo_ml_unitario: Decimal | None
+    consumo_ml_total: Decimal | None
     custo_unitario: Decimal | None
     custo_total: Decimal | None
     margem_percentagem: Decimal | None
@@ -240,6 +242,8 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_orlas=linha.custo_orlas,
             custo_mp=linha.custo_mp,
             custo_ferragem=linha.custo_ferragem,
+            consumo_ml_unitario=linha.consumo_ml_unitario,
+            consumo_ml_total=linha.consumo_ml_total,
             custo_unitario=linha.custo_unitario,
             custo_total=linha.custo_total,
             margem_percentagem=linha.margem_percentagem,

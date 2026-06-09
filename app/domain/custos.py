@@ -18,11 +18,13 @@ AVISO_MP_UNIDADE_UND = "Custo MP não calculado nesta fase: unidade UND."
 AVISO_MP_UNIDADE_INVALIDA = "Custo MP não calculado: unidade não validada."
 AVISO_MP_DADOS_INCOMPLETOS = "Custo MP não calculado: área ou preço em falta."
 
-AVISO_FERRAGEM_UNIDADE_ML = "Custo ferragem não calculado nesta fase: unidade ML."
 AVISO_FERRAGEM_UNIDADE_INVALIDA = "Custo ferragem não calculado: unidade não validada."
 AVISO_FERRAGEM_DADOS_INCOMPLETOS = (
     "Custo ferragem não calculado: quantidade ou preço em falta."
 )
+
+AVISO_ML_DADOS_INCOMPLETOS = "Custo ML não calculado: consumo ou preço em falta."
+AVISO_ML_UNIDADE_INVALIDA = "Custo ML não calculado: unidade não validada."
 
 _UNIDADES_M2 = ("M2", "M²", "M^2", "MTQ", "METRO2")
 _UNIDADES_ML = ("ML", "M", "MTL")
@@ -102,7 +104,8 @@ def calcular_custo_ferragem(
     if unid in _UNIDADES_M2:
         return None, None
     if unid in _UNIDADES_ML:
-        return None, AVISO_FERRAGEM_UNIDADE_ML
+        # ML lines are costed by calcular_custo_ml (also into custo_ferragem).
+        return None, None
     if unid not in _UNIDADES_UND:
         return None, AVISO_FERRAGEM_UNIDADE_INVALIDA
 
@@ -113,3 +116,49 @@ def calcular_custo_ferragem(
 
     custo = qt * preco * fator_desperdicio(desperdicio_percentagem)
     return custo, None
+
+
+def calcular_custo_ml(
+    unidade,
+    consumo_ml_unitario,
+    comp_real,
+    larg_real,
+    qt_total,
+    preco_liquido,
+    desperdicio_percentagem,
+) -> tuple[bool, Decimal | None, Decimal | None, Decimal | None, str | None]:
+    """Return (eh_ml, consumo_unitario, consumo_total, custo_ferragem, aviso).
+
+    Only ML units are costed here (``eh_ml`` is False otherwise, so the caller
+    leaves the line untouched). Linear-metre consumption per unit comes from the
+    manual ``consumo_ml_unitario`` if set, else ``comp_real / 1000``, else
+    ``larg_real / 1000``. The cost (stored in custo_ferragem) is
+    ``consumo_ml_total * preco_liquido * (1 + desp)``. Never raises.
+    """
+    unid = (unidade or "").strip().upper()
+    if unid not in _UNIDADES_ML:
+        return False, None, None, None, None
+
+    cmu = normalizar_numero(consumo_ml_unitario)
+    if cmu is None:
+        comp = normalizar_numero(comp_real)
+        larg = normalizar_numero(larg_real)
+        if comp is not None:
+            cmu = comp / Decimal("1000")
+        elif larg is not None:
+            cmu = larg / Decimal("1000")
+
+    if cmu is None:
+        return True, None, None, None, AVISO_ML_DADOS_INCOMPLETOS
+
+    qt = normalizar_numero(qt_total)
+    if qt is None:
+        qt = Decimal("1")
+    consumo_total = cmu * qt
+
+    preco = normalizar_numero(preco_liquido)
+    if preco is None:
+        return True, cmu, consumo_total, None, AVISO_ML_DADOS_INCOMPLETOS
+
+    custo = consumo_total * preco * fator_desperdicio(desperdicio_percentagem)
+    return True, cmu, consumo_total, custo, None

@@ -26,7 +26,11 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
-from app.domain.custos import calcular_custo_ferragem, calcular_custo_mp
+from app.domain.custos import (
+    calcular_custo_ferragem,
+    calcular_custo_ml,
+    calcular_custo_mp,
+)
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -168,6 +172,15 @@ class CustoMateriaPrimaResult:
 @dataclass(frozen=True)
 class CustoFerragemResult:
     """Summary of one hardware (UND) cost recompute over an item."""
+
+    processadas: int
+    calculadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class CustoMlResult:
+    """Summary of one linear-metre (ML) cost recompute over an item."""
 
     processadas: int
     calculadas: int
@@ -601,6 +614,58 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return CustoFerragemResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def recalcular_custos_ml_do_item(self, orcamento_item_id: int) -> CustoMlResult:
+        """Recompute linear-metre consumption and cost for an item's ML lines.
+
+        SPP ML und = manual ``consumo_ml_unitario`` else ``comp_real/1000`` else
+        ``larg_real/1000``; SPP ML total = SPP ML und * qt_total; the cost is
+        ``consumo_ml_total * preco_liquido * (1 + desp)`` and is stored in
+        ``custo_ferragem`` (same column as UND). Non-ML lines, divisions and
+        composite-parent lines are skipped. Does not change measures, ValueSet,
+        materials, Custo MP nor orla costs.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                ignoradas += 1
+                continue
+
+            eh_ml, consumo_unitario, consumo_total, custo, aviso = calcular_custo_ml(
+                linha.unidade,
+                linha.consumo_ml_unitario,
+                linha.comp_real,
+                linha.larg_real,
+                linha.quantidade,
+                linha.preco_liquido,
+                linha.desperdicio_percentagem,
+            )
+            if not eh_ml:
+                ignoradas += 1
+                continue
+
+            processadas += 1
+            fields: dict = {
+                "consumo_ml_unitario": consumo_unitario,
+                "consumo_ml_total": consumo_total,
+                "custo_ferragem": custo,
+            }
+            nova_obs = self._mesclar_observacao(linha.observacoes, "Custo ML", aviso)
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if custo is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return CustoMlResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
 

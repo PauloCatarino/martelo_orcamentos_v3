@@ -91,6 +91,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Comp MP",
         "Larg MP",
         "Esp MP",
+        "SPP ML und",
+        "SPP ML total",
         # Orlas
         "C\u00f3digo orlas",
         "Orla 0.4",
@@ -316,6 +318,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_orlas_do_item(self.item_id)
                 service.recalcular_custo_materia_prima_do_item(self.item_id)
                 service.recalcular_custos_ferragens_do_item(self.item_id)
+                service.recalcular_custos_ml_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
@@ -323,7 +326,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText(
-            "Item atualizado (medidas, orlas, custo de material e ferragens "
+            "Item atualizado (medidas, orlas, custo de material, ferragens e ML "
             "recalculados)."
         )
 
@@ -854,6 +857,8 @@ class OrcamentoItemCusteioPage(QWidget):
             "Comp MP": format_quantity(linha.comp_mp),
             "Larg MP": format_quantity(linha.larg_mp),
             "Esp MP": format_quantity(linha.esp_mp),
+            "SPP ML und": self._format_medida3(linha.consumo_ml_unitario),
+            "SPP ML total": self._format_medida3(linha.consumo_ml_total),
             "Código orlas": linha.codigo_orlas or "",
             "Orla 0.4": linha.coresp_orla_0_4 or "",
             "Orla 1.0": linha.coresp_orla_1_0 or "",
