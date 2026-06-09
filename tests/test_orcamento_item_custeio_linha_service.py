@@ -139,6 +139,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "custo_orlas": None,
         "custo_mp": None,
         "custo_ferragem": None,
+        "custo_acabamento": None,
         "consumo_ml_unitario": None,
         "consumo_ml_total": None,
         "custo_unitario": None,
@@ -1939,6 +1940,192 @@ def test_aplicar_acabamento_ignora_ferragem_divisao_composta(monkeypatch) -> Non
     assert result.processadas == 0
     assert result.ignoradas == 4
     assert _FakeRepository.updated_payload is None
+
+
+def test_recalcular_custo_acabamento_superior(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": _vs_linha(
+            codigo_opcao="LACAGEM",
+            preco_liquido=Decimal("18.0"),
+            desperdicio_percentagem=Decimal("1"),
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+            acabamento_face_inf="SEM_ACABAMENTO",
+        ),
+    ]
+
+    result = service.recalcular_custo_acabamento_do_item(30)
+
+    assert result.calculadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_acabamento"] == Decimal("36.36")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_custo_acabamento_ambas_faces(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+            chave_valueset_acabamento_inf="ACABAMENTO_FACE_INF",
+        )
+    }
+    vs = _vs_linha(
+        codigo_opcao="LACAGEM",
+        preco_liquido=Decimal("18.0"),
+        desperdicio_percentagem=Decimal("1"),
+    )
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "ACABAMENTO_FACE_SUP": vs,
+        "ACABAMENTO_FACE_INF": vs,
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+            acabamento_face_inf="LACAGEM",
+            area_acabamento_inf=Decimal("2.0"),
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    assert _FakeRepository.updated_payload["custo_acabamento"] == Decimal("72.72")
+
+
+def test_recalcular_custo_acabamento_sem_acabamento(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="SEM_ACABAMENTO",
+            acabamento_face_inf="SEM_ACABAMENTO",
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_acabamento"] == Decimal("0")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_custo_acabamento_sem_area_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=None,
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_acabamento"] is None
+    assert "área de acabamento em falta" in payload["observacoes"]
+
+
+def test_recalcular_custo_acabamento_sem_preco_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            permite_acabamento=True,
+            chave_valueset_acabamento_sup="ACABAMENTO_FACE_SUP",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {}
+    _FakeItemValuesetRepository.default_linha = None
+    _FakeItemValuesetRepository.chave_rows = []
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            acabamento_face_sup="LACAGEM",
+            area_acabamento_sup=Decimal("2.0"),
+        ),
+    ]
+
+    service.recalcular_custo_acabamento_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_acabamento"] is None
+    assert "preço do acabamento não encontrado" in payload["observacoes"]
+
+
+def test_recalcular_custo_acabamento_ignora_ferragem(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="FERRAGEM", def_peca_id=3),
+        _resumo(id=2, tipo_linha="DIVISAO_INDEPENDENTE"),
+    ]
+
+    result = service.recalcular_custo_acabamento_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 2
+    assert _FakeRepository.updated_payload is None
+
+
+def test_custo_total_inclui_acabamento_respeita_exclusao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            custo_mp=Decimal("10"),
+            custo_acabamento=Decimal("5"),
+            excluir_acabamento=False,
+        ),
+        _resumo(
+            id=2,
+            tipo_linha="PECA",
+            custo_mp=Decimal("10"),
+            custo_acabamento=Decimal("5"),
+            excluir_acabamento=True,
+        ),
+    ]
+
+    service.recalcular_custo_total_do_item(30)
+
+    payloads = {p["id"]: p for p in _FakeRepository.updated_payloads}
+    assert payloads[1]["custo_total"] == Decimal("15")  # acabamento incluído
+    assert payloads[2]["custo_total"] == Decimal("10")  # acabamento excluído
 
 
 def test_aplicar_acabamento_valueset_sem_valor(monkeypatch) -> None:

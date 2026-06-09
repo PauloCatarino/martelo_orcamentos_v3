@@ -26,8 +26,13 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
-from app.domain.acabamentos import SEM_ACABAMENTO, calcular_areas_acabamento
+from app.domain.acabamentos import (
+    SEM_ACABAMENTO,
+    calcular_areas_acabamento,
+    tem_acabamento,
+)
 from app.domain.custos import (
+    calcular_custo_acabamento_face,
     calcular_custo_ferragem,
     calcular_custo_ml,
     calcular_custo_mp,
@@ -223,6 +228,15 @@ class AcabamentoResult:
 
     processadas: int
     aplicadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class CustoAcabamentoResult:
+    """Summary of one finishing-cost recompute over an item."""
+
+    processadas: int
+    calculadas: int
     ignoradas: int
 
 
@@ -871,6 +885,91 @@ class OrcamentoItemCusteioLinhaService:
         return AreasAcabamentoResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
+
+    def recalcular_custo_acabamento_do_item(
+        self, orcamento_item_id: int
+    ) -> CustoAcabamentoResult:
+        """Recompute custo_acabamento (sup + inf) for an item's piece lines.
+
+        Each finished face costs ``area_acab * preco_liquido * (1 + desp)``, with
+        the price/waste taken from the item ValueSet line of the piece finishing
+        key. SEM_ACABAMENTO faces cost 0. The cost is always stored (even when
+        Excluir Acabamento is checked — that flag only affects custo_total).
+        Skips ferragens, ML, divisions and composite parents. Does not change
+        measures, materials, ValueSet, orlas nor Custo MP.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._linha_recebe_acabamento(linha):
+                ignoradas += 1
+                continue
+
+            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            custo_sup, aviso_sup = self._custo_acabamento_face(
+                orcamento_item_id, peca, linha, face_superior=True
+            )
+            custo_inf, aviso_inf = self._custo_acabamento_face(
+                orcamento_item_id, peca, linha, face_superior=False
+            )
+            custo_acabamento = self._somar_custos_acabamento(custo_sup, custo_inf)
+
+            processadas += 1
+            fields: dict = {"custo_acabamento": custo_acabamento}
+            aviso = aviso_sup or aviso_inf
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Acabamento não calculado", aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if custo_acabamento is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return CustoAcabamentoResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _custo_acabamento_face(
+        self, orcamento_item_id: int, peca, linha, *, face_superior: bool
+    ) -> tuple[Decimal | None, str | None]:
+        """Cost (value, aviso) of one finishing face from its area + ValueSet price."""
+        acab = linha.acabamento_face_sup if face_superior else linha.acabamento_face_inf
+        if not tem_acabamento(acab):
+            return Decimal("0"), None
+
+        area = (
+            linha.area_acabamento_sup if face_superior else linha.area_acabamento_inf
+        )
+        if normalizar_numero(area) is None:
+            return None, "Acabamento não calculado: área de acabamento em falta."
+
+        chave = None
+        if peca is not None:
+            chave = (
+                peca.chave_valueset_acabamento_sup
+                if face_superior
+                else peca.chave_valueset_acabamento_inf
+            )
+        linha_vs = self._resolver_valueset_por_chave(orcamento_item_id, chave)
+        preco = linha_vs.preco_liquido if linha_vs is not None else None
+        if normalizar_numero(preco) is None:
+            return None, "Acabamento não calculado: preço do acabamento não encontrado."
+
+        desp = linha_vs.desperdicio_percentagem if linha_vs is not None else None
+        return calcular_custo_acabamento_face(area, preco, desp), None
+
+    def _somar_custos_acabamento(self, *custos) -> Decimal | None:
+        """Total of the face finishing costs, or None when any face is unresolved."""
+        if any(custo is None for custo in custos):
+            return None
+
+        return sum(custos, Decimal("0"))
 
     def atualizar_exclusao_linha(
         self, linha_id: int, campo: str, excluir: bool

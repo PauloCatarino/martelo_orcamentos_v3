@@ -12,6 +12,7 @@ from app.domain.custos import (
     AVISO_MP_UNIDADE_INVALIDA,
     AVISO_MP_UNIDADE_ML,
     AVISO_MP_UNIDADE_UND,
+    calcular_custo_acabamento_face,
     calcular_custo_ferragem,
     calcular_custo_ml,
     calcular_custo_mp,
@@ -19,6 +20,33 @@ from app.domain.custos import (
     desperdicio_para_fracao,
     fator_desperdicio,
 )
+
+
+def test_custo_acabamento_face_sem_desperdicio() -> None:
+    assert calcular_custo_acabamento_face(Decimal("2.0"), Decimal("18.0"), None) == Decimal("36.0")
+
+
+def test_custo_acabamento_face_desperdicio_humano() -> None:
+    assert calcular_custo_acabamento_face(
+        Decimal("2.0"), Decimal("18.0"), Decimal("1")
+    ) == Decimal("36.36")
+
+
+def test_custo_acabamento_face_desperdicio_fracao() -> None:
+    assert calcular_custo_acabamento_face(
+        Decimal("2.0"), Decimal("18.0"), Decimal("0.01")
+    ) == Decimal("36.36")
+
+
+def test_custo_acabamento_face_inferior() -> None:
+    assert calcular_custo_acabamento_face(
+        Decimal("1.5"), Decimal("18.0"), Decimal("1")
+    ) == Decimal("27.27")
+
+
+def test_custo_acabamento_face_area_ou_preco_em_falta() -> None:
+    assert calcular_custo_acabamento_face(None, Decimal("18.0"), None) is None
+    assert calcular_custo_acabamento_face(Decimal("2.0"), None, None) is None
 
 
 def test_custo_total_sem_exclusoes() -> None:

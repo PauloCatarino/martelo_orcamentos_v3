@@ -340,6 +340,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custo_materia_prima_do_item(self.item_id)
                 service.recalcular_custos_ferragens_do_item(self.item_id)
                 service.recalcular_custos_ml_do_item(self.item_id)
+                service.recalcular_custo_acabamento_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
@@ -980,6 +981,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Área acab. inf": self._format_medida3(linha.area_acabamento_inf),
             "Custo MP": format_currency(linha.custo_mp),
             "Custo ferragem": format_currency(linha.custo_ferragem),
+            "Custo acabamento": format_currency(linha.custo_acabamento),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

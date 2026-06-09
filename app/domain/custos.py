@@ -118,6 +118,24 @@ def calcular_custo_ferragem(
     return custo, None
 
 
+def calcular_custo_acabamento_face(
+    area_acabamento,
+    preco_liquido,
+    desperdicio_percentagem,
+) -> Decimal | None:
+    """Return the finishing cost of one face: ``area * preco * (1 + desp)``.
+
+    None when the area or price is missing (caller decides the warning). The
+    waste % is a small safety coefficient, normalized like the other costs.
+    """
+    area = normalizar_numero(area_acabamento)
+    preco = normalizar_numero(preco_liquido)
+    if area is None or preco is None:
+        return None
+
+    return area * preco * fator_desperdicio(desperdicio_percentagem)
+
+
 def calcular_custo_total_linha(
     *,
     custo_mp=None,
