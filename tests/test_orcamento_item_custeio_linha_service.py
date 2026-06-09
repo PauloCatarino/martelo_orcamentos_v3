@@ -60,6 +60,9 @@ def _materia(**kwargs):
         "familia_original_excel": None,
         "tipo_martelo": "PLACA",
         "familia_martelo": "AGLOMERADO",
+        "coresp_orla_0_4": None,
+        "coresp_orla_1_0": None,
+        "desperdicio_percentagem": None,
         "unidade": "m2",
         "preco_tabela": Decimal("8.62"),
         "desconto": Decimal("0.36"),
@@ -132,6 +135,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "custo_orla_fina": None,
         "custo_orla_grossa": None,
         "custo_orlas": None,
+        "custo_mp": None,
         "custo_unitario": None,
         "custo_total": None,
         "margem_percentagem": None,
@@ -163,9 +167,14 @@ class _FakeRepository:
     deactivated_id: int | None = None
     activate_result = True
     activated_id: int | None = None
+    deleted_ids: list | None = None
 
     def __init__(self, _session: object) -> None:
         pass
+
+    def delete_linhas(self, ids: list[int]) -> int:
+        self.__class__.deleted_ids = list(ids)
+        return len(self.__class__.deleted_ids)
 
     def list_by_orcamento_item(self, orcamento_item_id: int):
         return self.all_rows
@@ -281,6 +290,7 @@ def _reset() -> None:
     _FakeRepository.deactivated_id = None
     _FakeRepository.activate_result = True
     _FakeRepository.activated_id = None
+    _FakeRepository.deleted_ids = None
     _FakePecaRepository.pecas = {}
     _FakeComponenteRepository.componentes = []
     _FakeItemValuesetRepository.default_linha = None
@@ -740,7 +750,8 @@ def test_atualizar_medidas_linha_recalcula_qt_total(monkeypatch) -> None:
     assert payload["qt_mod"] == Decimal("2")
     assert payload["qt_und"] == Decimal("3")
     assert payload["quantidade"] == Decimal("6")
-    assert payload["editado_localmente"] is True
+    # Editing quantities/measures must NOT flag the line as locally edited.
+    assert "editado_localmente" not in payload
     assert session.committed is True
 
 
@@ -764,7 +775,24 @@ def test_atualizar_medidas_linha_resolve_variaveis_e_area(monkeypatch) -> None:
     assert payload["esp_real"] == Decimal("19")
     assert payload["area_m2"] == Decimal("5.0325")
     assert payload["perimetro_ml"] == Decimal("9.16")
-    assert payload["editado_localmente"] is True
+    assert "editado_localmente" not in payload
+
+
+def test_atualizar_medidas_descricao_nao_marca_editado(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.by_id = _resumo(id=5, editado_localmente=False)
+
+    # Editing Comp / Descrição livre directly in the table must not flag the line.
+    service.atualizar_medidas_linha(
+        5, qt_mod="1", qt_und="1", comp="100", larg="50", esp=None, descricao="MÓDULO 1"
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert "editado_localmente" not in payload
+    assert payload["descricao"] == "MÓDULO 1"
 
 
 def test_atualizar_medidas_linha_valor_invalido_nao_rebenta(monkeypatch) -> None:
@@ -1306,6 +1334,30 @@ def test_aplicar_materia_prima_preenche_esp(monkeypatch) -> None:
     assert payload["esp_mp"] == Decimal("12")
 
 
+def test_aplicar_materia_prima_copia_desperdicio_e_orlas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+    _FakeMateriaPrimaRepository.materia = _materia(
+        id=7,
+        desperdicio_percentagem=Decimal("0.10"),
+        coresp_orla_0_4="ORL0002",
+        coresp_orla_1_0="ORL0003",
+        tipo_martelo=None,
+        familia_martelo=None,
+        tipo_original_excel="AGLOMERADO",
+        familia_original_excel="PLACAS",
+    )
+
+    service.aplicar_materia_prima_na_linha(5, 7)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["desperdicio_percentagem"] == Decimal("10")  # normalized to human
+    assert payload["coresp_orla_0_4"] == "ORL0002"
+    assert payload["coresp_orla_1_0"] == "ORL0003"
+    assert payload["tipo_materia_prima"] == "AGLOMERADO"
+    assert payload["familia_materia_prima"] == "PLACAS"
+
+
 def test_aplicar_valueset_atualiza_esp(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeItemValuesetRepository.by_id = _vs_linha(id=9, esp_mp=Decimal("19"))
@@ -1315,3 +1367,130 @@ def test_aplicar_valueset_atualiza_esp(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["esp"] == "19"
+
+
+def test_recalcular_custo_mp_m2(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            unidade="M2",
+            area_m2=Decimal("0.5"),
+            quantidade=Decimal("6"),
+            preco_liquido=Decimal("10"),
+            desperdicio_percentagem=Decimal("0.20"),
+        ),
+    ]
+
+    result = service.recalcular_custo_materia_prima_do_item(30)
+
+    assert result.processadas == 1
+    assert result.calculadas == 1
+    assert result.ignoradas == 0
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_mp"] == Decimal("36")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_custo_mp_ignora_divisao_e_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", unidade="M2"),
+        _resumo(id=2, tipo_linha="PECA_COMPOSTA", unidade="M2"),
+    ]
+
+    result = service.recalcular_custo_materia_prima_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 2
+    assert _FakeRepository.updated_payload is None
+
+
+def test_recalcular_custo_mp_und_preenche_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="FERRAGEM", unidade="UND", preco_liquido=Decimal("6.50")),
+    ]
+
+    result = service.recalcular_custo_materia_prima_do_item(30)
+
+    assert result.calculadas == 0
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_mp"] is None
+    assert "unidade UND" in payload["observacoes"]
+
+
+def test_recalcular_custo_mp_so_altera_custo_mp(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            unidade="M2",
+            area_m2=Decimal("0.5"),
+            quantidade=Decimal("6"),
+            preco_liquido=Decimal("10"),
+            chave_valueset="MATERIAL_X",
+            comp_real=Decimal("1000"),
+        ),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert set(payload.keys()) == {"id", "custo_mp"}
+    assert "comp_real" not in payload
+    assert "chave_valueset" not in payload
+
+
+def test_atualizar_material_local_marca_editado(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+
+    service.atualizar_material_local_linha(5, {"desperdicio_percentagem": Decimal("35")})
+
+    payload = _FakeRepository.updated_payload
+    assert payload["desperdicio_percentagem"] == Decimal("35")
+    assert payload["editado_localmente"] is True
+    assert payload["material_editado_localmente"] is True
+    assert session.committed is True
+
+
+def test_eliminar_linhas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    eliminadas = service.eliminar_linhas([3, 1, 2])
+
+    assert eliminadas == 3
+    assert _FakeRepository.deleted_ids == [3, 1, 2]
+    assert session.committed is True
+
+
+def test_eliminar_linhas_sem_ids(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    eliminadas = service.eliminar_linhas([])
+
+    assert eliminadas == 0
+    assert _FakeRepository.deleted_ids is None
+    assert session.committed is False
+
+
+def test_recalcular_custo_mp_preserva_observacao_de_orla(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            preco_liquido=Decimal("6.50"),
+            observacoes="Custo de orla não calculado: espessura da peça em falta.",
+        ),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    obs = _FakeRepository.updated_payload["observacoes"]
+    assert "Custo de orla" in obs  # existing orla note preserved
+    assert "unidade UND" in obs  # new material-cost note added

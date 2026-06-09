@@ -28,6 +28,7 @@ def test_repository_has_expected_methods() -> None:
         "update_linha",
         "deactivate_linha",
         "activate_linha",
+        "delete_linhas",
     ):
         assert hasattr(OrcamentoItemCusteioLinhaRepository, method)
 

@@ -241,6 +241,21 @@ def test_orcamento_item_custeio_page_material_menu() -> None:
     assert "PECA_COMPOSTA" in aceita
 
 
+def test_orcamento_item_custeio_page_eliminar_linhas() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "eliminar_linhas_selecionadas")
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Eliminar linha(s)" in menu
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.eliminar_linhas_selecionadas)
+    assert "selectedRows" in source
+    assert "eliminar_linhas" in source
+    assert "definitivamente" in source
+    assert "carregar" in source
+
+
 def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
@@ -252,11 +267,14 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     source = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
     assert "recalcular_medidas_do_item" in source
     assert "recalcular_orlas_do_item" in source
+    assert "recalcular_custo_materia_prima_do_item" in source
 
     valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
     assert '"Custo orlas"' in valores
     assert "custo_orlas" in valores
     assert "ml_orla_fina" in valores
+    assert '"Custo MP"' in valores
+    assert "custo_mp" in valores
 
 
 def test_orcamento_item_custeio_page_esp_edit_protection() -> None:

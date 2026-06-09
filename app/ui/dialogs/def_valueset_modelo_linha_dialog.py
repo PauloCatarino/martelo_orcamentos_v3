@@ -326,7 +326,11 @@ class DefValuesetModeloLinhaDialog(QDialog):
                 )
             )
             self.unidade_input.setText(materia.unidade or "")
-            self.desperdicio_input.setText("")
+            self.desperdicio_input.setText(
+                self._format_decimal(
+                    normalize_percentagem_humana(materia.desperdicio_percentagem)
+                )
+            )
             self.tipo_mp_input.setText(tipo_materia_prima(materia) or "")
             self.familia_mp_input.setText(familia_materia_prima(materia) or "")
             self.orla_0_4_input.setText(coresp_orla_0_4(materia) or "")

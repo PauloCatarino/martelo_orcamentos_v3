@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models import OrcamentoItem, OrcamentoItemCusteioLinha
@@ -42,6 +42,7 @@ class OrcamentoItemCusteioLinhaResumo:
     custo_orla_fina: Decimal | None
     custo_orla_grossa: Decimal | None
     custo_orlas: Decimal | None
+    custo_mp: Decimal | None
     custo_unitario: Decimal | None
     custo_total: Decimal | None
     margem_percentagem: Decimal | None
@@ -171,6 +172,31 @@ class OrcamentoItemCusteioLinhaRepository:
 
         return True
 
+    def delete_linhas(self, ids: list[int]) -> int:
+        """Physically delete the given cost lines; returns how many were removed.
+
+        Any remaining line whose parent (linha_pai_id) is being deleted is
+        orphaned (linha_pai_id set to None) first, to avoid self-FK violations
+        without deleting child lines automatically.
+        """
+        valid_ids = [id for id in ids if id is not None]
+        if not valid_ids:
+            return 0
+
+        self.session.execute(
+            update(OrcamentoItemCusteioLinha)
+            .where(OrcamentoItemCusteioLinha.linha_pai_id.in_(valid_ids))
+            .values(linha_pai_id=None)
+        )
+        result = self.session.execute(
+            delete(OrcamentoItemCusteioLinha).where(
+                OrcamentoItemCusteioLinha.id.in_(valid_ids)
+            )
+        )
+        self.session.flush()
+
+        return result.rowcount or 0
+
     def activate_linha(self, id: int) -> bool:
         """Reactivate one cost line."""
         linha = self.session.get(OrcamentoItemCusteioLinha, id)
@@ -211,6 +237,7 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_orla_fina=linha.custo_orla_fina,
             custo_orla_grossa=linha.custo_orla_grossa,
             custo_orlas=linha.custo_orlas,
+            custo_mp=linha.custo_mp,
             custo_unitario=linha.custo_unitario,
             custo_total=linha.custo_total,
             margem_percentagem=linha.margem_percentagem,

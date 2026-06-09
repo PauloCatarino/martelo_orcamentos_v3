@@ -26,6 +26,14 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
+from app.domain.custos import calcular_custo_mp
+from app.domain.materia_prima_snapshot import (
+    coresp_orla_0_4,
+    coresp_orla_1_0,
+    familia_materia_prima,
+    tipo_materia_prima,
+)
+from app.domain.numeros import normalize_percentagem_humana
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
@@ -148,6 +156,15 @@ class AdicionarPecasResult:
     avisos: list[str]
 
 
+@dataclass(frozen=True)
+class CustoMateriaPrimaResult:
+    """Summary of one raw-material cost recompute over an item."""
+
+    processadas: int
+    calculadas: int
+    ignoradas: int
+
+
 class OrcamentoItemCusteioLinhaService:
     """Application service for OrcamentoItemCusteioLinha workflows."""
 
@@ -181,6 +198,16 @@ class OrcamentoItemCusteioLinhaService:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
 
+    def eliminar_linhas(self, ids: list[int]) -> int:
+        """Physically delete the given cost lines; returns how many were removed."""
+        if not ids:
+            return 0
+
+        eliminadas = self.repository.delete_linhas(ids)
+        self.session.commit()
+
+        return eliminadas
+
     def aplicar_materia_prima_na_linha(
         self, linha_id: int, materia_prima_id: int
     ) -> OrcamentoItemCusteioLinhaResumo | None:
@@ -206,11 +233,13 @@ class OrcamentoItemCusteioLinhaService:
             "descricao_no_orcamento": materia.descricao,
             "unidade": materia.unidade,
             "preco_liquido": materia.preco_liquido,
-            "desperdicio_percentagem": None,
-            "tipo_materia_prima": materia.tipo_martelo,
-            "familia_materia_prima": materia.familia_martelo,
-            "coresp_orla_0_4": None,
-            "coresp_orla_1_0": None,
+            "desperdicio_percentagem": normalize_percentagem_humana(
+                materia.desperdicio_percentagem
+            ),
+            "tipo_materia_prima": tipo_materia_prima(materia),
+            "familia_materia_prima": familia_materia_prima(materia),
+            "coresp_orla_0_4": coresp_orla_0_4(materia),
+            "coresp_orla_1_0": coresp_orla_1_0(materia),
             "comp_mp": materia.comprimento,
             "larg_mp": materia.largura,
             "esp_mp": materia.espessura,
@@ -446,8 +475,11 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_orla_grossa": resultado.custo_orla_grossa,
                 "custo_orlas": resultado.custo_orlas,
             }
-            if resultado.aviso:
-                fields["observacoes"] = resultado.aviso
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Custo de orla", resultado.aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
 
             self.repository.update_linha(id=linha.id, **fields)
             atualizadas += 1
@@ -476,6 +508,68 @@ class OrcamentoItemCusteioLinhaService:
         )
         cache[ref_orla] = resultado
         return resultado
+
+    def recalcular_custo_materia_prima_do_item(
+        self, orcamento_item_id: int
+    ) -> CustoMateriaPrimaResult:
+        """Recompute the raw-material cost (custo_mp) of an item's lines.
+
+        Costs M2 materials as ``area_m2 * qt_total * preco_liquido * (1 + desp)``;
+        ML / UND / unknown units are left empty with an explanatory note. Skips
+        division and composite-parent lines. Does not change measures, ValueSet
+        nor the raw material catalog.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                ignoradas += 1
+                continue
+
+            processadas += 1
+            custo, aviso = calcular_custo_mp(
+                linha.area_m2,
+                linha.quantidade,
+                linha.preco_liquido,
+                linha.desperdicio_percentagem,
+                linha.unidade,
+            )
+
+            fields: dict = {"custo_mp": custo}
+            nova_obs = self._mesclar_observacao(linha.observacoes, "Custo MP", aviso)
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if custo is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return CustoMateriaPrimaResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _mesclar_observacao(
+        self, observacoes_atuais: str | None, prefixo: str, nova_mensagem: str | None
+    ) -> str | None:
+        """Keep existing production notes, replacing only the ``prefixo`` line.
+
+        Lines starting with ``prefixo`` (e.g. a previous orla or material-cost
+        warning) are removed; ``nova_mensagem`` (if any) is appended. Notes from
+        other phases are preserved. Returns the merged text or None.
+        """
+        linhas = [
+            linha
+            for linha in (observacoes_atuais or "").splitlines()
+            if linha.strip() and not linha.startswith(prefixo)
+        ]
+        if nova_mensagem:
+            linhas.append(nova_mensagem)
+
+        return "\n".join(linhas) or None
 
     def recalcular_medidas_linha(
         self, linha_id: int
@@ -512,9 +606,10 @@ class OrcamentoItemCusteioLinhaService:
 
         Comp/Larg/Esp keep the raw text/expression written by the user, while
         comp_real/larg_real/esp_real (and area/perimeter) hold the evaluated
-        result. The line is flagged as locally edited. The whole item is
-        recomputed afterwards because changing an independent division affects
-        the lines below it. ValueSet data is not touched.
+        result. The whole item is recomputed afterwards because changing an
+        independent division affects the lines below it. ValueSet data is not
+        touched and ``editado_localmente`` is NOT changed here (that flag is only
+        for local edits to the inherited material data).
         """
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
@@ -552,7 +647,11 @@ class OrcamentoItemCusteioLinhaService:
             "esp_real": esp_real,
             "area_m2": calcular_area_m2(comp_real, larg_real),
             "perimetro_ml": calcular_perimetro_ml(comp_real, larg_real),
-            "editado_localmente": True,
+            # NOTE: measure/quantity edits must NOT flag the line as locally
+            # edited. ``editado_localmente`` is reserved for local changes to the
+            # inherited material/ValueSet data (see atualizar_material_local_linha
+            # / aplicar_materia_prima_na_linha), so the ValueSet propagation can
+            # tell which lines had their material overridden.
         }
         if descricao is not None:
             fields["descricao"] = self._normalizar_expressao(descricao) or "Divisão independente"

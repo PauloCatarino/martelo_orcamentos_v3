@@ -94,6 +94,8 @@ def test_dialog_picker_marks_materia_prima_local() -> None:
     assert "coresp_orla_0_4(materia)" in fill
     assert "coresp_orla_1_0(materia)" in fill
     assert 'self.orla_0_4_input.setText("")' not in fill
+    assert "desperdicio_percentagem" in fill
+    assert 'self.desperdicio_input.setText("")' not in fill
 
 
 def test_dialog_marks_edited_locally() -> None:

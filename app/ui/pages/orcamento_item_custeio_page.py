@@ -222,6 +222,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(
             QTableWidget.EditTrigger.DoubleClicked
             | QTableWidget.EditTrigger.EditKeyPressed
@@ -313,13 +314,16 @@ class OrcamentoItemCusteioPage(QWidget):
                 service = OrcamentoItemCusteioLinhaService(session)
                 service.recalcular_medidas_do_item(self.item_id)
                 service.recalcular_orlas_do_item(self.item_id)
+                service.recalcular_custo_materia_prima_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
             return
 
         self.carregar()
-        self.status_label.setText("Item atualizado (medidas e orlas recalculadas).")
+        self.status_label.setText(
+            "Item atualizado (medidas, orlas e custo de material recalculados)."
+        )
 
     def inserir_divisao(self) -> None:
         """Insert an independent-division line (local HM/LM/PM measure context)."""
@@ -661,16 +665,59 @@ class OrcamentoItemCusteioPage(QWidget):
         return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
 
     def _menu_contexto_material(self, pos) -> None:
-        """Show a right-click menu with the line material actions."""
+        """Show a right-click menu with the line material and delete actions."""
         item = self.table.itemAt(pos)
         if item is not None:
-            self.table.selectRow(item.row())
+            selecionadas = {idx.row() for idx in self.table.selectionModel().selectedRows()}
+            if item.row() not in selecionadas:
+                self.table.selectRow(item.row())
 
         menu = QMenu(self)
         menu.addAction("Selecionar Matéria-Prima", self.selecionar_materia_prima_linha)
         menu.addAction("Editar Dados do Material", self.editar_dados_material_linha)
         menu.addAction("Limpar Dados do Material", self.limpar_dados_material_linha)
+        menu.addSeparator()
+        menu.addAction("Eliminar linha(s)", self.eliminar_linhas_selecionadas)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def eliminar_linhas_selecionadas(self) -> None:
+        """Physically delete the selected cost lines after confirmation."""
+        linhas = sorted(idx.row() for idx in self.table.selectionModel().selectedRows())
+        ids = [
+            self._custeio_by_row[row].id
+            for row in linhas
+            if row in self._custeio_by_row
+        ]
+        if not ids:
+            self.status_label.setText("Selecione pelo menos uma linha.")
+            return
+
+        if len(ids) == 1:
+            mensagem = "Deseja eliminar definitivamente esta linha de custeio?"
+        else:
+            mensagem = (
+                f"Deseja eliminar definitivamente as {len(ids)} linhas de custeio "
+                "selecionadas?"
+            )
+
+        confirm = QMessageBox.question(
+            self,
+            "Eliminar linhas",
+            mensagem,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).eliminar_linhas(ids)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível eliminar as linhas de custeio.")
+            return
+
+        self.carregar()
+        self.status_label.setText(f"{len(ids)} linha(s) eliminada(s).")
 
     def selecionar_materia_prima_linha(self) -> None:
         """Pick a raw material and copy its snapshot into the selected line."""
@@ -813,6 +860,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo orla fina": format_currency(linha.custo_orla_fina),
             "Custo orla grossa": format_currency(linha.custo_orla_grossa),
             "Custo orlas": format_currency(linha.custo_orlas),
+            "Custo MP": format_currency(linha.custo_mp),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

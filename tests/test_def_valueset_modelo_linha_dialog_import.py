@@ -123,6 +123,9 @@ def test_dialog_copia_snapshot_completo_da_materia() -> None:
     assert "materia.ref_le" in fill
     assert "materia.descricao" in fill
     assert "materia.unidade" in fill
+    # Desperdício is copied from the material (no longer hardcoded empty).
+    assert "desperdicio_percentagem" in fill
+    assert 'self.desperdicio_input.setText("")' not in fill
 
 
 def test_dialog_normaliza_recalcula_e_marca_editado() -> None:
