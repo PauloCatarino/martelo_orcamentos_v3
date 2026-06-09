@@ -76,6 +76,12 @@ def test_dialog_picker_marks_materia_prima_local() -> None:
     assert "MATERIA_PRIMA" in fill
     assert "setChecked(True)" in fill
     assert "normalize_percentagem_humana" in fill
+    # Type/family and orla references copied via the centralized resolvers.
+    assert "tipo_materia_prima(materia)" in fill
+    assert "familia_materia_prima(materia)" in fill
+    assert "coresp_orla_0_4(materia)" in fill
+    assert "coresp_orla_1_0(materia)" in fill
+    assert 'self.orla_0_4_input.setText("")' not in fill
 
 
 def test_dialog_marks_edited_locally() -> None:

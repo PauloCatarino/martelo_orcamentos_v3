@@ -106,6 +106,25 @@ def test_dialog_has_materia_prima_picker() -> None:
     assert "MATERIA_PRIMA" in fill
 
 
+def test_dialog_copia_snapshot_completo_da_materia() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+
+    fill = inspect.getsource(DefValuesetModeloLinhaDialog._preencher_de_materia_prima)
+
+    # Type/family resolved via the centralized resolvers (fallback to Excel).
+    assert "tipo_materia_prima(materia)" in fill
+    assert "familia_materia_prima(materia)" in fill
+    # Orla references copied from the material (no longer hardcoded empty).
+    assert "coresp_orla_0_4(materia)" in fill
+    assert "coresp_orla_1_0(materia)" in fill
+    assert 'self.orla_0_4_input.setText("")' not in fill
+    assert 'self.orla_1_0_input.setText("")' not in fill
+    # The basic snapshot fields keep being copied.
+    assert "materia.ref_le" in fill
+    assert "materia.descricao" in fill
+    assert "materia.unidade" in fill
+
+
 def test_dialog_normaliza_recalcula_e_marca_editado() -> None:
     from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
 

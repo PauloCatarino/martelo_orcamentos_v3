@@ -20,6 +20,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.domain.materia_prima_snapshot import (
+    coresp_orla_0_4,
+    coresp_orla_1_0,
+    familia_materia_prima,
+    tipo_materia_prima,
+)
 from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
 from app.repositories.orcamento_valueset_linha_repository import OrcamentoValuesetLinhaResumo
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
@@ -271,10 +277,10 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             )
             self.unidade_input.setText(materia.unidade or "")
             self.desperdicio_input.setText("")
-            self.tipo_mp_input.setText(materia.tipo_martelo or "")
-            self.familia_mp_input.setText(materia.familia_martelo or "")
-            self.orla_0_4_input.setText("")
-            self.orla_1_0_input.setText("")
+            self.tipo_mp_input.setText(tipo_materia_prima(materia) or "")
+            self.familia_mp_input.setText(familia_materia_prima(materia) or "")
+            self.orla_0_4_input.setText(coresp_orla_0_4(materia) or "")
+            self.orla_1_0_input.setText(coresp_orla_1_0(materia) or "")
             self.comp_mp_input.setText(self._format_decimal(materia.comprimento))
             self.larg_mp_input.setText(self._format_decimal(materia.largura))
             self.esp_mp_input.setText(self._format_decimal(materia.espessura))
