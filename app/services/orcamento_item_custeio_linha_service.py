@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    FERRAGEM,
     MANUAL,
     PECA,
     PECA_COMPOSTA,
@@ -25,6 +26,7 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
+from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
@@ -220,6 +222,11 @@ class OrcamentoItemCusteioLinhaService:
             "editado_localmente": True,
         }
 
+        # Fill Esp from the material thickness when available.
+        esp_texto = self._espessura_material_para_esp(materia.espessura)
+        if esp_texto is not None:
+            fields["esp"] = esp_texto
+
         result = self.repository.update_linha(id=linha_id, **fields)
         self.session.commit()
 
@@ -328,7 +335,7 @@ class OrcamentoItemCusteioLinhaService:
 
     def _build_valueset_material_fields(self, vs_linha) -> dict:
         """Build the material fields to copy from an item ValueSet line."""
-        return {
+        fields = {
             "mat_default": vs_linha.codigo_opcao or vs_linha.nome_opcao,
             "ref_le": vs_linha.ref_le,
             "descricao_no_orcamento": vs_linha.descricao_no_orcamento,
@@ -348,6 +355,13 @@ class OrcamentoItemCusteioLinhaService:
             "origem_material": "VALUESET_ITEM",
             "material_editado_localmente": False,
         }
+
+        # Update Esp from the material thickness for the selected lines.
+        esp_texto = self._espessura_material_para_esp(vs_linha.esp_mp)
+        if esp_texto is not None:
+            fields["esp"] = esp_texto
+
+        return fields
 
     def recalcular_medidas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute quantities, real measures, area and perimeter for an item.
@@ -382,6 +396,86 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return atualizadas
+
+    def recalcular_orlas_do_item(self, orcamento_item_id: int) -> int:
+        """Recompute edge banding (ML and, when priced, cost) for an item.
+
+        Skips division and composite-parent lines. Uses each line's codigo_orlas
+        with comp_real/larg_real/qt_total. Edge prices are resolved from the raw
+        material catalog by the orla references (coresp_orla_0_4 / coresp_orla_1_0);
+        when a price is missing the ML is still stored and the cost stays empty.
+        Does not change measures, ValueSet, materials nor piece definitions.
+        """
+        precos_cache: dict[str, tuple[Decimal | None, str | None]] = {}
+        atualizadas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                continue
+
+            preco_fina, unidade_fina = self._orla_preco_unidade(
+                linha.coresp_orla_0_4, precos_cache
+            )
+            preco_grossa, unidade_grossa = self._orla_preco_unidade(
+                linha.coresp_orla_1_0, precos_cache
+            )
+
+            # The orla covers the board edge, whose height is the piece thickness.
+            # Use esp_real when available, otherwise fall back to the material
+            # thickness (esp_mp) so panels without an esp formula still cost.
+            esp_para_orla = linha.esp_real if linha.esp_real is not None else linha.esp_mp
+
+            resultado = calcular_orlas_detalhe(
+                linha.codigo_orlas,
+                linha.comp_real,
+                linha.larg_real,
+                esp_para_orla,
+                linha.quantidade,
+                ref_fina=linha.coresp_orla_0_4,
+                preco_fina=preco_fina,
+                unidade_fina=unidade_fina,
+                ref_grossa=linha.coresp_orla_1_0,
+                preco_grossa=preco_grossa,
+                unidade_grossa=unidade_grossa,
+            )
+
+            fields = {
+                "ml_orla_fina": resultado.ml_orla_fina,
+                "ml_orla_grossa": resultado.ml_orla_grossa,
+                "custo_orla_fina": resultado.custo_orla_fina,
+                "custo_orla_grossa": resultado.custo_orla_grossa,
+                "custo_orlas": resultado.custo_orlas,
+            }
+            if resultado.aviso:
+                fields["observacoes"] = resultado.aviso
+
+            self.repository.update_linha(id=linha.id, **fields)
+            atualizadas += 1
+
+        self.session.commit()
+
+        return atualizadas
+
+    def _orla_preco_unidade(
+        self,
+        ref_orla: str | None,
+        cache: dict[str, tuple[Decimal | None, str | None]],
+    ) -> tuple[Decimal | None, str | None]:
+        """Resolve an orla (net price, unit) by its raw-material reference, cached."""
+        if not ref_orla:
+            return None, None
+
+        if ref_orla in cache:
+            return cache[ref_orla]
+
+        materia = self.materia_prima_repository.get_by_ref_le(ref_orla)
+        resultado = (
+            (materia.preco_liquido, materia.unidade)
+            if materia is not None
+            else (None, None)
+        )
+        cache[ref_orla] = resultado
+        return resultado
 
     def recalcular_medidas_linha(
         self, linha_id: int
@@ -799,7 +893,23 @@ class OrcamentoItemCusteioLinhaService:
                 "esp_mp": linha_vs.esp_mp,
             }
         )
+
+        # Default the piece thickness (Esp) from the inherited material, for real
+        # pieces/hardware only (never division or composite-parent lines).
+        if tipo_linha in (PECA, FERRAGEM):
+            esp_texto = self._espessura_material_para_esp(linha_vs.esp_mp)
+            if esp_texto is not None:
+                fields["esp"] = esp_texto
+
         return fields, None
+
+    def _espessura_material_para_esp(self, espessura) -> str | None:
+        """Format a material thickness as a clean Esp expression (or None)."""
+        valor = normalizar_numero(espessura)
+        if valor is None or valor == 0:
+            return None
+
+        return format(valor.normalize(), "f")
 
     def _format_codigo_orlas(self, peca: DefPecaResumo) -> str:
         """Build the orla code (e.g. 2200) from the four orla sides."""

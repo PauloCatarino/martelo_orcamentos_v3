@@ -39,6 +39,9 @@ class OrcamentoItemCusteioLinhaResumo:
     perimetro_ml: Decimal | None
     ml_orla_fina: Decimal | None
     ml_orla_grossa: Decimal | None
+    custo_orla_fina: Decimal | None
+    custo_orla_grossa: Decimal | None
+    custo_orlas: Decimal | None
     custo_unitario: Decimal | None
     custo_total: Decimal | None
     margem_percentagem: Decimal | None
@@ -205,6 +208,9 @@ class OrcamentoItemCusteioLinhaRepository:
             perimetro_ml=linha.perimetro_ml,
             ml_orla_fina=linha.ml_orla_fina,
             ml_orla_grossa=linha.ml_orla_grossa,
+            custo_orla_fina=linha.custo_orla_fina,
+            custo_orla_grossa=linha.custo_orla_grossa,
+            custo_orlas=linha.custo_orlas,
             custo_unitario=linha.custo_unitario,
             custo_total=linha.custo_total,
             margem_percentagem=linha.margem_percentagem,

@@ -178,7 +178,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.back_button.clicked.connect(self._handle_back)
 
         self.refresh_button = QPushButton("Atualizar")
-        self.refresh_button.clicked.connect(self.carregar)
+        self.refresh_button.clicked.connect(self.atualizar_geral)
 
         self.recalc_measures_button = QPushButton("Recalcular Medidas")
         self.recalc_measures_button.clicked.connect(self.recalcular_medidas)
@@ -305,6 +305,21 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Medidas recalculadas.")
+
+    def atualizar_geral(self) -> None:
+        """Main refresh: recompute measures and orlas, then reload the table."""
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                service.recalcular_medidas_do_item(self.item_id)
+                service.recalcular_orlas_do_item(self.item_id)
+        except (SQLAlchemyError, ValueError):
+            self.carregar()
+            self.status_label.setText("Não foi possível atualizar o item.")
+            return
+
+        self.carregar()
+        self.status_label.setText("Item atualizado (medidas e orlas recalculadas).")
 
     def inserir_divisao(self) -> None:
         """Insert an independent-division line (local HM/LM/PM measure context)."""
@@ -576,6 +591,16 @@ class OrcamentoItemCusteioPage(QWidget):
         if linha is None or not self._coluna_editavel(header, linha):
             return
 
+        # On a normal piece/material line, Esp normally comes from the material:
+        # confirm before accepting a manual edit.
+        if header == "Esp" and linha.tipo_linha not in (
+            DIVISAO_INDEPENDENTE,
+            PECA_COMPOSTA,
+        ):
+            if not self._confirmar_edicao_espessura():
+                self.carregar()  # discard the manual edit
+                return
+
         item = self.table.item(row, column)
         novo_valor = item.text().strip() if item is not None else ""
 
@@ -609,6 +634,19 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Linha de custeio atualizada.")
+
+    def _confirmar_edicao_espessura(self) -> bool:
+        """Ask before letting the user override the material-derived Esp."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Editar espessura")
+        box.setText(
+            "A espessura desta linha vem normalmente da matéria-prima. "
+            "Deseja mesmo editar manualmente?"
+        )
+        sim = box.addButton("Sim, editar manualmente", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is sim
 
     def _get_linha_selecionada(self) -> OrcamentoItemCusteioLinhaResumo | None:
         """Return the cost line of the selected table row."""
@@ -770,8 +808,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Código orlas": linha.codigo_orlas or "",
             "Orla 0.4": linha.coresp_orla_0_4 or "",
             "Orla 1.0": linha.coresp_orla_1_0 or "",
-            "ML orla fina": format_quantity(linha.ml_orla_fina),
-            "ML orla grossa": format_quantity(linha.ml_orla_grossa),
+            "ML orla fina": self._format_medida3(linha.ml_orla_fina),
+            "ML orla grossa": self._format_medida3(linha.ml_orla_grossa),
+            "Custo orla fina": format_currency(linha.custo_orla_fina),
+            "Custo orla grossa": format_currency(linha.custo_orla_grossa),
+            "Custo orlas": format_currency(linha.custo_orlas),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

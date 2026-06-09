@@ -129,6 +129,9 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "perimetro_ml": None,
         "ml_orla_fina": None,
         "ml_orla_grossa": None,
+        "custo_orla_fina": None,
+        "custo_orla_grossa": None,
+        "custo_orlas": None,
         "custo_unitario": None,
         "custo_total": None,
         "margem_percentagem": None,
@@ -223,12 +226,16 @@ class _FakeComponenteRepository:
 
 class _FakeMateriaPrimaRepository:
     materia = None
+    materias_por_ref: dict = {}
 
     def __init__(self, _session: object) -> None:
         pass
 
     def get_by_id(self, id: int):
         return self.materia
+
+    def get_by_ref_le(self, ref_le: str):
+        return self.materias_por_ref.get(ref_le)
 
 
 class _FakeItemValuesetRepository:
@@ -280,6 +287,7 @@ def _reset() -> None:
     _FakeItemValuesetRepository.chave_rows = []
     _FakeItemValuesetRepository.by_id = None
     _FakeMateriaPrimaRepository.materia = None
+    _FakeMateriaPrimaRepository.materias_por_ref = {}
 
 
 def _service(monkeypatch):
@@ -1118,3 +1126,192 @@ def test_resolver_valueset_usa_primeira_ativa_sem_padrao(monkeypatch) -> None:
     )
 
     assert resolvido.id == 8
+
+
+def test_recalcular_orlas_do_item_ignora_divisao_e_composta(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            quantidade=Decimal("1"),
+        ),
+        _resumo(id=2, tipo_linha="DIVISAO_INDEPENDENTE", codigo_orlas="2222"),
+        _resumo(id=3, tipo_linha="PECA_COMPOSTA", codigo_orlas="2222"),
+    ]
+
+    atualizadas = service.recalcular_orlas_do_item(30)
+
+    assert atualizadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 1
+    assert payload["ml_orla_grossa"] == Decimal("6.6")
+    assert payload["ml_orla_fina"] == Decimal("0")
+    assert session.committed is True
+
+
+def test_recalcular_orlas_do_item_resolve_preco(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("11.50"), unidade="M2")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_1_0="ORL0003",
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # ml_grossa = 6.6 ; largura(esp 19) = 22 ; preco_ml = 11.50 * 22/1000 = 0.253
+    # custo = 6.6 * 0.253 = 1.6698 (M2 -> ML conversion applied).
+    assert payload["ml_orla_grossa"] == Decimal("6.6")
+    assert payload["custo_orla_grossa"] == Decimal("1.6698")
+    assert payload["custo_orlas"] == Decimal("1.6698")
+
+
+def test_recalcular_orlas_fallback_esp_mp_quando_esp_real_vazio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0002": SimpleNamespace(preco_liquido=Decimal("6.50"), unidade="M2"),
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("11.50"), unidade="M2"),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2111",
+            comp_real=Decimal("2000"),
+            larg_real=Decimal("1000"),
+            esp_real=None,  # no esp formula -> must fall back to esp_mp
+            esp_mp=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # esp_mp 19 -> largura 22 -> M2 prices converted to ML.
+    assert payload["ml_orla_fina"] == Decimal("4.3")
+    assert payload["ml_orla_grossa"] == Decimal("2.1")
+    assert payload["custo_orla_fina"] == Decimal("0.6149")
+    assert payload["custo_orla_grossa"] == Decimal("0.5313")
+    assert payload["custo_orlas"] == Decimal("1.1462")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_orlas_unidade_desconhecida_preenche_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORLX": SimpleNamespace(preco_liquido=Decimal("6.50"), unidade="UND")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_1_0="ORLX",
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["ml_orla_grossa"] == Decimal("6.6")
+    assert payload["custo_orla_grossa"] is None
+    assert payload["custo_orlas"] is None
+    assert "unidade da orla" in payload["observacoes"]
+
+
+def test_recalcular_orlas_so_altera_campos_de_orla(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", codigo_orlas="0000", chave_valueset="MATERIAL_X")
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert set(payload.keys()) == {
+        "id",
+        "ml_orla_fina",
+        "ml_orla_grossa",
+        "custo_orla_fina",
+        "custo_orla_grossa",
+        "custo_orlas",
+    }
+    # Measures and ValueSet are not touched.
+    assert "comp_real" not in payload
+    assert "chave_valueset" not in payload
+
+
+def test_inserir_peca_simples_preenche_esp_do_material(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="SIMPLES", chave_valueset_material="MATERIAL_COSTAS")
+    }
+    _FakeItemValuesetRepository.default_linha = _vs_linha(id=9, esp_mp=Decimal("19"))
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    payload = _FakeRepository.created_payload
+    assert payload["tipo_linha"] == "PECA"
+    assert payload["esp"] == "19"
+    assert payload["esp_mp"] == Decimal("19")
+
+
+def test_inserir_peca_composta_principal_nao_recebe_esp(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="COMPOSTA", chave_valueset_material="MATERIAL_COSTAS")
+    }
+    _FakeComponenteRepository.componentes = []
+    _FakeItemValuesetRepository.default_linha = _vs_linha(id=9, esp_mp=Decimal("19"))
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    principal = _FakeRepository.created_payloads[0]
+    assert principal["tipo_linha"] == "PECA_COMPOSTA"
+    assert "esp" not in principal
+
+
+def test_aplicar_materia_prima_preenche_esp(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+    _FakeMateriaPrimaRepository.materia = _materia(id=7, espessura=Decimal("12"))
+
+    service.aplicar_materia_prima_na_linha(5, 7)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["esp"] == "12"
+    assert payload["esp_mp"] == Decimal("12")
+
+
+def test_aplicar_valueset_atualiza_esp(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.by_id = _vs_linha(id=9, esp_mp=Decimal("19"))
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+
+    service.aplicar_valueset_item_em_linhas_custeio(9, [5])
+
+    payload = _FakeRepository.updated_payload
+    assert payload["esp"] == "19"

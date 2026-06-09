@@ -239,3 +239,35 @@ def test_orcamento_item_custeio_page_material_menu() -> None:
     aceita = inspect.getsource(OrcamentoItemCusteioPage._linha_aceita_material)
     assert "DIVISAO_INDEPENDENTE" in aceita
     assert "PECA_COMPOSTA" in aceita
+
+
+def test_orcamento_item_custeio_page_atualizar_geral() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "atualizar_geral")
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "self.atualizar_geral" in init
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
+    assert "recalcular_medidas_do_item" in source
+    assert "recalcular_orlas_do_item" in source
+
+    valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
+    assert '"Custo orlas"' in valores
+    assert "custo_orlas" in valores
+    assert "ml_orla_fina" in valores
+
+
+def test_orcamento_item_custeio_page_esp_edit_protection() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_confirmar_edicao_espessura")
+
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert '"Esp"' in on_changed
+    assert "_confirmar_edicao_espessura" in on_changed
+
+    confirm = inspect.getsource(OrcamentoItemCusteioPage._confirmar_edicao_espessura)
+    assert "vem normalmente da mat" in confirm  # "...da matéria-prima"
+    assert "Sim, editar manualmente" in confirm

@@ -112,6 +112,9 @@ class OrcamentoItemCusteioLinha(Base):
     perimetro_ml: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     ml_orla_fina: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     ml_orla_grossa: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_orla_fina: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_orla_grossa: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_orlas: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     custo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
