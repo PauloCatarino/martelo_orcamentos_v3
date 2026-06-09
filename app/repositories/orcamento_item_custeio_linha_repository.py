@@ -43,6 +43,7 @@ class OrcamentoItemCusteioLinhaResumo:
     custo_orla_grossa: Decimal | None
     custo_orlas: Decimal | None
     custo_mp: Decimal | None
+    custo_ferragem: Decimal | None
     custo_unitario: Decimal | None
     custo_total: Decimal | None
     margem_percentagem: Decimal | None
@@ -238,6 +239,7 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_orla_grossa=linha.custo_orla_grossa,
             custo_orlas=linha.custo_orlas,
             custo_mp=linha.custo_mp,
+            custo_ferragem=linha.custo_ferragem,
             custo_unitario=linha.custo_unitario,
             custo_total=linha.custo_total,
             margem_percentagem=linha.margem_percentagem,

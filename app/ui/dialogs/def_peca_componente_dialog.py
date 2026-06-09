@@ -13,10 +13,14 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFormLayout,
+    QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.domain.componente_types import (
@@ -63,6 +67,7 @@ class DefPecaComponenteDialog(QDialog):
         self.componente = componente
         self.on_save = on_save
         self._is_edit = componente is not None
+        self._pecas_disponiveis = list(pecas_disponiveis)
 
         self.setWindowTitle("Editar Componente" if self._is_edit else "Novo Componente")
         self.setModal(True)
@@ -77,6 +82,16 @@ class DefPecaComponenteDialog(QDialog):
             self.peca_componente_input.addItem(f"{peca.codigo} - {peca.nome}", peca.id)
 
         self.referencia_input = QLineEdit()
+        self.selecionar_ref_button = QPushButton("Selecionar...")
+        self.selecionar_ref_button.clicked.connect(self.selecionar_referencia)
+
+        self.referencia_row = QWidget()
+        referencia_row_layout = QHBoxLayout()
+        referencia_row_layout.setContentsMargins(0, 0, 0, 0)
+        referencia_row_layout.addWidget(self.referencia_input, stretch=1)
+        referencia_row_layout.addWidget(self.selecionar_ref_button)
+        self.referencia_row.setLayout(referencia_row_layout)
+
         self.descricao_input = QLineEdit()
 
         self.ordem_input = QSpinBox()
@@ -113,7 +128,7 @@ class DefPecaComponenteDialog(QDialog):
         form = QFormLayout()
         form.addRow("Tipo de componente", self.tipo_componente_input)
         form.addRow(self.peca_componente_label, self.peca_componente_input)
-        form.addRow(self.referencia_label, self.referencia_input)
+        form.addRow(self.referencia_label, self.referencia_row)
         form.addRow(self.tipo_hint_label)
         form.addRow("Descrição", self.descricao_input)
         form.addRow(self.ordem_label, self.ordem_input)
@@ -173,14 +188,41 @@ class DefPecaComponenteDialog(QDialog):
         self.peca_componente_label.setVisible(is_peca)
         self.peca_componente_input.setVisible(is_peca)
         self.referencia_label.setVisible(not is_peca)
-        self.referencia_input.setVisible(not is_peca)
+        self.referencia_row.setVisible(not is_peca)
 
         if is_peca:
             self.tipo_hint_label.setText("Selecione uma peça existente da biblioteca.")
         else:
             self.tipo_hint_label.setText(
-                "Enquanto não existir tabela própria, indique a referência manualmente."
+                "Selecione uma referência existente ou escreva manualmente."
             )
+
+    def selecionar_referencia(self) -> None:
+        """Pick an existing reference (DefPeca code) for a non-piece component."""
+        if not self._pecas_disponiveis:
+            self.set_error("Não há referências disponíveis para selecionar.")
+            return
+
+        opcoes = {
+            f"{peca.codigo} - {peca.nome}": peca.codigo
+            for peca in self._pecas_disponiveis
+            if peca.codigo
+        }
+        if not opcoes:
+            self.set_error("Não há referências disponíveis para selecionar.")
+            return
+
+        escolha, confirmado = QInputDialog.getItem(
+            self,
+            "Selecionar referência",
+            "Referência do componente:",
+            list(opcoes.keys()),
+            0,
+            False,
+        )
+        if confirmado and escolha:
+            self.error_label.clear()
+            self.referencia_input.setText(opcoes[escolha])
 
     def _select_combo_data(self, combo: QComboBox, value: object) -> None:
         """Select the combo entry matching value when present."""

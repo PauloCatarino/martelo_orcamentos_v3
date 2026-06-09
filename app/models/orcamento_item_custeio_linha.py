@@ -116,6 +116,7 @@ class OrcamentoItemCusteioLinha(Base):
     custo_orla_grossa: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_orlas: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_mp: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_ferragem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     custo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)

@@ -26,7 +26,7 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
-from app.domain.custos import calcular_custo_mp
+from app.domain.custos import calcular_custo_ferragem, calcular_custo_mp
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -159,6 +159,15 @@ class AdicionarPecasResult:
 @dataclass(frozen=True)
 class CustoMateriaPrimaResult:
     """Summary of one raw-material cost recompute over an item."""
+
+    processadas: int
+    calculadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class CustoFerragemResult:
+    """Summary of one hardware (UND) cost recompute over an item."""
 
     processadas: int
     calculadas: int
@@ -549,6 +558,49 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return CustoMateriaPrimaResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def recalcular_custos_ferragens_do_item(
+        self, orcamento_item_id: int
+    ) -> CustoFerragemResult:
+        """Recompute the hardware cost (custo_ferragem) of an item's UND lines.
+
+        Costs UND lines as ``qt_total * preco_liquido * (1 + desp)`` (the waste %
+        is a technical safety coefficient). M2 lines are left untouched (handled
+        by Custo MP); ML / unknown units are left empty with an explanatory note.
+        Skips division and composite-parent lines. Does not change measures,
+        ValueSet, materials, Custo MP nor orla costs.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                ignoradas += 1
+                continue
+
+            processadas += 1
+            custo, aviso = calcular_custo_ferragem(
+                linha.quantidade,
+                linha.preco_liquido,
+                linha.desperdicio_percentagem,
+                linha.unidade,
+            )
+
+            fields: dict = {"custo_ferragem": custo}
+            nova_obs = self._mesclar_observacao(linha.observacoes, "Custo ferragem", aviso)
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if custo is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return CustoFerragemResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
 

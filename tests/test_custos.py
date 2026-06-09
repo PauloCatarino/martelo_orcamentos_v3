@@ -5,10 +5,14 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.domain.custos import (
+    AVISO_FERRAGEM_DADOS_INCOMPLETOS,
+    AVISO_FERRAGEM_UNIDADE_INVALIDA,
+    AVISO_FERRAGEM_UNIDADE_ML,
     AVISO_MP_DADOS_INCOMPLETOS,
     AVISO_MP_UNIDADE_INVALIDA,
     AVISO_MP_UNIDADE_ML,
     AVISO_MP_UNIDADE_UND,
+    calcular_custo_ferragem,
     calcular_custo_mp,
     desperdicio_para_fracao,
     fator_desperdicio,
@@ -96,4 +100,75 @@ def test_custo_mp_unidade_m2_variacoes() -> None:
             Decimal("0.5"), Decimal("6"), Decimal("10"), None, unidade
         )
         assert custo == Decimal("30"), unidade
+        assert aviso is None, unidade
+
+
+def test_custo_ferragem_und_sem_desperdicio() -> None:
+    custo, aviso = calcular_custo_ferragem(Decimal("5"), Decimal("2.53"), None, "UND")
+    assert custo == Decimal("12.65")
+    assert aviso is None
+
+
+def test_custo_ferragem_und_desperdicio_fracao() -> None:
+    custo, aviso = calcular_custo_ferragem(
+        Decimal("5"), Decimal("2.53"), Decimal("0.02"), "UND"
+    )
+    assert custo == Decimal("12.903")
+    assert aviso is None
+
+
+def test_custo_ferragem_und_desperdicio_humano() -> None:
+    custo, aviso = calcular_custo_ferragem(
+        Decimal("5"), Decimal("2.53"), Decimal("2"), "UND"
+    )
+    assert custo == Decimal("12.903")
+    assert aviso is None
+
+
+def test_custo_ferragem_und_desperdicio_5() -> None:
+    for desp in (Decimal("0.05"), Decimal("5")):
+        custo, aviso = calcular_custo_ferragem(
+            Decimal("10"), Decimal("1.50"), desp, "UND"
+        )
+        assert custo == Decimal("15.75"), desp
+        assert aviso is None
+
+
+def test_custo_ferragem_qt_vazia() -> None:
+    custo, aviso = calcular_custo_ferragem(None, Decimal("2.53"), None, "UND")
+    assert custo is None
+    assert aviso == AVISO_FERRAGEM_DADOS_INCOMPLETOS
+
+
+def test_custo_ferragem_preco_vazio() -> None:
+    custo, aviso = calcular_custo_ferragem(Decimal("5"), None, None, "UND")
+    assert custo is None
+    assert aviso == AVISO_FERRAGEM_DADOS_INCOMPLETOS
+
+
+def test_custo_ferragem_unidade_m2_nao_calcula() -> None:
+    # M2 is handled by Custo MP -> no hardware cost and no warning.
+    custo, aviso = calcular_custo_ferragem(Decimal("5"), Decimal("2.53"), None, "M2")
+    assert custo is None
+    assert aviso is None
+
+
+def test_custo_ferragem_unidade_ml() -> None:
+    custo, aviso = calcular_custo_ferragem(Decimal("5"), Decimal("2.53"), None, "ML")
+    assert custo is None
+    assert aviso == AVISO_FERRAGEM_UNIDADE_ML
+
+
+def test_custo_ferragem_unidade_desconhecida() -> None:
+    custo, aviso = calcular_custo_ferragem(Decimal("5"), Decimal("2.53"), None, "")
+    assert custo is None
+    assert aviso == AVISO_FERRAGEM_UNIDADE_INVALIDA
+
+
+def test_custo_ferragem_und_variacoes() -> None:
+    for unidade in ("UND", "und", "un", "UN"):
+        custo, aviso = calcular_custo_ferragem(
+            Decimal("5"), Decimal("2.53"), None, unidade
+        )
+        assert custo == Decimal("12.65"), unidade
         assert aviso is None, unidade

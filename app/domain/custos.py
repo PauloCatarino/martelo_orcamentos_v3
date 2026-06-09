@@ -18,6 +18,12 @@ AVISO_MP_UNIDADE_UND = "Custo MP não calculado nesta fase: unidade UND."
 AVISO_MP_UNIDADE_INVALIDA = "Custo MP não calculado: unidade não validada."
 AVISO_MP_DADOS_INCOMPLETOS = "Custo MP não calculado: área ou preço em falta."
 
+AVISO_FERRAGEM_UNIDADE_ML = "Custo ferragem não calculado nesta fase: unidade ML."
+AVISO_FERRAGEM_UNIDADE_INVALIDA = "Custo ferragem não calculado: unidade não validada."
+AVISO_FERRAGEM_DADOS_INCOMPLETOS = (
+    "Custo ferragem não calculado: quantidade ou preço em falta."
+)
+
 _UNIDADES_M2 = ("M2", "M²", "M^2", "MTQ", "METRO2")
 _UNIDADES_ML = ("ML", "M", "MTL")
 _UNIDADES_UND = ("UND", "UN", "UNI", "UNID", "PC", "PCS", "UNIDADE")
@@ -74,4 +80,36 @@ def calcular_custo_mp(
         qt = Decimal("1")
 
     custo = area * qt * preco * fator_desperdicio(desperdicio_percentagem)
+    return custo, None
+
+
+def calcular_custo_ferragem(
+    qt_total,
+    preco_liquido,
+    desperdicio_percentagem,
+    unidade,
+) -> tuple[Decimal | None, str | None]:
+    """Return (custo_ferragem, aviso) for one line. Only UND is costed here.
+
+    UND: ``qt_total * preco_liquido * (1 + desperdicio)`` — here the waste % is a
+    technical safety coefficient (miscounts, damaged/lost parts), not material
+    waste; orlas are intentionally excluded (they have their own +100 mm margin).
+    M2 -> no cost, no warning (handled by Custo MP). ML / unknown unit -> no cost
+    + warning. Missing quantity or price (with UND) -> no cost + warning.
+    """
+    unid = (unidade or "").strip().upper()
+
+    if unid in _UNIDADES_M2:
+        return None, None
+    if unid in _UNIDADES_ML:
+        return None, AVISO_FERRAGEM_UNIDADE_ML
+    if unid not in _UNIDADES_UND:
+        return None, AVISO_FERRAGEM_UNIDADE_INVALIDA
+
+    qt = normalizar_numero(qt_total)
+    preco = normalizar_numero(preco_liquido)
+    if qt is None or preco is None:
+        return None, AVISO_FERRAGEM_DADOS_INCOMPLETOS
+
+    custo = qt * preco * fator_desperdicio(desperdicio_percentagem)
     return custo, None

@@ -136,6 +136,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "custo_orla_grossa": None,
         "custo_orlas": None,
         "custo_mp": None,
+        "custo_ferragem": None,
         "custo_unitario": None,
         "custo_total": None,
         "margem_percentagem": None,
@@ -1494,3 +1495,101 @@ def test_recalcular_custo_mp_preserva_observacao_de_orla(monkeypatch) -> None:
     obs = _FakeRepository.updated_payload["observacoes"]
     assert "Custo de orla" in obs  # existing orla note preserved
     assert "unidade UND" in obs  # new material-cost note added
+
+
+def test_recalcular_ferragens_und(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            quantidade=Decimal("5"),
+            preco_liquido=Decimal("2.53"),
+            desperdicio_percentagem=Decimal("0.02"),
+        ),
+    ]
+
+    result = service.recalcular_custos_ferragens_do_item(30)
+
+    assert result.processadas == 1
+    assert result.calculadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_ferragem"] == Decimal("12.903")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_ferragens_ignora_divisao_e_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", unidade="UND"),
+        _resumo(id=2, tipo_linha="PECA_COMPOSTA", unidade="UND"),
+    ]
+
+    result = service.recalcular_custos_ferragens_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 2
+    assert _FakeRepository.updated_payload is None
+
+
+def test_recalcular_ferragens_m2_nao_calcula(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            unidade="M2",
+            quantidade=Decimal("5"),
+            preco_liquido=Decimal("10"),
+        ),
+    ]
+
+    result = service.recalcular_custos_ferragens_do_item(30)
+
+    assert result.calculadas == 0
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_ferragem"] is None
+    assert "observacoes" not in payload  # M2 produces no hardware warning
+
+
+def test_recalcular_ferragens_ml_preenche_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="ML",
+            quantidade=Decimal("5"),
+            preco_liquido=Decimal("2.53"),
+        ),
+    ]
+
+    service.recalcular_custos_ferragens_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_ferragem"] is None
+    assert "unidade ML" in payload["observacoes"]
+
+
+def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            quantidade=Decimal("5"),
+            preco_liquido=Decimal("2.53"),
+            chave_valueset="FERRAGEM_X",
+            comp_real=Decimal("100"),
+        ),
+    ]
+
+    service.recalcular_custos_ferragens_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert set(payload.keys()) == {"id", "custo_ferragem"}
+    assert "comp_real" not in payload
+    assert "chave_valueset" not in payload
+    assert "custo_mp" not in payload

@@ -95,3 +95,23 @@ def test_componente_dialog_validates_before_save() -> None:
 
     assert "def_peca_componente_id" in source
     assert "referencia_componente" in source
+
+
+def test_componente_dialog_tem_seletor_de_referencia() -> None:
+    from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
+
+    assert hasattr(DefPecaComponenteDialog, "selecionar_referencia")
+
+    init = inspect.getsource(DefPecaComponenteDialog.__init__)
+    assert "Selecionar..." in init
+    assert "selecionar_referencia" in init
+
+    source = inspect.getsource(DefPecaComponenteDialog.selecionar_referencia)
+    # Picks from the available DefPeca references and fills the reference field;
+    # manual typing stays available as a fallback (referencia_input is a QLineEdit).
+    assert "QInputDialog" in source
+    assert "_pecas_disponiveis" in source
+    assert "referencia_input.setText" in source
+
+    toggle = inspect.getsource(DefPecaComponenteDialog._update_tipo_fields)
+    assert "referencia_row" in toggle

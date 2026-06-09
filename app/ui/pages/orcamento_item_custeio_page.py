@@ -315,6 +315,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_medidas_do_item(self.item_id)
                 service.recalcular_orlas_do_item(self.item_id)
                 service.recalcular_custo_materia_prima_do_item(self.item_id)
+                service.recalcular_custos_ferragens_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
@@ -322,7 +323,8 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText(
-            "Item atualizado (medidas, orlas e custo de material recalculados)."
+            "Item atualizado (medidas, orlas, custo de material e ferragens "
+            "recalculados)."
         )
 
     def inserir_divisao(self) -> None:
@@ -861,6 +863,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo orla grossa": format_currency(linha.custo_orla_grossa),
             "Custo orlas": format_currency(linha.custo_orlas),
             "Custo MP": format_currency(linha.custo_mp),
+            "Custo ferragem": format_currency(linha.custo_ferragem),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),
