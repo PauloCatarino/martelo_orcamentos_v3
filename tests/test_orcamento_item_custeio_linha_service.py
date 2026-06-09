@@ -171,6 +171,8 @@ class _FakeRepository:
     activate_result = True
     activated_id: int | None = None
     deleted_ids: list | None = None
+    lote_call: tuple | None = None
+    lote_count = 0
 
     def __init__(self, _session: object) -> None:
         pass
@@ -178,6 +180,10 @@ class _FakeRepository:
     def delete_linhas(self, ids: list[int]) -> int:
         self.__class__.deleted_ids = list(ids)
         return len(self.__class__.deleted_ids)
+
+    def atualizar_flag_exclusao(self, orcamento_item_id, campo, valor) -> int:
+        self.__class__.lote_call = (orcamento_item_id, campo, bool(valor))
+        return self.__class__.lote_count
 
     def list_by_orcamento_item(self, orcamento_item_id: int):
         return self.all_rows
@@ -279,10 +285,15 @@ class _FakeSession:
     def commit(self) -> None:
         self.committed = True
 
+    def expire_all(self) -> None:
+        pass
+
 
 def _reset() -> None:
     _FakeRepository.all_rows = []
     _FakeRepository.active_rows = []
+    _FakeRepository.lote_call = None
+    _FakeRepository.lote_count = 0
     _FakeRepository.versao_rows = []
     _FakeRepository.by_id = None
     _FakeRepository.created_payload = None
@@ -1742,6 +1753,37 @@ def test_atualizar_exclusao_linha_campo_invalido(monkeypatch) -> None:
         pass
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_atualizar_exclusao_em_lote(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.lote_count = 4
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", custo_mp=Decimal("10")),
+    ]
+
+    result = service.atualizar_exclusao_em_lote(30, "excluir_mp", True)
+
+    assert result.linhas_atualizadas == 4
+    assert result.campo == "excluir_mp"
+    assert result.valor is True
+    assert _FakeRepository.lote_call == (30, "excluir_mp", True)
+    # custo_total was recomputed afterwards.
+    assert _FakeRepository.updated_payload is not None
+    assert "custo_total" in _FakeRepository.updated_payload
+
+
+def test_atualizar_exclusao_em_lote_campo_invalido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    try:
+        service.atualizar_exclusao_em_lote(30, "excluir_xpto", True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert _FakeRepository.lote_call is None
 
 
 def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:

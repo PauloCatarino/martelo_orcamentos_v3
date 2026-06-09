@@ -87,6 +87,25 @@ def test_orcamento_item_custeio_page_exclusao_checkboxes() -> None:
     assert "EXCLUSAO_COLUMNS" in on_changed
 
 
+def test_orcamento_item_custeio_page_menu_exclusoes_em_lote() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in ("_preencher_menu_exclusoes", "_aplicar_exclusao_em_lote"):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Exclusões" in menu
+
+    submenu = inspect.getsource(OrcamentoItemCusteioPage._preencher_menu_exclusoes)
+    assert "Marcar todos" in submenu
+    assert "Desmarcar todos" in submenu
+    assert "EXCLUSAO_COLUMNS" in submenu
+
+    aplicar = inspect.getsource(OrcamentoItemCusteioPage._aplicar_exclusao_em_lote)
+    assert "atualizar_exclusao_em_lote" in aplicar
+    assert "carregar" in aplicar
+
+
 def test_orcamento_item_custeio_page_uses_item_line_service() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

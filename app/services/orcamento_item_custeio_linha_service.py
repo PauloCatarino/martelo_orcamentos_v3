@@ -207,6 +207,15 @@ class CustoTotalResult:
     ignoradas: int
 
 
+@dataclass(frozen=True)
+class ExclusaoLoteResult:
+    """Summary of one bulk cost-exclusion flag change over an item."""
+
+    linhas_atualizadas: int
+    campo: str
+    valor: bool
+
+
 class OrcamentoItemCusteioLinhaService:
     """Application service for OrcamentoItemCusteioLinha workflows."""
 
@@ -736,6 +745,25 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return self.repository.get_by_id(linha_id)
+
+    def atualizar_exclusao_em_lote(
+        self, orcamento_item_id: int, campo: str, valor: bool
+    ) -> ExclusaoLoteResult:
+        """Set one exclusion flag on all active lines, then recompute totals."""
+        if campo not in EXCLUSAO_FIELDS:
+            raise ValueError("campo de exclusao invalido")
+
+        atualizadas = self.repository.atualizar_flag_exclusao(
+            orcamento_item_id, campo, bool(valor)
+        )
+        # The bulk update bypasses the identity map; drop stale instances so the
+        # total recompute reads the new flag values.
+        self.session.expire_all()
+        self.recalcular_custo_total_do_item(orcamento_item_id)
+
+        return ExclusaoLoteResult(
+            linhas_atualizadas=atualizadas, campo=campo, valor=bool(valor)
+        )
 
     def _custo_total_da_linha(self, linha, **exclusao_overrides) -> Decimal:
         """Build the total cost of one line, honouring (overridable) exclusions."""

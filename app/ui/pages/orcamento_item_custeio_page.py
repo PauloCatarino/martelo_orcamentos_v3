@@ -757,8 +757,38 @@ class OrcamentoItemCusteioPage(QWidget):
         menu.addAction("Editar Dados do Material", self.editar_dados_material_linha)
         menu.addAction("Limpar Dados do Material", self.limpar_dados_material_linha)
         menu.addSeparator()
+        self._preencher_menu_exclusoes(menu.addMenu("Exclusões"))
+        menu.addSeparator()
         menu.addAction("Eliminar linha(s)", self.eliminar_linhas_selecionadas)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _preencher_menu_exclusoes(self, submenu) -> None:
+        """Add the bulk mark/unmark actions for each exclusion column."""
+        for header, campo in self.EXCLUSAO_COLUMNS.items():
+            submenu.addAction(
+                f"Marcar todos {header}",
+                lambda _checked=False, c=campo: self._aplicar_exclusao_em_lote(c, True),
+            )
+            submenu.addAction(
+                f"Desmarcar todos {header}",
+                lambda _checked=False, c=campo: self._aplicar_exclusao_em_lote(c, False),
+            )
+            submenu.addSeparator()
+
+    def _aplicar_exclusao_em_lote(self, campo: str, valor: bool) -> None:
+        """Set one exclusion flag on all active lines and recompute totals."""
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).atualizar_exclusao_em_lote(
+                    self.item_id, campo, valor
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar as exclusões de custo.")
+            return
+
+        self.carregar()
+        acao = "marcadas" if valor else "desmarcadas"
+        self.status_label.setText(f"Exclusões {acao} e custo total recalculado.")
 
     def eliminar_linhas_selecionadas(self) -> None:
         """Physically delete the selected cost lines after confirmation."""

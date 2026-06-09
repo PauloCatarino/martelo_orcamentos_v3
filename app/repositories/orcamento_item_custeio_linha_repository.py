@@ -181,6 +181,26 @@ class OrcamentoItemCusteioLinhaRepository:
 
         return True
 
+    def atualizar_flag_exclusao(
+        self, orcamento_item_id: int, campo: str, valor: bool
+    ) -> int:
+        """Set one exclusion flag on all active lines of the item; returns count.
+
+        ``campo`` must be validated by the caller (it is interpolated into the
+        update). Inactive lines are not touched.
+        """
+        result = self.session.execute(
+            update(OrcamentoItemCusteioLinha)
+            .where(
+                OrcamentoItemCusteioLinha.orcamento_item_id == orcamento_item_id,
+                OrcamentoItemCusteioLinha.ativo.is_(True),
+            )
+            .values(**{campo: bool(valor)})
+        )
+        self.session.flush()
+
+        return result.rowcount or 0
+
     def delete_linhas(self, ids: list[int]) -> int:
         """Physically delete the given cost lines; returns how many were removed.
 
