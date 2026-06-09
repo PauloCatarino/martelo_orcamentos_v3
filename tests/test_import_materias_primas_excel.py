@@ -92,6 +92,56 @@ def test_build_column_map_and_extract_row() -> None:
     assert values["fornecedor"] == "Fornecedor"
 
 
+def test_extract_row_maps_orla_correspondences() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "CORESP_ORLA_0_4", "CORESP_ORLA_1_0"]
+    row = ("PLC0033", "Material frentes", "ORL0002", "ORL0003")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    assert values["coresp_orla_0_4"] == "ORL0002"
+    assert values["coresp_orla_1_0"] == "ORL0003"
+
+
+def test_extract_row_accepts_short_orla_headers() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "CORESP_ORLA_0", "CORESP_ORLA_1"]
+    row = ("PLC0033", "Material frentes", "ORL0002", "ORL0003")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    assert values["coresp_orla_0_4"] == "ORL0002"
+    assert values["coresp_orla_1_0"] == "ORL0003"
+
+
+def test_extract_row_without_orla_columns_is_empty() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO"]
+    row = ("PLC0001", "Material sem orlas")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    assert values["coresp_orla_0_4"] is None
+    assert values["coresp_orla_1_0"] is None
+
+
+def test_extract_row_maps_desperdicio_from_desp() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "DESC2_(-)", "DESP"]
+    row = ("PLC0001", "Material", "0,2", "0,15")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    # DESP is distinct from the discount (DESC2).
+    assert values["desconto"] == Decimal("0.2")
+    assert values["desperdicio_percentagem"] == Decimal("0.15")
+
+
+def test_extract_row_without_desp_is_empty() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO"]
+    row = ("PLC0001", "Material")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    assert values["desperdicio_percentagem"] is None
+
+
 @dataclass
 class _ExistingMateria:
     id: int
@@ -147,6 +197,60 @@ def test_run_import_creates_updates_and_ignores_missing_ref_le() -> None:
     assert service.created[0].origem_dados == "EXCEL"
     assert service.created[0].ativo is True
     assert service.updated[0][0] == 2
+
+
+def test_run_import_creates_with_orla_correspondences() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "CORESP_ORLA_0_4", "CORESP_ORLA_1_0"]
+    rows = [("PLC0033", "Material frentes", "ORL0002", "ORL0003")]
+    service = _FakeService()
+
+    importer.run_import(service, headers, rows, dry_run=False)
+
+    assert service.created[0].coresp_orla_0_4 == "ORL0002"
+    assert service.created[0].coresp_orla_1_0 == "ORL0003"
+
+
+def test_run_import_updates_with_orla_correspondences() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "CORESP_ORLA_0_4", "CORESP_ORLA_1_0"]
+    rows = [("PLC0002", "Material existente", "ORL0002", "ORL0003")]
+    service = _FakeService()
+
+    importer.run_import(service, headers, rows, dry_run=False)
+
+    _, data = service.updated[0]
+    assert data.coresp_orla_0_4 == "ORL0002"
+    assert data.coresp_orla_1_0 == "ORL0003"
+
+
+def test_run_import_creates_with_desperdicio() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "DESP"]
+    rows = [("PLC0001", "Material novo", "0,15")]
+    service = _FakeService()
+
+    importer.run_import(service, headers, rows, dry_run=False)
+
+    assert service.created[0].desperdicio_percentagem == Decimal("0.15")
+
+
+def test_run_import_updates_existing_with_desp_and_orlas() -> None:
+    # PLC0002 already exists -> the upsert path must carry the new fields.
+    headers = [
+        "Ref_LE",
+        "DESCRICAO_no_ORCAMENTO",
+        "DESP",
+        "CORESP_ORLA_0",
+        "CORESP_ORLA_1",
+    ]
+    rows = [("PLC0002", "Material existente", "0,15", "ORL0002", "ORL0003")]
+    service = _FakeService()
+
+    importer.run_import(service, headers, rows, dry_run=False)
+
+    assert service.created == []
+    _, data = service.updated[0]
+    assert data.desperdicio_percentagem == Decimal("0.15")
+    assert data.coresp_orla_0_4 == "ORL0002"
+    assert data.coresp_orla_1_0 == "ORL0003"
 
 
 def test_run_import_dry_run_does_not_write() -> None:

@@ -36,6 +36,9 @@ class DefMateriaPrimaResumo:
     origem_dados: str
     ativo: bool
     observacoes: str | None
+    coresp_orla_0_4: str | None = None
+    coresp_orla_1_0: str | None = None
+    desperdicio_percentagem: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -121,10 +124,13 @@ class DefMateriaPrimaRepository:
         familia_original_excel: str | None = None,
         tipo_martelo: str | None = None,
         familia_martelo: str | None = None,
+        coresp_orla_0_4: str | None = None,
+        coresp_orla_1_0: str | None = None,
         unidade: str | None = None,
         preco_tabela: Decimal | None = None,
         desconto: Decimal | None = None,
         margem: Decimal | None = None,
+        desperdicio_percentagem: Decimal | None = None,
         preco_liquido: Decimal | None = None,
         comprimento: Decimal | None = None,
         largura: Decimal | None = None,
@@ -143,10 +149,13 @@ class DefMateriaPrimaRepository:
             familia_original_excel=familia_original_excel,
             tipo_martelo=tipo_martelo,
             familia_martelo=familia_martelo,
+            coresp_orla_0_4=coresp_orla_0_4,
+            coresp_orla_1_0=coresp_orla_1_0,
             unidade=unidade,
             preco_tabela=preco_tabela,
             desconto=desconto,
             margem=margem,
+            desperdicio_percentagem=desperdicio_percentagem,
             preco_liquido=preco_liquido,
             comprimento=comprimento,
             largura=largura,
@@ -172,10 +181,13 @@ class DefMateriaPrimaRepository:
         familia_original_excel: str | None = None,
         tipo_martelo: str | None = None,
         familia_martelo: str | None = None,
+        coresp_orla_0_4: str | None = None,
+        coresp_orla_1_0: str | None = None,
         unidade: str | None = None,
         preco_tabela: Decimal | None = None,
         desconto: Decimal | None = None,
         margem: Decimal | None = None,
+        desperdicio_percentagem: Decimal | None = None,
         preco_liquido: Decimal | None = None,
         comprimento: Decimal | None = None,
         largura: Decimal | None = None,
@@ -197,10 +209,13 @@ class DefMateriaPrimaRepository:
         materia.familia_original_excel = familia_original_excel
         materia.tipo_martelo = tipo_martelo
         materia.familia_martelo = familia_martelo
+        materia.coresp_orla_0_4 = coresp_orla_0_4
+        materia.coresp_orla_1_0 = coresp_orla_1_0
         materia.unidade = unidade
         materia.preco_tabela = preco_tabela
         materia.desconto = desconto
         materia.margem = margem
+        materia.desperdicio_percentagem = desperdicio_percentagem
         materia.preco_liquido = preco_liquido
         materia.comprimento = comprimento
         materia.largura = largura
@@ -235,6 +250,9 @@ class DefMateriaPrimaRepository:
             familia_original_excel=materia.familia_original_excel,
             tipo_martelo=materia.tipo_martelo,
             familia_martelo=materia.familia_martelo,
+            coresp_orla_0_4=materia.coresp_orla_0_4,
+            coresp_orla_1_0=materia.coresp_orla_1_0,
+            desperdicio_percentagem=materia.desperdicio_percentagem,
             unidade=materia.unidade,
             preco_tabela=materia.preco_tabela,
             desconto=materia.desconto,

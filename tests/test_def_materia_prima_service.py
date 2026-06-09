@@ -174,6 +174,39 @@ def test_criar_normaliza_descricao_ref_le_e_origem(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_criar_copia_correspondencias_de_orla(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    result = service.criar_materia_prima(
+        service_module.CriarDefMateriaPrimaData(
+            descricao="Material frentes",
+            ref_le="PLC0033",
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+        )
+    )
+
+    assert _FakeRepository.created_payload["coresp_orla_0_4"] == "ORL0002"
+    assert _FakeRepository.created_payload["coresp_orla_1_0"] == "ORL0003"
+    assert result.coresp_orla_0_4 == "ORL0002"
+    assert result.coresp_orla_1_0 == "ORL0003"
+
+
+def test_criar_copia_desperdicio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    result = service.criar_materia_prima(
+        service_module.CriarDefMateriaPrimaData(
+            descricao="Material",
+            ref_le="PLC0001",
+            desperdicio_percentagem=Decimal("0.15"),
+        )
+    )
+
+    assert _FakeRepository.created_payload["desperdicio_percentagem"] == Decimal("0.15")
+    assert result.desperdicio_percentagem == Decimal("0.15")
+
+
 def test_criar_descricao_obrigatoria(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 
@@ -236,6 +269,31 @@ def test_editar_permite_mesma_ref_le_do_proprio_registo(monkeypatch) -> None:
 
     assert _FakeRepository.updated_payload is not None
     assert _FakeRepository.updated_payload["id"] == 5
+    assert session.committed is True
+
+
+def test_editar_atualiza_orlas_e_desperdicio(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_ref_le = _resumo(id=5, ref_le="PLC0033")
+
+    result = service.editar_materia_prima(
+        5,
+        service_module.EditarDefMateriaPrimaData(
+            descricao="Material frentes",
+            ref_le="PLC0033",
+            desperdicio_percentagem=Decimal("0.15"),
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+        ),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["desperdicio_percentagem"] == Decimal("0.15")
+    assert payload["coresp_orla_0_4"] == "ORL0002"
+    assert payload["coresp_orla_1_0"] == "ORL0003"
+    assert result.desperdicio_percentagem == Decimal("0.15")
+    assert result.coresp_orla_0_4 == "ORL0002"
+    assert result.coresp_orla_1_0 == "ORL0003"
     assert session.committed is True
 
 

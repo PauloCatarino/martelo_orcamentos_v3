@@ -30,7 +30,13 @@ def test_materias_primas_page_table_headers() -> None:
         "Tipo Excel",
         "Fam\u00edlia Excel",
         "Unidade",
+        "Desp %",
         "Pre\u00e7o L\u00edquido",
+        "Orla 0.4",
+        "Orla 1.0",
+        "Comp MP",
+        "Larg MP",
+        "Esp MP",
         "Ativo",
     ]
 

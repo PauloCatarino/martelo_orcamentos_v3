@@ -56,3 +56,17 @@ def test_dialog_normaliza_percentagens() -> None:
     source = inspect.getsource(MateriaPrimaPickerDialog._preencher)
 
     assert "normalize_percentagem_humana" in source
+
+
+def test_dialog_mostra_tipo_familia_e_orlas() -> None:
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    source = inspect.getsource(MateriaPrimaPickerDialog._preencher)
+
+    # Type/family fall back to the original Excel columns; orlas use the resolver.
+    assert "tipo_materia_prima(materia)" in source
+    assert "familia_materia_prima(materia)" in source
+    assert "coresp_orla_0_4(materia)" in source
+    assert "coresp_orla_1_0(materia)" in source
+    # Desp % is shown from the imported desperdicio_percentagem.
+    assert "desperdicio_percentagem" in source

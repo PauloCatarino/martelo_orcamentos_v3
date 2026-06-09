@@ -19,9 +19,10 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
-from app.utils.formatters import format_currency
+from app.utils.formatters import format_currency, format_quantity
 
 
 class MateriasPrimasPage(QWidget):
@@ -33,7 +34,13 @@ class MateriasPrimasPage(QWidget):
         "Tipo Excel",
         "Fam\u00edlia Excel",
         "Unidade",
+        "Desp %",
         "Pre\u00e7o L\u00edquido",
+        "Orla 0.4",
+        "Orla 1.0",
+        "Comp MP",
+        "Larg MP",
+        "Esp MP",
         "Ativo",
     ]
 
@@ -139,7 +146,15 @@ class MateriasPrimasPage(QWidget):
                 materia.tipo_original_excel or "",
                 materia.familia_original_excel or "",
                 materia.unidade or "",
+                formatar_percentagem(
+                    normalize_percentagem_humana(materia.desperdicio_percentagem)
+                ),
                 format_currency(materia.preco_liquido),
+                materia.coresp_orla_0_4 or "",
+                materia.coresp_orla_1_0 or "",
+                format_quantity(materia.comprimento),
+                format_quantity(materia.largura),
+                format_quantity(materia.espessura),
                 "Sim" if materia.ativo else "N\u00e3o",
             ]
 
