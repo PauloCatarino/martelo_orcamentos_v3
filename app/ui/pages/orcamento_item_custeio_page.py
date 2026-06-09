@@ -846,7 +846,11 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText("Linhas de divisão não usam material.")
             return
 
-        picker = MateriaPrimaPickerDialog(parent=self)
+        picker = MateriaPrimaPickerDialog(
+            parent=self,
+            initial_tipo=linha.tipo_materia_prima,
+            initial_familia=linha.familia_materia_prima,
+        )
         if not picker.exec() or picker.selected_materia is None:
             return
 

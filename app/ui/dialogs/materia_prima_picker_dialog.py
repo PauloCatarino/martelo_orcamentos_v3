@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -50,19 +52,23 @@ class MateriaPrimaPickerDialog(QDialog):
         "Ativo",
     ]
 
-    def __init__(self, parent=None, familia: str | None = None) -> None:
+    OPCAO_TODOS = "(Todos)"
+
+    def __init__(
+        self,
+        parent=None,
+        initial_tipo: str | None = None,
+        initial_familia: str | None = None,
+    ) -> None:
         super().__init__(parent)
 
         self.selected_materia: DefMateriaPrimaResumo | None = None
         self._materias_by_row: dict[int, DefMateriaPrimaResumo] = {}
-        self._familia_filtro = (familia or "").strip().upper() or None
+        self._aplicando_filtros = False
 
-        if self._familia_filtro:
-            self.setWindowTitle(f"Selecionar Acabamento ({self._familia_filtro})")
-        else:
-            self.setWindowTitle("Selecionar Matéria-Prima")
+        self.setWindowTitle("Selecionar Matéria-Prima")
         self.setModal(True)
-        self.setMinimumSize(900, 500)
+        self.setMinimumSize(900, 540)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(
@@ -79,6 +85,20 @@ class MateriaPrimaPickerDialog(QDialog):
         search_layout.addWidget(self.search_input, stretch=1)
         search_layout.addWidget(self.search_button)
         search_layout.addWidget(self.refresh_button)
+
+        # Tipo / Família filters (pre-filled from the cost line when opened there).
+        self.tipo_filter = QComboBox()
+        self.familia_filter = QComboBox()
+        self.limpar_filtros_button = QPushButton("Limpar filtros")
+        self.limpar_filtros_button.clicked.connect(self.limpar_filtros)
+
+        filtros_layout = QHBoxLayout()
+        filtros_layout.addWidget(QLabel("Tipo:"))
+        filtros_layout.addWidget(self.tipo_filter)
+        filtros_layout.addWidget(QLabel("Família:"))
+        filtros_layout.addWidget(self.familia_filter)
+        filtros_layout.addWidget(self.limpar_filtros_button)
+        filtros_layout.addStretch()
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("materiaPrimaPickerStatus")
@@ -104,15 +124,97 @@ class MateriaPrimaPickerDialog(QDialog):
 
         layout = QVBoxLayout()
         layout.addLayout(search_layout)
+        layout.addLayout(filtros_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
 
+        self._carregar_opcoes_filtros()
+        self._definir_filtro_inicial(self.tipo_filter, initial_tipo)
+        self._definir_filtro_inicial(self.familia_filter, initial_familia)
+        self.tipo_filter.currentIndexChanged.connect(self._on_filtro_changed)
+        self.familia_filter.currentIndexChanged.connect(self._on_filtro_changed)
+
+        self.pesquisar()
+
+    def _carregar_opcoes_filtros(self) -> None:
+        """Populate the Tipo/Família combos with the catalog's distinct values."""
+        try:
+            with SessionLocal() as session:
+                materias = DefMateriaPrimaService(session).listar_materias_primas_ativas()
+        except SQLAlchemyError:
+            materias = []
+
+        tipos = sorted(
+            {
+                (tipo_materia_prima(m) or "").strip()
+                for m in materias
+                if (tipo_materia_prima(m) or "").strip()
+            }
+        )
+        familias = sorted(
+            {
+                (familia_materia_prima(m) or "").strip()
+                for m in materias
+                if (familia_materia_prima(m) or "").strip()
+            }
+        )
+
+        self._aplicando_filtros = True
+        for combo, valores in (
+            (self.tipo_filter, tipos),
+            (self.familia_filter, familias),
+        ):
+            combo.clear()
+            combo.addItem(self.OPCAO_TODOS, None)
+            for valor in valores:
+                combo.addItem(valor, valor)
+        self._aplicando_filtros = False
+
+    def _definir_filtro_inicial(self, combo: QComboBox, valor: str | None) -> None:
+        """Pre-select a combo value (tolerant of case/plural), adding it if missing."""
+        if not valor:
+            return
+
+        valor_norm = valor.strip()
+        if not valor_norm:
+            return
+
+        self._aplicando_filtros = True
+        alvo = valor_norm.upper()
+        indice = -1
+        for i in range(combo.count()):
+            texto = (combo.itemText(i) or "").strip().upper()
+            if texto and (
+                texto == alvo or texto.startswith(alvo) or alvo.startswith(texto)
+            ):
+                indice = i
+                break
+
+        if indice >= 0:
+            combo.setCurrentIndex(indice)
+        else:
+            combo.addItem(valor_norm, valor_norm)
+            combo.setCurrentIndex(combo.count() - 1)
+        self._aplicando_filtros = False
+
+    def _on_filtro_changed(self, _index: int) -> None:
+        """Re-run the search when a filter changes (ignoring programmatic changes)."""
+        if self._aplicando_filtros:
+            return
+        self.pesquisar()
+
+    def limpar_filtros(self) -> None:
+        """Reset both Tipo/Família filters to "(Todos)" and refresh the table."""
+        self._aplicando_filtros = True
+        self.tipo_filter.setCurrentIndex(0)
+        self.familia_filter.setCurrentIndex(0)
+        self._aplicando_filtros = False
         self.pesquisar()
 
     def pesquisar(self) -> None:
-        """Search raw materials using the search box term."""
+        """Search raw materials by term, then apply the Tipo/Família filters."""
         self.status_label.clear()
         termo = self.search_input.text()
 
@@ -123,33 +225,39 @@ class MateriaPrimaPickerDialog(QDialog):
             self.status_label.setText("Nao foi possivel pesquisar as materias-primas.")
             return
 
-        if self._familia_filtro:
-            materias = [m for m in materias if self._pertence_familia(m)]
+        tipo_filtro = self._filtro_atual(self.tipo_filter)
+        familia_filtro = self._filtro_atual(self.familia_filter)
+        if tipo_filtro:
+            materias = [
+                m for m in materias if self._corresponde(tipo_materia_prima(m), tipo_filtro)
+            ]
+        if familia_filtro:
+            materias = [
+                m
+                for m in materias
+                if self._corresponde(familia_materia_prima(m), familia_filtro)
+            ]
 
         self._preencher(materias)
 
         if not materias:
-            if self._familia_filtro:
-                self.status_label.setText(
-                    f"Não foram encontrados acabamentos na família "
-                    f"{self._familia_filtro}."
-                )
+            if tipo_filtro or familia_filtro:
+                self.status_label.setText("Sem resultados para os filtros aplicados.")
             else:
                 self.status_label.setText("Sem materias-primas para mostrar.")
 
-    def _pertence_familia(self, materia: DefMateriaPrimaResumo) -> bool:
-        """Return True when the raw material belongs to the active family filter.
+    def _filtro_atual(self, combo: QComboBox) -> str | None:
+        """Return the active filter value of a combo, or None for "(Todos)"."""
+        valor = combo.currentData()
+        return (valor or "").strip().upper() or None
 
-        Case-insensitive and tolerant of singular/plural (the filter "ACABAMENTO"
-        matches the catalog family "ACABAMENTOS").
-        """
-        familia = (familia_materia_prima(materia) or "").strip().upper()
-        if not familia or self._familia_filtro is None:
+    def _corresponde(self, valor, filtro: str) -> bool:
+        """Match a material's type/family against a filter (case/plural tolerant)."""
+        texto = (valor or "").strip().upper()
+        if not texto:
             return False
 
-        return familia.startswith(self._familia_filtro) or self._familia_filtro.startswith(
-            familia
-        )
+        return texto == filtro or texto.startswith(filtro) or filtro.startswith(texto)
 
     def _preencher(self, materias: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw materials."""

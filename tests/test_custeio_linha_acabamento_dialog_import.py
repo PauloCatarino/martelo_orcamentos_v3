@@ -70,5 +70,4 @@ def test_acabamento_dialog_filtra_familia_acabamento() -> None:
     )
 
     selecionar = inspect.getsource(CusteioLinhaAcabamentoDialog._selecionar)
-    assert "familia=" in selecionar
-    assert "FAMILIA_ACABAMENTO" in selecionar
+    assert "initial_familia=FAMILIA_ACABAMENTO" in selecionar

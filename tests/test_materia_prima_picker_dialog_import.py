@@ -50,17 +50,34 @@ def test_dialog_uses_service() -> None:
     assert "pesquisar" in source
 
 
-def test_dialog_aceita_filtro_familia() -> None:
+def test_dialog_aceita_filtros_tipo_familia() -> None:
     from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 
-    assert "familia" in inspect.signature(MateriaPrimaPickerDialog).parameters
-    assert hasattr(MateriaPrimaPickerDialog, "_pertence_familia")
+    parametros = inspect.signature(MateriaPrimaPickerDialog).parameters
+    assert "initial_tipo" in parametros
+    assert "initial_familia" in parametros
+
+    for method in (
+        "limpar_filtros",
+        "_corresponde",
+        "_carregar_opcoes_filtros",
+        "_definir_filtro_inicial",
+    ):
+        assert hasattr(MateriaPrimaPickerDialog, method)
 
     pesquisar = inspect.getsource(MateriaPrimaPickerDialog.pesquisar)
-    assert "_familia_filtro" in pesquisar
+    assert "tipo_filter" in pesquisar
+    assert "familia_filter" in pesquisar
+    assert "_corresponde" in pesquisar
 
-    pertence = inspect.getsource(MateriaPrimaPickerDialog._pertence_familia)
-    assert "familia_materia_prima" in pertence
+
+def test_dialog_corresponde_tolera_singular_plural() -> None:
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    corresponde = inspect.getsource(MateriaPrimaPickerDialog._corresponde)
+    # Case-insensitive + singular/plural tolerant (ACABAMENTO matches ACABAMENTOS).
+    assert "startswith" in corresponde
+    assert "upper" in corresponde
 
 
 def test_dialog_normaliza_percentagens() -> None:

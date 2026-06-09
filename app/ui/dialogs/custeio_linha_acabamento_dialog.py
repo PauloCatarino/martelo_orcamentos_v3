@@ -126,7 +126,7 @@ class CusteioLinhaAcabamentoDialog(QDialog):
 
     def _selecionar(self, face: str) -> None:
         """Pick a finishing raw material (family ACABAMENTO) and copy its data."""
-        picker = MateriaPrimaPickerDialog(parent=self, familia=FAMILIA_ACABAMENTO)
+        picker = MateriaPrimaPickerDialog(parent=self, initial_familia=FAMILIA_ACABAMENTO)
         if not picker.exec() or picker.selected_materia is None:
             return
 

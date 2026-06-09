@@ -106,6 +106,17 @@ def test_orcamento_item_custeio_page_menu_exclusoes_em_lote() -> None:
     assert "carregar" in aplicar
 
 
+def test_orcamento_item_custeio_page_picker_pre_filtra_tipo_familia() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(
+        OrcamentoItemCusteioPage.selecionar_materia_prima_linha
+    )
+    assert "MateriaPrimaPickerDialog" in source
+    assert "initial_tipo=linha.tipo_materia_prima" in source
+    assert "initial_familia=linha.familia_materia_prima" in source
+
+
 def test_orcamento_item_custeio_page_menu_acabamento() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
