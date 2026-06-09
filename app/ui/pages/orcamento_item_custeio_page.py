@@ -345,6 +345,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custos_ml_do_item(self.item_id)
                 service.recalcular_custo_acabamento_do_item(self.item_id)
                 service.aplicar_operacoes_do_item(self.item_id)
+                service.recalcular_tempos_producao_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
@@ -1027,7 +1028,12 @@ class OrcamentoItemCusteioPage(QWidget):
             "Máquina": linha.maquina or "",
             "Operações": linha.operacoes or "",
             "Tipo produção": linha.tipo_producao or "",
+            "Tempo corte": format_quantity(linha.tempo_corte),
+            "Tempo orlagem": format_quantity(linha.tempo_orlagem),
+            "Tempo CNC": format_quantity(linha.tempo_cnc),
+            "Tempo montagem": format_quantity(linha.tempo_montagem),
             "Tempo manual": format_quantity(linha.tempo_manual),
+            "Tempo setup": format_quantity(linha.tempo_setup),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),
             "Margem %": formatar_percentagem(linha.margem_percentagem),

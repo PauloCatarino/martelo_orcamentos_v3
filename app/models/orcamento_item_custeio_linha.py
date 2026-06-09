@@ -190,6 +190,12 @@ class OrcamentoItemCusteioLinha(Base):
     )
     tempo_calculado: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_manual: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    # Basic production times in MINUTES (decimal), derived from the operations.
+    tempo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    tempo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    tempo_cnc: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    tempo_montagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    tempo_setup: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     # Production operations mapped from the piece definition (text list, e.g.
     # "CORTE; ORLAGEM; CNC"); no times/costs are computed in this phase.

@@ -2159,8 +2159,23 @@ def _ligacao_op(def_operacao_id: int):
     return SimpleNamespace(def_operacao_id=def_operacao_id)
 
 
-def _operacao(codigo: str, maquina_id=None):
-    return SimpleNamespace(codigo=codigo, nome=codigo, maquina_id=maquina_id)
+def _operacao(
+    codigo: str,
+    maquina_id=None,
+    tipo_operacao=None,
+    unidade_calculo=None,
+    tempo_base=None,
+    tempo_setup=None,
+):
+    return SimpleNamespace(
+        codigo=codigo,
+        nome=codigo,
+        maquina_id=maquina_id,
+        tipo_operacao=tipo_operacao,
+        unidade_calculo=unidade_calculo,
+        tempo_base=tempo_base,
+        tempo_setup=tempo_setup,
+    )
 
 
 def test_aplicar_operacoes_preenche_operacoes_e_maquina(monkeypatch) -> None:
@@ -2236,6 +2251,96 @@ def test_aplicar_operacoes_preserva_edicao_local(monkeypatch) -> None:
     assert result.processadas == 0
     assert result.ignoradas == 1
     assert _FakeRepository.updated_payload is None  # manual operations preserved
+
+
+def test_recalcular_tempos_corte_orlagem_cnc(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [_ligacao_op(2), _ligacao_op(3), _ligacao_op(4)]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA", tempo_base=Decimal("2")),
+        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", unidade_calculo="ML", tempo_base=Decimal("1")),
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", unidade_calculo="PECA", tempo_base=Decimal("4")),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            quantidade=Decimal("3"),
+            ml_orla_fina=Decimal("2"),
+            ml_orla_grossa=Decimal("3"),
+        ),
+    ]
+
+    result = service.recalcular_tempos_producao_do_item(30)
+
+    assert result.calculadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["tempo_corte"] == Decimal("6")  # 2 x 3
+    assert payload["tempo_orlagem"] == Decimal("5")  # 1 x (2+3)
+    assert payload["tempo_cnc"] == Decimal("12")  # 4 x 3
+    assert "observacoes" not in payload
+
+
+def test_recalcular_tempos_sem_dados_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA"),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("3")),
+    ]
+
+    service.recalcular_tempos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["tempo_corte"] is None
+    assert "Tempos de produção não calculados" in payload["observacoes"]
+
+
+def test_recalcular_tempos_ignora_ferragem_divisao_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="FERRAGEM", def_peca_id=1),
+        _resumo(id=2, tipo_linha="DIVISAO_INDEPENDENTE"),
+        _resumo(id=3, tipo_linha="PECA_COMPOSTA", def_peca_id=1),
+    ]
+
+    result = service.recalcular_tempos_producao_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 3
+    assert _FakeRepository.updated_payload is None
+
+
+def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA", tempo_base=Decimal("2")),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            quantidade=Decimal("3"),
+            tempo_corte=Decimal("99"),
+            editado_localmente=True,
+        ),
+    ]
+
+    result = service.recalcular_tempos_producao_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 1
+    assert _FakeRepository.updated_payload is None  # local times preserved
 
 
 def test_recalcular_custo_acabamento_sem_preco_observacao(monkeypatch) -> None:

@@ -31,6 +31,10 @@ from app.domain.acabamentos import (
     calcular_areas_acabamento,
     tem_acabamento,
 )
+from app.domain.tempos_producao import (
+    AVISO_TEMPO_OPERACAO_SEM_DADOS,
+    calcular_tempos_producao,
+)
 from app.domain.custos import (
     AVISO_UNIDADE_INVALIDA,
     calcular_custo_acabamento_face,
@@ -268,6 +272,15 @@ class OperacoesResult:
 
     processadas: int
     aplicadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class TemposProducaoResult:
+    """Summary of one basic production-times recompute over an item."""
+
+    processadas: int
+    calculadas: int
     ignoradas: int
 
 
@@ -1057,6 +1070,94 @@ class OrcamentoItemCusteioLinhaService:
                         maquinas.append(nome_maquina)
 
         return "; ".join(nomes), "; ".join(maquinas)
+
+    def _operacoes_def_da_peca(self, def_peca_id: int) -> list:
+        """Resolve the active operations of a piece into DefOperacao read models."""
+        resumos = []
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(def_peca_id):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is not None:
+                resumos.append(operacao)
+        return resumos
+
+    def recalcular_tempos_producao_do_item(
+        self, orcamento_item_id: int
+    ) -> TemposProducaoResult:
+        """Recompute the basic production times (minutes) of an item's PECA lines.
+
+        Reads the piece operations (DefPecaOperacao + DefOperacao) and fills
+        tempo_corte / tempo_orlagem / tempo_cnc / tempo_montagem / tempo_manual /
+        tempo_setup from each operation's ``tempo_base`` (per piece, or per ML for
+        orlagem) and ``tempo_setup``. No costs are computed and custo_total is not
+        touched. Only PECA lines with a def_peca are processed; a line whose times
+        are already filled and is edited locally is preserved.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._linha_recebe_operacoes(linha):
+                ignoradas += 1
+                continue
+            if self._tempos_preenchidos(linha) and linha.editado_localmente:
+                ignoradas += 1
+                continue
+
+            operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
+            ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
+                linha.ml_orla_grossa or Decimal("0")
+            )
+            tempos, faltam_dados = calcular_tempos_producao(
+                operacoes, linha.quantidade, ml_orla_total
+            )
+
+            processadas += 1
+            fields: dict = {
+                "tempo_corte": tempos["corte"] or None,
+                "tempo_orlagem": tempos["orlagem"] or None,
+                "tempo_cnc": tempos["cnc"] or None,
+                "tempo_montagem": tempos["montagem"] or None,
+                "tempo_manual": tempos["manual"] or None,
+                "tempo_setup": tempos["setup"] or None,
+            }
+            aviso = AVISO_TEMPO_OPERACAO_SEM_DADOS if (operacoes and faltam_dados) else None
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Tempos de produção", aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if any(fields[campo] for campo in (
+                "tempo_corte",
+                "tempo_orlagem",
+                "tempo_cnc",
+                "tempo_montagem",
+                "tempo_manual",
+                "tempo_setup",
+            )):
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return TemposProducaoResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _tempos_preenchidos(self, linha) -> bool:
+        """Return True when the line already has any production time set."""
+        return any(
+            getattr(linha, campo, None)
+            for campo in (
+                "tempo_corte",
+                "tempo_orlagem",
+                "tempo_cnc",
+                "tempo_montagem",
+                "tempo_manual",
+                "tempo_setup",
+            )
+        )
 
     def _custo_acabamento_face(
         self, orcamento_item_id: int, peca, linha, *, face_superior: bool

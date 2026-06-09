@@ -107,6 +107,11 @@ class OrcamentoItemCusteioLinhaResumo:
     operacoes: str | None = None
     maquina: str | None = None
     tipo_producao: str | None = None
+    tempo_corte: Decimal | None = None
+    tempo_orlagem: Decimal | None = None
+    tempo_cnc: Decimal | None = None
+    tempo_montagem: Decimal | None = None
+    tempo_setup: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -312,6 +317,11 @@ class OrcamentoItemCusteioLinhaRepository:
             operacoes=linha.operacoes,
             maquina=linha.maquina,
             tipo_producao=linha.tipo_producao,
+            tempo_corte=linha.tempo_corte,
+            tempo_orlagem=linha.tempo_orlagem,
+            tempo_cnc=linha.tempo_cnc,
+            tempo_montagem=linha.tempo_montagem,
+            tempo_setup=linha.tempo_setup,
             excluir_mp=linha.excluir_mp,
             excluir_orla=linha.excluir_orla,
             excluir_ferragem=linha.excluir_ferragem,
