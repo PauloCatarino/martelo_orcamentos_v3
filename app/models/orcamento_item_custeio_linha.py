@@ -119,6 +119,10 @@ class OrcamentoItemCusteioLinha(Base):
     custo_ferragem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    acabamento_face_sup: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    acabamento_face_inf: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    area_acabamento_sup: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    area_acabamento_inf: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
 
     custo_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)

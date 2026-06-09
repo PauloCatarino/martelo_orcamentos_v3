@@ -26,6 +26,7 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
 )
+from app.domain.acabamentos import calcular_areas_acabamento
 from app.domain.custos import (
     calcular_custo_ferragem,
     calcular_custo_ml,
@@ -204,6 +205,15 @@ class CustoTotalResult:
     """Summary of one total-cost recompute over an item."""
 
     processadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class AreasAcabamentoResult:
+    """Summary of one finishing-area recompute over an item."""
+
+    processadas: int
+    calculadas: int
     ignoradas: int
 
 
@@ -723,6 +733,54 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return CustoTotalResult(processadas=processadas, ignoradas=ignoradas)
+
+    def recalcular_areas_acabamento_do_item(
+        self, orcamento_item_id: int
+    ) -> AreasAcabamentoResult:
+        """Recompute the finishing areas (sup/inf) of an item's lines.
+
+        A face with a finish (different from empty / SEM_ACABAMENTO) gets
+        ``area_m2 * qt_total``; without a finish it gets 0/empty. Skips division
+        and composite-parent lines. Lines without a finish are left empty (so
+        hardware/ML lines do not produce finishing areas). Does not compute costs
+        nor change measures, ValueSet, materials or existing costs.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+                ignoradas += 1
+                continue
+
+            area_sup, area_inf, aviso = calcular_areas_acabamento(
+                linha.area_m2,
+                linha.quantidade,
+                linha.acabamento_face_sup,
+                linha.acabamento_face_inf,
+            )
+
+            processadas += 1
+            fields: dict = {
+                "area_acabamento_sup": area_sup,
+                "area_acabamento_inf": area_inf,
+            }
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Área de acabamento", aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if area_sup is not None or area_inf is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return AreasAcabamentoResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
 
     def atualizar_exclusao_linha(
         self, linha_id: int, campo: str, excluir: bool

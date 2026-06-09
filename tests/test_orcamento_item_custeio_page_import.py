@@ -327,9 +327,13 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_custo_materia_prima_do_item" in source
     assert "recalcular_custos_ferragens_do_item" in source
     assert "recalcular_custos_ml_do_item" in source
+    assert "recalcular_areas_acabamento_do_item" in source
     assert "recalcular_custo_total_do_item" in source
 
     valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
+    assert "acabamento_face_sup" in valores
+    assert "area_acabamento_sup" in valores
+    assert '"Área acab. sup"' in valores
     assert '"Custo orlas"' in valores
     assert "custo_orlas" in valores
     assert "ml_orla_fina" in valores

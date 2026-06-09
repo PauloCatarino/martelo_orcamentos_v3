@@ -1786,6 +1786,79 @@ def test_atualizar_exclusao_em_lote_campo_invalido(monkeypatch) -> None:
     assert _FakeRepository.lote_call is None
 
 
+def test_recalcular_areas_acabamento_sup_e_inf(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            area_m2=Decimal("2.1"),
+            quantidade=Decimal("2"),
+            acabamento_face_sup="LACADO",
+            acabamento_face_inf="SEM_ACABAMENTO",
+        ),
+    ]
+
+    result = service.recalcular_areas_acabamento_do_item(30)
+
+    assert result.processadas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["area_acabamento_sup"] == Decimal("4.2")
+    assert payload["area_acabamento_inf"] == Decimal("0")
+    assert "observacoes" not in payload
+
+
+def test_recalcular_areas_acabamento_sem_acabamento(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            acabamento_face_sup=None,
+            acabamento_face_inf=None,
+        ),
+    ]
+
+    service.recalcular_areas_acabamento_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["area_acabamento_sup"] is None
+    assert payload["area_acabamento_inf"] is None
+
+
+def test_recalcular_areas_acabamento_sem_area_observacao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            area_m2=None,
+            acabamento_face_sup="LACADO",
+        ),
+    ]
+
+    service.recalcular_areas_acabamento_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["area_acabamento_sup"] is None
+    assert "Área de acabamento" in payload["observacoes"]
+
+
+def test_recalcular_areas_acabamento_ignora_divisao_e_composta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", acabamento_face_sup="LACADO"),
+        _resumo(id=2, tipo_linha="PECA_COMPOSTA", acabamento_face_sup="LACADO"),
+    ]
+
+    result = service.recalcular_areas_acabamento_do_item(30)
+
+    assert result.processadas == 0
+    assert result.ignoradas == 2
+    assert _FakeRepository.updated_payload is None
+
+
 def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [

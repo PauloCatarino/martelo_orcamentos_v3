@@ -88,6 +88,10 @@ class OrcamentoItemCusteioLinhaResumo:
     excluir_producao: bool = False
     excluir_acabamento: bool = False
     excluir_mo: bool = False
+    acabamento_face_sup: str | None = None
+    acabamento_face_inf: str | None = None
+    area_acabamento_sup: Decimal | None = None
+    area_acabamento_inf: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -270,6 +274,10 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_ferragem=linha.custo_ferragem,
             consumo_ml_unitario=linha.consumo_ml_unitario,
             consumo_ml_total=linha.consumo_ml_total,
+            acabamento_face_sup=linha.acabamento_face_sup,
+            acabamento_face_inf=linha.acabamento_face_inf,
+            area_acabamento_sup=linha.area_acabamento_sup,
+            area_acabamento_inf=linha.area_acabamento_inf,
             excluir_mp=linha.excluir_mp,
             excluir_orla=linha.excluir_orla,
             excluir_ferragem=linha.excluir_ferragem,
