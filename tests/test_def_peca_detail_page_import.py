@@ -123,6 +123,8 @@ def test_def_peca_detail_page_operacoes_headers() -> None:
         "Máquina",
         "Regra cálculo",
         "Quantidade base",
+        "Tempo setup",
+        "Tempo por unidade",
         "Obrigatório",
         "Ativo",
     ]

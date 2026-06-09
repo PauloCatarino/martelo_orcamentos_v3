@@ -52,12 +52,32 @@ def test_def_peca_operacao_dialog_uses_regra_operacao_options() -> None:
     assert "QComboBox" in source_names
 
 
-def test_def_peca_operacao_dialog_parses_quantidade() -> None:
+def test_def_peca_operacao_dialog_parses_decimais() -> None:
     from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
 
-    source = inspect.getsource(DefPecaOperacaoDialog._parse_quantidade)
+    source = inspect.getsource(DefPecaOperacaoDialog._parse_decimal_input)
 
     assert "Decimal" in source
+
+
+def test_def_peca_operacao_dialog_tem_campos_de_tempo() -> None:
+    import dataclasses
+
+    from app.ui.dialogs.def_peca_operacao_dialog import (
+        DefPecaOperacaoDialog,
+        DefPecaOperacaoDialogData,
+    )
+
+    campos = {field.name for field in dataclasses.fields(DefPecaOperacaoDialogData)}
+    assert {
+        "tempo_setup_minutos",
+        "tempo_por_unidade_minutos",
+        "unidade_tempo",
+    } <= campos
+
+    init = inspect.getsource(DefPecaOperacaoDialog.__init__)
+    assert "Tempo setup (min)" in init
+    assert "Tempo por unidade (min)" in init
 
 
 def test_def_peca_operacao_dialog_locks_operacao_on_edit() -> None:

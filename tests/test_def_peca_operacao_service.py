@@ -132,6 +132,45 @@ def test_adicionar_normaliza_ordem_e_regra(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_adicionar_propaga_tempos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.adicionar_operacao_a_peca(
+        service_module.CriarDefPecaOperacaoData(
+            def_peca_id=10,
+            def_operacao_id=20,
+            tempo_setup_minutos=Decimal("2"),
+            tempo_por_unidade_minutos=Decimal("0.35"),
+            unidade_tempo="ml",
+        )
+    )
+
+    payload = _FakeRepository.created_payload
+    assert payload["tempo_setup_minutos"] == Decimal("2")
+    assert payload["tempo_por_unidade_minutos"] == Decimal("0.35")
+    assert payload["unidade_tempo"] == "ML"  # normalized to upper-case
+
+
+def test_editar_propaga_tempos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.editar_operacao_da_peca(
+        5,
+        service_module.EditarDefPecaOperacaoData(
+            def_peca_id=10,
+            def_operacao_id=20,
+            tempo_setup_minutos=Decimal("1"),
+            tempo_por_unidade_minutos=Decimal("0.20"),
+            unidade_tempo="FURO",
+        ),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["tempo_setup_minutos"] == Decimal("1")
+    assert payload["tempo_por_unidade_minutos"] == Decimal("0.20")
+    assert payload["unidade_tempo"] == "FURO"
+
+
 def test_adicionar_regra_vazia_fica_none(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
 

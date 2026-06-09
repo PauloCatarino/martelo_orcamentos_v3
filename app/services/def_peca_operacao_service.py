@@ -23,6 +23,9 @@ class CriarDefPecaOperacaoData:
     ordem: int = 1
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    tempo_setup_minutos: Decimal | None = None
+    tempo_por_unidade_minutos: Decimal | None = None
+    unidade_tempo: str | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -37,6 +40,9 @@ class EditarDefPecaOperacaoData:
     ordem: int = 1
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    tempo_setup_minutos: Decimal | None = None
+    tempo_por_unidade_minutos: Decimal | None = None
+    unidade_tempo: str | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -75,6 +81,9 @@ class DefPecaOperacaoService:
             ordem=self._normalize_ordem(data.ordem),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            tempo_setup_minutos=data.tempo_setup_minutos,
+            tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
+            unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -98,6 +107,9 @@ class DefPecaOperacaoService:
             ordem=self._normalize_ordem(data.ordem),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            tempo_setup_minutos=data.tempo_setup_minutos,
+            tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
+            unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -139,6 +151,12 @@ class DefPecaOperacaoService:
             return None
 
         return normalize_regra_operacao(regra_calculo)
+
+    def _normalize_unidade_tempo(self, unidade_tempo: str | None) -> str | None:
+        if unidade_tempo is None or not unidade_tempo.strip():
+            return None
+
+        return unidade_tempo.strip().upper()
 
     def _validate_nao_duplicada(
         self, def_peca_id: int, def_operacao_id: int, exclude_id: int | None

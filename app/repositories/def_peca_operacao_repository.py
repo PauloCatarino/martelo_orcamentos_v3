@@ -25,6 +25,9 @@ class DefPecaOperacaoResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    tempo_setup_minutos: Decimal | None = None
+    tempo_por_unidade_minutos: Decimal | None = None
+    unidade_tempo: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -76,6 +79,9 @@ class DefPecaOperacaoRepository:
         ordem: int = 1,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        tempo_setup_minutos: Decimal | None = None,
+        tempo_por_unidade_minutos: Decimal | None = None,
+        unidade_tempo: str | None = None,
         obrigatorio: bool = True,
         ativo: bool = True,
         observacoes: str | None = None,
@@ -87,6 +93,9 @@ class DefPecaOperacaoRepository:
             ordem=ordem,
             regra_calculo=regra_calculo,
             quantidade_base=quantidade_base,
+            tempo_setup_minutos=tempo_setup_minutos,
+            tempo_por_unidade_minutos=tempo_por_unidade_minutos,
+            unidade_tempo=unidade_tempo,
             obrigatorio=obrigatorio,
             ativo=ativo,
             observacoes=observacoes,
@@ -105,6 +114,9 @@ class DefPecaOperacaoRepository:
         ordem: int = 1,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        tempo_setup_minutos: Decimal | None = None,
+        tempo_por_unidade_minutos: Decimal | None = None,
+        unidade_tempo: str | None = None,
         obrigatorio: bool = True,
         ativo: bool = True,
         observacoes: str | None = None,
@@ -119,6 +131,9 @@ class DefPecaOperacaoRepository:
         ligacao.ordem = ordem
         ligacao.regra_calculo = regra_calculo
         ligacao.quantidade_base = quantidade_base
+        ligacao.tempo_setup_minutos = tempo_setup_minutos
+        ligacao.tempo_por_unidade_minutos = tempo_por_unidade_minutos
+        ligacao.unidade_tempo = unidade_tempo
         ligacao.obrigatorio = obrigatorio
         ligacao.ativo = ativo
         ligacao.observacoes = observacoes
@@ -157,6 +172,9 @@ class DefPecaOperacaoRepository:
             ordem=ligacao.ordem,
             regra_calculo=ligacao.regra_calculo,
             quantidade_base=ligacao.quantidade_base,
+            tempo_setup_minutos=ligacao.tempo_setup_minutos,
+            tempo_por_unidade_minutos=ligacao.tempo_por_unidade_minutos,
+            unidade_tempo=ligacao.unidade_tempo,
             obrigatorio=ligacao.obrigatorio,
             ativo=ligacao.ativo,
             observacoes=ligacao.observacoes,

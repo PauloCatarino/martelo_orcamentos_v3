@@ -23,6 +23,9 @@ from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 
 
+UNIDADE_TEMPO_OPCOES = ("", "ML", "UN", "M2", "FURO", "OPERACAO", "PECA", "LOTE")
+
+
 @dataclass(frozen=True)
 class DefPecaOperacaoDialogData:
     """Data collected by the piece operation dialog."""
@@ -31,6 +34,9 @@ class DefPecaOperacaoDialogData:
     ordem: int
     regra_calculo: str | None
     quantidade_base: Decimal | None
+    tempo_setup_minutos: Decimal | None
+    tempo_por_unidade_minutos: Decimal | None
+    unidade_tempo: str | None
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
@@ -71,6 +77,14 @@ class DefPecaOperacaoDialog(QDialog):
         self.quantidade_base_input = QLineEdit()
         self.quantidade_base_input.setPlaceholderText("Ex.: 1.5")
 
+        self.tempo_setup_input = QLineEdit()
+        self.tempo_setup_input.setPlaceholderText("Ex.: 2 (minutos)")
+        self.tempo_por_unidade_input = QLineEdit()
+        self.tempo_por_unidade_input.setPlaceholderText("Ex.: 0.35 (min/unidade)")
+        self.unidade_tempo_input = QComboBox()
+        for opcao in UNIDADE_TEMPO_OPCOES:
+            self.unidade_tempo_input.addItem(opcao or "(nenhuma)", opcao or None)
+
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
         self.ativo_input = QCheckBox()
@@ -88,6 +102,9 @@ class DefPecaOperacaoDialog(QDialog):
         form.addRow("Ordem", self.ordem_input)
         form.addRow("Regra cálculo", self.regra_calculo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
+        form.addRow("Tempo setup (min)", self.tempo_setup_input)
+        form.addRow("Tempo por unidade (min)", self.tempo_por_unidade_input)
+        form.addRow("Unidade tempo", self.unidade_tempo_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
         form.addRow("Observações", self.observacoes_input)
@@ -119,6 +136,13 @@ class DefPecaOperacaoDialog(QDialog):
         self.ordem_input.setValue(ligacao.ordem)
         self._select_regra(ligacao.regra_calculo)
         self.quantidade_base_input.setText(self._format_decimal(ligacao.quantidade_base))
+        self.tempo_setup_input.setText(self._format_decimal(ligacao.tempo_setup_minutos))
+        self.tempo_por_unidade_input.setText(
+            self._format_decimal(ligacao.tempo_por_unidade_minutos)
+        )
+        indice_unidade = self.unidade_tempo_input.findData(ligacao.unidade_tempo)
+        if indice_unidade >= 0:
+            self.unidade_tempo_input.setCurrentIndex(indice_unidade)
         self.obrigatorio_input.setChecked(ligacao.obrigatorio)
         self.ativo_input.setChecked(ligacao.ativo)
         self.observacoes_input.setText(ligacao.observacoes or "")
@@ -134,7 +158,12 @@ class DefPecaOperacaoDialog(QDialog):
             def_operacao_id=self.operacao_input.currentData(),
             ordem=self.ordem_input.value(),
             regra_calculo=self.regra_calculo_input.currentData(),
-            quantidade_base=self._parse_quantidade(),
+            quantidade_base=self._parse_decimal_input(self.quantidade_base_input),
+            tempo_setup_minutos=self._parse_decimal_input(self.tempo_setup_input),
+            tempo_por_unidade_minutos=self._parse_decimal_input(
+                self.tempo_por_unidade_input
+            ),
+            unidade_tempo=self.unidade_tempo_input.currentData(),
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
             observacoes=self._empty_to_none(self.observacoes_input.text()),
@@ -149,7 +178,9 @@ class DefPecaOperacaoDialog(QDialog):
         try:
             data = self.get_data()
         except ValueError:
-            self.set_error("Quantidade base inválida. Use um número, por exemplo 1.5.")
+            self.set_error(
+                "Valor numérico inválido (quantidade/tempos). Use um número, por exemplo 1.5."
+            )
             return
 
         self.error_label.clear()
@@ -162,8 +193,8 @@ class DefPecaOperacaoDialog(QDialog):
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
 
-    def _parse_quantidade(self) -> Decimal | None:
-        text = self.quantidade_base_input.text().strip()
+    def _parse_decimal_input(self, widget: QLineEdit) -> Decimal | None:
+        text = widget.text().strip()
         if not text:
             return None
 
@@ -171,7 +202,7 @@ class DefPecaOperacaoDialog(QDialog):
         try:
             return Decimal(normalized)
         except InvalidOperation as error:
-            raise ValueError("quantidade base invalida") from error
+            raise ValueError("valor numerico invalido") from error
 
     def _format_decimal(self, value: Decimal | None) -> str:
         if value is None:
