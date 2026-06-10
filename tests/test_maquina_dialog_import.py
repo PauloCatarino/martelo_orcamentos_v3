@@ -53,12 +53,51 @@ def test_maquina_dialog_uses_combobox_for_tipo() -> None:
     assert "QComboBox" in source_names
 
 
-def test_maquina_dialog_parses_custo_hora_as_decimal() -> None:
+def test_maquina_dialog_spin_to_decimal() -> None:
     from app.ui.dialogs.maquina_dialog import MaquinaDialog
 
-    source = inspect.getsource(MaquinaDialog._parse_custo_hora)
+    source = inspect.getsource(MaquinaDialog._spin_to_decimal)
 
     assert "Decimal" in source
+
+
+def test_maquina_dialog_tem_tarifas_std_serie() -> None:
+    import dataclasses
+
+    from app.ui.dialogs.maquina_dialog import MaquinaDialog, MaquinaDialogData
+
+    campos = {f.name for f in dataclasses.fields(MaquinaDialogData)}
+    assert {
+        "custo_hora",
+        "custo_hora_serie",
+        "preco_ml_std",
+        "preco_ml_serie",
+        "custo_setup_peca_std",
+        "custo_setup_peca_serie",
+    } <= campos
+
+    # Units are shown as spin-box suffixes and the tariff section adapts to type.
+    init = inspect.getsource(MaquinaDialog.__init__)
+    assert "QDoubleSpinBox" in MaquinaDialog._criar_spin.__code__.co_names
+    for sufixo in ("€/H", "€/ML", "€/peça"):
+        assert sufixo in init
+
+
+def test_maquina_dialog_adapta_campos_ao_tipo() -> None:
+    from app.ui.dialogs.maquina_dialog import MaquinaDialog
+
+    assert hasattr(MaquinaDialog, "_update_tarifas_visiveis")
+    source = inspect.getsource(MaquinaDialog._update_tarifas_visiveis)
+    for tipo in ("CORTE", "ORLAGEM", "CNC", "MANUAL", "MONTAGEM"):
+        assert tipo in source
+    assert "hora_section" in source
+    assert "ml_section" in source
+    assert "cnc_section" in source
+
+    # CNC area-tier editor is reachable from the dialog.
+    assert hasattr(MaquinaDialog, "_abrir_escaloes")
+    abrir = inspect.getsource(MaquinaDialog._abrir_escaloes)
+    assert "EscaloesAreaDialog" in abrir
 
 
 def test_maquina_dialog_blocks_codigo_on_edit() -> None:

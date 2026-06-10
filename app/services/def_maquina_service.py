@@ -19,6 +19,11 @@ class CriarDefMaquinaData:
     descricao: str | None = None
     tipo: str | None = None
     custo_hora: Decimal | None = None
+    custo_hora_serie: Decimal | None = None
+    preco_ml_std: Decimal | None = None
+    preco_ml_serie: Decimal | None = None
+    custo_setup_peca_std: Decimal | None = None
+    custo_setup_peca_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
 
@@ -32,6 +37,11 @@ class EditarDefMaquinaData:
     descricao: str | None = None
     tipo: str | None = None
     custo_hora: Decimal | None = None
+    custo_hora_serie: Decimal | None = None
+    preco_ml_std: Decimal | None = None
+    preco_ml_serie: Decimal | None = None
+    custo_setup_peca_std: Decimal | None = None
+    custo_setup_peca_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
 
@@ -75,6 +85,11 @@ class DefMaquinaService:
             descricao=data.descricao,
             tipo=self._normalize_optional_text(data.tipo),
             custo_hora=data.custo_hora,
+            custo_hora_serie=data.custo_hora_serie,
+            preco_ml_std=data.preco_ml_std,
+            preco_ml_serie=data.preco_ml_serie,
+            custo_setup_peca_std=data.custo_setup_peca_std,
+            custo_setup_peca_serie=data.custo_setup_peca_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
         )
@@ -95,6 +110,11 @@ class DefMaquinaService:
             descricao=data.descricao,
             tipo=self._normalize_optional_text(data.tipo),
             custo_hora=data.custo_hora,
+            custo_hora_serie=data.custo_hora_serie,
+            preco_ml_std=data.preco_ml_std,
+            preco_ml_serie=data.preco_ml_serie,
+            custo_setup_peca_std=data.custo_setup_peca_std,
+            custo_setup_peca_serie=data.custo_setup_peca_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
         )

@@ -41,9 +41,22 @@ def test_maquinas_headers() -> None:
         "Código",
         "Nome",
         "Tipo",
-        "Custo/hora",
+        "Custo/hora STD",
+        "Custo/hora SERIE",
+        "€/ML STD",
+        "€/ML SERIE",
         "Ativo",
     ]
+
+
+def test_maquinas_page_tem_botao_escaloes() -> None:
+    import inspect
+
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    assert hasattr(OperacoesMaquinasPage, "abrir_escaloes_maquina")
+    source = inspect.getsource(OperacoesMaquinasPage.abrir_escaloes_maquina)
+    assert "EscaloesAreaDialog" in source
 
 
 def test_operacoes_maquinas_page_loads_on_init() -> None:

@@ -29,6 +29,7 @@ from app.services.def_operacao_service import (
     DefOperacaoService,
     EditarDefOperacaoData,
 )
+from app.ui.dialogs.escaloes_area_dialog import EscaloesAreaDialog
 from app.ui.dialogs.maquina_dialog import MaquinaDialog
 from app.ui.dialogs.operacao_dialog import OperacaoDialog
 from app.utils.formatters import format_currency, format_quantity
@@ -54,7 +55,10 @@ class OperacoesMaquinasPage(QWidget):
         "Código",
         "Nome",
         "Tipo",
-        "Custo/hora",
+        "Custo/hora STD",
+        "Custo/hora SERIE",
+        "€/ML STD",
+        "€/ML SERIE",
         "Ativo",
     ]
 
@@ -159,6 +163,9 @@ class OperacoesMaquinasPage(QWidget):
                 maquina.nome,
                 maquina.tipo or "",
                 format_currency(maquina.custo_hora),
+                format_currency(maquina.custo_hora_serie),
+                format_currency(maquina.preco_ml_std),
+                format_currency(maquina.preco_ml_serie),
                 self._format_bool(maquina.ativo),
             ]
 
@@ -378,11 +385,14 @@ class OperacoesMaquinasPage(QWidget):
         self.editar_maquina_button.clicked.connect(self.abrir_editar_maquina)
         self.toggle_maquina_button = QPushButton("Ativar/Desativar")
         self.toggle_maquina_button.clicked.connect(self.alternar_maquina_ativa)
+        self.escaloes_maquina_button = QPushButton("Escalões de área (CNC)…")
+        self.escaloes_maquina_button.clicked.connect(self.abrir_escaloes_maquina)
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.nova_maquina_button)
         buttons_layout.addWidget(self.editar_maquina_button)
         buttons_layout.addWidget(self.toggle_maquina_button)
+        buttons_layout.addWidget(self.escaloes_maquina_button)
         buttons_layout.addStretch()
 
         self.maquinas_table.cellDoubleClicked.connect(self._handle_maquina_double_click)
@@ -421,6 +431,11 @@ class OperacoesMaquinasPage(QWidget):
                             descricao=form_data.descricao,
                             tipo=form_data.tipo,
                             custo_hora=form_data.custo_hora,
+                            custo_hora_serie=form_data.custo_hora_serie,
+                            preco_ml_std=form_data.preco_ml_std,
+                            preco_ml_serie=form_data.preco_ml_serie,
+                            custo_setup_peca_std=form_data.custo_setup_peca_std,
+                            custo_setup_peca_serie=form_data.custo_setup_peca_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
                         )
@@ -465,6 +480,11 @@ class OperacoesMaquinasPage(QWidget):
                             descricao=form_data.descricao,
                             tipo=form_data.tipo,
                             custo_hora=form_data.custo_hora,
+                            custo_hora_serie=form_data.custo_hora_serie,
+                            preco_ml_std=form_data.preco_ml_std,
+                            preco_ml_serie=form_data.preco_ml_serie,
+                            custo_setup_peca_std=form_data.custo_setup_peca_std,
+                            custo_setup_peca_serie=form_data.custo_setup_peca_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
                         ),
@@ -518,6 +538,18 @@ class OperacoesMaquinasPage(QWidget):
         estado = "desativada" if maquina.ativo else "reativada"
         self.carregar()
         self.status_label.setText(f"Máquina {maquina.codigo} {estado}.")
+
+    def abrir_escaloes_maquina(self) -> None:
+        """Open the CNC area-tier manager for the selected machine."""
+        maquina = self._get_selected_maquina()
+        if maquina is None:
+            self.status_label.setText("Selecione uma máquina para gerir escalões.")
+            return
+
+        rotulo = f"Máquina: {maquina.codigo} - {maquina.nome}"
+        dialog = EscaloesAreaDialog(maquina.id, maquina_label=rotulo, parent=self)
+        dialog.exec()
+        self.status_label.setText(f"Escalões da máquina {maquina.codigo} geridos.")
 
     def _maquina_error_message(self, error: ValueError) -> str:
         """Return a friendly message for a machine service error."""

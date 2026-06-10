@@ -24,6 +24,11 @@ class DefMaquinaResumo:
     custo_hora: Decimal | None
     ativo: bool
     observacoes: str | None
+    custo_hora_serie: Decimal | None = None
+    preco_ml_std: Decimal | None = None
+    preco_ml_serie: Decimal | None = None
+    custo_setup_peca_std: Decimal | None = None
+    custo_setup_peca_serie: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -77,6 +82,11 @@ class DefMaquinaRepository:
         descricao: str | None = None,
         tipo: str | None = None,
         custo_hora: Decimal | None = None,
+        custo_hora_serie: Decimal | None = None,
+        preco_ml_std: Decimal | None = None,
+        preco_ml_serie: Decimal | None = None,
+        custo_setup_peca_std: Decimal | None = None,
+        custo_setup_peca_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
     ) -> DefMaquinaResumo:
@@ -87,6 +97,11 @@ class DefMaquinaRepository:
             descricao=descricao,
             tipo=tipo,
             custo_hora=custo_hora,
+            custo_hora_serie=custo_hora_serie,
+            preco_ml_std=preco_ml_std,
+            preco_ml_serie=preco_ml_serie,
+            custo_setup_peca_std=custo_setup_peca_std,
+            custo_setup_peca_serie=custo_setup_peca_serie,
             ativo=ativo,
             observacoes=observacoes,
         )
@@ -104,6 +119,11 @@ class DefMaquinaRepository:
         descricao: str | None = None,
         tipo: str | None = None,
         custo_hora: Decimal | None = None,
+        custo_hora_serie: Decimal | None = None,
+        preco_ml_std: Decimal | None = None,
+        preco_ml_serie: Decimal | None = None,
+        custo_setup_peca_std: Decimal | None = None,
+        custo_setup_peca_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
     ) -> DefMaquinaResumo:
@@ -117,6 +137,11 @@ class DefMaquinaRepository:
         maquina.descricao = descricao
         maquina.tipo = tipo
         maquina.custo_hora = custo_hora
+        maquina.custo_hora_serie = custo_hora_serie
+        maquina.preco_ml_std = preco_ml_std
+        maquina.preco_ml_serie = preco_ml_serie
+        maquina.custo_setup_peca_std = custo_setup_peca_std
+        maquina.custo_setup_peca_serie = custo_setup_peca_serie
         maquina.ativo = ativo
         maquina.observacoes = observacoes
         self.session.flush()
@@ -154,6 +179,11 @@ class DefMaquinaRepository:
             descricao=maquina.descricao,
             tipo=maquina.tipo,
             custo_hora=maquina.custo_hora,
+            custo_hora_serie=maquina.custo_hora_serie,
+            preco_ml_std=maquina.preco_ml_std,
+            preco_ml_serie=maquina.preco_ml_serie,
+            custo_setup_peca_std=maquina.custo_setup_peca_std,
+            custo_setup_peca_serie=maquina.custo_setup_peca_serie,
             ativo=maquina.ativo,
             observacoes=maquina.observacoes,
             created_at=maquina.created_at,
