@@ -118,6 +118,11 @@ class OrcamentoItemCusteioLinha(Base):
     custo_mp: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_ferragem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_acabamento: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    # Production costs from machine STD tariffs (phase 8S.1). custo_producao is the
+    # sum of the partials (corte + orlagem); NULL when none was computed.
+    custo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_producao: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     acabamento_face_sup: Mapped[str | None] = mapped_column(String(100), nullable=True)

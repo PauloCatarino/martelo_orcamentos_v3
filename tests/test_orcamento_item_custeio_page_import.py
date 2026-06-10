@@ -358,6 +358,7 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_custo_acabamento_do_item" in source
     assert "aplicar_operacoes_do_item" in source
     assert "recalcular_tempos_producao_do_item" in source
+    assert "recalcular_custos_producao_do_item" in source
     assert "recalcular_custo_total_do_item" in source
 
     valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
@@ -372,6 +373,10 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert '"Tempo corte"' in valores
     assert "linha.tempo_corte" in valores
     assert '"Tempo orlagem"' in valores
+    assert '"Custo corte"' in valores
+    assert "linha.custo_corte" in valores
+    assert '"Custo produção"' in valores
+    assert "linha.custo_producao" in valores
     assert '"Custo orlas"' in valores
     assert "custo_orlas" in valores
     assert "ml_orla_fina" in valores

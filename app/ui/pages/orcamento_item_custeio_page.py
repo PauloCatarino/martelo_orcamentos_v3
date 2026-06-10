@@ -119,6 +119,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Tempo montagem",
         "Tempo manual",
         "Tempo setup",
+        "Custo corte",
+        "Custo orlagem",
         "Custo produ\u00e7\u00e3o",
         # Flags de inclusao
         "Excluir MP",
@@ -346,6 +348,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custo_acabamento_do_item(self.item_id)
                 service.aplicar_operacoes_do_item(self.item_id)
                 service.recalcular_tempos_producao_do_item(self.item_id)
+                service.recalcular_custos_producao_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
@@ -1034,6 +1037,9 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tempo montagem": format_quantity(linha.tempo_montagem),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Tempo setup": format_quantity(linha.tempo_setup),
+            "Custo corte": format_currency(linha.custo_corte),
+            "Custo orlagem": format_currency(linha.custo_orlagem),
+            "Custo produção": format_currency(linha.custo_producao),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),
             "Margem %": formatar_percentagem(linha.margem_percentagem),

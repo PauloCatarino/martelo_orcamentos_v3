@@ -45,6 +45,9 @@ class OrcamentoItemCusteioLinhaResumo:
     custo_mp: Decimal | None
     custo_ferragem: Decimal | None
     custo_acabamento: Decimal | None
+    custo_corte: Decimal | None
+    custo_orlagem: Decimal | None
+    custo_producao: Decimal | None
     consumo_ml_unitario: Decimal | None
     consumo_ml_total: Decimal | None
     custo_unitario: Decimal | None
@@ -293,6 +296,9 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_mp=linha.custo_mp,
             custo_ferragem=linha.custo_ferragem,
             custo_acabamento=linha.custo_acabamento,
+            custo_corte=linha.custo_corte,
+            custo_orlagem=linha.custo_orlagem,
+            custo_producao=linha.custo_producao,
             consumo_ml_unitario=linha.consumo_ml_unitario,
             consumo_ml_total=linha.consumo_ml_total,
             acabamento_face_sup=linha.acabamento_face_sup,

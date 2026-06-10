@@ -31,9 +31,16 @@ from app.domain.acabamentos import (
     calcular_areas_acabamento,
     tem_acabamento,
 )
+from app.domain.custo_producao import (
+    MOTIVO_SEM_TARIFA,
+    calcular_custo_corte,
+    calcular_custo_orlagem,
+    somar_custo_producao,
+)
 from app.domain.tempos_producao import (
     AVISO_TEMPO_OPERACAO_SEM_DADOS,
     calcular_tempos_producao,
+    classificar_operacao,
 )
 from app.domain.custos import (
     AVISO_UNIDADE_INVALIDA,
@@ -278,6 +285,15 @@ class OperacoesResult:
 @dataclass(frozen=True)
 class TemposProducaoResult:
     """Summary of one basic production-times recompute over an item."""
+
+    processadas: int
+    calculadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
+class CustoProducaoResult:
+    """Summary of one production-cost (cut/edging) recompute over an item."""
 
     processadas: int
     calculadas: int
@@ -1144,6 +1160,122 @@ class OrcamentoItemCusteioLinhaService:
         return TemposProducaoResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
+
+    def recalcular_custos_producao_do_item(
+        self, orcamento_item_id: int
+    ) -> CustoProducaoResult:
+        """Recompute custo_corte / custo_orlagem / custo_producao (STD tariffs).
+
+        For each PECA line with a def_peca: if the piece has a CORTE operation,
+        cost the cutting from that machine's €/ML (perimeter × qt) plus setup ×
+        qt; if it has an ORLAGEM operation, cost the edging from the line's total
+        edging metres × €/ML plus setup × qt. custo_producao is the sum (empty
+        partials count as 0; NULL when none computed). Skips ferragens, ML, UND,
+        divisions and composite parents. Does not change materials/orlas/
+        acabamentos/measures; custo_total is recomputed by its own step.
+        """
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._linha_recebe_operacoes(linha):
+                ignoradas += 1
+                continue
+
+            operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
+            op_corte = self._operacao_por_bucket(operacoes, "corte")
+            op_orlagem = self._operacao_por_bucket(operacoes, "orlagem")
+
+            custo_corte = None
+            custo_orlagem = None
+            avisos: list[str] = []
+
+            if op_corte is not None:
+                maquina = self._maquina_de_operacao(op_corte)
+                preco, setup = self._tarifas_std(maquina)
+                custo_corte, motivo = calcular_custo_corte(
+                    linha.perimetro_ml, linha.quantidade, preco, setup
+                )
+                aviso = self._aviso_producao(motivo, maquina, "corte")
+                if aviso:
+                    avisos.append(aviso)
+
+            if op_orlagem is not None:
+                maquina = self._maquina_de_operacao(op_orlagem)
+                preco, setup = self._tarifas_std(maquina)
+                ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
+                    linha.ml_orla_grossa or Decimal("0")
+                )
+                custo_orlagem, motivo = calcular_custo_orlagem(
+                    ml_orla_total, linha.quantidade, preco, setup
+                )
+                aviso = self._aviso_producao(motivo, maquina, "orlagem")
+                if aviso:
+                    avisos.append(aviso)
+
+            custo_producao = somar_custo_producao(custo_corte, custo_orlagem)
+
+            processadas += 1
+            fields: dict = {
+                "custo_corte": custo_corte,
+                "custo_orlagem": custo_orlagem,
+                "custo_producao": custo_producao,
+            }
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Custo de produção", avisos[0] if avisos else None
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if custo_producao is not None:
+                calculadas += 1
+
+            self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return CustoProducaoResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _operacao_por_bucket(self, operacoes, bucket: str):
+        """Return the first operation classified into ``bucket`` (corte/orlagem)."""
+        for operacao in operacoes:
+            classificacao = classificar_operacao(
+                getattr(operacao, "tipo_operacao", None),
+                getattr(operacao, "codigo", None),
+            )
+            if classificacao == bucket:
+                return operacao
+        return None
+
+    def _maquina_de_operacao(self, operacao):
+        """Resolve the machine of an operation (or None)."""
+        maquina_id = getattr(operacao, "maquina_id", None)
+        if maquina_id is None:
+            return None
+        return self.maquina_repository.get_by_id(maquina_id)
+
+    def _tarifas_std(self, maquina):
+        """Return (preco_ml_std, custo_setup_peca_std) of a machine, or (None, None)."""
+        if maquina is None:
+            return None, None
+        return (
+            getattr(maquina, "preco_ml_std", None),
+            getattr(maquina, "custo_setup_peca_std", None),
+        )
+
+    def _aviso_producao(self, motivo, maquina, etapa: str) -> str | None:
+        """Build the production observation for a missing tariff/data, or None."""
+        if motivo is None:
+            return None
+        if motivo == MOTIVO_SEM_TARIFA:
+            nome = getattr(maquina, "codigo", None) or "—"
+            return (
+                f"Custo de produção não calculado: tarifa €/ML em falta na "
+                f"máquina {nome}."
+            )
+        return f"Custo de produção não calculado: dados de {etapa} em falta."
 
     def _tempos_preenchidos(self, linha) -> bool:
         """Return True when the line already has any production time set."""
