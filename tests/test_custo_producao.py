@@ -4,13 +4,34 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from types import SimpleNamespace
+
 from app.domain.custo_producao import (
     MOTIVO_SEM_DADOS,
+    MOTIVO_SEM_ESCALOES,
     MOTIVO_SEM_TARIFA,
+    calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
+    selecionar_escalao_area,
     somar_custo_producao,
 )
+
+
+def _escalao(nivel, area_max_m2, preco_peca_std):
+    return SimpleNamespace(
+        nivel=nivel, area_max_m2=area_max_m2, preco_peca_std=preco_peca_std
+    )
+
+
+def _escaloes_cnc():
+    return [
+        _escalao(1, Decimal("0.25"), Decimal("1.20")),
+        _escalao(2, Decimal("0.50"), Decimal("1.80")),
+        _escalao(3, Decimal("1.00"), Decimal("2.60")),
+        _escalao(4, Decimal("2.00"), Decimal("3.80")),
+        _escalao(5, None, Decimal("5.50")),  # no limit
+    ]
 
 
 def test_custo_corte_com_setup() -> None:
@@ -73,3 +94,55 @@ def test_somar_custo_producao() -> None:
     assert somar_custo_producao(Decimal("2.80"), None) == Decimal("2.80")
     assert somar_custo_producao(None, Decimal("0")) == Decimal("0")
     assert somar_custo_producao(None, None) is None  # all empty -> None
+    # three partials (phase 8S.2)
+    assert somar_custo_producao(
+        Decimal("2.80"), Decimal("3.28"), Decimal("5.50")
+    ) == Decimal("11.58")
+
+
+def test_selecionar_escalao_limites() -> None:
+    escaloes = _escaloes_cnc()
+    assert selecionar_escalao_area(escaloes, Decimal("0.20")).nivel == 1
+    assert selecionar_escalao_area(escaloes, Decimal("0.25")).nivel == 1  # <= limite
+    assert selecionar_escalao_area(escaloes, Decimal("0.26")).nivel == 2
+    assert selecionar_escalao_area(escaloes, Decimal("0.158")).nivel == 1
+    # large area falls into the no-limit tier
+    assert selecionar_escalao_area(escaloes, Decimal("2.625")).nivel == 5
+
+
+def test_selecionar_escalao_sem_no_limite() -> None:
+    escaloes = [_escalao(1, Decimal("0.25"), Decimal("1.20"))]
+    # area exceeds the only finite tier -> no match
+    assert selecionar_escalao_area(escaloes, Decimal("0.50")) is None
+
+
+def test_custo_cnc_escalao_sem_limite() -> None:
+    # 2.625 m2 -> no-limit tier (5.50) x qt 1 = 5.50.
+    custo, motivo = calcular_custo_cnc(Decimal("2.625"), Decimal("1"), _escaloes_cnc())
+    assert custo == Decimal("5.50")
+    assert motivo is None
+
+
+def test_custo_cnc_multiplica_por_qt() -> None:
+    custo, _ = calcular_custo_cnc(Decimal("0.20"), Decimal("3"), _escaloes_cnc())
+    assert custo == Decimal("3.60")  # 1.20 x 3
+
+
+def test_custo_cnc_escaloes_inativos_ja_filtrados() -> None:
+    # The repository passes only active tiers; an empty list -> SEM_ESCALOES.
+    custo, motivo = calcular_custo_cnc(Decimal("0.20"), Decimal("1"), [])
+    assert custo is None
+    assert motivo == MOTIVO_SEM_ESCALOES
+
+
+def test_custo_cnc_sem_area() -> None:
+    custo, motivo = calcular_custo_cnc(None, Decimal("1"), _escaloes_cnc())
+    assert custo is None
+    assert motivo == MOTIVO_SEM_DADOS
+
+
+def test_custo_cnc_area_excede_e_sem_no_limite() -> None:
+    escaloes = [_escalao(1, Decimal("0.25"), Decimal("1.20"))]
+    custo, motivo = calcular_custo_cnc(Decimal("0.50"), Decimal("1"), escaloes)
+    assert custo is None
+    assert motivo == MOTIVO_SEM_ESCALOES

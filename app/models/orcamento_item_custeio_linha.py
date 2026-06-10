@@ -122,6 +122,7 @@ class OrcamentoItemCusteioLinha(Base):
     # sum of the partials (corte + orlagem); NULL when none was computed.
     custo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_cnc: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_producao: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)

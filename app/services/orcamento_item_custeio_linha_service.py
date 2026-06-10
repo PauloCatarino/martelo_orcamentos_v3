@@ -32,13 +32,14 @@ from app.domain.acabamentos import (
     tem_acabamento,
 )
 from app.domain.custo_producao import (
+    MOTIVO_SEM_DADOS,
     MOTIVO_SEM_TARIFA,
+    calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
     somar_custo_producao,
 )
 from app.domain.tempos_producao import (
-    AVISO_TEMPO_OPERACAO_SEM_DADOS,
     calcular_tempos_producao,
     classificar_operacao,
 )
@@ -62,6 +63,9 @@ from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
+from app.repositories.def_maquina_escalao_area_repository import (
+    DefMaquinaEscalaoAreaRepository,
+)
 from app.repositories.def_maquina_repository import DefMaquinaRepository
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaRepository
 from app.repositories.def_operacao_repository import DefOperacaoRepository
@@ -322,6 +326,7 @@ class OrcamentoItemCusteioLinhaService:
         self.peca_operacao_repository = DefPecaOperacaoRepository(session)
         self.operacao_repository = DefOperacaoRepository(session)
         self.maquina_repository = DefMaquinaRepository(session)
+        self.escalao_area_repository = DefMaquinaEscalaoAreaRepository(session)
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -1124,7 +1129,7 @@ class OrcamentoItemCusteioLinhaService:
             ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
                 linha.ml_orla_grossa or Decimal("0")
             )
-            tempos, faltam_dados = calcular_tempos_producao(
+            tempos, _faltam_dados = calcular_tempos_producao(
                 operacoes, linha.quantidade, ml_orla_total
             )
 
@@ -1137,9 +1142,11 @@ class OrcamentoItemCusteioLinhaService:
                 "tempo_manual": tempos["manual"] or None,
                 "tempo_setup": tempos["setup"] or None,
             }
-            aviso = AVISO_TEMPO_OPERACAO_SEM_DADOS if (operacoes and faltam_dados) else None
+            # Times no longer gate the production cost (phase 8S.2): keep the
+            # computed times but never write the "tempos em falta" warning, and
+            # clear any old one still stored.
             nova_obs = self._mesclar_observacao(
-                linha.observacoes, "Tempos de produção", aviso
+                linha.observacoes, "Tempos de produção", None
             )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
@@ -1186,10 +1193,13 @@ class OrcamentoItemCusteioLinhaService:
             operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
             op_corte = self._operacao_por_bucket(operacoes, "corte")
             op_orlagem = self._operacao_por_bucket(operacoes, "orlagem")
+            op_cnc = self._operacao_por_bucket(operacoes, "cnc")
 
             custo_corte = None
             custo_orlagem = None
-            avisos: list[str] = []
+            custo_cnc = None
+            avisos_ml: list[str] = []
+            aviso_cnc = None
 
             if op_corte is not None:
                 maquina = self._maquina_de_operacao(op_corte)
@@ -1199,7 +1209,7 @@ class OrcamentoItemCusteioLinhaService:
                 )
                 aviso = self._aviso_producao(motivo, maquina, "corte")
                 if aviso:
-                    avisos.append(aviso)
+                    avisos_ml.append(aviso)
 
             if op_orlagem is not None:
                 maquina = self._maquina_de_operacao(op_orlagem)
@@ -1212,19 +1222,38 @@ class OrcamentoItemCusteioLinhaService:
                 )
                 aviso = self._aviso_producao(motivo, maquina, "orlagem")
                 if aviso:
-                    avisos.append(aviso)
+                    avisos_ml.append(aviso)
 
-            custo_producao = somar_custo_producao(custo_corte, custo_orlagem)
+            if op_cnc is not None:
+                maquina = self._maquina_de_operacao(op_cnc)
+                escaloes = (
+                    self.escalao_area_repository.list_active_by_maquina(maquina.id)
+                    if maquina is not None
+                    else []
+                )
+                custo_cnc, motivo = calcular_custo_cnc(
+                    linha.area_m2, linha.quantidade, escaloes
+                )
+                aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
+
+            custo_producao = somar_custo_producao(custo_corte, custo_orlagem, custo_cnc)
 
             processadas += 1
             fields: dict = {
                 "custo_corte": custo_corte,
                 "custo_orlagem": custo_orlagem,
+                "custo_cnc": custo_cnc,
                 "custo_producao": custo_producao,
             }
             nova_obs = self._mesclar_observacao(
-                linha.observacoes, "Custo de produção", avisos[0] if avisos else None
+                linha.observacoes,
+                "Custo de produção",
+                avisos_ml[0] if avisos_ml else None,
             )
+            nova_obs = self._mesclar_observacao(nova_obs, "Custo CNC", aviso_cnc)
+            # Production cost no longer depends on the computed times: clear the old
+            # "Tempos de produção" warning from any earlier pass (phase 8S.2).
+            nova_obs = self._mesclar_observacao(nova_obs, "Tempos de produção", None)
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
             if custo_producao is not None:
@@ -1269,8 +1298,19 @@ class OrcamentoItemCusteioLinhaService:
         """Build the production observation for a missing tariff/data, or None."""
         if motivo is None:
             return None
+
+        nome = getattr(maquina, "codigo", None) or "—"
+
+        if etapa == "cnc":
+            # Missing area: the dimensions warning already exists -> do not duplicate.
+            if motivo == MOTIVO_SEM_DADOS:
+                return None
+            return (
+                f"Custo CNC não calculado: escalões de área em falta na "
+                f"máquina {nome}."
+            )
+
         if motivo == MOTIVO_SEM_TARIFA:
-            nome = getattr(maquina, "codigo", None) or "—"
             return (
                 f"Custo de produção não calculado: tarifa €/ML em falta na "
                 f"máquina {nome}."

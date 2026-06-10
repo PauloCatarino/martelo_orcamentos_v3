@@ -357,7 +357,8 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_areas_acabamento_do_item" in source
     assert "recalcular_custo_acabamento_do_item" in source
     assert "aplicar_operacoes_do_item" in source
-    assert "recalcular_tempos_producao_do_item" in source
+    # Phase 8S.2: production times are no longer in the Atualizar pipeline.
+    assert "recalcular_tempos_producao_do_item" not in source
     assert "recalcular_custos_producao_do_item" in source
     assert "recalcular_custo_total_do_item" in source
 
@@ -375,6 +376,8 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert '"Tempo orlagem"' in valores
     assert '"Custo corte"' in valores
     assert "linha.custo_corte" in valores
+    assert '"Custo CNC"' in valores
+    assert "linha.custo_cnc" in valores
     assert '"Custo produção"' in valores
     assert "linha.custo_producao" in valores
     assert '"Custo orlas"' in valores

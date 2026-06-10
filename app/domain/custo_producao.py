@@ -15,6 +15,60 @@ from app.domain.medidas import normalizar_numero
 # Reasons returned to the caller, which formats the production observation.
 MOTIVO_SEM_TARIFA = "SEM_TARIFA"
 MOTIVO_SEM_DADOS = "SEM_DADOS"
+MOTIVO_SEM_ESCALOES = "SEM_ESCALOES"
+
+
+def selecionar_escalao_area(escaloes_ativos, area_m2):
+    """Return the area tier that applies to ``area_m2`` (or None).
+
+    ``escaloes_ativos`` must already be active and ordered by ``nivel``. The first
+    tier whose ``area_max_m2`` is None (no limit) or >= the area wins. Returns None
+    when the area exceeds every finite tier and there is no no-limit tier.
+    """
+    area = normalizar_numero(area_m2)
+    if area is None:
+        return None
+
+    for escalao in escaloes_ativos:
+        limite = normalizar_numero(getattr(escalao, "area_max_m2", None))
+        if limite is None or area <= limite:
+            return escalao
+
+    return None
+
+
+def calcular_custo_cnc(
+    area_m2,
+    qt_total,
+    escaloes_ativos,
+) -> tuple[Decimal | None, str | None]:
+    """Return (custo_cnc, motivo) priced by the machine's area tier.
+
+    ``custo = preco_peca_std(escalão) * qt_total``. No active tiers / no matching
+    tier / tier without price -> (None, SEM_ESCALOES). Missing area -> (None,
+    SEM_DADOS) and the caller must NOT duplicate the dimensions warning. Never
+    raises.
+    """
+    if not escaloes_ativos:
+        return None, MOTIVO_SEM_ESCALOES
+
+    area = normalizar_numero(area_m2)
+    if area is None:
+        return None, MOTIVO_SEM_DADOS
+
+    escalao = selecionar_escalao_area(escaloes_ativos, area)
+    if escalao is None:
+        return None, MOTIVO_SEM_ESCALOES
+
+    preco = normalizar_numero(getattr(escalao, "preco_peca_std", None))
+    if preco is None:
+        return None, MOTIVO_SEM_ESCALOES
+
+    qt = normalizar_numero(qt_total)
+    if qt is None:
+        qt = Decimal("1")
+
+    return preco * qt, None
 
 
 def calcular_custo_corte(

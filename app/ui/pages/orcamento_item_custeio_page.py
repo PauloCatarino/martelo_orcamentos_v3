@@ -121,6 +121,7 @@ class OrcamentoItemCusteioPage(QWidget):
         "Tempo setup",
         "Custo corte",
         "Custo orlagem",
+        "Custo CNC",
         "Custo produ\u00e7\u00e3o",
         # Flags de inclusao
         "Excluir MP",
@@ -347,7 +348,6 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custos_ml_do_item(self.item_id)
                 service.recalcular_custo_acabamento_do_item(self.item_id)
                 service.aplicar_operacoes_do_item(self.item_id)
-                service.recalcular_tempos_producao_do_item(self.item_id)
                 service.recalcular_custos_producao_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
@@ -1039,6 +1039,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tempo setup": format_quantity(linha.tempo_setup),
             "Custo corte": format_currency(linha.custo_corte),
             "Custo orlagem": format_currency(linha.custo_orlagem),
+            "Custo CNC": format_currency(linha.custo_cnc),
             "Custo produção": format_currency(linha.custo_producao),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

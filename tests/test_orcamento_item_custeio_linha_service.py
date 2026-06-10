@@ -142,6 +142,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "custo_acabamento": None,
         "custo_corte": None,
         "custo_orlagem": None,
+        "custo_cnc": None,
         "custo_producao": None,
         "consumo_ml_unitario": None,
         "consumo_ml_total": None,
@@ -278,6 +279,16 @@ class _FakeMaquinaRepository:
         return self.maquinas.get(id)
 
 
+class _FakeEscalaoAreaRepository:
+    escaloes_por_maquina: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_active_by_maquina(self, def_maquina_id: int):
+        return self.escaloes_por_maquina.get(def_maquina_id, [])
+
+
 class _FakeMateriaPrimaRepository:
     materia = None
     materias_por_ref: dict = {}
@@ -355,6 +366,7 @@ def _reset() -> None:
     _FakePecaOperacaoRepository.ligacoes_por_peca = {}
     _FakeOperacaoRepository.operacoes = {}
     _FakeMaquinaRepository.maquinas = {}
+    _FakeEscalaoAreaRepository.escaloes_por_maquina = {}
 
 
 def _service(monkeypatch):
@@ -375,6 +387,9 @@ def _service(monkeypatch):
     )
     monkeypatch.setattr(service_module, "DefOperacaoRepository", _FakeOperacaoRepository)
     monkeypatch.setattr(service_module, "DefMaquinaRepository", _FakeMaquinaRepository)
+    monkeypatch.setattr(
+        service_module, "DefMaquinaEscalaoAreaRepository", _FakeEscalaoAreaRepository
+    )
     session = _FakeSession()
     return service_module.OrcamentoItemCusteioLinhaService(session=session), session
 
@@ -2288,7 +2303,8 @@ def test_recalcular_tempos_corte_orlagem_cnc(monkeypatch) -> None:
     assert "observacoes" not in payload
 
 
-def test_recalcular_tempos_sem_dados_observacao(monkeypatch) -> None:
+def test_recalcular_tempos_nao_escreve_aviso(monkeypatch) -> None:
+    # Phase 8S.2: the times no longer gate the cost, so no "tempos em falta" note.
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {1: _peca(id=1)}
     _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
@@ -2303,7 +2319,29 @@ def test_recalcular_tempos_sem_dados_observacao(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["tempo_corte"] is None
-    assert "Tempos de produção não calculados" in payload["observacoes"]
+    assert "Tempos de produção" not in (payload.get("observacoes") or "")
+
+
+def test_recalcular_tempos_limpa_aviso_antigo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA"),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            quantidade=Decimal("3"),
+            observacoes="Tempos de produção não calculados: tempos das operações em falta.",
+        ),
+    ]
+
+    service.recalcular_tempos_producao_do_item(30)
+
+    assert _FakeRepository.updated_payload["observacoes"] is None  # old note cleared
 
 
 def test_recalcular_tempos_ignora_ferragem_divisao_composta(monkeypatch) -> None:
@@ -2346,9 +2384,9 @@ def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
     assert _FakeRepository.updated_payload is None  # local times preserved
 
 
-def _maquina_tarifa(codigo, preco_ml_std=None, custo_setup_peca_std=None):
+def _maquina_tarifa(codigo, id=0, preco_ml_std=None, custo_setup_peca_std=None):
     return SimpleNamespace(
-        id=0,
+        id=id,
         codigo=codigo,
         preco_ml_std=preco_ml_std,
         custo_setup_peca_std=custo_setup_peca_std,
@@ -2505,6 +2543,111 @@ def test_recalcular_custos_producao_ignora_ferragem_divisao_composta(monkeypatch
     assert result.processadas == 0
     assert result.ignoradas == 3
     assert _FakeRepository.updated_payload is None
+
+
+def _escalao_obj(nivel, area_max_m2, preco_peca_std):
+    return SimpleNamespace(
+        nivel=nivel, area_max_m2=area_max_m2, preco_peca_std=preco_peca_std
+    )
+
+
+def test_recalcular_custos_producao_cnc(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(4)]}
+    _FakeOperacaoRepository.operacoes = {
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", maquina_id=12),
+    }
+    _FakeMaquinaRepository.maquinas = {12: _maquina_tarifa("CNC_VERTICAL", id=12)}
+    _FakeEscalaoAreaRepository.escaloes_por_maquina = {
+        12: [
+            _escalao_obj(1, Decimal("0.25"), Decimal("1.20")),
+            _escalao_obj(2, Decimal("0.50"), Decimal("1.80")),
+            _escalao_obj(5, None, Decimal("5.50")),
+        ]
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            area_m2=Decimal("2.625"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] == Decimal("5.50")  # no-limit tier x 1
+    assert payload["custo_producao"] == Decimal("5.50")
+
+
+def test_recalcular_custos_producao_cnc_sem_escaloes(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(4)]}
+    _FakeOperacaoRepository.operacoes = {
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", maquina_id=12),
+    }
+    _FakeMaquinaRepository.maquinas = {12: _maquina_tarifa("CNC_VERTICAL", id=12)}
+    _FakeEscalaoAreaRepository.escaloes_por_maquina = {}  # no tiers
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            area_m2=Decimal("0.5"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] is None
+    assert "escalões de área em falta na máquina CNC_VERTICAL" in payload["observacoes"]
+
+
+def test_recalcular_custos_producao_cnc_soma_tres_parciais(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [_ligacao_op(2), _ligacao_op(3), _ligacao_op(4)]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", maquina_id=10),
+        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", maquina_id=11),
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", maquina_id=12),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        10: _maquina_tarifa("CORTE", preco_ml_std=Decimal("0.45"), custo_setup_peca_std=Decimal("0.05")),
+        11: _maquina_tarifa("ORLAGEM", preco_ml_std=Decimal("0.70"), custo_setup_peca_std=Decimal("0.10")),
+        12: _maquina_tarifa("CNC_VERTICAL", id=12),
+    }
+    _FakeEscalaoAreaRepository.escaloes_por_maquina = {
+        12: [_escalao_obj(5, None, Decimal("5.50"))]
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            perimetro_ml=Decimal("3.0"),
+            ml_orla_fina=Decimal("2.4"),
+            ml_orla_grossa=Decimal("2.0"),
+            area_m2=Decimal("2.625"),
+            quantidade=Decimal("2"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_corte"] == Decimal("2.80")  # 3 x 2 x 0.45 + 2 x 0.05
+    assert payload["custo_orlagem"] == Decimal("3.28")  # 4.4 x 0.70 + 2 x 0.10
+    assert payload["custo_cnc"] == Decimal("11.00")  # 5.50 x 2
+    assert payload["custo_producao"] == Decimal("17.08")
 
 
 def test_custo_total_inclui_producao_respeita_exclusao(monkeypatch) -> None:
