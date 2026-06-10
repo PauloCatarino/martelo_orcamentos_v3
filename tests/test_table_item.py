@@ -48,7 +48,7 @@ def test_criar_item_tabela_tooltip_personalizado() -> None:
 def test_custeio_page_usa_helper_de_tooltip() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
-    source = inspect.getsource(OrcamentoItemCusteioPage._preencher_tabela)
+    source = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
     assert "criar_item_tabela" in source
 
 

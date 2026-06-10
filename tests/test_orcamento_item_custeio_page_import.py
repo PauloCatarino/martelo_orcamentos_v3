@@ -117,6 +117,67 @@ def test_orcamento_item_custeio_page_picker_pre_filtra_tipo_familia() -> None:
     assert "initial_familia=linha.familia_materia_prima" in source
 
 
+def test_custeio_table_edicao_rapida() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import (
+        CusteioLinhasTable,
+        OrcamentoItemCusteioPage,
+    )
+
+    # Enter moves to the next editable cell to the right (Excel-like).
+    assert hasattr(CusteioLinhasTable, "closeEditor")
+    assert hasattr(CusteioLinhasTable, "_proxima_celula_editavel")
+    close = inspect.getsource(CusteioLinhasTable.closeEditor)
+    assert "NoHint" in close
+    assert "_proxima_celula_editavel" in close
+    proxima = inspect.getsource(CusteioLinhasTable._proxima_celula_editavel)
+    assert "_celula_editavel" in proxima
+
+    # Inline edit saves only this line (fast); the general recompute stays on
+    # the Atualizar button.
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "propagar_item=False" in on_changed
+    assert "_atualizar_linha_visivel" in on_changed
+
+    # One-click / type-to-edit triggers.
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "CusteioLinhasTable" in init
+    assert "CurrentChanged" in init
+    assert "AnyKeyPressed" in init
+
+
+def test_custeio_page_tooltips_formula_e_cabecalho() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_tooltip_formula")
+    source = inspect.getsource(OrcamentoItemCusteioPage._tooltip_formula)
+    for header in (
+        "Custo MP",
+        "Custo corte",
+        "Custo orlagem",
+        "Custo CNC",
+        "Custo produção",
+        "Custo total",
+    ):
+        assert header in source
+
+    # New tooltip coverage: measures, area, perimeter, total parcels.
+    for header in ("Área m²", "Perímetro ML", "Comp", "Larg"):
+        assert header in source
+
+    # Header tooltips for the new production columns.
+    tooltips = OrcamentoItemCusteioPage.HEADER_TOOLTIPS
+    for header in ("Custo corte", "Custo orlagem", "Custo CNC", "Custo produção"):
+        assert header in tooltips
+
+    # _preencher_linha applies the formula tooltip to cells.
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
+    assert "_tooltip_formula" in preencher
+
+
 def test_orcamento_item_custeio_page_menu_acabamento() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

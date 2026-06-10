@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QCheckBox,
     QFormLayout,
     QHBoxLayout,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.custos import fator_desperdicio
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     PECA,
@@ -53,6 +55,59 @@ from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
+
+
+class CusteioLinhasTable(QTableWidget):
+    """Costing table with Excel-like editing.
+
+    Pressing Enter while editing commits and moves to the NEXT EDITABLE cell to
+    the right in the same row (skipping read-only columns), wrapping to the first
+    editable cell of the next row, and opens its editor. Tab keeps the standard
+    behaviour and Esc cancels (Qt default). Read-only cells stay non-editable.
+    """
+
+    def closeEditor(self, editor, hint) -> None:
+        """Move to the next editable cell on Enter (NoHint); keep Tab/Esc default."""
+        avancar = hint == QAbstractItemDelegate.EndEditHint.NoHint
+        row = self.currentRow()
+        col = self.currentColumn()
+
+        super().closeEditor(editor, hint)
+
+        if avancar:
+            proxima = self._proxima_celula_editavel(row, col)
+            if proxima is not None:
+                QTimer.singleShot(0, lambda rc=proxima: self._editar_celula(*rc))
+
+    def _celula_editavel(self, row: int, col: int) -> bool:
+        item = self.item(row, col)
+        return item is not None and bool(item.flags() & Qt.ItemFlag.ItemIsEditable)
+
+    def _proxima_celula_editavel(self, row: int, col: int):
+        """Return (row, col) of the next editable cell (right, then next rows)."""
+        if row < 0 or col < 0:
+            return None
+
+        for c in range(col + 1, self.columnCount()):
+            if self._celula_editavel(row, c):
+                return row, c
+
+        for r in range(row + 1, self.rowCount()):
+            for c in range(self.columnCount()):
+                if self._celula_editavel(r, c):
+                    return r, c
+
+        return None
+
+    def _editar_celula(self, row: int, col: int) -> None:
+        """Select a cell and open its editor when it is editable."""
+        if not (0 <= row < self.rowCount() and 0 <= col < self.columnCount()):
+            return
+
+        self.setCurrentCell(row, col)
+        item = self.item(row, col)
+        if item is not None and bool(item.flags() & Qt.ItemFlag.ItemIsEditable):
+            self.editItem(item)
 
 
 class OrcamentoItemCusteioPage(QWidget):
@@ -172,6 +227,33 @@ class OrcamentoItemCusteioPage(QWidget):
         "Visto ativo = excluir este custo do cálculo. Sem visto = incluir no cálculo."
     )
 
+    # Header tooltips explaining each column (the formula tooltips are per cell).
+    HEADER_TOOLTIPS = {
+        "Comp": "Comprimento da peça (editável; aceita expressões).",
+        "Larg": "Largura da peça (editável; aceita expressões).",
+        "Esp": "Espessura da peça (normalmente vem do material).",
+        "QT mod": "Quantidade por módulo (editável).",
+        "QT und": "Quantidade de unidades (editável).",
+        "Área m²": "Área por unidade da peça (Comp × Larg).",
+        "Perímetro ML": "Perímetro por unidade, em metros lineares.",
+        "ML orla fina": "Metros lineares de orla fina (total da linha).",
+        "ML orla grossa": "Metros lineares de orla grossa (total da linha).",
+        "SPP ML und": "Consumo em metro linear por unidade.",
+        "SPP ML total": "Consumo em metro linear total (× QT total).",
+        "Custo MP": "Custo da matéria-prima (M2): área × qt × preço × (1+desp).",
+        "Custo ferragem": "Custo de ferragens (UND) ou de materiais ML.",
+        "Custo orla fina": "Custo da orla fina: ML × preço/ml.",
+        "Custo orla grossa": "Custo da orla grossa: ML × preço/ml.",
+        "Custo orlas": "Soma do custo das orlas (fina + grossa).",
+        "Custo acabamento": "Custo de acabamento: área acab. × preço × (1+desp), por face.",
+        "Custo corte": "Custo de corte: perímetro × qt × €/ML + qt × setup.",
+        "Custo orlagem": "Custo de orlagem: ML de orla × €/ML + qt × setup.",
+        "Custo CNC": "Custo de CNC pelo escalão de área da máquina × qt.",
+        "Custo produção": "Soma dos custos de produção (corte + orlagem + CNC).",
+        "Custo total": "Soma dos custos da linha, respeitando os checks Excluir.",
+        "Editado localmente": "Sim quando o material/acabamento foi editado na linha.",
+    }
+
     def __init__(
         self,
         item: OrcamentoItemResumo,
@@ -239,20 +321,28 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.library_panel = self._create_library_panel()
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
+        self.table = CusteioLinhasTable(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
         for column_index, header in enumerate(self.TABLE_HEADERS):
+            header_item = self.table.horizontalHeaderItem(column_index)
+            if header_item is None:
+                continue
             if header in self.EXCLUSAO_COLUMNS:
-                header_item = self.table.horizontalHeaderItem(column_index)
-                if header_item is not None:
-                    header_item.setToolTip(self.EXCLUSAO_TOOLTIP)
+                header_item.setToolTip(self.EXCLUSAO_TOOLTIP)
+            elif header in self.HEADER_TOOLTIPS:
+                header_item.setToolTip(self.HEADER_TOOLTIPS[header])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        # Fast (Excel-like) editing: one click / typing enters edit; read-only
+        # cells stay blocked (they have no ItemIsEditable flag).
         self.table.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked
+            QTableWidget.EditTrigger.CurrentChanged
+            | QTableWidget.EditTrigger.SelectedClicked
+            | QTableWidget.EditTrigger.DoubleClicked
             | QTableWidget.EditTrigger.EditKeyPressed
+            | QTableWidget.EditTrigger.AnyKeyPressed
         )
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellChanged.connect(self._on_cell_changed)
@@ -610,18 +700,37 @@ class OrcamentoItemCusteioPage(QWidget):
 
             for row_index, linha in enumerate(linhas):
                 self._custeio_by_row[row_index] = linha
-                valores = self._linha_para_valores(linha)
-                for column_index, header in enumerate(self.TABLE_HEADERS):
-                    if header in self.EXCLUSAO_COLUMNS:
-                        item = self._criar_item_exclusao(header, linha)
-                    else:
-                        # Tooltip with the full content (helps narrow text columns).
-                        item = criar_item_tabela(valores.get(header, ""))
-                        if self._coluna_editavel(header, linha):
-                            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                        else:
-                            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    self.table.setItem(row_index, column_index, item)
+                self._preencher_linha(row_index, linha)
+        finally:
+            self._carregando_tabela = False
+
+    def _preencher_linha(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Fill one table row from a line resumo (caller guards _carregando_tabela)."""
+        valores = self._linha_para_valores(linha)
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            if header in self.EXCLUSAO_COLUMNS:
+                item = self._criar_item_exclusao(header, linha)
+            else:
+                # Formula tooltip on result columns; otherwise the full content
+                # (helps narrow text columns).
+                tooltip = self._tooltip_formula(header, linha)
+                item = criar_item_tabela(valores.get(header, ""), tooltip=tooltip)
+                if self._coluna_editavel(header, linha):
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_index, column_index, item)
+
+    def _atualizar_linha_visivel(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Refresh a single row in place (no full reload) after an inline edit."""
+        self._carregando_tabela = True
+        try:
+            self._custeio_by_row[row_index] = linha
+            self._preencher_linha(row_index, linha)
         finally:
             self._carregando_tabela = False
 
@@ -647,6 +756,164 @@ class OrcamentoItemCusteioPage(QWidget):
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
 
         return item
+
+    def _tooltip_formula(
+        self, header: str, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> str | None:
+        """Return a per-cell formula tooltip with the line's real numbers, or None.
+
+        Uses the values already in the line resumo; when a value needed for the
+        exact formula is not available (e.g. the orla/machine unit price), the
+        generic formula plus the known inputs/result is shown.
+        """
+        qt = linha.quantidade
+        ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
+            linha.ml_orla_grossa or Decimal("0")
+        )
+
+        # Measure expressions: show the formula and the evaluated value.
+        if header == "Comp":
+            return self._tooltip_medida(linha.comp, linha.comp_real)
+        if header == "Larg":
+            return self._tooltip_medida(linha.larg, linha.larg_real)
+        if header == "Esp":
+            return self._tooltip_medida(linha.esp, linha.esp_real)
+
+        if header == "Área m²" and linha.area_m2 is not None:
+            return (
+                "Área = comp × larg / 1.000.000\n"
+                f"{format_quantity(linha.comp_real)} × "
+                f"{format_quantity(linha.larg_real)} / 1.000.000 = "
+                f"{format_quantity(linha.area_m2)} m2"
+            )
+        if header == "Perímetro ML" and linha.perimetro_ml is not None:
+            return (
+                "Perímetro = 2 × (comp + larg) / 1000\n"
+                f"2 × ({format_quantity(linha.comp_real)} + "
+                f"{format_quantity(linha.larg_real)}) / 1000 = "
+                f"{format_quantity(linha.perimetro_ml)} ml"
+            )
+
+        if header == "Área acab. sup" and linha.area_acabamento_sup is not None:
+            return (
+                "Área acab. sup = área × qt (se houver acabamento)\n"
+                f"acabamento: {linha.acabamento_face_sup or '—'}\n"
+                f"{format_quantity(linha.area_m2)} × {format_quantity(qt)} = "
+                f"{format_quantity(linha.area_acabamento_sup)} m2"
+            )
+        if header == "Área acab. inf" and linha.area_acabamento_inf is not None:
+            return (
+                "Área acab. inf = área × qt (se houver acabamento)\n"
+                f"acabamento: {linha.acabamento_face_inf or '—'}\n"
+                f"{format_quantity(linha.area_m2)} × {format_quantity(qt)} = "
+                f"{format_quantity(linha.area_acabamento_inf)} m2"
+            )
+
+        if header == "ML orla fina" and linha.ml_orla_fina is not None:
+            return (
+                "ML orla fina = lados orlados (código) + margem da orladora, × qt\n"
+                f"→ {format_quantity(linha.ml_orla_fina)} ml (qt {format_quantity(qt)})"
+            )
+        if header == "ML orla grossa" and linha.ml_orla_grossa is not None:
+            return (
+                "ML orla grossa = lados orlados (código) + margem da orladora, × qt\n"
+                f"→ {format_quantity(linha.ml_orla_grossa)} ml (qt {format_quantity(qt)})"
+            )
+
+        if header == "Custo MP" and linha.custo_mp is not None:
+            fator = fator_desperdicio(linha.desperdicio_percentagem)
+            return (
+                "Custo MP = área × qt × preço × (1+desp)\n"
+                f"{format_quantity(linha.area_m2)} m2 × "
+                f"{format_quantity(qt)} × "
+                f"{format_currency(linha.preco_liquido)} × {format_quantity(fator)} "
+                f"= {format_currency(linha.custo_mp)}"
+            )
+        if header == "Custo ferragem" and linha.custo_ferragem is not None:
+            fator = fator_desperdicio(linha.desperdicio_percentagem)
+            return (
+                "Custo ferragem = qt × preço × (1+desp)\n"
+                f"{format_quantity(qt)} × {format_currency(linha.preco_liquido)} × "
+                f"{format_quantity(fator)} = {format_currency(linha.custo_ferragem)}"
+            )
+        if header == "Custo orla fina" and linha.custo_orla_fina is not None:
+            return (
+                "Custo orla fina = ML orla × preço/ml (convertido de m2 pela "
+                "largura da orla)\n"
+                f"{format_quantity(linha.ml_orla_fina)} ml → "
+                f"{format_currency(linha.custo_orla_fina)}"
+            )
+        if header == "Custo orla grossa" and linha.custo_orla_grossa is not None:
+            return (
+                "Custo orla grossa = ML orla × preço/ml (convertido de m2 pela "
+                "largura da orla)\n"
+                f"{format_quantity(linha.ml_orla_grossa)} ml → "
+                f"{format_currency(linha.custo_orla_grossa)}"
+            )
+        if header == "Custo orlas" and linha.custo_orlas is not None:
+            return (
+                "Custo orlas = orla fina + orla grossa\n"
+                f"{format_currency(linha.custo_orla_fina)} + "
+                f"{format_currency(linha.custo_orla_grossa)} "
+                f"= {format_currency(linha.custo_orlas)}"
+            )
+        if header == "Custo acabamento" and linha.custo_acabamento is not None:
+            return (
+                "Custo acabamento = Σ faces (área × preço × (1+desp))\n"
+                f"sup {format_quantity(linha.area_acabamento_sup)} m2 + "
+                f"inf {format_quantity(linha.area_acabamento_inf)} m2 → "
+                f"{format_currency(linha.custo_acabamento)}"
+            )
+        if header == "Custo corte" and linha.custo_corte is not None:
+            return (
+                "Custo corte = perímetro × qt × €/ML + qt × setup\n"
+                f"{format_quantity(linha.perimetro_ml)} × "
+                f"{format_quantity(qt)} → {format_currency(linha.custo_corte)}"
+            )
+        if header == "Custo orlagem" and linha.custo_orlagem is not None:
+            return (
+                "Custo orlagem = ML orla total × €/ML + qt × setup\n"
+                f"{format_quantity(ml_orla_total)} ml → "
+                f"{format_currency(linha.custo_orlagem)}"
+            )
+        if header == "Custo CNC" and linha.custo_cnc is not None:
+            return (
+                "Custo CNC = escalão por área × preço/peça × qt\n"
+                f"área {format_quantity(linha.area_m2)} m2 × qt "
+                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}"
+            )
+        if header == "Custo produção" and linha.custo_producao is not None:
+            return (
+                "Custo produção = corte + orlagem + CNC\n"
+                f"{format_currency(linha.custo_corte)} + "
+                f"{format_currency(linha.custo_orlagem)} + "
+                f"{format_currency(linha.custo_cnc)} "
+                f"= {format_currency(linha.custo_producao)}"
+            )
+        if header == "Custo total" and linha.custo_total is not None:
+            return (
+                "Custo total = MP + ferragem + orlas + acabamento + produção "
+                "(respeitando os checks Excluir)\n"
+                f"MP {format_currency(linha.custo_mp)} + "
+                f"ferragem {format_currency(linha.custo_ferragem)} + "
+                f"orlas {format_currency(linha.custo_orlas)} + "
+                f"acabamento {format_currency(linha.custo_acabamento)} + "
+                f"produção {format_currency(linha.custo_producao)} = "
+                f"{format_currency(linha.custo_total)}"
+            )
+
+        return None
+
+    def _tooltip_medida(self, raw, real) -> str | None:
+        """Formula tooltip for a measure cell that holds an expression."""
+        if real is None:
+            return None
+
+        texto = (raw or "").strip()
+        if texto and any(c.isalpha() or c in "+-*/()" for c in texto):
+            return f"{texto} → {format_mm(real)}"
+
+        return None
 
     def _on_cell_changed(self, row: int, column: int) -> None:
         """Save an edited quantity/measure cell and recompute the line."""
@@ -693,7 +960,11 @@ class OrcamentoItemCusteioPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                OrcamentoItemCusteioLinhaService(session).atualizar_medidas_linha(
+                # Fast inline edit: save only this line; the general recompute of
+                # costs (and division propagation) stays on the Atualizar button.
+                resumo = OrcamentoItemCusteioLinhaService(
+                    session
+                ).atualizar_medidas_linha(
                     linha.id,
                     qt_mod=valores["qt_mod"],
                     qt_und=valores["qt_und"],
@@ -701,13 +972,17 @@ class OrcamentoItemCusteioPage(QWidget):
                     larg=valores["larg"],
                     esp=valores["esp"],
                     descricao=descricao,
+                    propagar_item=False,
                 )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível atualizar a linha de custeio.")
             return
 
-        self.carregar()
-        self.status_label.setText("Linha de custeio atualizada.")
+        if resumo is not None:
+            self._atualizar_linha_visivel(row, resumo)
+        self.status_label.setText(
+            "Linha atualizada (medidas). Use Atualizar para recalcular custos."
+        )
 
     def _on_exclusao_changed(
         self, row: int, column: int, header: str, linha: OrcamentoItemCusteioLinhaResumo
