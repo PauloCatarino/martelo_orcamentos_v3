@@ -1543,15 +1543,17 @@ class OrcamentoItemCusteioLinhaService:
         larg=None,
         esp=None,
         descricao=None,
+        propagar_item: bool = True,
     ) -> OrcamentoItemCusteioLinhaResumo | None:
         """Save edited quantities/measures of one cost line, then recompute.
 
         Comp/Larg/Esp keep the raw text/expression written by the user, while
         comp_real/larg_real/esp_real (and area/perimeter) hold the evaluated
-        result. The whole item is recomputed afterwards because changing an
-        independent division affects the lines below it. ValueSet data is not
-        touched and ``editado_localmente`` is NOT changed here (that flag is only
-        for local edits to the inherited material data).
+        result. With ``propagar_item`` (default) the whole item is recomputed so
+        an independent division's context (HM/LM/PM) reaches the lines below; the
+        fast inline edit passes ``propagar_item=False`` to save only this line
+        (the general recompute is then deferred to the Atualizar button). ValueSet
+        data is not touched and ``editado_localmente`` is NOT changed here.
         """
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
@@ -1600,9 +1602,12 @@ class OrcamentoItemCusteioLinhaService:
 
         self.repository.update_linha(id=linha_id, **fields)
 
-        # Recompute the whole item so independent-division context (HM/LM/PM)
-        # propagates to the lines below.
-        self.recalcular_medidas_do_item(linha.orcamento_item_id)
+        if propagar_item:
+            # Recompute the whole item so independent-division context (HM/LM/PM)
+            # propagates to the lines below.
+            self.recalcular_medidas_do_item(linha.orcamento_item_id)
+        else:
+            self.session.commit()
 
         return self.repository.get_by_id(linha_id)
 
