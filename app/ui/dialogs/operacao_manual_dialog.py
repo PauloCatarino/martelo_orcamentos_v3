@@ -36,6 +36,7 @@ class OperacaoManualDialog(QDialog):
 
     The cost is computed from the chosen machine's STD hourly rate
     ((minutes / 60) × custo_hora); the user defines the description and minutes.
+    Machines of type MANUAL, MONTAGEM or CNC are offered (e.g. one-off CNC jobs).
     """
 
     def __init__(
@@ -63,6 +64,7 @@ class OperacaoManualDialog(QDialog):
         self.descricao_input.setPlaceholderText("Ex.: cortar perfis de alumínio")
 
         self.maquina_input = QComboBox()
+        self._custo_hora_por_maquina = {m.id: m.custo_hora for m in maquinas}
         indice_manual = -1
         for posicao, maquina in enumerate(maquinas):
             self.maquina_input.addItem(f"{maquina.codigo} - {maquina.nome}", maquina.id)
@@ -85,9 +87,14 @@ class OperacaoManualDialog(QDialog):
         self.error_label.setStyleSheet("color: #b00020;")
         self.error_label.setWordWrap(True)
 
+        self.aviso_label = QLabel("")
+        self.aviso_label.setObjectName("operacaoManualDialogAviso")
+        self.aviso_label.setStyleSheet("color: #b36b00;")
+        self.aviso_label.setWordWrap(True)
+
         info = QLabel(
-            "Trabalho manual avulso. O custo = (tempo total / 60) × custo/hora da "
-            "máquina. Tempo total = tempo × quantidade."
+            "Trabalho avulso (manual, montagem ou CNC). O custo = (tempo total / 60) "
+            "× custo/hora STD da máquina. Tempo total = tempo × quantidade."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #666666; font-size: 11px;")
@@ -109,6 +116,7 @@ class OperacaoManualDialog(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(info)
         layout.addLayout(form)
+        layout.addWidget(self.aviso_label)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
@@ -123,6 +131,9 @@ class OperacaoManualDialog(QDialog):
             self.tempo_input.setValue(float(tempo_minutos))
         if quantidade is not None:
             self.quantidade_input.setValue(int(quantidade))
+
+        self.maquina_input.currentIndexChanged.connect(self._atualizar_aviso_custo_hora)
+        self._atualizar_aviso_custo_hora()
 
     def get_data(self) -> OperacaoManualDialogData:
         """Return normalized dialog data."""
@@ -151,6 +162,20 @@ class OperacaoManualDialog(QDialog):
             return
 
         self.accept()
+
+    def _atualizar_aviso_custo_hora(self) -> None:
+        """Warn (without blocking) when the chosen machine has no STD hourly rate."""
+        maquina_id = self.maquina_input.currentData()
+        if maquina_id is None:
+            self.aviso_label.clear()
+            return
+        if self._custo_hora_por_maquina.get(maquina_id) is None:
+            self.aviso_label.setText(
+                "Aviso: esta máquina não tem custo/hora STD definido — o custo "
+                "ficará por calcular (Configurações → Máquinas)."
+            )
+        else:
+            self.aviso_label.clear()
 
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""

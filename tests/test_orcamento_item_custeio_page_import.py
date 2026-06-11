@@ -191,7 +191,7 @@ def test_custeio_page_tooltips_tres_blocos() -> None:
 
     # The manual-operation cost has its own rule/formula text.
     montagem = inspect.getsource(OrcamentoItemCusteioPage._tooltip_montagem_manual)
-    assert "Trabalho manual avulso cobrado ao tempo na máquina" in montagem
+    assert "Trabalho avulso cobrado ao tempo na máquina" in montagem
     assert "minutos × QT / 60 × custo/hora" in montagem
 
 
@@ -501,6 +501,10 @@ def test_custeio_page_menu_operacao_manual() -> None:
     inserir = inspect.getsource(OrcamentoItemCusteioPage.inserir_operacao_manual_linha)
     assert "OperacaoManualDialog" in inserir
     assert "inserir_operacao_manual" in inserir
+
+    # the machine combo offers MANUAL, MONTAGEM and CNC machines
+    maquinas = inspect.getsource(OrcamentoItemCusteioPage._maquinas_montagem_manual)
+    assert '"MANUAL", "MONTAGEM", "CNC"' in maquinas
 
 
 def test_orcamento_item_custeio_page_esp_edit_protection() -> None:

@@ -26,3 +26,13 @@ def test_operacao_manual_dialog_campos() -> None:
     assert " min" in init  # time suffix
     # pre-selects a MANUAL machine by default
     assert "MANUAL" in init
+    # the info text mentions one-off CNC jobs
+    assert "CNC" in init
+
+
+def test_operacao_manual_dialog_aviso_custo_hora() -> None:
+    from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
+
+    assert hasattr(OperacaoManualDialog, "_atualizar_aviso_custo_hora")
+    aviso = inspect.getsource(OperacaoManualDialog._atualizar_aviso_custo_hora)
+    assert "custo/hora STD" in aviso

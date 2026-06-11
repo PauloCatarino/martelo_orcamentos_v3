@@ -974,7 +974,7 @@ class OrcamentoItemCusteioPage(QWidget):
             custo_hora = self._custo_hora_derivado(custo, linha.tempo_manual)
             maquina = linha.maquina or "—"
             return self._tooltip_3(
-                f"Trabalho manual avulso cobrado ao tempo na máquina {maquina}.",
+                f"Trabalho avulso cobrado ao tempo na máquina {maquina}.",
                 "Custo = minutos × QT / 60 × custo/hora",
                 f"= {format_quantity(minutos)} × {format_quantity(qt)} / 60 × "
                 f"{format_currency(custo_hora)} = {format_currency(custo)}",
@@ -1342,20 +1342,22 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText("Acabamento da linha atualizado.")
 
     def _maquinas_montagem_manual(self):
-        """Active machines of type MANUAL/MONTAGEM for the manual-operation dialog."""
+        """Active machines of type MANUAL/MONTAGEM/CNC for the manual-operation dialog."""
         try:
             with SessionLocal() as session:
                 maquinas = DefMaquinaService(session).listar_maquinas_ativas()
         except SQLAlchemyError:
             return []
-        return [m for m in maquinas if (m.tipo or "").upper() in ("MANUAL", "MONTAGEM")]
+        return [
+            m for m in maquinas if (m.tipo or "").upper() in ("MANUAL", "MONTAGEM", "CNC")
+        ]
 
     def inserir_operacao_manual_linha(self) -> None:
         """Open the dialog to add a user-defined manual-operation line."""
         maquinas = self._maquinas_montagem_manual()
         if not maquinas:
             self.status_label.setText(
-                "Crie uma máquina MANUAL ou MONTAGEM (Configurações → Máquinas)."
+                "Crie uma máquina MANUAL, MONTAGEM ou CNC (Configurações → Máquinas)."
             )
             return
 
