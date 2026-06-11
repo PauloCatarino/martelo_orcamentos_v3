@@ -88,6 +88,23 @@ class _FakeRepository:
         self.__class__.updated_versao_total = (orcamento_versao_id, preco_total)
         return True
 
+    tipo_producao_default: str | None = "STD"
+    updated_tipo_default: tuple | None = None
+    updated_tipo_item: tuple | None = None
+
+    def get_tipo_producao_default(self, orcamento_versao_id: int) -> str | None:
+        return self.tipo_producao_default
+
+    def update_tipo_producao_default(
+        self, orcamento_versao_id: int, tipo_producao: str
+    ) -> bool:
+        self.__class__.updated_tipo_default = (orcamento_versao_id, tipo_producao)
+        return True
+
+    def update_tipo_producao(self, item_id: int, tipo_producao: str | None) -> bool:
+        self.__class__.updated_tipo_item = (item_id, tipo_producao)
+        return True
+
 
 class _FakeSession:
     def __init__(self) -> None:
@@ -370,3 +387,105 @@ def test_orcamento_item_service_recalcula_total_versao(monkeypatch) -> None:
     assert service.recalcular_total_versao(30) == Decimal("123.45")
     assert _FakeRepository.summed_versao_id == 30
     assert _FakeRepository.updated_versao_total == (30, Decimal("123.45"))
+
+
+def test_get_tipo_producao_default_normaliza_para_std(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    _FakeRepository.tipo_producao_default = "SERIE"
+    assert service.get_tipo_producao_default(30) == "SERIE"
+
+    _FakeRepository.tipo_producao_default = None
+    assert service.get_tipo_producao_default(30) == "STD"
+
+
+def test_definir_tipo_producao_default(monkeypatch) -> None:
+    _FakeRepository.updated_tipo_default = None
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    session = _FakeSession()
+    service = service_module.OrcamentoItemService(session=session)
+
+    assert service.definir_tipo_producao_default(30, "serie") == "SERIE"
+    assert _FakeRepository.updated_tipo_default == (30, "SERIE")
+    assert session.committed is True
+
+
+def test_definir_tipo_producao_default_invalido(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    try:
+        service.definir_tipo_producao_default(30, "XPTO")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_definir_tipo_producao_item_excecao_e_padrao(monkeypatch) -> None:
+    _FakeRepository.updated_tipo_item = None
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    session = _FakeSession()
+    service = service_module.OrcamentoItemService(session=session)
+
+    assert service.definir_tipo_producao_item(5, "SERIE") == "SERIE"
+    assert _FakeRepository.updated_tipo_item == (5, "SERIE")
+
+    # None limpa a exceção (o item volta a herdar o padrão da versão).
+    assert service.definir_tipo_producao_item(5, None) is None
+    assert _FakeRepository.updated_tipo_item == (5, None)
+    assert session.committed is True
+
+
+def test_definir_tipo_producao_item_invalido(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    try:
+        service.definir_tipo_producao_item(5, "XPTO")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_get_tipo_producao_efetivo_do_item(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+    _FakeRepository.tipo_producao_default = "SERIE"
+
+    herdado = OrcamentoItemResumo(
+        id=1,
+        orcamento_versao_id=30,
+        ordem=1,
+        codigo=None,
+        item="Item",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=None,
+        preco_total=None,
+    )
+    assert service.get_tipo_producao_efetivo(herdado) == "SERIE"
+
+    excecao = OrcamentoItemResumo(
+        id=2,
+        orcamento_versao_id=30,
+        ordem=2,
+        codigo=None,
+        item="Item",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=None,
+        preco_total=None,
+        tipo_producao="STD",
+    )
+    assert service.get_tipo_producao_efetivo(excecao) == "STD"

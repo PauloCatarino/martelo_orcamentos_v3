@@ -214,6 +214,9 @@ class OrcamentoItemCusteioLinha(Base):
     operacoes: Mapped[str | None] = mapped_column(String(500), nullable=True)
     maquina: Mapped[str | None] = mapped_column(String(255), nullable=True)
     tipo_producao: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Optional manual factor applied ONLY to custo_producao (empty = 1.00); a fine
+    # adjustment per line, e.g. 0.90 (phase 8S.4).
+    fator_serie: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
 
     override_manual: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"

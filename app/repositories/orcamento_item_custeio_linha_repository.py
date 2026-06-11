@@ -114,6 +114,7 @@ class OrcamentoItemCusteioLinhaResumo:
     operacoes: str | None = None
     maquina: str | None = None
     tipo_producao: str | None = None
+    fator_serie: Decimal | None = None
     tempo_corte: Decimal | None = None
     tempo_orlagem: Decimal | None = None
     tempo_cnc: Decimal | None = None
@@ -329,6 +330,7 @@ class OrcamentoItemCusteioLinhaRepository:
             operacoes=linha.operacoes,
             maquina=linha.maquina,
             tipo_producao=linha.tipo_producao,
+            fator_serie=linha.fator_serie,
             tempo_corte=linha.tempo_corte,
             tempo_orlagem=linha.tempo_orlagem,
             tempo_cnc=linha.tempo_cnc,

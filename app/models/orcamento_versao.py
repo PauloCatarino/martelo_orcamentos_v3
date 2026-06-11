@@ -48,6 +48,11 @@ class OrcamentoVersao(Base):
     estado: Mapped[str] = mapped_column(String(50), nullable=False)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_origem: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Production type applied to all the version items ('STD'/'SERIE'); each item
+    # may override it with its own tipo_producao (phase 8S.4).
+    tipo_producao_default: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="STD", server_default="STD"
+    )
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(

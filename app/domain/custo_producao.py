@@ -1,9 +1,10 @@
-"""Cutting/edging production cost helpers from machine STD tariffs (phase 8S.1).
+"""Cutting/edging production cost helpers from machine tariffs (phase 8S.1/8S.4).
 
 Cut cost uses the unit perimeter × quantity × €/ML (+ setup × quantity); edging
 cost uses the line's total edging metres × €/ML (+ setup × quantity). The caller
-only invokes these when the piece actually has the matching operation. SERIE
-tariffs and CNC area tiers are handled in later phases.
+only invokes these when the piece actually has the matching operation. The
+tariffs themselves are chosen by the caller via ``escolher_tarifa`` (STD, or
+SERIE with per-field fallback to STD when the SERIE value is not defined).
 """
 
 from __future__ import annotations
@@ -16,6 +17,58 @@ from app.domain.medidas import normalizar_numero
 MOTIVO_SEM_TARIFA = "SEM_TARIFA"
 MOTIVO_SEM_DADOS = "SEM_DADOS"
 MOTIVO_SEM_ESCALOES = "SEM_ESCALOES"
+
+
+def escolher_tarifa(valor_std, valor_serie, usar_serie: bool) -> tuple:
+    """Pick a tariff value: STD, or SERIE with fallback to STD when undefined.
+
+    Returns ``(valor, fallback)``: with ``usar_serie`` False the STD value is
+    used as today; with ``usar_serie`` True the SERIE value wins, but an empty
+    SERIE falls back to the STD value (``fallback`` True flags that case so the
+    caller can say "SERIE não definida — fallback"). Never raises.
+    """
+    if not usar_serie:
+        return normalizar_numero(valor_std), False
+
+    serie = normalizar_numero(valor_serie)
+    if serie is not None:
+        return serie, False
+
+    return normalizar_numero(valor_std), True
+
+
+def preco_peca_escalao(escalao, usar_serie: bool) -> tuple:
+    """Return ``(preco_peca, fallback)`` of an area tier for the wanted type.
+
+    SERIE uses ``preco_peca_serie`` with fallback to ``preco_peca_std`` when it
+    is not defined (same rule as ``escolher_tarifa``).
+    """
+    if escalao is None:
+        return None, False
+
+    return escolher_tarifa(
+        getattr(escalao, "preco_peca_std", None),
+        getattr(escalao, "preco_peca_serie", None),
+        usar_serie,
+    )
+
+
+def aplicar_fator_serie(custo_producao, fator_serie) -> Decimal | None:
+    """Multiply a line's custo_producao by its manual série factor.
+
+    Empty/invalid factor leaves the cost unchanged (factor 1); empty cost stays
+    empty. Only custo_producao is adjusted by this factor — never the partial
+    production costs. Never raises.
+    """
+    custo = normalizar_numero(custo_producao)
+    if custo is None:
+        return None
+
+    fator = normalizar_numero(fator_serie)
+    if fator is None or fator <= 0:
+        return custo
+
+    return custo * fator
 
 
 def selecionar_escalao_area(escaloes_ativos, area_m2):
@@ -41,13 +94,15 @@ def calcular_custo_cnc(
     area_m2,
     qt_total,
     escaloes_ativos,
+    usar_serie: bool = False,
 ) -> tuple[Decimal | None, str | None]:
     """Return (custo_cnc, motivo) priced by the machine's area tier.
 
-    ``custo = preco_peca_std(escalão) * qt_total``. No active tiers / no matching
-    tier / tier without price -> (None, SEM_ESCALOES). Missing area -> (None,
-    SEM_DADOS) and the caller must NOT duplicate the dimensions warning. Never
-    raises.
+    ``custo = preco_peca(escalão) * qt_total``, with the tier price chosen by
+    ``usar_serie`` (SERIE falls back to STD when not defined). No active tiers /
+    no matching tier / tier without price -> (None, SEM_ESCALOES). Missing area
+    -> (None, SEM_DADOS) and the caller must NOT duplicate the dimensions
+    warning. Never raises.
     """
     if not escaloes_ativos:
         return None, MOTIVO_SEM_ESCALOES
@@ -60,7 +115,7 @@ def calcular_custo_cnc(
     if escalao is None:
         return None, MOTIVO_SEM_ESCALOES
 
-    preco = normalizar_numero(getattr(escalao, "preco_peca_std", None))
+    preco, _fallback = preco_peca_escalao(escalao, usar_serie)
     if preco is None:
         return None, MOTIVO_SEM_ESCALOES
 

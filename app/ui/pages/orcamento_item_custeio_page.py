@@ -36,7 +36,18 @@ from app.domain.custeio_linha_types import (
     PECA_COMPOSTA,
     get_custeio_linha_type_label,
 )
+from app.domain.custo_producao import (
+    escolher_tarifa,
+    preco_peca_escalao,
+    selecionar_escalao_area,
+)
 from app.domain.item_types import get_item_type_label
+from app.domain.producao_types import (
+    TIPO_PRODUCAO_SERIE,
+    TIPO_PRODUCAO_STD,
+    normalize_tipo_producao,
+    tipo_producao_efetivo,
+)
 from app.domain.numeros import formatar_percentagem
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
@@ -47,6 +58,7 @@ from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
+from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
 from app.services.def_maquina_service import DefMaquinaService
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
@@ -254,8 +266,14 @@ class OrcamentoItemCusteioPage(QWidget):
         "Custo orlagem": "Custo de orlagem: ML de orla × €/ML + qt × setup.",
         "Custo CNC": "Custo de CNC pelo escalão de área da máquina × qt.",
         "Custo mont./manual": "Montagem/manual: (tempo / 60) × custo/hora da máquina.",
-        "Custo produção": "Soma da produção (corte + orlagem + CNC + mont./manual).",
+        "Custo produção": "Soma da produção (corte + orlagem + CNC + mont./manual) "
+        "× fator série (quando definido).",
         "Custo total": "Soma dos custos da linha, respeitando os checks Excluir.",
+        "Tipo produção": "Tipo de produção usado nos custos da linha (STD ou "
+        "SERIE). Vem do padrão da versão ou da exceção do item — muda-se na "
+        "página de Items.",
+        "Fator série": "Fator manual que multiplica APENAS o custo de produção "
+        "da linha (vazio = 1,00; ex.: 0,90).",
         "Editado localmente": "Sim quando o material/acabamento foi editado na linha.",
     }
 
@@ -278,6 +296,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
         self._carregando_tabela = False
+        self._tipo_producao_default = TIPO_PRODUCAO_STD
+        self._maquinas_por_codigo: dict = {}
+        self._maquinas_por_id: dict = {}
+        self._escaloes_por_maquina: dict = {}
 
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
         self.title_label = QLabel(self._build_title())
@@ -288,6 +310,13 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.atualizar_geral)
+
+        self.producao_label = QLabel("")
+        self.producao_label.setObjectName("orcamentoItemCusteioProducao")
+        self.producao_label.setToolTip(
+            "Tipo de produção do item (padrão da versão ou exceção do item). "
+            "A alteração faz-se na página de Items do orçamento."
+        )
 
         self.recalc_measures_button = QPushButton("Recalcular Medidas")
         self.recalc_measures_button.clicked.connect(self.recalcular_medidas)
@@ -310,6 +339,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.producao_label)
         actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addWidget(self.insert_division_button)
         actions_layout.addSpacing(12)
@@ -395,25 +425,53 @@ class OrcamentoItemCusteioPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                item = OrcamentoItemService(session).get_item_by_id(self.item_id)
+                item_service = OrcamentoItemService(session)
+                item = item_service.get_item_by_id(self.item_id)
                 if item is None:
                     self.status_label.setText("Item selecionado nao foi encontrado.")
                     self.table.setRowCount(0)
                     return
 
+                tipo_default = item_service.get_tipo_producao_default(
+                    item.orcamento_versao_id
+                )
                 linhas = OrcamentoItemCusteioLinhaService(session).listar_linhas_do_item(
                     self.item_id
                 )
+                self._carregar_tarifas_maquinas(session)
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar o custeio do item.")
             return
 
         self.item = item
+        self._tipo_producao_default = tipo_default
         self._update_item_info()
+        self._atualizar_producao_label()
         self._preencher_tabela(linhas)
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
+
+    def _carregar_tarifas_maquinas(self, session) -> None:
+        """Cache the active machines (and CNC tiers) for the tariff tooltips."""
+        maquinas = DefMaquinaService(session).listar_maquinas_ativas()
+        self._maquinas_por_codigo = {m.codigo: m for m in maquinas}
+        self._maquinas_por_id = {m.id: m for m in maquinas}
+        escalao_service = DefMaquinaEscalaoAreaService(session)
+        self._escaloes_por_maquina = {
+            m.id: escalao_service.listar_escaloes_ativos_da_maquina(m.id)
+            for m in maquinas
+            if (m.tipo or "").upper() == "CNC"
+        }
+
+    def _atualizar_producao_label(self) -> None:
+        """Refresh the read-only production type label next to Atualizar."""
+        excecao = normalize_tipo_producao(self.item.tipo_producao) is not None
+        efetivo = tipo_producao_efetivo(
+            self.item.tipo_producao, self._tipo_producao_default
+        )
+        origem = "exceção" if excecao else "padrão"
+        self.producao_label.setText(f"Produção: {efetivo} ({origem})")
 
     def recalcular_medidas(self) -> None:
         """Recompute quantities, real measures, area and perimeter of the item."""
@@ -483,6 +541,9 @@ class OrcamentoItemCusteioPage(QWidget):
 
         if header == "Descrição livre" and linha.tipo_linha == DIVISAO_INDEPENDENTE:
             return True
+
+        if header == "Fator série":
+            return self._linha_calcula_total(linha)
 
         return False
 
@@ -897,37 +958,68 @@ class OrcamentoItemCusteioPage(QWidget):
                 "Custo de corte: perímetro da peça cortado na seccionadora, "
                 "cobrado ao metro linear, mais movimentação por peça.",
                 "Custo corte = perímetro × QT × tarifa €/ML + QT × setup €/peça",
-                f"= {format_quantity(linha.perimetro_ml)} ml × {format_quantity(qt)} → "
-                f"{format_currency(linha.custo_corte)}",
+                self._com_tarifa(
+                    f"= {format_quantity(linha.perimetro_ml)} ml × "
+                    f"{format_quantity(qt)} → {format_currency(linha.custo_corte)}",
+                    self._tarifa_ml_tooltip(linha, ("CORTE",)),
+                ),
             )
         if header == "Custo orlagem" and linha.custo_orlagem is not None:
             return self._tooltip_3(
                 "Custo de orlagem: metros de orla colados na orladora, cobrados ao "
                 "metro linear, mais movimentação por peça.",
                 "Custo orlagem = ML orla total × tarifa €/ML + QT × setup €/peça",
-                f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
-                f"{format_currency(linha.custo_orlagem)}",
+                self._com_tarifa(
+                    f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
+                    f"{format_currency(linha.custo_orlagem)}",
+                    self._tarifa_ml_tooltip(linha, ("ORLAGEM",)),
+                ),
             )
         if header == "Custo CNC" and linha.custo_cnc is not None:
             return self._tooltip_3(
                 "Custo de CNC: maquinação cobrada pelo escalão de área da peça, "
                 "multiplicada pela quantidade.",
                 "Custo CNC = preço do escalão (por área) × QT",
-                f"= área {format_quantity(linha.area_m2)} m² × QT "
-                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}",
+                self._com_tarifa(
+                    f"= área {format_quantity(linha.area_m2)} m² × QT "
+                    f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}",
+                    self._tarifa_cnc_tooltip(linha),
+                ),
             )
         if header == "Custo mont./manual" and linha.custo_montagem_manual is not None:
             return self._tooltip_montagem_manual(linha, qt)
         if header == "Custo produção" and linha.custo_producao is not None:
-            return self._tooltip_3(
-                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC "
-                "e montagem/manual.",
-                "Custo produção = corte + orlagem + CNC + mont./manual",
-                f"= {format_currency(linha.custo_corte)} + "
+            fator = self._fator_serie_aplicado(linha)
+            parciais = (
+                f"{format_currency(linha.custo_corte)} + "
                 f"{format_currency(linha.custo_orlagem)} + "
                 f"{format_currency(linha.custo_cnc)} + "
-                f"{format_currency(linha.custo_montagem_manual)} = "
-                f"{format_currency(linha.custo_producao)}",
+                f"{format_currency(linha.custo_montagem_manual)}"
+            )
+            if fator is not None:
+                substituicao = (
+                    f"= ({parciais}) × fator {format_quantity(fator)} = "
+                    f"{format_currency(linha.custo_producao)}"
+                )
+            else:
+                substituicao = f"= {parciais} = {format_currency(linha.custo_producao)}"
+            return self._tooltip_3(
+                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC "
+                "e montagem/manual, multiplicada pelo fator série quando definido.",
+                "Custo produção = (corte + orlagem + CNC + mont./manual) × fator série",
+                substituicao,
+            )
+        if header == "Tipo produção" and linha.tipo_producao:
+            return (
+                f"Custos de produção desta linha calculados com tarifas "
+                f"{linha.tipo_producao}.\n"
+                "O tipo vem do padrão da versão ou da exceção do item (página de "
+                "Items)."
+            )
+        if header == "Fator série" and self._linha_calcula_total(linha):
+            return (
+                "Fator manual que multiplica APENAS o custo de produção da linha.\n"
+                "Vazio = 1,00. Ex.: 0,90 reduz o custo de produção em 10%."
             )
         if header == "Custo total" and linha.custo_total is not None:
             return self._tooltip_3(
@@ -962,6 +1054,89 @@ class OrcamentoItemCusteioPage(QWidget):
             return None
         return custo_v * Decimal("60") / tempo_v
 
+    def _fator_serie_aplicado(self, linha) -> Decimal | None:
+        """Return the line's fator série when it actually affects the cost."""
+        fator = linha.fator_serie if isinstance(linha.fator_serie, Decimal) else None
+        if fator is None or fator <= 0:
+            return None
+        return fator
+
+    def _usar_serie_linha(self, linha) -> bool:
+        """Return True when the line's production costs used SERIE tariffs."""
+        return normalize_tipo_producao(linha.tipo_producao) == TIPO_PRODUCAO_SERIE
+
+    def _maquina_da_linha_por_tipo(self, linha, tipos: tuple):
+        """Resolve a line machine by type from the cached active machines."""
+        for codigo in (linha.maquina or "").split(";"):
+            maquina = self._maquinas_por_codigo.get(codigo.strip())
+            if maquina is not None and (maquina.tipo or "").upper() in tipos:
+                return maquina
+        return None
+
+    def _descrever_tarifa(self, valor_std, valor_serie, usar_serie, unidade) -> str | None:
+        """Build the "tarifa SERIE/STD ..." note for a tooltip (or None)."""
+        valor, fallback = escolher_tarifa(valor_std, valor_serie, usar_serie)
+        if valor is None:
+            return None
+        if usar_serie and fallback:
+            return (
+                f"tarifa STD {format_currency(valor)}{unidade} "
+                "(SERIE não definida — fallback)"
+            )
+        tipo = TIPO_PRODUCAO_SERIE if usar_serie else TIPO_PRODUCAO_STD
+        return f"tarifa {tipo} {format_currency(valor)}{unidade}"
+
+    def _tarifa_ml_tooltip(self, linha, tipos: tuple) -> str | None:
+        """Tariff note (€/ML) of the line's cut/edging machine, or None."""
+        maquina = self._maquina_da_linha_por_tipo(linha, tipos)
+        if maquina is None:
+            return None
+        return self._descrever_tarifa(
+            maquina.preco_ml_std,
+            maquina.preco_ml_serie,
+            self._usar_serie_linha(linha),
+            "/ML",
+        )
+
+    def _tarifa_cnc_tooltip(self, linha) -> str | None:
+        """Tariff note (€/peça do escalão) of the line's CNC machine, or None."""
+        maquina = self._maquina_da_linha_por_tipo(linha, ("CNC",))
+        if maquina is None:
+            return None
+        escalao = selecionar_escalao_area(
+            self._escaloes_por_maquina.get(maquina.id, []), linha.area_m2
+        )
+        if escalao is None:
+            return None
+        return self._descrever_tarifa(
+            escalao.preco_peca_std,
+            escalao.preco_peca_serie,
+            self._usar_serie_linha(linha),
+            "/peça",
+        )
+
+    def _tarifa_hora_tooltip(self, linha) -> str | None:
+        """Tariff note (€/h) of the line's manual/assembly machine, or None."""
+        maquina = None
+        if linha.def_maquina_id is not None:
+            maquina = self._maquinas_por_id.get(linha.def_maquina_id)
+        if maquina is None:
+            maquina = self._maquina_da_linha_por_tipo(linha, ("MONTAGEM", "MANUAL"))
+        if maquina is None:
+            return None
+        return self._descrever_tarifa(
+            maquina.custo_hora,
+            maquina.custo_hora_serie,
+            self._usar_serie_linha(linha),
+            "/h",
+        )
+
+    def _com_tarifa(self, substituicao: str, tarifa: str | None) -> str:
+        """Append the tariff note to a tooltip substitution block."""
+        if not tarifa:
+            return substituicao
+        return f"{substituicao}\n{tarifa}"
+
     def _tooltip_montagem_manual(
         self, linha: OrcamentoItemCusteioLinhaResumo, qt
     ) -> str:
@@ -976,8 +1151,11 @@ class OrcamentoItemCusteioPage(QWidget):
             return self._tooltip_3(
                 f"Trabalho avulso cobrado ao tempo na máquina {maquina}.",
                 "Custo = minutos × QT / 60 × custo/hora",
-                f"= {format_quantity(minutos)} × {format_quantity(qt)} / 60 × "
-                f"{format_currency(custo_hora)} = {format_currency(custo)}",
+                self._com_tarifa(
+                    f"= {format_quantity(minutos)} × {format_quantity(qt)} / 60 × "
+                    f"{format_currency(custo_hora)} = {format_currency(custo)}",
+                    self._tarifa_hora_tooltip(linha),
+                ),
             )
 
         tempo_total = (
@@ -990,8 +1168,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo de montagem/trabalho manual: tempo das operações de montagem e "
             "manual da peça, ao custo/hora da máquina.",
             "Custo mont./manual = (tempo / 60) × custo/hora da máquina",
-            f"= {format_quantity(tempo_total)} min / 60 × "
-            f"{format_currency(custo_hora)} = {format_currency(custo)}",
+            self._com_tarifa(
+                f"= {format_quantity(tempo_total)} min / 60 × "
+                f"{format_currency(custo_hora)} = {format_currency(custo)}",
+                self._tarifa_hora_tooltip(linha),
+            ),
         )
 
     def _tooltip_medida(self, label, raw, real) -> str | None:
@@ -1025,6 +1206,10 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         if not self._coluna_editavel(header, linha):
+            return
+
+        if header == "Fator série":
+            self._on_fator_serie_changed(row, column, linha)
             return
 
         # On a normal piece/material line, Esp normally comes from the material:
@@ -1100,6 +1285,29 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Custo total recalculado.")
+
+    def _on_fator_serie_changed(
+        self, row: int, column: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Save an edited fator série and recompute the line's production cost."""
+        item = self.table.item(row, column)
+        novo_valor = item.text().strip() if item is not None else ""
+
+        try:
+            with SessionLocal() as session:
+                resumo = OrcamentoItemCusteioLinhaService(
+                    session
+                ).atualizar_fator_serie_linha(linha.id, novo_valor or None)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText(
+                "Fator série inválido (use um número maior que 0; vazio = 1,00)."
+            )
+            self.carregar()
+            return
+
+        if resumo is not None:
+            self._atualizar_linha_visivel(row, resumo)
+        self.status_label.setText("Fator série atualizado (custo de produção e total).")
 
     def _confirmar_edicao_espessura(self) -> bool:
         """Ask before letting the user override the material-derived Esp."""
@@ -1494,6 +1702,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Máquina": linha.maquina or "",
             "Operações": linha.operacoes or "",
             "Tipo produção": linha.tipo_producao or "",
+            "Fator série": format_quantity(linha.fator_serie),
             "Tempo corte": format_quantity(linha.tempo_corte),
             "Tempo orlagem": format_quantity(linha.tempo_orlagem),
             "Tempo CNC": format_quantity(linha.tempo_cnc),

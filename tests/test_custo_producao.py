@@ -10,19 +10,25 @@ from app.domain.custo_producao import (
     MOTIVO_SEM_DADOS,
     MOTIVO_SEM_ESCALOES,
     MOTIVO_SEM_TARIFA,
+    aplicar_fator_serie,
     calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
     calcular_custo_por_minutos,
     calcular_tempo_operacao,
+    escolher_tarifa,
+    preco_peca_escalao,
     selecionar_escalao_area,
     somar_custo_producao,
 )
 
 
-def _escalao(nivel, area_max_m2, preco_peca_std):
+def _escalao(nivel, area_max_m2, preco_peca_std, preco_peca_serie=None):
     return SimpleNamespace(
-        nivel=nivel, area_max_m2=area_max_m2, preco_peca_std=preco_peca_std
+        nivel=nivel,
+        area_max_m2=area_max_m2,
+        preco_peca_std=preco_peca_std,
+        preco_peca_serie=preco_peca_serie,
     )
 
 
@@ -208,3 +214,67 @@ def test_somar_custo_producao_quatro_parciais() -> None:
     assert somar_custo_producao(
         Decimal("2.80"), Decimal("3.28"), Decimal("11"), Decimal("3.33")
     ) == Decimal("20.41")
+
+
+def test_escolher_tarifa_std() -> None:
+    valor, fallback = escolher_tarifa(Decimal("0.45"), Decimal("0.35"), False)
+    assert valor == Decimal("0.45")
+    assert fallback is False
+
+
+def test_escolher_tarifa_serie() -> None:
+    valor, fallback = escolher_tarifa(Decimal("0.45"), Decimal("0.35"), True)
+    assert valor == Decimal("0.35")
+    assert fallback is False
+
+
+def test_escolher_tarifa_serie_fallback_std() -> None:
+    valor, fallback = escolher_tarifa(Decimal("0.45"), None, True)
+    assert valor == Decimal("0.45")
+    assert fallback is True
+
+
+def test_escolher_tarifa_ambas_vazias() -> None:
+    assert escolher_tarifa(None, None, False) == (None, False)
+    valor, fallback = escolher_tarifa(None, None, True)
+    assert valor is None
+
+
+def test_preco_peca_escalao_serie_e_fallback() -> None:
+    escalao = _escalao(1, Decimal("0.25"), Decimal("1.20"), Decimal("0.90"))
+    assert preco_peca_escalao(escalao, False) == (Decimal("1.20"), False)
+    assert preco_peca_escalao(escalao, True) == (Decimal("0.90"), False)
+
+    sem_serie = _escalao(1, Decimal("0.25"), Decimal("1.20"))
+    assert preco_peca_escalao(sem_serie, True) == (Decimal("1.20"), True)
+    assert preco_peca_escalao(None, True) == (None, False)
+
+
+def test_custo_cnc_serie_usa_preco_serie() -> None:
+    escaloes = [_escalao(1, Decimal("0.25"), Decimal("1.20"), Decimal("0.90"))]
+    custo, motivo = calcular_custo_cnc(
+        Decimal("0.2"), Decimal("2"), escaloes, usar_serie=True
+    )
+    assert custo == Decimal("1.80")  # 0.90 x 2
+    assert motivo is None
+
+
+def test_custo_cnc_serie_fallback_std() -> None:
+    escaloes = [_escalao(1, Decimal("0.25"), Decimal("1.20"))]  # sem SERIE
+    custo, _ = calcular_custo_cnc(
+        Decimal("0.2"), Decimal("2"), escaloes, usar_serie=True
+    )
+    assert custo == Decimal("2.40")  # fallback ao STD 1.20 x 2
+
+
+def test_custo_cnc_std_regressao_sem_usar_serie() -> None:
+    escaloes = [_escalao(1, Decimal("0.25"), Decimal("1.20"), Decimal("0.90"))]
+    custo, _ = calcular_custo_cnc(Decimal("0.2"), Decimal("2"), escaloes)
+    assert custo == Decimal("2.40")  # default STD inalterado
+
+
+def test_aplicar_fator_serie() -> None:
+    assert aplicar_fator_serie(Decimal("3.00"), Decimal("0.90")) == Decimal("2.700")
+    assert aplicar_fator_serie(Decimal("3.00"), None) == Decimal("3.00")
+    assert aplicar_fator_serie(Decimal("3.00"), Decimal("0")) == Decimal("3.00")
+    assert aplicar_fator_serie(None, Decimal("0.90")) is None

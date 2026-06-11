@@ -45,6 +45,9 @@ class OrcamentoItem(Base):
     preco_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     ajuste: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Per-item production type exception: NULL inherits the version's
+    # tipo_producao_default; 'STD'/'SERIE' overrides it (phase 8S.4).
+    tipo_producao: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

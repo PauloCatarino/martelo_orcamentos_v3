@@ -519,3 +519,54 @@ def test_orcamento_item_custeio_page_esp_edit_protection() -> None:
     confirm = inspect.getsource(OrcamentoItemCusteioPage._confirmar_edicao_espessura)
     assert "vem normalmente da mat" in confirm  # "...da matéria-prima"
     assert "Sim, editar manualmente" in confirm
+
+
+def test_custeio_page_etiqueta_producao() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "producao_label" in init
+
+    assert hasattr(OrcamentoItemCusteioPage, "_atualizar_producao_label")
+    label = inspect.getsource(OrcamentoItemCusteioPage._atualizar_producao_label)
+    assert "padrão" in label
+    assert "exceção" in label
+    assert "tipo_producao_efetivo" in label
+
+
+def test_custeio_page_fator_serie_editavel() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    editavel = inspect.getsource(OrcamentoItemCusteioPage._coluna_editavel)
+    assert '"Fator série"' in editavel
+
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "_on_fator_serie_changed" in on_changed
+
+    handler = inspect.getsource(OrcamentoItemCusteioPage._on_fator_serie_changed)
+    assert "atualizar_fator_serie_linha" in handler
+
+    assert "Tipo produção" in OrcamentoItemCusteioPage.HEADER_TOOLTIPS
+    assert "Fator série" in OrcamentoItemCusteioPage.HEADER_TOOLTIPS
+
+
+def test_custeio_page_tooltips_tarifa_std_serie() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "_descrever_tarifa",
+        "_tarifa_ml_tooltip",
+        "_tarifa_cnc_tooltip",
+        "_tarifa_hora_tooltip",
+        "_carregar_tarifas_maquinas",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    descrever = inspect.getsource(OrcamentoItemCusteioPage._descrever_tarifa)
+    assert "SERIE não definida — fallback" in descrever
+
+    # The production-cost tooltip includes the fator série in the substitution.
+    formula = inspect.getsource(OrcamentoItemCusteioPage._tooltip_formula)
+    assert "fator" in formula
+    assert "_tarifa_ml_tooltip" in formula
+    assert "_tarifa_cnc_tooltip" in formula

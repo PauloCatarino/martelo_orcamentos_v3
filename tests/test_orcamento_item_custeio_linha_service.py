@@ -329,8 +329,11 @@ class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
         self.item = None
+        self.versao = None
 
-    def get(self, _model, _id):
+    def get(self, model, _id):
+        if getattr(model, "__name__", "") == "OrcamentoVersao":
+            return self.versao
         return self.item
 
     def commit(self) -> None:
@@ -2434,7 +2437,14 @@ def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
 
 
 def _maquina_tarifa(
-    codigo, id=0, preco_ml_std=None, custo_setup_peca_std=None, custo_hora=None
+    codigo,
+    id=0,
+    preco_ml_std=None,
+    custo_setup_peca_std=None,
+    custo_hora=None,
+    preco_ml_serie=None,
+    custo_setup_peca_serie=None,
+    custo_hora_serie=None,
 ):
     return SimpleNamespace(
         id=id,
@@ -2442,6 +2452,9 @@ def _maquina_tarifa(
         preco_ml_std=preco_ml_std,
         custo_setup_peca_std=custo_setup_peca_std,
         custo_hora=custo_hora,
+        preco_ml_serie=preco_ml_serie,
+        custo_setup_peca_serie=custo_setup_peca_serie,
+        custo_hora_serie=custo_hora_serie,
     )
 
 
@@ -2597,9 +2610,12 @@ def test_recalcular_custos_producao_ignora_ferragem_divisao_composta(monkeypatch
     assert _FakeRepository.updated_payload is None
 
 
-def _escalao_obj(nivel, area_max_m2, preco_peca_std):
+def _escalao_obj(nivel, area_max_m2, preco_peca_std, preco_peca_serie=None):
     return SimpleNamespace(
-        nivel=nivel, area_max_m2=area_max_m2, preco_peca_std=preco_peca_std
+        nivel=nivel,
+        area_max_m2=area_max_m2,
+        preco_peca_std=preco_peca_std,
+        preco_peca_serie=preco_peca_serie,
     )
 
 
@@ -3171,3 +3187,351 @@ def test_recalcular_ferragens_so_altera_custo_ferragem(monkeypatch) -> None:
     assert "comp_real" not in payload
     assert "chave_valueset" not in payload
     assert "custo_mp" not in payload
+
+
+# ---------------------------------------------------------------------------
+# STD/SERIE production selector (phase 8S.4)
+# ---------------------------------------------------------------------------
+
+
+def _sessao_producao(session, item_tipo=None, default="STD") -> None:
+    """Configure the fake session with an item + versão production setup."""
+    session.item = SimpleNamespace(tipo_producao=item_tipo, orcamento_versao_id=1)
+    session.versao = SimpleNamespace(tipo_producao_default=default)
+
+
+def _porta_corte_setup(preco_ml_serie=None, custo_setup_peca_serie=None) -> None:
+    """One PECA line (porta 7,10 ml, QT 1) with a CORTE machine 0.45/0.05 STD."""
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", maquina_id=10),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        10: _maquina_tarifa(
+            "CORTE",
+            preco_ml_std=Decimal("0.45"),
+            custo_setup_peca_std=Decimal("0.05"),
+            preco_ml_serie=preco_ml_serie,
+            custo_setup_peca_serie=custo_setup_peca_serie,
+        ),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            perimetro_ml=Decimal("7.10"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+
+
+def test_custos_producao_std_porta_regressao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _porta_corte_setup(preco_ml_serie=Decimal("0.35"), custo_setup_peca_serie=Decimal("0.03"))
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # STD inalterado: 7.10 × 0.45 + 1 × 0.05 = 3.245 (mostra 3,24 €).
+    assert payload["custo_corte"] == Decimal("3.245")
+    assert payload["custo_producao"] == Decimal("3.245")
+    assert payload["tipo_producao"] == "STD"
+
+
+def test_custos_producao_serie_usa_tarifas_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _porta_corte_setup(preco_ml_serie=Decimal("0.35"), custo_setup_peca_serie=Decimal("0.03"))
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # SERIE: 7.10 × 0.35 + 1 × 0.03 = 2.515 (mostra 2,52 €).
+    assert payload["custo_corte"] == Decimal("2.515")
+    assert payload["custo_producao"] == Decimal("2.515")
+    assert payload["tipo_producao"] == "SERIE"
+
+
+def test_custos_producao_excecao_std_em_versao_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _porta_corte_setup(preco_ml_serie=Decimal("0.35"), custo_setup_peca_serie=Decimal("0.03"))
+    _sessao_producao(session, item_tipo="STD", default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # A exceção STD do item mantém a tarifa STD numa versão SERIE.
+    assert payload["custo_corte"] == Decimal("3.245")
+    assert payload["tipo_producao"] == "STD"
+
+
+def test_custos_producao_excecao_serie_em_versao_std(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _porta_corte_setup(preco_ml_serie=Decimal("0.35"), custo_setup_peca_serie=Decimal("0.03"))
+    _sessao_producao(session, item_tipo="SERIE", default="STD")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_corte"] == Decimal("2.515")
+    assert payload["tipo_producao"] == "SERIE"
+
+
+def test_custos_producao_serie_fallback_para_std(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _porta_corte_setup()  # máquina sem tarifas SERIE
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # SERIE em falta na máquina -> usa os valores STD (continua a funcionar).
+    assert payload["custo_corte"] == Decimal("3.245")
+    assert payload["custo_producao"] == Decimal("3.245")
+    assert payload["tipo_producao"] == "SERIE"
+    assert "observacoes" not in payload
+
+
+def test_custos_producao_orlagem_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(3)]}
+    _FakeOperacaoRepository.operacoes = {
+        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", maquina_id=11),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            preco_ml_std=Decimal("0.70"),
+            custo_setup_peca_std=Decimal("0.10"),
+            preco_ml_serie=Decimal("0.55"),
+            custo_setup_peca_serie=Decimal("0.05"),
+        ),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            ml_orla_fina=Decimal("2.4"),
+            ml_orla_grossa=Decimal("2.0"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # 4.4 × 0.55 + 1 × 0.05 = 2.47.
+    assert payload["custo_orlagem"] == Decimal("2.47")
+
+
+def _cnc_setup(preco_peca_serie=None) -> None:
+    """One PECA line (área 0.2, QT 2) on a CNC with a 1.20 STD tier."""
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(4)]}
+    _FakeOperacaoRepository.operacoes = {
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", maquina_id=12),
+    }
+    _FakeMaquinaRepository.maquinas = {12: _maquina_tarifa("CNC_VERTICAL", id=12)}
+    _FakeEscalaoAreaRepository.escaloes_por_maquina = {
+        12: [_escalao_obj(1, Decimal("0.25"), Decimal("1.20"), preco_peca_serie)]
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            area_m2=Decimal("0.2"),
+            quantidade=Decimal("2"),
+        ),
+    ]
+
+
+def test_custos_producao_cnc_serie_usa_preco_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _cnc_setup(preco_peca_serie=Decimal("0.90"))
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] == Decimal("1.80")  # 0.90 × 2
+
+
+def test_custos_producao_cnc_serie_fallback_std(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _cnc_setup()  # escalão sem preço SERIE
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] == Decimal("2.40")  # fallback 1.20 × 2
+
+
+def _montagem_setup(custo_hora_serie=None) -> None:
+    """One PECA line with a 30-minute MONTAGEM operation at 20 €/h STD."""
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            _ligacao_tempo(
+                5,
+                unidade_tempo="HORA",
+                quantidade_base=Decimal("0.5"),
+                tempo_setup_minutos=Decimal("0"),
+            )
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        5: _operacao("MONTAGEM_GERAL", tipo_operacao="MONTAGEM", maquina_id=13),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        13: _maquina_tarifa(
+            "MONTAGEM", id=13, custo_hora=Decimal("20"), custo_hora_serie=custo_hora_serie
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("1")),
+    ]
+
+
+def test_custos_producao_montagem_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _montagem_setup(custo_hora_serie=Decimal("16"))
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_montagem_manual"] == Decimal("8")  # 30/60 × 16
+
+
+def test_custos_producao_montagem_serie_fallback_custo_hora(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _montagem_setup()  # MONTAGEM sem custo_hora_serie
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # Fallback ao custo/hora STD, sem aviso (a máquina continua a funcionar).
+    assert payload["custo_montagem_manual"] == Decimal("10")  # 30/60 × 20
+    assert "observacoes" not in payload
+
+
+def test_custos_producao_fator_serie_so_no_custo_producao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _porta_corte_setup()
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            perimetro_ml=Decimal("7.10"),
+            quantidade=Decimal("1"),
+            fator_serie=Decimal("0.90"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # O fator multiplica APENAS o custo_producao; o parcial fica intacto.
+    assert payload["custo_corte"] == Decimal("3.245")
+    assert payload["custo_producao"] == Decimal("3.245") * Decimal("0.90")
+
+
+def test_recalcular_operacao_manual_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa(
+            "MANUAL", id=9, custo_hora=Decimal("30"), custo_hora_serie=Decimal("24")
+        )
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="OPERACAO_MANUAL",
+            descricao="furação manual",
+            def_maquina_id=9,
+            tempo_manual=Decimal("10"),
+        ),
+    ]
+    _sessao_producao(session, default="SERIE")
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_montagem_manual"] == Decimal("4")  # 10/60 × 24
+    assert payload["tipo_producao"] == "SERIE"
+
+
+def test_inserir_operacao_manual_serie(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa(
+            "MANUAL", id=9, custo_hora=Decimal("20"), custo_hora_serie=Decimal("15")
+        )
+    }
+    _sessao_producao(session, default="SERIE")
+
+    service.inserir_operacao_manual(
+        30, descricao="recorte especial", def_maquina_id=9, tempo_minutos=Decimal("6")
+    )
+
+    payload = _FakeRepository.created_payload
+    assert payload["custo_montagem_manual"] == Decimal("1.5")  # 6/60 × 15
+    assert payload["tipo_producao"] == "SERIE"
+
+
+def test_atualizar_fator_serie_linha(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=1,
+        tipo_linha="PECA",
+        custo_corte=Decimal("2.00"),
+        custo_cnc=Decimal("1.00"),
+        custo_producao=Decimal("3.00"),
+    )
+
+    service.atualizar_fator_serie_linha(1, "0,9")
+
+    payloads = _FakeRepository.updated_payloads
+    assert payloads[0]["fator_serie"] == Decimal("0.9")
+    assert payloads[0]["custo_producao"] == Decimal("2.70")  # (2+1) × 0.9
+    assert "custo_total" in payloads[1]
+    assert session.committed is True
+
+
+def test_atualizar_fator_serie_linha_limpa(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=1,
+        tipo_linha="PECA",
+        custo_corte=Decimal("2.00"),
+        custo_producao=Decimal("1.80"),
+        fator_serie=Decimal("0.90"),
+    )
+
+    service.atualizar_fator_serie_linha(1, None)
+
+    payload = _FakeRepository.updated_payloads[0]
+    assert payload["fator_serie"] is None
+    assert payload["custo_producao"] == Decimal("2.00")  # volta à soma dos parciais
+
+
+def test_atualizar_fator_serie_linha_invalido(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=1, tipo_linha="PECA")
+
+    for invalido in ("abc", "0", "-1"):
+        try:
+            service.atualizar_fator_serie_linha(1, invalido)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Expected ValueError")

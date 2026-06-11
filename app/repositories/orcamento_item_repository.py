@@ -29,6 +29,7 @@ class OrcamentoItemResumo:
     preco_unitario: Decimal | None
     preco_total: Decimal | None
     tipo_item: str = "OUTRO"
+    tipo_producao: str | None = None
 
 
 class OrcamentoItemRepository:
@@ -63,6 +64,7 @@ class OrcamentoItemRepository:
                 preco_unitario=item.preco_unitario,
                 preco_total=item.preco_total,
                 tipo_item=item.tipo_item,
+                tipo_producao=item.tipo_producao,
             )
             for item in items
         ]
@@ -172,6 +174,38 @@ class OrcamentoItemRepository:
 
         return True
 
+    def update_tipo_producao(self, item_id: int, tipo_producao: str | None) -> bool:
+        """Set one item's production-type exception (None = inherit the default)."""
+        orcamento_item = self.session.get(OrcamentoItem, item_id)
+        if orcamento_item is None:
+            return False
+
+        orcamento_item.tipo_producao = tipo_producao
+        self.session.flush()
+
+        return True
+
+    def get_tipo_producao_default(self, orcamento_versao_id: int) -> str | None:
+        """Return the version's default production type (or None when not found)."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return None
+
+        return versao.tipo_producao_default
+
+    def update_tipo_producao_default(
+        self, orcamento_versao_id: int, tipo_producao: str
+    ) -> bool:
+        """Set the version's default production type."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.tipo_producao_default = tipo_producao
+        self.session.flush()
+
+        return True
+
     def sum_preco_total_by_versao(self, orcamento_versao_id: int) -> Decimal:
         """Return the sum of item totals for one budget version."""
         statement = select(func.coalesce(func.sum(OrcamentoItem.preco_total), 0)).where(
@@ -209,4 +243,5 @@ class OrcamentoItemRepository:
             preco_unitario=item.preco_unitario,
             preco_total=item.preco_total,
             tipo_item=item.tipo_item,
+            tipo_producao=item.tipo_producao,
         )

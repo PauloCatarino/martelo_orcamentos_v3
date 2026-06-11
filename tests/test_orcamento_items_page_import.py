@@ -65,3 +65,46 @@ def test_orcamento_items_page_has_custeio_button_and_message() -> None:
 
     assert "Custeio do Item" in init_source
     assert "Selecione um item para abrir o custeio." in open_source
+
+
+def test_orcamento_items_page_seletor_producao_std_serie() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert "Produção" in OrcamentoItemsPage.TABLE_HEADERS
+
+    init_source = inspect.getsource(OrcamentoItemsPage.__init__)
+    assert "producao_std_button" in init_source
+    assert "producao_serie_button" in init_source
+
+    for method in (
+        "_on_producao_default_clicked",
+        "_on_producao_item_changed",
+        "_recalcular_custeio_do_item",
+        "_criar_combo_producao",
+        "_atualizar_seletor_producao",
+    ):
+        assert hasattr(OrcamentoItemsPage, method)
+
+    # The per-item combo offers Padrão (NULL) / STD / SERIE.
+    combo_source = inspect.getsource(OrcamentoItemsPage._criar_combo_producao)
+    assert "Padrão" in combo_source
+    assert "None" in combo_source
+
+    # Tooltips explain the default-for-all / per-item-exception rule.
+    assert "exceção" in OrcamentoItemsPage.PRODUCAO_DEFAULT_TOOLTIP
+    assert "exceção" in OrcamentoItemsPage.PRODUCAO_ITEM_TOOLTIP
+
+
+def test_orcamento_items_page_recalcula_pipeline_do_custeio() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    source = inspect.getsource(OrcamentoItemsPage._recalcular_custeio_do_item)
+    assert "recalcular_custos_producao_do_item" in source
+    assert "recalcular_custo_total_do_item" in source
+
+    default_source = inspect.getsource(OrcamentoItemsPage._on_producao_default_clicked)
+    assert "definir_tipo_producao_default" in default_source
+    assert "list_items_by_versao" in default_source
+
+    item_source = inspect.getsource(OrcamentoItemsPage._on_producao_item_changed)
+    assert "definir_tipo_producao_item" in item_source

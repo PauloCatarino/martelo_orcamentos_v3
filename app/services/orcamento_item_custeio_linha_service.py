@@ -35,13 +35,16 @@ from app.domain.acabamentos import (
 from app.domain.custo_producao import (
     MOTIVO_SEM_DADOS,
     MOTIVO_SEM_TARIFA,
+    aplicar_fator_serie,
     calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
     calcular_custo_por_minutos,
     calcular_tempo_operacao,
+    escolher_tarifa,
     somar_custo_producao,
 )
+from app.domain.producao_types import TIPO_PRODUCAO_SERIE, tipo_producao_efetivo
 from app.domain.tempos_producao import (
     calcular_tempos_producao,
     classificar_operacao,
@@ -65,7 +68,7 @@ from app.domain.numeros import normalize_percentagem_humana
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
-from app.models import OrcamentoItem
+from app.models import OrcamentoItem, OrcamentoVersao
 from app.repositories.def_maquina_escalao_area_repository import (
     DefMaquinaEscalaoAreaRepository,
 )
@@ -1198,24 +1201,30 @@ class OrcamentoItemCusteioLinhaService:
     def recalcular_custos_producao_do_item(
         self, orcamento_item_id: int
     ) -> CustoProducaoResult:
-        """Recompute custo_corte / custo_orlagem / custo_producao (STD tariffs).
+        """Recompute custo_corte / custo_orlagem / custo_producao of an item.
 
         For each PECA line with a def_peca: if the piece has a CORTE operation,
         cost the cutting from that machine's €/ML (perimeter × qt) plus setup ×
         qt; if it has an ORLAGEM operation, cost the edging from the line's total
-        edging metres × €/ML plus setup × qt. custo_producao is the sum (empty
-        partials count as 0; NULL when none computed). Skips ferragens, ML, UND,
-        divisions and composite parents. Does not change materials/orlas/
-        acabamentos/measures; custo_total is recomputed by its own step.
+        edging metres × €/ML plus setup × qt. The tariffs follow the item's
+        effective production type (STD, or SERIE with per-field fallback to STD
+        when the SERIE value is not defined); custo_producao is the sum (empty
+        partials count as 0; NULL when none computed) multiplied by the line's
+        optional fator_serie. Skips ferragens, ML, UND, divisions and composite
+        parents. Does not change materials/orlas/acabamentos/measures;
+        custo_total is recomputed by its own step.
         """
         processadas = 0
         calculadas = 0
         ignoradas = 0
 
+        tipo_efetivo = self._tipo_producao_efetivo_do_item(orcamento_item_id)
+        usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
+
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha == OPERACAO_MANUAL:
                 processadas += 1
-                if self._recalcular_operacao_manual(linha):
+                if self._recalcular_operacao_manual(linha, tipo_efetivo):
                     calculadas += 1
                 continue
 
@@ -1236,7 +1245,7 @@ class OrcamentoItemCusteioLinhaService:
 
             if op_corte is not None:
                 maquina = self._maquina_de_operacao(op_corte)
-                preco, setup = self._tarifas_std(maquina)
+                preco, setup = self._tarifas_ml(maquina, usar_serie)
                 custo_corte, motivo = calcular_custo_corte(
                     linha.perimetro_ml, linha.quantidade, preco, setup
                 )
@@ -1246,7 +1255,7 @@ class OrcamentoItemCusteioLinhaService:
 
             if op_orlagem is not None:
                 maquina = self._maquina_de_operacao(op_orlagem)
-                preco, setup = self._tarifas_std(maquina)
+                preco, setup = self._tarifas_ml(maquina, usar_serie)
                 ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
                     linha.ml_orla_grossa or Decimal("0")
                 )
@@ -1265,14 +1274,17 @@ class OrcamentoItemCusteioLinhaService:
                     else []
                 )
                 custo_cnc, motivo = calcular_custo_cnc(
-                    linha.area_m2, linha.quantidade, escaloes
+                    linha.area_m2, linha.quantidade, escaloes, usar_serie=usar_serie
                 )
                 aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
 
-            custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(linha)
+            custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(
+                linha, usar_serie
+            )
 
-            custo_producao = somar_custo_producao(
-                custo_corte, custo_orlagem, custo_cnc, custo_mm
+            custo_producao = aplicar_fator_serie(
+                somar_custo_producao(custo_corte, custo_orlagem, custo_cnc, custo_mm),
+                linha.fator_serie,
             )
 
             processadas += 1
@@ -1282,6 +1294,7 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_cnc": custo_cnc,
                 "custo_montagem_manual": custo_mm,
                 "custo_producao": custo_producao,
+                "tipo_producao": tipo_efetivo,
                 "tempo_montagem": tempos_mm["montagem"] or None,
                 "tempo_manual": tempos_mm["manual"] or None,
                 "tempo_setup": tempos_mm["setup"] or None,
@@ -1329,14 +1342,47 @@ class OrcamentoItemCusteioLinhaService:
             return None
         return self.maquina_repository.get_by_id(maquina_id)
 
-    def _tarifas_std(self, maquina):
-        """Return (preco_ml_std, custo_setup_peca_std) of a machine, or (None, None)."""
+    def _tipo_producao_efetivo_do_item(self, orcamento_item_id: int) -> str:
+        """Resolve the effective production type (item exception or versão default)."""
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            return tipo_producao_efetivo(None, None)
+
+        versao = self.session.get(OrcamentoVersao, item.orcamento_versao_id)
+        return tipo_producao_efetivo(
+            getattr(item, "tipo_producao", None),
+            getattr(versao, "tipo_producao_default", None) if versao else None,
+        )
+
+    def _tarifas_ml(self, maquina, usar_serie: bool):
+        """Return the machine's (preco_ml, custo_setup_peca) for the wanted type.
+
+        SERIE values fall back per field to the STD value when not defined.
+        """
         if maquina is None:
             return None, None
-        return (
+        preco, _ = escolher_tarifa(
             getattr(maquina, "preco_ml_std", None),
-            getattr(maquina, "custo_setup_peca_std", None),
+            getattr(maquina, "preco_ml_serie", None),
+            usar_serie,
         )
+        setup, _ = escolher_tarifa(
+            getattr(maquina, "custo_setup_peca_std", None),
+            getattr(maquina, "custo_setup_peca_serie", None),
+            usar_serie,
+        )
+        return preco, setup
+
+    def _custo_hora_maquina(self, maquina, usar_serie: bool):
+        """Return the machine's hourly rate for the wanted type (SERIE→STD fallback)."""
+        if maquina is None:
+            return None
+        custo_hora, _ = escolher_tarifa(
+            getattr(maquina, "custo_hora", None),
+            getattr(maquina, "custo_hora_serie", None),
+            usar_serie,
+        )
+        return custo_hora
 
     def _aviso_producao(self, motivo, maquina, etapa: str) -> str | None:
         """Build the production observation for a missing tariff/data, or None."""
@@ -1369,14 +1415,15 @@ class OrcamentoItemCusteioLinhaService:
             f"máquina {nome}."
         )
 
-    def _custos_montagem_manual_da_peca(self, linha):
+    def _custos_montagem_manual_da_peca(self, linha, usar_serie: bool = False):
         """Return (custo_montagem_manual, tempos_por_bucket, aviso) for a PECA line.
 
         Sums the assembly/manual/packing operations of the piece, reading the time
         configuration from each DefPecaOperacao link (tempo_setup_minutos /
-        tempo_por_unidade_minutos / unidade_tempo / quantidade_base). Operations
-        without times are ignored silently; an operation with times but whose
-        machine has no custo_hora produces a single warning.
+        tempo_por_unidade_minutos / unidade_tempo / quantidade_base). The hourly
+        rate follows ``usar_serie`` (custo_hora_serie with fallback to custo_hora).
+        Operations without times are ignored silently; an operation with times but
+        whose machine has no hourly rate produces a single warning.
         """
         tempos = {"montagem": Decimal("0"), "manual": Decimal("0"), "setup": Decimal("0")}
         custo = None
@@ -1412,7 +1459,7 @@ class OrcamentoItemCusteioLinhaService:
             tempos[bucket] += variavel_min
 
             maquina = self._maquina_de_operacao(operacao)
-            custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+            custo_hora = self._custo_hora_maquina(maquina, usar_serie)
             custo_op = calcular_custo_por_minutos(setup_min + variavel_min, custo_hora)
             if custo_op is None:
                 if aviso is None:
@@ -1433,21 +1480,27 @@ class OrcamentoItemCusteioLinhaService:
         qt = normalizar_numero(linha.quantidade) or Decimal("1")
         return total / qt
 
-    def _recalcular_operacao_manual(self, linha) -> bool:
+    def _recalcular_operacao_manual(self, linha, tipo_efetivo: str | None = None) -> bool:
         """Recompute an OPERACAO_MANUAL line's time and cost from its machine tariff.
 
         Keeps the user's description; the total minutes follow
         ``minutos_unitarios × QT total`` (so a new quantity is reflected) and the
-        cost is ``(minutes / 60) × custo_hora``. Legacy lines without
+        cost is ``(minutes / 60) × custo_hora`` of the item's effective production
+        type (SERIE falls back to STD when not defined), with the line's optional
+        fator_serie applied to custo_producao. Legacy lines without
         minutos_unitarios derive it from the stored total. Returns True when a
         cost was computed.
         """
+        if tipo_efetivo is None:
+            tipo_efetivo = self._tipo_producao_efetivo_do_item(linha.orcamento_item_id)
+        usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
+
         maquina = (
             self.maquina_repository.get_by_id(linha.def_maquina_id)
             if linha.def_maquina_id is not None
             else None
         )
-        custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+        custo_hora = self._custo_hora_maquina(maquina, usar_serie)
 
         minutos_unitarios = self._minutos_unitarios_da_linha(linha)
         qt = normalizar_numero(linha.quantidade) or Decimal("1")
@@ -1455,7 +1508,9 @@ class OrcamentoItemCusteioLinhaService:
             minutos_unitarios * qt if minutos_unitarios is not None else linha.tempo_manual
         )
         custo_mm = calcular_custo_por_minutos(tempo_total, custo_hora)
-        custo_producao = somar_custo_producao(custo_mm)
+        custo_producao = aplicar_fator_serie(
+            somar_custo_producao(custo_mm), linha.fator_serie
+        )
 
         fields: dict = {
             "minutos_unitarios": minutos_unitarios,
@@ -1463,6 +1518,7 @@ class OrcamentoItemCusteioLinhaService:
             "maquina": getattr(maquina, "codigo", None) if maquina else None,
             "custo_montagem_manual": custo_mm,
             "custo_producao": custo_producao,
+            "tipo_producao": tipo_efetivo,
         }
         aviso = (
             self._aviso_montagem_manual(maquina)
@@ -1611,6 +1667,46 @@ class OrcamentoItemCusteioLinhaService:
             )
 
         self.repository.update_linha(id=linha_id, **fields)
+        self.session.commit()
+
+        return self.repository.get_by_id(linha_id)
+
+    def atualizar_fator_serie_linha(
+        self, linha_id: int, fator_serie
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Set a line's fator_serie and recompute custo_producao/custo_total.
+
+        Empty value clears the factor (1.00). The factor multiplies ONLY the
+        line's custo_producao (rebuilt from the stored production partials); the
+        partial costs themselves are not touched.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            raise ValueError("linha não suporta fator série")
+
+        fator = normalizar_numero(fator_serie)
+        if fator_serie not in (None, "") and fator is None:
+            raise ValueError("fator série inválido")
+        if fator is not None and fator <= 0:
+            raise ValueError("fator série deve ser maior que 0")
+
+        custo_producao = aplicar_fator_serie(
+            somar_custo_producao(
+                linha.custo_corte,
+                linha.custo_orlagem,
+                linha.custo_cnc,
+                linha.custo_montagem_manual,
+            ),
+            fator,
+        )
+        linha_atualizada = self.repository.update_linha(
+            id=linha_id, fator_serie=fator, custo_producao=custo_producao
+        )
+        self.repository.update_linha(
+            id=linha_id, custo_total=self._custo_total_da_linha(linha_atualizada)
+        )
         self.session.commit()
 
         return self.repository.get_by_id(linha_id)
@@ -1877,8 +1973,9 @@ class OrcamentoItemCusteioLinhaService:
             qt = Decimal("1")
         tempo_total = tempo_unitario * qt
 
+        tipo_efetivo = self._tipo_producao_efetivo_do_item(item_id)
         custo_mm, maquina_texto = self._custo_e_maquina_operacao_manual(
-            def_maquina_id, tempo_total
+            def_maquina_id, tempo_total, tipo_efetivo == TIPO_PRODUCAO_SERIE
         )
 
         result = self.repository.create_linha(
@@ -1896,6 +1993,7 @@ class OrcamentoItemCusteioLinhaService:
             tempo_manual=tempo_total,
             custo_montagem_manual=custo_mm,
             custo_producao=somar_custo_producao(custo_mm),
+            tipo_producao=tipo_efetivo,
             ativo=True,
         )
         self.session.commit()
@@ -1928,8 +2026,9 @@ class OrcamentoItemCusteioLinhaService:
             qt = Decimal("1")
         tempo_total = tempo_unitario * qt
 
+        tipo_efetivo = self._tipo_producao_efetivo_do_item(linha.orcamento_item_id)
         custo_mm, maquina_texto = self._custo_e_maquina_operacao_manual(
-            def_maquina_id, tempo_total
+            def_maquina_id, tempo_total, tipo_efetivo == TIPO_PRODUCAO_SERIE
         )
 
         self.repository.update_linha(
@@ -1943,24 +2042,30 @@ class OrcamentoItemCusteioLinhaService:
             minutos_unitarios=tempo_unitario,
             tempo_manual=tempo_total,
             custo_montagem_manual=custo_mm,
-            custo_producao=somar_custo_producao(custo_mm),
+            custo_producao=aplicar_fator_serie(
+                somar_custo_producao(custo_mm), linha.fator_serie
+            ),
+            tipo_producao=tipo_efetivo,
         )
         self.session.commit()
 
         return self.repository.get_by_id(linha_id)
 
-    def _custo_e_maquina_operacao_manual(self, def_maquina_id, tempo_total_minutos):
+    def _custo_e_maquina_operacao_manual(
+        self, def_maquina_id, tempo_total_minutos, usar_serie: bool = False
+    ):
         """Return (custo_mm, machine code) for a manual-operation line.
 
-        custo_mm = (minutes / 60) × custo_hora_std of the chosen machine; the code
-        feeds the Máquina column (and the tooltip).
+        custo_mm = (minutes / 60) × the chosen machine's hourly rate for the
+        item's effective production type (SERIE falls back to STD when not
+        defined); the code feeds the Máquina column (and the tooltip).
         """
         maquina = (
             self.maquina_repository.get_by_id(def_maquina_id)
             if def_maquina_id is not None
             else None
         )
-        custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+        custo_hora = self._custo_hora_maquina(maquina, usar_serie)
         custo_mm = calcular_custo_por_minutos(tempo_total_minutos, custo_hora)
         maquina_texto = getattr(maquina, "codigo", None) if maquina else None
         return custo_mm, maquina_texto

@@ -8,6 +8,11 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.item_types import normalize_item_type
+from app.domain.producao_types import (
+    TIPO_PRODUCAO_STD,
+    normalize_tipo_producao,
+    tipo_producao_efetivo,
+)
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
 
 
@@ -150,3 +155,43 @@ class OrcamentoItemService:
         self.repository.update_preco_total_versao(orcamento_versao_id, total)
 
         return total
+
+    def get_tipo_producao_default(self, orcamento_versao_id: int) -> str:
+        """Return the version's default production type (STD when unset)."""
+        valor = self.repository.get_tipo_producao_default(orcamento_versao_id)
+        return normalize_tipo_producao(valor) or TIPO_PRODUCAO_STD
+
+    def definir_tipo_producao_default(
+        self, orcamento_versao_id: int, tipo_producao: str
+    ) -> str:
+        """Set the version's default production type ('STD'/'SERIE')."""
+        tipo = normalize_tipo_producao(tipo_producao)
+        if tipo is None:
+            raise ValueError("tipo_producao invalido")
+
+        if not self.repository.update_tipo_producao_default(orcamento_versao_id, tipo):
+            raise ValueError("orcamento_versao not found")
+        self.session.commit()
+
+        return tipo
+
+    def definir_tipo_producao_item(
+        self, item_id: int, tipo_producao: str | None
+    ) -> str | None:
+        """Set one item's production-type exception (None = inherit the default)."""
+        tipo = normalize_tipo_producao(tipo_producao)
+        if tipo_producao is not None and tipo is None:
+            raise ValueError("tipo_producao invalido")
+
+        if not self.repository.update_tipo_producao(item_id, tipo):
+            raise ValueError("item not found")
+        self.session.commit()
+
+        return tipo
+
+    def get_tipo_producao_efetivo(self, item: OrcamentoItemResumo) -> str:
+        """Resolve the effective production type of an item (exception or default)."""
+        return tipo_producao_efetivo(
+            item.tipo_producao,
+            self.repository.get_tipo_producao_default(item.orcamento_versao_id),
+        )
