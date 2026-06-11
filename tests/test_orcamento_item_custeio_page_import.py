@@ -178,6 +178,33 @@ def test_custeio_page_tooltips_formula_e_cabecalho() -> None:
     assert "_tooltip_formula" in preencher
 
 
+def test_custeio_page_tooltips_tres_blocos() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    # Helper that joins the three blocks (rule, formula, substitution).
+    assert hasattr(OrcamentoItemCusteioPage, "_tooltip_3")
+    source = inspect.getsource(OrcamentoItemCusteioPage._tooltip_formula)
+    # Each calculated column now uses the 3-block helper.
+    assert source.count("self._tooltip_3(") >= 10
+
+    # The manual-operation cost has its own rule/formula text.
+    montagem = inspect.getsource(OrcamentoItemCusteioPage._tooltip_montagem_manual)
+    assert "Trabalho manual avulso cobrado ao tempo na máquina" in montagem
+    assert "minutos × QT / 60 × custo/hora" in montagem
+
+
+def test_custeio_page_operacao_manual_so_edita_quantidade() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage._coluna_editavel)
+    assert "OPERACAO_MANUAL" in source
+    assert "QT mod" in source and "QT und" in source
+
+
 def test_orcamento_item_custeio_page_menu_acabamento() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
@@ -439,6 +466,8 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "linha.custo_corte" in valores
     assert '"Custo CNC"' in valores
     assert "linha.custo_cnc" in valores
+    assert '"Custo mont./manual"' in valores
+    assert "linha.custo_montagem_manual" in valores
     assert '"Custo produção"' in valores
     assert "linha.custo_producao" in valores
     assert '"Custo orlas"' in valores
@@ -452,6 +481,26 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "consumo_ml_unitario" in valores
     assert '"SPP ML total"' in valores
     assert "consumo_ml_total" in valores
+
+
+def test_custeio_page_menu_operacao_manual() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Inserir operação manual" in menu
+
+    for method in (
+        "inserir_operacao_manual_linha",
+        "editar_operacao_manual_linha",
+        "_maquinas_montagem_manual",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    inserir = inspect.getsource(OrcamentoItemCusteioPage.inserir_operacao_manual_linha)
+    assert "OperacaoManualDialog" in inserir
+    assert "inserir_operacao_manual" in inserir
 
 
 def test_orcamento_item_custeio_page_esp_edit_protection() -> None:

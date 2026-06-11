@@ -30,6 +30,7 @@ class DefPecaResumo:
     permite_acabamento: bool = False
     chave_valueset_acabamento_sup: str | None = None
     chave_valueset_acabamento_inf: str | None = None
+    sem_material: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -91,6 +92,7 @@ class DefPecaRepository:
         permite_acabamento: bool = False,
         chave_valueset_acabamento_sup: str | None = None,
         chave_valueset_acabamento_inf: str | None = None,
+        sem_material: bool = False,
         ativo: bool = True,
     ) -> DefPecaResumo:
         """Create one reusable piece definition."""
@@ -108,6 +110,7 @@ class DefPecaRepository:
             permite_acabamento=permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
+            sem_material=sem_material,
             ativo=ativo,
         )
         self.session.add(peca)
@@ -132,6 +135,7 @@ class DefPecaRepository:
         permite_acabamento: bool = False,
         chave_valueset_acabamento_sup: str | None = None,
         chave_valueset_acabamento_inf: str | None = None,
+        sem_material: bool = False,
         ativo: bool,
     ) -> DefPecaResumo:
         """Update one reusable piece definition."""
@@ -152,6 +156,7 @@ class DefPecaRepository:
         peca.permite_acabamento = permite_acabamento
         peca.chave_valueset_acabamento_sup = chave_valueset_acabamento_sup
         peca.chave_valueset_acabamento_inf = chave_valueset_acabamento_inf
+        peca.sem_material = sem_material
         peca.ativo = ativo
         self.session.flush()
 
@@ -186,6 +191,7 @@ class DefPecaRepository:
             permite_acabamento=peca.permite_acabamento,
             chave_valueset_acabamento_sup=peca.chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=peca.chave_valueset_acabamento_inf,
+            sem_material=peca.sem_material,
             created_at=peca.created_at,
             updated_at=peca.updated_at,
         )

@@ -29,6 +29,7 @@ class CriarDefPecaData:
     permite_acabamento: bool = False
     chave_valueset_acabamento_sup: str | None = None
     chave_valueset_acabamento_inf: str | None = None
+    sem_material: bool = False
     ativo: bool = True
 
 
@@ -49,6 +50,7 @@ class EditarDefPecaData:
     permite_acabamento: bool = False
     chave_valueset_acabamento_sup: str | None = None
     chave_valueset_acabamento_inf: str | None = None
+    sem_material: bool = False
     ativo: bool = True
 
 
@@ -85,6 +87,9 @@ class DefPecaService:
         chave_valueset_acabamento_inf = self._normalize_optional_valueset_key(
             data.chave_valueset_acabamento_inf
         )
+        # A service piece has no raw material: drop any material ValueSet key.
+        if data.sem_material:
+            chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.create_def_peca(
@@ -101,6 +106,7 @@ class DefPecaService:
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
+            sem_material=data.sem_material,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -125,6 +131,9 @@ class DefPecaService:
         chave_valueset_acabamento_inf = self._normalize_optional_valueset_key(
             data.chave_valueset_acabamento_inf
         )
+        # A service piece has no raw material: drop any material ValueSet key.
+        if data.sem_material:
+            chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
 
         result = self.repository.update_def_peca(
@@ -142,6 +151,7 @@ class DefPecaService:
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
+            sem_material=data.sem_material,
             ativo=data.ativo,
         )
         self.session.commit()

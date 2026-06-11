@@ -12,6 +12,7 @@ from app.domain.custeio_linha_types import (
     MAQUINA,
     MATERIAL_PECA,
     OPERACAO,
+    OPERACAO_MANUAL,
     ORLA_PECA,
     OUTRO,
     PECA,
@@ -76,5 +77,6 @@ def test_options_list_all_types_in_order() -> None:
         MAO_OBRA,
         SETUP,
         MANUAL,
+        OPERACAO_MANUAL,
         OUTRO,
     ]

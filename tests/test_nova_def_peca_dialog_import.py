@@ -61,6 +61,22 @@ def test_nova_def_peca_dialog_data_has_valueset_fields() -> None:
     } <= field_names
 
 
+def test_nova_def_peca_dialog_data_has_sem_material() -> None:
+    from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialogData
+
+    field_names = {field.name for field in dataclasses.fields(NovaDefPecaDialogData)}
+
+    assert "sem_material" in field_names
+
+
+def test_nova_def_peca_dialog_sem_material_disables_material_combo() -> None:
+    from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
+
+    assert hasattr(NovaDefPecaDialog, "_update_sem_material_enabled")
+    init = inspect.getsource(NovaDefPecaDialog.__init__)
+    assert "Peça de serviço (sem material)" in init
+
+
 def test_nova_def_peca_dialog_previews_orla_code() -> None:
     from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 

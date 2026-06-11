@@ -220,6 +220,26 @@ def test_def_peca_service_normaliza_valuesets_ao_criar(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_def_peca_service_sem_material_limpa_chave(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    service.criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="RASGO_EXTRA",
+            nome="Rasgo extra",
+            chave_valueset_material="MATERIAL_PORTAS",
+            sem_material=True,
+        )
+    )
+
+    # A service piece drops the material key and stores the flag.
+    assert _FakeRepository.created_payload["sem_material"] is True
+    assert _FakeRepository.created_payload["chave_valueset_material"] is None
+
+
 def test_def_peca_service_normaliza_orlas_ao_editar(monkeypatch) -> None:
     _FakeRepository.updated_payload = None
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)

@@ -23,7 +23,19 @@ from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 
 
-UNIDADE_TEMPO_OPCOES = ("", "ML", "UN", "M2", "FURO", "OPERACAO", "PECA", "LOTE")
+# Stored values are unchanged; only the visible labels are clearer for the user.
+UNIDADE_TEMPO_OPCOES = ("", "PECA", "ML", "M2", "FURO", "UN", "HORA", "OPERACAO", "LOTE")
+UNIDADE_TEMPO_LABELS = {
+    "": "(nenhuma)",
+    "PECA": "Por peça (multiplica pela QT)",
+    "ML": "Por metro linear",
+    "M2": "Por m2 de peça",
+    "FURO": "Por furo (× QT)",
+    "UN": "Por unidade (× QT)",
+    "HORA": "Por hora (quantidade base em horas)",
+    "OPERACAO": "Por operação (fixo, não multiplica pela QT)",
+    "LOTE": "Por lote (fixo)",
+}
 
 
 @dataclass(frozen=True)
@@ -83,7 +95,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.tempo_por_unidade_input.setPlaceholderText("Ex.: 0.35 (min/unidade)")
         self.unidade_tempo_input = QComboBox()
         for opcao in UNIDADE_TEMPO_OPCOES:
-            self.unidade_tempo_input.addItem(opcao or "(nenhuma)", opcao or None)
+            self.unidade_tempo_input.addItem(UNIDADE_TEMPO_LABELS[opcao], opcao or None)
 
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)

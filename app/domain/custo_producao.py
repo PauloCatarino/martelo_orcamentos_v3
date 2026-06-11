@@ -142,3 +142,67 @@ def somar_custo_producao(*parciais) -> Decimal | None:
         return None
 
     return sum(presentes, Decimal("0"))
+
+
+_UNIDADES_TEMPO_M2 = ("M2",)
+_UNIDADES_TEMPO_HORA = ("HORA",)
+_UNIDADES_TEMPO_LOTE = ("LOTE", "OPERACAO")
+
+
+def calcular_tempo_operacao(
+    unidade_tempo,
+    quantidade_base,
+    tempo_setup_minutos,
+    tempo_por_unidade_minutos,
+    area_m2,
+    qt_total,
+) -> tuple[Decimal | None, Decimal | None]:
+    """Return (setup_min, variavel_min) of an assembly/manual operation.
+
+    tempo = setup + quantidade_calculada × tempo_por_unidade, with the calculated
+    quantity per ``unidade_tempo``: PECA/UN/FURO/ML -> base × qt_total (base empty
+    -> qt_total); M2 -> area_m2 × qt_total; HORA -> base hours × 60 (the operation
+    time itself); LOTE/OPERACAO -> base or 1. Returns (None, None) when the
+    operation has no time configured (so the caller ignores it without a warning).
+    Never raises.
+    """
+    setup = normalizar_numero(tempo_setup_minutos)
+    por_unidade = normalizar_numero(tempo_por_unidade_minutos)
+    base = normalizar_numero(quantidade_base)
+    qt = normalizar_numero(qt_total)
+    if qt is None:
+        qt = Decimal("1")
+    unid = (unidade_tempo or "").strip().upper()
+
+    if unid in _UNIDADES_TEMPO_HORA:
+        # quantidade_base is the time in hours -> minutes (the operation time).
+        if base is None and setup is None:
+            return None, None
+        return (setup or Decimal("0")), (base or Decimal("0")) * Decimal("60")
+
+    if setup is None and por_unidade is None:
+        return None, None
+
+    por_unidade = por_unidade or Decimal("0")
+    if unid in _UNIDADES_TEMPO_M2:
+        quantidade_calculada = (normalizar_numero(area_m2) or Decimal("0")) * qt
+    elif unid in _UNIDADES_TEMPO_LOTE:
+        quantidade_calculada = base if base is not None else Decimal("1")
+    else:  # PECA, UN, FURO, ML or empty -> per unit
+        quantidade_calculada = (base if base is not None else Decimal("1")) * qt
+
+    return (setup or Decimal("0")), quantidade_calculada * por_unidade
+
+
+def calcular_custo_por_minutos(tempo_minutos, custo_hora_std) -> Decimal | None:
+    """Return ``tempo × custo_hora_std / 60`` (€) or None when data is missing.
+
+    Multiplies before dividing so clean inputs give exact results (no Decimal
+    division artifacts).
+    """
+    tempo = normalizar_numero(tempo_minutos)
+    custo_hora = normalizar_numero(custo_hora_std)
+    if tempo is None or custo_hora is None:
+        return None
+
+    return (tempo * custo_hora) / Decimal("60")

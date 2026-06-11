@@ -15,6 +15,7 @@ from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     FERRAGEM,
     MANUAL,
+    OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
     normalize_custeio_linha_type,
@@ -37,6 +38,8 @@ from app.domain.custo_producao import (
     calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
+    calcular_custo_por_minutos,
+    calcular_tempo_operacao,
     somar_custo_producao,
 )
 from app.domain.tempos_producao import (
@@ -593,6 +596,8 @@ class OrcamentoItemCusteioLinhaService:
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
                 continue
+            if self._linha_sem_material(linha):
+                continue  # service piece: no orla
 
             preco_fina, unidade_fina = self._orla_preco_unidade(
                 linha.coresp_orla_0_4, precos_cache
@@ -679,6 +684,9 @@ class OrcamentoItemCusteioLinhaService:
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
                 ignoradas += 1
                 continue
+            if self._linha_sem_material(linha):
+                ignoradas += 1  # service piece: no raw-material cost, no warning
+                continue
 
             processadas += 1
             custo, aviso = calcular_custo_mp(
@@ -731,6 +739,9 @@ class OrcamentoItemCusteioLinhaService:
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
                 ignoradas += 1
                 continue
+            if self._linha_sem_material(linha):
+                ignoradas += 1  # service piece: no hardware cost, no warning
+                continue
 
             processadas += 1
             custo, aviso = calcular_custo_ferragem(
@@ -772,6 +783,9 @@ class OrcamentoItemCusteioLinhaService:
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
                 ignoradas += 1
+                continue
+            if self._linha_sem_material(linha):
+                ignoradas += 1  # service piece: no ML material consumption
                 continue
 
             eh_ml, consumo_unitario, consumo_total, custo, aviso = calcular_custo_ml(
@@ -895,6 +909,8 @@ class OrcamentoItemCusteioLinhaService:
         """
         if linha.tipo_linha != PECA:
             return False
+        if self._linha_sem_material(linha):
+            return False  # service piece: only its operations cost
         return (
             linha.def_peca_id is not None
             or getattr(linha, "acabamento_editado_localmente", False)
@@ -945,6 +961,9 @@ class OrcamentoItemCusteioLinhaService:
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
                 ignoradas += 1
+                continue
+            if self._linha_sem_material(linha):
+                ignoradas += 1  # service piece: no finishing areas
                 continue
 
             area_sup, area_inf, aviso = calcular_areas_acabamento(
@@ -1066,8 +1085,16 @@ class OrcamentoItemCusteioLinhaService:
         )
 
     def _linha_recebe_operacoes(self, linha) -> bool:
-        """Return True for real piece lines (with a def_peca) that take operations."""
+        """Return True for real piece lines (with a def_peca) that take operations.
+
+        Service pieces (sem_material) are included: they still cost their
+        operations even though they carry no raw material.
+        """
         return linha.tipo_linha == PECA and linha.def_peca_id is not None
+
+    def _linha_sem_material(self, linha) -> bool:
+        """Return True for a service-piece line (no raw material / ValueSet)."""
+        return bool(getattr(linha, "sem_material", False))
 
     def _operacoes_da_peca(self, def_peca_id: int) -> tuple[str, str]:
         """Build the "; "-joined operation codes and the distinct machines of a piece."""
@@ -1186,6 +1213,12 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha == OPERACAO_MANUAL:
+                processadas += 1
+                if self._recalcular_operacao_manual(linha):
+                    calculadas += 1
+                continue
+
             if not self._linha_recebe_operacoes(linha):
                 ignoradas += 1
                 continue
@@ -1236,14 +1269,22 @@ class OrcamentoItemCusteioLinhaService:
                 )
                 aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
 
-            custo_producao = somar_custo_producao(custo_corte, custo_orlagem, custo_cnc)
+            custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(linha)
+
+            custo_producao = somar_custo_producao(
+                custo_corte, custo_orlagem, custo_cnc, custo_mm
+            )
 
             processadas += 1
             fields: dict = {
                 "custo_corte": custo_corte,
                 "custo_orlagem": custo_orlagem,
                 "custo_cnc": custo_cnc,
+                "custo_montagem_manual": custo_mm,
                 "custo_producao": custo_producao,
+                "tempo_montagem": tempos_mm["montagem"] or None,
+                "tempo_manual": tempos_mm["manual"] or None,
+                "tempo_setup": tempos_mm["setup"] or None,
             }
             nova_obs = self._mesclar_observacao(
                 linha.observacoes,
@@ -1251,6 +1292,9 @@ class OrcamentoItemCusteioLinhaService:
                 avisos_ml[0] if avisos_ml else None,
             )
             nova_obs = self._mesclar_observacao(nova_obs, "Custo CNC", aviso_cnc)
+            nova_obs = self._mesclar_observacao(
+                nova_obs, "Custo de montagem/manual", aviso_mm
+            )
             # Production cost no longer depends on the computed times: clear the old
             # "Tempos de produção" warning from any earlier pass (phase 8S.2).
             nova_obs = self._mesclar_observacao(nova_obs, "Tempos de produção", None)
@@ -1316,6 +1360,123 @@ class OrcamentoItemCusteioLinhaService:
                 f"máquina {nome}."
             )
         return f"Custo de produção não calculado: dados de {etapa} em falta."
+
+    def _aviso_montagem_manual(self, maquina) -> str:
+        """Build the assembly/manual observation for a missing hourly rate."""
+        nome = getattr(maquina, "codigo", None) or "—"
+        return (
+            f"Custo de montagem/manual não calculado: custo/hora em falta na "
+            f"máquina {nome}."
+        )
+
+    def _custos_montagem_manual_da_peca(self, linha):
+        """Return (custo_montagem_manual, tempos_por_bucket, aviso) for a PECA line.
+
+        Sums the assembly/manual/packing operations of the piece, reading the time
+        configuration from each DefPecaOperacao link (tempo_setup_minutos /
+        tempo_por_unidade_minutos / unidade_tempo / quantidade_base). Operations
+        without times are ignored silently; an operation with times but whose
+        machine has no custo_hora produces a single warning.
+        """
+        tempos = {"montagem": Decimal("0"), "manual": Decimal("0"), "setup": Decimal("0")}
+        custo = None
+        aviso = None
+
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
+            linha.def_peca_id
+        ):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is None:
+                continue
+            bucket = classificar_operacao(
+                getattr(operacao, "tipo_operacao", None),
+                getattr(operacao, "codigo", None),
+            )
+            if bucket not in ("montagem", "manual"):
+                continue
+
+            setup_min, variavel_min = calcular_tempo_operacao(
+                getattr(ligacao, "unidade_tempo", None),
+                getattr(ligacao, "quantidade_base", None),
+                getattr(ligacao, "tempo_setup_minutos", None),
+                getattr(ligacao, "tempo_por_unidade_minutos", None),
+                linha.area_m2,
+                linha.quantidade,
+            )
+            if setup_min is None and variavel_min is None:
+                continue  # no times configured -> ignore without a warning
+
+            setup_min = setup_min or Decimal("0")
+            variavel_min = variavel_min or Decimal("0")
+            tempos["setup"] += setup_min
+            tempos[bucket] += variavel_min
+
+            maquina = self._maquina_de_operacao(operacao)
+            custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+            custo_op = calcular_custo_por_minutos(setup_min + variavel_min, custo_hora)
+            if custo_op is None:
+                if aviso is None:
+                    aviso = self._aviso_montagem_manual(maquina)
+                continue
+            custo = (custo or Decimal("0")) + custo_op
+
+        return custo, tempos, aviso
+
+    def _minutos_unitarios_da_linha(self, linha) -> Decimal | None:
+        """Minutes per unit of a manual line (derived from the total for old lines)."""
+        minutos = normalizar_numero(getattr(linha, "minutos_unitarios", None))
+        if minutos is not None:
+            return minutos
+        total = normalizar_numero(linha.tempo_manual)
+        if total is None:
+            return None
+        qt = normalizar_numero(linha.quantidade) or Decimal("1")
+        return total / qt
+
+    def _recalcular_operacao_manual(self, linha) -> bool:
+        """Recompute an OPERACAO_MANUAL line's time and cost from its machine tariff.
+
+        Keeps the user's description; the total minutes follow
+        ``minutos_unitarios × QT total`` (so a new quantity is reflected) and the
+        cost is ``(minutes / 60) × custo_hora``. Legacy lines without
+        minutos_unitarios derive it from the stored total. Returns True when a
+        cost was computed.
+        """
+        maquina = (
+            self.maquina_repository.get_by_id(linha.def_maquina_id)
+            if linha.def_maquina_id is not None
+            else None
+        )
+        custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+
+        minutos_unitarios = self._minutos_unitarios_da_linha(linha)
+        qt = normalizar_numero(linha.quantidade) or Decimal("1")
+        tempo_total = (
+            minutos_unitarios * qt if minutos_unitarios is not None else linha.tempo_manual
+        )
+        custo_mm = calcular_custo_por_minutos(tempo_total, custo_hora)
+        custo_producao = somar_custo_producao(custo_mm)
+
+        fields: dict = {
+            "minutos_unitarios": minutos_unitarios,
+            "tempo_manual": tempo_total,
+            "maquina": getattr(maquina, "codigo", None) if maquina else None,
+            "custo_montagem_manual": custo_mm,
+            "custo_producao": custo_producao,
+        }
+        aviso = (
+            self._aviso_montagem_manual(maquina)
+            if custo_mm is None and tempo_total is not None
+            else None
+        )
+        nova_obs = self._mesclar_observacao(
+            linha.observacoes, "Custo de montagem/manual", aviso
+        )
+        if nova_obs != linha.observacoes:
+            fields["observacoes"] = nova_obs
+
+        self.repository.update_linha(id=linha.id, **fields)
+        return custo_producao is not None
 
     def _tempos_preenchidos(self, linha) -> bool:
         """Return True when the line already has any production time set."""
@@ -1559,6 +1720,13 @@ class OrcamentoItemCusteioLinhaService:
         if linha is None:
             return None
 
+        if linha.tipo_linha == OPERACAO_MANUAL:
+            # A manual-operation line has no measures: editing QT recomputes the
+            # total minutes (minutos_unitarios × QT) and the cost from the machine.
+            return self._atualizar_quantidade_operacao_manual(
+                linha, qt_mod=qt_mod, qt_und=qt_und
+            )
+
         item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
         contexto = (
             construir_contexto_item(item.altura, item.largura, item.profundidade)
@@ -1611,6 +1779,51 @@ class OrcamentoItemCusteioLinhaService:
 
         return self.repository.get_by_id(linha_id)
 
+    def _atualizar_quantidade_operacao_manual(
+        self, linha, *, qt_mod, qt_und
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Save an edited quantity of an OPERACAO_MANUAL line, recomputing the cost.
+
+        tempo_manual = minutos_unitarios × QT total and custo_montagem_manual =
+        (minutes / 60) × custo_hora; custo_total follows custo_producao honouring
+        Excluir Produção. Description and minutos_unitarios are kept.
+        """
+        qt_mod_valor = normalizar_numero(qt_mod)
+        qt_und_valor = normalizar_numero(qt_und)
+        qt_mod_final = qt_mod_valor if qt_mod_valor is not None else Decimal("1")
+        qt_und_final = qt_und_valor if qt_und_valor is not None else Decimal("1")
+        quantidade = qt_mod_final * qt_und_final
+
+        minutos_unitarios = self._minutos_unitarios_da_linha(linha)
+        tempo_total = (
+            minutos_unitarios * quantidade if minutos_unitarios is not None else None
+        )
+        custo_mm, maquina_texto = self._custo_e_maquina_operacao_manual(
+            linha.def_maquina_id, tempo_total
+        )
+        custo_producao = somar_custo_producao(custo_mm)
+        custo_total = (
+            Decimal("0")
+            if linha.excluir_producao
+            else (custo_producao if custo_producao is not None else Decimal("0"))
+        )
+
+        fields: dict = {
+            "qt_mod": qt_mod_final,
+            "qt_und": qt_und_final,
+            "quantidade": quantidade,
+            "minutos_unitarios": minutos_unitarios,
+            "tempo_manual": tempo_total,
+            "maquina": maquina_texto,
+            "custo_montagem_manual": custo_mm,
+            "custo_producao": custo_producao,
+            "custo_total": custo_total,
+        }
+        self.repository.update_linha(id=linha.id, **fields)
+        self.session.commit()
+
+        return self.repository.get_by_id(linha.id)
+
     def inserir_divisao_independente(
         self, orcamento_item_id: int
     ) -> OrcamentoItemCusteioLinhaResumo:
@@ -1636,6 +1849,121 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return result
+
+    def inserir_operacao_manual(
+        self,
+        orcamento_item_id: int,
+        descricao: str,
+        def_maquina_id: int | None,
+        tempo_minutos,
+        quantidade=None,
+    ) -> OrcamentoItemCusteioLinhaResumo:
+        """Insert a user-defined manual-operation cost line (OPERACAO_MANUAL).
+
+        ``tempo_manual`` stores the TOTAL minutes (tempo × quantidade); the cost is
+        ``(total minutes / 60) × custo_hora_std`` of the chosen machine and feeds
+        custo_producao. No materials/orlas/acabamentos are set.
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+        texto = (descricao or "").strip()
+        if not texto:
+            raise ValueError("descricao is required")
+
+        tempo_unitario = normalizar_numero(tempo_minutos)
+        if tempo_unitario is None or tempo_unitario <= 0:
+            raise ValueError("tempo invalido")
+        qt = normalizar_numero(quantidade)
+        if qt is None or qt <= 0:
+            qt = Decimal("1")
+        tempo_total = tempo_unitario * qt
+
+        custo_mm, maquina_texto = self._custo_e_maquina_operacao_manual(
+            def_maquina_id, tempo_total
+        )
+
+        result = self.repository.create_linha(
+            orcamento_item_id=item_id,
+            tipo_linha=OPERACAO_MANUAL,
+            descricao=texto,
+            origem_tipo="MANUAL",
+            def_maquina_id=def_maquina_id,
+            maquina=maquina_texto,
+            nivel=0,
+            qt_mod=Decimal("1"),
+            qt_und=qt,
+            quantidade=qt,
+            minutos_unitarios=tempo_unitario,
+            tempo_manual=tempo_total,
+            custo_montagem_manual=custo_mm,
+            custo_producao=somar_custo_producao(custo_mm),
+            ativo=True,
+        )
+        self.session.commit()
+
+        return result
+
+    def editar_operacao_manual(
+        self,
+        linha_id: int,
+        descricao: str,
+        def_maquina_id: int | None,
+        tempo_minutos,
+        quantidade=None,
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Edit a manual-operation cost line (description, machine, time, qty)."""
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            return None
+        if linha.tipo_linha != OPERACAO_MANUAL:
+            raise ValueError("linha não é uma operação manual")
+
+        texto = (descricao or "").strip()
+        if not texto:
+            raise ValueError("descricao is required")
+        tempo_unitario = normalizar_numero(tempo_minutos)
+        if tempo_unitario is None or tempo_unitario <= 0:
+            raise ValueError("tempo invalido")
+        qt = normalizar_numero(quantidade)
+        if qt is None or qt <= 0:
+            qt = Decimal("1")
+        tempo_total = tempo_unitario * qt
+
+        custo_mm, maquina_texto = self._custo_e_maquina_operacao_manual(
+            def_maquina_id, tempo_total
+        )
+
+        self.repository.update_linha(
+            id=linha_id,
+            descricao=texto,
+            def_maquina_id=def_maquina_id,
+            maquina=maquina_texto,
+            qt_mod=Decimal("1"),
+            qt_und=qt,
+            quantidade=qt,
+            minutos_unitarios=tempo_unitario,
+            tempo_manual=tempo_total,
+            custo_montagem_manual=custo_mm,
+            custo_producao=somar_custo_producao(custo_mm),
+        )
+        self.session.commit()
+
+        return self.repository.get_by_id(linha_id)
+
+    def _custo_e_maquina_operacao_manual(self, def_maquina_id, tempo_total_minutos):
+        """Return (custo_mm, machine code) for a manual-operation line.
+
+        custo_mm = (minutes / 60) × custo_hora_std of the chosen machine; the code
+        feeds the Máquina column (and the tooltip).
+        """
+        maquina = (
+            self.maquina_repository.get_by_id(def_maquina_id)
+            if def_maquina_id is not None
+            else None
+        )
+        custo_hora = getattr(maquina, "custo_hora", None) if maquina else None
+        custo_mm = calcular_custo_por_minutos(tempo_total_minutos, custo_hora)
+        maquina_texto = getattr(maquina, "codigo", None) if maquina else None
+        return custo_mm, maquina_texto
 
     def _normalizar_expressao(self, valor) -> str | None:
         """Normalize a measure expression: trimmed text, or None when empty."""
@@ -1914,8 +2242,17 @@ class OrcamentoItemCusteioLinhaService:
             "qt_und": qt_und,
             "quantidade": qt_und,
             "editado_localmente": False,
+            "sem_material": bool(getattr(peca, "sem_material", False)),
             "ativo": True,
         }
+
+        if fields["sem_material"]:
+            # Service piece: no raw material / ValueSet. Leave the material and
+            # orla columns empty and emit no ValueSet warning; the cost comes
+            # only from the associated operations (cut/CNC/manual/assembly).
+            fields["chave_valueset"] = None
+            fields["codigo_orlas"] = None
+            return fields, None
 
         if not peca.chave_valueset_material:
             fields["observacoes"] = sem_chave_observacao

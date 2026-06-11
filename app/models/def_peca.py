@@ -45,6 +45,11 @@ class DefPeca(Base):
     )
     chave_valueset_acabamento_sup: Mapped[str | None] = mapped_column(String(100), nullable=True)
     chave_valueset_acabamento_inf: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Service piece: consumes no raw material; its cost comes only from the
+    # associated operations (cut, CNC, manual, assembly) (phase 8S.3 follow-up).
+    sem_material: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

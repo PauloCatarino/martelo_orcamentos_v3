@@ -143,6 +143,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "custo_corte": None,
         "custo_orlagem": None,
         "custo_cnc": None,
+        "custo_montagem_manual": None,
         "custo_producao": None,
         "consumo_ml_unitario": None,
         "consumo_ml_total": None,
@@ -1206,6 +1207,38 @@ def test_adicionar_peca_sem_chave_valueset(monkeypatch) -> None:
     assert "sem chave ValueSet" in payload["observacoes"]
 
 
+def test_adicionar_peca_sem_material_nao_avisa(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    # A service piece: even with a leftover key it must not warn nor carry orla.
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, sem_material=True, chave_valueset_material="MATERIAL_COSTAS")
+    }
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    assert result.avisos == []
+    payload = _FakeRepository.created_payload
+    assert payload["sem_material"] is True
+    assert payload["chave_valueset"] is None
+    assert payload["codigo_orlas"] is None
+    assert "observacoes" not in payload  # no ValueSet/material warning
+    assert "ref_le" not in payload  # no material resolved
+
+
+def test_recalcular_custo_mp_ignora_sem_material(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", sem_material=True, unidade=None)
+    ]
+
+    result = service.recalcular_custo_materia_prima_do_item(10)
+
+    # Service piece: skipped, no "unidade não validada" warning written.
+    assert result.processadas == 0
+    assert result.ignoradas == 1
+
+
 def test_resolver_valueset_prefere_padrao(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeItemValuesetRepository.default_linha = _vs_linha(id=9)
@@ -2177,6 +2210,22 @@ def _ligacao_op(def_operacao_id: int):
     return SimpleNamespace(def_operacao_id=def_operacao_id)
 
 
+def _ligacao_tempo(
+    def_operacao_id,
+    unidade_tempo=None,
+    quantidade_base=None,
+    tempo_setup_minutos=None,
+    tempo_por_unidade_minutos=None,
+):
+    return SimpleNamespace(
+        def_operacao_id=def_operacao_id,
+        unidade_tempo=unidade_tempo,
+        quantidade_base=quantidade_base,
+        tempo_setup_minutos=tempo_setup_minutos,
+        tempo_por_unidade_minutos=tempo_por_unidade_minutos,
+    )
+
+
 def _operacao(
     codigo: str,
     maquina_id=None,
@@ -2384,12 +2433,15 @@ def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
     assert _FakeRepository.updated_payload is None  # local times preserved
 
 
-def _maquina_tarifa(codigo, id=0, preco_ml_std=None, custo_setup_peca_std=None):
+def _maquina_tarifa(
+    codigo, id=0, preco_ml_std=None, custo_setup_peca_std=None, custo_hora=None
+):
     return SimpleNamespace(
         id=id,
         codigo=codigo,
         preco_ml_std=preco_ml_std,
         custo_setup_peca_std=custo_setup_peca_std,
+        custo_hora=custo_hora,
     )
 
 
@@ -2648,6 +2700,183 @@ def test_recalcular_custos_producao_cnc_soma_tres_parciais(monkeypatch) -> None:
     assert payload["custo_orlagem"] == Decimal("3.28")  # 4.4 x 0.70 + 2 x 0.10
     assert payload["custo_cnc"] == Decimal("11.00")  # 5.50 x 2
     assert payload["custo_producao"] == Decimal("17.08")
+
+
+def test_recalcular_custos_producao_montagem(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [_ligacao_tempo(5, unidade_tempo="HORA", quantidade_base=Decimal("0.5"), tempo_setup_minutos=Decimal("0"))]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        5: _operacao("MONTAGEM_GERAL", tipo_operacao="MONTAGEM", maquina_id=13),
+    }
+    _FakeMaquinaRepository.maquinas = {13: _maquina_tarifa("MONTAGEM", id=13, custo_hora=Decimal("20"))}
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("1")),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # tempo = 0.5×60 = 30 min -> custo = 30/60 × 20 = 10.
+    assert payload["custo_montagem_manual"] == Decimal("10")
+    assert payload["tempo_montagem"] == Decimal("30")
+    assert payload["custo_producao"] == Decimal("10")
+
+
+def test_recalcular_custos_producao_manual_sem_tempos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_tempo(6)]}  # no times
+    _FakeOperacaoRepository.operacoes = {
+        6: _operacao("FURACAO_MANUAL", tipo_operacao="FURACAO", maquina_id=14),
+    }
+    _FakeMaquinaRepository.maquinas = {14: _maquina_tarifa("MANUAL", id=14, custo_hora=Decimal("20"))}
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("1")),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_montagem_manual"] is None  # no times -> no cost
+    assert "observacoes" not in payload  # and no warning
+
+
+def test_recalcular_custos_producao_maquina_sem_custo_hora(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [_ligacao_tempo(5, unidade_tempo="HORA", quantidade_base=Decimal("0.5"), tempo_setup_minutos=Decimal("0"))]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        5: _operacao("MONTAGEM_GERAL", tipo_operacao="MONTAGEM", maquina_id=13),
+    }
+    _FakeMaquinaRepository.maquinas = {13: _maquina_tarifa("MONTAGEM", id=13, custo_hora=None)}
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("1")),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_montagem_manual"] is None
+    assert "custo/hora em falta na máquina MONTAGEM" in payload["observacoes"]
+
+
+def test_inserir_e_recalcular_operacao_manual(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))}
+
+    service.inserir_operacao_manual(
+        30,
+        descricao="cortar perfis alumínio",
+        def_maquina_id=9,
+        tempo_minutos=Decimal("0.35"),
+        quantidade=Decimal("20"),
+    )
+
+    payload = _FakeRepository.created_payload
+    assert payload["tipo_linha"] == "OPERACAO_MANUAL"
+    assert payload["descricao"] == "cortar perfis alumínio"
+    assert payload["minutos_unitarios"] == Decimal("0.35")
+    assert payload["quantidade"] == Decimal("20")
+    assert payload["maquina"] == "MANUAL"
+    # 0.35 min/un × 20 = 7 min -> 7 × 20 / 60 = 2.333...
+    assert payload["tempo_manual"] == Decimal("7.00")
+    assert payload["custo_montagem_manual"] == (Decimal("7.00") * Decimal("20")) / Decimal("60")
+    assert payload["custo_producao"] == payload["custo_montagem_manual"]
+
+
+def test_recalcular_operacao_manual_recalcula_custo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("30"))}
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="OPERACAO_MANUAL",
+            descricao="furação manual",
+            def_maquina_id=9,
+            tempo_manual=Decimal("10"),
+        ),
+    ]
+
+    result = service.recalcular_custos_producao_do_item(30)
+
+    assert result.calculadas == 1
+    payload = _FakeRepository.updated_payload
+    # tariff changed to 30 -> 10/60 × 30 = 5; the description is kept and the
+    # total minutes are re-derived (QT 1 -> still 10) from minutos_unitarios.
+    assert payload["custo_montagem_manual"] == Decimal("5")
+    assert payload["custo_producao"] == Decimal("5")
+    assert "descricao" not in payload
+    assert payload["tempo_manual"] == Decimal("10")
+    assert payload["minutos_unitarios"] == Decimal("10")
+
+
+def test_recalcular_operacao_manual_usa_minutos_unitarios_e_qt(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="OPERACAO_MANUAL",
+            descricao="cortar perfis",
+            def_maquina_id=9,
+            minutos_unitarios=Decimal("0.35"),
+            quantidade=Decimal("30"),
+            tempo_manual=Decimal("7"),  # stale total from a previous QT of 20
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    # 0.35 min/un × 30 = 10.5 min -> 10.5/60 × 20 = 3.50.
+    assert payload["tempo_manual"] == Decimal("10.50")
+    assert payload["custo_montagem_manual"] == Decimal("3.50")
+    assert payload["custo_producao"] == Decimal("3.50")
+
+
+def test_atualizar_medidas_operacao_manual_recalcula_por_qt(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.by_id = _resumo(
+        id=1,
+        tipo_linha="OPERACAO_MANUAL",
+        descricao="cortar perfis",
+        def_maquina_id=9,
+        minutos_unitarios=Decimal("0.35"),
+        qt_mod=Decimal("1"),
+        qt_und=Decimal("20"),
+        quantidade=Decimal("20"),
+        tempo_manual=Decimal("7"),
+    )
+
+    service.atualizar_medidas_linha(1, qt_mod="1", qt_und="30", propagar_item=False)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["quantidade"] == Decimal("30")
+    # QT 20 -> 30: 0.35 × 30 = 10.5 min -> 3.50 €.
+    assert payload["tempo_manual"] == Decimal("10.50")
+    assert payload["custo_montagem_manual"] == Decimal("3.50")
+    assert payload["custo_producao"] == Decimal("3.50")
+
+
+def test_inserir_operacao_manual_valida_descricao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    try:
+        service.inserir_operacao_manual(30, descricao="  ", def_maquina_id=9, tempo_minutos=Decimal("10"))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_custo_total_inclui_producao_respeita_exclusao(monkeypatch) -> None:

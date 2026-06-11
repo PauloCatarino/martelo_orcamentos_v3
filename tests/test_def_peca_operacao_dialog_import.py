@@ -80,6 +80,24 @@ def test_def_peca_operacao_dialog_tem_campos_de_tempo() -> None:
     assert "Tempo por unidade (min)" in init
 
 
+def test_def_peca_operacao_dialog_unidade_tempo_labels_claros() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import (
+        UNIDADE_TEMPO_LABELS,
+        UNIDADE_TEMPO_OPCOES,
+    )
+
+    # The stored values keep their codes; HORA is now available.
+    assert "HORA" in UNIDADE_TEMPO_OPCOES
+    assert "PECA" in UNIDADE_TEMPO_OPCOES
+    # The visible labels are descriptive for the user.
+    assert UNIDADE_TEMPO_LABELS["PECA"] == "Por peça (multiplica pela QT)"
+    assert UNIDADE_TEMPO_LABELS["HORA"] == "Por hora (quantidade base em horas)"
+    assert UNIDADE_TEMPO_LABELS["OPERACAO"] == "Por operação (fixo, não multiplica pela QT)"
+    assert UNIDADE_TEMPO_LABELS["LOTE"] == "Por lote (fixo)"
+    # Every stored option has a label.
+    assert set(UNIDADE_TEMPO_OPCOES) <= set(UNIDADE_TEMPO_LABELS)
+
+
 def test_def_peca_operacao_dialog_locks_operacao_on_edit() -> None:
     from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
 

@@ -123,6 +123,9 @@ class OrcamentoItemCusteioLinha(Base):
     custo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_cnc: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    custo_montagem_manual: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
     custo_producao: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     consumo_ml_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
@@ -196,6 +199,9 @@ class OrcamentoItemCusteioLinha(Base):
     )
     tempo_calculado: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_manual: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    # Minutes per unit of an OPERACAO_MANUAL line: tempo_manual = minutos_unitarios
+    # × QT total, so editing the quantity recomputes time and cost (phase 8S.3).
+    minutos_unitarios: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     # Basic production times in MINUTES (decimal), derived from the operations.
     tempo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
@@ -216,6 +222,12 @@ class OrcamentoItemCusteioLinha(Base):
         Boolean, nullable=False, default=False, server_default="0"
     )
     material_editado_localmente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    # Snapshot of DefPeca.sem_material: a service-piece line costs only its
+    # operations (no raw material / ValueSet), so the costing skips the material
+    # and ValueSet warnings for it (phase 8S.3 follow-up).
+    sem_material: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
     origem_material: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -48,6 +48,7 @@ class OrcamentoItemCusteioLinhaResumo:
     custo_corte: Decimal | None
     custo_orlagem: Decimal | None
     custo_cnc: Decimal | None
+    custo_montagem_manual: Decimal | None
     custo_producao: Decimal | None
     consumo_ml_unitario: Decimal | None
     consumo_ml_total: Decimal | None
@@ -86,6 +87,8 @@ class OrcamentoItemCusteioLinhaResumo:
     larg_real: Decimal | None = None
     esp_real: Decimal | None = None
     material_editado_localmente: bool = False
+    sem_material: bool = False
+    minutos_unitarios: Decimal | None = None
     origem_material: str | None = None
     excluir_mp: bool = False
     excluir_orla: bool = False
@@ -300,6 +303,7 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_corte=linha.custo_corte,
             custo_orlagem=linha.custo_orlagem,
             custo_cnc=linha.custo_cnc,
+            custo_montagem_manual=linha.custo_montagem_manual,
             custo_producao=linha.custo_producao,
             consumo_ml_unitario=linha.consumo_ml_unitario,
             consumo_ml_total=linha.consumo_ml_total,
@@ -345,6 +349,7 @@ class OrcamentoItemCusteioLinhaRepository:
             def_maquina_id=linha.def_maquina_id,
             tempo_calculado=linha.tempo_calculado,
             tempo_manual=linha.tempo_manual,
+            minutos_unitarios=linha.minutos_unitarios,
             override_manual=linha.override_manual,
             editado_localmente=linha.editado_localmente,
             ativo=linha.ativo,
@@ -371,6 +376,7 @@ class OrcamentoItemCusteioLinhaRepository:
             larg_real=linha.larg_real,
             esp_real=linha.esp_real,
             material_editado_localmente=linha.material_editado_localmente,
+            sem_material=linha.sem_material,
             origem_material=linha.origem_material,
             created_at=linha.created_at,
             updated_at=linha.updated_at,

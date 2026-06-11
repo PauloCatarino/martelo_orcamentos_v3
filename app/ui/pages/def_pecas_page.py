@@ -150,6 +150,7 @@ class DefPecasPage(QWidget):
                             permite_acabamento=form_data.permite_acabamento,
                             chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
                             chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
+                            sem_material=form_data.sem_material,
                             ativo=form_data.ativo,
                         )
                     )
@@ -204,6 +205,7 @@ class DefPecasPage(QWidget):
                             permite_acabamento=form_data.permite_acabamento,
                             chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
                             chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
+                            sem_material=form_data.sem_material,
                             ativo=form_data.ativo,
                         ),
                     )

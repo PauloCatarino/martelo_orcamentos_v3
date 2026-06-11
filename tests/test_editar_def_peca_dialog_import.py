@@ -53,6 +53,22 @@ def test_editar_def_peca_dialog_data_has_all_fields() -> None:
     } <= field_names
 
 
+def test_editar_def_peca_dialog_data_has_sem_material() -> None:
+    from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialogData
+
+    field_names = {field.name for field in dataclasses.fields(EditarDefPecaDialogData)}
+
+    assert "sem_material" in field_names
+
+
+def test_editar_def_peca_dialog_loads_sem_material() -> None:
+    from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
+
+    assert hasattr(EditarDefPecaDialog, "_update_sem_material_enabled")
+    source = inspect.getsource(EditarDefPecaDialog._load_peca)
+    assert "sem_material" in source
+
+
 def test_editar_def_peca_dialog_previews_orla_code() -> None:
     from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
 

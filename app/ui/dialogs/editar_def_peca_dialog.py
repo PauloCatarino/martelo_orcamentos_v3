@@ -48,6 +48,7 @@ class EditarDefPecaDialogData:
     permite_acabamento: bool
     chave_valueset_acabamento_sup: str | None
     chave_valueset_acabamento_inf: str | None
+    sem_material: bool
     ativo: bool
 
 
@@ -79,6 +80,12 @@ class EditarDefPecaDialog(QDialog):
         self.grupo_input = QLineEdit()
         self.ativo_input = QCheckBox()
         self.chave_valueset_material_input = QComboBox()
+        self.sem_material_input = QCheckBox("Peça de serviço (sem material)")
+        self.sem_material_input.setToolTip(
+            "A peça não consome matéria-prima: o custo vem apenas das operações "
+            "associadas (corte, CNC, manual, montagem). Ao marcar, a chave de "
+            "material ValueSet é desativada e ignorada."
+        )
         self.permite_acabamento_input = QCheckBox()
         self.chave_valueset_acabamento_sup_input = QComboBox()
         self.chave_valueset_acabamento_inf_input = QComboBox()
@@ -98,6 +105,7 @@ class EditarDefPecaDialog(QDialog):
             valor_atual=peca.chave_valueset_acabamento_inf,
         )
         self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
+        self.sem_material_input.toggled.connect(self._update_sem_material_enabled)
 
         self.orla_c1_input = QComboBox()
         self.orla_c2_input = QComboBox()
@@ -151,6 +159,7 @@ class EditarDefPecaDialog(QDialog):
 
         valueset_group = QGroupBox("ValueSets")
         valueset_form = QFormLayout()
+        valueset_form.addRow("Peça de serviço", self.sem_material_input)
         valueset_form.addRow("Chave material ValueSet", self.chave_valueset_material_input)
         valueset_form.addRow("Permite acabamento", self.permite_acabamento_input)
         valueset_form.addRow(
@@ -186,7 +195,9 @@ class EditarDefPecaDialog(QDialog):
         self._select_combo_data(self.orla_l1_input, normalize_orla_type(self.peca.orla_l1))
         self._select_combo_data(self.orla_l2_input, normalize_orla_type(self.peca.orla_l2))
         self.permite_acabamento_input.setChecked(self.peca.permite_acabamento)
+        self.sem_material_input.setChecked(getattr(self.peca, "sem_material", False))
         self._update_acabamento_enabled()
+        self._update_sem_material_enabled()
         self._update_orla_preview()
 
     def _select_combo_data(self, combo: QComboBox, value: object) -> None:
@@ -206,7 +217,11 @@ class EditarDefPecaDialog(QDialog):
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),
             orla_l2=self.orla_l2_input.currentData(),
-            chave_valueset_material=obter_valor_chave_combo(self.chave_valueset_material_input),
+            chave_valueset_material=(
+                None
+                if self.sem_material_input.isChecked()
+                else obter_valor_chave_combo(self.chave_valueset_material_input)
+            ),
             permite_acabamento=self.permite_acabamento_input.isChecked(),
             chave_valueset_acabamento_sup=obter_valor_chave_combo(
                 self.chave_valueset_acabamento_sup_input
@@ -214,6 +229,7 @@ class EditarDefPecaDialog(QDialog):
             chave_valueset_acabamento_inf=obter_valor_chave_combo(
                 self.chave_valueset_acabamento_inf_input
             ),
+            sem_material=self.sem_material_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -254,6 +270,13 @@ class EditarDefPecaDialog(QDialog):
         enabled = self.permite_acabamento_input.isChecked()
         self.chave_valueset_acabamento_sup_input.setEnabled(enabled)
         self.chave_valueset_acabamento_inf_input.setEnabled(enabled)
+
+    def _update_sem_material_enabled(self) -> None:
+        """Disable and clear the material ValueSet combo for service pieces."""
+        sem_material = self.sem_material_input.isChecked()
+        self.chave_valueset_material_input.setEnabled(not sem_material)
+        if sem_material:
+            self.chave_valueset_material_input.setCurrentIndex(0)
 
     def _empty_to_none(self, value: str) -> str | None:
         """Normalize empty text input."""

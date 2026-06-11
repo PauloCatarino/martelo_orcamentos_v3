@@ -31,6 +31,7 @@ from app.db.session import SessionLocal
 from app.domain.custos import fator_desperdicio
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
     get_custeio_linha_type_label,
@@ -46,11 +47,13 @@ from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
+from app.services.def_maquina_service import DefMaquinaService
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.ui.widgets.table_item import criar_item_tabela
@@ -177,6 +180,7 @@ class OrcamentoItemCusteioPage(QWidget):
         "Custo corte",
         "Custo orlagem",
         "Custo CNC",
+        "Custo mont./manual",
         "Custo produ\u00e7\u00e3o",
         # Flags de inclusao
         "Excluir MP",
@@ -249,7 +253,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Custo corte": "Custo de corte: perímetro × qt × €/ML + qt × setup.",
         "Custo orlagem": "Custo de orlagem: ML de orla × €/ML + qt × setup.",
         "Custo CNC": "Custo de CNC pelo escalão de área da máquina × qt.",
-        "Custo produção": "Soma dos custos de produção (corte + orlagem + CNC).",
+        "Custo mont./manual": "Montagem/manual: (tempo / 60) × custo/hora da máquina.",
+        "Custo produção": "Soma da produção (corte + orlagem + CNC + mont./manual).",
         "Custo total": "Soma dos custos da linha, respeitando os checks Excluir.",
         "Editado localmente": "Sim quando o material/acabamento foi editado na linha.",
     }
@@ -470,6 +475,10 @@ class OrcamentoItemCusteioPage(QWidget):
     ) -> bool:
         """Return True when the given column is editable for the given line."""
         if header in self.EDITABLE_COLUMNS:
+            if linha.tipo_linha == OPERACAO_MANUAL:
+                # Manual-operation lines have no measures: only the quantity is
+                # editable (editing it recomputes the time and cost).
+                return header in ("QT mod", "QT und")
             return True
 
         if header == "Descrição livre" and linha.tipo_linha == DIVISAO_INDEPENDENTE:
@@ -760,160 +769,246 @@ class OrcamentoItemCusteioPage(QWidget):
     def _tooltip_formula(
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
     ) -> str | None:
-        """Return a per-cell formula tooltip with the line's real numbers, or None.
+        """Return a 3-block per-cell tooltip with the line's real numbers, or None.
 
-        Uses the values already in the line resumo; when a value needed for the
-        exact formula is not available (e.g. the orla/machine unit price), the
-        generic formula plus the known inputs/result is shown.
+        Every calculated column is documented with: (1) a plain-language rule,
+        (2) the generic formula, and (3) the substitution with the line's real
+        values and the result. Machine €/hour is back-derived from the stored
+        cost and time so the substitution stays exact without a DB lookup; when a
+        value is missing the substitution is omitted but the rule/formula remain.
         """
         qt = linha.quantidade
         ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
             linha.ml_orla_grossa or Decimal("0")
         )
+        fator = fator_desperdicio(linha.desperdicio_percentagem)
 
-        # Measure expressions: show the formula and the evaluated value.
+        # Measure expressions: rule + formula + evaluated value.
         if header == "Comp":
-            return self._tooltip_medida(linha.comp, linha.comp_real)
+            return self._tooltip_medida("Comprimento", linha.comp, linha.comp_real)
         if header == "Larg":
-            return self._tooltip_medida(linha.larg, linha.larg_real)
+            return self._tooltip_medida("Largura", linha.larg, linha.larg_real)
         if header == "Esp":
-            return self._tooltip_medida(linha.esp, linha.esp_real)
+            return self._tooltip_medida("Espessura", linha.esp, linha.esp_real)
 
         if header == "Área m²" and linha.area_m2 is not None:
-            return (
-                "Área = comp × larg / 1.000.000\n"
-                f"{format_quantity(linha.comp_real)} × "
+            return self._tooltip_3(
+                "Área da peça: superfície de uma unidade, base do custo de MP e CNC.",
+                "Área = Comp × Larg / 1.000.000 (mm² → m²)",
+                f"= {format_quantity(linha.comp_real)} × "
                 f"{format_quantity(linha.larg_real)} / 1.000.000 = "
-                f"{format_quantity(linha.area_m2)} m2"
+                f"{format_quantity(linha.area_m2)} m²",
             )
         if header == "Perímetro ML" and linha.perimetro_ml is not None:
-            return (
-                "Perímetro = 2 × (comp + larg) / 1000\n"
-                f"2 × ({format_quantity(linha.comp_real)} + "
+            return self._tooltip_3(
+                "Perímetro da peça: contorno de uma unidade, base do custo de corte.",
+                "Perímetro = 2 × (Comp + Larg) / 1000 (mm → m)",
+                f"= 2 × ({format_quantity(linha.comp_real)} + "
                 f"{format_quantity(linha.larg_real)}) / 1000 = "
-                f"{format_quantity(linha.perimetro_ml)} ml"
+                f"{format_quantity(linha.perimetro_ml)} ml",
             )
 
         if header == "Área acab. sup" and linha.area_acabamento_sup is not None:
-            return (
-                "Área acab. sup = área × qt (se houver acabamento)\n"
-                f"acabamento: {linha.acabamento_face_sup or '—'}\n"
+            return self._tooltip_3(
+                "Área de acabamento da face superior: só conta se a face tiver "
+                "acabamento.",
+                "Área acab. sup = Área × QT (se houver acabamento)",
+                f"acabamento {linha.acabamento_face_sup or '—'}: "
                 f"{format_quantity(linha.area_m2)} × {format_quantity(qt)} = "
-                f"{format_quantity(linha.area_acabamento_sup)} m2"
+                f"{format_quantity(linha.area_acabamento_sup)} m²",
             )
         if header == "Área acab. inf" and linha.area_acabamento_inf is not None:
-            return (
-                "Área acab. inf = área × qt (se houver acabamento)\n"
-                f"acabamento: {linha.acabamento_face_inf or '—'}\n"
+            return self._tooltip_3(
+                "Área de acabamento da face inferior: só conta se a face tiver "
+                "acabamento.",
+                "Área acab. inf = Área × QT (se houver acabamento)",
+                f"acabamento {linha.acabamento_face_inf or '—'}: "
                 f"{format_quantity(linha.area_m2)} × {format_quantity(qt)} = "
-                f"{format_quantity(linha.area_acabamento_inf)} m2"
+                f"{format_quantity(linha.area_acabamento_inf)} m²",
             )
 
         if header == "ML orla fina" and linha.ml_orla_fina is not None:
-            return (
-                "ML orla fina = lados orlados (código) + margem da orladora, × qt\n"
-                f"→ {format_quantity(linha.ml_orla_fina)} ml (qt {format_quantity(qt)})"
+            return self._tooltip_3(
+                "Metros de orla fina (0.4): lados orlados pelo código de orlas, "
+                "multiplicados pela QT, mais a margem da orladora.",
+                "ML orla fina = lados orlados × QT + margem",
+                f"→ {format_quantity(linha.ml_orla_fina)} ml (QT {format_quantity(qt)})",
             )
         if header == "ML orla grossa" and linha.ml_orla_grossa is not None:
-            return (
-                "ML orla grossa = lados orlados (código) + margem da orladora, × qt\n"
-                f"→ {format_quantity(linha.ml_orla_grossa)} ml (qt {format_quantity(qt)})"
+            return self._tooltip_3(
+                "Metros de orla grossa (1.0): lados orlados pelo código de orlas, "
+                "multiplicados pela QT, mais a margem da orladora.",
+                "ML orla grossa = lados orlados × QT + margem",
+                f"→ {format_quantity(linha.ml_orla_grossa)} ml (QT {format_quantity(qt)})",
             )
 
         if header == "Custo MP" and linha.custo_mp is not None:
-            fator = fator_desperdicio(linha.desperdicio_percentagem)
-            return (
-                "Custo MP = área × qt × preço × (1+desp)\n"
-                f"{format_quantity(linha.area_m2)} m2 × "
-                f"{format_quantity(qt)} × "
-                f"{format_currency(linha.preco_liquido)} × {format_quantity(fator)} "
-                f"= {format_currency(linha.custo_mp)}"
+            return self._tooltip_3(
+                "Custo da matéria-prima (placa M2): área da peça pela quantidade, "
+                "ao preço do material, acrescido do desperdício.",
+                "Custo MP = Área × QT × preço × (1 + desp)",
+                f"= {format_quantity(linha.area_m2)} m² × {format_quantity(qt)} × "
+                f"{format_currency(linha.preco_liquido)} × {format_quantity(fator)} = "
+                f"{format_currency(linha.custo_mp)}",
             )
         if header == "Custo ferragem" and linha.custo_ferragem is not None:
-            fator = fator_desperdicio(linha.desperdicio_percentagem)
-            return (
-                "Custo ferragem = qt × preço × (1+desp)\n"
-                f"{format_quantity(qt)} × {format_currency(linha.preco_liquido)} × "
-                f"{format_quantity(fator)} = {format_currency(linha.custo_ferragem)}"
+            return self._tooltip_3(
+                "Custo de ferragens/acessórios (à unidade ou a metro linear): "
+                "quantidade ao preço do material, acrescido do desperdício.",
+                "Custo ferragem = QT × preço × (1 + desp)",
+                f"= {format_quantity(qt)} × {format_currency(linha.preco_liquido)} × "
+                f"{format_quantity(fator)} = {format_currency(linha.custo_ferragem)}",
             )
         if header == "Custo orla fina" and linha.custo_orla_fina is not None:
-            return (
-                "Custo orla fina = ML orla × preço/ml (convertido de m2 pela "
-                "largura da orla)\n"
-                f"{format_quantity(linha.ml_orla_fina)} ml → "
-                f"{format_currency(linha.custo_orla_fina)}"
+            return self._tooltip_3(
+                "Custo da orla fina: metros de orla ao preço por metro (convertido "
+                "de m² pela largura da fita).",
+                "Custo orla fina = ML orla fina × preço/ml",
+                f"= {format_quantity(linha.ml_orla_fina)} ml → "
+                f"{format_currency(linha.custo_orla_fina)}",
             )
         if header == "Custo orla grossa" and linha.custo_orla_grossa is not None:
-            return (
-                "Custo orla grossa = ML orla × preço/ml (convertido de m2 pela "
-                "largura da orla)\n"
-                f"{format_quantity(linha.ml_orla_grossa)} ml → "
-                f"{format_currency(linha.custo_orla_grossa)}"
+            return self._tooltip_3(
+                "Custo da orla grossa: metros de orla ao preço por metro "
+                "(convertido de m² pela largura da fita).",
+                "Custo orla grossa = ML orla grossa × preço/ml",
+                f"= {format_quantity(linha.ml_orla_grossa)} ml → "
+                f"{format_currency(linha.custo_orla_grossa)}",
             )
         if header == "Custo orlas" and linha.custo_orlas is not None:
-            return (
-                "Custo orlas = orla fina + orla grossa\n"
-                f"{format_currency(linha.custo_orla_fina)} + "
-                f"{format_currency(linha.custo_orla_grossa)} "
-                f"= {format_currency(linha.custo_orlas)}"
+            return self._tooltip_3(
+                "Custo total de orlas: soma das orlas fina e grossa da peça.",
+                "Custo orlas = orla fina + orla grossa",
+                f"= {format_currency(linha.custo_orla_fina)} + "
+                f"{format_currency(linha.custo_orla_grossa)} = "
+                f"{format_currency(linha.custo_orlas)}",
             )
         if header == "Custo acabamento" and linha.custo_acabamento is not None:
-            return (
-                "Custo acabamento = Σ faces (área × preço × (1+desp))\n"
-                f"sup {format_quantity(linha.area_acabamento_sup)} m2 + "
-                f"inf {format_quantity(linha.area_acabamento_inf)} m2 → "
-                f"{format_currency(linha.custo_acabamento)}"
+            return self._tooltip_3(
+                "Custo de acabamento: área acabada de cada face ao preço do "
+                "acabamento, acrescido do desperdício.",
+                "Custo acabamento = Σ faces (área acab. × preço × (1 + desp))",
+                f"= sup {format_quantity(linha.area_acabamento_sup)} m² + "
+                f"inf {format_quantity(linha.area_acabamento_inf)} m² → "
+                f"{format_currency(linha.custo_acabamento)}",
             )
         if header == "Custo corte" and linha.custo_corte is not None:
-            return (
-                "Custo corte = perímetro × qt × €/ML + qt × setup\n"
-                f"{format_quantity(linha.perimetro_ml)} × "
-                f"{format_quantity(qt)} → {format_currency(linha.custo_corte)}"
+            return self._tooltip_3(
+                "Custo de corte: perímetro da peça cortado na seccionadora, "
+                "cobrado ao metro linear, mais movimentação por peça.",
+                "Custo corte = perímetro × QT × tarifa €/ML + QT × setup €/peça",
+                f"= {format_quantity(linha.perimetro_ml)} ml × {format_quantity(qt)} → "
+                f"{format_currency(linha.custo_corte)}",
             )
         if header == "Custo orlagem" and linha.custo_orlagem is not None:
-            return (
-                "Custo orlagem = ML orla total × €/ML + qt × setup\n"
-                f"{format_quantity(ml_orla_total)} ml → "
-                f"{format_currency(linha.custo_orlagem)}"
+            return self._tooltip_3(
+                "Custo de orlagem: metros de orla colados na orladora, cobrados ao "
+                "metro linear, mais movimentação por peça.",
+                "Custo orlagem = ML orla total × tarifa €/ML + QT × setup €/peça",
+                f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
+                f"{format_currency(linha.custo_orlagem)}",
             )
         if header == "Custo CNC" and linha.custo_cnc is not None:
-            return (
-                "Custo CNC = escalão por área × preço/peça × qt\n"
-                f"área {format_quantity(linha.area_m2)} m2 × qt "
-                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}"
+            return self._tooltip_3(
+                "Custo de CNC: maquinação cobrada pelo escalão de área da peça, "
+                "multiplicada pela quantidade.",
+                "Custo CNC = preço do escalão (por área) × QT",
+                f"= área {format_quantity(linha.area_m2)} m² × QT "
+                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}",
             )
+        if header == "Custo mont./manual" and linha.custo_montagem_manual is not None:
+            return self._tooltip_montagem_manual(linha, qt)
         if header == "Custo produção" and linha.custo_producao is not None:
-            return (
-                "Custo produção = corte + orlagem + CNC\n"
-                f"{format_currency(linha.custo_corte)} + "
+            return self._tooltip_3(
+                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC "
+                "e montagem/manual.",
+                "Custo produção = corte + orlagem + CNC + mont./manual",
+                f"= {format_currency(linha.custo_corte)} + "
                 f"{format_currency(linha.custo_orlagem)} + "
-                f"{format_currency(linha.custo_cnc)} "
-                f"= {format_currency(linha.custo_producao)}"
+                f"{format_currency(linha.custo_cnc)} + "
+                f"{format_currency(linha.custo_montagem_manual)} = "
+                f"{format_currency(linha.custo_producao)}",
             )
         if header == "Custo total" and linha.custo_total is not None:
-            return (
+            return self._tooltip_3(
+                "Custo total da linha: soma de matéria-prima, ferragens, orlas, "
+                "acabamento e produção, descontando os custos marcados em Excluir.",
                 "Custo total = MP + ferragem + orlas + acabamento + produção "
-                "(respeitando os checks Excluir)\n"
-                f"MP {format_currency(linha.custo_mp)} + "
+                "(− excluídos)",
+                f"= MP {format_currency(linha.custo_mp)} + "
                 f"ferragem {format_currency(linha.custo_ferragem)} + "
                 f"orlas {format_currency(linha.custo_orlas)} + "
-                f"acabamento {format_currency(linha.custo_acabamento)} + "
-                f"produção {format_currency(linha.custo_producao)} = "
-                f"{format_currency(linha.custo_total)}"
+                f"acab {format_currency(linha.custo_acabamento)} + "
+                f"prod {format_currency(linha.custo_producao)} = "
+                f"{format_currency(linha.custo_total)}",
             )
 
         return None
 
-    def _tooltip_medida(self, raw, real) -> str | None:
-        """Formula tooltip for a measure cell that holds an expression."""
+    def _tooltip_3(
+        self, descricao: str, formula: str, substituicao: str | None
+    ) -> str:
+        """Join the three tooltip blocks (rule, formula, substitution)."""
+        blocos = [descricao, formula]
+        if substituicao:
+            blocos.append(substituicao)
+        return "\n".join(blocos)
+
+    def _custo_hora_derivado(self, custo, tempo_min):
+        """Back-derive a machine €/hour from a stored cost and time (or None)."""
+        custo_v = custo if isinstance(custo, Decimal) else None
+        tempo_v = tempo_min if isinstance(tempo_min, Decimal) else None
+        if custo_v is None or not tempo_v:
+            return None
+        return custo_v * Decimal("60") / tempo_v
+
+    def _tooltip_montagem_manual(
+        self, linha: OrcamentoItemCusteioLinhaResumo, qt
+    ) -> str:
+        """3-block tooltip for the assembly/manual cost (piece or manual line)."""
+        custo = linha.custo_montagem_manual
+        if linha.tipo_linha == OPERACAO_MANUAL:
+            minutos = linha.minutos_unitarios
+            if minutos is None and linha.tempo_manual is not None and qt:
+                minutos = linha.tempo_manual / qt
+            custo_hora = self._custo_hora_derivado(custo, linha.tempo_manual)
+            maquina = linha.maquina or "—"
+            return self._tooltip_3(
+                f"Trabalho manual avulso cobrado ao tempo na máquina {maquina}.",
+                "Custo = minutos × QT / 60 × custo/hora",
+                f"= {format_quantity(minutos)} × {format_quantity(qt)} / 60 × "
+                f"{format_currency(custo_hora)} = {format_currency(custo)}",
+            )
+
+        tempo_total = (
+            (linha.tempo_montagem or Decimal("0"))
+            + (linha.tempo_manual or Decimal("0"))
+            + (linha.tempo_setup or Decimal("0"))
+        )
+        custo_hora = self._custo_hora_derivado(custo, tempo_total)
+        return self._tooltip_3(
+            "Custo de montagem/trabalho manual: tempo das operações de montagem e "
+            "manual da peça, ao custo/hora da máquina.",
+            "Custo mont./manual = (tempo / 60) × custo/hora da máquina",
+            f"= {format_quantity(tempo_total)} min / 60 × "
+            f"{format_currency(custo_hora)} = {format_currency(custo)}",
+        )
+
+    def _tooltip_medida(self, label, raw, real) -> str | None:
+        """3-block tooltip for a measure cell that holds an expression."""
         if real is None:
             return None
 
         texto = (raw or "").strip()
-        if texto and any(c.isalpha() or c in "+-*/()" for c in texto):
-            return f"{texto} → {format_mm(real)}"
+        if not (texto and any(c.isalpha() or c in "+-*/()" for c in texto)):
+            return None
 
-        return None
+        return self._tooltip_3(
+            f"{label} da peça: medida avaliada no contexto do item "
+            "(H=altura, L=largura, P=profundidade).",
+            f"{label} = expressão escrita pelo utilizador",
+            f"= {texto} → {format_mm(real)}",
+        )
 
     def _on_cell_changed(self, row: int, column: int) -> None:
         """Save an edited quantity/measure cell and recompute the line."""
@@ -1045,6 +1140,13 @@ class OrcamentoItemCusteioPage(QWidget):
         menu.addAction("Limpar Dados do Material", self.limpar_dados_material_linha)
         menu.addSeparator()
         menu.addAction("Editar Dados do Acabamento", self.editar_dados_acabamento_linha)
+        menu.addSeparator()
+        menu.addAction("Inserir operação manual...", self.inserir_operacao_manual_linha)
+        linha_sel = self._get_linha_selecionada()
+        if linha_sel is not None and linha_sel.tipo_linha == OPERACAO_MANUAL:
+            menu.addAction(
+                "Editar operação manual...", self.editar_operacao_manual_linha
+            )
         menu.addSeparator()
         self._preencher_menu_exclusoes(menu.addMenu("Exclusões"))
         menu.addSeparator()
@@ -1239,6 +1341,90 @@ class OrcamentoItemCusteioPage(QWidget):
             self.carregar()
             self.status_label.setText("Acabamento da linha atualizado.")
 
+    def _maquinas_montagem_manual(self):
+        """Active machines of type MANUAL/MONTAGEM for the manual-operation dialog."""
+        try:
+            with SessionLocal() as session:
+                maquinas = DefMaquinaService(session).listar_maquinas_ativas()
+        except SQLAlchemyError:
+            return []
+        return [m for m in maquinas if (m.tipo or "").upper() in ("MANUAL", "MONTAGEM")]
+
+    def inserir_operacao_manual_linha(self) -> None:
+        """Open the dialog to add a user-defined manual-operation line."""
+        maquinas = self._maquinas_montagem_manual()
+        if not maquinas:
+            self.status_label.setText(
+                "Crie uma máquina MANUAL ou MONTAGEM (Configurações → Máquinas)."
+            )
+            return
+
+        saved = False
+
+        def handle_save(dados) -> bool:
+            nonlocal saved
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(session).inserir_operacao_manual(
+                        self.item_id,
+                        descricao=dados.descricao,
+                        def_maquina_id=dados.def_maquina_id,
+                        tempo_minutos=dados.tempo_minutos,
+                        quantidade=dados.quantidade,
+                    )
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("Não foi possível inserir a operação manual.")
+                return False
+
+            saved = True
+            return True
+
+        dialog = OperacaoManualDialog(maquinas, parent=self, on_save=handle_save)
+        if dialog.exec() and saved:
+            self.carregar()
+            self.status_label.setText("Operação manual inserida.")
+
+    def editar_operacao_manual_linha(self) -> None:
+        """Open the dialog to edit the selected manual-operation line."""
+        linha = self._get_linha_selecionada()
+        if linha is None or linha.tipo_linha != OPERACAO_MANUAL:
+            self.status_label.setText("Selecione uma linha de operação manual.")
+            return
+
+        maquinas = self._maquinas_montagem_manual()
+        saved = False
+
+        def handle_save(dados) -> bool:
+            nonlocal saved
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(session).editar_operacao_manual(
+                        linha.id,
+                        descricao=dados.descricao,
+                        def_maquina_id=dados.def_maquina_id,
+                        tempo_minutos=dados.tempo_minutos,
+                        quantidade=dados.quantidade,
+                    )
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("Não foi possível atualizar a operação manual.")
+                return False
+
+            saved = True
+            return True
+
+        dialog = OperacaoManualDialog(
+            maquinas,
+            descricao=linha.descricao or "",
+            def_maquina_id=linha.def_maquina_id,
+            tempo_minutos=linha.tempo_manual,
+            quantidade=linha.quantidade,
+            parent=self,
+            on_save=handle_save,
+        )
+        if dialog.exec() and saved:
+            self.carregar()
+            self.status_label.setText("Operação manual atualizada.")
+
     def _linha_para_valores(
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> dict[str, str]:
@@ -1315,6 +1501,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo corte": format_currency(linha.custo_corte),
             "Custo orlagem": format_currency(linha.custo_orlagem),
             "Custo CNC": format_currency(linha.custo_cnc),
+            "Custo mont./manual": format_currency(linha.custo_montagem_manual),
             "Custo produção": format_currency(linha.custo_producao),
             "Observações produção": linha.observacoes or "",
             "Custo total": format_currency(linha.custo_total),

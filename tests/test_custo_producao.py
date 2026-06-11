@@ -13,6 +13,8 @@ from app.domain.custo_producao import (
     calcular_custo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem,
+    calcular_custo_por_minutos,
+    calcular_tempo_operacao,
     selecionar_escalao_area,
     somar_custo_producao,
 )
@@ -146,3 +148,63 @@ def test_custo_cnc_area_excede_e_sem_no_limite() -> None:
     custo, motivo = calcular_custo_cnc(Decimal("0.50"), Decimal("1"), escaloes)
     assert custo is None
     assert motivo == MOTIVO_SEM_ESCALOES
+
+
+def test_tempo_operacao_peca() -> None:
+    # PECA: setup + (base × qt) × por_unidade = 2 + (2 × 3) × 0.5 = 5 min.
+    setup, variavel = calcular_tempo_operacao(
+        "PECA", Decimal("2"), Decimal("2"), Decimal("0.5"), None, Decimal("3")
+    )
+    assert setup == Decimal("2")
+    assert variavel == Decimal("3")
+
+
+def test_tempo_operacao_base_vazia_usa_qt() -> None:
+    setup, variavel = calcular_tempo_operacao(
+        "FURO", None, Decimal("0"), Decimal("0.5"), None, Decimal("4")
+    )
+    assert variavel == Decimal("2")  # (1 × 4) × 0.5
+
+
+def test_tempo_operacao_m2() -> None:
+    setup, variavel = calcular_tempo_operacao(
+        "M2", None, Decimal("0"), Decimal("2"), Decimal("1.5"), Decimal("2")
+    )
+    assert variavel == Decimal("6")  # (1.5 × 2) × 2
+
+
+def test_tempo_operacao_hora() -> None:
+    # HORA: base hours × 60 (the operation time itself).
+    setup, variavel = calcular_tempo_operacao(
+        "HORA", Decimal("0.5"), Decimal("0"), None, None, Decimal("1")
+    )
+    assert setup == Decimal("0")
+    assert variavel == Decimal("30")  # 0.5 × 60
+
+
+def test_tempo_operacao_lote() -> None:
+    setup, variavel = calcular_tempo_operacao(
+        "LOTE", Decimal("3"), Decimal("1"), Decimal("2"), None, Decimal("10")
+    )
+    assert variavel == Decimal("6")  # 3 × 2 (qt ignored for LOTE)
+
+
+def test_tempo_operacao_sem_tempos() -> None:
+    setup, variavel = calcular_tempo_operacao(
+        "PECA", Decimal("2"), None, None, None, Decimal("3")
+    )
+    assert setup is None and variavel is None
+
+
+def test_custo_por_minutos() -> None:
+    # tempo × €/h / 60 (multiply first -> exact for clean inputs).
+    assert calcular_custo_por_minutos(Decimal("30"), Decimal("20")) == Decimal("10")
+    assert calcular_custo_por_minutos(Decimal("10"), Decimal("30")) == Decimal("5")
+    assert calcular_custo_por_minutos(None, Decimal("20")) is None
+    assert calcular_custo_por_minutos(Decimal("10"), None) is None
+
+
+def test_somar_custo_producao_quatro_parciais() -> None:
+    assert somar_custo_producao(
+        Decimal("2.80"), Decimal("3.28"), Decimal("11"), Decimal("3.33")
+    ) == Decimal("20.41")
