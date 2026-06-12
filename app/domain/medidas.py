@@ -9,6 +9,7 @@ without raising, to be handled in a future phase.
 from __future__ import annotations
 
 import ast
+import re
 from decimal import Decimal, InvalidOperation
 
 # Item variable aliases accepted in a measure expression.
@@ -27,6 +28,24 @@ VARIAVEIS_ITEM = (
 # Local (independent division / module) variable aliases. These only exist
 # after an independent-division line and override nothing in the global context.
 VARIAVEIS_LOCAIS = ("HM", "LM", "PM")
+
+# Identifier tokens (variable names) inside a measure expression.
+_TOKEN_VARIAVEL = re.compile(r"[A-Za-z_]\w*")
+
+
+def normalizar_variaveis_medida(texto):
+    """Uppercase the variable letters of a measure expression text.
+
+    Variable names (H, L, P, HM, L1, ...) are matched as identifier tokens and
+    uppercased; numbers, operators and spacing are kept exactly as written.
+    Non-string input is returned unchanged. The evaluator is already
+    case-insensitive, so this only normalises the stored/displayed text
+    ("l/5*2" -> "L/5*2", "hm-50" -> "HM-50").
+    """
+    if not isinstance(texto, str):
+        return texto
+
+    return _TOKEN_VARIAVEL.sub(lambda match: match.group(0).upper(), texto)
 
 
 def normalizar_numero(valor) -> Decimal | None:

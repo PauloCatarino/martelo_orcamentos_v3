@@ -10,7 +10,30 @@ from app.domain.medidas import (
     calcular_perimetro_ml,
     construir_contexto_item,
     normalizar_numero,
+    normalizar_variaveis_medida,
 )
+
+
+def test_normalizar_variaveis_medida_maiusculas() -> None:
+    # Variable letters are uppercased; numbers/operators/spacing are kept.
+    assert normalizar_variaveis_medida("l/5*2") == "L/5*2"
+    assert normalizar_variaveis_medida("hm-50") == "HM-50"
+    assert normalizar_variaveis_medida("(h-50)/2") == "(H-50)/2"
+    assert normalizar_variaveis_medida("l1+l2") == "L1+L2"
+    assert normalizar_variaveis_medida("p") == "P"
+    # Plain numbers and already-uppercase text are unchanged.
+    assert normalizar_variaveis_medida("2100") == "2100"
+    assert normalizar_variaveis_medida("L / 5 * 2") == "L / 5 * 2"
+    # The evaluated result is the same before and after normalising the text.
+    contexto = construir_contexto_item(Decimal("2100"), Decimal("800"), Decimal("560"))
+    assert avaliar_medida(
+        normalizar_variaveis_medida("l/5*2"), contexto
+    ) == avaliar_medida("l/5*2", contexto)
+
+
+def test_normalizar_variaveis_medida_entrada_nao_texto() -> None:
+    assert normalizar_variaveis_medida(None) is None
+    assert normalizar_variaveis_medida(Decimal("12")) == Decimal("12")
 
 
 def test_avaliar_medida_variaveis_do_item() -> None:

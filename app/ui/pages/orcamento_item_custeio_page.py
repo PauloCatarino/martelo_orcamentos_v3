@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -29,6 +31,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.custos import eh_unidade_ml, fator_desperdicio
+from app.domain.medidas import construir_contexto_item, normalizar_variaveis_medida
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     OPERACAO_MANUAL,
@@ -142,10 +145,10 @@ class OrcamentoItemCusteioPage(QWidget):
         # Quantidades e medidas
         "QT mod",
         "QT und",
-        "QT total",
         "Comp",
         "Larg",
         "Esp",
+        "QT total",
         "Comp real",
         "Larg real",
         "Esp real",
@@ -411,7 +414,13 @@ class OrcamentoItemCusteioPage(QWidget):
             | QTableWidget.EditTrigger.EditKeyPressed
             | QTableWidget.EditTrigger.AnyKeyPressed
         )
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        # Excel-like resizable columns: the user can drag the column borders.
+        # Initial widths are seeded once from the content (see _preencher_tabela).
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self._larguras_iniciais_aplicadas = False
         self.table.cellChanged.connect(self._on_cell_changed)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
@@ -425,9 +434,18 @@ class OrcamentoItemCusteioPage(QWidget):
         center_widget = QWidget()
         center_widget.setLayout(lines_layout)
 
+        # Resizable split between the parts library (left) and the lines table
+        # (right): the user can drag the handle to widen the library.
+        self.workspace_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.workspace_splitter.addWidget(self.library_panel)
+        self.workspace_splitter.addWidget(center_widget)
+        self.workspace_splitter.setStretchFactor(0, 0)
+        self.workspace_splitter.setStretchFactor(1, 1)
+        self.workspace_splitter.setSizes([320, 1000])
+
         workspace_layout = QHBoxLayout()
-        workspace_layout.addWidget(self.library_panel)
-        workspace_layout.addWidget(center_widget, stretch=1)
+        workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.addWidget(self.workspace_splitter)
 
         custeio_tab = QWidget()
         custeio_tab.setLayout(workspace_layout)
@@ -894,6 +912,12 @@ class OrcamentoItemCusteioPage(QWidget):
         finally:
             self._carregando_tabela = False
 
+        # Seed sensible initial widths once (content-based); after that the
+        # columns stay Interactive and keep the user's manual sizes on reload.
+        if not self._larguras_iniciais_aplicadas and linhas:
+            self.table.resizeColumnsToContents()
+            self._larguras_iniciais_aplicadas = True
+
     def _preencher_linha(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
     ) -> None:
@@ -964,13 +988,27 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         fator = fator_desperdicio(linha.desperdicio_percentagem)
 
-        # Measure expressions: rule + formula + evaluated value.
+        # Quantities: QT total = QT mod × QT und, with the line's real numbers.
+        if header in ("QT mod", "QT und", "QT total"):
+            return self._tooltip_quantidade(header, linha)
+
+        # Measure expressions: rule + formula + substituted value.
         if header == "Comp":
             return self._tooltip_medida("Comprimento", linha.comp, linha.comp_real)
         if header == "Larg":
             return self._tooltip_medida("Largura", linha.larg, linha.larg_real)
         if header == "Esp":
             return self._tooltip_medida("Espessura", linha.esp, linha.esp_real)
+
+        # Evaluated measures (real): the value and its origin.
+        if header == "Comp real":
+            return self._tooltip_medida_real(
+                "Comprimento real", linha.comp, linha.comp_real
+            )
+        if header == "Larg real":
+            return self._tooltip_medida_real("Largura real", linha.larg, linha.larg_real)
+        if header == "Esp real":
+            return self._tooltip_medida_real("Espessura real", linha.esp, linha.esp_real)
 
         if header == "Área m²" and linha.area_m2 is not None:
             return self._tooltip_3(
@@ -1346,20 +1384,79 @@ class OrcamentoItemCusteioPage(QWidget):
             ),
         )
 
+    def _tooltip_quantidade(
+        self, header: str, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> str:
+        """3-block tooltip for the quantity columns (QT mod / QT und / QT total)."""
+        descricoes = {
+            "QT mod": "Quantidade por módulo da linha.",
+            "QT und": "Quantidade de unidades da linha.",
+            "QT total": "Quantidade total da linha (entra nas áreas, custos e "
+            "tempos).",
+        }
+        return self._tooltip_3(
+            descricoes[header],
+            "QT total = QT mod × QT und",
+            f"= {format_quantity(linha.qt_mod)} × {format_quantity(linha.qt_und)} = "
+            f"{format_quantity(linha.quantidade)}",
+        )
+
+    def _substituir_variaveis_medida(self, texto: str) -> str:
+        """Replace the item variables (H/L/P...) in an expression with their mm values."""
+        contexto = construir_contexto_item(
+            self.item.altura, self.item.largura, self.item.profundidade
+        )
+
+        def _repl(match: "re.Match[str]") -> str:
+            valor = contexto.get(match.group(0).upper())
+            return format_quantity(valor) if valor is not None else match.group(0)
+
+        return re.sub(r"[A-Za-z_]\w*", _repl, texto)
+
     def _tooltip_medida(self, label, raw, real) -> str | None:
-        """3-block tooltip for a measure cell that holds an expression."""
+        """3-block tooltip for a measure cell that holds an expression.
+
+        Shows the (uppercased) expression, the substitution with the item's real
+        variable values when present, and the evaluated result in mm
+        (e.g. "L/5*2 → 2100/5*2 = 840 mm").
+        """
         if real is None:
             return None
 
-        texto = (raw or "").strip()
-        if not (texto and any(c.isalpha() or c in "+-*/()" for c in texto)):
-            return None
+        texto = normalizar_variaveis_medida((raw or "").strip())
+        tem_variavel = any(c.isalpha() for c in texto)
+        tem_operador = any(c in "+-*/()" for c in texto)
+        if not texto or not (tem_variavel or tem_operador):
+            return None  # plain number: no formula tooltip needed
+
+        meio = ""
+        if tem_variavel:
+            substituido = self._substituir_variaveis_medida(texto)
+            if substituido != texto:
+                meio = f" → {substituido}"
 
         return self._tooltip_3(
             f"{label} da peça: medida avaliada no contexto do item "
             "(H=altura, L=largura, P=profundidade).",
             f"{label} = expressão escrita pelo utilizador",
-            f"= {texto} → {format_mm(real)}",
+            f"= {texto}{meio} = {format_mm(real)}",
+        )
+
+    def _tooltip_medida_real(self, label, raw, real) -> str | None:
+        """3-block tooltip for an evaluated measure (Comp/Larg/Esp real)."""
+        if real is None:
+            return None
+
+        texto = normalizar_variaveis_medida((raw or "").strip())
+        origem = (
+            f"avaliado da expressão «{texto}»"
+            if texto
+            else "herdado (material / medida do item)"
+        )
+        return self._tooltip_3(
+            f"{label}: medida em mm já avaliada, usada nos cálculos da linha.",
+            f"{label} = {origem}",
+            f"= {format_mm(real)}",
         )
 
     def _on_cell_changed(self, row: int, column: int) -> None:
@@ -1407,6 +1504,10 @@ class OrcamentoItemCusteioPage(QWidget):
         if header == "Descrição livre":
             descricao = novo_valor
         else:
+            # Comp/Larg/Esp accept variable expressions: store them with the
+            # variable letters uppercased (the evaluator is case-insensitive).
+            if header in ("Comp", "Larg", "Esp"):
+                novo_valor = normalizar_variaveis_medida(novo_valor)
             valores[self.EDITABLE_COLUMNS[header]] = novo_valor
 
         try:
@@ -1833,9 +1934,9 @@ class OrcamentoItemCusteioPage(QWidget):
             "QT mod": format_quantity(linha.qt_mod),
             "QT und": format_quantity(linha.qt_und),
             "QT total": format_quantity(linha.quantidade),
-            "Comp": "" if linha.comp is None else str(linha.comp),
-            "Larg": "" if linha.larg is None else str(linha.larg),
-            "Esp": "" if linha.esp is None else str(linha.esp),
+            "Comp": self._format_medida_var(linha.comp),
+            "Larg": self._format_medida_var(linha.larg),
+            "Esp": self._format_medida_var(linha.esp),
             "Comp real": format_quantity(linha.comp_real),
             "Larg real": format_quantity(linha.larg_real),
             "Esp real": format_quantity(linha.esp_real),
@@ -1920,6 +2021,13 @@ class OrcamentoItemCusteioPage(QWidget):
             return f"{item.codigo} - {item.item}"
 
         return item.item
+
+    def _format_medida_var(self, value) -> str:
+        """Display a measure cell (Comp/Larg/Esp) with variables uppercased."""
+        if value is None:
+            return ""
+
+        return normalizar_variaveis_medida(str(value))
 
     def _format_medida3(self, value) -> str:
         """Format an area/perimeter value with three decimals."""

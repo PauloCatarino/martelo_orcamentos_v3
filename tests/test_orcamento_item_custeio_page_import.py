@@ -611,3 +611,74 @@ def test_custeio_page_biblioteca_tooltip_nas_folhas() -> None:
     for campo in ("Código:", "Nome:", "Tipo:", "Grupo:", "Código de orlas:", "Chave ValueSet:"):
         assert campo in tooltip
     assert "Peça de serviço (sem material)" in tooltip
+
+
+def test_custeio_page_qt_total_antes_de_comp_real() -> None:
+    """Phase: QT total moves to just before Comp real (after Esp)."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    headers = OrcamentoItemCusteioPage.TABLE_HEADERS
+    i_esp = headers.index("Esp")
+    i_qt_total = headers.index("QT total")
+    i_comp_real = headers.index("Comp real")
+
+    assert i_qt_total == i_esp + 1
+    assert i_comp_real == i_qt_total + 1
+    # The editable quantity/measure inputs stay grouped and in order.
+    assert headers.index("QT mod") < headers.index("QT und") < headers.index("Comp")
+    assert headers.index("Comp") < headers.index("Larg") < headers.index("Esp")
+
+
+def test_custeio_page_colunas_redimensionaveis_e_splitter() -> None:
+    """Interactive (resizable) columns and a resizable library/table splitter."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    init_source = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "QHeaderView.ResizeMode.Interactive" in init_source
+    assert "setStretchLastSection(False)" in init_source
+    assert "QSplitter" in init_source
+    assert "workspace_splitter" in init_source
+
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_tabela)
+    assert "resizeColumnsToContents" in preencher
+
+
+def test_custeio_page_navegacao_enter_horizontal() -> None:
+    """Enter commits and moves to the next editable cell to the right."""
+    from app.ui.pages.orcamento_item_custeio_page import CusteioLinhasTable
+
+    for method in ("closeEditor", "_proxima_celula_editavel", "_editar_celula"):
+        assert hasattr(CusteioLinhasTable, method)
+
+    proxima = inspect.getsource(CusteioLinhasTable._proxima_celula_editavel)
+    # Scans to the right first, then wraps to the next rows.
+    assert "range(col + 1, self.columnCount())" in proxima
+    assert "range(row + 1, self.rowCount())" in proxima
+
+
+def test_custeio_page_normaliza_variaveis_e_tooltips() -> None:
+    """Comp/Larg/Esp normalise variables to uppercase and expose formula tooltips."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    # Save path uppercases the variables before storing.
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "normalizar_variaveis_medida" in on_changed
+
+    # Display path uppercases too.
+    fmt = inspect.getsource(OrcamentoItemCusteioPage._format_medida_var)
+    assert "normalizar_variaveis_medida" in fmt
+
+    for method in (
+        "_tooltip_quantidade",
+        "_tooltip_medida",
+        "_tooltip_medida_real",
+        "_substituir_variaveis_medida",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    tooltip_formula = inspect.getsource(OrcamentoItemCusteioPage._tooltip_formula)
+    for header in ("QT mod", "QT und", "QT total", "Comp real", "Larg real", "Esp real"):
+        assert header in tooltip_formula
+
+    qt_tooltip = inspect.getsource(OrcamentoItemCusteioPage._tooltip_quantidade)
+    assert "QT total = QT mod × QT und" in qt_tooltip
