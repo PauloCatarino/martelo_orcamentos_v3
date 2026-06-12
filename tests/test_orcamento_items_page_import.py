@@ -12,9 +12,105 @@ def test_orcamento_items_page_imports() -> None:
     from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 
     assert OrcamentoItemsPage is not None
-    assert "M\u00f3dulos" in OrcamentoItemsPage.TABLE_HEADERS
-    assert hasattr(OrcamentoItemsPage, "abrir_modulos_item_selecionado")
     assert hasattr(OrcamentoItemsPage, "abrir_custeio_item_selecionado")
+
+
+def test_orcamento_items_page_ordem_e_nomes_das_colunas() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert OrcamentoItemsPage.TABLE_HEADERS == [
+        "Ordem",
+        "C\u00f3digo",
+        "Tipo",
+        "Item",
+        "Descri\u00e7\u00e3o",
+        "Altura",
+        "Largura",
+        "Prof",
+        "Qtd",
+        "Und",
+        "Pre\u00e7o Unit\u00e1rio",
+        "Pre\u00e7o Total",
+        "Ajuste",
+        "Custo Produzido",
+        "Custo MP",
+        "Custo Produ\u00e7\u00e3o",
+        "Custo Acabamentos",
+        "Margem Lucro Efetiva",
+        "Produ\u00e7\u00e3o",
+    ]
+
+    # Abbreviated headers keep the full name in the header tooltip.
+    tooltips = OrcamentoItemsPage.HEADER_TOOLTIPS
+    assert "Profundidade" in tooltips["Prof"]
+    assert "Quantidade" in tooltips["Qtd"]
+    assert "Unidade" in tooltips["Und"]
+
+
+def test_orcamento_items_page_sem_navegacao_de_modulos() -> None:
+    """Modules moved out of the items page (future costing module library)."""
+    import app.ui.pages.orcamento_items_page as page_module
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert "M\u00f3dulos" not in OrcamentoItemsPage.TABLE_HEADERS
+    for method in (
+        "abrir_modulos_item_selecionado",
+        "_show_modulos_page",
+        "_voltar_aos_items",
+        "_format_modulos_count",
+    ):
+        assert not hasattr(OrcamentoItemsPage, method)
+
+    source = inspect.getsource(page_module)
+    assert "OrcamentoItemModulosPage" not in source
+    assert "OrcamentoItemModuloService" not in source
+    assert "modules_button" not in source
+
+
+def test_orcamento_items_page_tooltips_de_formula() -> None:
+    """The price cells expose 3-block tooltips with the real parcels."""
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    source = inspect.getsource(OrcamentoItemsPage._tooltip_formula)
+    assert "\u03a3 custo MP + \u03a3 custo orlas + \u03a3 custo ferragem" in source
+    assert "\u03a3 corte + \u03a3 orlagem + \u03a3 CNC" in source
+    assert "Custo Produzido = Custo MP + Custo Produ\u00e7\u00e3o + Custo Acabamentos" in source
+    assert "parcela_mp" in source
+    assert "parcela_corte" in source
+    assert "Pre\u00e7o manual: item sem linhas de custeio." in source
+
+    for header in (
+        "Custo Produzido",
+        "Custo MP",
+        "Custo Produ\u00e7\u00e3o",
+        "Custo Acabamentos",
+        "Ajuste",
+        "Margem Lucro Efetiva",
+        "Pre\u00e7o Unit\u00e1rio",
+        "Pre\u00e7o Total",
+    ):
+        assert f'header == "{header}"' in source
+
+
+def test_orcamento_items_page_formata_percentagem_e_euros() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    formatar = OrcamentoItemsPage._format_percentagem
+    assert formatar(None) == ""
+    assert formatar(Decimal("25.26")) == "25,3%"
+    # Rounding artifacts close to zero must never show "-0%".
+    assert formatar(Decimal("-0.004")) == "0,0%"
+    assert formatar(Decimal("0")) == "0,0%"
+
+    fmt_eur = OrcamentoItemsPage._fmt_eur
+    assert fmt_eur(Decimal("1846.05")) == "1.846,05"
+    assert fmt_eur(Decimal("28.808")) == "28,81"
+    assert fmt_eur(None) == "0,00"
+
+    fmt_pct = OrcamentoItemsPage._fmt_pct
+    assert fmt_pct(Decimal("15")) == "15%"
+    assert fmt_pct(Decimal("2.5")) == "2,5%"
+    assert fmt_pct(None) == "0%"
 
 
 def test_orcamento_items_page_formats_item_label() -> None:
@@ -38,14 +134,6 @@ def test_orcamento_items_page_formats_item_label() -> None:
     )
 
     assert OrcamentoItemsPage._format_item_label(item) == "4 PORTAS - RP_01"
-
-
-def test_orcamento_items_page_formats_modulos_count() -> None:
-    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
-
-    assert OrcamentoItemsPage._format_modulos_count(0) == "0 m\u00f3dulos"
-    assert OrcamentoItemsPage._format_modulos_count(1) == "1 m\u00f3dulo"
-    assert OrcamentoItemsPage._format_modulos_count(2) == "2 m\u00f3dulos"
 
 
 def test_orcamento_items_page_accepts_orcamento_codigo() -> None:

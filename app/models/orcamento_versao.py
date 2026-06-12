@@ -48,6 +48,23 @@ class OrcamentoVersao(Base):
     estado: Mapped[str] = mapped_column(String(50), nullable=False)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_origem: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Budget-level margins (phase 8T.0), human percentages (15 = 15%), applied
+    # per cost block when building each item's price from its cost lines.
+    margem_lucro_pct: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    margem_mp_pct: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    margem_mao_obra_pct: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    margem_acabamentos_pct: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    custos_administrativos_pct: Mapped[Decimal] = mapped_column(
+        Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
     # Production type applied to all the version items ('STD'/'SERIE'); each item
     # may override it with its own tipo_producao (phase 8S.4).
     tipo_producao_default: Mapped[str] = mapped_column(

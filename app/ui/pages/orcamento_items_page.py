@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
-    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -24,6 +24,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.item_types import get_item_type_label
+from app.domain.numeros import formatar_percentagem, parse_decimal_humano
+from app.domain.precos import (
+    BlocosCusto,
+    MargensOrcamento,
+    margem_lucro_efetiva_pct,
+)
 from app.domain.producao_types import (
     TIPO_PRODUCAO_SERIE,
     TIPO_PRODUCAO_STD,
@@ -38,9 +44,7 @@ from app.services.orcamento_item_service import (
     EditarOrcamentoItemSimplesData,
     OrcamentoItemService,
 )
-from app.services.orcamento_item_modulo_service import OrcamentoItemModuloService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
-from app.ui.pages.orcamento_item_modulos_page import OrcamentoItemModulosPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
@@ -52,18 +56,46 @@ class OrcamentoItemsPage(QWidget):
         "Ordem",
         "C\u00f3digo",
         "Tipo",
-        "M\u00f3dulos",
         "Item",
         "Descri\u00e7\u00e3o",
         "Altura",
         "Largura",
-        "Profundidade",
-        "Quantidade",
-        "Unidade",
-        "Produ\u00e7\u00e3o",
+        "Prof",
+        "Qtd",
+        "Und",
         "Pre\u00e7o Unit\u00e1rio",
         "Pre\u00e7o Total",
+        "Ajuste",
+        "Custo Produzido",
+        "Custo MP",
+        "Custo Produ\u00e7\u00e3o",
+        "Custo Acabamentos",
+        "Margem Lucro Efetiva",
+        "Produ\u00e7\u00e3o",
     ]
+
+    # Header tooltips: full names for the abbreviated columns and the meaning
+    # of the price columns (the formula tooltips are per cell).
+    HEADER_TOOLTIPS = {
+        "Prof": "Profundidade do item (mm).",
+        "Qtd": "Quantidade do item.",
+        "Und": "Unidade do item.",
+        "Custo Produzido": "Custo total de fabrico do item, sem margens "
+        "(MP + orlas + ferragens, produ\u00e7\u00e3o e acabamentos das linhas ativas, "
+        "para 1 unidade, respeitando os checks Excluir).",
+        "Custo MP": "Bloco de mat\u00e9rias-primas: placas + orlas + ferragens "
+        "das linhas ativas do custeio.",
+        "Custo Produ\u00e7\u00e3o": "Bloco de produ\u00e7\u00e3o: m\u00e1quinas (corte, orlagem, CNC) "
+        "e trabalho manual/montagem das linhas ativas do custeio.",
+        "Custo Acabamentos": "Bloco de acabamentos das linhas ativas do custeio.",
+        "Ajuste": "Ajuste manual em \u20ac somado ao pre\u00e7o unit\u00e1rio depois "
+        "das margens (pode ser negativo). Edit\u00e1vel na c\u00e9lula.",
+        "Margem Lucro Efetiva": "(Pre\u00e7o Unit\u00e1rio \u2212 Custo Produzido) "
+        "/ Custo Produzido.",
+        "Pre\u00e7o Unit\u00e1rio": "Pre\u00e7o calculado dos blocos de custo com as "
+        "margens da vers\u00e3o; manual nos items sem custeio.",
+        "Pre\u00e7o Total": "Pre\u00e7o Unit\u00e1rio \u00d7 Quantidade do item.",
+    }
 
     PRODUCAO_DEFAULT_TOOLTIP = (
         "Padr\u00e3o de produ\u00e7\u00e3o da vers\u00e3o (STD ou SERIE): aplica-se a todos os items "
@@ -89,7 +121,10 @@ class OrcamentoItemsPage(QWidget):
         self.on_items_changed = on_items_changed
         self.on_open_item_custeio = on_open_item_custeio
         self._items_by_row: dict[int, OrcamentoItemResumo] = {}
-        self._modulos_page: OrcamentoItemModulosPage | None = None
+        self._blocos_por_item: dict[int, BlocosCusto] = {}
+        self._margens = MargensOrcamento()
+        self._carregando_margens = False
+        self._carregando_tabela = False
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         title = QLabel("Items do or\u00e7amento")
@@ -100,9 +135,6 @@ class OrcamentoItemsPage(QWidget):
 
         self.edit_button = QPushButton("Editar Item")
         self.edit_button.clicked.connect(self.editar_item_selecionado)
-
-        self.modules_button = QPushButton("M\u00f3dulos")
-        self.modules_button.clicked.connect(self.abrir_modulos_item_selecionado)
 
         self.item_custeio_button = QPushButton("Custeio do Item")
         self.item_custeio_button.clicked.connect(self.abrir_custeio_item_selecionado)
@@ -140,7 +172,6 @@ class OrcamentoItemsPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
-        actions_layout.addWidget(self.modules_button)
         actions_layout.addWidget(self.item_custeio_button)
         actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
@@ -150,22 +181,35 @@ class OrcamentoItemsPage(QWidget):
         actions_layout.addWidget(self.producao_serie_button)
         actions_layout.addStretch()
 
+        margens_layout = self._criar_painel_margens()
+
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemsStatus")
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        header_producao = self.table.horizontalHeaderItem(
-            self.TABLE_HEADERS.index("Produção")
-        )
-        if header_producao is not None:
-            header_producao.setToolTip(self.PRODUCAO_ITEM_TOOLTIP)
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            header_item = self.table.horizontalHeaderItem(column_index)
+            if header_item is None:
+                continue
+            if header == "Produção":
+                header_item.setToolTip(self.PRODUCAO_ITEM_TOOLTIP)
+            elif header in self.HEADER_TOOLTIPS:
+                header_item.setToolTip(self.HEADER_TOOLTIPS[header])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Only the Ajuste cells carry the ItemIsEditable flag; the rest of the
+        # table stays read-only (and double-click keeps opening the edit dialog).
+        self.table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+        self.table.cellChanged.connect(self._on_cell_changed)
 
         self.items_list_widget = QWidget()
         items_layout = QVBoxLayout()
@@ -174,16 +218,14 @@ class OrcamentoItemsPage(QWidget):
         items_layout.addWidget(self.breadcrumb)
         items_layout.addWidget(title)
         items_layout.addLayout(actions_layout)
+        items_layout.addLayout(margens_layout)
         items_layout.addWidget(self.status_label)
         items_layout.addWidget(self.table, stretch=1)
         self.items_list_widget.setLayout(items_layout)
 
-        self.stack = QStackedWidget()
-        self.stack.addWidget(self.items_list_widget)
-
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.stack)
+        layout.addWidget(self.items_list_widget)
 
         self.setLayout(layout)
         self.carregar_items()
@@ -200,19 +242,183 @@ class OrcamentoItemsPage(QWidget):
                 tipo_default = item_service.get_tipo_producao_default(
                     self.orcamento_versao_id
                 )
-                module_counts = OrcamentoItemModuloService(session).get_counts_by_item_ids(
-                    [item.id for item in items]
+                margens = item_service.get_margens_versao(self.orcamento_versao_id)
+                blocos_por_item = item_service.get_blocos_custo_por_item(
+                    self.orcamento_versao_id
                 )
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os items.")
             return
 
         self._tipo_producao_default = tipo_default
+        self._margens = margens
+        self._blocos_por_item = blocos_por_item
         self._atualizar_seletor_producao()
-        self._preencher_tabela(items, module_counts)
+        self._atualizar_painel_margens()
+        self._preencher_tabela(items)
+        self._atualizar_soma_preco(items)
 
         if not items:
             self.status_label.setText("Sem items para mostrar.")
+
+    def _criar_painel_margens(self) -> QHBoxLayout:
+        """Build the 'Margens e Ajustes' panel (percent fields + totals)."""
+        titulo = QLabel("Margens e Ajustes:")
+        titulo.setToolTip(
+            "Margens da versão do orçamento, aplicadas por bloco de custo ao "
+            "calcular o preço de cada item. Sair de um campo aplica logo as "
+            "margens (sem recalcular custeios)."
+        )
+
+        self.margem_lucro_spin = self._criar_spin_margem(
+            "Margem de lucro: multiplica o subtotal (depois dos custos "
+            "administrativos)."
+        )
+        self.margem_mp_spin = self._criar_spin_margem(
+            "Margem de matérias-primas: multiplica o bloco MP "
+            "(placas + orlas + ferragens)."
+        )
+        self.margem_mao_obra_spin = self._criar_spin_margem(
+            "Margem de mão de obra: multiplica o bloco de produção "
+            "(corte/orlagem/CNC/montagem/manual)."
+        )
+        self.margem_acabamentos_spin = self._criar_spin_margem(
+            "Margem de acabamentos: multiplica o bloco de acabamentos."
+        )
+        self.custos_administrativos_spin = self._criar_spin_margem(
+            "Custos administrativos: multiplicam a soma dos blocos com margem."
+        )
+
+        self.soma_preco_label = QLabel("Soma Preço Final: 0,00 €")
+        self.soma_preco_label.setToolTip("Soma do Preço Total de todos os items.")
+
+        self.atualizar_custos_button = QPushButton("Atualizar Custos")
+        self.atualizar_custos_button.setToolTip(
+            "Recalcula o custeio completo de todos os items e aplica as "
+            "margens: o preço calculado substitui o preço de cada item com "
+            "linhas de custeio."
+        )
+        self.atualizar_custos_button.clicked.connect(self.atualizar_custos)
+
+        layout = QHBoxLayout()
+        layout.addWidget(titulo)
+        for label, spin in (
+            ("Margem Lucro", self.margem_lucro_spin),
+            ("Margem Matérias-Primas", self.margem_mp_spin),
+            ("Margem Mão de Obra", self.margem_mao_obra_spin),
+            ("Margem Acabamentos", self.margem_acabamentos_spin),
+            ("Custos Administrativos", self.custos_administrativos_spin),
+        ):
+            campo_label = QLabel(label + ":")
+            campo_label.setToolTip(spin.toolTip())
+            layout.addWidget(campo_label)
+            layout.addWidget(spin)
+        layout.addSpacing(16)
+        layout.addWidget(self.soma_preco_label)
+        layout.addWidget(self.atualizar_custos_button)
+        layout.addStretch()
+
+        return layout
+
+    def _criar_spin_margem(self, tooltip: str) -> QDoubleSpinBox:
+        """Build one percent field of the margins panel."""
+        spin = QDoubleSpinBox()
+        spin.setDecimals(2)
+        spin.setRange(-100.0, 999.99)
+        spin.setSuffix(" %")
+        spin.setToolTip(tooltip)
+        spin.editingFinished.connect(self._on_margens_editadas)
+        return spin
+
+    def _atualizar_painel_margens(self) -> None:
+        """Reflect the version margins on the panel fields."""
+        self._carregando_margens = True
+        try:
+            self.margem_lucro_spin.setValue(float(self._margens.margem_lucro_pct))
+            self.margem_mp_spin.setValue(float(self._margens.margem_mp_pct))
+            self.margem_mao_obra_spin.setValue(
+                float(self._margens.margem_mao_obra_pct)
+            )
+            self.margem_acabamentos_spin.setValue(
+                float(self._margens.margem_acabamentos_pct)
+            )
+            self.custos_administrativos_spin.setValue(
+                float(self._margens.custos_administrativos_pct)
+            )
+        finally:
+            self._carregando_margens = False
+
+    def _atualizar_soma_preco(self, items: list[OrcamentoItemResumo]) -> None:
+        """Refresh the 'Soma Preço Final' label from the loaded items."""
+        soma = sum(
+            (item.preco_total for item in items if item.preco_total is not None),
+            Decimal("0"),
+        )
+        self.soma_preco_label.setText(f"Soma Preço Final: {format_currency(soma)}")
+
+    def _margens_do_painel(self) -> MargensOrcamento:
+        """Read the margins panel into a MargensOrcamento (Decimal, 2 dp)."""
+
+        def valor(spin: QDoubleSpinBox) -> Decimal:
+            return Decimal(str(round(spin.value(), 2)))
+
+        return MargensOrcamento(
+            margem_lucro_pct=valor(self.margem_lucro_spin),
+            margem_mp_pct=valor(self.margem_mp_spin),
+            margem_mao_obra_pct=valor(self.margem_mao_obra_spin),
+            margem_acabamentos_pct=valor(self.margem_acabamentos_spin),
+            custos_administrativos_pct=valor(self.custos_administrativos_spin),
+        )
+
+    def _on_margens_editadas(self) -> None:
+        """Save the edited margins and re-apply the price formula (fast path)."""
+        if self._carregando_margens:
+            return
+
+        margens = self._margens_do_painel()
+        if margens == self._margens:
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = OrcamentoItemService(session).definir_margens_versao(
+                    self.orcamento_versao_id, margens
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível aplicar as margens.")
+            self.carregar_items()
+            return
+
+        self._margens = margens
+        self.carregar_items()
+        self.status_label.setText(
+            f"Margens aplicadas a {resultado.itens_atualizados} item(s); "
+            f"{resultado.itens_sem_custeio} sem custeio (preço manual mantido)."
+        )
+        self._notify_items_changed()
+
+    def atualizar_custos(self) -> None:
+        """Recompute every item's costing pipeline and apply the margins."""
+        try:
+            with SessionLocal() as session:
+                item_service = OrcamentoItemService(session)
+                items = item_service.list_items_by_versao(self.orcamento_versao_id)
+                for item in items:
+                    self._recalcular_custeio_do_item(session, item.id)
+                resultado = item_service.aplicar_precos_da_versao(
+                    self.orcamento_versao_id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível atualizar os custos.")
+            return
+
+        self.carregar_items()
+        self.status_label.setText(
+            f"Custos atualizados: preço calculado em {resultado.itens_atualizados} "
+            f"item(s); {resultado.itens_sem_custeio} sem custeio (preço manual "
+            "mantido)."
+        )
+        self._notify_items_changed()
 
     def _atualizar_seletor_producao(self) -> None:
         """Reflect the version's production default on the STD/SERIE toggle."""
@@ -334,16 +540,6 @@ class OrcamentoItemsPage(QWidget):
         self.status_label.setText("Item removido.")
         self._notify_items_changed()
 
-    def abrir_modulos_item_selecionado(self) -> None:
-        """Open modules for the selected item inside this tab."""
-        item = self._get_selected_item()
-        if item is None:
-            self.status_label.setText("Selecione um item para gerir modulos.")
-            return
-
-        self.status_label.clear()
-        self._show_modulos_page(item)
-
     def abrir_custeio_item_selecionado(self) -> None:
         """Open costing for the selected item through the optional callback."""
         item = self._get_selected_item()
@@ -358,69 +554,245 @@ class OrcamentoItemsPage(QWidget):
         self.status_label.clear()
         self.on_open_item_custeio(item)
 
-    def _show_modulos_page(self, item: OrcamentoItemResumo) -> None:
-        """Replace the list view with the selected item's modules page."""
-        if self._modulos_page is not None:
-            self.stack.removeWidget(self._modulos_page)
-            self._modulos_page.deleteLater()
-
-        self._modulos_page = OrcamentoItemModulosPage(
-            item.id,
-            item_label=self._format_item_label(item),
-            orcamento_codigo=self.orcamento_codigo,
-            on_back=self._voltar_aos_items,
-        )
-        self.stack.addWidget(self._modulos_page)
-        self.stack.setCurrentWidget(self._modulos_page)
-
-    def _voltar_aos_items(self) -> None:
-        """Return to the items table and refresh module counts."""
-        self.stack.setCurrentWidget(self.items_list_widget)
-        self.carregar_items()
-
-    def _preencher_tabela(
-        self,
-        items: list[OrcamentoItemResumo],
-        module_counts: dict[int, int] | None = None,
-    ) -> None:
+    def _preencher_tabela(self, items: list[OrcamentoItemResumo]) -> None:
         """Fill the items table."""
-        module_counts = module_counts or {}
         self._items_by_row = {}
-        self.table.setRowCount(len(items))
+        self._carregando_tabela = True
+        try:
+            self.table.setRowCount(len(items))
 
-        for row_index, item in enumerate(items):
-            self._items_by_row[row_index] = item
-            producao_efetiva = tipo_producao_efetivo(
-                item.tipo_producao, self._tipo_producao_default
+            for row_index, item in enumerate(items):
+                self._items_by_row[row_index] = item
+                producao_efetiva = tipo_producao_efetivo(
+                    item.tipo_producao, self._tipo_producao_default
+                )
+                blocos = self._blocos_por_item.get(item.id)
+                values = [
+                    str(item.ordem),
+                    item.codigo or "",
+                    get_item_type_label(item.tipo_item),
+                    item.item,
+                    item.descricao or "",
+                    format_mm(item.altura),
+                    format_mm(item.largura),
+                    format_mm(item.profundidade),
+                    format_quantity(item.quantidade),
+                    item.unidade or "",
+                    format_currency(item.preco_unitario),
+                    format_currency(item.preco_total),
+                    format_currency(item.ajuste_eur),
+                    format_currency(blocos.custo_produzido) if blocos else "",
+                    format_currency(blocos.bloco_mp) if blocos else "",
+                    format_currency(blocos.bloco_producao) if blocos else "",
+                    format_currency(blocos.bloco_acabamento) if blocos else "",
+                    self._format_percentagem(
+                        margem_lucro_efetiva_pct(
+                            item.preco_unitario,
+                            blocos.custo_produzido if blocos else None,
+                        )
+                    ),
+                    producao_efetiva,
+                ]
+
+                ajuste_column = self.TABLE_HEADERS.index("Ajuste")
+                for column_index, value in enumerate(values):
+                    header = self.TABLE_HEADERS[column_index]
+                    tooltip = self._tooltip_formula(header, item, blocos)
+                    table_item = QTableWidgetItem(value)
+                    if tooltip:
+                        table_item.setToolTip(tooltip)
+                    if column_index == 0:
+                        table_item.setData(Qt.ItemDataRole.UserRole, item.id)
+                    if column_index != ajuste_column:
+                        table_item.setFlags(
+                            table_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+                        )
+                    self.table.setItem(row_index, column_index, table_item)
+
+                self.table.setCellWidget(
+                    row_index,
+                    self.TABLE_HEADERS.index("Produção"),
+                    self._criar_combo_producao(item),
+                )
+        finally:
+            self._carregando_tabela = False
+
+    def _tooltip_formula(
+        self,
+        header: str,
+        item: OrcamentoItemResumo,
+        blocos: BlocosCusto | None,
+    ) -> str | None:
+        """3-block tooltip (rule, formula, substitution) for the price columns.
+
+        Substitutions show the REAL summands of each block (the parcels carried
+        by BlocosCusto), not just the result.
+        """
+        if header == "Preço Unitário" and blocos is None:
+            return "Preço manual: item sem linhas de custeio."
+        if blocos is None:
+            return None
+
+        if header == "Custo Produzido":
+            return self._tooltip_3(
+                "Custo total de fabrico do item, sem margens.",
+                "Custo Produzido = Custo MP + Custo Produção + Custo Acabamentos",
+                f"= {self._fmt_eur(blocos.bloco_mp)} + "
+                f"{self._fmt_eur(blocos.bloco_producao)} + "
+                f"{self._fmt_eur(blocos.bloco_acabamento)} = "
+                f"{self._fmt_eur(blocos.custo_produzido)} €",
             )
-            values = [
-                str(item.ordem),
-                item.codigo or "",
-                get_item_type_label(item.tipo_item),
-                self._format_modulos_count(module_counts.get(item.id, 0)),
-                item.item,
-                item.descricao or "",
-                format_mm(item.altura),
-                format_mm(item.largura),
-                format_mm(item.profundidade),
-                format_quantity(item.quantidade),
-                item.unidade or "",
-                producao_efetiva,
-                format_currency(item.preco_unitario),
-                format_currency(item.preco_total),
-            ]
-
-            for column_index, value in enumerate(values):
-                table_item = QTableWidgetItem(value)
-                if column_index == 0:
-                    table_item.setData(Qt.ItemDataRole.UserRole, item.id)
-                self.table.setItem(row_index, column_index, table_item)
-
-            self.table.setCellWidget(
-                row_index,
-                self.TABLE_HEADERS.index("Produção"),
-                self._criar_combo_producao(item),
+        if header == "Custo MP":
+            return self._tooltip_3(
+                "Bloco de matérias-primas: placas + orlas + ferragens "
+                "das linhas ativas.",
+                "Custo MP = Σ custo MP + Σ custo orlas + Σ custo ferragem",
+                f"= {self._fmt_eur(blocos.parcela_mp)} + "
+                f"{self._fmt_eur(blocos.parcela_orlas)} + "
+                f"{self._fmt_eur(blocos.parcela_ferragem)} = "
+                f"{self._fmt_eur(blocos.bloco_mp)} €",
             )
+        if header == "Custo Produção":
+            return self._tooltip_3(
+                "Bloco de produção: máquinas e trabalho manual.",
+                "Custo Produção = Σ corte + Σ orlagem + Σ CNC "
+                "+ Σ montagem/manual",
+                f"= {self._fmt_eur(blocos.parcela_corte)} + "
+                f"{self._fmt_eur(blocos.parcela_orlagem)} + "
+                f"{self._fmt_eur(blocos.parcela_cnc)} + "
+                f"{self._fmt_eur(blocos.parcela_montagem_manual)} = "
+                f"{self._fmt_eur(blocos.bloco_producao)} €",
+            )
+        if header == "Custo Acabamentos":
+            return self._tooltip_3(
+                "Bloco de acabamentos das linhas ativas.",
+                "Custo Acabamentos = Σ custo acabamento das linhas ativas",
+                f"= {self._fmt_eur(blocos.bloco_acabamento)} €",
+            )
+        if header == "Ajuste":
+            return self._tooltip_3(
+                "Ajuste manual em € (pode ser negativo), somado ao preço "
+                "depois das margens. Editável nesta célula.",
+                "Preço Unitário = subtotal × (1+admin) × (1+lucro) + Ajuste",
+                f"Ajuste = {self._fmt_eur(item.ajuste_eur)} €",
+            )
+        if header == "Margem Lucro Efetiva":
+            margem = margem_lucro_efetiva_pct(
+                item.preco_unitario, blocos.custo_produzido
+            )
+            if margem is None:
+                return None
+            return self._tooltip_3(
+                "Margem de lucro efetiva do item face ao custo produzido.",
+                "Margem = (Preço Unitário − Custo Produzido) / Custo Produzido",
+                f"= ({self._fmt_eur(item.preco_unitario)} − "
+                f"{self._fmt_eur(blocos.custo_produzido)}) / "
+                f"{self._fmt_eur(blocos.custo_produzido)} = "
+                f"{self._format_percentagem(margem)}",
+            )
+        if header == "Preço Unitário":
+            margens = self._margens
+            return self._tooltip_3(
+                "Preço calculado dos blocos de custo com as margens da versão.",
+                "Preço = [MP×(1+m.MP) + Prod×(1+m.MO) + Acab×(1+m.Acab)] "
+                "× (1+admin) × (1+lucro) + ajuste",
+                f"= [{self._fmt_eur(blocos.bloco_mp)}×"
+                f"(1+{self._fmt_pct(margens.margem_mp_pct)}) + "
+                f"{self._fmt_eur(blocos.bloco_producao)}×"
+                f"(1+{self._fmt_pct(margens.margem_mao_obra_pct)}) + "
+                f"{self._fmt_eur(blocos.bloco_acabamento)}×"
+                f"(1+{self._fmt_pct(margens.margem_acabamentos_pct)})] "
+                f"× (1+{self._fmt_pct(margens.custos_administrativos_pct)} admin) "
+                f"× (1+{self._fmt_pct(margens.margem_lucro_pct)} lucro) "
+                f"+ ajuste {self._fmt_eur(item.ajuste_eur)} = "
+                f"{self._fmt_eur(item.preco_unitario)} €",
+            )
+        if header == "Preço Total":
+            return self._tooltip_3(
+                "Preço total do item.",
+                "Preço Total = Preço Unitário × Qtd",
+                f"= {self._fmt_eur(item.preco_unitario)} × "
+                f"{format_quantity(item.quantidade)} = "
+                f"{self._fmt_eur(item.preco_total)} €",
+            )
+
+        return None
+
+    @staticmethod
+    def _tooltip_3(descricao: str, formula: str, substituicao: str | None) -> str:
+        """Join the three tooltip blocks (rule, formula, substitution)."""
+        blocos = [descricao, formula]
+        if substituicao:
+            blocos.append(substituicao)
+        return "\n".join(blocos)
+
+    @staticmethod
+    def _fmt_eur(valor: Decimal | None) -> str:
+        """Format an amount for tooltip parcels: 2 dp, thousands dot (1.846,05)."""
+        numero = valor if valor is not None else Decimal("0")
+        texto = f"{numero:,.2f}"  # 1,846.05
+        return texto.translate({ord(","): ".", ord("."): ","})
+
+    @staticmethod
+    def _fmt_pct(valor: Decimal | None) -> str:
+        """Format a margin for the price tooltip: trimmed percent (15% / 2,5%)."""
+        if valor is None:
+            return "0%"
+
+        return formatar_percentagem(valor).replace(".", ",") or "0%"
+
+    @staticmethod
+    def _format_percentagem(valor: Decimal | None) -> str:
+        """Format a percentage with 1 decimal and comma (25,3%), or ''.
+
+        Tiny rounding artifacts must read as zero ("0,0%"), never "-0%".
+        """
+        if valor is None:
+            return ""
+
+        arredondado = valor.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        if arredondado == 0:
+            arredondado = Decimal("0.0")
+        return f"{arredondado:.1f}%".replace(".", ",")
+
+    def _on_cell_changed(self, row: int, column: int) -> None:
+        """Save an inline-edited Ajuste cell and re-apply the item's price."""
+        if self._carregando_tabela:
+            return
+        if self.TABLE_HEADERS[column] != "Ajuste":
+            return
+
+        item = self._items_by_row.get(row)
+        if item is None:
+            return
+
+        cell = self.table.item(row, column)
+        texto = cell.text().strip() if cell is not None else ""
+
+        try:
+            ajuste = parse_decimal_humano(texto)
+        except ValueError:
+            ajuste = None
+            mensagem = "Ajuste inválido: use um número (ex.: -5 ou 12,50)."
+        else:
+            ajuste = ajuste if ajuste is not None else Decimal("0")
+            mensagem = None
+
+        if mensagem is None:
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemService(session).definir_ajuste_item(item.id, ajuste)
+                mensagem = "Ajuste do item gravado (preço re-aplicado)."
+            except (SQLAlchemyError, ValueError):
+                mensagem = "Não foi possível gravar o ajuste do item."
+
+        # Reload outside the cellChanged signal (the reload rebuilds the table).
+        def _recarregar() -> None:
+            self.carregar_items()
+            self.status_label.setText(mensagem)
+            self._notify_items_changed()
+
+        QTimer.singleShot(0, _recarregar)
 
     def _criar_combo_producao(self, item: OrcamentoItemResumo) -> QComboBox:
         """Build the per-item production combo (Padrão / STD / SERIE)."""
@@ -537,8 +909,15 @@ class OrcamentoItemsPage(QWidget):
 
         return self._items_by_row.get(row)
 
-    def _handle_row_double_click(self, row: int, _column: int) -> None:
-        """Edit an item when the user double-clicks its row."""
+    def _handle_row_double_click(self, row: int, column: int) -> None:
+        """Edit an item when the user double-clicks its row.
+
+        The Ajuste column is the exception: there the double-click opens the
+        inline editor instead of the item dialog.
+        """
+        if self.TABLE_HEADERS[column] == "Ajuste":
+            return
+
         self.table.selectRow(row)
         self.editar_item_selecionado()
 
@@ -556,14 +935,6 @@ class OrcamentoItemsPage(QWidget):
 
         label = " - ".join(part for part in parts if part)
         return label or f"Item {item.id}"
-
-    @staticmethod
-    def _format_modulos_count(count: int) -> str:
-        """Return a friendly module count."""
-        if count == 1:
-            return "1 m\u00f3dulo"
-
-        return f"{count} m\u00f3dulos"
 
     def _build_breadcrumb_items(self) -> list[str]:
         """Return breadcrumb items for the items page."""

@@ -45,6 +45,11 @@ class OrcamentoItem(Base):
     preco_unitario: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     ajuste: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Manual price adjustment in EUR (may be negative), added AFTER the margins
+    # when building preco_unitario from the cost blocks (phase 8T.0).
+    ajuste_eur: Mapped[Decimal] = mapped_column(
+        Numeric(14, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
     # Per-item production type exception: NULL inherits the version's
     # tipo_producao_default; 'STD'/'SERIE' overrides it (phase 8S.4).
     tipo_producao: Mapped[str | None] = mapped_column(String(10), nullable=True)

@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.precos import MargensOrcamento
 from app.models import OrcamentoItem, OrcamentoVersao
 
 
@@ -30,6 +31,7 @@ class OrcamentoItemResumo:
     preco_total: Decimal | None
     tipo_item: str = "OUTRO"
     tipo_producao: str | None = None
+    ajuste_eur: Decimal = Decimal("0")
 
 
 class OrcamentoItemRepository:
@@ -48,26 +50,7 @@ class OrcamentoItemRepository:
 
         items = self.session.execute(statement).scalars().all()
 
-        return [
-            OrcamentoItemResumo(
-                id=item.id,
-                orcamento_versao_id=item.orcamento_versao_id,
-                ordem=item.ordem,
-                codigo=item.codigo,
-                item=item.item,
-                descricao=item.descricao,
-                altura=item.altura,
-                largura=item.largura,
-                profundidade=item.profundidade,
-                quantidade=item.quantidade,
-                unidade=item.unidade,
-                preco_unitario=item.preco_unitario,
-                preco_total=item.preco_total,
-                tipo_item=item.tipo_item,
-                tipo_producao=item.tipo_producao,
-            )
-            for item in items
-        ]
+        return [self._to_resumo(item) for item in items]
 
     def get_next_ordem(self, orcamento_versao_id: int) -> int:
         """Return the next item order for a budget version."""
@@ -206,6 +189,62 @@ class OrcamentoItemRepository:
 
         return True
 
+    def get_margens_versao(self, orcamento_versao_id: int) -> MargensOrcamento | None:
+        """Return the version's margins (or None when the version is missing)."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return None
+
+        return MargensOrcamento(
+            margem_lucro_pct=versao.margem_lucro_pct,
+            margem_mp_pct=versao.margem_mp_pct,
+            margem_mao_obra_pct=versao.margem_mao_obra_pct,
+            margem_acabamentos_pct=versao.margem_acabamentos_pct,
+            custos_administrativos_pct=versao.custos_administrativos_pct,
+        )
+
+    def update_margens_versao(
+        self, orcamento_versao_id: int, margens: MargensOrcamento
+    ) -> bool:
+        """Store the version's margins."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.margem_lucro_pct = margens.margem_lucro_pct
+        versao.margem_mp_pct = margens.margem_mp_pct
+        versao.margem_mao_obra_pct = margens.margem_mao_obra_pct
+        versao.margem_acabamentos_pct = margens.margem_acabamentos_pct
+        versao.custos_administrativos_pct = margens.custos_administrativos_pct
+        self.session.flush()
+
+        return True
+
+    def update_ajuste_item(self, item_id: int, ajuste_eur: Decimal) -> bool:
+        """Set one item's manual price adjustment (EUR)."""
+        orcamento_item = self.session.get(OrcamentoItem, item_id)
+        if orcamento_item is None:
+            return False
+
+        orcamento_item.ajuste_eur = ajuste_eur
+        self.session.flush()
+
+        return True
+
+    def update_preco_item(
+        self, item_id: int, preco_unitario: Decimal, preco_total: Decimal
+    ) -> bool:
+        """Store one item's computed prices."""
+        orcamento_item = self.session.get(OrcamentoItem, item_id)
+        if orcamento_item is None:
+            return False
+
+        orcamento_item.preco_unitario = preco_unitario
+        orcamento_item.preco_total = preco_total
+        self.session.flush()
+
+        return True
+
     def sum_preco_total_by_versao(self, orcamento_versao_id: int) -> Decimal:
         """Return the sum of item totals for one budget version."""
         statement = select(func.coalesce(func.sum(OrcamentoItem.preco_total), 0)).where(
@@ -244,4 +283,5 @@ class OrcamentoItemRepository:
             preco_total=item.preco_total,
             tipo_item=item.tipo_item,
             tipo_producao=item.tipo_producao,
+            ajuste_eur=item.ajuste_eur,
         )
