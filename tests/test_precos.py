@@ -6,12 +6,16 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from app.domain.precos import (
     BlocosCusto,
+    ItemObjetivo,
     MargensOrcamento,
+    atingir_objetivo,
     blocos_custo_da_linha,
     calcular_preco_total,
     calcular_preco_unitario,
     fator_margem,
     margem_lucro_efetiva_pct,
+    resolver_margem_lucro,
+    soma_preco_final,
     somar_blocos_custo,
 )
 
@@ -174,3 +178,112 @@ def test_margem_efetiva_none_sem_custo_produzido() -> None:
 def test_calcular_preco_total_sem_preco() -> None:
     assert calcular_preco_total(None, Decimal("2")) is None
     assert calcular_preco_total(Decimal("10"), None) == Decimal("10")
+
+
+# --- Price target resolution (phase 8T.2) -------------------------------------
+
+# One costed item over blocks 100/50/30: current price 199 x 1.03 x 1.10 =
+# 225.467 EUR with the example margins; the all-minimum floor is 180 x 1.001 =
+# 180.18 EUR (profit 0.1%, every block margin at 0%).
+_ITEM_OBJ = ItemObjetivo(
+    bloco_mp=Decimal("100"),
+    bloco_producao=Decimal("50"),
+    bloco_acabamento=Decimal("30"),
+)
+
+
+def test_soma_preco_final_e_resolver_margem_lucro() -> None:
+    itens = [_ITEM_OBJ]
+
+    assert soma_preco_final(itens, Decimal("0"), _MARGENS_EXEMPLO) == Decimal("225.467")
+
+    lucro = resolver_margem_lucro(
+        itens, Decimal("0"), _MARGENS_EXEMPLO, Decimal("245.964")
+    )
+    assert lucro == Decimal("20")  # 199 x 1.03 x 1.20 = 245.964
+
+
+def test_objetivo_atingido_so_com_lucro_acima_e_abaixo() -> None:
+    itens = [_ITEM_OBJ]
+
+    # Above the current 225.467: the profit margin rises to 20%.
+    acima = atingir_objetivo(itens, Decimal("0"), _MARGENS_EXEMPLO, Decimal("245.964"))
+    assert acima.atingido is True
+    assert acima.consome_lucro is False
+    assert acima.margens.margem_lucro_pct == Decimal("20.0000")
+    assert acima.soma_final == Decimal("245.964")
+    assert acima.margens.margem_mp_pct == Decimal("15")  # others untouched
+
+    # Below the current price but still above the floor: profit falls to 5%.
+    abaixo = atingir_objetivo(
+        itens, Decimal("0"), _MARGENS_EXEMPLO, Decimal("215.2185")
+    )
+    assert abaixo.atingido is True
+    assert abaixo.consome_lucro is False
+    assert abaixo.margens.margem_lucro_pct == Decimal("5.0000")
+
+
+def test_objetivo_fixa_lucro_no_minimo_e_resolve_em_mp() -> None:
+    resultado = atingir_objetivo(
+        [_ITEM_OBJ], Decimal("0"), _MARGENS_EXEMPLO, Decimal("200")
+    )
+
+    assert resultado.consome_lucro is True
+    assert resultado.atingido is True
+    assert resultado.margens.margem_lucro_pct == Decimal("0.1000")
+    # Resolved in raw materials: dropped below the original 15%, still >= 0.
+    assert Decimal("0") <= resultado.margens.margem_mp_pct < Decimal("15")
+    # The later cascade margins keep their original values.
+    assert resultado.margens.margem_mao_obra_pct == Decimal("5")
+    assert resultado.margens.margem_acabamentos_pct == Decimal("5")
+    assert resultado.margens.custos_administrativos_pct == Decimal("3")
+    assert abs(resultado.soma_final - Decimal("200")) < Decimal("0.01")
+
+
+def test_objetivo_cascata_atravessa_ate_acabamentos() -> None:
+    resultado = atingir_objetivo(
+        [_ITEM_OBJ], Decimal("0"), _MARGENS_EXEMPLO, Decimal("181")
+    )
+
+    assert resultado.consome_lucro is True
+    assert resultado.atingido is True
+    assert resultado.margens.margem_lucro_pct == Decimal("0.1000")
+    # mp, mo and admin were exhausted to 0; finishing absorbs the remainder.
+    assert resultado.margens.margem_mp_pct == Decimal("0")
+    assert resultado.margens.margem_mao_obra_pct == Decimal("0")
+    assert resultado.margens.custos_administrativos_pct == Decimal("0")
+    assert resultado.margens.margem_acabamentos_pct > Decimal("0")
+    assert abs(resultado.soma_final - Decimal("181")) < Decimal("0.01")
+
+
+def test_objetivo_impossivel_aplica_minimos() -> None:
+    resultado = atingir_objetivo(
+        [_ITEM_OBJ], Decimal("0"), _MARGENS_EXEMPLO, Decimal("170")
+    )
+
+    assert resultado.atingido is False
+    assert resultado.consome_lucro is True
+    assert resultado.minimo_possivel == Decimal("180.18")
+    assert resultado.soma_final == Decimal("180.18")
+    # Every margin at its minimum: profit 0.1%, every block margin 0%.
+    assert resultado.margens == MargensOrcamento(margem_lucro_pct=Decimal("0.1"))
+
+
+def test_objetivo_trata_ajuste_e_preco_manual_como_constantes() -> None:
+    item = ItemObjetivo(
+        bloco_mp=Decimal("100"),
+        bloco_producao=Decimal("50"),
+        bloco_acabamento=Decimal("30"),
+        ajuste_eur=Decimal("10"),
+        quantidade=Decimal("2"),
+    )
+    # 50 EUR is a manual-priced item's fixed preco_total (a constant).
+    # Target 561.928 = ([199 x 1.03 x 1.20 + 10] x 2) + 50 -> profit 20%.
+    resultado = atingir_objetivo(
+        [item], Decimal("50"), _MARGENS_EXEMPLO, Decimal("561.928")
+    )
+
+    assert resultado.atingido is True
+    assert resultado.consome_lucro is False
+    assert resultado.margens.margem_lucro_pct == Decimal("20.0000")
+    assert resultado.soma_final == Decimal("561.928")

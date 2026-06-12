@@ -29,6 +29,7 @@ from app.domain.numeros import formatar_percentagem, parse_decimal_humano
 from app.domain.precos import (
     BlocosCusto,
     MargensOrcamento,
+    ResultadoObjetivo,
     margem_lucro_efetiva_pct,
 )
 from app.domain.producao_types import (
@@ -99,6 +100,15 @@ class OrcamentoItemsPage(QWidget):
         "margens da vers\u00e3o; manual nos items sem custeio.",
         "Pre\u00e7o Total": "Pre\u00e7o Unit\u00e1rio \u00d7 Quantidade do item.",
     }
+
+    OBJETIVO_TOOLTIP = (
+        "Resolve as margens da versão para atingir o valor final desejado "
+        "(re-aplica a fórmula, sem recalcular custeios).\n"
+        "Primeiro ajusta a margem de lucro. Se o objetivo a consumir, fixa-a no "
+        "mínimo de 0,1% e reduz as restantes margens por esta ordem: "
+        "Matérias-Primas → Mão de Obra → Custos Administrativos "
+        "→ Acabamentos."
+    )
 
     PRODUCAO_DEFAULT_TOOLTIP = (
         "Padr\u00e3o de produ\u00e7\u00e3o da vers\u00e3o (STD ou SERIE): aplica-se a todos os items "
@@ -295,6 +305,19 @@ class OrcamentoItemsPage(QWidget):
         self.soma_preco_label = QLabel("Soma Preço Final: 0,00 €")
         self.soma_preco_label.setToolTip("Soma do Preço Total de todos os items.")
 
+        self.objetivo_spin = QDoubleSpinBox()
+        self.objetivo_spin.setDecimals(2)
+        self.objetivo_spin.setRange(0.0, 99_999_999.99)
+        self.objetivo_spin.setSuffix(" €")
+        self.objetivo_spin.setToolTip(
+            "Valor final desejado para o orçamento (€). Use o botão ao lado "
+            "para resolver as margens que o atingem."
+        )
+
+        self.objetivo_button = QPushButton("Ajustar Margens (Objetivo)")
+        self.objetivo_button.setToolTip(self.OBJETIVO_TOOLTIP)
+        self.objetivo_button.clicked.connect(self.ajustar_margens_objetivo)
+
         self.atualizar_custos_button = QPushButton("Atualizar Custos")
         self.atualizar_custos_button.setToolTip(
             "Recalcula o custeio completo de todos os items e aplica as "
@@ -326,6 +349,12 @@ class OrcamentoItemsPage(QWidget):
             layout.addWidget(spin)
         layout.addSpacing(16)
         layout.addWidget(self.soma_preco_label)
+        layout.addSpacing(16)
+        objetivo_label = QLabel("Atingir Objetivo:")
+        objetivo_label.setToolTip(self.objetivo_spin.toolTip())
+        layout.addWidget(objetivo_label)
+        layout.addWidget(self.objetivo_spin)
+        layout.addWidget(self.objetivo_button)
         layout.addWidget(self.atualizar_custos_button)
         layout.addWidget(self.repor_padrao_button)
         layout.addStretch()
@@ -367,6 +396,9 @@ class OrcamentoItemsPage(QWidget):
             Decimal("0"),
         )
         self.soma_preco_label.setText(f"Soma Preço Final: {format_currency(soma)}")
+        # Seed the target field with the current total (the button reads it on
+        # demand; nothing is applied just by loading).
+        self.objetivo_spin.setValue(float(soma))
 
     def _margens_do_painel(self) -> MargensOrcamento:
         """Read the margins panel into a MargensOrcamento (Decimal, 2 dp)."""
@@ -481,6 +513,101 @@ class OrcamentoItemsPage(QWidget):
             f"{resultado.itens_atualizados} item(s)."
         )
         self._notify_items_changed()
+
+    def ajustar_margens_objetivo(self) -> None:
+        """Resolve and apply the margins that reach the price target.
+
+        Pure preview first (no write); the warning/unreachable dialogs decide
+        whether to apply, then the resolved margins are stored and the formula
+        is re-applied (no costing recompute), following the 8T.2 cascade.
+        """
+        objetivo = Decimal(str(round(self.objetivo_spin.value(), 2)))
+
+        try:
+            with SessionLocal() as session:
+                resultado = OrcamentoItemService(session).resolver_objetivo_preco(
+                    self.orcamento_versao_id, objetivo
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível resolver o objetivo de preço.")
+            return
+
+        # Step 1 warning: the target pins the profit margin at its 0.1% floor.
+        if resultado.consome_lucro:
+            resposta = QMessageBox.question(
+                self,
+                "Atingir Objetivo",
+                "O objetivo consome a margem de lucro. A margem de lucro foi "
+                "fixada no mínimo de 0,1% e o ajuste vai continuar descontando "
+                "nas outras margens, por esta ordem: Matérias-Primas → Mão de "
+                "Obra → Custos Administrativos → Acabamentos.\n\nContinuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Objetivo cancelado: margens inalteradas.")
+                return
+
+        # Final step: unreachable even with every margin at its minimum.
+        if not resultado.atingido:
+            resposta = QMessageBox.warning(
+                self,
+                "Objetivo não atingível",
+                "Objetivo não atingível: o mínimo possível com margem de lucro "
+                f"0,1% é {format_currency(resultado.minimo_possivel)} "
+                f"(objetivo: {format_currency(objetivo)}).\n\n"
+                "As margens foram colocadas nos mínimos. Aplicar?",
+                QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if resposta != QMessageBox.StandardButton.Apply:
+                self.status_label.setText("Objetivo cancelado: margens inalteradas.")
+                return
+
+        try:
+            with SessionLocal() as session:
+                aplicado = OrcamentoItemService(session).definir_margens_versao(
+                    self.orcamento_versao_id, resultado.margens
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText(
+                "Não foi possível aplicar as margens do objetivo."
+            )
+            self.carregar_items()
+            return
+
+        self._margens = resultado.margens
+        self.carregar_items()
+        self.status_label.setText(
+            self._mensagem_objetivo(resultado, objetivo, aplicado.soma_preco_total)
+        )
+        self._notify_items_changed()
+
+    def _mensagem_objetivo(
+        self,
+        resultado: ResultadoObjetivo,
+        objetivo: Decimal,
+        soma_final: Decimal,
+    ) -> str:
+        """Build the status message after applying a price-target resolution."""
+        soma = format_currency(soma_final)
+        if not resultado.atingido:
+            return (
+                "Objetivo não atingível: mínimo possível "
+                f"{format_currency(resultado.minimo_possivel)} "
+                f"(objetivo {format_currency(objetivo)}). Margens nos mínimos; "
+                f"soma final {soma}."
+            )
+        if resultado.consome_lucro:
+            return (
+                "Objetivo atingido: margem de lucro no mínimo (0,1%) e margens "
+                f"reduzidas em cascata. Soma final: {soma}."
+            )
+        lucro = self._fmt_pct(resultado.margens.margem_lucro_pct)
+        return (
+            f"Objetivo atingido: margem de lucro ajustada para {lucro}. "
+            f"Soma final: {soma}."
+        )
 
     def _atualizar_seletor_producao(self) -> None:
         """Reflect the version's production default on the STD/SERIE toggle."""

@@ -11,7 +11,10 @@ from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, PECA_COMPOSTA
 from app.domain.item_types import normalize_item_type
 from app.domain.precos import (
     BlocosCusto,
+    ItemObjetivo,
     MargensOrcamento,
+    ResultadoObjetivo,
+    atingir_objetivo,
     blocos_custo_da_linha,
     calcular_preco_total,
     calcular_preco_unitario,
@@ -254,6 +257,44 @@ class OrcamentoItemService:
             itens_sem_custeio=sem_custeio,
             soma_preco_total=total,
         )
+
+    def resolver_objetivo_preco(
+        self, orcamento_versao_id: int, objetivo: Decimal
+    ) -> ResultadoObjetivo:
+        """Resolve the margins needed for a desired final total (no write).
+
+        Pure preview: reads the version margins, the per-item cost blocks and
+        the items, then runs the analytic resolution. Items without costing
+        contribute their stored preco_total as a constant (like the EUR
+        adjustment). The caller applies the result via definir_margens_versao.
+        """
+        margens = self.get_margens_versao(orcamento_versao_id)
+        blocos_por_item = self.get_blocos_custo_por_item(orcamento_versao_id)
+
+        itens: list[ItemObjetivo] = []
+        constante_manual = Decimal("0")
+        for item in self.repository.list_items_by_versao(orcamento_versao_id):
+            blocos = blocos_por_item.get(item.id)
+            if blocos is None:
+                if item.preco_total is not None:
+                    constante_manual += item.preco_total
+                continue
+
+            ajuste = item.ajuste_eur if item.ajuste_eur is not None else Decimal("0")
+            quantidade = (
+                item.quantidade if item.quantidade is not None else Decimal("1")
+            )
+            itens.append(
+                ItemObjetivo(
+                    bloco_mp=blocos.bloco_mp,
+                    bloco_producao=blocos.bloco_producao,
+                    bloco_acabamento=blocos.bloco_acabamento,
+                    ajuste_eur=ajuste,
+                    quantidade=quantidade,
+                )
+            )
+
+        return atingir_objetivo(itens, constante_manual, margens, objetivo)
 
     def definir_ajuste_item(self, item_id: int, ajuste_eur: Decimal) -> Decimal:
         """Set one item's manual adjustment and re-apply its price formula.
