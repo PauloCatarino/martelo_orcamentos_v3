@@ -92,6 +92,21 @@ def test_orcamento_items_page_tooltips_de_formula() -> None:
         assert f'header == "{header}"' in source
 
 
+def test_orcamento_items_page_repor_padrao() -> None:
+    """Repor Padrão re-applies the default margin set with confirmation."""
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert hasattr(OrcamentoItemsPage, "repor_margens_padrao")
+
+    source = inspect.getsource(OrcamentoItemsPage.repor_margens_padrao)
+    assert "QMessageBox.question" in source  # confirmation before replacing
+    assert "resolver_margens_padrao" in source  # cliente -> utilizador -> standard
+    assert "definir_margens_versao" in source  # re-applies prices
+
+    init_source = inspect.getsource(OrcamentoItemsPage._criar_painel_margens)
+    assert "Repor Padrão" in init_source
+
+
 def test_orcamento_items_page_formata_percentagem_e_euros() -> None:
     from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 

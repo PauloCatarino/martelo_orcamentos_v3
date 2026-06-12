@@ -57,3 +57,14 @@ def test_main_window_has_valueset_modelos_navigation_inside_configuracoes() -> N
     assert "DefValuesetModelosPage" in source
     assert '"valueset_modelos"' in source
     assert "on_open_valueset_modelos" in source
+
+
+def test_main_window_has_margens_padrao_navigation_inside_configuracoes() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "MargensPadraoPage" in source
+    assert '"margens_padrao"' in source
+    assert "on_open_margens_padrao" in source
+    assert hasattr(MainWindow, "_open_margens_padrao")

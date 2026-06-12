@@ -2,6 +2,7 @@
 
 from app.models.cliente import Cliente
 from app.models.def_maquina import DefMaquina
+from app.models.def_margem_padrao import DefMargemPadrao
 from app.models.def_maquina_escalao_area import DefMaquinaEscalaoArea
 from app.models.def_materia_prima import DefMateriaPrima
 from app.models.def_operacao import DefOperacao
@@ -25,6 +26,7 @@ from app.models.user import User
 __all__ = [
     "Cliente",
     "DefMaquina",
+    "DefMargemPadrao",
     "DefMaquinaEscalaoArea",
     "DefMateriaPrima",
     "DefOperacao",

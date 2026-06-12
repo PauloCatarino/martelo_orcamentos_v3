@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -13,6 +15,16 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.core.session import app_session
+from app.db.session import SessionLocal
+from app.domain.margens_padrao_types import (
+    AMBITO_CLIENTE,
+    AMBITO_STANDARD,
+    AMBITO_UTILIZADOR,
+)
+from app.services.def_margem_padrao_service import DefMargemPadraoService
 
 
 @dataclass(frozen=True)
@@ -26,15 +38,23 @@ class NovoOrcamentoDialogData:
     descricao: str | None
     localizacao: str | None
     ref_cliente: str | None
+    margens_escolha: str = AMBITO_STANDARD
 
 
 class NovoOrcamentoDialog(QDialog):
     """Simple modal dialog for creating a budget."""
 
+    MARGENS_TOOLTIP = (
+        "Conjunto de margens copiado para o novo orçamento como valor "
+        "inicial; dentro do orçamento o utilizador altera livremente. "
+        "'Do cliente' fica disponível quando o cliente indicado tem margens "
+        "próprias; 'Do utilizador' quando o utilizador autenticado as tem."
+    )
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
-        self.setWindowTitle("Novo Or\u00e7amento")
+        self.setWindowTitle("Novo Orçamento")
         self.setModal(True)
         self.setMinimumWidth(460)
 
@@ -47,6 +67,20 @@ class NovoOrcamentoDialog(QDialog):
         self.localizacao_input = QLineEdit()
         self.ref_cliente_input = QLineEdit()
 
+        self.margens_combo = QComboBox()
+        self.margens_combo.setToolTip(self.MARGENS_TOOLTIP)
+        self.margens_combo.addItem("Standard", AMBITO_STANDARD)
+        self.margens_combo.addItem("Do cliente", AMBITO_CLIENTE)
+        self.margens_combo.addItem("Do utilizador", AMBITO_UTILIZADOR)
+        self._carregar_disponibilidade_margens()
+        # The customer option follows the typed name/email.
+        self.nome_cliente_input.editingFinished.connect(
+            self._atualizar_opcao_margens_cliente
+        )
+        self.email_cliente_input.editingFinished.connect(
+            self._atualizar_opcao_margens_cliente
+        )
+
         self.error_label = QLabel("")
         self.error_label.setObjectName("novoOrcamentoError")
         self.error_label.setStyleSheet("color: #b00020;")
@@ -57,9 +91,10 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Email cliente", self.email_cliente_input)
         form_layout.addRow("Telefone cliente", self.telefone_cliente_input)
         form_layout.addRow("Obra", self.obra_input)
-        form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
-        form_layout.addRow("Localiza\u00e7\u00e3o", self.localizacao_input)
+        form_layout.addRow("Descrição", self.descricao_input)
+        form_layout.addRow("Localização", self.localizacao_input)
         form_layout.addRow("Ref. cliente", self.ref_cliente_input)
+        form_layout.addRow("Margens iniciais:", self.margens_combo)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -85,7 +120,60 @@ class NovoOrcamentoDialog(QDialog):
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             localizacao=self._empty_to_none(self.localizacao_input.text()),
             ref_cliente=self._empty_to_none(self.ref_cliente_input.text()),
+            margens_escolha=self.margens_combo.currentData() or AMBITO_STANDARD,
         )
+
+    def _carregar_disponibilidade_margens(self) -> None:
+        """Enable the margin options that have an applicable record."""
+        current_user = app_session.current_user
+        tem_margens_user = False
+        if current_user is not None:
+            try:
+                with SessionLocal() as session:
+                    tem_margens_user = (
+                        DefMargemPadraoService(session).margens_utilizador(
+                            current_user.id
+                        )
+                        is not None
+                    )
+            except SQLAlchemyError:
+                tem_margens_user = False
+
+        self._set_opcao_margens_enabled(AMBITO_UTILIZADOR, tem_margens_user)
+        self._atualizar_opcao_margens_cliente()
+
+    def _atualizar_opcao_margens_cliente(self) -> None:
+        """Enable 'Do cliente' when the typed customer has its own margins."""
+        try:
+            with SessionLocal() as session:
+                margens = DefMargemPadraoService(session).margens_cliente_por_contacto(
+                    self.nome_cliente_input.text(),
+                    self.email_cliente_input.text(),
+                )
+        except SQLAlchemyError:
+            margens = None
+
+        self._set_opcao_margens_enabled(AMBITO_CLIENTE, margens is not None)
+
+    def _set_opcao_margens_enabled(self, ambito: str, enabled: bool) -> None:
+        """Enable/disable one margins-combo option, resetting if selected."""
+        index = self.margens_combo.findData(ambito)
+        if index < 0:
+            return
+
+        item = self.margens_combo.model().item(index)
+        if item is None:
+            return
+
+        flags = item.flags()
+        if enabled:
+            item.setFlags(flags | Qt.ItemFlag.ItemIsEnabled)
+        else:
+            item.setFlags(flags & ~Qt.ItemFlag.ItemIsEnabled)
+            if self.margens_combo.currentIndex() == index:
+                self.margens_combo.setCurrentIndex(
+                    self.margens_combo.findData(AMBITO_STANDARD)
+                )
 
     def _validate_and_accept(self) -> None:
         """Validate required fields before accepting."""

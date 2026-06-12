@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.item_types import get_item_type_label
 from app.domain.numeros import formatar_percentagem, parse_decimal_humano
@@ -36,6 +37,7 @@ from app.domain.producao_types import (
     tipo_producao_efetivo,
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
+from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
@@ -44,6 +46,7 @@ from app.services.orcamento_item_service import (
     EditarOrcamentoItemSimplesData,
     OrcamentoItemService,
 )
+from app.services.orcamento_service import OrcamentoService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -300,6 +303,14 @@ class OrcamentoItemsPage(QWidget):
         )
         self.atualizar_custos_button.clicked.connect(self.atualizar_custos)
 
+        self.repor_padrao_button = QPushButton("Repor Padrão")
+        self.repor_padrao_button.setToolTip(
+            "Substitui as margens desta versão pelo conjunto por defeito "
+            "(margens do cliente se existirem, senão do utilizador, senão "
+            "Standard) e recalcula os preços."
+        )
+        self.repor_padrao_button.clicked.connect(self.repor_margens_padrao)
+
         layout = QHBoxLayout()
         layout.addWidget(titulo)
         for label, spin in (
@@ -316,6 +327,7 @@ class OrcamentoItemsPage(QWidget):
         layout.addSpacing(16)
         layout.addWidget(self.soma_preco_label)
         layout.addWidget(self.atualizar_custos_button)
+        layout.addWidget(self.repor_padrao_button)
         layout.addStretch()
 
         return layout
@@ -417,6 +429,56 @@ class OrcamentoItemsPage(QWidget):
             f"Custos atualizados: preço calculado em {resultado.itens_atualizados} "
             f"item(s); {resultado.itens_sem_custeio} sem custeio (preço manual "
             "mantido)."
+        )
+        self._notify_items_changed()
+
+    ORIGEM_MARGENS_LABELS = {
+        "cliente": "margens do cliente",
+        "utilizador": "margens do utilizador",
+        "standard": "margens Standard",
+        "zeros": "zeros (sem registo por defeito ativo)",
+    }
+
+    def repor_margens_padrao(self) -> None:
+        """Replace the version margins with the default set and re-price.
+
+        Resolution order: customer margins if they exist, else the current
+        user's, else the STANDARD record (zeros when nothing is active).
+        """
+        response = QMessageBox.question(
+            self,
+            "Repor Padrão",
+            "Substituir as margens desta versão pelo conjunto por defeito?\n"
+            "Os preços dos items serão recalculados.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            return
+
+        current_user = app_session.current_user
+        user_id = current_user.id if current_user is not None else None
+
+        try:
+            with SessionLocal() as session:
+                cliente_id = OrcamentoService(session).get_cliente_id_by_versao(
+                    self.orcamento_versao_id
+                )
+                margens, origem = DefMargemPadraoService(
+                    session
+                ).resolver_margens_padrao(cliente_id, user_id)
+                resultado = OrcamentoItemService(session).definir_margens_versao(
+                    self.orcamento_versao_id, margens
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível repor as margens padrão.")
+            return
+
+        self.carregar_items()
+        origem_label = self.ORIGEM_MARGENS_LABELS.get(origem, origem)
+        self.status_label.setText(
+            f"Margens repostas ({origem_label}); preço re-aplicado em "
+            f"{resultado.itens_atualizados} item(s)."
         )
         self._notify_items_changed()
 

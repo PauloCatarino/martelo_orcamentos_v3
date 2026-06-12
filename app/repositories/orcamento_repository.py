@@ -8,9 +8,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.precos import MargensOrcamento
 from app.models import Cliente, Orcamento, OrcamentoVersao
 
 
@@ -43,6 +44,16 @@ class OrcamentoCriado:
     numero_versao: int
     codigo_versao: str
     cliente_nome: str
+
+
+@dataclass(frozen=True)
+class OrcamentoVersaoCriada:
+    """Result of duplicating a budget version."""
+
+    orcamento_id: int
+    orcamento_versao_id: int
+    numero_versao: int
+    codigo_versao: str
 
 
 class OrcamentoRepository:
@@ -105,8 +116,13 @@ class OrcamentoRepository:
         localizacao: str | None,
         ref_cliente: str | None,
         created_by_id: int | None,
+        margens: MargensOrcamento | None = None,
     ) -> OrcamentoCriado:
-        """Create a simple budget with version 01."""
+        """Create a simple budget with version 01.
+
+        ``margens`` are the initial margin values copied into the version;
+        None keeps the column defaults (zeros).
+        """
         cliente = self._get_or_create_cliente_temporario(
             nome_cliente=nome_cliente,
             email_cliente=email_cliente,
@@ -139,6 +155,8 @@ class OrcamentoRepository:
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
         )
+        if margens is not None:
+            self._aplicar_margens_versao(versao, margens)
         self.session.add(versao)
         self.session.flush()
 
@@ -149,6 +167,83 @@ class OrcamentoRepository:
             codigo_versao=codigo_versao,
             cliente_nome=cliente.nome,
         )
+
+    def criar_nova_versao(
+        self,
+        orcamento_versao_id: int,
+        created_by_id: int | None = None,
+    ) -> OrcamentoVersaoCriada:
+        """Duplicate a budget version header into the next version number.
+
+        The new version starts as 'rascunho' with zero total (items are not
+        copied here) and INHERITS the source version's margins and production
+        default; preco_origem records the source version's total.
+        """
+        origem = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if origem is None:
+            raise ValueError("orcamento_versao not found")
+
+        proximo_numero = self.session.execute(
+            select(func.coalesce(func.max(OrcamentoVersao.numero_versao), 0)).where(
+                OrcamentoVersao.orcamento_id == origem.orcamento_id
+            )
+        ).scalar_one() + 1
+
+        orcamento = self.session.get(Orcamento, origem.orcamento_id)
+        codigo_versao = self._format_codigo_versao(
+            orcamento.num_orcamento, proximo_numero
+        )
+        versao = OrcamentoVersao(
+            orcamento_id=origem.orcamento_id,
+            numero_versao=proximo_numero,
+            codigo_versao=codigo_versao,
+            estado="rascunho",
+            preco_total=Decimal("0"),
+            preco_origem=origem.preco_total,
+            tipo_producao_default=origem.tipo_producao_default,
+            is_locked=False,
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
+        )
+        self._aplicar_margens_versao(
+            versao,
+            MargensOrcamento(
+                margem_lucro_pct=origem.margem_lucro_pct,
+                margem_mp_pct=origem.margem_mp_pct,
+                margem_mao_obra_pct=origem.margem_mao_obra_pct,
+                margem_acabamentos_pct=origem.margem_acabamentos_pct,
+                custos_administrativos_pct=origem.custos_administrativos_pct,
+            ),
+        )
+        self.session.add(versao)
+        self.session.flush()
+
+        return OrcamentoVersaoCriada(
+            orcamento_id=versao.orcamento_id,
+            orcamento_versao_id=versao.id,
+            numero_versao=versao.numero_versao,
+            codigo_versao=versao.codigo_versao,
+        )
+
+    def get_cliente_id_by_versao(self, orcamento_versao_id: int) -> int | None:
+        """Return the customer id of one budget version (or None)."""
+        statement = (
+            select(Orcamento.cliente_id)
+            .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
+            .where(OrcamentoVersao.id == orcamento_versao_id)
+        )
+        return self.session.execute(statement).scalars().first()
+
+    @staticmethod
+    def _aplicar_margens_versao(
+        versao: OrcamentoVersao, margens: MargensOrcamento
+    ) -> None:
+        """Copy margin values into a budget version."""
+        versao.margem_lucro_pct = margens.margem_lucro_pct
+        versao.margem_mp_pct = margens.margem_mp_pct
+        versao.margem_mao_obra_pct = margens.margem_mao_obra_pct
+        versao.margem_acabamentos_pct = margens.margem_acabamentos_pct
+        versao.custos_administrativos_pct = margens.custos_administrativos_pct
 
     def _get_or_create_cliente_temporario(
         self,

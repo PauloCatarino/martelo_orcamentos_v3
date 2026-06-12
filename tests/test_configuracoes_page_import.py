@@ -33,8 +33,18 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Opera\u00e7\u00f5es / M\u00e1quinas",
         "Chaves ValueSet",
         "Modelos ValueSet",
+        "Margens por Defeito",
         "Regras de Custeio",
     ]
+
+
+def test_configuracoes_page_has_margens_padrao_shortcut() -> None:
+    from app.ui.pages.configuracoes_page import ConfiguracoesPage
+
+    signature = inspect.signature(ConfiguracoesPage)
+
+    assert "on_open_margens_padrao" in signature.parameters
+    assert hasattr(ConfiguracoesPage, "_open_margens_padrao")
 
 
 def test_configuracoes_page_has_valueset_chaves_shortcut() -> None:

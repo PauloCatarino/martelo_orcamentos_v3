@@ -132,6 +132,7 @@ class OrcamentosPage(QWidget):
                         localizacao=form_data.localizacao,
                         ref_cliente=form_data.ref_cliente,
                         created_by_id=created_by_id,
+                        margens_escolha=form_data.margens_escolha,
                     )
                 )
         except (SQLAlchemyError, ValueError):

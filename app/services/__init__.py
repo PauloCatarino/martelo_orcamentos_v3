@@ -1,6 +1,11 @@
 """Service layer package."""
 
 from app.services.def_maquina_service import CriarDefMaquinaData, DefMaquinaService, EditarDefMaquinaData
+from app.services.def_margem_padrao_service import (
+    CriarMargemPadraoData,
+    DefMargemPadraoService,
+    EditarMargemPadraoData,
+)
 from app.services.def_operacao_service import (
     CriarDefOperacaoData,
     DefOperacaoService,
@@ -29,16 +34,19 @@ __all__ = [
     "CriarDefMaquinaData",
     "CriarDefOperacaoData",
     "CriarDefPecaData",
+    "CriarMargemPadraoData",
     "CriarDefPecaComponenteData",
     "CriarOrcamentoItemModuloSimplesData",
     "CriarOrcamentoItemSimplesData",
     "CriarOrcamentoSimplesData",
     "DefMaquinaService",
+    "DefMargemPadraoService",
     "DefOperacaoService",
     "DefPecaComponenteService",
     "DefPecaService",
     "EditarDefMaquinaData",
     "EditarDefOperacaoData",
+    "EditarMargemPadraoData",
     "EditarDefPecaComponenteData",
     "EditarDefPecaData",
     "EditarOrcamentoItemModuloSimplesData",
