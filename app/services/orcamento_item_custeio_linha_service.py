@@ -46,7 +46,7 @@ from app.domain.custo_producao import (
 )
 from app.domain.producao_types import TIPO_PRODUCAO_SERIE, tipo_producao_efetivo
 from app.domain.tempos_producao import (
-    calcular_tempos_producao,
+    calcular_tempos_producao_ligacoes,
     classificar_operacao,
 )
 from app.domain.custos import (
@@ -1134,14 +1134,19 @@ class OrcamentoItemCusteioLinhaService:
     def recalcular_tempos_producao_do_item(
         self, orcamento_item_id: int
     ) -> TemposProducaoResult:
-        """Recompute the basic production times (minutes) of an item's PECA lines.
+        """Recompute the informative production times (minutes) of PECA lines.
 
-        Reads the piece operations (DefPecaOperacao + DefOperacao) and fills
-        tempo_corte / tempo_orlagem / tempo_cnc / tempo_montagem / tempo_manual /
-        tempo_setup from each operation's ``tempo_base`` (per piece, or per ML for
-        orlagem) and ``tempo_setup``. No costs are computed and custo_total is not
-        touched. Only PECA lines with a def_peca are processed; a line whose times
-        are already filled and is edited locally is preserved.
+        Reads the time configuration from the piece↔operation links
+        (DefPecaOperacao: tempo_setup_minutos / tempo_por_unidade_minutos /
+        unidade_tempo / quantidade_base / regra_calculo) — the SAME source the
+        production cost uses — and fills tempo_corte / tempo_orlagem / tempo_cnc
+        / tempo_montagem / tempo_manual / tempo_setup. These times are purely
+        informative (production planning): they DO NOT change any cost. The
+        assembly/manual minutes match exactly the ones behind
+        custo_montagem_manual (shared helper). Only PECA lines with a def_peca
+        are processed; OPERACAO_MANUAL keeps its own tempo_manual and ferragens,
+        ML, divisions and composite parents get no time, with no warning. A line
+        whose times are already filled and is edited locally is preserved.
         """
         processadas = 0
         calculadas = 0
@@ -1155,12 +1160,14 @@ class OrcamentoItemCusteioLinhaService:
                 ignoradas += 1
                 continue
 
-            operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
             ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
                 linha.ml_orla_grossa or Decimal("0")
             )
-            tempos, _faltam_dados = calcular_tempos_producao(
-                operacoes, linha.quantidade, ml_orla_total
+            tempos = calcular_tempos_producao_ligacoes(
+                self._pares_operacao_ligacao_da_peca(linha.def_peca_id),
+                linha.area_m2,
+                linha.quantidade,
+                ml_orla_total,
             )
 
             processadas += 1
@@ -1172,9 +1179,8 @@ class OrcamentoItemCusteioLinhaService:
                 "tempo_manual": tempos["manual"] or None,
                 "tempo_setup": tempos["setup"] or None,
             }
-            # Times no longer gate the production cost (phase 8S.2): keep the
-            # computed times but never write the "tempos em falta" warning, and
-            # clear any old one still stored.
+            # Times are informative and never gate the cost: never write the old
+            # "tempos em falta" warning, and clear any still stored.
             nova_obs = self._mesclar_observacao(
                 linha.observacoes, "Tempos de produção", None
             )
@@ -1197,6 +1203,17 @@ class OrcamentoItemCusteioLinhaService:
         return TemposProducaoResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
+
+    def _pares_operacao_ligacao_da_peca(self, def_peca_id: int) -> list[tuple]:
+        """Resolve a piece's active operations into (operacao, ligacao) pairs."""
+        pares: list[tuple] = []
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
+            def_peca_id
+        ):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is not None:
+                pares.append((operacao, ligacao))
+        return pares
 
     def recalcular_custos_producao_do_item(
         self, orcamento_item_id: int

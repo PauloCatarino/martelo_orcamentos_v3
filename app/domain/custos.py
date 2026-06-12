@@ -33,6 +33,11 @@ def unidade_custo_valida(unidade) -> bool:
     return unid in _UNIDADES_M2 or unid in _UNIDADES_ML or unid in _UNIDADES_UND
 
 
+def eh_unidade_ml(unidade) -> bool:
+    """Return True when the unit is a linear-metre unit (ML/M/MTL)."""
+    return (unidade or "").strip().upper() in _UNIDADES_ML
+
+
 def desperdicio_para_fracao(desperdicio_percentagem) -> Decimal:
     """Normalize a waste value to a fraction (0.10 = 10%).
 

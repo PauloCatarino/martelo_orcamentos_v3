@@ -445,9 +445,13 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_areas_acabamento_do_item" in source
     assert "recalcular_custo_acabamento_do_item" in source
     assert "aplicar_operacoes_do_item" in source
-    # Phase 8S.2: production times are no longer in the Atualizar pipeline.
-    assert "recalcular_tempos_producao_do_item" not in source
     assert "recalcular_custos_producao_do_item" in source
+    # Phase 8R.1: informative production times are back in the pipeline, right
+    # after the production cost (so they share the same time source).
+    assert "recalcular_tempos_producao_do_item" in source
+    assert source.index("recalcular_tempos_producao_do_item") > source.index(
+        "recalcular_custos_producao_do_item"
+    )
     assert "recalcular_custo_total_do_item" in source
 
     valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)

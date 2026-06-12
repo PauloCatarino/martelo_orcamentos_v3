@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
-from app.domain.custos import fator_desperdicio
+from app.domain.custos import eh_unidade_ml, fator_desperdicio
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     OPERACAO_MANUAL,
@@ -243,6 +243,11 @@ class OrcamentoItemCusteioPage(QWidget):
         "Visto ativo = excluir este custo do cálculo. Sem visto = incluir no cálculo."
     )
 
+    # Production times are estimates for planning only — they never enter the cost.
+    TEMPO_INFORMATIVO = (
+        "Minutos estimados de produção (informativo, não entra no custo)."
+    )
+
     # Header tooltips explaining each column (the formula tooltips are per cell).
     HEADER_TOOLTIPS = {
         "Comp": "Comprimento da peça (editável; aceita expressões).",
@@ -257,7 +262,19 @@ class OrcamentoItemCusteioPage(QWidget):
         "SPP ML und": "Consumo em metro linear por unidade.",
         "SPP ML total": "Consumo em metro linear total (× QT total).",
         "Custo MP": "Custo da matéria-prima (M2): área × qt × preço × (1+desp).",
-        "Custo ferragem": "Custo de ferragens (UND) ou de materiais ML.",
+        "Custo ferragem": "Custo de ferragens à unidade (UND: Qt × preço × "
+        "(1+desp)) ou de materiais ao metro linear (ML: SPP ML total × preço × "
+        "(1+desp)). A fórmula no tooltip da célula adapta-se à unidade da linha.",
+        "Tempo corte": "Minutos estimados de corte (informativo, não entra no custo).",
+        "Tempo orlagem": "Minutos estimados de orlagem (informativo, não entra "
+        "no custo).",
+        "Tempo CNC": "Minutos estimados de CNC (informativo, não entra no custo).",
+        "Tempo montagem": "Minutos estimados de montagem (informativo, não entra "
+        "no custo). Os mesmos minutos que geram o Custo mont./manual.",
+        "Tempo manual": "Minutos estimados de trabalho manual (informativo, não "
+        "entra no custo). Os mesmos minutos que geram o Custo mont./manual.",
+        "Tempo setup": "Minutos estimados de setup das operações (informativo, "
+        "não entra no custo).",
         "Custo orla fina": "Custo da orla fina: ML × preço/ml.",
         "Custo orla grossa": "Custo da orla grossa: ML × preço/ml.",
         "Custo orlas": "Soma do custo das orlas (fina + grossa).",
@@ -502,6 +519,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 service.recalcular_custo_acabamento_do_item(self.item_id)
                 service.aplicar_operacoes_do_item(self.item_id)
                 service.recalcular_custos_producao_do_item(self.item_id)
+                service.recalcular_tempos_producao_do_item(self.item_id)
                 service.recalcular_custo_total_do_item(self.item_id)
         except (SQLAlchemyError, ValueError):
             self.carregar()
@@ -913,10 +931,18 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"{format_currency(linha.custo_mp)}",
             )
         if header == "Custo ferragem" and linha.custo_ferragem is not None:
+            if eh_unidade_ml(linha.unidade):
+                return self._tooltip_3(
+                    "Ferragem ao metro linear (SPP).",
+                    "SPP ML total × preço × (1 + desp)",
+                    f"= {format_quantity(linha.consumo_ml_total)} × "
+                    f"{format_currency(linha.preco_liquido)} × "
+                    f"{format_quantity(fator)} = "
+                    f"{format_currency(linha.custo_ferragem)}",
+                )
             return self._tooltip_3(
-                "Custo de ferragens/acessórios (à unidade ou a metro linear): "
-                "quantidade ao preço do material, acrescido do desperdício.",
-                "Custo ferragem = QT × preço × (1 + desp)",
+                "Ferragem à unidade.",
+                "Qt total × preço × (1 + desp)",
                 f"= {format_quantity(qt)} × {format_currency(linha.preco_liquido)} × "
                 f"{format_quantity(fator)} = {format_currency(linha.custo_ferragem)}",
             )
@@ -1008,6 +1034,49 @@ class OrcamentoItemCusteioPage(QWidget):
                 "e montagem/manual, multiplicada pelo fator série quando definido.",
                 "Custo produção = (corte + orlagem + CNC + mont./manual) × fator série",
                 substituicao,
+            )
+        if header == "Tempo corte" and linha.tempo_corte is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo corte = QT × tempo de corte por peça",
+                f"= QT {format_quantity(qt)} → "
+                f"{format_quantity(linha.tempo_corte)} min",
+            )
+        if header == "Tempo orlagem" and linha.tempo_orlagem is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo orlagem = ML de orla × tempo por ML",
+                f"= {format_quantity(ml_orla_total)} ml → "
+                f"{format_quantity(linha.tempo_orlagem)} min",
+            )
+        if header == "Tempo CNC" and linha.tempo_cnc is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo CNC = QT × tempo de CNC por peça",
+                f"= QT {format_quantity(qt)} → "
+                f"{format_quantity(linha.tempo_cnc)} min",
+            )
+        if header == "Tempo montagem" and linha.tempo_montagem is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo montagem = QT × tempo de montagem por peça "
+                "(os mesmos minutos do Custo mont./manual)",
+                f"= QT {format_quantity(qt)} → "
+                f"{format_quantity(linha.tempo_montagem)} min",
+            )
+        if header == "Tempo manual" and linha.tempo_manual is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo manual = QT × tempo manual por peça "
+                "(os mesmos minutos do Custo mont./manual)",
+                f"= QT {format_quantity(qt)} → "
+                f"{format_quantity(linha.tempo_manual)} min",
+            )
+        if header == "Tempo setup" and linha.tempo_setup is not None:
+            return self._tooltip_3(
+                self.TEMPO_INFORMATIVO,
+                "Tempo setup = soma dos setups das operações",
+                f"= {format_quantity(linha.tempo_setup)} min",
             )
         if header == "Tipo produção" and linha.tipo_producao:
             return (

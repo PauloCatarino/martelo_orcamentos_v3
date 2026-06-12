@@ -1747,6 +1747,44 @@ def test_recalcular_ml_com_comp_real(monkeypatch) -> None:
     assert "observacoes" not in payload
 
 
+def test_custo_ferragem_preenche_para_und_e_ml(monkeypatch) -> None:
+    # PART A.1: in the Atualizar order (ferragens UND, then ML) a UND line keeps
+    # its hardware cost and an ML line ends with its ML cost — never None.
+    service, _ = _service(monkeypatch)
+
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            unidade="UND",
+            quantidade=Decimal("5"),
+            preco_liquido=Decimal("2.53"),
+            desperdicio_percentagem=Decimal("0.02"),
+        ),
+    ]
+    service.recalcular_custos_ferragens_do_item(30)
+    service.recalcular_custos_ml_do_item(30)  # leaves the UND line untouched
+    assert _FakeRepository.updated_payload["custo_ferragem"] == Decimal("12.903")
+
+    _FakeRepository.updated_payload = None
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=2,
+            tipo_linha="FERRAGEM",
+            unidade="ML",
+            comp_real=Decimal("800"),
+            quantidade=Decimal("2"),
+            preco_liquido=Decimal("1.32"),
+            desperdicio_percentagem=Decimal("10"),
+        ),
+    ]
+    service.recalcular_custos_ferragens_do_item(30)  # clears it (deferred to ML)
+    service.recalcular_custos_ml_do_item(30)  # fills it from the ML consumption
+    custo_ferragem_ml = _FakeRepository.updated_payload["custo_ferragem"]
+    assert custo_ferragem_ml is not None
+    assert custo_ferragem_ml == Decimal("2.3232")
+
+
 def test_recalcular_ml_ignora_nao_ml(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
@@ -2219,6 +2257,7 @@ def _ligacao_tempo(
     quantidade_base=None,
     tempo_setup_minutos=None,
     tempo_por_unidade_minutos=None,
+    regra_calculo=None,
 ):
     return SimpleNamespace(
         def_operacao_id=def_operacao_id,
@@ -2226,6 +2265,7 @@ def _ligacao_tempo(
         quantidade_base=quantidade_base,
         tempo_setup_minutos=tempo_setup_minutos,
         tempo_por_unidade_minutos=tempo_por_unidade_minutos,
+        regra_calculo=regra_calculo,
     )
 
 
@@ -2324,15 +2364,21 @@ def test_aplicar_operacoes_preserva_edicao_local(monkeypatch) -> None:
 
 
 def test_recalcular_tempos_corte_orlagem_cnc(monkeypatch) -> None:
+    # Phase 8R.1: times read from the piece↔operation link (DefPecaOperacao),
+    # not from the legacy DefOperacao fields.
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {1: _peca(id=1)}
     _FakePecaOperacaoRepository.ligacoes_por_peca = {
-        1: [_ligacao_op(2), _ligacao_op(3), _ligacao_op(4)]
+        1: [
+            _ligacao_tempo(2, unidade_tempo="PECA", tempo_por_unidade_minutos=Decimal("2")),
+            _ligacao_tempo(3, unidade_tempo="ML", tempo_por_unidade_minutos=Decimal("1")),
+            _ligacao_tempo(4, unidade_tempo="PECA", tempo_por_unidade_minutos=Decimal("4")),
+        ]
     }
     _FakeOperacaoRepository.operacoes = {
-        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA", tempo_base=Decimal("2")),
-        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", unidade_calculo="ML", tempo_base=Decimal("1")),
-        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC", unidade_calculo="PECA", tempo_base=Decimal("4")),
+        2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE"),
+        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM"),
+        4: _operacao("CNC_MECANIZACAO", tipo_operacao="CNC"),
     }
     _FakeRepository.active_rows = [
         _resumo(
@@ -2349,9 +2395,9 @@ def test_recalcular_tempos_corte_orlagem_cnc(monkeypatch) -> None:
 
     assert result.calculadas == 1
     payload = _FakeRepository.updated_payload
-    assert payload["tempo_corte"] == Decimal("6")  # 2 x 3
-    assert payload["tempo_orlagem"] == Decimal("5")  # 1 x (2+3)
-    assert payload["tempo_cnc"] == Decimal("12")  # 4 x 3
+    assert payload["tempo_corte"] == Decimal("6")  # PECA: 2 x QT 3
+    assert payload["tempo_orlagem"] == Decimal("5")  # ML orla: 1 x (2+3)
+    assert payload["tempo_cnc"] == Decimal("12")  # PECA: 4 x QT 3
     assert "observacoes" not in payload
 
 
@@ -2739,6 +2785,43 @@ def test_recalcular_custos_producao_montagem(monkeypatch) -> None:
     assert payload["custo_montagem_manual"] == Decimal("10")
     assert payload["tempo_montagem"] == Decimal("30")
     assert payload["custo_producao"] == Decimal("10")
+
+
+def test_tempo_montagem_coerente_com_custo_montagem_manual(monkeypatch) -> None:
+    # PART B.2: the minutes behind custo_montagem_manual (cost step) and the
+    # tempo_montagem written by the time step must be exactly the same (shared
+    # helper, same DefPecaOperacao source).
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            _ligacao_tempo(
+                5,
+                unidade_tempo="HORA",
+                quantidade_base=Decimal("0.5"),
+                tempo_setup_minutos=Decimal("0"),
+            )
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        5: _operacao("MONTAGEM_GERAL", tipo_operacao="MONTAGEM", maquina_id=13),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        13: _maquina_tarifa("MONTAGEM", id=13, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("1")),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+    tempo_no_custo = _FakeRepository.updated_payload["tempo_montagem"]
+    custo_mm = _FakeRepository.updated_payload["custo_montagem_manual"]
+
+    service.recalcular_tempos_producao_do_item(30)
+    tempo_no_tempo = _FakeRepository.updated_payload["tempo_montagem"]
+
+    assert tempo_no_custo == tempo_no_tempo == Decimal("30")
+    assert custo_mm == Decimal("10")  # (30 / 60) × 20
 
 
 def test_recalcular_custos_producao_manual_sem_tempos(monkeypatch) -> None:
