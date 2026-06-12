@@ -286,3 +286,49 @@ def test_get_margens_versao_devolve_zeros_quando_nao_ha_versao(monkeypatch) -> N
     service, _session = _make_service(monkeypatch)
 
     assert service.get_margens_versao(99) == MargensOrcamento()
+
+
+def test_recalcular_preco_item_calcula_grava_e_devolve(monkeypatch) -> None:
+    """One item is re-priced from its lines; result mirrors the stored price."""
+    _FakeItemRepository.items = [
+        _item(1, quantidade=Decimal("2"), preco_unitario=Decimal("99")),
+    ]
+    _FakeItemRepository.margens = _MARGENS_EXEMPLO
+    _FakeItemRepository.sum_total = Decimal("450.93")
+    _FakeCusteioRepository.linhas = [
+        _linha(
+            1,
+            custo_mp=Decimal("100"),
+            custo_acabamento=Decimal("30"),
+            custo_producao=Decimal("50"),
+        ),
+    ]
+    service, session = _make_service(monkeypatch)
+
+    resultado = service.recalcular_preco_item(1)
+
+    # produced cost 100+50+30 = 180; 199 x 1.03 x 1.10 = 225.47; qt 2 -> 450.93.
+    assert resultado.custo_produzido == Decimal("180")
+    assert resultado.preco_unitario == Decimal("225.47")
+    assert resultado.preco_total == Decimal("450.93")
+    assert _FakeItemRepository.updated_precos == {
+        1: (Decimal("225.47"), Decimal("450.93"))
+    }
+    assert _FakeItemRepository.updated_versao_total == (7, Decimal("450.93"))
+    assert session.committed is True
+
+
+def test_recalcular_preco_item_sem_custeio_mantem_preco_manual(monkeypatch) -> None:
+    """An item without cost lines keeps its manual price; produced cost is 0."""
+    _FakeItemRepository.items = [
+        _item(1, preco_unitario=Decimal("10"), preco_total=Decimal("10")),
+    ]
+    _FakeCusteioRepository.linhas = []
+    service, _session = _make_service(monkeypatch)
+
+    resultado = service.recalcular_preco_item(1)
+
+    assert resultado.custo_produzido == Decimal("0")
+    assert resultado.preco_unitario == Decimal("10")  # manual kept
+    assert resultado.preco_total == Decimal("10")
+    assert _FakeItemRepository.updated_precos == {}  # nothing written

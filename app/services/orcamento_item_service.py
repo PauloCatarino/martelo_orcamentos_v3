@@ -75,6 +75,19 @@ class AplicarPrecosResult:
     soma_preco_total: Decimal
 
 
+@dataclass(frozen=True)
+class PrecoItemResult:
+    """Produced cost and stored prices of one item after re-pricing.
+
+    ``custo_produzido`` is 0 for items without costable lines (their manual
+    price is kept; ``preco_unitario``/``preco_total`` then echo that price).
+    """
+
+    custo_produzido: Decimal
+    preco_unitario: Decimal | None
+    preco_total: Decimal | None
+
+
 class OrcamentoItemService:
     """Application service for OrcamentoItem workflows."""
 
@@ -320,6 +333,41 @@ class OrcamentoItemService:
 
         return ajuste
 
+    def recalcular_preco_item(self, orcamento_item_id: int) -> PrecoItemResult:
+        """Recompute and store one item's price from its current cost lines.
+
+        Reuses the version margins and the item's cost blocks (from the costs
+        already stored on the lines — no costing pipeline recompute). The
+        computed price replaces the item's price; items without costable lines
+        keep their manual price and report a produced cost of 0. Returns the
+        produced cost and the stored unit/total prices; updates the version
+        total and commits. This is the reference value the item takes to the
+        items list.
+        """
+        item = self.repository.get_item_by_id(orcamento_item_id)
+        if item is None:
+            raise ValueError("item not found")
+
+        blocos = self._blocos_do_item(orcamento_item_id)
+        if blocos is None:
+            # No costing lines: keep the manual price; produced cost is 0.
+            return PrecoItemResult(
+                custo_produzido=Decimal("0"),
+                preco_unitario=item.preco_unitario,
+                preco_total=item.preco_total,
+            )
+
+        margens = self.get_margens_versao(item.orcamento_versao_id)
+        preco_unitario, preco_total = self._gravar_preco_item(item, blocos, margens)
+        self.recalcular_total_versao(item.orcamento_versao_id)
+        self.session.commit()
+
+        return PrecoItemResult(
+            custo_produzido=blocos.custo_produzido,
+            preco_unitario=preco_unitario,
+            preco_total=preco_total,
+        )
+
     def _blocos_do_item(self, orcamento_item_id: int) -> BlocosCusto | None:
         """Cost blocks of one item, or None when it has no costable lines."""
         blocos = [
@@ -360,20 +408,20 @@ class OrcamentoItemService:
         item: OrcamentoItemResumo,
         blocos: BlocosCusto,
         margens: MargensOrcamento,
-    ) -> None:
+    ) -> tuple[Decimal, Decimal]:
         """Compute and store one item's prices from its blocks and the margins.
 
         preco_total is computed from the full-precision unit price (and only
         then rounded), so it matches the formula rather than the rounded
-        preco_unitario.
+        preco_unitario. Returns the stored (preco_unitario, preco_total) (2 dp).
         """
         preco_unitario = calcular_preco_unitario(blocos, margens, item.ajuste_eur)
         preco_total = calcular_preco_total(preco_unitario, item.quantidade)
-        self.repository.update_preco_item(
-            item.id,
-            preco_unitario.quantize(_CENTIMOS, rounding=ROUND_HALF_UP),
-            preco_total.quantize(_CENTIMOS, rounding=ROUND_HALF_UP),
-        )
+        preco_unitario_q = preco_unitario.quantize(_CENTIMOS, rounding=ROUND_HALF_UP)
+        preco_total_q = preco_total.quantize(_CENTIMOS, rounding=ROUND_HALF_UP)
+        self.repository.update_preco_item(item.id, preco_unitario_q, preco_total_q)
+
+        return preco_unitario_q, preco_total_q
 
     def get_tipo_producao_default(self, orcamento_versao_id: int) -> str:
         """Return the version's default production type (STD when unset)."""

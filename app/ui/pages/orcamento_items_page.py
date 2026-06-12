@@ -251,6 +251,10 @@ class OrcamentoItemsPage(QWidget):
         try:
             with SessionLocal() as session:
                 item_service = OrcamentoItemService(session)
+                # Sync prices with the costing already stored on the lines (light:
+                # no full pipeline recompute), so the list reflects the costing
+                # without needing the "Atualizar Custos" button.
+                item_service.aplicar_precos_da_versao(self.orcamento_versao_id)
                 items = item_service.list_items_by_versao(self.orcamento_versao_id)
                 tipo_default = item_service.get_tipo_producao_default(
                     self.orcamento_versao_id

@@ -574,3 +574,40 @@ def test_custeio_page_tooltips_tarifa_std_serie() -> None:
     assert "fator" in formula
     assert "_tarifa_ml_tooltip" in formula
     assert "_tarifa_cnc_tooltip" in formula
+
+
+def test_custeio_page_caixa_preco_item() -> None:
+    """The page shows a read-only reference-price box updated on load."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in ("_atualizar_caixa_preco", "_tooltip_preco_item"):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    init_source = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "preco_item_label" in init_source
+
+    # The box reads its values from the service's recalcular_preco_item.
+    caixa = inspect.getsource(OrcamentoItemCusteioPage._atualizar_caixa_preco)
+    assert "recalcular_preco_item" in caixa
+    assert "Custo produzido" in caixa
+    assert "Preço unitário" in caixa
+    assert "Preço total" in caixa
+
+    # The box is refreshed whenever the page loads (and thus after Atualizar).
+    carregar = inspect.getsource(OrcamentoItemCusteioPage.carregar)
+    assert "_atualizar_caixa_preco" in carregar
+
+
+def test_custeio_page_biblioteca_tooltip_nas_folhas() -> None:
+    """Each library leaf carries a multiline detail tooltip on column 0."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_biblioteca_tooltip")
+
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_biblioteca)
+    assert "setToolTip(0" in preencher
+
+    tooltip = inspect.getsource(OrcamentoItemCusteioPage._biblioteca_tooltip)
+    for campo in ("Código:", "Nome:", "Tipo:", "Grupo:", "Código de orlas:", "Chave ValueSet:"):
+        assert campo in tooltip
+    assert "Peça de serviço (sem material)" in tooltip

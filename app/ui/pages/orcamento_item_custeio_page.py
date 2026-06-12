@@ -353,6 +353,20 @@ class OrcamentoItemCusteioPage(QWidget):
         self.save_button = QPushButton("Guardar Custeio")
         self.save_button.setEnabled(False)
 
+        # Highlighted, read-only reference price the item carries to the items
+        # list (produced cost, unit price and total). Updated on load/Atualizar.
+        self.preco_item_label = QLabel("")
+        self.preco_item_label.setObjectName("orcamentoItemCusteioPrecoBox")
+        self.preco_item_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.preco_item_label.setStyleSheet(
+            "QLabel#orcamentoItemCusteioPrecoBox {"
+            " border: 1px solid #6c7a89; border-radius: 4px;"
+            " padding: 4px 10px; font-weight: bold;"
+            " background: #eef3f8; }"
+        )
+
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
@@ -365,6 +379,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.insert_operation_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addStretch()
+        actions_layout.addWidget(self.preco_item_label)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemCusteioStatus")
@@ -465,9 +480,71 @@ class OrcamentoItemCusteioPage(QWidget):
         self._update_item_info()
         self._atualizar_producao_label()
         self._preencher_tabela(linhas)
+        self._atualizar_caixa_preco()
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
+
+    def _atualizar_caixa_preco(self) -> None:
+        """Recompute and show the item's reference price (on load / Atualizar).
+
+        Recalcula o preço a partir dos custos já gravados nas linhas (sem correr
+        o pipeline de custeio) e grava-o — é o valor que o item leva para a lista
+        de items. Items sem custeio mostram o preço manual e custo produzido 0.
+        """
+        versao_id = self.item.orcamento_versao_id
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemService(session)
+                resultado = service.recalcular_preco_item(self.item_id)
+                margens = service.get_margens_versao(versao_id)
+                blocos = service.get_blocos_custo_por_item(versao_id).get(self.item_id)
+        except (SQLAlchemyError, ValueError):
+            self.preco_item_label.setText("Preço do item indisponível.")
+            self.preco_item_label.setToolTip("")
+            return
+
+        self.preco_item_label.setText(
+            f"Custo produzido: {format_currency(resultado.custo_produzido)}"
+            f"   |   Preço unitário: {format_currency(resultado.preco_unitario)}"
+            f"   |   Preço total (×qt): {format_currency(resultado.preco_total)}"
+        )
+        self.preco_item_label.setToolTip(
+            self._tooltip_preco_item(resultado, margens, blocos)
+        )
+
+    def _tooltip_preco_item(self, resultado, margens, blocos) -> str:
+        """3-block tooltip with the item price formula and the version margins."""
+        if blocos is None:
+            return (
+                "Preço manual do item (sem linhas de custeio).\n"
+                "O preço unitário e total vêm do valor introduzido no item; "
+                "o custo produzido é 0."
+            )
+
+        def pct(valor) -> str:
+            return (formatar_percentagem(valor) or "0%").replace(".", ",")
+
+        substituicao = (
+            f"= [{format_currency(blocos.bloco_mp)}×(1+{pct(margens.margem_mp_pct)}) + "
+            f"{format_currency(blocos.bloco_producao)}×"
+            f"(1+{pct(margens.margem_mao_obra_pct)}) + "
+            f"{format_currency(blocos.bloco_acabamento)}×"
+            f"(1+{pct(margens.margem_acabamentos_pct)})] "
+            f"× (1+{pct(margens.custos_administrativos_pct)} admin) "
+            f"× (1+{pct(margens.margem_lucro_pct)} lucro) "
+            f"+ ajuste {format_currency(self.item.ajuste_eur)} "
+            f"→ unitário {format_currency(resultado.preco_unitario)} × qt "
+            f"{format_quantity(self.item.quantidade)} = "
+            f"{format_currency(resultado.preco_total)}"
+        )
+        return self._tooltip_3(
+            "Preço de referência do item, calculado dos blocos de custo com as "
+            "margens da versão (o valor que o item leva para a lista de items).",
+            "Preço = [MP×(1+m.MP) + Prod×(1+m.MO) + Acab×(1+m.Acab)] × (1+admin) "
+            "× (1+lucro) + ajuste",
+            substituicao,
+        )
 
     def _carregar_tarifas_maquinas(self, session) -> None:
         """Cache the active machines (and CNC tiers) for the tariff tooltips."""
@@ -654,6 +731,7 @@ class OrcamentoItemCusteioPage(QWidget):
             leaf.setData(
                 0, Qt.ItemDataRole.UserRole, self._peca_para_dados(peca, codigo_orlas)
             )
+            leaf.setToolTip(0, self._biblioteca_tooltip(peca, codigo_orlas))
             parent.addChild(leaf)
 
         self.tree_biblioteca_pecas.expandAll()
@@ -676,6 +754,30 @@ class OrcamentoItemCusteioPage(QWidget):
     def _format_codigo_orlas(self, peca: DefPecaResumo) -> str:
         """Build the orla code (e.g. 2200) from the four orla sides."""
         return f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
+
+    def _biblioteca_tooltip(self, peca: DefPecaResumo, codigo_orlas: str) -> str:
+        """Multiline detail tooltip for a library leaf (the tree column is narrow).
+
+        Uses only the data already on DefPecaResumo; the components line is
+        omitted (the resumo carries no component codes — no per-leaf DB query).
+        """
+        if peca.sem_material:
+            tipo = "Peça de serviço (sem material)"
+        elif peca.tipo_peca == COMPOSTA:
+            tipo = "Composta"
+        else:
+            tipo = "Simples"
+
+        return "\n".join(
+            [
+                f"Código: {peca.codigo}",
+                f"Nome: {peca.nome}",
+                f"Tipo: {tipo}",
+                f"Grupo: {peca.grupo or '—'}",
+                f"Código de orlas: [{codigo_orlas}]",
+                f"Chave ValueSet: {peca.chave_valueset_material or '—'}",
+            ]
+        )
 
     def _peca_matches(self, peca: DefPecaResumo, codigo_orlas: str, termo: str) -> bool:
         """Return True when a piece matches the search term."""

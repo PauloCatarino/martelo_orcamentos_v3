@@ -198,6 +198,15 @@ def test_orcamento_items_page_seletor_producao_std_serie() -> None:
     assert "exceção" in OrcamentoItemsPage.PRODUCAO_ITEM_TOOLTIP
 
 
+def test_orcamento_items_page_sincroniza_precos_ao_carregar() -> None:
+    """Loading the list re-applies prices from the stored costing (no button)."""
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    source = inspect.getsource(OrcamentoItemsPage.carregar_items)
+    # Lightweight sync: re-applies the formula from the stored line costs.
+    assert "aplicar_precos_da_versao" in source
+
+
 def test_orcamento_items_page_recalcula_pipeline_do_custeio() -> None:
     from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 
