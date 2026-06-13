@@ -627,6 +627,8 @@ def test_custeio_page_qt_total_antes_de_comp_real() -> None:
     # The editable quantity/measure inputs stay grouped and in order.
     assert headers.index("QT mod") < headers.index("QT und") < headers.index("Comp")
     assert headers.index("Comp") < headers.index("Larg") < headers.index("Esp")
+    # Phase 8T.5: the standalone "Qtds" column is gone (the chain is in QT mod).
+    assert "Qtds" not in headers
 
 
 def test_custeio_page_colunas_redimensionaveis_e_splitter() -> None:
@@ -681,4 +683,72 @@ def test_custeio_page_normaliza_variaveis_e_tooltips() -> None:
         assert header in tooltip_formula
 
     qt_tooltip = inspect.getsource(OrcamentoItemCusteioPage._tooltip_quantidade)
-    assert "QT total = QT mod × QT und" in qt_tooltip
+    assert "QT total = qt_mod efetivo × qt_und" in qt_tooltip
+
+
+def test_custeio_page_cadeia_no_qt_mod() -> None:
+    """Phase 8T.5: the chain shows in QT mod (no standalone column)."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "_cadeia_quantidade",
+        "_calcular_quantidades_das_linhas",
+        "_valor_qt_mod",
+        "_valor_qt_und",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    valores = inspect.getsource(OrcamentoItemCusteioPage._linha_para_valores)
+    assert '"QT mod": self._valor_qt_mod(linha)' in valores
+    assert '"QT und": self._valor_qt_und(linha)' in valores
+    assert "Qtds" not in valores
+
+    # QT mod shows the chain on pieces (a plain number on manual lines).
+    qt_mod_src = inspect.getsource(OrcamentoItemCusteioPage._valor_qt_mod)
+    assert "_cadeia_quantidade" in qt_mod_src
+    # QT und is blank on a division line.
+    qt_und_src = inspect.getsource(OrcamentoItemCusteioPage._valor_qt_und)
+    assert "DIVISAO_INDEPENDENTE" in qt_und_src
+
+
+def test_custeio_page_regras_de_edicao_qt() -> None:
+    """QT mod editable only on the division; QT und editable only on pieces."""
+    from types import SimpleNamespace
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    editavel = OrcamentoItemCusteioPage._coluna_editavel
+
+    def _linha(tipo):
+        return SimpleNamespace(tipo_linha=tipo)
+
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+
+    divisao = _linha("DIVISAO_INDEPENDENTE")
+    peca = _linha("PECA")
+    componente = _linha("FERRAGEM")
+
+    # Division: QT mod editable, QT und NOT editable.
+    assert editavel(page, "QT mod", divisao) is True
+    assert editavel(page, "QT und", divisao) is False
+    # Pieces/components: QT mod read-only, QT und editable.
+    assert editavel(page, "QT mod", peca) is False
+    assert editavel(page, "QT und", peca) is True
+    assert editavel(page, "QT mod", componente) is False
+    assert editavel(page, "QT und", componente) is True
+    # Measures stay editable on every line.
+    assert editavel(page, "Comp", peca) is True
+    assert editavel(page, "Comp", divisao) is True
+
+
+def test_custeio_page_propaga_quantidades_da_divisao() -> None:
+    """Editing QT mod/und reloads; a division edit shows the block message."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    on_changed = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert 'header in ("QT mod", "QT und")' in on_changed
+    assert "Quantidades do bloco atualizadas." in on_changed
+    assert "DIVISAO_INDEPENDENTE" in on_changed
+
+    tooltip = inspect.getsource(OrcamentoItemCusteioPage._tooltip_quantidade)
+    assert "qt_mod efetivo" in tooltip

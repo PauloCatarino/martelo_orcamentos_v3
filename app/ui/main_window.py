@@ -27,6 +27,7 @@ from app.ui.pages import (
     OperacoesMaquinasPage,
     OrcamentoDetailPage,
     OrcamentosPage,
+    RegrasQuantidadePage,
 )
 
 
@@ -105,6 +106,7 @@ class MainWindow(QMainWindow):
         self.valueset_chaves_page = DefValuesetChavesPage()
         self.valueset_modelos_page = DefValuesetModelosPage()
         self.margens_padrao_page = MargensPadraoPage()
+        self.regras_quantidade_page = RegrasQuantidadePage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
@@ -113,6 +115,7 @@ class MainWindow(QMainWindow):
             on_open_valueset_chaves=lambda: self.show_page("valueset_chaves"),
             on_open_valueset_modelos=lambda: self.show_page("valueset_modelos"),
             on_open_margens_padrao=self._open_margens_padrao,
+            on_open_regras_quantidade=self._open_regras_quantidade,
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
@@ -123,6 +126,7 @@ class MainWindow(QMainWindow):
         self._add_page("valueset_chaves", self.valueset_chaves_page)
         self._add_page("valueset_modelos", self.valueset_modelos_page)
         self._add_page("margens_padrao", self.margens_padrao_page)
+        self._add_page("regras_quantidade", self.regras_quantidade_page)
         self._add_page("clientes", self._create_text_page("Clientes"))
         self._add_page("configuracoes", self.configuracoes_page)
 
@@ -153,6 +157,11 @@ class MainWindow(QMainWindow):
         """Open the default margins page with fresh data."""
         self.margens_padrao_page.carregar()
         self.show_page("margens_padrao")
+
+    def _open_regras_quantidade(self) -> None:
+        """Open the quantity rules page with fresh data."""
+        self.regras_quantidade_page.carregar()
+        self.show_page("regras_quantidade")
 
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""

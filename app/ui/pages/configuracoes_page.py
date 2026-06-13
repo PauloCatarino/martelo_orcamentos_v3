@@ -25,6 +25,7 @@ class ConfiguracoesPage(QWidget):
         "Chaves ValueSet",
         "Modelos ValueSet",
         "Margens por Defeito",
+        "Regras de Quantidade",
         "Regras de Custeio",
     ]
 
@@ -37,6 +38,7 @@ class ConfiguracoesPage(QWidget):
         on_open_valueset_chaves: Callable[[], None] | None = None,
         on_open_valueset_modelos: Callable[[], None] | None = None,
         on_open_margens_padrao: Callable[[], None] | None = None,
+        on_open_regras_quantidade: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -47,6 +49,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_valueset_chaves = on_open_valueset_chaves
         self.on_open_valueset_modelos = on_open_valueset_modelos
         self.on_open_margens_padrao = on_open_margens_padrao
+        self.on_open_regras_quantidade = on_open_regras_quantidade
 
         title = QLabel("Configura\u00e7\u00f5es")
         title.setObjectName("pageTitle")
@@ -94,6 +97,13 @@ class ConfiguracoesPage(QWidget):
         )
         self.margens_padrao_button.clicked.connect(self._open_margens_padrao)
 
+        self.regras_quantidade_button = QPushButton("Regras de Quantidade")
+        self.regras_quantidade_button.setToolTip(
+            "Regras (expressões) que calculam a quantidade de ferragens a partir "
+            "das dimensões da peça principal (COMP/LARG/ESP/QT_PAI)."
+        )
+        self.regras_quantidade_button.clicked.connect(self._open_regras_quantidade)
+
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
 
@@ -112,6 +122,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.valueset_chaves_button)
         layout.addWidget(self.valueset_modelos_button)
         layout.addWidget(self.margens_padrao_button)
+        layout.addWidget(self.regras_quantidade_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -152,6 +163,11 @@ class ConfiguracoesPage(QWidget):
         """Open the default margins page through the optional callback."""
         if self.on_open_margens_padrao is not None:
             self.on_open_margens_padrao()
+
+    def _open_regras_quantidade(self) -> None:
+        """Open the quantity rules page through the optional callback."""
+        if self.on_open_regras_quantidade is not None:
+            self.on_open_regras_quantidade()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""

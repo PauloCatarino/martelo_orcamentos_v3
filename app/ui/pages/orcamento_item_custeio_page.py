@@ -32,6 +32,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.custos import eh_unidade_ml, fator_desperdicio
 from app.domain.medidas import construir_contexto_item, normalizar_variaveis_medida
+from app.domain.quantidades import (
+    LinhaQuantidade,
+    ResultadoQuantidade,
+    calcular_quantidades,
+    formatar_cadeia,
+)
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     OPERACAO_MANUAL,
@@ -256,8 +262,13 @@ class OrcamentoItemCusteioPage(QWidget):
         "Comp": "Comprimento da peça (editável; aceita expressões).",
         "Larg": "Largura da peça (editável; aceita expressões).",
         "Esp": "Espessura da peça (normalmente vem do material).",
-        "QT mod": "Quantidade por módulo (editável).",
-        "QT und": "Quantidade de unidades (editável).",
+        "QT mod": "Cadeia de quantidades (módulos × peça × componente), ex.: "
+        "\"3 x 3 x 1\". Só editável na linha de divisão (nº de módulos do bloco); "
+        "nas peças é read-only — a quantidade edita-se em QT und.",
+        "QT und": "Quantidade por módulo/peça (editável nas peças). Na linha de "
+        "divisão fica vazia (a divisão só comanda os módulos das linhas abaixo).",
+        "QT total": "Quantidade total da linha = qt_mod efetivo × qt_und "
+        "(× peça principal se for componente). Entra nas áreas, custos e tempos.",
         "Área m²": "Área por unidade da peça (Comp × Larg).",
         "Perímetro ML": "Perímetro por unidade, em metros lineares.",
         "ML orla fina": "Metros lineares de orla fina (total da linha).",
@@ -315,6 +326,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
+        self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
         self._carregando_tabela = False
         self._tipo_producao_default = TIPO_PRODUCAO_STD
         self._maquinas_por_codigo: dict = {}
@@ -650,7 +662,15 @@ class OrcamentoItemCusteioPage(QWidget):
                 # Manual-operation lines have no measures: only the quantity is
                 # editable (editing it recomputes the time and cost).
                 return header in ("QT mod", "QT und")
-            return True
+            # The QT mod chain is derived: only a division's module count is
+            # editable; on pieces/components QT mod is read-only.
+            if header == "QT mod":
+                return linha.tipo_linha == DIVISAO_INDEPENDENTE
+            # The division has no per-unit quantity (it only multiplies below);
+            # on pieces/components QT und is where quantities are entered.
+            if header == "QT und":
+                return linha.tipo_linha != DIVISAO_INDEPENDENTE
+            return True  # Comp / Larg / Esp
 
         if header == "Descrição livre" and linha.tipo_linha == DIVISAO_INDEPENDENTE:
             return True
@@ -904,6 +924,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._carregando_tabela = True
         try:
             self._custeio_by_row = {}
+            self._quantidades_por_linha = self._calcular_quantidades_das_linhas(linhas)
             self.table.setRowCount(len(linhas))
 
             for row_index, linha in enumerate(linhas):
@@ -917,6 +938,23 @@ class OrcamentoItemCusteioPage(QWidget):
         if not self._larguras_iniciais_aplicadas and linhas:
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
+
+    def _calcular_quantidades_das_linhas(
+        self, linhas: list[OrcamentoItemCusteioLinhaResumo]
+    ) -> dict[int, ResultadoQuantidade]:
+        """Map line id -> computed quantity (qt_total + chain) for the display."""
+        return calcular_quantidades(
+            [
+                LinhaQuantidade(
+                    id=linha.id,
+                    tipo_linha=linha.tipo_linha,
+                    qt_mod=linha.qt_mod,
+                    qt_und=linha.qt_und,
+                    linha_pai_id=linha.linha_pai_id,
+                )
+                for linha in linhas
+            ]
+        )
 
     def _preencher_linha(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
@@ -988,7 +1026,7 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         fator = fator_desperdicio(linha.desperdicio_percentagem)
 
-        # Quantities: QT total = QT mod × QT und, with the line's real numbers.
+        # Quantities: the chain (modules × piece × component) and the total.
         if header in ("QT mod", "QT und", "QT total"):
             return self._tooltip_quantidade(header, linha)
 
@@ -1387,18 +1425,42 @@ class OrcamentoItemCusteioPage(QWidget):
     def _tooltip_quantidade(
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
     ) -> str:
-        """3-block tooltip for the quantity columns (QT mod / QT und / QT total)."""
+        """3-block tooltip for the quantity columns (QT mod / QT und / QT total).
+
+        Uses the resolved chain (modules × main piece × component) so QT total is
+        shown with the effective division quantity, e.g. "3 × 1 × 5 = 15".
+        """
+        resultado = self._quantidades_por_linha.get(linha.id)
+
+        if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+            modulos = resultado.qt_total if resultado is not None else linha.qt_mod
+            return self._tooltip_3(
+                "Número de módulos do bloco: aplica-se a todas as linhas abaixo "
+                "até à próxima divisão independente.",
+                "qt_mod efetivo do bloco = nº de módulos da divisão",
+                f"= {format_quantity(modulos)} módulos",
+            )
+
+        if resultado is None:  # defensive: chain not computed yet
+            return self._tooltip_3(
+                "Quantidades da linha.",
+                "QT total = qt_mod efetivo × qt_und",
+                f"= {format_quantity(linha.quantidade)}",
+            )
+
         descricoes = {
-            "QT mod": "Quantidade por módulo da linha.",
-            "QT und": "Quantidade de unidades da linha.",
+            "QT mod": "Cadeia de quantidades: módulos × peça (× componente). "
+            "Read-only nas peças; só editável na linha de divisão.",
+            "QT und": "Quantidade por módulo/peça (editável). É aqui que se "
+            "definem as quantidades (ex.: 5 dobradiças, 2 suportes).",
             "QT total": "Quantidade total da linha (entra nas áreas, custos e "
             "tempos).",
         }
+        cadeia = " × ".join(format_quantity(fator) for fator in resultado.cadeia)
         return self._tooltip_3(
-            descricoes[header],
-            "QT total = QT mod × QT und",
-            f"= {format_quantity(linha.qt_mod)} × {format_quantity(linha.qt_und)} = "
-            f"{format_quantity(linha.quantidade)}",
+            descricoes.get(header, "Quantidades da linha."),
+            "QT total = qt_mod efetivo × qt_und (× qt_und composta se componente)",
+            f"= {cadeia} = {format_quantity(resultado.qt_total)}",
         )
 
     def _substituir_variaveis_medida(self, texto: str) -> str:
@@ -1512,8 +1574,10 @@ class OrcamentoItemCusteioPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                # Fast inline edit: save only this line; the general recompute of
-                # costs (and division propagation) stays on the Atualizar button.
+                # Fast inline edit: save only this line; the costs (full pipeline)
+                # stay on the Atualizar button. Quantities DO propagate (a division
+                # governs the block below; a composite parent's qt_und reaches its
+                # components), so qt edits reload the whole table.
                 resumo = OrcamentoItemCusteioLinhaService(
                     session
                 ).atualizar_medidas_linha(
@@ -1528,6 +1592,18 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível atualizar a linha de custeio.")
+            return
+
+        if header in ("QT mod", "QT und"):
+            # A quantity edit may change other lines (division block / composite
+            # components): reload so every QT mod chain / QT total is consistent.
+            self.carregar()
+            if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+                self.status_label.setText("Quantidades do bloco atualizadas.")
+            else:
+                self.status_label.setText(
+                    "Quantidades atualizadas. Use Atualizar para recalcular custos."
+                )
             return
 
         if resumo is not None:
@@ -1931,8 +2007,8 @@ class OrcamentoItemCusteioPage(QWidget):
             "Nível": str(nivel),
             "Módulo": "" if linha.orcamento_item_modulo_id is None
             else str(linha.orcamento_item_modulo_id),
-            "QT mod": format_quantity(linha.qt_mod),
-            "QT und": format_quantity(linha.qt_und),
+            "QT mod": self._valor_qt_mod(linha),
+            "QT und": self._valor_qt_und(linha),
             "QT total": format_quantity(linha.quantidade),
             "Comp": self._format_medida_var(linha.comp),
             "Larg": self._format_medida_var(linha.larg),
@@ -2028,6 +2104,33 @@ class OrcamentoItemCusteioPage(QWidget):
             return ""
 
         return normalizar_variaveis_medida(str(value))
+
+    def _cadeia_quantidade(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """The quantity chain of a line, e.g. "3 x 3 x 1" (or "" when unknown)."""
+        resultado = self._quantidades_por_linha.get(linha.id)
+        if resultado is None:
+            return ""
+
+        return formatar_cadeia(resultado.cadeia)
+
+    def _valor_qt_mod(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """QT mod cell text: the quantity chain (a plain number on manual lines).
+
+        A division shows just its module count (the chain is a single factor) and
+        is the only line where QT mod is editable; pieces/components show the full
+        derived chain (read-only).
+        """
+        if linha.tipo_linha == OPERACAO_MANUAL:
+            return format_quantity(linha.qt_mod)
+
+        return self._cadeia_quantidade(linha)
+
+    def _valor_qt_und(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """QT und cell text: empty on a division (it only multiplies the block)."""
+        if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+            return ""
+
+        return format_quantity(linha.qt_und)
 
     def _format_medida3(self, value) -> str:
         """Format an area/perimeter value with three decimals."""

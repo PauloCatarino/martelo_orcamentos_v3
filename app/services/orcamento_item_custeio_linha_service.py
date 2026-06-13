@@ -58,6 +58,7 @@ from app.domain.custos import (
     calcular_custo_total_linha,
     unidade_custo_valida,
 )
+from app.domain.quantidades import LinhaQuantidade, calcular_quantidades
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -565,10 +566,17 @@ class OrcamentoItemCusteioLinhaService:
         )
         contexto_local: dict = {}
 
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        quantidades = calcular_quantidades(
+            [self._linha_quantidade(linha) for linha in linhas]
+        )
+
         atualizadas = 0
-        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+        for linha in linhas:
             contexto = {**contexto_global, **contexto_local}
-            fields = self._calcular_medidas_fields(linha, contexto)
+            fields = self._calcular_medidas_fields(
+                linha, contexto, quantidades[linha.id].qt_total
+            )
 
             if linha.tipo_linha == DIVISAO_INDEPENDENTE:
                 contexto_local = {
@@ -583,6 +591,41 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return atualizadas
+
+    def recalcular_quantidades_do_item(self, orcamento_item_id: int) -> int:
+        """Recompute qt_total of every active line, honouring divisions/composites.
+
+        A DIVISAO_INDEPENDENTE qt_mod governs the block below it (until the next
+        division) and a composite component multiplies by its main piece's
+        qt_und (phase 8T.4). Pure quantity recompute (measures/costs untouched);
+        commits. Returns how many lines had their qt_total changed.
+        """
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        quantidades = calcular_quantidades(
+            [self._linha_quantidade(linha) for linha in linhas]
+        )
+
+        atualizadas = 0
+        for linha in linhas:
+            novo = quantidades[linha.id].qt_total
+            if linha.quantidade != novo:
+                self.repository.update_linha(id=linha.id, quantidade=novo)
+                atualizadas += 1
+
+        self.session.commit()
+
+        return atualizadas
+
+    @staticmethod
+    def _linha_quantidade(linha) -> LinhaQuantidade:
+        """Project a cost line resumo into the quantity-computation view."""
+        return LinhaQuantidade(
+            id=linha.id,
+            tipo_linha=linha.tipo_linha,
+            qt_mod=linha.qt_mod,
+            qt_und=linha.qt_und,
+            linha_pai_id=linha.linha_pai_id,
+        )
 
     def recalcular_orlas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute edge banding (ML and, when priced, cost) for an item.
@@ -1885,10 +1928,13 @@ class OrcamentoItemCusteioLinhaService:
 
         if propagar_item:
             # Recompute the whole item so independent-division context (HM/LM/PM)
-            # propagates to the lines below.
+            # and the block/composite quantities reach the lines below.
             self.recalcular_medidas_do_item(linha.orcamento_item_id)
         else:
-            self.session.commit()
+            # Fast inline edit: propagate only the quantities (division block /
+            # composite components); costs stay on the Atualizar button (the cost
+            # pipeline already uses qt_total).
+            self.recalcular_quantidades_do_item(linha.orcamento_item_id)
 
         return self.repository.get_by_id(linha_id)
 
@@ -2095,11 +2141,17 @@ class OrcamentoItemCusteioLinhaService:
         texto = str(valor).strip()
         return texto or None
 
-    def _calcular_medidas_fields(self, linha, contexto: dict) -> dict:
-        """Build the recomputed quantity/measure fields for one line."""
+    def _calcular_medidas_fields(
+        self, linha, contexto: dict, qt_total: Decimal
+    ) -> dict:
+        """Build the recomputed quantity/measure fields for one line.
+
+        ``qt_total`` is the quantity resolved by calcular_quantidades (it honours
+        the division block and composite components); qt_mod/qt_und keep the
+        line's own stored values.
+        """
         qt_mod = linha.qt_mod if linha.qt_mod is not None else Decimal("1")
         qt_und = linha.qt_und if linha.qt_und is not None else Decimal("1")
-        qt_total = qt_mod * qt_und
 
         comp_real = avaliar_medida(linha.comp, contexto)
         larg_real = avaliar_medida(linha.larg, contexto)

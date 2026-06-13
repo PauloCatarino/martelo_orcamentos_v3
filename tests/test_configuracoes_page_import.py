@@ -34,8 +34,18 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Chaves ValueSet",
         "Modelos ValueSet",
         "Margens por Defeito",
+        "Regras de Quantidade",
         "Regras de Custeio",
     ]
+
+
+def test_configuracoes_page_has_regras_quantidade_shortcut() -> None:
+    from app.ui.pages.configuracoes_page import ConfiguracoesPage
+
+    signature = inspect.signature(ConfiguracoesPage)
+
+    assert "on_open_regras_quantidade" in signature.parameters
+    assert hasattr(ConfiguracoesPage, "_open_regras_quantidade")
 
 
 def test_configuracoes_page_has_margens_padrao_shortcut() -> None:

@@ -817,6 +817,87 @@ def test_recalcular_medidas_item_inexistente_levanta(monkeypatch) -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_recalcular_quantidades_propaga_bloco_da_divisao(monkeypatch) -> None:
+    # A division's qt_mod governs the block below it (until the next division);
+    # composite components multiply by the main piece's qt_und.
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1, tipo_linha="PECA", qt_mod=Decimal("2"), qt_und=Decimal("1"),
+            quantidade=Decimal("0"),
+        ),  # above any division -> own qt_mod
+        _resumo(
+            id=2, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod=Decimal("3"),
+            quantidade=Decimal("0"),
+        ),
+        _resumo(
+            id=3, tipo_linha="PECA", qt_mod=Decimal("1"), qt_und=Decimal("2"),
+            quantidade=Decimal("0"),
+        ),  # block A: 3 x 2
+        _resumo(
+            id=4, tipo_linha="PECA_COMPOSTA", qt_mod=Decimal("1"),
+            qt_und=Decimal("1"), quantidade=Decimal("0"),
+        ),
+        _resumo(
+            id=5, tipo_linha="FERRAGEM", qt_mod=Decimal("1"), qt_und=Decimal("5"),
+            linha_pai_id=4, quantidade=Decimal("0"),
+        ),  # component: 3 x 1 x 5
+        _resumo(
+            id=6, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod=Decimal("5"),
+            quantidade=Decimal("0"),
+        ),
+        _resumo(
+            id=7, tipo_linha="PECA", qt_mod=Decimal("1"), qt_und=Decimal("1"),
+            quantidade=Decimal("0"),
+        ),  # new block: 5 x 1
+    ]
+
+    service.recalcular_quantidades_do_item(30)
+
+    por_id = {p["id"]: p["quantidade"] for p in _FakeRepository.updated_payloads}
+    assert por_id[1] == Decimal("2")  # own qt_mod (no division above)
+    assert por_id[2] == Decimal("3")  # division qt_total = module count
+    assert por_id[3] == Decimal("6")  # 3 x 2
+    assert por_id[5] == Decimal("15")  # 3 x 1 x 5 (component)
+    assert por_id[7] == Decimal("5")  # 5 x 1 (next block)
+    assert session.committed is True
+
+
+def test_recalcular_quantidades_so_altera_o_bloco_editado(monkeypatch) -> None:
+    # Lines already store the correct qt_total except the block under the edited
+    # division (now 5): only that block changes; lines outside it are untouched.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1, tipo_linha="PECA", qt_mod=Decimal("2"), qt_und=Decimal("1"),
+            quantidade=Decimal("2"),
+        ),  # above
+        _resumo(
+            id=2, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod=Decimal("5"),
+            quantidade=Decimal("5"),
+        ),  # bumped to 5
+        _resumo(
+            id=3, tipo_linha="PECA", qt_mod=Decimal("1"), qt_und=Decimal("2"),
+            quantidade=Decimal("6"),
+        ),  # was 3x2=6, now 5x2=10
+        _resumo(
+            id=4, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod=Decimal("4"),
+            quantidade=Decimal("4"),
+        ),
+        _resumo(
+            id=5, tipo_linha="PECA", qt_mod=Decimal("1"), qt_und=Decimal("1"),
+            quantidade=Decimal("4"),
+        ),  # 4x1=4 (unchanged)
+    ]
+
+    alteradas = service.recalcular_quantidades_do_item(30)
+
+    ids_alterados = {p["id"] for p in _FakeRepository.updated_payloads}
+    assert ids_alterados == {3}  # only the block under the edited division
+    assert alteradas == 1
+    assert _FakeRepository.updated_payloads[0]["quantidade"] == Decimal("10")
+
+
 def test_atualizar_medidas_linha_recalcula_qt_total(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     session.item = SimpleNamespace(
