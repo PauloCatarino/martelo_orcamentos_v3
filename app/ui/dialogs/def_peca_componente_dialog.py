@@ -37,6 +37,14 @@ from app.repositories.def_peca_componente_repository import DefPecaComponenteRes
 from app.repositories.def_peca_repository import DefPecaResumo
 
 
+TOOLTIP_REGRA_QUANTIDADE = (
+    "Regra (expressão) que calcula a quantidade deste componente a partir das "
+    "dimensões da peça principal (COMP/LARG/ESP/QT_PAI) no custeio.\n"
+    "Com uma regra selecionada, a quantidade é calculada automaticamente; "
+    "«— sem regra —» mantém a quantidade fixa acima como valor manual."
+)
+
+
 @dataclass(frozen=True)
 class DefPecaComponenteDialogData:
     """Data collected by the component dialog."""
@@ -48,6 +56,7 @@ class DefPecaComponenteDialogData:
     ordem: int
     quantidade: Decimal
     regra_quantidade: str
+    def_regra_quantidade_id: int | None
     obrigatorio: bool
     ativo: bool
 
@@ -61,6 +70,7 @@ class DefPecaComponenteDialog(QDialog):
         componente: DefPecaComponenteResumo | None = None,
         parent=None,
         on_save: Callable[[DefPecaComponenteDialogData], bool] | None = None,
+        regras_disponiveis: list | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -68,6 +78,7 @@ class DefPecaComponenteDialog(QDialog):
         self.on_save = on_save
         self._is_edit = componente is not None
         self._pecas_disponiveis = list(pecas_disponiveis)
+        self._regras_disponiveis = list(regras_disponiveis or [])
 
         self.setWindowTitle("Editar Componente" if self._is_edit else "Novo Componente")
         self.setModal(True)
@@ -106,6 +117,15 @@ class DefPecaComponenteDialog(QDialog):
         for code, label in get_regra_quantidade_options():
             self.regra_quantidade_input.addItem(label, code)
 
+        # Configurable quantity rule (phase 8T.5.1): "— sem regra —" + active rules.
+        self.def_regra_quantidade_input = QComboBox()
+        self.def_regra_quantidade_input.setToolTip(TOOLTIP_REGRA_QUANTIDADE)
+        self.def_regra_quantidade_input.addItem("— sem regra —", None)
+        for regra in self._regras_disponiveis:
+            self.def_regra_quantidade_input.addItem(
+                f"{regra.codigo} — {regra.nome}", regra.id
+            )
+
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
         self.ativo_input = QCheckBox()
@@ -134,6 +154,9 @@ class DefPecaComponenteDialog(QDialog):
         form.addRow(self.ordem_label, self.ordem_input)
         form.addRow("Quantidade", self.quantidade_input)
         form.addRow("Regra quantidade", self.regra_quantidade_input)
+        regra_label = QLabel("Regra de quantidade (opcional)")
+        regra_label.setToolTip(TOOLTIP_REGRA_QUANTIDADE)
+        form.addRow(regra_label, self.def_regra_quantidade_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
 
@@ -179,6 +202,10 @@ class DefPecaComponenteDialog(QDialog):
             self.regra_quantidade_input,
             normalize_regra_quantidade(componente.regra_quantidade),
         )
+        if componente.def_regra_quantidade_id is not None:
+            self._select_combo_data(
+                self.def_regra_quantidade_input, componente.def_regra_quantidade_id
+            )
         self.obrigatorio_input.setChecked(componente.obrigatorio)
         self.ativo_input.setChecked(componente.ativo)
 
@@ -244,6 +271,7 @@ class DefPecaComponenteDialog(QDialog):
             ordem=self.ordem_input.value(),
             quantidade=Decimal(str(self.quantidade_input.value())),
             regra_quantidade=self.regra_quantidade_input.currentData() or FIXA,
+            def_regra_quantidade_id=self.def_regra_quantidade_input.currentData(),
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )

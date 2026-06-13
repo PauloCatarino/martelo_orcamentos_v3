@@ -65,6 +65,33 @@ def test_componente_dialog_data_fields() -> None:
     assert expected <= field_names
 
 
+def test_componente_dialog_tem_combo_regra_quantidade() -> None:
+    from app.ui.dialogs.def_peca_componente_dialog import (
+        TOOLTIP_REGRA_QUANTIDADE,
+        DefPecaComponenteDialog,
+        DefPecaComponenteDialogData,
+    )
+
+    field_names = {
+        field.name for field in dataclasses.fields(DefPecaComponenteDialogData)
+    }
+    assert "def_regra_quantidade_id" in field_names
+
+    signature = inspect.signature(DefPecaComponenteDialog)
+    assert "regras_disponiveis" in signature.parameters
+
+    init_source = inspect.getsource(DefPecaComponenteDialog.__init__)
+    assert "def_regra_quantidade_input" in init_source
+    assert "— sem regra —" in init_source
+
+    get_data_source = inspect.getsource(DefPecaComponenteDialog.get_data)
+    assert "def_regra_quantidade_input.currentData" in get_data_source
+
+    # The tooltip documents the rule variables.
+    for token in ("COMP", "LARG", "ESP", "QT_PAI"):
+        assert token in TOOLTIP_REGRA_QUANTIDADE
+
+
 def test_componente_dialog_toggles_peca_vs_referencia() -> None:
     from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 

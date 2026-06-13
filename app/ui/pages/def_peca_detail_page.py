@@ -46,6 +46,7 @@ from app.services.def_peca_operacao_service import (
     EditarDefPecaOperacaoData,
 )
 from app.services.def_peca_service import DefPecaService
+from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
 from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
 from app.utils.formatters import format_quantity
@@ -61,6 +62,7 @@ class DefPecaDetailPage(QWidget):
         "Descri\u00e7\u00e3o",
         "Quantidade",
         "Regra quantidade",
+        "Regra (auto)",
         "Obrigat\u00f3rio",
         "Ativo",
     ]
@@ -247,6 +249,7 @@ class DefPecaDetailPage(QWidget):
                 componente.descricao or "",
                 format_quantity(componente.quantidade),
                 get_regra_quantidade_label(componente.regra_quantidade),
+                componente.def_regra_quantidade_codigo or "—",
                 self._format_bool(componente.obrigatorio),
                 self._format_bool(componente.ativo),
             ]
@@ -323,6 +326,7 @@ class DefPecaDetailPage(QWidget):
                             descricao=form_data.descricao,
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
+                            def_regra_quantidade_id=form_data.def_regra_quantidade_id,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         )
@@ -334,7 +338,12 @@ class DefPecaDetailPage(QWidget):
             saved = True
             return True
 
-        dialog = DefPecaComponenteDialog(pecas_disponiveis, parent=self, on_save=handle_save)
+        dialog = DefPecaComponenteDialog(
+            pecas_disponiveis,
+            parent=self,
+            on_save=handle_save,
+            regras_disponiveis=self._carregar_regras_quantidade(),
+        )
         if dialog.exec() and saved:
             self.recarregar_componentes()
             self.componentes_status_label.setText("Componente criado.")
@@ -371,6 +380,7 @@ class DefPecaDetailPage(QWidget):
                             descricao=form_data.descricao,
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
+                            def_regra_quantidade_id=form_data.def_regra_quantidade_id,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         ),
@@ -383,7 +393,11 @@ class DefPecaDetailPage(QWidget):
             return True
 
         dialog = DefPecaComponenteDialog(
-            pecas_disponiveis, componente=componente, parent=self, on_save=handle_save
+            pecas_disponiveis,
+            componente=componente,
+            parent=self,
+            on_save=handle_save,
+            regras_disponiveis=self._carregar_regras_quantidade(),
         )
         if dialog.exec() and saved:
             self.recarregar_componentes()
@@ -435,6 +449,14 @@ class DefPecaDetailPage(QWidget):
             for peca in all_pecas
             if peca.id != self.peca.id and (peca.ativo or peca.id == ref_id)
         ]
+
+    def _carregar_regras_quantidade(self) -> list:
+        """Return the active quantity rules for the component dialog (or [])."""
+        try:
+            with SessionLocal() as session:
+                return DefRegraQuantidadeService(session).listar_ativas()
+        except SQLAlchemyError:
+            return []
 
     def _create_operacoes_tab(self) -> QWidget:
         """Create the operations tab with management actions."""

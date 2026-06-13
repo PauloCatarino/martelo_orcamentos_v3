@@ -435,7 +435,11 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
     assert "self.atualizar_geral" in init
 
-    source = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
+    # The pipeline lives in a shared helper, reused by the Mat. default dropdown.
+    assert "_recalcular_item_completo" in inspect.getsource(
+        OrcamentoItemCusteioPage.atualizar_geral
+    )
+    source = inspect.getsource(OrcamentoItemCusteioPage._recalcular_item_completo)
     assert "recalcular_medidas_do_item" in source
     assert "recalcular_orlas_do_item" in source
     assert "recalcular_custo_materia_prima_do_item" in source
@@ -445,6 +449,15 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "recalcular_areas_acabamento_do_item" in source
     assert "recalcular_custo_acabamento_do_item" in source
     assert "aplicar_operacoes_do_item" in source
+    # Phase 8T.5.1: component quantity rules run after measures (which give the
+    # parent's real dimensions) and before the cost steps that use qt_total.
+    assert "aplicar_regras_quantidade_do_item" in source
+    assert source.index("aplicar_regras_quantidade_do_item") > source.index(
+        "recalcular_medidas_do_item"
+    )
+    assert source.index("aplicar_regras_quantidade_do_item") < source.index(
+        "recalcular_custo_materia_prima_do_item"
+    )
     assert "recalcular_custos_producao_do_item" in source
     # Phase 8R.1: informative production times are back in the pipeline, right
     # after the production cost (so they share the same time source).
@@ -752,3 +765,39 @@ def test_custeio_page_propaga_quantidades_da_divisao() -> None:
 
     tooltip = inspect.getsource(OrcamentoItemCusteioPage._tooltip_quantidade)
     assert "qt_mod efetivo" in tooltip
+
+
+def test_custeio_page_mat_default_dropdown() -> None:
+    """Phase 8G.x: 'Mat. default' is a per-line ValueSet-options dropdown."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "_montar_combo_material",
+        "_criar_combo_material",
+        "_label_opcao_material",
+        "_opcao_atual_id",
+        "_on_material_combo_changed",
+        "_tooltip_mat_default",
+        "_linha_aceita_dropdown_material",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    # The fill loop special-cases the Mat. default column with the combo.
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
+    assert '"Mat. default"' in preencher
+    assert "_montar_combo_material" in preencher
+
+    # Eligibility: PECA/FERRAGEM lines that carry material (not service pieces).
+    aceita = inspect.getsource(OrcamentoItemCusteioPage._linha_aceita_dropdown_material)
+    assert "PECA" in aceita
+    assert "FERRAGEM" in aceita
+    assert "sem_material" in aceita
+
+    # Selecting an option applies it and recomputes via the shared pipeline.
+    handler = inspect.getsource(OrcamentoItemCusteioPage._on_material_combo_changed)
+    assert "aplicar_opcao_valueset_na_linha" in handler
+    assert "_recalcular_item_completo" in handler
+
+    # The combo uses the IMOS compatibility filter.
+    combo = inspect.getsource(OrcamentoItemCusteioPage._montar_combo_material)
+    assert "opcoes_valueset_compativeis" in combo

@@ -31,9 +31,26 @@ def test_def_peca_detail_page_component_headers() -> None:
         "Descri\u00e7\u00e3o",
         "Quantidade",
         "Regra quantidade",
+        "Regra (auto)",
         "Obrigat\u00f3rio",
         "Ativo",
     ]
+
+
+def test_def_peca_detail_page_wires_regra_quantidade() -> None:
+    import inspect
+
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    assert hasattr(DefPecaDetailPage, "_carregar_regras_quantidade")
+
+    novo = inspect.getsource(DefPecaDetailPage.abrir_novo_componente)
+    assert "regras_disponiveis" in novo
+    assert "def_regra_quantidade_id" in novo
+
+    editar = inspect.getsource(DefPecaDetailPage.abrir_editar_componente)
+    assert "regras_disponiveis" in editar
+    assert "def_regra_quantidade_id" in editar
 
 
 def test_def_peca_detail_page_shows_orlas() -> None:

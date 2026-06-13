@@ -26,6 +26,7 @@ class CriarDefPecaComponenteData:
     descricao: str | None = None
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
+    def_regra_quantidade_id: int | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -43,6 +44,7 @@ class EditarDefPecaComponenteData:
     descricao: str | None = None
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
+    def_regra_quantidade_id: int | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -80,6 +82,7 @@ class DefPecaComponenteService:
             ordem=ordem,
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
+            def_regra_quantidade_id=data.def_regra_quantidade_id,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -113,6 +116,7 @@ class DefPecaComponenteService:
             ordem=data.ordem,
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
+            def_regra_quantidade_id=data.def_regra_quantidade_id,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,

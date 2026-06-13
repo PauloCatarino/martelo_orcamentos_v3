@@ -59,6 +59,8 @@ from app.domain.custos import (
     unidade_custo_valida,
 )
 from app.domain.quantidades import LinhaQuantidade, calcular_quantidades
+from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
+from app.domain.valueset_compat import opcoes_valueset_compativeis
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -77,6 +79,8 @@ from app.repositories.def_maquina_repository import DefMaquinaRepository
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaRepository
 from app.repositories.def_operacao_repository import DefOperacaoRepository
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
+from app.repositories.def_regra_quantidade_repository import DefRegraQuantidadeRepository
+from app.repositories.def_valueset_chave_repository import DefValuesetChaveRepository
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -303,6 +307,15 @@ class TemposProducaoResult:
 
 
 @dataclass(frozen=True)
+class RegrasQuantidadeResult:
+    """Summary of applying component quantity rules over an item."""
+
+    processadas: int
+    calculadas: int
+    ignoradas: int
+
+
+@dataclass(frozen=True)
 class CustoProducaoResult:
     """Summary of one production-cost (cut/edging) recompute over an item."""
 
@@ -328,6 +341,8 @@ class OrcamentoItemCusteioLinhaService:
         self.repository = OrcamentoItemCusteioLinhaRepository(session)
         self.peca_repository = DefPecaRepository(session)
         self.componente_repository = DefPecaComponenteRepository(session)
+        self.regra_quantidade_repository = DefRegraQuantidadeRepository(session)
+        self.valueset_chave_repository = DefValuesetChaveRepository(session)
         self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
         self.materia_prima_repository = DefMateriaPrimaRepository(session)
         self.peca_operacao_repository = DefPecaOperacaoRepository(session)
@@ -551,6 +566,79 @@ class OrcamentoItemCusteioLinhaService:
 
         return fields
 
+    # --- 'Mat. default' dropdown: item-ValueSet options per line (8G.x) -------
+
+    def opcoes_valueset_do_item(
+        self, orcamento_item_id: int
+    ) -> list[OrcamentoItemValuesetLinhaResumo]:
+        """Active item ValueSet options (all keys), for the Mat. default dropdown."""
+        return self.item_valueset_repository.list_active_by_orcamento_item(
+            orcamento_item_id
+        )
+
+    def tipos_das_chaves(self) -> dict[str, str | None]:
+        """Map each ValueSet key code (uppercased) to its type, for filtering."""
+        return {
+            (chave.codigo or "").strip().upper(): chave.tipo
+            for chave in self.valueset_chave_repository.list_all()
+        }
+
+    def opcoes_valueset_para_linha(
+        self, orcamento_item_id: int, linha
+    ) -> list[OrcamentoItemValuesetLinhaResumo]:
+        """Compatible item ValueSet options for one cost line (IMOS rule).
+
+        MATERIAL lines see every MATERIAL option; FERRAGEM/SISTEMA_CORRER/
+        ILUMINACAO/ACESSORIO see only their own key; ORLA/ACABAMENTO, divisions,
+        composite parents, service pieces and keyless lines get none.
+        """
+        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            return []
+        if self._linha_sem_material(linha):
+            return []
+
+        opcoes = self.opcoes_valueset_do_item(orcamento_item_id)
+        return opcoes_valueset_compativeis(
+            linha.chave_valueset, opcoes, self.tipos_das_chaves()
+        )
+
+    def aplicar_opcao_valueset_na_linha(
+        self, custeio_linha_id: int, valueset_linha_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        """Apply one item ValueSet option to a cost line (Mat. default dropdown).
+
+        Copies the option's material snapshot AND its key into the line and marks
+        it as a DELIBERATE local choice (material_editado_localmente +
+        editado_localmente) so the item-ValueSet propagation (8G.4) does not
+        revert it. Commits; the caller recomputes the dependent costs. Division
+        and composite-parent lines reject the change. Does not touch the item
+        ValueSet nor the raw-material catalog.
+        """
+        linha = self.repository.get_by_id(custeio_linha_id)
+        if linha is None:
+            return None
+
+        self._validar_linha_aceita_material(linha)
+
+        vs_linha = self.item_valueset_repository.get_by_id(valueset_linha_id)
+        if vs_linha is None:
+            raise ValueError("opção de ValueSet não encontrada")
+        if vs_linha.orcamento_item_id != linha.orcamento_item_id:
+            raise ValueError("a opção de ValueSet é de outro item")
+
+        fields = self._build_valueset_material_fields(vs_linha)
+        # Carry the option's key (cross-material is allowed for MATERIAL lines)
+        # and mark the line as a deliberate choice so propagation respects it.
+        fields["chave_valueset"] = vs_linha.chave
+        fields["origem_material"] = "VALUESET_ITEM_ESCOLHA"
+        fields["material_editado_localmente"] = True
+        fields["editado_localmente"] = True
+
+        result = self.repository.update_linha(id=custeio_linha_id, **fields)
+        self.session.commit()
+
+        return result
+
     def recalcular_medidas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute quantities, real measures, area and perimeter for an item.
 
@@ -625,6 +713,134 @@ class OrcamentoItemCusteioLinhaService:
             qt_mod=linha.qt_mod,
             qt_und=linha.qt_und,
             linha_pai_id=linha.linha_pai_id,
+        )
+
+    def aplicar_regras_quantidade_do_item(
+        self, orcamento_item_id: int
+    ) -> RegrasQuantidadeResult:
+        """Apply each component's quantity rule, setting qt_und (phase 8T.5.1).
+
+        For every active component line (linha_pai set) linked to a
+        DefPecaComponente with an ACTIVE quantity rule, qt_und is computed from
+        the block's MAIN PIECE — the sibling PECA line (same linha_pai_id) that
+        carries the real dimensions, NOT the dimensionless PECA_COMPOSTA header:
+        COMP/LARG/ESP = main piece comp_real/larg_real/esp_real, QT_PAI = main
+        piece qt_und. Manual edits (editado_localmente) are respected; a missing
+        main piece / dimensions or an invalid rule leave qt_und untouched with an
+        explanatory note. qt_total is refreshed by the cadeia recompute that
+        follows. Components without a rule keep their manual qt_und. Commits.
+        """
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+
+        processadas = 0
+        calculadas = 0
+        ignoradas = 0
+        for linha in linhas:
+            regra = self._regra_quantidade_da_linha(linha)
+            if regra is None:
+                ignoradas += 1
+                continue
+
+            processadas += 1
+            novo_qt_und, aviso = self._qt_und_pela_regra(linha, regra, linhas)
+
+            fields: dict = {}
+            if novo_qt_und is not None:
+                fields["qt_und"] = novo_qt_und
+                calculadas += 1
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Regra de quantidade", aviso
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
+            if fields:
+                self.repository.update_linha(id=linha.id, **fields)
+
+        self.session.commit()
+
+        return RegrasQuantidadeResult(
+            processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _regra_quantidade_da_linha(self, linha):
+        """Resolve the active quantity rule linked to a component line, or None."""
+        if linha.linha_pai_id is None or linha.origem_id is None:
+            return None
+
+        componente = self.componente_repository.get_by_id(linha.origem_id)
+        if componente is None or componente.def_regra_quantidade_id is None:
+            return None
+
+        regra = self.regra_quantidade_repository.get_by_id(
+            componente.def_regra_quantidade_id
+        )
+        if regra is None or not regra.ativo:
+            return None
+
+        return regra
+
+    def _qt_und_pela_regra(self, linha, regra, linhas):
+        """Return (novo_qt_und, aviso) for one component line and its rule.
+
+        novo_qt_und is None (qt_und kept) when the line was edited manually, the
+        block's main piece / its dimensions are missing, or the rule could not
+        be evaluated.
+        """
+        if linha.editado_localmente:
+            return None, (
+                f"Regra de quantidade {regra.codigo}: qt_und definido "
+                "manualmente (regra ignorada)."
+            )
+
+        principal = self._peca_principal_do_bloco(linha, linhas)
+        if principal is None:
+            return None, (
+                f"Regra de quantidade {regra.codigo} não calculada: dimensões "
+                "da peça principal em falta."
+            )
+
+        contexto = {
+            "COMP": principal.comp_real,
+            "LARG": principal.larg_real,
+            "ESP": principal.esp_real,
+            "QT_PAI": principal.qt_und,
+        }
+        quantidade, motivo = avaliar_regra_quantidade(regra.expressao, contexto)
+        if motivo is not None:
+            return None, (
+                f"Regra de quantidade {regra.codigo} não calculada: {motivo}"
+            )
+
+        return Decimal(quantidade), None
+
+    def _peca_principal_do_bloco(self, linha, linhas):
+        """Return the composite block's main piece for a component line, or None.
+
+        The main piece is the sibling line (same linha_pai_id) of type PECA — not
+        the dimensionless PECA_COMPOSTA header nor a FERRAGEM/operation — that
+        already has comp_real and larg_real evaluated. When several qualify, the
+        one with the lowest ordem (then id) wins, so the rule reads the real
+        dimensions of the block's structural piece (e.g. the FUNDO for the PES).
+        """
+        candidatas = [
+            outra
+            for outra in linhas
+            if outra.id != linha.id
+            and outra.linha_pai_id is not None
+            and outra.linha_pai_id == linha.linha_pai_id
+            and outra.tipo_linha == PECA
+            and outra.comp_real is not None
+            and outra.larg_real is not None
+        ]
+        if not candidatas:
+            return None
+
+        return min(
+            candidatas,
+            key=lambda outra: (
+                outra.ordem if outra.ordem is not None else 0,
+                outra.id,
+            ),
         )
 
     def recalcular_orlas_do_item(self, orcamento_item_id: int) -> int:
@@ -2304,7 +2520,7 @@ class OrcamentoItemCusteioLinhaService:
         peca_filha = self._obter_def_peca_filha(componente)
 
         if peca_filha is not None:
-            return self._build_peca_line_fields(
+            fields, aviso = self._build_peca_line_fields(
                 orcamento_item_id,
                 peca_filha,
                 tipo_linha=tipo_linha,
@@ -2313,8 +2529,15 @@ class OrcamentoItemCusteioLinhaService:
                 linha_pai_id=linha_pai_id,
                 ordem=ordem,
                 qt_und=qt_und,
-                sem_chave_observacao="Componente sem chave ValueSet.",
+                sem_chave_observacao=(
+                    "Componente sem chave ValueSet: atribua uma chave de "
+                    "material à definição da peça."
+                ),
             )
+            # Link the cost line back to the DefPecaComponente so the Atualizar
+            # pipeline can resolve its quantity rule (phase 8T.5.1).
+            fields["origem_id"] = componente.id
+            return fields, aviso
 
         fields: dict = {
             "orcamento_item_id": orcamento_item_id,
@@ -2324,6 +2547,7 @@ class OrcamentoItemCusteioLinhaService:
             or componente.referencia_componente
             or "Componente",
             "origem_tipo": "PECA_COMPOSTA",
+            "origem_id": componente.id,
             "nivel": 1,
             "linha_pai_id": linha_pai_id,
             "ordem": ordem,
@@ -2332,7 +2556,10 @@ class OrcamentoItemCusteioLinhaService:
             "quantidade": qt_und,
             "editado_localmente": False,
             "ativo": True,
-            "observacoes": "Componente sem definição de peça associada.",
+            "observacoes": (
+                "Componente sem definição de peça associada: ligue-o a uma peça "
+                "da biblioteca (com chave de material) para herdar o material."
+            ),
         }
         return fields, None
 
@@ -2434,7 +2661,11 @@ class OrcamentoItemCusteioLinhaService:
 
         linha_vs = self.resolver_valueset_para_def_peca(orcamento_item_id, peca)
         if linha_vs is None:
-            aviso = f"Sem ValueSet encontrado para a chave {peca.chave_valueset_material}"
+            aviso = (
+                f"Sem ValueSet encontrado para a chave "
+                f"{peca.chave_valueset_material}: configure o material desta "
+                "chave no ValueSet do item."
+            )
             fields["observacoes"] = aviso
             return fields, aviso
 

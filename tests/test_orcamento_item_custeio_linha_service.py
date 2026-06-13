@@ -242,12 +242,26 @@ class _FakePecaRepository:
 
 class _FakeComponenteRepository:
     componentes: list = []
+    componentes_por_id: dict = {}
 
     def __init__(self, _session: object) -> None:
         pass
 
     def list_by_peca_pai_id(self, def_peca_pai_id: int):
         return self.componentes
+
+    def get_by_id(self, id: int):
+        return self.componentes_por_id.get(id)
+
+
+class _FakeRegraQuantidadeRepository:
+    regras_por_id: dict = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, id: int):
+        return self.regras_por_id.get(id)
 
 
 class _FakePecaOperacaoRepository:
@@ -308,6 +322,8 @@ class _FakeItemValuesetRepository:
     default_linha = None
     chave_rows: list = []
     by_id = None
+    by_id_map: dict = {}
+    active_opcoes: list = []
     defaults_by_chave: dict = {}
 
     def __init__(self, _session: object) -> None:
@@ -321,8 +337,23 @@ class _FakeItemValuesetRepository:
     def list_by_item_chave(self, orcamento_item_id: int, chave: str):
         return self.chave_rows
 
+    def list_active_by_orcamento_item(self, orcamento_item_id: int):
+        return self.active_opcoes
+
     def get_by_id(self, id: int):
+        if id in self.by_id_map:
+            return self.by_id_map[id]
         return self.by_id
+
+
+class _FakeValuesetChaveRepository:
+    chaves: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_all(self):
+        return self.chaves
 
 
 class _FakeSession:
@@ -361,10 +392,15 @@ def _reset() -> None:
     _FakeRepository.deleted_ids = None
     _FakePecaRepository.pecas = {}
     _FakeComponenteRepository.componentes = []
+    _FakeComponenteRepository.componentes_por_id = {}
+    _FakeRegraQuantidadeRepository.regras_por_id = {}
     _FakeItemValuesetRepository.default_linha = None
     _FakeItemValuesetRepository.chave_rows = []
     _FakeItemValuesetRepository.by_id = None
+    _FakeItemValuesetRepository.by_id_map = {}
+    _FakeItemValuesetRepository.active_opcoes = []
     _FakeItemValuesetRepository.defaults_by_chave = {}
+    _FakeValuesetChaveRepository.chaves = []
     _FakeMateriaPrimaRepository.materia = None
     _FakeMateriaPrimaRepository.materias_por_ref = {}
     _FakePecaOperacaoRepository.ligacoes_por_peca = {}
@@ -381,7 +417,13 @@ def _service(monkeypatch):
         service_module, "DefPecaComponenteRepository", _FakeComponenteRepository
     )
     monkeypatch.setattr(
+        service_module, "DefRegraQuantidadeRepository", _FakeRegraQuantidadeRepository
+    )
+    monkeypatch.setattr(
         service_module, "OrcamentoItemValuesetLinhaRepository", _FakeItemValuesetRepository
+    )
+    monkeypatch.setattr(
+        service_module, "DefValuesetChaveRepository", _FakeValuesetChaveRepository
     )
     monkeypatch.setattr(
         service_module, "DefMateriaPrimaRepository", _FakeMateriaPrimaRepository
@@ -896,6 +938,219 @@ def test_recalcular_quantidades_so_altera_o_bloco_editado(monkeypatch) -> None:
     assert ids_alterados == {3}  # only the block under the edited division
     assert alteradas == 1
     assert _FakeRepository.updated_payloads[0]["quantidade"] == Decimal("10")
+
+
+# --- Component quantity rules (phase 8T.5.1) ---------------------------------
+
+_DOBRADICA_EXPR = (
+    "(2 if COMP <= 850 else 3 if COMP <= 1600 else 4 if COMP <= 2000 "
+    "else 5 if COMP <= 2600 else 6 + ((COMP - 2600) // 600)) "
+    "+ (1 if LARG >= 605 else 0)"
+)
+_PES_EXPR = (
+    "4 if COMP < 650 and LARG < 800 else 6 if COMP >= 650 and LARG < 800 else 8"
+)
+_VARAO_CENTRAL_EXPR = "1 if COMP > 1100 else 0"
+
+
+def _regra_q(codigo, expressao, *, id=100, ativo=True):
+    return SimpleNamespace(id=id, codigo=codigo, expressao=expressao, ativo=ativo)
+
+
+def _componente_com_regra(id, def_regra_quantidade_id):
+    return SimpleNamespace(id=id, def_regra_quantidade_id=def_regra_quantidade_id)
+
+
+def _correr_regra(
+    service,
+    expressao,
+    *,
+    comp_real,
+    larg_real,
+    esp_real=Decimal("19"),
+    qt_und=Decimal("1"),
+    pai_qt_und=Decimal("1"),
+    editado=False,
+    codigo="R",
+):
+    """Composite block: header (no dims) + main PECA sibling (FUNDO) + rule
+    component (PES). Applies the rules and returns the last update payload.
+
+    ``pai_qt_und`` is the MAIN PIECE's qt_und (the rule's QT_PAI); the header
+    deliberately has no dimensions so the test proves the sibling is used.
+    """
+    _FakeRepository.updated_payload = None
+    _FakeRepository.updated_payloads = []
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA"),  # header, dimensionless
+        _resumo(
+            id=2,
+            tipo_linha="PECA",
+            linha_pai_id=1,
+            ordem=1,
+            comp_real=comp_real,
+            larg_real=larg_real,
+            esp_real=esp_real,
+            qt_und=pai_qt_und,
+        ),  # main piece (e.g. FUNDO) — carries the real dimensions
+        _resumo(
+            id=3,
+            tipo_linha="FERRAGEM",
+            linha_pai_id=1,
+            ordem=2,
+            origem_id=10,
+            qt_und=qt_und,
+            editado_localmente=editado,
+        ),  # hardware component (e.g. PES) — has the quantity rule
+    ]
+    _FakeComponenteRepository.componentes_por_id = {10: _componente_com_regra(10, 100)}
+    _FakeRegraQuantidadeRepository.regras_por_id = {100: _regra_q(codigo, expressao)}
+
+    service.aplicar_regras_quantidade_do_item(30)
+    return _FakeRepository.updated_payload
+
+
+def test_aplicar_regras_dobradica_por_dimensoes(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    payload = _correr_regra(
+        service, _DOBRADICA_EXPR, comp_real=Decimal("2000"), larg_real=Decimal("600")
+    )
+    assert payload["id"] == 3  # the PES (rule) component, not the FUNDO
+    assert payload["qt_und"] == Decimal("4")
+    assert session.committed is True
+
+    payload = _correr_regra(
+        service, _DOBRADICA_EXPR, comp_real=Decimal("2000"), larg_real=Decimal("700")
+    )
+    assert payload["qt_und"] == Decimal("5")  # +1 hinge for LARG >= 605
+
+
+def test_aplicar_regras_usa_peca_principal_irma_nao_o_cabecalho(monkeypatch) -> None:
+    # The dimensionless PECA_COMPOSTA header (even with misleading dims) must be
+    # ignored; the rule reads the sibling main PECA (the FUNDO).
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1, tipo_linha="PECA_COMPOSTA",
+            comp_real=Decimal("100"), larg_real=Decimal("100"),  # misleading
+        ),
+        _resumo(
+            id=2, tipo_linha="PECA", linha_pai_id=1, ordem=1,
+            comp_real=Decimal("900"), larg_real=Decimal("600"), qt_und=Decimal("1"),
+        ),  # FUNDO: the real dimensions
+        _resumo(
+            id=3, tipo_linha="FERRAGEM", linha_pai_id=1, ordem=2,
+            origem_id=10, qt_und=Decimal("1"),
+        ),  # PES
+    ]
+    _FakeComponenteRepository.componentes_por_id = {10: _componente_com_regra(10, 100)}
+    _FakeRegraQuantidadeRepository.regras_por_id = {100: _regra_q("PES", _PES_EXPR)}
+
+    service.aplicar_regras_quantidade_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 3
+    # FUNDO 900x600 -> 6 (header 100x100 would be 4).
+    assert payload["qt_und"] == Decimal("6")
+
+
+def test_aplicar_regras_pes_e_suporte_varao_central(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    # Fundo 900x600 -> 6 pés.
+    payload = _correr_regra(
+        service, _PES_EXPR, comp_real=Decimal("900"), larg_real=Decimal("600")
+    )
+    assert payload["qt_und"] == Decimal("6")
+
+    # Varão central: COMP 1200 -> 1; COMP 1000 -> 0.
+    payload = _correr_regra(
+        service, _VARAO_CENTRAL_EXPR, comp_real=Decimal("1200"), larg_real=Decimal("0")
+    )
+    assert payload["qt_und"] == Decimal("1")
+
+    payload = _correr_regra(
+        service, _VARAO_CENTRAL_EXPR, comp_real=Decimal("1000"), larg_real=Decimal("0")
+    )
+    assert payload["qt_und"] == Decimal("0")
+
+
+def test_aplicar_regras_usa_qt_pai(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    # 2 doors (QT_PAI=2): "QT_PAI * 1" door-count rule -> qt_und 2.
+    payload = _correr_regra(
+        service,
+        "QT_PAI",
+        comp_real=Decimal("800"),
+        larg_real=Decimal("400"),
+        pai_qt_und=Decimal("2"),
+    )
+    assert payload["qt_und"] == Decimal("2")
+
+
+def test_aplicar_regras_sem_dimensoes_nao_calcula_e_avisa(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    payload = _correr_regra(
+        service, _DOBRADICA_EXPR, comp_real=None, larg_real=Decimal("600")
+    )
+    assert "qt_und" not in payload  # qt_und kept
+    assert "dimensões da peça principal em falta" in payload["observacoes"]
+
+
+def test_aplicar_regras_componente_sem_regra_mantem_qt_und(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA", qt_und=Decimal("1"),
+                comp_real=Decimal("2000"), larg_real=Decimal("600")),
+        _resumo(id=2, tipo_linha="FERRAGEM", linha_pai_id=1, origem_id=10,
+                qt_und=Decimal("3")),
+    ]
+    _FakeComponenteRepository.componentes_por_id = {
+        10: _componente_com_regra(10, None)  # no rule linked
+    }
+
+    result = service.aplicar_regras_quantidade_do_item(30)
+
+    assert result.calculadas == 0
+    assert result.processadas == 0
+    assert _FakeRepository.updated_payload is None  # qt_und untouched
+
+
+def test_aplicar_regras_respeita_edicao_manual(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    payload = _correr_regra(
+        service,
+        _DOBRADICA_EXPR,
+        comp_real=Decimal("2000"),
+        larg_real=Decimal("600"),
+        qt_und=Decimal("9"),
+        editado=True,
+        codigo="DOBRADICA",
+    )
+    assert "qt_und" not in payload  # manual value preserved
+    assert "manualmente" in payload["observacoes"]
+    assert "DOBRADICA" in payload["observacoes"]
+
+
+def test_aplicar_regras_qt_total_recalcula_pela_cadeia(monkeypatch) -> None:
+    # After the rule sets the component qt_und (5 here), the chain gives
+    # qt_total = qt_mod_efetivo × parent qt_und × component qt_und.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA", qt_mod=Decimal("1"),
+                qt_und=Decimal("2"), quantidade=Decimal("0")),
+        _resumo(id=2, tipo_linha="FERRAGEM", linha_pai_id=1, qt_mod=Decimal("1"),
+                qt_und=Decimal("5"), quantidade=Decimal("0")),
+    ]
+
+    service.recalcular_quantidades_do_item(30)
+
+    por_id = {p["id"]: p["quantidade"] for p in _FakeRepository.updated_payloads}
+    assert por_id[2] == Decimal("10")  # 1 × 2 × 5
 
 
 def test_atualizar_medidas_linha_recalcula_qt_total(monkeypatch) -> None:
@@ -3699,3 +3954,141 @@ def test_atualizar_fator_serie_linha_invalido(monkeypatch) -> None:
             pass
         else:
             raise AssertionError("Expected ValueError")
+
+
+# --- Mat. default dropdown: item ValueSet options per line (8G.x) -------------
+
+
+def _chave_vs(codigo, tipo):
+    return SimpleNamespace(codigo=codigo, tipo=tipo)
+
+
+def _opcao_vs(id, chave, codigo_opcao, *, orcamento_item_id=10, ref_le=None,
+              preco_liquido=None, esp_mp=None):
+    return SimpleNamespace(
+        id=id,
+        orcamento_item_id=orcamento_item_id,
+        chave=chave,
+        codigo_opcao=codigo_opcao,
+        nome_opcao=codigo_opcao,
+        ref_le=ref_le,
+        descricao_no_orcamento=None,
+        descricao_materia_prima=None,
+        descricao=None,
+        unidade="M2",
+        preco_liquido=preco_liquido,
+        desperdicio_percentagem=None,
+        tipo_materia_prima=None,
+        familia_materia_prima=None,
+        coresp_orla_0_4=None,
+        coresp_orla_1_0=None,
+        comp_mp=None,
+        larg_mp=None,
+        esp_mp=esp_mp,
+        materia_prima_id=None,
+        ref_materia_prima=None,
+    )
+
+
+def test_opcoes_valueset_para_linha_material_lista_todos_materiais(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeValuesetChaveRepository.chaves = [
+        _chave_vs("MATERIAL_FUNDOS", "MATERIAL"),
+        _chave_vs("MATERIAL_PORTAS", "MATERIAL"),
+        _chave_vs("FERRAGEM_PE_NIVELADOR", "FERRAGEM"),
+    ]
+    _FakeItemValuesetRepository.active_opcoes = [
+        _opcao_vs(1, "MATERIAL_FUNDOS", "MDF19"),
+        _opcao_vs(2, "MATERIAL_PORTAS", "TERMO"),
+        _opcao_vs(3, "FERRAGEM_PE_NIVELADOR", "PE"),
+    ]
+    linha = _resumo(id=5, tipo_linha="PECA", chave_valueset="MATERIAL_FUNDOS")
+
+    opcoes = service.opcoes_valueset_para_linha(10, linha)
+
+    assert [o.chave for o in opcoes] == ["MATERIAL_FUNDOS", "MATERIAL_PORTAS"]
+
+
+def test_opcoes_valueset_para_linha_ferragem_so_a_mesma_chave(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeValuesetChaveRepository.chaves = [
+        _chave_vs("FERRAGEM_PE_NIVELADOR", "FERRAGEM"),
+        _chave_vs("FERRAGEM_DOBRADICA", "FERRAGEM"),
+    ]
+    _FakeItemValuesetRepository.active_opcoes = [
+        _opcao_vs(1, "FERRAGEM_PE_NIVELADOR", "PE_PLAST"),
+        _opcao_vs(2, "FERRAGEM_PE_NIVELADOR", "PE_METAL"),
+        _opcao_vs(3, "FERRAGEM_DOBRADICA", "BLUM"),
+    ]
+    linha = _resumo(
+        id=5, tipo_linha="FERRAGEM", chave_valueset="FERRAGEM_PE_NIVELADOR"
+    )
+
+    opcoes = service.opcoes_valueset_para_linha(10, linha)
+
+    assert [o.codigo_opcao for o in opcoes] == ["PE_PLAST", "PE_METAL"]
+    assert all(o.chave == "FERRAGEM_PE_NIVELADOR" for o in opcoes)
+
+
+def test_opcoes_valueset_para_linha_divisao_sem_opcoes(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeItemValuesetRepository.active_opcoes = [
+        _opcao_vs(1, "MATERIAL_FUNDOS", "MDF19"),
+    ]
+    linha = _resumo(
+        id=5, tipo_linha="DIVISAO_INDEPENDENTE", chave_valueset="MATERIAL_FUNDOS"
+    )
+
+    assert service.opcoes_valueset_para_linha(10, linha) == []
+
+
+def test_aplicar_opcao_valueset_copia_snapshot_e_marca_deliberada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5, tipo_linha="PECA", orcamento_item_id=10, chave_valueset="MATERIAL_FUNDOS"
+    )
+    _FakeItemValuesetRepository.by_id = _opcao_vs(
+        2, "MATERIAL_PORTAS", "TERMO_BRANCO", ref_le="LE0007",
+        preco_liquido=Decimal("12.5"),
+    )
+
+    result = service.aplicar_opcao_valueset_na_linha(5, 2)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 5
+    assert payload["chave_valueset"] == "MATERIAL_PORTAS"  # cross-material carried
+    assert payload["mat_default"] == "TERMO_BRANCO"
+    assert payload["ref_le"] == "LE0007"
+    assert payload["preco_liquido"] == Decimal("12.5")
+    # Deliberate choice -> the item ValueSet propagation won't revert it.
+    assert payload["material_editado_localmente"] is True
+    assert payload["editado_localmente"] is True
+    assert session.committed is True
+    assert result is not None
+
+
+def test_aplicar_opcao_valueset_rejeita_divisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="DIVISAO_INDEPENDENTE")
+
+    try:
+        service.aplicar_opcao_valueset_na_linha(5, 2)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_aplicar_opcao_valueset_rejeita_opcao_de_outro_item(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA", orcamento_item_id=10)
+    _FakeItemValuesetRepository.by_id = _opcao_vs(
+        2, "MATERIAL_FUNDOS", "X", orcamento_item_id=99
+    )
+
+    try:
+        service.aplicar_opcao_valueset_na_linha(5, 2)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError")

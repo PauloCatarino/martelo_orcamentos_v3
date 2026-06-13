@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -40,11 +41,13 @@ from app.domain.quantidades import (
 )
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    FERRAGEM,
     OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
     get_custeio_linha_type_label,
 )
+from app.domain.valueset_compat import opcoes_valueset_compativeis
 from app.domain.custo_producao import (
     escolher_tarifa,
     preco_peca_escalao,
@@ -269,6 +272,9 @@ class OrcamentoItemCusteioPage(QWidget):
         "divisão fica vazia (a divisão só comanda os módulos das linhas abaixo).",
         "QT total": "Quantidade total da linha = qt_mod efetivo × qt_und "
         "(× peça principal se for componente). Entra nas áreas, custos e tempos.",
+        "Mat. default": "Material da linha, escolhível das opções do ValueSet do "
+        "item (dropdown). Placas: troca entre materiais; Ferragens/sistemas: só a "
+        "mesma família. ORLA/ACABAMENTO têm tratamento próprio.",
         "Área m²": "Área por unidade da peça (Comp × Larg).",
         "Perímetro ML": "Perímetro por unidade, em metros lineares.",
         "ML orla fina": "Metros lineares de orla fina (total da linha).",
@@ -327,6 +333,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
         self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
+        self._valueset_opcoes: list = []
+        self._chave_tipos: dict[str, str | None] = {}
         self._carregando_tabela = False
         self._tipo_producao_default = TIPO_PRODUCAO_STD
         self._maquinas_por_codigo: dict = {}
@@ -497,9 +505,14 @@ class OrcamentoItemCusteioPage(QWidget):
                 tipo_default = item_service.get_tipo_producao_default(
                     item.orcamento_versao_id
                 )
-                linhas = OrcamentoItemCusteioLinhaService(session).listar_linhas_do_item(
+                custeio_service = OrcamentoItemCusteioLinhaService(session)
+                linhas = custeio_service.listar_linhas_do_item(self.item_id)
+                # Cache the item ValueSet options + key types once, for the
+                # per-row 'Mat. default' dropdown (filtered by compatibility).
+                self._valueset_opcoes = custeio_service.opcoes_valueset_do_item(
                     self.item_id
                 )
+                self._chave_tipos = custeio_service.tipos_das_chaves()
                 self._carregar_tarifas_maquinas(session)
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar o custeio do item.")
@@ -616,18 +629,7 @@ class OrcamentoItemCusteioPage(QWidget):
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
-                service.recalcular_medidas_do_item(self.item_id)
-                service.aplicar_acabamentos_do_item(self.item_id)
-                service.recalcular_areas_acabamento_do_item(self.item_id)
-                service.recalcular_orlas_do_item(self.item_id)
-                service.recalcular_custo_materia_prima_do_item(self.item_id)
-                service.recalcular_custos_ferragens_do_item(self.item_id)
-                service.recalcular_custos_ml_do_item(self.item_id)
-                service.recalcular_custo_acabamento_do_item(self.item_id)
-                service.aplicar_operacoes_do_item(self.item_id)
-                service.recalcular_custos_producao_do_item(self.item_id)
-                service.recalcular_tempos_producao_do_item(self.item_id)
-                service.recalcular_custo_total_do_item(self.item_id)
+                self._recalcular_item_completo(service)
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
@@ -638,6 +640,26 @@ class OrcamentoItemCusteioPage(QWidget):
             "Item atualizado (medidas, orlas, custos parciais e custo total "
             "recalculados)."
         )
+
+    def _recalcular_item_completo(self, service) -> None:
+        """Run the full costing pipeline for the item (shared by Atualizar and the
+        Mat. default dropdown)."""
+        service.recalcular_medidas_do_item(self.item_id)
+        # Component quantity rules use the parent's real dimensions (computed
+        # above); refresh qt_total via the cadeia afterwards.
+        service.aplicar_regras_quantidade_do_item(self.item_id)
+        service.recalcular_quantidades_do_item(self.item_id)
+        service.aplicar_acabamentos_do_item(self.item_id)
+        service.recalcular_areas_acabamento_do_item(self.item_id)
+        service.recalcular_orlas_do_item(self.item_id)
+        service.recalcular_custo_materia_prima_do_item(self.item_id)
+        service.recalcular_custos_ferragens_do_item(self.item_id)
+        service.recalcular_custos_ml_do_item(self.item_id)
+        service.recalcular_custo_acabamento_do_item(self.item_id)
+        service.aplicar_operacoes_do_item(self.item_id)
+        service.recalcular_custos_producao_do_item(self.item_id)
+        service.recalcular_tempos_producao_do_item(self.item_id)
+        service.recalcular_custo_total_do_item(self.item_id)
 
     def inserir_divisao(self) -> None:
         """Insert an independent-division line (local HM/LM/PM measure context)."""
@@ -962,6 +984,10 @@ class OrcamentoItemCusteioPage(QWidget):
         """Fill one table row from a line resumo (caller guards _carregando_tabela)."""
         valores = self._linha_para_valores(linha)
         for column_index, header in enumerate(self.TABLE_HEADERS):
+            if header == "Mat. default" and self._montar_combo_material(
+                row_index, column_index, linha
+            ):
+                continue
             if header in self.EXCLUSAO_COLUMNS:
                 item = self._criar_item_exclusao(header, linha)
             else:
@@ -969,6 +995,8 @@ class OrcamentoItemCusteioPage(QWidget):
                 # (helps narrow text columns).
                 tooltip = self._tooltip_formula(header, linha)
                 item = criar_item_tabela(valores.get(header, ""), tooltip=tooltip)
+                if header == "Mat. default":
+                    item.setToolTip(self._tooltip_mat_default(linha))
                 if self._coluna_editavel(header, linha):
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 else:
@@ -989,6 +1017,129 @@ class OrcamentoItemCusteioPage(QWidget):
     def _linha_calcula_total(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
         """Return True when the line computes a total (not division/composite)."""
         return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+
+    # --- 'Mat. default' dropdown (item ValueSet options per line) -------------
+
+    def _linha_aceita_dropdown_material(
+        self, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> bool:
+        """True for PECA/FERRAGEM lines (incl. components) that carry material."""
+        if linha.tipo_linha not in (PECA, FERRAGEM):
+            return False
+        return not getattr(linha, "sem_material", False)
+
+    def _montar_combo_material(
+        self, row_index: int, column_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> bool:
+        """Place a Mat. default dropdown on the cell when there are options.
+
+        Returns True when a combobox was set (caller skips the text item); False
+        leaves the cell as read-only text (with a tooltip explaining why).
+        """
+        self.table.removeCellWidget(row_index, column_index)
+        if not self._linha_aceita_dropdown_material(linha):
+            return False
+
+        opcoes = opcoes_valueset_compativeis(
+            linha.chave_valueset, self._valueset_opcoes, self._chave_tipos
+        )
+        if not opcoes:
+            return False
+
+        self.table.setCellWidget(
+            row_index, column_index, self._criar_combo_material(linha, opcoes)
+        )
+        return True
+
+    def _criar_combo_material(
+        self, linha: OrcamentoItemCusteioLinhaResumo, opcoes: list
+    ) -> QComboBox:
+        """Build the per-line Mat. default combobox with the compatible options."""
+        combo = QComboBox()
+        combo.setToolTip(self._tooltip_mat_default(linha))
+
+        atual_id = self._opcao_atual_id(linha, opcoes)
+        if atual_id is None:
+            # Current material is not one of the options: keep it visible (no-op).
+            combo.addItem(f"(atual) {linha.mat_default or '—'}", None)
+        for opcao in opcoes:
+            combo.addItem(self._label_opcao_material(opcao), opcao.id)
+
+        indice = combo.findData(atual_id) if atual_id is not None else 0
+        if indice >= 0:
+            combo.setCurrentIndex(indice)
+        # Connect AFTER selecting, so the initial set does not fire the handler.
+        combo.currentIndexChanged.connect(
+            lambda _i, linha_id=linha.id, c=combo: self._on_material_combo_changed(
+                linha_id, c
+            )
+        )
+        return combo
+
+    @staticmethod
+    def _label_opcao_material(opcao) -> str:
+        """Clear label for one ValueSet option in the dropdown."""
+        codigo = opcao.codigo_opcao or opcao.nome_opcao or "—"
+        descricao = (
+            opcao.descricao_no_orcamento
+            or opcao.descricao_materia_prima
+            or opcao.descricao
+            or ""
+        )
+        ref = opcao.ref_le or "—"
+        rotulo = f"{opcao.chave} · {codigo}"
+        if descricao:
+            rotulo += f" · {descricao}"
+        return f"{rotulo} (Ref {ref})"
+
+    @staticmethod
+    def _opcao_atual_id(linha: OrcamentoItemCusteioLinhaResumo, opcoes: list):
+        """Return the option id matching the line's current material, or None."""
+        atual = (linha.mat_default or "").strip()
+        if not atual:
+            return None
+
+        chave = (linha.chave_valueset or "").strip().upper()
+        for opcao in opcoes:
+            codigo = (opcao.codigo_opcao or opcao.nome_opcao or "").strip()
+            if (opcao.chave or "").strip().upper() == chave and codigo == atual:
+                return opcao.id
+        return None
+
+    def _tooltip_mat_default(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """Tooltip for the Mat. default cell: the rule + the current option."""
+        return (
+            "Material da linha a partir do ValueSet do item.\n"
+            "Placas (MATERIAL): troca entre quaisquer materiais; "
+            "Ferragens/sistemas: só a mesma família (mesma chave).\n"
+            f"Opção atual: {linha.mat_default or '—'}"
+        )
+
+    def _on_material_combo_changed(self, linha_id: int, combo: QComboBox) -> None:
+        """Apply the chosen ValueSet option to the line and recompute the costs."""
+        if self._carregando_tabela:
+            return
+
+        opcao_id = combo.currentData()
+        if opcao_id is None:
+            return  # "(atual)" placeholder -> no change
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                service.aplicar_opcao_valueset_na_linha(linha_id, opcao_id)
+                # Reuse the full pipeline so every dependent column is consistent.
+                self._recalcular_item_completo(service)
+            mensagem = "Material aplicado do ValueSet do item (custos recalculados)."
+        except (SQLAlchemyError, ValueError):
+            mensagem = "Não foi possível aplicar o material selecionado."
+
+        # Reload outside the combo signal (the reload rebuilds/destroys the combo).
+        def _recarregar() -> None:
+            self.carregar()
+            self.status_label.setText(mensagem)
+
+        QTimer.singleShot(0, _recarregar)
 
     def _criar_item_exclusao(
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
