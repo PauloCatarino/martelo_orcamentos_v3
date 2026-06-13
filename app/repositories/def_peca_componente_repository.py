@@ -28,6 +28,8 @@ class DefPecaComponenteResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    def_regra_quantidade_id: int | None = None
+    def_regra_quantidade_codigo: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -83,6 +85,7 @@ class DefPecaComponenteRepository:
         obrigatorio: bool,
         ativo: bool,
         observacoes: str | None,
+        def_regra_quantidade_id: int | None = None,
     ) -> DefPecaComponenteResumo:
         """Create one composite piece component."""
         componente = DefPecaComponente(
@@ -94,6 +97,7 @@ class DefPecaComponenteRepository:
             ordem=ordem,
             quantidade=quantidade,
             regra_quantidade=regra_quantidade,
+            def_regra_quantidade_id=def_regra_quantidade_id,
             obrigatorio=obrigatorio,
             ativo=ativo,
             observacoes=observacoes,
@@ -118,6 +122,7 @@ class DefPecaComponenteRepository:
         obrigatorio: bool,
         ativo: bool,
         observacoes: str | None,
+        def_regra_quantidade_id: int | None = None,
     ) -> DefPecaComponenteResumo:
         """Update one composite piece component."""
         componente = self.session.get(DefPecaComponente, id)
@@ -132,6 +137,7 @@ class DefPecaComponenteRepository:
         componente.ordem = ordem
         componente.quantidade = quantidade
         componente.regra_quantidade = regra_quantidade
+        componente.def_regra_quantidade_id = def_regra_quantidade_id
         componente.obrigatorio = obrigatorio
         componente.ativo = ativo
         componente.observacoes = observacoes
@@ -165,6 +171,12 @@ class DefPecaComponenteRepository:
             obrigatorio=componente.obrigatorio,
             ativo=componente.ativo,
             observacoes=componente.observacoes,
+            def_regra_quantidade_id=componente.def_regra_quantidade_id,
+            def_regra_quantidade_codigo=(
+                componente.def_regra_quantidade.codigo
+                if componente.def_regra_quantidade is not None
+                else None
+            ),
             created_at=componente.created_at,
             updated_at=componente.updated_at,
         )

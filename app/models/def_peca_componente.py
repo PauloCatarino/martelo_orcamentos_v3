@@ -14,6 +14,7 @@ from app.domain.componente_types import PECA
 
 if TYPE_CHECKING:
     from app.models.def_peca import DefPeca
+    from app.models.def_regra_quantidade import DefRegraQuantidade
 
 
 class DefPecaComponente(Base):
@@ -59,6 +60,15 @@ class DefPecaComponente(Base):
         default="FIXA",
         server_default="FIXA",
     )
+    # Optional configurable quantity rule (phase 8T.5.1). When set, the
+    # component quantity is computed by this rule from the main piece dimensions;
+    # the fixed quantidade / regra_quantidade above are the fallback.
+    def_regra_quantidade_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("def_regras_quantidade.id"),
+        nullable=True,
+        index=True,
+    )
     obrigatorio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -78,4 +88,8 @@ class DefPecaComponente(Base):
     def_peca_componente: Mapped["DefPeca | None"] = relationship(
         "DefPeca",
         foreign_keys=[def_peca_componente_id],
+    )
+    def_regra_quantidade: Mapped["DefRegraQuantidade | None"] = relationship(
+        "DefRegraQuantidade",
+        foreign_keys=[def_regra_quantidade_id],
     )
