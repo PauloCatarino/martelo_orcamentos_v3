@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+import pytest
+from sqlalchemy import BigInteger, create_engine, select
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.orm import Session
+
+from app.db.base import Base
+import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
+from app.models import DefRegraQuantidade
 from scripts.create_default_regras_quantidade import (
     DEFAULT_REGRAS_QUANTIDADE,
     DefaultRegrasQuantidadeResult,
     RegraSeed,
+    ensure_default_regras_quantidade,
 )
+
+
+@compiles(BigInteger, "sqlite")
+def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
+    return "INTEGER"
+
+
+@pytest.fixture()
+def session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
 
 
 def test_seed_imports() -> None:
@@ -61,3 +83,32 @@ def test_result_dataclass() -> None:
     assert result.criadas == 3
     assert result.reutilizadas == 2
     assert result.invalidas == 0
+
+
+def test_seed_cria_as_nove_regras_sem_invalidas(session) -> None:
+    # The seed validates each expression with the sample context, so every rule
+    # (including the ones with COMP/LARG variables) is created — none ignored.
+    resultado = ensure_default_regras_quantidade(session)
+
+    assert resultado.criadas == 9
+    assert resultado.invalidas == 0
+    assert resultado.reutilizadas == 0
+
+    codigos = set(
+        session.execute(select(DefRegraQuantidade.codigo)).scalars().all()
+    )
+    assert codigos == {seed.codigo for seed in DEFAULT_REGRAS_QUANTIDADE}
+
+
+def test_seed_e_idempotente(session) -> None:
+    ensure_default_regras_quantidade(session)
+    segunda = ensure_default_regras_quantidade(session)
+
+    # The second run creates nothing and reuses all nine; no duplicates.
+    assert segunda.criadas == 0
+    assert segunda.reutilizadas == 9
+    assert segunda.invalidas == 0
+    total = session.execute(
+        select(DefRegraQuantidade.codigo)
+    ).scalars().all()
+    assert len(total) == 9

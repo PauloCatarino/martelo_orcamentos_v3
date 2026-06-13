@@ -9,6 +9,7 @@ from app.models.def_operacao import DefOperacao
 from app.models.def_peca import DefPeca
 from app.models.def_peca_componente import DefPecaComponente
 from app.models.def_peca_operacao import DefPecaOperacao
+from app.models.def_regra_quantidade import DefRegraQuantidade
 from app.models.def_valueset_chave import DefValuesetChave
 from app.models.def_valueset_modelo import DefValuesetModelo
 from app.models.def_valueset_modelo_linha import DefValuesetModeloLinha
@@ -33,6 +34,7 @@ __all__ = [
     "DefPeca",
     "DefPecaComponente",
     "DefPecaOperacao",
+    "DefRegraQuantidade",
     "DefValuesetChave",
     "DefValuesetModelo",
     "DefValuesetModeloLinha",

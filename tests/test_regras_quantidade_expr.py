@@ -50,11 +50,27 @@ def test_divisao_inteira_floordiv() -> None:
     assert _q("(COMP - 2600) // 600", COMP=3800) == 2
 
 
+def test_floordiv_por_zero_devolve_motivo() -> None:
+    quantidade, motivo = avaliar_regra_quantidade("COMP // 0", {"COMP": 1800})
+    assert quantidade is None
+    assert "zero" in motivo.lower()
+
+
 def test_funcoes_ceil_floor_min_max() -> None:
     assert _q("CEIL(COMP / 600)", COMP=601) == 2
+    assert _q("CEIL(COMP / 600)", COMP=1800) == 3  # exact 3, no rounding artifact
+    assert _q("CEIL(COMP / 600)", COMP=1801) == 4
     assert _q("FLOOR(COMP / 600)", COMP=1199) == 1
     assert _q("MIN(COMP, LARG)", COMP=2000, LARG=600) == 600
     assert _q("MAX(COMP, LARG, 100)", COMP=2000, LARG=600) == 2000
+
+
+def test_ternario_encadeado() -> None:
+    expr = "1 if COMP < 100 else 2 if COMP < 200 else 3 if COMP < 300 else 4"
+    assert _q(expr, COMP=50) == 1
+    assert _q(expr, COMP=150) == 2
+    assert _q(expr, COMP=250) == 3
+    assert _q(expr, COMP=500) == 4
 
 
 def test_comparacoes_e_booleanos() -> None:
