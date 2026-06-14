@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     PECA,
+    PECA_COMPOSTA,
     normalize_custeio_linha_type,
 )
 from app.domain.modulo_categorias import (
@@ -241,12 +242,14 @@ class DefModuloService:
         categoria: str = OUTROS,
         imagem_path: str | None = None,
     ) -> DefModuloComLinhas:
-        """Save selected costing lines as a reusable module (phase 8U.1).
+        """Save selected costing lines as a reusable module (phase 8U.1/8U.2).
 
-        Only the TOP-LEVEL lines are stored (composite children map to their
-        header; children re-expand on import). For each, only the STRUCTURAL
-        fields are copied — never material/price/orla-cost or real dimensions.
-        Creates the module header + lines and commits.
+        Stores the top-level lines (divisions, simple pieces, composite headers,
+        standalone hardware) AND, for each composite, its CHILD lines (nivel>0)
+        so their measure formulas/rules are preserved (linha_pai_ordem points to
+        the parent's module ordem). Only STRUCTURAL fields are copied — never
+        material/price/orla-cost or real dimensions. Creates the module header +
+        lines and commits.
         """
         custeio_repository = OrcamentoItemCusteioLinhaRepository(self.session)
         componente_repository = DefPecaComponenteRepository(self.session)
@@ -256,10 +259,9 @@ class DefModuloService:
         if not topo:
             raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
 
-        linhas_modulo = [
-            self._linha_modulo_de_custeio(linha, ordem, componente_repository)
-            for ordem, linha in enumerate(topo, start=1)
-        ]
+        linhas_modulo = self._linhas_modulo_de_custeio(
+            linhas, topo, componente_repository
+        )
 
         return self.criar(
             CriarDefModuloData(
@@ -332,9 +334,9 @@ class DefModuloService:
     ) -> DefModuloComLinhas:
         """Overwrite an existing module from the current costing selection.
 
-        Same structure rule as guardar_de_linhas_custeio (top-level lines only,
-        structure not material/price); replaces the module's stored lines and
-        updates its header, keeping id/code.
+        Same structure rule as guardar_de_linhas_custeio (top-level lines plus
+        each composite's children, structure not material/price); replaces the
+        module's stored lines and updates its header, keeping id/code.
         """
         custeio_repository = OrcamentoItemCusteioLinhaRepository(self.session)
         componente_repository = DefPecaComponenteRepository(self.session)
@@ -344,10 +346,9 @@ class DefModuloService:
         if not topo:
             raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
 
-        linhas_modulo = [
-            self._linha_modulo_de_custeio(linha, ordem, componente_repository)
-            for ordem, linha in enumerate(topo, start=1)
-        ]
+        linhas_modulo = self._linhas_modulo_de_custeio(
+            linhas, topo, componente_repository
+        )
 
         # The code is fixed on replace; pass the existing one through CriarDefModuloData.
         atual = self.repository.get_by_id(modulo_id)
@@ -367,11 +368,62 @@ class DefModuloService:
             ),
         )
 
+    def _linhas_modulo_de_custeio(
+        self, linhas, topo, componente_repository
+    ) -> list[CriarDefModuloLinhaData]:
+        """Build the module lines for the selection, INCLUDING composite children.
+
+        Each top-level line gets a sequential ordem; a composite's children
+        (nivel>0, linha_pai_id == header) follow right after their header with
+        linha_pai_ordem set to the header's ordem (so the structure re-creates
+        directly on import, keeping the children's measure formulas).
+        """
+        filhos_por_pai: dict[int, list] = {}
+        for linha in linhas:
+            if linha.linha_pai_id is not None:
+                filhos_por_pai.setdefault(linha.linha_pai_id, []).append(linha)
+        for filhos in filhos_por_pai.values():
+            filhos.sort(
+                key=lambda l: (l.ordem if l.ordem is not None else 0, l.id)
+            )
+
+        resultado: list[CriarDefModuloLinhaData] = []
+        ordem = 0
+        for pai in topo:
+            ordem += 1
+            ordem_pai = ordem
+            resultado.append(
+                self._linha_modulo_de_custeio(pai, ordem_pai, componente_repository)
+            )
+            if pai.tipo_linha == PECA_COMPOSTA:
+                for filho in filhos_por_pai.get(pai.id, []):
+                    ordem += 1
+                    resultado.append(
+                        self._linha_modulo_de_custeio(
+                            filho,
+                            ordem,
+                            componente_repository,
+                            linha_pai_ordem=ordem_pai,
+                        )
+                    )
+
+        return resultado
+
     def _linha_modulo_de_custeio(
-        self, linha, ordem: int, componente_repository
+        self,
+        linha,
+        ordem: int,
+        componente_repository,
+        linha_pai_ordem: int | None = None,
     ) -> CriarDefModuloLinhaData:
-        """Build one module line from a top-level costing line (structure only)."""
+        """Build one module line from a costing line (structure only).
+
+        ``linha_pai_ordem`` is set for composite children; top-level lines pass
+        None. The composite HEADER is an aggregator and keeps comp/larg/esp
+        empty; every other line keeps its measure TEXT/formulas.
+        """
         eh_divisao = linha.tipo_linha == DIVISAO_INDEPENDENTE
+        eh_composta = linha.tipo_linha == PECA_COMPOSTA
         return CriarDefModuloLinhaData(
             ordem=ordem,
             tipo_linha=linha.tipo_linha,
@@ -382,18 +434,18 @@ class DefModuloService:
             descricao_livre=linha.descricao if eh_divisao else None,
             qt_mod=self._texto_quantidade(linha.qt_mod),
             qt_und=self._texto_quantidade(linha.qt_und),
-            # comp/larg/esp keep the TEXT/formula (H, L/3, HM...), never the
-            # evaluated comp_real/larg_real/esp_real.
-            comp=linha.comp,
-            larg=linha.larg,
-            esp=linha.esp,
+            # comp/larg/esp keep the TEXT/formula (H, L/3, HM, LM...), never the
+            # evaluated comp_real/larg_real/esp_real. The composite header is an
+            # aggregator: no dimensions.
+            comp=None if eh_composta else linha.comp,
+            larg=None if eh_composta else linha.larg,
+            esp=None if eh_composta else linha.esp,
             chave_valueset=linha.chave_valueset,
             codigo_orlas=linha.codigo_orlas,
             def_regra_quantidade_id=self._regra_quantidade_id(
                 linha, componente_repository
             ),
-            # Composites re-expand from the def_peca on import.
-            linha_pai_ordem=None,
+            linha_pai_ordem=linha_pai_ordem,
             nivel=linha.nivel,
             ativo=True,
         )

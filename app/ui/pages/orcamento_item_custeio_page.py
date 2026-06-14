@@ -81,6 +81,7 @@ from app.ui.dialogs.guardar_modulo_dialog import (
     GuardarModuloDialog,
     GuardarModuloDialogData,
 )
+from app.ui.dialogs.importar_modulo_dialog import ImportarModuloDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
@@ -371,7 +372,11 @@ class OrcamentoItemCusteioPage(QWidget):
         self.insert_division_button.clicked.connect(self.inserir_divisao)
 
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
-        self.import_module_button.setEnabled(False)
+        self.import_module_button.setToolTip(
+            "Importa um m\u00f3dulo guardado para o fim do custeio deste item "
+            "(a estrutura re-avalia contra as vari\u00e1veis e o material do item)."
+        )
+        self.import_module_button.clicked.connect(self.importar_modulo)
 
         self.insert_piece_button = QPushButton("Inserir Pe\u00e7a")
         self.insert_piece_button.setEnabled(False)
@@ -693,6 +698,65 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Divisão independente inserida.")
+
+    # --- Import a saved module into the item (phase 8U.2) ---------------------
+
+    def importar_modulo(self) -> None:
+        """Open the import dialog and append the chosen module to the costing."""
+        utilizador = app_session.current_user
+        user_id = utilizador.id if utilizador is not None else None
+
+        try:
+            with SessionLocal() as session:
+                modulos_utilizador, modulos_globais = DefModuloService(
+                    session
+                ).listar_modulos_para_dialogo(user_id)
+        except SQLAlchemyError:
+            self.status_label.setText(
+                "Não foi possível carregar os módulos guardados."
+            )
+            return
+
+        if not modulos_utilizador and not modulos_globais:
+            self.status_label.setText("Não há módulos guardados para importar.")
+            return
+
+        def carregar_linhas(modulo_id: int):
+            try:
+                with SessionLocal() as session:
+                    com_linhas = DefModuloService(session).obter_com_linhas(modulo_id)
+                    return com_linhas.linhas if com_linhas else []
+            except SQLAlchemyError:
+                return []
+
+        dialog = ImportarModuloDialog(
+            self,
+            modulos_utilizador=modulos_utilizador,
+            modulos_globais=modulos_globais,
+            obter_linhas=carregar_linhas,
+        )
+        if not dialog.exec() or dialog.modulo_id_selecionado is None:
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                resultado = service.inserir_modulo_no_item(
+                    self.item_id, dialog.modulo_id_selecionado
+                )
+                self._recalcular_item_completo(service)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível importar o módulo.")
+            return
+
+        self.carregar()
+        mensagem = (
+            f"Módulo {resultado.modulo_codigo} importado: "
+            f"{resultado.criadas} linha(s)."
+        )
+        if resultado.avisos:
+            mensagem += " " + " ".join(resultado.avisos)
+        self.status_label.setText(mensagem)
 
     # --- Save selection as a reusable module (phase 8U.1) ---------------------
 

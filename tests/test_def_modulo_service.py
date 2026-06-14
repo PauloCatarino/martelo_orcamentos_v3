@@ -275,6 +275,7 @@ def _cenario_roupeiro(session):
     filho = _inserir_custeio(
         session, tipo_linha="FERRAGEM", ordem=4, nivel=1, linha_pai_id=composta.id,
         def_peca_codigo="CORREDICA", descricao="Corrediça",
+        comp="LM", larg="PM", qt_und=Decimal("4"),
     )
     pe = _inserir_custeio(
         session, tipo_linha="FERRAGEM", ordem=5, def_peca_codigo="PE", descricao="Pé",
@@ -298,20 +299,35 @@ def test_guardar_de_linhas_custeio_topo_e_estrutura(session) -> None:
     )
 
     linhas = com_linhas.linhas
-    # Only the 4 TOP-LEVEL lines (the composite child is not saved).
+    # Top-level lines PLUS the composite's child (phase 8U.2): division, simple
+    # piece, composite header, composite child (CORREDICA), standalone hardware.
     assert [linha.tipo_linha for linha in linhas] == [
         "DIVISAO_INDEPENDENTE",
         "PECA",
         "PECA_COMPOSTA",
         "FERRAGEM",
+        "FERRAGEM",
     ]
-    assert [linha.ordem for linha in linhas] == [1, 2, 3, 4]
-    assert "CORREDICA" not in {linha.def_peca_codigo for linha in linhas}
+    assert [linha.ordem for linha in linhas] == [1, 2, 3, 4, 5]
 
-    # Composite saved by its header (def_peca_id), children re-expand on import.
+    # Composite header saved by def_peca_id, as an aggregator (no comp/larg).
     composta_linha = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
     assert composta_linha.def_peca_id == 5
     assert composta_linha.linha_pai_ordem is None
+    assert composta_linha.comp is None
+    assert composta_linha.larg is None
+
+    # The composite CHILD is saved with its measure formulas + parent ordem.
+    corredica = next(l for l in linhas if l.def_peca_codigo == "CORREDICA")
+    assert corredica.nivel == 1
+    assert corredica.linha_pai_ordem == 3  # points to the header's ordem
+    assert corredica.comp == "LM"
+    assert corredica.larg == "PM"
+    assert corredica.qt_und == "4"
+
+    # The standalone hardware stays top-level (no parent).
+    pe_linha = next(l for l in linhas if l.def_peca_codigo == "PE")
+    assert pe_linha.linha_pai_ordem is None
 
     # Division free text in descricao_livre; measure formulas kept as TEXT.
     divisao_linha = linhas[0]
@@ -347,8 +363,14 @@ def test_guardar_so_o_filho_inclui_o_cabecalho(session) -> None:
         user_id=7,
     )
 
-    assert [linha.tipo_linha for linha in com_linhas.linhas] == ["PECA_COMPOSTA"]
+    # Selecting only the child saves its composite header AND the child itself.
+    assert [linha.tipo_linha for linha in com_linhas.linhas] == [
+        "PECA_COMPOSTA",
+        "FERRAGEM",
+    ]
     assert com_linhas.linhas[0].def_peca_id == 5
+    assert com_linhas.linhas[0].linha_pai_ordem is None
+    assert com_linhas.linhas[1].linha_pai_ordem == 1  # child -> header ordem
 
 
 def test_guardar_codigo_duplicado_nao_cria(session) -> None:
@@ -498,8 +520,14 @@ def test_substituir_de_linhas_custeio_mantem_codigo(session) -> None:
     assert resultado.modulo.codigo == "ROUP_2P"  # unchanged
     assert resultado.modulo.nome == "Roupeiro substituído"
     assert resultado.modulo.categoria == COZINHAS
-    # The composite header + the standalone hardware (child not saved on its own).
+    # Composite header + its child (CORREDICA) + the standalone hardware (PE).
     assert [linha.tipo_linha for linha in resultado.linhas] == [
         "PECA_COMPOSTA",
         "FERRAGEM",
+        "FERRAGEM",
     ]
+    assert {l.def_peca_codigo for l in resultado.linhas} == {
+        "GAVETA",
+        "CORREDICA",
+        "PE",
+    }

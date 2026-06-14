@@ -77,6 +77,7 @@ from app.repositories.def_maquina_escalao_area_repository import (
 )
 from app.repositories.def_maquina_repository import DefMaquinaRepository
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaRepository
+from app.repositories.def_modulo_repository import DefModuloRepository
 from app.repositories.def_operacao_repository import DefOperacaoRepository
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
 from app.repositories.def_regra_quantidade_repository import DefRegraQuantidadeRepository
@@ -216,6 +217,16 @@ class AdicionarPecasResult:
 
 
 @dataclass(frozen=True)
+class InserirModuloResult:
+    """Summary of importing a saved module into an item's costing (phase 8U.2)."""
+
+    modulo_codigo: str
+    criadas: int
+    componentes: int
+    avisos: list[str]
+
+
+@dataclass(frozen=True)
 class CustoMateriaPrimaResult:
     """Summary of one raw-material cost recompute over an item."""
 
@@ -349,6 +360,7 @@ class OrcamentoItemCusteioLinhaService:
         self.operacao_repository = DefOperacaoRepository(session)
         self.maquina_repository = DefMaquinaRepository(session)
         self.escalao_area_repository = DefMaquinaEscalaoAreaRepository(session)
+        self.def_modulo_repository = DefModuloRepository(session)
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -2420,6 +2432,401 @@ class OrcamentoItemCusteioLinhaService:
             ignoradas=ignoradas,
             avisos=avisos,
         )
+
+    # --- Import a saved module into the item (phase 8U.2) --------------------
+
+    def inserir_modulo_no_item(
+        self, orcamento_item_id: int, modulo_id: int
+    ) -> InserirModuloResult:
+        """Append a saved module's lines to an item's costing (V2-style import).
+
+        Each module line is recreated reusing the library-insertion logic: a
+        division keeps its measure context; a simple piece is rebuilt from its
+        def_peca (material resolved from the ITEM ValueSet) then overlaid with
+        the module's structural fields; a composite recreates its header + the
+        CHILD lines stored with it (keeping their measure formulas/rules), or
+        RE-EXPANDS from the def_peca for old modules with no stored children. No
+        material/price is copied from the module (it has none) — only
+        structure/formulas. The full Atualizar pipeline must run afterwards so
+        the formulas re-evaluate against the item's variables/ValueSet. Importing
+        is a COPY (no link to the module) and several modules can be imported in
+        sequence. Commits.
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+
+        modulo = self.def_modulo_repository.get_by_id(modulo_id)
+        if modulo is None:
+            raise ValueError("Módulo não encontrado.")
+
+        linhas_modulo = self.def_modulo_repository.list_linhas(modulo_id)
+        avisos: list[str] = []
+        if not linhas_modulo:
+            self._adicionar_aviso(
+                avisos, f"Módulo {modulo.codigo} não tem linhas para importar."
+            )
+            return InserirModuloResult(
+                modulo_codigo=modulo.codigo, criadas=0, componentes=0, avisos=avisos
+            )
+
+        # Group composite children by the ordem of their parent header line.
+        filhos_por_pai_ordem: dict[int, list] = {}
+        for linha in linhas_modulo:
+            if linha.linha_pai_ordem is not None:
+                filhos_por_pai_ordem.setdefault(linha.linha_pai_ordem, []).append(linha)
+
+        criadas = 0
+        componentes = 0
+        for linha in linhas_modulo:
+            if linha.linha_pai_ordem is not None:
+                continue  # handled within its composite parent
+            tipo = normalize_custeio_linha_type(linha.tipo_linha)
+            if tipo == DIVISAO_INDEPENDENTE:
+                self._importar_divisao_modulo(item_id, linha)
+            elif tipo == PECA_COMPOSTA:
+                componentes += self._importar_composta_modulo(
+                    item_id, linha, filhos_por_pai_ordem.get(linha.ordem, []), avisos
+                )
+            else:
+                self._importar_peca_modulo(item_id, linha, tipo, avisos)
+            criadas += 1
+
+        self.session.commit()
+
+        return InserirModuloResult(
+            modulo_codigo=modulo.codigo,
+            criadas=criadas,
+            componentes=componentes,
+            avisos=avisos,
+        )
+
+    def _importar_divisao_modulo(self, orcamento_item_id: int, linha) -> None:
+        """Recreate an independent-division line from a module line."""
+        self.repository.create_linha(
+            orcamento_item_id=orcamento_item_id,
+            tipo_linha=DIVISAO_INDEPENDENTE,
+            codigo=linha.codigo or "DIVISAO",
+            descricao=linha.descricao_livre or linha.descricao or "Divisão independente",
+            origem_tipo="MODULO",
+            nivel=0,
+            qt_mod=self._qt_modulo(linha.qt_mod, Decimal("1")),
+            qt_und=self._qt_modulo(linha.qt_und, Decimal("1")),
+            quantidade=Decimal("1"),
+            comp=linha.comp or "H",
+            larg=linha.larg or "L",
+            esp=linha.esp or "P",
+            editado_localmente=True,
+            ativo=True,
+        )
+
+    def _importar_peca_modulo(
+        self, orcamento_item_id: int, linha, tipo: str, avisos: list[str]
+    ) -> None:
+        """Recreate a simple piece / standalone hardware line from a module line.
+
+        Rebuild from def_peca (item ValueSet) then overlay the module's stored
+        structure. If the piece is gone/inactive, create the possible line and
+        warn (the import is not aborted).
+        """
+        peca = self._resolver_def_peca_modulo(linha)
+        if peca is None:
+            self._importar_linha_modulo_sem_peca(orcamento_item_id, linha, tipo, avisos)
+            return
+
+        fields, aviso = self._build_peca_line_fields(
+            orcamento_item_id,
+            peca,
+            tipo_linha=tipo,
+            origem="MODULO",
+            nivel=0,
+            linha_pai_id=None,
+            ordem=None,
+            qt_und=self._qt_modulo(linha.qt_und, Decimal("1")),
+        )
+        if aviso:
+            self._adicionar_aviso(avisos, aviso)
+
+        self._aplicar_estrutura_modulo(fields, linha)
+        self.repository.create_linha(**fields)
+
+    def _importar_composta_modulo(
+        self, orcamento_item_id: int, linha, filhos: list, avisos: list[str]
+    ) -> int:
+        """Recreate a composite into the item costing.
+
+        When the module stored the composite's CHILD lines, recreate the header
+        + those children DIRECTLY (keeping their measure formulas and linking the
+        quantity rule via the matching def_peca_componente). Otherwise fall back
+        to re-expanding from the def_peca (old modules). Returns how many
+        component sub-lines were created.
+        """
+        peca = self._resolver_def_peca_modulo(linha)
+
+        if not filhos:
+            return self._reexpandir_composta_da_def_peca(
+                orcamento_item_id, linha, peca, avisos
+            )
+
+        principal = self._criar_cabecalho_composta_modulo(
+            orcamento_item_id, linha, peca, avisos
+        )
+        componentes_def = (
+            [c for c in self.componente_repository.list_by_peca_pai_id(peca.id) if c.ativo]
+            if peca is not None
+            else []
+        )
+
+        criados = 0
+        for ordem, filho in enumerate(filhos, start=1):
+            self._importar_filho_composta_modulo(
+                orcamento_item_id, filho, principal.id, ordem, componentes_def, avisos
+            )
+            criados += 1
+
+        return criados
+
+    def _reexpandir_composta_da_def_peca(
+        self, orcamento_item_id: int, linha, peca, avisos: list[str]
+    ) -> int:
+        """Fallback for modules without stored children: re-expand the def_peca."""
+        if peca is None:
+            self._importar_linha_modulo_sem_peca(
+                orcamento_item_id, linha, PECA_COMPOSTA, avisos
+            )
+            return 0
+
+        principal = self._criar_cabecalho_composta_modulo(
+            orcamento_item_id, linha, peca, avisos
+        )
+
+        componentes = [
+            componente
+            for componente in self.componente_repository.list_by_peca_pai_id(peca.id)
+            if componente.ativo
+        ]
+        if not componentes:
+            self._adicionar_aviso(
+                avisos, f"Peça composta {peca.codigo} sem componentes configurados."
+            )
+            return 0
+
+        return self._criar_linhas_componentes(
+            orcamento_item_id, componentes, principal.id, avisos
+        )
+
+    def _criar_cabecalho_composta_modulo(
+        self, orcamento_item_id: int, linha, peca, avisos: list[str]
+    ):
+        """Create the composite header (aggregator: no comp/larg), from a module
+        line. Uses the def_peca when available; otherwise a best-effort header."""
+        if peca is not None:
+            principal = self._criar_linha_principal_composta(orcamento_item_id, peca)
+            override: dict = {}
+            qt_und = self._qt_modulo(linha.qt_und)
+            if qt_und is not None:
+                override["qt_und"] = qt_und
+                override["quantidade"] = qt_und
+            descricao = linha.descricao or linha.descricao_livre
+            if descricao:
+                override["descricao"] = descricao
+            if override:
+                self.repository.update_linha(id=principal.id, **override)
+            return principal
+
+        codigo_peca = linha.def_peca_codigo or linha.codigo
+        if codigo_peca:
+            self._adicionar_aviso(
+                avisos, f"Peça {codigo_peca} do módulo já não existe; "
+                "cabeçalho criado sem material."
+            )
+        qt_und = self._qt_modulo(linha.qt_und, Decimal("1"))
+        return self.repository.create_linha(
+            orcamento_item_id=orcamento_item_id,
+            tipo_linha=PECA_COMPOSTA,
+            codigo=linha.codigo or linha.def_peca_codigo,
+            def_peca_codigo=linha.def_peca_codigo,
+            descricao=(
+                linha.descricao
+                or linha.descricao_livre
+                or linha.def_peca_codigo
+                or "Peça composta"
+            ),
+            codigo_orlas=linha.codigo_orlas,
+            chave_valueset=linha.chave_valueset,
+            origem_tipo="MODULO",
+            nivel=0,
+            qt_mod=Decimal("1"),
+            qt_und=qt_und,
+            quantidade=qt_und,
+            editado_localmente=False,
+            ativo=True,
+        )
+
+    def _importar_filho_composta_modulo(
+        self,
+        orcamento_item_id: int,
+        filho,
+        linha_pai_id: int,
+        ordem: int,
+        componentes_def: list,
+        avisos: list[str],
+    ) -> None:
+        """Recreate one composite CHILD from a module line (keeps its formulas).
+
+        Resolves the material from the def_peca/ValueSet (as in the library),
+        overlays the module's structure, and links origem_id to the matching
+        def_peca_componente so the quantity rule applies in the pipeline.
+        """
+        tipo = normalize_custeio_linha_type(filho.tipo_linha)
+        peca = self._resolver_def_peca_modulo(filho)
+
+        if peca is not None:
+            fields, aviso = self._build_peca_line_fields(
+                orcamento_item_id,
+                peca,
+                tipo_linha=tipo,
+                origem="MODULO",
+                nivel=1,
+                linha_pai_id=linha_pai_id,
+                ordem=ordem,
+                qt_und=self._qt_modulo(filho.qt_und, Decimal("1")),
+                sem_chave_observacao=(
+                    "Componente sem chave ValueSet: atribua uma chave de "
+                    "material à definição da peça."
+                ),
+            )
+            if aviso:
+                self._adicionar_aviso(avisos, aviso)
+        else:
+            codigo_peca = filho.def_peca_codigo or filho.codigo
+            if codigo_peca:
+                self._adicionar_aviso(
+                    avisos, f"Peça {codigo_peca} do módulo já não existe; "
+                    "linha criada sem material."
+                )
+            qt_und = self._qt_modulo(filho.qt_und, Decimal("1"))
+            fields = {
+                "orcamento_item_id": orcamento_item_id,
+                "tipo_linha": tipo,
+                "codigo": filho.codigo or filho.def_peca_codigo,
+                "def_peca_codigo": filho.def_peca_codigo,
+                "descricao": (
+                    filho.descricao
+                    or filho.descricao_livre
+                    or filho.def_peca_codigo
+                    or "Componente"
+                ),
+                "chave_valueset": filho.chave_valueset,
+                "origem_tipo": "MODULO",
+                "nivel": 1,
+                "linha_pai_id": linha_pai_id,
+                "ordem": ordem,
+                "qt_mod": Decimal("1"),
+                "qt_und": qt_und,
+                "quantidade": qt_und,
+                "editado_localmente": False,
+                "ativo": True,
+            }
+
+        self._aplicar_estrutura_modulo(fields, filho)
+
+        componente = self._componente_para_filho_modulo(filho, componentes_def)
+        if componente is not None:
+            fields["origem_id"] = componente.id
+
+        self.repository.create_linha(**fields)
+
+    @staticmethod
+    def _componente_para_filho_modulo(filho, componentes_def):
+        """Match a module child to a def_peca_componente (for its quantity rule)."""
+        for componente in componentes_def:
+            if (
+                filho.def_peca_id is not None
+                and componente.def_peca_componente_id == filho.def_peca_id
+            ):
+                return componente
+            if (
+                filho.def_peca_codigo
+                and componente.referencia_componente == filho.def_peca_codigo
+            ):
+                return componente
+        return None
+
+    def _importar_linha_modulo_sem_peca(
+        self, orcamento_item_id: int, linha, tipo: str, avisos: list[str]
+    ) -> None:
+        """Create the best-effort line when a module piece no longer exists."""
+        codigo_peca = linha.def_peca_codigo or linha.codigo
+        if codigo_peca:
+            self._adicionar_aviso(
+                avisos, f"Peça {codigo_peca} do módulo já não existe; "
+                "linha criada sem material."
+            )
+        qt_und = self._qt_modulo(linha.qt_und, Decimal("1"))
+        self.repository.create_linha(
+            orcamento_item_id=orcamento_item_id,
+            tipo_linha=tipo,
+            codigo=linha.codigo or linha.def_peca_codigo,
+            def_peca_codigo=linha.def_peca_codigo,
+            descricao=(
+                linha.descricao
+                or linha.descricao_livre
+                or linha.def_peca_codigo
+                or "Linha do módulo"
+            ),
+            chave_valueset=linha.chave_valueset,
+            codigo_orlas=linha.codigo_orlas,
+            comp=linha.comp,
+            larg=linha.larg,
+            esp=linha.esp,
+            qt_mod=self._qt_modulo(linha.qt_mod, Decimal("1")),
+            qt_und=qt_und,
+            quantidade=qt_und,
+            origem_tipo="MODULO",
+            nivel=0,
+            editado_localmente=False,
+            ativo=True,
+        )
+
+    def _aplicar_estrutura_modulo(self, fields: dict, linha) -> None:
+        """Overlay a module line's structural fields onto built piece fields.
+
+        Only structure/formulas — never material/price (kept from the ValueSet).
+        """
+        if linha.comp is not None:
+            fields["comp"] = linha.comp
+        if linha.larg is not None:
+            fields["larg"] = linha.larg
+        if linha.esp is not None:
+            fields["esp"] = linha.esp
+        if linha.codigo_orlas is not None:
+            fields["codigo_orlas"] = linha.codigo_orlas
+        qt_mod = self._qt_modulo(linha.qt_mod)
+        if qt_mod is not None:
+            fields["qt_mod"] = qt_mod
+        qt_und = self._qt_modulo(linha.qt_und)
+        if qt_und is not None:
+            fields["qt_und"] = qt_und
+            fields["quantidade"] = qt_und
+
+    def _resolver_def_peca_modulo(self, linha) -> DefPecaResumo | None:
+        """Resolve a module line's active def_peca (by id, then code)."""
+        if linha.def_peca_id is not None:
+            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            if peca is not None and peca.ativo:
+                return peca
+
+        if linha.def_peca_codigo:
+            peca = self.peca_repository.get_by_codigo(linha.def_peca_codigo)
+            if peca is not None and peca.ativo:
+                return peca
+
+        return None
+
+    @staticmethod
+    def _qt_modulo(valor, default: Decimal | None = None) -> Decimal | None:
+        """Convert a module's text quantity to Decimal (numbers only)."""
+        numero = normalizar_numero(valor)
+        return numero if numero is not None else default
 
     def _adicionar_peca_simples(
         self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]
