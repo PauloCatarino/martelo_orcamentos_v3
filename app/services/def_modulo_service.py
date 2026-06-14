@@ -8,20 +8,31 @@ to the module). This phase covers create / read / list / search / delete only.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
 
-from app.domain.custeio_linha_types import PECA, normalize_custeio_linha_type
+from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
+    PECA,
+    normalize_custeio_linha_type,
+)
 from app.domain.modulo_categorias import (
     AMBITO_GLOBAL,
     AMBITO_UTILIZADOR,
+    OUTROS,
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
+from app.domain.modulo_estrutura import selecionar_linhas_topo
 from app.repositories.def_modulo_repository import (
     DefModuloLinhaResumo,
     DefModuloRepository,
     DefModuloResumo,
+)
+from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
+from app.repositories.orcamento_item_custeio_linha_repository import (
+    OrcamentoItemCusteioLinhaRepository,
 )
 
 
@@ -181,6 +192,107 @@ class DefModuloService:
             modulo=self.repository.get_by_id(modulo.id),
             linhas=self.repository.list_linhas(modulo.id),
         )
+
+    def guardar_de_linhas_custeio(
+        self,
+        *,
+        orcamento_item_id: int,
+        linha_ids,
+        codigo: str,
+        nome: str,
+        descricao: str | None = None,
+        ambito: str = AMBITO_UTILIZADOR,
+        user_id: int | None = None,
+        categoria: str = OUTROS,
+        imagem_path: str | None = None,
+    ) -> DefModuloComLinhas:
+        """Save selected costing lines as a reusable module (phase 8U.1).
+
+        Only the TOP-LEVEL lines are stored (composite children map to their
+        header; children re-expand on import). For each, only the STRUCTURAL
+        fields are copied — never material/price/orla-cost or real dimensions.
+        Creates the module header + lines and commits.
+        """
+        custeio_repository = OrcamentoItemCusteioLinhaRepository(self.session)
+        componente_repository = DefPecaComponenteRepository(self.session)
+
+        linhas = custeio_repository.list_active_by_orcamento_item(orcamento_item_id)
+        topo = selecionar_linhas_topo(linhas, linha_ids)
+        if not topo:
+            raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
+
+        linhas_modulo = [
+            self._linha_modulo_de_custeio(linha, ordem, componente_repository)
+            for ordem, linha in enumerate(topo, start=1)
+        ]
+
+        return self.criar(
+            CriarDefModuloData(
+                codigo=codigo,
+                nome=nome,
+                descricao=descricao,
+                ambito=ambito,
+                user_id=user_id,
+                categoria=categoria,
+                imagem_path=imagem_path,
+                linhas=linhas_modulo,
+            )
+        )
+
+    def _linha_modulo_de_custeio(
+        self, linha, ordem: int, componente_repository
+    ) -> CriarDefModuloLinhaData:
+        """Build one module line from a top-level costing line (structure only)."""
+        eh_divisao = linha.tipo_linha == DIVISAO_INDEPENDENTE
+        return CriarDefModuloLinhaData(
+            ordem=ordem,
+            tipo_linha=linha.tipo_linha,
+            def_peca_id=linha.def_peca_id,
+            def_peca_codigo=linha.def_peca_codigo,
+            codigo=linha.codigo,
+            descricao=None if eh_divisao else linha.descricao,
+            descricao_livre=linha.descricao if eh_divisao else None,
+            qt_mod=self._texto_quantidade(linha.qt_mod),
+            qt_und=self._texto_quantidade(linha.qt_und),
+            # comp/larg/esp keep the TEXT/formula (H, L/3, HM...), never the
+            # evaluated comp_real/larg_real/esp_real.
+            comp=linha.comp,
+            larg=linha.larg,
+            esp=linha.esp,
+            chave_valueset=linha.chave_valueset,
+            codigo_orlas=linha.codigo_orlas,
+            def_regra_quantidade_id=self._regra_quantidade_id(
+                linha, componente_repository
+            ),
+            # Composites re-expand from the def_peca on import.
+            linha_pai_ordem=None,
+            nivel=linha.nivel,
+            ativo=True,
+        )
+
+    @staticmethod
+    def _regra_quantidade_id(linha, componente_repository) -> int | None:
+        """Resolve the quantity-rule id via the line's component origin, if any."""
+        if linha.origem_id is None:
+            return None
+
+        componente = componente_repository.get_by_id(linha.origem_id)
+        if componente is None:
+            return None
+
+        return componente.def_regra_quantidade_id
+
+    @staticmethod
+    def _texto_quantidade(valor) -> str | None:
+        """Store qt_mod/qt_und as trimmed text (keeps formulas; numbers cleaned)."""
+        if valor is None:
+            return None
+        if isinstance(valor, str):
+            return valor.strip() or None
+        try:
+            return format(Decimal(str(valor)).normalize(), "f")
+        except (InvalidOperation, ValueError):
+            return str(valor)
 
     def editar_cabecalho(
         self, modulo_id: int, data: EditarDefModuloCabecalhoData

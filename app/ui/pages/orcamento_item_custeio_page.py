@@ -72,9 +72,15 @@ from app.services.orcamento_item_custeio_linha_service import (
 )
 from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
 from app.services.def_maquina_service import DefMaquinaService
+from app.services.def_modulo_service import DefModuloService
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.core.session import app_session
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
+from app.ui.dialogs.guardar_modulo_dialog import (
+    GuardarModuloDialog,
+    GuardarModuloDialogData,
+)
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
@@ -376,6 +382,17 @@ class OrcamentoItemCusteioPage(QWidget):
         self.save_button = QPushButton("Guardar Custeio")
         self.save_button.setEnabled(False)
 
+        # Save the selected costing lines as a reusable module (phase 8U.1):
+        # only the parametric structure (no material/price). Enabled on selection.
+        self.guardar_modulo_button = QPushButton("Guardar como Módulo")
+        self.guardar_modulo_button.setToolTip(
+            "Guarda as linhas selecionadas como um módulo reutilizável (só a "
+            "estrutura — peças, divisões, fórmulas, chave ValueSet e orlas; "
+            "sem material nem preço)."
+        )
+        self.guardar_modulo_button.setEnabled(False)
+        self.guardar_modulo_button.clicked.connect(self.guardar_como_modulo)
+
         # Highlighted, read-only reference price the item carries to the items
         # list (produced cost, unit price and total). Updated on load/Atualizar.
         self.preco_item_label = QLabel("")
@@ -401,6 +418,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.insert_piece_button)
         actions_layout.addWidget(self.insert_operation_button)
         actions_layout.addWidget(self.save_button)
+        actions_layout.addWidget(self.guardar_modulo_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.preco_item_label)
 
@@ -442,6 +460,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.horizontalHeader().setStretchLastSection(False)
         self._larguras_iniciais_aplicadas = False
         self.table.cellChanged.connect(self._on_cell_changed)
+        self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
 
@@ -674,6 +693,67 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         self.status_label.setText("Divisão independente inserida.")
+
+    # --- Save selection as a reusable module (phase 8U.1) ---------------------
+
+    def _ids_linhas_selecionadas(self) -> list[int]:
+        """Return the cost-line ids of the currently selected rows."""
+        rows = sorted(idx.row() for idx in self.table.selectionModel().selectedRows())
+        return [
+            self._custeio_by_row[row].id
+            for row in rows
+            if row in self._custeio_by_row
+        ]
+
+    def _atualizar_botao_modulo(self) -> None:
+        """Enable 'Guardar como Módulo' only when lines are selected."""
+        self.guardar_modulo_button.setEnabled(bool(self._ids_linhas_selecionadas()))
+
+    def guardar_como_modulo(self) -> None:
+        """Save the selected costing lines as a reusable module."""
+        linha_ids = self._ids_linhas_selecionadas()
+        if not linha_ids:
+            self.status_label.setText("Selecione pelo menos uma linha para guardar.")
+            return
+
+        utilizador = app_session.current_user
+        user_id = utilizador.id if utilizador is not None else None
+
+        guardado: dict = {}
+
+        def handle_save(dados: GuardarModuloDialogData) -> bool:
+            try:
+                with SessionLocal() as session:
+                    resultado = DefModuloService(session).guardar_de_linhas_custeio(
+                        orcamento_item_id=self.item_id,
+                        linha_ids=linha_ids,
+                        codigo=dados.codigo,
+                        nome=dados.nome,
+                        descricao=dados.descricao,
+                        ambito=dados.ambito,
+                        user_id=user_id,
+                        categoria=dados.categoria,
+                        imagem_path=dados.imagem_path,
+                    )
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível guardar o módulo.")
+                return False
+
+            guardado["resultado"] = resultado
+            return True
+
+        dialog = GuardarModuloDialog(
+            self, on_save=handle_save, num_linhas=len(linha_ids)
+        )
+        if dialog.exec() and guardado:
+            resultado = guardado["resultado"]
+            self.status_label.setText(
+                f"Módulo {resultado.modulo.codigo} guardado "
+                f"({len(resultado.linhas)} linhas)."
+            )
 
     def _coluna_editavel(
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
