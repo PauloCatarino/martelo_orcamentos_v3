@@ -1,5 +1,6 @@
 """Application pages package."""
 
+from app.ui.pages.biblioteca_modulos_page import BibliotecaModulosPage
 from app.ui.pages.configuracoes_page import ConfiguracoesPage
 from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
@@ -16,6 +17,7 @@ from app.ui.pages.orcamentos_page import OrcamentosPage
 from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
 
 __all__ = [
+    "BibliotecaModulosPage",
     "ConfiguracoesPage",
     "CaminhosSistemaPage",
     "DefPecaDetailPage",

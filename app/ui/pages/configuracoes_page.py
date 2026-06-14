@@ -26,6 +26,7 @@ class ConfiguracoesPage(QWidget):
         "Modelos ValueSet",
         "Margens por Defeito",
         "Regras de Quantidade",
+        "Biblioteca de Módulos",
         "Regras de Custeio",
     ]
 
@@ -39,6 +40,7 @@ class ConfiguracoesPage(QWidget):
         on_open_valueset_modelos: Callable[[], None] | None = None,
         on_open_margens_padrao: Callable[[], None] | None = None,
         on_open_regras_quantidade: Callable[[], None] | None = None,
+        on_open_biblioteca_modulos: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -50,6 +52,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_valueset_modelos = on_open_valueset_modelos
         self.on_open_margens_padrao = on_open_margens_padrao
         self.on_open_regras_quantidade = on_open_regras_quantidade
+        self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
 
         title = QLabel("Configura\u00e7\u00f5es")
         title.setObjectName("pageTitle")
@@ -104,6 +107,14 @@ class ConfiguracoesPage(QWidget):
         )
         self.regras_quantidade_button.clicked.connect(self._open_regras_quantidade)
 
+        self.biblioteca_modulos_button = QPushButton("Biblioteca de Módulos")
+        self.biblioteca_modulos_button.setToolTip(
+            "Gerir os módulos reutilizáveis guardados no custeio (roupeiros, "
+            "cozinhas, móveis...): pesquisar, editar o cabeçalho, eliminar e ver "
+            "as linhas. Os módulos criam-se no custeio e importam-se nos itens."
+        )
+        self.biblioteca_modulos_button.clicked.connect(self._open_biblioteca_modulos)
+
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
 
@@ -123,6 +134,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.valueset_modelos_button)
         layout.addWidget(self.margens_padrao_button)
         layout.addWidget(self.regras_quantidade_button)
+        layout.addWidget(self.biblioteca_modulos_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -168,6 +180,11 @@ class ConfiguracoesPage(QWidget):
         """Open the quantity rules page through the optional callback."""
         if self.on_open_regras_quantidade is not None:
             self.on_open_regras_quantidade()
+
+    def _open_biblioteca_modulos(self) -> None:
+        """Open the module library page through the optional callback."""
+        if self.on_open_biblioteca_modulos is not None:
+            self.on_open_biblioteca_modulos()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""

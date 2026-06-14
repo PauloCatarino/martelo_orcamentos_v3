@@ -219,6 +219,33 @@ def test_editar_cabecalho(session) -> None:
     assert resultado.categoria == COZINHAS
 
 
+def test_editar_cabecalho_persiste_todos_os_campos(session) -> None:
+    """Phase 8U.3: editing persists name/description/category/scope/image."""
+    service = DefModuloService(session)
+    modulo_id = _criar_roupeiro(service)
+
+    service.editar_cabecalho(
+        modulo_id,
+        EditarDefModuloCabecalhoData(
+            nome="Roupeiro editado",
+            descricao="Nova descrição",
+            categoria=COZINHAS,
+            ambito=AMBITO_GLOBAL,  # changing to global drops the owner
+            user_id=7,
+            imagem_path="C:/imagens/roupeiro.png",
+        ),
+    )
+
+    # Re-read from the repository to confirm it persisted.
+    recarregado = service.obter_com_linhas(modulo_id).modulo
+    assert recarregado.nome == "Roupeiro editado"
+    assert recarregado.descricao == "Nova descrição"
+    assert recarregado.categoria == COZINHAS
+    assert recarregado.ambito == AMBITO_GLOBAL
+    assert recarregado.user_id is None  # global -> no owner
+    assert recarregado.imagem_path == "C:/imagens/roupeiro.png"
+
+
 def test_eliminar_apaga_modulo_e_linhas(session) -> None:
     service = DefModuloService(session)
     modulo_id = _criar_roupeiro(service)

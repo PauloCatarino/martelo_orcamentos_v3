@@ -35,8 +35,18 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Modelos ValueSet",
         "Margens por Defeito",
         "Regras de Quantidade",
+        "Biblioteca de Módulos",
         "Regras de Custeio",
     ]
+
+
+def test_configuracoes_page_has_biblioteca_modulos_shortcut() -> None:
+    from app.ui.pages.configuracoes_page import ConfiguracoesPage
+
+    signature = inspect.signature(ConfiguracoesPage)
+
+    assert "on_open_biblioteca_modulos" in signature.parameters
+    assert hasattr(ConfiguracoesPage, "_open_biblioteca_modulos")
 
 
 def test_configuracoes_page_has_regras_quantidade_shortcut() -> None:
