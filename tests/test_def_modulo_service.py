@@ -390,3 +390,116 @@ def test_guardar_sem_linhas_selecionadas_erro(session) -> None:
         service.guardar_de_linhas_custeio(
             orcamento_item_id=10, linha_ids=[], codigo="X", nome="X", user_id=7
         )
+
+
+# --- Listing for the save dialog + overwrite (phase 8U.1.1) ------------------
+
+
+def test_listar_modulos_para_dialogo_com_contagem(session) -> None:
+    service = DefModuloService(session)
+    _criar_roupeiro(service, codigo="ROUP_7", user_id=7)  # 3 lines
+    service.criar(
+        CriarDefModuloData(
+            codigo="COZ_7", nome="Cozinha base", ambito=AMBITO_UTILIZADOR,
+            user_id=7, categoria=COZINHAS,
+        )
+    )  # 0 lines
+    _criar_roupeiro(service, codigo="ROUP_9", user_id=9)  # other user
+    service.criar(
+        CriarDefModuloData(
+            codigo="GLB_1", nome="Módulo global", ambito=AMBITO_GLOBAL,
+            categoria=ROUPEIROS, linhas=_linhas_roupeiro(),
+        )
+    )  # 3 lines, global
+
+    utilizador, globais = service.listar_modulos_para_dialogo(7)
+
+    contagem_user = {item.modulo.codigo: item.num_linhas for item in utilizador}
+    assert contagem_user == {"ROUP_7": 3, "COZ_7": 0}  # not user 9, not global
+    contagem_global = {item.modulo.codigo: item.num_linhas for item in globais}
+    assert contagem_global == {"GLB_1": 3}
+
+
+def test_substituir_modulo_recria_linhas_mantem_codigo(session) -> None:
+    service = DefModuloService(session)
+    modulo_id = _criar_roupeiro(service, codigo="ROUP_2P", user_id=7)
+    antes = service.obter_com_linhas(modulo_id)
+    assert len(antes.linhas) == 3
+    assert "LATERAL" in {linha.def_peca_codigo for linha in antes.linhas}
+
+    resultado = service.substituir_modulo(
+        modulo_id,
+        CriarDefModuloData(
+            codigo="IGNORADO",  # the code is fixed on replace
+            nome="Roupeiro renovado",
+            descricao="Nova descrição",
+            ambito=AMBITO_UTILIZADOR,
+            user_id=7,
+            categoria=COZINHAS,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA", def_peca_codigo="TOPO", comp="L"
+                ),
+            ],
+        ),
+    )
+
+    # Same id/code; header updated.
+    assert resultado.modulo.id == modulo_id
+    assert resultado.modulo.codigo == "ROUP_2P"
+    assert resultado.modulo.nome == "Roupeiro renovado"
+    assert resultado.modulo.categoria == COZINHAS
+    # Old lines replaced by the new selection (the old LATERAL is gone).
+    assert len(resultado.linhas) == 1
+    assert resultado.linhas[0].def_peca_codigo == "TOPO"
+    assert "LATERAL" not in {linha.def_peca_codigo for linha in resultado.linhas}
+    # Persisted: exactly the new line remains in the DB.
+    restantes = session.execute(
+        select(DefModuloLinha).where(DefModuloLinha.def_modulo_id == modulo_id)
+    ).scalars().all()
+    assert len(restantes) == 1
+    assert restantes[0].def_peca_codigo == "TOPO"
+
+
+def test_substituir_modulo_inexistente_erro(session) -> None:
+    service = DefModuloService(session)
+    with pytest.raises(ValueError):
+        service.substituir_modulo(
+            9999,
+            CriarDefModuloData(codigo="X", nome="X", user_id=7),
+        )
+
+
+def test_substituir_de_linhas_custeio_mantem_codigo(session) -> None:
+    div, simples, composta, filho, pe = _cenario_roupeiro(session)
+    service = DefModuloService(session)
+    original = service.guardar_de_linhas_custeio(
+        orcamento_item_id=10,
+        linha_ids=[div.id, simples.id],
+        codigo="ROUP_2P",
+        nome="Roupeiro 2 portas",
+        user_id=7,
+        categoria=ROUPEIROS,
+    )
+    modulo_id = original.modulo.id
+    assert len(original.linhas) == 2
+
+    resultado = service.substituir_de_linhas_custeio(
+        modulo_id=modulo_id,
+        orcamento_item_id=10,
+        linha_ids=[composta.id, filho.id, pe.id],
+        nome="Roupeiro substituído",
+        ambito=AMBITO_UTILIZADOR,
+        user_id=7,
+        categoria=COZINHAS,
+    )
+
+    assert resultado.modulo.id == modulo_id
+    assert resultado.modulo.codigo == "ROUP_2P"  # unchanged
+    assert resultado.modulo.nome == "Roupeiro substituído"
+    assert resultado.modulo.categoria == COZINHAS
+    # The composite header + the standalone hardware (child not saved on its own).
+    assert [linha.tipo_linha for linha in resultado.linhas] == [
+        "PECA_COMPOSTA",
+        "FERRAGEM",
+    ]

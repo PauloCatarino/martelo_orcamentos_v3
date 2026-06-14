@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models import DefModulo, DefModuloLinha
@@ -165,6 +165,17 @@ class DefModuloRepository:
         return True
 
     # ----- Module lines -----
+
+    def contar_linhas_por_modulo(self) -> dict[int, int]:
+        """Return a map of module id -> number of lines (for the listing)."""
+        statement = select(
+            DefModuloLinha.def_modulo_id, func.count(DefModuloLinha.id)
+        ).group_by(DefModuloLinha.def_modulo_id)
+
+        return {
+            modulo_id: total
+            for modulo_id, total in self.session.execute(statement).all()
+        }
 
     def list_linhas(self, def_modulo_id: int) -> list[DefModuloLinhaResumo]:
         """List a module's lines, ordered by ordem then id."""

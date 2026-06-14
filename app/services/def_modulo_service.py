@@ -25,6 +25,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_categoria,
 )
 from app.domain.modulo_estrutura import selecionar_linhas_topo
+from app.domain.modulo_pesquisa import filtrar_por_termo
 from app.repositories.def_modulo_repository import (
     DefModuloLinhaResumo,
     DefModuloRepository,
@@ -95,6 +96,14 @@ class DefModuloComLinhas:
     linhas: list[DefModuloLinhaResumo]
 
 
+@dataclass(frozen=True)
+class ModuloComContagem:
+    """A module header plus its line count, for the save-dialog listing."""
+
+    modulo: DefModuloResumo
+    num_linhas: int
+
+
 class DefModuloService:
     """Application service for the reusable module/article library."""
 
@@ -130,6 +139,28 @@ class DefModuloService:
         ]
         return self._filtrar(modulos, categoria, termo)
 
+    def listar_modulos_para_dialogo(
+        self, user_id: int | None
+    ) -> tuple[list[ModuloComContagem], list[ModuloComContagem]]:
+        """Return (utilizador, globais) active modules with line counts.
+
+        For the save dialog: the user's own modules and the global ones, each
+        with the number of stored lines. The dialog filters by category/term
+        in-memory (reusing the same '%' search).
+        """
+        contagens = self.repository.contar_linhas_por_modulo()
+
+        def com_contagem(modulos):
+            return [
+                ModuloComContagem(modulo=modulo, num_linhas=contagens.get(modulo.id, 0))
+                for modulo in modulos
+            ]
+
+        return (
+            com_contagem(self.listar_por_ambito_utilizador(user_id)),
+            com_contagem(self.listar_globais()),
+        )
+
     def obter_com_linhas(self, modulo_id: int) -> DefModuloComLinhas | None:
         """Get one module with its ordered structural lines, or None."""
         modulo = self.repository.get_by_id(modulo_id)
@@ -163,9 +194,20 @@ class DefModuloService:
             ativo=data.ativo,
         )
 
-        for linha in data.linhas:
+        self._persistir_linhas(modulo.id, data.linhas)
+
+        self.session.commit()
+
+        return DefModuloComLinhas(
+            modulo=self.repository.get_by_id(modulo.id),
+            linhas=self.repository.list_linhas(modulo.id),
+        )
+
+    def _persistir_linhas(self, modulo_id: int, linhas) -> None:
+        """Create every structural line for a module (shared by criar/substituir)."""
+        for linha in linhas:
             self.repository.create_linha(
-                def_modulo_id=modulo.id,
+                def_modulo_id=modulo_id,
                 ordem=linha.ordem,
                 tipo_linha=normalize_custeio_linha_type(linha.tipo_linha),
                 def_peca_id=linha.def_peca_id,
@@ -185,13 +227,6 @@ class DefModuloService:
                 nivel=linha.nivel,
                 ativo=linha.ativo,
             )
-
-        self.session.commit()
-
-        return DefModuloComLinhas(
-            modulo=self.repository.get_by_id(modulo.id),
-            linhas=self.repository.list_linhas(modulo.id),
-        )
 
     def guardar_de_linhas_custeio(
         self,
@@ -237,6 +272,99 @@ class DefModuloService:
                 imagem_path=imagem_path,
                 linhas=linhas_modulo,
             )
+        )
+
+    def substituir_modulo(
+        self,
+        modulo_id: int,
+        data: CriarDefModuloData,
+    ) -> DefModuloComLinhas:
+        """Overwrite an existing module: replace its lines and update the header.
+
+        Keeps the same id/code (the code is fixed). The current
+        def_modulo_linhas are deleted and recreated from ``data.linhas`` (same
+        structure-only rule as criar/guardar). The header fields
+        (nome/descricao/categoria/ambito/imagem_path + user_id per scope) are
+        updated. Commits.
+        """
+        atual = self.repository.get_by_id(modulo_id)
+        if atual is None:
+            raise ValueError("Módulo não encontrado.")
+
+        nome = self._normalize_required(data.nome, "nome")
+        ambito = normalize_modulo_ambito(data.ambito)
+        user_id = data.user_id if ambito == AMBITO_UTILIZADOR else None
+        if ambito == AMBITO_UTILIZADOR and user_id is None:
+            raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
+
+        self.repository.update_cabecalho(
+            id=modulo_id,
+            nome=nome,
+            descricao=self._normalize_optional(data.descricao),
+            ambito=ambito,
+            user_id=user_id,
+            categoria=normalize_modulo_categoria(data.categoria),
+            imagem_path=self._normalize_optional(data.imagem_path),
+        )
+
+        self.repository.delete_linhas_do_modulo(modulo_id)
+        self._persistir_linhas(modulo_id, data.linhas)
+
+        self.session.commit()
+
+        return DefModuloComLinhas(
+            modulo=self.repository.get_by_id(modulo_id),
+            linhas=self.repository.list_linhas(modulo_id),
+        )
+
+    def substituir_de_linhas_custeio(
+        self,
+        *,
+        modulo_id: int,
+        orcamento_item_id: int,
+        linha_ids,
+        nome: str,
+        descricao: str | None = None,
+        ambito: str = AMBITO_UTILIZADOR,
+        user_id: int | None = None,
+        categoria: str = OUTROS,
+        imagem_path: str | None = None,
+    ) -> DefModuloComLinhas:
+        """Overwrite an existing module from the current costing selection.
+
+        Same structure rule as guardar_de_linhas_custeio (top-level lines only,
+        structure not material/price); replaces the module's stored lines and
+        updates its header, keeping id/code.
+        """
+        custeio_repository = OrcamentoItemCusteioLinhaRepository(self.session)
+        componente_repository = DefPecaComponenteRepository(self.session)
+
+        linhas = custeio_repository.list_active_by_orcamento_item(orcamento_item_id)
+        topo = selecionar_linhas_topo(linhas, linha_ids)
+        if not topo:
+            raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
+
+        linhas_modulo = [
+            self._linha_modulo_de_custeio(linha, ordem, componente_repository)
+            for ordem, linha in enumerate(topo, start=1)
+        ]
+
+        # The code is fixed on replace; pass the existing one through CriarDefModuloData.
+        atual = self.repository.get_by_id(modulo_id)
+        codigo = atual.codigo if atual is not None else ""
+
+        return self.substituir_modulo(
+            modulo_id,
+            CriarDefModuloData(
+                codigo=codigo,
+                nome=nome,
+                descricao=descricao,
+                ambito=ambito,
+                user_id=user_id,
+                categoria=categoria,
+                imagem_path=imagem_path,
+                linhas=linhas_modulo,
+            ),
         )
 
     def _linha_modulo_de_custeio(
@@ -342,35 +470,7 @@ class DefModuloService:
                 if normalize_modulo_categoria(modulo.categoria) == alvo
             ]
 
-        tokens = self._termo_tokens(termo)
-        if tokens:
-            modulos = [
-                modulo for modulo in modulos if self._modulo_matches(modulo, tokens)
-            ]
-
-        return modulos
-
-    @staticmethod
-    def _termo_tokens(termo: str | None) -> list[str]:
-        """Split a search term by '%' into the words that must ALL match."""
-        if not termo:
-            return []
-
-        return [token.strip().lower() for token in termo.split("%") if token.strip()]
-
-    @staticmethod
-    def _modulo_matches(modulo: DefModuloResumo, tokens: list[str]) -> bool:
-        texto = " ".join(
-            parte
-            for parte in (
-                modulo.codigo,
-                modulo.nome,
-                modulo.descricao,
-                modulo.categoria,
-            )
-            if parte
-        ).lower()
-        return all(token in texto for token in tokens)
+        return filtrar_por_termo(modulos, termo)
 
     def _normalize_codigo(self, codigo: str | None) -> str:
         normalized = (codigo or "").strip().upper()

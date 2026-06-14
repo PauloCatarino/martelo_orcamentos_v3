@@ -719,22 +719,44 @@ class OrcamentoItemCusteioPage(QWidget):
         utilizador = app_session.current_user
         user_id = utilizador.id if utilizador is not None else None
 
+        try:
+            with SessionLocal() as session:
+                modulos_utilizador, modulos_globais = DefModuloService(
+                    session
+                ).listar_modulos_para_dialogo(user_id)
+        except SQLAlchemyError:
+            modulos_utilizador, modulos_globais = [], []
+
         guardado: dict = {}
 
         def handle_save(dados: GuardarModuloDialogData) -> bool:
             try:
                 with SessionLocal() as session:
-                    resultado = DefModuloService(session).guardar_de_linhas_custeio(
-                        orcamento_item_id=self.item_id,
-                        linha_ids=linha_ids,
-                        codigo=dados.codigo,
-                        nome=dados.nome,
-                        descricao=dados.descricao,
-                        ambito=dados.ambito,
-                        user_id=user_id,
-                        categoria=dados.categoria,
-                        imagem_path=dados.imagem_path,
-                    )
+                    service = DefModuloService(session)
+                    if dados.modulo_id is not None:
+                        resultado = service.substituir_de_linhas_custeio(
+                            modulo_id=dados.modulo_id,
+                            orcamento_item_id=self.item_id,
+                            linha_ids=linha_ids,
+                            nome=dados.nome,
+                            descricao=dados.descricao,
+                            ambito=dados.ambito,
+                            user_id=user_id,
+                            categoria=dados.categoria,
+                            imagem_path=dados.imagem_path,
+                        )
+                    else:
+                        resultado = service.guardar_de_linhas_custeio(
+                            orcamento_item_id=self.item_id,
+                            linha_ids=linha_ids,
+                            codigo=dados.codigo,
+                            nome=dados.nome,
+                            descricao=dados.descricao,
+                            ambito=dados.ambito,
+                            user_id=user_id,
+                            categoria=dados.categoria,
+                            imagem_path=dados.imagem_path,
+                        )
             except ValueError as error:
                 dialog.set_error(str(error))
                 return False
@@ -743,15 +765,21 @@ class OrcamentoItemCusteioPage(QWidget):
                 return False
 
             guardado["resultado"] = resultado
+            guardado["substituido"] = dados.modulo_id is not None
             return True
 
         dialog = GuardarModuloDialog(
-            self, on_save=handle_save, num_linhas=len(linha_ids)
+            self,
+            on_save=handle_save,
+            num_linhas=len(linha_ids),
+            modulos_utilizador=modulos_utilizador,
+            modulos_globais=modulos_globais,
         )
         if dialog.exec() and guardado:
             resultado = guardado["resultado"]
+            verbo = "substituído" if guardado.get("substituido") else "guardado"
             self.status_label.setText(
-                f"Módulo {resultado.modulo.codigo} guardado "
+                f"Módulo {resultado.modulo.codigo} {verbo} "
                 f"({len(resultado.linhas)} linhas)."
             )
 
