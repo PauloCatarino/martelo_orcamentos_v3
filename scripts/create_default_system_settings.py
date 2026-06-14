@@ -51,6 +51,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed("pasta_base_orcamentos", "Pasta base dos Orcamentos", "pasta", "Orcamentos"),
     SystemSettingSeed("pasta_materias_primas", "Pasta Materias Primas", "pasta", "Materias-Primas"),
     SystemSettingSeed(
+        "pasta_imagens_modulos",
+        "Pasta de Imagens de Modulos",
+        "pasta",
+        "Modulos",
+        r"\\SERVER_LE_Lanca_Encanto\LancaEncanto\Dep._Orcamentos\Base_Dados_Orcamento\Imagens_Modulos",
+    ),
+    SystemSettingSeed(
         "pasta_base_dados_orcamento",
         "Pasta Base Dados Orcamento",
         "pasta",

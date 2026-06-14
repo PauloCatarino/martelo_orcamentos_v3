@@ -1,0 +1,284 @@
+"""Service for the reusable module/article library (phase 8U.0).
+
+Modules store only the parametric STRUCTURE (no material/price); on import they
+become a copy/paste into an item costing (the inserted lines are NOT linked back
+to the module). This phase covers create / read / list / search / delete only.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from sqlalchemy.orm import Session
+
+from app.domain.custeio_linha_types import PECA, normalize_custeio_linha_type
+from app.domain.modulo_categorias import (
+    AMBITO_GLOBAL,
+    AMBITO_UTILIZADOR,
+    normalize_modulo_ambito,
+    normalize_modulo_categoria,
+)
+from app.repositories.def_modulo_repository import (
+    DefModuloLinhaResumo,
+    DefModuloRepository,
+    DefModuloResumo,
+)
+
+
+@dataclass(frozen=True)
+class CriarDefModuloLinhaData:
+    """Input data for one structural line of a module."""
+
+    ordem: int
+    tipo_linha: str = PECA
+    def_peca_id: int | None = None
+    def_peca_codigo: str | None = None
+    codigo: str | None = None
+    descricao: str | None = None
+    descricao_livre: str | None = None
+    qt_mod: str | None = None
+    qt_und: str | None = None
+    comp: str | None = None
+    larg: str | None = None
+    esp: str | None = None
+    chave_valueset: str | None = None
+    codigo_orlas: str | None = None
+    def_regra_quantidade_id: int | None = None
+    linha_pai_ordem: int | None = None
+    nivel: int = 0
+    ativo: bool = True
+
+
+@dataclass(frozen=True)
+class CriarDefModuloData:
+    """Input data for creating a module (header + lines)."""
+
+    codigo: str
+    nome: str
+    descricao: str | None = None
+    ambito: str = AMBITO_UTILIZADOR
+    user_id: int | None = None
+    categoria: str = "OUTROS"
+    imagem_path: str | None = None
+    ativo: bool = True
+    linhas: list[CriarDefModuloLinhaData] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class EditarDefModuloCabecalhoData:
+    """Input data for editing a module header (code is fixed)."""
+
+    nome: str
+    descricao: str | None = None
+    ambito: str = AMBITO_UTILIZADOR
+    user_id: int | None = None
+    categoria: str = "OUTROS"
+    imagem_path: str | None = None
+
+
+@dataclass(frozen=True)
+class DefModuloComLinhas:
+    """A module header together with its structural lines."""
+
+    modulo: DefModuloResumo
+    linhas: list[DefModuloLinhaResumo]
+
+
+class DefModuloService:
+    """Application service for the reusable module/article library."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+        self.repository = DefModuloRepository(session)
+
+    def listar_por_ambito_utilizador(
+        self,
+        user_id: int | None,
+        categoria: str | None = None,
+        termo: str | None = None,
+    ) -> list[DefModuloResumo]:
+        """List the user's own active modules, filtered by category and term."""
+        modulos = [
+            modulo
+            for modulo in self.repository.list_active()
+            if normalize_modulo_ambito(modulo.ambito) == AMBITO_UTILIZADOR
+            and modulo.user_id == user_id
+        ]
+        return self._filtrar(modulos, categoria, termo)
+
+    def listar_globais(
+        self,
+        categoria: str | None = None,
+        termo: str | None = None,
+    ) -> list[DefModuloResumo]:
+        """List the active GLOBAL modules, filtered by category and term."""
+        modulos = [
+            modulo
+            for modulo in self.repository.list_active()
+            if normalize_modulo_ambito(modulo.ambito) == AMBITO_GLOBAL
+        ]
+        return self._filtrar(modulos, categoria, termo)
+
+    def obter_com_linhas(self, modulo_id: int) -> DefModuloComLinhas | None:
+        """Get one module with its ordered structural lines, or None."""
+        modulo = self.repository.get_by_id(modulo_id)
+        if modulo is None:
+            return None
+
+        return DefModuloComLinhas(
+            modulo=modulo,
+            linhas=self.repository.list_linhas(modulo_id),
+        )
+
+    def criar(self, data: CriarDefModuloData) -> DefModuloComLinhas:
+        """Create a module (header + lines) in one transaction."""
+        codigo = self._normalize_codigo(data.codigo)
+        nome = self._normalize_required(data.nome, "nome")
+        ambito = normalize_modulo_ambito(data.ambito)
+        user_id = data.user_id if ambito == AMBITO_UTILIZADOR else None
+        if ambito == AMBITO_UTILIZADOR and user_id is None:
+            raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
+        if self.repository.get_by_codigo(codigo) is not None:
+            raise ValueError(f"Já existe um módulo com o código {codigo}.")
+
+        modulo = self.repository.create_modulo(
+            codigo=codigo,
+            nome=nome,
+            descricao=self._normalize_optional(data.descricao),
+            ambito=ambito,
+            user_id=user_id,
+            categoria=normalize_modulo_categoria(data.categoria),
+            imagem_path=self._normalize_optional(data.imagem_path),
+            ativo=data.ativo,
+        )
+
+        for linha in data.linhas:
+            self.repository.create_linha(
+                def_modulo_id=modulo.id,
+                ordem=linha.ordem,
+                tipo_linha=normalize_custeio_linha_type(linha.tipo_linha),
+                def_peca_id=linha.def_peca_id,
+                def_peca_codigo=linha.def_peca_codigo,
+                codigo=linha.codigo,
+                descricao=linha.descricao,
+                descricao_livre=linha.descricao_livre,
+                qt_mod=linha.qt_mod,
+                qt_und=linha.qt_und,
+                comp=linha.comp,
+                larg=linha.larg,
+                esp=linha.esp,
+                chave_valueset=linha.chave_valueset,
+                codigo_orlas=linha.codigo_orlas,
+                def_regra_quantidade_id=linha.def_regra_quantidade_id,
+                linha_pai_ordem=linha.linha_pai_ordem,
+                nivel=linha.nivel,
+                ativo=linha.ativo,
+            )
+
+        self.session.commit()
+
+        return DefModuloComLinhas(
+            modulo=self.repository.get_by_id(modulo.id),
+            linhas=self.repository.list_linhas(modulo.id),
+        )
+
+    def editar_cabecalho(
+        self, modulo_id: int, data: EditarDefModuloCabecalhoData
+    ) -> DefModuloResumo:
+        """Edit a module's header (name/description/scope/category/image)."""
+        nome = self._normalize_required(data.nome, "nome")
+        ambito = normalize_modulo_ambito(data.ambito)
+        user_id = data.user_id if ambito == AMBITO_UTILIZADOR else None
+        if ambito == AMBITO_UTILIZADOR and user_id is None:
+            raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
+
+        result = self.repository.update_cabecalho(
+            id=modulo_id,
+            nome=nome,
+            descricao=self._normalize_optional(data.descricao),
+            ambito=ambito,
+            user_id=user_id,
+            categoria=normalize_modulo_categoria(data.categoria),
+            imagem_path=self._normalize_optional(data.imagem_path),
+        )
+        self.session.commit()
+
+        return result
+
+    def eliminar(self, modulo_id: int) -> bool:
+        """Delete a module and its lines (cascade)."""
+        deleted = self.repository.delete_modulo(modulo_id)
+        if deleted:
+            self.session.commit()
+
+        return deleted
+
+    # ----- helpers -----
+
+    def _filtrar(
+        self,
+        modulos: list[DefModuloResumo],
+        categoria: str | None,
+        termo: str | None,
+    ) -> list[DefModuloResumo]:
+        """Filter modules by category and a V2-style '%'-separated search term."""
+        if categoria:
+            alvo = normalize_modulo_categoria(categoria)
+            modulos = [
+                modulo
+                for modulo in modulos
+                if normalize_modulo_categoria(modulo.categoria) == alvo
+            ]
+
+        tokens = self._termo_tokens(termo)
+        if tokens:
+            modulos = [
+                modulo for modulo in modulos if self._modulo_matches(modulo, tokens)
+            ]
+
+        return modulos
+
+    @staticmethod
+    def _termo_tokens(termo: str | None) -> list[str]:
+        """Split a search term by '%' into the words that must ALL match."""
+        if not termo:
+            return []
+
+        return [token.strip().lower() for token in termo.split("%") if token.strip()]
+
+    @staticmethod
+    def _modulo_matches(modulo: DefModuloResumo, tokens: list[str]) -> bool:
+        texto = " ".join(
+            parte
+            for parte in (
+                modulo.codigo,
+                modulo.nome,
+                modulo.descricao,
+                modulo.categoria,
+            )
+            if parte
+        ).lower()
+        return all(token in texto for token in tokens)
+
+    def _normalize_codigo(self, codigo: str | None) -> str:
+        normalized = (codigo or "").strip().upper()
+        if not normalized:
+            raise ValueError("O código do módulo é obrigatório.")
+
+        return "_".join(normalized.split())
+
+    @staticmethod
+    def _normalize_required(value: str | None, field_name: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError(f"{field_name} é obrigatório.")
+
+        return normalized
+
+    @staticmethod
+    def _normalize_optional(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        return normalized or None

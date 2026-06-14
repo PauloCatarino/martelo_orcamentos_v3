@@ -19,6 +19,11 @@ def test_default_system_settings_constants_import() -> None:
     assert settings_by_key["preencher_comp_larg_automaticamente"].valor == "ON"
     assert settings_by_key["pasta_base_orcamentos"].tipo == "pasta"
     assert settings_by_key["ficheiro_imos_msg"].tipo == "ficheiro"
+    # Phase 8U.0: module images folder (default suggested = V2 path).
+    imagens = settings_by_key["pasta_imagens_modulos"]
+    assert imagens.tipo == "pasta"
+    assert imagens.grupo == "Modulos"
+    assert "Imagens_Modulos" in (imagens.valor or "")
 
 
 def test_default_system_settings_result_dataclass() -> None:
