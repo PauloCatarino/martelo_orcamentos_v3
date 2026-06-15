@@ -2088,6 +2088,7 @@ class OrcamentoItemCusteioLinhaService:
         larg=None,
         esp=None,
         descricao=None,
+        descricao_livre=None,
         propagar_item: bool = True,
     ) -> OrcamentoItemCusteioLinhaResumo | None:
         """Save edited quantities/measures of one cost line, then recompute.
@@ -2104,9 +2105,21 @@ class OrcamentoItemCusteioLinhaService:
         if linha is None:
             return None
 
+        # Free-text note (phase 8V.1): informative only, applies to every line
+        # type (saved even for manual operations, which have no measures).
+        descricao_livre_norm = (
+            self._normalizar_expressao(descricao_livre)
+            if descricao_livre is not None
+            else None
+        )
+
         if linha.tipo_linha == OPERACAO_MANUAL:
             # A manual-operation line has no measures: editing QT recomputes the
             # total minutes (minutos_unitarios × QT) and the cost from the machine.
+            if descricao_livre is not None:
+                self.repository.update_linha(
+                    id=linha_id, descricao_livre=descricao_livre_norm
+                )
             return self._atualizar_quantidade_operacao_manual(
                 linha, qt_mod=qt_mod, qt_und=qt_und
             )
@@ -2151,6 +2164,8 @@ class OrcamentoItemCusteioLinhaService:
         }
         if descricao is not None:
             fields["descricao"] = self._normalizar_expressao(descricao) or "Divisão independente"
+        if descricao_livre is not None:
+            fields["descricao_livre"] = descricao_livre_norm
 
         self.repository.update_linha(id=linha_id, **fields)
 

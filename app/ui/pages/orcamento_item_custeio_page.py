@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer, QSize, QEvent
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStyledItemDelegate,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -97,43 +98,121 @@ from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
-class CusteioLinhasTable(QTableWidget):
-    """Costing table with Excel-like editing.
+class CusteioEnterDelegate(QStyledItemDelegate):
+    """Delegate that makes Enter/Tab advance within the fast-edit flow while EDITING.
 
-    Pressing Enter while editing commits and moves to the NEXT EDITABLE cell to
-    the right in the same row (skipping read-only columns), wrapping to the first
-    editable cell of the next row, and opens its editor. Tab keeps the standard
-    behaviour and Esc cancels (Qt default). Read-only cells stay non-editable.
+    The default Enter end-edit hint varies across Qt/PySide6 versions (and the
+    view's default "move down" can win), so we intercept Enter/Tab in the
+    editor's eventFilter, commit + close the editor, and ask the table to advance
+    to the next fast-flow editable cell — independent of the close hint.
     """
 
-    def closeEditor(self, editor, hint) -> None:
-        """Move to the next editable cell on Enter (NoHint); keep Tab/Esc default."""
-        avancar = hint == QAbstractItemDelegate.EndEditHint.NoHint
-        row = self.currentRow()
-        col = self.currentColumn()
+    def eventFilter(self, editor, event) -> bool:  # noqa: N802 (Qt override)
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and event.key()
+            in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab)
+            and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        ):
+            self.commitData.emit(editor)
+            self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+            tabela = self.parent()
+            if isinstance(tabela, CusteioLinhasTable):
+                tabela.avancar_celula_editavel()
+            return True
+        return super().eventFilter(editor, event)
 
-        super().closeEditor(editor, hint)
 
-        if avancar:
-            proxima = self._proxima_celula_editavel(row, col)
-            if proxima is not None:
-                QTimer.singleShot(0, lambda rc=proxima: self._editar_celula(*rc))
+class CusteioLinhasTable(QTableWidget):
+    """Costing table with Excel-like editing restricted to a FAST-EDIT FLOW.
+
+    Enter and Tab move only between the fast-flow columns (Descrição livre, QT
+    mod, QT und, Comp, Larg, Esp): to the next of those that is EDITABLE on the
+    row (skipping the ones read-only there — e.g. QT mod only on a division,
+    Comp/Larg only on pieces), wrapping to the FIRST editable fast-flow column of
+    the next row (typically "Descrição livre"), and opening its editor. Columns
+    outside the flow (Fator série, Ajuste, Mat. default, Excluir*, ...) are never
+    visited by Enter/Tab — they stay editable by click only. The flow is resolved
+    from the header texts, so it survives a future column reordering. Driven by
+    ``CusteioEnterDelegate`` while editing and by ``keyPressEvent`` when a cell is
+    merely selected — both consume the event so Qt does not move down. Esc
+    cancels and Shift+Tab keeps Qt's default (move left).
+    """
+
+    # Ordered set of fast-edit columns (by HEADER text, resolved to indices).
+    FAST_FLOW_HEADERS = (
+        "Descrição livre",
+        "QT mod",
+        "QT und",
+        "Comp",
+        "Larg",
+        "Esp",
+    )
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # The delegate drives the Enter/Tab-advance behaviour while editing.
+        self.setItemDelegate(CusteioEnterDelegate(self))
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """Enter/Tab on a selected (not editing) cell advances within the flow."""
+        if event.key() in (
+            Qt.Key.Key_Return,
+            Qt.Key.Key_Enter,
+            Qt.Key.Key_Tab,
+        ) and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+            self.avancar_celula_editavel()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def avancar_celula_editavel(self) -> None:
+        """Open the editor of the next fast-flow editable cell."""
+        proxima = self._proxima_celula_editavel(
+            self.currentRow(), self.currentColumn()
+        )
+        if proxima is not None:
+            QTimer.singleShot(0, lambda rc=proxima: self._editar_celula(*rc))
+
+    def _colunas_fluxo_rapido(self) -> list[int]:
+        """Column indices of the fast-edit flow, ordered left-to-right.
+
+        Resolved from the header texts so it does not break if the columns are
+        reordered in the future.
+        """
+        nomes = set(self.FAST_FLOW_HEADERS)
+        indices: list[int] = []
+        for col in range(self.columnCount()):
+            header = self.horizontalHeaderItem(col)
+            if header is not None and header.text() in nomes:
+                indices.append(col)
+        return indices
 
     def _celula_editavel(self, row: int, col: int) -> bool:
         item = self.item(row, col)
         return item is not None and bool(item.flags() & Qt.ItemFlag.ItemIsEditable)
 
     def _proxima_celula_editavel(self, row: int, col: int):
-        """Return (row, col) of the next editable cell (right, then next rows)."""
-        if row < 0 or col < 0:
+        """Return the next EDITABLE fast-flow cell (right in the row, then wrap).
+
+        Only the fast-flow columns are visited; the search wraps to the first
+        editable fast-flow column of the next rows.
+        """
+        if row < 0 or row >= self.rowCount():
             return None
 
-        for c in range(col + 1, self.columnCount()):
-            if self._celula_editavel(row, c):
+        fluxo = self._colunas_fluxo_rapido()
+        if not fluxo:
+            return None
+
+        # Same row: the next fast-flow column to the right that is editable here.
+        for c in fluxo:
+            if c > col and self._celula_editavel(row, c):
                 return row, c
 
+        # Next rows: the first editable fast-flow column.
         for r in range(row + 1, self.rowCount()):
-            for c in range(self.columnCount()):
+            for c in fluxo:
                 if self._celula_editavel(r, c):
                     return r, c
 
@@ -904,7 +983,8 @@ class OrcamentoItemCusteioPage(QWidget):
                 return linha.tipo_linha != DIVISAO_INDEPENDENTE
             return True  # Comp / Larg / Esp
 
-        if header == "Descrição livre" and linha.tipo_linha == DIVISAO_INDEPENDENTE:
+        # Free-text note: editable on every line (informative; phase 8V.1).
+        if header == "Descrição livre":
             return True
 
         if header == "Fator série":
@@ -1964,8 +2044,14 @@ class OrcamentoItemCusteioPage(QWidget):
             "esp": linha.esp,
         }
         descricao = None
+        descricao_livre = None
         if header == "Descrição livre":
-            descricao = novo_valor
+            # On a division the text is its identity (descricao); on every other
+            # line it is a free note kept in the dedicated descricao_livre field.
+            if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+                descricao = novo_valor
+            else:
+                descricao_livre = novo_valor
         else:
             # Comp/Larg/Esp accept variable expressions: store them with the
             # variable letters uppercased (the evaluator is case-insensitive).
@@ -1989,6 +2075,7 @@ class OrcamentoItemCusteioPage(QWidget):
                     larg=valores["larg"],
                     esp=valores["esp"],
                     descricao=descricao,
+                    descricao_livre=descricao_livre,
                     propagar_item=False,
                 )
         except (SQLAlchemyError, ValueError):
@@ -2391,11 +2478,15 @@ class OrcamentoItemCusteioPage(QWidget):
         eh_divisao = linha.tipo_linha == DIVISAO_INDEPENDENTE
         nivel = linha.nivel or 0
         if eh_divisao:
+            # A division has no piece description: its identifying text lives in
+            # ``descricao`` and is shown/edited through the "Descrição livre" cell.
             descricao_col = ""
             descricao_livre = linha.descricao or ""
         else:
             descricao_col = ("  - " + linha.descricao) if nivel else linha.descricao
-            descricao_livre = ""
+            # Pieces/hardware/components keep their note in a dedicated field, so
+            # it never collides with the piece "Descrição" (phase 8V.1).
+            descricao_livre = linha.descricao_livre or ""
         return {
             "Ordem": "" if linha.ordem is None else str(linha.ordem),
             "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),

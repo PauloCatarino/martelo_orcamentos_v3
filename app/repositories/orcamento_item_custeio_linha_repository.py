@@ -71,6 +71,7 @@ class OrcamentoItemCusteioLinhaResumo:
     codigo_orlas: str | None = None
     mat_default: str | None = None
     modulo_imagem_path: str | None = None
+    descricao_livre: str | None = None
     ref_le: str | None = None
     descricao_no_orcamento: str | None = None
     preco_liquido: Decimal | None = None
@@ -284,6 +285,7 @@ class OrcamentoItemCusteioLinhaRepository:
             tipo_linha=linha.tipo_linha,
             codigo=linha.codigo,
             descricao=linha.descricao,
+            descricao_livre=linha.descricao_livre,
             materia_prima_id=linha.materia_prima_id,
             ref_materia_prima=linha.ref_materia_prima,
             descricao_materia_prima=linha.descricao_materia_prima,

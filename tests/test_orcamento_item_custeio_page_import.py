@@ -121,18 +121,50 @@ def test_custeio_table_edicao_rapida() -> None:
     import inspect
 
     from app.ui.pages.orcamento_item_custeio_page import (
+        CusteioEnterDelegate,
         CusteioLinhasTable,
         OrcamentoItemCusteioPage,
     )
 
-    # Enter moves to the next editable cell to the right (Excel-like).
-    assert hasattr(CusteioLinhasTable, "closeEditor")
-    assert hasattr(CusteioLinhasTable, "_proxima_celula_editavel")
-    close = inspect.getsource(CusteioLinhasTable.closeEditor)
-    assert "NoHint" in close
-    assert "_proxima_celula_editavel" in close
+    # Enter/Tab advance within a FIXED fast-edit flow, driven robustly by a
+    # delegate (while editing) and keyPressEvent (when selected).
+    for method in (
+        "keyPressEvent",
+        "avancar_celula_editavel",
+        "_proxima_celula_editavel",
+        "_colunas_fluxo_rapido",
+    ):
+        assert hasattr(CusteioLinhasTable, method)
+
+    # The fast-flow set is exactly these columns (and excludes Fator série etc.).
+    assert CusteioLinhasTable.FAST_FLOW_HEADERS == (
+        "Descrição livre",
+        "QT mod",
+        "QT und",
+        "Comp",
+        "Larg",
+        "Esp",
+    )
+    assert "Fator série" not in CusteioLinhasTable.FAST_FLOW_HEADERS
+
+    # Both Enter and Tab are intercepted (no shift) for the forward move.
+    delegate = inspect.getsource(CusteioEnterDelegate.eventFilter)
+    for token in ("Key_Return", "Key_Enter", "Key_Tab", "avancar_celula_editavel"):
+        assert token in delegate
+    key_press = inspect.getsource(CusteioLinhasTable.keyPressEvent)
+    for token in ("Key_Return", "Key_Enter", "Key_Tab"):
+        assert token in key_press
+    assert "event.accept()" in key_press  # consumes the event (no move down)
+
+    # The next-cell search is restricted to the fast-flow columns.
     proxima = inspect.getsource(CusteioLinhasTable._proxima_celula_editavel)
+    assert "_colunas_fluxo_rapido" in proxima
     assert "_celula_editavel" in proxima
+
+    # The table installs the Enter/Tab delegate.
+    init = inspect.getsource(CusteioLinhasTable.__init__)
+    assert "setItemDelegate" in init
+    assert "CusteioEnterDelegate" in init
 
     # Inline edit saves only this line (fast); the general recompute stays on
     # the Atualizar button.
@@ -662,12 +694,18 @@ def test_custeio_page_navegacao_enter_horizontal() -> None:
     """Enter commits and moves to the next editable cell to the right."""
     from app.ui.pages.orcamento_item_custeio_page import CusteioLinhasTable
 
-    for method in ("closeEditor", "_proxima_celula_editavel", "_editar_celula"):
+    for method in (
+        "keyPressEvent",
+        "avancar_celula_editavel",
+        "_proxima_celula_editavel",
+        "_editar_celula",
+    ):
         assert hasattr(CusteioLinhasTable, method)
 
     proxima = inspect.getsource(CusteioLinhasTable._proxima_celula_editavel)
-    # Scans to the right first, then wraps to the next rows.
-    assert "range(col + 1, self.columnCount())" in proxima
+    # Walks the fast-flow columns to the right, then wraps to the next rows.
+    assert "_colunas_fluxo_rapido" in proxima
+    assert "for c in fluxo" in proxima
     assert "range(row + 1, self.rowCount())" in proxima
 
 

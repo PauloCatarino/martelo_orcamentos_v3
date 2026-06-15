@@ -61,6 +61,9 @@ class OrcamentoItemCusteioLinha(Base):
     tipo_linha: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     descricao: Mapped[str] = mapped_column(Text, nullable=False)
+    # Free-text note (phase 8V.1): informative only, never used in calculations
+    # and kept separate from the piece's own ``descricao``.
+    descricao_livre: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     def_peca_id: Mapped[int | None] = mapped_column(
         BigInteger,
