@@ -896,6 +896,26 @@ def test_custeio_page_mat_default_dropdown() -> None:
     assert "opcoes_valueset_compativeis" in combo
 
 
+def test_custeio_page_estilo_por_tipo_de_linha() -> None:
+    """Phase 8V.4: the table applies the Lança Encanto per-type styling."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_estilizar_linha")
+
+    # Both fill paths (normal and separator) apply the style.
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
+    assert "_estilizar_linha" in preencher
+
+    estilizar = inspect.getsource(OrcamentoItemCusteioPage._estilizar_linha)
+    assert "estilo_linha_custeio" in estilizar
+    assert "setBackground" in estilizar
+    assert "setForeground" in estilizar
+    # Uppercase only the read-only cells (never the editable label).
+    assert "_coluna_editavel" in estilizar
+    # Beige highlight only on the composite structural columns.
+    assert "COLUNAS_REALCE_COMPOSTA" in estilizar
+
+
 def test_custeio_page_miniatura_modulo() -> None:
     """Phase 8U.4: the 'Módulo' column shows a thumbnail + zoom tooltip."""
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, QSize, QEvent
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
@@ -94,6 +94,12 @@ from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDia
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+from app.ui.tema import (
+    BEGE_AREIA,
+    COLUNAS_REALCE_COMPOSTA,
+    cor_zebra,
+    estilo_linha_custeio,
+)
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -235,6 +241,8 @@ class OrcamentoItemCusteioPage(QWidget):
 
     # Size of the module thumbnail shown in the "Módulo" column (phase 8U.4).
     _TAMANHO_MINIATURA_MODULO = 28
+    # Slightly shorter row for the discreet separator line (phase 8V.4).
+    _ALTURA_SEPARADOR = 16
 
     TABLE_HEADERS = [
         # Identificacao
@@ -1311,6 +1319,7 @@ class OrcamentoItemCusteioPage(QWidget):
         """Fill one table row from a line resumo (caller guards _carregando_tabela)."""
         if linha.tipo_linha == SEPARADOR:
             self._preencher_linha_separador(row_index, linha)
+            self._estilizar_linha(row_index, linha)
             return
 
         valores = self._linha_para_valores(linha)
@@ -1338,6 +1347,55 @@ class OrcamentoItemCusteioPage(QWidget):
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row_index, column_index, item)
+
+        self._estilizar_linha(row_index, linha)
+
+    def _estilizar_linha(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Apply the Lança Encanto per-type style to a row (phase 8V.4).
+
+        Presentation only: background/foreground/font + uppercase display of the
+        division header (read-only cells only, so the data is never changed).
+        Selection still highlights on top (the system selection colour).
+        """
+        estilo = estilo_linha_custeio(
+            linha.tipo_linha, eh_filho=linha.linha_pai_id is not None
+        )
+        zebra = cor_zebra(row_index)
+        fonte_base = self.table.font()
+
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            item = self.table.item(row_index, column_index)
+            if item is None:
+                continue  # combo cells (Mat. default) keep their own background
+
+            if estilo.fundo is not None:
+                fundo = estilo.fundo
+            elif estilo.realce_estrutural and header in COLUNAS_REALCE_COMPOSTA:
+                fundo = BEGE_AREIA
+            else:
+                fundo = zebra
+            item.setBackground(QColor(fundo))
+
+            if estilo.texto is not None:
+                item.setForeground(QColor(estilo.texto))
+
+            if estilo.negrito or estilo.italico:
+                fonte = QFont(fonte_base)
+                fonte.setBold(estilo.negrito)
+                fonte.setItalic(estilo.italico)
+                item.setFont(fonte)
+
+            # Uppercase only the read-only cells (never the editable label, so an
+            # edit cannot persist an upper-cased value).
+            if estilo.maiusculas and not self._coluna_editavel(header, linha):
+                texto = item.text()
+                if texto:
+                    item.setText(texto.upper())
+
+        if linha.tipo_linha == SEPARADOR:
+            self.table.setRowHeight(row_index, self._ALTURA_SEPARADOR)
 
     def _preencher_linha_separador(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
