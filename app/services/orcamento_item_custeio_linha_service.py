@@ -228,6 +228,37 @@ class InserirModuloResult:
 
 
 @dataclass(frozen=True)
+class ClipboardLinhaCusteio:
+    """One snapshot line in the costing clipboard (phase 8V.5).
+
+    ``fields`` are the create_linha kwargs (structure + faithful material, no
+    id/item/parent); ``indice_pai`` points to the parent line's index in the
+    clipboard (for composite children), or None for a top-level line.
+    """
+
+    fields: dict
+    indice_pai: int | None = None
+
+
+@dataclass(frozen=True)
+class ClipboardCusteio:
+    """Session clipboard for copy/cut of cost lines (phase 8V.5)."""
+
+    linhas: tuple
+    modo: str               # "COPIAR" | "CORTAR"
+    origem_item_id: int
+    origem_ids: tuple       # source line ids (deleted on paste when CORTAR)
+
+
+@dataclass(frozen=True)
+class ColarCusteioResult:
+    """Summary of a paste: lines inserted and (on cut) source lines removed."""
+
+    inseridas: int
+    cortadas: int
+
+
+@dataclass(frozen=True)
 class CustoMateriaPrimaResult:
     """Summary of one raw-material cost recompute over an item."""
 
@@ -2290,7 +2321,7 @@ class OrcamentoItemCusteioLinhaService:
         linhas = self.repository.list_active_by_orcamento_item(item_id)
         outras = [linha for linha in linhas if linha.id != separador.id]
         outras_ids = [linha.id for linha in outras]
-        ancora_id = self._ancora_separador(linha_id, outras)
+        ancora_id = self._ancora_insercao(linha_id, outras)
 
         if ancora_id in outras_ids:
             indice = outras_ids.index(ancora_id)
@@ -2305,12 +2336,13 @@ class OrcamentoItemCusteioLinhaService:
 
         return self.repository.get_by_id(separador.id)
 
-    def _ancora_separador(self, linha_id: int | None, linhas: list) -> int | None:
-        """Resolve the line AFTER which a separator should be inserted.
+    def _ancora_insercao(self, linha_id: int | None, linhas: list) -> int | None:
+        """Resolve the line AFTER which a new block should be inserted.
 
         Normally the selected line itself; but when the selection is a composite
         header or one of its children, the anchor is the LAST line of that whole
-        composite block (so the separator never splits the composite).
+        composite block (so the insertion never splits the composite). Shared by
+        the separator and the copy/paste of lines (phase 8V.5).
         """
         if linha_id is None:
             return None
@@ -2343,6 +2375,154 @@ class OrcamentoItemCusteioLinhaService:
                 break
             atual = pai
         return atual
+
+    # --- Copy / cut / paste of cost lines (phase 8V.5) -----------------------
+
+    # Structural + material/snapshot fields copied for a faithful paste. Costs
+    # and evaluated measures (comp_real/area/...) are recomputed by the pipeline.
+    _CAMPOS_CLIPBOARD = (
+        "tipo_linha", "codigo", "descricao", "descricao_livre",
+        "def_peca_id", "def_peca_codigo", "chave_valueset", "codigo_orlas",
+        "qt_mod", "qt_und", "quantidade", "comp", "larg", "esp",
+        "nivel", "origem_tipo", "origem_id", "mat_default",
+        "materia_prima_id", "ref_materia_prima", "descricao_materia_prima",
+        "ref_le", "descricao_no_orcamento", "unidade", "preco_liquido",
+        "desperdicio_percentagem", "tipo_materia_prima", "familia_materia_prima",
+        "coresp_orla_0_4", "coresp_orla_1_0", "comp_mp", "larg_mp", "esp_mp",
+        "acabamento_face_sup", "acabamento_face_inf",
+        "acabamento_editado_localmente", "editado_localmente",
+        "material_editado_localmente", "origem_material", "sem_material",
+        "excluir_mp", "excluir_orla", "excluir_ferragem", "excluir_producao",
+        "excluir_acabamento", "excluir_mo", "fator_serie", "modulo_imagem_path",
+    )
+
+    def construir_clipboard(
+        self, orcamento_item_id: int, linha_ids, modo: str
+    ) -> "ClipboardCusteio":
+        """Build a structural snapshot of the selected lines (copy or cut).
+
+        Selecting a composite header or one of its children pulls the WHOLE block
+        (header + children); the relative display order is preserved. Separators
+        and independent divisions can be copied too. ``modo`` is "COPIAR" or
+        "CORTAR" (the latter also records the source ids, deleted only on paste).
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+        linhas = self.repository.list_active_by_orcamento_item(item_id)
+        selecionadas = self._expandir_selecao_blocos(linha_ids, linhas)
+        if not selecionadas:
+            raise ValueError("Selecione pelo menos uma linha para copiar.")
+
+        indice_por_id = {linha.id: i for i, linha in enumerate(selecionadas)}
+        snapshot: list[ClipboardLinhaCusteio] = []
+        for linha in selecionadas:
+            fields = {
+                campo: getattr(linha, campo) for campo in self._CAMPOS_CLIPBOARD
+            }
+            fields["ativo"] = True
+            indice_pai = (
+                indice_por_id.get(linha.linha_pai_id)
+                if linha.linha_pai_id is not None
+                else None
+            )
+            snapshot.append(
+                ClipboardLinhaCusteio(fields=fields, indice_pai=indice_pai)
+            )
+
+        return ClipboardCusteio(
+            linhas=tuple(snapshot),
+            modo="CORTAR" if modo == "CORTAR" else "COPIAR",
+            origem_item_id=item_id,
+            origem_ids=tuple(linha.id for linha in selecionadas),
+        )
+
+    def _expandir_selecao_blocos(self, linha_ids, linhas: list) -> list:
+        """Expand the selection to whole composite blocks, in display order."""
+        por_id = {linha.id: linha for linha in linhas}
+        ids: set[int] = set()
+        for linha_id in linha_ids or []:
+            selecionada = por_id.get(linha_id)
+            if selecionada is None:
+                continue
+            topo = self._linha_topo_do_bloco(selecionada, por_id)
+            if topo.tipo_linha == PECA_COMPOSTA:
+                for linha in linhas:
+                    if self._linha_topo_do_bloco(linha, por_id).id == topo.id:
+                        ids.add(linha.id)
+            else:
+                ids.add(selecionada.id)
+
+        return [linha for linha in linhas if linha.id in ids]
+
+    def colar_clipboard(
+        self,
+        orcamento_item_id: int,
+        clipboard: "ClipboardCusteio",
+        linha_id: int | None = None,
+    ) -> "ColarCusteioResult":
+        """Paste the clipboard lines as a block BELOW ``linha_id`` (never inside
+        a composite). Recreates the parent/child structure, keeps each line's
+        material (or resolves it from the destination ValueSet when missing), and
+        renumbers the display order. On a CUT clipboard the source lines are
+        deleted after a successful paste. Commits; the caller runs the pipeline.
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+        if clipboard is None or not clipboard.linhas:
+            raise ValueError("Não há linhas para colar.")
+
+        linhas_dest = self.repository.list_active_by_orcamento_item(item_id)
+        ancora_id = self._ancora_insercao(linha_id, linhas_dest)
+
+        novos_ids: list[int] = []
+        mapa_ids: dict[int, int] = {}
+        for indice, snap in enumerate(clipboard.linhas):
+            fields = dict(snap.fields)
+            fields["orcamento_item_id"] = item_id
+            fields["linha_pai_id"] = (
+                mapa_ids.get(snap.indice_pai)
+                if snap.indice_pai is not None
+                else None
+            )
+            self._resolver_material_colagem(item_id, fields)
+            nova = self.repository.create_linha(**fields)
+            mapa_ids[indice] = nova.id
+            novos_ids.append(nova.id)
+
+        # Place the new block right after the anchor in display order.
+        linhas_apos = self.repository.list_active_by_orcamento_item(item_id)
+        existentes = [l.id for l in linhas_apos if l.id not in novos_ids]
+        if ancora_id in existentes:
+            indice = existentes.index(ancora_id)
+            nova_ordem = existentes[: indice + 1] + novos_ids + existentes[indice + 1:]
+        else:
+            nova_ordem = existentes + novos_ids
+        self.repository.reordenar_linhas(nova_ordem)
+
+        cortadas = 0
+        if clipboard.modo == "CORTAR":
+            origem = [oid for oid in clipboard.origem_ids if oid not in novos_ids]
+            cortadas = self.repository.delete_linhas(origem)
+
+        self.session.commit()
+
+        return ColarCusteioResult(inseridas=len(novos_ids), cortadas=cortadas)
+
+    def _resolver_material_colagem(self, item_id: int, fields: dict) -> None:
+        """Fill the material of a pasted line from the destination ValueSet.
+
+        Keeps the line's own material (faithful copy) when it has one; only when
+        a PECA/FERRAGEM line has no material but carries a ValueSet key does it
+        resolve the destination item's default option for that key.
+        """
+        if fields.get("tipo_linha") not in (PECA, FERRAGEM):
+            return
+        if fields.get("sem_material") or fields.get("materia_prima_id") is not None:
+            return
+        chave = fields.get("chave_valueset")
+        if not chave:
+            return
+        vs_linha = self._resolver_valueset_por_chave(item_id, chave)
+        if vs_linha is not None:
+            fields.update(self._build_valueset_material_fields(vs_linha))
 
     def inserir_operacao_manual(
         self,

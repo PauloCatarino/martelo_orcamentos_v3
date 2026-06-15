@@ -451,6 +451,40 @@ def test_orcamento_item_custeio_page_material_menu() -> None:
     assert "PECA_COMPOSTA" in aceita
 
 
+def test_orcamento_item_custeio_page_copiar_cortar_colar() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in (
+        "copiar_linhas",
+        "cortar_linhas",
+        "colar_linhas",
+        "_instalar_atalhos_clipboard",
+        "_clipboard_tem_conteudo",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    # Session-level clipboard (class attribute, shared across page instances).
+    assert "_clipboard_custeio" in OrcamentoItemCusteioPage.__dict__
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Copiar (Ctrl+C)" in menu
+    assert "Cortar (Ctrl+X)" in menu
+    assert "Colar abaixo (Ctrl+V)" in menu
+    assert "_clipboard_tem_conteudo" in menu  # paste only when there is content
+
+    atalhos = inspect.getsource(OrcamentoItemCusteioPage._instalar_atalhos_clipboard)
+    assert "StandardKey.Copy" in atalhos
+    assert "StandardKey.Cut" in atalhos
+    assert "StandardKey.Paste" in atalhos
+    assert "WidgetShortcut" in atalhos  # editors keep their own copy/paste
+
+    colar = inspect.getsource(OrcamentoItemCusteioPage.colar_linhas)
+    assert "colar_clipboard" in colar
+    assert "_recalcular_item_completo" in colar  # full pipeline after paste
+    # A successful cut consumes the clipboard.
+    assert "CORTAR" in colar
+
+
 def test_orcamento_item_custeio_page_inserir_separador() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

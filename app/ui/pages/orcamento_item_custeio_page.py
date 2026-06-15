@@ -7,7 +7,7 @@ from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, QSize, QEvent
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
@@ -71,6 +71,7 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_custeio_linha_service import (
+    ClipboardCusteio,
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
@@ -243,6 +244,9 @@ class OrcamentoItemCusteioPage(QWidget):
     _TAMANHO_MINIATURA_MODULO = 28
     # Slightly shorter row for the discreet separator line (phase 8V.4).
     _ALTURA_SEPARADOR = 16
+    # Session-level clipboard for copy/cut of cost lines, shared across page
+    # instances so lines can be pasted BETWEEN items (phase 8V.5).
+    _clipboard_custeio: ClipboardCusteio | None = None
 
     TABLE_HEADERS = [
         # Identificacao
@@ -570,6 +574,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
+        self._instalar_atalhos_clipboard()
 
         lines_layout = QVBoxLayout()
         lines_title = QLabel("Linhas de custeio do item")
@@ -2325,6 +2330,89 @@ class OrcamentoItemCusteioPage(QWidget):
         else:
             self.status_label.setText("Linha de separação inserida.")
 
+    # --- Copy / cut / paste of cost lines (phase 8V.5) ------------------------
+
+    def _instalar_atalhos_clipboard(self) -> None:
+        """Bind Ctrl+C / Ctrl+X / Ctrl+V on the table (only when it has focus, so
+        cell editors keep their own copy/paste)."""
+        for sequencia, handler in (
+            (QKeySequence.StandardKey.Copy, self.copiar_linhas),
+            (QKeySequence.StandardKey.Cut, self.cortar_linhas),
+            (QKeySequence.StandardKey.Paste, self.colar_linhas),
+        ):
+            atalho = QShortcut(sequencia, self.table)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(handler)
+
+    @classmethod
+    def _clipboard_tem_conteudo(cls) -> bool:
+        return cls._clipboard_custeio is not None and bool(
+            cls._clipboard_custeio.linhas
+        )
+
+    def copiar_linhas(self) -> None:
+        """Copy the selected lines (whole composite blocks) to the clipboard."""
+        self._guardar_no_clipboard("COPIAR")
+
+    def cortar_linhas(self) -> None:
+        """Cut the selected lines: copied now, source removed on a successful paste."""
+        self._guardar_no_clipboard("CORTAR")
+
+    def _guardar_no_clipboard(self, modo: str) -> None:
+        ids = self._ids_linhas_selecionadas()
+        if not ids:
+            self.status_label.setText("Selecione pelo menos uma linha.")
+            return
+        try:
+            with SessionLocal() as session:
+                clipboard = OrcamentoItemCusteioLinhaService(
+                    session
+                ).construir_clipboard(self.item_id, ids, modo)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível copiar as linhas.")
+            return
+
+        # Store on the CLASS so it persists across pages (paste between items);
+        # a new copy/cut replaces (and thus cancels) any pending cut.
+        OrcamentoItemCusteioPage._clipboard_custeio = clipboard
+        total = len(clipboard.linhas)
+        verbo = "cortada(s)" if modo == "CORTAR" else "copiada(s)"
+        self.status_label.setText(
+            f"{total} linha(s) {verbo}. Use 'Colar abaixo' (Ctrl+V) para inserir."
+        )
+
+    def colar_linhas(self) -> None:
+        """Paste the clipboard block below the selected line (never inside a
+        composite), then run the full Atualizar pipeline on this item."""
+        clipboard = OrcamentoItemCusteioPage._clipboard_custeio
+        if clipboard is None or not clipboard.linhas:
+            self.status_label.setText("Não há linhas para colar.")
+            return
+
+        linha = self._get_linha_selecionada()
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                resultado = service.colar_clipboard(
+                    self.item_id,
+                    clipboard,
+                    linha.id if linha is not None else None,
+                )
+                self._recalcular_item_completo(service)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível colar as linhas.")
+            return
+
+        # A successful CUT consumes its source lines, so the clipboard is cleared.
+        if clipboard.modo == "CORTAR":
+            OrcamentoItemCusteioPage._clipboard_custeio = None
+
+        self.carregar()
+        mensagem = f"Linhas coladas: {resultado.inseridas}."
+        if resultado.cortadas:
+            mensagem += f" Linhas cortadas: {resultado.cortadas}."
+        self.status_label.setText(mensagem)
+
     def _menu_contexto_material(self, pos) -> None:
         """Show a right-click menu with the line material and delete actions."""
         item = self.table.itemAt(pos)
@@ -2348,6 +2436,11 @@ class OrcamentoItemCusteioPage(QWidget):
             )
         menu.addSeparator()
         menu.addAction("Inserir linha de separação", self.inserir_separador_linha)
+        menu.addSeparator()
+        menu.addAction("Copiar (Ctrl+C)", self.copiar_linhas)
+        menu.addAction("Cortar (Ctrl+X)", self.cortar_linhas)
+        acao_colar = menu.addAction("Colar abaixo (Ctrl+V)", self.colar_linhas)
+        acao_colar.setEnabled(self._clipboard_tem_conteudo())
         menu.addSeparator()
         self._preencher_menu_exclusoes(menu.addMenu("Exclusões"))
         menu.addSeparator()
