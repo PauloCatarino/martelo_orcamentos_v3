@@ -47,6 +47,7 @@ from app.domain.custeio_linha_types import (
     OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
+    SEPARADOR,
     get_custeio_linha_type_label,
 )
 from app.domain.valueset_compat import opcoes_valueset_compativeis
@@ -971,6 +972,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
     ) -> bool:
         """Return True when the given column is editable for the given line."""
+        # A separator is purely visual: only its optional free-text label edits.
+        if linha.tipo_linha == SEPARADOR:
+            return header == "Descrição livre"
+
         if header in self.EDITABLE_COLUMNS:
             if linha.tipo_linha == OPERACAO_MANUAL:
                 # Manual-operation lines have no measures: only the quantity is
@@ -1304,6 +1309,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
     ) -> None:
         """Fill one table row from a line resumo (caller guards _carregando_tabela)."""
+        if linha.tipo_linha == SEPARADOR:
+            self._preencher_linha_separador(row_index, linha)
+            return
+
         valores = self._linha_para_valores(linha)
         for column_index, header in enumerate(self.TABLE_HEADERS):
             if header == "Mat. default" and self._montar_combo_material(
@@ -1328,6 +1337,31 @@ class OrcamentoItemCusteioPage(QWidget):
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row_index, column_index, item)
+
+    def _preencher_linha_separador(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Render a separator row: a discrete, mostly-empty, non-editable line.
+
+        No material dropdown, no exclusion checkboxes and no module thumbnail —
+        only the type label and an optional free-text label ("Descrição livre",
+        the single editable cell). The discreet styling comes in phase 8V.4.
+        """
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            # Clear any cell widget left over from a previous (non-separator) fill.
+            self.table.removeCellWidget(row_index, column_index)
+            if header == "Tipo linha":
+                texto = get_custeio_linha_type_label(linha.tipo_linha)
+            elif header == "Descrição livre":
+                texto = linha.descricao_livre or ""
+            else:
+                texto = ""
+            item = criar_item_tabela(texto)
+            if header == "Descrição livre":
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            else:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row_index, column_index, item)
 
     def _criar_item_modulo(
@@ -1377,8 +1411,12 @@ class OrcamentoItemCusteioPage(QWidget):
             self._carregando_tabela = False
 
     def _linha_calcula_total(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
-        """Return True when the line computes a total (not division/composite)."""
-        return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+        """Return True when the line computes a total (not division/composite/separator)."""
+        return linha.tipo_linha not in (
+            DIVISAO_INDEPENDENTE,
+            PECA_COMPOSTA,
+            SEPARADOR,
+        )
 
     # --- 'Mat. default' dropdown (item ValueSet options per line) -------------
 
@@ -2200,7 +2238,34 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _linha_aceita_material(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
         """Return True when the line type can carry material (not division/composite)."""
-        return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+        return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR)
+
+    def inserir_separador_linha(self) -> None:
+        """Insert a visual separation line below the selected line.
+
+        Never splits a composite piece: if the selection is a composite header or
+        a child, the separator goes AFTER the whole block (service rule).
+        """
+        linha = self._get_linha_selecionada()
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).inserir_separador(
+                    self.item_id, linha.id if linha is not None else None
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível inserir a linha de separação.")
+            return
+
+        self.carregar()
+        if linha is not None and (
+            linha.tipo_linha == PECA_COMPOSTA or linha.linha_pai_id is not None
+        ):
+            self.status_label.setText(
+                "Linha de separação inserida após a peça composta "
+                "(para não a partir)."
+            )
+        else:
+            self.status_label.setText("Linha de separação inserida.")
 
     def _menu_contexto_material(self, pos) -> None:
         """Show a right-click menu with the line material and delete actions."""
@@ -2223,6 +2288,8 @@ class OrcamentoItemCusteioPage(QWidget):
             menu.addAction(
                 "Editar operação manual...", self.editar_operacao_manual_linha
             )
+        menu.addSeparator()
+        menu.addAction("Inserir linha de separação", self.inserir_separador_linha)
         menu.addSeparator()
         self._preencher_menu_exclusoes(menu.addMenu("Exclusões"))
         menu.addSeparator()

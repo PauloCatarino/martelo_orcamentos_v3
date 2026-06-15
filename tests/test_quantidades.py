@@ -9,6 +9,7 @@ from app.domain.custeio_linha_types import (
     FERRAGEM,
     PECA,
     PECA_COMPOSTA,
+    SEPARADOR,
 )
 from app.domain.quantidades import (
     LinhaQuantidade,
@@ -21,6 +22,10 @@ def _div(id, qt_mod):
     return LinhaQuantidade(id=id, tipo_linha=DIVISAO_INDEPENDENTE, qt_mod=qt_mod)
 
 
+def _sep(id):
+    return LinhaQuantidade(id=id, tipo_linha=SEPARADOR)
+
+
 def _peca(id, qt_und, qt_mod=Decimal("1"), tipo=PECA, linha_pai_id=None):
     return LinhaQuantidade(
         id=id,
@@ -29,6 +34,24 @@ def _peca(id, qt_und, qt_mod=Decimal("1"), tipo=PECA, linha_pai_id=None):
         qt_und=qt_und,
         linha_pai_id=linha_pai_id,
     )
+
+
+def test_separador_nao_termina_bloco_de_divisao() -> None:
+    # Division 3 governs the lines below it; a separator between them does NOT
+    # end the block: the piece after the separator is still "3 x ...".
+    linhas = [
+        _div(1, Decimal("3")),
+        _peca(2, Decimal("2")),
+        _sep(3),
+        _peca(4, Decimal("5")),
+    ]
+    res = calcular_quantidades(linhas)
+
+    assert res[2].qt_total == Decimal("6")  # 3 x 2 (before the separator)
+    assert res[4].qt_total == Decimal("15")  # 3 x 5 (still in the division)
+    # The separator itself carries no quantity and no chain.
+    assert res[3].qt_total == Decimal("0")
+    assert res[3].cadeia == ()
 
 
 def test_qt_total_peca_simples_num_bloco_divisao() -> None:

@@ -7,7 +7,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
 
-from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, PECA_COMPOSTA
+from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
+    PECA_COMPOSTA,
+    SEPARADOR,
+)
 from app.domain.item_types import normalize_item_type
 from app.domain.precos import (
     BlocosCusto,
@@ -230,7 +234,7 @@ class OrcamentoItemService:
         ):
             if not linha.ativo:
                 continue
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 continue
 
             blocos_por_item.setdefault(linha.orcamento_item_id, []).append(
@@ -375,7 +379,7 @@ class OrcamentoItemService:
             for linha in self.custeio_repository.list_active_by_orcamento_item(
                 orcamento_item_id
             )
-            if linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+            if linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR)
         ]
         if not blocos:
             return None

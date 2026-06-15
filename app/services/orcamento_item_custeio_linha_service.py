@@ -18,6 +18,7 @@ from app.domain.custeio_linha_types import (
     OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
+    SEPARADOR,
     normalize_custeio_linha_type,
 )
 from app.domain.medidas import (
@@ -515,7 +516,7 @@ class OrcamentoItemCusteioLinhaService:
             for linha in linhas
             if linha.chave_valueset
             and normalize_valueset_key(linha.chave_valueset) == chave
-            and linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA)
+            and linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR)
         ]
 
     def aplicar_valueset_item_em_linhas_custeio(
@@ -538,7 +539,7 @@ class OrcamentoItemCusteioLinhaService:
             linha = self.repository.get_by_id(custeio_id)
             if linha is None:
                 continue
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 continue
 
             self.repository.update_linha(id=custeio_id, **fields)
@@ -604,7 +605,7 @@ class OrcamentoItemCusteioLinhaService:
         ILUMINACAO/ACESSORIO see only their own key; ORLA/ACABAMENTO, divisions,
         composite parents, service pieces and keyless lines get none.
         """
-        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
             return []
         if self._linha_sem_material(linha):
             return []
@@ -673,6 +674,11 @@ class OrcamentoItemCusteioLinhaService:
 
         atualizadas = 0
         for linha in linhas:
+            # A separator is purely visual: no measures, and it does NOT change
+            # the active division context (HM/LM/PM) for the lines below it.
+            if linha.tipo_linha == SEPARADOR:
+                continue
+
             contexto = {**contexto_global, **contexto_local}
             fields = self._calcular_medidas_fields(
                 linha, contexto, quantidades[linha.id].qt_total
@@ -868,7 +874,7 @@ class OrcamentoItemCusteioLinhaService:
         atualizadas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 continue
             if self._linha_sem_material(linha):
                 continue  # service piece: no orla
@@ -955,7 +961,7 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
             if self._linha_sem_material(linha):
@@ -1010,7 +1016,7 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
             if self._linha_sem_material(linha):
@@ -1055,7 +1061,7 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
             if self._linha_sem_material(linha):
@@ -1109,7 +1115,7 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
 
@@ -1233,7 +1239,7 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
             if self._linha_sem_material(linha):
@@ -1949,7 +1955,7 @@ class OrcamentoItemCusteioLinhaService:
             return None
 
         fields: dict = {campo: bool(excluir)}
-        if linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+        if linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
             fields["custo_total"] = self._custo_total_da_linha(
                 linha, **{campo: bool(excluir)}
             )
@@ -1971,7 +1977,7 @@ class OrcamentoItemCusteioLinhaService:
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
             return None
-        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA):
+        if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
             raise ValueError("linha não suporta fator série")
 
         fator = normalizar_numero(fator_serie)
@@ -2251,6 +2257,92 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return result
+
+    def inserir_separador(
+        self, orcamento_item_id: int, linha_id: int | None = None
+    ) -> OrcamentoItemCusteioLinhaResumo:
+        """Insert a visual SEPARADOR line below ``linha_id`` (or at the end).
+
+        The separator carries no def_peca/material/measures/costs and is ignored
+        by every recompute. Inserting it renumbers the item's active lines
+        (``ordem_visual``) so the new row lands right after the selected one.
+
+        It NEVER splits a composite piece: when the selection is a composite
+        header (PECA_COMPOSTA) or one of its children, the separator is placed
+        AFTER the whole block (right below the last child), not in the middle.
+        Commits.
+        """
+        item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
+
+        separador = self.repository.create_linha(
+            orcamento_item_id=item_id,
+            tipo_linha=SEPARADOR,
+            descricao="",
+            origem_tipo="MANUAL",
+            nivel=0,
+            quantidade=Decimal("0"),
+            editado_localmente=True,
+            ativo=True,
+        )
+
+        # Splice the separator right after the anchor (which never falls inside a
+        # composite block) in display order.
+        linhas = self.repository.list_active_by_orcamento_item(item_id)
+        outras = [linha for linha in linhas if linha.id != separador.id]
+        outras_ids = [linha.id for linha in outras]
+        ancora_id = self._ancora_separador(linha_id, outras)
+
+        if ancora_id in outras_ids:
+            indice = outras_ids.index(ancora_id)
+            nova_ordem = (
+                outras_ids[: indice + 1] + [separador.id] + outras_ids[indice + 1:]
+            )
+        else:
+            nova_ordem = outras_ids + [separador.id]
+
+        self.repository.reordenar_linhas(nova_ordem)
+        self.session.commit()
+
+        return self.repository.get_by_id(separador.id)
+
+    def _ancora_separador(self, linha_id: int | None, linhas: list) -> int | None:
+        """Resolve the line AFTER which a separator should be inserted.
+
+        Normally the selected line itself; but when the selection is a composite
+        header or one of its children, the anchor is the LAST line of that whole
+        composite block (so the separator never splits the composite).
+        """
+        if linha_id is None:
+            return None
+
+        por_id = {linha.id: linha for linha in linhas}
+        selecionada = por_id.get(linha_id)
+        if selecionada is None:
+            return linha_id
+
+        topo = self._linha_topo_do_bloco(selecionada, por_id)
+        if topo.tipo_linha != PECA_COMPOSTA:
+            return linha_id  # simple piece / hardware / division / operation
+
+        # Composite block: anchor = the last display-order line of the block.
+        ancora_id = topo.id
+        for linha in linhas:
+            if self._linha_topo_do_bloco(linha, por_id).id == topo.id:
+                ancora_id = linha.id
+        return ancora_id
+
+    @staticmethod
+    def _linha_topo_do_bloco(linha, por_id: dict):
+        """Climb linha_pai_id to the top-level ancestor of a line."""
+        atual = linha
+        visto: set[int] = set()
+        while atual.linha_pai_id is not None and atual.id not in visto:
+            visto.add(atual.id)
+            pai = por_id.get(atual.linha_pai_id)
+            if pai is None:
+                break
+            atual = pai
+        return atual
 
     def inserir_operacao_manual(
         self,

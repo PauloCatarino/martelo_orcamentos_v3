@@ -72,6 +72,7 @@ class OrcamentoItemCusteioLinhaResumo:
     mat_default: str | None = None
     modulo_imagem_path: str | None = None
     descricao_livre: str | None = None
+    ordem_visual: int | None = None
     ref_le: str | None = None
     descricao_no_orcamento: str | None = None
     preco_liquido: Decimal | None = None
@@ -133,15 +134,31 @@ class OrcamentoItemCusteioLinhaRepository:
         self.session = session
 
     def list_by_orcamento_item(self, orcamento_item_id: int) -> list[OrcamentoItemCusteioLinhaResumo]:
-        """List cost lines of one budget item."""
+        """List cost lines of one budget item (display order)."""
         statement = (
             select(OrcamentoItemCusteioLinha)
             .where(OrcamentoItemCusteioLinha.orcamento_item_id == orcamento_item_id)
-            .order_by(OrcamentoItemCusteioLinha.id.asc())
+            .order_by(*self._ordenacao_display())
         )
         linhas = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(linha) for linha in linhas]
+
+    @staticmethod
+    def _ordenacao_display():
+        """Display order: explicit ``ordem_visual`` first (when set), else id order.
+
+        ``ordem_visual`` is a global display-order column (distinct from the
+        composite-local ``ordem``). Lines without it (the common case) sort LAST
+        among themselves by id, so new lines append at the end; only when a
+        separator is inserted are the active lines renumbered (phase 8V.3),
+        making ``ordem_visual`` drive the order.
+        """
+        return (
+            OrcamentoItemCusteioLinha.ordem_visual.is_(None),  # numbered first
+            OrcamentoItemCusteioLinha.ordem_visual.asc(),
+            OrcamentoItemCusteioLinha.id.asc(),
+        )
 
     def list_active_by_orcamento_item(
         self, orcamento_item_id: int
@@ -153,7 +170,7 @@ class OrcamentoItemCusteioLinhaRepository:
                 OrcamentoItemCusteioLinha.orcamento_item_id == orcamento_item_id,
                 OrcamentoItemCusteioLinha.ativo.is_(True),
             )
-            .order_by(OrcamentoItemCusteioLinha.id.asc())
+            .order_by(*self._ordenacao_display())
         )
         linhas = self.session.execute(statement).scalars().all()
 
@@ -203,6 +220,14 @@ class OrcamentoItemCusteioLinhaRepository:
         self.session.flush()
 
         return self._to_resumo(linha)
+
+    def reordenar_linhas(self, ordered_ids: list[int]) -> None:
+        """Set ``ordem_visual`` = 1..N for the given ids, in the provided order."""
+        for posicao, linha_id in enumerate(ordered_ids, start=1):
+            linha = self.session.get(OrcamentoItemCusteioLinha, linha_id)
+            if linha is not None:
+                linha.ordem_visual = posicao
+        self.session.flush()
 
     def deactivate_linha(self, id: int) -> bool:
         """Deactivate one cost line."""
@@ -365,6 +390,7 @@ class OrcamentoItemCusteioLinhaRepository:
             codigo_orlas=linha.codigo_orlas,
             mat_default=linha.mat_default,
             modulo_imagem_path=linha.modulo_imagem_path,
+            ordem_visual=linha.ordem_visual,
             ref_le=linha.ref_le,
             descricao_no_orcamento=linha.descricao_no_orcamento,
             preco_liquido=linha.preco_liquido,

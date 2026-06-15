@@ -451,6 +451,30 @@ def test_orcamento_item_custeio_page_material_menu() -> None:
     assert "PECA_COMPOSTA" in aceita
 
 
+def test_orcamento_item_custeio_page_inserir_separador() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "inserir_separador_linha")
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Inserir linha de separação" in menu
+
+    handler = inspect.getsource(OrcamentoItemCusteioPage.inserir_separador_linha)
+    assert "inserir_separador" in handler
+    assert "carregar" in handler
+
+    # The separator renders as a discrete, mostly non-editable row.
+    assert hasattr(OrcamentoItemCusteioPage, "_preencher_linha_separador")
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
+    assert "SEPARADOR" in preencher
+    assert "_preencher_linha_separador" in preencher
+
+    # Only the optional free-text label is editable on a separator.
+    editavel = inspect.getsource(OrcamentoItemCusteioPage._coluna_editavel)
+    assert "SEPARADOR" in editavel
+    assert "Descrição livre" in editavel
+
+
 def test_orcamento_item_custeio_page_eliminar_linhas() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

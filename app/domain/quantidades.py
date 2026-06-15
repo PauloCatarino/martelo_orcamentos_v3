@@ -14,10 +14,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE
+from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, SEPARADOR
 from app.domain.medidas import normalizar_numero
 
 _UM = Decimal("1")
+_ZERO = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,13 @@ def calcular_quantidades(
     resultado: dict[int, ResultadoQuantidade] = {}
 
     for linha in linhas:
+        if linha.tipo_linha == SEPARADOR:
+            # A separator is purely visual: it carries no quantity and does NOT
+            # interrupt the active division block (qt_mod_divisao is preserved,
+            # so the lines after it keep belonging to the division above).
+            resultado[linha.id] = ResultadoQuantidade(qt_total=_ZERO, cadeia=())
+            continue
+
         if linha.tipo_linha == DIVISAO_INDEPENDENTE:
             qt_mod_divisao = _num(linha.qt_mod)
             resultado[linha.id] = ResultadoQuantidade(

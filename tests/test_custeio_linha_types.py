@@ -17,6 +17,7 @@ from app.domain.custeio_linha_types import (
     OUTRO,
     PECA,
     PECA_COMPOSTA,
+    SEPARADOR,
     SETUP,
     get_custeio_linha_type_label,
     get_custeio_linha_type_options,
@@ -52,6 +53,7 @@ def test_labels_for_known_types() -> None:
     assert get_custeio_linha_type_label(MAO_OBRA) == "Mão de obra"
     assert get_custeio_linha_type_label(SETUP) == "Setup"
     assert get_custeio_linha_type_label(MANUAL) == "Manual"
+    assert get_custeio_linha_type_label(SEPARADOR) == "Separador"
     assert get_custeio_linha_type_label(OUTRO) == "Outro"
 
 
@@ -78,5 +80,6 @@ def test_options_list_all_types_in_order() -> None:
         SETUP,
         MANUAL,
         OPERACAO_MANUAL,
+        SEPARADOR,
         OUTRO,
     ]

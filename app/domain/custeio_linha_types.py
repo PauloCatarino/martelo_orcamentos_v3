@@ -16,6 +16,10 @@ MAO_OBRA = "MAO_OBRA"
 SETUP = "SETUP"
 MANUAL = "MANUAL"
 OPERACAO_MANUAL = "OPERACAO_MANUAL"
+# Purely visual empty row to separate blocks for readability (phase 8V.3).
+# Carries no def_peca/material/measures/costs and is ignored by every recompute
+# and by the independent-division propagation (it never ends a division block).
+SEPARADOR = "SEPARADOR"
 OUTRO = "OUTRO"
 
 CUSTEIO_LINHA_TYPE_LABELS = {
@@ -33,6 +37,7 @@ CUSTEIO_LINHA_TYPE_LABELS = {
     SETUP: "Setup",
     MANUAL: "Manual",
     OPERACAO_MANUAL: "Operação manual",
+    SEPARADOR: "Separador",
     OUTRO: "Outro",
 }
 
