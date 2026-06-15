@@ -690,6 +690,30 @@ def test_custeio_page_colunas_redimensionaveis_e_splitter() -> None:
     assert "resizeColumnsToContents" in preencher
 
 
+def test_custeio_page_auto_hide_biblioteca() -> None:
+    """The parts library hides COMPLETELY (no residual strip) and restores."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "toggle_biblioteca")
+
+    # The toggle button lives in the costing button bar (always visible), so
+    # hiding the library leaves no leftover strip on the left.
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "toggle_biblioteca_button" in init
+    assert "actions_layout.addWidget(self.toggle_biblioteca_button)" in init
+
+    toggle = inspect.getsource(OrcamentoItemCusteioPage.toggle_biblioteca)
+    # Hides the whole panel and gives ALL the width to the table ([0, total]).
+    assert "self.library_panel.setVisible(False)" in toggle
+    assert "[0, total]" in toggle
+    assert "_biblioteca_sizes" in toggle  # remembers/restores previous widths
+    assert "Mostrar Biblioteca" in toggle
+
+    # The panel itself can collapse fully (no minimum width).
+    panel = inspect.getsource(OrcamentoItemCusteioPage._create_library_panel)
+    assert "setMinimumWidth(0)" in panel
+
+
 def test_custeio_page_navegacao_enter_horizontal() -> None:
     """Enter commits and moves to the next editable cell to the right."""
     from app.ui.pages.orcamento_item_custeio_page import CusteioLinhasTable

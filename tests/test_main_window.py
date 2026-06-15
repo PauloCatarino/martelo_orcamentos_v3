@@ -68,3 +68,17 @@ def test_main_window_has_margens_padrao_navigation_inside_configuracoes() -> Non
     assert '"margens_padrao"' in source
     assert "on_open_margens_padrao" in source
     assert hasattr(MainWindow, "_open_margens_padrao")
+
+
+def test_main_window_has_sidebar_toggle() -> None:
+    from app.ui.main_window import MainWindow
+
+    assert hasattr(MainWindow, "toggle_sidebar")
+
+    init = inspect.getsource(MainWindow.__init__)
+    assert "toggle_sidebar_button" in init
+    assert "self.sidebar" in init
+
+    toggle = inspect.getsource(MainWindow.toggle_sidebar)
+    assert "setVisible" in toggle
+    assert "_sidebar_visivel" in toggle  # tracked flag, not isVisible()

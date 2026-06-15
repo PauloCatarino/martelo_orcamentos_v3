@@ -459,6 +459,17 @@ class OrcamentoItemCusteioPage(QWidget):
         self.insert_division_button = QPushButton("Inserir Divis\u00e3o")
         self.insert_division_button.clicked.connect(self.inserir_divisao)
 
+        # Auto-hide toggle for the parts library: lives in the button bar (always
+        # visible) so hiding the library leaves NO residual strip (phase 8V.2).
+        self.toggle_biblioteca_button = QPushButton("Ocultar Biblioteca")
+        self.toggle_biblioteca_button.setObjectName(
+            "orcamentoItemCusteioToggleBiblioteca"
+        )
+        self.toggle_biblioteca_button.setToolTip(
+            "Ocultar a biblioteca de pe\u00e7as para a tabela ocupar todo o espa\u00e7o."
+        )
+        self.toggle_biblioteca_button.clicked.connect(self.toggle_biblioteca)
+
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
         self.import_module_button.setToolTip(
             "Importa um m\u00f3dulo guardado para o fim do custeio deste item "
@@ -507,6 +518,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addWidget(self.insert_division_button)
         actions_layout.addSpacing(12)
+        actions_layout.addWidget(self.toggle_biblioteca_button)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.insert_piece_button)
         actions_layout.addWidget(self.insert_operation_button)
@@ -520,6 +532,9 @@ class OrcamentoItemCusteioPage(QWidget):
 
         item_info_widget = self._create_item_info_widget()
 
+        # Auto-hide state for the parts library panel (phase 8V.2).
+        self._biblioteca_visivel = True
+        self._biblioteca_sizes: list[int] | None = None
         self.library_panel = self._create_library_panel()
 
         self.table = CusteioLinhasTable(0, len(self.TABLE_HEADERS))
@@ -993,13 +1008,18 @@ class OrcamentoItemCusteioPage(QWidget):
         return False
 
     def _create_library_panel(self) -> QWidget:
-        """Build the parts library panel (search + tree + selection tools)."""
+        """Build the parts library panel (search + tree + selection tools).
+
+        The panel is hidden/shown as a whole by ``toggle_biblioteca`` (the toggle
+        button lives in the costing button bar), so when hidden it collapses
+        completely — no residual strip is left (phase 8V.2).
+        """
         panel = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
 
-        title = QLabel("Biblioteca de peças")
-        title.setObjectName("orcamentoItemCusteioLibraryTitle")
+        self.library_title = QLabel("Biblioteca de peças")
+        self.library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
 
         self.library_search = QLineEdit()
         self.library_search.setPlaceholderText("Pesquisar peça...")
@@ -1019,7 +1039,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.add_selections_button = QPushButton("Adicionar Seleções")
         self.add_selections_button.clicked.connect(self.adicionar_selecoes)
 
-        layout.addWidget(title)
+        layout.addWidget(self.library_title)
         layout.addWidget(self.library_search)
         layout.addWidget(self.tree_biblioteca_pecas, stretch=1)
         layout.addWidget(self.so_selecionados_check)
@@ -1027,8 +1047,32 @@ class OrcamentoItemCusteioPage(QWidget):
         layout.addWidget(self.add_selections_button)
 
         panel.setLayout(layout)
-        panel.setMinimumWidth(300)
+        # No hard minimum so the splitter can collapse the panel completely.
+        panel.setMinimumWidth(0)
         return panel
+
+    def toggle_biblioteca(self) -> None:
+        """Fully hide the parts library (table takes all the width), or restore it."""
+        if self._biblioteca_visivel:
+            # Remember the current widths to restore them later.
+            self._biblioteca_sizes = self.workspace_splitter.sizes()
+            self.library_panel.setVisible(False)
+            total = sum(self.workspace_splitter.sizes()) or 1000
+            # Give ALL the space to the table: no residual strip on the left.
+            self.workspace_splitter.setSizes([0, total])
+            self.toggle_biblioteca_button.setText("Mostrar Biblioteca")
+            self.toggle_biblioteca_button.setToolTip(
+                "Mostrar novamente a biblioteca de peças."
+            )
+            self._biblioteca_visivel = False
+        else:
+            self.library_panel.setVisible(True)
+            self.workspace_splitter.setSizes(self._biblioteca_sizes or [320, 1000])
+            self.toggle_biblioteca_button.setText("Ocultar Biblioteca")
+            self.toggle_biblioteca_button.setToolTip(
+                "Ocultar a biblioteca de peças para a tabela ocupar todo o espaço."
+            )
+            self._biblioteca_visivel = True
 
     def _carregar_biblioteca(self) -> None:
         """Load active piece definitions for the library tree."""

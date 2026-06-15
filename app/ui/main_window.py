@@ -51,6 +51,15 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(12)
 
         header_layout = QHBoxLayout()
+
+        # Toggle to hide/show the left navigation menu (phase 8V.2): purely
+        # visual; the page stack (and the current selection) is untouched.
+        self.toggle_sidebar_button = QPushButton("\u2261")  # \u2261
+        self.toggle_sidebar_button.setObjectName("toggleSidebarButton")
+        self.toggle_sidebar_button.setFixedWidth(36)
+        self.toggle_sidebar_button.setToolTip("Ocultar menu")
+        self.toggle_sidebar_button.clicked.connect(self.toggle_sidebar)
+
         title = QLabel("Martelo Or\u00e7amentos V3")
         title.setObjectName("mainTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -63,6 +72,7 @@ class MainWindow(QMainWindow):
         logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.request_logout)
 
+        header_layout.addWidget(self.toggle_sidebar_button)
         header_layout.addWidget(title, stretch=1)
         header_layout.addWidget(user_label, stretch=1)
         header_layout.addWidget(logout_button)
@@ -70,9 +80,11 @@ class MainWindow(QMainWindow):
         content_layout = QHBoxLayout()
         content_layout.setSpacing(16)
 
-        sidebar = QFrame()
-        sidebar.setFrameShape(QFrame.Shape.StyledPanel)
-        sidebar.setFixedWidth(180)
+        self.sidebar = QFrame()
+        self.sidebar.setFrameShape(QFrame.Shape.StyledPanel)
+        self.sidebar.setFixedWidth(180)
+        self._sidebar_visivel = True
+        sidebar = self.sidebar
 
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
@@ -156,6 +168,20 @@ class MainWindow(QMainWindow):
     def request_logout(self) -> None:
         """Emit a logout request."""
         self.logout_requested.emit()
+
+    def toggle_sidebar(self) -> None:
+        """Hide/show the left navigation menu (phase 8V.2).
+
+        Purely visual: the page stack and the current page stay as they are, so
+        navigation state is preserved when the menu is shown again. A tracked
+        flag (not isVisible) drives the toggle so it works regardless of whether
+        the window is currently shown.
+        """
+        self._sidebar_visivel = not self._sidebar_visivel
+        self.sidebar.setVisible(self._sidebar_visivel)
+        self.toggle_sidebar_button.setToolTip(
+            "Ocultar menu" if self._sidebar_visivel else "Mostrar menu"
+        )
 
     def _open_margens_padrao(self) -> None:
         """Open the default margins page with fresh data."""
