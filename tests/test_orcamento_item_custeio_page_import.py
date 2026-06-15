@@ -289,16 +289,23 @@ def test_orcamento_item_custeio_page_formats_item_label() -> None:
     )
 
 
-def test_orcamento_item_custeio_page_has_future_layout_placeholders() -> None:
+def test_orcamento_item_custeio_page_action_bar_buttons() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
     source = inspect.getsource(OrcamentoItemCusteioPage.__init__)
 
     assert "Linhas de custeio do item" in source
-    assert "Importar M" in source
-    assert "Inserir Pe" in source
-    assert "Inserir Opera" in source
-    assert "Guardar Custeio" in source
+    assert "Importar M" in source  # Importar Módulo stays
+
+    # The three unwired placeholder buttons were removed (functionality lives
+    # elsewhere: library "Adicionar Seleções", right-click "Inserir operação
+    # manual...", and the costing saves automatically).
+    assert "insert_piece_button" not in source
+    assert "insert_operation_button" not in source
+    assert "self.save_button" not in source
+    assert "Inserir Peça" not in source
+    assert "Inserir Operação" not in source
+    assert "Guardar Custeio" not in source
 
 
 def test_orcamento_item_custeio_page_has_valueset_tab() -> None:

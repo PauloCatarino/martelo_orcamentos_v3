@@ -477,15 +477,6 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         self.import_module_button.clicked.connect(self.importar_modulo)
 
-        self.insert_piece_button = QPushButton("Inserir Pe\u00e7a")
-        self.insert_piece_button.setEnabled(False)
-
-        self.insert_operation_button = QPushButton("Inserir Opera\u00e7\u00e3o")
-        self.insert_operation_button.setEnabled(False)
-
-        self.save_button = QPushButton("Guardar Custeio")
-        self.save_button.setEnabled(False)
-
         # Save the selected costing lines as a reusable module (phase 8U.1):
         # only the parametric structure (no material/price). Enabled on selection.
         self.guardar_modulo_button = QPushButton("Guardar como Módulo")
@@ -520,9 +511,6 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.toggle_biblioteca_button)
         actions_layout.addWidget(self.import_module_button)
-        actions_layout.addWidget(self.insert_piece_button)
-        actions_layout.addWidget(self.insert_operation_button)
-        actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.guardar_modulo_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.preco_item_label)
