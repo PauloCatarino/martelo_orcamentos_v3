@@ -2474,6 +2474,12 @@ class OrcamentoItemCusteioLinhaService:
             if linha.linha_pai_ordem is not None:
                 filhos_por_pai_ordem.setdefault(linha.linha_pai_ordem, []).append(linha)
 
+        # Snapshot the existing line ids so we can find the first new line below.
+        ids_antes = {
+            linha.id
+            for linha in self.repository.list_active_by_orcamento_item(item_id)
+        }
+
         criadas = 0
         componentes = 0
         for linha in linhas_modulo:
@@ -2490,6 +2496,10 @@ class OrcamentoItemCusteioLinhaService:
                 self._importar_peca_modulo(item_id, linha, tipo, avisos)
             criadas += 1
 
+        # Store the module image on the FIRST line of the imported block (the
+        # division, or the first line) so the table can show its thumbnail.
+        self._marcar_imagem_modulo(item_id, ids_antes, modulo.imagem_path)
+
         self.session.commit()
 
         return InserirModuloResult(
@@ -2497,6 +2507,24 @@ class OrcamentoItemCusteioLinhaService:
             criadas=criadas,
             componentes=componentes,
             avisos=avisos,
+        )
+
+    def _marcar_imagem_modulo(
+        self, item_id: int, ids_antes: set[int], imagem_path: str | None
+    ) -> None:
+        """Set modulo_imagem_path on the first line created by this import."""
+        if not imagem_path:
+            return
+        novas = [
+            linha
+            for linha in self.repository.list_active_by_orcamento_item(item_id)
+            if linha.id not in ids_antes
+        ]
+        if not novas:
+            return
+        primeira = min(novas, key=lambda linha: linha.id)
+        self.repository.update_linha(
+            id=primeira.id, modulo_imagem_path=imagem_path
         )
 
     def _importar_divisao_modulo(self, orcamento_item_id: int, linha) -> None:

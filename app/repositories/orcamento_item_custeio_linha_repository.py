@@ -70,6 +70,7 @@ class OrcamentoItemCusteioLinhaResumo:
     chave_valueset: str | None = None
     codigo_orlas: str | None = None
     mat_default: str | None = None
+    modulo_imagem_path: str | None = None
     ref_le: str | None = None
     descricao_no_orcamento: str | None = None
     preco_liquido: Decimal | None = None
@@ -361,6 +362,7 @@ class OrcamentoItemCusteioLinhaRepository:
             chave_valueset=linha.chave_valueset,
             codigo_orlas=linha.codigo_orlas,
             mat_default=linha.mat_default,
+            modulo_imagem_path=linha.modulo_imagem_path,
             ref_le=linha.ref_le,
             descricao_no_orcamento=linha.descricao_no_orcamento,
             preco_liquido=linha.preco_liquido,

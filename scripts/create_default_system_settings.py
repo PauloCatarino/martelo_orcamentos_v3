@@ -47,15 +47,24 @@ class DefaultSystemSettingsResult:
     reutilizadas: int
 
 
+# Key + default folder for the module images (phase 8U.4). The copy of a module
+# image (guardar/editar módulo) reads this key; the Caminhos do Sistema page
+# lists it (tipo "pasta" -> "Procurar..." enabled) so the user can change it.
+PASTA_IMAGENS_MODULOS_CHAVE = "pasta_imagens_modulos"
+PASTA_IMAGENS_MODULOS_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
+    r"\Base_Dados_Orcamento\Imagens_Modulos"
+)
+
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed("pasta_base_orcamentos", "Pasta base dos Orcamentos", "pasta", "Orcamentos"),
     SystemSettingSeed("pasta_materias_primas", "Pasta Materias Primas", "pasta", "Materias-Primas"),
     SystemSettingSeed(
-        "pasta_imagens_modulos",
+        PASTA_IMAGENS_MODULOS_CHAVE,
         "Pasta de Imagens de Modulos",
         "pasta",
         "Modulos",
-        r"\\SERVER_LE_Lanca_Encanto\LancaEncanto\Dep._Orcamentos\Base_Dados_Orcamento\Imagens_Modulos",
+        PASTA_IMAGENS_MODULOS_DEFAULT,
     ),
     SystemSettingSeed(
         "pasta_base_dados_orcamento",

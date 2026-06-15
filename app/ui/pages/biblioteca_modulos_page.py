@@ -38,11 +38,13 @@ from app.domain.modulo_categorias import (
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
+from app.domain.modulo_imagem import copiar_imagem_para_pasta
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
 from app.services.def_modulo_service import (
     DefModuloService,
     EditarDefModuloCabecalhoData,
 )
+from app.services.system_setting_service import SystemSettingService
 from app.ui.dialogs.editar_modulo_dialog import (
     EditarModuloDialog,
     EditarModuloDialogData,
@@ -144,6 +146,25 @@ class BibliotecaModulosPage(QWidget):
     def _user_id() -> int | None:
         utilizador = app_session.current_user
         return utilizador.id if utilizador is not None else None
+
+    def _copiar_imagem_modulo(
+        self, origem: str | None, codigo: str
+    ) -> tuple[str | None, str | None]:
+        """Copy the chosen image into the configured module-images folder.
+
+        Returns (caminho_final, aviso); keeps the original path on any problem.
+        """
+        if not origem:
+            return None, None
+        try:
+            with SessionLocal() as session:
+                pasta = SystemSettingService(session).obter_valor(
+                    "pasta_imagens_modulos"
+                )
+        except SQLAlchemyError:
+            pasta = None
+        resultado = copiar_imagem_para_pasta(origem, pasta, codigo)
+        return resultado.caminho, resultado.aviso
 
     def carregar(self) -> None:
         """Load the user's own and the global modules into the tables."""
@@ -280,8 +301,12 @@ class BibliotecaModulosPage(QWidget):
             return
 
         modulo = item.modulo
+        guardado: dict = {}
 
         def handle_save(dados: EditarModuloDialogData) -> bool:
+            imagem_path, aviso_imagem = self._copiar_imagem_modulo(
+                dados.imagem_path, modulo.codigo
+            )
             try:
                 with SessionLocal() as session:
                     DefModuloService(session).editar_cabecalho(
@@ -292,7 +317,7 @@ class BibliotecaModulosPage(QWidget):
                             ambito=dados.ambito,
                             user_id=modulo.user_id or self._user_id(),
                             categoria=dados.categoria,
-                            imagem_path=dados.imagem_path,
+                            imagem_path=imagem_path,
                         ),
                     )
             except ValueError as error:
@@ -301,6 +326,7 @@ class BibliotecaModulosPage(QWidget):
             except SQLAlchemyError:
                 dialog.set_error("Não foi possível guardar as alterações.")
                 return False
+            guardado["aviso_imagem"] = aviso_imagem
             return True
 
         dialog = EditarModuloDialog(
@@ -317,7 +343,10 @@ class BibliotecaModulosPage(QWidget):
         )
         if dialog.exec():
             self.carregar()
-            self.status_label.setText(f"Módulo {modulo.codigo} atualizado.")
+            mensagem = f"Módulo {modulo.codigo} atualizado."
+            if guardado.get("aviso_imagem"):
+                mensagem += " " + guardado["aviso_imagem"]
+            self.status_label.setText(mensagem)
 
     def eliminar_modulo(self) -> None:
         """Delete the selected module and its lines (cascade), after confirming."""

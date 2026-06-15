@@ -6,7 +6,8 @@ import re
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
@@ -72,7 +73,12 @@ from app.services.orcamento_item_custeio_linha_service import (
 )
 from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
 from app.services.def_maquina_service import DefMaquinaService
+from app.domain.modulo_imagem import (
+    copiar_imagem_para_pasta,
+    tooltip_imagem_html,
+)
 from app.services.def_modulo_service import DefModuloService
+from app.services.system_setting_service import SystemSettingService
 from app.services.def_peca_service import DefPecaService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.core.session import app_session
@@ -146,6 +152,9 @@ class CusteioLinhasTable(QTableWidget):
 
 class OrcamentoItemCusteioPage(QWidget):
     """Page for the costing workspace of one budget item."""
+
+    # Size of the module thumbnail shown in the "Módulo" column (phase 8U.4).
+    _TAMANHO_MINIATURA_MODULO = 28
 
     TABLE_HEADERS = [
         # Identificacao
@@ -463,6 +472,8 @@ class OrcamentoItemCusteioPage(QWidget):
             QHeaderView.ResizeMode.Interactive
         )
         self.table.horizontalHeader().setStretchLastSection(False)
+        # Small thumbnails in the "Módulo" column (phase 8U.4).
+        self.table.setIconSize(QSize(self._TAMANHO_MINIATURA_MODULO, self._TAMANHO_MINIATURA_MODULO))
         self._larguras_iniciais_aplicadas = False
         self.table.cellChanged.connect(self._on_cell_changed)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
@@ -773,6 +784,26 @@ class OrcamentoItemCusteioPage(QWidget):
         """Enable 'Guardar como Módulo' only when lines are selected."""
         self.guardar_modulo_button.setEnabled(bool(self._ids_linhas_selecionadas()))
 
+    def _copiar_imagem_modulo(
+        self, origem: str | None, codigo: str
+    ) -> tuple[str | None, str | None]:
+        """Copy the chosen image into the configured module-images folder.
+
+        Returns (caminho_final, aviso). On any problem keeps the original path
+        and returns a friendly warning (never raises).
+        """
+        if not origem:
+            return None, None
+        try:
+            with SessionLocal() as session:
+                pasta = SystemSettingService(session).obter_valor(
+                    "pasta_imagens_modulos"
+                )
+        except SQLAlchemyError:
+            pasta = None
+        resultado = copiar_imagem_para_pasta(origem, pasta, codigo)
+        return resultado.caminho, resultado.aviso
+
     def guardar_como_modulo(self) -> None:
         """Save the selected costing lines as a reusable module."""
         linha_ids = self._ids_linhas_selecionadas()
@@ -794,6 +825,9 @@ class OrcamentoItemCusteioPage(QWidget):
         guardado: dict = {}
 
         def handle_save(dados: GuardarModuloDialogData) -> bool:
+            imagem_path, aviso_imagem = self._copiar_imagem_modulo(
+                dados.imagem_path, dados.codigo
+            )
             try:
                 with SessionLocal() as session:
                     service = DefModuloService(session)
@@ -807,7 +841,7 @@ class OrcamentoItemCusteioPage(QWidget):
                             ambito=dados.ambito,
                             user_id=user_id,
                             categoria=dados.categoria,
-                            imagem_path=dados.imagem_path,
+                            imagem_path=imagem_path,
                         )
                     else:
                         resultado = service.guardar_de_linhas_custeio(
@@ -819,7 +853,7 @@ class OrcamentoItemCusteioPage(QWidget):
                             ambito=dados.ambito,
                             user_id=user_id,
                             categoria=dados.categoria,
-                            imagem_path=dados.imagem_path,
+                            imagem_path=imagem_path,
                         )
             except ValueError as error:
                 dialog.set_error(str(error))
@@ -830,6 +864,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
             guardado["resultado"] = resultado
             guardado["substituido"] = dados.modulo_id is not None
+            guardado["aviso_imagem"] = aviso_imagem
             return True
 
         dialog = GuardarModuloDialog(
@@ -842,10 +877,13 @@ class OrcamentoItemCusteioPage(QWidget):
         if dialog.exec() and guardado:
             resultado = guardado["resultado"]
             verbo = "substituído" if guardado.get("substituido") else "guardado"
-            self.status_label.setText(
+            mensagem = (
                 f"Módulo {resultado.modulo.codigo} {verbo} "
                 f"({len(resultado.linhas)} linhas)."
             )
+            if guardado.get("aviso_imagem"):
+                mensagem += " " + guardado["aviso_imagem"]
+            self.status_label.setText(mensagem)
 
     def _coluna_editavel(
         self, header: str, linha: OrcamentoItemCusteioLinhaResumo
@@ -1160,6 +1198,11 @@ class OrcamentoItemCusteioPage(QWidget):
                 row_index, column_index, linha
             ):
                 continue
+            if header == "Módulo":
+                self.table.setItem(
+                    row_index, column_index, self._criar_item_modulo(linha)
+                )
+                continue
             if header in self.EXCLUSAO_COLUMNS:
                 item = self._criar_item_exclusao(header, linha)
             else:
@@ -1174,6 +1217,41 @@ class OrcamentoItemCusteioPage(QWidget):
                 else:
                     item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row_index, column_index, item)
+
+    def _criar_item_modulo(
+        self, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> QTableWidgetItem:
+        """Build the read-only "Módulo" cell: a thumbnail + zoom tooltip.
+
+        Lines without a module image stay empty; if the image cannot be opened a
+        discreet placeholder is shown (never raises).
+        """
+        item = criar_item_tabela("")
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+        caminho = getattr(linha, "modulo_imagem_path", None)
+        if not caminho:
+            return item
+
+        pixmap = QPixmap(caminho)
+        if pixmap.isNull():
+            item.setText("(sem img)")
+            item.setToolTip(f"Imagem do módulo não encontrada:\n{caminho}")
+            return item
+
+        item.setIcon(
+            QIcon(
+                pixmap.scaled(
+                    self._TAMANHO_MINIATURA_MODULO,
+                    self._TAMANHO_MINIATURA_MODULO,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        )
+        # Hover zoom: a bigger image rendered from the file path (file:// URL).
+        item.setToolTip(tooltip_imagem_html(caminho))
+        return item
 
     def _atualizar_linha_visivel(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
@@ -2328,8 +2406,9 @@ class OrcamentoItemCusteioPage(QWidget):
             "Descrição": descricao_col,
             "Linha pai": "" if linha.linha_pai_id is None else str(linha.linha_pai_id),
             "Nível": str(nivel),
-            "Módulo": "" if linha.orcamento_item_modulo_id is None
-            else str(linha.orcamento_item_modulo_id),
+            # The "Módulo" column shows a thumbnail (set in _criar_item_modulo),
+            # not text.
+            "Módulo": "",
             "QT mod": self._valor_qt_mod(linha),
             "QT und": self._valor_qt_und(linha),
             "QT total": format_quantity(linha.quantidade),

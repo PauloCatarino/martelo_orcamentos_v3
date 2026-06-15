@@ -72,6 +72,9 @@ class OrcamentoItemCusteioLinha(Base):
     chave_valueset: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     codigo_orlas: Mapped[str | None] = mapped_column(String(20), nullable=True)
     mat_default: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    # Path of the source module's image, stored on the FIRST line of an imported
+    # block so the costing table can show a thumbnail / zoom tooltip (phase 8U.4).
+    modulo_imagem_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     materia_prima_id: Mapped[int | None] = mapped_column(
         BigInteger,

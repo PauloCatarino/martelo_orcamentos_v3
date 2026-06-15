@@ -801,3 +801,30 @@ def test_custeio_page_mat_default_dropdown() -> None:
     # The combo uses the IMOS compatibility filter.
     combo = inspect.getsource(OrcamentoItemCusteioPage._montar_combo_material)
     assert "opcoes_valueset_compativeis" in combo
+
+
+def test_custeio_page_miniatura_modulo() -> None:
+    """Phase 8U.4: the 'Módulo' column shows a thumbnail + zoom tooltip."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert "Módulo" in OrcamentoItemCusteioPage.TABLE_HEADERS
+    assert hasattr(OrcamentoItemCusteioPage, "_criar_item_modulo")
+
+    # The fill loop special-cases the Módulo column with the thumbnail cell.
+    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_linha)
+    assert '"Módulo"' in preencher
+    assert "_criar_item_modulo" in preencher
+
+    # The cell uses the line's modulo_imagem_path, a scaled icon and the HTML
+    # zoom tooltip, with a discreet placeholder when the image cannot open.
+    criar = inspect.getsource(OrcamentoItemCusteioPage._criar_item_modulo)
+    assert "modulo_imagem_path" in criar
+    assert "setIcon" in criar
+    assert "tooltip_imagem_html" in criar
+    assert "(sem img)" in criar
+
+    # Saving a module copies the chosen image to the configured folder.
+    assert hasattr(OrcamentoItemCusteioPage, "_copiar_imagem_modulo")
+    copiar = inspect.getsource(OrcamentoItemCusteioPage._copiar_imagem_modulo)
+    assert "pasta_imagens_modulos" in copiar
+    assert "copiar_imagem_para_pasta" in copiar

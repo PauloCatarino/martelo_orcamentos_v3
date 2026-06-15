@@ -193,6 +193,44 @@ def test_importar_modulo_cria_linhas_reexpande_composta(session) -> None:
     assert lateral.unidade == "m2"
 
 
+def test_importar_modulo_grava_imagem_na_primeira_linha(session) -> None:
+    item_id = _criar_item(session)
+    _criar_valueset_laterais(session, item_id)
+    lateral_id, gaveta_id = _criar_pecas(session)
+    # Module WITH an image path on its header.
+    com_linhas = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="ROUP_IMG", nome="Roupeiro com imagem", user_id=7,
+            categoria="ROUPEIROS", imagem_path="C:/imagens/ROUP_IMG.png",
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod="1",
+                    descricao_livre="Corpo", comp="H", larg="L", esp="P",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL", comp="H", larg="P", esp="19",
+                    chave_valueset="MATERIAL_LATERAIS", qt_und="2",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    service.inserir_modulo_no_item(item_id, com_linhas.modulo.id)
+
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    primeira = min(linhas, key=lambda l: l.id)
+    # The image lives on the FIRST line of the block (the division); others empty.
+    assert primeira.tipo_linha == "DIVISAO_INDEPENDENTE"
+    assert primeira.modulo_imagem_path == "C:/imagens/ROUP_IMG.png"
+    outras = [l for l in linhas if l.id != primeira.id]
+    assert all(l.modulo_imagem_path is None for l in outras)
+
+
 def test_importar_modulo_pipeline_reavalia_medidas_e_valueset(session) -> None:
     item_id = _criar_item(session, altura="2000", largura="1000", profundidade="500")
     _criar_valueset_laterais(session, item_id)
