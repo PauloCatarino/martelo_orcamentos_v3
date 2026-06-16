@@ -22,6 +22,7 @@ from app.models.orcamento_item_modulo import OrcamentoItemModulo
 from app.models.orcamento_item_variavel import OrcamentoItemVariavel
 from app.models.orcamento_item_valueset_linha import OrcamentoItemValuesetLinha
 from app.models.orcamento_versao import OrcamentoVersao
+from app.models.orcamento_versao_placa_nao_stock import OrcamentoVersaoPlacaNaoStock
 from app.models.orcamento_valueset_linha import OrcamentoValuesetLinha
 from app.models.system_setting import SystemSetting
 from app.models.user import User
@@ -49,6 +50,7 @@ __all__ = [
     "OrcamentoItemVariavel",
     "OrcamentoItemValuesetLinha",
     "OrcamentoVersao",
+    "OrcamentoVersaoPlacaNaoStock",
     "OrcamentoValuesetLinha",
     "SystemSetting",
     "User",

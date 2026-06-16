@@ -38,9 +38,13 @@ def test_placas_area_consumo_qt_e_custo() -> None:
     assert placa.m2_total_pecas == Decimal("3.0")         # 0.5 x 3 x 2
     assert placa.m2_consumidos == Decimal("3.15")         # x (1 + 5%)
     assert placa.qt_placas == 1                            # ceil(3.15 / 5.0325)
-    assert placa.custo_mp_total == Decimal("20")          # 10 x item_qt(2)
+    # Theoretical (%-waste) cost = m2 consumidos x pliq.
+    assert placa.custo_mp_total == Decimal("18.2385")     # 3.15 x 5.79
     assert placa.custo_placa_inteira == Decimal("29.138175")  # 1 x 5.0325 x 5.79
     assert placa.nao_stock is False
+    # Not Não-Stock -> the budget uses the theoretical cost.
+    assert placa.custo_no_orcamento == Decimal("18.2385")
+    assert placa.agravamento == Decimal("0")
 
 
 def test_placas_agrupa_por_ref_e_esp() -> None:
@@ -174,7 +178,7 @@ def test_consumo_conta_mesmo_com_excluir() -> None:
     # The physical consumption (m2, theoretical cost) still counts.
     (placa,) = agregar_placas([linha])
     assert placa.m2_total_pecas == Decimal("1")
-    assert placa.custo_mp_total == Decimal("10")
+    assert placa.custo_mp_total == Decimal("5")  # m2 consumidos(1) x pliq(5)
 
 
 def test_distribuicao_respeita_excluir() -> None:

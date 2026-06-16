@@ -56,6 +56,41 @@ def test_relatorios_consumos_nota_e_tooltips() -> None:
     assert "Custo Total" in OrcamentoRelatoriosPage.MAQUINAS_TOOLTIPS
 
 
+def test_relatorios_nao_stock_ui() -> None:
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+
+    # Editable check column + budget-cost column.
+    assert "Não Stock" in OrcamentoRelatoriosPage.PLACAS_HEADERS
+    assert "Custo no Orç." in OrcamentoRelatoriosPage.PLACAS_HEADERS
+
+    for method in ("_on_placa_item_changed", "_preencher_placas"):
+        assert hasattr(OrcamentoRelatoriosPage, method)
+
+    # 8W.2-UX: the "Gravar Não-Stock" button is gone — only "Atualizar" remains.
+    init = inspect.getsource(OrcamentoRelatoriosPage._criar_tab_consumos)
+    assert "Gravar Não-Stock" not in init
+    assert "Atualizar" in init
+    assert "agravamento_label" in init
+    assert not hasattr(OrcamentoRelatoriosPage, "_atualizar_botao_gravar")
+    assert not hasattr(OrcamentoRelatoriosPage, "gravar_nao_stock")
+
+    preencher = inspect.getsource(OrcamentoRelatoriosPage._preencher_placas)
+    assert "ItemIsUserCheckable" in preencher  # editable checkbox per board
+    assert "custo_no_orcamento" in preencher
+    assert "agravamento" in preencher
+    assert "_tooltip_nao_stock" in preencher  # per-board surcharge tooltip (Part B)
+
+    # Toggling the checkbox persists and recalculates immediately (Part A).
+    on_change = inspect.getsource(OrcamentoRelatoriosPage._on_placa_item_changed)
+    assert "guardar_nao_stock" in on_change
+    assert "carregar" in on_change
+
+    # The tooltip shows this board's surcharge (whole board − theoretical).
+    tooltip = inspect.getsource(OrcamentoRelatoriosPage._tooltip_nao_stock)
+    assert "custo_placa_inteira" in tooltip
+    assert "custo_mp_total" in tooltip
+
+
 def test_calcular_totais_relatorio() -> None:
     from app.ui.pages.orcamento_relatorios_page import calcular_totais_relatorio
 

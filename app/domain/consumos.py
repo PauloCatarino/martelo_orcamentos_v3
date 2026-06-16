@@ -111,9 +111,13 @@ class ConsumoPlaca:
     m2_total_pecas: Decimal
     m2_consumidos: Decimal
     qt_placas: int
-    custo_mp_total: Decimal
-    custo_placa_inteira: Decimal
+    custo_mp_total: Decimal       # theoretical (%-waste) cost
+    custo_placa_inteira: Decimal  # whole-board cost (Não-Stock)
     nao_stock: bool = False
+    # The cost that enters the budget for this board, and how much heavier it is
+    # versus the theoretical %-waste cost (phase 8W.2).
+    custo_no_orcamento: Decimal = _ZERO
+    agravamento: Decimal = _ZERO
 
 
 @dataclass(frozen=True)
@@ -197,18 +201,33 @@ def _linhas_reais(linhas):
     return [linha for linha in linhas if _eh_linha_real(linha.tipo_linha)]
 
 
+def chave_placa(ref_le, descricao, esp) -> tuple[str, str, str]:
+    """Deterministic board key (ref / descricao / esp), shared everywhere.
+
+    Used to group boards AND to match the per-version Não-Stock state, so the
+    same board always maps to the same key regardless of trailing zeros.
+    """
+    esp_num = normalizar_numero(esp)
+    esp_txt = format(esp_num.normalize(), "f") if esp_num is not None else ""
+    return ((ref_le or "").strip(), (descricao or "").strip(), esp_txt)
+
+
 # --- 1. Boards (placas) ------------------------------------------------------
 
 
-def agregar_placas(linhas) -> list:
+def agregar_placas(linhas, nao_stock_keys=frozenset()) -> list:
     """Group M2 material lines by (ref_le, descricao, esp_mp) and size the boards.
 
     area_placa = (comp_mp/1000) * (larg_mp/1000);
     m2_total_pecas = Σ area_m2 * qt_total * item_qt;
     m2_consumidos = m2_total_pecas * (1 + desp);
     qt_placas = ceil(m2_consumidos / area_placa);
-    custo_mp_total = Σ custo_mp * item_qt   (theoretical, with waste %);
-    custo_placa_inteira = qt_placas * area_placa * pliq.
+    custo_mp_total = m2_consumidos * pliq   (theoretical, %-waste cost — does NOT
+        depend on the stored custo_mp, so it stays the reference even after the
+        budget swaps in the whole-board cost for Não-Stock boards);
+    custo_placa_inteira = qt_placas * area_placa * pliq;
+    custo_no_orcamento = whole-board cost when Não-Stock, else the theoretical
+        cost; agravamento = custo_no_orcamento - custo_mp_total.
     """
     grupos: dict[tuple, dict] = {}
     for linha in _linhas_reais(linhas):
@@ -239,7 +258,6 @@ def agregar_placas(linhas) -> list:
                 "area_placa": area_placa,
                 "m2_total_pecas": _ZERO,
                 "m2_consumidos": _ZERO,
-                "custo_mp_total": _ZERO,
             }
         if area_placa > 0:
             grupo["area_placa"] = area_placa
@@ -249,33 +267,43 @@ def agregar_placas(linhas) -> list:
             grupo["pliq"] = _num(linha.preco_liquido)
         grupo["m2_total_pecas"] += m2_pecas
         grupo["m2_consumidos"] += m2_consumidos
-        grupo["custo_mp_total"] += _num(linha.custo_mp) * item_qt
 
     placas: list[ConsumoPlaca] = []
     for grupo in grupos.values():
         area = grupo["area_placa"]
+        pliq = grupo["pliq"]
+        m2_consumidos = grupo["m2_consumidos"]
         qt_placas = (
-            int((grupo["m2_consumidos"] / area).to_integral_value(ROUND_CEILING))
-            if area > 0 and grupo["m2_consumidos"] > 0
+            int((m2_consumidos / area).to_integral_value(ROUND_CEILING))
+            if area > 0 and m2_consumidos > 0
             else 0
         )
+        custo_mp_total = m2_consumidos * pliq
+        custo_placa_inteira = Decimal(qt_placas) * area * pliq
+        nao_stock = (
+            chave_placa(grupo["ref_le"], grupo["descricao_no_orcamento"], grupo["esp_mp"])
+            in nao_stock_keys
+        )
+        custo_no_orcamento = custo_placa_inteira if nao_stock else custo_mp_total
         placas.append(
             ConsumoPlaca(
                 ref_le=grupo["ref_le"],
                 descricao_no_orcamento=grupo["descricao_no_orcamento"],
                 esp_mp=grupo["esp_mp"],
-                pliq=grupo["pliq"],
+                pliq=pliq,
                 unidade=grupo["unidade"],
                 desp=grupo["desp"],
                 comp_mp=grupo["comp_mp"],
                 larg_mp=grupo["larg_mp"],
                 area_placa=area,
                 m2_total_pecas=grupo["m2_total_pecas"],
-                m2_consumidos=grupo["m2_consumidos"],
+                m2_consumidos=m2_consumidos,
                 qt_placas=qt_placas,
-                custo_mp_total=grupo["custo_mp_total"],
-                custo_placa_inteira=Decimal(qt_placas) * area * grupo["pliq"],
-                nao_stock=False,
+                custo_mp_total=custo_mp_total,
+                custo_placa_inteira=custo_placa_inteira,
+                nao_stock=nao_stock,
+                custo_no_orcamento=custo_no_orcamento,
+                agravamento=custo_no_orcamento - custo_mp_total,
             )
         )
     return placas
@@ -502,11 +530,11 @@ def distribuicao_custos(
 
 
 def agregar_consumos(
-    linhas, margens: MargensOrcamento, ajuste_eur_total=_ZERO
+    linhas, margens: MargensOrcamento, ajuste_eur_total=_ZERO, nao_stock_keys=frozenset()
 ) -> ResumoConsumos:
     """Build the full consumption/cost summary of a budget version."""
     return ResumoConsumos(
-        placas=agregar_placas(linhas),
+        placas=agregar_placas(linhas, nao_stock_keys),
         orlas=agregar_orlas(linhas),
         ferragens=agregar_ferragens(linhas),
         maquinas=agregar_maquinas(linhas),

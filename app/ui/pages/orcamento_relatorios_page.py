@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -101,7 +102,7 @@ class OrcamentoRelatoriosPage(QWidget):
     PLACAS_HEADERS = [
         "Ref", "Descrição", "P.Liq", "Und", "Desp %", "Comp", "Larg", "Esp",
         "Qt.Pla", "Área", "m² Usad", "m² Peças", "C.MP Tot", "C.Placa Usad",
-        "Não Stock",
+        "Custo no Orç.", "Não Stock",
     ]
     ORLAS_HEADERS = ["Ref Orla", "Descr. Mat.", "Esp", "Larg", "ML Tot", "Custo Tot"]
     FERRAGENS_HEADERS = [
@@ -111,6 +112,28 @@ class OrcamentoRelatoriosPage(QWidget):
     MAQUINAS_HEADERS = [
         "Operação", "Custo Total", "ML Corte", "ML Orlado", "Nº Peças",
     ]
+
+    # Initial column widths suited to the content (phase 8W.2-UX, Part D);
+    # "Descrição" is wide enough to show the full text. Columns stay resizable
+    # (Interactive), so the user can still adjust them.
+    PLACAS_LARGURAS = {
+        "Ref": 80, "Descrição": 240, "P.Liq": 70, "Und": 45, "Desp %": 60,
+        "Comp": 60, "Larg": 60, "Esp": 50, "Qt.Pla": 60, "Área": 75,
+        "m² Usad": 75, "m² Peças": 75, "C.MP Tot": 80, "C.Placa Usad": 95,
+        "Custo no Orç.": 95, "Não Stock": 75,
+    }
+    ORLAS_LARGURAS = {
+        "Ref Orla": 110, "Descr. Mat.": 240, "Esp": 60, "Larg": 60,
+        "ML Tot": 80, "Custo Tot": 90,
+    }
+    FERRAGENS_LARGURAS = {
+        "Ref": 90, "Descrição": 240, "P.Liq": 70, "Und": 45, "Desp %": 60,
+        "Qt": 60, "ML Sup": 70, "Custo Und": 80, "Custo Tot": 90,
+    }
+    MAQUINAS_LARGURAS = {
+        "Operação": 200, "Custo Total": 100, "ML Corte": 90, "ML Orlado": 90,
+        "Nº Peças": 80,
+    }
 
     # 3-block formula tooltips (descrição / fórmula / valores) on the calculated
     # columns; the example values illustrate that item quantities are included.
@@ -144,6 +167,16 @@ class OrcamentoRelatoriosPage(QWidget):
             "Custo das placas inteiras a comprar.\n"
             "Fórmula: Qt.Pla × Área da placa × P.Liq.\n"
             "Ex.: 2 × 5,0325 × 5,79 = 58,28 €."
+        ),
+        "Custo no Orç.": (
+            "Custo que ESTA placa leva ao orçamento.\n"
+            "Não-Stock ativo → C.Placa Usad; caso contrário → C.MP Tot.\n"
+            "O agravamento é a diferença (C.Placa Usad − C.MP Tot)."
+        ),
+        "Não Stock": (
+            "Marque para comprar placas inteiras desta placa (obra à medida).\n"
+            "O orçamento passa a usar o custo de placa inteira (mais caro).\n"
+            "Grave com o botão 'Gravar Não-Stock' para persistir."
         ),
     }
     ORLAS_TOOLTIPS = {
@@ -189,6 +222,10 @@ class OrcamentoRelatoriosPage(QWidget):
         self.orcamento_versao_id = orcamento_versao_id
         self.orcamento = orcamento
         self._iva_pct = IVA_PADRAO_PCT
+        # Não-Stock editing state (phase 8W.2). Toggling a checkbox persists and
+        # recalculates immediately (8W.2-UX, Part A) — there is no save button.
+        self._placas_por_linha: dict = {}
+        self._carregando_placas = False
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoRelatoriosStatus")
@@ -272,6 +309,8 @@ class OrcamentoRelatoriosPage(QWidget):
     # ----- Layout: tab 2 (consumption summary) -----
 
     def _criar_tab_consumos(self) -> QWidget:
+        # Only "Atualizar" remains: the Não-Stock checkbox now saves and
+        # recalculates on its own (8W.2-UX, Part A).
         self.atualizar_button = QPushButton("Atualizar")
         self.atualizar_button.clicked.connect(self.carregar)
 
@@ -291,31 +330,63 @@ class OrcamentoRelatoriosPage(QWidget):
         )
 
         self.placas_table = self._criar_tabela(
-            self.PLACAS_HEADERS, tooltips=self.PLACAS_TOOLTIPS
+            self.PLACAS_HEADERS,
+            tooltips=self.PLACAS_TOOLTIPS,
+            larguras=self.PLACAS_LARGURAS,
         )
+        self.placas_table.itemChanged.connect(self._on_placa_item_changed)
+
+        # Total Não-Stock surcharge versus the %-waste cost.
+        self.agravamento_label = QLabel("")
+        self.agravamento_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 2px;"
+        )
+
         self.orlas_table = self._criar_tabela(
-            self.ORLAS_HEADERS, tooltips=self.ORLAS_TOOLTIPS
+            self.ORLAS_HEADERS,
+            tooltips=self.ORLAS_TOOLTIPS,
+            larguras=self.ORLAS_LARGURAS,
         )
         self.ferragens_table = self._criar_tabela(
-            self.FERRAGENS_HEADERS, tooltips=self.FERRAGENS_TOOLTIPS
+            self.FERRAGENS_HEADERS,
+            tooltips=self.FERRAGENS_TOOLTIPS,
+            larguras=self.FERRAGENS_LARGURAS,
         )
         self.maquinas_table = self._criar_tabela(
-            self.MAQUINAS_HEADERS, tooltips=self.MAQUINAS_TOOLTIPS
+            self.MAQUINAS_HEADERS,
+            tooltips=self.MAQUINAS_TOOLTIPS,
+            larguras=self.MAQUINAS_LARGURAS,
         )
+
+        # Compact, scrollable content: each table is fitted to its row count
+        # (Part C), so the sections sit close together with no empty gaps and
+        # the whole block scrolls if it grows tall.
+        conteudo = QWidget()
+        conteudo_layout = QVBoxLayout()
+        conteudo_layout.setContentsMargins(0, 0, 0, 0)
+        conteudo_layout.setSpacing(2)
+        conteudo_layout.addWidget(self._titulo_seccao("Resumo de Placas"))
+        conteudo_layout.addWidget(self.placas_table)
+        conteudo_layout.addWidget(self.agravamento_label)
+        conteudo_layout.addWidget(self._titulo_seccao("Resumo de Orlas"))
+        conteudo_layout.addWidget(self.orlas_table)
+        conteudo_layout.addWidget(self._titulo_seccao("Resumo de Ferragens"))
+        conteudo_layout.addWidget(self.ferragens_table)
+        conteudo_layout.addWidget(self._titulo_seccao("Resumo de Máquinas / MO"))
+        conteudo_layout.addWidget(self.maquinas_table)
+        conteudo_layout.addStretch()
+        conteudo.setLayout(conteudo_layout)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(conteudo)
 
         tab = QWidget()
         layout = QVBoxLayout()
         layout.addLayout(topo)
         layout.addWidget(self.banner_consumos)
         layout.addWidget(self.nota_consumos)
-        layout.addWidget(self._titulo_seccao("Resumo de Placas"))
-        layout.addWidget(self.placas_table, stretch=2)
-        layout.addWidget(self._titulo_seccao("Resumo de Orlas"))
-        layout.addWidget(self.orlas_table, stretch=1)
-        layout.addWidget(self._titulo_seccao("Resumo de Ferragens"))
-        layout.addWidget(self.ferragens_table, stretch=2)
-        layout.addWidget(self._titulo_seccao("Resumo de Máquinas / MO"))
-        layout.addWidget(self.maquinas_table, stretch=1)
+        layout.addWidget(scroll, stretch=1)
         tab.setLayout(layout)
         return tab
 
@@ -347,7 +418,7 @@ class OrcamentoRelatoriosPage(QWidget):
         widget.setLayout(layout)
         return widget
 
-    def _criar_tabela(self, headers, tooltips=None) -> QTableWidget:
+    def _criar_tabela(self, headers, tooltips=None, larguras=None) -> QTableWidget:
         tabela = QTableWidget(0, len(headers))
         tabela.setHorizontalHeaderLabels(headers)
         tabela.verticalHeader().setVisible(False)
@@ -367,7 +438,35 @@ class OrcamentoRelatoriosPage(QWidget):
                 item = tabela.horizontalHeaderItem(indice)
                 if item is not None and nome in tooltips:
                     item.setToolTip(tooltips[nome])
+        # Initial column widths suited to the content (Part D); still Interactive.
+        if larguras:
+            for indice, nome in enumerate(headers):
+                if nome in larguras:
+                    tabela.setColumnWidth(indice, larguras[nome])
         return tabela
+
+    def _ajustar_altura_tabela(self, tabela, max_linhas=12) -> None:
+        """Fit a table's height to its row count (Part C).
+
+        The table shrinks to the header + its rows (no empty gaps); beyond
+        ``max_linhas`` it is capped and a vertical scrollbar appears.
+        """
+        linhas = tabela.rowCount()
+        altura_linha = tabela.verticalHeader().defaultSectionSize()
+        cabecalho = tabela.horizontalHeader().sizeHint().height()
+        # Reserve room for a possible horizontal scrollbar so the last row of a
+        # wide table is never clipped.
+        scrollbar = tabela.horizontalScrollBar().sizeHint().height()
+        visiveis = min(max(linhas, 1), max_linhas)
+        altura = (
+            cabecalho
+            + visiveis * altura_linha
+            + scrollbar
+            + 2 * tabela.frameWidth()
+            + 2
+        )
+        tabela.setMinimumHeight(altura)
+        tabela.setMaximumHeight(altura)
 
     # ----- Data -----
 
@@ -469,31 +568,112 @@ class OrcamentoRelatoriosPage(QWidget):
         self._preencher_orlas(resumo.orlas)
         self._preencher_ferragens(resumo.ferragens)
         self._preencher_maquinas(resumo.maquinas)
+        # Compact heights fitted to each table's row count (Part C).
+        self._ajustar_altura_tabela(self.placas_table, max_linhas=12)
+        self._ajustar_altura_tabela(self.orlas_table, max_linhas=8)
+        self._ajustar_altura_tabela(self.ferragens_table, max_linhas=12)
+        self._ajustar_altura_tabela(self.maquinas_table, max_linhas=6)
 
     def _preencher_placas(self, placas) -> None:
-        self.placas_table.setRowCount(0)
-        for placa in placas:
-            row = self.placas_table.rowCount()
-            self.placas_table.insertRow(row)
-            valores = [
-                placa.ref_le or "",
-                placa.descricao_no_orcamento or "",
-                format_currency(placa.pliq),
-                placa.unidade or "",
-                self._fmt_pct(placa.desp),
-                format_mm(placa.comp_mp),
-                format_mm(placa.larg_mp),
-                format_mm(placa.esp_mp),
-                str(placa.qt_placas),
-                self._fmt_m2(placa.area_placa),
-                self._fmt_m2(placa.m2_consumidos),
-                self._fmt_m2(placa.m2_total_pecas),
-                format_currency(placa.custo_mp_total),
-                format_currency(placa.custo_placa_inteira),
-                "Sim" if placa.nao_stock else "Não",
-            ]
-            for col, texto in enumerate(valores):
-                self.placas_table.setItem(row, col, criar_item_tabela(texto))
+        self._carregando_placas = True
+        try:
+            self.placas_table.setRowCount(0)
+            self._placas_por_linha = {}
+            agravamento_total = Decimal("0")
+            coluna_nao_stock = self.PLACAS_HEADERS.index("Não Stock")
+            for placa in placas:
+                row = self.placas_table.rowCount()
+                self.placas_table.insertRow(row)
+                self._placas_por_linha[row] = placa
+                agravamento_total += placa.agravamento
+                valores = {
+                    "Ref": placa.ref_le or "",
+                    "Descrição": placa.descricao_no_orcamento or "",
+                    "P.Liq": format_currency(placa.pliq),
+                    "Und": placa.unidade or "",
+                    "Desp %": self._fmt_pct(placa.desp),
+                    "Comp": format_mm(placa.comp_mp),
+                    "Larg": format_mm(placa.larg_mp),
+                    "Esp": format_mm(placa.esp_mp),
+                    "Qt.Pla": str(placa.qt_placas),
+                    "Área": self._fmt_m2(placa.area_placa),
+                    "m² Usad": self._fmt_m2(placa.m2_consumidos),
+                    "m² Peças": self._fmt_m2(placa.m2_total_pecas),
+                    "C.MP Tot": format_currency(placa.custo_mp_total),
+                    "C.Placa Usad": format_currency(placa.custo_placa_inteira),
+                    "Custo no Orç.": format_currency(placa.custo_no_orcamento),
+                }
+                for col, header in enumerate(self.PLACAS_HEADERS):
+                    if col == coluna_nao_stock:
+                        item = QTableWidgetItem()
+                        flags = (
+                            item.flags()
+                            | Qt.ItemFlag.ItemIsUserCheckable
+                        ) & ~Qt.ItemFlag.ItemIsEditable
+                        item.setFlags(flags)
+                        item.setCheckState(
+                            Qt.CheckState.Checked
+                            if placa.nao_stock
+                            else Qt.CheckState.Unchecked
+                        )
+                        item.setToolTip(self._tooltip_nao_stock(placa))
+                        self.placas_table.setItem(row, col, item)
+                    else:
+                        self.placas_table.setItem(
+                            row, col, criar_item_tabela(valores.get(header, ""))
+                        )
+        finally:
+            self._carregando_placas = False
+
+        self.agravamento_label.setText(
+            f"Agravamento total por Não-Stock: {format_currency(agravamento_total)}"
+            if placas
+            else ""
+        )
+
+    def _tooltip_nao_stock(self, placa) -> str:
+        """Explain the Não-Stock feature and show THIS board's surcharge.
+
+        The surcharge is the whole-board cost minus the theoretical %-waste cost
+        (Part B), shown whether or not the board is currently marked.
+        """
+        agravamento = placa.custo_placa_inteira - placa.custo_mp_total
+        return (
+            "Não Stock: placa comprada de propósito para a obra. Quando ativo, o "
+            "orçamento usa o custo de placa inteira em vez do % desperdício.\n"
+            f"Agravamento desta placa: +{format_currency(agravamento)} "
+            f"({format_currency(placa.custo_placa_inteira)} − "
+            f"{format_currency(placa.custo_mp_total)})."
+        )
+
+    def _on_placa_item_changed(self, item) -> None:
+        """Toggle a board's Não-Stock state: persist and recalculate at once.
+
+        The checkbox does everything on its own (8W.2-UX, Part A) — there is no
+        save button: it saves the state, re-runs the costing and refreshes both
+        the consumption tables and the "Relatório de Orçamento" tab.
+        """
+        if self._carregando_placas:
+            return
+        if item.column() != self.PLACAS_HEADERS.index("Não Stock"):
+            return
+        placa = self._placas_por_linha.get(item.row())
+        if placa is None:
+            return
+
+        marcado = item.checkState() == Qt.CheckState.Checked
+        try:
+            with SessionLocal() as session:
+                RelatorioConsumosService(session).guardar_nao_stock(
+                    self.orcamento_versao_id,
+                    [(placa.ref_le, placa.descricao_no_orcamento, placa.esp_mp, marcado)],
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível gravar o Não-Stock.")
+            return
+
+        # Recompute with the new Não-Stock state and refresh both tabs.
+        self.carregar()
 
     def _preencher_orlas(self, orlas) -> None:
         self.orlas_table.setRowCount(0)

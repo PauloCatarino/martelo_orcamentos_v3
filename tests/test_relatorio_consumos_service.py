@@ -83,7 +83,7 @@ def test_resumo_da_versao_multiplica_por_quantidade_do_item(session) -> None:
     # One board group (same ref/esp), aggregated across both items by item_qt.
     (placa,) = resumo.placas
     assert placa.m2_total_pecas == Decimal("5")     # 1x1x2 + 1x1x3
-    assert placa.custo_mp_total == Decimal("40")    # 8x2 + 8x3
+    assert placa.custo_mp_total == Decimal("25")    # m2 consumidos(5) x pliq(5)
     assert placa.area_placa == Decimal("2")         # 2.0 x 1.0
     assert placa.qt_placas == 3                      # ceil(5 / 2)
     assert placa.custo_placa_inteira == Decimal("30")  # 3 x 2 x 5
@@ -107,7 +107,9 @@ def test_resumo_ignora_linhas_inativas(session) -> None:
     resumo = RelatorioConsumosService(session).resumo_da_versao(versao_id)
 
     (placa,) = resumo.placas
-    assert placa.custo_mp_total == Decimal("8")  # only the active line
+    # Only the active line counts: m2 consumidos(1) x pliq(5) = 5.
+    assert placa.custo_mp_total == Decimal("5")
+    assert placa.m2_total_pecas == Decimal("1")
 
 
 def test_resumo_versao_sem_linhas(session) -> None:
@@ -222,3 +224,90 @@ def test_editar_medida_reflete_no_consumo(session) -> None:
     service.recalcular_versao(versao_id)
 
     assert service.resumo_da_versao(versao_id).placas[0].m2_total_pecas == Decimal("2")
+
+
+# --- Phase 8W.2: Não-Stock boards --------------------------------------------
+
+
+def _linha_placa_real(session, item_id, **kw):
+    """A board line with measure FORMULAS + material + board dimensions, so the
+    pipeline computes area/cost (board cost >> %-waste cost here)."""
+    base = dict(
+        orcamento_item_id=item_id, tipo_linha="PECA", descricao="Lateral",
+        unidade="m2", quantidade=Decimal("1"), comp="H", larg="P",
+        comp_mp=Decimal("2750"), larg_mp=Decimal("1830"), esp_mp=Decimal("19"),
+        preco_liquido=Decimal("5"), desperdicio_percentagem=Decimal("0"),
+        ref_le="LE01", descricao_no_orcamento="AGL", nivel=0, ativo=True,
+    )
+    base.update(kw)
+    return OrcamentoItemCusteioLinhaRepository(session).create_linha(**base)
+
+
+def test_nao_stock_usa_custo_de_placa_inteira_no_total(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="2000", largura="1000", profundidade="500",
+    )
+    _linha_placa_real(session, item)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.recalcular_versao(versao_id)
+    base = service.resumo_da_versao(versao_id)
+    placa = base.placas[0]
+    assert placa.nao_stock is False
+    assert placa.custo_mp_total == Decimal("5")            # theoretical %-waste
+    assert placa.custo_placa_inteira == Decimal("25.1625")  # whole board
+    assert placa.custo_no_orcamento == Decimal("5")
+    assert base.distribuicao.total_venda == Decimal("5")
+
+    # Mark the board Não-Stock and recompute.
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), True)])
+    service.recalcular_versao(versao_id)
+    com = service.resumo_da_versao(versao_id)
+    placa2 = com.placas[0]
+
+    assert placa2.nao_stock is True
+    assert placa2.custo_no_orcamento == Decimal("25.1625")     # whole board
+    assert placa2.agravamento == Decimal("20.1625")
+    # The physical consumption is unchanged (only the budget cost changed).
+    assert placa2.m2_total_pecas == placa.m2_total_pecas
+    assert placa2.qt_placas == placa.qt_placas
+    assert placa2.custo_mp_total == Decimal("5")               # theoretical kept
+    # The budget total now uses the whole-board cost.
+    assert com.distribuicao.total_venda == Decimal("25.1625")
+    placas_dist = next(
+        c.euros for c in com.distribuicao.categorias if c.nome == "Placas"
+    )
+    assert placas_dist == Decimal("25.1625")
+
+    # Unmark -> back to the %-waste cost.
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), False)])
+    service.recalcular_versao(versao_id)
+    de_volta = service.resumo_da_versao(versao_id)
+    assert de_volta.placas[0].nao_stock is False
+    assert de_volta.placas[0].custo_no_orcamento == Decimal("5")
+    assert de_volta.distribuicao.total_venda == Decimal("5")
+
+
+def test_nao_stock_persiste_e_sobrevive_a_recalculo(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="2000", largura="1000", profundidade="500",
+    )
+    _linha_placa_real(session, item)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), True)])
+
+    # Stored and listed.
+    rows = service.listar_nao_stock(versao_id)
+    assert [(r.ref_le, r.nao_stock) for r in rows] == [("LE01", True)]
+
+    # Recomputing the costing does NOT lose the Não-Stock state.
+    service.recalcular_versao(versao_id)
+    service.recalcular_versao(versao_id)
+    assert service.resumo_da_versao(versao_id).placas[0].nao_stock is True
