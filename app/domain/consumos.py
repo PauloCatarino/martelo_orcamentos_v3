@@ -64,6 +64,12 @@ class LinhaConsumo:
     esp_real: Decimal | None = None
     preco_liquido: Decimal | None = None
     desperdicio_percentagem: Decimal | None = None
+    # Original (material) waste %, set when the line is under a whole-board
+    # (Não-Stock) adjustment. When present it is THE reference for the theoretical
+    # %-waste figures (m² consumidos, qt placas, C.MP Tot), so the report keeps
+    # showing the material waste even though the stored waste was raised to the
+    # whole-board global %.
+    desperdicio_percentagem_original: Decimal | None = None
     ref_le: str | None = None
     descricao_no_orcamento: str | None = None
     familia_materia_prima: str | None = None
@@ -240,8 +246,16 @@ def agregar_placas(linhas, nao_stock_keys=frozenset()) -> list:
         larg_mp = _num(linha.larg_mp)
         esp_mp = _num(linha.esp_mp)
         area_placa = (comp_mp / _MIL) * (larg_mp / _MIL)
+        # The ORIGINAL (material) waste % is the reference for the theoretical
+        # figures; it differs from the stored waste only when the line is under a
+        # whole-board adjustment (then the stored waste is the global %).
+        desp_ref = (
+            linha.desperdicio_percentagem_original
+            if linha.desperdicio_percentagem_original is not None
+            else linha.desperdicio_percentagem
+        )
         m2_pecas = _num(linha.area_m2) * qt_total * item_qt
-        m2_consumidos = m2_pecas * fator_desperdicio(linha.desperdicio_percentagem)
+        m2_consumidos = m2_pecas * fator_desperdicio(desp_ref)
 
         chave = (linha.ref_le, linha.descricao_no_orcamento, esp_mp)
         grupo = grupos.get(chave)
@@ -252,7 +266,7 @@ def agregar_placas(linhas, nao_stock_keys=frozenset()) -> list:
                 "esp_mp": esp_mp,
                 "pliq": _num(linha.preco_liquido),
                 "unidade": linha.unidade,
-                "desp": _num(linha.desperdicio_percentagem),
+                "desp": _num(desp_ref),
                 "comp_mp": comp_mp,
                 "larg_mp": larg_mp,
                 "area_placa": area_placa,

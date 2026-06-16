@@ -7,7 +7,7 @@ by its item's quantity, and delegates the aggregation to the pure
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from sqlalchemy.orm import Session
 
@@ -15,9 +15,9 @@ from app.domain.consumos import (
     LinhaConsumo,
     ResumoConsumos,
     agregar_consumos,
-    agregar_placas,
     chave_placa,
 )
+from app.domain.custos import calcular_custo_mp, fator_desperdicio
 from app.domain.medidas import normalizar_numero
 from app.domain.precos import MargensOrcamento
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -35,6 +35,8 @@ from app.services.orcamento_item_service import OrcamentoItemService
 
 _UM = Decimal("1")
 _ZERO = Decimal("0")
+_CEM = Decimal("100")
+_MIL = Decimal("1000")
 _UNIDADES_M2 = {"M2", "M²", "M2.", "MTQ", "METRO2", "M^2"}
 
 
@@ -59,7 +61,7 @@ class RelatorioConsumosService:
         custeio_service = OrcamentoItemCusteioLinhaService(self.session)
         for item in self.item_repository.list_items_by_versao(orcamento_versao_id):
             custeio_service.recalcular_item_completo(item.id)
-        self._aplicar_nao_stock(orcamento_versao_id, custeio_service)
+        self._aplicar_placa_inteira(orcamento_versao_id, custeio_service)
         OrcamentoItemService(self.session).aplicar_precos_da_versao(
             orcamento_versao_id
         )
@@ -81,22 +83,28 @@ class RelatorioConsumosService:
             )
         self.session.commit()
 
-    def _aplicar_nao_stock(self, orcamento_versao_id: int, custeio_service) -> None:
-        """Replace the %-waste MP cost by the whole-board cost on Não-Stock boards.
+    def _aplicar_placa_inteira(
+        self, orcamento_versao_id: int, custeio_service
+    ) -> None:
+        """Recalculate the waste % of Não-Stock boards to whole-board figures (V2).
 
-        For each board marked Não-Stock, the lines' ``custo_mp`` are scaled so
-        their total equals C.Placa Usad (qt_placas × área × pliq); the affected
-        items' custo_total is recomputed. The pricing step that follows then uses
-        the heavier cost. The %-waste figures shown in the report come from the
-        aggregation (m² consumidos × pliq), so they remain the theoretical
-        reference — only the budget cost changes.
+        For each board (grouped by ref_le/descricao/esp) the number of WHOLE
+        boards needed is derived from the ORIGINAL (material) waste; a single
+        ``desp_global`` then makes the lines' material cost equal the whole-board
+        cost, and is propagated to every line of that board across all items. The
+        original waste is saved (once) in ``desperdicio_percentagem_original`` so
+        it can be restored when the board is unmarked. Boards that are not
+        Não-Stock but still carry the saved original are restored.
+
+        Runs after each item's pipeline (so custo_mp was computed with the
+        original waste) and before pricing. Boards without pieces (m² = 0) or
+        without dimensions are ignored.
         """
-        chaves = self.nao_stock_repository.chaves_ativas(orcamento_versao_id)
-        if not chaves:
-            return
+        chaves_ativas = self.nao_stock_repository.chaves_ativas(orcamento_versao_id)
 
         itens = self.item_repository.list_items_by_versao(orcamento_versao_id)
         item_qt = {item.id: (item.quantidade or _UM) for item in itens}
+
         linhas = [
             linha
             for linha in self.custeio_repository.list_by_orcamento_versao(
@@ -105,40 +113,110 @@ class RelatorioConsumosService:
             if linha.ativo and self._eh_m2(linha.unidade)
         ]
 
-        consumo = [
-            self._linha_consumo(linha, item_qt.get(linha.orcamento_item_id, _UM))
-            for linha in linhas
-        ]
-        board_por_chave = {
-            chave_placa(p.ref_le, p.descricao_no_orcamento, p.esp_mp): p.custo_placa_inteira
-            for p in agregar_placas(consumo)
-        }
-
         grupos: dict[tuple, list] = {}
         for linha in linhas:
-            chave = chave_placa(linha.ref_le, linha.descricao_no_orcamento, linha.esp_mp)
-            if chave in chaves:
-                grupos.setdefault(chave, []).append(linha)
+            chave = chave_placa(
+                linha.ref_le, linha.descricao_no_orcamento, linha.esp_mp
+            )
+            grupos.setdefault(chave, []).append(linha)
 
         itens_afetados: set[int] = set()
         for chave, linhas_placa in grupos.items():
-            soma_atual = sum(
-                (self._num(linha.custo_mp) * item_qt.get(linha.orcamento_item_id, _UM)
-                 for linha in linhas_placa),
-                _ZERO,
-            )
-            board = board_por_chave.get(chave, _ZERO)
-            if soma_atual <= 0:
-                continue
-            fator = board / soma_atual
-            for linha in linhas_placa:
-                self.custeio_repository.update_linha(
-                    id=linha.id, custo_mp=self._num(linha.custo_mp) * fator
-                )
-                itens_afetados.add(linha.orcamento_item_id)
+            if chave in chaves_ativas:
+                itens_afetados |= self._ativar_placa_inteira(linhas_placa, item_qt)
+            else:
+                itens_afetados |= self._repor_desperdicio_original(linhas_placa)
 
         for item_id in itens_afetados:
             custeio_service.recalcular_custo_total_do_item(item_id)
+        if itens_afetados:
+            self.session.commit()
+
+    def _ativar_placa_inteira(self, linhas_placa, item_qt) -> set[int]:
+        """Raise the waste % of one board's lines to the whole-board global %."""
+        area_placa = self._area_placa(linhas_placa)
+        if area_placa <= 0:
+            return set()  # board without dimensions -> ignore
+
+        m2_pecas = _ZERO
+        m2_consumidos_orig = _ZERO
+        for linha in linhas_placa:
+            base = (
+                self._num(linha.area_m2)
+                * self._num(linha.quantidade)
+                * item_qt.get(linha.orcamento_item_id, _UM)
+            )
+            m2_pecas += base
+            m2_consumidos_orig += base * fator_desperdicio(self._desp_original(linha))
+        if m2_pecas <= 0:
+            return set()  # no pieces -> ignore
+
+        # The ORIGINAL waste sizes how many whole boards are physically needed.
+        qt_placas = int(
+            (m2_consumidos_orig / area_placa).to_integral_value(ROUND_CEILING)
+        )
+        # The global % that makes the line cost equal the whole-board cost, stored
+        # as a human percentage (e.g. 199.25) so fator_desperdicio reads it right.
+        desp_global = ((Decimal(qt_placas) * area_placa) / m2_pecas - _UM) * _CEM
+
+        afetados: set[int] = set()
+        for linha in linhas_placa:
+            fields: dict = {"desperdicio_percentagem": desp_global}
+            if linha.desperdicio_percentagem_original is None:
+                # Save the material waste once, so it can be restored later.
+                fields["desperdicio_percentagem_original"] = self._num(
+                    linha.desperdicio_percentagem
+                )
+            custo, _ = calcular_custo_mp(
+                linha.area_m2,
+                linha.quantidade,
+                linha.preco_liquido,
+                desp_global,
+                linha.unidade,
+            )
+            fields["custo_mp"] = custo
+            self.custeio_repository.update_linha(id=linha.id, **fields)
+            afetados.add(linha.orcamento_item_id)
+        return afetados
+
+    def _repor_desperdicio_original(self, linhas_placa) -> set[int]:
+        """Restore the saved original waste % on a board that is no longer Não-Stock."""
+        afetados: set[int] = set()
+        for linha in linhas_placa:
+            if linha.desperdicio_percentagem_original is None:
+                continue  # not under a whole-board adjustment -> leave as-is
+            desp = linha.desperdicio_percentagem_original
+            custo, _ = calcular_custo_mp(
+                linha.area_m2,
+                linha.quantidade,
+                linha.preco_liquido,
+                desp,
+                linha.unidade,
+            )
+            self.custeio_repository.update_linha(
+                id=linha.id,
+                desperdicio_percentagem=desp,
+                desperdicio_percentagem_original=None,
+                custo_mp=custo,
+            )
+            afetados.add(linha.orcamento_item_id)
+        return afetados
+
+    def _area_placa(self, linhas_placa) -> Decimal:
+        """Board area in m² from the first line that has board dimensions."""
+        for linha in linhas_placa:
+            comp = self._num(linha.comp_mp)
+            larg = self._num(linha.larg_mp)
+            if comp > 0 and larg > 0:
+                return (comp / _MIL) * (larg / _MIL)
+        return _ZERO
+
+    @staticmethod
+    def _desp_original(linha) -> Decimal | None:
+        """The material waste reference: the saved original when set, else current."""
+        if linha.desperdicio_percentagem_original is not None:
+            return linha.desperdicio_percentagem_original
+        return linha.desperdicio_percentagem
 
     @staticmethod
     def _eh_m2(unidade) -> bool:
@@ -192,6 +270,7 @@ class RelatorioConsumosService:
             esp_real=linha.esp_real,
             preco_liquido=linha.preco_liquido,
             desperdicio_percentagem=linha.desperdicio_percentagem,
+            desperdicio_percentagem_original=linha.desperdicio_percentagem_original,
             ref_le=linha.ref_le,
             descricao_no_orcamento=linha.descricao_no_orcamento,
             familia_materia_prima=linha.familia_materia_prima,

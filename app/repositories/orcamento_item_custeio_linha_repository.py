@@ -77,6 +77,7 @@ class OrcamentoItemCusteioLinhaResumo:
     descricao_no_orcamento: str | None = None
     preco_liquido: Decimal | None = None
     desperdicio_percentagem: Decimal | None = None
+    desperdicio_percentagem_original: Decimal | None = None
     tipo_materia_prima: str | None = None
     familia_materia_prima: str | None = None
     coresp_orla_0_4: str | None = None
@@ -395,6 +396,7 @@ class OrcamentoItemCusteioLinhaRepository:
             descricao_no_orcamento=linha.descricao_no_orcamento,
             preco_liquido=linha.preco_liquido,
             desperdicio_percentagem=linha.desperdicio_percentagem,
+            desperdicio_percentagem_original=linha.desperdicio_percentagem_original,
             tipo_materia_prima=linha.tipo_materia_prima,
             familia_materia_prima=linha.familia_materia_prima,
             coresp_orla_0_4=linha.coresp_orla_0_4,

@@ -95,6 +95,13 @@ class OrcamentoItemCusteioLinha(Base):
     descricao_no_orcamento: Mapped[str | None] = mapped_column(Text, nullable=True)
     preco_liquido: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    # Original (material) waste % saved before a whole-board (Não-Stock) adjustment
+    # overwrites ``desperdicio_percentagem`` with the global %, so it can be
+    # restored when the board stops being Não-Stock (phase 8W.2.1). NULL = the line
+    # is NOT under a whole-board adjustment.
+    desperdicio_percentagem_original: Mapped[Decimal | None] = mapped_column(
+        Numeric(8, 4), nullable=True
+    )
     tipo_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
     familia_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
     coresp_orla_0_4: Mapped[str | None] = mapped_column(String(100), nullable=True)

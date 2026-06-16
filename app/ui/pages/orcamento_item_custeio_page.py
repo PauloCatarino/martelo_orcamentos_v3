@@ -98,6 +98,8 @@ from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.tema import (
     BEGE_AREIA,
     COLUNAS_REALCE_COMPOSTA,
+    PLACA_INTEIRA_FUNDO,
+    PLACA_INTEIRA_TEXTO,
     cor_zebra,
     estilo_linha_custeio,
 )
@@ -1339,6 +1341,35 @@ class OrcamentoItemCusteioPage(QWidget):
             self.table.setItem(row_index, column_index, item)
 
         self._estilizar_linha(row_index, linha)
+        self._realcar_desp_placa_inteira(row_index, linha)
+
+    def _realcar_desp_placa_inteira(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Highlight the "Desp %" cell of a line under a whole-board adjustment.
+
+        When ``desperdicio_percentagem_original`` is set, the line's waste was
+        raised to whole-board figures (Não-Stock): the cell gets a warm-ochre
+        highlight and a tooltip showing the original→adjusted waste (phase 8W.2.1).
+        """
+        if linha.desperdicio_percentagem_original is None:
+            return
+        try:
+            column_index = self.TABLE_HEADERS.index("Desp %")
+        except ValueError:
+            return
+        item = self.table.item(row_index, column_index)
+        if item is None:
+            return
+
+        item.setBackground(QColor(PLACA_INTEIRA_FUNDO))
+        item.setForeground(QColor(PLACA_INTEIRA_TEXTO))
+        item.setToolTip(
+            "Placa inteira (Nao Stock): % desperdício ajustada de "
+            f"{formatar_percentagem(linha.desperdicio_percentagem_original)} para "
+            f"{formatar_percentagem(linha.desperdicio_percentagem)} para refletir "
+            "a compra de placas inteiras."
+        )
 
     def _estilizar_linha(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo

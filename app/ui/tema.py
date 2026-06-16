@@ -30,6 +30,11 @@ SEPARADOR_FUNDO = CINZA_CASTANHO     # discreet separator background
 ZEBRA_BASE = "#FFFFFF"               # normal rows (even)
 ZEBRA_ALT = BEGE_CLARO               # normal rows (odd)
 
+# Whole-board (Não-Stock) adjusted waste cell: a warm ochre highlight that stands
+# out from the beige/white zebra, with dark-brown text (phase 8W.2.1).
+PLACA_INTEIRA_FUNDO = "#E3B872"      # warm ochre highlight
+PLACA_INTEIRA_TEXTO = CASTANHO_ESCURO
+
 # Composite header: the beige highlight is applied ONLY to the structural
 # columns; the remaining columns of that row keep the normal/zebra background.
 COLUNAS_REALCE_COMPOSTA = (

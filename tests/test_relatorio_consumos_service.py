@@ -311,3 +311,155 @@ def test_nao_stock_persiste_e_sobrevive_a_recalculo(session) -> None:
     service.recalcular_versao(versao_id)
     service.recalcular_versao(versao_id)
     assert service.resumo_da_versao(versao_id).placas[0].nao_stock is True
+
+
+# --- Phase 8W.2.1: whole-board waste recalculated and propagated --------------
+
+
+def _ler_linha(session, linha_id):
+    return OrcamentoItemCusteioLinhaRepository(session).get_by_id(linha_id)
+
+
+def test_placa_inteira_ajusta_desp_global_e_propaga(session) -> None:
+    """m²peças=2, área=5.985, desp orig 15% -> qt_placas=1 -> desp_global≈199.25%;
+    propagated to all the board's lines, whose cost sums to the whole-board cost."""
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="1000", largura="1000", profundidade="1000",
+    )
+    # Two lines of the SAME board: each 1 m² (H x P = 1.0 x 1.0), so m²peças = 2.
+    comum = dict(
+        comp_mp=Decimal("2850"), larg_mp=Decimal("2100"), esp_mp=Decimal("19"),
+        preco_liquido=Decimal("10"), desperdicio_percentagem=Decimal("15"),
+    )
+    l1 = _linha_placa_real(session, item, comp="H", larg="P", **comum)
+    l2 = _linha_placa_real(session, item, comp="H", larg="P", **comum)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), True)])
+    service.recalcular_versao(versao_id)
+
+    # The global waste % is stored on every line; the original (15%) is saved.
+    for linha_id in (l1.id, l2.id):
+        linha = _ler_linha(session, linha_id)
+        assert linha.desperdicio_percentagem == Decimal("199.25")
+        assert linha.desperdicio_percentagem_original == Decimal("15")
+        # area(1) x qt(1) x pliq(10) x (1 + 1.9925) = 29.925
+        assert linha.custo_mp == Decimal("29.925")
+
+    # Report: theoretical kept on the ORIGINAL waste, budget = whole board.
+    placa = service.resumo_da_versao(versao_id).placas[0]
+    assert placa.qt_placas == 1
+    assert placa.area_placa == Decimal("5.985")
+    assert placa.custo_placa_inteira == Decimal("59.85")        # 1 x 5.985 x 10
+    assert placa.custo_mp_total == Decimal("23.00")             # 2 x 1.15 x 10
+    assert placa.custo_no_orcamento == Decimal("59.85")
+    assert placa.agravamento == Decimal("36.85")                # 59.85 - 23
+    # The budget sell total (no margins) equals the whole-board cost.
+    assert service.resumo_da_versao(versao_id).distribuicao.total_venda == Decimal(
+        "59.85"
+    )
+
+
+def test_placa_inteira_desligar_repoe_desp_original(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="1000", largura="1000", profundidade="1000",
+    )
+    linha = _linha_placa_real(
+        session, item, comp="H", larg="P",
+        comp_mp=Decimal("2850"), larg_mp=Decimal("2100"),
+        preco_liquido=Decimal("10"), desperdicio_percentagem=Decimal("15"),
+    )
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), True)])
+    service.recalcular_versao(versao_id)
+    assert _ler_linha(session, linha.id).desperdicio_percentagem_original == Decimal(
+        "15"
+    )
+
+    # Unmark -> the original 15% is restored and the saved value is cleared.
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), False)])
+    service.recalcular_versao(versao_id)
+
+    restaurada = _ler_linha(session, linha.id)
+    assert restaurada.desperdicio_percentagem == Decimal("15")
+    assert restaurada.desperdicio_percentagem_original is None
+    # area(1) x qt(1) x pliq(10) x 1.15 = 11.5
+    assert restaurada.custo_mp == Decimal("11.5")
+
+
+def test_placa_inteira_recalculo_mantem_coerencia_ao_adicionar_pecas(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="1000", largura="1000", profundidade="1000",
+    )
+    comum = dict(
+        comp="H", larg="P", comp_mp=Decimal("2850"), larg_mp=Decimal("2100"),
+        preco_liquido=Decimal("10"), desperdicio_percentagem=Decimal("15"),
+    )
+    _linha_placa_real(session, item, **comum)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.guardar_nao_stock(versao_id, [("LE01", "AGL", Decimal("19"), True)])
+    service.recalcular_versao(versao_id)
+    uma = service.resumo_da_versao(versao_id).placas[0]
+    assert uma.qt_placas == 1
+    assert uma.custo_no_orcamento == Decimal("59.85")    # 1 board x 5.985 x 10
+
+    # Add a second piece (m²peças 1 -> 2). qt_placas/desp_global are recomputed.
+    _linha_placa_real(session, item, **comum)
+    session.commit()
+    service.recalcular_versao(versao_id)
+
+    duas = service.resumo_da_versao(versao_id).placas[0]
+    assert duas.m2_total_pecas == Decimal("2")
+    assert duas.qt_placas == 1                            # still 1 whole board
+    assert duas.custo_no_orcamento == Decimal("59.85")   # whole-board cost unchanged
+    assert duas.custo_placa_inteira == Decimal("59.85")
+
+
+def test_placa_inteira_ignora_sem_pecas_e_sem_dimensoes(session) -> None:
+    # Item A has NO measures, so its H x P line computes area 0 (no pieces),
+    # even though the board has dimensions.
+    versao_id = _criar_versao(session)
+    item_a = _criar_item(session, versao_id, ordem=1, quantidade=1)
+    sem_pecas = _linha_placa_real(
+        session, item_a, comp="H", larg="P",
+        comp_mp=Decimal("2850"), larg_mp=Decimal("2100"), esp_mp=Decimal("19"),
+        desperdicio_percentagem=Decimal("15"),
+    )
+    # Item B has measures (1 m² pieces) but its line has NO board dimensions.
+    item_b = _criar_item(
+        session, versao_id, ordem=2, quantidade=1,
+        altura="1000", largura="1000", profundidade="1000",
+    )
+    sem_dimensoes = _linha_placa_real(
+        session, item_b, comp="H", larg="P",
+        comp_mp=None, larg_mp=None, esp_mp=Decimal("25"),
+        descricao_no_orcamento="AGL25", desperdicio_percentagem=Decimal("15"),
+    )
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.guardar_nao_stock(
+        versao_id,
+        [
+            ("LE01", "AGL", Decimal("19"), True),
+            ("LE01", "AGL25", Decimal("25"), True),
+        ],
+    )
+    service.recalcular_versao(versao_id)
+
+    # Neither board was adjusted: no original was saved, waste stays the material's.
+    for linha_id in (sem_pecas.id, sem_dimensoes.id):
+        linha = _ler_linha(session, linha_id)
+        assert linha.desperdicio_percentagem_original is None
+        assert linha.desperdicio_percentagem == Decimal("15")
