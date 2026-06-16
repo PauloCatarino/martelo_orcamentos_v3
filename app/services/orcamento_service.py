@@ -16,6 +16,7 @@ from app.domain.margens_padrao_types import (
 from app.domain.precos import MargensOrcamento
 from app.repositories.def_margem_padrao_repository import DefMargemPadraoRepository
 from app.repositories.orcamento_repository import (
+    ClienteResumo,
     OrcamentoCriado,
     OrcamentoRepository,
     OrcamentoResumo,
@@ -55,6 +56,12 @@ class OrcamentoService:
     def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
         """Return one budget version by id."""
         return self.repository.get_orcamento_by_versao_id(orcamento_versao_id)
+
+    def get_cliente_da_versao(
+        self, orcamento_versao_id: int
+    ) -> ClienteResumo | None:
+        """Return the customer details of a budget version (for the report)."""
+        return self.repository.get_cliente_da_versao(orcamento_versao_id)
 
     def criar_orcamento_simples(self, data: CriarOrcamentoSimplesData) -> OrcamentoCriado:
         """Create a simple budget with version 01."""

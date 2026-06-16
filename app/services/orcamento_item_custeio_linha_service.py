@@ -1158,6 +1158,29 @@ class OrcamentoItemCusteioLinhaService:
 
         return CustoTotalResult(processadas=processadas, ignoradas=ignoradas)
 
+    def recalcular_item_completo(self, orcamento_item_id: int) -> None:
+        """Run the FULL costing pipeline for one item (the Atualizar sequence).
+
+        Single source of truth for the per-item pipeline, reused by the costing
+        page's Atualizar and by the version reports (phase 8W.1.1). Measures →
+        quantity rules → quantities → finishing → areas → orlas → raw-material →
+        hardware → ML → finishing cost → operations → production → times → total.
+        """
+        self.recalcular_medidas_do_item(orcamento_item_id)
+        self.aplicar_regras_quantidade_do_item(orcamento_item_id)
+        self.recalcular_quantidades_do_item(orcamento_item_id)
+        self.aplicar_acabamentos_do_item(orcamento_item_id)
+        self.recalcular_areas_acabamento_do_item(orcamento_item_id)
+        self.recalcular_orlas_do_item(orcamento_item_id)
+        self.recalcular_custo_materia_prima_do_item(orcamento_item_id)
+        self.recalcular_custos_ferragens_do_item(orcamento_item_id)
+        self.recalcular_custos_ml_do_item(orcamento_item_id)
+        self.recalcular_custo_acabamento_do_item(orcamento_item_id)
+        self.aplicar_operacoes_do_item(orcamento_item_id)
+        self.recalcular_custos_producao_do_item(orcamento_item_id)
+        self.recalcular_tempos_producao_do_item(orcamento_item_id)
+        self.recalcular_custo_total_do_item(orcamento_item_id)
+
     def aplicar_acabamentos_do_item(self, orcamento_item_id: int) -> AcabamentoResult:
         """Fill acabamento_face_sup/inf of PECA lines from def_peca + ValueSet.
 

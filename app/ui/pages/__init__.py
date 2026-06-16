@@ -13,6 +13,7 @@ from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
 from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
 from app.ui.pages.orcamentos_page import OrcamentosPage
 from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
 
@@ -30,6 +31,7 @@ __all__ = [
     "OrcamentoDetailPage",
     "OrcamentoItemCusteioPage",
     "OrcamentoItemsPage",
+    "OrcamentoRelatoriosPage",
     "OrcamentosPage",
     "RegrasQuantidadePage",
 ]

@@ -774,23 +774,8 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _recalcular_item_completo(self, service) -> None:
         """Run the full costing pipeline for the item (shared by Atualizar and the
-        Mat. default dropdown)."""
-        service.recalcular_medidas_do_item(self.item_id)
-        # Component quantity rules use the parent's real dimensions (computed
-        # above); refresh qt_total via the cadeia afterwards.
-        service.aplicar_regras_quantidade_do_item(self.item_id)
-        service.recalcular_quantidades_do_item(self.item_id)
-        service.aplicar_acabamentos_do_item(self.item_id)
-        service.recalcular_areas_acabamento_do_item(self.item_id)
-        service.recalcular_orlas_do_item(self.item_id)
-        service.recalcular_custo_materia_prima_do_item(self.item_id)
-        service.recalcular_custos_ferragens_do_item(self.item_id)
-        service.recalcular_custos_ml_do_item(self.item_id)
-        service.recalcular_custo_acabamento_do_item(self.item_id)
-        service.aplicar_operacoes_do_item(self.item_id)
-        service.recalcular_custos_producao_do_item(self.item_id)
-        service.recalcular_tempos_producao_do_item(self.item_id)
-        service.recalcular_custo_total_do_item(self.item_id)
+        Mat. default dropdown). Delegates to the single service orchestrator."""
+        service.recalcular_item_completo(self.item_id)
 
     def inserir_divisao(self) -> None:
         """Insert an independent-division line (local HM/LM/PM measure context)."""

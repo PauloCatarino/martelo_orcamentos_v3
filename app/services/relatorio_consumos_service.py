@@ -17,6 +17,10 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository
+from app.services.orcamento_item_custeio_linha_service import (
+    OrcamentoItemCusteioLinhaService,
+)
+from app.services.orcamento_item_service import OrcamentoItemService
 
 _UM = Decimal("1")
 _ZERO = Decimal("0")
@@ -29,6 +33,21 @@ class RelatorioConsumosService:
         self.session = session
         self.item_repository = OrcamentoItemRepository(session)
         self.custeio_repository = OrcamentoItemCusteioLinhaRepository(session)
+
+    def recalcular_versao(self, orcamento_versao_id: int) -> None:
+        """Recompute the FULL costing pipeline of every item, then apply prices.
+
+        So the report always reflects the current costing state even if the user
+        never clicked "Atualizar" inside each item's costing (phase 8W.1.1).
+        Reuses the existing per-item pipeline orchestrator and the version price
+        application — no duplicated logic.
+        """
+        custeio_service = OrcamentoItemCusteioLinhaService(self.session)
+        for item in self.item_repository.list_items_by_versao(orcamento_versao_id):
+            custeio_service.recalcular_item_completo(item.id)
+        OrcamentoItemService(self.session).aplicar_precos_da_versao(
+            orcamento_versao_id
+        )
 
     def resumo_da_versao(self, orcamento_versao_id: int) -> ResumoConsumos:
         """Aggregate the consumption/cost summary of one budget version."""

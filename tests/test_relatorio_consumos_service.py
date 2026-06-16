@@ -41,10 +41,16 @@ def _criar_versao(session, *, margem_lucro=Decimal("0")) -> int:
     return versao.id
 
 
-def _criar_item(session, versao_id, *, ordem, quantidade) -> int:
+def _criar_item(
+    session, versao_id, *, ordem, quantidade,
+    altura=None, largura=None, profundidade=None,
+) -> int:
     item = OrcamentoItem(
         orcamento_versao_id=versao_id, ordem=ordem, tipo_item="OUTRO",
         item=f"Item {ordem}", quantidade=Decimal(quantidade),
+        altura=Decimal(altura) if altura is not None else None,
+        largura=Decimal(largura) if largura is not None else None,
+        profundidade=Decimal(profundidade) if profundidade is not None else None,
     )
     session.add(item)
     session.flush()
@@ -117,3 +123,102 @@ def test_resumo_versao_sem_linhas(session) -> None:
     assert resumo.distribuicao.custo_produzido == Decimal("0")
     # The four machine centres always exist (with zero cost).
     assert len(resumo.maquinas) == 4
+
+
+# --- Phase 8W.1.1: recompute-before-aggregate + Excluir semantics ------------
+
+
+def _linha_por_custear(session, item_id):
+    """A line with measure FORMULAS and material but NOT yet costed (area/cost
+    are computed only by the pipeline)."""
+    return OrcamentoItemCusteioLinhaRepository(session).create_linha(
+        orcamento_item_id=item_id, tipo_linha="PECA", descricao="Lateral",
+        unidade="m2", quantidade=Decimal("1"),
+        comp="H", larg="P", esp_mp=Decimal("19"),
+        preco_liquido=Decimal("5"), desperdicio_percentagem=Decimal("0"),
+        ref_le="LE01", descricao_no_orcamento="AGL", nivel=0, ativo=True,
+    )
+
+
+def test_atualizar_recalcula_antes_de_agregar(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="2000", largura="1000", profundidade="500",
+    )
+    _linha_por_custear(session, item)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    # Before recompute: the line has no area/cost -> nothing aggregated.
+    antes = service.resumo_da_versao(versao_id)
+    assert antes.placas == [] or antes.placas[0].m2_total_pecas == Decimal("0")
+
+    # The report's Atualizar recomputes the costing of every item first.
+    service.recalcular_versao(versao_id)
+    depois = service.resumo_da_versao(versao_id)
+
+    (placa,) = depois.placas
+    assert placa.m2_total_pecas == Decimal("1")     # H=2000 x P=500 -> 1 m2
+    assert placa.custo_mp_total == Decimal("5")     # 1 m2 x 5 €
+    assert depois.distribuicao.custo_produzido == Decimal("5")
+
+
+def test_excluir_nao_muda_consumo_mas_baixa_distribuicao_e_total(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="2000", largura="1000", profundidade="500",
+    )
+    linha = _linha_por_custear(session, item)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.recalcular_versao(versao_id)
+    base = service.resumo_da_versao(versao_id)
+    consumo_base = base.placas[0].m2_total_pecas
+    custo_base = base.placas[0].custo_mp_total
+    placas_dist_base = next(
+        c.euros for c in base.distribuicao.categorias if c.nome == "Placas"
+    )
+    venda_base = base.distribuicao.total_venda
+    assert placas_dist_base == Decimal("5") and venda_base == Decimal("5")
+
+    # Exclude the raw material on the line and re-aggregate.
+    OrcamentoItemCusteioLinhaRepository(session).update_linha(
+        id=linha.id, excluir_mp=True
+    )
+    session.commit()
+    service.recalcular_versao(versao_id)
+    com_excluir = service.resumo_da_versao(versao_id)
+
+    # Consumption is unchanged (physical, for purchasing)...
+    assert com_excluir.placas[0].m2_total_pecas == consumo_base
+    assert com_excluir.placas[0].custo_mp_total == custo_base
+    # ...but the distribution and the sell total drop (the cost is excluded).
+    placas_dist = next(
+        c.euros for c in com_excluir.distribuicao.categorias if c.nome == "Placas"
+    )
+    assert placas_dist == Decimal("0")
+    assert com_excluir.distribuicao.total_venda == Decimal("0")
+
+
+def test_editar_medida_reflete_no_consumo(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(
+        session, versao_id, ordem=1, quantidade=1,
+        altura="2000", largura="1000", profundidade="500",
+    )
+    linha = _linha_por_custear(session, item)
+    session.commit()
+    service = RelatorioConsumosService(session)
+
+    service.recalcular_versao(versao_id)
+    assert service.resumo_da_versao(versao_id).placas[0].m2_total_pecas == Decimal("1")
+
+    # Change the width formula H x L (instead of H x P) -> 2000 x 1000 = 2 m2.
+    OrcamentoItemCusteioLinhaRepository(session).update_linha(id=linha.id, larg="L")
+    session.commit()
+    service.recalcular_versao(versao_id)
+
+    assert service.resumo_da_versao(versao_id).placas[0].m2_total_pecas == Decimal("2")

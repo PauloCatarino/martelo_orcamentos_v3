@@ -45,12 +45,13 @@ def test_orcamento_custeio_page_headers() -> None:
     ]
 
 
-def test_orcamento_custeio_page_loads_on_init() -> None:
+def test_orcamento_custeio_page_auto_refresh_on_show() -> None:
     from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
 
-    source_names = OrcamentoCusteioPage.__init__.__code__.co_names
-
-    assert "carregar" in source_names
+    # The tab refreshes when it becomes visible (phase 8W.1.2).
+    assert hasattr(OrcamentoCusteioPage, "showEvent")
+    show = inspect.getsource(OrcamentoCusteioPage.showEvent)
+    assert "carregar" in show
 
 
 def test_orcamento_custeio_page_uses_service() -> None:
@@ -60,6 +61,13 @@ def test_orcamento_custeio_page_uses_service() -> None:
 
     assert "OrcamentoItemCusteioLinhaService" in source
     assert "listar_linhas_da_versao" in source
+    # Recompute the whole version (same logic as the reports) before listing.
+    assert "RelatorioConsumosService" in source
+    assert "recalcular_versao" in source
+    # Highlighted "updated at HH:MM:SS" banner.
+    init = inspect.getsource(OrcamentoCusteioPage.__init__)
+    assert "self.banner" in init
+    assert "Atualizado às" in source
 
 
 def test_orcamento_custeio_page_formats_lines() -> None:

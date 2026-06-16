@@ -36,6 +36,18 @@ class OrcamentoResumo:
 
 
 @dataclass(frozen=True)
+class ClienteResumo:
+    """Read model for the customer block of a budget report (phase 8W.1)."""
+
+    id: int
+    nome: str
+    morada: str | None
+    email: str | None
+    telefone: str | None
+    num_cliente: str | None
+
+
+@dataclass(frozen=True)
 class OrcamentoCriado:
     """Result of creating a simple budget."""
 
@@ -233,6 +245,27 @@ class OrcamentoRepository:
             .where(OrcamentoVersao.id == orcamento_versao_id)
         )
         return self.session.execute(statement).scalars().first()
+
+    def get_cliente_da_versao(self, orcamento_versao_id: int) -> ClienteResumo | None:
+        """Return the customer details of one budget version (for the report)."""
+        statement = (
+            select(Cliente)
+            .join(Orcamento, Orcamento.cliente_id == Cliente.id)
+            .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
+            .where(OrcamentoVersao.id == orcamento_versao_id)
+        )
+        cliente = self.session.execute(statement).scalars().first()
+        if cliente is None:
+            return None
+
+        return ClienteResumo(
+            id=cliente.id,
+            nome=cliente.nome,
+            morada=cliente.morada,
+            email=cliente.email,
+            telefone=cliente.telefone or cliente.telemovel,
+            num_cliente=cliente.num_cliente_phc,
+        )
 
     @staticmethod
     def _aplicar_margens_versao(

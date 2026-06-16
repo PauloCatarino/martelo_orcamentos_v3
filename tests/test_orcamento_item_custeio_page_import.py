@@ -536,7 +536,15 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "_recalcular_item_completo" in inspect.getsource(
         OrcamentoItemCusteioPage.atualizar_geral
     )
-    source = inspect.getsource(OrcamentoItemCusteioPage._recalcular_item_completo)
+    # The page helper now delegates to the single service orchestrator (8W.1.1).
+    helper = inspect.getsource(OrcamentoItemCusteioPage._recalcular_item_completo)
+    assert "recalcular_item_completo" in helper
+    from app.services.orcamento_item_custeio_linha_service import (
+        OrcamentoItemCusteioLinhaService,
+    )
+    source = inspect.getsource(
+        OrcamentoItemCusteioLinhaService.recalcular_item_completo
+    )
     assert "recalcular_medidas_do_item" in source
     assert "recalcular_orlas_do_item" in source
     assert "recalcular_custo_materia_prima_do_item" in source

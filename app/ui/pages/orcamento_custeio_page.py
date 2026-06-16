@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -24,6 +26,8 @@ from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.relatorio_consumos_service import RelatorioConsumosService
+from app.ui import tema
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -68,6 +72,15 @@ class OrcamentoCusteioPage(QWidget):
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
+        # Highlighted "updated at HH:MM:SS" banner above the table (Lança Encanto).
+        self.banner = QLabel("")
+        self.banner.setObjectName("orcamentoCusteioBanner")
+        self.banner.setStyleSheet(
+            f"QLabel#orcamentoCusteioBanner {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CINZA_CASTANHO}; "
+            f"border-radius: 4px; padding: 4px 8px; font-weight: bold; }}"
+        )
+
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoCusteioStatus")
 
@@ -84,18 +97,31 @@ class OrcamentoCusteioPage(QWidget):
         layout.setSpacing(10)
         layout.addWidget(info)
         layout.addLayout(actions_layout)
+        layout.addWidget(self.banner)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """Auto-refresh whenever this tab becomes visible (phase 8W.1.2)."""
+        super().showEvent(event)
         self.carregar()
 
     def carregar(self) -> None:
-        """Load the costing lines of the budget version."""
+        """Recompute the costing of every item, then load the costing lines.
+
+        The listing reads the costs stored on the lines, so it first recomputes
+        the full costing pipeline of ALL items (the SAME logic as the reports)
+        and applies the version prices, to always reflect the current state.
+        """
         self.status_label.clear()
 
         try:
             with SessionLocal() as session:
+                RelatorioConsumosService(session).recalcular_versao(
+                    self.orcamento_versao_id
+                )
                 items = OrcamentoItemService(session).list_items_by_versao(
                     self.orcamento_versao_id
                 )
@@ -108,6 +134,9 @@ class OrcamentoCusteioPage(QWidget):
 
         item_labels = {item.id: self._item_label(item) for item in items}
         self._preencher(linhas, item_labels)
+        self.banner.setText(
+            f"Atualizado às {datetime.now().strftime('%H:%M:%S')}"
+        )
 
     def _preencher(
         self,
