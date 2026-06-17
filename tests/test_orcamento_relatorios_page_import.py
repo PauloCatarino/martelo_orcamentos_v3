@@ -145,6 +145,15 @@ def test_dashboards_tab_e_widget() -> None:
     assert "dados_distribuicao" in atualizar
 
 
+def test_formatar_pct_pizza_esconde_fatias_pequenas() -> None:
+    # 8W.3c: percentagens abaixo de _PCT_MIN_PIZZA não são desenhadas.
+    from app.ui.widgets.relatorio_dashboards import _formatar_pct_pizza
+
+    assert _formatar_pct_pizza(0.6) == ""
+    assert _formatar_pct_pizza(3.0) == "3.0%"
+    assert _formatar_pct_pizza(17.7) == "17.7%"
+
+
 def test_detail_page_wires_relatorios_tab() -> None:
     from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
 

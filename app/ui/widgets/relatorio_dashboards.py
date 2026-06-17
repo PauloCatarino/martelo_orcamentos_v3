@@ -26,6 +26,13 @@ except Exception:  # noqa: BLE001 — qualquer falha de import desativa os gráf
 _COR_BARRA_1 = tema.CASTANHO_MEDIO
 _COR_BARRA_2 = tema.CASTANHO_ESCURO
 
+# Nº mínimo de "slots" no eixo X: com poucas categorias as barras não esticam.
+_MIN_SLOTS_X = 6
+
+# Abaixo desta percentagem a fatia é minúscula -> não desenha a % (evita
+# sobreposição em fatias pequeninas).
+_PCT_MIN_PIZZA = 3.0
+
 # Paleta da pizza: tons de app.ui.tema, uma cor por fatia (cicla se preciso).
 _CORES_PIZZA = (
     tema.CASTANHO_ESCURO,
@@ -46,6 +53,11 @@ _SECCOES = (
     ("maquinas", "Máquinas / MO"),
     ("distribuicao", "Distribuição de Custos"),
 )
+
+
+def _formatar_pct_pizza(pct: float) -> str:
+    """Esconde as percentagens das fatias pequenas (abaixo de _PCT_MIN_PIZZA)."""
+    return f"{pct:.1f}%" if pct >= _PCT_MIN_PIZZA else ""
 
 
 class DashboardsWidget(QWidget):
@@ -78,7 +90,11 @@ class DashboardsWidget(QWidget):
         conteudo_layout.setSpacing(12)
         for chave, titulo in _SECCOES:
             conteudo_layout.addWidget(self._titulo_seccao(titulo))
-            canvas = FigureCanvas(Figure(figsize=(6, 3)))
+            # layout="constrained" recalcula o espaçamento ao redimensionar (as
+            # etiquetas do eixo X deixam de ficar cortadas); a pizza leva mais
+            # altura para a legenda por baixo.
+            altura = 4.2 if chave == "distribuicao" else 3.0
+            canvas = FigureCanvas(Figure(figsize=(6, altura), layout="constrained"))
             self._canvases[chave] = canvas
             conteudo_layout.addWidget(canvas)
         conteudo_layout.addStretch()
@@ -140,7 +156,6 @@ class DashboardsWidget(QWidget):
             )
             eixo.set_xticks([])
             eixo.set_yticks([])
-            figura.tight_layout()
             canvas.draw_idle()
             return
 
@@ -151,7 +166,7 @@ class DashboardsWidget(QWidget):
             valores = [
                 float(v) for v in (grafico.series[0].valores if grafico.series else [])
             ]
-            eixo.bar(posicoes, valores, color=_COR_BARRA_1)
+            eixo.bar(posicoes, valores, width=0.6, color=_COR_BARRA_1)
         else:
             largura = 0.8 / len(grafico.series)
             for indice, serie in enumerate(grafico.series):
@@ -167,10 +182,14 @@ class DashboardsWidget(QWidget):
             eixo.legend()
 
         eixo.set_xticks(posicoes)
-        eixo.set_xticklabels(grafico.etiquetas, rotation=30, ha="right")
+        eixo.set_xticklabels(
+            grafico.etiquetas, rotation=30, ha="right", rotation_mode="anchor"
+        )
+        # Reserva um nº mínimo de slots para as barras não esticarem com poucas
+        # categorias.
+        eixo.set_xlim(-0.6, max(len(grafico.etiquetas), _MIN_SLOTS_X) - 0.4)
         eixo.set_ylabel(grafico.unidade)
 
-        figura.tight_layout()
         canvas.draw_idle()
 
     def _desenhar_pizza(self, canvas, grafico) -> None:
@@ -192,7 +211,6 @@ class DashboardsWidget(QWidget):
             )
             eixo.set_xticks([])
             eixo.set_yticks([])
-            figura.tight_layout()
             canvas.draw_idle()
             return
 
@@ -205,17 +223,19 @@ class DashboardsWidget(QWidget):
         ]
 
         fatias, _textos, _autotextos = eixo.pie(
-            valores, autopct="%1.1f%%", colors=cores
+            valores, autopct=_formatar_pct_pizza, colors=cores, pctdistance=0.8
         )
         eixo.set_title(
             f"Distribuição de custos — Total de venda: "
             f"{format_currency(grafico.total_venda)}",
             color=tema.CASTANHO_ESCURO,
         )
-        eixo.legend(fatias, legendas, loc="center left", bbox_to_anchor=(1.0, 0.5))
+        # Legenda por baixo: funciona melhor com constrained e deixa a pizza maior.
+        eixo.legend(
+            fatias, legendas, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=3
+        )
         eixo.axis("equal")
 
-        figura.tight_layout()
         canvas.draw_idle()
 
     def _titulo_seccao(self, texto: str) -> QLabel:
