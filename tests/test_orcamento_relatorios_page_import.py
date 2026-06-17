@@ -123,6 +123,24 @@ def test_iva_padrao_e_23() -> None:
     assert IVA_PADRAO_PCT == Decimal("23")
 
 
+def test_dashboards_tab_e_widget() -> None:
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+    from app.ui.widgets.relatorio_dashboards import DashboardsWidget
+
+    # 8W.3a: o __init__ cria a 3ª aba "Dashboards" com o DashboardsWidget.
+    init = inspect.getsource(OrcamentoRelatoriosPage.__init__)
+    assert "DashboardsWidget" in init
+    assert "self.dashboards" in init
+    assert '"Dashboards"' in init
+
+    # carregar() atualiza os gráficos depois de preencher os consumos.
+    carregar = inspect.getsource(OrcamentoRelatoriosPage.carregar)
+    assert "self.dashboards.atualizar" in carregar
+
+    # O widget expõe o método público de atualização.
+    assert hasattr(DashboardsWidget, "atualizar")
+
+
 def test_detail_page_wires_relatorios_tab() -> None:
     from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
 

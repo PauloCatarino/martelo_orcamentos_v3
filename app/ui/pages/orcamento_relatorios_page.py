@@ -1,12 +1,13 @@
 """Budget (version) reports page (phase 8W.1).
 
-Two read-only tabs for the whole version:
+Three read-only tabs for the whole version:
 - "Relatório de Orçamento": customer + budget identification + the items table
   with the subtotal / IVA / grand total footer;
 - "Resumo de Consumos": the boards/edge-banding/hardware/machines tables built
-  from the 8W.0 aggregation (consumption ALWAYS counts, even with "Excluir").
+  from the 8W.0 aggregation (consumption ALWAYS counts, even with "Excluir");
+- "Dashboards": four matplotlib bar charts of the same aggregation (phase 8W.3a).
 
-No exports (8W.4), dashboards (8W.3) nor Não-Stock toggle (8W.2) here.
+No exports (8W.4) nor pie chart (8W.3b) here yet.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
+from app.ui.widgets.relatorio_dashboards import DashboardsWidget
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import (
     format_currency,
@@ -230,9 +232,12 @@ class OrcamentoRelatoriosPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoRelatoriosStatus")
 
+        self.dashboards = DashboardsWidget()
+
         self.tabs = QTabWidget()
         self.tabs.addTab(self._criar_tab_relatorio(), "Relatório de Orçamento")
         self.tabs.addTab(self._criar_tab_consumos(), "Resumo de Consumos")
+        self.tabs.addTab(self.dashboards, "Dashboards")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -504,6 +509,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self._preencher_identificacao()
         self._preencher_items(items)
         self._preencher_consumos(resumo)
+        self.dashboards.atualizar(resumo)
 
         hora = datetime.now().strftime("%H:%M:%S")
         mensagem = f"Relatórios atualizados às {hora}"

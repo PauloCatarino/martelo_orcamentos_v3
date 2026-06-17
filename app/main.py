@@ -4,6 +4,18 @@ from __future__ import annotations
 
 import sys
 
+# O backend Qt do matplotlib importa dateutil -> six.moves; se isso correr DEPOIS do
+# PySide6 ser importado, o hook de "feature" do shiboken rebenta
+# ('_SixMetaPathImporter' object has no attribute '_path'). Pré-carregar aqui, antes do
+# PySide6, evita o conflito. Opcional: se o matplotlib não existir, os dashboards
+# mostram apenas o aviso de fallback.
+try:
+    import matplotlib
+    matplotlib.use("QtAgg")
+    import matplotlib.dates  # noqa: F401  -- pré-carrega a cadeia dateutil/six.moves
+except Exception:
+    pass
+
 from PySide6.QtWidgets import QApplication, QDialog
 
 from app.config.logging_config import configure_logging
