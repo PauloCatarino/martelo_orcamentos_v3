@@ -24,13 +24,18 @@ TIPO_ACESSORIO = "ACESSORIO"
 TIPO_ORLA = "ORLA"
 TIPO_ACABAMENTO = "ACABAMENTO"
 
-# Hardware-like types: a line only mixes within its OWN key (same family).
-_TIPOS_MESMA_CHAVE = (
+# Hardware-like key types: physically counted in UND/ML (not boards/orlas), and
+# a line only mixes within its OWN key (same family). Shared so the costing
+# service can derive a piece's line type (FERRAGEM) from its material key.
+TIPOS_FERRAGEM = (
     TIPO_FERRAGEM,
     TIPO_SISTEMA_CORRER,
     TIPO_ILUMINACAO,
     TIPO_ACESSORIO,
 )
+
+# Backwards-compatible alias (kept for the dropdown-compatibility logic below).
+_TIPOS_MESMA_CHAVE = TIPOS_FERRAGEM
 
 
 def _norm(chave) -> str:

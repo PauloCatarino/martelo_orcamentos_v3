@@ -22,7 +22,6 @@ from decimal import ROUND_CEILING, Decimal
 
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
-    FERRAGEM,
     PECA_COMPOSTA,
     SEPARADOR,
 )
@@ -201,6 +200,21 @@ def _unidade_norm(unidade: str | None) -> str:
 
 def _eh_m2(unidade: str | None) -> bool:
     return _unidade_norm(unidade) in _UNIDADES_M2
+
+
+def _eh_und_ou_ml(unidade: str | None) -> bool:
+    unidade_norm = _unidade_norm(unidade)
+    return unidade_norm in _UNIDADES_UND or unidade_norm in _UNIDADES_ML
+
+
+def _tem_material(linha) -> bool:
+    """A line that carries a material (ref_le filled) or a hardware cost.
+
+    Used to tell a real hardware consumption apart from a service piece without
+    material (which only costs via its operations and must NOT be counted as a
+    ferragem).
+    """
+    return bool((linha.ref_le or "").strip()) or _num(linha.custo_ferragem) != _ZERO
 
 
 def _linhas_reais(linhas):
@@ -389,18 +403,32 @@ def agregar_orlas(linhas) -> list:
 
 
 def agregar_ferragens(linhas) -> list:
-    """Group FERRAGEM lines (unit UND or ML) by (ref_le, descricao).
+    """Group hardware consumptions (unit UND or ML, with material) by (ref_le, descricao).
+
+    Hardware is classified by the MATERIAL/UNIT, NOT by tipo_linha: any real line
+    (not separator/division/composite-parent) whose unit is UND or ML and which
+    carries a material/cost counts here. So a dobradiça/pé added from the piece
+    library (which is stored as tipo_linha=PECA, UND) is counted the same as one
+    coming from a module (tipo_linha=FERRAGEM) — fixing the bug where library
+    hardware was missing from the "Resumo de Ferragens".
+
+    No double counting: M2 lines go to ``agregar_placas``; UND/ML lines with a
+    material come here; orlas are counted separately by the ml_orla_* fields.
+    Service pieces without material (no ref_le, no cost) are excluded — they only
+    cost via their operations.
 
     qt_total = Σ quantidade * item_qt; ml = Σ consumo_ml_total * item_qt (ML);
     custo_total = Σ custo_ferragem * item_qt.
     """
     grupos: dict[tuple, dict] = {}
     for linha in _linhas_reais(linhas):
-        if linha.tipo_linha != FERRAGEM:
+        # UND/ML with a material -> ferragem. M2 (boards) and service pieces
+        # without material are skipped, so nothing is counted twice.
+        if not _eh_und_ou_ml(linha.unidade):
+            continue
+        if not _tem_material(linha):
             continue
         unidade = _unidade_norm(linha.unidade)
-        if unidade and unidade not in _UNIDADES_UND and unidade not in _UNIDADES_ML:
-            continue
 
         item_qt = _num(linha.item_qt)
         chave = (linha.ref_le, linha.descricao_no_orcamento)

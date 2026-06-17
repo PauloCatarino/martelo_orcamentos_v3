@@ -61,7 +61,7 @@ from app.domain.custos import (
 )
 from app.domain.quantidades import LinhaQuantidade, calcular_quantidades
 from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
-from app.domain.valueset_compat import opcoes_valueset_compativeis
+from app.domain.valueset_compat import TIPOS_FERRAGEM, opcoes_valueset_compativeis
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -3169,11 +3169,16 @@ class OrcamentoItemCusteioLinhaService:
     def _adicionar_peca_simples(
         self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]
     ) -> None:
-        """Create one PECA cost line for a simple library piece."""
+        """Create one cost line for a simple library piece.
+
+        The line type is DERIVED from the piece's material nature (see
+        ``_tipo_linha_da_def_peca``): a hardware piece becomes a FERRAGEM line, a
+        board/material piece a PECA — never chosen by the user here.
+        """
         fields, aviso = self._build_peca_line_fields(
             orcamento_item_id,
             peca,
-            tipo_linha=PECA,
+            tipo_linha=self._tipo_linha_da_def_peca(peca),
             origem="BIBLIOTECA_PECA",
             nivel=0,
             linha_pai_id=None,
@@ -3184,6 +3189,29 @@ class OrcamentoItemCusteioLinhaService:
             self._adicionar_aviso(avisos, aviso)
 
         self.repository.create_linha(**fields)
+
+    def _tipo_linha_da_def_peca(self, peca: DefPecaResumo) -> str:
+        """Derive a simple piece's cost-line type from its material nature.
+
+        The type is DERIVED, not configured by the user: a piece whose ValueSet
+        material key is a hardware-like type (FERRAGEM / SISTEMA_CORRER /
+        ILUMINACAO / ACESSORIO) becomes a FERRAGEM line — so a dobradiça/pé added
+        from the library shows "Ferragem" exactly like one inserted from a module
+        (which derives the type from the component's tipo_componente). A material/
+        board key, an unknown key, or a service piece without material stays PECA.
+        The key type is resolved from the configurable ValueSet keys repository.
+        """
+        if getattr(peca, "sem_material", False):
+            return PECA
+
+        chave = (peca.chave_valueset_material or "").strip().upper()
+        if not chave:
+            return PECA
+
+        tipo_chave = self.tipos_das_chaves().get(chave)
+        if tipo_chave in TIPOS_FERRAGEM:
+            return FERRAGEM
+        return PECA
 
     def _adicionar_peca_composta(
         self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]

@@ -132,6 +132,49 @@ def test_ferragens_ignora_pecas_m2() -> None:
     assert agregar_ferragens([placa]) == []
 
 
+def test_ferragem_da_biblioteca_conta_mesmo_sendo_tipo_peca() -> None:
+    # A dobradiça added from the piece LIBRARY is stored as tipo_linha=PECA, UND
+    # (not FERRAGEM). It must still be counted as a ferragem, by unit + material.
+    dobradica = _linha(
+        tipo_linha="PECA", unidade="UND", item_qt=Decimal("1"),
+        quantidade=Decimal("4"), custo_ferragem=Decimal("5"),
+        preco_liquido=Decimal("1.25"), ref_le="FER0015",
+        descricao_no_orcamento="Dobradiça Blum",
+    )
+    (ferragem,) = agregar_ferragens([dobradica])
+
+    assert ferragem.ref_le == "FER0015"
+    assert ferragem.qt_total == Decimal("4")
+    assert ferragem.custo_total == Decimal("5")
+
+
+def test_ferragens_sem_dupla_contagem_placa_und_e_servico() -> None:
+    placa = _linha(
+        tipo_linha="PECA", unidade="m2", quantidade=Decimal("1"),
+        area_m2=Decimal("1"), comp_mp=Decimal("2000"), larg_mp=Decimal("1000"),
+        preco_liquido=Decimal("5"), ref_le="LE01", descricao_no_orcamento="AGL",
+    )
+    ferragem = _linha(
+        tipo_linha="PECA", unidade="UND", quantidade=Decimal("2"),
+        custo_ferragem=Decimal("3"), ref_le="FER01",
+        descricao_no_orcamento="Pé nivelador",
+    )
+    # Service piece: UND but NO material (no ref_le, no cost) -> not a ferragem.
+    servico = _linha(
+        tipo_linha="PECA", unidade="UND", quantidade=Decimal("1"),
+        descricao_no_orcamento="Montagem",
+    )
+
+    linhas = [placa, ferragem, servico]
+
+    # The board only counts in placas; the UND material only in ferragens.
+    (placa_resumo,) = agregar_placas(linhas)
+    assert placa_resumo.ref_le == "LE01"
+    (ferragem_resumo,) = agregar_ferragens(linhas)
+    assert ferragem_resumo.ref_le == "FER01"
+    assert ferragem_resumo.qt_total == Decimal("2")
+
+
 # --- Máquinas / MO -----------------------------------------------------------
 
 

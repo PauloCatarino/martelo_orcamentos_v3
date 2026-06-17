@@ -624,6 +624,66 @@ def test_adicionar_peca_simples_cria_linha_com_valueset(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_adicionar_peca_simples_ferragem_deriva_tipo_linha_ferragem(monkeypatch) -> None:
+    # A simple library piece whose material key is a FERRAGEM-type key becomes a
+    # FERRAGEM line (consistent with a module insertion), not a PECA.
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1, codigo="DOBRADICA", grupo="FERRAGENS",
+            chave_valueset_material="FERRAGEM_DOBRADICA",
+        )
+    }
+    _FakeValuesetChaveRepository.chaves = [
+        _chave_vs("FERRAGEM_DOBRADICA", "FERRAGEM"),
+        _chave_vs("MATERIAL_COSTAS", "MATERIAL"),
+    ]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(
+        codigo_opcao="DOBRADICA_STD", ref_le="FER0015",
+        descricao_no_orcamento="Dobradiça Blum", unidade="UND",
+        preco_liquido=Decimal("1.25"),
+    )
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    payload = _FakeRepository.created_payload
+    assert payload["tipo_linha"] == "FERRAGEM"
+    assert payload["chave_valueset"] == "FERRAGEM_DOBRADICA"
+    assert payload["ref_le"] == "FER0015"
+    assert payload["unidade"] == "UND"
+
+
+def test_adicionar_peca_simples_material_fica_peca(monkeypatch) -> None:
+    # A board/material key keeps the line as PECA.
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="COSTA", chave_valueset_material="MATERIAL_COSTAS")
+    }
+    _FakeValuesetChaveRepository.chaves = [_chave_vs("MATERIAL_COSTAS", "MATERIAL")]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(ref_le="LE01")
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert _FakeRepository.created_payload["tipo_linha"] == "PECA"
+
+
+def test_adicionar_peca_simples_sem_material_fica_peca(monkeypatch) -> None:
+    # A service piece (sem_material) keeps PECA even if a key were set.
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1, codigo="MONTAGEM", sem_material=True,
+            chave_valueset_material="FERRAGEM_DOBRADICA",
+        )
+    }
+    _FakeValuesetChaveRepository.chaves = [_chave_vs("FERRAGEM_DOBRADICA", "FERRAGEM")]
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert _FakeRepository.created_payload["tipo_linha"] == "PECA"
+
+
 def test_adicionar_peca_composta_cria_principal_e_componentes(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     _FakePecaRepository.pecas = {
