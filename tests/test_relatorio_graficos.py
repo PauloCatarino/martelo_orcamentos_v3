@@ -9,9 +9,14 @@ from app.domain.consumos import (
     ConsumoMaquina,
     ConsumoOrla,
     ConsumoPlaca,
+    DistribuicaoCategoria,
+    DistribuicaoCustos,
 )
 from app.domain.relatorio_graficos import (
+    FatiaPizza,
     GraficoBarras,
+    GraficoPizza,
+    dados_distribuicao,
     dados_ferragens,
     dados_maquinas,
     dados_orlas,
@@ -155,3 +160,52 @@ def test_dados_maquinas_todas_zero_devolve_vazio() -> None:
 
     assert grafico.etiquetas == []
     assert grafico.series == []
+
+
+# --- Distribuição (pizza: filtra <= 0, mantém ordem, leva total_venda) --------
+
+
+def test_dados_distribuicao_filtra_nao_positivos_e_mantem_ordem() -> None:
+    distribuicao = DistribuicaoCustos(
+        categorias=[
+            DistribuicaoCategoria("Placas", Decimal("40"), Decimal("40")),
+            DistribuicaoCategoria("Orlas", Decimal("0"), Decimal("0")),       # filtrada
+            DistribuicaoCategoria("Ferragens", Decimal("10"), Decimal("10")),
+            DistribuicaoCategoria("Margens", Decimal("-5"), Decimal("-5")),   # filtrada
+            DistribuicaoCategoria("Acabamentos", Decimal("25"), Decimal("25")),
+        ],
+        custo_produzido=Decimal("75"),
+        margens_euros=Decimal("-5"),
+        total_venda=Decimal("100"),
+    )
+
+    grafico = dados_distribuicao(distribuicao)
+
+    assert isinstance(grafico, GraficoPizza)
+    assert grafico.titulo == "Distribuição de custos"
+    # Mantém a ordem e ignora as categorias com euros <= 0.
+    assert [f.nome for f in grafico.fatias] == ["Placas", "Ferragens", "Acabamentos"]
+    assert all(isinstance(f, FatiaPizza) for f in grafico.fatias)
+    assert [f.euros for f in grafico.fatias] == [
+        Decimal("40"), Decimal("10"), Decimal("25"),
+    ]
+    assert [f.pct for f in grafico.fatias] == [
+        Decimal("40"), Decimal("10"), Decimal("25"),
+    ]
+    # O total de venda é levado tal e qual para o gráfico.
+    assert grafico.total_venda == Decimal("100")
+
+
+def test_dados_distribuicao_sem_categorias_positivas_devolve_pizza_vazia() -> None:
+    distribuicao = DistribuicaoCustos(
+        categorias=[
+            DistribuicaoCategoria("Margens", Decimal("0"), Decimal("0")),
+            DistribuicaoCategoria("Placas", Decimal("-3"), Decimal("-3")),
+        ],
+        total_venda=Decimal("0"),
+    )
+
+    grafico = dados_distribuicao(distribuicao)
+
+    assert grafico.fatias == []
+    assert grafico.total_venda == Decimal("0")

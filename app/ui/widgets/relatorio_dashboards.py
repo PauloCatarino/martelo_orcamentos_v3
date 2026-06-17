@@ -1,9 +1,10 @@
-"""Dashboards (gráficos de barras matplotlib embebidos) dos relatórios (fase 8W.3a).
+"""Dashboards (gráficos matplotlib embebidos) dos relatórios (fase 8W.3a/8W.3b).
 
-Quatro gráficos de barras (placas / orlas / ferragens / máquinas) empilhados numa
-área de scroll vertical. O matplotlib é opcional: quando não está instalado o
-widget mostra um aviso em vez dos gráficos, para o resto da página de relatórios
-continuar a funcionar. A modelação (pura) dos dados está em
+Quatro gráficos de barras (placas / orlas / ferragens / máquinas) seguidos de um
+gráfico de pizza da distribuição de custos, empilhados numa área de scroll
+vertical. O matplotlib é opcional: quando não está instalado o widget mostra um
+aviso em vez dos gráficos, para o resto da página de relatórios continuar a
+funcionar. A modelação (pura) dos dados está em
 :mod:`app.domain.relatorio_graficos`.
 """
 
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from app.domain import relatorio_graficos
 from app.ui import tema
+from app.utils.formatters import format_currency
 
 try:  # matplotlib é opcional (ver docstring do módulo).
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -24,6 +26,16 @@ except Exception:  # noqa: BLE001 — qualquer falha de import desativa os gráf
 _COR_BARRA_1 = tema.CASTANHO_MEDIO
 _COR_BARRA_2 = tema.CASTANHO_ESCURO
 
+# Paleta da pizza: tons de app.ui.tema, uma cor por fatia (cicla se preciso).
+_CORES_PIZZA = (
+    tema.CASTANHO_ESCURO,
+    tema.CASTANHO_MEDIO,
+    tema.PLACA_INTEIRA_FUNDO,
+    tema.BEGE_AREIA,
+    tema.CINZA_CASTANHO,
+    tema.BEGE_CLARO,
+)
+
 _MENSAGEM_SEM_MATPLOTLIB = "Instale matplotlib para ver os gráficos."
 
 # Áreas de gráfico (chave interna -> título da secção), pela ordem de desenho.
@@ -32,11 +44,12 @@ _SECCOES = (
     ("orlas", "Orlas"),
     ("ferragens", "Ferragens"),
     ("maquinas", "Máquinas / MO"),
+    ("distribuicao", "Distribuição de Custos"),
 )
 
 
 class DashboardsWidget(QWidget):
-    """Pilha vertical de quatro gráficos de barras do resumo de consumos."""
+    """Pilha vertical de quatro gráficos de barras + pizza de distribuição."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -81,7 +94,7 @@ class DashboardsWidget(QWidget):
     # ----- API pública -----
 
     def atualizar(self, resumo) -> None:
-        """Redesenha os quatro gráficos a partir de um ResumoConsumos."""
+        """Redesenha os gráficos (4 barras + pizza) a partir de um ResumoConsumos."""
         if FigureCanvas is None:
             return
         self._desenhar(
@@ -99,6 +112,10 @@ class DashboardsWidget(QWidget):
         self._desenhar(
             self._canvases["maquinas"],
             relatorio_graficos.dados_maquinas(resumo.maquinas),
+        )
+        self._desenhar_pizza(
+            self._canvases["distribuicao"],
+            relatorio_graficos.dados_distribuicao(resumo.distribuicao),
         )
 
     # ----- Desenho -----
@@ -152,6 +169,51 @@ class DashboardsWidget(QWidget):
         eixo.set_xticks(posicoes)
         eixo.set_xticklabels(grafico.etiquetas, rotation=30, ha="right")
         eixo.set_ylabel(grafico.unidade)
+
+        figura.tight_layout()
+        canvas.draw_idle()
+
+    def _desenhar_pizza(self, canvas, grafico) -> None:
+        """Desenha um GraficoPizza (distribuição de custos) num canvas.
+
+        Uma fatia por categoria, com percentagem dentro da fatia e legenda
+        "<nome> — <valor>". Sem fatias -> texto centrado "Sem dados".
+        """
+        figura = canvas.figure
+        figura.clear()
+        eixo = figura.add_subplot(111)
+
+        if not grafico.fatias:
+            eixo.set_title(grafico.titulo, color=tema.CASTANHO_ESCURO)
+            eixo.text(
+                0.5, 0.5, "Sem dados",
+                ha="center", va="center", transform=eixo.transAxes,
+                color=tema.CASTANHO_MEDIO,
+            )
+            eixo.set_xticks([])
+            eixo.set_yticks([])
+            figura.tight_layout()
+            canvas.draw_idle()
+            return
+
+        valores = [float(f.euros) for f in grafico.fatias]
+        cores = [
+            _CORES_PIZZA[i % len(_CORES_PIZZA)] for i in range(len(grafico.fatias))
+        ]
+        legendas = [
+            f"{f.nome} — {format_currency(f.euros)}" for f in grafico.fatias
+        ]
+
+        fatias, _textos, _autotextos = eixo.pie(
+            valores, autopct="%1.1f%%", colors=cores
+        )
+        eixo.set_title(
+            f"Distribuição de custos — Total de venda: "
+            f"{format_currency(grafico.total_venda)}",
+            color=tema.CASTANHO_ESCURO,
+        )
+        eixo.legend(fatias, legendas, loc="center left", bbox_to_anchor=(1.0, 0.5))
+        eixo.axis("equal")
 
         figura.tight_layout()
         canvas.draw_idle()

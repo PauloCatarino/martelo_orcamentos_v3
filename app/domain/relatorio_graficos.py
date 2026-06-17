@@ -35,6 +35,24 @@ class GraficoBarras:
     unidade: str
 
 
+@dataclass(frozen=True)
+class FatiaPizza:
+    """Uma fatia (categoria) do gráfico de pizza da distribuição de custos."""
+
+    nome: str
+    euros: Decimal
+    pct: Decimal
+
+
+@dataclass(frozen=True)
+class GraficoPizza:
+    """Modelo de um gráfico de pizza: título, fatias e total de venda."""
+
+    titulo: str
+    fatias: list
+    total_venda: Decimal
+
+
 def _truncar(texto: str | None) -> str:
     """Corta uma descrição para um comprimento de etiqueta legível."""
     limpo = (texto or "").strip()
@@ -114,4 +132,22 @@ def dados_maquinas(maquinas) -> GraficoBarras:
         etiquetas=etiquetas,
         series=series,
         unidade="€",
+    )
+
+
+def dados_distribuicao(distribuicao) -> GraficoPizza:
+    """Distribuição de custos: uma fatia por categoria com euros > 0.
+
+    Ignora categorias a 0 ou negativas (ex.: margem negativa não desenha fatia),
+    mantém a ordem das categorias e leva o total de venda para o título.
+    """
+    fatias = [
+        FatiaPizza(c.nome, c.euros, c.pct)
+        for c in distribuicao.categorias
+        if c.euros > _ZERO
+    ]
+    return GraficoPizza(
+        titulo="Distribuição de custos",
+        fatias=fatias,
+        total_venda=distribuicao.total_venda,
     )

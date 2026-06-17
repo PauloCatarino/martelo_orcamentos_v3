@@ -140,6 +140,10 @@ def test_dashboards_tab_e_widget() -> None:
     # O widget expõe o método público de atualização.
     assert hasattr(DashboardsWidget, "atualizar")
 
+    # 8W.3b: a pizza da distribuição de custos é desenhada no atualizar().
+    atualizar = inspect.getsource(DashboardsWidget.atualizar)
+    assert "dados_distribuicao" in atualizar
+
 
 def test_detail_page_wires_relatorios_tab() -> None:
     from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
