@@ -12,7 +12,6 @@ No exports (8W.4) nor pie chart (8W.3b) here yet.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -33,7 +33,14 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.relatorio_totais import (
+    IVA_PADRAO_PCT,
+    TotaisRelatorio,
+    calcular_totais_relatorio,
+)
+from app.services.orcamento_export_service import OrcamentoExportService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.orcamento_pdf_export import REPORTLAB_DISPONIVEL
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
@@ -46,8 +53,9 @@ from app.utils.formatters import (
     format_version,
 )
 
-# Default VAT rate (configurable constant; a per-budget setting can come later).
-IVA_PADRAO_PCT = Decimal("23")
+# IVA_PADRAO_PCT, TotaisRelatorio and calcular_totais_relatorio moved to
+# app.domain.relatorio_totais (phase 8W.4.1) and re-imported above so they stay
+# importable from this page (existing tests / callers keep working).
 
 # Prominent note: the consumptions are the WHOLE-budget totals (item quantities
 # already included) — for purchasing/warehouse.
@@ -64,34 +72,6 @@ _NOTA_CONSUMOS = (
     "'Excluir MP/Orla/Ferragem/Acabamento/Produção' ativo. As exclusões só "
     "afetam o custo/total do orçamento."
 )
-
-
-@dataclass(frozen=True)
-class TotaisRelatorio:
-    """Footer totals of the budget report items table."""
-
-    total_qt: Decimal
-    subtotal: Decimal
-    iva_pct: Decimal
-    iva: Decimal
-    total_geral: Decimal
-
-
-def calcular_totais_relatorio(items, iva_pct: Decimal = IVA_PADRAO_PCT) -> TotaisRelatorio:
-    """Sum the items' quantity and price, then apply VAT (pure/testable)."""
-    total_qt = Decimal("0")
-    subtotal = Decimal("0")
-    for item in items:
-        total_qt += item.quantidade or Decimal("0")
-        subtotal += item.preco_total or Decimal("0")
-    iva = subtotal * iva_pct / Decimal("100")
-    return TotaisRelatorio(
-        total_qt=total_qt,
-        subtotal=subtotal,
-        iva_pct=iva_pct,
-        iva=iva,
-        total_geral=subtotal + iva,
-    )
 
 
 class OrcamentoRelatoriosPage(QWidget):
@@ -301,8 +281,16 @@ class OrcamentoRelatoriosPage(QWidget):
         # Update banner: right below the customer data, before the items table.
         self.banner_relatorio = self._criar_banner()
 
+        # Top bar with the "Exportar PDF" action (phase 8W.4.1).
+        self.exportar_pdf_button = QPushButton("Exportar PDF")
+        self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
+        barra = QHBoxLayout()
+        barra.addStretch()
+        barra.addWidget(self.exportar_pdf_button)
+
         tab = QWidget()
         layout = QVBoxLayout()
+        layout.addLayout(barra)
         layout.addLayout(cabecalho)
         layout.addWidget(self.banner_relatorio)
         layout.addWidget(self._titulo_seccao("Items do Orçamento"))
@@ -516,6 +504,34 @@ class OrcamentoRelatoriosPage(QWidget):
         self.banner_relatorio.setText(mensagem)
         self.banner_consumos.setText(mensagem)
         self.status_label.setText("")
+
+    def _exportar_pdf(self) -> None:
+        """Export the budget PDF to the version folder (phase 8W.4.1)."""
+        if not REPORTLAB_DISPONIVEL:
+            QMessageBox.warning(
+                self,
+                "Exportar PDF",
+                "A biblioteca 'reportlab' não está instalada.\n"
+                "Instale-a (pip install reportlab) para exportar o PDF.",
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_pdf_orcamento(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+            QMessageBox.critical(
+                self,
+                "Exportar PDF",
+                f"Não foi possível exportar o PDF:\n{erro}",
+            )
+            return
+
+        QMessageBox.information(
+            self, "Exportar PDF", f"PDF criado em:\n{caminho}"
+        )
 
     def _preencher_cliente(self, cliente) -> None:
         nome = self.orcamento.cliente_nome if self.orcamento is not None else ""
