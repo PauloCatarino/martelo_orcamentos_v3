@@ -41,6 +41,7 @@ class ClienteResumo:
 
     id: int
     nome: str
+    nome_simplex: str | None
     morada: str | None
     email: str | None
     telefone: str | None
@@ -261,6 +262,7 @@ class OrcamentoRepository:
         return ClienteResumo(
             id=cliente.id,
             nome=cliente.nome,
+            nome_simplex=cliente.nome_simplex,
             morada=cliente.morada,
             email=cliente.email,
             telefone=cliente.telefone or cliente.telemovel,

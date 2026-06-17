@@ -56,8 +56,24 @@ PASTA_IMAGENS_MODULOS_DEFAULT = (
     r"\Base_Dados_Orcamento\Imagens_Modulos"
 )
 
+# Caminhos por defeito da exportação de orçamentos (fase 8W.4.0). A seed só
+# preenche valores vazios (não sobrepõe os já definidos pelo utilizador).
+PASTA_BASE_ORCAMENTOS_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
+)
+PASTA_BASE_DADOS_ORCAMENTO_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
+    r"\Base_Dados_Orcamento"
+)
+
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
-    SystemSettingSeed("pasta_base_orcamentos", "Pasta base dos Orcamentos", "pasta", "Orcamentos"),
+    SystemSettingSeed(
+        "pasta_base_orcamentos",
+        "Pasta base dos Orcamentos",
+        "pasta",
+        "Orcamentos",
+        PASTA_BASE_ORCAMENTOS_DEFAULT,
+    ),
     SystemSettingSeed("pasta_materias_primas", "Pasta Materias Primas", "pasta", "Materias-Primas"),
     SystemSettingSeed(
         PASTA_IMAGENS_MODULOS_CHAVE,
@@ -71,6 +87,7 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "Pasta Base Dados Orcamento",
         "pasta",
         "Orcamentos",
+        PASTA_BASE_DADOS_ORCAMENTO_DEFAULT,
     ),
     SystemSettingSeed("pasta_base_producao", "Pasta base Producao", "pasta", "Producao"),
     SystemSettingSeed("pasta_base_imorder", "Pasta Base Imorder / imos iX", "pasta", "IMOS"),
