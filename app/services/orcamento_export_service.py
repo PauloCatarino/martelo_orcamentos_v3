@@ -18,9 +18,11 @@ from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import gerar_pdf_orcamento
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
+from app.services.resumo_custos_excel_export import gerar_excel_resumo_custos
 from app.services.system_setting_service import SystemSettingService
 
 _LOGO_MODELO = "LE_Logotipo.png"
+_MODELO_RESUMO_CUSTOS = ("MODELO_Resumo_Custos.xlsx", "MODELO_Resumo_Custos_V2.xlsx")
 
 
 class OrcamentoExportService:
@@ -121,6 +123,52 @@ class OrcamentoExportService:
             totais=totais,
             logo_path=logo,
         )
+
+        return output
+
+    def exportar_resumo_custos(self, orcamento_versao_id: int) -> Path:
+        """Recalcula a versao e exporta o Excel interno de Resumo de Custos."""
+        relatorio = RelatorioConsumosService(self.session)
+        relatorio.recalcular_versao(orcamento_versao_id)
+
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        if orcamento is None:
+            raise ValueError("Orçamento não encontrado para esta versão.")
+
+        resumo = relatorio.resumo_da_versao(orcamento_versao_id)
+
+        modelos = self.pasta_modelos()
+        if modelos is None:
+            raise ValueError(
+                "Defina a 'Pasta Base de Dados Orçamento' em Configurações → Caminhos."
+            )
+
+        modelo = next(
+            (
+                modelos / nome
+                for nome in _MODELO_RESUMO_CUSTOS
+                if (modelos / nome).exists()
+            ),
+            None,
+        )
+        if modelo is None:
+            raise ValueError(
+                "Modelo não encontrado: MODELO_Resumo_Custos.xlsx na pasta de modelos."
+            )
+
+        pasta = self.resolver_pasta_versao(orcamento_versao_id, criar=True)
+        if pasta is None:
+            raise ValueError(
+                "Defina a 'Pasta base dos Orcamentos' em Configurações → Caminhos."
+            )
+
+        output = pasta / (
+            f"Resumo_Custos_{orcamento.num_orcamento}_"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}.xlsx"
+        )
+        gerar_excel_resumo_custos(output, modelo, resumo=resumo)
 
         return output
 

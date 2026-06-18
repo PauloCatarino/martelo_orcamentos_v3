@@ -286,10 +286,13 @@ class OrcamentoRelatoriosPage(QWidget):
         self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
         self.exportar_excel_button = QPushButton("Exportar Excel")
         self.exportar_excel_button.clicked.connect(self._exportar_excel)
+        self.exportar_resumo_button = QPushButton("Exportar Resumo de Custos")
+        self.exportar_resumo_button.clicked.connect(self._exportar_resumo_custos)
         barra = QHBoxLayout()
         barra.addStretch()
         barra.addWidget(self.exportar_pdf_button)
         barra.addWidget(self.exportar_excel_button)
+        barra.addWidget(self.exportar_resumo_button)
 
         tab = QWidget()
         layout = QVBoxLayout()
@@ -553,6 +556,25 @@ class OrcamentoRelatoriosPage(QWidget):
 
         QMessageBox.information(
             self, "Exportar Excel", f"Excel criado em:\n{caminho}"
+        )
+
+    def _exportar_resumo_custos(self) -> None:
+        """Exporta o Resumo de Custos (modelo) para a pasta da versao."""
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_resumo_custos(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError) as erro:
+            QMessageBox.critical(
+                self,
+                "Resumo de Custos",
+                f"Não foi possível exportar o Resumo de Custos:\n{erro}",
+            )
+            return
+
+        QMessageBox.information(
+            self, "Resumo de Custos", f"Resumo de Custos criado em:\n{caminho}"
         )
 
     def _preencher_cliente(self, cliente) -> None:
