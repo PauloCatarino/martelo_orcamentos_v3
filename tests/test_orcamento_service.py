@@ -24,6 +24,7 @@ class _FakeRepository:
     enc_phc_payload: tuple[int, str | None] | None = None
     estado_payload: tuple[int, str] | None = None
     utilizador_payload: tuple[int, int | None] | None = None
+    cliente_payload: tuple[int, int] | None = None
     nova_versao_payload: tuple | None = None
 
     def __init__(self, _session: object) -> None:
@@ -80,6 +81,10 @@ class _FakeRepository:
         self, orcamento_versao_id: int, utilizador_id: int | None
     ) -> bool:
         self.__class__.utilizador_payload = (orcamento_versao_id, utilizador_id)
+        return True
+
+    def update_cliente(self, orcamento_id: int, cliente_id: int) -> bool:
+        self.__class__.cliente_payload = (orcamento_id, cliente_id)
         return True
 
 
@@ -184,6 +189,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.enc_phc_payload = None
     _FakeRepository.estado_payload = None
     _FakeRepository.utilizador_payload = None
+    _FakeRepository.cliente_payload = None
     _FakeRepository.nova_versao_payload = None
     _FakeMargensRepository.reset()
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -270,6 +276,28 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert _FakeRepository.enc_phc_payload == (10, "1028")
     assert _FakeRepository.estado_payload == (10, "Enviado")
     assert _FakeRepository.utilizador_payload == (10, 7)
+    assert _FakeRepository.cliente_payload is None
+    assert session.committed is True
+
+
+def test_editar_orcamento_troca_cliente(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    service.editar_orcamento(
+        1,
+        service_module.EditarOrcamentoData(
+            obra="X",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado="Enviado",
+            utilizador_id=7,
+            cliente_id=9,
+        ),
+        orcamento_versao_id=10,
+    )
+
+    assert _FakeRepository.cliente_payload == (1, 9)
     assert session.committed is True
 
 

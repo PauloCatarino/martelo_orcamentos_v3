@@ -25,6 +25,7 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
+from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
@@ -34,6 +35,7 @@ from app.services.orcamento_service import (
 from app.services.orcamento_export_service import OrcamentoExportService
 from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialog,
+    EditarOrcamentoContexto,
     EditarOrcamentoDialogData,
 )
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
@@ -544,6 +546,19 @@ class OrcamentosPage(QWidget):
             self.status_label.setText("Selecione um orcamento para editar.")
             return
 
+        try:
+            with SessionLocal() as session:
+                cliente_id_atual = OrcamentoService(session).get_cliente_id_by_versao(
+                    orcamento.orcamento_versao_id
+                )
+                cliente_atual = (
+                    ClienteRepository(session).obter(cliente_id_atual)
+                    if cliente_id_atual is not None
+                    else None
+                )
+        except SQLAlchemyError:
+            cliente_id_atual, cliente_atual = None, None
+
         dialog = EditarOrcamentoDialog(
             self,
             EditarOrcamentoDialogData(
@@ -556,6 +571,13 @@ class OrcamentosPage(QWidget):
                 info_1=orcamento.info_1,
                 info_2=orcamento.info_2,
                 utilizador_id=orcamento.utilizador_id,
+                cliente_id=cliente_id_atual,
+            ),
+            contexto=EditarOrcamentoContexto(
+                num_orcamento=orcamento.num_orcamento,
+                numero_versao=orcamento.numero_versao,
+                codigo_versao=orcamento.codigo_versao,
+                cliente=cliente_atual,
             ),
         )
 
@@ -583,6 +605,7 @@ class OrcamentosPage(QWidget):
                         info_1=form_data.info_1,
                         info_2=form_data.info_2,
                         utilizador_id=utilizador_id,
+                        cliente_id=form_data.cliente_id,
                     ),
                     updated_by_id=updated_by_id,
                     orcamento_versao_id=orcamento.orcamento_versao_id,

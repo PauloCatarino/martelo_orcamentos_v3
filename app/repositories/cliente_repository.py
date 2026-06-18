@@ -71,6 +71,11 @@ class ClienteRepository:
         )
         return [self._to_resumo(cliente) for cliente in rows]
 
+    def obter(self, cliente_id: int) -> ClienteListaResumo | None:
+        """Return one customer read model by id (or None)."""
+        cliente = self.session.get(Cliente, cliente_id)
+        return self._to_resumo(cliente) if cliente is not None else None
+
     def criar(
         self,
         *,

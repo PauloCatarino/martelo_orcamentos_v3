@@ -143,3 +143,26 @@ def test_editar_orcamento_aceita_obra_vazia(session) -> None:
 
     assert resultado is True
     assert session.get(Orcamento, orcamento_id).obra == ""
+
+
+def test_editar_orcamento_troca_o_cliente(session) -> None:
+    outro = Cliente(nome="Cliente Y", is_temporary=True)
+    session.add(outro)
+    session.flush()
+
+    orcamento_id, orcamento_versao_id = _criar_orcamento(session)
+
+    OrcamentoService(session).editar_orcamento(
+        orcamento_id,
+        EditarOrcamentoData(
+            obra="Obra",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado=ESTADO_INICIAL,
+            cliente_id=outro.id,
+        ),
+        orcamento_versao_id=orcamento_versao_id,
+    )
+
+    assert session.get(Orcamento, orcamento_id).cliente_id == outro.id

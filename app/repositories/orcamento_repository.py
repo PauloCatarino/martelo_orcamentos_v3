@@ -314,6 +314,21 @@ class OrcamentoRepository:
 
         return True
 
+    def update_cliente(self, orcamento_id: int, cliente_id: int) -> bool:
+        """Reassign a budget to another customer; False when it does not exist."""
+        orcamento = self.session.get(Orcamento, orcamento_id)
+        if orcamento is None:
+            return False
+
+        cliente = self.session.get(Cliente, cliente_id)
+        if cliente is None:
+            raise ValueError("Cliente n\u00e3o encontrado.")
+
+        orcamento.cliente_id = cliente.id
+        self.session.flush()
+
+        return True
+
     def get_cliente_id_by_versao(self, orcamento_versao_id: int) -> int | None:
         """Return the customer id of one budget version (or None)."""
         statement = (
