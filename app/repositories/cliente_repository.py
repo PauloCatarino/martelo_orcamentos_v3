@@ -49,6 +49,19 @@ class ClienteRepository:
         )
         return [self._to_resumo(cliente) for cliente in rows]
 
+    def list_phc(self) -> list[ClienteListaResumo]:
+        """List PHC (official) customers ordered by name."""
+        rows = (
+            self.session.execute(
+                select(Cliente)
+                .where(Cliente.is_temporary.is_(False))
+                .order_by(Cliente.nome.asc())
+            )
+            .scalars()
+            .all()
+        )
+        return [self._to_resumo(cliente) for cliente in rows]
+
     def criar(
         self,
         *,

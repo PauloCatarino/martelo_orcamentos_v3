@@ -34,7 +34,7 @@ from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
 
 class ClientesPage(QWidget):
-    """Customers page with temporary customers list."""
+    """Customers page with temporary and PHC customer lists."""
 
     TABLE_HEADERS = [
         "Nome",
@@ -66,6 +66,7 @@ class ClientesPage(QWidget):
 
         self._todos: list[ClienteListaResumo] = []
         self._linhas: list[ClienteListaResumo] = []
+        self._phc_todos: list[ClienteListaResumo] = []
         self._cliente_id: int | None = None
 
         title = QLabel("Clientes")
@@ -73,6 +74,7 @@ class ClientesPage(QWidget):
 
         tabs = QTabWidget()
         tabs.addTab(self._criar_tab_temporarios(), "Clientes Tempor\u00e1rios")
+        tabs.addTab(self._criar_tab_phc(), "Clientes PHC")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -82,6 +84,7 @@ class ClientesPage(QWidget):
         self.setLayout(layout)
 
         self.carregar()
+        self.carregar_phc()
 
     def _criar_tab_temporarios(self) -> QWidget:
         tab = QWidget()
@@ -157,20 +160,7 @@ class ClientesPage(QWidget):
         form_layout.setColumnStretch(3, 1)
         form_group.setLayout(form_layout)
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
-        self._aplicar_larguras_colunas()
+        self.table = self._nova_tabela_clientes()
         self.table.itemSelectionChanged.connect(self._on_selecao)
 
         self.footer_label = QLabel("")
@@ -192,34 +182,82 @@ class ClientesPage(QWidget):
 
         return tab
 
-    def carregar(self) -> None:
-        """Load temporary customers from the database."""
-        self.table.setRowCount(0)
-        self.status_label.clear()
+    def _criar_tab_phc(self) -> QWidget:
+        tab = QWidget()
 
-        try:
-            with SessionLocal() as session:
-                clientes = ClienteRepository(session).list_temporarios()
-        except SQLAlchemyError:
-            self.status_label.setText("Nao foi possivel carregar os clientes.")
-            return
+        info = QLabel(
+            "Clientes PHC (oficiais). S\u00e3o criados no PHC e aqui apenas "
+            "consultados (s\u00f3 leitura). A sincroniza\u00e7\u00e3o com o PHC "
+            "chega numa fase futura."
+        )
+        info.setObjectName("pageSubtitle")
+        info.setWordWrap(True)
 
-        self._todos = list(clientes)
-        self._render()
+        self.phc_campo_pesquisa = CampoPesquisa(
+            placeholder="Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026"
+        )
+        self.phc_campo_pesquisa.pesquisa_mudou.connect(self._render_phc)
+        self.phc_campo_pesquisa.limpar_clicado.connect(self._render_phc)
 
-        if not self._todos:
-            self.status_label.setText("Sem clientes temporarios para mostrar.")
+        self.phc_refresh_button = QPushButton("Atualizar")
+        self.phc_refresh_button.clicked.connect(self.carregar_phc)
 
-    def _render(self, *_args) -> None:
-        """Render the in-memory list using the current search."""
-        filtrados = filtrar_clientes(self._todos, texto=self.campo_pesquisa.texto())
-        self._preencher_tabela(filtrados)
-        self.footer_label.setText(f"{len(filtrados)} clientes")
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.phc_campo_pesquisa)
+        toolbar.addWidget(self.phc_refresh_button)
+        toolbar.addStretch()
 
-    def _preencher_tabela(self, clientes: list[ClienteListaResumo]) -> None:
-        """Fill the table with customer read models."""
-        self._linhas = list(clientes)
-        self.table.setRowCount(len(clientes))
+        self.phc_status_label = QLabel("")
+        self.phc_status_label.setObjectName("clientesStatus")
+
+        self.phc_table = self._nova_tabela_clientes()
+
+        self.phc_footer_label = QLabel("")
+        self.phc_footer_label.setObjectName("clientesFooter")
+        self.phc_footer_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
+        )
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(info)
+        layout.addLayout(toolbar)
+        layout.addWidget(self.phc_status_label)
+        layout.addWidget(self.phc_table, stretch=1)
+        layout.addWidget(self.phc_footer_label)
+        tab.setLayout(layout)
+
+        return tab
+
+    def _nova_tabela_clientes(self) -> QTableWidget:
+        table = QTableWidget(0, len(self.TABLE_HEADERS))
+        table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        self._aplicar_larguras_colunas(table)
+        return table
+
+    def _aplicar_larguras_colunas(self, table: QTableWidget) -> None:
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            largura = self.COLUMN_WIDTHS.get(header)
+            if largura is not None:
+                table.setColumnWidth(column_index, largura)
+
+    @staticmethod
+    def _povoar_tabela(
+        table: QTableWidget, clientes: list[ClienteListaResumo]
+    ) -> None:
+        table.setRowCount(len(clientes))
 
         for row_index, cliente in enumerate(clientes):
             values = [
@@ -244,13 +282,62 @@ class ClientesPage(QWidget):
                     item.setToolTip(value)
                 if column_index == 0:
                     item.setData(Qt.ItemDataRole.UserRole, cliente.id)
-                self.table.setItem(row_index, column_index, item)
+                table.setItem(row_index, column_index, item)
 
-    def _aplicar_larguras_colunas(self) -> None:
-        for column_index, header in enumerate(self.TABLE_HEADERS):
-            largura = self.COLUMN_WIDTHS.get(header)
-            if largura is not None:
-                self.table.setColumnWidth(column_index, largura)
+    def carregar(self) -> None:
+        """Load temporary customers from the database."""
+        self.table.setRowCount(0)
+        self.status_label.clear()
+
+        try:
+            with SessionLocal() as session:
+                clientes = ClienteRepository(session).list_temporarios()
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel carregar os clientes.")
+            return
+
+        self._todos = list(clientes)
+        self._render()
+
+        if not self._todos:
+            self.status_label.setText("Sem clientes temporarios para mostrar.")
+
+    def carregar_phc(self) -> None:
+        """Load PHC customers from the local database."""
+        self.phc_table.setRowCount(0)
+        self.phc_status_label.clear()
+
+        try:
+            with SessionLocal() as session:
+                clientes = ClienteRepository(session).list_phc()
+        except SQLAlchemyError:
+            self.phc_status_label.setText("Nao foi possivel carregar os clientes PHC.")
+            return
+
+        self._phc_todos = list(clientes)
+        self._render_phc()
+
+        if not self._phc_todos:
+            self.phc_status_label.setText("Sem clientes PHC para mostrar.")
+
+    def _render(self, *_args) -> None:
+        """Render the in-memory list using the current search."""
+        filtrados = filtrar_clientes(self._todos, texto=self.campo_pesquisa.texto())
+        self._preencher_tabela(filtrados)
+        self.footer_label.setText(f"{len(filtrados)} clientes")
+
+    def _render_phc(self, *_args) -> None:
+        """Render the PHC in-memory list using the current search."""
+        filtrados = filtrar_clientes(
+            self._phc_todos, texto=self.phc_campo_pesquisa.texto()
+        )
+        self._povoar_tabela(self.phc_table, filtrados)
+        self.phc_footer_label.setText(f"{len(filtrados)} clientes")
+
+    def _preencher_tabela(self, clientes: list[ClienteListaResumo]) -> None:
+        """Fill the table with customer read models."""
+        self._linhas = list(clientes)
+        self._povoar_tabela(self.table, self._linhas)
 
     def _on_selecao(self) -> None:
         row = self.table.currentRow()

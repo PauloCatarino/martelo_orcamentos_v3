@@ -11,3 +11,5 @@ def test_cliente_repository_imports() -> None:
 
     assert ClienteRepository is not None
     assert ClienteListaResumo is not None
+    assert hasattr(ClienteRepository, "list_temporarios")
+    assert hasattr(ClienteRepository, "list_phc")
