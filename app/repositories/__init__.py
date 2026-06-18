@@ -18,6 +18,7 @@ from app.repositories.orcamento_item_modulo_repository import (
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoCriado, OrcamentoRepository, OrcamentoResumo
 from app.repositories.system_setting_repository import SystemSettingRepository, SystemSettingResumo
+from app.repositories.user_repository import UserRepository, UserResumo
 
 __all__ = [
     "DefMaquinaRepository",
@@ -39,4 +40,6 @@ __all__ = [
     "OrcamentoResumo",
     "SystemSettingRepository",
     "SystemSettingResumo",
+    "UserRepository",
+    "UserResumo",
 ]

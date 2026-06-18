@@ -233,6 +233,16 @@ def test_criar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert _FakeRepository.created_payload["info_2"] == "B"
 
 
+def test_criar_orcamento_aceita_obra_vazia(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    result = service.criar_orcamento_simples(_criar_data(obra=""))
+
+    assert result.codigo_versao == "260002_01"
+    assert _FakeRepository.created_payload["obra"] == ""
+    assert session.committed is True
+
+
 def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     service, session = _make_service(monkeypatch)
 

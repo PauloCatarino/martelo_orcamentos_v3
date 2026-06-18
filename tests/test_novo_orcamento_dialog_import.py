@@ -22,8 +22,11 @@ def test_novo_orcamento_dialog_tem_combo_de_margens_iniciais() -> None:
     campos = inspect.signature(NovoOrcamentoDialogData).parameters
     assert "margens_escolha" in campos
     assert campos["margens_escolha"].default == "STANDARD"
+    assert "utilizador_id" in campos
+    assert campos["utilizador_id"].default is None
 
     source = inspect.getsource(NovoOrcamentoDialog.__init__)
+    assert "Utilizador" in source
     assert '"Standard"' in source
     assert '"Do cliente"' in source
     assert '"Do utilizador"' in source

@@ -281,7 +281,9 @@ class OrcamentosPage(QWidget):
 
         form_data = dialog.get_data()
         current_user = app_session.current_user
-        created_by_id = current_user.id if current_user is not None else None
+        created_by_id = form_data.utilizador_id
+        if created_by_id is None and current_user is not None:
+            created_by_id = current_user.id
 
         try:
             with SessionLocal() as session:

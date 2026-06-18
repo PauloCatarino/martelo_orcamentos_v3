@@ -103,7 +103,7 @@ class EditarOrcamentoDialog(QDialog):
         self.setLayout(layout)
 
     def get_data(self) -> EditarOrcamentoDialogData:
-        """Return normalized dialog data (empty text -> None, except obra)."""
+        """Return normalized dialog data."""
         return EditarOrcamentoDialogData(
             obra=self.obra_input.text().strip(),
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
@@ -116,13 +116,7 @@ class EditarOrcamentoDialog(QDialog):
         )
 
     def _validate_and_accept(self) -> None:
-        """Validate required fields before accepting."""
-        data = self.get_data()
-
-        if not data.obra:
-            self.error_label.setText("A obra é obrigatória.")
-            return
-
+        """Accept edits; all fields in this dialog are optional."""
         self.accept()
 
     def _empty_to_none(self, value: str) -> str | None:

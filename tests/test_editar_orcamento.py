@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from sqlalchemy import BigInteger, create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -123,18 +124,20 @@ def test_editar_orcamento_inexistente_devolve_false(session) -> None:
     assert resultado is False
 
 
-def test_editar_orcamento_obra_vazia_levanta_valueerror(session) -> None:
+def test_editar_orcamento_aceita_obra_vazia(session) -> None:
     orcamento_id, orcamento_versao_id = _criar_orcamento(session)
 
-    with pytest.raises(ValueError):
-        OrcamentoService(session).editar_orcamento(
-            orcamento_id,
-            EditarOrcamentoData(
-                obra="   ",
-                descricao=None,
-                localizacao=None,
-                ref_cliente=None,
-                estado=ESTADO_INICIAL,
-            ),
-            orcamento_versao_id=orcamento_versao_id,
-        )
+    resultado = OrcamentoService(session).editar_orcamento(
+        orcamento_id,
+        EditarOrcamentoData(
+            obra="   ",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado=ESTADO_INICIAL,
+        ),
+        orcamento_versao_id=orcamento_versao_id,
+    )
+
+    assert resultado is True
+    assert session.get(Orcamento, orcamento_id).obra == ""

@@ -24,6 +24,7 @@ from app.domain.margens_padrao_types import (
     AMBITO_STANDARD,
     AMBITO_UTILIZADOR,
 )
+from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 
 
@@ -42,6 +43,7 @@ class NovoOrcamentoDialogData:
     info_1: str | None = None
     info_2: str | None = None
     margens_escolha: str = AMBITO_STANDARD
+    utilizador_id: int | None = None
 
 
 class NovoOrcamentoDialog(QDialog):
@@ -75,6 +77,9 @@ class NovoOrcamentoDialog(QDialog):
         self.info_2_input = QTextEdit()
         self.info_2_input.setFixedHeight(60)
 
+        self.utilizador_combo = QComboBox()
+        self._carregar_utilizadores()
+
         self.margens_combo = QComboBox()
         self.margens_combo.setToolTip(self.MARGENS_TOOLTIP)
         self.margens_combo.addItem("Standard", AMBITO_STANDARD)
@@ -105,6 +110,7 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Enc. PHC", self.enc_phc_input)
         form_layout.addRow("Info 1", self.info_1_input)
         form_layout.addRow("Info 2", self.info_2_input)
+        form_layout.addRow("Utilizador", self.utilizador_combo)
         form_layout.addRow("Margens iniciais:", self.margens_combo)
 
         self.button_box = QDialogButtonBox(
@@ -135,7 +141,28 @@ class NovoOrcamentoDialog(QDialog):
             info_1=self._empty_to_none(self.info_1_input.toPlainText()),
             info_2=self._empty_to_none(self.info_2_input.toPlainText()),
             margens_escolha=self.margens_combo.currentData() or AMBITO_STANDARD,
+            utilizador_id=self.utilizador_combo.currentData(),
         )
+
+    def _carregar_utilizadores(self) -> None:
+        """Populate the active-users combo, preselecting the logged-in user."""
+        try:
+            with SessionLocal() as session:
+                utilizadores = UserRepository(session).list_active_users()
+        except SQLAlchemyError:
+            utilizadores = []
+
+        self.utilizador_combo.clear()
+        for utilizador in utilizadores:
+            self.utilizador_combo.addItem(utilizador.username, utilizador.id)
+
+        current_user = app_session.current_user
+        if current_user is None:
+            return
+
+        index = self.utilizador_combo.findData(current_user.id)
+        if index >= 0:
+            self.utilizador_combo.setCurrentIndex(index)
 
     def _carregar_disponibilidade_margens(self) -> None:
         """Enable the margin options that have an applicable record."""
@@ -195,10 +222,6 @@ class NovoOrcamentoDialog(QDialog):
 
         if not data.nome_cliente:
             self.error_label.setText("O nome do cliente e obrigatorio.")
-            return
-
-        if not data.obra:
-            self.error_label.setText("A obra e obrigatoria.")
             return
 
         self.accept()

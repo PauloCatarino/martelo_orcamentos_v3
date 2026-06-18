@@ -84,13 +84,10 @@ class OrcamentoService:
     def criar_orcamento_simples(self, data: CriarOrcamentoSimplesData) -> OrcamentoCriado:
         """Create a simple budget with version 01."""
         nome_cliente = data.nome_cliente.strip()
-        obra = data.obra.strip()
+        obra = (data.obra or "").strip()
 
         if not nome_cliente:
             raise ValueError("nome_cliente is required")
-
-        if not obra:
-            raise ValueError("obra is required")
 
         ano = data.ano or date.today().year
         num_orcamento = self.repository.get_next_num_orcamento(ano)
@@ -123,11 +120,8 @@ class OrcamentoService:
         *,
         orcamento_versao_id: int,
     ) -> bool:
-        """Edit a budget's general data (obra is required)."""
+        """Edit a budget's general data."""
         obra = (data.obra or "").strip()
-
-        if not obra:
-            raise ValueError("A obra é obrigatória.")
 
         if data.estado not in ESTADOS_ORCAMENTO:
             raise ValueError("Estado inv\u00e1lido.")
