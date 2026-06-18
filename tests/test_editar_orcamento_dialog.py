@@ -17,13 +17,24 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 _app = QApplication.instance() or QApplication([])
 
 
-def test_dialog_preenche_e_devolve_os_valores() -> None:
+def _carregar_utilizadores_fake(dialog: EditarOrcamentoDialog) -> None:
+    dialog.utilizador_combo.addItem("ana", 7)
+    dialog.utilizador_combo.addItem("bruno", 8)
+
+
+def test_dialog_preenche_e_devolve_os_valores(monkeypatch) -> None:
+    monkeypatch.setattr(
+        EditarOrcamentoDialog,
+        "_carregar_utilizadores",
+        _carregar_utilizadores_fake,
+    )
     dados = EditarOrcamentoDialogData(
         obra="Obra Inicial",
         descricao="Descricao Inicial",
         localizacao="Local Inicial",
         ref_cliente="REF-1",
         estado="Enviado",
+        utilizador_id=8,
     )
     dialog = EditarOrcamentoDialog(None, dados)
 
@@ -32,13 +43,19 @@ def test_dialog_preenche_e_devolve_os_valores() -> None:
     assert resultado == dados
 
 
-def test_dialog_texto_vazio_vira_none_excepto_obra() -> None:
+def test_dialog_texto_vazio_vira_none_excepto_obra(monkeypatch) -> None:
+    monkeypatch.setattr(
+        EditarOrcamentoDialog,
+        "_carregar_utilizadores",
+        _carregar_utilizadores_fake,
+    )
     dados = EditarOrcamentoDialogData(
         obra="Obra",
         descricao=None,
         localizacao=None,
         ref_cliente=None,
         estado=ESTADO_INICIAL,
+        utilizador_id=7,
     )
     dialog = EditarOrcamentoDialog(None, dados)
 
@@ -49,9 +66,15 @@ def test_dialog_texto_vazio_vira_none_excepto_obra() -> None:
     assert resultado.localizacao is None
     assert resultado.ref_cliente is None
     assert resultado.estado == ESTADO_INICIAL
+    assert resultado.utilizador_id == 7
 
 
-def test_dialog_mostra_estado_antigo_fora_da_lista() -> None:
+def test_dialog_mostra_estado_antigo_fora_da_lista(monkeypatch) -> None:
+    monkeypatch.setattr(
+        EditarOrcamentoDialog,
+        "_carregar_utilizadores",
+        _carregar_utilizadores_fake,
+    )
     dados = EditarOrcamentoDialogData(
         obra="Obra",
         descricao=None,

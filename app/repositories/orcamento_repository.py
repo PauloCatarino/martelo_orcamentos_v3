@@ -38,6 +38,7 @@ class OrcamentoResumo:
     info_1: str | None = None
     info_2: str | None = None
     utilizador: str | None = None
+    utilizador_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -304,6 +305,19 @@ class OrcamentoRepository:
 
         return True
 
+    def update_utilizador(
+        self, orcamento_versao_id: int, utilizador_id: int | None
+    ) -> bool:
+        """Update the creator user shown for one budget version."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.created_by_id = utilizador_id
+        self.session.flush()
+
+        return True
+
     def get_cliente_id_by_versao(self, orcamento_versao_id: int) -> int | None:
         """Return the customer id of one budget version (or None)."""
         statement = (
@@ -406,6 +420,7 @@ class OrcamentoRepository:
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
+                OrcamentoVersao.created_by_id.label("utilizador_id"),
                 User.username.label("utilizador"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
@@ -434,4 +449,5 @@ class OrcamentoRepository:
             info_1=row["info_1"],
             info_2=row["info_2"],
             utilizador=row["utilizador"],
+            utilizador_id=row["utilizador_id"],
         )

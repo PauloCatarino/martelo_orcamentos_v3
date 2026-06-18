@@ -14,8 +14,11 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.session import SessionLocal
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
+from app.repositories.user_repository import UserRepository
 
 
 @dataclass(frozen=True)
@@ -30,6 +33,7 @@ class EditarOrcamentoDialogData:
     enc_phc: str | None = None
     info_1: str | None = None
     info_2: str | None = None
+    utilizador_id: int | None = None
 
 
 class EditarOrcamentoDialog(QDialog):
@@ -47,6 +51,8 @@ class EditarOrcamentoDialog(QDialog):
         self.estado_combo = QComboBox()
         self.estado_combo.setEditable(False)
         self.estado_combo.addItems(list(ESTADOS_ORCAMENTO))
+        self.utilizador_combo = QComboBox()
+        self._carregar_utilizadores()
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
@@ -65,6 +71,10 @@ class EditarOrcamentoDialog(QDialog):
                 self.estado_combo.addItem(estado_atual)
             if estado_atual:
                 self.estado_combo.setCurrentText(estado_atual)
+            if dados.utilizador_id is not None:
+                index = self.utilizador_combo.findData(dados.utilizador_id)
+                if index >= 0:
+                    self.utilizador_combo.setCurrentIndex(index)
             self.obra_input.setText(dados.obra or "")
             self.descricao_input.setPlainText(dados.descricao or "")
             self.localizacao_input.setText(dados.localizacao or "")
@@ -80,6 +90,7 @@ class EditarOrcamentoDialog(QDialog):
 
         form_layout = QFormLayout()
         form_layout.addRow("Estado", self.estado_combo)
+        form_layout.addRow("Utilizador", self.utilizador_combo)
         form_layout.addRow("Obra", self.obra_input)
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
@@ -113,7 +124,20 @@ class EditarOrcamentoDialog(QDialog):
             enc_phc=self._empty_to_none(self.enc_phc_input.text()),
             info_1=self._empty_to_none(self.info_1_input.toPlainText()),
             info_2=self._empty_to_none(self.info_2_input.toPlainText()),
+            utilizador_id=self.utilizador_combo.currentData(),
         )
+
+    def _carregar_utilizadores(self) -> None:
+        """Populate the active-users combo."""
+        try:
+            with SessionLocal() as session:
+                utilizadores = UserRepository(session).list_active_users()
+        except SQLAlchemyError:
+            utilizadores = []
+
+        self.utilizador_combo.clear()
+        for utilizador in utilizadores:
+            self.utilizador_combo.addItem(utilizador.username, utilizador.id)
 
     def _validate_and_accept(self) -> None:
         """Accept edits; all fields in this dialog are optional."""

@@ -57,6 +57,7 @@ class EditarOrcamentoData:
     enc_phc: str | None = None
     info_1: str | None = None
     info_2: str | None = None
+    utilizador_id: int | None = None
 
 
 class OrcamentoService:
@@ -144,9 +145,13 @@ class OrcamentoService:
             orcamento_versao_id,
             data.estado,
         )
+        utilizador_result = self.repository.update_utilizador(
+            orcamento_versao_id,
+            data.utilizador_id,
+        )
         self.session.commit()
 
-        return result and enc_phc_result and estado_result
+        return result and enc_phc_result and estado_result and utilizador_result
 
     def duplicar_versao(
         self, orcamento_versao_id: int, created_by_id: int | None = None

@@ -557,6 +557,7 @@ class OrcamentosPage(QWidget):
                 enc_phc=orcamento.enc_phc,
                 info_1=orcamento.info_1,
                 info_2=orcamento.info_2,
+                utilizador_id=orcamento.utilizador_id,
             ),
         )
 
@@ -566,6 +567,9 @@ class OrcamentosPage(QWidget):
         form_data = dialog.get_data()
         current_user = app_session.current_user
         updated_by_id = current_user.id if current_user is not None else None
+        utilizador_id = form_data.utilizador_id
+        if utilizador_id is None:
+            utilizador_id = orcamento.utilizador_id
 
         try:
             with SessionLocal() as session:
@@ -580,6 +584,7 @@ class OrcamentosPage(QWidget):
                         enc_phc=form_data.enc_phc,
                         info_1=form_data.info_1,
                         info_2=form_data.info_2,
+                        utilizador_id=utilizador_id,
                     ),
                     updated_by_id=updated_by_id,
                     orcamento_versao_id=orcamento.orcamento_versao_id,

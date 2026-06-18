@@ -23,6 +23,7 @@ class _FakeRepository:
     update_payload: dict[str, object] | None = None
     enc_phc_payload: tuple[int, str | None] | None = None
     estado_payload: tuple[int, str] | None = None
+    utilizador_payload: tuple[int, int | None] | None = None
     nova_versao_payload: tuple | None = None
 
     def __init__(self, _session: object) -> None:
@@ -73,6 +74,12 @@ class _FakeRepository:
 
     def update_estado(self, orcamento_versao_id: int, estado: str) -> bool:
         self.__class__.estado_payload = (orcamento_versao_id, estado)
+        return True
+
+    def update_utilizador(
+        self, orcamento_versao_id: int, utilizador_id: int | None
+    ) -> bool:
+        self.__class__.utilizador_payload = (orcamento_versao_id, utilizador_id)
         return True
 
 
@@ -181,6 +188,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.update_payload = None
     _FakeRepository.enc_phc_payload = None
     _FakeRepository.estado_payload = None
+    _FakeRepository.utilizador_payload = None
     _FakeRepository.nova_versao_payload = None
     _FakeMargensRepository.reset()
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -257,6 +265,7 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
             enc_phc="1028",
             info_1="A",
             info_2="B",
+            utilizador_id=7,
         ),
         orcamento_versao_id=10,
     )
@@ -266,6 +275,7 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert _FakeRepository.update_payload["info_2"] == "B"
     assert _FakeRepository.enc_phc_payload == (10, "1028")
     assert _FakeRepository.estado_payload == (10, "Enviado")
+    assert _FakeRepository.utilizador_payload == (10, 7)
     assert session.committed is True
 
 
@@ -290,6 +300,7 @@ def test_editar_orcamento_estado_invalido_levanta_valueerror(monkeypatch) -> Non
         raise AssertionError("Expected ValueError")
 
     assert _FakeRepository.estado_payload is None
+    assert _FakeRepository.utilizador_payload is None
     assert session.committed is False
 
 
