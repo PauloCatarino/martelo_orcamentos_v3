@@ -19,6 +19,8 @@ class _FakeRepository:
     next_number = "260002"
     next_ano: int | None = None
     created_payload: dict[str, object] | None = None
+    update_payload: dict[str, object] | None = None
+    enc_phc_payload: tuple[int, str | None] | None = None
     nova_versao_payload: tuple | None = None
 
     def __init__(self, _session: object) -> None:
@@ -58,6 +60,14 @@ class _FakeRepository:
             numero_versao=2,
             codigo_versao="260001_02",
         )
+
+    def update_orcamento(self, orcamento_id, **kwargs) -> bool:
+        self.__class__.update_payload = kwargs
+        return True
+
+    def update_enc_phc(self, orcamento_versao_id: int, enc_phc: str | None) -> bool:
+        self.__class__.enc_phc_payload = (orcamento_versao_id, enc_phc)
+        return True
 
 
 class _FakeMargensRepository:
@@ -162,6 +172,8 @@ def test_orcamento_service_get_orcamento_by_versao_id(monkeypatch) -> None:
 def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSession]:
     _FakeRepository.next_ano = None
     _FakeRepository.created_payload = None
+    _FakeRepository.update_payload = None
+    _FakeRepository.enc_phc_payload = None
     _FakeRepository.nova_versao_payload = None
     _FakeMargensRepository.reset()
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -199,6 +211,42 @@ def test_orcamento_service_cria_orcamento_com_proximo_numero(monkeypatch) -> Non
     assert _FakeRepository.created_payload["num_orcamento"] == "260002"
     assert _FakeRepository.created_payload["created_by_id"] == 7
     assert result.codigo_versao == "260002_01"
+    assert session.committed is True
+
+
+def test_criar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
+    service, _session = _make_service(monkeypatch)
+
+    service.criar_orcamento_simples(
+        _criar_data(enc_phc="1028", info_1="A", info_2="B")
+    )
+
+    assert _FakeRepository.created_payload["enc_phc"] == "1028"
+    assert _FakeRepository.created_payload["info_1"] == "A"
+    assert _FakeRepository.created_payload["info_2"] == "B"
+
+
+def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    result = service.editar_orcamento(
+        1,
+        service_module.EditarOrcamentoData(
+            obra="X",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            enc_phc="1028",
+            info_1="A",
+            info_2="B",
+        ),
+        orcamento_versao_id=10,
+    )
+
+    assert result is True
+    assert _FakeRepository.update_payload["info_1"] == "A"
+    assert _FakeRepository.update_payload["info_2"] == "B"
+    assert _FakeRepository.enc_phc_payload == (10, "1028")
     assert session.committed is True
 
 

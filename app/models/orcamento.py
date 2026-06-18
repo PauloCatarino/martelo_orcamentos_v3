@@ -37,6 +37,8 @@ class Orcamento(Base):
     obra: Mapped[str | None] = mapped_column(String(255), nullable=True)
     localizacao: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ref_cliente: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    info_1: Mapped[str | None] = mapped_column(Text, nullable=True)
+    info_2: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.id"),

@@ -38,6 +38,9 @@ class NovoOrcamentoDialogData:
     descricao: str | None
     localizacao: str | None
     ref_cliente: str | None
+    enc_phc: str | None = None
+    info_1: str | None = None
+    info_2: str | None = None
     margens_escolha: str = AMBITO_STANDARD
 
 
@@ -66,6 +69,11 @@ class NovoOrcamentoDialog(QDialog):
         self.descricao_input.setFixedHeight(90)
         self.localizacao_input = QLineEdit()
         self.ref_cliente_input = QLineEdit()
+        self.enc_phc_input = QLineEdit()
+        self.info_1_input = QTextEdit()
+        self.info_1_input.setFixedHeight(60)
+        self.info_2_input = QTextEdit()
+        self.info_2_input.setFixedHeight(60)
 
         self.margens_combo = QComboBox()
         self.margens_combo.setToolTip(self.MARGENS_TOOLTIP)
@@ -94,6 +102,9 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
         form_layout.addRow("Ref. cliente", self.ref_cliente_input)
+        form_layout.addRow("Enc. PHC", self.enc_phc_input)
+        form_layout.addRow("Info 1", self.info_1_input)
+        form_layout.addRow("Info 2", self.info_2_input)
         form_layout.addRow("Margens iniciais:", self.margens_combo)
 
         self.button_box = QDialogButtonBox(
@@ -120,6 +131,9 @@ class NovoOrcamentoDialog(QDialog):
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             localizacao=self._empty_to_none(self.localizacao_input.text()),
             ref_cliente=self._empty_to_none(self.ref_cliente_input.text()),
+            enc_phc=self._empty_to_none(self.enc_phc_input.text()),
+            info_1=self._empty_to_none(self.info_1_input.toPlainText()),
+            info_2=self._empty_to_none(self.info_2_input.toPlainText()),
             margens_escolha=self.margens_combo.currentData() or AMBITO_STANDARD,
         )
 

@@ -30,8 +30,8 @@ def session():
         yield session
 
 
-def _criar_orcamento(session) -> int:
-    """Create a simple budget and return its orcamento_id."""
+def _criar_orcamento(session) -> tuple[int, int]:
+    """Create a simple budget and return its orcamento_id and version id."""
     service = OrcamentoService(session)
     service.criar_orcamento_simples(
         CriarOrcamentoSimplesData(
@@ -46,11 +46,12 @@ def _criar_orcamento(session) -> int:
             ano=2026,
         )
     )
-    return service.list_orcamentos()[0].orcamento_id
+    orcamento = service.list_orcamentos()[0]
+    return orcamento.orcamento_id, orcamento.orcamento_versao_id
 
 
 def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
-    orcamento_id = _criar_orcamento(session)
+    orcamento_id, orcamento_versao_id = _criar_orcamento(session)
     service = OrcamentoService(session)
 
     resultado = service.editar_orcamento(
@@ -61,6 +62,7 @@ def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
             localizacao="Local Novo",
             ref_cliente="REF-2",
         ),
+        orcamento_versao_id=orcamento_versao_id,
     )
 
     assert resultado is True
@@ -72,7 +74,7 @@ def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
 
 
 def test_editar_orcamento_guarda_updated_by_id(session) -> None:
-    orcamento_id = _criar_orcamento(session)
+    orcamento_id, orcamento_versao_id = _criar_orcamento(session)
 
     OrcamentoService(session).editar_orcamento(
         orcamento_id,
@@ -80,6 +82,7 @@ def test_editar_orcamento_guarda_updated_by_id(session) -> None:
             obra="Obra Nova", descricao=None, localizacao=None, ref_cliente=None
         ),
         updated_by_id=None,
+        orcamento_versao_id=orcamento_versao_id,
     )
 
     atualizado = session.get(Orcamento, orcamento_id)
@@ -96,13 +99,14 @@ def test_editar_orcamento_inexistente_devolve_false(session) -> None:
         EditarOrcamentoData(
             obra="Obra", descricao=None, localizacao=None, ref_cliente=None
         ),
+        orcamento_versao_id=9999,
     )
 
     assert resultado is False
 
 
 def test_editar_orcamento_obra_vazia_levanta_valueerror(session) -> None:
-    orcamento_id = _criar_orcamento(session)
+    orcamento_id, orcamento_versao_id = _criar_orcamento(session)
 
     with pytest.raises(ValueError):
         OrcamentoService(session).editar_orcamento(
@@ -110,4 +114,5 @@ def test_editar_orcamento_obra_vazia_levanta_valueerror(session) -> None:
             EditarOrcamentoData(
                 obra="   ", descricao=None, localizacao=None, ref_cliente=None
             ),
+            orcamento_versao_id=orcamento_versao_id,
         )

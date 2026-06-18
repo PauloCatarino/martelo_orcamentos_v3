@@ -36,6 +36,9 @@ class CriarOrcamentoSimplesData:
     localizacao: str | None
     ref_cliente: str | None
     created_by_id: int | None = None
+    enc_phc: str | None = None
+    info_1: str | None = None
+    info_2: str | None = None
     ano: int | None = None
     # Initial-margins choice: 'STANDARD' / 'CLIENTE' / 'UTILIZADOR' (phase 8T.1).
     margens_escolha: str = AMBITO_STANDARD
@@ -49,6 +52,9 @@ class EditarOrcamentoData:
     obra: str
     localizacao: str | None
     ref_cliente: str | None
+    enc_phc: str | None = None
+    info_1: str | None = None
+    info_2: str | None = None
 
 
 class OrcamentoService:
@@ -98,6 +104,9 @@ class OrcamentoService:
             localizacao=data.localizacao,
             ref_cliente=data.ref_cliente,
             created_by_id=data.created_by_id,
+            enc_phc=data.enc_phc,
+            info_1=data.info_1,
+            info_2=data.info_2,
             margens=self._resolver_margens_iniciais(data),
         )
         self.session.commit()
@@ -109,6 +118,8 @@ class OrcamentoService:
         orcamento_id: int,
         data: EditarOrcamentoData,
         updated_by_id: int | None = None,
+        *,
+        orcamento_versao_id: int,
     ) -> bool:
         """Edit a budget's general data (obra is required)."""
         obra = (data.obra or "").strip()
@@ -122,11 +133,17 @@ class OrcamentoService:
             obra=obra,
             localizacao=data.localizacao,
             ref_cliente=data.ref_cliente,
+            info_1=data.info_1,
+            info_2=data.info_2,
             updated_by_id=updated_by_id,
+        )
+        enc_phc_result = self.repository.update_enc_phc(
+            orcamento_versao_id,
+            data.enc_phc,
         )
         self.session.commit()
 
-        return result
+        return result and enc_phc_result
 
     def duplicar_versao(
         self, orcamento_versao_id: int, created_by_id: int | None = None

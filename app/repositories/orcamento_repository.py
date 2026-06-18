@@ -33,6 +33,9 @@ class OrcamentoResumo:
     estado: str
     preco_total: Decimal | None
     created_at: datetime
+    enc_phc: str | None = None
+    info_1: str | None = None
+    info_2: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +132,9 @@ class OrcamentoRepository:
         localizacao: str | None,
         ref_cliente: str | None,
         created_by_id: int | None,
+        enc_phc: str | None = None,
+        info_1: str | None = None,
+        info_2: str | None = None,
         margens: MargensOrcamento | None = None,
     ) -> OrcamentoCriado:
         """Create a simple budget with version 01.
@@ -150,6 +156,8 @@ class OrcamentoRepository:
             obra=obra,
             localizacao=localizacao,
             ref_cliente=ref_cliente,
+            info_1=info_1,
+            info_2=info_2,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
         )
@@ -162,6 +170,7 @@ class OrcamentoRepository:
             numero_versao=1,
             codigo_versao=codigo_versao,
             estado="rascunho",
+            enc_phc=enc_phc,
             preco_total=Decimal("0"),
             preco_origem=Decimal("0"),
             is_locked=False,
@@ -246,6 +255,8 @@ class OrcamentoRepository:
         obra: str,
         localizacao: str | None,
         ref_cliente: str | None,
+        info_1: str | None,
+        info_2: str | None,
         updated_by_id: int | None = None,
     ) -> bool:
         """Update a budget's general data; False when it does not exist."""
@@ -257,8 +268,21 @@ class OrcamentoRepository:
         orcamento.obra = obra
         orcamento.localizacao = localizacao
         orcamento.ref_cliente = ref_cliente
+        orcamento.info_1 = info_1
+        orcamento.info_2 = info_2
         if updated_by_id is not None:
             orcamento.updated_by_id = updated_by_id
+        self.session.flush()
+
+        return True
+
+    def update_enc_phc(self, orcamento_versao_id: int, enc_phc: str | None) -> bool:
+        """Update the PHC order number for one budget version."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.enc_phc = enc_phc
         self.session.flush()
 
         return True
@@ -359,6 +383,9 @@ class OrcamentoRepository:
                 Orcamento.descricao.label("descricao"),
                 Orcamento.localizacao.label("localizacao"),
                 Orcamento.ref_cliente.label("ref_cliente"),
+                OrcamentoVersao.enc_phc.label("enc_phc"),
+                Orcamento.info_1.label("info_1"),
+                Orcamento.info_2.label("info_2"),
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
@@ -384,4 +411,7 @@ class OrcamentoRepository:
             estado=row["estado"],
             preco_total=row["preco_total"],
             created_at=row["created_at"],
+            enc_phc=row["enc_phc"],
+            info_1=row["info_1"],
+            info_2=row["info_2"],
         )

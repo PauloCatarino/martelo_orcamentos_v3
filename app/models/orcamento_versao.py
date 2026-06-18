@@ -46,6 +46,7 @@ class OrcamentoVersao(Base):
     numero_versao: Mapped[int] = mapped_column(Integer, nullable=False)
     codigo_versao: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     estado: Mapped[str] = mapped_column(String(50), nullable=False)
+    enc_phc: Mapped[str | None] = mapped_column(String(64), nullable=True)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_origem: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Budget-level margins (phase 8T.0), human percentages (15 = 15%), applied

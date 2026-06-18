@@ -143,6 +143,9 @@ class OrcamentosPage(QWidget):
                         descricao=form_data.descricao,
                         localizacao=form_data.localizacao,
                         ref_cliente=form_data.ref_cliente,
+                        enc_phc=form_data.enc_phc,
+                        info_1=form_data.info_1,
+                        info_2=form_data.info_2,
                         created_by_id=created_by_id,
                         margens_escolha=form_data.margens_escolha,
                     )
@@ -212,6 +215,9 @@ class OrcamentosPage(QWidget):
                 descricao=orcamento.descricao,
                 localizacao=orcamento.localizacao,
                 ref_cliente=orcamento.ref_cliente,
+                enc_phc=orcamento.enc_phc,
+                info_1=orcamento.info_1,
+                info_2=orcamento.info_2,
             ),
         )
 
@@ -231,8 +237,12 @@ class OrcamentosPage(QWidget):
                         descricao=form_data.descricao,
                         localizacao=form_data.localizacao,
                         ref_cliente=form_data.ref_cliente,
+                        enc_phc=form_data.enc_phc,
+                        info_1=form_data.info_1,
+                        info_2=form_data.info_2,
                     ),
                     updated_by_id=updated_by_id,
+                    orcamento_versao_id=orcamento.orcamento_versao_id,
                 )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Nao foi possivel atualizar o orcamento.")
