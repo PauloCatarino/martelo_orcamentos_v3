@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.precos import MargensOrcamento
-from app.models import Cliente, Orcamento, OrcamentoVersao
+from app.models import Cliente, Orcamento, OrcamentoVersao, User
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,7 @@ class OrcamentoResumo:
     enc_phc: str | None = None
     info_1: str | None = None
     info_2: str | None = None
+    utilizador: str | None = None
 
 
 @dataclass(frozen=True)
@@ -389,9 +390,11 @@ class OrcamentoRepository:
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
+                User.username.label("utilizador"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
             .join(Cliente, Orcamento.cliente_id == Cliente.id)
+            .outerjoin(User, OrcamentoVersao.created_by_id == User.id)
         )
 
     def _row_to_orcamento_resumo(self, row: Mapping[str, Any]) -> OrcamentoResumo:
@@ -414,4 +417,5 @@ class OrcamentoRepository:
             enc_phc=row["enc_phc"],
             info_1=row["info_1"],
             info_2=row["info_2"],
+            utilizador=row["utilizador"],
         )

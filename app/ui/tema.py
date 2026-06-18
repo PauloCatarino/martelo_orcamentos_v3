@@ -22,6 +22,10 @@ BEGE_AREIA = "#EFE7DA"        # sand beige (highlight background)
 BEGE_CLARO = "#F7F2EA"        # light beige (alternated rows)
 CINZA_CASTANHO = "#D9CFC2"    # brown-grey (separator / secondary)
 TEXTO_NORMAL = "#2E2A26"      # normal text
+VERDE_SUAVE = "#DCEAD8"       # success badge background
+VERDE_ESCURO = "#315C35"      # success badge text
+OCRE_SUAVE = "#F2DEB3"        # warning badge background
+OCRE_ESCURO = "#6D4B16"       # warning badge text
 
 # Role colours derived from the palette.
 DIVISAO_FUNDO = CASTANHO_MEDIO       # division block header background
@@ -65,6 +69,20 @@ class EstiloLinha:
 def cor_zebra(indice_linha: int) -> str:
     """Return the alternating (zebra) background of a normal row by index."""
     return ZEBRA_ALT if indice_linha % 2 else ZEBRA_BASE
+
+
+def cor_estado(estado: str | None) -> tuple[str, str]:
+    """Return (background, text) colours for a budget status badge."""
+    estado_norm = (estado or "").strip().lower()
+    if estado_norm == "rascunho":
+        return CINZA_CASTANHO, TEXTO_NORMAL
+    if estado_norm in {"falta orcamentar", "falta orçamentar"}:
+        return OCRE_SUAVE, OCRE_ESCURO
+    if estado_norm == "enviado":
+        return BEGE_AREIA, CASTANHO_ESCURO
+    if estado_norm == "adjudicado":
+        return VERDE_SUAVE, VERDE_ESCURO
+    return ZEBRA_ALT, TEXTO_NORMAL
 
 
 def estilo_linha_custeio(tipo_linha, *, eh_filho: bool = False) -> EstiloLinha:

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -20,6 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.orcamentos_lista import resumo_lista
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
@@ -31,6 +33,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialogData,
 )
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
+from app.ui import tema
 from app.utils.formatters import format_currency, format_version
 
 
@@ -41,18 +44,44 @@ class OrcamentosPage(QWidget):
         "Ano",
         "N\u00ba Or\u00e7amento",
         "Vers\u00e3o",
-        "Cliente",
-        "Obra",
         "Estado",
+        "Enc PHC",
+        "Cliente",
+        "Ref. Cliente",
+        "Obra",
+        "Localiza\u00e7\u00e3o",
+        "Descri\u00e7\u00e3o",
+        "Data",
         "Pre\u00e7o Total",
-        "Criado em",
+        "Utilizador",
+        "Info 1",
+        "Info 2",
     ]
+    COLUMN_WIDTHS = {
+        "Ano": 60,
+        "N\u00ba Or\u00e7amento": 105,
+        "Vers\u00e3o": 70,
+        "Estado": 115,
+        "Enc PHC": 85,
+        "Cliente": 190,
+        "Ref. Cliente": 110,
+        "Obra": 210,
+        "Localiza\u00e7\u00e3o": 150,
+        "Descri\u00e7\u00e3o": 220,
+        "Data": 95,
+        "Pre\u00e7o Total": 110,
+        "Utilizador": 110,
+        "Info 1": 180,
+        "Info 2": 180,
+    }
+    CENTERED_HEADERS = {"Ano", "Vers\u00e3o", "Estado", "Enc PHC", "Data", "Utilizador"}
 
     def __init__(self, on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None) -> None:
         super().__init__()
 
         self.on_open_orcamento = on_open_orcamento
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
+        self._todos: list[OrcamentoResumo] = []
 
         title = QLabel("Or\u00e7amentos")
         title.setObjectName("pageTitle")
@@ -88,8 +117,21 @@ class OrcamentosPage(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        self._aplicar_larguras_colunas()
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+
+        self.footer_label = QLabel("")
+        self.footer_label.setObjectName("orcamentosFooter")
+        self.footer_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -99,6 +141,7 @@ class OrcamentosPage(QWidget):
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
+        layout.addWidget(self.footer_label)
 
         self.setLayout(layout)
         self.carregar_orcamentos()
@@ -115,7 +158,9 @@ class OrcamentosPage(QWidget):
             self.status_label.setText("Nao foi possivel carregar os orcamentos.")
             return
 
+        self._todos = list(orcamentos)
         self._preencher_tabela(orcamentos)
+        self._atualizar_rodape(orcamentos)
 
         if not orcamentos:
             self.status_label.setText("Sem orcamentos para mostrar.")
@@ -168,15 +213,23 @@ class OrcamentosPage(QWidget):
                 str(orcamento.ano),
                 orcamento.num_orcamento,
                 format_version(orcamento.numero_versao),
-                orcamento.cliente_nome,
-                orcamento.obra or "",
                 orcamento.estado,
+                orcamento.enc_phc or "",
+                orcamento.cliente_nome,
+                orcamento.ref_cliente or "",
+                orcamento.obra or "",
+                orcamento.localizacao or "",
+                orcamento.descricao or "",
+                self._format_date(orcamento.created_at),
                 format_currency(orcamento.preco_total),
-                self._format_datetime(orcamento.created_at),
+                orcamento.utilizador or "",
+                orcamento.info_1 or "",
+                orcamento.info_2 or "",
             ]
 
             for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                header = self.TABLE_HEADERS[column_index]
+                item = self._criar_item_tabela(value, header)
                 if column_index == 0:
                     item.setData(
                         Qt.ItemDataRole.UserRole,
@@ -185,7 +238,44 @@ class OrcamentosPage(QWidget):
                             "orcamento_versao_id": orcamento.orcamento_versao_id,
                         },
                     )
+                if header == "Estado":
+                    self._aplicar_badge_estado(item, orcamento.estado)
                 self.table.setItem(row_index, column_index, item)
+
+    def _criar_item_tabela(self, value: str, header: str) -> QTableWidgetItem:
+        """Create a table item with the list page alignment conventions."""
+        item = QTableWidgetItem(value)
+        if header in self.CENTERED_HEADERS:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        elif header == "Pre\u00e7o Total":
+            item.setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+        else:
+            item.setTextAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+        if value:
+            item.setToolTip(value)
+        return item
+
+    def _aplicar_badge_estado(self, item: QTableWidgetItem, estado: str | None) -> None:
+        fundo, texto = tema.cor_estado(estado)
+        item.setBackground(QColor(fundo))
+        item.setForeground(QColor(texto))
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+    def _aplicar_larguras_colunas(self) -> None:
+        for column_index, header in enumerate(self.TABLE_HEADERS):
+            largura = self.COLUMN_WIDTHS.get(header)
+            if largura is not None:
+                self.table.setColumnWidth(column_index, largura)
+
+    def _atualizar_rodape(self, orcamentos: list[OrcamentoResumo]) -> None:
+        contagem, total = resumo_lista(orcamentos)
+        self.footer_label.setText(
+            f"{contagem} or\u00e7amentos \u00b7 Total: {format_currency(total)}"
+        )
 
     def abrir_orcamento_selecionado(self) -> None:
         """Open the currently selected budget through the callback."""
@@ -256,9 +346,9 @@ class OrcamentosPage(QWidget):
         self.table.selectRow(row)
         self.abrir_orcamento_selecionado()
 
-    def _format_datetime(self, value: datetime | None) -> str:
+    def _format_date(self, value: datetime | None) -> str:
         """Format a datetime value for table display."""
         if value is None:
             return ""
 
-        return value.strftime("%Y-%m-%d %H:%M")
+        return value.strftime("%Y-%m-%d")
