@@ -1,6 +1,7 @@
 """Repository layer package."""
 
 from app.repositories.def_maquina_repository import DefMaquinaRepository, DefMaquinaResumo
+from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
 from app.repositories.def_margem_padrao_repository import (
     DefMargemPadraoRepository,
     DefMargemPadraoResumo,
@@ -23,6 +24,8 @@ from app.repositories.user_repository import UserRepository, UserResumo
 __all__ = [
     "DefMaquinaRepository",
     "DefMaquinaResumo",
+    "ClienteListaResumo",
+    "ClienteRepository",
     "DefMargemPadraoRepository",
     "DefMargemPadraoResumo",
     "DefOperacaoRepository",

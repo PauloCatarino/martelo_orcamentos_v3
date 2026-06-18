@@ -3,6 +3,7 @@
 from app.ui.pages.biblioteca_modulos_page import BibliotecaModulosPage
 from app.ui.pages.configuracoes_page import ConfiguracoesPage
 from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
+from app.ui.pages.clientes_page import ClientesPage
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 from app.ui.pages.def_pecas_page import DefPecasPage
 from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
@@ -21,6 +22,7 @@ __all__ = [
     "BibliotecaModulosPage",
     "ConfiguracoesPage",
     "CaminhosSistemaPage",
+    "ClientesPage",
     "DefPecaDetailPage",
     "DefPecasPage",
     "DefValuesetChavesPage",

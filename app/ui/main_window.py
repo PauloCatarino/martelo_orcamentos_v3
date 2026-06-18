@@ -19,6 +19,7 @@ from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui.pages import (
     BibliotecaModulosPage,
     CaminhosSistemaPage,
+    ClientesPage,
     ConfiguracoesPage,
     DefPecasPage,
     DefValuesetChavesPage,
@@ -121,6 +122,7 @@ class MainWindow(QMainWindow):
         self.margens_padrao_page = MargensPadraoPage()
         self.regras_quantidade_page = RegrasQuantidadePage()
         self.biblioteca_modulos_page = BibliotecaModulosPage()
+        self.clientes_page = ClientesPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
@@ -143,7 +145,7 @@ class MainWindow(QMainWindow):
         self._add_page("margens_padrao", self.margens_padrao_page)
         self._add_page("regras_quantidade", self.regras_quantidade_page)
         self._add_page("biblioteca_modulos", self.biblioteca_modulos_page)
-        self._add_page("clientes", self._create_text_page("Clientes"))
+        self._add_page("clientes", self.clientes_page)
         self._add_page("configuracoes", self.configuracoes_page)
 
         content_layout.addWidget(sidebar)

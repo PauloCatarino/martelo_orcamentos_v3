@@ -26,9 +26,12 @@ class Cliente(Base):
     telefone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     telemovel: Mapped[str | None] = mapped_column(String(50), nullable=True)
     morada: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pagina_web: Mapped[str | None] = mapped_column(String(255), nullable=True)
     num_cliente_phc: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     source_system: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_temporary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    info_1: Mapped[str | None] = mapped_column(Text, nullable=True)
+    info_2: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
