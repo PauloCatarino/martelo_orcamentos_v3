@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.precos import MargensOrcamento
 from app.models import Cliente, Orcamento, OrcamentoVersao, User
 
@@ -170,7 +171,7 @@ class OrcamentoRepository:
             orcamento_id=orcamento.id,
             numero_versao=1,
             codigo_versao=codigo_versao,
-            estado="rascunho",
+            estado=ESTADO_INICIAL,
             enc_phc=enc_phc,
             preco_total=Decimal("0"),
             preco_origem=Decimal("0"),
@@ -198,9 +199,9 @@ class OrcamentoRepository:
     ) -> OrcamentoVersaoCriada:
         """Duplicate a budget version header into the next version number.
 
-        The new version starts as 'rascunho' with zero total (items are not
-        copied here) and INHERITS the source version's margins and production
-        default; preco_origem records the source version's total.
+        The new version starts with the initial status and zero total (items
+        are not copied here) and INHERITS the source version's margins and
+        production default; preco_origem records the source version's total.
         """
         origem = self.session.get(OrcamentoVersao, orcamento_versao_id)
         if origem is None:
@@ -220,7 +221,7 @@ class OrcamentoRepository:
             orcamento_id=origem.orcamento_id,
             numero_versao=proximo_numero,
             codigo_versao=codigo_versao,
-            estado="rascunho",
+            estado=ESTADO_INICIAL,
             preco_total=Decimal("0"),
             preco_origem=origem.preco_total,
             tipo_producao_default=origem.tipo_producao_default,
@@ -284,6 +285,17 @@ class OrcamentoRepository:
             return False
 
         versao.enc_phc = enc_phc
+        self.session.flush()
+
+        return True
+
+    def update_estado(self, orcamento_versao_id: int, estado: str) -> bool:
+        """Update the status for one budget version."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.estado = estado
         self.session.flush()
 
         return True

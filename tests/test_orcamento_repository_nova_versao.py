@@ -14,6 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.models import Cliente, Orcamento, OrcamentoVersao
 from app.repositories.orcamento_repository import OrcamentoRepository
@@ -45,7 +46,7 @@ def _criar_orcamento_com_versao(session: Session) -> OrcamentoVersao:
         orcamento_id=orcamento.id,
         numero_versao=1,
         codigo_versao="260001_01",
-        estado="rascunho",
+        estado="Enviado",
         preco_total=Decimal("500.00"),
         tipo_producao_default="SERIE",
         margem_lucro_pct=Decimal("10"),
@@ -74,9 +75,9 @@ def test_nova_versao_herda_margens_da_anterior(session: Session) -> None:
     assert nova.margem_acabamentos_pct == Decimal("5")
     assert nova.custos_administrativos_pct == Decimal("3")
     # The production default travels with the version; the new version starts
-    # as a zero-total draft recording where its price came from.
+    # with the canonical initial status and records where its price came from.
     assert nova.tipo_producao_default == "SERIE"
-    assert nova.estado == "rascunho"
+    assert nova.estado == ESTADO_INICIAL
     assert nova.preco_total == Decimal("0")
     assert nova.preco_origem == Decimal("500.00")
 

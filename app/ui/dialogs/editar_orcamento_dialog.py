@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -13,6 +14,8 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
+
+from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,7 @@ class EditarOrcamentoDialogData:
     descricao: str | None
     localizacao: str | None
     ref_cliente: str | None
+    estado: str
     enc_phc: str | None = None
     info_1: str | None = None
     info_2: str | None = None
@@ -40,6 +44,9 @@ class EditarOrcamentoDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(460)
 
+        self.estado_combo = QComboBox()
+        self.estado_combo.setEditable(False)
+        self.estado_combo.addItems(list(ESTADOS_ORCAMENTO))
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
@@ -53,6 +60,11 @@ class EditarOrcamentoDialog(QDialog):
 
         # Pre-fill from the received data.
         if dados is not None:
+            estado_atual = dados.estado or ""
+            if estado_atual and self.estado_combo.findText(estado_atual) < 0:
+                self.estado_combo.addItem(estado_atual)
+            if estado_atual:
+                self.estado_combo.setCurrentText(estado_atual)
             self.obra_input.setText(dados.obra or "")
             self.descricao_input.setPlainText(dados.descricao or "")
             self.localizacao_input.setText(dados.localizacao or "")
@@ -67,6 +79,7 @@ class EditarOrcamentoDialog(QDialog):
         self.error_label.setWordWrap(True)
 
         form_layout = QFormLayout()
+        form_layout.addRow("Estado", self.estado_combo)
         form_layout.addRow("Obra", self.obra_input)
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
@@ -96,6 +109,7 @@ class EditarOrcamentoDialog(QDialog):
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             localizacao=self._empty_to_none(self.localizacao_input.text()),
             ref_cliente=self._empty_to_none(self.ref_cliente_input.text()),
+            estado=self.estado_combo.currentText(),
             enc_phc=self._empty_to_none(self.enc_phc_input.text()),
             info_1=self._empty_to_none(self.info_1_input.toPlainText()),
             info_2=self._empty_to_none(self.info_2_input.toPlainText()),

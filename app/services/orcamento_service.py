@@ -13,6 +13,7 @@ from app.domain.margens_padrao_types import (
     AMBITO_UTILIZADOR,
     normalize_ambito,
 )
+from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.domain.precos import MargensOrcamento
 from app.repositories.def_margem_padrao_repository import DefMargemPadraoRepository
 from app.repositories.orcamento_repository import (
@@ -52,6 +53,7 @@ class EditarOrcamentoData:
     obra: str
     localizacao: str | None
     ref_cliente: str | None
+    estado: str
     enc_phc: str | None = None
     info_1: str | None = None
     info_2: str | None = None
@@ -127,6 +129,9 @@ class OrcamentoService:
         if not obra:
             raise ValueError("A obra é obrigatória.")
 
+        if data.estado not in ESTADOS_ORCAMENTO:
+            raise ValueError("Estado inv\u00e1lido.")
+
         result = self.repository.update_orcamento(
             orcamento_id,
             descricao=data.descricao,
@@ -141,9 +146,13 @@ class OrcamentoService:
             orcamento_versao_id,
             data.enc_phc,
         )
+        estado_result = self.repository.update_estado(
+            orcamento_versao_id,
+            data.estado,
+        )
         self.session.commit()
 
-        return result and enc_phc_result
+        return result and enc_phc_result and estado_result
 
     def duplicar_versao(
         self, orcamento_versao_id: int, created_by_id: int | None = None

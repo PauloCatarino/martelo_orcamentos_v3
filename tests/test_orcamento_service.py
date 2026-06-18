@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.precos import MargensOrcamento
 from app.repositories.orcamento_repository import (
     OrcamentoCriado,
@@ -21,6 +22,7 @@ class _FakeRepository:
     created_payload: dict[str, object] | None = None
     update_payload: dict[str, object] | None = None
     enc_phc_payload: tuple[int, str | None] | None = None
+    estado_payload: tuple[int, str] | None = None
     nova_versao_payload: tuple | None = None
 
     def __init__(self, _session: object) -> None:
@@ -67,6 +69,10 @@ class _FakeRepository:
 
     def update_enc_phc(self, orcamento_versao_id: int, enc_phc: str | None) -> bool:
         self.__class__.enc_phc_payload = (orcamento_versao_id, enc_phc)
+        return True
+
+    def update_estado(self, orcamento_versao_id: int, estado: str) -> bool:
+        self.__class__.estado_payload = (orcamento_versao_id, estado)
         return True
 
 
@@ -131,7 +137,7 @@ def test_orcamento_service_returns_repository_rows(monkeypatch) -> None:
         descricao="Descricao Teste",
         localizacao="Local Teste",
         ref_cliente="REF-TESTE",
-        estado="rascunho",
+        estado=ESTADO_INICIAL,
         preco_total=Decimal("123.45"),
         created_at=datetime(2026, 6, 5, 10, 30),
     )
@@ -156,7 +162,7 @@ def test_orcamento_service_get_orcamento_by_versao_id(monkeypatch) -> None:
         descricao="Descricao Teste",
         localizacao="Local Teste",
         ref_cliente="REF-TESTE",
-        estado="rascunho",
+        estado=ESTADO_INICIAL,
         preco_total=Decimal("200.00"),
         created_at=datetime(2026, 6, 5, 10, 30),
     )
@@ -174,6 +180,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.created_payload = None
     _FakeRepository.update_payload = None
     _FakeRepository.enc_phc_payload = None
+    _FakeRepository.estado_payload = None
     _FakeRepository.nova_versao_payload = None
     _FakeMargensRepository.reset()
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -236,6 +243,7 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
             descricao=None,
             localizacao=None,
             ref_cliente=None,
+            estado="Enviado",
             enc_phc="1028",
             info_1="A",
             info_2="B",
@@ -247,7 +255,32 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert _FakeRepository.update_payload["info_1"] == "A"
     assert _FakeRepository.update_payload["info_2"] == "B"
     assert _FakeRepository.enc_phc_payload == (10, "1028")
+    assert _FakeRepository.estado_payload == (10, "Enviado")
     assert session.committed is True
+
+
+def test_editar_orcamento_estado_invalido_levanta_valueerror(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    try:
+        service.editar_orcamento(
+            1,
+            service_module.EditarOrcamentoData(
+                obra="X",
+                descricao=None,
+                localizacao=None,
+                ref_cliente=None,
+                estado="rascunho",
+            ),
+            orcamento_versao_id=10,
+        )
+    except ValueError as error:
+        assert "Estado" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert _FakeRepository.estado_payload is None
+    assert session.committed is False
 
 
 def test_orcamento_service_valida_campos_obrigatorios(monkeypatch) -> None:

@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import (
@@ -221,7 +222,7 @@ class OrcamentosPage(QWidget):
         """Populate filter combos from the loaded list, preserving selection."""
         self._popular_combo(
             self.estado_combo,
-            self._valores_distintos("estado"),
+            list(ESTADOS_ORCAMENTO),
         )
         self._popular_combo(
             self.cliente_combo,
@@ -401,6 +402,7 @@ class OrcamentosPage(QWidget):
                 descricao=orcamento.descricao,
                 localizacao=orcamento.localizacao,
                 ref_cliente=orcamento.ref_cliente,
+                estado=orcamento.estado,
                 enc_phc=orcamento.enc_phc,
                 info_1=orcamento.info_1,
                 info_2=orcamento.info_2,
@@ -423,6 +425,7 @@ class OrcamentosPage(QWidget):
                         descricao=form_data.descricao,
                         localizacao=form_data.localizacao,
                         ref_cliente=form_data.ref_cliente,
+                        estado=form_data.estado,
                         enc_phc=form_data.enc_phc,
                         info_1=form_data.info_1,
                         info_2=form_data.info_2,

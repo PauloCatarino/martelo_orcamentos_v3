@@ -7,6 +7,7 @@ the page maps the returned :class:`EstiloLinha` onto QTableWidget items.
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 
 from app.domain.custeio_linha_types import (
@@ -26,6 +27,12 @@ VERDE_SUAVE = "#DCEAD8"       # success badge background
 VERDE_ESCURO = "#315C35"      # success badge text
 OCRE_SUAVE = "#F2DEB3"        # warning badge background
 OCRE_ESCURO = "#6D4B16"       # warning badge text
+AZUL_SUAVE = "#D8E7F3"        # sent badge background
+AZUL_ESCURO = "#244A63"       # sent badge text
+CINZA_SUAVE = "#E3E0DC"       # neutral badge background
+CINZA_ESCURO = "#4A4641"      # neutral badge text
+VERMELHO_SUAVE = "#E8C7C1"    # negative badge background
+VERMELHO_ESCURO = "#7A231C"   # negative badge text
 
 # Role colours derived from the palette.
 DIVISAO_FUNDO = CASTANHO_MEDIO       # division block header background
@@ -73,16 +80,27 @@ def cor_zebra(indice_linha: int) -> str:
 
 def cor_estado(estado: str | None) -> tuple[str, str]:
     """Return (background, text) colours for a budget status badge."""
-    estado_norm = (estado or "").strip().lower()
-    if estado_norm == "rascunho":
-        return CINZA_CASTANHO, TEXTO_NORMAL
-    if estado_norm in {"falta orcamentar", "falta orçamentar"}:
+    estado_norm = _normalizar_estado(estado)
+    if estado_norm in {"adjudicado", "concluido"}:
+        return VERDE_SUAVE, VERDE_ESCURO
+    if estado_norm == "falta orcamentar":
         return OCRE_SUAVE, OCRE_ESCURO
     if estado_norm == "enviado":
-        return BEGE_AREIA, CASTANHO_ESCURO
-    if estado_norm == "adjudicado":
-        return VERDE_SUAVE, VERDE_ESCURO
+        return AZUL_SUAVE, AZUL_ESCURO
+    if estado_norm == "nao enviado":
+        return CINZA_SUAVE, CINZA_ESCURO
+    if estado_norm in {"nao adjudicado", "cancelado", "sem interesse"}:
+        return VERMELHO_SUAVE, VERMELHO_ESCURO
     return ZEBRA_ALT, TEXTO_NORMAL
+
+
+def _normalizar_estado(estado: str | None) -> str:
+    sem_acentos = unicodedata.normalize("NFKD", (estado or "").strip())
+    return "".join(
+        caractere
+        for caractere in sem_acentos
+        if not unicodedata.combining(caractere)
+    ).lower()
 
 
 def estilo_linha_custeio(tipo_linha, *, eh_filho: bool = False) -> EstiloLinha:

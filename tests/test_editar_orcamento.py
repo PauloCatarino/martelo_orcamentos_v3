@@ -8,8 +8,9 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
+from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
-from app.models import Orcamento
+from app.models import Orcamento, OrcamentoVersao
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
     EditarOrcamentoData,
@@ -50,7 +51,14 @@ def _criar_orcamento(session) -> tuple[int, int]:
     return orcamento.orcamento_id, orcamento.orcamento_versao_id
 
 
-def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
+def test_criar_orcamento_usa_estado_inicial(session) -> None:
+    _orcamento_id, orcamento_versao_id = _criar_orcamento(session)
+
+    versao = session.get(OrcamentoVersao, orcamento_versao_id)
+    assert versao.estado == ESTADO_INICIAL
+
+
+def test_editar_orcamento_persiste_os_campos_e_estado(session) -> None:
     orcamento_id, orcamento_versao_id = _criar_orcamento(session)
     service = OrcamentoService(session)
 
@@ -61,6 +69,7 @@ def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
             descricao="Descricao Nova",
             localizacao="Local Novo",
             ref_cliente="REF-2",
+            estado="Enviado",
         ),
         orcamento_versao_id=orcamento_versao_id,
     )
@@ -71,6 +80,7 @@ def test_editar_orcamento_persiste_os_quatro_campos(session) -> None:
     assert atualizado.descricao == "Descricao Nova"
     assert atualizado.localizacao == "Local Novo"
     assert atualizado.ref_cliente == "REF-2"
+    assert session.get(OrcamentoVersao, orcamento_versao_id).estado == "Enviado"
 
 
 def test_editar_orcamento_guarda_updated_by_id(session) -> None:
@@ -79,7 +89,11 @@ def test_editar_orcamento_guarda_updated_by_id(session) -> None:
     OrcamentoService(session).editar_orcamento(
         orcamento_id,
         EditarOrcamentoData(
-            obra="Obra Nova", descricao=None, localizacao=None, ref_cliente=None
+            obra="Obra Nova",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado=ESTADO_INICIAL,
         ),
         updated_by_id=None,
         orcamento_versao_id=orcamento_versao_id,
@@ -97,7 +111,11 @@ def test_editar_orcamento_inexistente_devolve_false(session) -> None:
     resultado = OrcamentoService(session).editar_orcamento(
         9999,
         EditarOrcamentoData(
-            obra="Obra", descricao=None, localizacao=None, ref_cliente=None
+            obra="Obra",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado=ESTADO_INICIAL,
         ),
         orcamento_versao_id=9999,
     )
@@ -112,7 +130,11 @@ def test_editar_orcamento_obra_vazia_levanta_valueerror(session) -> None:
         OrcamentoService(session).editar_orcamento(
             orcamento_id,
             EditarOrcamentoData(
-                obra="   ", descricao=None, localizacao=None, ref_cliente=None
+                obra="   ",
+                descricao=None,
+                localizacao=None,
+                ref_cliente=None,
+                estado=ESTADO_INICIAL,
             ),
             orcamento_versao_id=orcamento_versao_id,
         )

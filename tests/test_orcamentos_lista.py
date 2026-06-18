@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from types import SimpleNamespace
 
+from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
 
 
@@ -29,7 +30,7 @@ def _orcamento(**overrides) -> SimpleNamespace:
         "obra": "Cozinha Lisboa",
         "localizacao": "Lisboa",
         "descricao": "Moveis altos",
-        "estado": "rascunho",
+        "estado": ESTADO_INICIAL,
         "utilizador": "ana",
         "enc_phc": "1028",
         "info_1": "Entrega urgente",
@@ -77,12 +78,20 @@ def test_filtrar_orcamentos_casa_em_enc_phc_e_info_1() -> None:
 
 def test_filtrar_orcamentos_filtra_por_estado_cliente_utilizador() -> None:
     orcamentos = [
-        _orcamento(estado="rascunho", cliente_nome="Cliente Alfa", utilizador="ana"),
-        _orcamento(estado="enviado", cliente_nome="Cliente Alfa", utilizador="bruno"),
-        _orcamento(estado="enviado", cliente_nome="Cliente Beta", utilizador="ana"),
+        _orcamento(
+            estado=ESTADO_INICIAL,
+            cliente_nome="Cliente Alfa",
+            utilizador="ana",
+        ),
+        _orcamento(
+            estado="Enviado",
+            cliente_nome="Cliente Alfa",
+            utilizador="bruno",
+        ),
+        _orcamento(estado="Enviado", cliente_nome="Cliente Beta", utilizador="ana"),
     ]
 
-    assert filtrar_orcamentos(orcamentos, estado="enviado") == [
+    assert filtrar_orcamentos(orcamentos, estado="Enviado") == [
         orcamentos[1],
         orcamentos[2],
     ]
@@ -96,7 +105,7 @@ def test_filtrar_orcamentos_filtra_por_estado_cliente_utilizador() -> None:
     ]
     assert filtrar_orcamentos(
         orcamentos,
-        estado="enviado",
+        estado="Enviado",
         cliente="Cliente Beta",
         utilizador="ana",
     ) == [orcamentos[2]]
