@@ -89,6 +89,63 @@ class OrcamentoExportService:
 
         return destino
 
+    def pasta_orcamento_atual(self, orcamento_versao_id: int) -> Path | None:
+        """Existing budget parent folder (``{num}_*``), or None."""
+        base = self.settings_service.obter_valor("pasta_base_orcamentos")
+        if not base:
+            return None
+
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        if orcamento is None:
+            return None
+
+        ano_dir = Path(base) / str(orcamento.ano)
+        return export_paths.encontrar_pasta_orcamento(
+            ano_dir, orcamento.num_orcamento
+        )
+
+    def nome_pasta_orcamento_pretendido(
+        self, orcamento_versao_id: int
+    ) -> str | None:
+        """Folder name matching the budget's current customer."""
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
+        if orcamento is None or cliente is None:
+            return None
+
+        return export_paths.nome_pasta_orcamento(
+            orcamento.num_orcamento,
+            cliente.nome_simplex,
+            cliente.nome,
+        )
+
+    def renomear_pasta_para_cliente(
+        self, orcamento_versao_id: int
+    ) -> tuple[Path, Path] | None:
+        """Rename the budget parent folder to the current customer's SIMPLEX."""
+        base = self.settings_service.obter_valor("pasta_base_orcamentos")
+        if not base:
+            return None
+
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
+        if orcamento is None or cliente is None:
+            return None
+
+        ano_dir = Path(base) / str(orcamento.ano)
+        return export_paths.renomear_pasta_orcamento(
+            ano_dir,
+            orcamento.num_orcamento,
+            cliente.nome_simplex,
+            cliente.nome,
+        )
+
     def exportar_pdf_orcamento(self, orcamento_versao_id: int) -> Path:
         """Recalcula a versão e exporta o PDF do orçamento, devolvendo o ``Path``.
 

@@ -13,6 +13,8 @@ orçamento reutiliza-se uma subpasta existente que já comece por
 
 from __future__ import annotations
 
+from pathlib import Path
+
 _CLIENTE_FALLBACK = "CLIENTE"
 
 
@@ -55,3 +57,36 @@ def escolher_nome_pasta(
             return existente
 
     return nome_pasta_orcamento(num_orcamento, nome_simplex, nome)
+
+
+def encontrar_pasta_orcamento(ano_dir: Path, num_orcamento: str) -> Path | None:
+    """Return the first subfolder of ``ano_dir`` starting with ``f"{num}_"``."""
+    if not ano_dir.exists():
+        return None
+
+    prefixo = f"{num_orcamento}_"
+    for sub in sorted(p for p in ano_dir.iterdir() if p.is_dir()):
+        if sub.name.startswith(prefixo):
+            return sub
+
+    return None
+
+
+def renomear_pasta_orcamento(
+    ano_dir: Path, num_orcamento: str, nome_simplex: str | None, nome: str | None
+) -> tuple[Path, Path] | None:
+    """Rename the ``{num}_*`` budget folder to the customer's intended SIMPLEX."""
+    atual = encontrar_pasta_orcamento(ano_dir, num_orcamento)
+    if atual is None:
+        return None
+
+    novo_nome = nome_pasta_orcamento(num_orcamento, nome_simplex, nome)
+    if atual.name == novo_nome:
+        return None
+
+    destino = ano_dir / novo_nome
+    if destino.exists():
+        raise FileExistsError(novo_nome)
+
+    atual.rename(destino)
+    return atual, destino

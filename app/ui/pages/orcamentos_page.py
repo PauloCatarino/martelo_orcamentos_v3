@@ -640,6 +640,61 @@ class OrcamentosPage(QWidget):
                 "or\u00e7amento (Editar \u2192 Trocar cliente\u2026).",
             )
 
+        if form_data.cliente_id is not None and form_data.cliente_id != cliente_id_atual:
+            self._perguntar_renomear_pasta(orcamento.orcamento_versao_id)
+
+    def _perguntar_renomear_pasta(self, orcamento_versao_id: int) -> None:
+        """Ask to rename the budget folder after the customer changed."""
+        try:
+            with SessionLocal() as session:
+                servico = OrcamentoExportService(session)
+                atual = servico.pasta_orcamento_atual(orcamento_versao_id)
+                pretendido = servico.nome_pasta_orcamento_pretendido(
+                    orcamento_versao_id
+                )
+        except SQLAlchemyError:
+            return
+
+        if atual is None or pretendido is None or atual.name == pretendido:
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Renomear pasta",
+            (
+                "O cliente do or\u00e7amento mudou. Renomear a pasta no servidor?\n\n"
+                f"{atual.name}\n\u2192\n{pretendido}"
+            ),
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = OrcamentoExportService(session).renomear_pasta_para_cliente(
+                    orcamento_versao_id
+                )
+        except FileExistsError:
+            QMessageBox.warning(
+                self,
+                "Renomear pasta",
+                f"J\u00e1 existe uma pasta '{pretendido}'. Renomeie/mova manualmente.",
+            )
+            return
+        except (OSError, SQLAlchemyError, ValueError) as exc:
+            QMessageBox.warning(
+                self,
+                "Renomear pasta",
+                f"N\u00e3o foi poss\u00edvel renomear a pasta:\n{exc}",
+            )
+            return
+
+        if resultado is not None:
+            _antiga, nova = resultado
+            QMessageBox.information(
+                self, "Renomear pasta", f"Pasta renomeada para:\n{nova}"
+            )
+
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Open a budget when the user double-clicks its table row."""
         self.table.selectRow(row)
