@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 from openpyxl import Workbook, load_workbook
 
-from app.services.resumo_custos_excel_export import gerar_excel_resumo_custos
+from app.services.resumo_custos_excel_export import (
+    COLUNAS_RESUMO_GERAL,
+    construir_linhas_geral,
+    gerar_excel_resumo_custos,
+)
 
 PLACAS_HEADERS = [
     "ref_le",
@@ -205,3 +209,91 @@ def test_gerar_excel_resumo_custos_ignora_folha_em_falta(tmp_path) -> None:
     workbook = load_workbook(saida)
     assert workbook.sheetnames == ["Resumo Placas"]
     assert workbook["Resumo Placas"]["A2"].value == "PL001"
+
+
+def test_construir_linhas_geral_multiplica_por_item_qt() -> None:
+    linhas = [
+        SimpleNamespace(
+            id=1,
+            orcamento_item_id=10,
+            tipo_linha="PECA",
+            descricao="Lateral",
+            quantidade=Decimal("2"),
+            custo_mp=Decimal("5"),
+            ml_orla_fina=Decimal("3"),
+            area_m2=Decimal("1"),
+            excluir_mp=True,
+            ativo=True,
+        ),
+        SimpleNamespace(
+            id=2,
+            orcamento_item_id=10,
+            tipo_linha="PECA",
+            descricao="Inativa",
+            quantidade=Decimal("1"),
+            custo_mp=Decimal("999"),
+            ml_orla_fina=Decimal("999"),
+            area_m2=Decimal("999"),
+            excluir_mp=False,
+            ativo=False,
+        ),
+    ]
+
+    resultado = construir_linhas_geral(linhas, {10: Decimal("3")})
+
+    assert len(resultado) == 1
+    linha = resultado[0]
+    assert linha["qt_total"] == Decimal("6")
+    assert linha["custo_mp"] == Decimal("15")
+    assert linha["ml_orla_fina"] == Decimal("9")
+    assert linha["area_m2_und"] == Decimal("1")
+    assert linha["excluir_mp"] == 1
+
+
+def test_gerar_excel_resumo_custos_preenche_resumo_geral(tmp_path) -> None:
+    modelo = tmp_path / "modelo_com_geral.xlsx"
+    saida = tmp_path / "saida_com_geral.xlsx"
+    folhas = {
+        "Resumo Geral": [
+            f"antigo_{indice}"
+            for indice in range(len(COLUNAS_RESUMO_GERAL) + 2)
+        ],
+        **FOLHAS,
+    }
+    _criar_modelo(modelo, folhas=folhas)
+    linhas_geral = construir_linhas_geral(
+        [
+            SimpleNamespace(
+                id=1,
+                orcamento_item_id=10,
+                tipo_linha="PECA",
+                descricao="Lateral",
+                quantidade=Decimal("2"),
+                custo_mp=Decimal("5"),
+                ml_orla_fina=Decimal("3"),
+                area_m2=Decimal("1"),
+                excluir_mp=True,
+                ativo=True,
+            )
+        ],
+        {10: Decimal("3")},
+    )
+
+    gerar_excel_resumo_custos(
+        saida,
+        modelo,
+        resumo=_resumo(),
+        linhas_geral=linhas_geral,
+    )
+
+    workbook = load_workbook(saida)
+    ws = workbook["Resumo Geral"]
+    assert _headers(ws, len(COLUNAS_RESUMO_GERAL)) == COLUNAS_RESUMO_GERAL
+    assert ws.max_column == len(COLUNAS_RESUMO_GERAL)
+
+    qt_total_col = COLUNAS_RESUMO_GERAL.index("qt_total") + 1
+    custo_mp_col = COLUNAS_RESUMO_GERAL.index("custo_mp") + 1
+    assert ws.cell(row=2, column=qt_total_col).value == 6
+    assert ws.cell(row=2, column=custo_mp_col).value == 15
+    assert isinstance(ws.cell(row=2, column=custo_mp_col).value, (int, float))
+    assert not isinstance(ws.cell(row=2, column=custo_mp_col).value, str)

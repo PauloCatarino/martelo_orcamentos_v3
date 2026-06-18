@@ -1,8 +1,7 @@
-"""Gerador do Excel interno "Resumo de Custos" a partir do modelo (fase 8W.4.3).
+"""Gerador do Excel interno "Resumo de Custos" a partir do modelo (8W.4.3/4.4).
 
 Copia um ficheiro modelo ``.xlsx`` ja formatado e preenche apenas as folhas de
-resumo agregadas. A funcao recebe dados simples (sem DB nem Qt) para ser
-testavel.
+resumo. A funcao recebe dados simples (sem DB nem Qt) para ser testavel.
 """
 
 from __future__ import annotations
@@ -21,6 +20,120 @@ _FMT_ML = "0.00"
 _FMT_EUR = "#,##0.00 €"
 _FMT_PCT = "0.0"
 
+COLUNAS_RESUMO_GERAL = [
+    "id",
+    "item_id",
+    "tipo_linha",
+    "def_peca",
+    "descricao",
+    "descricao_livre",
+    "mat_default",
+    "quantidade",
+    "item_qt",
+    "qt_total",
+    "comp",
+    "larg",
+    "esp",
+    "comp_real",
+    "larg_real",
+    "esp_real",
+    "area_m2_und",
+    "perimetro_ml_und",
+    "ref_le",
+    "descricao_no_orcamento",
+    "unidade",
+    "pliq",
+    "desp",
+    "tipo_mp",
+    "familia_mp",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
+    "coresp_orla_0_4",
+    "coresp_orla_1_0",
+    "ml_orla_fina",
+    "ml_orla_grossa",
+    "custo_orla_fina",
+    "custo_orla_grossa",
+    "custo_orlas",
+    "consumo_ml_total",
+    "acabamento_sup",
+    "acabamento_inf",
+    "custo_acabamento",
+    "operacoes",
+    "custo_mp",
+    "custo_ferragem",
+    "custo_corte",
+    "custo_orlagem",
+    "custo_cnc",
+    "custo_montagem_manual",
+    "custo_producao",
+    "custo_total",
+    "excluir_mp",
+    "excluir_orla",
+    "excluir_ferragem",
+    "excluir_producao",
+    "excluir_acabamento",
+    "excluir_mo",
+]
+
+_CAMPOS_MULTIPLICAR = {
+    "ml_orla_fina",
+    "ml_orla_grossa",
+    "custo_orla_fina",
+    "custo_orla_grossa",
+    "custo_orlas",
+    "consumo_ml_total",
+    "custo_acabamento",
+    "custo_mp",
+    "custo_ferragem",
+    "custo_corte",
+    "custo_orlagem",
+    "custo_cnc",
+    "custo_montagem_manual",
+    "custo_producao",
+    "custo_total",
+}
+
+_CAMPOS_BOOL_GERAL = {
+    "excluir_mp",
+    "excluir_orla",
+    "excluir_ferragem",
+    "excluir_producao",
+    "excluir_acabamento",
+    "excluir_mo",
+}
+
+_MAPA_ATRIBUTOS_GERAL = {
+    "item_id": "orcamento_item_id",
+    "def_peca": "def_peca_codigo",
+    "tipo_mp": "tipo_materia_prima",
+    "familia_mp": "familia_materia_prima",
+    "pliq": "preco_liquido",
+    "desp": "desperdicio_percentagem",
+    "area_m2_und": "area_m2",
+    "perimetro_ml_und": "perimetro_ml",
+    "acabamento_sup": "acabamento_face_sup",
+    "acabamento_inf": "acabamento_face_inf",
+}
+
+_CAMPOS_INT_GERAL = {"id", "item_id", "qt_total"} | _CAMPOS_BOOL_GERAL
+_CAMPOS_QT_GERAL = {"quantidade", "item_qt"}
+_CAMPOS_DIM_GERAL = {
+    "comp_real",
+    "larg_real",
+    "esp_real",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
+}
+_CAMPOS_M2_GERAL = {"area_m2_und"}
+_CAMPOS_ML_GERAL = {"perimetro_ml_und", "ml_orla_fina", "ml_orla_grossa", "consumo_ml_total"}
+_CAMPOS_PCT_GERAL = {"desp"}
+
+_ZERO = Decimal("0")
+_UM = Decimal("1")
+
 
 def _to_float(value) -> float | None:
     """Converte Decimal/numero para float (None se vazio/invalido)."""
@@ -32,6 +145,25 @@ def _to_float(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _to_decimal(value) -> Decimal | None:
+    """Converte valores numericos para Decimal, mantendo None se invalido."""
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
+
+
+def _multiplicar(value, fator: Decimal):
+    numero = _to_decimal(value)
+    if numero is None:
+        return None
+    return numero * fator
 
 
 def _escrever_numero(cell, value, number_format: str) -> None:
@@ -57,6 +189,87 @@ def _folha(wb, nome: str):
     ws = wb[nome]
     _limpar_linhas_dados(ws)
     return ws
+
+
+def construir_linhas_geral(linhas, item_qt_por_item):
+    """Devolve dicts para o dump "Resumo Geral" a partir das linhas ativas."""
+    linhas_geral = []
+    item_qt_por_item = item_qt_por_item or {}
+
+    for linha in linhas or []:
+        if not getattr(linha, "ativo", True):
+            continue
+
+        item_id = getattr(linha, "orcamento_item_id", None)
+        item_qt = _to_decimal(item_qt_por_item.get(item_id)) or _UM
+        quantidade = _to_decimal(getattr(linha, "quantidade", None)) or _ZERO
+
+        valores = {}
+        for coluna in COLUNAS_RESUMO_GERAL:
+            if coluna == "item_id":
+                valor = item_id
+            elif coluna == "item_qt":
+                valor = item_qt
+            elif coluna == "qt_total":
+                valor = quantidade * item_qt
+            elif coluna in _CAMPOS_BOOL_GERAL:
+                valor = 1 if getattr(linha, coluna, False) else 0
+            else:
+                atributo = _MAPA_ATRIBUTOS_GERAL.get(coluna, coluna)
+                valor = getattr(linha, atributo, None)
+                if coluna in _CAMPOS_MULTIPLICAR:
+                    valor = _multiplicar(valor, item_qt)
+
+            valores[coluna] = valor
+
+        linhas_geral.append(valores)
+
+    return linhas_geral
+
+
+def _formato_resumo_geral(coluna: str) -> str | None:
+    if coluna in _CAMPOS_INT_GERAL:
+        return _FMT_INT
+    if coluna in _CAMPOS_QT_GERAL:
+        return _FMT_QT
+    if coluna in _CAMPOS_DIM_GERAL:
+        return _FMT_DIM
+    if coluna in _CAMPOS_M2_GERAL:
+        return _FMT_M2
+    if coluna in _CAMPOS_ML_GERAL:
+        return _FMT_ML
+    if coluna == "pliq" or coluna.startswith("custo_"):
+        return _FMT_EUR
+    if coluna in _CAMPOS_PCT_GERAL:
+        return _FMT_PCT
+    return None
+
+
+def _preencher_resumo_geral(wb, linhas_geral) -> None:
+    if linhas_geral is None or "Resumo Geral" not in wb.sheetnames:
+        return
+
+    ws = wb["Resumo Geral"]
+    for col_idx, nome in enumerate(COLUNAS_RESUMO_GERAL, start=1):
+        ws.cell(row=1, column=col_idx, value=nome)
+
+    if ws.max_column > len(COLUNAS_RESUMO_GERAL):
+        ws.delete_cols(
+            len(COLUNAS_RESUMO_GERAL) + 1,
+            ws.max_column - len(COLUNAS_RESUMO_GERAL),
+        )
+
+    _limpar_linhas_dados(ws)
+
+    for linha_idx, linha in enumerate(linhas_geral, start=2):
+        for col_idx, coluna in enumerate(COLUNAS_RESUMO_GERAL, start=1):
+            cell = ws.cell(row=linha_idx, column=col_idx)
+            valor = linha.get(coluna)
+            formato = _formato_resumo_geral(coluna)
+            if formato is None:
+                cell.value = _texto(valor)
+            else:
+                _escrever_numero(cell, valor, formato)
 
 
 def _preencher_placas(wb, placas) -> None:
@@ -171,7 +384,7 @@ def _preencher_margens(wb, distribuicao) -> None:
     )
 
 
-def gerar_excel_resumo_custos(output_path, template_path, *, resumo):
+def gerar_excel_resumo_custos(output_path, template_path, *, resumo, linhas_geral=None):
     """Copia o MODELO para ``output_path`` e preenche as folhas de resumo.
 
     Preserva o ficheiro modelo (incluindo cabecalhos e formatacao existentes),
@@ -183,6 +396,7 @@ def gerar_excel_resumo_custos(output_path, template_path, *, resumo):
     shutil.copyfile(template_path, output_path)
     workbook = load_workbook(output_path)
 
+    _preencher_resumo_geral(workbook, linhas_geral)
     _preencher_placas(workbook, getattr(resumo, "placas", None))
     _preencher_orlas(workbook, getattr(resumo, "orlas", None))
     _preencher_ferragens(workbook, getattr(resumo, "ferragens", None))

@@ -7,18 +7,26 @@ configurados (``SystemSettingService``) e aos dados do orçamento/cliente
 
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.domain import export_paths
 from app.domain.relatorio_totais import calcular_totais_relatorio
+from app.repositories.orcamento_item_custeio_linha_repository import (
+    OrcamentoItemCusteioLinhaRepository,
+)
+from app.repositories.orcamento_item_repository import OrcamentoItemRepository
 from app.services.orcamento_excel_export import gerar_excel_orcamento
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import gerar_pdf_orcamento
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
-from app.services.resumo_custos_excel_export import gerar_excel_resumo_custos
+from app.services.resumo_custos_excel_export import (
+    construir_linhas_geral,
+    gerar_excel_resumo_custos,
+)
 from app.services.system_setting_service import SystemSettingService
 
 _LOGO_MODELO = "LE_Logotipo.png"
@@ -138,6 +146,17 @@ class OrcamentoExportService:
             raise ValueError("Orçamento não encontrado para esta versão.")
 
         resumo = relatorio.resumo_da_versao(orcamento_versao_id)
+        itens = OrcamentoItemRepository(self.session).list_items_by_versao(
+            orcamento_versao_id
+        )
+        item_qt = {item.id: (item.quantidade or Decimal("1")) for item in itens}
+        linhas = OrcamentoItemCusteioLinhaRepository(
+            self.session
+        ).list_by_orcamento_versao(orcamento_versao_id)
+        linhas_geral = construir_linhas_geral(
+            [linha for linha in linhas if linha.ativo],
+            item_qt,
+        )
 
         modelos = self.pasta_modelos()
         if modelos is None:
@@ -168,7 +187,12 @@ class OrcamentoExportService:
             f"Resumo_Custos_{orcamento.num_orcamento}_"
             f"{export_paths.subpasta_versao(orcamento.numero_versao)}.xlsx"
         )
-        gerar_excel_resumo_custos(output, modelo, resumo=resumo)
+        gerar_excel_resumo_custos(
+            output,
+            modelo,
+            resumo=resumo,
+            linhas_geral=linhas_geral,
+        )
 
         return output
 
