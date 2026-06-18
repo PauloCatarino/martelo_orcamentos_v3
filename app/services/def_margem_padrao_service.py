@@ -176,6 +176,13 @@ class DefMargemPadraoService:
 
         return self.repository.get_margens_ativas_por_user(user_id)
 
+    def margens_cliente(self, cliente_id: int | None) -> MargensOrcamento | None:
+        """Active margins of one customer, or None."""
+        if cliente_id is None:
+            return None
+
+        return self.repository.get_margens_ativas_por_cliente(cliente_id)
+
     def margens_standard(self) -> MargensOrcamento | None:
         """Active STANDARD margins, or None."""
         return self.repository.get_margens_ativas_standard()

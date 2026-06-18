@@ -10,10 +10,13 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -28,13 +31,11 @@ from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class NovoOrcamentoDialogData:
     """Data collected by the new budget dialog."""
 
-    nome_cliente: str
-    email_cliente: str | None
-    telefone_cliente: str | None
+    cliente_id: int | None = None
     obra: str
     descricao: str | None
     localizacao: str | None
@@ -63,9 +64,16 @@ class NovoOrcamentoDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(460)
 
-        self.nome_cliente_input = QLineEdit()
-        self.email_cliente_input = QLineEdit()
-        self.telefone_cliente_input = QLineEdit()
+        self._cliente_id: int | None = None
+        self.cliente_label = QLabel("\u2014 nenhum cliente escolhido \u2014")
+        self.escolher_cliente_button = QPushButton("Escolher cliente\u2026")
+        self.escolher_cliente_button.clicked.connect(self._escolher_cliente)
+        cliente_widget = QWidget()
+        cliente_layout = QHBoxLayout(cliente_widget)
+        cliente_layout.setContentsMargins(0, 0, 0, 0)
+        cliente_layout.addWidget(self.cliente_label, stretch=1)
+        cliente_layout.addWidget(self.escolher_cliente_button)
+
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
@@ -86,13 +94,6 @@ class NovoOrcamentoDialog(QDialog):
         self.margens_combo.addItem("Do cliente", AMBITO_CLIENTE)
         self.margens_combo.addItem("Do utilizador", AMBITO_UTILIZADOR)
         self._carregar_disponibilidade_margens()
-        # The customer option follows the typed name/email.
-        self.nome_cliente_input.editingFinished.connect(
-            self._atualizar_opcao_margens_cliente
-        )
-        self.email_cliente_input.editingFinished.connect(
-            self._atualizar_opcao_margens_cliente
-        )
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("novoOrcamentoError")
@@ -100,9 +101,7 @@ class NovoOrcamentoDialog(QDialog):
         self.error_label.setWordWrap(True)
 
         form_layout = QFormLayout()
-        form_layout.addRow("Nome cliente", self.nome_cliente_input)
-        form_layout.addRow("Email cliente", self.email_cliente_input)
-        form_layout.addRow("Telefone cliente", self.telefone_cliente_input)
+        form_layout.addRow("Cliente", cliente_widget)
         form_layout.addRow("Obra", self.obra_input)
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
@@ -130,9 +129,7 @@ class NovoOrcamentoDialog(QDialog):
     def get_data(self) -> NovoOrcamentoDialogData:
         """Return normalized dialog data."""
         return NovoOrcamentoDialogData(
-            nome_cliente=self.nome_cliente_input.text().strip(),
-            email_cliente=self._empty_to_none(self.email_cliente_input.text()),
-            telefone_cliente=self._empty_to_none(self.telefone_cliente_input.text()),
+            cliente_id=self._cliente_id,
             obra=self.obra_input.text().strip(),
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             localizacao=self._empty_to_none(self.localizacao_input.text()),
@@ -164,6 +161,19 @@ class NovoOrcamentoDialog(QDialog):
         if index >= 0:
             self.utilizador_combo.setCurrentIndex(index)
 
+    def _escolher_cliente(self) -> None:
+        from app.ui.dialogs.selecionar_cliente_dialog import SelecionarClienteDialog
+
+        dialog = SelecionarClienteDialog(self)
+        if not dialog.exec() or dialog.selected_cliente is None:
+            return
+
+        cliente = dialog.selected_cliente
+        self._cliente_id = cliente.id
+        tipo = "Tempor\u00e1rio" if cliente.is_temporary else "PHC"
+        self.cliente_label.setText(f"{cliente.nome} ({tipo})")
+        self._atualizar_opcao_margens_cliente()
+
     def _carregar_disponibilidade_margens(self) -> None:
         """Enable the margin options that have an applicable record."""
         current_user = app_session.current_user
@@ -184,12 +194,11 @@ class NovoOrcamentoDialog(QDialog):
         self._atualizar_opcao_margens_cliente()
 
     def _atualizar_opcao_margens_cliente(self) -> None:
-        """Enable 'Do cliente' when the typed customer has its own margins."""
+        """Enable 'Do cliente' when the selected customer has its own margins."""
         try:
             with SessionLocal() as session:
-                margens = DefMargemPadraoService(session).margens_cliente_por_contacto(
-                    self.nome_cliente_input.text(),
-                    self.email_cliente_input.text(),
+                margens = DefMargemPadraoService(session).margens_cliente(
+                    self._cliente_id
                 )
         except SQLAlchemyError:
             margens = None
@@ -220,8 +229,8 @@ class NovoOrcamentoDialog(QDialog):
         """Validate required fields before accepting."""
         data = self.get_data()
 
-        if not data.nome_cliente:
-            self.error_label.setText("O nome do cliente e obrigatorio.")
+        if data.cliente_id is None:
+            self.error_label.setText("Escolha um cliente.")
             return
 
         self.accept()

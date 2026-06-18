@@ -129,9 +129,7 @@ class OrcamentoRepository:
         *,
         ano: int,
         num_orcamento: str,
-        nome_cliente: str,
-        email_cliente: str | None,
-        telefone_cliente: str | None,
+        cliente_id: int,
         obra: str,
         descricao: str | None,
         localizacao: str | None,
@@ -147,11 +145,9 @@ class OrcamentoRepository:
         ``margens`` are the initial margin values copied into the version;
         None keeps the column defaults (zeros).
         """
-        cliente = self._get_or_create_cliente_temporario(
-            nome_cliente=nome_cliente,
-            email_cliente=email_cliente,
-            telefone_cliente=telefone_cliente,
-        )
+        cliente = self.session.get(Cliente, cliente_id)
+        if cliente is None:
+            raise ValueError("Cliente n\u00e3o encontrado.")
 
         orcamento = Orcamento(
             ano=ano,
@@ -359,41 +355,6 @@ class OrcamentoRepository:
         versao.margem_mao_obra_pct = margens.margem_mao_obra_pct
         versao.margem_acabamentos_pct = margens.margem_acabamentos_pct
         versao.custos_administrativos_pct = margens.custos_administrativos_pct
-
-    def _get_or_create_cliente_temporario(
-        self,
-        *,
-        nome_cliente: str,
-        email_cliente: str | None,
-        telefone_cliente: str | None,
-    ) -> Cliente:
-        """Create or reuse a temporary customer."""
-        if email_cliente:
-            cliente = self.session.execute(
-                select(Cliente).where(Cliente.email == email_cliente)
-            ).scalar_one_or_none()
-        else:
-            cliente = self.session.execute(
-                select(Cliente).where(
-                    Cliente.nome == nome_cliente,
-                    Cliente.is_temporary.is_(True),
-                )
-            ).scalar_one_or_none()
-
-        if cliente is not None:
-            return cliente
-
-        cliente = Cliente(
-            nome=nome_cliente,
-            email=email_cliente,
-            telefone=telefone_cliente,
-            source_system="manual",
-            is_temporary=True,
-        )
-        self.session.add(cliente)
-        self.session.flush()
-
-        return cliente
 
     def _format_codigo_versao(self, num_orcamento: str, numero_versao: int) -> str:
         """Format a budget version code."""

@@ -62,6 +62,15 @@ class ClienteRepository:
         )
         return [self._to_resumo(cliente) for cliente in rows]
 
+    def list_todos(self) -> list[ClienteListaResumo]:
+        """List all customers (temporary and PHC) ordered by name."""
+        rows = (
+            self.session.execute(select(Cliente).order_by(Cliente.nome.asc()))
+            .scalars()
+            .all()
+        )
+        return [self._to_resumo(cliente) for cliente in rows]
+
     def criar(
         self,
         *,

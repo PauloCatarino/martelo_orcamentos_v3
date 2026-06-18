@@ -29,9 +29,7 @@ from app.repositories.orcamento_repository import (
 class CriarOrcamentoSimplesData:
     """Input data for creating a simple budget."""
 
-    nome_cliente: str
-    email_cliente: str | None
-    telefone_cliente: str | None
+    cliente_id: int
     obra: str
     descricao: str | None
     localizacao: str | None
@@ -84,11 +82,10 @@ class OrcamentoService:
 
     def criar_orcamento_simples(self, data: CriarOrcamentoSimplesData) -> OrcamentoCriado:
         """Create a simple budget with version 01."""
-        nome_cliente = data.nome_cliente.strip()
         obra = (data.obra or "").strip()
 
-        if not nome_cliente:
-            raise ValueError("nome_cliente is required")
+        if data.cliente_id is None:
+            raise ValueError("cliente_id is required")
 
         ano = data.ano or date.today().year
         num_orcamento = self.repository.get_next_num_orcamento(ano)
@@ -96,9 +93,7 @@ class OrcamentoService:
         result = self.repository.create_orcamento_com_versao_01(
             ano=ano,
             num_orcamento=num_orcamento,
-            nome_cliente=nome_cliente,
-            email_cliente=data.email_cliente,
-            telefone_cliente=data.telefone_cliente,
+            cliente_id=data.cliente_id,
             obra=obra,
             descricao=data.descricao,
             localizacao=data.localizacao,
@@ -179,12 +174,11 @@ class OrcamentoService:
         escolha = normalize_ambito(data.margens_escolha) or AMBITO_STANDARD
 
         if escolha == AMBITO_CLIENTE:
-            cliente_id = self.margens_repository.find_cliente_id_por_contacto(
-                data.nome_cliente, data.email_cliente
-            )
-            if cliente_id is None:
+            if data.cliente_id is None:
                 return None
-            return self.margens_repository.get_margens_ativas_por_cliente(cliente_id)
+            return self.margens_repository.get_margens_ativas_por_cliente(
+                data.cliente_id
+            )
 
         if escolha == AMBITO_UTILIZADOR:
             if data.created_by_id is None:

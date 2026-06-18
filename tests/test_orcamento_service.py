@@ -50,7 +50,7 @@ class _FakeRepository:
             num_orcamento=kwargs["num_orcamento"],
             numero_versao=1,
             codigo_versao=f"{kwargs['num_orcamento']}_01",
-            cliente_nome=kwargs["nome_cliente"],
+            cliente_nome="Cliente Teste",
         )
 
     def criar_nova_versao(
@@ -89,7 +89,6 @@ class _FakeMargensRepository:
     margens_standard: MargensOrcamento | None = None
     margens_por_cliente: dict[int, MargensOrcamento] = {}
     margens_por_user: dict[int, MargensOrcamento] = {}
-    cliente_id_por_contacto: int | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -103,15 +102,11 @@ class _FakeMargensRepository:
     def get_margens_ativas_por_user(self, user_id: int) -> MargensOrcamento | None:
         return self.margens_por_user.get(user_id)
 
-    def find_cliente_id_por_contacto(self, nome, email) -> int | None:
-        return self.cliente_id_por_contacto
-
     @classmethod
     def reset(cls) -> None:
         cls.margens_standard = None
         cls.margens_por_cliente = {}
         cls.margens_por_user = {}
-        cls.cliente_id_por_contacto = None
 
 
 class _FakeSession:
@@ -201,9 +196,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
 
 def _criar_data(**overrides) -> service_module.CriarOrcamentoSimplesData:
     base = {
-        "nome_cliente": "Cliente Novo",
-        "email_cliente": "cliente@teste.local",
-        "telefone_cliente": "912345678",
+        "cliente_id": 4,
         "obra": "Obra Nova",
         "descricao": "Descricao",
         "localizacao": "Local",
@@ -223,6 +216,7 @@ def test_orcamento_service_cria_orcamento_com_proximo_numero(monkeypatch) -> Non
 
     assert _FakeRepository.next_ano == 2026
     assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["cliente_id"] == 4
     assert _FakeRepository.created_payload["num_orcamento"] == "260002"
     assert _FakeRepository.created_payload["created_by_id"] == 7
     assert result.codigo_versao == "260002_01"
@@ -308,11 +302,9 @@ def test_orcamento_service_valida_campos_obrigatorios(monkeypatch) -> None:
     service, _session = _make_service(monkeypatch)
 
     try:
-        service.criar_orcamento_simples(
-            _criar_data(nome_cliente="", email_cliente=None, telefone_cliente=None)
-        )
+        service.criar_orcamento_simples(_criar_data(cliente_id=None))
     except ValueError as error:
-        assert "nome_cliente" in str(error)
+        assert "cliente_id" in str(error)
     else:
         raise AssertionError("Expected ValueError")
 
@@ -330,13 +322,14 @@ def test_criar_orcamento_aplica_margens_standard(monkeypatch) -> None:
 def test_criar_orcamento_aplica_margens_do_cliente(monkeypatch) -> None:
     service, _session = _make_service(monkeypatch)
     do_cliente = MargensOrcamento(margem_lucro_pct=Decimal("20"))
-    _FakeMargensRepository.cliente_id_por_contacto = 4
     _FakeMargensRepository.margens_por_cliente = {4: do_cliente}
     _FakeMargensRepository.margens_standard = MargensOrcamento(
         margem_lucro_pct=Decimal("10")
     )
 
-    service.criar_orcamento_simples(_criar_data(margens_escolha="CLIENTE"))
+    service.criar_orcamento_simples(
+        _criar_data(margens_escolha="CLIENTE", cliente_id=4)
+    )
 
     assert _FakeRepository.created_payload["margens"] == do_cliente
 

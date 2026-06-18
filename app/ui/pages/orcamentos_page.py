@@ -290,9 +290,7 @@ class OrcamentosPage(QWidget):
                 service = OrcamentoService(session)
                 result = service.criar_orcamento_simples(
                     CriarOrcamentoSimplesData(
-                        nome_cliente=form_data.nome_cliente,
-                        email_cliente=form_data.email_cliente,
-                        telefone_cliente=form_data.telefone_cliente,
+                        cliente_id=form_data.cliente_id,
                         obra=form_data.obra,
                         descricao=form_data.descricao,
                         localizacao=form_data.localizacao,

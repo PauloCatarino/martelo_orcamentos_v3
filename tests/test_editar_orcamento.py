@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
-from app.models import Orcamento, OrcamentoVersao
+from app.models import Cliente, Orcamento, OrcamentoVersao
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
     EditarOrcamentoData,
@@ -34,12 +34,14 @@ def session():
 
 def _criar_orcamento(session) -> tuple[int, int]:
     """Create a simple budget and return its orcamento_id and version id."""
+    cliente = Cliente(nome="Cliente X", is_temporary=True)
+    session.add(cliente)
+    session.flush()
+
     service = OrcamentoService(session)
     service.criar_orcamento_simples(
         CriarOrcamentoSimplesData(
-            nome_cliente="Cliente X",
-            email_cliente=None,
-            telefone_cliente=None,
+            cliente_id=cliente.id,
             obra="Obra Inicial",
             descricao="Descricao Inicial",
             localizacao="Local Inicial",
