@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -19,6 +24,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.clientes_lista import filtrar_clientes
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
+from app.services.cliente_temporario_service import (
+    ClienteEmUsoError,
+    ClienteTemporarioService,
+    DadosClienteTemporario,
+)
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
@@ -55,6 +65,8 @@ class ClientesPage(QWidget):
         super().__init__()
 
         self._todos: list[ClienteListaResumo] = []
+        self._linhas: list[ClienteListaResumo] = []
+        self._cliente_id: int | None = None
 
         title = QLabel("Clientes")
         title.setObjectName("pageTitle")
@@ -91,6 +103,60 @@ class ClientesPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("clientesStatus")
 
+        self.new_button = QPushButton("Novo")
+        self.new_button.clicked.connect(self._on_novo)
+        self.save_button = QPushButton("Guardar")
+        self.save_button.clicked.connect(self._on_guardar)
+        self.delete_button = QPushButton("Eliminar")
+        self.delete_button.clicked.connect(self._on_eliminar)
+
+        actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.save_button)
+        actions_layout.addWidget(self.delete_button)
+        actions_layout.addStretch()
+
+        form_group = QGroupBox("Dados do Cliente")
+        form_layout = QGridLayout()
+        self.ed_nome = QLineEdit()
+        self.ed_simplex = QLineEdit()
+        self.ed_simplex.setPlaceholderText("Gerado do nome se vazio")
+        self.ed_num_phc = QLineEdit()
+        self.ed_telefone = QLineEdit()
+        self.ed_telemovel = QLineEdit()
+        self.ed_email = QLineEdit()
+        self.ed_web = QLineEdit()
+        self.ed_morada = QTextEdit()
+        self.ed_morada.setFixedHeight(48)
+        self.ed_info1 = QTextEdit()
+        self.ed_info1.setFixedHeight(60)
+        self.ed_info2 = QTextEdit()
+        self.ed_info2.setFixedHeight(60)
+
+        form_layout.addWidget(QLabel("Nome"), 0, 0)
+        form_layout.addWidget(self.ed_nome, 0, 1)
+        form_layout.addWidget(QLabel("Simplex"), 0, 2)
+        form_layout.addWidget(self.ed_simplex, 0, 3)
+        form_layout.addWidget(QLabel("Num PHC"), 1, 0)
+        form_layout.addWidget(self.ed_num_phc, 1, 1)
+        form_layout.addWidget(QLabel("Telefone"), 1, 2)
+        form_layout.addWidget(self.ed_telefone, 1, 3)
+        form_layout.addWidget(QLabel("Telem\u00f3vel"), 2, 0)
+        form_layout.addWidget(self.ed_telemovel, 2, 1)
+        form_layout.addWidget(QLabel("E-Mail"), 2, 2)
+        form_layout.addWidget(self.ed_email, 2, 3)
+        form_layout.addWidget(QLabel("P\u00e1gina WEB"), 3, 0)
+        form_layout.addWidget(self.ed_web, 3, 1, 1, 3)
+        form_layout.addWidget(QLabel("Morada"), 4, 0)
+        form_layout.addWidget(self.ed_morada, 4, 1, 1, 3)
+        form_layout.addWidget(QLabel("Info 1"), 5, 0)
+        form_layout.addWidget(self.ed_info1, 5, 1, 1, 3)
+        form_layout.addWidget(QLabel("Info 2"), 6, 0)
+        form_layout.addWidget(self.ed_info2, 6, 1, 1, 3)
+        form_layout.setColumnStretch(1, 1)
+        form_layout.setColumnStretch(3, 1)
+        form_group.setLayout(form_layout)
+
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
         self.table.verticalHeader().setVisible(False)
@@ -105,6 +171,7 @@ class ClientesPage(QWidget):
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
         self._aplicar_larguras_colunas()
+        self.table.itemSelectionChanged.connect(self._on_selecao)
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("clientesFooter")
@@ -117,6 +184,8 @@ class ClientesPage(QWidget):
         layout.setSpacing(10)
         layout.addLayout(toolbar)
         layout.addWidget(self.status_label)
+        layout.addLayout(actions_layout)
+        layout.addWidget(form_group)
         layout.addWidget(self.table, stretch=1)
         layout.addWidget(self.footer_label)
         tab.setLayout(layout)
@@ -149,6 +218,7 @@ class ClientesPage(QWidget):
 
     def _preencher_tabela(self, clientes: list[ClienteListaResumo]) -> None:
         """Fill the table with customer read models."""
+        self._linhas = list(clientes)
         self.table.setRowCount(len(clientes))
 
         for row_index, cliente in enumerate(clientes):
@@ -181,3 +251,111 @@ class ClientesPage(QWidget):
             largura = self.COLUMN_WIDTHS.get(header)
             if largura is not None:
                 self.table.setColumnWidth(column_index, largura)
+
+    def _on_selecao(self) -> None:
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self._linhas):
+            return
+
+        resumo = self._linhas[row]
+        self._cliente_id = resumo.id
+        self.ed_nome.setText(resumo.nome or "")
+        self.ed_simplex.setText(resumo.nome_simplex or "")
+        self.ed_num_phc.setText(resumo.num_cliente_phc or "")
+        self.ed_telefone.setText(resumo.telefone or "")
+        self.ed_telemovel.setText(resumo.telemovel or "")
+        self.ed_email.setText(resumo.email or "")
+        self.ed_web.setText(resumo.pagina_web or "")
+        self.ed_morada.setPlainText(resumo.morada or "")
+        self.ed_info1.setPlainText(resumo.info_1 or "")
+        self.ed_info2.setPlainText(resumo.info_2 or "")
+
+    def _on_novo(self) -> None:
+        self._cliente_id = None
+        self.table.clearSelection()
+        for campo in (
+            self.ed_nome,
+            self.ed_simplex,
+            self.ed_num_phc,
+            self.ed_telefone,
+            self.ed_telemovel,
+            self.ed_email,
+            self.ed_web,
+        ):
+            campo.clear()
+        for campo in (self.ed_morada, self.ed_info1, self.ed_info2):
+            campo.clear()
+        self.ed_nome.setFocus()
+
+    def _recolher_dados(self) -> DadosClienteTemporario:
+        return DadosClienteTemporario(
+            nome=self.ed_nome.text(),
+            nome_simplex=self.ed_simplex.text(),
+            morada=self.ed_morada.toPlainText(),
+            email=self.ed_email.text(),
+            pagina_web=self.ed_web.text(),
+            telefone=self.ed_telefone.text(),
+            telemovel=self.ed_telemovel.text(),
+            num_cliente_phc=self.ed_num_phc.text(),
+            info_1=self.ed_info1.toPlainText(),
+            info_2=self.ed_info2.toPlainText(),
+        )
+
+    def _on_guardar(self) -> None:
+        dados = self._recolher_dados()
+        try:
+            with SessionLocal() as session:
+                servico = ClienteTemporarioService(session)
+                if self._cliente_id is None:
+                    resumo = servico.criar(dados)
+                else:
+                    resumo = servico.editar(self._cliente_id, dados)
+            novo_id = resumo.id
+        except ValueError as exc:
+            QMessageBox.warning(self, "Dados em falta", str(exc))
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel guardar o cliente.")
+            return
+
+        self.carregar()
+        self._selecionar_por_id(novo_id)
+        self.status_label.setText("Cliente guardado.")
+
+    def _on_eliminar(self) -> None:
+        if self._cliente_id is None:
+            self.status_label.setText("Selecione um cliente para eliminar.")
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Confirmar",
+            "Eliminar o cliente selecionado?",
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                ClienteTemporarioService(session).eliminar(self._cliente_id)
+        except ClienteEmUsoError as exc:
+            QMessageBox.warning(
+                self,
+                "Cliente em uso",
+                f"{exc}\n\nElimine/realoque os orcamentos associados antes de o apagar.",
+            )
+            return
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel eliminar o cliente.")
+            return
+
+        self.carregar()
+        self._on_novo()
+        self.status_label.setText("Cliente eliminado.")
+
+    def _selecionar_por_id(self, cliente_id: int) -> None:
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole) == cliente_id:
+                self.table.selectRow(row)
+                return

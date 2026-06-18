@@ -1,14 +1,14 @@
-"""Repository for customer list reads."""
+"""Repository for customer list operations."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Cliente
+from app.models import Cliente, Orcamento
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class ClienteListaResumo:
 
 
 class ClienteRepository:
-    """Repository for customer read operations."""
+    """Repository for customer list and temporary-customer write operations."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -48,6 +48,90 @@ class ClienteRepository:
             .all()
         )
         return [self._to_resumo(cliente) for cliente in rows]
+
+    def criar(
+        self,
+        *,
+        nome: str,
+        nome_simplex: str,
+        morada: str | None,
+        email: str | None,
+        pagina_web: str | None,
+        telefone: str | None,
+        telemovel: str | None,
+        num_cliente_phc: str | None,
+        info_1: str | None,
+        info_2: str | None,
+    ) -> ClienteListaResumo:
+        """Create a temporary customer."""
+        cliente = Cliente(
+            nome=nome,
+            nome_simplex=nome_simplex,
+            morada=morada,
+            email=email,
+            pagina_web=pagina_web,
+            telefone=telefone,
+            telemovel=telemovel,
+            num_cliente_phc=num_cliente_phc,
+            info_1=info_1,
+            info_2=info_2,
+            source_system="manual",
+            is_temporary=True,
+        )
+        self.session.add(cliente)
+        self.session.flush()
+
+        return self._to_resumo(cliente)
+
+    def atualizar(
+        self,
+        *,
+        id: int,
+        nome: str,
+        nome_simplex: str,
+        morada: str | None,
+        email: str | None,
+        pagina_web: str | None,
+        telefone: str | None,
+        telemovel: str | None,
+        num_cliente_phc: str | None,
+        info_1: str | None,
+        info_2: str | None,
+    ) -> ClienteListaResumo:
+        """Update a temporary customer."""
+        cliente = self.session.get(Cliente, id)
+        if cliente is None or not cliente.is_temporary:
+            raise ValueError("Cliente tempor\u00e1rio n\u00e3o encontrado.")
+
+        cliente.nome = nome
+        cliente.nome_simplex = nome_simplex
+        cliente.morada = morada
+        cliente.email = email
+        cliente.pagina_web = pagina_web
+        cliente.telefone = telefone
+        cliente.telemovel = telemovel
+        cliente.num_cliente_phc = num_cliente_phc
+        cliente.info_1 = info_1
+        cliente.info_2 = info_2
+        self.session.flush()
+
+        return self._to_resumo(cliente)
+
+    def eliminar(self, id: int) -> None:
+        """Delete a temporary customer."""
+        cliente = self.session.get(Cliente, id)
+        if cliente is None or not cliente.is_temporary:
+            raise ValueError("Cliente tempor\u00e1rio n\u00e3o encontrado.")
+
+        self.session.delete(cliente)
+
+    def contar_orcamentos(self, cliente_id: int) -> int:
+        """Count budgets associated with one customer."""
+        return self.session.execute(
+            select(func.count()).select_from(Orcamento).where(
+                Orcamento.cliente_id == cliente_id
+            )
+        ).scalar_one()
 
     def _to_resumo(self, cliente: Cliente) -> ClienteListaResumo:
         """Convert a Cliente model into a list read model."""

@@ -1,5 +1,10 @@
 """Service layer package."""
 
+from app.services.cliente_temporario_service import (
+    ClienteEmUsoError,
+    ClienteTemporarioService,
+    DadosClienteTemporario,
+)
 from app.services.def_maquina_service import CriarDefMaquinaData, DefMaquinaService, EditarDefMaquinaData
 from app.services.def_margem_padrao_service import (
     CriarMargemPadraoData,
@@ -32,6 +37,8 @@ from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.system_setting_service import SystemSettingService
 
 __all__ = [
+    "ClienteEmUsoError",
+    "ClienteTemporarioService",
     "CriarDefMaquinaData",
     "CriarDefOperacaoData",
     "CriarDefPecaData",
@@ -40,6 +47,7 @@ __all__ = [
     "CriarOrcamentoItemModuloSimplesData",
     "CriarOrcamentoItemSimplesData",
     "CriarOrcamentoSimplesData",
+    "DadosClienteTemporario",
     "DefMaquinaService",
     "DefMargemPadraoService",
     "DefOperacaoService",
