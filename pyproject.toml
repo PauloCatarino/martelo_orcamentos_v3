@@ -25,3 +25,6 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.setuptools.package-data]
+"app.ui" = ["assets/icons/*.svg"]

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -36,6 +35,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 )
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui import tema
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.utils.formatters import format_currency, format_version
 
 
@@ -110,14 +110,9 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(
-            "Pesquisar — espaço ou % para vários termos…"
-        )
-        self.search_input.textChanged.connect(self._render)
-
-        self.clear_button = QPushButton("Limpar")
-        self.clear_button.clicked.connect(self._limpar_filtros)
+        self.campo_pesquisa = CampoPesquisa()
+        self.campo_pesquisa.pesquisa_mudou.connect(self._render)
+        self.campo_pesquisa.limpar_clicado.connect(self._limpar_filtros)
 
         self.estado_combo = QComboBox()
         self.cliente_combo = QComboBox()
@@ -126,15 +121,14 @@ class OrcamentosPage(QWidget):
             combo.currentTextChanged.connect(self._render)
 
         filters_layout = QHBoxLayout()
-        filters_layout.addWidget(QLabel("Pesquisa"))
-        filters_layout.addWidget(self.search_input, stretch=2)
-        filters_layout.addWidget(self.clear_button)
+        filters_layout.addWidget(self.campo_pesquisa)
         filters_layout.addWidget(QLabel("Estado"))
         filters_layout.addWidget(self.estado_combo)
         filters_layout.addWidget(QLabel("Cliente"))
         filters_layout.addWidget(self.cliente_combo)
         filters_layout.addWidget(QLabel("Utilizador"))
         filters_layout.addWidget(self.utilizador_combo)
+        filters_layout.addStretch()
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentosStatus")
@@ -198,7 +192,7 @@ class OrcamentosPage(QWidget):
         """Render the in-memory list using the current search and filters."""
         filtrados = filtrar_orcamentos(
             self._todos,
-            texto=self.search_input.text(),
+            texto=self.campo_pesquisa.texto(),
             estado=self._combo_valor(self.estado_combo),
             cliente=self._combo_valor(self.cliente_combo),
             utilizador=self._combo_valor(self.utilizador_combo),
@@ -209,13 +203,13 @@ class OrcamentosPage(QWidget):
     def _limpar_filtros(self) -> None:
         """Clear search and reset all filters to 'Todos'."""
         widgets = (
-            self.search_input,
+            self.campo_pesquisa,
             self.estado_combo,
             self.cliente_combo,
             self.utilizador_combo,
         )
         estados_sinais = [(widget, widget.blockSignals(True)) for widget in widgets]
-        self.search_input.clear()
+        self.campo_pesquisa.limpar()
         for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
             if combo.count():
                 combo.setCurrentIndex(0)
