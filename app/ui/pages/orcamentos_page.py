@@ -103,6 +103,9 @@ class OrcamentosPage(QWidget):
         self.edit_button = QPushButton("Editar Or\u00e7amento")
         self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
 
+        self.create_folder_button = QPushButton("Criar Pasta do Or\u00e7amento")
+        self.create_folder_button.clicked.connect(self._criar_pasta_orcamento)
+
         self.open_folder_button = QPushButton("Abrir Pasta do Or\u00e7amento")
         self.open_folder_button.clicked.connect(self._abrir_pasta_orcamento)
 
@@ -113,6 +116,7 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -302,8 +306,44 @@ class OrcamentosPage(QWidget):
             self.status_label.setText("Nao foi possivel criar o orcamento.")
             return
 
-        self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
         self.carregar_orcamentos()
+        self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
+        self._perguntar_criar_pasta_novo_orcamento(result)
+
+    def _perguntar_criar_pasta_novo_orcamento(self, result) -> None:
+        """Ask whether to create the folder for a newly created budget."""
+        if result.orcamento_versao_id is None:
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Novo Or\u00e7amento",
+            (
+                f"Or\u00e7amento {result.codigo_versao} criado.\n"
+                "Criar a pasta do or\u00e7amento agora?"
+            ),
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                pasta = OrcamentoExportService(session).resolver_pasta_versao(
+                    result.orcamento_versao_id,
+                    criar=True,
+                )
+        except SQLAlchemyError:
+            pasta = None
+
+        if pasta is None:
+            QMessageBox.warning(
+                self,
+                "Novo Or\u00e7amento",
+                "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
+            )
+            return
+
+        QMessageBox.information(self, "Novo Or\u00e7amento", f"Pasta criada:\n{pasta}")
 
     def _preencher_tabela(self, orcamentos: list[OrcamentoResumo]) -> None:
         """Fill the table with budget read models."""
@@ -392,8 +432,61 @@ class OrcamentosPage(QWidget):
         if self.on_open_orcamento is not None:
             self.on_open_orcamento(orcamento)
 
+    def _criar_pasta_orcamento(self) -> None:
+        """Create the selected budget version folder if it does not exist."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um or\u00e7amento para criar a pasta.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                servico = OrcamentoExportService(session)
+                pasta = servico.resolver_pasta_versao(
+                    orcamento.orcamento_versao_id,
+                    criar=False,
+                )
+                if pasta is None:
+                    QMessageBox.warning(
+                        self,
+                        "Criar Pasta do Or\u00e7amento",
+                        "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
+                    )
+                    return
+                if pasta.exists():
+                    QMessageBox.information(
+                        self,
+                        "Criar Pasta do Or\u00e7amento",
+                        f"A pasta j\u00e1 existe:\n{pasta}",
+                    )
+                    return
+                pasta = servico.resolver_pasta_versao(
+                    orcamento.orcamento_versao_id,
+                    criar=True,
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("N\u00e3o foi poss\u00edvel criar a pasta do or\u00e7amento.")
+            return
+
+        if pasta is None:
+            QMessageBox.warning(
+                self,
+                "Criar Pasta do Or\u00e7amento",
+                "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
+            )
+            return
+
+        self.status_label.setText(f"Pasta criada: {pasta}")
+        QMessageBox.information(
+            self,
+            "Criar Pasta do Or\u00e7amento",
+            f"Pasta criada:\n{pasta}",
+        )
+
     def _abrir_pasta_orcamento(self) -> None:
-        """Open and create, if needed, the selected budget version folder."""
+        """Open the selected budget version folder, asking before creating it."""
         row = self.table.currentRow()
         orcamento = self._orcamentos_by_row.get(row)
 
@@ -403,14 +496,32 @@ class OrcamentosPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                pasta = OrcamentoExportService(session).resolver_pasta_versao(
+                servico = OrcamentoExportService(session)
+                pasta = servico.resolver_pasta_versao(
                     orcamento.orcamento_versao_id,
-                    criar=True,
+                    criar=False,
                 )
+                if pasta is None:
+                    QMessageBox.warning(
+                        self,
+                        "Abrir Pasta do Or\u00e7amento",
+                        "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
+                    )
+                    return
+                if not pasta.exists():
+                    resposta = QMessageBox.question(
+                        self,
+                        "Abrir Pasta do Or\u00e7amento",
+                        f"A pasta ainda n\u00e3o existe:\n{pasta}\n\nCriar agora?",
+                    )
+                    if resposta != QMessageBox.StandardButton.Yes:
+                        return
+                    pasta = servico.resolver_pasta_versao(
+                        orcamento.orcamento_versao_id,
+                        criar=True,
+                    )
         except SQLAlchemyError:
-            self.status_label.setText(
-                "N\u00e3o foi poss\u00edvel resolver a pasta do or\u00e7amento."
-            )
+            self.status_label.setText("N\u00e3o foi poss\u00edvel abrir a pasta do or\u00e7amento.")
             return
 
         if pasta is None:

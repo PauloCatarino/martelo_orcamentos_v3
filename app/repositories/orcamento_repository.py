@@ -62,6 +62,8 @@ class OrcamentoCriado:
     numero_versao: int
     codigo_versao: str
     cliente_nome: str
+    orcamento_versao_id: int | None = None
+    orcamento_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -190,6 +192,8 @@ class OrcamentoRepository:
             numero_versao=versao.numero_versao,
             codigo_versao=codigo_versao,
             cliente_nome=cliente.nome,
+            orcamento_versao_id=versao.id,
+            orcamento_id=orcamento.id,
         )
 
     def criar_nova_versao(
