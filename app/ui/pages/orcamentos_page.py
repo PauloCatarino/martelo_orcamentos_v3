@@ -23,7 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
-from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
+from app.domain.orcamento_estados import ESTADOS_ORCAMENTO, deve_avisar_cliente_phc
 from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
 from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.orcamento_repository import OrcamentoResumo
@@ -616,6 +616,29 @@ class OrcamentosPage(QWidget):
 
         self.carregar_orcamentos()
         self.status_label.setText("Orcamento atualizado.")
+
+        try:
+            with SessionLocal() as session:
+                cliente_final = (
+                    ClienteRepository(session).obter(form_data.cliente_id)
+                    if form_data.cliente_id is not None
+                    else None
+                )
+        except SQLAlchemyError:
+            cliente_final = None
+
+        if cliente_final is not None and deve_avisar_cliente_phc(
+            orcamento.estado,
+            form_data.estado,
+            cliente_final.is_temporary,
+        ):
+            QMessageBox.information(
+                self,
+                "Or\u00e7amento adjudicado",
+                "O cliente associado ainda \u00e9 tempor\u00e1rio.\n\n"
+                "Crie o cliente definitivo no PHC e, depois, associe-o ao "
+                "or\u00e7amento (Editar \u2192 Trocar cliente\u2026).",
+            )
 
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Open a budget when the user double-clicks its table row."""
