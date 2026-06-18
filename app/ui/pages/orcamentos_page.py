@@ -8,9 +8,11 @@ from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -21,7 +23,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
-from app.domain.orcamentos_lista import resumo_lista
+from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
@@ -108,6 +110,32 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(
+            "Pesquisar — espaço ou % para vários termos…"
+        )
+        self.search_input.textChanged.connect(self._render)
+
+        self.clear_button = QPushButton("Limpar")
+        self.clear_button.clicked.connect(self._limpar_filtros)
+
+        self.estado_combo = QComboBox()
+        self.cliente_combo = QComboBox()
+        self.utilizador_combo = QComboBox()
+        for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
+            combo.currentTextChanged.connect(self._render)
+
+        filters_layout = QHBoxLayout()
+        filters_layout.addWidget(QLabel("Pesquisa"))
+        filters_layout.addWidget(self.search_input, stretch=2)
+        filters_layout.addWidget(self.clear_button)
+        filters_layout.addWidget(QLabel("Estado"))
+        filters_layout.addWidget(self.estado_combo)
+        filters_layout.addWidget(QLabel("Cliente"))
+        filters_layout.addWidget(self.cliente_combo)
+        filters_layout.addWidget(QLabel("Utilizador"))
+        filters_layout.addWidget(self.utilizador_combo)
+
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentosStatus")
 
@@ -139,6 +167,7 @@ class OrcamentosPage(QWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addLayout(actions_layout)
+        layout.addLayout(filters_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
         layout.addWidget(self.footer_label)
@@ -159,11 +188,84 @@ class OrcamentosPage(QWidget):
             return
 
         self._todos = list(orcamentos)
-        self._preencher_tabela(orcamentos)
-        self._atualizar_rodape(orcamentos)
+        self._atualizar_filtros()
+        self._render()
 
-        if not orcamentos:
+        if not self._todos:
             self.status_label.setText("Sem orcamentos para mostrar.")
+
+    def _render(self, *_args) -> None:
+        """Render the in-memory list using the current search and filters."""
+        filtrados = filtrar_orcamentos(
+            self._todos,
+            texto=self.search_input.text(),
+            estado=self._combo_valor(self.estado_combo),
+            cliente=self._combo_valor(self.cliente_combo),
+            utilizador=self._combo_valor(self.utilizador_combo),
+        )
+        self._preencher_tabela(filtrados)
+        self._atualizar_rodape(filtrados)
+
+    def _limpar_filtros(self) -> None:
+        """Clear search and reset all filters to 'Todos'."""
+        widgets = (
+            self.search_input,
+            self.estado_combo,
+            self.cliente_combo,
+            self.utilizador_combo,
+        )
+        estados_sinais = [(widget, widget.blockSignals(True)) for widget in widgets]
+        self.search_input.clear()
+        for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
+            if combo.count():
+                combo.setCurrentIndex(0)
+        for widget, estado_anterior in estados_sinais:
+            widget.blockSignals(estado_anterior)
+        self._render()
+
+    def _atualizar_filtros(self) -> None:
+        """Populate filter combos from the loaded list, preserving selection."""
+        self._popular_combo(
+            self.estado_combo,
+            self._valores_distintos("estado"),
+        )
+        self._popular_combo(
+            self.cliente_combo,
+            self._valores_distintos("cliente_nome"),
+        )
+        self._popular_combo(
+            self.utilizador_combo,
+            self._valores_distintos("utilizador"),
+        )
+
+    def _popular_combo(self, combo: QComboBox, valores: list[str]) -> None:
+        atual = combo.currentText() or "Todos"
+        estado_anterior = combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("Todos")
+        for valor in valores:
+            combo.addItem(valor)
+
+        indice = combo.findText(atual)
+        combo.setCurrentIndex(indice if indice >= 0 else 0)
+        combo.blockSignals(estado_anterior)
+
+    def _valores_distintos(self, atributo: str) -> list[str]:
+        valores = {
+            str(valor).strip()
+            for valor in (
+                getattr(orcamento, atributo, None) for orcamento in self._todos
+            )
+            if valor is not None and str(valor).strip()
+        }
+        return sorted(valores, key=str.lower)
+
+    @staticmethod
+    def _combo_valor(combo: QComboBox) -> str | None:
+        valor = combo.currentText().strip()
+        if not valor or valor == "Todos":
+            return None
+        return valor
 
     def abrir_novo_orcamento(self) -> None:
         """Open the simple new budget dialog."""
