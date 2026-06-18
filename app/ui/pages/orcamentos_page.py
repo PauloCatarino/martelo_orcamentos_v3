@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -30,6 +31,7 @@ from app.services.orcamento_service import (
     EditarOrcamentoData,
     OrcamentoService,
 )
+from app.services.orcamento_export_service import OrcamentoExportService
 from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialog,
     EditarOrcamentoDialogData,
@@ -101,6 +103,9 @@ class OrcamentosPage(QWidget):
         self.edit_button = QPushButton("Editar Or\u00e7amento")
         self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
 
+        self.open_folder_button = QPushButton("Abrir Pasta do Or\u00e7amento")
+        self.open_folder_button.clicked.connect(self._abrir_pasta_orcamento)
+
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
@@ -108,6 +113,7 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -385,6 +391,38 @@ class OrcamentosPage(QWidget):
 
         if self.on_open_orcamento is not None:
             self.on_open_orcamento(orcamento)
+
+    def _abrir_pasta_orcamento(self) -> None:
+        """Open and create, if needed, the selected budget version folder."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um or\u00e7amento para abrir a pasta.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                pasta = OrcamentoExportService(session).resolver_pasta_versao(
+                    orcamento.orcamento_versao_id,
+                    criar=True,
+                )
+        except SQLAlchemyError:
+            self.status_label.setText(
+                "N\u00e3o foi poss\u00edvel resolver a pasta do or\u00e7amento."
+            )
+            return
+
+        if pasta is None:
+            QMessageBox.warning(
+                self,
+                "Abrir Pasta do Or\u00e7amento",
+                "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
+            )
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))
+        self.status_label.setText(f"Pasta aberta: {pasta}")
 
     def editar_orcamento_selecionado(self) -> None:
         """Edit the general data of the currently selected budget."""
