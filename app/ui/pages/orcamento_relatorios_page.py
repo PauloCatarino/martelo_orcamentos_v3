@@ -281,12 +281,15 @@ class OrcamentoRelatoriosPage(QWidget):
         # Update banner: right below the customer data, before the items table.
         self.banner_relatorio = self._criar_banner()
 
-        # Top bar with the "Exportar PDF" action (phase 8W.4.1).
+        # Top bar with the export actions (PDF: 8W.4.1; Excel: 8W.4.2).
         self.exportar_pdf_button = QPushButton("Exportar PDF")
         self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
+        self.exportar_excel_button = QPushButton("Exportar Excel")
+        self.exportar_excel_button.clicked.connect(self._exportar_excel)
         barra = QHBoxLayout()
         barra.addStretch()
         barra.addWidget(self.exportar_pdf_button)
+        barra.addWidget(self.exportar_excel_button)
 
         tab = QWidget()
         layout = QVBoxLayout()
@@ -531,6 +534,25 @@ class OrcamentoRelatoriosPage(QWidget):
 
         QMessageBox.information(
             self, "Exportar PDF", f"PDF criado em:\n{caminho}"
+        )
+
+    def _exportar_excel(self) -> None:
+        """Export the budget Excel to the version folder (phase 8W.4.2)."""
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_excel_orcamento(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError) as erro:
+            QMessageBox.critical(
+                self,
+                "Exportar Excel",
+                f"Não foi possível exportar o Excel:\n{erro}",
+            )
+            return
+
+        QMessageBox.information(
+            self, "Exportar Excel", f"Excel criado em:\n{caminho}"
         )
 
     def _preencher_cliente(self, cliente) -> None:

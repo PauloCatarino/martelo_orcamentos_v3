@@ -238,6 +238,31 @@ class OrcamentoRepository:
             codigo_versao=versao.codigo_versao,
         )
 
+    def update_orcamento(
+        self,
+        orcamento_id: int,
+        *,
+        descricao: str | None,
+        obra: str,
+        localizacao: str | None,
+        ref_cliente: str | None,
+        updated_by_id: int | None = None,
+    ) -> bool:
+        """Update a budget's general data; False when it does not exist."""
+        orcamento = self.session.get(Orcamento, orcamento_id)
+        if orcamento is None:
+            return False
+
+        orcamento.descricao = descricao
+        orcamento.obra = obra
+        orcamento.localizacao = localizacao
+        orcamento.ref_cliente = ref_cliente
+        if updated_by_id is not None:
+            orcamento.updated_by_id = updated_by_id
+        self.session.flush()
+
+        return True
+
     def get_cliente_id_by_versao(self, orcamento_versao_id: int) -> int | None:
         """Return the customer id of one budget version (or None)."""
         statement = (

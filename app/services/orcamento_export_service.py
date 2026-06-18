@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.domain import export_paths
 from app.domain.relatorio_totais import calcular_totais_relatorio
+from app.services.orcamento_excel_export import gerar_excel_orcamento
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import gerar_pdf_orcamento
 from app.services.orcamento_service import OrcamentoService
@@ -119,6 +120,43 @@ class OrcamentoExportService:
             items=items,
             totais=totais,
             logo_path=logo,
+        )
+
+        return output
+
+    def exportar_excel_orcamento(self, orcamento_versao_id: int) -> Path:
+        """Recalcula a versão e exporta o Excel do orçamento, devolvendo o ``Path``.
+
+        À semelhança de :meth:`exportar_pdf_orcamento`, mas grava ``.xlsx``.
+        Levanta ``ValueError`` quando a pasta base não está configurada ou
+        faltam dados da versão.
+        """
+        RelatorioConsumosService(self.session).recalcular_versao(orcamento_versao_id)
+
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
+        cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
+        items = OrcamentoItemService(self.session).list_items_by_versao(orcamento_versao_id)
+        if orcamento is None or cliente is None:
+            raise ValueError("Orçamento ou cliente não encontrado para esta versão.")
+
+        totais = calcular_totais_relatorio(items)
+
+        pasta = self.resolver_pasta_versao(orcamento_versao_id, criar=True)
+        if pasta is None:
+            raise ValueError(
+                "Defina a 'Pasta base dos Orcamentos' em Configurações → Caminhos."
+            )
+
+        output = pasta / (
+            f"{orcamento.num_orcamento}_"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}.xlsx"
+        )
+        gerar_excel_orcamento(
+            output,
+            cliente=cliente,
+            orcamento=orcamento,
+            items=items,
+            totais=totais,
         )
 
         return output

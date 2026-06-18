@@ -21,7 +21,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.repositories.orcamento_repository import OrcamentoResumo
-from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
+from app.services.orcamento_service import (
+    CriarOrcamentoSimplesData,
+    EditarOrcamentoData,
+    OrcamentoService,
+)
+from app.ui.dialogs.editar_orcamento_dialog import (
+    EditarOrcamentoDialog,
+    EditarOrcamentoDialogData,
+)
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.utils.formatters import format_currency, format_version
 
@@ -58,12 +66,16 @@ class OrcamentosPage(QWidget):
         self.open_button = QPushButton("Abrir Or\u00e7amento")
         self.open_button.clicked.connect(self.abrir_orcamento_selecionado)
 
+        self.edit_button = QPushButton("Editar Or\u00e7amento")
+        self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
+
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
+        actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -183,6 +195,51 @@ class OrcamentosPage(QWidget):
 
         if self.on_open_orcamento is not None:
             self.on_open_orcamento(orcamento)
+
+    def editar_orcamento_selecionado(self) -> None:
+        """Edit the general data of the currently selected budget."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um orcamento para editar.")
+            return
+
+        dialog = EditarOrcamentoDialog(
+            self,
+            EditarOrcamentoDialogData(
+                obra=orcamento.obra or "",
+                descricao=orcamento.descricao,
+                localizacao=orcamento.localizacao,
+                ref_cliente=orcamento.ref_cliente,
+            ),
+        )
+
+        if not dialog.exec():
+            return
+
+        form_data = dialog.get_data()
+        current_user = app_session.current_user
+        updated_by_id = current_user.id if current_user is not None else None
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoService(session).editar_orcamento(
+                    orcamento.orcamento_id,
+                    EditarOrcamentoData(
+                        obra=form_data.obra,
+                        descricao=form_data.descricao,
+                        localizacao=form_data.localizacao,
+                        ref_cliente=form_data.ref_cliente,
+                    ),
+                    updated_by_id=updated_by_id,
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel atualizar o orcamento.")
+            return
+
+        self.carregar_orcamentos()
+        self.status_label.setText("Orcamento atualizado.")
 
     def _handle_row_double_click(self, row: int, _column: int) -> None:
         """Open a budget when the user double-clicks its table row."""

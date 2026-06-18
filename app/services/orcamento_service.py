@@ -41,6 +41,16 @@ class CriarOrcamentoSimplesData:
     margens_escolha: str = AMBITO_STANDARD
 
 
+@dataclass(frozen=True)
+class EditarOrcamentoData:
+    """Input data for editing a budget's general data (phase 9.0)."""
+
+    descricao: str | None
+    obra: str
+    localizacao: str | None
+    ref_cliente: str | None
+
+
 class OrcamentoService:
     """Application service for Orcamento workflows."""
 
@@ -89,6 +99,30 @@ class OrcamentoService:
             ref_cliente=data.ref_cliente,
             created_by_id=data.created_by_id,
             margens=self._resolver_margens_iniciais(data),
+        )
+        self.session.commit()
+
+        return result
+
+    def editar_orcamento(
+        self,
+        orcamento_id: int,
+        data: EditarOrcamentoData,
+        updated_by_id: int | None = None,
+    ) -> bool:
+        """Edit a budget's general data (obra is required)."""
+        obra = (data.obra or "").strip()
+
+        if not obra:
+            raise ValueError("A obra é obrigatória.")
+
+        result = self.repository.update_orcamento(
+            orcamento_id,
+            descricao=data.descricao,
+            obra=obra,
+            localizacao=data.localizacao,
+            ref_cliente=data.ref_cliente,
+            updated_by_id=updated_by_id,
         )
         self.session.commit()
 
