@@ -34,6 +34,7 @@ from app.services.cliente_temporario_service import (
 from app.services import phc_sql
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ClientesPage(QWidget):
@@ -165,6 +166,7 @@ class ClientesPage(QWidget):
 
         self.table = self._nova_tabela_clientes()
         self.table.itemSelectionChanged.connect(self._on_selecao)
+        ligar_persistencia_larguras(self.table, "clientes_temporarios")
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("clientesFooter")
@@ -220,6 +222,7 @@ class ClientesPage(QWidget):
         self.phc_status_label.setObjectName("clientesStatus")
 
         self.phc_table = self._nova_tabela_clientes()
+        ligar_persistencia_larguras(self.phc_table, "clientes_phc")
 
         self.phc_footer_label = QLabel("")
         self.phc_footer_label.setObjectName("clientesFooter")
