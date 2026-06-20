@@ -983,3 +983,19 @@ def test_custeio_page_miniatura_modulo() -> None:
     copiar = inspect.getsource(OrcamentoItemCusteioPage._copiar_imagem_modulo)
     assert "pasta_imagens_modulos" in copiar
     assert "copiar_imagem_para_pasta" in copiar
+
+
+def test_custeio_tem_toggle_dados_item() -> None:
+    """Polish P5: the item base data can be hidden/shown to free table space."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "toggle_item_info")
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "toggle_item_info_button" in init
+    assert "self.item_info_widget" in init
+
+    # The base data renders as a compact horizontal grid (no more QFormLayout).
+    criar = inspect.getsource(OrcamentoItemCusteioPage._create_item_info_widget)
+    assert "QGridLayout" in criar
+    assert "QFormLayout" not in criar

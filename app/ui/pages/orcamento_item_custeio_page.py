@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
     QComboBox,
-    QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -534,7 +535,21 @@ class OrcamentoItemCusteioPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemCusteioStatus")
 
-        item_info_widget = self._create_item_info_widget()
+        self.item_info_widget = self._create_item_info_widget()
+
+        # Toggle to hide/show the item base data (compact, horizontal block)
+        # so the costing table can take the extra vertical space (polish P5).
+        self._item_info_visivel = True
+        self.toggle_item_info_button = QToolButton()
+        self.toggle_item_info_button.setText("Dados do item")
+        self.toggle_item_info_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.toggle_item_info_button.setArrowType(Qt.ArrowType.DownArrow)
+        self.toggle_item_info_button.setToolTip(
+            "Ocultar/mostrar os dados do item (mais espaço para a tabela)"
+        )
+        self.toggle_item_info_button.clicked.connect(self.toggle_item_info)
 
         # Auto-hide state for the parts library panel (phase 8V.2).
         self._biblioteca_visivel = True
@@ -611,13 +626,17 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tabs.addTab(custeio_tab, "Custeio")
         self.tabs.addTab(OrcamentoItemValuesetPage(item.id), "ValueSet")
 
+        title_layout = QHBoxLayout()
+        title_layout.addWidget(self.title_label, stretch=1)
+        title_layout.addWidget(self.toggle_item_info_button)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        layout.setSpacing(6)
         layout.addWidget(self.breadcrumb)
-        layout.addWidget(self.title_label)
+        layout.addLayout(title_layout)
         layout.addLayout(actions_layout)
-        layout.addWidget(item_info_widget)
+        layout.addWidget(self.item_info_widget)
         layout.addWidget(self.status_label)
         layout.addWidget(self.tabs, stretch=1)
 
@@ -1071,6 +1090,17 @@ class OrcamentoItemCusteioPage(QWidget):
             )
             self._biblioteca_visivel = True
 
+    def toggle_item_info(self) -> None:
+        """Ocultar/mostrar a zona de dados do item (só texto) para dar mais espaço à tabela."""
+        self._item_info_visivel = not self._item_info_visivel
+        self.item_info_widget.setVisible(self._item_info_visivel)
+        self.toggle_item_info_button.setArrowType(
+            Qt.ArrowType.DownArrow if self._item_info_visivel else Qt.ArrowType.RightArrow
+        )
+        self.toggle_item_info_button.setToolTip(
+            "Ocultar dados do item" if self._item_info_visivel else "Mostrar dados do item"
+        )
+
     def _carregar_biblioteca(self) -> None:
         """Load active piece definitions for the library tree."""
         try:
@@ -1228,26 +1258,49 @@ class OrcamentoItemCusteioPage(QWidget):
         )
 
     def _create_item_info_widget(self) -> QWidget:
-        """Create the item base data form."""
+        """Create the item base data (compact, horizontal layout)."""
         widget = QWidget()
-        form_layout = QFormLayout()
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(2)
 
-        for key, label in [
-            ("codigo", "C\u00f3digo"),
-            ("item", "Item"),
-            ("tipo", "Tipo"),
-            ("descricao", "Descri\u00e7\u00e3o"),
-            ("altura", "Altura/Comp"),
-            ("largura", "Largura"),
-            ("profundidade", "Profundidade"),
-            ("quantidade", "Quantidade"),
-            ("unidade", "Unidade"),
-        ]:
-            value_label = QLabel("")
-            self._item_info_labels[key] = value_label
-            form_layout.addRow(label, value_label)
+        posicoes = [
+            ("codigo", "C\u00f3digo", 0, 0),
+            ("tipo", "Tipo", 0, 1),
+            ("quantidade", "Quantidade", 0, 2),
+            ("unidade", "Unidade", 0, 3),
+            ("item", "Item", 1, 0),
+            ("altura", "Altura/Comp", 1, 1),
+            ("largura", "Largura", 1, 2),
+            ("profundidade", "Profundidade", 1, 3),
+        ]
+        for key, label, row, col in posicoes:
+            campo = QLabel(f"{label}:")
+            campo.setStyleSheet("font-weight: bold;")
+            valor = QLabel("")
+            self._item_info_labels[key] = valor
+            celula = QHBoxLayout()
+            celula.setContentsMargins(0, 0, 0, 0)
+            celula.setSpacing(4)
+            celula.addWidget(campo)
+            celula.addWidget(valor)
+            celula.addStretch()
+            grid.addLayout(celula, row, col)
 
-        widget.setLayout(form_layout)
+        desc_campo = QLabel("Descri\u00e7\u00e3o:")
+        desc_campo.setStyleSheet("font-weight: bold;")
+        desc_valor = QLabel("")
+        desc_valor.setWordWrap(True)
+        self._item_info_labels["descricao"] = desc_valor
+        desc_layout = QHBoxLayout()
+        desc_layout.setContentsMargins(0, 0, 0, 0)
+        desc_layout.setSpacing(4)
+        desc_layout.addWidget(desc_campo)
+        desc_layout.addWidget(desc_valor, stretch=1)
+        grid.addLayout(desc_layout, 2, 0, 1, 4)
+
+        widget.setLayout(grid)
         return widget
 
     def _update_item_info(self) -> None:
