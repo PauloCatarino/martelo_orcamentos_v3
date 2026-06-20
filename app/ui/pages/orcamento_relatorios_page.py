@@ -44,6 +44,7 @@ from app.services.orcamento_pdf_export import REPORTLAB_DISPONIVEL
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.relatorio_dashboards import DashboardsWidget
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import (
@@ -267,6 +268,7 @@ class OrcamentoRelatoriosPage(QWidget):
         )
 
         self.items_table = self._criar_tabela(self.ITEMS_HEADERS)
+        ligar_persistencia_larguras(self.items_table, "rel_items")
 
         self.total_label = QLabel("")
         self.total_label.setObjectName("orcamentoRelatoriosTotais")
@@ -334,6 +336,7 @@ class OrcamentoRelatoriosPage(QWidget):
             larguras=self.PLACAS_LARGURAS,
         )
         self.placas_table.itemChanged.connect(self._on_placa_item_changed)
+        ligar_persistencia_larguras(self.placas_table, "rel_placas")
 
         # Total Não-Stock surcharge versus the %-waste cost.
         self.agravamento_label = QLabel("")
@@ -346,16 +349,19 @@ class OrcamentoRelatoriosPage(QWidget):
             tooltips=self.ORLAS_TOOLTIPS,
             larguras=self.ORLAS_LARGURAS,
         )
+        ligar_persistencia_larguras(self.orlas_table, "rel_orlas")
         self.ferragens_table = self._criar_tabela(
             self.FERRAGENS_HEADERS,
             tooltips=self.FERRAGENS_TOOLTIPS,
             larguras=self.FERRAGENS_LARGURAS,
         )
+        ligar_persistencia_larguras(self.ferragens_table, "rel_ferragens")
         self.maquinas_table = self._criar_tabela(
             self.MAQUINAS_HEADERS,
             tooltips=self.MAQUINAS_TOOLTIPS,
             larguras=self.MAQUINAS_LARGURAS,
         )
+        ligar_persistencia_larguras(self.maquinas_table, "rel_maquinas")
 
         # Compact, scrollable content: each table is fitted to its row count
         # (Part C), so the sections sit close together with no empty gaps and

@@ -50,6 +50,7 @@ from app.services.orcamento_item_service import (
 from app.services.orcamento_service import OrcamentoService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
@@ -223,6 +224,7 @@ class OrcamentoItemsPage(QWidget):
         )
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         self.table.cellChanged.connect(self._on_cell_changed)
+        ligar_persistencia_larguras(self.table, "orcamento_items")
 
         self.items_list_widget = QWidget()
         items_layout = QVBoxLayout()

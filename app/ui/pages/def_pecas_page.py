@@ -29,6 +29,7 @@ from app.services.def_peca_service import (
 from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
 from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class DefPecasPage(QWidget):
@@ -85,6 +86,7 @@ class DefPecasPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+        ligar_persistencia_larguras(self.table, "def_pecas")
 
         self.list_widget = QWidget()
         list_layout = QVBoxLayout()

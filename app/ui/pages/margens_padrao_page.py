@@ -35,6 +35,8 @@ from app.ui.dialogs.margem_padrao_dialog import (
 )
 from app.utils.formatters import format_quantity
 
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+
 
 class MargensPadraoPage(QWidget):
     """Settings page for the default margins (Standard / customer / user)."""
@@ -157,6 +159,7 @@ class MargensPadraoPage(QWidget):
             QHeaderView.ResizeMode.ResizeToContents
         )
         self._tabelas[ambito] = table
+        ligar_persistencia_larguras(table, f"margens_{ambito}")
 
         novo_button = QPushButton("Novo")
         novo_button.clicked.connect(lambda: self.novo_registo(ambito))

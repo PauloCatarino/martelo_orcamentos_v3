@@ -104,6 +104,7 @@ from app.ui.tema import (
     estilo_linha_custeio,
 )
 from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
@@ -577,6 +578,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
         self._instalar_atalhos_clipboard()
+        # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
+        if ligar_persistencia_larguras(self.table, "orcamento_item_custeio"):
+            self._larguras_iniciais_aplicadas = True
 
         lines_layout = QVBoxLayout()
         lines_title = QLabel("Linhas de custeio do item")

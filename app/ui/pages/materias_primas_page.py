@@ -23,6 +23,7 @@ from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -86,6 +87,7 @@ class MateriasPrimasPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        ligar_persistencia_larguras(self.table, "materias_primas")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)

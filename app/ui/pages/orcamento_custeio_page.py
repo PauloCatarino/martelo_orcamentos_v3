@@ -28,6 +28,7 @@ from app.services.orcamento_item_custeio_linha_service import (
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -91,6 +92,7 @@ class OrcamentoCusteioPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        ligar_persistencia_larguras(self.table, "orcamento_custeio")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)

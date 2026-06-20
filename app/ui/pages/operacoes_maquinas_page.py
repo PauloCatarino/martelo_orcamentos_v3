@@ -32,6 +32,7 @@ from app.services.def_operacao_service import (
 from app.ui.dialogs.escaloes_area_dialog import EscaloesAreaDialog
 from app.ui.dialogs.maquina_dialog import MaquinaDialog
 from app.ui.dialogs.operacao_dialog import OperacaoDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -91,6 +92,8 @@ class OperacoesMaquinasPage(QWidget):
 
         self.operacoes_table = self._create_table(self.OPERACOES_HEADERS)
         self.maquinas_table = self._create_table(self.MAQUINAS_HEADERS)
+        ligar_persistencia_larguras(self.operacoes_table, "operacoes")
+        ligar_persistencia_larguras(self.maquinas_table, "maquinas")
 
         tabs = QTabWidget()
         tabs.addTab(self._create_operacoes_tab(), "Operações")

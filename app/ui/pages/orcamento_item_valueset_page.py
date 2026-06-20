@@ -35,6 +35,7 @@ from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
     OrcamentoItemValuesetLinhaDialog,
 )
 from app.ui.dialogs.propagar_valueset_custeio_dialog import PropagarValuesetCusteioDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -128,6 +129,7 @@ class OrcamentoItemValuesetPage(QWidget):
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
+        ligar_persistencia_larguras(self.table, "orcamento_item_valueset")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)

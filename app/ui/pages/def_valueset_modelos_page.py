@@ -25,6 +25,7 @@ from app.services.def_valueset_modelo_service import (
 )
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class DefValuesetModelosPage(QWidget):
@@ -85,6 +86,7 @@ class DefValuesetModelosPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
+        ligar_persistencia_larguras(self.table, "valueset_modelos")
 
         self.list_widget = QWidget()
         list_layout = QVBoxLayout()

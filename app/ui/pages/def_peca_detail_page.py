@@ -49,6 +49,7 @@ from app.services.def_peca_service import DefPecaService
 from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
 from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_quantity
 
 
@@ -226,6 +227,7 @@ class DefPecaDetailPage(QWidget):
             QHeaderView.ResizeMode.Stretch
         )
         self.componentes_table.cellDoubleClicked.connect(self._handle_componente_double_click)
+        ligar_persistencia_larguras(self.componentes_table, "def_peca_componentes")
 
         layout.addLayout(buttons_layout)
         layout.addWidget(self.componentes_status_label)
@@ -495,6 +497,7 @@ class DefPecaDetailPage(QWidget):
         self.operacoes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.operacoes_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.operacoes_table.cellDoubleClicked.connect(self._handle_operacao_double_click)
+        ligar_persistencia_larguras(self.operacoes_table, "def_peca_operacoes")
 
         layout.addWidget(info)
         layout.addLayout(buttons_layout)

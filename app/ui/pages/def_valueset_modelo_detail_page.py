@@ -28,6 +28,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
 
 
@@ -111,6 +112,7 @@ class DefValuesetModeloDetailPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
+        ligar_persistencia_larguras(self.table, "valueset_modelo_detail")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)

@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.system_setting_repository import SystemSettingResumo
 from app.services.system_setting_service import SystemSettingService
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class CaminhosSistemaPage(QWidget):
@@ -69,6 +70,7 @@ class CaminhosSistemaPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        ligar_persistencia_larguras(self.table, "caminhos_sistema")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)

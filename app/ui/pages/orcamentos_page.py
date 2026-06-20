@@ -41,6 +41,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_version
 
 
@@ -161,6 +162,7 @@ class OrcamentosPage(QWidget):
         )
         self._aplicar_larguras_colunas()
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+        ligar_persistencia_larguras(self.table, "orcamentos")
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("orcamentosFooter")

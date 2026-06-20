@@ -30,6 +30,7 @@ from app.services.orcamento_item_modulo_service import (
 from app.ui.dialogs.novo_modulo_dialog import NovoModuloDialog, NovoModuloDialogData
 from app.ui.pages.orcamento_item_modulo_detail_page import OrcamentoItemModuloDetailPage
 from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_mm, format_quantity
 
 
@@ -112,6 +113,7 @@ class OrcamentoItemModulosPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
+        ligar_persistencia_larguras(self.table, "orcamento_item_modulos")
 
         self.modulos_list_widget = QWidget()
         list_layout = QVBoxLayout()

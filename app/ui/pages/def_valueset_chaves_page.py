@@ -23,6 +23,7 @@ from app.services.def_valueset_chave_service import (
     EditarDefValuesetChaveData,
 )
 from app.ui.dialogs.def_valueset_chave_dialog import DefValuesetChaveDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class DefValuesetChavesPage(QWidget):
@@ -80,6 +81,7 @@ class DefValuesetChavesPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
+        ligar_persistencia_larguras(self.table, "valueset_chaves")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)

@@ -26,6 +26,7 @@ from app.ui.dialogs.regra_quantidade_dialog import (
     RegraQuantidadeDialog,
     RegraQuantidadeDialogData,
 )
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class RegrasQuantidadePage(QWidget):
@@ -62,6 +63,7 @@ class RegrasQuantidadePage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
+        ligar_persistencia_larguras(self.table, "regras_quantidade")
 
         self.nova_button = QPushButton("Nova Regra")
         self.nova_button.clicked.connect(self.nova_regra)

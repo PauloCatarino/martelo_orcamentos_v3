@@ -50,6 +50,7 @@ from app.ui.dialogs.editar_modulo_dialog import (
     EditarModuloDialogData,
 )
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class BibliotecaModulosPage(QWidget):
@@ -107,6 +108,8 @@ class BibliotecaModulosPage(QWidget):
 
         self.tabela_utilizador = self._criar_tabela()
         self.tabela_globais = self._criar_tabela()
+        ligar_persistencia_larguras(self.tabela_utilizador, "biblioteca_modulos_utilizador")
+        ligar_persistencia_larguras(self.tabela_globais, "biblioteca_modulos_globais")
         self.tabs = QTabWidget()
         self.tabs.addTab(self.tabela_utilizador, "Utilizador")
         self.tabs.addTab(self.tabela_globais, "Global")
