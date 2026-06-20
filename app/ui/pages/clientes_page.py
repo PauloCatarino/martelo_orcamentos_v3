@@ -190,8 +190,8 @@ class ClientesPage(QWidget):
 
         info = QLabel(
             "Clientes PHC (oficiais). S\u00e3o criados no PHC e aqui apenas "
-            "consultados (s\u00f3 leitura). A sincroniza\u00e7\u00e3o com o PHC "
-            "chega numa fase futura."
+            "consultados (s\u00f3 leitura). Use \u00abAtualizar PHC\u00bb para "
+            "sincronizar a partir do PHC."
         )
         info.setObjectName("pageSubtitle")
         info.setWordWrap(True)

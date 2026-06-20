@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from app.config.logging_config import configure_logging
 from app.core.session import app_session
+from app.ui import tema
 from app.ui.login_window import LoginWindow
 from app.ui.main_window import MainWindow
 
@@ -29,6 +30,11 @@ def main() -> int:
     configure_logging()
 
     qt_app = QApplication(sys.argv)
+    qt_app.setStyleSheet(
+        "QTableView, QTableWidget, QListView, QTreeView {"
+        f" selection-background-color: {tema.CASTANHO_ESCURO};"
+        " selection-color: #FFFFFF; }"
+    )
 
     while True:
         login_window = LoginWindow()
@@ -49,7 +55,7 @@ def main() -> int:
             window.close()
 
         window.logout_requested.connect(handle_logout)
-        window.show()
+        window.showMaximized()
 
         qt_app.exec()
 
