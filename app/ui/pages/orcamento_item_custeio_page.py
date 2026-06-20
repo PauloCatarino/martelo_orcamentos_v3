@@ -103,7 +103,7 @@ from app.ui.tema import (
     cor_zebra,
     estilo_linha_custeio,
 )
-from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -2843,14 +2843,17 @@ class OrcamentoItemCusteioPage(QWidget):
         """Return the page title for the active item."""
         return f"Custeio do Item: {self._format_item_label(self.item)}"
 
-    def _build_breadcrumb_items(self) -> list[str]:
-        """Return breadcrumb items for the active item costing page."""
-        items: list[str] = []
+    def _build_breadcrumb_items(self) -> list[BreadcrumbItem]:
+        """Return breadcrumb items (clic\u00e1veis) for the active item costing page."""
+        items: list[BreadcrumbItem] = []
         if self.orcamento_codigo:
-            items.append(f"Or\u00e7amento {self.orcamento_codigo}")
-
-        items.append(f"Item: {self._format_item_label(self.item)}")
-        items.append("Custeio")
+            items.append(
+                BreadcrumbItem(f"Or\u00e7amento {self.orcamento_codigo}", self._handle_back)
+            )
+        items.append(
+            BreadcrumbItem(f"Item: {self._format_item_label(self.item)}", self._handle_back)
+        )
+        items.append(BreadcrumbItem("Custeio"))
         return items
 
     @staticmethod
