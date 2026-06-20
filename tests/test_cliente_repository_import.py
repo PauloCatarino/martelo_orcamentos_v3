@@ -15,3 +15,4 @@ def test_cliente_repository_imports() -> None:
     assert hasattr(ClienteRepository, "list_phc")
     assert hasattr(ClienteRepository, "list_todos")
     assert hasattr(ClienteRepository, "obter")
+    assert hasattr(ClienteRepository, "sincronizar_phc")

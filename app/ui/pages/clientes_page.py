@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.clientes_lista import filtrar_clientes
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
+from app.services.cliente_phc_sync_service import ClientePhcSyncService
 from app.services.cliente_temporario_service import (
     ClienteEmUsoError,
     ClienteTemporarioService,
@@ -205,11 +206,14 @@ class ClientesPage(QWidget):
         self.phc_refresh_button.clicked.connect(self.carregar_phc)
         self.phc_test_button = QPushButton("Testar liga\u00e7\u00e3o PHC")
         self.phc_test_button.clicked.connect(self._testar_ligacao_phc)
+        self.phc_sync_button = QPushButton("Atualizar PHC")
+        self.phc_sync_button.clicked.connect(self._sincronizar_phc)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.phc_campo_pesquisa)
         toolbar.addWidget(self.phc_refresh_button)
         toolbar.addWidget(self.phc_test_button)
+        toolbar.addWidget(self.phc_sync_button)
         toolbar.addStretch()
 
         self.phc_status_label = QLabel("")
@@ -359,6 +363,43 @@ class ClientesPage(QWidget):
             self,
             "Testar liga\u00e7\u00e3o PHC",
             f"Liga\u00e7\u00e3o OK (s\u00f3 leitura).\n\n{total} clientes em dbo.CL.",
+        )
+
+    def _sincronizar_phc(self) -> None:
+        """Import/update PHC customers (read-only on PHC; writes only to Martelo)."""
+        resposta = QMessageBox.question(
+            self,
+            "Atualizar PHC",
+            "Isto vai importar/atualizar os clientes a partir do PHC (dbo.CL).\n\n"
+            "No PHC \u00e9 apenas LEITURA; a escrita \u00e9 s\u00f3 na base de dados do Martelo.\n\n"
+            "Continuar?",
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                resumo = ClientePhcSyncService(session).sincronizar()
+        except Exception as exc:  # liga\u00e7\u00e3o/SQL/config externos
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self,
+                "Atualizar PHC",
+                f"N\u00e3o foi poss\u00edvel atualizar a partir do PHC:\n\n{exc}",
+            )
+            return
+        QApplication.restoreOverrideCursor()
+
+        self.carregar_phc()
+        QMessageBox.information(
+            self,
+            "Atualizar PHC",
+            "Atualiza\u00e7\u00e3o conclu\u00edda.\n\n"
+            f"Total no PHC: {resumo.total_phc}\n"
+            f"Criados: {resumo.criados}\n"
+            f"Atualizados: {resumo.atualizados}\n"
+            f"Ignorados: {resumo.ignorados}",
         )
 
     def _preencher_tabela(self, clientes: list[ClienteListaResumo]) -> None:

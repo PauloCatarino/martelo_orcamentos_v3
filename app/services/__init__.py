@@ -1,5 +1,9 @@
 """Service layer package."""
 
+from app.services.cliente_phc_sync_service import (
+    ClientePhcSyncService,
+    ResumoSincronizacaoPHC,
+)
 from app.services.cliente_temporario_service import (
     ClienteEmUsoError,
     ClienteTemporarioService,
@@ -38,6 +42,7 @@ from app.services.system_setting_service import SystemSettingService
 
 __all__ = [
     "ClienteEmUsoError",
+    "ClientePhcSyncService",
     "ClienteTemporarioService",
     "CriarDefMaquinaData",
     "CriarDefOperacaoData",
@@ -64,5 +69,6 @@ __all__ = [
     "OrcamentoItemService",
     "OrcamentoService",
     "RelatorioConsumosService",
+    "ResumoSincronizacaoPHC",
     "SystemSettingService",
 ]

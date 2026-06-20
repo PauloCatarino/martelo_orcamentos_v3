@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.clientes_phc import DadosClientePHC
 from app.models import Cliente, Orcamento
 
 
@@ -151,6 +152,56 @@ class ClienteRepository:
             raise ValueError("Cliente tempor\u00e1rio n\u00e3o encontrado.")
 
         self.session.delete(cliente)
+
+    def sincronizar_phc(self, clientes: list[DadosClientePHC]) -> tuple[int, int]:
+        """Upsert PHC customers by num_cliente_phc. Returns (criados, atualizados)."""
+        nums = [c.num_cliente_phc for c in clientes if c.num_cliente_phc]
+        existentes: dict[str, Cliente] = {}
+        if nums:
+            rows = (
+                self.session.execute(
+                    select(Cliente).where(
+                        Cliente.is_temporary.is_(False),
+                        Cliente.num_cliente_phc.in_(nums),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for cliente in rows:
+                chave = (cliente.num_cliente_phc or "").strip()
+                if chave:
+                    existentes[chave] = cliente
+
+        criados = 0
+        atualizados = 0
+        for dados in clientes:
+            cliente = existentes.get(dados.num_cliente_phc)
+            if cliente is None:
+                cliente = Cliente(
+                    num_cliente_phc=dados.num_cliente_phc,
+                    source_system="phc",
+                    is_temporary=False,
+                )
+                self.session.add(cliente)
+                existentes[dados.num_cliente_phc] = cliente
+                criados += 1
+            else:
+                atualizados += 1
+
+            cliente.nome = dados.nome
+            cliente.nome_simplex = dados.nome_simplex
+            cliente.morada = dados.morada
+            cliente.email = dados.email
+            cliente.pagina_web = dados.pagina_web
+            cliente.telefone = dados.telefone
+            cliente.telemovel = dados.telemovel
+            cliente.info_1 = dados.info_1
+            cliente.is_temporary = False
+            cliente.source_system = "phc"
+
+        self.session.flush()
+        return criados, atualizados
 
     def contar_orcamentos(self, cliente_id: int) -> int:
         """Count budgets associated with one customer."""
