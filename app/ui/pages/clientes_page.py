@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -29,6 +30,7 @@ from app.services.cliente_temporario_service import (
     ClienteTemporarioService,
     DadosClienteTemporario,
 )
+from app.services import phc_sql
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
@@ -201,10 +203,13 @@ class ClientesPage(QWidget):
 
         self.phc_refresh_button = QPushButton("Atualizar")
         self.phc_refresh_button.clicked.connect(self.carregar_phc)
+        self.phc_test_button = QPushButton("Testar liga\u00e7\u00e3o PHC")
+        self.phc_test_button.clicked.connect(self._testar_ligacao_phc)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.phc_campo_pesquisa)
         toolbar.addWidget(self.phc_refresh_button)
+        toolbar.addWidget(self.phc_test_button)
         toolbar.addStretch()
 
         self.phc_status_label = QLabel("")
@@ -333,6 +338,28 @@ class ClientesPage(QWidget):
         )
         self._povoar_tabela(self.phc_table, filtrados)
         self.phc_footer_label.setText(f"{len(filtrados)} clientes")
+
+    def _testar_ligacao_phc(self) -> None:
+        """Test the read-only PHC connection and show the dbo.CL row count."""
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                total = phc_sql.contar_clientes_phc(session)
+        except Exception as exc:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(
+                self,
+                "Testar liga\u00e7\u00e3o PHC",
+                f"N\u00e3o foi poss\u00edvel ligar ao PHC:\n\n{exc}",
+            )
+            return
+
+        QApplication.restoreOverrideCursor()
+        QMessageBox.information(
+            self,
+            "Testar liga\u00e7\u00e3o PHC",
+            f"Liga\u00e7\u00e3o OK (s\u00f3 leitura).\n\n{total} clientes em dbo.CL.",
+        )
 
     def _preencher_tabela(self, clientes: list[ClienteListaResumo]) -> None:
         """Fill the table with customer read models."""

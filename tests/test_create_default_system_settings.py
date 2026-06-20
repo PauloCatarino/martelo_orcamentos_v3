@@ -44,6 +44,13 @@ def test_default_system_settings_constants_import() -> None:
     assert settings_by_key["preencher_comp_larg_automaticamente"].valor == "ON"
     assert settings_by_key["pasta_base_orcamentos"].tipo == "pasta"
     assert settings_by_key["ficheiro_imos_msg"].tipo == "ficheiro"
+    assert settings_by_key["phc_sql_server"].valor == r"Server_le\phc"
+    assert settings_by_key["phc_sql_server"].grupo == "PHC"
+    assert settings_by_key["phc_sql_database"].valor == "lancaencanto"
+    assert settings_by_key["phc_sql_user"].valor == "adriano.silva"
+    assert settings_by_key["phc_sql_password"].valor == ""
+    assert settings_by_key["phc_sql_trusted"].valor == "OFF"
+    assert settings_by_key["phc_sql_trust_server_certificate"].valor == "ON"
     # Phase 8U.4: module images folder (default = V2 network path), browsable.
     imagens = settings_by_key[PASTA_IMAGENS_MODULOS_CHAVE]
     assert imagens.tipo == "pasta"
