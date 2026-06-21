@@ -8,12 +8,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.precos import MargensOrcamento
-from app.models import Cliente, Orcamento, OrcamentoVersao, User
+from app.models import Cliente, Orcamento, OrcamentoItem, OrcamentoVersao, User
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,7 @@ class OrcamentoResumo:
     info_2: str | None = None
     utilizador: str | None = None
     utilizador_id: int | None = None
+    tem_preco_manual: bool = False
 
 
 @dataclass(frozen=True)
@@ -398,6 +399,12 @@ class OrcamentoRepository:
                 OrcamentoVersao.created_at.label("created_at"),
                 OrcamentoVersao.created_by_id.label("utilizador_id"),
                 User.username.label("utilizador"),
+                exists()
+                .where(
+                    OrcamentoItem.orcamento_versao_id == OrcamentoVersao.id,
+                    OrcamentoItem.preco_manual.is_(True),
+                )
+                .label("tem_preco_manual"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
             .join(Cliente, Orcamento.cliente_id == Cliente.id)
@@ -426,4 +433,5 @@ class OrcamentoRepository:
             info_2=row["info_2"],
             utilizador=row["utilizador"],
             utilizador_id=row["utilizador_id"],
+            tem_preco_manual=bool(row["tem_preco_manual"]),
         )

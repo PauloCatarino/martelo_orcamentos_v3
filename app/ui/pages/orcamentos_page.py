@@ -387,6 +387,12 @@ class OrcamentosPage(QWidget):
                     )
                 if header == "Estado":
                     self._aplicar_badge_estado(item, orcamento.estado)
+                if header == "Preço Total" and orcamento.tem_preco_manual:
+                    item.setBackground(QColor(tema.OCRE_SUAVE))
+                    item.setForeground(QColor(tema.OCRE_ESCURO))
+                    item.setToolTip(
+                        "Inclui preço(s) manual(is) — não totalmente do custeio."
+                    )
                 self.table.setItem(row_index, column_index, item)
 
     def _criar_item_tabela(self, value: str, header: str) -> QTableWidgetItem:

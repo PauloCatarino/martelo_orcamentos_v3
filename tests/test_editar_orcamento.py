@@ -166,3 +166,31 @@ def test_editar_orcamento_troca_o_cliente(session) -> None:
     )
 
     assert session.get(Orcamento, orcamento_id).cliente_id == outro.id
+
+
+def test_lista_marca_orcamento_com_preco_manual(session) -> None:
+    from app.models import OrcamentoItem
+    from decimal import Decimal
+
+    _orcamento_id, orcamento_versao_id = _criar_orcamento(session)
+    service = OrcamentoService(session)
+
+    # sem itens manuais -> tem_preco_manual False
+    resumo = service.list_orcamentos()[0]
+    assert resumo.tem_preco_manual is False
+
+    # adicionar um item com preço manual -> passa a True
+    session.add(
+        OrcamentoItem(
+            orcamento_versao_id=orcamento_versao_id,
+            ordem=1,
+            item="Externo",
+            quantidade=Decimal("1"),
+            preco_unitario=Decimal("100"),
+            preco_total=Decimal("100"),
+            preco_manual=True,
+        )
+    )
+    session.flush()
+    resumo = service.list_orcamentos()[0]
+    assert resumo.tem_preco_manual is True
