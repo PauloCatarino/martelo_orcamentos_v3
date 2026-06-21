@@ -50,6 +50,7 @@ from app.services.orcamento_item_service import (
 from app.services.orcamento_service import OrcamentoService
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
@@ -231,6 +232,13 @@ class OrcamentoItemsPage(QWidget):
         # Restore saved widths; if it restored, skip the content-based seed.
         self._larguras_iniciais_aplicadas = ligar_persistencia_larguras(
             self.table, "orcamento_items"
+        )
+        # Multi-line, formatted "Descrição" cell (title bold, "- " italic,
+        # "* " italic green); rows are sized to the content (see _preencher_tabela).
+        self.table.setWordWrap(True)
+        self.table.setItemDelegateForColumn(
+            self.TABLE_HEADERS.index("Descrição"),
+            DescricaoItemDelegate(self.table),
         )
 
         self.items_list_widget = QWidget()
@@ -824,6 +832,9 @@ class OrcamentoItemsPage(QWidget):
         if not self._larguras_iniciais_aplicadas and items:
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
+
+        # Fit each row's height to its (possibly multi-line) description.
+        self.table.resizeRowsToContents()
 
     def _tooltip_formula(
         self,
