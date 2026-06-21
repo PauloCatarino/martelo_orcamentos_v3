@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -49,6 +49,11 @@ class OrcamentoItem(Base):
     # when building preco_unitario from the cost blocks (phase 8T.0).
     ajuste_eur: Mapped[Decimal] = mapped_column(
         Numeric(14, 4), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    # Manual price flag: when on, the costing never recomputes/overwrites the
+    # price (the user enters it by hand, e.g. external quotes) — phase P7a.
+    preco_manual: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
     )
     # Per-item production type exception: NULL inherits the version's
     # tipo_producao_default; 'STD'/'SERIE' overrides it (phase 8S.4).

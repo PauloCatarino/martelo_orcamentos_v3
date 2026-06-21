@@ -32,6 +32,7 @@ class OrcamentoItemResumo:
     tipo_item: str = "OUTRO"
     tipo_producao: str | None = None
     ajuste_eur: Decimal = Decimal("0")
+    preco_manual: bool = False
 
 
 class OrcamentoItemRepository:
@@ -88,6 +89,7 @@ class OrcamentoItemRepository:
         unidade: str,
         preco_unitario: Decimal,
         preco_total: Decimal,
+        preco_manual: bool = False,
     ) -> OrcamentoItemResumo:
         """Create one budget item."""
         orcamento_item = OrcamentoItem(
@@ -104,6 +106,7 @@ class OrcamentoItemRepository:
             unidade=unidade,
             preco_unitario=preco_unitario,
             preco_total=preco_total,
+            preco_manual=preco_manual,
         )
         self.session.add(orcamento_item)
         self.session.flush()
@@ -125,6 +128,7 @@ class OrcamentoItemRepository:
         unidade: str,
         preco_unitario: Decimal,
         preco_total: Decimal,
+        preco_manual: bool = False,
     ) -> OrcamentoItemResumo:
         """Update one budget item."""
         orcamento_item = self.session.get(OrcamentoItem, item_id)
@@ -142,6 +146,7 @@ class OrcamentoItemRepository:
         orcamento_item.unidade = unidade
         orcamento_item.preco_unitario = preco_unitario
         orcamento_item.preco_total = preco_total
+        orcamento_item.preco_manual = preco_manual
         self.session.flush()
 
         return self._to_resumo(orcamento_item)
@@ -284,4 +289,5 @@ class OrcamentoItemRepository:
             tipo_item=item.tipo_item,
             tipo_producao=item.tipo_producao,
             ajuste_eur=item.ajuste_eur,
+            preco_manual=item.preco_manual,
         )

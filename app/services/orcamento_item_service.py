@@ -52,6 +52,7 @@ class CriarOrcamentoItemSimplesData:
     unidade: str
     preco_unitario: Decimal
     tipo_item: str | None = None
+    preco_manual: bool = False
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class EditarOrcamentoItemSimplesData:
     unidade: str
     preco_unitario: Decimal
     tipo_item: str | None = None
+    preco_manual: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,7 @@ class OrcamentoItemService:
             unidade=unidade,
             preco_unitario=data.preco_unitario,
             preco_total=preco_total,
+            preco_manual=data.preco_manual,
         )
         self.recalcular_total_versao(data.orcamento_versao_id)
         self.session.commit()
@@ -174,6 +177,7 @@ class OrcamentoItemService:
             unidade=unidade,
             preco_unitario=data.preco_unitario,
             preco_total=preco_total,
+            preco_manual=data.preco_manual,
         )
         self.recalcular_total_versao(result.orcamento_versao_id)
         self.session.commit()
@@ -258,6 +262,9 @@ class OrcamentoItemService:
         atualizados = 0
         sem_custeio = 0
         for item in self.repository.list_items_by_versao(orcamento_versao_id):
+            if item.preco_manual:
+                # Manual price: the costing must not touch it.
+                continue
             blocos = blocos_por_item.get(item.id)
             if blocos is None:
                 sem_custeio += 1
@@ -327,7 +334,7 @@ class OrcamentoItemService:
         self.repository.update_ajuste_item(item_id, ajuste)
 
         blocos = self._blocos_do_item(item_id)
-        if blocos is not None:
+        if blocos is not None and not item.preco_manual:
             margens = self.get_margens_versao(item.orcamento_versao_id)
             item_atual = self.repository.get_item_by_id(item_id)
             self._gravar_preco_item(item_atual, blocos, margens)
@@ -351,6 +358,17 @@ class OrcamentoItemService:
         item = self.repository.get_item_by_id(orcamento_item_id)
         if item is None:
             raise ValueError("item not found")
+
+        if item.preco_manual:
+            # Manual price: show the produced cost for comparison, but never
+            # overwrite the user's price.
+            blocos = self._blocos_do_item(orcamento_item_id)
+            custo = blocos.custo_produzido if blocos is not None else Decimal("0")
+            return PrecoItemResult(
+                custo_produzido=custo,
+                preco_unitario=item.preco_unitario,
+                preco_total=item.preco_total,
+            )
 
         blocos = self._blocos_do_item(orcamento_item_id)
         if blocos is None:

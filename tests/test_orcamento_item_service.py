@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from app.domain.precos import BlocosCusto, MargensOrcamento
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services import orcamento_item_service as service_module
 
@@ -86,6 +87,17 @@ class _FakeRepository:
 
     def update_preco_total_versao(self, orcamento_versao_id: int, preco_total: Decimal) -> bool:
         self.__class__.updated_versao_total = (orcamento_versao_id, preco_total)
+        return True
+
+    precos_escritos: list[int] = []
+
+    def get_margens_versao(self, orcamento_versao_id: int) -> MargensOrcamento:
+        return MargensOrcamento()
+
+    def update_preco_item(
+        self, item_id: int, preco_unitario: Decimal, preco_total: Decimal
+    ) -> bool:
+        self.__class__.precos_escritos.append(item_id)
         return True
 
     tipo_producao_default: str | None = "STD"
@@ -489,3 +501,113 @@ def test_get_tipo_producao_efetivo_do_item(monkeypatch) -> None:
         tipo_producao="STD",
     )
     assert service.get_tipo_producao_efetivo(excecao) == "STD"
+
+
+def test_criar_item_simples_propaga_preco_manual(monkeypatch) -> None:
+    _FakeRepository.next_order = 1
+    _FakeRepository.created_payload = None
+    _FakeRepository.sum_total = Decimal("0")
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+    service.criar_item_simples(
+        service_module.CriarOrcamentoItemSimplesData(
+            orcamento_versao_id=20,
+            codigo=None,
+            item="Mesa externa",
+            descricao=None,
+            altura=None,
+            largura=None,
+            profundidade=None,
+            quantidade=Decimal("1"),
+            unidade="un",
+            preco_unitario=Decimal("99"),
+            preco_manual=True,
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["preco_manual"] is True
+
+
+def test_editar_item_simples_propaga_preco_manual(monkeypatch) -> None:
+    _FakeRepository.updated_payload = None
+    _FakeRepository.sum_total = Decimal("0")
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+    service.editar_item_simples(
+        8,
+        service_module.EditarOrcamentoItemSimplesData(
+            codigo=None,
+            item="Mesa externa",
+            descricao=None,
+            altura=None,
+            largura=None,
+            profundidade=None,
+            quantidade=Decimal("1"),
+            unidade="un",
+            preco_unitario=Decimal("99"),
+            preco_manual=True,
+        ),
+    )
+
+    assert _FakeRepository.updated_payload is not None
+    assert _FakeRepository.updated_payload["preco_manual"] is True
+
+
+def test_aplicar_precos_da_versao_ignora_item_manual(monkeypatch) -> None:
+    normal = OrcamentoItemResumo(
+        id=1,
+        orcamento_versao_id=30,
+        ordem=1,
+        codigo=None,
+        item="Item normal",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=Decimal("0"),
+        preco_total=Decimal("0"),
+        preco_manual=False,
+    )
+    manual = OrcamentoItemResumo(
+        id=2,
+        orcamento_versao_id=30,
+        ordem=2,
+        codigo=None,
+        item="Item manual",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=Decimal("250"),
+        preco_total=Decimal("250"),
+        preco_manual=True,
+    )
+    _FakeRepository.rows = [normal, manual]
+    _FakeRepository.precos_escritos = []
+    _FakeRepository.sum_total = Decimal("0")
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+    # Both items HAVE cost blocks: the only reason the manual item is skipped is
+    # the preco_manual flag (not the absence of costing).
+    monkeypatch.setattr(
+        service,
+        "get_blocos_custo_por_item",
+        lambda _versao_id: {
+            1: BlocosCusto(bloco_mp=Decimal("10")),
+            2: BlocosCusto(bloco_mp=Decimal("10")),
+        },
+    )
+
+    service.aplicar_precos_da_versao(30)
+
+    # The normal item got its price (re)written; the manual one did NOT.
+    assert 1 in _FakeRepository.precos_escritos
+    assert 2 not in _FakeRepository.precos_escritos

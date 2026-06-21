@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -37,6 +38,7 @@ class NovoItemDialogData:
     unidade: str
     preco_unitario: Decimal
     tipo_item: str = "OUTRO"
+    preco_manual: bool = False
 
 
 class NovoItemDialog(QDialog):
@@ -72,6 +74,9 @@ class NovoItemDialog(QDialog):
         self.quantidade_input = QLineEdit("1")
         self.unidade_input = QLineEdit("un")
         self.preco_unitario_input = QLineEdit("0")
+        self.preco_manual_check = QCheckBox(
+            "Preço manual (não recalcular a partir do custeio)"
+        )
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("novoItemError")
@@ -89,6 +94,7 @@ class NovoItemDialog(QDialog):
         form_layout.addRow("Quantidade", self.quantidade_input)
         form_layout.addRow("Unidade", self.unidade_input)
         form_layout.addRow("Pre\u00e7o unit\u00e1rio", self.preco_unitario_input)
+        form_layout.addRow("", self.preco_manual_check)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -120,6 +126,7 @@ class NovoItemDialog(QDialog):
             unidade=self.unidade_input.text().strip() or "un",
             preco_unitario=self._parse_decimal(self.preco_unitario_input.text()),
             tipo_item=self.tipo_item_input.currentData() or OUTRO,
+            preco_manual=self.preco_manual_check.isChecked(),
         )
 
     def _validate_and_accept(self) -> None:
@@ -175,6 +182,7 @@ class NovoItemDialog(QDialog):
         self.quantidade_input.setText(self._format_decimal(item_data.quantidade))
         self.unidade_input.setText(item_data.unidade)
         self.preco_unitario_input.setText(self._format_decimal(item_data.preco_unitario))
+        self.preco_manual_check.setChecked(item_data.preco_manual)
 
     def _format_decimal(self, value: Decimal | None) -> str:
         """Format decimal values for dialog fields."""

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from decimal import ROUND_HALF_UP, Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -48,6 +49,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.services.orcamento_service import OrcamentoService
+from app.ui import tema
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
@@ -664,6 +666,7 @@ class OrcamentoItemsPage(QWidget):
                         quantidade=form_data.quantidade,
                         unidade=form_data.unidade,
                         preco_unitario=form_data.preco_unitario,
+                        preco_manual=form_data.preco_manual,
                     )
                 )
         except (SQLAlchemyError, ValueError):
@@ -707,6 +710,7 @@ class OrcamentoItemsPage(QWidget):
                         quantidade=form_data.quantidade,
                         unidade=form_data.unidade,
                         preco_unitario=form_data.preco_unitario,
+                        preco_manual=form_data.preco_manual,
                     ),
                 )
         except (SQLAlchemyError, ValueError):
@@ -811,6 +815,10 @@ class OrcamentoItemsPage(QWidget):
                     table_item = QTableWidgetItem(value)
                     if tooltip:
                         table_item.setToolTip(tooltip)
+                    if item.preco_manual and header in ("Preço Unitário", "Preço Total"):
+                        table_item.setBackground(QColor(tema.OCRE_SUAVE))
+                        table_item.setForeground(QColor(tema.OCRE_ESCURO))
+                        table_item.setToolTip("Preço manual — não vem do custeio.")
                     if column_index == 0:
                         table_item.setData(Qt.ItemDataRole.UserRole, item.id)
                     if column_index != ajuste_column:
@@ -1177,4 +1185,5 @@ class OrcamentoItemsPage(QWidget):
             unidade=item.unidade or "un",
             preco_unitario=item.preco_unitario or Decimal("0"),
             tipo_item=item.tipo_item,
+            preco_manual=item.preco_manual,
         )
