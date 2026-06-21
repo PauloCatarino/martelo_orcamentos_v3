@@ -219,12 +219,19 @@ class OrcamentoItemsPage(QWidget):
             QTableWidget.EditTrigger.DoubleClicked
             | QTableWidget.EditTrigger.EditKeyPressed
         )
+        # Resizable (Excel-like) columns: the user can drag the borders. Initial
+        # widths are seeded once from the content (see _preencher_tabela); after
+        # that they stay Interactive and keep the user's manual sizes.
         self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
+        self.table.horizontalHeader().setStretchLastSection(False)
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         self.table.cellChanged.connect(self._on_cell_changed)
-        ligar_persistencia_larguras(self.table, "orcamento_items")
+        # Restore saved widths; if it restored, skip the content-based seed.
+        self._larguras_iniciais_aplicadas = ligar_persistencia_larguras(
+            self.table, "orcamento_items"
+        )
 
         self.items_list_widget = QWidget()
         items_layout = QVBoxLayout()
@@ -811,6 +818,12 @@ class OrcamentoItemsPage(QWidget):
                 )
         finally:
             self._carregando_tabela = False
+
+        # Seed sensible initial widths once (content-based); after that the
+        # columns stay Interactive and keep the user's manual sizes on reload.
+        if not self._larguras_iniciais_aplicadas and items:
+            self.table.resizeColumnsToContents()
+            self._larguras_iniciais_aplicadas = True
 
     def _tooltip_formula(
         self,

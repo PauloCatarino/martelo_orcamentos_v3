@@ -42,14 +42,13 @@ class OrcamentoDetailPage(QWidget):
         self._item_custeio_page: OrcamentoItemCusteioPage | None = None
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
-        self.title_label = QLabel(f"Or\u00e7amento {orcamento.codigo_versao}")
-        self.title_label.setObjectName("orcamentoDetailTitle")
-
         back_button = QPushButton("Voltar \u00e0 lista")
         back_button.clicked.connect(self._handle_back)
 
+        # The breadcrumb already shows "Or\u00e7amento <c\u00f3digo>", so it doubles as the
+        # header title (no separate title label, no second breadcrumb row).
         header_layout = QHBoxLayout()
-        header_layout.addWidget(self.title_label, stretch=1)
+        header_layout.addWidget(self.breadcrumb, stretch=1)
         header_layout.addWidget(back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         self.items_stack = QStackedWidget()
@@ -75,10 +74,9 @@ class OrcamentoDetailPage(QWidget):
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addLayout(header_layout)
-        layout.addWidget(self.breadcrumb)
         layout.addWidget(tabs, stretch=1)
 
         self.setLayout(layout)
@@ -158,7 +156,6 @@ class OrcamentoDetailPage(QWidget):
 
     def _update_dados_gerais_labels(self) -> None:
         """Update the labels in the general data tab."""
-        self.title_label.setText(f"Or\u00e7amento {self.orcamento.codigo_versao}")
         self.breadcrumb.set_items(self._build_breadcrumb_items())
         values = {
             "codigo_versao": self.orcamento.codigo_versao,
