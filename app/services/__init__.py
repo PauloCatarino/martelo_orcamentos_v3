@@ -26,6 +26,7 @@ from app.services.def_peca_componente_service import (
     DefPecaComponenteService,
     EditarDefPecaComponenteData,
 )
+from app.services.descricao_predefinida_service import DescricaoPredefinidaService
 from app.services.orcamento_item_modulo_service import (
     CriarOrcamentoItemModuloSimplesData,
     EditarOrcamentoItemModuloSimplesData,
@@ -58,6 +59,7 @@ __all__ = [
     "DefOperacaoService",
     "DefPecaComponenteService",
     "DefPecaService",
+    "DescricaoPredefinidaService",
     "EditarDefMaquinaData",
     "EditarDefOperacaoData",
     "EditarMargemPadraoData",

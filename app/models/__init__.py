@@ -15,6 +15,7 @@ from app.models.def_regra_quantidade import DefRegraQuantidade
 from app.models.def_valueset_chave import DefValuesetChave
 from app.models.def_valueset_modelo import DefValuesetModelo
 from app.models.def_valueset_modelo_linha import DefValuesetModeloLinha
+from app.models.descricao_predefinida import DescricaoPredefinida
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
 from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
@@ -43,6 +44,7 @@ __all__ = [
     "DefValuesetChave",
     "DefValuesetModelo",
     "DefValuesetModeloLinha",
+    "DescricaoPredefinida",
     "Orcamento",
     "OrcamentoItem",
     "OrcamentoItemCusteioLinha",

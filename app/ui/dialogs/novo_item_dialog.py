@@ -5,15 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.domain.item_types import OUTRO, get_item_type_options, normalize_item_type
@@ -52,6 +56,16 @@ class NovoItemDialog(QDialog):
         self.item_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
+        self.descricoes_button = QPushButton("Descrições pré-definidas…")
+        self.descricoes_button.clicked.connect(self._abrir_descricoes_predefinidas)
+        descricao_widget = QWidget()
+        descricao_layout = QVBoxLayout(descricao_widget)
+        descricao_layout.setContentsMargins(0, 0, 0, 0)
+        descricao_layout.addWidget(self.descricao_input)
+        descricao_botao_row = QHBoxLayout()
+        descricao_botao_row.addStretch()
+        descricao_botao_row.addWidget(self.descricoes_button)
+        descricao_layout.addLayout(descricao_botao_row)
         self.altura_input = QLineEdit()
         self.largura_input = QLineEdit()
         self.profundidade_input = QLineEdit()
@@ -68,7 +82,7 @@ class NovoItemDialog(QDialog):
         form_layout.addRow("C\u00f3digo", self.codigo_input)
         form_layout.addRow("Tipo de item", self.tipo_item_input)
         form_layout.addRow("Item", self.item_input)
-        form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
+        form_layout.addRow("Descri\u00e7\u00e3o", descricao_widget)
         form_layout.addRow("Altura", self.altura_input)
         form_layout.addRow("Largura", self.largura_input)
         form_layout.addRow("Profundidade", self.profundidade_input)
@@ -175,3 +189,37 @@ class NovoItemDialog(QDialog):
         index = self.tipo_item_input.findData(tipo_item)
         if index >= 0:
             self.tipo_item_input.setCurrentIndex(index)
+
+    def _abrir_descricoes_predefinidas(self) -> None:
+        from app.core.session import app_session
+        from app.ui.dialogs.descricoes_predefinidas_dialog import (
+            DescricoesPredefinidasDialog,
+        )
+
+        user = app_session.current_user
+        user_id = user.id if user is not None else None
+        if user_id is None:
+            self.error_label.setText("Utilizador não identificado.")
+            return
+        dialog = DescricoesPredefinidasDialog(self, user_id=user_id)
+        if not dialog.exec():
+            return
+        self._inserir_descricoes(dialog.checked_entries())
+
+    def _inserir_descricoes(self, entries) -> None:
+        linhas = []
+        for entry in entries:
+            texto = (entry.texto or "").strip()
+            if not texto:
+                continue
+            tipo = entry.tipo if entry.tipo in ("-", "*") else "-"
+            linhas.append(f"\t{tipo} {texto}")
+        if not linhas:
+            return
+        cursor = self.descricao_input.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        existente = self.descricao_input.toPlainText()
+        if existente.strip() and not existente.endswith("\n"):
+            cursor.insertText("\n")
+        cursor.insertText("\n".join(linhas))
+        self.descricao_input.setTextCursor(cursor)
