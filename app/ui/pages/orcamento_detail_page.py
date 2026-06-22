@@ -72,6 +72,8 @@ class OrcamentoDetailPage(QWidget):
             "Relat\u00f3rios",
         )
         tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
+        # Abrir por defeito no separador "Items".
+        tabs.setCurrentWidget(self.items_stack)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
