@@ -65,6 +65,14 @@ PASTA_BASE_DADOS_ORCAMENTO_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
     r"\Base_Dados_Orcamento"
 )
+PASTA_PESQUISA_PROFUNDA_IA_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Compras"
+    r"\Tabela e Catalogos_Fornecedores\Tabelas Preços\Pesquisa_Profunda_IA"
+)
+PASTA_EMBEDDINGS_IA_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
+    r"\Base_Dados_Orcamento\Pesquisa_IA_Martelo"
+)
 
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed(
@@ -146,11 +154,43 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "pasta",
         "Producao",
     ),
-    SystemSettingSeed("pasta_pesquisa_profunda_ia", "Pasta Pesquisa Profunda IA", "pasta", "IA"),
-    SystemSettingSeed("pasta_embeddings_ia", "Pasta Embeddings IA", "pasta", "IA"),
+    SystemSettingSeed(
+        "pasta_pesquisa_profunda_ia",
+        "Pasta Pesquisa Profunda IA (catalogos Excel/PDF de fornecedores)",
+        "pasta",
+        "IA",
+        PASTA_PESQUISA_PROFUNDA_IA_DEFAULT,
+    ),
+    SystemSettingSeed(
+        "pasta_embeddings_ia",
+        "Pasta Embeddings IA (indice da pesquisa)",
+        "pasta",
+        "IA",
+        PASTA_EMBEDDINGS_IA_DEFAULT,
+    ),
     SystemSettingSeed("pasta_modelo_ia_texto", "Pasta Modelo IA texto", "pasta", "IA"),
     SystemSettingSeed("ficheiro_log", "Ficheiro de log", "ficheiro", "Geral"),
-    SystemSettingSeed("provedor_resposta_ia", "Provedor resposta IA", "texto", "IA", "openai"),
+    SystemSettingSeed(
+        "provedor_resposta_ia",
+        "Provedor resposta IA (local / openai / claude)",
+        "texto",
+        "IA",
+        "local",
+    ),
+    SystemSettingSeed(
+        "modelo_embeddings_ia",
+        "Modelo de embeddings IA (sentence-transformers)",
+        "texto",
+        "IA",
+        "paraphrase-multilingual-MiniLM-L12-v2",
+    ),
+    SystemSettingSeed(
+        "modelo_local_ia",
+        "Modelo local IA para resposta (ex. Ollama: llama3.1)",
+        "texto",
+        "IA",
+        "",
+    ),
     SystemSettingSeed("modelo_openai_texto", "Modelo OpenAI texto", "texto", "IA", "gpt-4o-mini"),
     SystemSettingSeed(
         "preencher_comp_larg_automaticamente",
