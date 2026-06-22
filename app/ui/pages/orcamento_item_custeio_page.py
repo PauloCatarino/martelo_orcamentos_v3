@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
     QComboBox,
-    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -25,7 +24,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
-    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -57,7 +55,6 @@ from app.domain.custo_producao import (
     preco_peca_escalao,
     selecionar_escalao_area,
 )
-from app.domain.item_types import get_item_type_label
 from app.domain.producao_types import (
     TIPO_PRODUCAO_SERIE,
     TIPO_PRODUCAO_STD,
@@ -105,6 +102,7 @@ from app.ui.tema import (
     estilo_linha_custeio,
 )
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -440,7 +438,6 @@ class OrcamentoItemCusteioPage(QWidget):
         self.orcamento_codigo = orcamento_codigo
         self.orcamento_versao_id = orcamento_versao_id
         self.on_back = on_back
-        self._item_info_labels: dict[str, QLabel] = {}
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
@@ -454,8 +451,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._escaloes_por_maquina: dict = {}
 
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
-        self.title_label = QLabel(self._build_title())
-        self.title_label.setObjectName("orcamentoItemCusteioTitle")
+        self.cabecalho = BarraCabecalho(self._titulo_cabecalho())
 
         self.back_button = QPushButton("Voltar aos Items")
         self.back_button.clicked.connect(self._handle_back)
@@ -535,22 +531,6 @@ class OrcamentoItemCusteioPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemCusteioStatus")
 
-        self.item_info_widget = self._create_item_info_widget()
-
-        # Toggle to hide/show the item base data (compact, horizontal block)
-        # so the costing table can take the extra vertical space (polish P5).
-        self._item_info_visivel = True
-        self.toggle_item_info_button = QToolButton()
-        self.toggle_item_info_button.setText("Dados do item")
-        self.toggle_item_info_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-        self.toggle_item_info_button.setArrowType(Qt.ArrowType.DownArrow)
-        self.toggle_item_info_button.setToolTip(
-            "Ocultar/mostrar os dados do item (mais espaço para a tabela)"
-        )
-        self.toggle_item_info_button.clicked.connect(self.toggle_item_info)
-
         # Auto-hide state for the parts library panel (phase 8V.2).
         self._biblioteca_visivel = True
         self._biblioteca_sizes: list[int] | None = None
@@ -626,17 +606,12 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tabs.addTab(custeio_tab, "Custeio")
         self.tabs.addTab(OrcamentoItemValuesetPage(item.id), "ValueSet")
 
-        title_layout = QHBoxLayout()
-        title_layout.addWidget(self.title_label, stretch=1)
-        title_layout.addWidget(self.toggle_item_info_button)
-
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(6)
         layout.addWidget(self.breadcrumb)
-        layout.addLayout(title_layout)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
-        layout.addWidget(self.item_info_widget)
         layout.addWidget(self.status_label)
         layout.addWidget(self.tabs, stretch=1)
 
@@ -1090,17 +1065,6 @@ class OrcamentoItemCusteioPage(QWidget):
             )
             self._biblioteca_visivel = True
 
-    def toggle_item_info(self) -> None:
-        """Ocultar/mostrar a zona de dados do item (só texto) para dar mais espaço à tabela."""
-        self._item_info_visivel = not self._item_info_visivel
-        self.item_info_widget.setVisible(self._item_info_visivel)
-        self.toggle_item_info_button.setArrowType(
-            Qt.ArrowType.DownArrow if self._item_info_visivel else Qt.ArrowType.RightArrow
-        )
-        self.toggle_item_info_button.setToolTip(
-            "Ocultar dados do item" if self._item_info_visivel else "Mostrar dados do item"
-        )
-
     def _carregar_biblioteca(self) -> None:
         """Load active piece definitions for the library tree."""
         try:
@@ -1257,73 +1221,18 @@ class OrcamentoItemCusteioPage(QWidget):
             f"Ignoradas: {result.ignoradas}."
         )
 
-    def _create_item_info_widget(self) -> QWidget:
-        """Create the item base data (compact, horizontal layout)."""
-        widget = QWidget()
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(2)
-
-        posicoes = [
-            ("codigo", "C\u00f3digo", 0, 0),
-            ("tipo", "Tipo", 0, 1),
-            ("quantidade", "Quantidade", 0, 2),
-            ("unidade", "Unidade", 0, 3),
-            ("item", "Item", 1, 0),
-            ("altura", "Altura/Comp", 1, 1),
-            ("largura", "Largura", 1, 2),
-            ("profundidade", "Profundidade", 1, 3),
-        ]
-        for key, label, row, col in posicoes:
-            campo = QLabel(f"{label}:")
-            campo.setStyleSheet("font-weight: bold;")
-            valor = QLabel("")
-            self._item_info_labels[key] = valor
-            celula = QHBoxLayout()
-            celula.setContentsMargins(0, 0, 0, 0)
-            celula.setSpacing(4)
-            celula.addWidget(campo)
-            celula.addWidget(valor)
-            celula.addStretch()
-            grid.addLayout(celula, row, col)
-
-        desc_campo = QLabel("Descri\u00e7\u00e3o:")
-        desc_campo.setStyleSheet("font-weight: bold;")
-        desc_valor = QLabel("")
-        desc_valor.setWordWrap(True)
-        self._item_info_labels["descricao"] = desc_valor
-        desc_layout = QHBoxLayout()
-        desc_layout.setContentsMargins(0, 0, 0, 0)
-        desc_layout.setSpacing(4)
-        desc_layout.addWidget(desc_campo)
-        desc_layout.addWidget(desc_valor, stretch=1)
-        grid.addLayout(desc_layout, 2, 0, 1, 4)
-
-        widget.setLayout(grid)
-        return widget
-
     def _update_item_info(self) -> None:
-        """Update title, breadcrumb and item base labels."""
-        self.title_label.setText(self._build_title())
+        """Atualiza a barra de cabeçalho (nome do item + dims) e o breadcrumb."""
+        self.cabecalho.definir(
+            self._titulo_cabecalho(),
+            [
+                f"Altura: {format_mm(self.item.altura)}",
+                f"Largura: {format_mm(self.item.largura)}",
+                f"Prof: {format_mm(self.item.profundidade)}",
+                f"Qtd: {format_quantity(self.item.quantidade)}",
+            ],
+        )
         self.breadcrumb.set_items(self._build_breadcrumb_items())
-
-        values = {
-            "codigo": self.item.codigo or "",
-            "item": self.item.item,
-            "tipo": get_item_type_label(self.item.tipo_item),
-            "descricao": self.item.descricao or "",
-            "altura": format_mm(self.item.altura),
-            "largura": format_mm(self.item.largura),
-            "profundidade": format_mm(self.item.profundidade),
-            "quantidade": format_quantity(self.item.quantidade),
-            "unidade": self.item.unidade or "",
-        }
-
-        for key, value in values.items():
-            label = self._item_info_labels.get(key)
-            if label is not None:
-                label.setText(value)
 
     def _preencher_tabela(self, linhas: list[OrcamentoItemCusteioLinhaResumo]) -> None:
         """Fill the costing lines table, mapping known fields to columns."""
@@ -2895,6 +2804,13 @@ class OrcamentoItemCusteioPage(QWidget):
     def _build_title(self) -> str:
         """Return the page title for the active item."""
         return f"Custeio do Item: {self._format_item_label(self.item)}"
+
+    def _titulo_cabecalho(self) -> str:
+        """Nome legível do item para a barra (1.ª linha da descrição; senão o código/item)."""
+        descricao = (self.item.descricao or "").strip()
+        if descricao:
+            return descricao.splitlines()[0].strip()
+        return self._format_item_label(self.item)
 
     def _build_breadcrumb_items(self) -> list[BreadcrumbItem]:
         """Return breadcrumb items (clic\u00e1veis) for the active item costing page."""

@@ -985,17 +985,22 @@ def test_custeio_page_miniatura_modulo() -> None:
     assert "copiar_imagem_para_pasta" in copiar
 
 
-def test_custeio_tem_toggle_dados_item() -> None:
-    """Polish P5: the item base data can be hidden/shown to free table space."""
+def test_custeio_tem_barra_cabecalho_unica() -> None:
+    """R2.2: costing header uses one BarraCabecalho, without the old data toggle."""
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
-    assert hasattr(OrcamentoItemCusteioPage, "toggle_item_info")
+    assert hasattr(OrcamentoItemCusteioPage, "_titulo_cabecalho")
+    assert not hasattr(OrcamentoItemCusteioPage, "toggle_item_info")
 
     init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
-    assert "toggle_item_info_button" in init
-    assert "self.item_info_widget" in init
+    assert "BarraCabecalho" in init
+    assert "self.cabecalho" in init
+    assert "toggle_item_info_button" not in init
+    assert "self.item_info_widget" not in init
 
-    # The base data renders as a compact horizontal grid (no more QFormLayout).
-    criar = inspect.getsource(OrcamentoItemCusteioPage._create_item_info_widget)
-    assert "QGridLayout" in criar
-    assert "QFormLayout" not in criar
+    atualizar = inspect.getsource(OrcamentoItemCusteioPage._update_item_info)
+    assert "self.cabecalho.definir" in atualizar
+    assert "Altura:" in atualizar
+    assert "Largura:" in atualizar
+    assert "Prof:" in atualizar
+    assert "Qtd:" in atualizar
