@@ -170,9 +170,21 @@ class OrcamentoItemsPage(QWidget):
 
         self.producao_std_button = QPushButton(TIPO_PRODUCAO_STD)
         self.producao_serie_button = QPushButton(TIPO_PRODUCAO_SERIE)
+        estilo_toggle_producao = (
+            f"QPushButton {{"
+            f" background-color: {tema.BEGE_CLARO};"
+            f" color: {tema.CASTANHO_ESCURO};"
+            f" border: 1px solid {tema.CINZA_CASTANHO};"
+            f" border-radius: 4px; padding: 4px 14px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background-color: {tema.BEGE_AREIA}; }}"
+            f"QPushButton:checked {{"
+            f" background-color: {tema.CASTANHO_ESCURO}; color: #FFFFFF;"
+            f" border: 1px solid {tema.CASTANHO_ESCURO}; }}"
+        )
         for botao in (self.producao_std_button, self.producao_serie_button):
             botao.setCheckable(True)
             botao.setToolTip(self.PRODUCAO_DEFAULT_TOOLTIP)
+            botao.setStyleSheet(estilo_toggle_producao)
 
         self.producao_group = QButtonGroup(self)
         self.producao_group.setExclusive(True)
