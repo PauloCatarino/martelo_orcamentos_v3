@@ -40,6 +40,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 )
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui import tema
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_version
@@ -91,11 +92,9 @@ class OrcamentosPage(QWidget):
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
         self._todos: list[OrcamentoResumo] = []
 
-        title = QLabel("Or\u00e7amentos")
-        title.setObjectName("pageTitle")
-
-        subtitle = QLabel("Gest\u00e3o de or\u00e7amentos do Martelo V3")
-        subtitle.setObjectName("pageSubtitle")
+        self.cabecalho = BarraCabecalho(
+            "Orçamentos", ["Gestão de orçamentos do Martelo V3"]
+        )
 
         self.new_button = QPushButton("Novo Or\u00e7amento")
         self.new_button.clicked.connect(self.abrir_novo_orcamento)
@@ -173,8 +172,7 @@ class OrcamentosPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(subtitle)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addLayout(filters_layout)
         layout.addWidget(self.status_label)

@@ -33,6 +33,7 @@ from app.services.cliente_temporario_service import (
 )
 from app.services import phc_sql
 from app.ui import tema
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
@@ -73,8 +74,7 @@ class ClientesPage(QWidget):
         self._phc_todos: list[ClienteListaResumo] = []
         self._cliente_id: int | None = None
 
-        title = QLabel("Clientes")
-        title.setObjectName("pageTitle")
+        self.cabecalho = BarraCabecalho("Clientes")
 
         tabs = QTabWidget()
         tabs.addTab(self._criar_tab_temporarios(), "Clientes Tempor\u00e1rios")
@@ -83,7 +83,7 @@ class ClientesPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
+        layout.addWidget(self.cabecalho)
         layout.addWidget(tabs, stretch=1)
         self.setLayout(layout)
 
