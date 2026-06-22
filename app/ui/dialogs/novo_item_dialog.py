@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
@@ -49,7 +49,7 @@ class NovoItemDialog(QDialog):
 
         self.setWindowTitle("Editar Item" if item_data is not None else "Novo Item")
         self.setModal(True)
-        self.setMinimumWidth(460)
+        self.setMinimumSize(560, 620)
 
         self.codigo_input = QLineEdit()
         self.tipo_item_input = QComboBox()
@@ -57,7 +57,7 @@ class NovoItemDialog(QDialog):
             self.tipo_item_input.addItem(label, code)
         self.item_input = QLineEdit()
         self.descricao_input = QTextEdit()
-        self.descricao_input.setFixedHeight(90)
+        self.descricao_input.setMinimumHeight(140)
         self.descricoes_button = QPushButton("Descrições pré-definidas…")
         self.descricoes_button.clicked.connect(self._abrir_descricoes_predefinidas)
         descricao_widget = QWidget()
@@ -93,7 +93,12 @@ class NovoItemDialog(QDialog):
         form_layout.addRow("Profundidade", self.profundidade_input)
         form_layout.addRow("Quantidade", self.quantidade_input)
         form_layout.addRow("Unidade", self.unidade_input)
-        form_layout.addRow("Pre\u00e7o unit\u00e1rio", self.preco_unitario_input)
+        preco_widget = QWidget()
+        preco_layout = QHBoxLayout(preco_widget)
+        preco_layout.setContentsMargins(0, 0, 0, 0)
+        preco_layout.addWidget(self.preco_unitario_input)
+        preco_layout.addWidget(QLabel("€"))
+        form_layout.addRow("Pre\u00e7o unit\u00e1rio", preco_widget)
         form_layout.addRow("", self.preco_manual_check)
 
         self.button_box = QDialogButtonBox(
@@ -156,7 +161,7 @@ class NovoItemDialog(QDialog):
 
     def _parse_decimal(self, value: str) -> Decimal:
         """Parse a decimal accepting comma or dot separators."""
-        normalized = value.strip().replace(",", ".")
+        normalized = value.replace("€", "").replace(" ", "").strip().replace(",", ".")
         if not normalized:
             raise ValueError("Preencha os valores numericos obrigatorios.")
 
@@ -176,20 +181,29 @@ class NovoItemDialog(QDialog):
         self._set_tipo_item(item_data.tipo_item)
         self.item_input.setText(item_data.item)
         self.descricao_input.setPlainText(item_data.descricao or "")
-        self.altura_input.setText(self._format_decimal(item_data.altura))
-        self.largura_input.setText(self._format_decimal(item_data.largura))
-        self.profundidade_input.setText(self._format_decimal(item_data.profundidade))
-        self.quantidade_input.setText(self._format_decimal(item_data.quantidade))
+        self.altura_input.setText(self._format_dimensao(item_data.altura))
+        self.largura_input.setText(self._format_dimensao(item_data.largura))
+        self.profundidade_input.setText(self._format_dimensao(item_data.profundidade))
+        self.quantidade_input.setText(self._format_dimensao(item_data.quantidade))
         self.unidade_input.setText(item_data.unidade)
-        self.preco_unitario_input.setText(self._format_decimal(item_data.preco_unitario))
+        self.preco_unitario_input.setText(self._format_preco(item_data.preco_unitario))
         self.preco_manual_check.setChecked(item_data.preco_manual)
 
-    def _format_decimal(self, value: Decimal | None) -> str:
-        """Format decimal values for dialog fields."""
+    def _format_dimensao(self, value: Decimal | None) -> str:
+        """Dimensão/quantidade: até 1 casa decimal, sem '.0' nos inteiros (vírgula em PT)."""
+        if value is None:
+            return ""
+        arredondado = value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+        if arredondado == arredondado.to_integral_value():
+            return f"{arredondado:.0f}"
+        return f"{arredondado:.1f}".replace(".", ",")
+
+    def _format_preco(self, value: Decimal | None) -> str:
+        """Preço unitário: 2 casas decimais com vírgula (PT). O símbolo € fica no rótulo ao lado."""
         if value is None:
             return ""
 
-        return f"{value:g}"
+        return f"{value:.2f}".replace(".", ",")
 
     def _set_tipo_item(self, value: str | None) -> None:
         """Select an item type in the combo box."""
