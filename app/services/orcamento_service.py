@@ -15,6 +15,7 @@ from app.domain.margens_padrao_types import (
 )
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.domain.precos import MargensOrcamento
+from app.models.orcamento_versao import OrcamentoVersao
 from app.repositories.def_margem_padrao_repository import DefMargemPadraoRepository
 from app.repositories.orcamento_repository import (
     ClienteResumo,
@@ -23,6 +24,7 @@ from app.repositories.orcamento_repository import (
     OrcamentoResumo,
     OrcamentoVersaoCriada,
 )
+from app.services.orcamento_historico_service import OrcamentoHistoricoService
 
 
 @dataclass(frozen=True)
@@ -123,6 +125,9 @@ class OrcamentoService:
         if data.estado not in ESTADOS_ORCAMENTO:
             raise ValueError("Estado inv\u00e1lido.")
 
+        versao_atual = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        estado_anterior = versao_atual.estado if versao_atual is not None else None
+
         result = self.repository.update_orcamento(
             orcamento_id,
             descricao=data.descricao,
@@ -150,6 +155,12 @@ class OrcamentoService:
             cliente_result = self.repository.update_cliente(
                 orcamento_id,
                 data.cliente_id,
+            )
+        if estado_anterior is not None and estado_anterior != data.estado:
+            OrcamentoHistoricoService(self.session).registar(
+                orcamento_versao_id,
+                "estado",
+                f"Estado: {estado_anterior} \u2192 {data.estado}",
             )
         self.session.commit()
 

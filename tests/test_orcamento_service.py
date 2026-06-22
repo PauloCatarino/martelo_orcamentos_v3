@@ -117,9 +117,17 @@ class _FakeMargensRepository:
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.added: list[object] = []
+        self.current_versao: object | None = None
 
     def commit(self) -> None:
         self.committed = True
+
+    def add(self, instance: object) -> None:
+        self.added.append(instance)
+
+    def get(self, _model: object, _id: int) -> object | None:
+        return self.current_versao
 
 
 def test_orcamento_service_returns_empty_list_when_repository_is_empty(monkeypatch) -> None:
@@ -253,6 +261,7 @@ def test_criar_orcamento_aceita_obra_vazia(monkeypatch) -> None:
 
 def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     service, session = _make_service(monkeypatch)
+    session.current_versao = type("Versao", (), {"estado": "Falta Or\u00e7amentar"})()
 
     result = service.editar_orcamento(
         1,
@@ -278,6 +287,30 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert _FakeRepository.utilizador_payload == (10, 7)
     assert _FakeRepository.cliente_payload is None
     assert session.committed is True
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == 10
+    assert evento.tipo == "estado"
+    assert evento.descricao == "Estado: Falta Or\u00e7amentar \u2192 Enviado"
+
+
+def test_editar_orcamento_nao_regista_historico_sem_mudar_estado(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+    session.current_versao = type("Versao", (), {"estado": "Enviado"})()
+
+    service.editar_orcamento(
+        1,
+        service_module.EditarOrcamentoData(
+            obra="X",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado="Enviado",
+        ),
+        orcamento_versao_id=10,
+    )
+
+    assert session.added == []
 
 
 def test_editar_orcamento_troca_cliente(monkeypatch) -> None:

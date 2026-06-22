@@ -30,6 +30,17 @@ def test_orcamento_detail_page_has_valueset_tab() -> None:
     assert '"ValueSet"' in source
 
 
+def test_orcamento_detail_page_has_historico_tab() -> None:
+    from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
+
+    init_source = inspect.getsource(OrcamentoDetailPage.__init__)
+
+    assert "self.historico_tab = self._create_historico_tab()" in init_source
+    assert '"Hist\\u00f3rico"' in init_source or '"Histórico"' in init_source
+    assert "currentChanged.connect" in init_source
+    assert hasattr(OrcamentoDetailPage, "_carregar_historico")
+
+
 def test_orcamento_detail_page_supports_item_custeio_navigation() -> None:
     from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
 

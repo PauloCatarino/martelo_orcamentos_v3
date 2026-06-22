@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.base import Base
 from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
-from app.models import Cliente, Orcamento, OrcamentoVersao
+from app.models import Cliente, Orcamento, OrcamentoVersao, OrcamentoVersaoEvento
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
     EditarOrcamentoData,
@@ -84,6 +84,28 @@ def test_editar_orcamento_persiste_os_campos_e_estado(session) -> None:
     assert atualizado.localizacao == "Local Novo"
     assert atualizado.ref_cliente == "REF-2"
     assert session.get(OrcamentoVersao, orcamento_versao_id).estado == "Enviado"
+    evento = session.query(OrcamentoVersaoEvento).one()
+    assert evento.orcamento_versao_id == orcamento_versao_id
+    assert evento.tipo == "estado"
+    assert evento.descricao == "Estado: Falta Or\u00e7amentar \u2192 Enviado"
+
+
+def test_editar_orcamento_nao_cria_evento_se_estado_nao_mudar(session) -> None:
+    orcamento_id, orcamento_versao_id = _criar_orcamento(session)
+
+    OrcamentoService(session).editar_orcamento(
+        orcamento_id,
+        EditarOrcamentoData(
+            obra="Obra Nova",
+            descricao=None,
+            localizacao=None,
+            ref_cliente=None,
+            estado=ESTADO_INICIAL,
+        ),
+        orcamento_versao_id=orcamento_versao_id,
+    )
+
+    assert session.query(OrcamentoVersaoEvento).count() == 0
 
 
 def test_editar_orcamento_guarda_updated_by_id(session) -> None:

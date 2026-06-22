@@ -5,13 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QStackedWidget,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -20,7 +24,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoResumo
+from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.orcamento_service import OrcamentoService
+from app.ui import tema
 from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
@@ -72,9 +78,15 @@ class OrcamentoDetailPage(QWidget):
             ),
             "Relat\u00f3rios",
         )
-        tabs.addTab(self._create_placeholder_tab("Hist\u00f3rico de altera\u00e7\u00f5es ser\u00e1 apresentado aqui."), "Hist\u00f3rico")
+        self.historico_tab = self._create_historico_tab()
+        tabs.addTab(self.historico_tab, "Hist\u00f3rico")
         # Abrir por defeito no separador "Items".
         tabs.setCurrentWidget(self.items_stack)
+        tabs.currentChanged.connect(
+            lambda i: self._carregar_historico()
+            if tabs.widget(i) is self.historico_tab
+            else None
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -158,6 +170,53 @@ class OrcamentoDetailPage(QWidget):
         """Return from item costing to the items table."""
         self.items_stack.setCurrentWidget(self.items_page)
         self.items_page.carregar_items()
+
+    def _create_historico_tab(self) -> QWidget:
+        tab = QWidget()
+        self.historico_table = QTableWidget(0, 4)
+        self.historico_table.setHorizontalHeaderLabels(
+            ["Data/hora", "Utilizador", "Evento", "Detalhe"]
+        )
+        self.historico_table.verticalHeader().setVisible(False)
+        self.historico_table.setAlternatingRowColors(True)
+        self.historico_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.historico_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        header = self.historico_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.addWidget(self.historico_table)
+        tab.setLayout(layout)
+        self._carregar_historico()
+        return tab
+
+    def _carregar_historico(self) -> None:
+        try:
+            with SessionLocal() as session:
+                eventos = OrcamentoHistoricoService(session).listar(
+                    self.orcamento.orcamento_versao_id
+                )
+        except SQLAlchemyError:
+            eventos = []
+        self.historico_table.setRowCount(len(eventos))
+        for row, ev in enumerate(eventos):
+            valores = [
+                ev.created_at.strftime("%Y-%m-%d %H:%M"),
+                ev.utilizador,
+                ev.tipo,
+                ev.descricao,
+            ]
+            for col, valor in enumerate(valores):
+                item = QTableWidgetItem(valor)
+                item.setBackground(QColor(tema.cor_zebra(row)))
+                self.historico_table.setItem(row, col, item)
 
     def _update_dados_gerais_labels(self) -> None:
         """Update the labels in the general data tab."""
