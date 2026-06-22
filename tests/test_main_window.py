@@ -47,8 +47,19 @@ def test_main_window_has_materias_primas_under_orcamentos() -> None:
 
     assert '"Or\\u00e7amentos", "orcamentos"' in source
     assert '"Mat\\u00e9rias-Primas", "materias_primas", parent=item_orcamentos' in source
+    assert '"Pesquisa IA", "pesquisa_ia", parent=item_orcamentos' in source
     assert "item_orcamentos.setExpanded(True)" in source
     assert hasattr(MainWindow, "_on_nav_item_clicked")
+
+
+def test_main_window_registers_pesquisa_ia_page() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "PesquisaIAPage" in source
+    assert "self.pesquisa_ia_page = PesquisaIAPage()" in source
+    assert 'self._add_page("pesquisa_ia", self.pesquisa_ia_page)' in source
 
 
 def test_main_window_has_operacoes_maquinas_navigation_inside_configuracoes() -> None:

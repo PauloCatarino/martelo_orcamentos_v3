@@ -32,6 +32,7 @@ from app.ui.pages import (
     OperacoesMaquinasPage,
     OrcamentoDetailPage,
     OrcamentosPage,
+    PesquisaIAPage,
     RegrasQuantidadePage,
 )
 
@@ -125,6 +126,7 @@ class MainWindow(QMainWindow):
         _criar_item("In\u00edcio", "inicio")
         item_orcamentos = _criar_item("Or\u00e7amentos", "orcamentos")
         _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
+        _criar_item("Pesquisa IA", "pesquisa_ia", parent=item_orcamentos)
         _criar_item("Clientes", "clientes")
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
@@ -138,6 +140,7 @@ class MainWindow(QMainWindow):
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
         self.def_pecas_page = DefPecasPage()
         self.materias_primas_page = MateriasPrimasPage()
+        self.pesquisa_ia_page = PesquisaIAPage()
         self.caminhos_sistema_page = CaminhosSistemaPage()
         self.operacoes_maquinas_page = OperacoesMaquinasPage()
         self.valueset_chaves_page = DefValuesetChavesPage()
@@ -161,6 +164,7 @@ class MainWindow(QMainWindow):
         self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("materias_primas", self.materias_primas_page)
+        self._add_page("pesquisa_ia", self.pesquisa_ia_page)
         self._add_page("caminhos_sistema", self.caminhos_sistema_page)
         self._add_page("operacoes_maquinas", self.operacoes_maquinas_page)
         self._add_page("valueset_chaves", self.valueset_chaves_page)
