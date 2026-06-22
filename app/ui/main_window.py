@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QStackedWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +44,7 @@ class MainWindow(QMainWindow):
         "inicio": "inicio",
         "orcamentos": "orcamentos",
         "orcamento_detail": "orcamentos",
+        "materias_primas": "materias_primas",
         "clientes": "clientes",
     }
 
@@ -100,30 +103,33 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
         sidebar_layout.setSpacing(8)
 
-        inicio_button = QPushButton("In\u00edcio")
-        inicio_button.clicked.connect(lambda: self.show_page("inicio"))
+        self.nav_tree = QTreeWidget()
+        self.nav_tree.setObjectName("navTree")
+        self.nav_tree.setHeaderHidden(True)
+        self.nav_tree.setIndentation(14)
+        self.nav_tree.setStyleSheet(tema.ESTILO_ARVORE_NAV)
+        self.nav_tree.itemClicked.connect(self._on_nav_item_clicked)
 
-        orcamentos_button = QPushButton("Or\u00e7amentos")
-        orcamentos_button.clicked.connect(lambda: self.show_page("orcamentos"))
+        self._nav_items: dict[str, QTreeWidgetItem] = {}
 
-        clientes_button = QPushButton("Clientes")
-        clientes_button.clicked.connect(lambda: self.show_page("clientes"))
+        def _criar_item(texto: str, page_name: str, parent=None) -> QTreeWidgetItem:
+            item = QTreeWidgetItem([texto])
+            item.setData(0, Qt.ItemDataRole.UserRole, page_name)
+            if parent is None:
+                self.nav_tree.addTopLevelItem(item)
+            else:
+                parent.addChild(item)
+            self._nav_items[page_name] = item
+            return item
 
-        configuracoes_button = QPushButton("Configura\u00e7\u00f5es")
-        configuracoes_button.clicked.connect(lambda: self.show_page("configuracoes"))
+        _criar_item("In\u00edcio", "inicio")
+        item_orcamentos = _criar_item("Or\u00e7amentos", "orcamentos")
+        _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
+        _criar_item("Clientes", "clientes")
+        _criar_item("Configura\u00e7\u00f5es", "configuracoes")
+        item_orcamentos.setExpanded(True)
 
-        self._nav_buttons = {
-            "inicio": inicio_button,
-            "orcamentos": orcamentos_button,
-            "clientes": clientes_button,
-            "configuracoes": configuracoes_button,
-        }
-        sidebar.setStyleSheet(tema.ESTILO_SIDEBAR)
-        for button in self._nav_buttons.values():
-            button.setCheckable(True)
-            sidebar_layout.addWidget(button)
-
-        sidebar_layout.addStretch()
+        sidebar_layout.addWidget(self.nav_tree, stretch=1)
         sidebar.setLayout(sidebar_layout)
 
         self.pages = QStackedWidget()
@@ -231,9 +237,17 @@ class MainWindow(QMainWindow):
 
     def _destacar_nav(self, name: str) -> None:
         """Realça o botão da sidebar correspondente à página atual."""
-        grupo = self._NAV_POR_PAGINA.get(name, "configuracoes")
-        for chave, botao in self._nav_buttons.items():
-            botao.setChecked(chave == grupo)
+        item = self._nav_items.get(name)
+        if item is None:
+            grupo = self._NAV_POR_PAGINA.get(name, "configuracoes")
+            item = self._nav_items.get(grupo)
+        if item is not None:
+            self.nav_tree.setCurrentItem(item)
+
+    def _on_nav_item_clicked(self, item: QTreeWidgetItem, _column: int = 0) -> None:
+        page_name = item.data(0, Qt.ItemDataRole.UserRole)
+        if page_name:
+            self.show_page(page_name)
 
     def open_orcamento_detail(self, orcamento: OrcamentoResumo) -> None:
         """Open the detail page for a selected budget."""

@@ -153,3 +153,13 @@ ESTILO_SIDEBAR = (
     f"QPushButton:hover {{ background: {BEGE_AREIA}; }}"
     f"QPushButton:checked {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )
+
+
+# Estilo da arvore de navegacao (sidebar): item selecionado a castanho.
+ESTILO_ARVORE_NAV = (
+    "QTreeWidget#navTree { background: transparent; border: none; outline: 0; }"
+    f"QTreeWidget#navTree::item {{ color: {CASTANHO_ESCURO}; padding: 6px 4px;"
+    " border-radius: 4px; }"
+    f"QTreeWidget#navTree::item:hover {{ background: {BEGE_AREIA}; }}"
+    f"QTreeWidget#navTree::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+)

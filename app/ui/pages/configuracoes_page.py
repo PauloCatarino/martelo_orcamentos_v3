@@ -19,7 +19,6 @@ class ConfiguracoesPage(QWidget):
 
     TECHNICAL_AREAS = [
         "Defini\u00e7\u00f5es de Pe\u00e7as",
-        "Mat\u00e9rias-Primas",
         "Caminhos do Sistema",
         "Materiais",
         "Ferragens",
@@ -71,9 +70,6 @@ class ConfiguracoesPage(QWidget):
         self.def_pecas_button = QPushButton("Defini\u00e7\u00f5es de Pe\u00e7as")
         self.def_pecas_button.clicked.connect(self._open_def_pecas)
 
-        self.materias_primas_button = QPushButton("Mat\u00e9rias-Primas")
-        self.materias_primas_button.clicked.connect(self._open_materias_primas)
-
         self.caminhos_sistema_button = QPushButton("Caminhos do Sistema")
         self.caminhos_sistema_button.clicked.connect(self._open_caminhos_sistema)
 
@@ -124,7 +120,6 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addSpacing(8)
         layout.addWidget(self.def_pecas_button)
-        layout.addWidget(self.materias_primas_button)
         layout.addWidget(self.caminhos_sistema_button)
         layout.addWidget(materiais_button)
         layout.addWidget(ferragens_button)
@@ -144,11 +139,6 @@ class ConfiguracoesPage(QWidget):
         """Open the piece definitions page through the optional callback."""
         if self.on_open_def_pecas is not None:
             self.on_open_def_pecas()
-
-    def _open_materias_primas(self) -> None:
-        """Open the raw materials page through the optional callback."""
-        if self.on_open_materias_primas is not None:
-            self.on_open_materias_primas()
 
     def _open_caminhos_sistema(self) -> None:
         """Open the system paths page through the optional callback."""

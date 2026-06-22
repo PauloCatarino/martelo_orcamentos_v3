@@ -13,6 +13,18 @@ def test_main_window_accepts_authenticated_user_argument() -> None:
     assert "authenticated_user" in signature.parameters
 
 
+def test_main_window_has_navigation_tree() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "QTreeWidget" in source
+    assert "self.nav_tree" in source
+    assert "ESTILO_ARVORE_NAV" in source
+    assert "_on_nav_item_clicked" in source
+    assert "QPushButton(\"In" not in source
+
+
 def test_main_window_has_def_pecas_navigation_inside_configuracoes() -> None:
     from app.ui.main_window import MainWindow
 
@@ -26,6 +38,17 @@ def test_main_window_has_def_pecas_navigation_inside_configuracoes() -> None:
     assert '"materias_primas"' in source
     assert '"caminhos_sistema"' in source
     assert "pecas_button" not in source
+
+
+def test_main_window_has_materias_primas_under_orcamentos() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert '"Or\\u00e7amentos", "orcamentos"' in source
+    assert '"Mat\\u00e9rias-Primas", "materias_primas", parent=item_orcamentos' in source
+    assert "item_orcamentos.setExpanded(True)" in source
+    assert hasattr(MainWindow, "_on_nav_item_clicked")
 
 
 def test_main_window_has_operacoes_maquinas_navigation_inside_configuracoes() -> None:

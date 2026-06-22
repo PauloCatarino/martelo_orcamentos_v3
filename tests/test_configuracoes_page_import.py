@@ -26,7 +26,6 @@ def test_configuracoes_page_declares_technical_areas() -> None:
 
     assert ConfiguracoesPage.TECHNICAL_AREAS == [
         "Defini\u00e7\u00f5es de Pe\u00e7as",
-        "Mat\u00e9rias-Primas",
         "Caminhos do Sistema",
         "Materiais",
         "Ferragens",
@@ -85,10 +84,14 @@ def test_configuracoes_page_has_valueset_modelos_shortcut() -> None:
     assert hasattr(ConfiguracoesPage, "_open_valueset_modelos")
 
 
-def test_configuracoes_page_has_materias_primas_shortcut() -> None:
+def test_configuracoes_page_nao_tem_materias_primas_shortcut() -> None:
     from app.ui.pages.configuracoes_page import ConfiguracoesPage
 
-    assert hasattr(ConfiguracoesPage, "_open_materias_primas")
+    init_source = inspect.getsource(ConfiguracoesPage.__init__)
+
+    assert not hasattr(ConfiguracoesPage, "_open_materias_primas")
+    assert "materias_primas_button" not in init_source
+    assert "Mat\\u00e9rias-Primas" not in init_source
 
 
 def test_configuracoes_page_has_caminhos_sistema_shortcut() -> None:
