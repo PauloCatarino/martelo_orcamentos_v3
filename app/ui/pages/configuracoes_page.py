@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
+
 
 class ConfiguracoesPage(QWidget):
     """Technical administration shortcuts page."""
@@ -54,16 +56,14 @@ class ConfiguracoesPage(QWidget):
         self.on_open_regras_quantidade = on_open_regras_quantidade
         self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
 
-        title = QLabel("Configura\u00e7\u00f5es")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "\u00c1rea de administra\u00e7\u00e3o t\u00e9cnica do Martelo Or\u00e7amentos V3. "
-            "Aqui ser\u00e3o configuradas pe\u00e7as, materiais, ferragens, opera\u00e7\u00f5es, "
-            "regras de custeio e outras tabelas de apoio."
+        self.cabecalho = BarraCabecalho(
+            "Configura\u00e7\u00f5es",
+            [
+                "\u00c1rea de administra\u00e7\u00e3o t\u00e9cnica do Martelo Or\u00e7amentos V3. "
+                "Aqui ser\u00e3o configuradas pe\u00e7as, materiais, ferragens, opera\u00e7\u00f5es, "
+                "regras de custeio e outras tabelas de apoio."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("configuracoesStatus")
@@ -121,8 +121,7 @@ class ConfiguracoesPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addSpacing(8)
         layout.addWidget(self.def_pecas_button)
         layout.addWidget(self.materias_primas_button)

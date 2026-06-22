@@ -23,6 +23,7 @@ from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -51,16 +52,14 @@ class MateriasPrimasPage(QWidget):
 
         self._materias_primas: list[DefMateriaPrimaResumo] = []
 
-        title = QLabel("Mat\u00e9rias-Primas")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Cat\u00e1logo de mat\u00e9rias-primas importado a partir do Excel. "
-            "Estes dados ser\u00e3o usados futuramente nas configura\u00e7\u00f5es de "
-            "or\u00e7amento, items e custeio."
+        self.cabecalho = BarraCabecalho(
+            "Mat\u00e9rias-Primas",
+            [
+                "Cat\u00e1logo de mat\u00e9rias-primas importado a partir do Excel. "
+                "Estes dados ser\u00e3o usados futuramente nas configura\u00e7\u00f5es de "
+                "or\u00e7amento, items e custeio."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.refresh_button = QPushButton("Atualizar Página")
         self.refresh_button.clicked.connect(self.carregar_materias_primas)
@@ -92,8 +91,7 @@ class MateriasPrimasPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.search_input)

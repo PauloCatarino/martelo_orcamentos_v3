@@ -50,6 +50,7 @@ from app.ui.dialogs.editar_modulo_dialog import (
     EditarModuloDialogData,
 )
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -75,18 +76,16 @@ class BibliotecaModulosPage(QWidget):
         self._modulos_globais: list = []
         self._por_linha: dict[QTableWidget, dict[int, object]] = {}
 
-        title = QLabel("Biblioteca de Módulos")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Gestão dos módulos reutilizáveis guardados a partir do custeio "
-            "(roupeiros, cozinhas, móveis...). Aqui pode pesquisar, editar o "
-            "cabeçalho, eliminar e ver as linhas de cada módulo. Os módulos "
-            "criam-se no custeio (botão Guardar como Módulo) e importam-se para "
-            "os itens (botão Importar Módulo) — não se criam aqui."
+        self.cabecalho = BarraCabecalho(
+            "Biblioteca de Módulos",
+            [
+                "Gestão dos módulos reutilizáveis guardados a partir do custeio "
+                "(roupeiros, cozinhas, móveis...). Aqui pode pesquisar, editar o "
+                "cabeçalho, eliminar e ver as linhas de cada módulo. Os módulos "
+                "criam-se no custeio (botão Guardar como Módulo) e importam-se para "
+                "os itens (botão Importar Módulo) — não se criam aqui."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("bibliotecaModulosStatus")
@@ -133,8 +132,7 @@ class BibliotecaModulosPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(filtro_row)
         layout.addLayout(buttons_layout)
         layout.addWidget(self.tabs, stretch=1)

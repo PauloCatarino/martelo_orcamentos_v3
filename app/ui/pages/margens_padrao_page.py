@@ -33,6 +33,7 @@ from app.ui.dialogs.margem_padrao_dialog import (
     MargemPadraoDialog,
     MargemPadraoDialogData,
 )
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.utils.formatters import format_quantity
 
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -54,16 +55,14 @@ class MargensPadraoPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
-        title = QLabel("Margens por Defeito")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Valores iniciais das margens dos novos orçamentos, por âmbito: "
-            "Standard (geral), por cliente e por utilizador. "
-            + TOOLTIP_VALOR_INICIAL
+        self.cabecalho = BarraCabecalho(
+            "Margens por Defeito",
+            [
+                "Valores iniciais das margens dos novos orçamentos, por âmbito: "
+                "Standard (geral), por cliente e por utilizador. "
+                + TOOLTIP_VALOR_INICIAL
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("margensPadraoStatus")
@@ -83,8 +82,7 @@ class MargensPadraoPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addWidget(tabs, stretch=1)
         layout.addWidget(self.status_label)
         self.setLayout(layout)

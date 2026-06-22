@@ -23,6 +23,7 @@ from app.services.def_valueset_chave_service import (
     EditarDefValuesetChaveData,
 )
 from app.ui.dialogs.def_valueset_chave_dialog import DefValuesetChaveDialog
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -44,15 +45,13 @@ class DefValuesetChavesPage(QWidget):
 
         self._chaves_by_row: dict[int, DefValuesetChaveResumo] = {}
 
-        title = QLabel("Chaves ValueSet")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Categorias usadas para ligar peças, ferragens, materiais, acabamentos "
-            "e sistemas aos ValueSets do orçamento e dos items."
+        self.cabecalho = BarraCabecalho(
+            "Chaves ValueSet",
+            [
+                "Categorias usadas para ligar peças, ferragens, materiais, acabamentos "
+                "e sistemas aos ValueSets do orçamento e dos items."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.new_button = QPushButton("Nova Chave")
         self.new_button.clicked.connect(self.abrir_nova_chave)
@@ -86,8 +85,7 @@ class DefValuesetChavesPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)

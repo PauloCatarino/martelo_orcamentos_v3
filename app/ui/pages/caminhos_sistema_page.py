@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.system_setting_repository import SystemSettingResumo
 from app.services.system_setting_service import SystemSettingService
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -38,15 +39,13 @@ class CaminhosSistemaPage(QWidget):
 
         self._settings_by_row: dict[int, SystemSettingResumo] = {}
 
-        title = QLabel("Caminhos do Sistema")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Configura\u00e7\u00e3o dos caminhos usados pelo Martelo V3 para ficheiros "
-            "externos, produ\u00e7\u00e3o, mat\u00e9rias-primas, CNC, IMOS e IA."
+        self.cabecalho = BarraCabecalho(
+            "Caminhos do Sistema",
+            [
+                "Configura\u00e7\u00e3o dos caminhos usados pelo Martelo V3 para ficheiros "
+                "externos, produ\u00e7\u00e3o, mat\u00e9rias-primas, CNC, IMOS e IA."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.save_button = QPushButton("Guardar Configura\u00e7\u00f5es")
         self.save_button.clicked.connect(self.guardar_configuracoes)
@@ -75,8 +74,7 @@ class CaminhosSistemaPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)

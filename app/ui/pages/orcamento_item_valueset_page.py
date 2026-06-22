@@ -35,6 +35,7 @@ from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
     OrcamentoItemValuesetLinhaDialog,
 )
 from app.ui.dialogs.propagar_valueset_custeio_dialog import PropagarValuesetCusteioDialog
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -75,15 +76,13 @@ class OrcamentoItemValuesetPage(QWidget):
         self._linhas_by_row: dict[int, OrcamentoItemValuesetLinhaResumo] = {}
         self._copied_snapshot: dict | None = None
 
-        title = QLabel("ValueSet do Item")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Materiais, ferragens, acabamentos, orlas, sistemas e acessórios "
-            "definidos por defeito para este item."
+        self.cabecalho = BarraCabecalho(
+            "ValueSet do Item",
+            [
+                "Materiais, ferragens, acabamentos, orlas, sistemas e acessórios "
+                "definidos por defeito para este item."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.create_button = QPushButton("Criar a partir do Orçamento")
         self.create_button.clicked.connect(self.criar_do_orcamento)
@@ -134,8 +133,7 @@ class OrcamentoItemValuesetPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)

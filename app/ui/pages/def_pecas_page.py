@@ -29,6 +29,7 @@ from app.services.def_peca_service import (
 from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
 from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -50,11 +51,10 @@ class DefPecasPage(QWidget):
         self._pecas_by_row: dict[int, DefPecaResumo] = {}
         self._detail_page: DefPecaDetailPage | None = None
 
-        title = QLabel("Defini\u00e7\u00f5es de Pe\u00e7as")
-        title.setObjectName("pageTitle")
-
-        subtitle = QLabel("Biblioteca de pe\u00e7as dispon\u00edveis para m\u00f3dulos, pe\u00e7as soltas e custeio")
-        subtitle.setObjectName("pageSubtitle")
+        self.cabecalho = BarraCabecalho(
+            "Defini\u00e7\u00f5es de Pe\u00e7as",
+            ["Biblioteca de pe\u00e7as dispon\u00edveis para m\u00f3dulos, pe\u00e7as soltas e custeio"],
+        )
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_pecas)
@@ -92,8 +92,7 @@ class DefPecasPage(QWidget):
         list_layout = QVBoxLayout()
         list_layout.setContentsMargins(18, 18, 18, 18)
         list_layout.setSpacing(12)
-        list_layout.addWidget(title)
-        list_layout.addWidget(subtitle)
+        list_layout.addWidget(self.cabecalho)
         list_layout.addLayout(actions_layout)
         list_layout.addWidget(self.status_label)
         list_layout.addWidget(self.table, stretch=1)

@@ -28,6 +28,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
 
@@ -66,11 +67,10 @@ class DefValuesetModeloDetailPage(QWidget):
         self.on_back = on_back
         self._linhas_by_row: dict[int, DefValuesetModeloLinhaResumo] = {}
 
-        breadcrumb = QLabel(f"Configurações > Modelos ValueSet > {modelo.nome}")
-        breadcrumb.setObjectName("pageSubtitle")
-
-        title = QLabel(f"Modelo ValueSet: {modelo.nome}")
-        title.setObjectName("pageTitle")
+        self.cabecalho = BarraCabecalho(
+            f"Modelo ValueSet: {modelo.nome}",
+            [f"Configurações > Modelos ValueSet > {modelo.nome}"],
+        )
 
         form = QFormLayout()
         for label, value in [
@@ -117,8 +117,7 @@ class DefValuesetModeloDetailPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(breadcrumb)
-        layout.addWidget(title)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(form)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)

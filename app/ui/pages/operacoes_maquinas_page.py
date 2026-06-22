@@ -32,6 +32,7 @@ from app.services.def_operacao_service import (
 from app.ui.dialogs.escaloes_area_dialog import EscaloesAreaDialog
 from app.ui.dialogs.maquina_dialog import MaquinaDialog
 from app.ui.dialogs.operacao_dialog import OperacaoDialog
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -66,16 +67,14 @@ class OperacoesMaquinasPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
-        title = QLabel("Operações / Máquinas")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Catálogo de operações e máquinas usado futuramente no custeio de "
-            "corte, orlagem, CNC, montagem, mão de obra e outras operações de "
-            "produção."
+        self.cabecalho = BarraCabecalho(
+            "Operações / Máquinas",
+            [
+                "Catálogo de operações e máquinas usado futuramente no custeio de "
+                "corte, orlagem, CNC, montagem, mão de obra e outras operações de "
+                "produção."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
@@ -102,8 +101,7 @@ class OperacoesMaquinasPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(tabs, stretch=1)

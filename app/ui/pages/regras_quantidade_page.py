@@ -26,6 +26,7 @@ from app.ui.dialogs.regra_quantidade_dialog import (
     RegraQuantidadeDialog,
     RegraQuantidadeDialogData,
 )
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -37,17 +38,15 @@ class RegrasQuantidadePage(QWidget):
     def __init__(self) -> None:
         super().__init__()
 
-        title = QLabel("Regras de Quantidade")
-        title.setObjectName("pageTitle")
-
-        info = QLabel(
-            "Regras (expressões) que calculam a quantidade de ferragens a partir "
-            "das dimensões da peça principal (COMP, LARG, ESP) e da quantidade "
-            "QT_PAI. Aqui apenas se definem e validam; a ligação aos componentes "
-            "vem numa fase seguinte."
+        self.cabecalho = BarraCabecalho(
+            "Regras de Quantidade",
+            [
+                "Regras (expressões) que calculam a quantidade de ferragens a partir "
+                "das dimensões da peça principal (COMP, LARG, ESP) e da quantidade "
+                "QT_PAI. Aqui apenas se definem e validam; a ligação aos componentes "
+                "vem numa fase seguinte."
+            ],
         )
-        info.setObjectName("pageSubtitle")
-        info.setWordWrap(True)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("regrasQuantidadeStatus")
@@ -83,8 +82,7 @@ class RegrasQuantidadePage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
-        layout.addWidget(title)
-        layout.addWidget(info)
+        layout.addWidget(self.cabecalho)
         layout.addLayout(buttons_layout)
         layout.addWidget(self.table, stretch=1)
         layout.addWidget(self.status_label)

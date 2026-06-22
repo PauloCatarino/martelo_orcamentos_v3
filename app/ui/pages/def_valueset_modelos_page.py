@@ -25,6 +25,7 @@ from app.services.def_valueset_modelo_service import (
 )
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -46,15 +47,13 @@ class DefValuesetModelosPage(QWidget):
         self._modelos_by_row: dict[int, DefValuesetModeloResumo] = {}
         self._detail_page: DefValuesetModeloDetailPage | None = None
 
-        title = QLabel("Modelos ValueSet")
-        title.setObjectName("pageTitle")
-
-        subtitle = QLabel(
-            "Biblioteca de modelos de materiais, ferragens, acabamentos, sistemas "
-            "e acessórios usados para preencher ValueSets de orçamentos e items."
+        self.cabecalho = BarraCabecalho(
+            "Modelos ValueSet",
+            [
+                "Biblioteca de modelos de materiais, ferragens, acabamentos, sistemas "
+                "e acessórios usados para preencher ValueSets de orçamentos e items."
+            ],
         )
-        subtitle.setObjectName("pageSubtitle")
-        subtitle.setWordWrap(True)
 
         self.new_button = QPushButton("Novo Modelo")
         self.new_button.clicked.connect(self.abrir_novo_modelo)
@@ -92,8 +91,7 @@ class DefValuesetModelosPage(QWidget):
         list_layout = QVBoxLayout()
         list_layout.setContentsMargins(18, 18, 18, 18)
         list_layout.setSpacing(12)
-        list_layout.addWidget(title)
-        list_layout.addWidget(subtitle)
+        list_layout.addWidget(self.cabecalho)
         list_layout.addLayout(actions_layout)
         list_layout.addWidget(self.status_label)
         list_layout.addWidget(self.table, stretch=1)
