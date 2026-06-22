@@ -69,6 +69,8 @@ def main() -> int:
         paleta.setColor(grupo, QPalette.ColorRole.Highlight, realce_fundo)
         paleta.setColor(grupo, QPalette.ColorRole.HighlightedText, realce_texto)
     qt_app.setPalette(paleta)
+    # Realce transversal do separador selecionado (R2.11).
+    qt_app.setStyleSheet(tema.ESTILO_ABAS)
 
     while True:
         login_window = LoginWindow()

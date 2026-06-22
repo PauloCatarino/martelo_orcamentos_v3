@@ -130,3 +130,16 @@ def estilo_linha_custeio(tipo_linha, *, eh_filho: bool = False) -> EstiloLinha:
     if eh_filho:
         return EstiloLinha(texto=CASTANHO_MEDIO, italico=True)
     return EstiloLinha(texto=TEXTO_NORMAL)
+
+
+# Estilo transversal das abas (QTabWidget/QTabBar): tab selecionado destacado a castanho.
+ESTILO_ABAS = (
+    f"QTabWidget::pane {{ border: 1px solid {CINZA_CASTANHO}; border-radius: 4px; top: -1px; }}"
+    f"QTabBar::tab {{ background: {BEGE_CLARO}; color: {CASTANHO_ESCURO};"
+    f" border: 1px solid {CINZA_CASTANHO}; border-bottom: none;"
+    f" border-top-left-radius: 6px; border-top-right-radius: 6px;"
+    f" padding: 6px 16px; margin-right: 2px; }}"
+    f"QTabBar::tab:hover {{ background: {BEGE_AREIA}; }}"
+    f"QTabBar::tab:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF;"
+    f" font-weight: bold; border: 1px solid {CASTANHO_ESCURO}; }}"
+)
