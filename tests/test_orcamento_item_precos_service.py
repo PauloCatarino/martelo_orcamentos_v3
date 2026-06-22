@@ -163,9 +163,13 @@ class _FakeCusteioRepository:
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.added: list[object] = []
 
     def commit(self) -> None:
         self.committed = True
+
+    def add(self, instance: object) -> None:
+        self.added.append(instance)
 
 
 def _make_service(monkeypatch) -> tuple[OrcamentoItemService, _FakeSession]:
@@ -268,17 +272,37 @@ def test_definir_ajuste_item_sem_custeio_mantem_preco_manual(monkeypatch) -> Non
 def test_definir_margens_reaplica_formula_sem_recalcular_custeios(monkeypatch) -> None:
     _FakeItemRepository.items = [_item(1)]
     _FakeCusteioRepository.linhas = [_linha(1, custo_mp=Decimal("100"))]
-    service, _session = _make_service(monkeypatch)
+    _FakeItemRepository.margens = MargensOrcamento(margem_lucro_pct=Decimal("10"))
+    service, session = _make_service(monkeypatch)
 
-    margens = MargensOrcamento(margem_mp_pct=Decimal("15"))
+    margens = MargensOrcamento(
+        margem_lucro_pct=Decimal("12"), margem_mp_pct=Decimal("15")
+    )
     service.definir_margens_versao(7, margens)
 
     assert _FakeItemRepository.updated_margens == (7, margens)
     assert _FakeItemRepository.updated_precos == {
-        1: (Decimal("115.00"), Decimal("115.00"))
+        1: (Decimal("128.80"), Decimal("128.80"))
     }
     # Only line READS happened: the costing pipeline was not re-run.
     assert set(_FakeCusteioRepository.chamadas) == {"list_by_orcamento_versao"}
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == 7
+    assert evento.tipo == "margens"
+    assert evento.descricao == "Margens: Lucro 10% \u2192 12%; MP 0% \u2192 15%"
+
+
+def test_definir_margens_sem_mudancas_nao_regista_historico(monkeypatch) -> None:
+    _FakeItemRepository.items = []
+    _FakeCusteioRepository.linhas = []
+    margens = MargensOrcamento(margem_lucro_pct=Decimal("10"))
+    _FakeItemRepository.margens = margens
+    service, session = _make_service(monkeypatch)
+
+    service.definir_margens_versao(7, margens)
+
+    assert session.added == []
 
 
 def test_get_margens_versao_devolve_zeros_quando_nao_ha_versao(monkeypatch) -> None:

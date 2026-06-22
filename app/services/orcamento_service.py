@@ -179,6 +179,11 @@ class OrcamentoService:
         result = self.repository.criar_nova_versao(
             orcamento_versao_id, created_by_id=created_by_id
         )
+        OrcamentoHistoricoService(self.session).registar(
+            result.orcamento_versao_id,
+            "versao",
+            f"Vers\u00e3o {result.codigo_versao} criada (duplicada)",
+        )
         self.session.commit()
 
         return result

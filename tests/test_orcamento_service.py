@@ -429,3 +429,8 @@ def test_duplicar_versao_delegada_ao_repositorio(monkeypatch) -> None:
     assert _FakeRepository.nova_versao_payload == (10, 7)
     assert result.numero_versao == 2
     assert session.committed is True
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == result.orcamento_versao_id
+    assert evento.tipo == "versao"
+    assert evento.descricao == "Vers\u00e3o 260001_02 criada (duplicada)"

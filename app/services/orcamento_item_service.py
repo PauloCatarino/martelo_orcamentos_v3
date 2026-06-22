@@ -33,6 +33,7 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
+from app.services.orcamento_historico_service import OrcamentoHistoricoService
 
 _CENTIMOS = Decimal("0.01")
 
@@ -138,6 +139,10 @@ class OrcamentoItemService:
             preco_manual=data.preco_manual,
         )
         self.recalcular_total_versao(data.orcamento_versao_id)
+        label = f"{result.codigo} - {result.item}" if result.codigo else result.item
+        OrcamentoHistoricoService(self.session).registar(
+            data.orcamento_versao_id, "item", f"Item adicionado: {label}"
+        )
         self.session.commit()
 
         return result
@@ -163,6 +168,7 @@ class OrcamentoItemService:
             raise ValueError("quantidade must be greater than 0")
 
         preco_total = data.quantidade * data.preco_unitario
+        item_anterior = self.repository.get_item_by_id(item_id)
 
         result = self.repository.update_item(
             item_id=item_id,
@@ -180,6 +186,17 @@ class OrcamentoItemService:
             preco_manual=data.preco_manual,
         )
         self.recalcular_total_versao(result.orcamento_versao_id)
+        label = f"{result.codigo} - {result.item}" if result.codigo else result.item
+        manual_antes = bool(item_anterior and item_anterior.preco_manual)
+        if data.preco_manual and not manual_antes:
+            descricao_evento = f"Pre\u00e7o manual aplicado ao item {label}"
+        elif manual_antes and not data.preco_manual:
+            descricao_evento = f"Pre\u00e7o manual removido do item {label}"
+        else:
+            descricao_evento = f"Item editado: {label}"
+        OrcamentoHistoricoService(self.session).registar(
+            result.orcamento_versao_id, "item", descricao_evento
+        )
         self.session.commit()
 
         return result
@@ -193,6 +210,10 @@ class OrcamentoItemService:
         deleted = self.repository.delete_item(item_id)
         if deleted:
             self.recalcular_total_versao(item.orcamento_versao_id)
+            label = f"{item.codigo} - {item.item}" if item.codigo else item.item
+            OrcamentoHistoricoService(self.session).registar(
+                item.orcamento_versao_id, "item", f"Item removido: {label}"
+            )
             self.session.commit()
 
         return deleted
@@ -212,15 +233,42 @@ class OrcamentoItemService:
     def definir_margens_versao(
         self, orcamento_versao_id: int, margens: MargensOrcamento
     ) -> AplicarPrecosResult:
-        """Store the version's margins and re-apply the price formula.
-
-        Only the formula is re-applied (no costing recompute): the cost blocks
-        come from the stored line costs, so this is fast.
-        """
+        """Store the version's margins and re-apply the price formula."""
+        anteriores = self.get_margens_versao(orcamento_versao_id)
         if not self.repository.update_margens_versao(orcamento_versao_id, margens):
             raise ValueError("orcamento_versao not found")
-
+        self._registar_margens_alteradas(orcamento_versao_id, anteriores, margens)
         return self.aplicar_precos_da_versao(orcamento_versao_id)
+
+    def _registar_margens_alteradas(
+        self,
+        orcamento_versao_id: int,
+        anteriores: MargensOrcamento,
+        novas: MargensOrcamento,
+    ) -> None:
+        campos = [
+            ("margem_lucro_pct", "Lucro"),
+            ("margem_mp_pct", "MP"),
+            ("margem_mao_obra_pct", "M\u00e3o de obra"),
+            ("margem_acabamentos_pct", "Acabamentos"),
+            ("custos_administrativos_pct", "Custos admin"),
+        ]
+
+        def fmt(valor) -> str:
+            texto = f"{valor:f}"
+            if "." in texto:
+                texto = texto.rstrip("0").rstrip(".")
+            return f"{texto}%"
+
+        mudancas = [
+            f"{rotulo} {fmt(getattr(anteriores, attr))} \u2192 {fmt(getattr(novas, attr))}"
+            for attr, rotulo in campos
+            if getattr(anteriores, attr) != getattr(novas, attr)
+        ]
+        if mudancas:
+            OrcamentoHistoricoService(self.session).registar(
+                orcamento_versao_id, "margens", "Margens: " + "; ".join(mudancas)
+            )
 
     def get_blocos_custo_por_item(
         self, orcamento_versao_id: int

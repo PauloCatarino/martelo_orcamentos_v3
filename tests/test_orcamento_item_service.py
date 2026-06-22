@@ -121,9 +121,13 @@ class _FakeRepository:
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.added: list[object] = []
 
     def commit(self) -> None:
         self.committed = True
+
+    def add(self, instance: object) -> None:
+        self.added.append(instance)
 
 
 def test_orcamento_item_service_returns_empty_list(monkeypatch) -> None:
@@ -201,6 +205,11 @@ def test_orcamento_item_service_cria_item_com_proxima_ordem_e_preco_total(monkey
     assert result.preco_total == Decimal("31.00")
     assert result.tipo_item == "ROUPEIRO_ABRIR"
     assert session.committed is True
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == 20
+    assert evento.tipo == "item"
+    assert evento.descricao == "Item adicionado: ITEM-003 - Roupeiro"
 
 
 def test_orcamento_item_service_usa_tipo_outro_por_defeito(monkeypatch) -> None:
@@ -339,6 +348,11 @@ def test_orcamento_item_service_edita_item_e_recalcula_preco_total(monkeypatch) 
     assert result.preco_total == Decimal("37.50")
     assert result.tipo_item == "MOVEL_WC"
     assert session.committed is True
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == 20
+    assert evento.tipo == "item"
+    assert evento.descricao == "Item editado: ITEM-008 - Mesa"
 
 
 def test_orcamento_item_service_remove_item_existente(monkeypatch) -> None:
@@ -372,6 +386,11 @@ def test_orcamento_item_service_remove_item_existente(monkeypatch) -> None:
     assert _FakeRepository.summed_versao_id == 21
     assert _FakeRepository.updated_versao_total == (21, Decimal("0"))
     assert session.committed is True
+    assert len(session.added) == 1
+    evento = session.added[0]
+    assert evento.orcamento_versao_id == 21
+    assert evento.tipo == "item"
+    assert evento.descricao == "Item removido: ITEM-012 - Mesa"
 
 
 def test_orcamento_item_service_remove_item_inexistente_sem_commit(monkeypatch) -> None:
@@ -531,11 +550,28 @@ def test_criar_item_simples_propaga_preco_manual(monkeypatch) -> None:
 
 
 def test_editar_item_simples_propaga_preco_manual(monkeypatch) -> None:
+    _FakeRepository.item_by_id = OrcamentoItemResumo(
+        id=8,
+        orcamento_versao_id=20,
+        ordem=2,
+        codigo=None,
+        item="Mesa externa",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=Decimal("99"),
+        preco_total=Decimal("99"),
+        preco_manual=False,
+    )
     _FakeRepository.updated_payload = None
     _FakeRepository.sum_total = Decimal("0")
     monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
 
-    service = service_module.OrcamentoItemService(session=_FakeSession())
+    session = _FakeSession()
+    service = service_module.OrcamentoItemService(session=session)
     service.editar_item_simples(
         8,
         service_module.EditarOrcamentoItemSimplesData(
@@ -554,6 +590,51 @@ def test_editar_item_simples_propaga_preco_manual(monkeypatch) -> None:
 
     assert _FakeRepository.updated_payload is not None
     assert _FakeRepository.updated_payload["preco_manual"] is True
+    assert session.added[0].descricao == "Pre\u00e7o manual aplicado ao item Mesa externa"
+
+
+def test_editar_item_simples_regista_preco_manual_removido(monkeypatch) -> None:
+    _FakeRepository.item_by_id = OrcamentoItemResumo(
+        id=8,
+        orcamento_versao_id=20,
+        ordem=2,
+        codigo="ITEM-008",
+        item="Mesa externa",
+        descricao=None,
+        altura=None,
+        largura=None,
+        profundidade=None,
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=Decimal("99"),
+        preco_total=Decimal("99"),
+        preco_manual=True,
+    )
+    _FakeRepository.updated_payload = None
+    _FakeRepository.sum_total = Decimal("0")
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+
+    session = _FakeSession()
+    service = service_module.OrcamentoItemService(session=session)
+    service.editar_item_simples(
+        8,
+        service_module.EditarOrcamentoItemSimplesData(
+            codigo="ITEM-008",
+            item="Mesa externa",
+            descricao=None,
+            altura=None,
+            largura=None,
+            profundidade=None,
+            quantidade=Decimal("1"),
+            unidade="un",
+            preco_unitario=Decimal("99"),
+            preco_manual=False,
+        ),
+    )
+
+    assert session.added[0].descricao == (
+        "Pre\u00e7o manual removido do item ITEM-008 - Mesa externa"
+    )
 
 
 def test_aplicar_precos_da_versao_ignora_item_manual(monkeypatch) -> None:
