@@ -20,6 +20,10 @@ class DescricaoItemDelegate(QStyledItemDelegate):
         painter.save()
         if selecionado:
             painter.fillRect(option.rect, option.palette.highlight())
+        else:
+            fundo = index.data(Qt.ItemDataRole.BackgroundRole)
+            if fundo is not None:
+                painter.fillRect(option.rect, fundo)
         doc = self._documento(texto, option.rect.width(), com_cor=not selecionado)
         painter.translate(option.rect.left() + _MARGEM, option.rect.top() + _MARGEM / 2)
         contexto = QAbstractTextDocumentLayout.PaintContext()

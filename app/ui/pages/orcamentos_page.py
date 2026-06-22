@@ -377,6 +377,7 @@ class OrcamentosPage(QWidget):
             for column_index, value in enumerate(values):
                 header = self.TABLE_HEADERS[column_index]
                 item = self._criar_item_tabela(value, header)
+                item.setBackground(QColor(tema.cor_zebra(row_index)))
                 if column_index == 0:
                     item.setData(
                         Qt.ItemDataRole.UserRole,

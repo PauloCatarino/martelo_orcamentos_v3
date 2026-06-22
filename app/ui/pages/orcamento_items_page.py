@@ -243,6 +243,10 @@ class OrcamentoItemsPage(QWidget):
             QHeaderView.ResizeMode.Interactive
         )
         self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         self.table.cellChanged.connect(self._on_cell_changed)
         # Restore saved widths; if it restored, skip the content-based seed.
@@ -830,6 +834,7 @@ class OrcamentoItemsPage(QWidget):
                     table_item = QTableWidgetItem(
                         "" if header == "Produção" else value
                     )
+                    table_item.setBackground(QColor(tema.cor_zebra(row_index)))
                     if tooltip:
                         table_item.setToolTip(tooltip)
                     if item.preco_manual and header in ("Preço Unitário", "Preço Total"):
