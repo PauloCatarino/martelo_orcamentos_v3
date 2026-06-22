@@ -40,9 +40,14 @@ def test_pesquisa_ia_page_usa_padroes_visuais_e_phc() -> None:
     carregar_source = inspect.getsource(PesquisaIAPage.carregar_phc)
     recombinar_source = inspect.getsource(PesquisaIAPage._recombinar)
     table_source = inspect.getsource(PesquisaIAPage._preencher_tabela)
+    catalogos_source = inspect.getsource(PesquisaIAPage.pesquisar_catalogos)
+    preencher_catalogos_source = inspect.getsource(PesquisaIAPage._preencher_catalogos)
+    abrir_catalogo_source = inspect.getsource(PesquisaIAPage._abrir_catalogo)
 
     assert "BarraCabecalho" in init_source
     assert "CampoPesquisa" in init_source
+    assert "Pesquisar cat\\u00e1logos (IA)" in init_source
+    assert "self.catalogo_table" in init_source
     assert "QHeaderView.ResizeMode.Interactive" in init_source
     assert "ligar_persistencia_larguras" in init_source
     assert "self.carregar_v3()" in init_source
@@ -52,6 +57,15 @@ def test_pesquisa_ia_page_usa_padroes_visuais_e_phc() -> None:
     assert "self._v3 + self._phc" in recombinar_source
     assert "tema.cor_zebra(row_index)" in table_source
     assert "resizeColumnsToContents" in table_source
+    assert "PesquisaCatalogosService" in inspect.getsource(
+        PesquisaIAPage._servico_catalogos
+    )
+    assert "servico.pesquisar(texto, top_n=30)" in catalogos_source
+    assert "python -m scripts.indexar_pesquisa_ia" in catalogos_source
+    assert "tema.cor_zebra(row_index)" in preencher_catalogos_source
+    assert "Qt.ItemDataRole.UserRole" in preencher_catalogos_source
+    assert "QDesktopServices.openUrl" in abrir_catalogo_source
+    assert "QUrl.fromLocalFile" in abrir_catalogo_source
 
 
 def test_pesquisa_ia_corresponde_normaliza_e_procura_varios_campos() -> None:

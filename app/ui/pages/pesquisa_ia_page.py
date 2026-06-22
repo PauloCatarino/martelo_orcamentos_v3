@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -21,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.services.phc_materiais_service import query_phc_materiais
+from app.services.pesquisa_ia_search_service import PesquisaCatalogosService
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
@@ -49,6 +51,7 @@ class PesquisaIAPage(QWidget):
         self._v3: list[dict] = []
         self._phc: list[dict] = []
         self._resultados: list[dict] = []
+        self._cat_service: PesquisaCatalogosService | None = None
 
         self.cabecalho = BarraCabecalho(
             "Pesquisa IA",
@@ -57,8 +60,11 @@ class PesquisaIAPage(QWidget):
 
         self.carregar_button = QPushButton("Carregar/Atualizar (PHC)")
         self.carregar_button.clicked.connect(self.carregar_phc)
+        self.catalogos_button = QPushButton("Pesquisar cat\u00e1logos (IA)")
+        self.catalogos_button.clicked.connect(self.pesquisar_catalogos)
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.carregar_button)
+        actions_layout.addWidget(self.catalogos_button)
         actions_layout.addStretch()
 
         self.campo_pesquisa = CampoPesquisa(
@@ -90,6 +96,25 @@ class PesquisaIAPage(QWidget):
         )
         self._larguras_seed_feito = False
 
+        self.catalogo_table = QTableWidget(0, 5)
+        self.catalogo_table.setHorizontalHeaderLabels(
+            ["Score", "Fornecedor", "Ficheiro", "Local", "Trecho"]
+        )
+        self.catalogo_table.verticalHeader().setVisible(False)
+        self.catalogo_table.setAlternatingRowColors(True)
+        self.catalogo_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.catalogo_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        ch = self.catalogo_table.horizontalHeader()
+        ch.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        ch.setStretchLastSection(True)
+        ch.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        self.catalogo_table.cellDoubleClicked.connect(self._abrir_catalogo)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
@@ -97,7 +122,11 @@ class PesquisaIAPage(QWidget):
         layout.addLayout(actions_layout)
         layout.addWidget(self.campo_pesquisa)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(self.table, stretch=2)
+        layout.addWidget(
+            QLabel("Cat\u00e1logos (documentos) \u2014 duplo-clique abre o ficheiro:")
+        )
+        layout.addWidget(self.catalogo_table, stretch=1)
         self.setLayout(layout)
 
         self.carregar_v3()
@@ -173,6 +202,61 @@ class PesquisaIAPage(QWidget):
         if not self._larguras_restauradas and not self._larguras_seed_feito and linhas:
             self.table.resizeColumnsToContents()
             self._larguras_seed_feito = True
+
+    def _servico_catalogos(self) -> PesquisaCatalogosService:
+        if self._cat_service is None:
+            with SessionLocal() as session:
+                self._cat_service = PesquisaCatalogosService(session)
+        return self._cat_service
+
+    def pesquisar_catalogos(self) -> None:
+        texto = self.campo_pesquisa.texto().strip()
+        if not texto:
+            self.status_label.setText("Escreva algo para pesquisar nos cat\u00e1logos.")
+            return
+        servico = self._servico_catalogos()
+        if not servico.disponivel():
+            self.status_label.setText(
+                "\u00cdndice de cat\u00e1logos n\u00e3o encontrado. Corra: "
+                "python -m scripts.indexar_pesquisa_ia"
+            )
+            return
+        self.status_label.setText("A pesquisar nos cat\u00e1logos (IA)\u2026")
+        self.catalogos_button.setEnabled(False)
+        try:
+            resultados = servico.pesquisar(texto, top_n=30)
+        except Exception as exc:  # noqa: BLE001
+            self.status_label.setText(f"Erro na pesquisa de cat\u00e1logos: {exc}")
+            self.catalogos_button.setEnabled(True)
+            return
+        self.catalogos_button.setEnabled(True)
+        self._preencher_catalogos(resultados)
+        self.status_label.setText(
+            f"Cat\u00e1logos: {len(resultados)} resultados para \"{texto}\"."
+        )
+
+    def _preencher_catalogos(self, resultados) -> None:
+        self.catalogo_table.setRowCount(len(resultados))
+        for row_index, resultado in enumerate(resultados):
+            valores = [
+                f"{resultado.score:.3f}",
+                resultado.fornecedor,
+                resultado.ficheiro,
+                resultado.local,
+                resultado.trecho,
+            ]
+            for col, valor in enumerate(valores):
+                item = QTableWidgetItem(valor)
+                item.setBackground(QColor(tema.cor_zebra(row_index)))
+                if col == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, resultado.caminho)
+                self.catalogo_table.setItem(row_index, col, item)
+
+    def _abrir_catalogo(self, row: int, _col: int = 0) -> None:
+        item = self.catalogo_table.item(row, 0)
+        caminho = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if caminho:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
 
 
 def _do_phc(linha: dict) -> dict:
