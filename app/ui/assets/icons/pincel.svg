@@ -1,6 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-     stroke="#5A3E2B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M17 3l4 4-9 9-4-4z"/>
-  <path d="M8 12l-3 3a3 3 0 0 0 4 4l3-3"/>
-  <path d="M5 20l-2 1 1-2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- cabo (madeira) -->
+  <path d="M12 2.2c.86 0 1.5.7 1.5 1.6V11h-3V3.8c0-.9.64-1.6 1.5-1.6z" fill="#E0A93B"/>
+  <!-- virola (metal) -->
+  <rect x="8.6" y="10.6" width="6.8" height="2.9" rx="1" fill="#A6ACB2"/>
+  <!-- cerdas -->
+  <path d="M8.9 13.4h6.2c.62 2.6.2 5-3.1 7.4-3.3-2.4-3.7-4.8-3.1-7.4z" fill="#6B4A2F"/>
+  <!-- ponta com tinta -->
+  <path d="M10 19.2c1.3 1 2.7 1 4 0-.5 1.1-1.4 1.8-2 1.8s-1.5-.7-2-1.8z" fill="#C76B2C"/>
 </svg>
