@@ -57,6 +57,7 @@ class OrcamentoDetailPage(QWidget):
             orcamento_codigo=orcamento.codigo_versao,
             on_items_changed=self._handle_items_changed,
             on_open_item_custeio=self._open_item_custeio,
+            on_voltar_lista=self._handle_back,
         )
         self.items_stack.addWidget(self.items_page)
 

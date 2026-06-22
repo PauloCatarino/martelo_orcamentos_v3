@@ -51,7 +51,7 @@ from app.services.orcamento_item_service import (
 from app.services.orcamento_service import OrcamentoService
 from app.ui import tema
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
-from app.ui.widgets.breadcrumb import Breadcrumb
+from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -130,6 +130,7 @@ class OrcamentoItemsPage(QWidget):
         orcamento_codigo: str | None = None,
         on_items_changed: Callable[[], None] | None = None,
         on_open_item_custeio: Callable[[OrcamentoItemResumo], None] | None = None,
+        on_voltar_lista: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -137,6 +138,7 @@ class OrcamentoItemsPage(QWidget):
         self.orcamento_codigo = orcamento_codigo
         self.on_items_changed = on_items_changed
         self.on_open_item_custeio = on_open_item_custeio
+        self.on_voltar_lista = on_voltar_lista
         self._items_by_row: dict[int, OrcamentoItemResumo] = {}
         self._blocos_por_item: dict[int, BlocosCusto] = {}
         self._margens = MargensOrcamento()
@@ -1178,11 +1180,16 @@ class OrcamentoItemsPage(QWidget):
         label = " - ".join(part for part in parts if part)
         return label or f"Item {item.id}"
 
-    def _build_breadcrumb_items(self) -> list[str]:
+    def _build_breadcrumb_items(self) -> list:
         """Return breadcrumb items for the items page."""
-        items: list[str] = []
+        items: list = []
         if self.orcamento_codigo:
-            items.append(f"Or\u00e7amento {self.orcamento_codigo}")
+            items.append(
+                BreadcrumbItem(
+                    f"Or\u00e7amento {self.orcamento_codigo}",
+                    self.on_voltar_lista,
+                )
+            )
 
         items.append("Items")
         return items
