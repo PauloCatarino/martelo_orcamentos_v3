@@ -16,9 +16,23 @@ def test_materias_primas_page_loads_on_init() -> None:
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 
     source_names = MateriasPrimasPage.__init__.__code__.co_names
+    init_source = inspect.getsource(MateriasPrimasPage.__init__)
 
     assert "carregar_materias_primas" in source_names
-    assert "QLineEdit" in source_names
+    assert "CampoPesquisa" in source_names
+    assert "QLineEdit" not in source_names
+    assert "QHeaderView.ResizeMode.Interactive" in init_source
+    assert "ligar_persistencia_larguras" in init_source
+
+
+def test_materias_primas_page_tem_zebra_por_celula() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    source = inspect.getsource(MateriasPrimasPage._preencher_tabela)
+
+    assert "tema.cor_zebra(row_index)" in source
+    assert "QColor" in source
+    assert "resizeColumnsToContents" in source
 
 
 def test_materias_primas_page_table_headers() -> None:

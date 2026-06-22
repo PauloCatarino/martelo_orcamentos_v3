@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -23,7 +23,9 @@ from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
+from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -75,9 +77,11 @@ class MateriasPrimasPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("materiasPrimasStatus")
 
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Pesquisar mat\u00e9ria-prima...")
-        self.search_input.textChanged.connect(self.aplicar_pesquisa)
+        self.campo_pesquisa = CampoPesquisa(
+            placeholder="Pesquisar mat\u00e9ria-prima\u2026 (espa\u00e7o para v\u00e1rios termos)"
+        )
+        self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
+        self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -85,8 +89,17 @@ class MateriasPrimasPage(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        ligar_persistencia_larguras(self.table, "materias_primas")
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        self._larguras_restauradas = ligar_persistencia_larguras(
+            self.table, "materias_primas"
+        )
+        self._larguras_seed_feito = False
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -94,7 +107,7 @@ class MateriasPrimasPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.search_input)
+        layout.addWidget(self.campo_pesquisa)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
@@ -160,7 +173,7 @@ class MateriasPrimasPage(QWidget):
     def aplicar_pesquisa(self, _text: str | None = None) -> None:
         """Filter the loaded raw materials according to the search text."""
         self.status_label.clear()
-        search_text = self.search_input.text()
+        search_text = self.campo_pesquisa.texto()
 
         if not search_text.strip():
             filtered = self._materias_primas
@@ -202,7 +215,17 @@ class MateriasPrimasPage(QWidget):
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                item.setBackground(QColor(tema.cor_zebra(row_index)))
+                self.table.setItem(row_index, column_index, item)
+
+        if (
+            not self._larguras_restauradas
+            and not self._larguras_seed_feito
+            and materias_primas
+        ):
+            self.table.resizeColumnsToContents()
+            self._larguras_seed_feito = True
 
 
 def normalize_search_text(value: object) -> str:
