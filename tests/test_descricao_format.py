@@ -20,6 +20,13 @@ def test_linha_destaque_fica_verde() -> None:
     assert "Montado" in html
 
 
+def test_variante_sem_cor_remove_verde_mas_mantem_italico() -> None:
+    html = descricao_para_html("\t* Montado", com_cor=False)
+    assert "#0a5c0a" not in html
+    assert "font-style:italic" in html
+    assert "Montado" in html
+
+
 def test_escapa_html() -> None:
     html = descricao_para_html("A & B <x>")
     assert "&amp;" in html and "&lt;x&gt;" in html

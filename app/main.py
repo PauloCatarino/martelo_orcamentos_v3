@@ -16,7 +16,14 @@ try:
 except Exception:
     pass
 
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QProxyStyle,
+    QStyle,
+    QStyleOptionViewItem,
+)
 
 from app.config.logging_config import configure_logging
 from app.core.session import app_session
@@ -25,16 +32,43 @@ from app.ui.login_window import LoginWindow
 from app.ui.main_window import MainWindow
 
 
+class EstiloSelecaoLegivel(QProxyStyle):
+    """Força texto branco legível em qualquer célula selecionada."""
+
+    def drawControl(self, element, option, painter, widget=None) -> None:  # noqa: N802
+        if (
+            element == QStyle.ControlElement.CE_ItemViewItem
+            and isinstance(option, QStyleOptionViewItem)
+            and (option.state & QStyle.StateFlag.State_Selected)
+        ):
+            opcao = QStyleOptionViewItem(option)
+            branco = QColor("#FFFFFF")
+            opcao.palette.setColor(QPalette.ColorRole.HighlightedText, branco)
+            opcao.palette.setColor(QPalette.ColorRole.Text, branco)
+            super().drawControl(element, opcao, painter, widget)
+            return
+        super().drawControl(element, option, painter, widget)
+
+
 def main() -> int:
     """Start the desktop application."""
     configure_logging()
 
     qt_app = QApplication(sys.argv)
-    qt_app.setStyleSheet(
-        "QTableView, QTableWidget, QListView, QTreeView {"
-        f" selection-background-color: {tema.CASTANHO_ESCURO};"
-        " selection-color: #FFFFFF; }"
-    )
+    # Estilo que garante texto branco em qualquer célula selecionada (todas as tabelas).
+    qt_app.setStyle(EstiloSelecaoLegivel())
+    # Cor de seleção do tema via paleta, incluindo quando a tabela perde foco.
+    paleta = qt_app.palette()
+    realce_fundo = QColor(tema.CASTANHO_ESCURO)
+    realce_texto = QColor("#FFFFFF")
+    for grupo in (
+        QPalette.ColorGroup.Active,
+        QPalette.ColorGroup.Inactive,
+        QPalette.ColorGroup.Disabled,
+    ):
+        paleta.setColor(grupo, QPalette.ColorRole.Highlight, realce_fundo)
+        paleta.setColor(grupo, QPalette.ColorRole.HighlightedText, realce_texto)
+    qt_app.setPalette(paleta)
 
     while True:
         login_window = LoginWindow()
