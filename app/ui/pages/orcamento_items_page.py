@@ -824,7 +824,10 @@ class OrcamentoItemsPage(QWidget):
                 for column_index, value in enumerate(values):
                     header = self.TABLE_HEADERS[column_index]
                     tooltip = self._tooltip_formula(header, item, blocos)
-                    table_item = QTableWidgetItem(value)
+                    # A coluna "Produção" mostra um combo; não pôr texto por baixo.
+                    table_item = QTableWidgetItem(
+                        "" if header == "Produção" else value
+                    )
                     if tooltip:
                         table_item.setToolTip(tooltip)
                     if item.preco_manual and header in ("Preço Unitário", "Preço Total"):
