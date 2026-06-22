@@ -18,7 +18,7 @@ class CampoPesquisa(QWidget):
         self,
         parent=None,
         *,
-        label: str = "Pesquisa",
+        label: str = "",
         placeholder: str = "Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026",
         largura_max: int = 360,
     ) -> None:
