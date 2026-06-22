@@ -312,6 +312,35 @@ def test_get_margens_versao_devolve_zeros_quando_nao_ha_versao(monkeypatch) -> N
     assert service.get_margens_versao(99) == MargensOrcamento()
 
 
+def test_objetivo_trata_item_manual_com_custeio_como_constante(monkeypatch) -> None:
+    """Item com custeio MAS preco manual entra como constante no objetivo."""
+    capturado: dict = {}
+
+    def _fake_atingir(itens, constante_manual, margens, objetivo):
+        capturado["itens"] = itens
+        capturado["constante_manual"] = constante_manual
+        return SimpleNamespace()
+
+    monkeypatch.setattr(service_module, "atingir_objetivo", _fake_atingir)
+
+    _FakeItemRepository.items = [
+        _item(1, preco_unitario=Decimal("99")),
+        replace(_item(2, preco_total=Decimal("183")), preco_manual=True),
+    ]
+    _FakeItemRepository.margens = _MARGENS_EXEMPLO
+    _FakeCusteioRepository.linhas = [
+        _linha(1, custo_mp=Decimal("100"), custo_producao=Decimal("50")),
+        _linha(2, custo_mp=Decimal("80"), custo_producao=Decimal("40")),
+    ]
+    service, _ = _make_service(monkeypatch)
+
+    service.resolver_objetivo_preco(7, Decimal("1000"))
+
+    # O item 2 (manual + com custeio) NAO e variavel; entra como constante.
+    assert len(capturado["itens"]) == 1
+    assert capturado["constante_manual"] == Decimal("183")
+
+
 def test_recalcular_preco_item_calcula_grava_e_devolve(monkeypatch) -> None:
     """One item is re-priced from its lines; result mirrors the stored price."""
     _FakeItemRepository.items = [

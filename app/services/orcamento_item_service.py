@@ -347,7 +347,10 @@ class OrcamentoItemService:
         constante_manual = Decimal("0")
         for item in self.repository.list_items_by_versao(orcamento_versao_id):
             blocos = blocos_por_item.get(item.id)
-            if blocos is None:
+            # Itens com preco MANUAL nao escalam com as margens
+            # (aplicar_precos_da_versao salta-os): entram como CONSTANTE,
+            # tal como os itens sem custeio.
+            if blocos is None or item.preco_manual:
                 if item.preco_total is not None:
                     constante_manual += item.preco_total
                 continue
