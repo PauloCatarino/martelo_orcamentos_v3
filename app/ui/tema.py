@@ -143,3 +143,13 @@ ESTILO_ABAS = (
     f"QTabBar::tab:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF;"
     f" font-weight: bold; border: 1px solid {CASTANHO_ESCURO}; }}"
 )
+
+
+# Estilo da sidebar (main_window): botão da página ativa destacado a castanho.
+ESTILO_SIDEBAR = (
+    f"QPushButton {{ text-align: left; padding: 8px 12px; border: none;"
+    f" border-radius: 4px; color: {CASTANHO_ESCURO}; background: transparent;"
+    f" font-weight: bold; }}"
+    f"QPushButton:hover {{ background: {BEGE_AREIA}; }}"
+    f"QPushButton:checked {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+)

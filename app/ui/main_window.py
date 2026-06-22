@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
+from app.ui import tema
 from app.ui.pages import (
     BibliotecaModulosPage,
     CaminhosSistemaPage,
@@ -35,6 +36,14 @@ from app.ui.pages import (
 
 class MainWindow(QMainWindow):
     """Application shell window."""
+
+    # Mapeia o nome da página ao botão da sidebar a destacar.
+    _NAV_POR_PAGINA = {
+        "inicio": "inicio",
+        "orcamentos": "orcamentos",
+        "orcamento_detail": "orcamentos",
+        "clientes": "clientes",
+    }
 
     logout_requested = Signal()
 
@@ -103,7 +112,15 @@ class MainWindow(QMainWindow):
         configuracoes_button = QPushButton("Configura\u00e7\u00f5es")
         configuracoes_button.clicked.connect(lambda: self.show_page("configuracoes"))
 
-        for button in (inicio_button, orcamentos_button, clientes_button, configuracoes_button):
+        self._nav_buttons = {
+            "inicio": inicio_button,
+            "orcamentos": orcamentos_button,
+            "clientes": clientes_button,
+            "configuracoes": configuracoes_button,
+        }
+        sidebar.setStyleSheet(tema.ESTILO_SIDEBAR)
+        for button in self._nav_buttons.values():
+            button.setCheckable(True)
             sidebar_layout.addWidget(button)
 
         sidebar_layout.addStretch()
@@ -156,6 +173,7 @@ class MainWindow(QMainWindow):
 
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+        self.show_page("inicio")
 
     def _format_user_info(self) -> str:
         """Return display text for the authenticated user."""
@@ -209,6 +227,13 @@ class MainWindow(QMainWindow):
         """Show one central workspace page."""
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
+        self._destacar_nav(name)
+
+    def _destacar_nav(self, name: str) -> None:
+        """Realça o botão da sidebar correspondente à página atual."""
+        grupo = self._NAV_POR_PAGINA.get(name, "configuracoes")
+        for chave, botao in self._nav_buttons.items():
+            botao.setChecked(chave == grupo)
 
     def open_orcamento_detail(self, orcamento: OrcamentoResumo) -> None:
         """Open the detail page for a selected budget."""
