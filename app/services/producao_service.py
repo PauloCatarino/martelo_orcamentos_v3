@@ -9,6 +9,23 @@ from sqlalchemy.orm import Session
 
 from app.models.producao import Producao
 
+CAMPOS_EDITAVEIS_PRODUCAO = (
+    "estado",
+    "responsavel",
+    "ref_cliente",
+    "obra",
+    "localizacao",
+    "data_inicio",
+    "data_entrega",
+    "tipo_pasta",
+    "descricao_artigos",
+    "materias_usados",
+    "descricao_producao",
+    "notas1",
+    "notas2",
+    "notas3",
+)
+
 _CAMPOS_PESQUISA = (
     "codigo_processo",
     "num_enc_phc",
@@ -24,7 +41,7 @@ _CAMPOS_PESQUISA = (
 
 
 class ProducaoService:
-    """Application service for read-only production workflows."""
+    """Application service for production workflows."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -36,6 +53,39 @@ class ProducaoService:
             Producao.codigo_processo.asc(),
         )
         return list(self.session.scalars(statement).all())
+
+    def obter_processo(self, proc_id: int) -> Producao | None:
+        """Return one production process by id."""
+        return self.session.get(Producao, proc_id)
+
+    def atualizar_processo(
+        self,
+        proc_id: int,
+        data: dict,
+        *,
+        updated_by_id: int | None,
+    ) -> Producao:
+        """Update only editable production fields and commit the change."""
+        processo = self.obter_processo(proc_id)
+        if processo is None:
+            raise ValueError("Processo de producao nao encontrado.")
+
+        for campo, valor in campos_editaveis(data).items():
+            setattr(processo, campo, valor)
+        processo.updated_by_id = updated_by_id
+
+        self.session.commit()
+        self.session.refresh(processo)
+        return processo
+
+
+def campos_editaveis(data: dict) -> dict:
+    """Return only fields that are editable in the production detail form."""
+    return {
+        campo: data[campo]
+        for campo in CAMPOS_EDITAVEIS_PRODUCAO
+        if campo in data
+    }
 
 
 def filtrar_processos(

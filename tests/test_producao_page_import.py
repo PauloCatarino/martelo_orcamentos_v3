@@ -36,5 +36,27 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "self.table" in init_source
     assert "ligar_persistencia_larguras" in init_source
     assert '"Atualizar"' in init_source
+    assert '"Salvar"' in init_source
+    assert "QSplitter" in init_source
+    assert 'ligar_persistencia_splitter(self.splitter, "producao")' in init_source
     assert "Converter" not in init_source
     assert '"Novo"' not in init_source
+
+
+def test_producao_page_detail_editing_hooks() -> None:
+    from app.ui.pages.producao_page import ProducaoPage
+    import app.ui.pages.producao_page as producao_page
+
+    source = inspect.getsource(ProducaoPage)
+
+    assert hasattr(ProducaoPage, "_fill_form")
+    assert hasattr(ProducaoPage, "_collect_form")
+    assert hasattr(ProducaoPage, "_on_select_row")
+    assert hasattr(ProducaoPage, "_save")
+    assert "app_session" in source
+    assert "itemSelectionChanged" in source
+    assert "Há alterações por gravar. Descartar?" in source
+    assert producao_page.TIPOS_PASTA_PRODUCAO == (
+        "Encomenda de Cliente",
+        "Encomenda de Cliente Final",
+    )
