@@ -61,6 +61,11 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "itemSelectionChanged" in source
     assert "converter_orcamento" in source
     assert "normalizar_data" in source
+    assert "imagem_path" in source
+    assert "QFileDialog" in source
+    assert "Escolher Imagem/PDF..." in source
+    assert "Limpar Imagem" in source
+    assert "self._imagem_path" in source
     assert "Data no formato dd-mm-aaaa" in source
     assert "Estado da obra em produção" in source
     assert "Pasta de destino no servidor" in source

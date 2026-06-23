@@ -28,6 +28,7 @@ CAMPOS_EDITAVEIS_PRODUCAO = (
     "notas1",
     "notas2",
     "notas3",
+    "imagem_path",
 )
 
 _CAMPOS_PESQUISA = (

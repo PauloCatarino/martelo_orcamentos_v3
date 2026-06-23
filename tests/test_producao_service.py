@@ -99,6 +99,7 @@ def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
         "notas1": "N1",
         "notas2": "N2",
         "notas3": "N3",
+        "imagem_path": "C:/obra/imagem.png",
         "codigo_processo": "26.1028_01_01",
         "ano": "2026",
         "num_enc_phc": "1028",
@@ -123,4 +124,5 @@ def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
         "notas1": "N1",
         "notas2": "N2",
         "notas3": "N3",
+        "imagem_path": "C:/obra/imagem.png",
     }

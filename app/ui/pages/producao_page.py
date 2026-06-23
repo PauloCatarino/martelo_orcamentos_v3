@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QSize, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -36,6 +39,7 @@ from app.services.producao_service import (
 )
 from app.ui import tema
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
+from app.ui.helpers.imagem import load_scaled_pixmap
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
@@ -46,6 +50,18 @@ TIPOS_PASTA_PRODUCAO = (
     "Encomenda de Cliente",
     "Encomenda de Cliente Final",
 )
+
+
+class _ImagemPreviewLabel(QLabel):
+    """Clickable preview label that delegates double-clicks to the page."""
+
+    def __init__(self, on_double_click, parent=None) -> None:
+        super().__init__(parent)
+        self._on_double_click = on_double_click
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._on_double_click()
+        super().mouseDoubleClickEvent(event)
 
 
 class ProducaoPage(QWidget):
@@ -102,6 +118,8 @@ class ProducaoPage(QWidget):
         self._selected_processo_id: int | None = None
         self._dirty = False
         self._a_preencher_form = False
+        self._imagem_path: str | None = None
+        self._imagem_preview_pixmap_original: QPixmap | None = None
 
         self.cabecalho = BarraCabecalho(
             "Produção",
@@ -265,7 +283,15 @@ class ProducaoPage(QWidget):
             ("Tipo Pasta", self.tipo_pasta_combo),
         ]
         for index, (label, widget) in enumerate(campos):
-            self._add_grid_field(dados_grid, index // 4, index % 4, label, widget)
+            self._add_grid_field(dados_grid, index // 3, index % 3, label, widget)
+
+        dados_widget = QWidget()
+        dados_widget.setLayout(dados_grid)
+        topo_layout = QHBoxLayout()
+        topo_layout.setContentsMargins(0, 0, 0, 0)
+        topo_layout.setSpacing(12)
+        topo_layout.addWidget(dados_widget, stretch=1)
+        topo_layout.addWidget(self._criar_painel_imagem(), stretch=0)
 
         self.descricao_artigos_text = self._text_edit()
         self.materias_usados_text = self._text_edit()
@@ -294,7 +320,7 @@ class ProducaoPage(QWidget):
         layout = QVBoxLayout(grupo)
         layout.setContentsMargins(10, 14, 10, 10)
         layout.setSpacing(10)
-        layout.addLayout(dados_grid)
+        layout.addLayout(topo_layout)
         layout.addLayout(textos_grid)
 
         self._readonly_widgets = [
@@ -349,6 +375,39 @@ class ProducaoPage(QWidget):
         text_edit.setAcceptRichText(False)
         text_edit.setMinimumHeight(70)
         return text_edit
+
+    def _criar_painel_imagem(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        self.imagem_preview = _ImagemPreviewLabel(self._abrir_imagem_pdf)
+        self.imagem_preview.setText("Sem imagem")
+        self.imagem_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imagem_preview.setFixedSize(280, 210)
+        self.imagem_preview.setStyleSheet(
+            f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
+            f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
+        )
+
+        self.escolher_imagem_button = QPushButton("Escolher Imagem/PDF...")
+        self.escolher_imagem_button.setToolTip("Escolher a imagem/PDF da obra")
+        self.escolher_imagem_button.clicked.connect(self._escolher_imagem)
+
+        self.limpar_imagem_button = QPushButton("Limpar Imagem")
+        self.limpar_imagem_button.setToolTip("Remover a imagem da obra")
+        self.limpar_imagem_button.clicked.connect(self._limpar_imagem)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.addWidget(self.escolher_imagem_button)
+        buttons_layout.addWidget(self.limpar_imagem_button)
+
+        layout.addWidget(self.imagem_preview)
+        layout.addLayout(buttons_layout)
+        layout.addStretch()
+        return panel
 
     def _add_grid_field(
         self,
@@ -651,6 +710,8 @@ class ProducaoPage(QWidget):
             self.notas1_text.setPlainText(self._format_value(proc.notas1))
             self.notas2_text.setPlainText(self._format_value(proc.notas2))
             self.notas3_text.setPlainText(self._format_value(proc.notas3))
+            self._imagem_path = proc.imagem_path
+            self._atualizar_preview_imagem()
             self._selected_processo_id = proc.id
         finally:
             self._restaurar_sinais_form(estados)
@@ -669,6 +730,8 @@ class ProducaoPage(QWidget):
                     widget.clear()
                 elif isinstance(widget, QComboBox):
                     widget.setCurrentIndex(-1)
+            self._imagem_path = None
+            self._atualizar_preview_imagem()
             self._selected_processo_id = None
         finally:
             self._restaurar_sinais_form(estados)
@@ -699,6 +762,7 @@ class ProducaoPage(QWidget):
             "notas1": self._none_if_empty(self.notas1_text.toPlainText()),
             "notas2": self._none_if_empty(self.notas2_text.toPlainText()),
             "notas3": self._none_if_empty(self.notas3_text.toPlainText()),
+            "imagem_path": self._imagem_path,
         }
 
     def _save(self) -> None:
@@ -788,6 +852,108 @@ class ProducaoPage(QWidget):
             return
         self._set_dirty(True)
 
+    def _escolher_imagem(self) -> None:
+        caminho, _filtro = QFileDialog.getOpenFileName(
+            self,
+            "Escolher Imagem/PDF da obra",
+            "",
+            "Imagens e PDF (*.png *.jpg *.jpeg *.bmp *.pdf);;Todos (*)",
+        )
+        if not caminho:
+            return
+
+        self._imagem_path = caminho
+        self._atualizar_preview_imagem()
+        self._set_dirty(True)
+
+    def _limpar_imagem(self) -> None:
+        self._imagem_path = None
+        self._atualizar_preview_imagem()
+        self._set_dirty(True)
+
+    def _atualizar_preview_imagem(self) -> None:
+        if not hasattr(self, "imagem_preview"):
+            return
+
+        caminho = self._imagem_path
+        self._imagem_preview_pixmap_original = None
+        self.imagem_preview.setPixmap(QPixmap())
+        self.imagem_preview.setToolTip(caminho or "")
+
+        if not caminho:
+            self.imagem_preview.setText("Sem imagem")
+            return
+
+        path = Path(caminho)
+        if not path.is_file():
+            self.imagem_preview.setText("Imagem não encontrada")
+            return
+
+        if path.suffix.lower() == ".pdf":
+            self._imagem_preview_pixmap_original = self._carregar_pdf_pixmap(path)
+            if self._imagem_preview_pixmap_original is None:
+                self.imagem_preview.setText("PDF — duplo-clique para abrir")
+                return
+            self._ajustar_imagem_preview()
+            return
+
+        self._imagem_preview_pixmap_original = QPixmap(str(path))
+        if self._imagem_preview_pixmap_original is None:
+            self.imagem_preview.setText("Imagem não encontrada")
+            return
+        if self._imagem_preview_pixmap_original.isNull():
+            self._imagem_preview_pixmap_original = load_scaled_pixmap(
+                str(path),
+                self.imagem_preview.size(),
+            )
+        if self._imagem_preview_pixmap_original is None:
+            self.imagem_preview.setText("Imagem não encontrada")
+            return
+        self._ajustar_imagem_preview()
+
+    def _ajustar_imagem_preview(self) -> None:
+        if not hasattr(self, "imagem_preview"):
+            return
+        original = self._imagem_preview_pixmap_original
+        if original is None or original.isNull():
+            return
+
+        tamanho = self.imagem_preview.size()
+        scaled = original.scaled(
+            max(tamanho.width() - 4, 1),
+            max(tamanho.height() - 4, 1),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.imagem_preview.setText("")
+        self.imagem_preview.setPixmap(scaled)
+
+    def _carregar_pdf_pixmap(self, caminho: Path) -> QPixmap | None:
+        try:
+            from PySide6.QtPdf import QPdfDocument
+        except (ImportError, ModuleNotFoundError):
+            return None
+
+        try:
+            document = QPdfDocument(self)
+            document.load(str(caminho))
+            if document.pageCount() < 1:
+                return None
+            image = document.render(0, QSize(900, 1200))
+            if image.isNull():
+                return None
+            return QPixmap.fromImage(image)
+        except Exception:
+            return None
+
+    def _abrir_imagem_pdf(self) -> None:
+        if not self._imagem_path:
+            return
+        path = Path(self._imagem_path)
+        if not path.is_file():
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
         self.save_button.setEnabled(dirty and self._selected_processo_id is not None)
@@ -842,3 +1008,7 @@ class ProducaoPage(QWidget):
             largura = self.COLUMN_WIDTHS.get(header)
             if largura is not None:
                 self.table.setColumnWidth(column_index, largura)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._ajustar_imagem_preview()
