@@ -16,8 +16,9 @@ def _criar_excel(caminho: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Catalogo"
-    ws.append(["Ref", "Descricao", "Preco"])
-    ws.append(["ABC", "Dobradi\u00e7a", 12.5])
+    ws.append(["Tabela de fornecedor"])
+    ws.append(["Ref", "Descricao", "Preco", "Espessura"])
+    ws.append(["ABC", "Dobradi\u00e7a", 12.5, "8 mm"])
     wb.save(caminho)
 
 
@@ -53,8 +54,10 @@ def test_chunks_excel_linha_por_linha(tmp_path) -> None:
     chunks = list(service_module._chunks_excel(caminho))
 
     assert chunks == [
-        ("Ref | Descricao | Preco", {"folha": "Catalogo", "linha": 1}),
-        ("ABC | Dobradi\u00e7a | 12.5", {"folha": "Catalogo", "linha": 2}),
+        (
+            "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm",
+            {"folha": "Catalogo", "linha": 3},
+        ),
     ]
 
 
@@ -80,7 +83,9 @@ def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch)
             self.nome = nome
 
         def encode(self, textos, **kwargs):  # noqa: ANN001
-            assert textos == ["Ref | Descricao | Preco", "ABC | Dobradi\u00e7a | 12.5"]
+            assert textos == [
+                "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm"
+            ]
             assert kwargs["normalize_embeddings"] is True
             return _FakeVetores()
 
@@ -95,7 +100,7 @@ def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch)
     resultado = service_module.indexar(object(), progresso=mensagens.append)
 
     assert resultado.ficheiros == 1
-    assert resultado.chunks == 2
+    assert resultado.chunks == 1
     assert resultado.erros == 0
     assert resultado.pasta_indice == str(indice)
     assert (indice / service_module.EMBEDDINGS_FILENAME).read_bytes() == b"fake-npy"
@@ -106,7 +111,9 @@ def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch)
             encoding="utf-8"
         ).splitlines()
     ]
-    assert linhas_meta[1]["ficheiro"] == "catalogo.xlsx"
-    assert linhas_meta[1]["fornecedor"] == "FornecedorA"
-    assert linhas_meta[1]["texto"] == "ABC | Dobradi\u00e7a | 12.5"
+    assert linhas_meta[0]["ficheiro"] == "catalogo.xlsx"
+    assert linhas_meta[0]["fornecedor"] == "FornecedorA"
+    assert linhas_meta[0]["texto"] == (
+        "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm"
+    )
     assert any("modelo-teste" in mensagem for mensagem in mensagens)

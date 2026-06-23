@@ -42,14 +42,25 @@ def _chunks_excel(caminho: Path) -> Iterator[tuple[str, dict]]:
     try:
         for folha in wb.sheetnames:
             ws = wb[folha]
+            cabecalho: list[str] | None = None
             for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
-                celulas = [
-                    str(celula).strip()
-                    for celula in row
-                    if celula is not None and str(celula).strip()
+                valores = [
+                    "" if celula is None else str(celula).strip() for celula in row
                 ]
-                if celulas:
-                    yield " | ".join(celulas), {"folha": folha, "linha": i}
+                nao_vazias = [valor for valor in valores if valor]
+                if not nao_vazias:
+                    continue
+                if cabecalho is None:
+                    if len(nao_vazias) >= 4:
+                        cabecalho = valores
+                    continue
+                partes = [
+                    f"{coluna}: {valor}" if coluna else valor
+                    for coluna, valor in zip(cabecalho, valores)
+                    if valor
+                ]
+                if partes:
+                    yield " | ".join(partes), {"folha": folha, "linha": i}
     finally:
         wb.close()
 

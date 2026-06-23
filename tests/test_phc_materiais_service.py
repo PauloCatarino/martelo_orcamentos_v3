@@ -39,3 +39,5 @@ def test_query_phc_materiais_usa_st_e_familias_de_material(monkeypatch) -> None:
     assert "'FO00000'" in query
     assert "epv1 AS Preco_Venda" in query
     assert "epcusto AS Preco_Custo" in query
+    assert "forref AS Ref_Fornecedor" in query
+    assert "CONVERT(VARCHAR(10), datanovpv, 104) AS Data_Preco" in query

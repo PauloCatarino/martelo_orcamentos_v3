@@ -49,6 +49,7 @@ def test_default_system_settings_constants_import() -> None:
     )
     assert settings_by_key["modelo_local_ia"].valor == ""
     assert settings_by_key["preencher_comp_larg_automaticamente"].valor == "ON"
+    assert settings_by_key["modelo_claude_ia"].valor == "claude-opus-4-8"
     assert settings_by_key["pasta_base_orcamentos"].tipo == "pasta"
     assert settings_by_key["ficheiro_imos_msg"].tipo == "ficheiro"
     assert settings_by_key["phc_sql_server"].valor == r"Server_le\phc"

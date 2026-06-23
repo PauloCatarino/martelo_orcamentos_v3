@@ -193,6 +193,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     ),
     SystemSettingSeed("modelo_openai_texto", "Modelo OpenAI texto", "texto", "IA", "gpt-4o-mini"),
     SystemSettingSeed(
+        "modelo_claude_ia",
+        "Modelo Claude (Anthropic) para resposta",
+        "texto",
+        "IA",
+        "claude-opus-4-8",
+    ),
+    SystemSettingSeed(
         "preencher_comp_larg_automaticamente",
         "Preencher COMP/LARG automaticamente",
         "opcao",
