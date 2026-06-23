@@ -29,8 +29,13 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
-from app.services.producao_service import ProducaoService, filtrar_processos
+from app.services.producao_service import (
+    ProducaoService,
+    converter_orcamento,
+    filtrar_processos,
+)
 from app.ui import tema
+from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
@@ -103,6 +108,10 @@ class ProducaoPage(QWidget):
             ["Obras em produção do Martelo V3"],
         )
 
+        self.convert_button = QPushButton("Converter Orçamento")
+        self.convert_button.setToolTip("Converter um orçamento adjudicado numa obra de produção")
+        self.convert_button.clicked.connect(self._converter_orcamento)
+
         self.save_button = QPushButton("Salvar")
         self.save_button.setToolTip("Gravar as alterações da obra selecionada")
         self.save_button.setEnabled(False)
@@ -113,6 +122,7 @@ class ProducaoPage(QWidget):
         self.refresh_button.clicked.connect(self.carregar_processos)
 
         actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -726,6 +736,52 @@ class ProducaoPage(QWidget):
         self._set_dirty(False)
         self.carregar_processos(selecionar_id=proc_id)
         self.status_label.setText("Produção guardada.")
+
+    def _converter_orcamento(self) -> None:
+        """Open the conversion dialog and create the selected production process."""
+        if self._dirty:
+            resposta = QMessageBox.question(
+                self,
+                "Alterações por gravar",
+                "Há alterações por gravar. Descartar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            self._set_dirty(False)
+
+        dialog = ConverterOrcamentoDialog(self)
+        if not dialog.exec():
+            return
+        if dialog.selected_orcamento_id is None or dialog.selected_versao_id is None:
+            return
+
+        created_by_id = (
+            app_session.current_user.id
+            if app_session.current_user is not None
+            else None
+        )
+
+        try:
+            with SessionLocal() as session:
+                processo = converter_orcamento(
+                    session,
+                    orcamento_id=dialog.selected_orcamento_id,
+                    versao_id=dialog.selected_versao_id,
+                    created_by_id=created_by_id,
+                )
+                processo_id = processo.id
+                codigo_processo = processo.codigo_processo
+        except ValueError as error:
+            QMessageBox.warning(self, "Converter Orçamento", str(error))
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível converter o orçamento.")
+            return
+
+        self.carregar_processos(selecionar_id=processo_id)
+        self.status_label.setText(f"Processo {codigo_processo} criado.")
 
     def _on_user_edit(self, *_args) -> None:
         if self._a_preencher_form or self._selected_processo_id is None:

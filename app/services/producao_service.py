@@ -1,12 +1,16 @@
-"""Read-only service helpers for production processes."""
+"""Service helpers for production processes."""
 
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.cliente import Cliente
+from app.models.orcamento import Orcamento
+from app.models.orcamento_versao import OrcamentoVersao
 from app.models.producao import Producao
 
 CAMPOS_EDITAVEIS_PRODUCAO = (
@@ -81,6 +85,156 @@ class ProducaoService:
         return processo
 
 
+def gerar_codigo_processo(
+    ano,
+    num_enc_phc,
+    versao_obra,
+    versao_plano,
+) -> str:
+    """Build the production process code AA.NNNN_VV_PP."""
+    ano_text = re.sub(r"\D+", "", str(ano or ""))
+    aa = (ano_text[-2:] if ano_text else "00").zfill(2)
+    nnnn = _format_digits(num_enc_phc, 4)
+    vv = _format_digits(versao_obra, 2)
+    pp = _format_digits(versao_plano, 2)
+    return f"{aa}.{nnnn}_{vv}_{pp}"
+
+
+def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
+    """Return adjudicated budget versions with their budget and customer data."""
+    statement = (
+        select(Orcamento, OrcamentoVersao, Cliente)
+        .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
+        .join(Cliente, Cliente.id == Orcamento.cliente_id)
+        .order_by(
+            Orcamento.ano.asc(),
+            Orcamento.num_orcamento.asc(),
+            OrcamentoVersao.numero_versao.asc(),
+        )
+    )
+
+    rows = session.execute(statement).all()
+    resultado = []
+    for orcamento, versao, cliente in rows:
+        if _normalizar_texto(versao.estado) != "adjudicado":
+            continue
+        resultado.append(
+            {
+                "orcamento_id": orcamento.id,
+                "versao_id": versao.id,
+                "ano": orcamento.ano,
+                "num_orcamento": orcamento.num_orcamento,
+                "numero_versao": versao.numero_versao,
+                "cliente_nome": cliente.nome,
+                "enc_phc": versao.enc_phc,
+                "preco_total": versao.preco_total,
+                "is_temporary": cliente.is_temporary,
+                "source_system": cliente.source_system,
+                "num_cliente_phc": cliente.num_cliente_phc,
+            }
+        )
+    return resultado
+
+
+def validar_conversao(
+    *,
+    estado,
+    is_temporary,
+    source_system,
+    num_cliente_phc,
+    enc_phc,
+) -> list[str]:
+    """Return validation errors for budget-to-production conversion."""
+    erros = []
+    if _normalizar_texto(estado) != "adjudicado":
+        erros.append("O orçamento tem de estar Adjudicado.")
+    if is_temporary:
+        erros.append("O cliente ainda é temporário.")
+    if _normalizar_texto(source_system) != "phc":
+        erros.append("O cliente tem de ser do PHC.")
+    if not _tem_texto(num_cliente_phc):
+        erros.append("O cliente não tem Nº Cliente PHC.")
+    if not _tem_texto(enc_phc):
+        erros.append("O orçamento não tem Nº Enc PHC.")
+    return erros
+
+
+def converter_orcamento(
+    session: Session,
+    *,
+    orcamento_id: int,
+    versao_id: int,
+    created_by_id: int | None,
+) -> Producao:
+    """Convert one adjudicated budget version into a production process."""
+    statement = (
+        select(Orcamento, OrcamentoVersao, Cliente)
+        .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
+        .join(Cliente, Cliente.id == Orcamento.cliente_id)
+        .where(Orcamento.id == orcamento_id, OrcamentoVersao.id == versao_id)
+    )
+    row = session.execute(statement).one_or_none()
+    if row is None:
+        raise ValueError("Orçamento não encontrado.")
+
+    orcamento, versao, cliente = row
+    erros = validar_conversao(
+        estado=versao.estado,
+        is_temporary=cliente.is_temporary,
+        source_system=cliente.source_system,
+        num_cliente_phc=cliente.num_cliente_phc,
+        enc_phc=versao.enc_phc,
+    )
+    if erros:
+        raise ValueError("\n".join(erros))
+
+    versao_obra = "01"
+    versao_plano = "01"
+    codigo_processo = gerar_codigo_processo(
+        orcamento.ano,
+        versao.enc_phc,
+        versao_obra,
+        versao_plano,
+    )
+    duplicado = session.scalar(
+        select(Producao).where(
+            Producao.ano == str(orcamento.ano),
+            Producao.num_enc_phc == str(versao.enc_phc).strip(),
+            Producao.versao_obra == versao_obra,
+            Producao.versao_plano == versao_plano,
+        )
+    )
+    if duplicado is not None:
+        raise ValueError(f"Já existe o processo {duplicado.codigo_processo}.")
+
+    processo = Producao(
+        estado="Desenho",
+        tipo_pasta="Encomenda de Cliente",
+        versao_obra=versao_obra,
+        versao_plano=versao_plano,
+        codigo_processo=codigo_processo,
+        ano=str(orcamento.ano),
+        num_enc_phc=str(versao.enc_phc).strip(),
+        orcamento_id=orcamento.id,
+        cliente_id=cliente.id,
+        nome_cliente=cliente.nome,
+        nome_cliente_simplex=cliente.nome_simplex,
+        num_cliente_phc=cliente.num_cliente_phc,
+        ref_cliente=orcamento.ref_cliente,
+        num_orcamento=orcamento.num_orcamento,
+        versao_orc=f"{int(versao.numero_versao):02d}",
+        obra=orcamento.obra,
+        localizacao=orcamento.localizacao,
+        descricao_orcamento=orcamento.descricao,
+        preco_total=versao.preco_total,
+        created_by_id=created_by_id,
+    )
+    session.add(processo)
+    session.commit()
+    session.refresh(processo)
+    return processo
+
+
 def campos_editaveis(data: dict) -> dict:
     """Return only fields that are editable in the production detail form."""
     return {
@@ -88,6 +242,23 @@ def campos_editaveis(data: dict) -> dict:
         for campo in CAMPOS_EDITAVEIS_PRODUCAO
         if campo in data
     }
+
+
+def _normalizar_texto(valor) -> str:
+    texto = "" if valor is None else str(valor).strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    return "".join(char for char in texto if not unicodedata.combining(char))
+
+
+def _tem_texto(valor) -> bool:
+    return bool(str(valor or "").strip())
+
+
+def _format_digits(valor, width: int) -> str:
+    digits = re.sub(r"\D+", "", str(valor or ""))
+    if not digits:
+        return "0".zfill(width)
+    return str(int(digits)).zfill(width)
 
 
 def filtrar_processos(
