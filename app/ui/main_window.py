@@ -33,6 +33,7 @@ from app.ui.pages import (
     OrcamentoDetailPage,
     OrcamentosPage,
     PesquisaIAPage,
+    ProducaoPage,
     RegrasQuantidadePage,
 )
 
@@ -47,6 +48,7 @@ class MainWindow(QMainWindow):
         "orcamento_detail": "orcamentos",
         "materias_primas": "materias_primas",
         "clientes": "clientes",
+        "producao": "producao",
     }
 
     logout_requested = Signal()
@@ -128,6 +130,7 @@ class MainWindow(QMainWindow):
         _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
         _criar_item("Pesquisa IA", "pesquisa_ia", parent=item_orcamentos)
         _criar_item("Clientes", "clientes")
+        _criar_item("Produção", "producao")
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
 
@@ -149,6 +152,7 @@ class MainWindow(QMainWindow):
         self.regras_quantidade_page = RegrasQuantidadePage()
         self.biblioteca_modulos_page = BibliotecaModulosPage()
         self.clientes_page = ClientesPage()
+        self.producao_page = ProducaoPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
@@ -173,6 +177,7 @@ class MainWindow(QMainWindow):
         self._add_page("regras_quantidade", self.regras_quantidade_page)
         self._add_page("biblioteca_modulos", self.biblioteca_modulos_page)
         self._add_page("clientes", self.clientes_page)
+        self._add_page("producao", self.producao_page)
         self._add_page("configuracoes", self.configuracoes_page)
 
         content_layout.addWidget(sidebar)

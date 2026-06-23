@@ -26,6 +26,7 @@ from app.models.orcamento_versao import OrcamentoVersao
 from app.models.orcamento_versao_evento import OrcamentoVersaoEvento
 from app.models.orcamento_versao_placa_nao_stock import OrcamentoVersaoPlacaNaoStock
 from app.models.orcamento_valueset_linha import OrcamentoValuesetLinha
+from app.models.producao import Producao
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 
@@ -56,6 +57,7 @@ __all__ = [
     "OrcamentoVersaoEvento",
     "OrcamentoVersaoPlacaNaoStock",
     "OrcamentoValuesetLinha",
+    "Producao",
     "SystemSetting",
     "User",
 ]
