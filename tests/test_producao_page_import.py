@@ -37,6 +37,9 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "ligar_persistencia_larguras" in init_source
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source
+    assert "setToolTip" in init_source
+    assert "Gravar as alterações da obra selecionada" in init_source
+    assert "Recarregar a lista de obras" in init_source
     assert "QSplitter" in init_source
     assert 'ligar_persistencia_splitter(self.splitter, "producao")' in init_source
     assert "Converter" not in init_source
@@ -55,6 +58,10 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert hasattr(ProducaoPage, "_save")
     assert "app_session" in source
     assert "itemSelectionChanged" in source
+    assert "normalizar_data" in source
+    assert "Data no formato dd-mm-aaaa" in source
+    assert "Estado da obra em produção" in source
+    assert "Pasta de destino no servidor" in source
     assert "Há alterações por gravar. Descartar?" in source
     assert producao_page.TIPOS_PASTA_PRODUCAO == (
         "Encomenda de Cliente",

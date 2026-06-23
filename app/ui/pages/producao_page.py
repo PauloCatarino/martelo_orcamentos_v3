@@ -26,6 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.datas import normalizar_data
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.producao_service import ProducaoService, filtrar_processos
@@ -103,10 +104,12 @@ class ProducaoPage(QWidget):
         )
 
         self.save_button = QPushButton("Salvar")
+        self.save_button.setToolTip("Gravar as alterações da obra selecionada")
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self._save)
 
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setToolTip("Recarregar a lista de obras")
         self.refresh_button.clicked.connect(self.carregar_processos)
 
         actions_layout = QHBoxLayout()
@@ -314,6 +317,7 @@ class ProducaoPage(QWidget):
             self.notas2_text,
             self.notas3_text,
         ]
+        self._aplicar_tooltips_editaveis()
         self._ligar_sinais_edicao()
 
         scroll = QScrollArea()
@@ -372,6 +376,22 @@ class ProducaoPage(QWidget):
             self.notas3_text,
         ):
             text_edit.textChanged.connect(self._on_user_edit)
+
+    def _aplicar_tooltips_editaveis(self) -> None:
+        self.estado_form_combo.setToolTip("Estado da obra em produção")
+        self.responsavel_form_combo.setToolTip("Responsável pela obra")
+        self.ref_cliente_input.setToolTip("Referência do cliente")
+        self.obra_input.setToolTip("Nome ou descrição curta da obra")
+        self.localizacao_input.setToolTip("Localização da obra")
+        self.data_inicio_input.setToolTip("Data no formato dd-mm-aaaa")
+        self.data_entrega_input.setToolTip("Data no formato dd-mm-aaaa")
+        self.tipo_pasta_combo.setToolTip("Pasta de destino no servidor")
+        self.descricao_artigos_text.setToolTip("Descrição dos artigos da obra")
+        self.materias_usados_text.setToolTip("Matérias usadas na obra")
+        self.descricao_producao_text.setToolTip("Descrição da produção")
+        self.notas1_text.setToolTip("Notas adicionais da obra")
+        self.notas2_text.setToolTip("Notas adicionais da obra")
+        self.notas3_text.setToolTip("Notas adicionais da obra")
 
     def carregar_processos(self, selecionar_id: int | None = None) -> None:
         """Load production processes into the table."""
@@ -509,8 +529,8 @@ class ProducaoPage(QWidget):
                 processo.num_enc_phc,
                 processo.versao_obra,
                 processo.versao_plano,
-                processo.data_inicio or "",
-                processo.data_entrega or "",
+                normalizar_data(processo.data_inicio),
+                normalizar_data(processo.data_entrega),
                 processo.responsavel or "",
                 processo.tipo_pasta or "",
             ]
@@ -606,8 +626,8 @@ class ProducaoPage(QWidget):
             self.ref_cliente_input.setText(self._format_value(proc.ref_cliente))
             self.obra_input.setText(self._format_value(proc.obra))
             self.localizacao_input.setText(self._format_value(proc.localizacao))
-            self.data_inicio_input.setText(self._format_value(proc.data_inicio))
-            self.data_entrega_input.setText(self._format_value(proc.data_entrega))
+            self.data_inicio_input.setText(normalizar_data(proc.data_inicio))
+            self.data_entrega_input.setText(normalizar_data(proc.data_entrega))
             self._set_combo_text(self.tipo_pasta_combo, proc.tipo_pasta)
             self.descricao_artigos_text.setPlainText(
                 self._format_value(proc.descricao_artigos)
@@ -654,8 +674,8 @@ class ProducaoPage(QWidget):
             "ref_cliente": self._none_if_empty(self.ref_cliente_input.text()),
             "obra": self._none_if_empty(self.obra_input.text()),
             "localizacao": self._none_if_empty(self.localizacao_input.text()),
-            "data_inicio": self._none_if_empty(self.data_inicio_input.text()),
-            "data_entrega": self._none_if_empty(self.data_entrega_input.text()),
+            "data_inicio": normalizar_data(self.data_inicio_input.text()),
+            "data_entrega": normalizar_data(self.data_entrega_input.text()),
             "tipo_pasta": self.tipo_pasta_combo.currentText().strip(),
             "descricao_artigos": self._none_if_empty(
                 self.descricao_artigos_text.toPlainText()

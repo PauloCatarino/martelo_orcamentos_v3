@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import inspect
+
 
 def test_producao_service_has_detail_update_methods() -> None:
     from app.services.producao_service import ProducaoService
 
     assert hasattr(ProducaoService, "obter_processo")
     assert hasattr(ProducaoService, "atualizar_processo")
+
+
+def test_producao_service_lista_do_mais_antigo_para_o_mais_recente() -> None:
+    from app.services.producao_service import ProducaoService
+
+    source = inspect.getsource(ProducaoService.listar_processos)
+
+    assert "Producao.ano.asc()" in source
+    assert "Producao.num_enc_phc.asc()" in source
+    assert "Producao.versao_obra.asc()" in source
+    assert "Producao.versao_plano.asc()" in source
 
 
 def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:

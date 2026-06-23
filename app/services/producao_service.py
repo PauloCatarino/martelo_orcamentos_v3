@@ -49,8 +49,10 @@ class ProducaoService:
     def listar_processos(self) -> list[Producao]:
         """List production processes ordered for the production page."""
         statement = select(Producao).order_by(
-            Producao.ano.desc(),
-            Producao.codigo_processo.asc(),
+            Producao.ano.asc(),
+            Producao.num_enc_phc.asc(),
+            Producao.versao_obra.asc(),
+            Producao.versao_plano.asc(),
         )
         return list(self.session.scalars(statement).all())
 

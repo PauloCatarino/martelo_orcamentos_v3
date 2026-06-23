@@ -1,8 +1,8 @@
 """Synchronise production processes from Martelo V2 into Martelo V3.
 
-While V3 does not have production editing yet (P2), this upsert overwrites V3
-production fields from V2. V2 is the source of truth. When V3 editing exists,
-review the merge policy before running this script unchanged.
+This upsert overwrites V3 production fields from V2. Run it only when V2 should
+remain the source of truth, or review the merge policy before syncing over V3
+manual edits.
 
 Usage:
     python -m scripts.importar_producao_v2 --dry-run
@@ -26,6 +26,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from sqlalchemy import create_engine, select, text  # noqa: E402
 from sqlalchemy.engine import Engine, URL  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
+
+from app.domain.datas import normalizar_data  # noqa: E402
 
 
 V2_DEFAULT_HOST = "192.168.5.201"
@@ -96,6 +98,8 @@ def mapear_linha(v2_row: Mapping[str, Any]) -> dict[str, Any]:
     """Map one V2 ``producao`` row into V3 production fields, excluding FKs."""
     valores = {campo: v2_row.get(campo) for campo in CAMPOS_DIRETOS_V2_V3}
     valores["estado"] = mapear_estado(v2_row.get("estado"))
+    valores["data_inicio"] = normalizar_data(valores.get("data_inicio"))
+    valores["data_entrega"] = normalizar_data(valores.get("data_entrega"))
     return valores
 
 
