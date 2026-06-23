@@ -9,6 +9,7 @@ def test_producao_page_imports_and_headers() -> None:
     from app.ui.pages.producao_page import ProducaoPage
 
     assert ProducaoPage.TABLE_HEADERS == [
+        "Criada em",
         "Ano",
         "Processo",
         "Estado",
@@ -34,6 +35,7 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "BarraCabecalho" in init_source
     assert "CampoPesquisa" in init_source
     assert "self.table" in init_source
+    assert "Data em que a obra foi criada nesta lista" in init_source
     assert "ligar_persistencia_larguras" in init_source
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source

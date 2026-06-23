@@ -68,6 +68,7 @@ class ProducaoPage(QWidget):
     """Production process page with an editable V3 detail form."""
 
     TABLE_HEADERS = [
+        "Criada em",
         "Ano",
         "Processo",
         "Estado",
@@ -84,6 +85,7 @@ class ProducaoPage(QWidget):
         "Tipo Pasta",
     ]
     COLUMN_WIDTHS = {
+        "Criada em": 95,
         "Ano": 60,
         "Processo": 115,
         "Estado": 110,
@@ -172,6 +174,9 @@ class ProducaoPage(QWidget):
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        criada_em_item = self.table.horizontalHeaderItem(0)
+        if criada_em_item is not None:
+            criada_em_item.setToolTip("Data em que a obra foi criada nesta lista")
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -588,6 +593,7 @@ class ProducaoPage(QWidget):
         for row_index, processo in enumerate(processos):
             self._processos_by_row[row_index] = processo
             values = [
+                self._format_date(processo.created_at),
                 processo.ano,
                 processo.codigo_processo,
                 processo.estado or "",
@@ -1002,6 +1008,15 @@ class ProducaoPage(QWidget):
     @staticmethod
     def _format_value(value: object) -> str:
         return "" if value is None else str(value)
+
+    @staticmethod
+    def _format_date(value: object) -> str:
+        if value is None:
+            return ""
+        try:
+            return value.strftime("%d-%m-%Y")
+        except AttributeError:
+            return ""
 
     def _aplicar_larguras_colunas(self) -> None:
         for column_index, header in enumerate(self.TABLE_HEADERS):

@@ -70,15 +70,14 @@ def test_validar_conversao_regras_de_protecao() -> None:
     )
 
 
-def test_producao_service_lista_do_mais_antigo_para_o_mais_recente() -> None:
+def test_producao_service_lista_do_mais_recente_para_o_mais_antigo() -> None:
     from app.services.producao_service import ProducaoService
 
     source = inspect.getsource(ProducaoService.listar_processos)
 
-    assert "Producao.ano.asc()" in source
-    assert "Producao.num_enc_phc.asc()" in source
-    assert "Producao.versao_obra.asc()" in source
-    assert "Producao.versao_plano.asc()" in source
+    assert "Producao.created_at.desc()" in source
+    assert "Producao.ano.desc()" in source
+    assert "Producao.num_enc_phc.desc()" in source
 
 
 def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
