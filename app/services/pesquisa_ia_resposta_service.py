@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 from sqlalchemy.orm import Session
 
 from app.services.system_setting_service import SystemSettingService
@@ -48,6 +50,16 @@ class RespostaIAService:
             return self._claude(prompt)
         return self._local(prompt)
 
+    def gerar_stream(self, pergunta: str, contexto: str) -> Iterator[str]:
+        """Gera a resposta em pedacos (streaming) para nao bloquear a UI."""
+        prompt = f"Pergunta: {pergunta}\n\nContexto fornecido:\n{contexto}"
+        if self._provedor == "openai":
+            yield from self._openai_stream(prompt)
+        elif self._provedor == "claude":
+            yield from self._claude_stream(prompt)
+        else:
+            yield from self._local_stream(prompt)
+
     def _local(self, prompt: str) -> str:
         if not self._modelo_local:
             raise RuntimeError(
@@ -74,6 +86,40 @@ class RespostaIAService:
             dados = json.loads(resp.read().decode("utf-8"))
         return (dados.get("message", {}).get("content") or "").strip()
 
+    def _local_stream(self, prompt: str) -> Iterator[str]:
+        if not self._modelo_local:
+            raise RuntimeError(
+                "Defina 'Modelo local IA para resposta' (ex.: llama3.1) "
+                "e tenha o Ollama a correr."
+            )
+        import json
+        import urllib.request
+
+        payload = {
+            "model": self._modelo_local,
+            "messages": [
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": True,
+        }
+        req = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
+            for linha in resp:
+                linha = linha.strip()
+                if not linha:
+                    continue
+                dados = json.loads(linha.decode("utf-8"))
+                pedaco = dados.get("message", {}).get("content") or ""
+                if pedaco:
+                    yield pedaco
+                if dados.get("done"):
+                    break
+
     def _openai(self, prompt: str) -> str:
         try:
             from openai import OpenAI
@@ -88,6 +134,27 @@ class RespostaIAService:
             ],
         )
         return (resp.choices[0].message.content or "").strip()
+
+    def _openai_stream(self, prompt: str) -> Iterator[str]:
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("Instale o SDK OpenAI: pip install openai") from exc
+        cliente = OpenAI()
+        stream = cliente.chat.completions.create(
+            model=self._modelo_openai,
+            messages=[
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            stream=True,
+        )
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            pedaco = chunk.choices[0].delta.content or ""
+            if pedaco:
+                yield pedaco
 
     def _claude(self, prompt: str) -> str:
         try:
@@ -104,3 +171,19 @@ class RespostaIAService:
         return "".join(
             bloco.text for bloco in resposta.content if bloco.type == "text"
         ).strip()
+
+    def _claude_stream(self, prompt: str) -> Iterator[str]:
+        try:
+            import anthropic
+        except ImportError as exc:
+            raise RuntimeError("Instale o SDK Anthropic: pip install anthropic") from exc
+        cliente = anthropic.Anthropic()
+        with cliente.messages.stream(
+            model=self._modelo_claude or "claude-opus-4-8",
+            max_tokens=2000,
+            system=SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            for texto in stream.text_stream:
+                if texto:
+                    yield texto

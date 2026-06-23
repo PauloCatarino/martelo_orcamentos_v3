@@ -99,6 +99,22 @@ def test_pesquisa_ia_page_usa_tabelas_separadas_e_padroes_visuais() -> None:
     assert "TRECHOS DE CAT\\u00c1LOGOS" in resposta_source
 
 
+def test_pesquisa_ia_resposta_e_nao_bloqueante_com_streaming() -> None:
+    from app.ui.pages import pesquisa_ia_page as page_module
+
+    gerar_source = inspect.getsource(page_module.PesquisaIAPage.gerar_resposta)
+    iniciar_source = inspect.getsource(page_module.PesquisaIAPage._iniciar_geracao)
+    worker_run_source = inspect.getsource(page_module._RespostaWorker.run)
+
+    # A geracao corre fora da thread da UI...
+    assert "self._iniciar_geracao(pergunta, contexto)" in gerar_source
+    assert "QThread" in iniciar_source
+    assert "moveToThread" in iniciar_source
+    # ...e o texto chega em pedacos (streaming) por sinais.
+    assert "gerar_stream" in worker_run_source
+    assert "self.pedaco.emit" in worker_run_source
+
+
 def test_pesquisa_ia_v3_corresponde_normaliza_e_procura_campos_proprios() -> None:
     from app.ui.pages.pesquisa_ia_page import _v3_corresponde
 

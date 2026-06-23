@@ -5,13 +5,14 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.services.phc_materiais_service import query_phc_materiais
 from app.services.placas_referencias_service import LinhaReferencia, listar_referencias
@@ -29,6 +31,7 @@ from app.services.pesquisa_ia_search_service import PesquisaCatalogosService
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -64,6 +67,41 @@ def _nova_tabela(
     )
     restaurado = ligar_persistencia_larguras(tabela, chave)
     return tabela, restaurado
+
+
+def _seccao(titulo: str, widget: QWidget) -> QWidget:
+    """Agrupa um rotulo + widget numa caixa, para ser um painel do splitter."""
+    caixa = QWidget()
+    vbox = QVBoxLayout(caixa)
+    vbox.setContentsMargins(0, 0, 0, 0)
+    vbox.setSpacing(4)
+    vbox.addWidget(QLabel(titulo))
+    vbox.addWidget(widget)
+    return caixa
+
+
+class _RespostaWorker(QObject):
+    """Gera a resposta IA fora da thread da UI, emitindo pedacos (streaming)."""
+
+    pedaco = Signal(str)
+    falhou = Signal(str)
+    concluido = Signal()
+
+    def __init__(self, pergunta: str, contexto: str) -> None:
+        super().__init__()
+        self._pergunta = pergunta
+        self._contexto = contexto
+
+    def run(self) -> None:
+        try:
+            with SessionLocal() as session:
+                servico = RespostaIAService(session)
+                for pedaco in servico.gerar_stream(self._pergunta, self._contexto):
+                    self.pedaco.emit(pedaco)
+        except Exception as exc:  # noqa: BLE001
+            self.falhou.emit(str(exc))
+            return
+        self.concluido.emit()
 
 
 class PesquisaIAPage(QWidget):
@@ -111,6 +149,8 @@ class PesquisaIAPage(QWidget):
         self._ultimos_catalogos: list = []
         self._referencias_todas: list[LinhaReferencia] = []
         self._referencias_filtradas: list[LinhaReferencia] = []
+        self._resposta_thread: QThread | None = None
+        self._resposta_worker: _RespostaWorker | None = None
 
         self.cabecalho = BarraCabecalho(
             "Pesquisa IA",
@@ -181,6 +221,33 @@ class PesquisaIAPage(QWidget):
             "'Pesquisar cat\u00e1logos (IA)' + 'Gerar resposta IA'."
         )
 
+        self.tabelas_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.tabelas_splitter.setChildrenCollapsible(False)
+        self.tabelas_splitter.addWidget(
+            _seccao("Mat\u00e9rias-primas V3 (interno):", self.v3_table)
+        )
+        self.tabelas_splitter.addWidget(
+            _seccao("Artigos PHC (Ferragens, Madeiras, Orlas):", self.phc_table)
+        )
+        self.tabelas_splitter.addWidget(
+            _seccao(
+                "Refer\u00eancias de placas (cat\u00e1logo curado):",
+                self.referencias_table,
+            )
+        )
+        self.tabelas_splitter.addWidget(
+            _seccao(
+                "Cat\u00e1logos (documentos) - duplo-clique abre o ficheiro:",
+                self.catalogo_table,
+            )
+        )
+        self.tabelas_splitter.addWidget(
+            _seccao("Resposta IA (com cita\u00e7\u00f5es):", self.resposta_text)
+        )
+        for indice, fator in enumerate((2, 2, 2, 1, 1)):
+            self.tabelas_splitter.setStretchFactor(indice, fator)
+        ligar_persistencia_splitter(self.tabelas_splitter, "pesquisa_ia")
+
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(10)
@@ -188,18 +255,7 @@ class PesquisaIAPage(QWidget):
         layout.addLayout(actions_layout)
         layout.addWidget(self.campo_pesquisa)
         layout.addWidget(self.status_label)
-        layout.addWidget(QLabel("Mat\u00e9rias-primas V3 (interno):"))
-        layout.addWidget(self.v3_table, stretch=2)
-        layout.addWidget(QLabel("Artigos PHC (Ferragens, Madeiras, Orlas):"))
-        layout.addWidget(self.phc_table, stretch=2)
-        layout.addWidget(QLabel("Refer\u00eancias de placas (cat\u00e1logo curado):"))
-        layout.addWidget(self.referencias_table, stretch=2)
-        layout.addWidget(
-            QLabel("Cat\u00e1logos (documentos) - duplo-clique abre o ficheiro:")
-        )
-        layout.addWidget(self.catalogo_table, stretch=1)
-        layout.addWidget(QLabel("Resposta IA (com cita\u00e7\u00f5es):"))
-        layout.addWidget(self.resposta_text, stretch=1)
+        layout.addWidget(self.tabelas_splitter, stretch=1)
         self.setLayout(layout)
 
         self.carregar_v3()
@@ -293,8 +349,8 @@ class PesquisaIAPage(QWidget):
                 (materia.referencia_fornecedor or "").strip(),
                 (materia.descricao or "").strip(),
                 format_currency(materia.preco_tabela),
-                format_quantity(materia.margem),
-                format_quantity(materia.desconto),
+                formatar_percentagem(normalize_percentagem_humana(materia.margem)),
+                formatar_percentagem(normalize_percentagem_humana(materia.desconto)),
                 format_currency(materia.preco_liquido),
                 (materia.unidade or "").strip(),
                 (materia.coresp_orla_0_4 or "").strip(),
@@ -483,18 +539,45 @@ class PesquisaIAPage(QWidget):
             partes.append("TRECHOS DE CAT\u00c1LOGOS:\n" + "\n".join(linhas))
 
         contexto = "\n\n".join(partes)
+        self._iniciar_geracao(pergunta, contexto)
+
+    def _iniciar_geracao(self, pergunta: str, contexto: str) -> None:
+        if self._resposta_thread is not None:
+            return
+        self.resposta_text.clear()
         self.status_label.setText("A gerar resposta IA...")
         self.resposta_button.setEnabled(False)
-        try:
-            with SessionLocal() as session:
-                resposta = RespostaIAService(session).gerar(pergunta, contexto)
-        except Exception as exc:  # noqa: BLE001
-            self.resposta_button.setEnabled(True)
-            self.status_label.setText(f"Erro a gerar resposta: {exc}")
-            return
-        self.resposta_button.setEnabled(True)
-        self.resposta_text.setPlainText(resposta or "(sem resposta)")
+
+        self._resposta_thread = QThread(self)
+        self._resposta_worker = _RespostaWorker(pergunta, contexto)
+        self._resposta_worker.moveToThread(self._resposta_thread)
+        self._resposta_thread.started.connect(self._resposta_worker.run)
+        self._resposta_worker.pedaco.connect(self._acrescentar_resposta)
+        self._resposta_worker.falhou.connect(self._resposta_falhou)
+        self._resposta_worker.concluido.connect(self._resposta_concluida)
+        self._resposta_worker.falhou.connect(self._resposta_thread.quit)
+        self._resposta_worker.concluido.connect(self._resposta_thread.quit)
+        self._resposta_thread.finished.connect(self._resposta_worker.deleteLater)
+        self._resposta_thread.finished.connect(self._resposta_thread.deleteLater)
+        self._resposta_thread.finished.connect(self._finalizar_geracao)
+        self._resposta_thread.start()
+
+    def _acrescentar_resposta(self, texto: str) -> None:
+        self.resposta_text.moveCursor(QTextCursor.MoveOperation.End)
+        self.resposta_text.insertPlainText(texto)
+
+    def _resposta_falhou(self, mensagem: str) -> None:
+        self.status_label.setText(f"Erro a gerar resposta: {mensagem}")
+
+    def _resposta_concluida(self) -> None:
+        if not self.resposta_text.toPlainText().strip():
+            self.resposta_text.setPlainText("(sem resposta)")
         self.status_label.setText("Resposta gerada.")
+
+    def _finalizar_geracao(self) -> None:
+        self._resposta_thread = None
+        self._resposta_worker = None
+        self.resposta_button.setEnabled(True)
 
 
 def _data_curta(valor) -> str:

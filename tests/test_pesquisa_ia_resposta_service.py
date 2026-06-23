@@ -128,3 +128,117 @@ def test_resposta_claude_usa_sdk_anthropic(monkeypatch) -> None:
     assert capturado["model"] == "claude-teste"
     assert capturado["system"] == service_module.SYSTEM
     assert capturado["messages"][0]["role"] == "user"
+
+
+def test_resposta_stream_local_le_ndjson(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+
+    class _FakeStreamResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def __iter__(self):
+            linhas = [
+                json.dumps({"message": {"content": "Resposta "}}).encode(),
+                json.dumps({"message": {"content": "local"}}).encode(),
+                json.dumps({"message": {"content": ""}, "done": True}).encode(),
+                json.dumps({"message": {"content": "ignorado"}}).encode(),
+            ]
+            return iter(linhas)
+
+    def _fake_urlopen(req, timeout):  # noqa: ANN001
+        capturado["payload"] = json.loads(req.data.decode("utf-8"))
+        return _FakeStreamResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", _fake_urlopen)
+    servico = _service(
+        monkeypatch,
+        {"provedor_resposta_ia": "local", "modelo_local_ia": "llama3.1"},
+    )
+
+    pedacos = list(servico.gerar_stream("Que orlas existem?", "trecho"))
+
+    assert "".join(pedacos) == "Resposta local"
+    assert capturado["payload"]["stream"] is True
+
+
+def test_resposta_stream_local_exige_modelo_configurado(monkeypatch) -> None:
+    servico = _service(
+        monkeypatch,
+        {"provedor_resposta_ia": "local", "modelo_local_ia": ""},
+    )
+
+    with pytest.raises(RuntimeError, match="Modelo local IA para resposta"):
+        list(servico.gerar_stream("pergunta", "contexto"))
+
+
+def test_resposta_stream_openai_usa_delta(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+
+    def _chunk(texto):  # noqa: ANN001
+        delta = SimpleNamespace(content=texto)
+        return SimpleNamespace(choices=[SimpleNamespace(delta=delta)])
+
+    class _FakeCompletions:
+        def create(self, **kwargs):  # noqa: ANN001
+            capturado.update(kwargs)
+            return iter([_chunk("Resposta "), _chunk("OpenAI"), _chunk(None)])
+
+    class _FakeOpenAI:
+        def __init__(self) -> None:
+            self.chat = SimpleNamespace(completions=_FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=_FakeOpenAI))
+    servico = _service(
+        monkeypatch,
+        {"provedor_resposta_ia": "openai", "modelo_openai_texto": "gpt-teste"},
+    )
+
+    pedacos = list(servico.gerar_stream("Pergunta", "Contexto"))
+
+    assert "".join(pedacos) == "Resposta OpenAI"
+    assert capturado["stream"] is True
+    assert capturado["model"] == "gpt-teste"
+
+
+def test_resposta_stream_claude_usa_text_stream(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+
+    class _FakeStream:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            capturado.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        @property
+        def text_stream(self):
+            return iter(["Resposta ", "Claude"])
+
+    class _FakeMessages:
+        def stream(self, **kwargs):  # noqa: ANN003
+            return _FakeStream(**kwargs)
+
+    class _FakeAnthropic:
+        def __init__(self) -> None:
+            self.messages = _FakeMessages()
+
+    monkeypatch.setitem(
+        sys.modules, "anthropic", SimpleNamespace(Anthropic=_FakeAnthropic)
+    )
+    servico = _service(
+        monkeypatch,
+        {"provedor_resposta_ia": "claude", "modelo_claude_ia": "claude-teste"},
+    )
+
+    pedacos = list(servico.gerar_stream("Pergunta", "Contexto"))
+
+    assert "".join(pedacos) == "Resposta Claude"
+    assert capturado["model"] == "claude-teste"
+    assert capturado["system"] == service_module.SYSTEM
