@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -51,6 +50,7 @@ from app.ui.dialogs.editar_modulo_dialog import (
 )
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -90,9 +90,10 @@ class BibliotecaModulosPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("bibliotecaModulosStatus")
 
-        self.pesquisa_input = QLineEdit()
-        self.pesquisa_input.setPlaceholderText("Pesquisar (use % para separar palavras)")
-        self.pesquisa_input.textChanged.connect(self._refill)
+        self.pesquisa_input = CampoPesquisa(
+            placeholder="Pesquisar (use % para separar palavras)"
+        )
+        self.pesquisa_input.pesquisa_mudou.connect(self._refill)
 
         self.categoria_filtro = QComboBox()
         self.categoria_filtro.addItem("Todas", None)
@@ -194,7 +195,7 @@ class BibliotecaModulosPage(QWidget):
 
     def _filtrar(self, itens: Sequence) -> list:
         categoria = self.categoria_filtro.currentData()
-        tokens = termo_tokens(self.pesquisa_input.text())
+        tokens = termo_tokens(self.pesquisa_input.texto())
         resultado = []
         for item in itens:
             modulo = item.modulo

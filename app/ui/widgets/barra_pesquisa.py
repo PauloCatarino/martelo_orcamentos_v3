@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QToolButton, QWidget
 
-from app.ui.icones import icone
+from app.ui.icones import icone_ficheiro
 
 
 class CampoPesquisa(QWidget):
@@ -18,7 +18,7 @@ class CampoPesquisa(QWidget):
         self,
         parent=None,
         *,
-        label: str = "",
+        label: str = "Pesquisar:",
         placeholder: str = "Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026",
         largura_max: int = 360,
     ) -> None:
@@ -31,17 +31,19 @@ class CampoPesquisa(QWidget):
         self._input.textChanged.connect(self.pesquisa_mudou.emit)
 
         self._botao = QToolButton()
-        self._botao.setIcon(icone("pincel"))
+        self._botao.setIcon(icone_ficheiro("icon_cleaner.ico"))
         self._botao.setToolTip("Limpar pesquisa e filtros")
         self._botao.setAutoRaise(True)
         self._botao.clicked.connect(self._on_limpar)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
         if label:
             layout.addWidget(QLabel(label))
         layout.addWidget(self._input)
         layout.addWidget(self._botao)
+        layout.addStretch()
 
     def texto(self) -> str:
         """Return the current search text."""

@@ -103,6 +103,7 @@ from app.ui.tema import (
 )
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -1012,9 +1013,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self.library_title = QLabel("Biblioteca de peças")
         self.library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
 
-        self.library_search = QLineEdit()
-        self.library_search.setPlaceholderText("Pesquisar peça...")
-        self.library_search.textChanged.connect(self._aplicar_filtro_biblioteca)
+        self.library_search = CampoPesquisa(placeholder="Pesquisar peça…")
+        self.library_search.pesquisa_mudou.connect(self._aplicar_filtro_biblioteca)
 
         self.tree_biblioteca_pecas = QTreeWidget()
         self.tree_biblioteca_pecas.setHeaderLabel("Peças")
@@ -1079,7 +1079,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _preencher_biblioteca(self) -> None:
         """Fill the library tree, grouped by piece group and filtered."""
-        termo = self.library_search.text().strip().lower()
+        termo = self.library_search.texto().strip().lower()
         so_selecionados = self.so_selecionados_check.isChecked()
 
         self.tree_biblioteca_pecas.blockSignals(True)
