@@ -14,9 +14,10 @@ def query_phc_materiais(session: Session) -> list[dict]:
     familias = ", ".join(f"'{familia}'" for familia in FAMILIAS_MATERIAIS)
     query = (
         "SELECT ref AS Ref, design AS Descricao, familia AS Familia, "
-        "faminome AS Familia_Nome, epv1 AS Preco_Venda, epcusto AS Preco_Custo, "
+        "faminome AS Familia_Nome, epcusto AS Preco_Custo, "
+        "epvultimo AS Preco_Ultimo, "
         "forref AS Ref_Fornecedor, "
-        "CONVERT(VARCHAR(10), datanovpv, 104) AS Data_Preco, "
+        "CONVERT(VARCHAR(10), udata, 104) AS Data_Preco, "
         "fornecedor AS Fornecedor, unidade AS Unidade, "
         "stock AS Stock, u_altura AS Altura, u_largura AS Largura, "
         "u_espess AS Espessura, obs AS Observacoes "

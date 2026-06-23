@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from decimal import Decimal
+from datetime import datetime
 from types import SimpleNamespace
 
 
@@ -13,116 +13,123 @@ def test_pesquisa_ia_page_imports() -> None:
     assert PesquisaIAPage is not None
 
 
-def test_pesquisa_ia_page_table_headers() -> None:
+def test_pesquisa_ia_page_headers_por_fonte() -> None:
     from app.ui.pages.pesquisa_ia_page import PesquisaIAPage
 
-    assert PesquisaIAPage.TABLE_HEADERS == [
-        "Fonte",
+    assert PesquisaIAPage.V3_HEADERS == [
+        "Ref LE",
+        "Ref Forn",
+        "Descri\u00e7\u00e3o",
+        "Pre\u00e7o tab",
+        "Mrg (+)",
+        "Desc (-)",
+        "P. L\u00edq",
+        "Und",
+        "Orla 0.4",
+        "Orla 1.0",
+        "Comp",
+        "Larg",
+        "Esp",
+        "Fabricante",
+        "Atualizado",
+    ]
+    assert PesquisaIAPage.PHC_HEADERS == [
         "Ref",
+        "Ref Forn",
         "Descri\u00e7\u00e3o",
         "Fam\u00edlia",
         "Fornecedor",
-        "Pre\u00e7o Venda",
         "Pre\u00e7o Custo",
-        "Unidade",
+        "\u00dalt. Venda",
+        "Und",
         "Stock",
         "Comp",
         "Larg",
         "Esp",
-        "Ref Fornec",
         "Data pre\u00e7o",
+        "Obs",
     ]
 
 
-def test_pesquisa_ia_page_usa_padroes_visuais_e_phc() -> None:
-    from app.ui.pages.pesquisa_ia_page import PesquisaIAPage
+def test_pesquisa_ia_page_usa_tabelas_separadas_e_padroes_visuais() -> None:
+    from app.ui.pages.pesquisa_ia_page import PesquisaIAPage, _nova_tabela
 
     init_source = inspect.getsource(PesquisaIAPage.__init__)
     carregar_v3_source = inspect.getsource(PesquisaIAPage.carregar_v3)
-    carregar_source = inspect.getsource(PesquisaIAPage.carregar_phc)
-    recombinar_source = inspect.getsource(PesquisaIAPage._recombinar)
-    table_source = inspect.getsource(PesquisaIAPage._preencher_tabela)
-    catalogos_source = inspect.getsource(PesquisaIAPage.pesquisar_catalogos)
-    resposta_source = inspect.getsource(PesquisaIAPage.gerar_resposta)
-    carregar_refs_source = inspect.getsource(PesquisaIAPage.carregar_referencias)
+    carregar_phc_source = inspect.getsource(PesquisaIAPage.carregar_phc)
+    pesquisa_source = inspect.getsource(PesquisaIAPage.aplicar_pesquisa)
+    preencher_v3_source = inspect.getsource(PesquisaIAPage._preencher_v3)
+    preencher_phc_source = inspect.getsource(PesquisaIAPage._preencher_phc)
     preencher_refs_source = inspect.getsource(PesquisaIAPage._preencher_referencias)
-    preencher_catalogos_source = inspect.getsource(PesquisaIAPage._preencher_catalogos)
-    abrir_catalogo_source = inspect.getsource(PesquisaIAPage._abrir_catalogo)
+    resposta_source = inspect.getsource(PesquisaIAPage.gerar_resposta)
+    nova_tabela_source = inspect.getsource(_nova_tabela)
 
     assert "BarraCabecalho" in init_source
     assert "CampoPesquisa" in init_source
-    assert "Pesquisar cat\\u00e1logos (IA)" in init_source
-    assert "Carregar refer\\u00eancias (placas)" in init_source
-    assert "Gerar resposta IA" in init_source
+    assert "self.v3_table" in init_source
+    assert "self.phc_table" in init_source
     assert "self.referencias_table" in init_source
-    assert "ESPESSURAS" in init_source
+    assert "pesquisa_ia_v3" in init_source
+    assert "pesquisa_ia_phc" in init_source
     assert "pesquisa_ia_referencias" in init_source
-    assert "self.catalogo_table" in init_source
-    assert "pesquisa_ia_catalogos" in init_source
-    assert "self.resposta_text = QTextEdit()" in init_source
-    assert "self._ultimos_catalogos" in init_source
-    assert "self._filtrados_estrutural" in init_source
-    assert "self._referencias_todas" in init_source
-    assert "self._referencias_filtradas" in init_source
-    assert "QHeaderView.ResizeMode.Interactive" in init_source
-    assert "ligar_persistencia_larguras" in init_source
-    assert "self.carregar_v3()" in init_source
+    assert "Mat\\u00e9rias-primas V3" in init_source
+    assert "Artigos PHC" in init_source
+    assert "QHeaderView.ResizeMode.Interactive" in nova_tabela_source
+    assert "ligar_persistencia_larguras" in nova_tabela_source
     assert "DefMateriaPrimaService" in carregar_v3_source
-    assert "query_phc_materiais" in carregar_source
-    assert "listar_referencias(session)" in carregar_refs_source
-    assert "self.referencias_button.setEnabled(False)" in carregar_refs_source
-    assert "except Exception" in carregar_source
-    assert "self._v3 + self._phc" in recombinar_source
-    assert "tema.cor_zebra(row_index)" in table_source
-    assert "self._filtrados_estrutural = filtrados" in inspect.getsource(
-        PesquisaIAPage.aplicar_pesquisa
+    assert "query_phc_materiais" in carregar_phc_source
+    assert "_v3_corresponde" in pesquisa_source
+    assert "_phc_corresponde" in pesquisa_source
+    assert "_ref_corresponde" in pesquisa_source
+    assert "self._preencher_v3" in pesquisa_source
+    assert "self._preencher_phc" in pesquisa_source
+    assert "tema.cor_zebra(row_index)" in inspect.getsource(
+        PesquisaIAPage._escrever_linha
     )
-    assert "self._referencias_filtradas = referencias" in inspect.getsource(
-        PesquisaIAPage.aplicar_pesquisa
-    )
-    assert "_ref_corresponde" in inspect.getsource(PesquisaIAPage.aplicar_pesquisa)
-    assert "resizeColumnsToContents" in table_source
-    assert "tema.cor_zebra(row_index)" in preencher_refs_source
+    assert "format_currency(materia.preco_tabela)" in preencher_v3_source
+    assert "materia.coresp_orla_0_4" in preencher_v3_source
+    assert "format_currency(linha.get(\"Preco_Ultimo\"))" in preencher_phc_source
+    assert "linha.get(\"Data_Preco\")" in preencher_phc_source
     assert "referencia.precos.get" in preencher_refs_source
-    assert "str(resultado.get(\"Ref_Fornecedor\") or \"\")" in table_source
-    assert "str(resultado.get(\"Data_Preco\") or \"\")" in table_source
-    assert "PesquisaCatalogosService" in inspect.getsource(
-        PesquisaIAPage._servico_catalogos
-    )
-    assert "servico.pesquisar(texto, top_n=30)" in catalogos_source
-    assert "self._ultimos_catalogos = resultados" in catalogos_source
-    assert "python -m scripts.indexar_pesquisa_ia" in catalogos_source
-    assert "RespostaIAService(session).gerar(pergunta, contexto)" in resposta_source
-    assert "self.resposta_text.setPlainText" in resposta_source
-    assert "ARTIGOS (mat\\u00e9rias-primas PHC/V3)" in resposta_source
+    assert "ARTIGOS (mat\\u00e9rias-primas V3/PHC)" in resposta_source
+    assert "self._v3_filtrados[:8]" in resposta_source
+    assert "self._phc_filtrados[:8]" in resposta_source
+    assert "Preco_Ultimo" in resposta_source
     assert "REFER\\u00caNCIAS DE PLACAS" in resposta_source
-    assert "Pre\\u00e7os por espessura" in resposta_source
     assert "TRECHOS DE CAT\\u00c1LOGOS" in resposta_source
-    assert "format_currency" in resposta_source
-    assert "format_quantity" in resposta_source
-    assert "self._filtrados_estrutural[:15]" in resposta_source
-    assert "self._referencias_filtradas[:10]" in resposta_source
-    assert "self._ultimos_catalogos[:8]" in resposta_source
-    assert "tema.cor_zebra(row_index)" in preencher_catalogos_source
-    assert "Qt.ItemDataRole.UserRole" in preencher_catalogos_source
-    assert "QDesktopServices.openUrl" in abrir_catalogo_source
-    assert "QUrl.fromLocalFile" in abrir_catalogo_source
 
 
-def test_pesquisa_ia_corresponde_normaliza_e_procura_varios_campos() -> None:
-    from app.ui.pages.pesquisa_ia_page import _corresponde
+def test_pesquisa_ia_v3_corresponde_normaliza_e_procura_campos_proprios() -> None:
+    from app.ui.pages.pesquisa_ia_page import _v3_corresponde
+
+    materia = SimpleNamespace(
+        ref_le="V3-001",
+        referencia_fornecedor="FORN-55",
+        descricao="Aglomerado carvalho",
+        fornecedor="Armaz\u00e9ns Reis",
+        coresp_orla_0_4="ORLA-04",
+        coresp_orla_1_0="ORLA-10",
+    )
+
+    assert _v3_corresponde(materia, "aglomerado reis") is True
+    assert _v3_corresponde(materia, "forn 55 orla") is True
+    assert _v3_corresponde(materia, "dobradica") is False
+
+
+def test_pesquisa_ia_phc_corresponde_normaliza_e_procura_campos_proprios() -> None:
+    from app.ui.pages.pesquisa_ia_page import _phc_corresponde
 
     linha = {
-        "Ref": "MAD001",
-        "Descricao": "Aglomerado carvalho",
-        "Familia": "MADEIRAS",
-        "Fornecedor": "Armaz\u00e9ns Reis",
-        "Ref_Fornecedor": "AR-55",
+        "Ref": "PHC-001",
+        "Descricao": "Dobradi\u00e7a reta",
+        "Familia_Nome": "Ferragens",
+        "Fornecedor": "Blum",
+        "Ref_Fornecedor": "BL-71",
     }
 
-    assert _corresponde(linha, "aglomerado reis") is True
-    assert _corresponde(linha, "madeiras ar 55") is True
-    assert _corresponde(linha, "ferragem") is False
+    assert _phc_corresponde(linha, "dobradica blum") is True
+    assert _phc_corresponde(linha, "ferragens bl 71") is True
+    assert _phc_corresponde(linha, "aglomerado") is False
 
 
 def test_pesquisa_ia_ref_corresponde_normaliza_e_procura_varios_campos() -> None:
@@ -145,63 +152,9 @@ def test_pesquisa_ia_ref_corresponde_normaliza_e_procura_varios_campos() -> None
     assert _ref_corresponde(linha, "dobradica") is False
 
 
-def test_pesquisa_ia_do_v3_mapeia_materia_local() -> None:
-    from app.ui.pages.pesquisa_ia_page import _do_v3
+def test_pesquisa_ia_data_curta_formata_datetime() -> None:
+    from app.ui.pages.pesquisa_ia_page import _data_curta
 
-    materia = SimpleNamespace(
-        ref_le=" V3-001 ",
-        descricao=" Aglomerado ",
-        familia_original_excel=" Madeiras ",
-        fornecedor=" Fornecedor V3 ",
-        referencia_fornecedor=" REF-F-V3 ",
-        preco_liquido=Decimal("12.34"),
-        unidade=" m2 ",
-        comprimento=Decimal("2440"),
-        largura=Decimal("1220"),
-        espessura=Decimal("19"),
-    )
-
-    linha = _do_v3(materia)
-
-    assert linha["Fonte"] == "V3"
-    assert linha["Ref"] == "V3-001"
-    assert linha["Descricao"] == "Aglomerado"
-    assert linha["Familia"] == "Madeiras"
-    assert linha["Fornecedor"] == "Fornecedor V3"
-    assert linha["Preco_Venda"] is None
-    assert linha["Preco_Custo"] == Decimal("12.34")
-    assert linha["Ref_Fornecedor"] == "REF-F-V3"
-    assert linha["Data_Preco"] == ""
-    assert linha["Comp"] == Decimal("2440")
-
-
-def test_pesquisa_ia_do_phc_mapeia_artigo_st() -> None:
-    from app.ui.pages.pesquisa_ia_page import _do_phc
-
-    linha = _do_phc(
-        {
-            "Ref": " PHC-001 ",
-            "Descricao": " Dobradi\u00e7a ",
-            "Familia": "FF00000",
-            "Familia_Nome": "Ferragens",
-            "Fornecedor": "Fornecedor PHC",
-            "Ref_Fornecedor": "FP-9",
-            "Data_Preco": "22.06.2026",
-            "Preco_Venda": Decimal("5.50"),
-            "Preco_Custo": Decimal("3.25"),
-            "Unidade": "UN",
-            "Stock": Decimal("8"),
-            "Altura": Decimal("100"),
-            "Largura": Decimal("20"),
-            "Espessura": Decimal("3"),
-        }
-    )
-
-    assert linha["Fonte"] == "PHC"
-    assert linha["Ref"] == "PHC-001"
-    assert linha["Descricao"] == "Dobradi\u00e7a"
-    assert linha["Familia"] == "Ferragens"
-    assert linha["Ref_Fornecedor"] == "FP-9"
-    assert linha["Data_Preco"] == "22.06.2026"
-    assert linha["Preco_Custo"] == Decimal("3.25")
-    assert linha["Comp"] == Decimal("100")
+    assert _data_curta(datetime(2026, 3, 26, 12, 30)) == "26-03-2026"
+    assert _data_curta(None) == ""
+    assert _data_curta("26.03.2026") == "26.03.2026"
