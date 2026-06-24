@@ -79,7 +79,6 @@ class ProducaoPage(QWidget):
     CENTERED_HEADERS = {
         "Criada em",
         "Ano",
-        "Processo",
         "Estado",
         "Nº Enc PHC",
         "V. Obra",
@@ -664,9 +663,15 @@ class ProducaoPage(QWidget):
             values = [coluna.valor(processo) for coluna in COLUNAS_PRODUCAO]
 
             for column_index, value in enumerate(values):
-                header = COLUNAS_PRODUCAO[column_index].titulo
+                coluna = COLUNAS_PRODUCAO[column_index]
+                header = coluna.titulo
                 item = self._criar_item_tabela(self._format_value(value), header)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
+                if coluna.key == "estado":
+                    fundo, texto = tema.cor_estado_producao(value)
+                    if fundo and texto:
+                        item.setBackground(QColor(fundo))
+                        item.setForeground(QColor(texto))
                 if column_index == 0:
                     item.setData(Qt.ItemDataRole.UserRole, {"producao_id": processo.id})
                 self.table.setItem(row_index, column_index, item)

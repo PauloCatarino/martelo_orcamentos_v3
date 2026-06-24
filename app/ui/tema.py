@@ -94,6 +94,20 @@ def cor_estado(estado: str | None) -> tuple[str, str]:
     return ZEBRA_ALT, TEXTO_NORMAL
 
 
+def cor_estado_producao(estado: str | None) -> tuple[str, str]:
+    """Return (background, text) colours for a production status badge."""
+    estado_norm = _normalizar_estado(estado)
+    if estado_norm == "desenho":
+        return "#E6F1FB", "#0C447C"
+    if estado_norm == "producao":
+        return "#FAEEDA", "#854F0B"
+    if estado_norm == "finalizado":
+        return "#EAF3DE", "#173404"
+    if estado_norm == "arquivado":
+        return "#F1EFE8", "#2C2C2A"
+    return "", ""
+
+
 def _normalizar_estado(estado: str | None) -> str:
     sem_acentos = unicodedata.normalize("NFKD", (estado or "").strip())
     return "".join(
