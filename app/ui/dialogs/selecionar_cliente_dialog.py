@@ -25,12 +25,13 @@ class SelecionarClienteDialog(QDialog):
 
     TABLE_HEADERS = ["Tipo", "Nome", "Simplex", "Email", "Telefone", "Telem\u00f3vel"]
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, *, apenas_phc: bool = False) -> None:
         super().__init__(parent)
 
         self.selected_cliente: ClienteListaResumo | None = None
         self._todos: list[ClienteListaResumo] = []
         self._linhas: list[ClienteListaResumo] = []
+        self._apenas_phc = apenas_phc
 
         self.setWindowTitle("Selecionar Cliente")
         self.setModal(True)
@@ -80,7 +81,12 @@ class SelecionarClienteDialog(QDialog):
     def _carregar(self) -> None:
         try:
             with SessionLocal() as session:
-                clientes = ClienteRepository(session).list_todos()
+                repository = ClienteRepository(session)
+                clientes = (
+                    repository.list_phc()
+                    if self._apenas_phc
+                    else repository.list_todos()
+                )
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os clientes.")
             return

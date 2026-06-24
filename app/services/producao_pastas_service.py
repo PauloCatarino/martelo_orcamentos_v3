@@ -614,6 +614,32 @@ def eliminar_pasta_versao(
     except OSError as exc:
         raise OSError(f"Falha ao apagar a pasta de versao: {resolved_path} ({exc})") from exc
 
+    _remover_pais_vazios(resolved_path, resolved_base)
+
+
+def _remover_pais_vazios(caminho_removido: Path, base_dir: Path) -> None:
+    """Remove seg2 and seg1 only if they became empty and stay inside base."""
+    for parent in (caminho_removido.parent, caminho_removido.parent.parent):
+        try:
+            if not parent.exists():
+                continue
+            resolved_parent = parent.resolve(strict=True)
+        except OSError:
+            continue
+
+        if resolved_parent == base_dir or not resolved_parent.is_relative_to(base_dir):
+            continue
+
+        try:
+            next(resolved_parent.iterdir())
+        except StopIteration:
+            try:
+                resolved_parent.rmdir()
+            except OSError:
+                pass
+        except OSError:
+            pass
+
 
 def resolver_base_dir(session: Session) -> str:
     """Return the configured production base directory, normalized."""

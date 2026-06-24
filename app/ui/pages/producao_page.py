@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize, QTimer, QUrl
+from PySide6.QtCore import QDate, Qt, QSize, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
+    QCalendarWidget,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -35,6 +39,7 @@ from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.producao_service import (
     ProducaoService,
+    codigo_processo_com_cliente,
     converter_orcamento,
     criar_nova_versao,
     eliminar_processo_completo,
@@ -85,6 +90,18 @@ class _ImagemPreviewLabel(QLabel):
         super().mouseDoubleClickEvent(event)
 
 
+class _DoubleClickLineEdit(QLineEdit):
+    """Line edit that delegates double-clicks to the page."""
+
+    def __init__(self, on_double_click, parent=None) -> None:
+        super().__init__(parent)
+        self._on_double_click = on_double_click
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._on_double_click(self)
+        super().mouseDoubleClickEvent(event)
+
+
 class ProducaoPage(QWidget):
     """Production process page with an editable V3 detail form."""
 
@@ -110,6 +127,7 @@ class ProducaoPage(QWidget):
         self._selected_processo_id: int | None = None
         self._dirty = False
         self._a_preencher_form = False
+        self._cliente_id: int | None = None
         self._imagem_path: str | None = None
         self._imagem_preview_pixmap_original: QPixmap | None = None
         self._colunas_visiveis = [
@@ -136,6 +154,10 @@ class ProducaoPage(QWidget):
         self.pastas_button.setToolTip("Ver as pastas do processo selecionado no servidor")
         self.pastas_button.clicked.connect(self._abrir_pastas_processo_selecionado)
 
+        self.open_folder_button = QPushButton("Abrir pasta")
+        self.open_folder_button.setToolTip("Abrir a pasta desta obra no explorador")
+        self.open_folder_button.clicked.connect(self._abrir_pasta_versao_selecionada)
+
         self.nova_versao_button = QPushButton("Nova Versão")
         self.nova_versao_button.setToolTip(
             "Criar nova versão de obra/CUT-RITE do processo selecionado"
@@ -159,6 +181,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.pastas_button)
+        actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
@@ -262,17 +285,19 @@ class ProducaoPage(QWidget):
         self.nome_enc_imos_ix_input.setToolTip(
             "Nome da encomenda IMOS iX derivado do processo"
         )
-        self.ano_input = self._readonly_line()
-        self.num_enc_phc_input = self._readonly_line()
-        self.versao_obra_input = self._readonly_line()
-        self.versao_plano_input = self._readonly_line()
+        self.ano_input = QLineEdit()
+        self.num_enc_phc_input = QLineEdit()
+        self.versao_obra_input = QLineEdit()
+        self.versao_obra_input.setMaxLength(2)
+        self.versao_plano_input = QLineEdit()
+        self.versao_plano_input.setMaxLength(2)
         self.cliente_input = self._readonly_line()
         self.cliente_simplex_input = self._readonly_line()
         self.num_cliente_phc_input = self._readonly_line()
-        self.num_orcamento_input = self._readonly_line()
-        self.versao_orc_input = self._readonly_line()
-        self.preco_total_input = self._readonly_line()
-        self.qt_artigos_input = self._readonly_line()
+        self.num_orcamento_input = QLineEdit()
+        self.versao_orc_input = QLineEdit()
+        self.preco_total_input = QLineEdit()
+        self.qt_artigos_input = QLineEdit()
 
         self.estado_form_combo = QComboBox()
         self.estado_form_combo.addItems(ESTADOS_PRODUCAO)
@@ -283,9 +308,9 @@ class ProducaoPage(QWidget):
         self.ref_cliente_input = QLineEdit()
         self.obra_input = QLineEdit()
         self.localizacao_input = QLineEdit()
-        self.data_inicio_input = QLineEdit()
+        self.data_inicio_input = _DoubleClickLineEdit(self._abrir_calendario_data)
         self.data_inicio_input.setPlaceholderText("dd-mm-aaaa")
-        self.data_entrega_input = QLineEdit()
+        self.data_entrega_input = _DoubleClickLineEdit(self._abrir_calendario_data)
         self.data_entrega_input.setPlaceholderText("dd-mm-aaaa")
 
         self.tipo_pasta_combo = QComboBox()
@@ -383,19 +408,19 @@ class ProducaoPage(QWidget):
             self.processo_input,
             self.nome_plano_corte_input,
             self.nome_enc_imos_ix_input,
+            self.cliente_input,
+            self.cliente_simplex_input,
+            self.num_cliente_phc_input,
+        ]
+        self._editable_widgets = [
             self.ano_input,
             self.num_enc_phc_input,
             self.versao_obra_input,
             self.versao_plano_input,
-            self.cliente_input,
-            self.cliente_simplex_input,
-            self.num_cliente_phc_input,
             self.num_orcamento_input,
             self.versao_orc_input,
             self.preco_total_input,
             self.qt_artigos_input,
-        ]
-        self._editable_widgets = [
             self.estado_form_combo,
             self.responsavel_form_combo,
             self.ref_cliente_input,
@@ -497,12 +522,27 @@ class ProducaoPage(QWidget):
 
     def _ligar_sinais_edicao(self) -> None:
         for line_edit in (
+            self.ano_input,
+            self.num_enc_phc_input,
+            self.versao_obra_input,
+            self.versao_plano_input,
+            self.ref_cliente_input,
+        ):
+            line_edit.textChanged.connect(self._on_campo_derivado_editado)
+        for line_edit in (
+            self.num_cliente_phc_input,
+            self.num_orcamento_input,
+            self.versao_orc_input,
+            self.preco_total_input,
+            self.qt_artigos_input,
             self.ref_cliente_input,
             self.obra_input,
             self.localizacao_input,
             self.data_inicio_input,
             self.data_entrega_input,
         ):
+            if line_edit is self.ref_cliente_input:
+                continue
             line_edit.textChanged.connect(self._on_user_edit)
         for combo in (
             self.estado_form_combo,
@@ -521,13 +561,30 @@ class ProducaoPage(QWidget):
             text_edit.textChanged.connect(self._on_user_edit)
 
     def _aplicar_tooltips_editaveis(self) -> None:
+        self.ano_input.setToolTip("Ano do processo")
+        self.num_enc_phc_input.setToolTip("Número da encomenda PHC")
+        self.versao_obra_input.setToolTip("Versão da obra")
+        self.versao_plano_input.setToolTip("Versão CUT-RITE")
+        self.cliente_input.setToolTip("Cliente original do processo (fixo)")
+        self.cliente_simplex_input.setToolTip(
+            "Nome simplex original usado nos nomes derivados (fixo)"
+        )
+        self.num_cliente_phc_input.setToolTip("Número do cliente original no PHC")
+        self.num_orcamento_input.setToolTip("Número do orçamento de origem")
+        self.versao_orc_input.setToolTip("Versão do orçamento de origem")
+        self.preco_total_input.setToolTip("Preço total da obra")
+        self.qt_artigos_input.setToolTip("Quantidade de artigos")
         self.estado_form_combo.setToolTip("Estado da obra em produção")
         self.responsavel_form_combo.setToolTip("Responsável pela obra")
         self.ref_cliente_input.setToolTip("Referência do cliente")
         self.obra_input.setToolTip("Nome ou descrição curta da obra")
         self.localizacao_input.setToolTip("Localização da obra")
-        self.data_inicio_input.setToolTip("Data no formato dd-mm-aaaa")
-        self.data_entrega_input.setToolTip("Data no formato dd-mm-aaaa")
+        self.data_inicio_input.setToolTip(
+            "Data no formato dd-mm-aaaa; duplo-clique para escolher no calendário"
+        )
+        self.data_entrega_input.setToolTip(
+            "Data no formato dd-mm-aaaa; duplo-clique para escolher no calendário"
+        )
         self.tipo_pasta_combo.setToolTip("Pasta de destino no servidor")
         self.descricao_artigos_text.setToolTip("Descrição dos artigos da obra")
         self.materias_usados_text.setToolTip("Matérias usadas na obra")
@@ -864,6 +921,33 @@ class ProducaoPage(QWidget):
         )
         dialog.exec()
 
+    def _abrir_pasta_versao_selecionada(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para abrir a pasta.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    raise ValueError("Processo de producao nao encontrado.")
+                caminho = caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Abrir pasta", str(error))
+            return
+
+        try:
+            pasta_existe = caminho.is_dir()
+        except OSError:
+            pasta_existe = False
+        if not pasta_existe:
+            self.status_label.setText("Pasta ainda não criada.")
+            QMessageBox.warning(self, "Abrir pasta", "Pasta ainda não criada.")
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+
     def _eliminar_processo(self) -> None:
         processo = self._processo_selecionado()
         if processo is None:
@@ -1049,6 +1133,34 @@ class ProducaoPage(QWidget):
             return "Pasta eliminada. O registo foi mantido."
         return "Registo eliminado. A pasta foi mantida."
 
+    def _abrir_calendario_data(self, line_edit: QLineEdit) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Escolher data")
+
+        calendar = QCalendarWidget(dialog)
+        normalizada = normalizar_data(line_edit.text())
+        if normalizada:
+            qdate = QDate.fromString(normalizada, "dd-MM-yyyy")
+            if qdate.isValid():
+                calendar.setSelectedDate(qdate)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        calendar.activated.connect(lambda _date: dialog.accept())
+
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(calendar)
+        layout.addWidget(button_box)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        line_edit.setText(calendar.selectedDate().toString("dd-MM-yyyy"))
+
     def _nova_versao(self) -> None:
         processo = self._processo_selecionado()
         if processo is None:
@@ -1141,28 +1253,7 @@ class ProducaoPage(QWidget):
         self._a_preencher_form = True
         estados = self._bloquear_sinais_form()
         try:
-            self.processo_input.setText(self._format_value(proc.codigo_processo))
-            self.nome_plano_corte_input.setText(
-                gerar_nome_plano_cut_rite(
-                    proc.ano,
-                    proc.num_enc_phc,
-                    proc.versao_obra,
-                    proc.versao_plano,
-                    nome_cliente_simplex=proc.nome_cliente_simplex,
-                    nome_cliente=proc.nome_cliente,
-                    ref_cliente=proc.ref_cliente,
-                )
-            )
-            self.nome_enc_imos_ix_input.setText(
-                gerar_nome_enc_imos_ix(
-                    proc.ano,
-                    proc.num_enc_phc,
-                    proc.versao_obra,
-                    nome_cliente_simplex=proc.nome_cliente_simplex,
-                    nome_cliente=proc.nome_cliente,
-                    ref_cliente=proc.ref_cliente,
-                )
-            )
+            self._cliente_id = proc.cliente_id
             self.ano_input.setText(self._format_value(proc.ano))
             self.num_enc_phc_input.setText(self._format_value(proc.num_enc_phc))
             self.versao_obra_input.setText(self._format_value(proc.versao_obra))
@@ -1200,6 +1291,7 @@ class ProducaoPage(QWidget):
             self._imagem_path = proc.imagem_path
             self._atualizar_preview_imagem()
             self._selected_processo_id = proc.id
+            self._atualizar_campos_derivados()
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -1217,6 +1309,7 @@ class ProducaoPage(QWidget):
                     widget.clear()
                 elif isinstance(widget, QComboBox):
                     widget.setCurrentIndex(-1)
+            self._cliente_id = None
             self._imagem_path = None
             self._atualizar_preview_imagem()
             self._selected_processo_id = None
@@ -1227,6 +1320,21 @@ class ProducaoPage(QWidget):
     def _collect_form(self) -> dict:
         """Collect editable fields from the detail form."""
         return {
+            "codigo_processo": self.processo_input.text().strip(),
+            "ano": self.ano_input.text().strip(),
+            "num_enc_phc": self.num_enc_phc_input.text().strip(),
+            "versao_obra": self.versao_obra_input.text().strip(),
+            "versao_plano": self.versao_plano_input.text().strip(),
+            "cliente_id": self._cliente_id,
+            "nome_cliente": self._none_if_empty(self.cliente_input.text()),
+            "nome_cliente_simplex": self._none_if_empty(
+                self.cliente_simplex_input.text()
+            ),
+            "num_cliente_phc": self._none_if_empty(self.num_cliente_phc_input.text()),
+            "num_orcamento": self._none_if_empty(self.num_orcamento_input.text()),
+            "versao_orc": self._none_if_empty(self.versao_orc_input.text()),
+            "preco_total": self._decimal_or_none(self.preco_total_input.text()),
+            "qt_artigos": self._int_or_none(self.qt_artigos_input.text()),
             "estado": self.estado_form_combo.currentText().strip(),
             "responsavel": self._none_if_empty(
                 self.responsavel_form_combo.currentText()
@@ -1252,13 +1360,47 @@ class ProducaoPage(QWidget):
             "imagem_path": self._imagem_path,
         }
 
+    def _validar_obrigatorios_para_gravar(self, data: dict) -> bool:
+        obrigatorios = (
+            ("ano", "Ano"),
+            ("num_enc_phc", "Nº Enc PHC"),
+            ("versao_obra", "V. Obra"),
+            ("versao_plano", "V. CutRite"),
+        )
+        for campo, label in obrigatorios:
+            if not str(data.get(campo) or "").strip():
+                QMessageBox.warning(self, "Guardar produção", f"Preencha {label}.")
+                return False
+
+        if not data.get("data_inicio"):
+            QMessageBox.warning(
+                self,
+                "Guardar produção",
+                "Preencha a Data Início no formato dd-mm-aaaa.",
+            )
+            return False
+        if not data.get("data_entrega"):
+            QMessageBox.warning(
+                self,
+                "Guardar produção",
+                "Preencha a Data Entrega no formato dd-mm-aaaa.",
+            )
+            return False
+        return True
+
     def _save(self) -> None:
         """Persist the selected production process edits."""
         if self._selected_processo_id is None:
             self.status_label.setText("Selecione uma obra de produção.")
             return
 
-        data = self._collect_form()
+        try:
+            data = self._collect_form()
+        except ValueError as error:
+            QMessageBox.warning(self, "Guardar produção", str(error))
+            return
+        if not self._validar_obrigatorios_para_gravar(data):
+            return
         if data["estado"] not in ESTADOS_PRODUCAO:
             self.status_label.setText("Estado de produção inválido.")
             return
@@ -1280,7 +1422,10 @@ class ProducaoPage(QWidget):
                     data,
                     updated_by_id=updated_by_id,
                 )
-        except (SQLAlchemyError, ValueError):
+        except ValueError as error:
+            QMessageBox.warning(self, "Guardar produção", str(error))
+            return
+        except SQLAlchemyError:
             self.status_label.setText("Não foi possível guardar a produção.")
             return
 
@@ -1338,6 +1483,52 @@ class ProducaoPage(QWidget):
         if self._a_preencher_form or self._selected_processo_id is None:
             return
         self._set_dirty(True)
+
+    def _on_campo_derivado_editado(self, *_args) -> None:
+        self._atualizar_campos_derivados()
+        self._on_user_edit()
+
+    def _atualizar_campos_derivados(self) -> None:
+        ano = self.ano_input.text()
+        num_enc_phc = self.num_enc_phc_input.text()
+        versao_obra = self.versao_obra_input.text()
+        versao_plano = self.versao_plano_input.text()
+        nome_cliente = self.cliente_input.text()
+        nome_simplex = self.cliente_simplex_input.text()
+        ref_cliente = self.ref_cliente_input.text()
+
+        self.processo_input.setText(
+            codigo_processo_com_cliente(
+                ano,
+                num_enc_phc,
+                versao_obra,
+                versao_plano,
+                nome_simplex=nome_simplex,
+                nome_cliente=nome_cliente,
+                ref_cliente=ref_cliente,
+            )
+        )
+        self.nome_plano_corte_input.setText(
+            gerar_nome_plano_cut_rite(
+                ano,
+                num_enc_phc,
+                versao_obra,
+                versao_plano,
+                nome_cliente_simplex=nome_simplex,
+                nome_cliente=nome_cliente,
+                ref_cliente=ref_cliente,
+            )
+        )
+        self.nome_enc_imos_ix_input.setText(
+            gerar_nome_enc_imos_ix(
+                ano,
+                num_enc_phc,
+                versao_obra,
+                nome_cliente_simplex=nome_simplex,
+                nome_cliente=nome_cliente,
+                ref_cliente=ref_cliente,
+            )
+        )
 
     def _escolher_imagem(self) -> None:
         caminho, _filtro = QFileDialog.getOpenFileName(
@@ -1485,6 +1676,27 @@ class ProducaoPage(QWidget):
     def _none_if_empty(value: object) -> str | None:
         text = "" if value is None else str(value).strip()
         return text or None
+
+    @staticmethod
+    def _decimal_or_none(value: object) -> Decimal | None:
+        text = "" if value is None else str(value).strip()
+        if not text:
+            return None
+        text = text.replace(" ", "").replace(",", ".")
+        try:
+            return Decimal(text)
+        except InvalidOperation as exc:
+            raise ValueError("Preço total inválido.") from exc
+
+    @staticmethod
+    def _int_or_none(value: object) -> int | None:
+        text = "" if value is None else str(value).strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError as exc:
+            raise ValueError("Qt artigos inválida.") from exc
 
     @staticmethod
     def _format_value(value: object) -> str:

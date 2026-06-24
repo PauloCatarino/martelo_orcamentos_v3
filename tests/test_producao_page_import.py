@@ -48,6 +48,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert '"Salvar"' in init_source
     assert '"Pastas"' in init_source
     assert "Ver as pastas do processo selecionado no servidor" in init_source
+    assert '"Abrir pasta"' in init_source
+    assert "Abrir a pasta desta obra no explorador" in init_source
     assert '"Nova Versão"' in init_source
     assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
     assert '"Eliminar"' in init_source
@@ -58,6 +60,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "Recarregar a lista de obras" in init_source
     assert "Converter Orçamento" in init_source
     assert "Converter um orçamento adjudicado numa obra de produção" in init_source
+    assert "SelecionarClienteDialog" not in inspect.getsource(ProducaoPage)
+    assert "QCalendarWidget" in inspect.getsource(ProducaoPage)
     assert "QSplitter" in init_source
     assert 'ligar_persistencia_splitter(self.splitter, "producao")' in init_source
     assert '"Novo"' not in init_source
@@ -89,10 +93,25 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "eliminar_processo_completo" in source
     assert "preview_conteudo_pasta" in source
     assert hasattr(ProducaoPage, "_eliminar_processo")
+    assert hasattr(ProducaoPage, "_abrir_pasta_versao_selecionada")
+    assert "QDesktopServices.openUrl" in source
+    assert "Pasta ainda não criada" in source
     assert "nome_plano_corte_input" in source
     assert "nome_enc_imos_ix_input" in source
     assert "gerar_nome_plano_cut_rite" in source
     assert "gerar_nome_enc_imos_ix" in source
+    assert "codigo_processo_com_cliente" in source
+    assert "_atualizar_campos_derivados" in source
+    assert "_selecionar_cliente" not in source
+    assert "apenas_phc=True" not in source
+    assert "cliente_picker" not in source
+    assert "self.cliente_input = self._readonly_line()" in source
+    assert "self.cliente_simplex_input = self._readonly_line()" in source
+    assert "self.num_cliente_phc_input = self._readonly_line()" in source
+    assert "Cliente original do processo (fixo)" in source
+    assert "_abrir_calendario_data" in source
+    assert "Data Início no formato dd-mm-aaaa" in source
+    assert "codigo_processo" in source
     assert "icone_ficheiro" in source
     assert '"icon_cut_rite.ico"' in source
     assert '"icon_imos_2025.ico"' in source

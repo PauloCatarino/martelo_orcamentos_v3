@@ -62,6 +62,7 @@ def test_producao_service_has_nova_versao_functions() -> None:
     assert hasattr(service_module, "preparar_nova_versao")
     assert hasattr(service_module, "criar_nova_versao")
     assert hasattr(service_module, "listar_versoes_processo")
+    assert hasattr(service_module, "codigo_processo_com_cliente")
     assert hasattr(service_module, "eliminar_processo")
     assert hasattr(service_module, "eliminar_processo_completo")
 
@@ -72,6 +73,59 @@ def test_gerar_codigo_processo_formata_chave() -> None:
     assert gerar_codigo_processo("2026", "475", "01", "01") == "26.0475_01_01"
     assert gerar_codigo_processo("2026", "_054", "1", "1") == "26.0054_01_01"
     assert gerar_codigo_processo("2026", "54", "001", "002") == "26.0054_01_02"
+
+
+def test_codigo_processo_com_cliente_inclui_cliente_simplex() -> None:
+    from app.services.producao_service import codigo_processo_com_cliente
+
+    assert (
+        codigo_processo_com_cliente(
+            "2026",
+            "1055",
+            "02",
+            "01",
+            nome_simplex="RIOCRIATIVO",
+        )
+        == "26.1055_02_01_RIOCRIATIVO"
+    )
+
+
+def test_derivados_reagem_a_numero_versao_e_cliente() -> None:
+    from app.services.producao_service import (
+        codigo_processo_com_cliente,
+        gerar_nome_enc_imos_ix,
+        gerar_nome_plano_cut_rite,
+    )
+
+    assert (
+        codigo_processo_com_cliente(
+            "2026",
+            "1055",
+            "03",
+            "02",
+            nome_simplex="NOVO_CLIENTE",
+        )
+        == "26.1055_03_02_NOVO_CLIENTE"
+    )
+    assert (
+        gerar_nome_plano_cut_rite(
+            "2026",
+            "1055",
+            "03",
+            "02",
+            nome_cliente_simplex="NOVO_CLIENTE",
+        )
+        == "1055_03_02_26_NOVO_CLIENTE"
+    )
+    assert (
+        gerar_nome_enc_imos_ix(
+            "2026",
+            "1055",
+            "03",
+            nome_cliente_simplex="NOVO_CLIENTE",
+        )
+        == "1055_03_26_NOVO_CLIENTE"
+    )
 
 
 def test_validar_conversao_regras_de_protecao() -> None:
@@ -138,6 +192,19 @@ def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
     from app.services.producao_service import campos_editaveis
 
     data = {
+        "codigo_processo": "26.1028_01_01_CLIENTE",
+        "ano": "2026",
+        "num_enc_phc": "1028",
+        "versao_obra": "01",
+        "versao_plano": "01",
+        "cliente_id": 1,
+        "nome_cliente": "Cliente",
+        "nome_cliente_simplex": "CLIENTE",
+        "num_cliente_phc": "C001",
+        "num_orcamento": "12",
+        "versao_orc": "02",
+        "preco_total": "123.45",
+        "qt_artigos": 4,
         "estado": "Produção",
         "responsavel": "ana",
         "ref_cliente": "REF-A",
@@ -153,16 +220,25 @@ def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
         "notas2": "N2",
         "notas3": "N3",
         "imagem_path": "C:/obra/imagem.png",
-        "codigo_processo": "26.1028_01_01",
-        "ano": "2026",
-        "num_enc_phc": "1028",
-        "cliente_id": 1,
         "orcamento_id": 2,
         "created_by_id": 3,
         "updated_by_id": 4,
     }
 
     assert campos_editaveis(data) == {
+        "codigo_processo": "26.1028_01_01_CLIENTE",
+        "ano": "2026",
+        "num_enc_phc": "1028",
+        "versao_obra": "01",
+        "versao_plano": "01",
+        "cliente_id": 1,
+        "nome_cliente": "Cliente",
+        "nome_cliente_simplex": "CLIENTE",
+        "num_cliente_phc": "C001",
+        "num_orcamento": "12",
+        "versao_orc": "02",
+        "preco_total": "123.45",
+        "qt_artigos": 4,
         "estado": "Produção",
         "responsavel": "ana",
         "ref_cliente": "REF-A",
@@ -179,6 +255,47 @@ def test_campos_editaveis_filtra_apenas_campos_do_formulario() -> None:
         "notas3": "N3",
         "imagem_path": "C:/obra/imagem.png",
     }
+
+
+def test_atualizar_processo_recusa_codigo_duplicado(session) -> None:
+    from app.services.producao_service import ProducaoService
+
+    existente = _processo_producao(
+        id=1,
+        num_enc_phc="1055",
+        versao_obra="02",
+        versao_plano="01",
+    )
+    existente.nome_cliente = "RIOCRIATIVO"
+    existente.nome_cliente_simplex = "RIOCRIATIVO"
+    existente.codigo_processo = "26.1055_02_01_RIOCRIATIVO"
+    alvo = _processo_producao(
+        id=2,
+        num_enc_phc="1056",
+        versao_obra="01",
+        versao_plano="01",
+    )
+    alvo.nome_cliente = "OUTRO"
+    alvo.nome_cliente_simplex = "OUTRO"
+    alvo.codigo_processo = "26.1056_01_01_OUTRO"
+    session.add_all([existente, alvo])
+    session.commit()
+
+    with pytest.raises(ValueError, match="codigo_processo"):
+        ProducaoService(session).atualizar_processo(
+            2,
+            {
+                "ano": "2026",
+                "num_enc_phc": "1055",
+                "versao_obra": "02",
+                "versao_plano": "01",
+                "nome_cliente": "RIOCRIATIVO",
+                "nome_cliente_simplex": "RIOCRIATIVO",
+                "data_inicio": "01-06-2026",
+                "data_entrega": "02-06-2026",
+            },
+            updated_by_id=None,
+        )
 
 
 def test_preparar_nova_versao_sugere_cutrite_e_obra(session, monkeypatch) -> None:

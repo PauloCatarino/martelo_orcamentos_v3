@@ -209,4 +209,32 @@ def test_eliminar_pasta_versao_apaga_apenas_seg3_dentro_da_base(
 
     assert not pasta.exists()
     assert parent.is_dir()
+    assert parent.parent.is_dir()
     assert outra_versao.is_dir()
+
+
+def test_eliminar_pasta_versao_remove_pais_vazios_dentro_da_base(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    base = tmp_path / "base"
+    seg1 = base / "2026" / "Encomenda de Cliente" / "1055_RIOCRIATIVO"
+    seg2 = seg1 / "1055_02_RIOCRIATIVO"
+    seg3 = seg2 / "1055_02_01_RIOCRIATIVO"
+    seg3.mkdir(parents=True)
+    (seg3 / "plano.cut").write_text("conteudo", encoding="utf-8")
+
+    monkeypatch.setattr(pastas_module, "resolver_base_dir", lambda _session: str(base))
+
+    pastas_module.eliminar_pasta_versao(
+        object(),
+        seg3,
+        nome_esperado=seg3.name,
+    )
+
+    assert not seg3.exists()
+    assert not seg2.exists()
+    assert not seg1.exists()
+    assert (base / "2026" / "Encomenda de Cliente").is_dir()

@@ -23,6 +23,19 @@ from app.services.producao_pastas_service import (
 )
 
 CAMPOS_EDITAVEIS_PRODUCAO = (
+    "codigo_processo",
+    "ano",
+    "num_enc_phc",
+    "versao_obra",
+    "versao_plano",
+    "cliente_id",
+    "nome_cliente",
+    "nome_cliente_simplex",
+    "num_cliente_phc",
+    "num_orcamento",
+    "versao_orc",
+    "preco_total",
+    "qt_artigos",
     "estado",
     "responsavel",
     "ref_cliente",
@@ -85,13 +98,61 @@ class ProducaoService:
         if processo is None:
             raise ValueError("Processo de producao nao encontrado.")
 
-        for campo, valor in campos_editaveis(data).items():
+        editaveis = campos_editaveis(data)
+        for campo in ("ano", "num_enc_phc", "versao_obra", "versao_plano"):
+            if campo in editaveis and editaveis[campo] is not None:
+                editaveis[campo] = str(editaveis[campo]).strip()
+        if "versao_obra" in editaveis:
+            editaveis["versao_obra"] = _two_digit(editaveis["versao_obra"])
+        if "versao_plano" in editaveis:
+            editaveis["versao_plano"] = _two_digit(editaveis["versao_plano"])
+
+        for campo, valor in editaveis.items():
             setattr(processo, campo, valor)
+        processo.codigo_processo = codigo_processo_com_cliente(
+            processo.ano,
+            processo.num_enc_phc,
+            processo.versao_obra,
+            processo.versao_plano,
+            nome_simplex=processo.nome_cliente_simplex,
+            nome_cliente=processo.nome_cliente,
+            ref_cliente=processo.ref_cliente,
+        )
         processo.updated_by_id = updated_by_id
 
+        self._validar_identidade_unica(processo)
         self.session.commit()
         self.session.refresh(processo)
         return processo
+
+    def _validar_identidade_unica(self, processo: Producao) -> None:
+        with self.session.no_autoflush:
+            duplicado_codigo = self.session.scalar(
+                select(Producao).where(
+                    Producao.id != processo.id,
+                    Producao.codigo_processo == processo.codigo_processo,
+                )
+            )
+            if duplicado_codigo is not None:
+                raise ValueError(
+                    f"Ja existe outro processo com este codigo_processo: "
+                    f"{processo.codigo_processo}."
+                )
+
+            duplicado_chave = self.session.scalar(
+                select(Producao).where(
+                    Producao.id != processo.id,
+                    Producao.ano == processo.ano,
+                    Producao.num_enc_phc == processo.num_enc_phc,
+                    Producao.versao_obra == processo.versao_obra,
+                    Producao.versao_plano == processo.versao_plano,
+                )
+            )
+            if duplicado_chave is not None:
+                raise ValueError(
+                    "Ja existe outro processo com a mesma chave "
+                    "(ano, encomenda, versao obra e versao CUT-RITE)."
+                )
 
 
 def gerar_codigo_processo(
@@ -107,6 +168,24 @@ def gerar_codigo_processo(
     vv = _format_digits(versao_obra, 2)
     pp = _format_digits(versao_plano, 2)
     return f"{aa}.{nnnn}_{vv}_{pp}"
+
+
+def codigo_processo_com_cliente(
+    ano,
+    num_enc_phc,
+    versao_obra,
+    versao_plano,
+    *,
+    nome_simplex,
+    nome_cliente=None,
+    ref_cliente=None,
+) -> str:
+    """Build the process code including the folder-safe customer suffix."""
+    codigo = gerar_codigo_processo(ano, num_enc_phc, versao_obra, versao_plano)
+    cliente = _sanitize_cliente_para_pasta(
+        nome_simplex or nome_cliente or ref_cliente or "cliente"
+    )
+    return f"{codigo}_{cliente}"
 
 
 def gerar_nome_plano_cut_rite(
@@ -245,11 +324,14 @@ def converter_orcamento(
 
     versao_obra = "01"
     versao_plano = "01"
-    codigo_processo = gerar_codigo_processo(
+    codigo_processo = codigo_processo_com_cliente(
         orcamento.ano,
         versao.enc_phc,
         versao_obra,
         versao_plano,
+        nome_simplex=cliente.nome_simplex,
+        nome_cliente=cliente.nome,
+        ref_cliente=orcamento.ref_cliente,
     )
     duplicado = session.scalar(
         select(Producao).where(
@@ -398,11 +480,14 @@ def criar_nova_versao(
     ):
         raise ValueError("Ja existe um processo com esta versao.")
 
-    codigo_processo = gerar_codigo_processo(
+    codigo_processo = codigo_processo_com_cliente(
         origem.ano,
         origem.num_enc_phc,
         ver_obra,
         ver_plano,
+        nome_simplex=origem.nome_cliente_simplex,
+        nome_cliente=origem.nome_cliente,
+        ref_cliente=origem.ref_cliente,
     )
     duplicado_codigo = session.scalar(
         select(Producao).where(Producao.codigo_processo == codigo_processo)
@@ -557,6 +642,11 @@ def _sanitize_nome_externo(valor) -> str:
     texto = re.sub(r"[^A-Z0-9_-]+", "_", texto)
     texto = re.sub(r"_+", "_", texto).strip("_")
     return texto or "CLIENTE"
+
+
+def _sanitize_cliente_para_pasta(valor) -> str:
+    texto = re.sub(r"[\\/:*?\"<>|]", "_", str(valor or ""))
+    return texto.strip() or "cliente"
 
 
 def _existing_keys_from_folder_tree(
