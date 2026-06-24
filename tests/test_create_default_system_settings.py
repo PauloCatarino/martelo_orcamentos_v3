@@ -17,6 +17,11 @@ from scripts.create_default_system_settings import (
     PASTA_IMAGENS_MODULOS_CHAVE,
     PASTA_IMAGENS_MODULOS_DEFAULT,
     PASTA_PESQUISA_PROFUNDA_IA_DEFAULT,
+    PRODUCAO_BASE_PATH_CHAVE,
+    PRODUCAO_BASE_PATH_CHAVE_LEGACY,
+    PRODUCAO_BASE_PATH_DEFAULT,
+    PRODUCAO_BASE_PATH_DEFAULT_ANTIGO,
+    PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO,
     DefaultSystemSettingsResult,
     ensure_default_system_settings,
 )
@@ -40,6 +45,7 @@ def test_default_system_settings_constants_import() -> None:
 
     assert "pasta_base_orcamentos" in settings_by_key
     assert "pasta_materias_primas" in settings_by_key
+    assert PRODUCAO_BASE_PATH_CHAVE_LEGACY not in settings_by_key
     assert "preencher_comp_larg_automaticamente" in settings_by_key
     assert settings_by_key["provedor_resposta_ia"].valor == "local"
     assert settings_by_key["modelo_openai_texto"].valor == "gpt-4o-mini"
@@ -72,6 +78,15 @@ def test_default_system_settings_constants_import() -> None:
     assert imagens.valor == (
         r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
         r"\Base_Dados_Orcamento\Imagens_Modulos"
+    )
+    producao_base = settings_by_key[PRODUCAO_BASE_PATH_CHAVE]
+    assert producao_base.descricao == "Pasta base Producao"
+    assert producao_base.tipo == "pasta"
+    assert producao_base.grupo == "Producao"
+    assert producao_base.valor == PRODUCAO_BASE_PATH_DEFAULT
+    assert (
+        PRODUCAO_BASE_PATH_DEFAULT
+        == r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep_Producao"
     )
 
 
@@ -121,6 +136,65 @@ def test_seed_nao_sobrepoe_valor_definido_pelo_utilizador(session) -> None:
 
     setting = repo.get_by_key(PASTA_IMAGENS_MODULOS_CHAVE)
     assert setting.valor == "D:/minhas_imagens_modulos"  # user value preserved
+
+
+def test_seed_corrige_producao_base_path_antigo_errado(session) -> None:
+    repo = SystemSettingRepository(session)
+    for valor_antigo in (
+        PRODUCAO_BASE_PATH_DEFAULT_ANTIGO,
+        PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO,
+    ):
+        repo.upsert_setting(
+            chave=PRODUCAO_BASE_PATH_CHAVE,
+            valor=valor_antigo,
+            descricao="Pasta base Producao",
+            tipo="pasta",
+            grupo="Producao",
+        )
+        session.commit()
+
+        ensure_default_system_settings(session)
+
+        setting = repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE)
+        assert setting.valor == PRODUCAO_BASE_PATH_DEFAULT
+
+
+def test_seed_migra_e_remove_pasta_base_producao_legacy(session) -> None:
+    repo = SystemSettingRepository(session)
+    repo.upsert_setting(
+        chave=PRODUCAO_BASE_PATH_CHAVE_LEGACY,
+        valor=r"Z:\Producao_Custom",
+        descricao="Pasta base Producao",
+        tipo="pasta",
+        grupo="Producao",
+    )
+    session.commit()
+
+    ensure_default_system_settings(session)
+
+    legacy = repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE_LEGACY)
+    canonical = repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE)
+    assert legacy is None
+    assert canonical is not None
+    assert canonical.valor == r"Z:\Producao_Custom"
+    assert canonical.descricao == "Pasta base Producao"
+
+
+def test_seed_remove_pasta_base_producao_legacy_sem_valor(session) -> None:
+    repo = SystemSettingRepository(session)
+    repo.upsert_setting(
+        chave=PRODUCAO_BASE_PATH_CHAVE_LEGACY,
+        valor="",
+        descricao="Pasta base Producao",
+        tipo="pasta",
+        grupo="Producao",
+    )
+    session.commit()
+
+    ensure_default_system_settings(session)
+
+    assert repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE_LEGACY) is None
+    assert repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE).valor == PRODUCAO_BASE_PATH_DEFAULT
 
 
 def test_default_system_settings_result_dataclass() -> None:

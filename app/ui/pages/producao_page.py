@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -36,10 +37,15 @@ from app.services.producao_service import (
     ProducaoService,
     converter_orcamento,
     filtrar_processos,
+    gerar_nome_enc_imos_ix,
+    gerar_nome_plano_cut_rite,
 )
+from app.services.producao_pastas_service import arvore_pastas_processo
 from app.ui import tema
 from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
+from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
+from app.ui.icones import icone_ficheiro
 from app.ui.helpers.colunas_producao import (
     COLUNAS_PRODUCAO,
     LARGURAS_DEFAULT_PRODUCAO,
@@ -118,6 +124,10 @@ class ProducaoPage(QWidget):
         self.convert_button.setToolTip("Converter um orçamento adjudicado numa obra de produção")
         self.convert_button.clicked.connect(self._converter_orcamento)
 
+        self.pastas_button = QPushButton("Pastas")
+        self.pastas_button.setToolTip("Ver as pastas do processo selecionado no servidor")
+        self.pastas_button.clicked.connect(self._abrir_pastas_processo_selecionado)
+
         self.save_button = QPushButton("Salvar")
         self.save_button.setToolTip("Gravar as alterações da obra selecionada")
         self.save_button.setEnabled(False)
@@ -130,6 +140,7 @@ class ProducaoPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
+        actions_layout.addWidget(self.pastas_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -180,6 +191,7 @@ class ProducaoPage(QWidget):
         header.sectionResized.connect(self._on_coluna_redimensionada)
         self._carregar_config_colunas()
         self.table.itemSelectionChanged.connect(self._on_select_row)
+        self.table.cellDoubleClicked.connect(self._handle_table_double_click)
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("producaoFooter")
@@ -222,6 +234,14 @@ class ProducaoPage(QWidget):
         )
 
         self.processo_input = self._readonly_line()
+        self.nome_plano_corte_input = self._readonly_line()
+        self.nome_plano_corte_input.setToolTip(
+            "Nome do plano CUT-RITE derivado do processo"
+        )
+        self.nome_enc_imos_ix_input = self._readonly_line()
+        self.nome_enc_imos_ix_input.setToolTip(
+            "Nome da encomenda IMOS iX derivado do processo"
+        )
         self.ano_input = self._readonly_line()
         self.num_enc_phc_input = self._readonly_line()
         self.versao_obra_input = self._readonly_line()
@@ -256,6 +276,16 @@ class ProducaoPage(QWidget):
         dados_grid.setVerticalSpacing(6)
         campos = [
             ("Processo", self.processo_input),
+            (
+                "Nome Plano CUT-RITE",
+                self.nome_plano_corte_input,
+                "icon_cut_rite.ico",
+            ),
+            (
+                "Nome Enc IMOS IX",
+                self.nome_enc_imos_ix_input,
+                "icon_imos_2025.ico",
+            ),
             ("Ano", self.ano_input),
             ("Nº Enc PHC", self.num_enc_phc_input),
             ("V. Obra", self.versao_obra_input),
@@ -276,8 +306,20 @@ class ProducaoPage(QWidget):
             ("Data Entrega", self.data_entrega_input),
             ("Tipo Pasta", self.tipo_pasta_combo),
         ]
-        for index, (label, widget) in enumerate(campos):
-            self._add_grid_field(dados_grid, index // 3, index % 3, label, widget)
+        for index, campo in enumerate(campos):
+            label, widget, *icone = campo
+            label_widget = (
+                self._label_com_icone(label, icone[0])
+                if icone
+                else label
+            )
+            self._add_grid_field(
+                dados_grid,
+                index // 3,
+                index % 3,
+                label_widget,
+                widget,
+            )
 
         dados_widget = QWidget()
         dados_widget.setLayout(dados_grid)
@@ -319,6 +361,8 @@ class ProducaoPage(QWidget):
 
         self._readonly_widgets = [
             self.processo_input,
+            self.nome_plano_corte_input,
+            self.nome_enc_imos_ix_input,
             self.ano_input,
             self.num_enc_phc_input,
             self.versao_obra_input,
@@ -403,16 +447,32 @@ class ProducaoPage(QWidget):
         layout.addStretch()
         return panel
 
+    def _label_com_icone(self, texto: str, nome_icone: str) -> QWidget:
+        label_widget = QWidget()
+        layout = QHBoxLayout(label_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        icon_label = QLabel()
+        icon_label.setPixmap(icone_ficheiro(nome_icone).pixmap(16, 16))
+        text_label = QLabel(texto)
+
+        layout.addWidget(icon_label)
+        layout.addWidget(text_label)
+        layout.addStretch()
+        return label_widget
+
     def _add_grid_field(
         self,
         grid: QGridLayout,
         row: int,
         pair_col: int,
-        label: str,
+        label: str | QWidget,
         widget: QWidget,
     ) -> None:
         col = pair_col * 2
-        grid.addWidget(QLabel(label), row, col)
+        label_widget = label if isinstance(label, QWidget) else QLabel(label)
+        grid.addWidget(label_widget, row, col)
         grid.addWidget(widget, row, col + 1)
 
     def _ligar_sinais_edicao(self) -> None:
@@ -665,13 +725,21 @@ class ProducaoPage(QWidget):
             for column_index, value in enumerate(values):
                 coluna = COLUNAS_PRODUCAO[column_index]
                 header = coluna.titulo
-                item = self._criar_item_tabela(self._format_value(value), header)
+                display_value = self._format_value(value)
+                item = self._criar_item_tabela(display_value, header)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
                 if coluna.key == "estado":
                     fundo, texto = tema.cor_estado_producao(value)
                     if fundo and texto:
                         item.setBackground(QColor(fundo))
                         item.setForeground(QColor(texto))
+                if coluna.key == "processo":
+                    item.setIcon(
+                        self.style().standardIcon(
+                            QStyle.StandardPixmap.SP_DirOpenIcon
+                        )
+                    )
+                    item.setToolTip("Ver pastas do processo")
                 if column_index == 0:
                     item.setData(Qt.ItemDataRole.UserRole, {"producao_id": processo.id})
                 self.table.setItem(row_index, column_index, item)
@@ -734,12 +802,84 @@ class ProducaoPage(QWidget):
 
         self._fill_form(processo)
 
+    def _handle_table_double_click(self, row: int, column: int) -> None:
+        if column < 0 or column >= len(COLUNAS_PRODUCAO):
+            return
+        if COLUNAS_PRODUCAO[column].key != "processo":
+            return
+
+        processo = self._processos_by_row.get(row)
+        if processo is None:
+            return
+
+        self.table.selectRow(row)
+        self._abrir_pastas_processo(processo)
+
+    def _abrir_pastas_processo_selecionado(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para ver as pastas.")
+            return
+
+        self._abrir_pastas_processo(processo)
+
+    def _abrir_pastas_processo(self, processo: Producao) -> None:
+        try:
+            with SessionLocal() as session:
+                root_path, arvore = arvore_pastas_processo(
+                    session,
+                    ano=processo.ano,
+                    num_enc_phc=processo.num_enc_phc,
+                    tipo_pasta=processo.tipo_pasta,
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel carregar as pastas do processo.")
+            return
+
+        dialog = PastasProcessoDialog(
+            codigo_processo=self._format_value(processo.codigo_processo),
+            root_path=root_path,
+            arvore=arvore,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _processo_selecionado(self) -> Producao | None:
+        row = self.table.currentRow()
+        processo = self._processos_by_row.get(row)
+        if processo is not None:
+            return processo
+        if self._selected_processo_id is not None:
+            return self._processo_visivel_por_id(self._selected_processo_id)
+        return None
+
     def _fill_form(self, proc: Producao) -> None:
         """Fill detail widgets from one production process without marking dirty."""
         self._a_preencher_form = True
         estados = self._bloquear_sinais_form()
         try:
             self.processo_input.setText(self._format_value(proc.codigo_processo))
+            self.nome_plano_corte_input.setText(
+                gerar_nome_plano_cut_rite(
+                    proc.ano,
+                    proc.num_enc_phc,
+                    proc.versao_obra,
+                    proc.versao_plano,
+                    nome_cliente_simplex=proc.nome_cliente_simplex,
+                    nome_cliente=proc.nome_cliente,
+                    ref_cliente=proc.ref_cliente,
+                )
+            )
+            self.nome_enc_imos_ix_input.setText(
+                gerar_nome_enc_imos_ix(
+                    proc.ano,
+                    proc.num_enc_phc,
+                    proc.versao_obra,
+                    nome_cliente_simplex=proc.nome_cliente_simplex,
+                    nome_cliente=proc.nome_cliente,
+                    ref_cliente=proc.ref_cliente,
+                )
+            )
             self.ano_input.setText(self._format_value(proc.ano))
             self.num_enc_phc_input.setText(self._format_value(proc.num_enc_phc))
             self.versao_obra_input.setText(self._format_value(proc.versao_obra))

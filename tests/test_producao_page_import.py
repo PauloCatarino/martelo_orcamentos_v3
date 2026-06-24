@@ -46,6 +46,9 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "ligar_persistencia_larguras" not in inspect.getsource(ProducaoPage)
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source
+    assert '"Pastas"' in init_source
+    assert "Ver as pastas do processo selecionado no servidor" in init_source
+    assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
     assert "setToolTip" in init_source
     assert "Gravar as alterações da obra selecionada" in init_source
     assert "Recarregar a lista de obras" in init_source
@@ -74,6 +77,18 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "SystemSettingService" in helper_source
     assert "itemSelectionChanged" in source
     assert "converter_orcamento" in source
+    assert "PastasProcessoDialog" in source
+    assert "arvore_pastas_processo" in source
+    assert "nome_plano_corte_input" in source
+    assert "nome_enc_imos_ix_input" in source
+    assert "gerar_nome_plano_cut_rite" in source
+    assert "gerar_nome_enc_imos_ix" in source
+    assert "icone_ficheiro" in source
+    assert '"icon_cut_rite.ico"' in source
+    assert '"icon_imos_2025.ico"' in source
+    assert "QStyle.StandardPixmap.SP_DirOpenIcon" in source
+    assert "item.setIcon" in source
+    assert "Ver pastas do processo" in source
     assert "normalizar_data" in source
     assert "imagem_path" in source
     assert "QFileDialog" in source
@@ -88,3 +103,17 @@ def test_producao_page_detail_editing_hooks() -> None:
         "Encomenda de Cliente",
         "Encomenda de Cliente Final",
     )
+
+
+def test_producao_page_abre_pastas_no_duplo_clique_do_processo() -> None:
+    from app.ui.pages.producao_page import ProducaoPage
+
+    double_click_source = inspect.getsource(ProducaoPage._handle_table_double_click)
+    open_source = inspect.getsource(ProducaoPage._abrir_pastas_processo)
+
+    assert 'COLUNAS_PRODUCAO[column].key != "processo"' in double_click_source
+    assert "self._abrir_pastas_processo(processo)" in double_click_source
+    assert "ano=processo.ano" in open_source
+    assert "num_enc_phc=processo.num_enc_phc" in open_source
+    assert "tipo_pasta=processo.tipo_pasta" in open_source
+    assert "dialog.exec()" in open_source

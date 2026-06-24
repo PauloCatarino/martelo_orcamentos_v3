@@ -73,6 +73,17 @@ PASTA_EMBEDDINGS_IA_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
     r"\Base_Dados_Orcamento\Pesquisa_IA_Martelo"
 )
+PRODUCAO_BASE_PATH_CHAVE = "producao_base_path"
+PRODUCAO_BASE_PATH_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep_Producao"
+)
+PRODUCAO_BASE_PATH_DEFAULT_ANTIGO = (
+    r"\\SERVER_LE\Lanca_Encanto\LancaEncanto\Dep_Producao"
+)
+PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO = (
+    r"\\SERVER_LE_Lanca_Encanto\LancaEncanto\Dep_Producao"
+)
+PRODUCAO_BASE_PATH_CHAVE_LEGACY = "pasta_base_producao"
 
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed(
@@ -139,7 +150,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "PHC",
         "ON",
     ),
-    SystemSettingSeed("pasta_base_producao", "Pasta base Producao", "pasta", "Producao"),
+    SystemSettingSeed(
+        PRODUCAO_BASE_PATH_CHAVE,
+        "Pasta base Producao",
+        "pasta",
+        "Producao",
+        PRODUCAO_BASE_PATH_DEFAULT,
+    ),
     SystemSettingSeed("pasta_base_imorder", "Pasta Base Imorder / imos iX", "pasta", "IMOS"),
     SystemSettingSeed("ficheiro_imos_msg", "Ficheiro imos.msg", "ficheiro", "IMOS"),
     SystemSettingSeed("excel_traducoes_imos", "Excel traducoes IMOS", "ficheiro", "IMOS"),
@@ -221,6 +238,15 @@ def get_or_create_setting(session: Session, seed: SystemSettingSeed) -> EntityRe
     if setting is not None:
         if (setting.valor is None or setting.valor == "") and seed.valor:
             setting.valor = seed.valor
+        elif (
+            seed.chave == PRODUCAO_BASE_PATH_CHAVE
+            and setting.valor
+            in {
+                PRODUCAO_BASE_PATH_DEFAULT_ANTIGO,
+                PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO,
+            }
+        ):
+            setting.valor = PRODUCAO_BASE_PATH_DEFAULT
         setting.descricao = seed.descricao
         setting.tipo = seed.tipo
         setting.grupo = seed.grupo
@@ -242,10 +268,38 @@ def get_or_create_setting(session: Session, seed: SystemSettingSeed) -> EntityRe
     return EntityResult(status="criada", entity=setting)
 
 
+def migrar_pasta_base_producao_legacy(session: Session) -> None:
+    """Move the old production base-path setting into the canonical key."""
+    legacy = get_setting_by_key(session, PRODUCAO_BASE_PATH_CHAVE_LEGACY)
+    if legacy is None:
+        return
+
+    valor_legacy = (legacy.valor or "").strip()
+    if valor_legacy:
+        target = get_setting_by_key(session, PRODUCAO_BASE_PATH_CHAVE)
+        if target is None:
+            target = SystemSetting(
+                chave=PRODUCAO_BASE_PATH_CHAVE,
+                valor=valor_legacy,
+                descricao="Pasta base Producao",
+                tipo="pasta",
+                grupo="Producao",
+                ativo=True,
+            )
+            session.add(target)
+        else:
+            target.valor = valor_legacy
+
+    session.delete(legacy)
+    session.flush()
+
+
 def ensure_default_system_settings(session: Session) -> DefaultSystemSettingsResult:
     """Create or reuse all default system settings."""
     criadas = 0
     reutilizadas = 0
+
+    migrar_pasta_base_producao_legacy(session)
 
     for seed in DEFAULT_SYSTEM_SETTINGS:
         result = get_or_create_setting(session, seed)

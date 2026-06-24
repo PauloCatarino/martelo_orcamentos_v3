@@ -39,6 +39,16 @@ from app.services.orcamento_item_service import (
 )
 from app.services.orcamento_service import CriarOrcamentoSimplesData, OrcamentoService
 from app.services.placas_referencias_service import LinhaReferencia, listar_referencias
+from app.services.producao_pastas_service import (
+    PRODUCAO_BASE_PATH_DEFAULT,
+    PRODUCAO_BASE_PATH_KEY,
+    arvore_pastas_processo,
+    resolver_base_dir,
+)
+from app.services.producao_service import (
+    gerar_nome_enc_imos_ix,
+    gerar_nome_plano_cut_rite,
+)
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.system_setting_service import SystemSettingService
 
@@ -73,7 +83,13 @@ __all__ = [
     "OrcamentoItemModuloService",
     "OrcamentoItemService",
     "OrcamentoService",
+    "PRODUCAO_BASE_PATH_DEFAULT",
+    "PRODUCAO_BASE_PATH_KEY",
     "RelatorioConsumosService",
     "ResumoSincronizacaoPHC",
     "SystemSettingService",
+    "arvore_pastas_processo",
+    "gerar_nome_enc_imos_ix",
+    "gerar_nome_plano_cut_rite",
+    "resolver_base_dir",
 ]

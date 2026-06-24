@@ -100,6 +100,52 @@ def gerar_codigo_processo(
     return f"{aa}.{nnnn}_{vv}_{pp}"
 
 
+def gerar_nome_plano_cut_rite(
+    ano,
+    num_enc_phc,
+    versao_obra,
+    versao_plano,
+    *,
+    nome_cliente_simplex=None,
+    nome_cliente=None,
+    ref_cliente=None,
+) -> str:
+    """Build the external CUT-RITE plan name for one production process."""
+    nnnn = _num_enc_norm(num_enc_phc)
+    aa = _ano_two_digits(ano)
+    if not nnnn or not aa:
+        return ""
+
+    cliente = _sanitize_nome_externo(
+        nome_cliente_simplex or nome_cliente or ref_cliente
+    )
+    return (
+        f"{nnnn}_{_two_digit(versao_obra)}_{_two_digit(versao_plano)}"
+        f"_{aa}_{cliente}"
+    )
+
+
+def gerar_nome_enc_imos_ix(
+    ano,
+    num_enc_phc,
+    versao_obra,
+    *,
+    nome_cliente_simplex=None,
+    nome_cliente=None,
+    ref_cliente=None,
+) -> str:
+    """Build the external IMOS iX order name for one production process."""
+    nnnn = _num_enc_norm(num_enc_phc)
+    aa = _ano_two_digits(ano)
+    if not nnnn or not aa:
+        return ""
+
+    cliente = _sanitize_nome_externo(
+        nome_cliente_simplex or nome_cliente or ref_cliente
+    )
+    return f"{nnnn}_{_two_digit(versao_obra)}_{aa}_{cliente}"
+
+
 def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
     """Return adjudicated budget versions with their budget and customer data."""
     statement = (
@@ -259,6 +305,38 @@ def _format_digits(valor, width: int) -> str:
     if not digits:
         return "0".zfill(width)
     return str(int(digits)).zfill(width)
+
+
+def _num_enc_norm(valor) -> str:
+    texto = str(valor or "").strip()
+    if not texto:
+        return ""
+    if texto.startswith("_"):
+        digits = re.sub(r"\D+", "", texto[1:])
+        return f"_{digits.zfill(3)}" if digits else ""
+    digits = re.sub(r"\D+", "", texto)
+    return digits.zfill(4) if digits else ""
+
+
+def _two_digit(valor) -> str:
+    return _format_digits(valor, 2)
+
+
+def _ano_two_digits(valor) -> str:
+    digits = re.sub(r"\D+", "", str(valor or ""))
+    if not digits:
+        return ""
+    return digits[-2:].zfill(2)
+
+
+def _sanitize_nome_externo(valor) -> str:
+    texto = str(valor or "").strip() or "CLIENTE"
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(char for char in texto if not unicodedata.combining(char))
+    texto = re.sub(r"\s+", "_", texto.upper())
+    texto = re.sub(r"[^A-Z0-9_-]+", "_", texto)
+    texto = re.sub(r"_+", "_", texto).strip("_")
+    return texto or "CLIENTE"
 
 
 def filtrar_processos(
