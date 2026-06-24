@@ -43,11 +43,19 @@ from app.services.producao_pastas_service import (
     PRODUCAO_BASE_PATH_DEFAULT,
     PRODUCAO_BASE_PATH_KEY,
     arvore_pastas_processo,
+    caminho_versao,
+    criar_pasta_versao,
     resolver_base_dir,
+    segmentos_pasta,
+    sugerir_proxima_versao_obra,
+    sugerir_proxima_versao_plano,
 )
 from app.services.producao_service import (
+    criar_nova_versao,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
+    listar_versoes_processo,
+    preparar_nova_versao,
 )
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.system_setting_service import SystemSettingService
@@ -89,7 +97,15 @@ __all__ = [
     "ResumoSincronizacaoPHC",
     "SystemSettingService",
     "arvore_pastas_processo",
+    "caminho_versao",
+    "criar_nova_versao",
+    "criar_pasta_versao",
     "gerar_nome_enc_imos_ix",
     "gerar_nome_plano_cut_rite",
+    "listar_versoes_processo",
+    "preparar_nova_versao",
     "resolver_base_dir",
+    "segmentos_pasta",
+    "sugerir_proxima_versao_obra",
+    "sugerir_proxima_versao_plano",
 ]

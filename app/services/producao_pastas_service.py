@@ -6,8 +6,10 @@ from pathlib import Path
 import re
 from typing import Optional
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.producao import Producao
 from app.services.system_setting_service import SystemSettingService
 
 
@@ -161,6 +163,7 @@ def _resolve_base_dir(session: Session, base_dir: str | Path | None = None) -> s
 
 
 _FOLDER_PREFIX_SEPARATORS = ("_", "-", " ")
+_SEP_PATTERN = r"(?:_|-| )"
 
 
 def _folder_name_matches_prefix(name: str, prefix: str) -> bool:
@@ -178,6 +181,108 @@ def _folder_name_matches_prefix(name: str, prefix: str) -> bool:
     if len(name_text) == len(prefix_text):
         return True
     return name_text[len(prefix_text)] in _FOLDER_PREFIX_SEPARATORS
+
+
+def listar_versoes_obra_em_pastas(
+    session: Session,
+    *,
+    ano: str | int,
+    num_enc_phc: str | int,
+    tipo_pasta: Optional[str] = None,
+    base_dir: str | Path | None = None,
+) -> set[str]:
+    """
+    Lista versoes de obra (VV) existentes nas pastas do servidor para o mesmo ano+encomenda.
+    Isto cobre casos onde as pastas existem (ex.: criadas por outros sistemas) mas ainda nao ha registo na BD.
+    """
+    enc = _num_enc_norm(num_enc_phc)
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta, base_dir=base_dir)
+    try:
+        if not root.is_dir():
+            return set()
+    except Exception:
+        return set()
+
+    pat_vv = re.compile(rf"^{re.escape(enc)}{_SEP_PATTERN}(?P<vv>\d{{2}}){_SEP_PATTERN}", re.IGNORECASE)
+    found: set[str] = set()
+
+    try:
+        for seg1 in root.iterdir():
+            if not seg1.is_dir():
+                continue
+            if not _folder_name_matches_prefix(seg1.name, enc):
+                continue
+            try:
+                for seg2 in seg1.iterdir():
+                    if not seg2.is_dir():
+                        continue
+                    m = pat_vv.match(seg2.name)
+                    if not m:
+                        continue
+                    found.add(_two_digit(m.group("vv")))
+            except Exception:
+                continue
+    except Exception:
+        return set()
+
+    return found
+
+
+def listar_versoes_plano_em_pastas(
+    session: Session,
+    *,
+    ano: str | int,
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    tipo_pasta: Optional[str] = None,
+    base_dir: str | Path | None = None,
+) -> set[str]:
+    """
+    Lista versoes de plano CUT-RITE (PP) existentes nas pastas do servidor dentro da versao de obra.
+    """
+    enc = _num_enc_norm(num_enc_phc)
+    vv = _two_digit(versao_obra)
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta, base_dir=base_dir)
+    try:
+        if not root.is_dir():
+            return set()
+    except Exception:
+        return set()
+
+    pat_vvpp = re.compile(
+        rf"^{re.escape(enc)}{_SEP_PATTERN}{re.escape(vv)}{_SEP_PATTERN}(?P<pp>\d{{2}}){_SEP_PATTERN}",
+        re.IGNORECASE,
+    )
+    found: set[str] = set()
+
+    try:
+        for seg1 in root.iterdir():
+            if not seg1.is_dir():
+                continue
+            if not _folder_name_matches_prefix(seg1.name, enc):
+                continue
+            try:
+                for seg2 in seg1.iterdir():
+                    if not seg2.is_dir():
+                        continue
+                    if not _folder_name_matches_prefix(seg2.name, f"{enc}_{vv}"):
+                        continue
+                    try:
+                        for seg3 in seg2.iterdir():
+                            if not seg3.is_dir():
+                                continue
+                            m = pat_vvpp.match(seg3.name)
+                            if not m:
+                                continue
+                            found.add(_two_digit(m.group("pp")))
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    except Exception:
+        return set()
+
+    return found
 
 
 def listar_pastas_enc_arvore(
@@ -235,6 +340,182 @@ def listar_pastas_enc_arvore(
         pass
 
     return str(root), tree
+
+
+def sugerir_proxima_versao_obra(
+    session: Session,
+    *,
+    ano: str | int,
+    num_enc_phc: str | int,
+    tipo_pasta: Optional[str] = None,
+    requested: str | int | None = None,
+    base_dir: str | Path | None = None,
+) -> str:
+    """Sugere a proxima versao de obra (VV) nao usada para o mesmo ano+encomenda."""
+    ano_full, _ = _ano_two_digits(ano)
+    enc_norm = _num_enc_norm(num_enc_phc)
+    existing = session.execute(
+        select(Producao.versao_obra).where(
+            Producao.ano == ano_full,
+            Producao.num_enc_phc == enc_norm,
+        )
+    ).scalars().all()
+    existing_set = {str(v or "").strip() for v in existing if str(v or "").strip()}
+    try:
+        existing_set |= set(
+            listar_versoes_obra_em_pastas(
+                session,
+                ano=ano_full,
+                num_enc_phc=enc_norm,
+                tipo_pasta=tipo_pasta,
+                base_dir=base_dir,
+            )
+        )
+    except Exception:
+        pass
+
+    if requested is not None:
+        req = _two_digit(requested)
+        if req not in existing_set:
+            return req
+
+    parsed: list[int] = []
+    for v in existing_set:
+        try:
+            parsed.append(int(v))
+        except Exception:
+            continue
+    candidate = (max(parsed) + 1) if parsed else 1
+    cand = _two_digit(candidate)
+    while cand in existing_set:
+        candidate += 1
+        cand = _two_digit(candidate)
+    return cand
+
+
+def sugerir_proxima_versao_plano(
+    session: Session,
+    *,
+    ano: str | int,
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    tipo_pasta: Optional[str] = None,
+    requested: str | int | None = None,
+    base_dir: str | Path | None = None,
+) -> str:
+    """Sugere a proxima versao de plano CUT-RITE (PP) dentro da versao de obra."""
+    ano_full, _ = _ano_two_digits(ano)
+    enc_norm = _num_enc_norm(num_enc_phc)
+    ver_obra = _two_digit(versao_obra)
+    existing = session.execute(
+        select(Producao.versao_plano).where(
+            Producao.ano == ano_full,
+            Producao.num_enc_phc == enc_norm,
+            Producao.versao_obra == ver_obra,
+        )
+    ).scalars().all()
+    existing_set = {str(v or "").strip() for v in existing if str(v or "").strip()}
+    try:
+        existing_set |= set(
+            listar_versoes_plano_em_pastas(
+                session,
+                ano=ano_full,
+                num_enc_phc=enc_norm,
+                versao_obra=ver_obra,
+                tipo_pasta=tipo_pasta,
+                base_dir=base_dir,
+            )
+        )
+    except Exception:
+        pass
+
+    if requested is not None:
+        req = _two_digit(requested)
+        if req not in existing_set:
+            return req
+
+    parsed: list[int] = []
+    for v in existing_set:
+        try:
+            parsed.append(int(v))
+        except Exception:
+            continue
+    candidate = (max(parsed) + 1) if parsed else 1
+    cand = _two_digit(candidate)
+    while cand in existing_set:
+        candidate += 1
+        cand = _two_digit(candidate)
+    return cand
+
+
+def _sanitize_folder_name(text: str) -> str:
+    safe = re.sub(r"[\\/:*?\"<>|]", "_", text or "")
+    return safe.strip() or "obra"
+
+
+def _cliente_para_pasta(
+    nome_simplex: Optional[str],
+    nome_cliente: Optional[str],
+    ref_cliente: Optional[str],
+) -> str:
+    return _sanitize_folder_name(nome_simplex or nome_cliente or ref_cliente or "cliente")
+
+
+def segmentos_pasta(
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    versao_plano: str | int,
+    *,
+    nome_simplex: Optional[str] = None,
+    nome_cliente: Optional[str] = None,
+    ref_cliente: Optional[str] = None,
+) -> tuple[str, str, str]:
+    enc = _num_enc_norm(num_enc_phc)
+    ver_obra = _two_digit(versao_obra)
+    ver_plano = _two_digit(versao_plano)
+    cli = _cliente_para_pasta(nome_simplex, nome_cliente, ref_cliente)
+    seg1 = f"{enc}_{cli}"
+    seg2 = f"{enc}_{ver_obra}_{cli}"
+    seg3 = f"{enc}_{ver_obra}_{ver_plano}_{cli}"
+    return seg1, seg2, seg3
+
+
+def caminho_versao(
+    session: Session,
+    *,
+    ano: str | int,
+    tipo_pasta: Optional[str],
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    versao_plano: str | int,
+    nome_simplex: Optional[str] = None,
+    nome_cliente: Optional[str] = None,
+    ref_cliente: Optional[str] = None,
+) -> Path:
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta)
+    seg1, seg2, seg3 = segmentos_pasta(
+        num_enc_phc,
+        versao_obra,
+        versao_plano,
+        nome_simplex=nome_simplex,
+        nome_cliente=nome_cliente,
+        ref_cliente=ref_cliente,
+    )
+    path_text = (
+        f"{_normalizar_path_windows(root)}\\"
+        f"{_normalizar_path_windows(seg1)}\\"
+        f"{_normalizar_path_windows(seg2)}\\"
+        f"{_normalizar_path_windows(seg3)}"
+    )
+    return Path(_normalizar_path_windows(path_text))
+
+
+def criar_pasta_versao(caminho: Path) -> Path:
+    try:
+        caminho.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise OSError(f"Falha ao criar pasta de producao: {caminho} ({exc})") from exc
+    return caminho
 
 
 def resolver_base_dir(session: Session) -> str:

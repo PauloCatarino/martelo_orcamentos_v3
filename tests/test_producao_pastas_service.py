@@ -14,6 +14,7 @@ from app.services.producao_pastas_service import (
     _num_enc_norm,
     _tipo_dir,
     listar_pastas_enc_arvore,
+    segmentos_pasta,
 )
 
 
@@ -80,6 +81,19 @@ def test_gerar_nomes_externos_de_producao() -> None:
             nome_cliente_simplex="JF VIVA",
         )
         == "1058_01_26_JF_VIVA"
+    )
+
+
+def test_segmentos_pasta_para_nova_versao() -> None:
+    assert segmentos_pasta(
+        "1058",
+        "01",
+        "01",
+        nome_simplex="JF_VIVA",
+    ) == (
+        "1058_JF_VIVA",
+        "1058_01_JF_VIVA",
+        "1058_01_01_JF_VIVA",
     )
 
 

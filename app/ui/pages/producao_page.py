@@ -36,14 +36,17 @@ from app.models.producao import Producao
 from app.services.producao_service import (
     ProducaoService,
     converter_orcamento,
+    criar_nova_versao,
     filtrar_processos,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
+    preparar_nova_versao,
 )
 from app.services.producao_pastas_service import arvore_pastas_processo
 from app.ui import tema
 from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
+from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.icones import icone_ficheiro
 from app.ui.helpers.colunas_producao import (
@@ -128,6 +131,12 @@ class ProducaoPage(QWidget):
         self.pastas_button.setToolTip("Ver as pastas do processo selecionado no servidor")
         self.pastas_button.clicked.connect(self._abrir_pastas_processo_selecionado)
 
+        self.nova_versao_button = QPushButton("Nova Versão")
+        self.nova_versao_button.setToolTip(
+            "Criar nova versão de obra/CUT-RITE do processo selecionado"
+        )
+        self.nova_versao_button.clicked.connect(self._nova_versao)
+
         self.save_button = QPushButton("Salvar")
         self.save_button.setToolTip("Gravar as alterações da obra selecionada")
         self.save_button.setEnabled(False)
@@ -141,6 +150,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.pastas_button)
+        actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -843,6 +853,84 @@ class ProducaoPage(QWidget):
             parent=self,
         )
         dialog.exec()
+
+    def _nova_versao(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para criar nova versão.")
+            return
+
+        if self._dirty:
+            resposta = QMessageBox.question(
+                self,
+                "Alterações por gravar",
+                "Há alterações por gravar. Descartar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            self._set_dirty(False)
+
+        try:
+            with SessionLocal() as session:
+                preparado = preparar_nova_versao(
+                    session,
+                    processo_id=processo.id,
+                )
+        except ValueError as error:
+            QMessageBox.warning(self, "Nova Versão", str(error))
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível preparar a nova versão.")
+            return
+
+        sug_cutrite = preparado["sug_cutrite"]
+        sug_obra = preparado["sug_obra"]
+        dialog = NovaVersaoProcessoDialog(
+            versao_obra_sug_cutrite=sug_cutrite[0],
+            versao_plano_sug_cutrite=sug_cutrite[1],
+            versao_obra_sug_obra=sug_obra[0],
+            versao_plano_sug_obra=sug_obra[1],
+            existing_keys=preparado["existing_keys"],
+            folder_root=preparado["folder_root"],
+            folder_tree=preparado["folder_tree"],
+            parent=self,
+        )
+        if not dialog.exec():
+            return
+
+        versao_obra, versao_plano = dialog.values()
+        current_user_id = (
+            app_session.current_user.id
+            if app_session.current_user is not None
+            else None
+        )
+
+        try:
+            with SessionLocal() as session:
+                novo = criar_nova_versao(
+                    session,
+                    processo_id=processo.id,
+                    versao_obra=versao_obra,
+                    versao_plano=versao_plano,
+                    criar_pasta=True,
+                    current_user_id=current_user_id,
+                )
+                novo_id = novo.id
+                codigo = novo.codigo_processo
+        except ValueError as error:
+            QMessageBox.warning(self, "Nova Versão", str(error))
+            return
+        except OSError as error:
+            QMessageBox.warning(self, "Nova Versão", str(error))
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível criar a nova versão.")
+            return
+
+        self.carregar_processos(selecionar_id=novo_id)
+        self.status_label.setText(f"Versão {codigo} criada (+ pasta).")
 
     def _processo_selecionado(self) -> Producao | None:
         row = self.table.currentRow()

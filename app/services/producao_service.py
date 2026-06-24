@@ -12,6 +12,13 @@ from app.models.cliente import Cliente
 from app.models.orcamento import Orcamento
 from app.models.orcamento_versao import OrcamentoVersao
 from app.models.producao import Producao
+from app.services.producao_pastas_service import (
+    caminho_versao,
+    criar_pasta_versao,
+    listar_pastas_enc_arvore,
+    sugerir_proxima_versao_obra,
+    sugerir_proxima_versao_plano,
+)
 
 CAMPOS_EDITAVEIS_PRODUCAO = (
     "estado",
@@ -281,6 +288,178 @@ def converter_orcamento(
     return processo
 
 
+def listar_versoes_processo(
+    session: Session,
+    *,
+    ano,
+    num_enc_phc,
+) -> set[tuple[str, str]]:
+    """Return existing (versao_obra, versao_plano) pairs for an order."""
+    enc_values = _enc_query_values(num_enc_phc)
+    statement = select(Producao.versao_obra, Producao.versao_plano).where(
+        Producao.ano == str(ano),
+        Producao.num_enc_phc.in_(enc_values),
+    )
+    return {
+        (_two_digit(versao_obra), _two_digit(versao_plano))
+        for versao_obra, versao_plano in session.execute(statement).all()
+        if versao_obra is not None and versao_plano is not None
+    }
+
+
+def preparar_nova_versao(
+    session: Session,
+    *,
+    processo_id: int,
+) -> dict:
+    """Collect current process, existing versions and version suggestions."""
+    processo = session.get(Producao, processo_id)
+    if processo is None:
+        raise ValueError("Processo de producao nao encontrado.")
+
+    folder_root, folder_tree = listar_pastas_enc_arvore(
+        session,
+        ano=processo.ano,
+        num_enc_phc=processo.num_enc_phc,
+        tipo_pasta=processo.tipo_pasta,
+    )
+    existing_keys = listar_versoes_processo(
+        session,
+        ano=processo.ano,
+        num_enc_phc=processo.num_enc_phc,
+    )
+    existing_keys |= _existing_keys_from_folder_tree(
+        processo.num_enc_phc,
+        folder_tree,
+    )
+
+    versao_obra_atual = _two_digit(processo.versao_obra)
+    sug_cutrite = (
+        versao_obra_atual,
+        sugerir_proxima_versao_plano(
+            session,
+            ano=processo.ano,
+            num_enc_phc=processo.num_enc_phc,
+            versao_obra=versao_obra_atual,
+            tipo_pasta=processo.tipo_pasta,
+        ),
+    )
+    sug_cutrite = (
+        sug_cutrite[0],
+        _next_plano_from_keys(existing_keys, sug_cutrite[0], start=sug_cutrite[1]),
+    )
+
+    sug_obra = (
+        sugerir_proxima_versao_obra(
+            session,
+            ano=processo.ano,
+            num_enc_phc=processo.num_enc_phc,
+            tipo_pasta=processo.tipo_pasta,
+        ),
+        "01",
+    )
+    sug_obra = (
+        _next_obra_from_keys(existing_keys, start=sug_obra[0]),
+        "01",
+    )
+
+    return {
+        "processo_atual": processo,
+        "existing_keys": existing_keys,
+        "folder_root": folder_root,
+        "folder_tree": folder_tree,
+        "sug_cutrite": sug_cutrite,
+        "sug_obra": sug_obra,
+    }
+
+
+def criar_nova_versao(
+    session: Session,
+    *,
+    processo_id: int,
+    versao_obra,
+    versao_plano,
+    criar_pasta: bool = True,
+    current_user_id: int | None = None,
+) -> Producao:
+    """Create a new production process version, optionally creating its folder."""
+    origem = session.get(Producao, processo_id)
+    if origem is None:
+        raise ValueError("Processo de producao nao encontrado.")
+
+    ver_obra = _two_digit(versao_obra)
+    ver_plano = _two_digit(versao_plano)
+    if (ver_obra, ver_plano) in listar_versoes_processo(
+        session,
+        ano=origem.ano,
+        num_enc_phc=origem.num_enc_phc,
+    ):
+        raise ValueError("Ja existe um processo com esta versao.")
+
+    codigo_processo = gerar_codigo_processo(
+        origem.ano,
+        origem.num_enc_phc,
+        ver_obra,
+        ver_plano,
+    )
+    duplicado_codigo = session.scalar(
+        select(Producao).where(Producao.codigo_processo == codigo_processo)
+    )
+    if duplicado_codigo is not None:
+        raise ValueError(f"Ja existe o processo {duplicado_codigo.codigo_processo}.")
+
+    novo = Producao(
+        estado="Desenho",
+        versao_obra=ver_obra,
+        versao_plano=ver_plano,
+        codigo_processo=codigo_processo,
+        ano=origem.ano,
+        num_enc_phc=origem.num_enc_phc,
+        cliente_id=origem.cliente_id,
+        nome_cliente=origem.nome_cliente,
+        nome_cliente_simplex=origem.nome_cliente_simplex,
+        num_cliente_phc=origem.num_cliente_phc,
+        ref_cliente=origem.ref_cliente,
+        orcamento_id=origem.orcamento_id,
+        num_orcamento=origem.num_orcamento,
+        versao_orc=origem.versao_orc,
+        obra=origem.obra,
+        localizacao=origem.localizacao,
+        descricao_orcamento=origem.descricao_orcamento,
+        descricao_artigos=origem.descricao_artigos,
+        materias_usados=origem.materias_usados,
+        descricao_producao=origem.descricao_producao,
+        notas1=origem.notas1,
+        notas2=origem.notas2,
+        notas3=origem.notas3,
+        preco_total=origem.preco_total,
+        qt_artigos=origem.qt_artigos,
+        responsavel=origem.responsavel,
+        tipo_pasta=origem.tipo_pasta,
+        created_by_id=current_user_id,
+    )
+
+    if criar_pasta:
+        caminho = caminho_versao(
+            session,
+            ano=novo.ano,
+            tipo_pasta=novo.tipo_pasta,
+            num_enc_phc=novo.num_enc_phc,
+            versao_obra=novo.versao_obra,
+            versao_plano=novo.versao_plano,
+            nome_simplex=novo.nome_cliente_simplex,
+            nome_cliente=novo.nome_cliente,
+            ref_cliente=novo.ref_cliente,
+        )
+        criar_pasta_versao(caminho)
+        novo.pasta_servidor = str(caminho)
+
+    session.add(novo)
+    session.commit()
+    session.refresh(novo)
+    return novo
+
+
 def campos_editaveis(data: dict) -> dict:
     """Return only fields that are editable in the production detail form."""
     return {
@@ -305,6 +484,12 @@ def _format_digits(valor, width: int) -> str:
     if not digits:
         return "0".zfill(width)
     return str(int(digits)).zfill(width)
+
+
+def _enc_query_values(valor) -> set[str]:
+    raw = str(valor or "").strip()
+    norm = _num_enc_norm(raw)
+    return {value for value in (raw, norm) if value}
 
 
 def _num_enc_norm(valor) -> str:
@@ -337,6 +522,62 @@ def _sanitize_nome_externo(valor) -> str:
     texto = re.sub(r"[^A-Z0-9_-]+", "_", texto)
     texto = re.sub(r"_+", "_", texto).strip("_")
     return texto or "CLIENTE"
+
+
+def _existing_keys_from_folder_tree(
+    num_enc_phc,
+    folder_tree: dict[str, dict[str, list[str]]],
+) -> set[tuple[str, str]]:
+    enc = _num_enc_norm(num_enc_phc)
+    if not enc:
+        return set()
+
+    pattern = re.compile(
+        rf"^{re.escape(enc)}(?:_|-| )(?P<vv>\d{{2}})(?:_|-| )(?P<pp>\d{{2}})(?:_|-| |$)",
+        re.IGNORECASE,
+    )
+    keys: set[tuple[str, str]] = set()
+    for versoes_obra in (folder_tree or {}).values():
+        for versoes_plano in versoes_obra.values():
+            for nome_pasta in versoes_plano:
+                match = pattern.match(str(nome_pasta or ""))
+                if match:
+                    keys.add(
+                        (
+                            _two_digit(match.group("vv")),
+                            _two_digit(match.group("pp")),
+                        )
+                    )
+    return keys
+
+
+def _next_plano_from_keys(
+    keys: set[tuple[str, str]],
+    versao_obra,
+    *,
+    start,
+) -> str:
+    vv = _two_digit(versao_obra)
+    candidate = max(1, _as_positive_int(start))
+    used = {pp for key_vv, pp in keys if key_vv == vv}
+    while _two_digit(candidate) in used:
+        candidate += 1
+    return _two_digit(candidate)
+
+
+def _next_obra_from_keys(keys: set[tuple[str, str]], *, start) -> str:
+    candidate = max(1, _as_positive_int(start))
+    used = {vv for vv, _pp in keys}
+    while _two_digit(candidate) in used:
+        candidate += 1
+    return _two_digit(candidate)
+
+
+def _as_positive_int(value) -> int:
+    try:
+        return max(1, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return 1
 
 
 def filtrar_processos(

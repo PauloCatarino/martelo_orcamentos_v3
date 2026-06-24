@@ -48,6 +48,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert '"Salvar"' in init_source
     assert '"Pastas"' in init_source
     assert "Ver as pastas do processo selecionado no servidor" in init_source
+    assert '"Nova Versão"' in init_source
+    assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
     assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
     assert "setToolTip" in init_source
     assert "Gravar as alterações da obra selecionada" in init_source
@@ -79,6 +81,9 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "converter_orcamento" in source
     assert "PastasProcessoDialog" in source
     assert "arvore_pastas_processo" in source
+    assert "NovaVersaoProcessoDialog" in source
+    assert "preparar_nova_versao" in source
+    assert "criar_nova_versao" in source
     assert "nome_plano_corte_input" in source
     assert "nome_enc_imos_ix_input" in source
     assert "gerar_nome_plano_cut_rite" in source
