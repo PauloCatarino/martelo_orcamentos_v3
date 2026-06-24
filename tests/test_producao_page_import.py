@@ -11,18 +11,21 @@ def test_producao_page_imports_and_headers() -> None:
     assert ProducaoPage.TABLE_HEADERS == [
         "Criada em",
         "Ano",
-        "Processo",
         "Estado",
-        "Cliente",
-        "Ref Cliente",
-        "Obra",
-        "Localização",
+        "Responsável",
+        "Processo",
         "Nº Enc PHC",
         "V. Obra",
         "V. CutRite",
+        "Cliente",
+        "Ref Cliente",
+        "Obra",
         "Data Início",
         "Data Entrega",
-        "Responsável",
+        "Qt Artigos",
+        "Preço",
+        "Descrição Produção",
+        "Localização",
         "Tipo Pasta",
     ]
 
@@ -36,7 +39,11 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "CampoPesquisa" in init_source
     assert "self.table" in init_source
     assert "Data em que a obra foi criada nesta lista" in init_source
-    assert "ligar_persistencia_larguras" in init_source
+    assert "COLUNAS_PRODUCAO" in inspect.getsource(ProducaoPage)
+    assert '"Colunas"' in init_source
+    assert "Escolher as colunas visíveis" in init_source
+    assert "sectionResized" in init_source
+    assert "ligar_persistencia_larguras" not in inspect.getsource(ProducaoPage)
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source
     assert "setToolTip" in init_source
@@ -52,14 +59,19 @@ def test_producao_page_init_uses_expected_widgets() -> None:
 def test_producao_page_detail_editing_hooks() -> None:
     from app.ui.pages.producao_page import ProducaoPage
     import app.ui.pages.producao_page as producao_page
+    import app.ui.helpers.colunas_producao as colunas_producao
 
     source = inspect.getsource(ProducaoPage)
+    helper_source = inspect.getsource(colunas_producao)
 
     assert hasattr(ProducaoPage, "_fill_form")
     assert hasattr(ProducaoPage, "_collect_form")
     assert hasattr(ProducaoPage, "_on_select_row")
     assert hasattr(ProducaoPage, "_save")
     assert "app_session" in source
+    assert "carregar_config" in source
+    assert "guardar_config" in source
+    assert "SystemSettingService" in helper_source
     assert "itemSelectionChanged" in source
     assert "converter_orcamento" in source
     assert "normalizar_data" in source

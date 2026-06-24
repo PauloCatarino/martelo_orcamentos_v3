@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSize, QUrl
+from PySide6.QtCore import Qt, QSize, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
@@ -38,12 +38,19 @@ from app.services.producao_service import (
     filtrar_processos,
 )
 from app.ui import tema
+from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
+from app.ui.helpers.colunas_producao import (
+    COLUNAS_PRODUCAO,
+    LARGURAS_DEFAULT_PRODUCAO,
+    carregar_config,
+    desserializar_config,
+    guardar_config,
+)
 from app.ui.helpers.imagem import load_scaled_pixmap
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
-from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 TIPOS_PASTA_PRODUCAO = (
@@ -67,49 +74,19 @@ class _ImagemPreviewLabel(QLabel):
 class ProducaoPage(QWidget):
     """Production process page with an editable V3 detail form."""
 
-    TABLE_HEADERS = [
+    TABLE_HEADERS = [coluna.titulo for coluna in COLUNAS_PRODUCAO]
+    COLUMN_WIDTHS = LARGURAS_DEFAULT_PRODUCAO
+    CENTERED_HEADERS = {
         "Criada em",
         "Ano",
         "Processo",
         "Estado",
-        "Cliente",
-        "Ref Cliente",
-        "Obra",
-        "Localização",
         "Nº Enc PHC",
         "V. Obra",
         "V. CutRite",
         "Data Início",
         "Data Entrega",
-        "Responsável",
-        "Tipo Pasta",
-    ]
-    COLUMN_WIDTHS = {
-        "Criada em": 95,
-        "Ano": 60,
-        "Processo": 115,
-        "Estado": 110,
-        "Cliente": 190,
-        "Ref Cliente": 110,
-        "Obra": 210,
-        "Localização": 150,
-        "Nº Enc PHC": 95,
-        "V. Obra": 75,
-        "V. CutRite": 80,
-        "Data Início": 95,
-        "Data Entrega": 95,
-        "Responsável": 120,
-        "Tipo Pasta": 170,
-    }
-    CENTERED_HEADERS = {
-        "Ano",
-        "Processo",
-        "Estado",
-        "Nº Enc PHC",
-        "V. Obra",
-        "V. CutRite",
-        "Data Início",
-        "Data Entrega",
+        "Qt Artigos",
     }
 
     def __init__(self) -> None:
@@ -122,11 +99,21 @@ class ProducaoPage(QWidget):
         self._a_preencher_form = False
         self._imagem_path: str | None = None
         self._imagem_preview_pixmap_original: QPixmap | None = None
+        self._colunas_visiveis = [
+            coluna.key for coluna in COLUNAS_PRODUCAO if coluna.visivel_default
+        ]
+        self._larguras_colunas = dict(LARGURAS_DEFAULT_PRODUCAO)
+        self._guardar_larguras_agendado = False
+        self._aplicando_config_colunas = False
 
         self.cabecalho = BarraCabecalho(
             "Produção",
             ["Obras em produção do Martelo V3"],
         )
+
+        self.columns_button = QPushButton("Colunas")
+        self.columns_button.setToolTip("Escolher as colunas visíveis")
+        self.columns_button.clicked.connect(self._abrir_dialog_colunas)
 
         self.convert_button = QPushButton("Converter Orçamento")
         self.convert_button.setToolTip("Converter um orçamento adjudicado numa obra de produção")
@@ -142,6 +129,7 @@ class ProducaoPage(QWidget):
         self.refresh_button.clicked.connect(self.carregar_processos)
 
         actions_layout = QHBoxLayout()
+        actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
@@ -183,14 +171,16 @@ class ProducaoPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setSectionsMovable(False)
         header.setStretchLastSection(False)
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
         self._aplicar_larguras_colunas()
+        header.sectionResized.connect(self._on_coluna_redimensionada)
+        self._carregar_config_colunas()
         self.table.itemSelectionChanged.connect(self._on_select_row)
-        ligar_persistencia_larguras(self.table, "producao")
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("producaoFooter")
@@ -584,6 +574,85 @@ class ProducaoPage(QWidget):
             return None
         return valor
 
+    def _colunas_user_id(self) -> object:
+        current_user = app_session.current_user
+        return getattr(current_user, "id", None) or "default"
+
+    def _carregar_config_colunas(self) -> None:
+        try:
+            with SessionLocal() as session:
+                visiveis, larguras = carregar_config(session, self._colunas_user_id())
+        except SQLAlchemyError:
+            visiveis, larguras = desserializar_config(None)
+
+        self._colunas_visiveis = visiveis
+        self._larguras_colunas = {**LARGURAS_DEFAULT_PRODUCAO, **larguras}
+        self._aplicar_config_colunas()
+
+    def _aplicar_config_colunas(self) -> None:
+        visiveis = set(self._colunas_visiveis)
+        self._aplicando_config_colunas = True
+        try:
+            for column_index, coluna in enumerate(COLUNAS_PRODUCAO):
+                self.table.setColumnHidden(column_index, coluna.key not in visiveis)
+                largura = self._larguras_colunas.get(
+                    coluna.key,
+                    LARGURAS_DEFAULT_PRODUCAO.get(coluna.key, 100),
+                )
+                self.table.setColumnWidth(column_index, largura)
+        finally:
+            self._aplicando_config_colunas = False
+
+    def _abrir_dialog_colunas(self) -> None:
+        dialog = ColunasProducaoDialog(
+            self,
+            COLUNAS_PRODUCAO,
+            self._colunas_visiveis,
+        )
+        if not dialog.exec() or dialog.selected_keys is None:
+            return
+
+        self._colunas_visiveis = dialog.selected_keys
+        self._aplicar_config_colunas()
+        self._guardar_config_colunas()
+
+    def _on_coluna_redimensionada(
+        self,
+        logical_index: int,
+        _old_size: int,
+        new_size: int,
+    ) -> None:
+        if self._aplicando_config_colunas:
+            return
+        if logical_index < 0 or logical_index >= len(COLUNAS_PRODUCAO):
+            return
+
+        self._larguras_colunas[COLUNAS_PRODUCAO[logical_index].key] = int(new_size)
+        if self._guardar_larguras_agendado:
+            return
+
+        self._guardar_larguras_agendado = True
+        QTimer.singleShot(800, self._guardar_config_colunas_debounced)
+
+    def _guardar_config_colunas_debounced(self) -> None:
+        self._guardar_larguras_agendado = False
+        self._guardar_config_colunas()
+
+    def _guardar_config_colunas(self) -> None:
+        for column_index, coluna in enumerate(COLUNAS_PRODUCAO):
+            self._larguras_colunas[coluna.key] = self.table.columnWidth(column_index)
+
+        try:
+            with SessionLocal() as session:
+                guardar_config(
+                    session,
+                    self._colunas_user_id(),
+                    self._colunas_visiveis,
+                    self._larguras_colunas,
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Nao foi possivel guardar as colunas.")
+
     def _preencher_tabela(self, processos: list[Producao]) -> None:
         """Fill the table with production processes."""
         self._processos_by_row = {}
@@ -592,26 +661,10 @@ class ProducaoPage(QWidget):
 
         for row_index, processo in enumerate(processos):
             self._processos_by_row[row_index] = processo
-            values = [
-                self._format_date(processo.created_at),
-                processo.ano,
-                processo.codigo_processo,
-                processo.estado or "",
-                processo.nome_cliente or "",
-                processo.ref_cliente or "",
-                processo.obra or "",
-                processo.localizacao or "",
-                processo.num_enc_phc,
-                processo.versao_obra,
-                processo.versao_plano,
-                normalizar_data(processo.data_inicio),
-                normalizar_data(processo.data_entrega),
-                processo.responsavel or "",
-                processo.tipo_pasta or "",
-            ]
+            values = [coluna.valor(processo) for coluna in COLUNAS_PRODUCAO]
 
             for column_index, value in enumerate(values):
-                header = self.TABLE_HEADERS[column_index]
+                header = COLUNAS_PRODUCAO[column_index].titulo
                 item = self._criar_item_tabela(self._format_value(value), header)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
                 if column_index == 0:
@@ -1019,8 +1072,8 @@ class ProducaoPage(QWidget):
             return ""
 
     def _aplicar_larguras_colunas(self) -> None:
-        for column_index, header in enumerate(self.TABLE_HEADERS):
-            largura = self.COLUMN_WIDTHS.get(header)
+        for column_index, coluna in enumerate(COLUNAS_PRODUCAO):
+            largura = self.COLUMN_WIDTHS.get(coluna.key)
             if largura is not None:
                 self.table.setColumnWidth(column_index, largura)
 
