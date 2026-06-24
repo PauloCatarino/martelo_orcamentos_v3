@@ -62,6 +62,8 @@ def test_producao_service_has_nova_versao_functions() -> None:
     assert hasattr(service_module, "preparar_nova_versao")
     assert hasattr(service_module, "criar_nova_versao")
     assert hasattr(service_module, "listar_versoes_processo")
+    assert hasattr(service_module, "eliminar_processo")
+    assert hasattr(service_module, "eliminar_processo_completo")
 
 
 def test_gerar_codigo_processo_formata_chave() -> None:

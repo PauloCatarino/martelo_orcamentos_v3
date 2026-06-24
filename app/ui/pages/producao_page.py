@@ -37,12 +37,17 @@ from app.services.producao_service import (
     ProducaoService,
     converter_orcamento,
     criar_nova_versao,
+    eliminar_processo_completo,
     filtrar_processos,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
     preparar_nova_versao,
 )
-from app.services.producao_pastas_service import arvore_pastas_processo
+from app.services.producao_pastas_service import (
+    arvore_pastas_processo,
+    caminho_versao_de_processo,
+    preview_conteudo_pasta,
+)
 from app.ui import tema
 from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
@@ -137,6 +142,10 @@ class ProducaoPage(QWidget):
         )
         self.nova_versao_button.clicked.connect(self._nova_versao)
 
+        self.delete_button = QPushButton("Eliminar")
+        self.delete_button.setToolTip("Eliminar obra: registo e/ou pasta no servidor")
+        self.delete_button.clicked.connect(self._eliminar_processo)
+
         self.save_button = QPushButton("Salvar")
         self.save_button.setToolTip("Gravar as alterações da obra selecionada")
         self.save_button.setEnabled(False)
@@ -151,6 +160,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.pastas_button)
         actions_layout.addWidget(self.nova_versao_button)
+        actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -853,6 +863,191 @@ class ProducaoPage(QWidget):
             parent=self,
         )
         dialog.exec()
+
+    def _eliminar_processo(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para eliminar.")
+            return
+
+        if self._dirty:
+            resposta = QMessageBox.question(
+                self,
+                "Alterações por gravar",
+                "Há alterações por gravar. Descartar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            self._set_dirty(False)
+
+        escolha = self._escolher_modo_eliminacao(processo)
+        if escolha is None:
+            return
+        apagar_registo, apagar_pasta = escolha
+
+        caminho_texto = ""
+        if apagar_pasta:
+            try:
+                with SessionLocal() as session:
+                    processo_db = session.get(Producao, processo.id)
+                    if processo_db is None:
+                        raise ValueError("Processo de producao nao encontrado.")
+                    caminho = caminho_versao_de_processo(session, processo_db)
+                    caminho_texto = str(caminho)
+                    preview = preview_conteudo_pasta(caminho)
+            except (SQLAlchemyError, OSError, ValueError) as error:
+                QMessageBox.warning(self, "Eliminar obra", str(error))
+                return
+
+            aviso_extra = ""
+            if not apagar_registo:
+                aviso_extra = (
+                    "\n\nNota: o registo fica a apontar para uma pasta inexistente."
+                )
+            resposta = QMessageBox.question(
+                self,
+                "Confirmar eliminação da pasta",
+                (
+                    "A pasta abaixo será removida de forma permanente.\n\n"
+                    f"{caminho_texto}\n\n"
+                    "Conteúdo encontrado:\n"
+                    f"{preview}"
+                    f"{aviso_extra}"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+
+        resposta = QMessageBox.question(
+            self,
+            "Confirmação final",
+            self._mensagem_confirmacao_eliminacao(
+                processo,
+                apagar_registo=apagar_registo,
+                apagar_pasta=apagar_pasta,
+                caminho_pasta=caminho_texto,
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                eliminar_processo_completo(
+                    session,
+                    processo_id=processo.id,
+                    apagar_registo=apagar_registo,
+                    apagar_pasta=apagar_pasta,
+                )
+        except (PermissionError, OSError, ValueError) as error:
+            if apagar_pasta:
+                QMessageBox.warning(
+                    self,
+                    "Eliminar obra",
+                    f"Pasta não apagada; registo mantido.\n\n{error}",
+                )
+            else:
+                QMessageBox.warning(self, "Eliminar obra", str(error))
+            return
+        except SQLAlchemyError as error:
+            QMessageBox.warning(
+                self,
+                "Eliminar obra",
+                f"Não foi possível eliminar o registo na BD.\n\n{error}",
+            )
+            return
+
+        selecionar_id = None if apagar_registo else processo.id
+        self.carregar_processos(selecionar_id=selecionar_id)
+        self.status_label.setText(
+            self._mensagem_sucesso_eliminacao(
+                apagar_registo=apagar_registo,
+                apagar_pasta=apagar_pasta,
+            )
+        )
+
+    def _escolher_modo_eliminacao(
+        self,
+        processo: Producao,
+    ) -> tuple[bool, bool] | None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Eliminar obra")
+        box.setText(
+            f"Escolha o que eliminar para {self._format_value(processo.codigo_processo)}."
+        )
+        box.setInformativeText("Esta ação pode remover dados de forma permanente.")
+        only_db_button = box.addButton(
+            "Só registo (BD)",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        only_folder_button = box.addButton(
+            "Só pasta (servidor)",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        both_button = box.addButton(
+            "Pasta + registo",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel_button = box.addButton(
+            "Cancelar",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(cancel_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == only_db_button:
+            return True, False
+        if clicked == only_folder_button:
+            return False, True
+        if clicked == both_button:
+            return True, True
+        return None
+
+    def _mensagem_confirmacao_eliminacao(
+        self,
+        processo: Producao,
+        *,
+        apagar_registo: bool,
+        apagar_pasta: bool,
+        caminho_pasta: str,
+    ) -> str:
+        codigo = self._format_value(processo.codigo_processo)
+        if apagar_registo and apagar_pasta:
+            return (
+                f"Eliminar permanentemente a pasta e o registo da obra {codigo}?\n\n"
+                f"Pasta:\n{caminho_pasta}"
+            )
+        if apagar_pasta:
+            return (
+                f"Eliminar permanentemente só a pasta da obra {codigo}?\n\n"
+                f"Pasta:\n{caminho_pasta}\n\n"
+                "O registo na BD será mantido."
+            )
+        return (
+            f"Eliminar só o registo na BD da obra {codigo}?\n\n"
+            "A pasta no servidor será mantida."
+        )
+
+    @staticmethod
+    def _mensagem_sucesso_eliminacao(
+        *,
+        apagar_registo: bool,
+        apagar_pasta: bool,
+    ) -> str:
+        if apagar_registo and apagar_pasta:
+            return "Pasta e registo eliminados."
+        if apagar_pasta:
+            return "Pasta eliminada. O registo foi mantido."
+        return "Registo eliminado. A pasta foi mantida."
 
     def _nova_versao(self) -> None:
         processo = self._processo_selecionado()

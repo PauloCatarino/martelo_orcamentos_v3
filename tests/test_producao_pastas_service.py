@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.services.producao_service import (
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
@@ -122,3 +124,89 @@ def test_listar_pastas_enc_arvore_lista_niveis_do_servidor(tmp_path) -> None:
             ]
         }
     }
+
+
+def test_eliminar_pasta_versao_recusa_nome_inesperado_sem_rmtree(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    seg3 = "1058_01_01_JF_VIVA"
+    pasta = tmp_path / "2026" / "Encomenda de Cliente" / "1058_JF_VIVA" / "1058_01_JF_VIVA" / seg3
+    pasta.mkdir(parents=True)
+    chamadas = []
+
+    monkeypatch.setattr(pastas_module, "resolver_base_dir", lambda _session: str(tmp_path))
+    monkeypatch.setattr(pastas_module.shutil, "rmtree", lambda path: chamadas.append(path))
+
+    with pytest.raises(ValueError, match="Nome da pasta"):
+        pastas_module.eliminar_pasta_versao(
+            object(),
+            pasta,
+            nome_esperado="1058_01_02_JF_VIVA",
+        )
+
+    assert chamadas == []
+    assert pasta.is_dir()
+
+
+def test_eliminar_pasta_versao_recusa_caminho_fora_da_base_sem_rmtree(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    base = tmp_path / "base"
+    base.mkdir()
+    seg3 = "1058_01_01_JF_VIVA"
+    pasta = tmp_path / "fora" / seg3
+    pasta.mkdir(parents=True)
+    chamadas = []
+
+    monkeypatch.setattr(pastas_module, "resolver_base_dir", lambda _session: str(base))
+    monkeypatch.setattr(pastas_module.shutil, "rmtree", lambda path: chamadas.append(path))
+
+    with pytest.raises(ValueError, match="fora da pasta base"):
+        pastas_module.eliminar_pasta_versao(
+            object(),
+            pasta,
+            nome_esperado=seg3,
+        )
+
+    assert chamadas == []
+    assert pasta.is_dir()
+
+
+def test_eliminar_pasta_versao_apaga_apenas_seg3_dentro_da_base(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    base = tmp_path / "base"
+    parent = (
+        base
+        / "2026"
+        / "Encomenda de Cliente"
+        / "1058_JF_VIVA"
+        / "1058_01_JF_VIVA"
+    )
+    seg3 = "1058_01_01_JF_VIVA"
+    pasta = parent / seg3
+    outra_versao = parent / "1058_01_02_JF_VIVA"
+    pasta.mkdir(parents=True)
+    outra_versao.mkdir(parents=True)
+    (pasta / "plano.cut").write_text("conteudo", encoding="utf-8")
+
+    monkeypatch.setattr(pastas_module, "resolver_base_dir", lambda _session: str(base))
+
+    pastas_module.eliminar_pasta_versao(
+        object(),
+        pasta,
+        nome_esperado=seg3,
+    )
+
+    assert not pasta.exists()
+    assert parent.is_dir()
+    assert outra_versao.is_dir()

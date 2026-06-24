@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QDialog,
@@ -93,6 +93,15 @@ class NovaVersaoProcessoDialog(QDialog):
             line.textChanged.connect(self._refresh_status)
             line.editingFinished.connect(self._format_inputs)
 
+        self._blink_timer = QTimer(self)
+        self._blink_timer.setInterval(350)
+        self._blink_timer.timeout.connect(self._blink_tick)
+        self._blink_on = False
+        self._blink_base_styles = [
+            (self.ed_ver_obra, self.ed_ver_obra.styleSheet()),
+            (self.ed_ver_plano, self.ed_ver_plano.styleSheet()),
+        ]
+
         form = QFormLayout()
         form.addRow("Versão obra", self.ed_ver_obra)
         form.addRow("Versão CUT-RITE", self.ed_ver_plano)
@@ -136,6 +145,7 @@ class NovaVersaoProcessoDialog(QDialog):
         layout.addWidget(self.button_box)
 
         self._apply(*self._sug_cutrite)
+        self._start_blink()
 
     def values(self) -> tuple[str, str]:
         """Return the selected (versao_obra, versao_plano) pair."""
@@ -169,6 +179,27 @@ class NovaVersaoProcessoDialog(QDialog):
         self.ed_ver_obra.setText(self._norm_two_digits(versao_obra))
         self.ed_ver_plano.setText(self._norm_two_digits(versao_plano))
         self._refresh_status()
+
+    def _start_blink(self) -> None:
+        self._blink_on = False
+        self._blink_timer.start()
+
+    def _blink_tick(self) -> None:
+        self._blink_on = not self._blink_on
+        for line, base_style in self._blink_base_styles:
+            if self._blink_on:
+                separator = "" if not base_style or base_style.endswith(";") else ";"
+                line.setStyleSheet(
+                    f"{base_style}{separator} background-color: #FFF3A6;"
+                )
+            else:
+                line.setStyleSheet(base_style)
+
+    def _stop_blink(self) -> None:
+        if self._blink_timer.isActive():
+            self._blink_timer.stop()
+        for line, base_style in self._blink_base_styles:
+            line.setStyleSheet(base_style)
 
     def _format_inputs(self) -> None:
         for line in (self.ed_ver_obra, self.ed_ver_plano):
@@ -211,3 +242,11 @@ class NovaVersaoProcessoDialog(QDialog):
         if text.isdigit():
             return f"{int(text):02d}"
         return text[:2] if len(text) >= 2 else text.zfill(2)
+
+    def done(self, result: int) -> None:
+        self._stop_blink()
+        super().done(result)
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        self._stop_blink()
+        super().closeEvent(event)

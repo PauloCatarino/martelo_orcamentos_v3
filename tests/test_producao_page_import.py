@@ -50,6 +50,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "Ver as pastas do processo selecionado no servidor" in init_source
     assert '"Nova Versão"' in init_source
     assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
+    assert '"Eliminar"' in init_source
+    assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
     assert "setToolTip" in init_source
     assert "Gravar as alterações da obra selecionada" in init_source
@@ -84,6 +86,9 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "NovaVersaoProcessoDialog" in source
     assert "preparar_nova_versao" in source
     assert "criar_nova_versao" in source
+    assert "eliminar_processo_completo" in source
+    assert "preview_conteudo_pasta" in source
+    assert hasattr(ProducaoPage, "_eliminar_processo")
     assert "nome_plano_corte_input" in source
     assert "nome_enc_imos_ix_input" in source
     assert "gerar_nome_plano_cut_rite" in source

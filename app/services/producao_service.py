@@ -14,7 +14,9 @@ from app.models.orcamento_versao import OrcamentoVersao
 from app.models.producao import Producao
 from app.services.producao_pastas_service import (
     caminho_versao,
+    caminho_versao_de_processo,
     criar_pasta_versao,
+    eliminar_pasta_versao,
     listar_pastas_enc_arvore,
     sugerir_proxima_versao_obra,
     sugerir_proxima_versao_plano,
@@ -458,6 +460,39 @@ def criar_nova_versao(
     session.commit()
     session.refresh(novo)
     return novo
+
+
+def eliminar_processo(session: Session, proc_id: int) -> None:
+    """Delete one production process record without committing."""
+    processo = session.get(Producao, proc_id)
+    if processo is None:
+        raise ValueError("Processo de producao nao encontrado.")
+    session.delete(processo)
+
+
+def eliminar_processo_completo(
+    session: Session,
+    *,
+    processo_id: int,
+    apagar_registo: bool,
+    apagar_pasta: bool,
+) -> None:
+    """Delete the selected production process folder and/or database record."""
+    if not apagar_registo and not apagar_pasta:
+        raise ValueError("Escolha o registo, a pasta, ou ambos para eliminar.")
+
+    processo = session.get(Producao, processo_id)
+    if processo is None:
+        raise ValueError("Processo de producao nao encontrado.")
+
+    if apagar_pasta:
+        caminho = caminho_versao_de_processo(session, processo)
+        eliminar_pasta_versao(session, caminho, nome_esperado=caminho.name)
+
+    if apagar_registo:
+        eliminar_processo(session, processo_id)
+
+    session.commit()
 
 
 def campos_editaveis(data: dict) -> dict:

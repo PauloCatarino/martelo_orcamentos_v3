@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import shutil
 from typing import Optional
 
 from sqlalchemy import select
@@ -510,12 +511,108 @@ def caminho_versao(
     return Path(_normalizar_path_windows(path_text))
 
 
+def caminho_versao_de_processo(session: Session, processo: Producao) -> Path:
+    """Return the server folder path for the exact production process version."""
+    return caminho_versao(
+        session,
+        ano=processo.ano,
+        tipo_pasta=processo.tipo_pasta,
+        num_enc_phc=processo.num_enc_phc,
+        versao_obra=processo.versao_obra,
+        versao_plano=processo.versao_plano,
+        nome_simplex=processo.nome_cliente_simplex,
+        nome_cliente=processo.nome_cliente,
+        ref_cliente=processo.ref_cliente,
+    )
+
+
 def criar_pasta_versao(caminho: Path) -> Path:
     try:
         caminho.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise OSError(f"Falha ao criar pasta de producao: {caminho} ({exc})") from exc
     return caminho
+
+
+def preview_conteudo_pasta(caminho: Path, limite: int = 25) -> str:
+    """Return a read-only preview of the first entries in a folder."""
+    path = Path(caminho)
+    try:
+        if not path.exists():
+            return "(pasta inexistente)"
+        if not path.is_dir():
+            return "(nao e uma pasta)"
+        entries = sorted(path.iterdir(), key=lambda item: item.name.casefold())
+    except OSError as exc:
+        return f"(nao foi possivel listar a pasta: {exc})"
+
+    if not entries:
+        return "(pasta vazia)"
+
+    limite = max(1, int(limite or 1))
+    linhas = []
+    for entry in entries[:limite]:
+        try:
+            prefixo = "[DIR]" if entry.is_dir() else "[FIC]"
+        except OSError:
+            prefixo = "[?]"
+        linhas.append(f"{prefixo} {entry.name}")
+    restantes = len(entries) - limite
+    if restantes > 0:
+        linhas.append(f"... mais {restantes} item(ns)")
+    return "\n".join(linhas)
+
+
+def eliminar_pasta_versao(
+    session: Session,
+    caminho: Path,
+    *,
+    nome_esperado: str,
+) -> None:
+    """Permanently remove one version folder after strict safety checks."""
+    path = Path(caminho)
+    expected_name = str(nome_esperado or "").strip()
+    if not expected_name:
+        raise ValueError("Nome esperado da pasta de versao em falta.")
+
+    try:
+        resolved_path = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Pasta de versao inexistente: {path}") from exc
+    except OSError as exc:
+        raise OSError(f"Nao foi possivel resolver a pasta de versao: {path} ({exc})") from exc
+
+    if not resolved_path.is_dir():
+        raise ValueError(f"O caminho nao e uma pasta: {resolved_path}")
+    if resolved_path.name != expected_name:
+        raise ValueError(
+            "Nome da pasta de versao inesperado: "
+            f"{resolved_path.name!r} (esperado {expected_name!r})."
+        )
+
+    base_path = Path(resolver_base_dir(session))
+    try:
+        resolved_base = base_path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Pasta base de producao inexistente: {base_path}") from exc
+    except OSError as exc:
+        raise OSError(f"Nao foi possivel resolver a pasta base de producao: {base_path} ({exc})") from exc
+
+    if resolved_path == resolved_base or not resolved_path.is_relative_to(resolved_base):
+        raise ValueError(
+            "A pasta de versao esta fora da pasta base de producao: "
+            f"{resolved_path}"
+        )
+
+    try:
+        shutil.rmtree(resolved_path)
+    except PermissionError as exc:
+        raise PermissionError(
+            f"Falha ao apagar a pasta de versao: {resolved_path} "
+            "(sem permissao ou ficheiro em uso?)"
+        ) from exc
+    except OSError as exc:
+        raise OSError(f"Falha ao apagar a pasta de versao: {resolved_path} ({exc})") from exc
 
 
 def resolver_base_dir(session: Session) -> str:
