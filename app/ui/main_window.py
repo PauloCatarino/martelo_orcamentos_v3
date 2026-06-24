@@ -27,6 +27,7 @@ from app.ui.pages import (
     DefPecasPage,
     DefValuesetChavesPage,
     DefValuesetModelosPage,
+    EncomendasPage,
     MargensPadraoPage,
     MateriasPrimasPage,
     OperacoesMaquinasPage,
@@ -49,6 +50,7 @@ class MainWindow(QMainWindow):
         "materias_primas": "materias_primas",
         "clientes": "clientes",
         "producao": "producao",
+        "encomendas_phc": "producao",
     }
 
     logout_requested = Signal()
@@ -130,9 +132,11 @@ class MainWindow(QMainWindow):
         _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
         _criar_item("Pesquisa IA", "pesquisa_ia", parent=item_orcamentos)
         _criar_item("Clientes", "clientes")
-        _criar_item("Produção", "producao")
+        item_producao = _criar_item("Produção", "producao")
+        _criar_item("Encomendas PHC", "encomendas_phc", parent=item_producao)
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
+        item_producao.setExpanded(True)
 
         sidebar_layout.addWidget(self.nav_tree, stretch=1)
         sidebar.setLayout(sidebar_layout)
@@ -153,6 +157,7 @@ class MainWindow(QMainWindow):
         self.biblioteca_modulos_page = BibliotecaModulosPage()
         self.clientes_page = ClientesPage()
         self.producao_page = ProducaoPage()
+        self.encomendas_page = EncomendasPage()
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
@@ -178,6 +183,7 @@ class MainWindow(QMainWindow):
         self._add_page("biblioteca_modulos", self.biblioteca_modulos_page)
         self._add_page("clientes", self.clientes_page)
         self._add_page("producao", self.producao_page)
+        self._add_page("encomendas_phc", self.encomendas_page)
         self._add_page("configuracoes", self.configuracoes_page)
 
         content_layout.addWidget(sidebar)
