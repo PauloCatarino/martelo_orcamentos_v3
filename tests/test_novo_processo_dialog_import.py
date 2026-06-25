@@ -53,6 +53,9 @@ def test_novo_processo_dialog_uses_expected_services_and_controls() -> None:
     assert "QIntValidator" in source
     assert "QDialogButtonBox" in source
     assert "Criar Processo" in dialog_source
+    assert "setAutoDefault(False)" in dialog_source
+    assert "setDefault(False)" in dialog_source
+    assert "cancel_button" in dialog_source
     assert "Encomenda de Cliente (PHC)" in dialog_source
     assert "Encomenda Cliente Final (Streamlit)" in dialog_source
     assert "setToolTip" in source

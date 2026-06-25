@@ -309,6 +309,11 @@ class NovoProcessoDialog(QDialog):
         self.ok_button.setEnabled(False)
         self.buttons.accepted.connect(self._on_accept)
         self.buttons.rejected.connect(self.reject)
+        cancel_button = self.buttons.button(QDialogButtonBox.StandardButton.Cancel)
+        for botao in (self.ok_button, cancel_button):
+            if botao is not None:
+                botao.setAutoDefault(False)
+                botao.setDefault(False)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.tabs, stretch=1)
