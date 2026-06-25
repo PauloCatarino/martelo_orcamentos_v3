@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.services import encomendas_phc_service as service_module
 from app.services.phc_sql import assert_select_only
 
@@ -108,3 +110,31 @@ def test_query_phc_estado_debug_rows_executa_select_read_only(monkeypatch) -> No
     assert "FROM BI WITH (NOLOCK)" in query
     assert "BI.OBRANO = 402" in query
     assert "TOP (2000)" in query
+
+
+def test_query_phc_encomenda_itens_constroi_select_read_only(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+    _patch(monkeypatch, capturado)
+
+    result = service_module.query_phc_encomenda_itens(
+        object(),
+        num_enc_phc="ENC 402",
+        ano=2026,
+    )
+
+    assert result == [{"Cliente": "X"}]
+    assert capturado["conn_str"] == "conn"
+    query = str(capturado["query"])
+    assert_select_only(query)
+    assert "FROM BI WITH (NOLOCK)" in query
+    assert "INNER JOIN BO2 WITH (NOLOCK)" in query
+    assert "BO2.ANULADO = 0" in query
+    assert "BI.OBRANO = 402" in query
+    assert "BI.DATAOBRA >= '2026-01-01'" in query
+    assert "BI.DATAOBRA < '2027-01-01'" in query
+    assert "ORDER BY BI.LORDEM ASC" in query
+
+
+def test_query_phc_encomenda_itens_valida_numero() -> None:
+    with pytest.raises(ValueError, match="Num Enc PHC"):
+        service_module.query_phc_encomenda_itens(object(), num_enc_phc="")

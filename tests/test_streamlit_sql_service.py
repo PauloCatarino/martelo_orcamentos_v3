@@ -129,3 +129,43 @@ def test_query_itens_encomenda_aplica_top(monkeypatch) -> None:
     assert "TOP" in query
     assert "20000" in query
     assert "EncomendaId = 7" in query
+
+
+def test_query_streamlit_encomenda_itens_constroi_select_read_only(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+    _patch(monkeypatch, capturado)
+
+    result = service_module.query_streamlit_encomenda_itens(
+        object(),
+        num_enc_final="7",
+        ano=2026,
+    )
+
+    assert result == [{"Id": 1}]
+    assert capturado["conn_str"] == "conn"
+    query = str(capturado["query"])
+    assert_select_only(query)
+    assert "FROM dbo.Encomendas E WITH (NOLOCK)" in query
+    assert "LEFT JOIN dbo.ItensEncomenda I WITH (NOLOCK)" in query
+    assert "E.Cliente_Abre AS Cliente_Abreviado" in query
+    assert "WHERE E.Numero = '_007' AND E.Ano = 2026" in query
+    assert "ORDER BY E.Id DESC, I.Id ASC" in query
+
+
+def test_query_streamlit_encomenda_itens_aceita_underscore(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+    _patch(monkeypatch, capturado)
+
+    service_module.query_streamlit_encomenda_itens(object(), num_enc_final="_7")
+
+    query = str(capturado["query"])
+    assert "WHERE E.Numero = '_007'" in query
+    assert "E.Ano =" not in query
+
+
+def test_query_streamlit_encomenda_itens_valida_numero_longo() -> None:
+    with pytest.raises(ValueError, match="3 algarismos"):
+        service_module.query_streamlit_encomenda_itens(
+            object(),
+            num_enc_final="1000",
+        )

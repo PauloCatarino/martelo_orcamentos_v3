@@ -148,3 +148,49 @@ def query_phc_estado_debug_rows(
     assert_select_only(query)
     conn_str = build_connection_string(load_phc_config(session))
     return run_select(conn_str, query)
+
+
+def query_phc_encomenda_itens(
+    session: Session,
+    *,
+    num_enc_phc,
+    ano=None,
+) -> list[dict]:
+    """Le os itens de UMA encomenda PHC (por BI.OBRANO). SO-LEITURA (SELECT).
+
+    Devolve uma linha por item com: Ano, Cliente, Cliente_Abreviado, Enc_No,
+    Num_PHC, Ref_Cliente, Descricao_Artigo, Data_Encomenda, Data_Entrega.
+    """
+    enc_digits = re.sub(r"\D", "", str(num_enc_phc or ""))
+    if not enc_digits:
+        raise ValueError("Num Enc PHC invalido.")
+    enc_int = int(enc_digits)
+
+    year_filter = ""
+    if ano is not None and str(ano).strip():
+        ano_int = int(re.sub(r"\D", "", str(ano)))
+        if ano_int < 1900 or ano_int > 2200:
+            raise ValueError("Ano invalido.")
+        year_filter = (
+            f" AND BI.DATAOBRA >= '{ano_int}-01-01'"
+            f" AND BI.DATAOBRA < '{ano_int + 1}-01-01'"
+        )
+
+    query = (
+        "SELECT "
+        "YEAR(BI.DATAOBRA) AS Ano, BI.NOME AS Cliente, CL.NOME2 AS Cliente_Abreviado, "
+        "BI.OBRANO AS Enc_No, CL.NO AS Num_PHC, BO.U_ORCC AS Ref_Cliente, "
+        "BI.DESIGN AS Descricao_Artigo, "
+        "CONVERT(VARCHAR(10), BI.DATAOBRA, 104) AS Data_Encomenda, "
+        "CONVERT(VARCHAR(10), BO.U_ENTREGA, 104) AS Data_Entrega "
+        "FROM BI WITH (NOLOCK) "
+        "INNER JOIN BO WITH (NOLOCK) ON BO.BOSTAMP = BI.BOSTAMP "
+        "INNER JOIN BO2 WITH (NOLOCK) ON BO.BOSTAMP = BO2.BO2STAMP "
+        "LEFT JOIN CL WITH (NOLOCK) ON CL.NOME = BI.NOME "
+        f"WHERE BI.NDOS = 1 AND BO2.ANULADO = 0 AND BI.OBRANO = {enc_int}"
+        f"{year_filter} "
+        "ORDER BY BI.LORDEM ASC"
+    )
+    assert_select_only(query)
+    conn_str = build_connection_string(load_phc_config(session))
+    return run_select(conn_str, query)

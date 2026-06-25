@@ -8,6 +8,7 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.domain.datas import normalizar_data
 from app.models.cliente import Cliente
 from app.models.orcamento import Orcamento
 from app.models.orcamento_versao import OrcamentoVersao
@@ -364,6 +365,81 @@ def converter_orcamento(
         localizacao=orcamento.localizacao,
         descricao_orcamento=orcamento.descricao,
         preco_total=versao.preco_total,
+        created_by_id=created_by_id,
+    )
+    session.add(processo)
+    session.commit()
+    session.refresh(processo)
+    return processo
+
+
+def criar_processo_externo(
+    session: Session,
+    *,
+    dados: dict,
+    created_by_id: int | None,
+) -> Producao:
+    """Cria uma Producao a partir do resultado do dialogo Novo Processo."""
+    source = str(dados.get("source") or "").strip().lower()
+    if source not in {"phc", "streamlit"}:
+        raise ValueError("Origem invalida (PHC ou Streamlit).")
+
+    nome_cliente = str(dados.get("nome_cliente") or "").strip()
+    if not nome_cliente:
+        raise ValueError("Nome do cliente em falta.")
+
+    ano = str(dados.get("ano") or "").strip()
+    num_enc_phc = str(dados.get("num_enc_phc") or "").strip()
+    if not ano or not num_enc_phc:
+        raise ValueError("Ano e Num Enc em falta.")
+
+    tipo_pasta = (
+        "Encomenda de Cliente Final"
+        if source == "streamlit"
+        else "Encomenda de Cliente"
+    )
+    versao_obra, versao_plano = "01", "01"
+    nome_simplex = str(dados.get("nome_cliente_simplex") or "").strip() or nome_cliente
+    ref_cliente = str(dados.get("ref_cliente") or "").strip() or None
+
+    codigo_processo = codigo_processo_com_cliente(
+        ano,
+        num_enc_phc,
+        versao_obra,
+        versao_plano,
+        nome_simplex=nome_simplex,
+        nome_cliente=nome_cliente,
+        ref_cliente=ref_cliente,
+    )
+    duplicado = session.scalar(
+        select(Producao).where(
+            Producao.ano == ano,
+            Producao.num_enc_phc == num_enc_phc,
+            Producao.versao_obra == versao_obra,
+            Producao.versao_plano == versao_plano,
+        )
+    )
+    if duplicado is not None:
+        raise ValueError(
+            f"Ja existe o processo {duplicado.codigo_processo}. "
+            "Para outra versao use 'Nova Versao'."
+        )
+
+    processo = Producao(
+        estado="Desenho",
+        tipo_pasta=tipo_pasta,
+        versao_obra=versao_obra,
+        versao_plano=versao_plano,
+        codigo_processo=codigo_processo,
+        ano=ano,
+        num_enc_phc=num_enc_phc,
+        nome_cliente=nome_cliente,
+        nome_cliente_simplex=nome_simplex,
+        num_cliente_phc=str(dados.get("num_cliente_phc") or "").strip() or None,
+        ref_cliente=ref_cliente,
+        descricao_artigos=str(dados.get("descricao_artigos") or "").strip() or None,
+        data_inicio=normalizar_data(dados.get("data_inicio")) or None,
+        data_entrega=normalizar_data(dados.get("data_entrega")) or None,
         created_by_id=created_by_id,
     )
     session.add(processo)

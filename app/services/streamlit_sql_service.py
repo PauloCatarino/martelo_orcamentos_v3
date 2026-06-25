@@ -7,6 +7,7 @@ das ``system_settings`` (grupo "Streamlit") e reutiliza o mecanismo PowerShell d
 
 from __future__ import annotations
 
+import re
 from typing import Any, TypedDict
 
 from sqlalchemy.orm import Session
@@ -169,6 +170,47 @@ def query_itens_encomenda(
         "ORDER BY Id ASC"
     )
 
+    assert_select_only(query)
+    conn_str = build_connection_string(load_streamlit_config(session))
+    return run_select(conn_str, query)
+
+
+def query_streamlit_encomenda_itens(
+    session: Session,
+    *,
+    num_enc_final,
+    ano=None,
+) -> list[dict]:
+    """Le os itens de UMA encomenda Cliente Final (por Numero '_NNN'). SO-LEITURA."""
+    raw = str(num_enc_final or "").strip()
+    if re.fullmatch(r"_(\d{1,3})", raw):
+        numero = "_" + raw[1:].zfill(3)
+    else:
+        digits = re.sub(r"\D", "", raw)
+        if not digits:
+            raise ValueError("Num Enc (F) invalido (indique digitos).")
+        if len(digits) > 3:
+            raise ValueError("Num Enc (F) invalido (deve ter 3 algarismos, ex.: 001).")
+        numero = "_" + digits.zfill(3)
+
+    year_filter = ""
+    if ano is not None and str(ano).strip():
+        ano_int = int(re.sub(r"\D", "", str(ano)))
+        if ano_int < 1900 or ano_int > 2200:
+            raise ValueError("Ano invalido.")
+        year_filter = f" AND E.Ano = {ano_int}"
+
+    query = (
+        "SELECT E.Ano AS Ano, E.Cliente AS Cliente, "
+        "E.Cliente_Abre AS Cliente_Abreviado, E.Numero AS Numero, "
+        "E.RefCliente AS RefCliente, I.Designacao AS Designacao, "
+        "CONVERT(VARCHAR(10), E.DataEntrega, 104) AS DataEntrega, "
+        "CONVERT(VARCHAR(10), E.DataRecepcao, 104) AS DataRecepcao "
+        "FROM dbo.Encomendas E WITH (NOLOCK) "
+        "LEFT JOIN dbo.ItensEncomenda I WITH (NOLOCK) ON I.EncomendaId = E.Id "
+        f"WHERE E.Numero = '{numero}'{year_filter} "
+        "ORDER BY E.Id DESC, I.Id ASC"
+    )
     assert_select_only(query)
     conn_str = build_connection_string(load_streamlit_config(session))
     return run_select(conn_str, query)

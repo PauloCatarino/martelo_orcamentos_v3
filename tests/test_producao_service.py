@@ -65,6 +65,7 @@ def test_producao_service_has_nova_versao_functions() -> None:
     assert hasattr(service_module, "codigo_processo_com_cliente")
     assert hasattr(service_module, "eliminar_processo")
     assert hasattr(service_module, "eliminar_processo_completo")
+    assert hasattr(service_module, "criar_processo_externo")
 
 
 def test_gerar_codigo_processo_formata_chave() -> None:
@@ -341,4 +342,105 @@ def test_criar_nova_versao_recusa_duplicado_db(session) -> None:
             versao_plano="01",
             criar_pasta=False,
             current_user_id=None,
+        )
+
+
+def test_criar_processo_externo_streamlit_cria_producao_local(session) -> None:
+    from app.services.producao_service import criar_processo_externo
+
+    processo = criar_processo_externo(
+        session,
+        dados={
+            "source": "streamlit",
+            "ano": "2026",
+            "num_enc_phc": "_007",
+            "nome_cliente": "Cliente Final SA",
+            "nome_cliente_simplex": "CLIENTE_FINAL",
+            "num_cliente_phc": "123",
+            "ref_cliente": "REF-7",
+            "descricao_artigos": "Roupeiro\nMesa",
+            "data_inicio": "2026-06-01",
+            "data_entrega": "15-06-2026",
+        },
+        created_by_id=7,
+    )
+
+    assert processo.id is not None
+    assert processo.estado == "Desenho"
+    assert processo.tipo_pasta == "Encomenda de Cliente Final"
+    assert processo.versao_obra == "01"
+    assert processo.versao_plano == "01"
+    assert processo.ano == "2026"
+    assert processo.num_enc_phc == "_007"
+    assert processo.nome_cliente == "Cliente Final SA"
+    assert processo.nome_cliente_simplex == "CLIENTE_FINAL"
+    assert processo.num_cliente_phc == "123"
+    assert processo.ref_cliente == "REF-7"
+    assert processo.descricao_artigos == "Roupeiro\nMesa"
+    assert processo.data_inicio == "01-06-2026"
+    assert processo.data_entrega == "15-06-2026"
+    assert processo.created_by_id == 7
+    assert processo.pasta_servidor is None
+    assert processo.codigo_processo == "26.0007_01_01_CLIENTE_FINAL"
+
+
+def test_criar_processo_externo_phc_usa_tipo_pasta_phc(session) -> None:
+    from app.services.producao_service import criar_processo_externo
+
+    processo = criar_processo_externo(
+        session,
+        dados={
+            "source": "phc",
+            "ano": 2026,
+            "num_enc_phc": 402,
+            "nome_cliente": "Cliente PHC",
+            "nome_cliente_simplex": "",
+            "data_inicio": "",
+            "data_entrega": None,
+        },
+        created_by_id=None,
+    )
+
+    assert processo.tipo_pasta == "Encomenda de Cliente"
+    assert processo.num_enc_phc == "402"
+    assert processo.nome_cliente_simplex == "Cliente PHC"
+    assert processo.data_inicio is None
+    assert processo.data_entrega is None
+
+
+def test_criar_processo_externo_recusa_duplicado(session) -> None:
+    from app.services.producao_service import criar_processo_externo
+
+    session.add(_processo_producao(num_enc_phc="1058"))
+    session.commit()
+
+    with pytest.raises(ValueError, match="Nova Versao"):
+        criar_processo_externo(
+            session,
+            dados={
+                "source": "phc",
+                "ano": "2026",
+                "num_enc_phc": "1058",
+                "nome_cliente": "JF VIVA",
+                "nome_cliente_simplex": "JF_VIVA",
+            },
+            created_by_id=None,
+        )
+
+
+def test_criar_processo_externo_valida_campos_obrigatorios(session) -> None:
+    from app.services.producao_service import criar_processo_externo
+
+    with pytest.raises(ValueError, match="Origem"):
+        criar_processo_externo(
+            session,
+            dados={"source": "externo"},
+            created_by_id=None,
+        )
+
+    with pytest.raises(ValueError, match="Nome do cliente"):
+        criar_processo_externo(
+            session,
+            dados={"source": "phc", "ano": "2026", "num_enc_phc": "1"},
+            created_by_id=None,
         )
