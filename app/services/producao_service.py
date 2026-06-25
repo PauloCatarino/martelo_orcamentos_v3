@@ -374,12 +374,18 @@ def converter_orcamento(
 
 
 def criar_processo_externo(
-    session: Session,
+    session,
     *,
     dados: dict,
+    responsavel: str | None = None,
+    criar_pasta: bool = True,
     created_by_id: int | None,
 ) -> Producao:
-    """Cria uma Producao a partir do resultado do dialogo Novo Processo."""
+    """Cria uma Producao a partir do resultado do diálogo Novo Processo (PHC/Streamlit).
+
+    Versao 01/01; estado inicial "Desenho". Por defeito cria também a pasta no
+    servidor (criar_pasta=True) e guarda em pasta_servidor.
+    """
     source = str(dados.get("source") or "").strip().lower()
     if source not in {"phc", "streamlit"}:
         raise ValueError("Origem invalida (PHC ou Streamlit).")
@@ -437,11 +443,28 @@ def criar_processo_externo(
         nome_cliente_simplex=nome_simplex,
         num_cliente_phc=str(dados.get("num_cliente_phc") or "").strip() or None,
         ref_cliente=ref_cliente,
+        responsavel=str(responsavel or "").strip() or None,
         descricao_artigos=str(dados.get("descricao_artigos") or "").strip() or None,
         data_inicio=normalizar_data(dados.get("data_inicio")) or None,
         data_entrega=normalizar_data(dados.get("data_entrega")) or None,
         created_by_id=created_by_id,
     )
+
+    if criar_pasta:
+        caminho = caminho_versao(
+            session,
+            ano=processo.ano,
+            tipo_pasta=processo.tipo_pasta,
+            num_enc_phc=processo.num_enc_phc,
+            versao_obra=processo.versao_obra,
+            versao_plano=processo.versao_plano,
+            nome_simplex=processo.nome_cliente_simplex,
+            nome_cliente=processo.nome_cliente,
+            ref_cliente=processo.ref_cliente,
+        )
+        criar_pasta_versao(caminho)
+        processo.pasta_servidor = str(caminho)
+
     session.add(processo)
     session.commit()
     session.refresh(processo)
@@ -465,6 +488,27 @@ def listar_versoes_processo(
         for versao_obra, versao_plano in session.execute(statement).all()
         if versao_obra is not None and versao_plano is not None
     }
+
+
+def listar_processos_por_encomenda(
+    session: Session,
+    *,
+    ano,
+    num_enc_phc,
+) -> list[Producao]:
+    """Devolve as obras existentes para uma encomenda (ano + num_enc_phc)."""
+    enc_values = _enc_query_values(num_enc_phc)
+    if not enc_values:
+        return []
+    statement = (
+        select(Producao)
+        .where(
+            Producao.ano == str(ano),
+            Producao.num_enc_phc.in_(enc_values),
+        )
+        .order_by(Producao.versao_obra.asc(), Producao.versao_plano.asc())
+    )
+    return list(session.scalars(statement).all())
 
 
 def preparar_nova_versao(

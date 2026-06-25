@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 
 
-_DATE_RE = re.compile(r"^(\d{1,4})[-/](\d{1,2})[-/](\d{1,4})$")
+_DATE_RE = re.compile(r"^(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})$")
 
 
 def normalizar_data(valor: str | None) -> str:

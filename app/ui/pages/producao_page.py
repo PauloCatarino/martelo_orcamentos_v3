@@ -42,10 +42,12 @@ from app.services.producao_service import (
     codigo_processo_com_cliente,
     converter_orcamento,
     criar_nova_versao,
+    criar_processo_externo,
     eliminar_processo_completo,
     filtrar_processos,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
+    listar_processos_por_encomenda,
     preparar_nova_versao,
 )
 from app.services.producao_pastas_service import (
@@ -57,6 +59,7 @@ from app.ui import tema
 from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
+from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.icones import icone_ficheiro
 from app.ui.helpers.colunas_producao import (
@@ -150,6 +153,12 @@ class ProducaoPage(QWidget):
         self.convert_button.setToolTip("Converter um orçamento adjudicado numa obra de produção")
         self.convert_button.clicked.connect(self._converter_orcamento)
 
+        self.novo_processo_button = QPushButton("Novo Processo")
+        self.novo_processo_button.setToolTip(
+            "Criar uma obra a partir de uma encomenda do PHC ou do Cliente Final (Streamlit)"
+        )
+        self.novo_processo_button.clicked.connect(self._novo_processo)
+
         self.pastas_button = QPushButton("Pastas")
         self.pastas_button.setToolTip("Ver as pastas do processo selecionado no servidor")
         self.pastas_button.clicked.connect(self._abrir_pastas_processo_selecionado)
@@ -180,6 +189,7 @@ class ProducaoPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
+        actions_layout.addWidget(self.novo_processo_button)
         actions_layout.addWidget(self.pastas_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
@@ -1179,12 +1189,12 @@ class ProducaoPage(QWidget):
                 return
             self._set_dirty(False)
 
+        self._executar_nova_versao(processo_id=processo.id)
+
+    def _executar_nova_versao(self, *, processo_id: int) -> None:
         try:
             with SessionLocal() as session:
-                preparado = preparar_nova_versao(
-                    session,
-                    processo_id=processo.id,
-                )
+                preparado = preparar_nova_versao(session, processo_id=processo_id)
         except ValueError as error:
             QMessageBox.warning(self, "Nova Versão", str(error))
             return
@@ -1218,7 +1228,7 @@ class ProducaoPage(QWidget):
             with SessionLocal() as session:
                 novo = criar_nova_versao(
                     session,
-                    processo_id=processo.id,
+                    processo_id=processo_id,
                     versao_obra=versao_obra,
                     versao_plano=versao_plano,
                     criar_pasta=True,
@@ -1478,6 +1488,117 @@ class ProducaoPage(QWidget):
 
         self.carregar_processos(selecionar_id=processo_id)
         self.status_label.setText(f"Processo {codigo_processo} criado.")
+
+    def _novo_processo(self) -> None:
+        if self._dirty:
+            resposta = QMessageBox.question(
+                self,
+                "Alterações por gravar",
+                "Há alterações por gravar. Descartar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            self._set_dirty(False)
+
+        dialog = NovoProcessoDialog(self)
+        if not dialog.exec():
+            return
+        dados = dialog.result_data()
+        if not dados:
+            return
+
+        try:
+            with SessionLocal() as session:
+                existentes = listar_processos_por_encomenda(
+                    session,
+                    ano=dados.get("ano"),
+                    num_enc_phc=dados.get("num_enc_phc"),
+                )
+                existentes_info = [
+                    {
+                        "id": p.id,
+                        "codigo": p.codigo_processo,
+                        "estado": p.estado,
+                        "versao_obra": p.versao_obra,
+                        "versao_plano": p.versao_plano,
+                        "data_inicio": p.data_inicio,
+                        "data_entrega": p.data_entrega,
+                    }
+                    for p in existentes
+                ]
+        except SQLAlchemyError:
+            existentes_info = []
+
+        if existentes_info:
+            self._tratar_encomenda_existente(dados, existentes_info)
+            return
+
+        current_user = app_session.current_user
+        created_by_id = current_user.id if current_user is not None else None
+        partes_nome = (current_user.nome or "").split() if current_user is not None else []
+        responsavel = partes_nome[0] if partes_nome else None
+        try:
+            with SessionLocal() as session:
+                processo = criar_processo_externo(
+                    session,
+                    dados=dados,
+                    responsavel=responsavel,
+                    created_by_id=created_by_id,
+                )
+                processo_id = processo.id
+                codigo_processo = processo.codigo_processo
+                pasta_servidor = processo.pasta_servidor or ""
+        except ValueError as error:
+            QMessageBox.warning(self, "Novo Processo", str(error))
+            return
+        except OSError as error:
+            QMessageBox.warning(
+                self,
+                "Novo Processo",
+                f"Processo não criado (falha ao criar a pasta no servidor):\n\n{error}",
+            )
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível criar o processo.")
+            return
+
+        self.carregar_processos(selecionar_id=processo_id)
+        mensagem = f"Processo {codigo_processo} criado."
+        if pasta_servidor:
+            mensagem += f"\n\nPasta criada no servidor:\n{pasta_servidor}"
+        QMessageBox.information(self, "Novo Processo", mensagem)
+        self.status_label.setText(f"Processo {codigo_processo} criado.")
+
+    def _tratar_encomenda_existente(self, dados: dict, existentes: list[dict]) -> None:
+        linhas = "\n".join(
+            f"  • {e['codigo']} — {e['estado'] or 'sem estado'}"
+            f" (Início {e['data_inicio'] or '—'}, Entrega {e['data_entrega'] or '—'})"
+            for e in existentes
+        )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Encomenda já existe")
+        box.setText(
+            f"Já existe obra para esta encomenda "
+            f"(Ano {dados.get('ano')}, Nº Enc {dados.get('num_enc_phc')})."
+        )
+        box.setInformativeText(
+            f"{linhas}\n\nQuer criar uma NOVA VERSÃO (da Obra ou de CUT-RITE) "
+            "a partir da existente?"
+        )
+        nova_versao_btn = box.addButton("Nova Versão", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not nova_versao_btn:
+            return
+
+        base = max(
+            existentes,
+            key=lambda e: (str(e["versao_obra"] or ""), str(e["versao_plano"] or "")),
+        )
+        self._executar_nova_versao(processo_id=base["id"])
 
     def _on_user_edit(self, *_args) -> None:
         if self._a_preencher_form or self._selected_processo_id is None:

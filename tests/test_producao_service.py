@@ -62,6 +62,7 @@ def test_producao_service_has_nova_versao_functions() -> None:
     assert hasattr(service_module, "preparar_nova_versao")
     assert hasattr(service_module, "criar_nova_versao")
     assert hasattr(service_module, "listar_versoes_processo")
+    assert hasattr(service_module, "listar_processos_por_encomenda")
     assert hasattr(service_module, "codigo_processo_com_cliente")
     assert hasattr(service_module, "eliminar_processo")
     assert hasattr(service_module, "eliminar_processo_completo")
@@ -328,6 +329,41 @@ def test_preparar_nova_versao_sugere_cutrite_e_obra(session, monkeypatch) -> Non
     assert preparado["sug_obra"] == ("02", "01")
 
 
+def test_listar_processos_por_encomenda_normaliza_numero(session) -> None:
+    from app.services.producao_service import listar_processos_por_encomenda
+
+    primeiro = _processo_producao(
+        id=1,
+        num_enc_phc="_007",
+        versao_obra="01",
+        versao_plano="02",
+    )
+    segundo = _processo_producao(
+        id=2,
+        num_enc_phc="_007",
+        versao_obra="01",
+        versao_plano="01",
+    )
+    outro_ano = _processo_producao(
+        id=3,
+        ano="2025",
+        num_enc_phc="_007",
+        versao_obra="01",
+        versao_plano="01",
+    )
+    outro_ano.codigo_processo = "25.0007_01_01_JF_VIVA"
+    session.add_all([primeiro, segundo, outro_ano])
+    session.commit()
+
+    processos = listar_processos_por_encomenda(
+        session,
+        ano="2026",
+        num_enc_phc="_7",
+    )
+
+    assert [p.id for p in processos] == [2, 1]
+
+
 def test_criar_nova_versao_recusa_duplicado_db(session) -> None:
     from app.services.producao_service import criar_nova_versao
 
@@ -360,8 +396,10 @@ def test_criar_processo_externo_streamlit_cria_producao_local(session) -> None:
             "ref_cliente": "REF-7",
             "descricao_artigos": "Roupeiro\nMesa",
             "data_inicio": "2026-06-01",
-            "data_entrega": "15-06-2026",
+            "data_entrega": "15.06.2026",
         },
+        responsavel="Ana Silva",
+        criar_pasta=False,
         created_by_id=7,
     )
 
@@ -379,6 +417,7 @@ def test_criar_processo_externo_streamlit_cria_producao_local(session) -> None:
     assert processo.descricao_artigos == "Roupeiro\nMesa"
     assert processo.data_inicio == "01-06-2026"
     assert processo.data_entrega == "15-06-2026"
+    assert processo.responsavel == "Ana Silva"
     assert processo.created_by_id == 7
     assert processo.pasta_servidor is None
     assert processo.codigo_processo == "26.0007_01_01_CLIENTE_FINAL"
@@ -398,6 +437,7 @@ def test_criar_processo_externo_phc_usa_tipo_pasta_phc(session) -> None:
             "data_inicio": "",
             "data_entrega": None,
         },
+        criar_pasta=False,
         created_by_id=None,
     )
 
@@ -424,6 +464,7 @@ def test_criar_processo_externo_recusa_duplicado(session) -> None:
                 "nome_cliente": "JF VIVA",
                 "nome_cliente_simplex": "JF_VIVA",
             },
+            criar_pasta=False,
             created_by_id=None,
         )
 
@@ -435,6 +476,7 @@ def test_criar_processo_externo_valida_campos_obrigatorios(session) -> None:
         criar_processo_externo(
             session,
             dados={"source": "externo"},
+            criar_pasta=False,
             created_by_id=None,
         )
 
@@ -442,5 +484,53 @@ def test_criar_processo_externo_valida_campos_obrigatorios(session) -> None:
         criar_processo_externo(
             session,
             dados={"source": "phc", "ano": "2026", "num_enc_phc": "1"},
+            criar_pasta=False,
             created_by_id=None,
         )
+
+
+def test_criar_processo_externo_cria_pasta_e_guarda_caminho(
+    session,
+    monkeypatch,
+) -> None:
+    from app.services import producao_service as service_module
+    from app.services.producao_service import criar_processo_externo
+
+    chamadas: dict[str, object] = {}
+
+    def _fake_caminho_versao(*args, **kwargs):
+        chamadas["kwargs"] = kwargs
+        return r"\\SERVER\Producoes\26.0402_01_01_CLIENTE"
+
+    def _fake_criar_pasta_versao(caminho):
+        chamadas["caminho"] = caminho
+
+    monkeypatch.setattr(service_module, "caminho_versao", _fake_caminho_versao)
+    monkeypatch.setattr(
+        service_module,
+        "criar_pasta_versao",
+        _fake_criar_pasta_versao,
+    )
+
+    processo = criar_processo_externo(
+        session,
+        dados={
+            "source": "phc",
+            "ano": "2026",
+            "num_enc_phc": "402",
+            "nome_cliente": "Cliente",
+            "nome_cliente_simplex": "CLIENTE",
+            "ref_cliente": "REF",
+            "data_inicio": "25.06.2026",
+            "data_entrega": "10.08.2026",
+        },
+        responsavel="Utilizador Martelo",
+        created_by_id=3,
+    )
+
+    assert chamadas["caminho"] == r"\\SERVER\Producoes\26.0402_01_01_CLIENTE"
+    assert chamadas["kwargs"]["tipo_pasta"] == "Encomenda de Cliente"
+    assert processo.pasta_servidor == r"\\SERVER\Producoes\26.0402_01_01_CLIENTE"
+    assert processo.responsavel == "Utilizador Martelo"
+    assert processo.data_inicio == "25-06-2026"
+    assert processo.data_entrega == "10-08-2026"

@@ -60,11 +60,14 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "Recarregar a lista de obras" in init_source
     assert "Converter Orçamento" in init_source
     assert "Converter um orçamento adjudicado numa obra de produção" in init_source
+    assert "Novo Processo" in init_source
+    assert "self.novo_processo_button" in init_source
+    assert "self.novo_processo_button.clicked.connect(self._novo_processo)" in init_source
+    assert "Criar uma obra a partir de uma encomenda do PHC" in init_source
     assert "SelecionarClienteDialog" not in inspect.getsource(ProducaoPage)
     assert "QCalendarWidget" in inspect.getsource(ProducaoPage)
     assert "QSplitter" in init_source
     assert 'ligar_persistencia_splitter(self.splitter, "producao")' in init_source
-    assert '"Novo"' not in init_source
 
 
 def test_producao_page_detail_editing_hooks() -> None:
@@ -85,6 +88,16 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "SystemSettingService" in helper_source
     assert "itemSelectionChanged" in source
     assert "converter_orcamento" in source
+    assert "criar_processo_externo" in source
+    assert "NovoProcessoDialog" in source
+    assert "listar_processos_por_encomenda" in source
+    assert "responsavel=responsavel" in source
+    assert "partes_nome[0]" in source
+    assert '(current_user.nome or "").split()' in source
+    assert "pasta_servidor = processo.pasta_servidor" in source
+    assert "QMessageBox.information" in source
+    assert "Pasta criada no servidor" in source
+    assert "falha ao criar a pasta no servidor" in source
     assert "PastasProcessoDialog" in source
     assert "arvore_pastas_processo" in source
     assert "NovaVersaoProcessoDialog" in source
@@ -93,6 +106,9 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "eliminar_processo_completo" in source
     assert "preview_conteudo_pasta" in source
     assert hasattr(ProducaoPage, "_eliminar_processo")
+    assert hasattr(ProducaoPage, "_novo_processo")
+    assert hasattr(ProducaoPage, "_tratar_encomenda_existente")
+    assert hasattr(ProducaoPage, "_executar_nova_versao")
     assert hasattr(ProducaoPage, "_abrir_pasta_versao_selecionada")
     assert "QDesktopServices.openUrl" in source
     assert "Pasta ainda não criada" in source
@@ -146,3 +162,81 @@ def test_producao_page_abre_pastas_no_duplo_clique_do_processo() -> None:
     assert "num_enc_phc=processo.num_enc_phc" in open_source
     assert "tipo_pasta=processo.tipo_pasta" in open_source
     assert "dialog.exec()" in open_source
+
+
+def test_tratar_encomenda_existente_chama_nova_versao_da_mais_recente(monkeypatch) -> None:
+    import app.ui.pages.producao_page as page_module
+    from app.ui.pages.producao_page import ProducaoPage
+
+    class FakeButton:
+        pass
+
+    nova_versao_button = FakeButton()
+    chamadas: dict[str, object] = {}
+
+    class FakeMessageBox:
+        Icon = page_module.QMessageBox.Icon
+        ButtonRole = page_module.QMessageBox.ButtonRole
+
+        def __init__(self, parent=None):
+            chamadas["parent"] = parent
+
+        def setIcon(self, icon):
+            chamadas["icon"] = icon
+
+        def setWindowTitle(self, title):
+            chamadas["title"] = title
+
+        def setText(self, text):
+            chamadas["text"] = text
+
+        def setInformativeText(self, text):
+            chamadas["informative"] = text
+
+        def addButton(self, text, role):
+            chamadas.setdefault("buttons", []).append((text, role))
+            if text == "Nova Versão":
+                return nova_versao_button
+            return FakeButton()
+
+        def exec(self):
+            chamadas["exec"] = True
+
+        def clickedButton(self):
+            return nova_versao_button
+
+    monkeypatch.setattr(page_module, "QMessageBox", FakeMessageBox)
+
+    page = type("PageStub", (), {})()
+    executadas: list[int] = []
+    page._executar_nova_versao = lambda *, processo_id: executadas.append(processo_id)
+
+    ProducaoPage._tratar_encomenda_existente(
+        page,
+        {"ano": "2026", "num_enc_phc": "1134"},
+        [
+            {
+                "id": 1,
+                "codigo": "26.1134_01_01_CLIENTE",
+                "estado": "Desenho",
+                "versao_obra": "01",
+                "versao_plano": "01",
+                "data_inicio": "25-06-2026",
+                "data_entrega": "10-08-2026",
+            },
+            {
+                "id": 2,
+                "codigo": "26.1134_02_01_CLIENTE",
+                "estado": "Desenho",
+                "versao_obra": "02",
+                "versao_plano": "01",
+                "data_inicio": "25-06-2026",
+                "data_entrega": "10-08-2026",
+            },
+        ],
+    )
+
+    assert chamadas["title"] == "Encomenda já existe"
+    assert "26.1134_01_01_CLIENTE" in chamadas["informative"]
+    assert "Nova Versão" in [text for text, _role in chamadas["buttons"]]
+    assert executadas == [2]
