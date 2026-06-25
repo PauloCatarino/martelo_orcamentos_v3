@@ -84,6 +84,11 @@ PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO = (
     r"\\SERVER_LE_Lanca_Encanto\LancaEncanto\Dep_Producao"
 )
 PRODUCAO_BASE_PATH_CHAVE_LEGACY = "pasta_base_producao"
+STREAMLIT_SQL_USER_CHAVE = "streamlit_sql_user"
+STREAMLIT_SQL_PASSWORD_CHAVE = "streamlit_sql_password"
+STREAMLIT_SQL_USER_DEFAULT = "Lanca_Encanto_ReadOnly"
+STREAMLIT_SQL_PASSWORD_DEFAULT = "Lanca_ReadOnly_2026!"
+STREAMLIT_SQL_USER_DEFAULT_ANTIGO = "Lanca_Encanto_Stream"
 
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed(
@@ -148,6 +153,48 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "PHC SQL - TrustServerCertificate (ON/OFF)",
         "opcao",
         "PHC",
+        "ON",
+    ),
+    SystemSettingSeed(
+        "streamlit_sql_server",
+        "Streamlit SQL - Servidor",
+        "texto",
+        "Streamlit",
+        "DESKTOP-PTJ4TE6,1433",
+    ),
+    SystemSettingSeed(
+        "streamlit_sql_database",
+        "Streamlit SQL - Base de Dados",
+        "texto",
+        "Streamlit",
+        "Lanca_Encanto2026",
+    ),
+    SystemSettingSeed(
+        STREAMLIT_SQL_USER_CHAVE,
+        "Streamlit SQL - Utilizador",
+        "texto",
+        "Streamlit",
+        STREAMLIT_SQL_USER_DEFAULT,
+    ),
+    SystemSettingSeed(
+        STREAMLIT_SQL_PASSWORD_CHAVE,
+        "Streamlit SQL - Password",
+        "texto",
+        "Streamlit",
+        STREAMLIT_SQL_PASSWORD_DEFAULT,
+    ),
+    SystemSettingSeed(
+        "streamlit_sql_trusted",
+        "Streamlit SQL - Integrated Security (ON/OFF)",
+        "opcao",
+        "Streamlit",
+        "OFF",
+    ),
+    SystemSettingSeed(
+        "streamlit_sql_trust_server_certificate",
+        "Streamlit SQL - TrustServerCertificate (ON/OFF)",
+        "opcao",
+        "Streamlit",
         "ON",
     ),
     SystemSettingSeed(
@@ -231,12 +278,28 @@ def get_setting_by_key(session: Session, chave: str) -> SystemSetting | None:
     return session.execute(select(SystemSetting).where(SystemSetting.chave == chave)).scalar_one_or_none()
 
 
+def deve_corrigir_streamlit_sql_user(setting: SystemSetting) -> bool:
+    """Return True when Streamlit credentials still have the bad old default."""
+    valor = (setting.valor or "").strip()
+    return valor in {"", STREAMLIT_SQL_USER_DEFAULT_ANTIGO}
+
+
+def corrigir_streamlit_sql_password_existente(session: Session) -> None:
+    """Force the Streamlit read-only password when the old user default is fixed."""
+    setting = get_setting_by_key(session, STREAMLIT_SQL_PASSWORD_CHAVE)
+    if setting is not None:
+        setting.valor = STREAMLIT_SQL_PASSWORD_DEFAULT
+
+
 def get_or_create_setting(session: Session, seed: SystemSettingSeed) -> EntityResult:
     """Create or reuse one default system setting."""
     setting = get_setting_by_key(session, seed.chave)
 
     if setting is not None:
-        if (setting.valor is None or setting.valor == "") and seed.valor:
+        if seed.chave == STREAMLIT_SQL_USER_CHAVE and deve_corrigir_streamlit_sql_user(setting):
+            setting.valor = STREAMLIT_SQL_USER_DEFAULT
+            corrigir_streamlit_sql_password_existente(session)
+        elif (setting.valor is None or setting.valor == "") and seed.valor:
             setting.valor = seed.valor
         elif (
             seed.chave == PRODUCAO_BASE_PATH_CHAVE

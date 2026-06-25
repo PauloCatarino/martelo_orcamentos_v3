@@ -22,6 +22,11 @@ from scripts.create_default_system_settings import (
     PRODUCAO_BASE_PATH_DEFAULT,
     PRODUCAO_BASE_PATH_DEFAULT_ANTIGO,
     PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO,
+    STREAMLIT_SQL_PASSWORD_CHAVE,
+    STREAMLIT_SQL_PASSWORD_DEFAULT,
+    STREAMLIT_SQL_USER_CHAVE,
+    STREAMLIT_SQL_USER_DEFAULT,
+    STREAMLIT_SQL_USER_DEFAULT_ANTIGO,
     DefaultSystemSettingsResult,
     ensure_default_system_settings,
 )
@@ -65,6 +70,15 @@ def test_default_system_settings_constants_import() -> None:
     assert settings_by_key["phc_sql_password"].valor == ""
     assert settings_by_key["phc_sql_trusted"].valor == "OFF"
     assert settings_by_key["phc_sql_trust_server_certificate"].valor == "ON"
+    assert settings_by_key["streamlit_sql_server"].valor == "DESKTOP-PTJ4TE6,1433"
+    assert settings_by_key["streamlit_sql_server"].grupo == "Streamlit"
+    assert settings_by_key["streamlit_sql_server"].tipo == "texto"
+    assert settings_by_key["streamlit_sql_database"].valor == "Lanca_Encanto2026"
+    assert settings_by_key["streamlit_sql_user"].valor == STREAMLIT_SQL_USER_DEFAULT
+    assert settings_by_key["streamlit_sql_password"].valor == STREAMLIT_SQL_PASSWORD_DEFAULT
+    assert settings_by_key["streamlit_sql_trusted"].valor == "OFF"
+    assert settings_by_key["streamlit_sql_trusted"].tipo == "opcao"
+    assert settings_by_key["streamlit_sql_trust_server_certificate"].valor == "ON"
     assert (
         settings_by_key["pasta_pesquisa_profunda_ia"].valor
         == PASTA_PESQUISA_PROFUNDA_IA_DEFAULT
@@ -157,6 +171,61 @@ def test_seed_corrige_producao_base_path_antigo_errado(session) -> None:
 
         setting = repo.get_by_key(PRODUCAO_BASE_PATH_CHAVE)
         assert setting.valor == PRODUCAO_BASE_PATH_DEFAULT
+
+
+@pytest.mark.parametrize("valor_user", ("", STREAMLIT_SQL_USER_DEFAULT_ANTIGO))
+def test_seed_corrige_streamlit_sql_credenciais_antigas_ou_vazias(
+    session,
+    valor_user: str,
+) -> None:
+    repo = SystemSettingRepository(session)
+    repo.upsert_setting(
+        chave=STREAMLIT_SQL_USER_CHAVE,
+        valor=valor_user,
+        descricao="Streamlit SQL - Utilizador",
+        tipo="texto",
+        grupo="Streamlit",
+    )
+    repo.upsert_setting(
+        chave=STREAMLIT_SQL_PASSWORD_CHAVE,
+        valor="password_errada",
+        descricao="Streamlit SQL - Password",
+        tipo="texto",
+        grupo="Streamlit",
+    )
+    session.commit()
+
+    ensure_default_system_settings(session)
+
+    assert repo.get_by_key(STREAMLIT_SQL_USER_CHAVE).valor == STREAMLIT_SQL_USER_DEFAULT
+    assert (
+        repo.get_by_key(STREAMLIT_SQL_PASSWORD_CHAVE).valor
+        == STREAMLIT_SQL_PASSWORD_DEFAULT
+    )
+
+
+def test_seed_preserva_streamlit_sql_credenciais_customizadas(session) -> None:
+    repo = SystemSettingRepository(session)
+    repo.upsert_setting(
+        chave=STREAMLIT_SQL_USER_CHAVE,
+        valor="Outro_User_ReadOnly",
+        descricao="Streamlit SQL - Utilizador",
+        tipo="texto",
+        grupo="Streamlit",
+    )
+    repo.upsert_setting(
+        chave=STREAMLIT_SQL_PASSWORD_CHAVE,
+        valor="OutraPassword!",
+        descricao="Streamlit SQL - Password",
+        tipo="texto",
+        grupo="Streamlit",
+    )
+    session.commit()
+
+    ensure_default_system_settings(session)
+
+    assert repo.get_by_key(STREAMLIT_SQL_USER_CHAVE).valor == "Outro_User_ReadOnly"
+    assert repo.get_by_key(STREAMLIT_SQL_PASSWORD_CHAVE).valor == "OutraPassword!"
 
 
 def test_seed_migra_e_remove_pasta_base_producao_legacy(session) -> None:
