@@ -5,12 +5,14 @@ from __future__ import annotations
 import re
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QApplication,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSpinBox,
     QSplitter,
@@ -22,7 +24,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.session import SessionLocal
-from app.services.encomendas_phc_service import query_encomendas_phc
+from app.services.encomendas_phc_service import (
+    query_encomendas_phc,
+    query_phc_estado_debug_rows,
+)
 from app.services.streamlit_sql_service import (
     query_encomendas_cliente_final,
     query_itens_encomenda,
@@ -210,6 +215,213 @@ class EncomendasPHCTab(QWidget):
                 "Configurações → Caminhos/PHC."
             )
         return f"Não foi possível carregar do PHC: {texto}"
+
+
+class DiagnosticoPHCTab(QWidget):
+    """Read-only PHC status diagnostic tab."""
+
+    _COLUNAS = (
+        ("Ano", "Ano"),
+        ("Enc Nº", "Enc_No"),
+        ("Num PHC", "Num_PHC"),
+        ("Estado PHC", "Estado_PHC"),
+        ("BI Tabela1", "BI_Tabela1"),
+        ("BO Tabela1", "BO_Tabela1"),
+        ("BI Nome", "BI_Nome"),
+        ("BO Nome", "BO_Nome"),
+        ("CL Nome", "CL_Nome"),
+        ("NMDoc", "NMDoc"),
+        ("FData", "FData"),
+        ("BI DataObra", "BI_DataObra"),
+        ("BO DataObra", "BO_DataObra"),
+        ("BI Bostamp", "BI_Bostamp"),
+        ("BO Bostamp", "BO_Bostamp"),
+    )
+    TABLE_HEADERS = [titulo for titulo, _chave in _COLUNAS]
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self._linhas: list[dict] = []
+
+        info_label = QLabel(
+            "Diagnóstico só-leitura do estado PHC. Usa a configuração PHC "
+            "guardada e executa apenas SELECT."
+        )
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet(f"color: {tema.CASTANHO_ESCURO};")
+
+        self.num_enc_input = QLineEdit()
+        self.num_enc_input.setValidator(QIntValidator(0, 999999999, self))
+        self.num_enc_input.setPlaceholderText("ex.: 402")
+        self.num_enc_input.setToolTip(
+            "Filtrar por número da encomenda PHC; deixe vazio para carregar várias"
+        )
+
+        self.ano_spin = QSpinBox()
+        self.ano_spin.setRange(1900, 2200)
+        self.ano_spin.setValue(2026)
+        self.ano_spin.setToolTip(
+            "Carregar diagnóstico com data igual ou posterior a 01-01 deste ano"
+        )
+
+        self.max_linhas_spin = QSpinBox()
+        self.max_linhas_spin.setRange(1, 50000)
+        self.max_linhas_spin.setValue(2000)
+        self.max_linhas_spin.setToolTip(
+            "Número máximo de linhas de diagnóstico a carregar"
+        )
+
+        self.carregar_button = QPushButton("Carregar Diagnóstico")
+        self.carregar_button.setToolTip(
+            "Consultar o diagnóstico de estado no PHC (só leitura)"
+        )
+        self.carregar_button.clicked.connect(self._carregar)
+
+        self.campo_pesquisa = CampoPesquisa()
+        self.campo_pesquisa.setToolTip(
+            "Filtrar a tabela já carregada (vários termos: espaço ou %)"
+        )
+        self.campo_pesquisa.pesquisa_mudou.connect(self._render)
+        self.campo_pesquisa.limpar_clicado.connect(self._render)
+
+        num_enc_label = QLabel("Num Enc PHC")
+        num_enc_label.setToolTip("Número da encomenda PHC opcional")
+        ano_label = QLabel("Ano mínimo")
+        ano_label.setToolTip("Ano mínimo para BI.DATAOBRA")
+        max_linhas_label = QLabel("Máx. linhas")
+        max_linhas_label.setToolTip("Limite de linhas devolvidas pelo PHC")
+
+        filtros_layout = QHBoxLayout()
+        filtros_layout.addWidget(num_enc_label)
+        filtros_layout.addWidget(self.num_enc_input)
+        filtros_layout.addWidget(ano_label)
+        filtros_layout.addWidget(self.ano_spin)
+        filtros_layout.addWidget(max_linhas_label)
+        filtros_layout.addWidget(self.max_linhas_spin)
+        filtros_layout.addWidget(self.carregar_button)
+        filtros_layout.addSpacing(12)
+        filtros_layout.addWidget(self.campo_pesquisa, stretch=1)
+
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("diagnosticoPhcStatus")
+
+        self.table = self._criar_tabela()
+
+        self.footer_label = QLabel("")
+        self.footer_label.setObjectName("diagnosticoPhcFooter")
+        self.footer_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addWidget(info_label)
+        layout.addLayout(filtros_layout)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(self.footer_label)
+
+    def _criar_tabela(self) -> QTableWidget:
+        table = QTableWidget(0, len(self.TABLE_HEADERS))
+        table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        table.verticalHeader().setVisible(False)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        ligar_persistencia_larguras(table, "diagnostico_phc")
+        return table
+
+    def _carregar(self) -> None:
+        """Load PHC diagnostic rows into memory and render."""
+        self.status_label.setText("A carregar diagnóstico do PHC...")
+        self.carregar_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        QApplication.processEvents()
+
+        try:
+            with SessionLocal() as session:
+                linhas = query_phc_estado_debug_rows(
+                    session,
+                    num_enc_phc=(self.num_enc_input.text().strip() or None),
+                    min_year=self.ano_spin.value(),
+                    max_rows=self.max_linhas_spin.value(),
+                )
+        except Exception as exc:  # ligação/SQL/config externos
+            self._linhas = []
+            self._render()
+            self.status_label.setText(self._mensagem_erro(exc))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.carregar_button.setEnabled(True)
+
+        self._linhas = list(linhas)
+        self._render()
+        self.status_label.setText(
+            f"{len(self._linhas)} linha(s) de diagnóstico."
+        )
+
+    def _render(self, *_args) -> None:
+        """Render the loaded rows applying the in-memory search filter."""
+        filtradas = self._filtrar(self._linhas, self.campo_pesquisa.texto())
+        self._preencher_tabela(filtradas)
+        self.footer_label.setText(f"{len(filtradas)} de {len(self._linhas)}")
+
+    def _preencher_tabela(self, linhas: list[dict]) -> None:
+        self.table.setRowCount(len(linhas))
+        for row_index, linha in enumerate(linhas):
+            for column_index, (_titulo, chave) in enumerate(self._COLUNAS):
+                valor = self._valor(linha, chave)
+                item = QTableWidgetItem(valor)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                )
+                if valor:
+                    item.setToolTip(valor)
+                self.table.setItem(row_index, column_index, item)
+
+    def _filtrar(self, linhas: list[dict], texto: str) -> list[dict]:
+        """Multi-term, case-insensitive filter over the visible columns."""
+        termos = [
+            termo
+            for termo in re.split(r"[\s%]+", (texto or "").strip().lower())
+            if termo
+        ]
+        if not termos:
+            return list(linhas or [])
+
+        resultado = []
+        for linha in linhas or []:
+            haystack = " ".join(
+                self._valor(linha, chave) for _titulo, chave in self._COLUNAS
+            ).lower()
+            if all(termo in haystack for termo in termos):
+                resultado.append(linha)
+        return resultado
+
+    @staticmethod
+    def _valor(linha: dict, chave: str) -> str:
+        valor = linha.get(chave)
+        return "" if valor is None else str(valor).strip()
+
+    @staticmethod
+    def _mensagem_erro(exc: Exception) -> str:
+        texto = str(exc)
+        if "Configuracao PHC" in texto or "Configuração PHC" in texto:
+            return (
+                "PHC não configurado. Configure a ligação em "
+                "Configurações → Caminhos/PHC."
+            )
+        return f"Não foi possível carregar diagnóstico do PHC: {texto}"
 
 
 class EncomendasClienteFinalTab(QWidget):
@@ -534,23 +746,11 @@ class EncomendasPage(QWidget):
         self.tabs.addTab(self.encomendas_phc_tab, "Encomendas PHC")
         self.encomendas_cf_tab = EncomendasClienteFinalTab()
         self.tabs.addTab(self.encomendas_cf_tab, "Encomendas Cliente Final")
-        self.tabs.addTab(
-            self._placeholder("Em desenvolvimento"),
-            "Diagnóstico PHC",
-        )
+        self.diagnostico_phc_tab = DiagnosticoPHCTab()
+        self.tabs.addTab(self.diagnostico_phc_tab, "Diagnóstico PHC")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
         layout.addWidget(self.tabs, stretch=1)
-
-    @staticmethod
-    def _placeholder(texto: str) -> QWidget:
-        panel = QWidget()
-        panel_layout = QVBoxLayout(panel)
-        label = QLabel(texto)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setStyleSheet(f"color: {tema.CASTANHO_ESCURO};")
-        panel_layout.addWidget(label)
-        return panel

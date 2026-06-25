@@ -57,3 +57,54 @@ def test_query_encomendas_phc_aplica_top_quando_max_linhas(monkeypatch) -> None:
     assert "TOP" in query
     assert "5000" in query
     assert "2024" in query
+
+
+def test_build_phc_estado_debug_query_defaults_select_valido() -> None:
+    query = service_module._build_phc_estado_debug_query(min_year=2026)
+
+    assert_select_only(query)
+    assert query.startswith("SELECT DISTINCT TOP (2000)")
+    assert not query.endswith(";")
+    assert "BI.NDOS = 1" in query
+    assert "LTRIM(RTRIM(BI.NMDOS)) = 'Encomenda de Cliente'" in query
+    assert "BI.DATAOBRA >= '2026-01-01'" in query
+    assert "BI.OBRANO =" not in query
+    assert "BI.FDATA AS FDataRaw" in query
+    assert "BI_DataObraRaw" not in query
+    assert "ORDER BY FDataRaw DESC, Enc_No DESC, BI_Bostamp DESC" in query
+
+
+def test_build_phc_estado_debug_query_filtra_numero_e_ano() -> None:
+    query = service_module._build_phc_estado_debug_query(
+        num_enc_phc="402",
+        ano=2025,
+        min_year=2020,
+        max_rows=50,
+    )
+
+    assert_select_only(query)
+    assert "SELECT DISTINCT TOP (50)" in query
+    assert "BI.OBRANO = 402" in query
+    assert "BI.DATAOBRA >= '2025-01-01'" in query
+    assert "BI.DATAOBRA < '2026-01-01'" in query
+    assert "BI.DATAOBRA >= '2020-01-01'" not in query
+
+
+def test_query_phc_estado_debug_rows_executa_select_read_only(monkeypatch) -> None:
+    capturado: dict[str, object] = {}
+    _patch(monkeypatch, capturado)
+
+    result = service_module.query_phc_estado_debug_rows(
+        object(),
+        num_enc_phc="402",
+        min_year=2026,
+        max_rows=2000,
+    )
+
+    assert result == [{"Cliente": "X"}]
+    assert capturado["conn_str"] == "conn"
+    query = str(capturado["query"])
+    assert_select_only(query)
+    assert "FROM BI WITH (NOLOCK)" in query
+    assert "BI.OBRANO = 402" in query
+    assert "TOP (2000)" in query
