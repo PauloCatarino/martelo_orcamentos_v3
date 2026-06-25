@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QDate, Qt, QSize, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QCalendarWidget,
     QComboBox,
     QDialog,
@@ -37,6 +38,10 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
+from app.services.lista_material_imos_service import (
+    execute_lista_material_imos,
+    prepare_lista_material_imos,
+)
 from app.services.producao_service import (
     ProducaoService,
     codigo_processo_com_cliente,
@@ -173,6 +178,13 @@ class ProducaoPage(QWidget):
         )
         self.nova_versao_button.clicked.connect(self._nova_versao)
 
+        self.lista_material_button = QPushButton("Lista Material_IMOS")
+        self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))
+        self.lista_material_button.setToolTip(
+            "Gerar o Excel 'Lista Material_IMOS' na pasta do processo"
+        )
+        self.lista_material_button.clicked.connect(self._lista_material_imos)
+
         self.delete_button = QPushButton("Eliminar")
         self.delete_button.setToolTip("Eliminar obra: registo e/ou pasta no servidor")
         self.delete_button.clicked.connect(self._eliminar_processo)
@@ -193,6 +205,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.pastas_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
+        actions_layout.addWidget(self.lista_material_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
@@ -957,6 +970,85 @@ class ProducaoPage(QWidget):
             return
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+
+    def _lista_material_imos(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para gerar a Lista Material.")
+            return
+
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        if not nome_enc:
+            QMessageBox.warning(self, "Lista Material IMOS", "Nome Enc IMOS IX em falta.")
+            return
+
+        values = {
+            "RESPONSAVEL": self.responsavel_form_combo.currentText().strip(),
+            "REF_CLIENTE": self.ref_cliente_input.text().strip(),
+            "OBRA": self.obra_input.text().strip(),
+            "NOME_ENC_IMOS_IX": nome_enc,
+            "NUM_CLIENTE_PHC": self.num_cliente_phc_input.text().strip(),
+            "NOME_CLIENTE": self.cliente_input.text().strip(),
+            "NOME_CLIENTE_SIMPLEX": self.cliente_simplex_input.text().strip(),
+            "LOCALIZACAO": self.localizacao_input.text().strip(),
+            "DESCRICAO_PRODUCAO": self.descricao_producao_text.toPlainText().strip(),
+            "DESCRICAO_ARTIGOS": self.descricao_artigos_text.toPlainText().strip(),
+            "MATERIAIS": self.materias_usados_text.toPlainText().strip(),
+            "QTD": self.qt_artigos_input.text().strip(),
+            "PLANO_CORTE": self.nome_plano_corte_input.text().strip(),
+            "DATA_CONCLUSAO": self.data_entrega_input.text().strip(),
+            "DATA_INICIO": self.data_inicio_input.text().strip(),
+            "ENC_PHC": self.num_enc_phc_input.text().strip(),
+        }
+
+        try:
+            with SessionLocal() as session:
+                context = prepare_lista_material_imos(
+                    session,
+                    processo_id=processo.id,
+                    nome_enc_imos=nome_enc,
+                    values=values,
+                )
+        except ValueError as error:
+            if str(error).startswith("Modelo Excel nao encontrado"):
+                QMessageBox.critical(self, "Lista Material IMOS", str(error))
+            else:
+                QMessageBox.warning(self, "Lista Material IMOS", str(error))
+            return
+
+        if context.output_path.exists():
+            resposta = QMessageBox.question(
+                self,
+                "Lista Material IMOS",
+                f"O Excel da Lista Material da obra {processo.codigo_processo} já existe:\n"
+                f"{context.output_path}\n\nPretende abrir?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if resposta == QMessageBox.StandardButton.Yes:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(context.output_path)))
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText("A gerar a Lista Material (Excel)...")
+        QApplication.processEvents()
+        try:
+            output_path = execute_lista_material_imos(context)
+        except Exception as error:  # Excel COM / PowerShell
+            QMessageBox.critical(
+                self,
+                "Lista Material IMOS",
+                "Não foi possível criar o Excel 'Lista Material_IMOS'.\n\n"
+                f"Detalhe: {error}",
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self.status_label.setText("Lista Material criada.")
+        QMessageBox.information(
+            self, "Lista Material IMOS", f"Ficheiro criado:\n{output_path}"
+        )
 
     def _eliminar_processo(self) -> None:
         processo = self._processo_selecionado()

@@ -52,6 +52,11 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "Abrir a pasta desta obra no explorador" in init_source
     assert '"Nova Versão"' in init_source
     assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
+    assert '"Lista Material_IMOS"' in init_source
+    assert "self.lista_material_button" in init_source
+    assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
+    assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init_source
+    assert "Gerar o Excel 'Lista Material_IMOS' na pasta do processo" in init_source
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
@@ -103,14 +108,28 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "NovaVersaoProcessoDialog" in source
     assert "preparar_nova_versao" in source
     assert "criar_nova_versao" in source
+    assert "prepare_lista_material_imos" in source
+    assert "execute_lista_material_imos" in source
     assert "eliminar_processo_completo" in source
     assert "preview_conteudo_pasta" in source
     assert hasattr(ProducaoPage, "_eliminar_processo")
     assert hasattr(ProducaoPage, "_novo_processo")
     assert hasattr(ProducaoPage, "_tratar_encomenda_existente")
     assert hasattr(ProducaoPage, "_executar_nova_versao")
+    assert hasattr(ProducaoPage, "_lista_material_imos")
     assert hasattr(ProducaoPage, "_abrir_pasta_versao_selecionada")
+    assert "QApplication.setOverrideCursor" in source
+    assert "QApplication.restoreOverrideCursor" in source
+    assert "Lista Material IMOS" in source
+    assert "Lista Material_IMOS" in source
+    assert "context.output_path.exists()" in source
+    assert "DATA_CONCLUSAO" in source
+    assert "NOME_ENC_IMOS_IX" in source
     assert "QDesktopServices.openUrl" in source
+    assert "O Excel da Lista Material da obra" in source
+    assert "Pretende abrir?" in source
+    assert "QUrl.fromLocalFile(str(context.output_path))" in source
+    assert "Substituir?" not in inspect.getsource(ProducaoPage._lista_material_imos)
     assert "Pasta ainda não criada" in source
     assert "nome_plano_corte_input" in source
     assert "nome_enc_imos_ix_input" in source
