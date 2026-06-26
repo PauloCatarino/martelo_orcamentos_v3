@@ -45,7 +45,9 @@ from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.cutrite_service import (
     execute_cutrite_import,
+    execute_cutrite_resumo_pdf,
     prepare_cutrite_import,
+    prepare_cutrite_resumo_pdf,
 )
 from app.services.lista_material_imos_service import (
     execute_lista_material_imos,
@@ -167,6 +169,44 @@ class _CutRiteWorker(QObject):
                 pass
 
 
+class _CutRitePdfWorker(QObject):
+    """Exporta o resumo do plano CUT-RITE para PDF, fora da thread da UI."""
+
+    progresso = Signal(str)
+    falhou = Signal(str)
+    concluido = Signal(str)
+
+    def __init__(self, *, processo_id, pasta_servidor, nome_plano):
+        super().__init__()
+        self._processo_id = processo_id
+        self._pasta_servidor = pasta_servidor
+        self._nome_plano = nome_plano
+
+    def run(self) -> None:
+        import pythoncom  # COM STA nesta thread (UIA/win32)
+
+        pythoncom.CoInitialize()
+        try:
+            with SessionLocal() as session:
+                context = prepare_cutrite_resumo_pdf(
+                    session,
+                    current_id=self._processo_id,
+                    pasta_servidor=self._pasta_servidor,
+                    nome_plano_cut_rite=self._nome_plano,
+                )
+            output = execute_cutrite_resumo_pdf(
+                context, progress_callback=self.progresso.emit
+            )
+            self.concluido.emit(str(output))
+        except Exception as exc:
+            self.falhou.emit(str(exc))
+        finally:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+
+
 class ProducaoPage(QWidget):
     """Production process page with an editable V3 detail form."""
 
@@ -252,6 +292,13 @@ class ProducaoPage(QWidget):
         )
         self.enviar_cutrite_button.clicked.connect(self._enviar_cutrite)
 
+        self.exportar_resumo_pdf_button = QPushButton("Exportar Resumo (PDF)")
+        self.exportar_resumo_pdf_button.setIcon(icone_ficheiro("icon_pdf_cut_rite.ico"))
+        self.exportar_resumo_pdf_button.setToolTip(
+            "Exportar para PDF o resumo do plano de corte (CUT-RITE) para a pasta da obra"
+        )
+        self.exportar_resumo_pdf_button.clicked.connect(self._exportar_resumo_pdf)
+
         self.delete_button = QPushButton("Eliminar")
         self.delete_button.setToolTip("Eliminar obra: registo e/ou pasta no servidor")
         self.delete_button.clicked.connect(self._eliminar_processo)
@@ -274,6 +321,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.lista_material_button)
         actions_layout.addWidget(self.enviar_cutrite_button)
+        actions_layout.addWidget(self.exportar_resumo_pdf_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
@@ -1197,6 +1245,75 @@ class ProducaoPage(QWidget):
 
     def _finalizar_cutrite(self) -> None:
         self.enviar_cutrite_button.setEnabled(True)
+        self._cutrite_thread = None
+        self._cutrite_worker = None
+
+    def _exportar_resumo_pdf(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para exportar o resumo.")
+            return
+
+        nome_plano = self.nome_plano_corte_input.text().strip()
+        if not nome_plano:
+            QMessageBox.warning(self, "Exportar Resumo (PDF)", "Nome Plano CUT-RITE em falta.")
+            return
+
+        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        if not pasta_servidor:
+            QMessageBox.warning(
+                self,
+                "Exportar Resumo (PDF)",
+                "Pasta do processo em falta. Crie a pasta antes de exportar o resumo.",
+            )
+            return
+
+        self._cutrite_dialog = CutRiteProgressDialog(self)
+        self._cutrite_dialog.setWindowTitle("Exportar Resumo (PDF)")
+        self._cutrite_dialog.add_step("A iniciar a exportacao do resumo em PDF.")
+        self._cutrite_dialog.show()
+        self.exportar_resumo_pdf_button.setEnabled(False)
+
+        self._cutrite_thread = QThread(self)
+        self._cutrite_worker = _CutRitePdfWorker(
+            processo_id=processo.id,
+            pasta_servidor=pasta_servidor,
+            nome_plano=nome_plano,
+        )
+        self._cutrite_worker.moveToThread(self._cutrite_thread)
+        self._cutrite_thread.started.connect(self._cutrite_worker.run)
+        self._cutrite_worker.progresso.connect(self._cutrite_dialog.add_step)
+        self._cutrite_worker.falhou.connect(self._resumo_pdf_falhou)
+        self._cutrite_worker.concluido.connect(self._resumo_pdf_concluido)
+        self._cutrite_worker.falhou.connect(self._cutrite_thread.quit)
+        self._cutrite_worker.concluido.connect(self._cutrite_thread.quit)
+        self._cutrite_thread.finished.connect(self._cutrite_worker.deleteLater)
+        self._cutrite_thread.finished.connect(self._cutrite_thread.deleteLater)
+        self._cutrite_thread.finished.connect(self._finalizar_resumo_pdf)
+        self._cutrite_thread.start()
+
+    def _resumo_pdf_concluido(self, caminho: str) -> None:
+        if self._cutrite_dialog is not None:
+            self._cutrite_dialog.finish(success=True)
+        self.status_label.setText("Resumo PDF exportado.")
+        mensagem = "Resumo do plano exportado para PDF."
+        if caminho:
+            mensagem += f"\n\nFicheiro:\n{caminho}"
+        QMessageBox.information(self, "Exportar Resumo (PDF)", mensagem)
+
+    def _resumo_pdf_falhou(self, erro: str) -> None:
+        if self._cutrite_dialog is not None:
+            self._cutrite_dialog.add_step(f"ERRO: {erro}")
+            self._cutrite_dialog.finish(success=False)
+        self.status_label.setText("Falha ao exportar o resumo PDF.")
+        QMessageBox.critical(
+            self,
+            "Exportar Resumo (PDF)",
+            f"Nao foi possivel exportar o resumo em PDF.\n\n{erro}",
+        )
+
+    def _finalizar_resumo_pdf(self) -> None:
+        self.exportar_resumo_pdf_button.setEnabled(True)
         self._cutrite_thread = None
         self._cutrite_worker = None
 

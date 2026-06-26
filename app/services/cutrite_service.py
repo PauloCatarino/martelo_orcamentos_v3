@@ -1862,3 +1862,226 @@ def _describe_process_windows(process_id: int) -> str:
     except Exception:
         return ""
     return "\n\n".join(windows)
+
+
+MS_PRINT_TO_PDF_NAME = "Microsoft Print to PDF"
+CUTRITE_PRINT_VIEWS_MENU_FRAGMENT = "imprimir as visualizacoes"
+CUTRITE_SAVE_PDF_WINDOW_NAME = "guardar saida de impressao"
+CUTRITE_PRINT_PREVIEW_TITLE_FRAGMENT = "vista de impressao"
+CUTRITE_PDF_MENU_DELAY_SECONDS = 1.2
+CUTRITE_PDF_DIALOG_SETTLE_SECONDS = 1.0
+
+
+@dataclass(frozen=True)
+class CutRiteResumoPdfContext:
+    plan_name: str
+    output_path: Path
+
+
+def prepare_cutrite_resumo_pdf(
+    session, *, current_id, pasta_servidor, nome_plano_cut_rite
+) -> CutRiteResumoPdfContext:
+    if not current_id:
+        raise ValueError("Selecione um processo.")
+    processo = session.get(Producao, int(current_id))
+    if processo is None:
+        raise ValueError("Processo nao encontrado.")
+    pasta_txt = str(pasta_servidor or "").strip()
+    if not pasta_txt:
+        raise ValueError("Pasta do processo em falta. Crie a pasta antes de exportar o resumo.")
+    folder = Path(pasta_txt)
+    if not folder.is_dir():
+        raise ValueError(f"Pasta do processo nao encontrada:\n{folder}")
+    plan_name = sanitize_cutrite_plan_name(nome_plano_cut_rite)
+    if not plan_name:
+        raise ValueError("Nome Plano CUT-RITE em falta.")
+    return CutRiteResumoPdfContext(plan_name=plan_name, output_path=folder / f"{plan_name}.pdf")
+
+
+def execute_cutrite_resumo_pdf(context, *, timeout_seconds: int = 120, progress_callback=None) -> Path:
+    Desktop, mouse, keyboard = _load_cutrite_ui_modules()
+    desktop = Desktop(backend="uia")
+    main_window = _find_cutrite_main_window(desktop)
+    preview_window = _find_cutrite_print_preview_window(desktop)
+    if preview_window is None:
+        raise RuntimeError(
+            "Nao foi encontrada a janela 'Vista de impressao' do CUT-RITE.\n\n"
+            "Coloque o plano otimizado na Vista de impressao antes de exportar o resumo."
+        )
+
+    _report_cutrite_progress(progress_callback, "A ativar a 'Vista de impressao' do CUT-RITE.")
+    _activate_cutrite_window(preview_window)
+    _maximize_cutrite_window(preview_window, window_label="Vista de impressao do CUT-RITE")
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+
+    _report_cutrite_progress(progress_callback, "A abrir 'Fiche -> Imprimir as visualizacoes'.")
+    _open_cutrite_print_views_menu(keyboard)
+
+    _report_cutrite_progress(progress_callback, "A confirmar a impressao dos resumos.")
+    report_dialog = _wait_for_cutrite_window(
+        lambda: _find_cutrite_dialog_with_button(desktop, main_window, "imprimir"),
+        timeout_seconds=30,
+        error_message="Nao apareceu o dialogo 'Imprimir' dos resumos.",
+    )
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+    _click_cutrite_named_button(report_dialog, "imprimir", mouse)
+
+    _report_cutrite_progress(progress_callback, "A escolher 'Microsoft Print to PDF'.")
+    print_dialog = _wait_for_cutrite_window(
+        lambda: _find_cutrite_dialog_with_button(desktop, main_window, "ok"),
+        timeout_seconds=30,
+        error_message="Nao apareceu o dialogo de impressao do Windows.",
+    )
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+    _select_cutrite_pdf_printer(print_dialog)
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+    _click_cutrite_named_button(print_dialog, "ok", mouse)
+
+    _report_cutrite_progress(progress_callback, "A gravar o PDF na pasta da obra.")
+    save_dialog = _wait_for_cutrite_window(
+        lambda: (
+            _find_cutrite_window(desktop, main_window, CUTRITE_SAVE_PDF_WINDOW_NAME)
+            if main_window is not None
+            else _find_cutrite_desktop_window(desktop, CUTRITE_SAVE_PDF_WINDOW_NAME)
+        ),
+        timeout_seconds=35,
+        error_message="Nao apareceu o dialogo 'Guardar Saida de Impressao Como'.",
+    )
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+    _set_cutrite_save_filename(save_dialog, str(context.output_path), keyboard)
+    _sleep_cutrite(CUTRITE_PDF_DIALOG_SETTLE_SECONDS)
+    _click_cutrite_named_button(save_dialog, "guardar", mouse)
+
+    _report_cutrite_progress(progress_callback, "A aguardar o PDF na pasta da obra.")
+    _wait_for_cutrite_pdf_file(context.output_path, timeout_seconds=90)
+    _report_cutrite_progress(progress_callback, "Resumo PDF exportado.")
+    return context.output_path
+
+
+def _open_cutrite_print_views_menu(keyboard) -> None:
+    """Abre Fiche -> 'Imprimir as visualizacoes...' (ALT+F, I, ENTER) com margem
+    para os menus desenharem em PCs lentos."""
+    keyboard.send_keys("%f", pause=0.08)
+    _sleep_cutrite(CUTRITE_PDF_MENU_DELAY_SECONDS)
+    keyboard.send_keys("i", pause=0.08)
+    _sleep_cutrite(CUTRITE_PDF_MENU_DELAY_SECONDS)
+    keyboard.send_keys("{ENTER}", pause=0.08)
+    _sleep_cutrite(CUTRITE_PDF_MENU_DELAY_SECONDS)
+
+
+def _find_cutrite_print_preview_window(desktop):
+    """Janela 'Visualizar cursos - Vista de impressao' (tem 'Imprimir as visualizacoes')."""
+    window = _find_cutrite_desktop_window(desktop, CUTRITE_PRINT_PREVIEW_TITLE_FRAGMENT)
+    if window is not None:
+        return window
+    main_window = _find_cutrite_main_window(desktop)
+    if main_window is not None:
+        return _find_cutrite_descendant_window(main_window, CUTRITE_PRINT_PREVIEW_TITLE_FRAGMENT)
+    return None
+
+
+def _find_cutrite_dialog_with_button(desktop, main_window, button_name):
+    if main_window is not None:
+        found = _find_cutrite_window_with_button(main_window, button_name)
+        if found is not None:
+            return found
+    return _find_cutrite_desktop_window_with_button(desktop, button_name)
+
+
+def _find_cutrite_menu_item(root, fragment):
+    needle = _normalize_cutrite_ui_text(fragment)
+    try:
+        descendants = root.descendants()
+    except Exception:
+        return None
+    for element in descendants:
+        try:
+            if element.element_info.control_type != "MenuItem":
+                continue
+            if needle in _normalize_cutrite_ui_text(element.element_info.name):
+                return element
+        except Exception:
+            continue
+    return None
+
+
+def _find_cutrite_windows_print_dialog(desktop, main_window):
+    return (
+        _find_cutrite_window_with_button(main_window, "ok")
+        or _find_cutrite_desktop_window_with_button(desktop, "ok")
+    )
+
+
+def _select_cutrite_pdf_printer(print_dialog):
+    needle = _normalize_cutrite_ui_text(MS_PRINT_TO_PDF_NAME)
+    try:
+        combos = [c for c in print_dialog.descendants() if c.element_info.control_type == "ComboBox"]
+    except Exception:
+        combos = []
+    for combo in combos:
+        try:
+            if needle in _normalize_cutrite_ui_text(combo.window_text()):
+                return
+        except Exception:
+            pass
+        try:
+            combo.select(MS_PRINT_TO_PDF_NAME)
+            return
+        except Exception:
+            continue
+
+
+def _set_cutrite_save_filename(save_dialog, full_path, keyboard):
+    target = None
+    try:
+        for element in save_dialog.descendants():
+            if element.element_info.control_type not in {"Edit", "ComboBox"}:
+                continue
+            name = _normalize_cutrite_ui_text(element.element_info.name)
+            if "nome de ficheiro" in name or "nome do ficheiro" in name:
+                target = element
+                break
+    except Exception:
+        target = None
+    if target is None:
+        try:
+            edits = [e for e in save_dialog.descendants() if e.element_info.control_type == "Edit"]
+            target = edits[0] if edits else None
+        except Exception:
+            target = None
+    if target is None:
+        raise RuntimeError("Nao foi encontrado o campo 'Nome de ficheiro' no dialogo de gravacao.")
+    try:
+        target.set_focus()
+        target.set_edit_text(full_path)
+    except Exception:
+        _click_cutrite_element(target, None)
+        keyboard.send_keys("^a{BACKSPACE}", pause=0.02)
+        keyboard.send_keys(full_path, with_spaces=True, pause=0.01)
+
+
+def _wait_for_cutrite_pdf_file(output_path, *, timeout_seconds):
+    deadline = time.monotonic() + timeout_seconds
+    last_size = -1
+    stable_since = None
+    while time.monotonic() < deadline:
+        if output_path.exists():
+            try:
+                size = output_path.stat().st_size
+            except OSError:
+                size = -1
+            if size > 0 and size == last_size:
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                elif time.monotonic() - stable_since >= 1.5:
+                    return output_path
+            else:
+                last_size = size
+                stable_since = None
+        time.sleep(0.5)
+    if output_path.exists():
+        return output_path
+    raise RuntimeError(
+        "A impressao terminou mas o PDF nao apareceu na pasta da obra:\n"
+        f"{output_path}"
+    )
