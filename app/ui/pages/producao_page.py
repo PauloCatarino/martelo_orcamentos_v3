@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -42,6 +41,7 @@ from app.services.lista_material_imos_service import (
     execute_lista_material_imos,
     prepare_lista_material_imos,
 )
+from app.services.imos_imagem_service import resolver_imagem_imos
 from app.services.producao_service import (
     ProducaoService,
     codigo_processo_com_cliente,
@@ -496,22 +496,11 @@ class ProducaoPage(QWidget):
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
         )
-
-        self.escolher_imagem_button = QPushButton("Escolher Imagem/PDF...")
-        self.escolher_imagem_button.setToolTip("Escolher a imagem/PDF da obra")
-        self.escolher_imagem_button.clicked.connect(self._escolher_imagem)
-
-        self.limpar_imagem_button = QPushButton("Limpar Imagem")
-        self.limpar_imagem_button.setToolTip("Remover a imagem da obra")
-        self.limpar_imagem_button.clicked.connect(self._limpar_imagem)
-
-        buttons_layout = QHBoxLayout()
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.addWidget(self.escolher_imagem_button)
-        buttons_layout.addWidget(self.limpar_imagem_button)
+        self.imagem_preview.setToolTip(
+            "Imagem do IMOS (automatica) ou conteudo da pasta da obra"
+        )
 
         layout.addWidget(self.imagem_preview)
-        layout.addLayout(buttons_layout)
         layout.addStretch()
         return panel
 
@@ -1390,10 +1379,9 @@ class ProducaoPage(QWidget):
             self.notas1_text.setPlainText(self._format_value(proc.notas1))
             self.notas2_text.setPlainText(self._format_value(proc.notas2))
             self.notas3_text.setPlainText(self._format_value(proc.notas3))
-            self._imagem_path = proc.imagem_path
-            self._atualizar_preview_imagem()
             self._selected_processo_id = proc.id
             self._atualizar_campos_derivados()
+            self._mostrar_imagem_obra(proc)
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -1459,7 +1447,6 @@ class ProducaoPage(QWidget):
             "notas1": self._none_if_empty(self.notas1_text.toPlainText()),
             "notas2": self._none_if_empty(self.notas2_text.toPlainText()),
             "notas3": self._none_if_empty(self.notas3_text.toPlainText()),
-            "imagem_path": self._imagem_path,
         }
 
     def _validar_obrigatorios_para_gravar(self, data: dict) -> bool:
@@ -1743,24 +1730,36 @@ class ProducaoPage(QWidget):
             )
         )
 
-    def _escolher_imagem(self) -> None:
-        caminho, _filtro = QFileDialog.getOpenFileName(
-            self,
-            "Escolher Imagem/PDF da obra",
-            "",
-            "Imagens e PDF (*.png *.jpg *.jpeg *.bmp *.pdf);;Todos (*)",
-        )
-        if not caminho:
+    def _mostrar_imagem_obra(self, proc: Producao) -> None:
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        caminho_imos = None
+        if nome_enc:
+            try:
+                with SessionLocal() as session:
+                    caminho_imos = resolver_imagem_imos(
+                        session,
+                        nome_enc_imos=nome_enc,
+                    )
+            except (SQLAlchemyError, OSError):
+                caminho_imos = None
+
+        if caminho_imos is not None:
+            self._imagem_path = str(caminho_imos)
+            self._atualizar_preview_imagem()
             return
 
-        self._imagem_path = caminho
-        self._atualizar_preview_imagem()
-        self._set_dirty(True)
-
-    def _limpar_imagem(self) -> None:
         self._imagem_path = None
-        self._atualizar_preview_imagem()
-        self._set_dirty(True)
+        self._imagem_preview_pixmap_original = None
+        self.imagem_preview.setPixmap(QPixmap())
+        pasta_txt = str(getattr(proc, "pasta_servidor", "") or "").strip()
+        texto = "Sem imagem IMOS."
+        if pasta_txt:
+            try:
+                texto = preview_conteudo_pasta(Path(pasta_txt)) or texto
+            except OSError:
+                pass
+        self.imagem_preview.setText(texto)
+        self.imagem_preview.setToolTip(pasta_txt)
 
     def _atualizar_preview_imagem(self) -> None:
         if not hasattr(self, "imagem_preview"):
