@@ -157,7 +157,13 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "imagem_path" in source
     assert "resolver_imagem_imos" in source
     assert "_mostrar_imagem_obra" in source
-    assert "Imagem do IMOS (automatica) ou conteudo da pasta da obra" in source
+    assert "QStackedWidget" in source
+    assert "QTreeView" in source
+    assert "QFileSystemModel" in source
+    assert "_abrir_item_arvore" in source
+    assert "self.imagem_stack.setCurrentWidget(self.imagem_preview)" in source
+    assert "self.imagem_stack.setCurrentWidget(self.arvore_pasta)" in source
+    assert "Sem imagem IMOS (sem pasta da obra)" in source
     assert "QFileDialog" not in source
     assert "Escolher Imagem/PDF..." not in source
     assert "Limpar Imagem" not in source

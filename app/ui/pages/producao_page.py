@@ -7,6 +7,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QDate, Qt, QSize, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QPixmap
+try:
+    from PySide6.QtGui import QFileSystemModel
+except ImportError:  # PySide6 6.10 exposes QFileSystemModel from QtWidgets.
+    from PySide6.QtWidgets import QFileSystemModel
 from PySide6.QtWidgets import (
     QApplication,
     QCalendarWidget,
@@ -27,6 +31,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
+    QStackedWidget,
+    QTreeView,
     QVBoxLayout,
     QWidget,
 )
@@ -496,11 +502,25 @@ class ProducaoPage(QWidget):
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
         )
-        self.imagem_preview.setToolTip(
-            "Imagem do IMOS (automatica) ou conteudo da pasta da obra"
-        )
+        self.imagem_preview.setToolTip("Imagem do IMOS (automatica)")
 
-        layout.addWidget(self.imagem_preview)
+        self.fs_model = QFileSystemModel()
+        self.arvore_pasta = QTreeView()
+        self.arvore_pasta.setModel(self.fs_model)
+        self.arvore_pasta.setFixedSize(280, 210)
+        self.arvore_pasta.setHeaderHidden(True)
+        self.arvore_pasta.setToolTip(
+            "Conteudo da pasta da obra - duplo-clique abre o ficheiro/pasta"
+        )
+        self.arvore_pasta.doubleClicked.connect(self._abrir_item_arvore)
+        for coluna in (1, 2, 3):
+            self.arvore_pasta.setColumnHidden(coluna, True)
+
+        self.imagem_stack = QStackedWidget()
+        self.imagem_stack.addWidget(self.imagem_preview)
+        self.imagem_stack.addWidget(self.arvore_pasta)
+
+        layout.addWidget(self.imagem_stack)
         layout.addStretch()
         return panel
 
@@ -1401,6 +1421,7 @@ class ProducaoPage(QWidget):
                     widget.setCurrentIndex(-1)
             self._cliente_id = None
             self._imagem_path = None
+            self.imagem_stack.setCurrentWidget(self.imagem_preview)
             self._atualizar_preview_imagem()
             self._selected_processo_id = None
         finally:
@@ -1745,6 +1766,7 @@ class ProducaoPage(QWidget):
 
         if caminho_imos is not None:
             self._imagem_path = str(caminho_imos)
+            self.imagem_stack.setCurrentWidget(self.imagem_preview)
             self._atualizar_preview_imagem()
             return
 
@@ -1752,14 +1774,27 @@ class ProducaoPage(QWidget):
         self._imagem_preview_pixmap_original = None
         self.imagem_preview.setPixmap(QPixmap())
         pasta_txt = str(getattr(proc, "pasta_servidor", "") or "").strip()
-        texto = "Sem imagem IMOS."
+        pasta_existe = False
         if pasta_txt:
             try:
-                texto = preview_conteudo_pasta(Path(pasta_txt)) or texto
+                pasta_existe = Path(pasta_txt).is_dir()
             except OSError:
-                pass
-        self.imagem_preview.setText(texto)
-        self.imagem_preview.setToolTip(pasta_txt)
+                pasta_existe = False
+
+        if pasta_existe:
+            self.fs_model.setRootPath(pasta_txt)
+            self.arvore_pasta.setRootIndex(self.fs_model.index(pasta_txt))
+            self.arvore_pasta.setToolTip(pasta_txt)
+            self.imagem_stack.setCurrentWidget(self.arvore_pasta)
+        else:
+            self.imagem_preview.setText("Sem imagem IMOS (sem pasta da obra)")
+            self.imagem_preview.setToolTip(pasta_txt)
+            self.imagem_stack.setCurrentWidget(self.imagem_preview)
+
+    def _abrir_item_arvore(self, index) -> None:
+        caminho = self.fs_model.filePath(index)
+        if caminho:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(caminho))
 
     def _atualizar_preview_imagem(self) -> None:
         if not hasattr(self, "imagem_preview"):
