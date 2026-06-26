@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PySide6.QtCore import QDate, Qt, QSize, QTimer, QUrl
+from PySide6.QtCore import QDate, QObject, Qt, QSize, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QPixmap
 try:
     from PySide6.QtGui import QFileSystemModel
@@ -43,6 +43,10 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
+from app.services.cutrite_service import (
+    execute_cutrite_import,
+    prepare_cutrite_import,
+)
 from app.services.lista_material_imos_service import (
     execute_lista_material_imos,
     prepare_lista_material_imos,
@@ -69,6 +73,7 @@ from app.services.producao_pastas_service import (
 from app.ui import tema
 from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
+from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
@@ -116,6 +121,52 @@ class _DoubleClickLineEdit(QLineEdit):
         super().mouseDoubleClickEvent(event)
 
 
+class _CutRiteWorker(QObject):
+    """Corre a automação CUT-RITE fora da thread da UI."""
+
+    progresso = Signal(str)
+    falhou = Signal(str)
+    concluido = Signal(str)
+
+    def __init__(self, *, processo_id, pasta_servidor, nome_plano, nome_enc_imos):
+        super().__init__()
+        self._processo_id = processo_id
+        self._pasta_servidor = pasta_servidor
+        self._nome_plano = nome_plano
+        self._nome_enc_imos = nome_enc_imos
+
+    def run(self) -> None:
+        import pythoncom  # pywin32: COM STA nesta thread (necessário para UIA/win32)
+
+        pythoncom.CoInitialize()
+        try:
+            with SessionLocal() as session:
+                context = prepare_cutrite_import(
+                    session,
+                    current_id=self._processo_id,
+                    pasta_servidor=self._pasta_servidor,
+                    nome_plano_cut_rite=self._nome_plano,
+                    nome_enc_imos=self._nome_enc_imos,
+                )
+            resultado = execute_cutrite_import(
+                context,
+                progress_callback=self.progresso.emit,
+            )
+            destino = ""
+            try:
+                destino = str(resultado.cutrite_target_data_dir)
+            except Exception:
+                destino = ""
+            self.concluido.emit(destino)
+        except Exception as exc:
+            self.falhou.emit(str(exc))
+        finally:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
+
+
 class ProducaoPage(QWidget):
     """Production process page with an editable V3 detail form."""
 
@@ -149,6 +200,9 @@ class ProducaoPage(QWidget):
         ]
         self._larguras_colunas = dict(LARGURAS_DEFAULT_PRODUCAO)
         self._guardar_larguras_agendado = False
+        self._cutrite_thread = None
+        self._cutrite_worker = None
+        self._cutrite_dialog = None
         self._aplicando_config_colunas = False
 
         self.cabecalho = BarraCabecalho(
@@ -191,6 +245,13 @@ class ProducaoPage(QWidget):
         )
         self.lista_material_button.clicked.connect(self._lista_material_imos)
 
+        self.enviar_cutrite_button = QPushButton("Enviar CUT-RITE")
+        self.enviar_cutrite_button.setIcon(icone_ficheiro("icon_cut_rite.ico"))
+        self.enviar_cutrite_button.setToolTip(
+            "Criar o plano de corte no CUT-RITE a partir da Lista Material"
+        )
+        self.enviar_cutrite_button.clicked.connect(self._enviar_cutrite)
+
         self.delete_button = QPushButton("Eliminar")
         self.delete_button.setToolTip("Eliminar obra: registo e/ou pasta no servidor")
         self.delete_button.clicked.connect(self._eliminar_processo)
@@ -212,6 +273,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.lista_material_button)
+        actions_layout.addWidget(self.enviar_cutrite_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
@@ -1067,6 +1129,76 @@ class ProducaoPage(QWidget):
         QMessageBox.information(
             self, "Lista Material IMOS", f"Ficheiro criado:\n{output_path}"
         )
+
+    def _enviar_cutrite(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para enviar ao CUT-RITE.")
+            return
+
+        nome_plano = self.nome_plano_corte_input.text().strip()
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        if not nome_plano:
+            QMessageBox.warning(self, "Enviar CUT-RITE", "Nome Plano CUT-RITE em falta.")
+            return
+
+        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        if not pasta_servidor:
+            QMessageBox.warning(
+                self,
+                "Enviar CUT-RITE",
+                "Pasta do processo em falta. Crie a pasta antes de enviar ao CUT-RITE.",
+            )
+            return
+
+        self._cutrite_dialog = CutRiteProgressDialog(self)
+        self._cutrite_dialog.add_step("A iniciar o envio para o CUT-RITE.")
+        self._cutrite_dialog.show()
+        self.enviar_cutrite_button.setEnabled(False)
+
+        self._cutrite_thread = QThread(self)
+        self._cutrite_worker = _CutRiteWorker(
+            processo_id=processo.id,
+            pasta_servidor=pasta_servidor,
+            nome_plano=nome_plano,
+            nome_enc_imos=nome_enc,
+        )
+        self._cutrite_worker.moveToThread(self._cutrite_thread)
+        self._cutrite_thread.started.connect(self._cutrite_worker.run)
+        self._cutrite_worker.progresso.connect(self._cutrite_dialog.add_step)
+        self._cutrite_worker.falhou.connect(self._cutrite_falhou)
+        self._cutrite_worker.concluido.connect(self._cutrite_concluido)
+        self._cutrite_worker.falhou.connect(self._cutrite_thread.quit)
+        self._cutrite_worker.concluido.connect(self._cutrite_thread.quit)
+        self._cutrite_thread.finished.connect(self._cutrite_worker.deleteLater)
+        self._cutrite_thread.finished.connect(self._cutrite_thread.deleteLater)
+        self._cutrite_thread.finished.connect(self._finalizar_cutrite)
+        self._cutrite_thread.start()
+
+    def _cutrite_concluido(self, destino: str) -> None:
+        if self._cutrite_dialog is not None:
+            self._cutrite_dialog.finish(success=True)
+        self.status_label.setText("Plano CUT-RITE criado.")
+        mensagem = "Plano CUT-RITE criado e gravado."
+        if destino:
+            mensagem += f"\n\nFicheiros em:\n{destino}"
+        QMessageBox.information(self, "Enviar CUT-RITE", mensagem)
+
+    def _cutrite_falhou(self, erro: str) -> None:
+        if self._cutrite_dialog is not None:
+            self._cutrite_dialog.add_step(f"ERRO: {erro}")
+            self._cutrite_dialog.finish(success=False)
+        self.status_label.setText("Falha ao enviar para o CUT-RITE.")
+        QMessageBox.critical(
+            self,
+            "Enviar CUT-RITE",
+            f"Não foi possível concluir o envio para o CUT-RITE.\n\n{erro}",
+        )
+
+    def _finalizar_cutrite(self) -> None:
+        self.enviar_cutrite_button.setEnabled(True)
+        self._cutrite_thread = None
+        self._cutrite_worker = None
 
     def _eliminar_processo(self) -> None:
         processo = self._processo_selecionado()

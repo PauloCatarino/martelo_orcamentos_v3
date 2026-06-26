@@ -57,6 +57,11 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
     assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init_source
     assert "Gerar o Excel 'Lista Material_IMOS' na pasta do processo" in init_source
+    assert '"Enviar CUT-RITE"' in init_source
+    assert "self.enviar_cutrite_button" in init_source
+    assert 'self.enviar_cutrite_button.setIcon(icone_ficheiro("icon_cut_rite.ico"))' in init_source
+    assert "self.enviar_cutrite_button.clicked.connect(self._enviar_cutrite)" in init_source
+    assert "Criar o plano de corte no CUT-RITE a partir da Lista Material" in init_source
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
@@ -81,6 +86,7 @@ def test_producao_page_detail_editing_hooks() -> None:
     import app.ui.helpers.colunas_producao as colunas_producao
 
     source = inspect.getsource(ProducaoPage)
+    module_source = inspect.getsource(producao_page)
     helper_source = inspect.getsource(colunas_producao)
 
     assert hasattr(ProducaoPage, "_fill_form")
@@ -110,6 +116,15 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "criar_nova_versao" in source
     assert "prepare_lista_material_imos" in source
     assert "execute_lista_material_imos" in source
+    assert "prepare_cutrite_import" in module_source
+    assert "execute_cutrite_import" in module_source
+    assert "pythoncom.CoInitialize()" in module_source
+    assert "QThread" in module_source
+    assert "CutRiteProgressDialog" in module_source
+    assert hasattr(ProducaoPage, "_enviar_cutrite")
+    assert hasattr(ProducaoPage, "_cutrite_concluido")
+    assert hasattr(ProducaoPage, "_cutrite_falhou")
+    assert hasattr(ProducaoPage, "_finalizar_cutrite")
     assert "eliminar_processo_completo" in source
     assert "preview_conteudo_pasta" in source
     assert hasattr(ProducaoPage, "_eliminar_processo")
