@@ -509,6 +509,15 @@ class ProducaoPage(QWidget):
         self.arvore_pasta.setModel(self.fs_model)
         self.arvore_pasta.setFixedSize(280, 210)
         self.arvore_pasta.setHeaderHidden(True)
+        self.arvore_pasta.setStyleSheet(
+            f"QTreeView {{ background-color: {tema.BEGE_CLARO};"
+            f" color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CINZA_CASTANHO}; }}"
+            f"QTreeView::item {{ color: {tema.CASTANHO_ESCURO}; padding: 2px; }}"
+            f"QTreeView::item:hover {{ background: {tema.BEGE_AREIA};"
+            f" color: {tema.CASTANHO_ESCURO}; }}"
+            f"QTreeView::item:selected {{ background: {tema.CASTANHO_ESCURO};"
+            f" color: #FFFFFF; }}"
+        )
         self.arvore_pasta.setToolTip(
             "Conteudo da pasta da obra - duplo-clique abre o ficheiro/pasta"
         )
