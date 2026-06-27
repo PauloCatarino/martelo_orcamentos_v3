@@ -77,6 +77,12 @@ class OrcamentoService:
         """Return one budget version by id."""
         return self.repository.get_orcamento_by_versao_id(orcamento_versao_id)
 
+    def find_orcamentos_por_ref_cliente(
+        self, ref_cliente: str
+    ) -> list[OrcamentoResumo]:
+        """Find budget versions with the same customer reference."""
+        return self.repository.find_by_ref_cliente(ref_cliente)
+
     def get_cliente_da_versao(
         self, orcamento_versao_id: int
     ) -> ClienteResumo | None:

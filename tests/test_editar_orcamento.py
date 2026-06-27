@@ -12,6 +12,7 @@ from app.db.base import Base
 from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.models import Cliente, Orcamento, OrcamentoVersao, OrcamentoVersaoEvento
+from app.repositories.orcamento_repository import OrcamentoRepository
 from app.services.orcamento_service import (
     CriarOrcamentoSimplesData,
     EditarOrcamentoData,
@@ -216,3 +217,55 @@ def test_lista_marca_orcamento_com_preco_manual(session) -> None:
     session.flush()
     resumo = service.list_orcamentos()[0]
     assert resumo.tem_preco_manual is True
+
+
+def test_find_by_ref_cliente_pesquisa_trim_case_insensitive(session) -> None:
+    cliente_a = Cliente(nome="Cliente A", is_temporary=True)
+    cliente_b = Cliente(nome="Cliente B", is_temporary=True)
+    session.add_all([cliente_a, cliente_b])
+    session.flush()
+    cliente_a_id = cliente_a.id
+    cliente_b_id = cliente_b.id
+
+    service = OrcamentoService(session)
+    service.criar_orcamento_simples(
+        CriarOrcamentoSimplesData(
+            cliente_id=cliente_a_id,
+            obra="Obra A",
+            descricao=None,
+            localizacao=None,
+            ref_cliente="  Ref-Cliente-X  ",
+            ano=2025,
+        )
+    )
+    service.criar_orcamento_simples(
+        CriarOrcamentoSimplesData(
+            cliente_id=cliente_b_id,
+            obra="Obra B",
+            descricao=None,
+            localizacao=None,
+            ref_cliente="ref-cliente-x",
+            ano=2026,
+        )
+    )
+    service.criar_orcamento_simples(
+        CriarOrcamentoSimplesData(
+            cliente_id=cliente_a_id,
+            obra="Obra C",
+            descricao=None,
+            localizacao=None,
+            ref_cliente="OUTRA",
+            ano=2026,
+        )
+    )
+
+    resultados = OrcamentoRepository(session).find_by_ref_cliente(" REF-CLIENTE-X ")
+
+    assert [
+        (orcamento.ano, orcamento.ref_cliente, orcamento.cliente_nome)
+        for orcamento in resultados
+    ] == [
+        (2026, "ref-cliente-x", "Cliente B"),
+        (2025, "  Ref-Cliente-X  ", "Cliente A"),
+    ]
+    assert OrcamentoRepository(session).find_by_ref_cliente("   ") == []

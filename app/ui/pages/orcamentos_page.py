@@ -39,6 +39,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialogData,
 )
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
+from app.ui.dialogs.ref_cliente_duplicada_dialog import RefClienteDuplicadaDialog
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
@@ -282,6 +283,36 @@ class OrcamentosPage(QWidget):
             return
 
         form_data = dialog.get_data()
+        if form_data.ref_cliente:
+            try:
+                with SessionLocal() as session:
+                    correspondencias = (
+                        OrcamentoService(session).find_orcamentos_por_ref_cliente(
+                            form_data.ref_cliente
+                        )
+                    )
+            except SQLAlchemyError:
+                self.status_label.setText("Nao foi possivel verificar a Ref. Cliente.")
+                return
+
+            if correspondencias:
+                escolha = RefClienteDuplicadaDialog(
+                    form_data.ref_cliente,
+                    correspondencias,
+                    self,
+                )
+                escolha.exec()
+
+                if escolha.resultado == "cancelar":
+                    return
+                if escolha.resultado == "reabrir":
+                    if (
+                        escolha.selecionado is not None
+                        and self.on_open_orcamento is not None
+                    ):
+                        self.on_open_orcamento(escolha.selecionado)
+                    return
+
         current_user = app_session.current_user
         created_by_id = form_data.utilizador_id
         if created_by_id is None and current_user is not None:

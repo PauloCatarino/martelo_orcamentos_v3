@@ -99,6 +99,26 @@ class OrcamentoRepository:
 
         return [self._row_to_orcamento_resumo(row) for row in rows]
 
+    def find_by_ref_cliente(self, ref_cliente: str) -> list[OrcamentoResumo]:
+        """Find budget versions with the same customer reference."""
+        ref = (ref_cliente or "").strip()
+        if not ref:
+            return []
+
+        statement = (
+            self._select_orcamento_resumo()
+            .where(func.lower(func.trim(Orcamento.ref_cliente)) == ref.lower())
+            .order_by(
+                Orcamento.ano.desc(),
+                Orcamento.num_orcamento.desc(),
+                OrcamentoVersao.numero_versao.desc(),
+            )
+        )
+
+        rows = self.session.execute(statement).mappings().all()
+
+        return [self._row_to_orcamento_resumo(row) for row in rows]
+
     def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
         """Return one budget version summary by version id."""
         statement = self._select_orcamento_resumo().where(OrcamentoVersao.id == orcamento_versao_id)

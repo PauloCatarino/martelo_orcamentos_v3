@@ -26,11 +26,16 @@ class _FakeRepository:
     utilizador_payload: tuple[int, int | None] | None = None
     cliente_payload: tuple[int, int] | None = None
     nova_versao_payload: tuple | None = None
+    ref_cliente_pesquisada: str | None = None
 
     def __init__(self, _session: object) -> None:
         pass
 
     def list_orcamentos(self) -> list[OrcamentoResumo]:
+        return self.rows
+
+    def find_by_ref_cliente(self, ref_cliente: str) -> list[OrcamentoResumo]:
+        self.__class__.ref_cliente_pesquisada = ref_cliente
         return self.rows
 
     def get_orcamento_by_versao_id(self, orcamento_versao_id: int) -> OrcamentoResumo | None:
@@ -190,6 +195,32 @@ def test_orcamento_service_get_orcamento_by_versao_id(monkeypatch) -> None:
     assert service.get_orcamento_by_versao_id(999) is None
 
 
+def test_orcamento_service_find_orcamentos_por_ref_cliente(monkeypatch) -> None:
+    row = OrcamentoResumo(
+        orcamento_id=1,
+        orcamento_versao_id=10,
+        ano=2026,
+        num_orcamento="260001",
+        numero_versao=1,
+        codigo_versao="260001_01",
+        cliente_nome="Cliente Teste",
+        obra="Obra Teste",
+        descricao=None,
+        localizacao=None,
+        ref_cliente="REF-TESTE",
+        estado=ESTADO_INICIAL,
+        preco_total=Decimal("200.00"),
+        created_at=datetime(2026, 6, 5, 10, 30),
+    )
+    _FakeRepository.rows = [row]
+    monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
+
+    service = service_module.OrcamentoService(session=object())
+
+    assert service.find_orcamentos_por_ref_cliente(" REF-TESTE ") == [row]
+    assert _FakeRepository.ref_cliente_pesquisada == " REF-TESTE "
+
+
 def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSession]:
     _FakeRepository.next_ano = None
     _FakeRepository.created_payload = None
@@ -199,6 +230,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.utilizador_payload = None
     _FakeRepository.cliente_payload = None
     _FakeRepository.nova_versao_payload = None
+    _FakeRepository.ref_cliente_pesquisada = None
     _FakeMargensRepository.reset()
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
     monkeypatch.setattr(
