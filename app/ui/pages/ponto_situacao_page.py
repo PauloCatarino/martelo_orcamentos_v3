@@ -41,8 +41,13 @@ from app.services.producao_phc_sync_service import (
     aplicar_estados,
     detetar_diferencas_estado_phc,
 )
+from app.services.producao_precos_service import (
+    aplicar_precos,
+    detetar_diferencas_preco,
+)
 from app.ui import tema
 from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
+from app.ui.dialogs.producao_precos_dialog import ProducaoPrecosDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
@@ -103,6 +108,12 @@ class PontoSituacaoPage(QWidget):
         )
         self.sincronizar_phc_button.clicked.connect(self._sincronizar_phc)
 
+        self.validar_precos_button = QPushButton("Validar pre\u00e7os")
+        self.validar_precos_button.setToolTip(
+            "Comparar e atualizar os pre\u00e7os de venda a partir do PHC/Streamlit"
+        )
+        self.validar_precos_button.clicked.connect(self._validar_precos)
+
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa, stretch=1)
         toolbar.addWidget(QLabel("Utilizador"))
@@ -114,6 +125,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(self.atualizar_button)
         toolbar.addWidget(self.exportar_pdf_button)
         toolbar.addWidget(self.sincronizar_phc_button)
+        toolbar.addWidget(self.validar_precos_button)
 
         self.atualizado_label = QLabel("")
         self.atualizado_label.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
@@ -437,6 +449,96 @@ class PontoSituacaoPage(QWidget):
             self,
             "Sincronizar PHC",
             f"{n} obra(s) atualizada(s) a partir do PHC.",
+        )
+
+    def _validar_precos(self) -> None:
+        current_user = app_session.current_user
+        nome_login = (
+            current_user.nome.split()[0]
+            if current_user is not None and current_user.nome
+            else ""
+        )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Validar pre\u00e7os")
+        box.setText("Validar pre\u00e7os de que obras?")
+        btn_minhas = box.addButton(
+            f"S\u00f3 as minhas ({nome_login})" if nome_login else "S\u00f3 as minhas",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        btn_todas = box.addButton(
+            "Todos os utilizadores",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_minhas)
+        box.exec()
+        clicado = box.clickedButton()
+        if clicado is None or clicado not in (btn_minhas, btn_todas):
+            return
+        responsavel = nome_login if clicado is btn_minhas else None
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.atualizado_label.setText("A consultar pre\u00e7os no PHC/Streamlit...")
+        QApplication.processEvents()
+        try:
+            with SessionLocal() as session:
+                diffs = detetar_diferencas_preco(
+                    session,
+                    responsavel=responsavel,
+                )
+        except Exception as exc:  # ligacao/SQL/config PHC/Streamlit
+            QMessageBox.warning(
+                self,
+                "Validar pre\u00e7os",
+                self._mensagem_erro_phc(exc),
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if not diffs:
+            QMessageBox.information(
+                self,
+                "Validar pre\u00e7os",
+                "Pre\u00e7os j\u00e1 validados - sem diferen\u00e7as face ao PHC/Streamlit.",
+            )
+            self._carregar()
+            return
+
+        dialog = ProducaoPrecosDialog(diffs, self)
+        if not dialog.exec():
+            return
+
+        atualizacoes = dialog.selecionados()
+        if not atualizacoes:
+            return
+
+        current_user_id = (
+            app_session.current_user.id
+            if app_session.current_user is not None
+            else None
+        )
+        try:
+            with SessionLocal() as session:
+                n = aplicar_precos(
+                    session,
+                    atualizacoes,
+                    current_user_id=current_user_id,
+                )
+        except SQLAlchemyError:
+            QMessageBox.warning(
+                self,
+                "Validar pre\u00e7os",
+                "N\u00e3o foi poss\u00edvel atualizar os pre\u00e7os.",
+            )
+            return
+
+        self._carregar()
+        QMessageBox.information(
+            self,
+            "Validar pre\u00e7os",
+            f"{n} obra(s) atualizada(s) com pre\u00e7o externo.",
         )
 
     @staticmethod

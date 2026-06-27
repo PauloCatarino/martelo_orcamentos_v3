@@ -37,6 +37,10 @@ def test_ponto_situacao_page_imports_and_uses_charts() -> None:
     assert "detetar_diferencas_estado_phc" in source
     assert "aplicar_estados" in source
     assert "ProducaoPhcSyncDialog" in source
+    assert '"Validar pre\\u00e7os"' in source
+    assert "detetar_diferencas_preco" in source
+    assert "aplicar_precos" in source
+    assert "ProducaoPrecosDialog" in source
     assert "ensureWidgetVisible" in source
     assert "self.utilizador_combo" in source
     assert "self.cliente_combo" in source
