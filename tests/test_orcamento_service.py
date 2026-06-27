@@ -70,6 +70,17 @@ class _FakeRepository:
             codigo_versao="260001_02",
         )
 
+    def duplicar_versao_profunda(
+        self, orcamento_versao_id: int, created_by_id: int | None = None
+    ) -> OrcamentoVersaoCriada:
+        self.__class__.nova_versao_payload = (orcamento_versao_id, created_by_id)
+        return OrcamentoVersaoCriada(
+            orcamento_id=1,
+            orcamento_versao_id=orcamento_versao_id + 1,
+            numero_versao=2,
+            codigo_versao="260001_02",
+        )
+
     def update_orcamento(self, orcamento_id, **kwargs) -> bool:
         self.__class__.update_payload = kwargs
         return True

@@ -182,7 +182,7 @@ class OrcamentoService:
         self, orcamento_versao_id: int, created_by_id: int | None = None
     ) -> OrcamentoVersaoCriada:
         """Create the next version of a budget, inheriting the source margins."""
-        result = self.repository.criar_nova_versao(
+        result = self.repository.duplicar_versao_profunda(
             orcamento_versao_id, created_by_id=created_by_id
         )
         OrcamentoHistoricoService(self.session).registar(

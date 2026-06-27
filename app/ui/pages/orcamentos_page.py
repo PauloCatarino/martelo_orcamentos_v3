@@ -106,6 +106,12 @@ class OrcamentosPage(QWidget):
         self.edit_button = QPushButton("Editar Or\u00e7amento")
         self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
 
+        self.duplicate_version_button = QPushButton("Duplicar para Vers\u00e3o")
+        self.duplicate_version_button.setToolTip(
+            "Criar uma nova vers\u00e3o deste or\u00e7amento copiando itens e custeio."
+        )
+        self.duplicate_version_button.clicked.connect(self.duplicar_versao_selecionada)
+
         self.create_folder_button = QPushButton("Criar Pasta do Or\u00e7amento")
         self.create_folder_button.clicked.connect(self._criar_pasta_orcamento)
 
@@ -119,6 +125,7 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.duplicate_version_button)
         actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
@@ -471,6 +478,43 @@ class OrcamentosPage(QWidget):
 
         if self.on_open_orcamento is not None:
             self.on_open_orcamento(orcamento)
+
+    def duplicar_versao_selecionada(self) -> None:
+        """Duplicate the selected budget version into a new full version."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um or\u00e7amento para duplicar.")
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Duplicar para Vers\u00e3o",
+            (
+                f"Criar uma nova vers\u00e3o a partir de {orcamento.codigo_versao}?\n"
+                "Copia todos os itens e o custeio."
+            ),
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        current_user = app_session.current_user
+        created_by_id = current_user.id if current_user is not None else None
+
+        try:
+            with SessionLocal() as session:
+                resultado = OrcamentoService(session).duplicar_versao(
+                    orcamento.orcamento_versao_id,
+                    created_by_id=created_by_id,
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Nao foi possivel duplicar o orcamento.")
+            return
+
+        self.carregar_orcamentos()
+        self.status_label.setText(f"Vers\u00e3o {resultado.codigo_versao} criada.")
+        self._perguntar_criar_pasta_novo_orcamento(resultado)
 
     def _criar_pasta_orcamento(self) -> None:
         """Create the selected budget version folder if it does not exist."""

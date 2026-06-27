@@ -9,11 +9,24 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import exists, func, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.precos import MargensOrcamento
-from app.models import Cliente, Orcamento, OrcamentoItem, OrcamentoVersao, User
+from app.models import (
+    Cliente,
+    Orcamento,
+    OrcamentoItem,
+    OrcamentoItemCusteioLinha,
+    OrcamentoItemModulo,
+    OrcamentoItemValuesetLinha,
+    OrcamentoItemVariavel,
+    OrcamentoValuesetLinha,
+    OrcamentoVersao,
+    OrcamentoVersaoPlacaNaoStock,
+    User,
+)
 
 
 @dataclass(frozen=True)
@@ -271,6 +284,216 @@ class OrcamentoRepository:
             codigo_versao=versao.codigo_versao,
         )
 
+    def duplicar_versao_profunda(
+        self,
+        orcamento_versao_id: int,
+        created_by_id: int | None = None,
+    ) -> OrcamentoVersaoCriada:
+        """Duplicate a budget version and all version/item-owned children."""
+        origem = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if origem is None:
+            raise ValueError("orcamento_versao not found")
+
+        proximo_numero = self.session.execute(
+            select(func.coalesce(func.max(OrcamentoVersao.numero_versao), 0)).where(
+                OrcamentoVersao.orcamento_id == origem.orcamento_id
+            )
+        ).scalar_one() + 1
+
+        orcamento = self.session.get(Orcamento, origem.orcamento_id)
+        if orcamento is None:
+            raise ValueError("orcamento not found")
+
+        codigo_versao = self._format_codigo_versao(
+            orcamento.num_orcamento,
+            proximo_numero,
+        )
+        nova_versao = OrcamentoVersao(
+            orcamento_id=origem.orcamento_id,
+            numero_versao=proximo_numero,
+            codigo_versao=codigo_versao,
+            estado=ESTADO_INICIAL,
+            preco_total=origem.preco_total,
+            preco_origem=origem.preco_total,
+            margem_lucro_pct=origem.margem_lucro_pct,
+            margem_mp_pct=origem.margem_mp_pct,
+            margem_mao_obra_pct=origem.margem_mao_obra_pct,
+            margem_acabamentos_pct=origem.margem_acabamentos_pct,
+            custos_administrativos_pct=origem.custos_administrativos_pct,
+            tipo_producao_default=origem.tipo_producao_default,
+            is_locked=False,
+            locked_at=None,
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
+        )
+        self.session.add(nova_versao)
+        self.session.flush()
+        nova_versao_id = nova_versao.id
+
+        map_vsl_versao: dict[int, int] = {}
+        valueset_versao = self.session.execute(
+            select(OrcamentoValuesetLinha)
+            .where(OrcamentoValuesetLinha.orcamento_versao_id == origem.id)
+            .order_by(OrcamentoValuesetLinha.ordem.asc(), OrcamentoValuesetLinha.id.asc())
+        ).scalars().all()
+        for linha in valueset_versao:
+            dados = self._valores_para_copia(
+                linha,
+                exclui={"orcamento_versao_id"},
+            )
+            copia = OrcamentoValuesetLinha(
+                **dados,
+                orcamento_versao_id=nova_versao_id,
+            )
+            self.session.add(copia)
+            self.session.flush()
+            map_vsl_versao[linha.id] = copia.id
+
+        placas_nao_stock = self.session.execute(
+            select(OrcamentoVersaoPlacaNaoStock)
+            .where(OrcamentoVersaoPlacaNaoStock.orcamento_versao_id == origem.id)
+            .order_by(OrcamentoVersaoPlacaNaoStock.id.asc())
+        ).scalars().all()
+        for placa in placas_nao_stock:
+            dados = self._valores_para_copia(
+                placa,
+                exclui={"orcamento_versao_id"},
+            )
+            self.session.add(
+                OrcamentoVersaoPlacaNaoStock(
+                    **dados,
+                    orcamento_versao_id=nova_versao_id,
+                )
+            )
+        self.session.flush()
+
+        map_item: dict[int, int] = {}
+        itens = self.session.execute(
+            select(OrcamentoItem)
+            .where(OrcamentoItem.orcamento_versao_id == origem.id)
+            .order_by(OrcamentoItem.ordem.asc(), OrcamentoItem.id.asc())
+        ).scalars().all()
+
+        for item in itens:
+            dados_item = self._valores_para_copia(
+                item,
+                exclui={"orcamento_versao_id"},
+            )
+            novo_item = OrcamentoItem(
+                **dados_item,
+                orcamento_versao_id=nova_versao_id,
+            )
+            self.session.add(novo_item)
+            self.session.flush()
+            map_item[item.id] = novo_item.id
+
+            variaveis = self.session.execute(
+                select(OrcamentoItemVariavel)
+                .where(OrcamentoItemVariavel.item_id == item.id)
+                .order_by(OrcamentoItemVariavel.ordem.asc(), OrcamentoItemVariavel.id.asc())
+            ).scalars().all()
+            for variavel in variaveis:
+                dados = self._valores_para_copia(variavel, exclui={"item_id"})
+                self.session.add(OrcamentoItemVariavel(**dados, item_id=novo_item.id))
+
+            map_modulo: dict[int, int] = {}
+            modulos = self.session.execute(
+                select(OrcamentoItemModulo)
+                .where(OrcamentoItemModulo.orcamento_item_id == item.id)
+                .order_by(OrcamentoItemModulo.ordem.asc(), OrcamentoItemModulo.id.asc())
+            ).scalars().all()
+            for modulo in modulos:
+                dados = self._valores_para_copia(
+                    modulo,
+                    exclui={"orcamento_item_id"},
+                )
+                novo_modulo = OrcamentoItemModulo(
+                    **dados,
+                    orcamento_item_id=novo_item.id,
+                )
+                self.session.add(novo_modulo)
+                self.session.flush()
+                map_modulo[modulo.id] = novo_modulo.id
+
+            valuesets_item = self.session.execute(
+                select(OrcamentoItemValuesetLinha)
+                .where(OrcamentoItemValuesetLinha.orcamento_item_id == item.id)
+                .order_by(
+                    OrcamentoItemValuesetLinha.ordem.asc(),
+                    OrcamentoItemValuesetLinha.id.asc(),
+                )
+            ).scalars().all()
+            for linha in valuesets_item:
+                origem_vsl_id = linha.origem_orcamento_valueset_linha_id
+                origem_versao_id = linha.origem_orcamento_versao_id
+                dados = self._valores_para_copia(
+                    linha,
+                    exclui={
+                        "orcamento_item_id",
+                        "origem_orcamento_valueset_linha_id",
+                        "origem_orcamento_versao_id",
+                    },
+                )
+                self.session.add(
+                    OrcamentoItemValuesetLinha(
+                        **dados,
+                        orcamento_item_id=novo_item.id,
+                        origem_orcamento_valueset_linha_id=map_vsl_versao.get(
+                            origem_vsl_id
+                        ),
+                        origem_orcamento_versao_id=(
+                            nova_versao_id
+                            if origem_versao_id == origem.id
+                            else origem_versao_id
+                        ),
+                    )
+                )
+
+            linhas_custeio = self.session.execute(
+                select(OrcamentoItemCusteioLinha)
+                .where(OrcamentoItemCusteioLinha.orcamento_item_id == item.id)
+                .order_by(OrcamentoItemCusteioLinha.id.asc())
+            ).scalars().all()
+            map_linha: dict[int, OrcamentoItemCusteioLinha] = {}
+            linha_pai_original: dict[int, int | None] = {}
+            for linha in linhas_custeio:
+                dados = self._valores_para_copia(
+                    linha,
+                    exclui={
+                        "orcamento_item_id",
+                        "orcamento_item_modulo_id",
+                        "linha_pai_id",
+                    },
+                )
+                nova_linha = OrcamentoItemCusteioLinha(
+                    **dados,
+                    orcamento_item_id=novo_item.id,
+                    orcamento_item_modulo_id=map_modulo.get(
+                        linha.orcamento_item_modulo_id
+                    ),
+                    linha_pai_id=None,
+                )
+                self.session.add(nova_linha)
+                self.session.flush()
+                map_linha[linha.id] = nova_linha
+                linha_pai_original[linha.id] = linha.linha_pai_id
+
+            for old_linha_id, old_linha_pai_id in linha_pai_original.items():
+                if old_linha_pai_id is None:
+                    continue
+                nova_linha = map_linha[old_linha_id]
+                novo_pai = map_linha.get(old_linha_pai_id)
+                if novo_pai is not None:
+                    nova_linha.linha_pai_id = novo_pai.id
+            self.session.flush()
+
+        return OrcamentoVersaoCriada(
+            orcamento_id=nova_versao.orcamento_id,
+            orcamento_versao_id=nova_versao.id,
+            numero_versao=nova_versao.numero_versao,
+            codigo_versao=nova_versao.codigo_versao,
+        )
+
     def update_orcamento(
         self,
         orcamento_id: int,
@@ -380,6 +603,16 @@ class OrcamentoRepository:
             telefone=cliente.telefone or cliente.telemovel,
             num_cliente=cliente.num_cliente_phc,
         )
+
+    def _valores_para_copia(self, origem, *, exclui: set[str]) -> dict[str, Any]:
+        """Return mapped column values for cloning an ORM object."""
+        excluidos = {"id", "created_at", "updated_at"} | exclui
+        mapper = sa_inspect(type(origem))
+        return {
+            attr.key: getattr(origem, attr.key)
+            for attr in mapper.column_attrs
+            if attr.key not in excluidos
+        }
 
     @staticmethod
     def _aplicar_margens_versao(
