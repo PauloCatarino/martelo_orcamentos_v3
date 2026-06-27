@@ -62,6 +62,20 @@ def test_main_window_registers_pesquisa_ia_page() -> None:
     assert 'self._add_page("pesquisa_ia", self.pesquisa_ia_page)' in source
 
 
+def test_main_window_registers_ponto_situacao_under_producao() -> None:
+    from app.ui.main_window import MainWindow
+
+    source = inspect.getsource(MainWindow.__init__)
+
+    assert "PontoSituacaoPage" in source
+    assert (
+        '"Ponto Situa\\u00e7\\u00e3o", "ponto_situacao", parent=item_producao'
+        in source
+    )
+    assert "self.ponto_situacao_page = PontoSituacaoPage()" in source
+    assert 'self._add_page("ponto_situacao", self.ponto_situacao_page)' in source
+
+
 def test_main_window_has_operacoes_maquinas_navigation_inside_configuracoes() -> None:
     from app.ui.main_window import MainWindow
 
