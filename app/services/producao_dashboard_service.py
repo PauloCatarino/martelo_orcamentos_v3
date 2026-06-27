@@ -45,6 +45,7 @@ class DashboardData:
     sem_preco: int
     valor_aberto: float
     hoje: date
+    lista_atrasadas: list
 
 
 def calcular_dashboard(
@@ -70,6 +71,7 @@ def calcular_dashboard(
     por_estado, por_resp, por_cli = {}, {}, {}
     em_desenho = em_producao = finalizadas = arquivadas = atrasadas = sem_preco = 0
     valor_aberto = 0.0
+    atrasadas_det = []
 
     for processo in filtrados:
         est = (processo.estado or "").strip()
@@ -100,6 +102,18 @@ def calcular_dashboard(
             entrega = _parse_data(processo.data_entrega)
             if entrega is not None and entrega < hoje:
                 atrasadas += 1
+                atrasadas_det.append(
+                    {
+                        "id": getattr(processo, "id", None),
+                        "codigo": (processo.codigo_processo or "").strip(),
+                        "cliente": (processo.nome_cliente or "").strip(),
+                        "responsavel": (processo.responsavel or "").strip(),
+                        "data_entrega": str(processo.data_entrega or "").strip(),
+                        "dias_atraso": (hoje - entrega).days,
+                    }
+                )
+
+    atrasadas_det.sort(key=lambda row: row["dias_atraso"], reverse=True)
 
     return DashboardData(
         total=len(filtrados),
@@ -114,6 +128,7 @@ def calcular_dashboard(
         sem_preco=sem_preco,
         valor_aberto=round(valor_aberto, 2),
         hoje=hoje,
+        lista_atrasadas=atrasadas_det,
     )
 
 

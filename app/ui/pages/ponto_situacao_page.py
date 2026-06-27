@@ -13,13 +13,19 @@ from PySide6.QtCharts import (
     QValueAxis,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPageLayout, QPageSize, QPainter, QPdfWriter
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFrame,
+    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -39,6 +45,18 @@ CORES_ESTADO = {
     "Finalizado": "#1BAF7A",
     "Arquivado": "#888780",
 }
+
+
+class _ClickableFrame(QFrame):
+    def __init__(self, on_click) -> None:
+        super().__init__()
+        self._on_click = on_click
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._on_click()
+        super().mousePressEvent(event)
 
 
 class PontoSituacaoPage(QWidget):
@@ -65,6 +83,12 @@ class PontoSituacaoPage(QWidget):
         self.atualizar_button.setToolTip("Recalcular o dashboard")
         self.atualizar_button.clicked.connect(self._carregar)
 
+        self.exportar_pdf_button = QPushButton("Exportar PDF")
+        self.exportar_pdf_button.setToolTip(
+            "Exportar o dashboard atual, com os filtros aplicados, para PDF"
+        )
+        self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
+
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa, stretch=1)
         toolbar.addWidget(QLabel("Utilizador"))
@@ -74,6 +98,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(QLabel("Estado"))
         toolbar.addWidget(self.estado_combo)
         toolbar.addWidget(self.atualizar_button)
+        toolbar.addWidget(self.exportar_pdf_button)
 
         self.atualizado_label = QLabel("")
         self.atualizado_label.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
@@ -89,7 +114,8 @@ class PontoSituacaoPage(QWidget):
             ("valor", "Valor em aberto", None),
             ("sem_preco", "Sem pre\u00e7o", "#854F0B"),
         ):
-            card, valor = self._criar_kpi(titulo, cor)
+            on_click = self._ir_para_atrasadas if chave == "atrasadas" else None
+            card, valor = self._criar_kpi(titulo, cor, on_click)
             self._kpis[chave] = valor
             kpi_row.addWidget(card)
 
@@ -99,32 +125,59 @@ class PontoSituacaoPage(QWidget):
 
         w_estado = QWidget()
         w_estado.setLayout(self.estado_box)
+        w_estado.setMinimumHeight(300)
         w_resp = QWidget()
         w_resp.setLayout(self.responsavel_box)
+        w_resp.setMinimumHeight(300)
         w_cli = QWidget()
         w_cli.setLayout(self.clientes_box)
+        w_cli.setMinimumHeight(360)
 
         topo_graf = QHBoxLayout()
         topo_graf.addWidget(w_estado, stretch=1)
         topo_graf.addWidget(w_resp, stretch=1)
+
+        self.atrasadas_table = self._criar_tabela_atrasadas()
+        self.atrasadas_group = QGroupBox("Obras atrasadas")
+        self.atrasadas_group.setStyleSheet(
+            f"QGroupBox {{ color: {tema.CASTANHO_ESCURO}; font-weight: bold; }}"
+        )
+        atrasadas_layout = QVBoxLayout(self.atrasadas_group)
+        atrasadas_layout.setContentsMargins(8, 12, 8, 8)
+        atrasadas_layout.addWidget(self.atrasadas_table)
+
+        self.report_widget = QWidget()
+        report_layout = QVBoxLayout(self.report_widget)
+        report_layout.setContentsMargins(0, 0, 0, 0)
+        report_layout.setSpacing(12)
+        report_layout.addWidget(self.atualizado_label)
+        report_layout.addLayout(kpi_row)
+        report_layout.addLayout(topo_graf)
+        report_layout.addWidget(w_cli)
+        report_layout.addWidget(self.atrasadas_group)
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setWidget(self.report_widget)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
         layout.addLayout(toolbar)
-        layout.addWidget(self.atualizado_label)
-        layout.addLayout(kpi_row)
-        layout.addLayout(topo_graf, stretch=1)
-        layout.addWidget(w_cli, stretch=1)
+        layout.addWidget(self.scroll, stretch=1)
 
         self._carregar()
 
-    def _criar_kpi(self, titulo, cor=None):
-        card = QFrame()
+    def _criar_kpi(self, titulo, cor=None, on_click=None):
+        card = _ClickableFrame(on_click) if on_click is not None else QFrame()
         card.setStyleSheet(
             f"QFrame {{ background: {tema.BEGE_AREIA}; border-radius: 8px; }}"
         )
+        if on_click is not None:
+            card.setToolTip("Ver lista de obras atrasadas")
+
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(2)
@@ -137,10 +190,51 @@ class PontoSituacaoPage(QWidget):
             f"color: {cor or tema.CASTANHO_ESCURO}; "
             "font-size: 22px; font-weight: bold;"
         )
+        if on_click is not None:
+            titulo_label.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                True,
+            )
+            valor_label.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                True,
+            )
 
         lay.addWidget(titulo_label)
         lay.addWidget(valor_label)
         return card, valor_label
+
+    def _criar_tabela_atrasadas(self) -> QTableWidget:
+        table = QTableWidget(0, 5)
+        table.setHorizontalHeaderLabels(
+            [
+                "Processo",
+                "Cliente",
+                "Respons\u00e1vel",
+                "Data Entrega",
+                "Dias Atraso",
+            ]
+        )
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        table.setFixedHeight(260)
+
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setStyleSheet(
+            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        return table
+
+    def _ir_para_atrasadas(self) -> None:
+        self.scroll.ensureWidgetVisible(self.atrasadas_group)
 
     def _carregar(self, *_args) -> None:
         texto = self.campo_pesquisa.texto()
@@ -183,9 +277,79 @@ class PontoSituacaoPage(QWidget):
         self._substituir(self.estado_box, self._grafico_estado(dados))
         self._substituir(self.responsavel_box, self._grafico_responsavel(dados))
         self._substituir(self.clientes_box, self._grafico_clientes(dados))
-        self.atualizado_label.setText(
-            f"{dados.total} obras \u00b7 atualizado {dados.hoje.strftime('%d-%m-%Y')}"
+        self._preencher_atrasadas(dados)
+        self.atualizado_label.setText(self._texto_atualizado(dados))
+
+    def _preencher_atrasadas(self, dados) -> None:
+        lista = dados.lista_atrasadas
+        self.atrasadas_table.setRowCount(len(lista))
+        for row_index, row in enumerate(lista):
+            valores = (
+                row["codigo"],
+                row["cliente"],
+                row["responsavel"],
+                row["data_entrega"],
+                str(row["dias_atraso"]),
+            )
+            for column_index, valor in enumerate(valores):
+                item = QTableWidgetItem(valor)
+                if valor:
+                    item.setToolTip(valor)
+                if column_index == 4:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.atrasadas_table.setItem(row_index, column_index, item)
+        self.atrasadas_group.setTitle(f"Obras atrasadas ({len(lista)})")
+
+    def _exportar_pdf(self) -> None:
+        caminho, _filtro = QFileDialog.getSaveFileName(
+            self,
+            "Exportar dashboard (PDF)",
+            "Ponto_Situacao.pdf",
+            "PDF (*.pdf)",
         )
+        if not caminho:
+            return
+        if not caminho.lower().endswith(".pdf"):
+            caminho += ".pdf"
+
+        pixmap = self.report_widget.grab()
+        writer = QPdfWriter(caminho)
+        writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+        writer.setPageOrientation(QPageLayout.Orientation.Landscape)
+        writer.setResolution(150)
+
+        painter = QPainter(writer)
+        try:
+            area = painter.viewport()
+            escala = pixmap.scaled(
+                area.width(),
+                area.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            x = (area.width() - escala.width()) // 2
+            painter.drawPixmap(x, 0, escala)
+        finally:
+            painter.end()
+
+        self.atualizado_label.setText(f"PDF exportado: {caminho}")
+
+    def _texto_atualizado(self, dados) -> str:
+        filtros = []
+        pesquisa = self.campo_pesquisa.texto().strip()
+        if pesquisa:
+            filtros.append(f"Pesquisa={pesquisa}")
+        if self._combo_valor(self.utilizador_combo):
+            filtros.append(f"Utilizador={self._combo_valor(self.utilizador_combo)}")
+        if self._combo_valor(self.cliente_combo):
+            filtros.append(f"Cliente={self._combo_valor(self.cliente_combo)}")
+        if self._combo_valor(self.estado_combo):
+            filtros.append(f"Estado={self._combo_valor(self.estado_combo)}")
+
+        texto = f"{dados.total} obras \u00b7 atualizado {dados.hoje.strftime('%d-%m-%Y')}"
+        if filtros:
+            texto += " \u00b7 filtros: " + ", ".join(filtros)
+        return texto
 
     def _limpar_filtros(self) -> None:
         widgets = (

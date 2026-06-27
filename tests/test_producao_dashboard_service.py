@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 def _processo(**overrides) -> SimpleNamespace:
     base = {
+        "id": 1,
         "codigo_processo": "26.1028_01_01",
         "num_enc_phc": "1028",
         "nome_cliente": "Cliente Alfa",
@@ -33,6 +34,7 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
     processos = [
         _processo(),
         _processo(
+            id=2,
             estado="Produ\u00e7\u00e3o",
             responsavel="Bruno",
             nome_cliente="Cliente Beta",
@@ -40,6 +42,7 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
             preco_total=Decimal("250.40"),
         ),
         _processo(
+            id=3,
             estado="Finalizado",
             responsavel="Ana",
             nome_cliente="Cliente Alfa",
@@ -47,6 +50,7 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
             preco_total=Decimal("999.00"),
         ),
         _processo(
+            id=4,
             estado="Arquivado",
             responsavel="",
             nome_cliente="",
@@ -54,6 +58,7 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
             preco_total=None,
         ),
         _processo(
+            id=5,
             estado="Desenho",
             responsavel="Ana",
             nome_cliente="Cliente Alfa",
@@ -83,6 +88,15 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
     assert dados.valor_aberto == 350.40
     assert dados.por_responsavel[0] == ("Ana", 3)
     assert dados.por_cliente[0] == ("Cliente Alfa", 3)
+    assert [row["dias_atraso"] for row in dados.lista_atrasadas] == [26, 26]
+    assert dados.lista_atrasadas[0] == {
+        "id": 1,
+        "codigo": "26.1028_01_01",
+        "cliente": "Cliente Alfa",
+        "responsavel": "Ana",
+        "data_entrega": "01-06-2026",
+        "dias_atraso": 26,
+    }
 
 
 def test_calcular_dashboard_aplica_filtros(monkeypatch) -> None:
@@ -111,3 +125,13 @@ def test_calcular_dashboard_aplica_filtros(monkeypatch) -> None:
 
     assert dados.total == 1
     assert dados.por_cliente == [("Cliente Beta", 1)]
+    assert dados.lista_atrasadas == [
+        {
+            "id": 1,
+            "codigo": "26.1028_01_01",
+            "cliente": "Cliente Beta",
+            "responsavel": "Bruno",
+            "data_entrega": "01-06-2026",
+            "dias_atraso": 26,
+        }
+    ]
