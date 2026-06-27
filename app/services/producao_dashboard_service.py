@@ -16,16 +16,18 @@ _ESTADOS_FECHADOS_NORM = {"finalizado", "arquivado"}
 
 def _parse_data(value):
     if isinstance(value, datetime):
-        return value.date()
+        d = value.date()
+        return d if d.year >= 2026 else None
     if isinstance(value, date):
-        return value
+        return value if value.year >= 2026 else None
 
     value = (value or "").strip()
     if not value:
         return None
     for fmt in ("%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y"):
         try:
-            return datetime.strptime(value, fmt).date()
+            d = datetime.strptime(value, fmt).date()
+            return d if d.year >= 2026 else None
         except ValueError:
             continue
     return None

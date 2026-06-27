@@ -15,6 +15,7 @@ from PySide6.QtCharts import (
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPageLayout, QPageSize, QPainter, QPdfWriter
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -31,10 +33,16 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.services.producao_dashboard_service import calcular_dashboard
+from app.services.producao_phc_sync_service import (
+    aplicar_estados,
+    detetar_diferencas_estado_phc,
+)
 from app.ui import tema
+from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
@@ -89,6 +97,12 @@ class PontoSituacaoPage(QWidget):
         )
         self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
 
+        self.sincronizar_phc_button = QPushButton("Sincronizar PHC")
+        self.sincronizar_phc_button.setToolTip(
+            "Comparar e atualizar os estados das obras a partir do PHC"
+        )
+        self.sincronizar_phc_button.clicked.connect(self._sincronizar_phc)
+
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa, stretch=1)
         toolbar.addWidget(QLabel("Utilizador"))
@@ -99,6 +113,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(self.estado_combo)
         toolbar.addWidget(self.atualizar_button)
         toolbar.addWidget(self.exportar_pdf_button)
+        toolbar.addWidget(self.sincronizar_phc_button)
 
         self.atualizado_label = QLabel("")
         self.atualizado_label.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
@@ -333,6 +348,106 @@ class PontoSituacaoPage(QWidget):
             painter.end()
 
         self.atualizado_label.setText(f"PDF exportado: {caminho}")
+
+    def _sincronizar_phc(self) -> None:
+        current_user = app_session.current_user
+        nome_login = (
+            current_user.nome.split()[0]
+            if current_user is not None and current_user.nome
+            else ""
+        )
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle("Sincronizar PHC")
+        box.setText("Atualizar os estados de que obras?")
+        btn_minhas = box.addButton(
+            f"S\u00f3 as minhas ({nome_login})" if nome_login else "S\u00f3 as minhas",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        btn_todas = box.addButton(
+            "Todos os utilizadores",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(btn_minhas)
+        box.exec()
+        clicado = box.clickedButton()
+        if clicado is None or clicado not in (btn_minhas, btn_todas):
+            return
+        responsavel = nome_login if clicado is btn_minhas else None
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.atualizado_label.setText("A consultar o PHC...")
+        QApplication.processEvents()
+        try:
+            with SessionLocal() as session:
+                diffs = detetar_diferencas_estado_phc(
+                    session,
+                    responsavel=responsavel,
+                )
+        except Exception as exc:  # ligacao/SQL/config PHC
+            QMessageBox.warning(
+                self,
+                "Sincronizar PHC",
+                self._mensagem_erro_phc(exc),
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if not diffs:
+            QMessageBox.information(
+                self,
+                "Sincronizar PHC",
+                "Estados j\u00e1 sincronizados - sem diferen\u00e7as face ao PHC.",
+            )
+            self._carregar()
+            return
+
+        dialog = ProducaoPhcSyncDialog(diffs, self)
+        if not dialog.exec():
+            return
+
+        atualizacoes = dialog.selecionados()
+        if not atualizacoes:
+            return
+
+        current_user_id = (
+            app_session.current_user.id
+            if app_session.current_user is not None
+            else None
+        )
+        try:
+            with SessionLocal() as session:
+                n = aplicar_estados(
+                    session,
+                    atualizacoes,
+                    current_user_id=current_user_id,
+                )
+        except SQLAlchemyError:
+            QMessageBox.warning(
+                self,
+                "Sincronizar PHC",
+                "N\u00e3o foi poss\u00edvel atualizar os estados.",
+            )
+            return
+
+        self._carregar()
+        QMessageBox.information(
+            self,
+            "Sincronizar PHC",
+            f"{n} obra(s) atualizada(s) a partir do PHC.",
+        )
+
+    @staticmethod
+    def _mensagem_erro_phc(exc):
+        texto = str(exc)
+        if "Configuracao PHC" in texto or "Configura\u00e7\u00e3o PHC" in texto:
+            return (
+                "PHC n\u00e3o configurado. Configure a liga\u00e7\u00e3o em "
+                "Configura\u00e7\u00f5es -> Caminhos/PHC."
+            )
+        return f"N\u00e3o foi poss\u00edvel consultar o PHC: {texto}"
 
     def _texto_atualizado(self, dados) -> str:
         filtros = []

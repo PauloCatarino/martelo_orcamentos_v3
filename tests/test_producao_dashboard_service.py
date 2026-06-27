@@ -65,6 +65,14 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
             data_entrega="01-06-2026",
             preco_total=None,
         ),
+        _processo(
+            id=6,
+            estado="Desenho",
+            responsavel="Ana",
+            nome_cliente="Cliente Alfa",
+            data_entrega="01-01-1900",
+            preco_total=Decimal("0.00"),
+        ),
     ]
 
     class FakeProducaoService:
@@ -78,16 +86,16 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
 
     dados = module.calcular_dashboard(object(), hoje=date(2026, 6, 27))
 
-    assert dados.total == 5
-    assert dados.em_desenho == 2
+    assert dados.total == 6
+    assert dados.em_desenho == 3
     assert dados.em_producao == 1
     assert dados.finalizadas == 1
     assert dados.arquivadas == 1
     assert dados.atrasadas == 2
     assert dados.sem_preco == 1
     assert dados.valor_aberto == 350.40
-    assert dados.por_responsavel[0] == ("Ana", 3)
-    assert dados.por_cliente[0] == ("Cliente Alfa", 3)
+    assert dados.por_responsavel[0] == ("Ana", 4)
+    assert dados.por_cliente[0] == ("Cliente Alfa", 4)
     assert [row["dias_atraso"] for row in dados.lista_atrasadas] == [26, 26]
     assert dados.lista_atrasadas[0] == {
         "id": 1,

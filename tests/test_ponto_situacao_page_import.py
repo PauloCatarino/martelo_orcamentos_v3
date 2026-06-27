@@ -19,6 +19,8 @@ def test_ponto_situacao_page_imports_and_uses_charts() -> None:
     assert "QTableWidget" in source
     assert "QPdfWriter" in source
     assert "QFileDialog" in source
+    assert "QApplication" in source
+    assert "QMessageBox" in source
     assert "_ClickableFrame" in inspect.getsource(
         __import__(
             "app.ui.pages.ponto_situacao_page",
@@ -27,7 +29,14 @@ def test_ponto_situacao_page_imports_and_uses_charts() -> None:
     )
     assert '"Atualizar"' in source
     assert '"Exportar PDF"' in source
+    assert '"Sincronizar PHC"' in source
+    assert '"Todos os utilizadores"' in source
+    assert "S\\u00f3 as minhas" in source
+    assert "responsavel=responsavel" in source
     assert '"Obras atrasadas"' in source
+    assert "detetar_diferencas_estado_phc" in source
+    assert "aplicar_estados" in source
+    assert "ProducaoPhcSyncDialog" in source
     assert "ensureWidgetVisible" in source
     assert "self.utilizador_combo" in source
     assert "self.cliente_combo" in source
