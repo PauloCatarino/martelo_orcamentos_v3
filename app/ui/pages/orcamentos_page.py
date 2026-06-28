@@ -32,7 +32,14 @@ from app.services.orcamento_service import (
     EditarOrcamentoData,
     OrcamentoService,
 )
+from app.services.orcamento_delete_service import (
+    PRODUCAO_LIGADA_MSG,
+    contar_versoes,
+    eliminar_versao_completo,
+    tem_producao_ligada,
+)
 from app.services.orcamento_export_service import OrcamentoExportService
+from app.services.producao_pastas_service import preview_conteudo_pasta
 from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialog,
     EditarOrcamentoContexto,
@@ -112,6 +119,12 @@ class OrcamentosPage(QWidget):
         )
         self.duplicate_version_button.clicked.connect(self.duplicar_versao_selecionada)
 
+        self.delete_button = QPushButton("Eliminar Or\u00e7amento")
+        self.delete_button.setToolTip(
+            "Eliminar a vers\u00e3o selecionada (e o or\u00e7amento se for a \u00faltima)."
+        )
+        self.delete_button.clicked.connect(self.eliminar_orcamento_selecionado)
+
         self.create_folder_button = QPushButton("Criar Pasta do Or\u00e7amento")
         self.create_folder_button.clicked.connect(self._criar_pasta_orcamento)
 
@@ -126,6 +139,7 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.duplicate_version_button)
+        actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
@@ -515,6 +529,187 @@ class OrcamentosPage(QWidget):
         self.carregar_orcamentos()
         self.status_label.setText(f"Vers\u00e3o {resultado.codigo_versao} criada.")
         self._perguntar_criar_pasta_novo_orcamento(resultado)
+
+    def eliminar_orcamento_selecionado(self) -> None:
+        """Delete the selected budget version folder and/or DB record."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+
+        if row < 0 or orcamento is None:
+            self.status_label.setText("Selecione um or\u00e7amento para eliminar.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                remove_orcamento = contar_versoes(session, orcamento.orcamento_id) == 1
+                tem_producao = tem_producao_ligada(session, orcamento.orcamento_id)
+        except SQLAlchemyError as error:
+            QMessageBox.warning(
+                self,
+                "Eliminar Or\u00e7amento",
+                f"N\u00e3o foi poss\u00edvel preparar a elimina\u00e7\u00e3o.\n\n{error}",
+            )
+            return
+
+        escolha = self._escolher_modo_eliminacao_orcamento(orcamento)
+        if escolha is None:
+            return
+        apagar_registo, apagar_pasta = escolha
+
+        if apagar_registo and remove_orcamento and tem_producao:
+            QMessageBox.warning(self, "Eliminar Or\u00e7amento", PRODUCAO_LIGADA_MSG)
+            return
+
+        caminho_texto = ""
+        if apagar_pasta:
+            try:
+                with SessionLocal() as session:
+                    caminho = self._resolver_pasta_eliminacao_orcamento(
+                        session,
+                        orcamento,
+                        remove_orcamento=remove_orcamento,
+                    )
+                    caminho_texto = str(caminho) if caminho is not None else "(pasta inexistente)"
+                    preview = (
+                        preview_conteudo_pasta(caminho)
+                        if caminho is not None
+                        else "(pasta inexistente)"
+                    )
+            except (SQLAlchemyError, OSError, ValueError) as error:
+                QMessageBox.warning(self, "Eliminar Or\u00e7amento", str(error))
+                return
+
+            aviso_extra = ""
+            if not apagar_registo:
+                aviso_extra = (
+                    "\n\nNota: o registo fica a apontar para uma pasta inexistente."
+                )
+            resposta = QMessageBox.question(
+                self,
+                "Confirmar elimina\u00e7\u00e3o da pasta",
+                (
+                    "A pasta abaixo ser\u00e1 removida de forma permanente.\n\n"
+                    f"{caminho_texto}\n\n"
+                    "Conte\u00fado encontrado:\n"
+                    f"{preview}"
+                    f"{aviso_extra}"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+
+        resposta = QMessageBox.question(
+            self,
+            "Confirma\u00e7\u00e3o final",
+            self._mensagem_confirmacao_eliminacao_orcamento(
+                orcamento,
+                apagar_registo=apagar_registo,
+                apagar_pasta=apagar_pasta,
+                caminho_pasta=caminho_texto,
+                remove_orcamento=remove_orcamento,
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                eliminar_versao_completo(
+                    session,
+                    orcamento_versao_id=orcamento.orcamento_versao_id,
+                    apagar_registo=apagar_registo,
+                    apagar_pasta=apagar_pasta,
+                )
+        except (PermissionError, OSError, ValueError, SQLAlchemyError) as error:
+            QMessageBox.warning(self, "Eliminar Or\u00e7amento", str(error))
+            return
+
+        self.carregar_orcamentos()
+        self.status_label.setText(f"Eliminado: {orcamento.codigo_versao}.")
+
+    def _escolher_modo_eliminacao_orcamento(
+        self,
+        orcamento: OrcamentoResumo,
+    ) -> tuple[bool, bool] | None:
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Eliminar Or\u00e7amento")
+        box.setText(f"Escolha o que eliminar para {orcamento.codigo_versao}.")
+        box.setInformativeText("Esta a\u00e7\u00e3o pode remover dados de forma permanente.")
+        only_db_button = box.addButton(
+            "S\u00f3 registo (BD)",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        only_folder_button = box.addButton(
+            "S\u00f3 pasta (servidor)",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        both_button = box.addButton(
+            "Pasta + registo",
+            QMessageBox.ButtonRole.DestructiveRole,
+        )
+        cancel_button = box.addButton(
+            "Cancelar",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.setDefaultButton(cancel_button)
+        box.setEscapeButton(cancel_button)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked == only_db_button:
+            return True, False
+        if clicked == only_folder_button:
+            return False, True
+        if clicked == both_button:
+            return True, True
+        return None
+
+    def _resolver_pasta_eliminacao_orcamento(
+        self,
+        session,
+        orcamento: OrcamentoResumo,
+        *,
+        remove_orcamento: bool,
+    ):
+        export = OrcamentoExportService(session)
+        if remove_orcamento:
+            return export.pasta_orcamento_atual(orcamento.orcamento_versao_id)
+        return export.resolver_pasta_versao(orcamento.orcamento_versao_id, criar=False)
+
+    def _mensagem_confirmacao_eliminacao_orcamento(
+        self,
+        orcamento: OrcamentoResumo,
+        *,
+        apagar_registo: bool,
+        apagar_pasta: bool,
+        caminho_pasta: str,
+        remove_orcamento: bool,
+    ) -> str:
+        alvo_bd = (
+            f"a vers\u00e3o {orcamento.codigo_versao} e o or\u00e7amento"
+            if remove_orcamento
+            else f"a vers\u00e3o {orcamento.codigo_versao}"
+        )
+        if apagar_registo and apagar_pasta:
+            return (
+                f"Eliminar permanentemente a pasta e {alvo_bd} na BD?\n\n"
+                f"Pasta:\n{caminho_pasta}"
+            )
+        if apagar_pasta:
+            return (
+                f"Eliminar permanentemente s\u00f3 a pasta de {orcamento.codigo_versao}?\n\n"
+                f"Pasta:\n{caminho_pasta}\n\n"
+                "O registo na BD ser\u00e1 mantido."
+            )
+        return (
+            f"Eliminar s\u00f3 {alvo_bd} na BD?\n\n"
+            "A pasta no servidor ser\u00e1 mantida."
+        )
 
     def _criar_pasta_orcamento(self) -> None:
         """Create the selected budget version folder if it does not exist."""
