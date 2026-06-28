@@ -17,6 +17,9 @@ from app.domain.relatorio_totais import calcular_totais_relatorio
 
 def test_gerar_pdf_orcamento_cria_ficheiro(tmp_path) -> None:
     pytest.importorskip("reportlab")
+    pytest.importorskip("pypdf")
+    from pypdf import PdfReader
+
     from app.services.orcamento_pdf_export import gerar_pdf_orcamento
 
     items = [
@@ -73,3 +76,14 @@ def test_gerar_pdf_orcamento_cria_ficheiro(tmp_path) -> None:
     assert resultado == saida
     assert saida.exists()
     assert saida.stat().st_size > 0
+
+    texto_pdf = "\n".join(
+        page.extract_text() or "" for page in PdfReader(str(saida)).pages
+    )
+    assert "720" in texto_pdf
+    assert "600" in texto_pdf
+    assert "560" in texto_pdf
+    assert "720 mm" not in texto_pdf
+    assert "600 mm" not in texto_pdf
+    assert "560 mm" not in texto_pdf
+    assert "800 mm" not in texto_pdf

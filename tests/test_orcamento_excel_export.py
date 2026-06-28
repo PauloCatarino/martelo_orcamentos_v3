@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from xml.etree import ElementTree as ET
+import zipfile
 
 from openpyxl import load_workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
@@ -15,7 +17,8 @@ from app.services.orcamento_excel_export import gerar_excel_orcamento
 
 def _rich_blocks(value) -> list[TextBlock]:
     assert isinstance(value, CellRichText)
-    return [part for part in value if isinstance(part, TextBlock)]
+    assert all(isinstance(part, TextBlock) for part in value)
+    return list(value)
 
 
 def _items() -> list[SimpleNamespace]:
@@ -23,7 +26,7 @@ def _items() -> list[SimpleNamespace]:
         SimpleNamespace(
             ordem=1,
             codigo="A1",
-            descricao="Móvel de cozinha\n- Puxador TIC-TAC\n* Montado",
+            descricao="Móvel de cozinha\n- Puxador TIC-TAC\n\n* Montado",
             item="Móvel",
             altura=Decimal("720"),
             largura=Decimal("600"),
@@ -78,6 +81,12 @@ def test_gerar_excel_orcamento_cria_ficheiro_com_dados(tmp_path) -> None:
     assert saida.exists()
     assert saida.stat().st_size > 0
 
+    with zipfile.ZipFile(saida) as xlsx:
+        nomes = set(xlsx.namelist())
+        ET.fromstring(xlsx.read("xl/worksheets/sheet1.xml"))
+        if "xl/sharedStrings.xml" in nomes:
+            ET.fromstring(xlsx.read("xl/sharedStrings.xml"))
+
     wb = load_workbook(saida, rich_text=True)
     ws = wb.active
     assert ws.title == "Orçamento"
@@ -98,20 +107,29 @@ def test_gerar_excel_orcamento_cria_ficheiro_com_dados(tmp_path) -> None:
     assert ws["A11"].value == "1"
     blocks = _rich_blocks(ws["C11"].value)
     assert (
-        str(ws["C11"].value)
-        == "A1 - Móvel\nMóvel de cozinha\n  - Puxador TIC-TAC\n  Montado"
+        "".join(block.text for block in blocks)
+        == "A1 - Móvel\nMóvel de cozinha\n  - Puxador TIC-TAC\n\n  Montado"
     )
     assert blocks[0].text == "A1 - Móvel"
     assert blocks[0].font.b is True
-    assert blocks[1].text == "Móvel de cozinha"
+    assert blocks[1].text == "\nMóvel de cozinha"
     assert blocks[1].font.b is True
-    assert blocks[2].text == "  - Puxador TIC-TAC"
+    assert blocks[2].text == "\n  - Puxador TIC-TAC"
     assert blocks[2].font.i is True
-    assert blocks[3].text == "  Montado"
-    assert blocks[3].font.i is True
-    assert blocks[3].font.color.rgb == "FF0A5C0A"
+    assert blocks[3].text == "\n"
+    assert blocks[4].text == "\n  Montado"
+    assert blocks[4].font.i is True
+    assert blocks[4].font.color.rgb == "FF0A5C0A"
     assert ws["C11"].alignment.wrap_text is True
     assert ws["C11"].alignment.vertical == "top"
+    assert ws.column_dimensions["C"].width == 60
+    assert ws["A10"].border.left.style == "thin"
+    assert ws["J12"].border.bottom.style == "thin"
+    assert ws["A11"].alignment.horizontal == "center"
+    assert ws["G11"].alignment.horizontal == "center"
+    assert ws["D11"].alignment.horizontal == "right"
+    assert ws["J11"].alignment.horizontal == "right"
+    assert ws["J11"].font.b is True
     assert ws["D11"].value == 720
     assert ws["H11"].value == 2
     assert ws["J11"].value == 200

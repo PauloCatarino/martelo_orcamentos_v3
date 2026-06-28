@@ -16,7 +16,7 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from app.domain.descricao_format import parse_descricao
 from app.utils.formatters import format_quantity, format_version
@@ -45,7 +45,7 @@ _CABECALHOS = (
 _LARGURAS = {
     "A": 6,
     "B": 14,
-    "C": 50,
+    "C": 60,
     "D": 8,
     "E": 8,
     "F": 8,
@@ -86,23 +86,23 @@ def _escrever_numero(cell, value, number_format: str) -> None:
 
 
 def _descricao_richtext(nome: str, descricao: str | None) -> CellRichText:
-    """Constroi a descricao da coluna C com nome e linhas formatadas."""
-    rich_text = CellRichText([TextBlock(InlineFont(b=True), nome)])
-
+    """Descricao da coluna C: nome (negrito) + linhas formatadas."""
+    blocos: list[tuple[InlineFont, str]] = [(InlineFont(b=True), nome)]
     for linha in parse_descricao(descricao):
-        rich_text.append("\n")
         if linha.tipo == "titulo":
-            rich_text.append(TextBlock(InlineFont(b=True), linha.texto))
+            blocos.append((InlineFont(b=True), linha.texto))
         elif linha.tipo == "traco":
-            rich_text.append(TextBlock(InlineFont(i=True), f"  - {linha.texto}"))
+            blocos.append((InlineFont(i=True), f"  - {linha.texto}"))
         elif linha.tipo == "estrela":
-            rich_text.append(
-                TextBlock(InlineFont(i=True, color="FF0A5C0A"), f"  {linha.texto}")
-            )
+            blocos.append((InlineFont(i=True, color="FF0A5C0A"), f"  {linha.texto}"))
         else:
-            rich_text.append("")
+            blocos.append((InlineFont(), ""))
 
-    return rich_text
+    runs = [
+        TextBlock(fonte, ("" if i == 0 else "\n") + texto)
+        for i, (fonte, texto) in enumerate(blocos)
+    ]
+    return CellRichText(runs)
 
 
 def gerar_excel_orcamento(
@@ -126,6 +126,12 @@ def gerar_excel_orcamento(
     ws.title = titulo
 
     negrito = Font(bold=True)
+    borda_fina = Border(
+        left=Side(style="thin", color="FF808080"),
+        right=Side(style="thin", color="FF808080"),
+        top=Side(style="thin", color="FF808080"),
+        bottom=Side(style="thin", color="FF808080"),
+    )
     cinza = PatternFill(start_color="FFD9D9D9", end_color="FFD9D9D9", fill_type="solid")
 
     # Bloco de cabeçalho (D1/D2/A3/D3/A4/A5/A6/A7/D7).
@@ -175,7 +181,25 @@ def gerar_excel_orcamento(
         _escrever_numero(ws.cell(row=linha, column=8), getattr(item, "quantidade", None), _FORMATO_QT)
         _escrever_numero(ws.cell(row=linha, column=9), getattr(item, "preco_unitario", None), _FORMATO_EUR)
         _escrever_numero(ws.cell(row=linha, column=10), getattr(item, "preco_total", None), _FORMATO_EUR)
+        ws.cell(row=linha, column=10).font = negrito
         linha += 1
+
+    ultima_linha_items = max(10, linha - 1)
+    for linha_tabela in range(10, ultima_linha_items + 1):
+        for coluna in range(1, 11):
+            ws.cell(row=linha_tabela, column=coluna).border = borda_fina
+
+    for linha_item in range(11, ultima_linha_items + 1):
+        ws.cell(row=linha_item, column=1).alignment = Alignment(
+            horizontal="center", vertical="top"
+        )
+        ws.cell(row=linha_item, column=7).alignment = Alignment(
+            horizontal="center", vertical="top"
+        )
+        for coluna in (4, 5, 6, 8, 9, 10):
+            ws.cell(row=linha_item, column=coluna).alignment = Alignment(
+                horizontal="right", vertical="top"
+            )
 
     # Totais nas colunas I/J, deixando 1 linha em branco após os items.
     iva_label = f"IVA ({format_quantity(totais.iva_pct)}%):"

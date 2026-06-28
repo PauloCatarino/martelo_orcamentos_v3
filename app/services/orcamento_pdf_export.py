@@ -18,7 +18,6 @@ from xml.sax.saxutils import escape
 from app.domain.descricao_format import descricao_para_reportlab
 from app.utils.formatters import (
     format_currency,
-    format_mm,
     format_quantity,
     format_version,
 )
@@ -57,16 +56,16 @@ _AZUL_REALCE = "#EAF1FB"
 
 # Larguras (mm) das colunas da tabela de items — somam 200 (A4 menos margens).
 _COLUNAS_ITEMS = (
-    ("Item", 9),
-    ("Código", 20),
-    ("Descrição", 80),
-    ("Alt", 10),
-    ("Larg", 11),
-    ("Prof", 11),
-    ("Und", 11),
-    ("Qt", 11),
-    ("Preço Unit", 18),
-    ("Preço Total", 19),
+    ("Item", 8),
+    ("Código", 18),
+    ("Descrição", 98),
+    ("Alt", 9),
+    ("Larg", 9),
+    ("Prof", 9),
+    ("Und", 8),
+    ("Qt", 9),
+    ("Preço Unit", 16),
+    ("Preço Total", 16),
 )
 
 
@@ -259,9 +258,9 @@ def gerar_pdf_orcamento(
                 str(getattr(item, "ordem", "")),
                 getattr(item, "codigo", None) or "",
                 Paragraph("<br/>".join(partes_descricao), estilo_desc),
-                format_mm(getattr(item, "altura", None)),
-                format_mm(getattr(item, "largura", None)),
-                format_mm(getattr(item, "profundidade", None)),
+                format_quantity(getattr(item, "altura", None)),
+                format_quantity(getattr(item, "largura", None)),
+                format_quantity(getattr(item, "profundidade", None)),
                 getattr(item, "unidade", None) or "",
                 format_quantity(getattr(item, "quantidade", None)),
                 format_currency(getattr(item, "preco_unitario", None)),
@@ -274,10 +273,12 @@ def gerar_pdf_orcamento(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CINZA_CABECALHO)),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EAF1FB")]),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 7),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+                ("VALIGN", (0, 1), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 3),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 3),
                 ("TOPPADDING", (0, 0), (-1, -1), 2),
