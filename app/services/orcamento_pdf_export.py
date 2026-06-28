@@ -57,8 +57,8 @@ _AZUL_REALCE = "#EAF1FB"
 # Larguras (mm) das colunas da tabela de items — somam 200 (A4 menos margens).
 _COLUNAS_ITEMS = (
     ("Item", 8),
-    ("Código", 18),
-    ("Descrição", 98),
+    ("Código", 20),
+    ("Descrição", 96),
     ("Alt", 9),
     ("Larg", 9),
     ("Prof", 9),
@@ -178,6 +178,9 @@ def gerar_pdf_orcamento(
     estilo_desc = ParagraphStyle(
         "DescItem", fontName="Helvetica", fontSize=7, leading=8
     )
+    estilo_codigo = ParagraphStyle(
+        "CodigoItem", fontName="Helvetica", fontSize=7, leading=8, wordWrap="CJK"
+    )
 
     story = []
 
@@ -256,7 +259,7 @@ def gerar_pdf_orcamento(
         dados.append(
             [
                 str(getattr(item, "ordem", "")),
-                getattr(item, "codigo", None) or "",
+                Paragraph(escape(getattr(item, "codigo", None) or ""), estilo_codigo),
                 Paragraph("<br/>".join(partes_descricao), estilo_desc),
                 format_quantity(getattr(item, "altura", None)),
                 format_quantity(getattr(item, "largura", None)),
@@ -273,7 +276,6 @@ def gerar_pdf_orcamento(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CINZA_CABECALHO)),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#EAF1FB")]),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTSIZE", (0, 0), (-1, -1), 7),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),

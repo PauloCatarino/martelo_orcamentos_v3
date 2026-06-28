@@ -25,7 +25,7 @@ def test_gerar_pdf_orcamento_cria_ficheiro(tmp_path) -> None:
     items = [
         SimpleNamespace(
             ordem=1,
-            codigo="A1",
+            codigo="ITEM-TESTE-001-SEM-ESPACOS",
             descricao="Móvel de cozinha\ncom gavetas & puxadores <inox>",
             item="Móvel",
             altura=Decimal("720"),
