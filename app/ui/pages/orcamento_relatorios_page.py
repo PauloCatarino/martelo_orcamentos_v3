@@ -35,6 +35,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.export_paths import subpasta_versao
 from app.domain.relatorio_totais import (
     IVA_PADRAO_PCT,
     TotaisRelatorio,
@@ -45,6 +46,7 @@ from app.services.email_service import (
     construir_assunto_email,
     construir_corpo_email,
     enviar_email,
+    escrever_relatorio_email,
     get_email_log_path,
 )
 from app.services.orcamento_export_service import OrcamentoExportService
@@ -707,6 +709,25 @@ class OrcamentoRelatoriosPage(QWidget):
             )
             return
 
+        # Best-effort: grava um relatório HTML do email na pasta do orçamento.
+        pasta_relatorio = (
+            pdf_path.parent if pdf_path is not None else Path(pasta_inicial)
+        )
+        nome_base = (
+            f"Email_Enviado_{orcamento.num_orcamento}_"
+            f"{subpasta_versao(orcamento.numero_versao)}"
+        )
+        relatorio = escrever_relatorio_email(
+            pasta_relatorio,
+            nome_base,
+            remetente=f"{remetente_nome or ''} <{remetente_email or ''}>".strip(),
+            destino=dialog.destinatario(),
+            cc=dialog.cc(),
+            assunto=dialog.assunto(),
+            corpo_html=dialog.corpo_html(),
+            anexos=dialog.anexos(),
+        )
+
         try:
             with SessionLocal() as session:
                 OrcamentoHistoricoService(session).registar(
@@ -724,7 +745,10 @@ class OrcamentoRelatoriosPage(QWidget):
             )
             return
 
-        QMessageBox.information(self, "Email", "Email enviado com sucesso.")
+        msg = "Email enviado com sucesso."
+        if relatorio is not None:
+            msg += f"\n\nRegisto gravado em:\n{relatorio}"
+        QMessageBox.information(self, "Email", msg)
 
     def _preencher_cliente(self, cliente) -> None:
         nome = self.orcamento.cliente_nome if self.orcamento is not None else ""

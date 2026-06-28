@@ -203,6 +203,51 @@ def construir_corpo_email(
     )
 
 
+def escrever_relatorio_email(
+    pasta,
+    nome_base: str,
+    *,
+    remetente: str,
+    destino: str,
+    cc: str,
+    assunto: str,
+    corpo_html: str,
+    anexos,
+) -> Path | None:
+    """Grava na pasta do orçamento um HTML com o registo do email enviado.
+
+    Best-effort: nunca levanta (devolve None em erro).
+    """
+    try:
+        agora = datetime.now()
+        carimbo = agora.strftime("%Y%m%d_%H%M%S")
+        destino_path = Path(pasta) / f"{nome_base}_{carimbo}.html"
+        anexos_nomes = "<br>".join(
+            html.escape(Path(str(anexo)).name) for anexo in (anexos or [])
+        )
+        conteudo = (
+            "<!DOCTYPE html>"
+            "<html><head><meta charset='utf-8'>"
+            "<title>Orçamento enviado por email</title></head>"
+            "<body style=\"font-family: Arial, sans-serif; color:#333;\">"
+            "<h2>Orçamento enviado por email</h2>"
+            f"<p><b>Data/hora:</b> "
+            f"{html.escape(agora.strftime('%Y-%m-%d %H:%M:%S'))}</p>"
+            f"<p><b>De:</b> {html.escape(remetente or '')}</p>"
+            f"<p><b>Para:</b> {html.escape(destino or '')}</p>"
+            f"<p><b>CC:</b> {html.escape(cc or '')}</p>"
+            f"<p><b>Assunto:</b> {html.escape(assunto or '')}</p>"
+            f"<p><b>Anexos:</b><br>{anexos_nomes}</p>"
+            "<hr>"
+            f"{corpo_html or ''}"
+            "</body></html>"
+        )
+        destino_path.write_text(conteudo, encoding="utf-8")
+        return destino_path
+    except Exception:
+        return None
+
+
 def _enviar_outlook(
     destino: str,
     assunto: str,
@@ -296,6 +341,15 @@ def _require_win32com_client() -> Any:
         ) from exc
 
 
+def _is_elevated() -> bool:
+    try:
+        import ctypes
+
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
 def _ligar_outlook(win32_client: Any) -> Any:
     import time
 
@@ -310,13 +364,21 @@ def _ligar_outlook(win32_client: Any) -> Any:
             ultimo_erro = exc
             time.sleep(1.0)
 
-    raise RuntimeError(
-        "Não foi possível ligar ao Outlook (erro do servidor COM). "
-        "Verifique: (1) o Outlook está aberto e configurado; (2) a aplicação "
-        "NÃO está a ser executada como Administrador — o Outlook corre como "
-        "utilizador normal e a automação COM falha se os níveis de privilégio "
-        "forem diferentes.\n\nDetalhe técnico: " + str(ultimo_erro)
-    )
+    if _is_elevated():
+        mensagem = (
+            "Não foi possível ligar ao Outlook. A aplicação está a correr como "
+            "ADMINISTRADOR (elevada) e o Outlook corre como utilizador normal — o COM "
+            "recusa ligar entre níveis diferentes. SOLUÇÃO: feche e abra o Martelo V3 (ou "
+            "o VS Code/terminal a partir do qual o lança) SEM 'Executar como "
+            "administrador'.\n\nDetalhe técnico: " + str(ultimo_erro)
+        )
+    else:
+        mensagem = (
+            "Não foi possível ligar ao Outlook (erro do servidor COM). Verifique: o "
+            "Outlook está aberto; a bitness do Office e do Python coincidem; experimente "
+            "Reparar o Office.\n\nDetalhe técnico: " + str(ultimo_erro)
+        )
+    raise RuntimeError(mensagem)
 
 
 def _find_outlook_account(session: Any, smtp_address: str) -> Any | None:

@@ -111,6 +111,53 @@ def test_get_email_log_path_usa_env_explicit_e_cria_pasta(tmp_path, monkeypatch)
     assert result.exists()
 
 
+def test_escrever_relatorio_email_grava_html_com_campos(tmp_path) -> None:
+    resultado = email_service.escrever_relatorio_email(
+        tmp_path,
+        "Email_Enviado_260001_02",
+        remetente="João <joao@example.test>",
+        destino="cliente@example.test",
+        cc="comercial@example.test",
+        assunto="Orçamento 260001_02 - Cozinha",
+        corpo_html="<p>Segue em anexo o orçamento.</p>",
+        anexos=[r"C:\obras\orcamento.pdf", "lista.xlsx"],
+    )
+
+    assert resultado is not None
+    assert resultado.parent == tmp_path
+    assert resultado.name.startswith("Email_Enviado_260001_02_")
+    assert resultado.suffix == ".html"
+    assert resultado.exists()
+
+    texto = resultado.read_text(encoding="utf-8")
+    assert "Orçamento enviado por email" in texto
+    assert "joao@example.test" in texto
+    assert "cliente@example.test" in texto
+    assert "comercial@example.test" in texto
+    assert "Orçamento 260001_02 - Cozinha" in texto
+    # Anexos: apenas os nomes dos ficheiros (sem caminho).
+    assert "orcamento.pdf" in texto
+    assert "lista.xlsx" in texto
+    assert "C:\\obras" not in texto
+    # Corpo HTML incluído tal e qual.
+    assert "<p>Segue em anexo o orçamento.</p>" in texto
+
+
+def test_escrever_relatorio_email_pasta_invalida_devolve_none() -> None:
+    resultado = email_service.escrever_relatorio_email(
+        "Z:/pasta/que/nao/existe/de/certeza",
+        "Email_Enviado_260001_02",
+        remetente="rem@example.test",
+        destino="dest@example.test",
+        cc="",
+        assunto="Assunto",
+        corpo_html="<p>corpo</p>",
+        anexos=[],
+    )
+
+    assert resultado is None
+
+
 def test_safe_log_result_nao_rebenta_e_escreve_linha(tmp_path, monkeypatch) -> None:
     log_path = tmp_path / "envio_emails.log"
     monkeypatch.setenv("MARTELO_EMAIL_LOG_PATH", str(log_path))
