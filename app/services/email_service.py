@@ -213,24 +213,35 @@ def _enviar_outlook(
     cc: str,
 ) -> None:
     win32_client = _require_win32com_client()
-    outlook = win32_client.Dispatch("Outlook.Application")
-    mail = outlook.CreateItem(0)
-    if remetente_email:
-        account = _find_outlook_account(outlook.Session, remetente_email)
-        if account is not None:
-            mail.SendUsingAccount = account
-        else:
-            mail.SentOnBehalfOfName = remetente_email
-    mail.To = destino
-    if cc:
-        mail.CC = cc
-    mail.Subject = assunto
-    mail.HTMLBody = corpo_html
-    for path in anexos:
-        if os.path.exists(path):
-            mail.Attachments.Add(path)
-    mail.SaveSentMessageFolder = outlook.Session.GetDefaultFolder(5)
-    mail.Send()
+    try:
+        import pythoncom
+    except Exception as exc:
+        raise RuntimeError(
+            "O envio por Outlook requer o modulo 'pythoncom' do pacote pywin32."
+        ) from exc
+
+    pythoncom.CoInitialize()
+    try:
+        outlook = _ligar_outlook(win32_client)
+        mail = outlook.CreateItem(0)
+        if remetente_email:
+            account = _find_outlook_account(outlook.Session, remetente_email)
+            if account is not None:
+                mail.SendUsingAccount = account
+            else:
+                mail.SentOnBehalfOfName = remetente_email
+        mail.To = destino
+        if cc:
+            mail.CC = cc
+        mail.Subject = assunto
+        mail.HTMLBody = corpo_html
+        for path in anexos:
+            if os.path.exists(path):
+                mail.Attachments.Add(path)
+        mail.SaveSentMessageFolder = outlook.Session.GetDefaultFolder(5)
+        mail.Send()
+    finally:
+        pythoncom.CoUninitialize()
 
 
 def _enviar_smtp(
@@ -283,6 +294,29 @@ def _require_win32com_client() -> Any:
         raise RuntimeError(
             "O envio por Outlook requer o pacote 'pywin32' instalado no Python/venv atual."
         ) from exc
+
+
+def _ligar_outlook(win32_client: Any) -> Any:
+    import time
+
+    ultimo_erro = None
+    for _tentativa in range(3):
+        try:
+            try:
+                return win32_client.GetActiveObject("Outlook.Application")
+            except Exception:
+                return win32_client.Dispatch("Outlook.Application")
+        except Exception as exc:
+            ultimo_erro = exc
+            time.sleep(1.0)
+
+    raise RuntimeError(
+        "Não foi possível ligar ao Outlook (erro do servidor COM). "
+        "Verifique: (1) o Outlook está aberto e configurado; (2) a aplicação "
+        "NÃO está a ser executada como Administrador — o Outlook corre como "
+        "utilizador normal e a automação COM falha se os níveis de privilégio "
+        "forem diferentes.\n\nDetalhe técnico: " + str(ultimo_erro)
+    )
 
 
 def _find_outlook_account(session: Any, smtp_address: str) -> Any | None:
