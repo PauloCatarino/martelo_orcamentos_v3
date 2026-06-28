@@ -103,30 +103,49 @@ def test_eliminar_ultima_versao_remove_orcamento(session) -> None:
     assert _count_children_for_versao(session, versao_2_id) == 0
 
 
-def test_eliminar_ultima_versao_bloqueia_quando_tem_producao_ligada(session) -> None:
-    orcamento, versao = _criar_orcamento_com_uma_versao(session)
+@pytest.mark.parametrize(
+    ("apagar_registo", "apagar_pasta"),
+    [
+        (True, False),
+        (False, True),
+        (True, True),
+    ],
+)
+def test_eliminar_versao_bloqueia_quando_tem_producao_ligada(
+    session,
+    apagar_registo: bool,
+    apagar_pasta: bool,
+) -> None:
+    orcamento, versao_1, versao_2 = _criar_orcamento_com_duas_versoes(session)
+    orcamento_id = orcamento.id
+    versao_1_id = versao_1.id
+    versao_2_id = versao_2.id
     producao = Producao(
         codigo_processo="26.0001_01_01",
         ano="2026",
         num_enc_phc="0001",
         versao_obra="01",
         versao_plano="01",
-        orcamento_id=orcamento.id,
+        orcamento_id=orcamento_id,
     )
     session.add(producao)
     session.flush()
+    producao_id = producao.id
 
-    with pytest.raises(ValueError, match=PRODUCAO_LIGADA_MSG):
+    with pytest.raises(ValueError, match="Este or\u00e7amento est\u00e1 ligado"):
         eliminar_versao_completo(
             session,
-            orcamento_versao_id=versao.id,
-            apagar_registo=True,
-            apagar_pasta=False,
+            orcamento_versao_id=versao_1_id,
+            apagar_registo=apagar_registo,
+            apagar_pasta=apagar_pasta,
         )
 
-    assert session.get(Orcamento, orcamento.id) is not None
-    assert session.get(OrcamentoVersao, versao.id) is not None
-    assert session.get(Producao, producao.id).orcamento_id == orcamento.id
+    assert session.get(Orcamento, orcamento_id) is not None
+    assert session.get(OrcamentoVersao, versao_1_id) is not None
+    assert session.get(OrcamentoVersao, versao_2_id) is not None
+    assert session.get(Producao, producao_id).orcamento_id == orcamento_id
+    assert _count_by_versao(session, OrcamentoItem, versao_1_id) == 1
+    assert _count_children_for_versao(session, versao_1_id) == 5
 
 
 def test_remover_pasta_orcamento_segura_valida_base_e_nome(session, tmp_path) -> None:

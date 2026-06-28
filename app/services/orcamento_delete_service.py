@@ -26,7 +26,8 @@ from app.services.system_setting_service import SystemSettingService
 
 
 PRODUCAO_LIGADA_MSG = (
-    "Existe Produ\u00e7\u00e3o ligada a este or\u00e7amento; elimine/desligue a "
+    "Este or\u00e7amento est\u00e1 ligado a uma obra de Produ\u00e7\u00e3o; n\u00e3o \u00e9 "
+    "poss\u00edvel elimin\u00e1-lo (nem nenhuma vers\u00e3o). Desligue ou elimine a "
     "Produ\u00e7\u00e3o primeiro."
 )
 
@@ -73,7 +74,7 @@ def eliminar_versao_completo(
     orcamento_id = versao.orcamento_id
     remove_orcamento = contar_versoes(session, orcamento_id) == 1
 
-    if apagar_registo and remove_orcamento and tem_producao_ligada(session, orcamento_id):
+    if tem_producao_ligada(session, orcamento_id):
         raise ValueError(PRODUCAO_LIGADA_MSG)
 
     if apagar_pasta:
