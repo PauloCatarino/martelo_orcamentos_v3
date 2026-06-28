@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -32,18 +33,28 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.relatorio_totais import (
     IVA_PADRAO_PCT,
     TotaisRelatorio,
     calcular_totais_relatorio,
 )
+from app.services.email_service import (
+    carregar_email_config,
+    construir_assunto_email,
+    construir_corpo_email,
+    enviar_email,
+    get_email_log_path,
+)
 from app.services.orcamento_export_service import OrcamentoExportService
+from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import REPORTLAB_DISPONIVEL
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
+from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.relatorio_dashboards import DashboardsWidget
 from app.ui.widgets.table_item import criar_item_tabela
@@ -290,11 +301,17 @@ class OrcamentoRelatoriosPage(QWidget):
         self.exportar_excel_button.clicked.connect(self._exportar_excel)
         self.exportar_resumo_button = QPushButton("Exportar Resumo de Custos")
         self.exportar_resumo_button.clicked.connect(self._exportar_resumo_custos)
+        self.enviar_email_button = QPushButton("Enviar Orçamento por Email")
+        self.enviar_email_button.setToolTip(
+            "Gera/anexa o PDF do orçamento e abre o email para confirmação antes de enviar."
+        )
+        self.enviar_email_button.clicked.connect(self._enviar_email)
         barra = QHBoxLayout()
         barra.addStretch()
         barra.addWidget(self.exportar_pdf_button)
         barra.addWidget(self.exportar_excel_button)
         barra.addWidget(self.exportar_resumo_button)
+        barra.addWidget(self.enviar_email_button)
 
         tab = QWidget()
         layout = QVBoxLayout()
@@ -582,6 +599,132 @@ class OrcamentoRelatoriosPage(QWidget):
         QMessageBox.information(
             self, "Resumo de Custos", f"Resumo de Custos criado em:\n{caminho}"
         )
+
+    def _enviar_email(self) -> None:
+        """Send the budget PDF by email and register the send in history."""
+        orcamento = None
+        cliente = None
+        pdf_path = None
+        anexos: list[str] = []
+        pdf_filename = ""
+        pasta_inicial = str(Path.home())
+
+        try:
+            with SessionLocal() as session:
+                export = OrcamentoExportService(session)
+                orcamento = export.orcamento_service.get_orcamento_by_versao_id(
+                    self.orcamento_versao_id
+                )
+                cliente = export.orcamento_service.get_cliente_da_versao(
+                    self.orcamento_versao_id
+                )
+                config = carregar_email_config(session)
+
+                if orcamento is None or cliente is None:
+                    QMessageBox.warning(
+                        self,
+                        "Email",
+                        "Orçamento ou cliente não encontrado para esta versão.",
+                    )
+                    return
+
+                try:
+                    pdf_path = export.exportar_pdf_orcamento(self.orcamento_versao_id)
+                except (ValueError, SQLAlchemyError, RuntimeError) as erro_pdf:
+                    pasta = export.resolver_pasta_versao(
+                        self.orcamento_versao_id, criar=False
+                    )
+                    if pasta is not None:
+                        pasta_inicial = str(pasta)
+                    QMessageBox.warning(
+                        self,
+                        "Email",
+                        "Não foi possível gerar/anexar o PDF automaticamente.\n"
+                        "Pode continuar e adicionar anexos manualmente.\n\n"
+                        f"Detalhe: {erro_pdf}",
+                    )
+                else:
+                    anexos = [str(pdf_path)]
+                    pdf_filename = pdf_path.name
+                    pasta_inicial = str(pdf_path.parent)
+        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+            QMessageBox.critical(
+                self,
+                "Email",
+                f"Não foi possível preparar o email:\n{erro}",
+            )
+            return
+
+        current_user = app_session.current_user
+        remetente_email = getattr(current_user, "email", None)
+        remetente_nome = (
+            getattr(current_user, "nome", None)
+            or getattr(current_user, "username", None)
+        )
+        total = getattr(orcamento, "preco_total", None) or Decimal("0")
+
+        dialog = EmailOrcamentoDialog(
+            self,
+            destinatario=getattr(cliente, "email", "") or "",
+            cc=str(remetente_email or ""),
+            assunto=construir_assunto_email(orcamento),
+            corpo=construir_corpo_email(
+                orcamento,
+                cliente,
+                total,
+                pdf_filename=pdf_filename,
+            ),
+            anexos=anexos,
+            pasta_inicial=pasta_inicial,
+        )
+        if not dialog.exec():
+            return
+
+        if not dialog.destinatario():
+            QMessageBox.warning(
+                self,
+                "Email",
+                "Indique o destinatário antes de enviar.",
+            )
+            return
+
+        try:
+            enviar_email(
+                dialog.destinatario(),
+                dialog.assunto(),
+                dialog.corpo_html(),
+                dialog.anexos(),
+                config=config,
+                remetente_email=remetente_email,
+                remetente_nome=remetente_nome,
+                cc=dialog.cc(),
+            )
+        except Exception as erro:
+            QMessageBox.critical(
+                self,
+                "Email",
+                f"Falha ao enviar o email:\n{erro}\n\nLog: {get_email_log_path()}",
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoHistoricoService(session).registar(
+                    self.orcamento_versao_id,
+                    "email",
+                    f"Orçamento enviado para {dialog.destinatario()}",
+                )
+                session.commit()
+        except SQLAlchemyError as erro:
+            QMessageBox.warning(
+                self,
+                "Email",
+                "Email enviado, mas não foi possível registar no histórico:\n"
+                f"{erro}",
+            )
+            return
+
+        QMessageBox.information(self, "Email", "Email enviado com sucesso.")
 
     def _preencher_cliente(self, cliente) -> None:
         nome = self.orcamento.cliente_nome if self.orcamento is not None else ""
