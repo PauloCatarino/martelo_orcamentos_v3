@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from app.domain.descricao_format import descricao_para_reportlab
 from app.utils.formatters import (
     format_currency,
     format_mm,
@@ -122,12 +123,6 @@ def _format_data(value) -> str:
     if hasattr(value, "strftime"):
         return value.strftime("%Y-%m-%d")
     return str(value)
-
-
-def _paragrafo_descricao(texto: str | None, estilo) -> Paragraph:
-    """Descrição como Paragraph: escapa & < > e converte \\n em <br/>."""
-    seguro = escape(texto or "").replace("\n", "<br/>")
-    return Paragraph(seguro, estilo)
 
 
 def gerar_pdf_orcamento(
@@ -252,14 +247,18 @@ def gerar_pdf_orcamento(
     larguras = [largura * mm for _nome, largura in _COLUNAS_ITEMS]
     dados = [[nome for nome, _largura in _COLUNAS_ITEMS]]
     for item in items:
+        nome_item = getattr(item, "item", None) or ""
+        codigo_item = getattr(item, "codigo", None)
+        nome = f"{codigo_item} - {nome_item}" if codigo_item else nome_item
+        desc_markup = descricao_para_reportlab(getattr(item, "descricao", None))
+        partes_descricao = [f"<b>{escape(nome)}</b>"]
+        if desc_markup:
+            partes_descricao.append(desc_markup)
         dados.append(
             [
                 str(getattr(item, "ordem", "")),
                 getattr(item, "codigo", None) or "",
-                _paragrafo_descricao(
-                    getattr(item, "descricao", None) or getattr(item, "item", None),
-                    estilo_desc,
-                ),
+                Paragraph("<br/>".join(partes_descricao), estilo_desc),
                 format_mm(getattr(item, "altura", None)),
                 format_mm(getattr(item, "largura", None)),
                 format_mm(getattr(item, "profundidade", None)),

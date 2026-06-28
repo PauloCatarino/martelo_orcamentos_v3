@@ -7,9 +7,15 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from openpyxl import load_workbook
+from openpyxl.cell.rich_text import CellRichText, TextBlock
 
 from app.domain.relatorio_totais import calcular_totais_relatorio
 from app.services.orcamento_excel_export import gerar_excel_orcamento
+
+
+def _rich_blocks(value) -> list[TextBlock]:
+    assert isinstance(value, CellRichText)
+    return [part for part in value if isinstance(part, TextBlock)]
 
 
 def _items() -> list[SimpleNamespace]:
@@ -17,7 +23,7 @@ def _items() -> list[SimpleNamespace]:
         SimpleNamespace(
             ordem=1,
             codigo="A1",
-            descricao="Móvel de cozinha",
+            descricao="Móvel de cozinha\n- Puxador TIC-TAC\n* Montado",
             item="Móvel",
             altura=Decimal("720"),
             largura=Decimal("600"),
@@ -72,7 +78,7 @@ def test_gerar_excel_orcamento_cria_ficheiro_com_dados(tmp_path) -> None:
     assert saida.exists()
     assert saida.stat().st_size > 0
 
-    wb = load_workbook(saida)
+    wb = load_workbook(saida, rich_text=True)
     ws = wb.active
     assert ws.title == "Orçamento"
 
@@ -90,7 +96,22 @@ def test_gerar_excel_orcamento_cria_ficheiro_com_dados(tmp_path) -> None:
 
     # Primeira linha de item: texto + números reais.
     assert ws["A11"].value == "1"
-    assert ws["C11"].value == "Móvel de cozinha"
+    blocks = _rich_blocks(ws["C11"].value)
+    assert (
+        str(ws["C11"].value)
+        == "A1 - Móvel\nMóvel de cozinha\n  - Puxador TIC-TAC\n  Montado"
+    )
+    assert blocks[0].text == "A1 - Móvel"
+    assert blocks[0].font.b is True
+    assert blocks[1].text == "Móvel de cozinha"
+    assert blocks[1].font.b is True
+    assert blocks[2].text == "  - Puxador TIC-TAC"
+    assert blocks[2].font.i is True
+    assert blocks[3].text == "  Montado"
+    assert blocks[3].font.i is True
+    assert blocks[3].font.color.rgb == "FF0A5C0A"
+    assert ws["C11"].alignment.wrap_text is True
+    assert ws["C11"].alignment.vertical == "top"
     assert ws["D11"].value == 720
     assert ws["H11"].value == 2
     assert ws["J11"].value == 200
@@ -99,7 +120,10 @@ def test_gerar_excel_orcamento_cria_ficheiro_com_dados(tmp_path) -> None:
     assert not isinstance(ws["J11"].value, str)
 
     # Segundo item usa o 'item' quando falta a descrição.
-    assert ws["C12"].value == "Prateleira"
+    blocks = _rich_blocks(ws["C12"].value)
+    assert str(ws["C12"].value) == "Prateleira"
+    assert blocks[0].text == "Prateleira"
+    assert blocks[0].font.b is True
 
     # Totais nas colunas I/J, após 1 linha em branco (items nas linhas 11-12).
     assert ws["I14"].value == "Total Qt:"

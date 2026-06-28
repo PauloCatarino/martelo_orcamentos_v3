@@ -14,8 +14,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
+from openpyxl.styles import Alignment, Font, PatternFill
 
+from app.domain.descricao_format import parse_descricao
 from app.utils.formatters import format_quantity, format_version
 
 # Formatos de número das células (dimensões inteiras, Qt com casas opcionais,
@@ -82,6 +85,26 @@ def _escrever_numero(cell, value, number_format: str) -> None:
     cell.number_format = number_format
 
 
+def _descricao_richtext(nome: str, descricao: str | None) -> CellRichText:
+    """Constroi a descricao da coluna C com nome e linhas formatadas."""
+    rich_text = CellRichText([TextBlock(InlineFont(b=True), nome)])
+
+    for linha in parse_descricao(descricao):
+        rich_text.append("\n")
+        if linha.tipo == "titulo":
+            rich_text.append(TextBlock(InlineFont(b=True), linha.texto))
+        elif linha.tipo == "traco":
+            rich_text.append(TextBlock(InlineFont(i=True), f"  - {linha.texto}"))
+        elif linha.tipo == "estrela":
+            rich_text.append(
+                TextBlock(InlineFont(i=True, color="FF0A5C0A"), f"  {linha.texto}")
+            )
+        else:
+            rich_text.append("")
+
+    return rich_text
+
+
 def gerar_excel_orcamento(
     output_path,
     *,
@@ -136,12 +159,15 @@ def gerar_excel_orcamento(
     linha = 11
     for item in items:
         ws.cell(row=linha, column=1, value=str(getattr(item, "ordem", "")))
-        ws.cell(row=linha, column=2, value=getattr(item, "codigo", None) or "")
-        ws.cell(
-            row=linha,
-            column=3,
-            value=getattr(item, "descricao", None) or getattr(item, "item", None) or "",
+        codigo_item = getattr(item, "codigo", None)
+        nome_item = getattr(item, "item", None) or ""
+        nome = f"{codigo_item} - {nome_item}" if codigo_item else nome_item
+        ws.cell(row=linha, column=2, value=codigo_item or "")
+        descricao_cell = ws.cell(row=linha, column=3)
+        descricao_cell.value = _descricao_richtext(
+            nome, getattr(item, "descricao", None)
         )
+        descricao_cell.alignment = Alignment(wrap_text=True, vertical="top")
         _escrever_numero(ws.cell(row=linha, column=4), getattr(item, "altura", None), _FORMATO_DIM)
         _escrever_numero(ws.cell(row=linha, column=5), getattr(item, "largura", None), _FORMATO_DIM)
         _escrever_numero(ws.cell(row=linha, column=6), getattr(item, "profundidade", None), _FORMATO_DIM)
