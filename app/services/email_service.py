@@ -115,12 +115,12 @@ def enviar_email(
     cc_outlook = ";".join(cc_unique)
     cc_rfc = ", ".join(cc_unique)
     log_dest = destino + (f";{cc_outlook}" if cc_outlook else "")
-    corpo_html = corpo_html or ""
+    corpo_html = (corpo_html or "").replace(
+        "{{assinatura}}", _resolver_assinatura(config, remetente_nome)
+    )
 
     try:
         if (config.metodo or "outlook").lower() == "outlook":
-            # No Outlook a assinatura nativa da conta é acrescentada ao corpo
-            # (_enviar_outlook), por isso o {{assinatura}} não é resolvido aqui.
             _enviar_outlook(
                 destino,
                 assunto,
@@ -130,13 +130,10 @@ def enviar_email(
                 cc=cc_outlook,
             )
         else:
-            corpo_smtp = corpo_html.replace(
-                "{{assinatura}}", _resolver_assinatura(config, remetente_nome)
-            )
             _enviar_smtp(
                 destino,
                 assunto,
-                corpo_smtp,
+                corpo_html,
                 anexos,
                 config=config,
                 from_email=from_email,
@@ -200,6 +197,8 @@ def construir_corpo_email(
         f"<p style='margin:0 0 12px;'><b>Total:</b> {format_currency(total)}</p>"
         "<p style='margin:0 0 16px;'>Se tiver alguma dúvida ou necessitar de "
         "mais informação, não hesite em contactar-nos.</p>"
+        "<p style='margin:0 0 4px;'>Com os melhores cumprimentos,</p>"
+        "<p style='margin:0;'>{{assinatura}}</p>"
         "</div>"
     )
 
@@ -280,15 +279,7 @@ def _enviar_outlook(
         if cc:
             mail.CC = cc
         mail.Subject = assunto
-        # Usar a assinatura NATIVA do Outlook (configurada para a conta): abrir o
-        # inspector força o Outlook a injetar a assinatura em mail.HTMLBody; o nosso
-        # corpo fica por cima dela (fecho + logótipo vêm da assinatura).
-        try:
-            _ = mail.GetInspector  # força o Outlook a carregar a assinatura da conta
-        except Exception:
-            pass
-        assinatura_outlook = mail.HTMLBody or ""
-        mail.HTMLBody = corpo_html + assinatura_outlook
+        mail.HTMLBody = corpo_html
         for path in anexos:
             if os.path.exists(path):
                 mail.Attachments.Add(path)
