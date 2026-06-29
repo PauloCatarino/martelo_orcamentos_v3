@@ -19,12 +19,17 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class PecaCorte:
-    """Uma peça a cortar (dimensões em mm)."""
+    """Uma peça a cortar (dimensões em mm).
+
+    ``rodar`` marca peças sem veio (gaveta/rodapé) que podem rodar; a estratégia
+    de rotação fica para o C3.4 — aqui ``empacotar`` ainda não o usa.
+    """
 
     id: int
     desc: str
     comp: float
     larg: float
+    rodar: bool = False
 
 
 @dataclass
