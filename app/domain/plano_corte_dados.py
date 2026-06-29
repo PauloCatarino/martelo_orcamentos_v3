@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import unicodedata
 
-from app.domain.plano_corte import PecaCorte
+from app.domain.plano_corte import PecaCorte, ResultadoEmpacotamento, empacotar
 
 
 def _rodar(def_peca: str | None) -> bool:
@@ -146,3 +146,66 @@ def construir_grupos_corte(linhas_geral: list[dict], placas) -> list[GrupoCorte]
     ]
     grupos.sort(key=lambda g: (g.ref, g.esp))
     return grupos
+
+
+@dataclass(frozen=True)
+class GrupoCorteResultado:
+    """Um grupo de corte com o resultado do otimizador."""
+
+    grupo: GrupoCorte
+    resultado: ResultadoEmpacotamento
+
+
+@dataclass(frozen=True)
+class LinhaResumoCorte:
+    """Uma linha do resumo: placas do orçamento vs placas do otimizador."""
+
+    ref: str
+    esp: float
+    dim_placa: str
+    placas_orcamento: int
+    placas_otimizador: int
+    diferenca: int
+    aproveitamento_pct: float
+    nao_alocadas: int
+
+
+def empacotar_grupos(
+    grupos, *, kerf: float = 3.0, rotacao: bool = True
+) -> list[GrupoCorteResultado]:
+    """Corre o otimizador em cada grupo e devolve grupo + resultado."""
+    return [
+        GrupoCorteResultado(
+            grupo=grupo,
+            resultado=empacotar(
+                grupo.pecas, grupo.placa_comp, grupo.placa_larg,
+                kerf=kerf, rotacao=rotacao,
+            ),
+        )
+        for grupo in grupos
+    ]
+
+
+def construir_resumo_corte(
+    resultados: list[GrupoCorteResultado],
+) -> list[LinhaResumoCorte]:
+    """Constrói as linhas do resumo (orçamento vs otimizador) por grupo."""
+    linhas: list[LinhaResumoCorte] = []
+    for item in resultados:
+        grupo = item.grupo
+        resultado = item.resultado
+        placas_otimizador = len(resultado.placas)
+        linhas.append(
+            LinhaResumoCorte(
+                ref=grupo.ref,
+                esp=grupo.esp,
+                dim_placa=f"{int(grupo.placa_comp)}x{int(grupo.placa_larg)}",
+                placas_orcamento=grupo.placas_orcamento,
+                placas_otimizador=placas_otimizador,
+                # Negativo = o otimizador poupa placas face ao orçamento.
+                diferenca=placas_otimizador - grupo.placas_orcamento,
+                aproveitamento_pct=resultado.aproveitamento_pct,
+                nao_alocadas=len(resultado.nao_alocadas),
+            )
+        )
+    return linhas

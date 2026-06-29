@@ -6,7 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.plano_corte_dados import _rodar, construir_grupos_corte
+from app.domain.plano_corte import PecaCorte
+from app.domain.plano_corte_dados import (
+    GrupoCorte,
+    _rodar,
+    construir_grupos_corte,
+    construir_resumo_corte,
+    empacotar_grupos,
+)
 
 
 @pytest.mark.parametrize(
@@ -127,3 +134,49 @@ def test_construir_grupos_corte_sem_placas_devolve_vazio() -> None:
     ]
 
     assert construir_grupos_corte(linhas, []) == []
+
+
+def _grupo(ref, esp, comp, larg, pecas, placas_orcamento) -> GrupoCorte:
+    return GrupoCorte(
+        ref=ref,
+        esp=esp,
+        placa_comp=comp,
+        placa_larg=larg,
+        pecas=pecas,
+        placas_orcamento=placas_orcamento,
+    )
+
+
+def test_empacotar_grupos_e_resumo_orcamento_vs_otimizador() -> None:
+    # Grupo 1: 2 peças 400x400 cabem numa placa 1000x1000; orçamento previa 2.
+    grupo1 = _grupo(
+        "MDF 19", 19.0, 1000.0, 1000.0,
+        [PecaCorte(1, "A", 400.0, 400.0), PecaCorte(2, "B", 400.0, 400.0)],
+        placas_orcamento=2,
+    )
+    # Grupo 2: peça maior que a placa -> não alocada; orçamento previa 1.
+    grupo2 = _grupo(
+        "MDF 8", 8.0, 1000.0, 1000.0,
+        [PecaCorte(3, "GIGANTE", 2000.0, 2000.0)],
+        placas_orcamento=1,
+    )
+
+    resultados = empacotar_grupos([grupo1, grupo2])
+    linhas = construir_resumo_corte(resultados)
+
+    assert len(linhas) == 2
+
+    l1 = linhas[0]
+    assert l1.ref == "MDF 19"
+    assert l1.dim_placa == "1000x1000"
+    assert l1.placas_otimizador == 1
+    assert l1.placas_orcamento == 2
+    assert l1.diferenca == -1  # otimizador poupa 1 placa
+    assert l1.nao_alocadas == 0
+    assert l1.aproveitamento_pct == 32.0  # 2*400*400 / 1000*1000 * 100
+
+    l2 = linhas[1]
+    assert l2.ref == "MDF 8"
+    assert l2.placas_otimizador == 0
+    assert l2.nao_alocadas == 1
+    assert l2.diferenca == -1  # 0 - 1
