@@ -303,6 +303,11 @@ class OrcamentoRelatoriosPage(QWidget):
         self.exportar_excel_button.clicked.connect(self._exportar_excel)
         self.exportar_resumo_button = QPushButton("Exportar Resumo de Custos")
         self.exportar_resumo_button.clicked.connect(self._exportar_resumo_custos)
+        self.exportar_phc_button = QPushButton("Exportar PHC")
+        self.exportar_phc_button.setToolTip(
+            "Gerar o Excel no formato para importar no PHC."
+        )
+        self.exportar_phc_button.clicked.connect(self._exportar_phc)
         self.enviar_email_button = QPushButton("Enviar Orçamento por Email")
         self.enviar_email_button.setToolTip(
             "Gera/anexa o PDF do orçamento e abre o email para confirmação antes de enviar."
@@ -313,6 +318,7 @@ class OrcamentoRelatoriosPage(QWidget):
         barra.addWidget(self.exportar_pdf_button)
         barra.addWidget(self.exportar_excel_button)
         barra.addWidget(self.exportar_resumo_button)
+        barra.addWidget(self.exportar_phc_button)
         barra.addWidget(self.enviar_email_button)
 
         tab = QWidget()
@@ -581,6 +587,25 @@ class OrcamentoRelatoriosPage(QWidget):
 
         QMessageBox.information(
             self, "Exportar Excel", f"Excel criado em:\n{caminho}"
+        )
+
+    def _exportar_phc(self) -> None:
+        """Exporta o Excel no formato PHC para a pasta da versão (C2b)."""
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_excel_phc(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError) as erro:
+            QMessageBox.critical(
+                self,
+                "Exportar PHC",
+                f"Não foi possível exportar o Excel PHC:\n{erro}",
+            )
+            return
+
+        QMessageBox.information(
+            self, "Exportar PHC", f"Excel PHC criado em:\n{caminho}"
         )
 
     def _exportar_resumo_custos(self) -> None:

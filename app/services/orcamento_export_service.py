@@ -21,6 +21,7 @@ from app.repositories.orcamento_item_repository import OrcamentoItemRepository
 from app.services.orcamento_excel_export import gerar_excel_orcamento
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import gerar_pdf_orcamento
+from app.services.orcamento_phc_excel_export import gerar_excel_phc
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.resumo_custos_excel_export import (
@@ -287,5 +288,37 @@ class OrcamentoExportService:
             items=items,
             totais=totais,
         )
+
+        return output
+
+    def exportar_excel_phc(self, orcamento_versao_id: int) -> Path:
+        """Recalcula a versão e exporta o Excel no formato PHC (folha "PHC").
+
+        Grava ``{num}_{vv}_PHC.xlsx`` na pasta da versão, para importação no PHC.
+        Levanta ``ValueError`` quando a pasta base não está configurada ou faltam
+        dados da versão.
+        """
+        RelatorioConsumosService(self.session).recalcular_versao(orcamento_versao_id)
+
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        items = OrcamentoItemService(self.session).list_items_by_versao(
+            orcamento_versao_id
+        )
+        if orcamento is None:
+            raise ValueError("Orçamento não encontrado para esta versão.")
+
+        pasta = self.resolver_pasta_versao(orcamento_versao_id, criar=True)
+        if pasta is None:
+            raise ValueError(
+                "Defina a 'Pasta base dos Orcamentos' em Configurações → Caminhos."
+            )
+
+        output = pasta / (
+            f"{orcamento.num_orcamento}_"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}_PHC.xlsx"
+        )
+        gerar_excel_phc(output, orcamento=orcamento, items=items)
 
         return output
