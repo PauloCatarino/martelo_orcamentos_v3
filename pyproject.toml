@@ -24,6 +24,7 @@ dependencies = [
     "pywin32",
     "sentence-transformers",
     "pypdf",
+    "rectpack",
 ]
 
 [tool.pytest.ini_options]

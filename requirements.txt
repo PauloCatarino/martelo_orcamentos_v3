@@ -13,3 +13,4 @@ pywinauto
 pywin32
 sentence-transformers
 pypdf
+rectpack
