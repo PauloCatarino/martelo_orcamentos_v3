@@ -97,7 +97,11 @@ def test_construir_corpo_email_escapa_campos_e_inclui_total() -> None:
     assert "Cozinha &amp; Sala &lt;A&gt;" in corpo
     assert "REF &amp; &lt;9&gt;" in corpo
     assert "1234,50 €" in corpo
-    assert "{{assinatura}}" in corpo
+    assert "não hesite em contactar-nos." in corpo
+    # A assinatura nativa do Outlook traz o fecho + logótipo: o template já não
+    # inclui "Com os melhores cumprimentos," nem o marcador {{assinatura}}.
+    assert "{{assinatura}}" not in corpo
+    assert "Com os melhores cumprimentos" not in corpo
 
 
 def test_get_email_log_path_usa_env_explicit_e_cria_pasta(tmp_path, monkeypatch) -> None:
