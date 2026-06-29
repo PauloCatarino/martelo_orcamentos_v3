@@ -22,6 +22,8 @@ from app.services.orcamento_excel_export import gerar_excel_orcamento
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import gerar_pdf_orcamento
 from app.services.orcamento_phc_excel_export import gerar_excel_phc
+from app.services.plano_corte_pdf_export import gerar_pdf_plano_corte
+from app.services.plano_corte_service import PlanoCorteService
 from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.resumo_custos_excel_export import (
@@ -320,5 +322,38 @@ class OrcamentoExportService:
             f"{export_paths.subpasta_versao(orcamento.numero_versao)}_PHC.xlsx"
         )
         gerar_excel_phc(output, orcamento=orcamento, items=items)
+
+        return output
+
+    def exportar_plano_corte(self, orcamento_versao_id: int) -> Path:
+        """Gera o PDF do plano de corte (otimizado) na pasta da versão.
+
+        Junta os dados (C3.2), o otimizador (C3.1, ``rotacao=True``) e o PDF
+        (C3.3). Levanta ``ValueError`` quando a pasta base não está configurada
+        ou faltam dados da versão.
+        """
+        grupos = PlanoCorteService(self.session).dados_plano_corte(
+            orcamento_versao_id
+        )
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        if orcamento is None:
+            raise ValueError("Orçamento não encontrado para esta versão.")
+
+        pasta = self.resolver_pasta_versao(orcamento_versao_id, criar=True)
+        if pasta is None:
+            raise ValueError(
+                "Defina a 'Pasta base dos Orcamentos' em Configurações → Caminhos."
+            )
+
+        num_versao = (
+            f"{orcamento.num_orcamento}_"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}"
+        )
+        output = pasta / f"Plano_Corte_{num_versao}.pdf"
+        gerar_pdf_plano_corte(
+            output, grupos=grupos, num_versao=num_versao, kerf=3.0, rotacao=True
+        )
 
         return output

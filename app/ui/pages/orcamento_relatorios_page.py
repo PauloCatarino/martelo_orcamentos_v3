@@ -18,6 +18,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -54,6 +55,7 @@ from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_pdf_export import REPORTLAB_DISPONIVEL
 from app.services.orcamento_service import OrcamentoService
+from app.services.plano_corte_service import PlanoCorteService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
@@ -308,6 +310,11 @@ class OrcamentoRelatoriosPage(QWidget):
             "Gerar o Excel no formato para importar no PHC."
         )
         self.exportar_phc_button.clicked.connect(self._exportar_phc)
+        self.exportar_plano_corte_button = QPushButton("Exportar Plano de Corte PDF")
+        self.exportar_plano_corte_button.setToolTip(
+            "Gera o plano de corte das placas em PDF (otimizado) na pasta da obra."
+        )
+        self.exportar_plano_corte_button.clicked.connect(self._exportar_plano_corte)
         self.enviar_email_button = QPushButton("Enviar Orçamento por Email")
         self.enviar_email_button.setToolTip(
             "Gera/anexa o PDF do orçamento e abre o email para confirmação antes de enviar."
@@ -319,6 +326,7 @@ class OrcamentoRelatoriosPage(QWidget):
         barra.addWidget(self.exportar_excel_button)
         barra.addWidget(self.exportar_resumo_button)
         barra.addWidget(self.exportar_phc_button)
+        barra.addWidget(self.exportar_plano_corte_button)
         barra.addWidget(self.enviar_email_button)
 
         tab = QWidget()
@@ -606,6 +614,60 @@ class OrcamentoRelatoriosPage(QWidget):
 
         QMessageBox.information(
             self, "Exportar PHC", f"Excel PHC criado em:\n{caminho}"
+        )
+
+    def _exportar_plano_corte(self) -> None:
+        """Gera o PDF do plano de corte (otimizado) na pasta da versão (C3.4)."""
+        if not REPORTLAB_DISPONIVEL:
+            QMessageBox.warning(
+                self,
+                "Plano de Corte",
+                "A biblioteca 'reportlab' não está instalada.\n"
+                "Instale-a (pip install reportlab) para gerar o plano de corte.",
+            )
+            return
+
+        # Verificar se há peças de placa ANTES (evita gerar um PDF vazio).
+        try:
+            with SessionLocal() as session:
+                grupos = PlanoCorteService(session).dados_plano_corte(
+                    self.orcamento_versao_id
+                )
+        except SQLAlchemyError as erro:
+            QMessageBox.critical(
+                self,
+                "Plano de Corte",
+                f"Não foi possível preparar o plano de corte:\n{erro}",
+            )
+            return
+
+        if not grupos:
+            QMessageBox.information(
+                self,
+                "Plano de Corte",
+                "Este orçamento não tem peças de placa para gerar o plano de corte.",
+            )
+            return
+
+        # A otimização pode demorar: cursor de espera durante a geração.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_plano_corte(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+            QMessageBox.critical(
+                self,
+                "Plano de Corte",
+                f"Não foi possível gerar o plano de corte:\n{erro}",
+            )
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        QMessageBox.information(
+            self, "Plano de Corte", f"Plano de corte criado em:\n{caminho}"
         )
 
     def _exportar_resumo_custos(self) -> None:
