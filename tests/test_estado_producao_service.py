@@ -6,8 +6,6 @@ mockado (monkeypatch) e uma sessão SQLite em memória para as obras (``producao
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 import pytest
 from sqlalchemy import BigInteger, create_engine
 from sqlalchemy.ext.compiler import compiles
@@ -83,10 +81,14 @@ def _linha_st(bd_ano: str, bd_n_encomenda: str, **overrides) -> dict:
     return base
 
 
-def _patch_streamlit(monkeypatch, svc, fake_run) -> None:
+def _patch_streamlit(monkeypatch, svc, fake_run, *, precos_map=None) -> None:
     monkeypatch.setattr(svc.st, "load_streamlit_config", lambda s: {})
     monkeypatch.setattr(svc.st, "build_connection_string", lambda cfg: "st-conn")
     monkeypatch.setattr(svc, "run_select", fake_run)
+    # Preço externo (PHC/Streamlit) mockado: por defeito {} (todos None) para não
+    # tocar nas fontes reais.
+    mapa = dict(precos_map or {})
+    monkeypatch.setattr(svc.precos, "precos_externos", lambda s, p: dict(mapa))
 
 
 def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> None:
@@ -124,6 +126,9 @@ def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> No
     assert obra.enc_phc == "1001"
     assert obra.enc_streamlit == ""
     assert obra.ref_cliente == "REF-A"
+    # Sem preço externo no mock -> None; a fonte do preço reflete o tipo.
+    assert obra.preco_externo is None
+    assert obra.fonte_preco == "PHC"
     setores = {s.nome: s.media_pct for s in obra.estado.setores}
     assert setores == {"Preparação": 50.0}
 
@@ -153,6 +158,7 @@ def test_encomenda_especial_liga_obra_streamlit(session, monkeypatch) -> None:
     # Obra Streamlit: enc_streamlit preenchido com o num_enc_phc; enc_phc vazio.
     assert obra.enc_streamlit == "_58"
     assert obra.enc_phc == ""
+    assert obra.fonte_preco == "Streamlit"
     assert {s.nome for s in obra.estado.setores} == {"Stock"}
     assert obra.estado.setores[0].media_pct == 100.0
 
@@ -182,18 +188,8 @@ def test_concluido_sem_preco(session, monkeypatch) -> None:
 
     session.add_all(
         [
-            _processo(
-                id=1,
-                num_enc_phc="1001",
-                tipo_pasta="Encomenda de Cliente",
-                preco_total=None,
-            ),
-            _processo(
-                id=2,
-                num_enc_phc="1002",
-                tipo_pasta="Encomenda de Cliente",
-                preco_total=Decimal("250.00"),
-            ),
+            _processo(id=1, num_enc_phc="1001", tipo_pasta="Encomenda de Cliente"),
+            _processo(id=2, num_enc_phc="1002", tipo_pasta="Encomenda de Cliente"),
         ]
     )
     session.commit()
@@ -206,14 +202,20 @@ def test_concluido_sem_preco(session, monkeypatch) -> None:
             _linha_st("2026", "1002", bd_preparacao_placas_ok="100"),
         ]
 
-    _patch_streamlit(monkeypatch, svc, fake_run)
+    # Preço externo: obra 1 sem preço (None), obra 2 com 250.
+    _patch_streamlit(
+        monkeypatch, svc, fake_run, precos_map={1: None, 2: 250.0}
+    )
 
     por_id = {r.id: r for r in svc.estado_producao_por_processo(session)}
 
-    # Ambas 100%; só a sem preço é "concluído sem preço".
+    # Ambas 100%; só a sem preço externo é "concluído sem preço".
     assert por_id[1].estado.global_pct == 100.0
+    assert por_id[1].preco_externo is None
     assert por_id[1].concluido_sem_preco is True
     assert por_id[2].estado.global_pct == 100.0
+    assert por_id[2].preco_externo == 250.0
+    assert por_id[2].fonte_preco == "PHC"
     assert por_id[2].concluido_sem_preco is False
 
 

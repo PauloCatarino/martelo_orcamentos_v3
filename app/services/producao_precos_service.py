@@ -76,6 +76,56 @@ def _query_streamlit_totais(session) -> dict[str, float]:
     return totais
 
 
+def precos_externos(session, processos) -> dict[int, float | None]:
+    """Preço externo por ``processo.id``, conforme ``tipo_pasta``.
+
+    PHC (``Encomenda de Cliente``): ``BO.etotaldeb`` por ano; Streamlit
+    (``Encomenda de Cliente Final``): ``SUM(ItensEncomenda.ValorVenda)``. Devolve
+    ``None`` quando não há fonte/correspondência. Resiliente: a falha de UMA fonte
+    (offline/sem config) não derruba a outra — os preços dessa fonte ficam vazios.
+    """
+    processos = list(processos or [])
+
+    anos = sorted(
+        {
+            str(processo.ano).strip()
+            for processo in processos
+            if (processo.tipo_pasta or "") == TIPO_PHC
+            and str(processo.ano or "").strip()
+        }
+    )
+    tem_streamlit = any(
+        (processo.tipo_pasta or "") == TIPO_STREAMLIT for processo in processos
+    )
+
+    phc_tot: dict[tuple[str, str], float] = {}
+    if anos:
+        try:
+            phc_tot = _query_phc_totais(session, anos)
+        except Exception:
+            phc_tot = {}
+    st_tot: dict[str, float] = {}
+    if tem_streamlit:
+        try:
+            st_tot = _query_streamlit_totais(session)
+        except Exception:
+            st_tot = {}
+
+    out: dict[int, float | None] = {}
+    for processo in processos:
+        tipo = processo.tipo_pasta or ""
+        if tipo == TIPO_PHC:
+            externo = phc_tot.get(
+                (str(processo.ano).strip(), _norm_num(processo.num_enc_phc))
+            )
+        elif tipo == TIPO_STREAMLIT:
+            externo = st_tot.get(_norm_streamlit(processo.num_enc_phc))
+        else:
+            externo = None
+        out[processo.id] = externo
+    return out
+
+
 def detetar_diferencas_preco(session: Session, *, responsavel=None) -> list[dict]:
     """Return production processes whose Martelo price differs from external price."""
     processos = (

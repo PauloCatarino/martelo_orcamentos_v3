@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.domain.estado_producao import EstadoProducao, estado_producao_encomenda
+from app.services import producao_precos_service as precos
 from app.services import streamlit_sql_service as st
 from app.services.phc_sql import assert_select_only, run_select
 from app.services.producao_service import ProducaoService
@@ -90,9 +91,11 @@ class EstadoProducaoObra:
     responsavel: str
     estado_local: str          # Producao.estado
     fonte: str                 # "Streamlit" (normais) | "Streamlit _" (especiais)
+    preco_externo: float | None  # preço na fonte externa (PHC/Streamlit) ou None
+    fonte_preco: str           # "PHC" | "Streamlit" | ""
     estado: EstadoProducao     # resultado do PD1
     encontrado: bool           # houve linhas no Streamlit p/ esta encomenda
-    concluido_sem_preco: bool  # 100% mas sem preço no Martelo (ver método)
+    concluido_sem_preco: bool  # 100% mas sem preço externo (ver método)
 
 
 def _build_query(*, especial: bool, anos: list[str]) -> str:
@@ -166,9 +169,10 @@ def estado_producao_por_processo(
 ) -> list[EstadoProducaoObra]:
     """Devolve o estado de produção de cada obra, ligado ao Streamlit.
 
-    ``concluido_sem_preco`` (bónus "⚠️ Concluído sem preço") usa, por agora, o
-    ``Producao.preco_total`` (que o P7.4 já sincroniza): 100% concluído mas sem
-    preço local. A definição "rica" do esquema usa o preço externo PHC/Streamlit.
+    ``concluido_sem_preco`` (aviso "⚠️ Concluído sem preço") usa o preço EXTERNO
+    por tipo de encomenda (PHC ou Streamlit, via ``precos.precos_externos``): 100%
+    concluído mas sem preço na fonte. ``precos_externos`` é resiliente — se uma
+    fonte estiver offline, os preços dessa fonte ficam vazios (None).
     """
     if processos is None:
         processos = ProducaoService(session).listar_processos()
@@ -180,6 +184,8 @@ def estado_producao_por_processo(
             for processo in processos
             if (processo.responsavel or "").strip().casefold() == alvo
         ]
+
+    mapa_precos = precos.precos_externos(session, processos)
 
     anos_normais = sorted(
         {
@@ -219,8 +225,12 @@ def estado_producao_por_processo(
         linhas = indice.get(chave, [])
         estado = estado_producao_encomenda(linhas)
 
-        preco = processo.preco_total
-        sem_preco = preco is None or float(preco) <= 0
+        preco_externo = mapa_precos.get(processo.id)
+        fonte_preco = (
+            "PHC" if tipo == TIPO_PHC
+            else ("Streamlit" if tipo == TIPO_STREAMLIT else "")
+        )
+        sem_preco = preco_externo is None or preco_externo <= 0
         concluido_sem_preco = (
             estado.total_setores > 0 and estado.global_pct >= 100 and sem_preco
         )
@@ -238,6 +248,8 @@ def estado_producao_por_processo(
                 responsavel=(processo.responsavel or "").strip(),
                 estado_local=(processo.estado or "").strip(),
                 fonte=fonte,
+                preco_externo=preco_externo,
+                fonte_preco=fonte_preco,
                 estado=estado,
                 encontrado=bool(linhas),
                 concluido_sem_preco=concluido_sem_preco,

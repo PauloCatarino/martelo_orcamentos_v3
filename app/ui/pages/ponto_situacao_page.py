@@ -336,11 +336,13 @@ class PontoSituacaoPage(QWidget):
             "Ref Cliente",
             "Responsável",
             "Estado",
+            "Preço",
             "% Global",
             *SETORES_ORDEM,
         ]
-        # Índices dinâmicos (sem números mágicos): a barra fica na coluna "% Global"
-        # e os setores logo a seguir.
+        # Índices dinâmicos (sem números mágicos): preço a seguir a "Estado", a barra
+        # na coluna "% Global" e os setores logo a seguir.
+        self._estado_idx_preco = colunas.index("Preço")
         self._estado_idx_global = colunas.index("% Global")
         self._estado_idx_setor0 = self._estado_idx_global + 1
 
@@ -370,6 +372,7 @@ class PontoSituacaoPage(QWidget):
             "Ref Cliente": 110,
             "Responsável": 90,
             "Estado": 90,
+            "Preço": 100,
             "% Global": 140,
         }
         for indice, nome in enumerate(colunas):
@@ -464,6 +467,9 @@ class PontoSituacaoPage(QWidget):
                     )
                 table.setItem(row, coluna, item)
 
+            # "Preço" (preço externo na fonte certa) entre "Estado" e "% Global".
+            table.setItem(row, self._estado_idx_preco, self._item_preco(obra))
+
             table.setCellWidget(row, idx_global, self._barra_global(obra))
 
             medias = {s.nome: s.media_pct for s in obra.estado.setores}
@@ -512,13 +518,44 @@ class PontoSituacaoPage(QWidget):
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         return item
 
+    def _item_preco(self, obra) -> QTableWidgetItem:
+        preco = obra.preco_externo
+        if preco is None:
+            item = QTableWidgetItem("—")  # em dash
+            item.setForeground(QColor(tema.CINZA_CASTANHO))
+            item.setToolTip(f"Sem preço na fonte ({obra.fonte_preco or 's/ fonte'})")
+        else:
+            texto = self._fmt_euro(preco)
+            item = QTableWidgetItem(texto)
+            item.setToolTip(f"Preço {obra.fonte_preco}: {texto}")
+            if preco <= 0:
+                item.setForeground(QColor(COR_SETOR_PARCIAL))
+        if obra.concluido_sem_preco:
+            item.setForeground(QColor("#A32D2D"))
+            item.setToolTip(item.toolTip() + "\n⚠️ Concluído sem preço")
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
+    @staticmethod
+    def _fmt_euro(valor) -> str:
+        # Formato pt-PT: milhares com ".", decimais com "," (ex.: "1.234,56 €").
+        texto = f"{float(valor):,.2f}"
+        texto = texto.replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"{texto} €"
+
     def _texto_estado(self, resultados) -> str:
         encontrados = sum(1 for obra in resultados if obra.encontrado)
+        sem_preco = sum(1 for obra in resultados if obra.concluido_sem_preco)
         hoje = datetime.now().strftime("%d-%m-%Y")
-        return (
+        texto = (
             f"{len(resultados)} obras ({encontrados} com dados no Streamlit) "
             f"· atualizado {hoje}"
         )
+        if sem_preco:
+            texto += f" · {sem_preco} sem preço"
+        return texto
 
     def _ir_para_atrasadas(self) -> None:
         self.scroll.ensureWidgetVisible(self.atrasadas_group)

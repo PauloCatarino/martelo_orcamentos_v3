@@ -40,9 +40,9 @@ def test_pagina_tem_dois_separadores_e_estado_lazy(monkeypatch) -> None:
     assert chamadas == []
     assert page._estado_carregado is False
     assert page.estado_table.rowCount() == 0
-    # 8 colunas de identificação (Processo/Cliente/Enc PHC/Enc Streamlit/Ref
-    # Cliente/Responsável/Estado/% Global) + 8 setores.
-    assert page.estado_table.columnCount() == 16
+    # 9 colunas de identificação (Processo/Cliente/Enc PHC/Enc Streamlit/Ref
+    # Cliente/Responsável/Estado/Preço/% Global) + 8 setores.
+    assert page.estado_table.columnCount() == 17
 
 
 def test_abrir_separador_estado_dispara_carregamento_uma_vez(monkeypatch) -> None:
