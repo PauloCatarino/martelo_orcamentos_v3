@@ -26,7 +26,7 @@ def test_cor_estado_tem_fallback_para_desconhecido() -> None:
 
 
 def test_cor_estado_producao_devolve_cores_para_estados_conhecidos() -> None:
-    assert cor_estado_producao("Produção") == ("#FAEEDA", "#854F0B")
+    assert cor_estado_producao("Producao") == ("#FAEEDA", "#854F0B")
     assert cor_estado_producao("Arquivado") == ("#F1EFE8", "#2C2C2A")
 
 

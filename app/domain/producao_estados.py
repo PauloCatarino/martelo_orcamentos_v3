@@ -4,7 +4,7 @@ from __future__ import annotations
 
 ESTADOS_PRODUCAO: tuple[str, ...] = (
     "Desenho",
-    "Produção",
+    "Producao",
     "Finalizado",
     "Arquivado",
 )

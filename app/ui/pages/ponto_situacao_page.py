@@ -59,7 +59,6 @@ from app.ui.widgets.barra_pesquisa import CampoPesquisa
 
 CORES_ESTADO = {
     "Desenho": "#2A78D6",
-    "Produ\u00e7\u00e3o": "#EDA100",
     "Producao": "#EDA100",
     "Finalizado": "#1BAF7A",
     "Arquivado": "#888780",
@@ -140,12 +139,12 @@ class PontoSituacaoPage(QWidget):
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa, stretch=1)
-        toolbar.addWidget(QLabel("Utilizador"))
-        toolbar.addWidget(self.utilizador_combo)
-        toolbar.addWidget(QLabel("Cliente"))
-        toolbar.addWidget(self.cliente_combo)
         toolbar.addWidget(QLabel("Estado"))
         toolbar.addWidget(self.estado_combo)
+        toolbar.addWidget(QLabel("Cliente"))
+        toolbar.addWidget(self.cliente_combo)
+        toolbar.addWidget(QLabel("Utilizador"))
+        toolbar.addWidget(self.utilizador_combo)
         toolbar.addWidget(self.atualizar_button)
         toolbar.addWidget(self.exportar_pdf_button)
         toolbar.addWidget(self.sincronizar_phc_button)

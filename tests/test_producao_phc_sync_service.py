@@ -88,7 +88,7 @@ def test_detetar_diferencas_estado_phc_filtra_e_mapeia(session, monkeypatch) -> 
             "num_enc_phc": "1001",
             "cliente": "Cliente 1",
             "estado_martelo": "Desenho",
-            "estado_sugerido": "Produ\u00e7\u00e3o",
+            "estado_sugerido": "Producao",
             "estado_phc_raw": "Em Produ\u00e7\u00e3o",
         }
     ]
@@ -148,11 +148,11 @@ def test_aplicar_estados_atualiza_selecionados(session) -> None:
 
     atualizadas = aplicar_estados(
         session,
-        [(1, "Produ\u00e7\u00e3o"), (999, "Arquivado")],
+        [(1, "Producao"), (999, "Arquivado")],
         current_user_id=7,
     )
 
     assert atualizadas == 1
-    assert session.get(Producao, 1).estado == "Produ\u00e7\u00e3o"
+    assert session.get(Producao, 1).estado == "Producao"
     assert session.get(Producao, 1).updated_by_id == 7
     assert session.get(Producao, 2).estado == "Desenho"

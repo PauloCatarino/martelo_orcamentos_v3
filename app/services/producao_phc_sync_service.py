@@ -42,7 +42,7 @@ def _map_phc_estado(texto) -> str | None:
     if "FINALIZ" in t:
         return "Finalizado"
     if "PRODUC" in t:
-        return "Produ\u00e7\u00e3o"
+        return "Producao"
     if "DESENHO" in t:
         return "Desenho"
     return None
