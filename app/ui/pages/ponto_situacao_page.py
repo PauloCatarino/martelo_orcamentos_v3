@@ -56,6 +56,7 @@ from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
 from app.ui.dialogs.producao_precos_dialog import ProducaoPrecosDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 CORES_ESTADO = {
     "Desenho": "#2A78D6",
@@ -106,7 +107,14 @@ class PontoSituacaoPage(QWidget):
         )
 
         self.campo_pesquisa = CampoPesquisa()
-        self.campo_pesquisa.pesquisa_mudou.connect(self._ao_mudar_filtros)
+        self.campo_pesquisa.setToolTip(
+            "O Resumo atualiza ao vivo; prima Enter para pesquisar o Estado de "
+            "Produção (evita consultas ao Streamlit a cada tecla)."
+        )
+        # "Resumo" (local, rápido) atualiza a cada tecla; o "Estado de Produção"
+        # (query Streamlit, lenta) só refaz a consulta ao premir Enter.
+        self.campo_pesquisa.pesquisa_mudou.connect(self._carregar)
+        self.campo_pesquisa.pesquisar.connect(self._pos_filtros)
         self.campo_pesquisa.limpar_clicado.connect(self._limpar_filtros)
 
         self.utilizador_combo = QComboBox()
@@ -323,11 +331,19 @@ class PontoSituacaoPage(QWidget):
         colunas = [
             "Processo",
             "Cliente",
+            "Enc PHC",
+            "Enc Streamlit",
+            "Ref Cliente",
             "Responsável",
             "Estado",
             "% Global",
             *SETORES_ORDEM,
         ]
+        # Índices dinâmicos (sem números mágicos): a barra fica na coluna "% Global"
+        # e os setores logo a seguir.
+        self._estado_idx_global = colunas.index("% Global")
+        self._estado_idx_setor0 = self._estado_idx_global + 1
+
         table = QTableWidget(0, len(colunas))
         table.setHorizontalHeaderLabels(colunas)
         table.verticalHeader().setVisible(False)
@@ -336,18 +352,32 @@ class PontoSituacaoPage(QWidget):
         table.setAlternatingRowColors(True)
 
         header = table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        for coluna in range(5, len(colunas)):
-            header.setSectionResizeMode(coluna, QHeaderView.ResizeMode.ResizeToContents)
+        # Todas as colunas redimensionáveis (e persistentes) -> modo Interactive.
+        for col in range(table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
-        table.setColumnWidth(4, 140)
+
+        # Larguras-base sensatas (os setores ficam todos com o mesmo default).
+        larguras_base = {
+            "Processo": 170,
+            "Cliente": 260,
+            "Enc PHC": 80,
+            "Enc Streamlit": 100,
+            "Ref Cliente": 110,
+            "Responsável": 90,
+            "Estado": 90,
+            "% Global": 140,
+        }
+        for indice, nome in enumerate(colunas):
+            table.setColumnWidth(indice, larguras_base.get(nome, 80))
+
+        # Restaura larguras guardadas (por máquina) por cima das base e persiste
+        # ao arrastar; só atua em colunas Interactive (acima).
+        ligar_persistencia_larguras(table, "ponto_situacao_estado")
         return table
 
     def _ao_mudar_tab(self, index) -> None:
@@ -409,11 +439,21 @@ class PontoSituacaoPage(QWidget):
 
     def _preencher_estado(self, resultados) -> None:
         table = self.estado_table
+        idx_global = self._estado_idx_global
+        idx_setor0 = self._estado_idx_setor0
         table.setRowCount(len(resultados))
         for row, obra in enumerate(resultados):
-            for coluna, valor in enumerate(
-                (obra.codigo, obra.cliente, obra.responsavel, obra.estado_local)
-            ):
+            # Células de texto, na mesma ordem das colunas até "% Global".
+            textos = (
+                obra.codigo,
+                obra.cliente,
+                obra.enc_phc,
+                obra.enc_streamlit,
+                obra.ref_cliente,
+                obra.responsavel,
+                obra.estado_local,
+            )
+            for coluna, valor in enumerate(textos):
                 item = QTableWidgetItem(valor or "")
                 if valor:
                     item.setToolTip(valor)
@@ -424,11 +464,11 @@ class PontoSituacaoPage(QWidget):
                     )
                 table.setItem(row, coluna, item)
 
-            table.setCellWidget(row, 4, self._barra_global(obra))
+            table.setCellWidget(row, idx_global, self._barra_global(obra))
 
             medias = {s.nome: s.media_pct for s in obra.estado.setores}
             for indice, nome in enumerate(SETORES_ORDEM):
-                table.setItem(row, 5 + indice, self._item_setor(nome, medias))
+                table.setItem(row, idx_setor0 + indice, self._item_setor(nome, medias))
 
     def _barra_global(self, obra) -> QProgressBar:
         barra = QProgressBar()

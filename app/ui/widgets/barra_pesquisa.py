@@ -11,7 +11,8 @@ from app.ui.icones import icone_ficheiro
 class CampoPesquisa(QWidget):
     """Search field with a brush clear button, reusable across pages."""
 
-    pesquisa_mudou = Signal(str)
+    pesquisa_mudou = Signal(str)  # a cada tecla (textChanged)
+    pesquisar = Signal(str)       # só ao premir Enter (returnPressed)
     limpar_clicado = Signal()
 
     def __init__(
@@ -29,6 +30,9 @@ class CampoPesquisa(QWidget):
         self._input.setClearButtonEnabled(True)
         self._input.setMaximumWidth(largura_max)
         self._input.textChanged.connect(self.pesquisa_mudou.emit)
+        self._input.returnPressed.connect(
+            lambda: self.pesquisar.emit(self._input.text())
+        )
 
         self._botao = QToolButton()
         self._botao.setIcon(icone_ficheiro("icon_cleaner.ico"))

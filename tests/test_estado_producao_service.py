@@ -38,6 +38,7 @@ def _processo(
     tipo_pasta: str,
     preco_total=None,
     responsavel: str | None = "Ana",
+    ref_cliente: str | None = None,
 ) -> Producao:
     return Producao(
         id=id,
@@ -50,6 +51,7 @@ def _processo(
         responsavel=responsavel,
         tipo_pasta=tipo_pasta,
         nome_cliente=f"Cliente {id}",
+        ref_cliente=ref_cliente,
         preco_total=preco_total,
     )
 
@@ -91,7 +93,12 @@ def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> No
     import app.services.estado_producao_service as svc
 
     session.add(
-        _processo(id=1, num_enc_phc="1001", tipo_pasta="Encomenda de Cliente")
+        _processo(
+            id=1,
+            num_enc_phc="1001",
+            tipo_pasta="Encomenda de Cliente",
+            ref_cliente="REF-A",
+        )
     )
     session.commit()
 
@@ -113,6 +120,10 @@ def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> No
     obra = resultados[0]
     assert obra.encontrado is True
     assert obra.fonte == "Streamlit"
+    # Obra PHC: enc_phc preenchido, enc_streamlit vazio; ref_cliente propagado.
+    assert obra.enc_phc == "1001"
+    assert obra.enc_streamlit == ""
+    assert obra.ref_cliente == "REF-A"
     setores = {s.nome: s.media_pct for s in obra.estado.setores}
     assert setores == {"Preparação": 50.0}
 
@@ -139,6 +150,9 @@ def test_encomenda_especial_liga_obra_streamlit(session, monkeypatch) -> None:
     obra = resultados[0]
     assert obra.fonte == "Streamlit _"
     assert obra.encontrado is True
+    # Obra Streamlit: enc_streamlit preenchido com o num_enc_phc; enc_phc vazio.
+    assert obra.enc_streamlit == "_58"
+    assert obra.enc_phc == ""
     assert {s.nome for s in obra.estado.setores} == {"Stock"}
     assert obra.estado.setores[0].media_pct == 100.0
 

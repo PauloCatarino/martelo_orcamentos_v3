@@ -84,6 +84,9 @@ class EstadoProducaoObra:
     ano: str
     num_enc: str
     cliente: str
+    enc_phc: str               # nº encomenda PHC (vazio se obra Streamlit)
+    enc_streamlit: str         # nº encomenda Streamlit "_NNN" (vazio se obra PHC)
+    ref_cliente: str           # referência do cliente
     responsavel: str
     estado_local: str          # Producao.estado
     fonte: str                 # "Streamlit" (normais) | "Streamlit _" (especiais)
@@ -200,12 +203,18 @@ def estado_producao_por_processo(
 
     resultados: list[EstadoProducaoObra] = []
     for processo in processos:
-        if (processo.tipo_pasta or "") == TIPO_STREAMLIT:
+        tipo = processo.tipo_pasta or ""
+        if tipo == TIPO_STREAMLIT:
             chave = ("E", _ano_norm(processo.ano), _norm_streamlit(processo.num_enc_phc))
             fonte = "Streamlit _"
         else:
             chave = ("N", _ano_norm(processo.ano), _norm_num(processo.num_enc_phc))
             fonte = "Streamlit"
+
+        num_enc = (processo.num_enc_phc or "").strip()
+        enc_phc = num_enc if tipo == TIPO_PHC else ""
+        enc_streamlit = num_enc if tipo == TIPO_STREAMLIT else ""
+        ref_cliente = (processo.ref_cliente or "").strip()
 
         linhas = indice.get(chave, [])
         estado = estado_producao_encomenda(linhas)
@@ -221,8 +230,11 @@ def estado_producao_por_processo(
                 id=processo.id,
                 codigo=(processo.codigo_processo or "").strip(),
                 ano=str(processo.ano or "").strip(),
-                num_enc=(processo.num_enc_phc or "").strip(),
+                num_enc=num_enc,
                 cliente=(processo.nome_cliente or "").strip(),
+                enc_phc=enc_phc,
+                enc_streamlit=enc_streamlit,
+                ref_cliente=ref_cliente,
                 responsavel=(processo.responsavel or "").strip(),
                 estado_local=(processo.estado or "").strip(),
                 fonte=fonte,
