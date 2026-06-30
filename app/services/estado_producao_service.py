@@ -256,5 +256,6 @@ def estado_producao_por_processo(
             )
         )
 
-    resultados.sort(key=lambda r: r.codigo.casefold())
+    # Mantém a ordem de ``processos`` (listar_processos -> created_at DESC, mais
+    # recente no topo), consistente com a lista da Produção e o dashboard.
     return resultados
