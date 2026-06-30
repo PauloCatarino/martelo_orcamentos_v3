@@ -40,3 +40,6 @@ Thumbs.db
 *.xlsx
 *.xls
 
+# Exported reports (output do "Exportar PDF" do Ponto Situacao)
+/Ponto_Situacao.pdf
+

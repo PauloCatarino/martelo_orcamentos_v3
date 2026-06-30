@@ -94,6 +94,8 @@ def test_calcular_dashboard_agrega_kpis(monkeypatch) -> None:
     assert dados.atrasadas == 2
     assert dados.sem_preco == 1
     assert dados.valor_aberto == 350.40
+    # valor_total inclui as fechadas (Finalizado 999) e o 0.00: 100+250.40+999+0.
+    assert dados.valor_total == 1349.40
     assert dados.por_responsavel[0] == ("Ana", 4)
     assert dados.por_cliente[0] == ("Cliente Alfa", 4)
     assert [row["dias_atraso"] for row in dados.lista_atrasadas] == [26, 26]

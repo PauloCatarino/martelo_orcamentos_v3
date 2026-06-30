@@ -46,6 +46,7 @@ class DashboardData:
     atrasadas: int
     sem_preco: int
     valor_aberto: float
+    valor_total: float
     hoje: date
     lista_atrasadas: list
 
@@ -73,6 +74,7 @@ def calcular_dashboard(
     por_estado, por_resp, por_cli = {}, {}, {}
     em_desenho = em_producao = finalizadas = arquivadas = atrasadas = sem_preco = 0
     valor_aberto = 0.0
+    valor_total = 0.0
     atrasadas_det = []
 
     for processo in filtrados:
@@ -96,6 +98,10 @@ def calcular_dashboard(
         elif est_norm == "arquivado":
             arquivadas += 1
 
+        # Valor TOTAL: soma o preço de todas as obras (inclui fechadas).
+        if processo.preco_total is not None:
+            valor_total += float(processo.preco_total)
+
         if est_norm not in _ESTADOS_FECHADOS_NORM:
             if processo.preco_total is None:
                 sem_preco += 1
@@ -115,7 +121,9 @@ def calcular_dashboard(
                     }
                 )
 
-    atrasadas_det.sort(key=lambda row: row["dias_atraso"], reverse=True)
+    # Sem reordenar: ``filtrados`` vem de listar_processos (created_at DESC) e
+    # atrasadas_det é construído nessa ordem -> mais recente primeiro, igual ao
+    # separador "Estado de Produção".
 
     return DashboardData(
         total=len(filtrados),
@@ -129,6 +137,7 @@ def calcular_dashboard(
         atrasadas=atrasadas,
         sem_preco=sem_preco,
         valor_aberto=round(valor_aberto, 2),
+        valor_total=round(valor_total, 2),
         hoje=hoje,
         lista_atrasadas=atrasadas_det,
     )

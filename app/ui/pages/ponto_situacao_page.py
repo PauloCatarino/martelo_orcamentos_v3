@@ -163,17 +163,24 @@ class PontoSituacaoPage(QWidget):
 
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
-        for chave, titulo, cor in (
-            ("total", "Total obras", None),
-            ("desenho", "Em desenho", None),
-            ("producao", "Em produ\u00e7\u00e3o", None),
-            ("atrasadas", "Atrasadas", "#A32D2D"),
-            ("finalizadas", "Finalizadas", None),
-            ("valor", "Valor em aberto", None),
-            ("sem_preco", "Sem pre\u00e7o", "#854F0B"),
+        for chave, titulo, cor, tooltip in (
+            ("total", "Total obras", None,
+             "N\u00ba total de obras (com os filtros aplicados)."),
+            ("desenho", "Em desenho", None, "Obras no estado Desenho."),
+            ("producao", "Em produ\u00e7\u00e3o", None, "Obras no estado Producao."),
+            ("finalizadas", "Finalizadas", None, "Obras no estado Finalizado."),
+            ("arquivadas", "Arquivadas", None, "Obras no estado Arquivado."),
+            ("atrasadas", "Atrasadas", "#A32D2D",
+             "Obras em aberto (n\u00e3o Finalizadas/Arquivadas) com entrega j\u00e1 passada."),
+            ("valor_total", "Valor total", None,
+             "Soma do pre\u00e7o de TODAS as obras (inclui Finalizadas/Arquivadas)."),
+            ("valor", "Valor em aberto", None,
+             "Soma do pre\u00e7o das obras ainda EM ABERTO (n\u00e3o Finalizadas/Arquivadas)."),
+            ("sem_preco", "Sem pre\u00e7o", "#854F0B",
+             "Obras em aberto sem pre\u00e7o atribu\u00eddo (pre\u00e7o por preencher)."),
         ):
             on_click = self._ir_para_atrasadas if chave == "atrasadas" else None
-            card, valor = self._criar_kpi(titulo, cor, on_click)
+            card, valor = self._criar_kpi(titulo, cor, on_click, tooltip)
             self._kpis[chave] = valor
             kpi_row.addWidget(card)
 
@@ -236,13 +243,13 @@ class PontoSituacaoPage(QWidget):
 
         self._carregar()
 
-    def _criar_kpi(self, titulo, cor=None, on_click=None):
+    def _criar_kpi(self, titulo, cor=None, on_click=None, tooltip=None):
         card = _ClickableFrame(on_click) if on_click is not None else QFrame()
         card.setStyleSheet(
             f"QFrame {{ background: {tema.BEGE_AREIA}; border-radius: 8px; }}"
         )
-        if on_click is not None:
-            card.setToolTip("Ver lista de obras atrasadas")
+        if tooltip:
+            card.setToolTip(tooltip)
 
         lay = QVBoxLayout(card)
         lay.setContentsMargins(12, 8, 12, 8)
@@ -288,15 +295,17 @@ class PontoSituacaoPage(QWidget):
         table.setFixedHeight(260)
 
         header = table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        # Colunas redimensionáveis (e persistentes por máquina) -> modo Interactive.
+        for col in range(table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
+        for indice, largura in enumerate((180, 420, 110, 110, 90)):
+            table.setColumnWidth(indice, largura)
+        ligar_persistencia_larguras(table, "ponto_situacao_atrasadas")
         return table
 
     # ----- Separador "Estado de Produção" (PD3) -----
@@ -384,8 +393,17 @@ class PontoSituacaoPage(QWidget):
         return table
 
     def _ao_mudar_tab(self, index) -> None:
-        """Lazy load: carrega o estado só ao abrir o separador pela 1.ª vez."""
-        if self.tabs.widget(index) is self.estado_widget and not self._estado_carregado:
+        """Alterna os botões do Resumo e faz o lazy load do separador Estado."""
+        # Os 4 botões só fazem sentido no "Resumo"; esconde-os no separador Estado.
+        em_resumo = self.tabs.widget(index) is self.scroll
+        for botao in (
+            self.atualizar_button,
+            self.exportar_pdf_button,
+            self.sincronizar_phc_button,
+            self.validar_precos_button,
+        ):
+            botao.setVisible(em_resumo)
+        if not em_resumo and not self._estado_carregado:
             self._carregar_estado()
 
     def _ao_mudar_filtros(self, *_args) -> None:
@@ -591,8 +609,12 @@ class PontoSituacaoPage(QWidget):
         self._kpis["total"].setText(str(dados.total))
         self._kpis["desenho"].setText(str(dados.em_desenho))
         self._kpis["producao"].setText(str(dados.em_producao))
-        self._kpis["atrasadas"].setText(str(dados.atrasadas))
         self._kpis["finalizadas"].setText(str(dados.finalizadas))
+        self._kpis["arquivadas"].setText(str(dados.arquivadas))
+        self._kpis["atrasadas"].setText(str(dados.atrasadas))
+        self._kpis["valor_total"].setText(
+            f"{dados.valor_total:,.0f} \u20ac".replace(",", ".")
+        )
         self._kpis["valor"].setText(
             f"{dados.valor_aberto:,.0f} \u20ac".replace(",", ".")
         )
