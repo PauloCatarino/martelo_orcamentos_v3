@@ -694,6 +694,24 @@ def test_custeio_page_tooltips_tarifa_std_serie() -> None:
     assert "_tarifa_cnc_tooltip" in formula
 
 
+def test_custeio_page_tarifa_hora_mistas() -> None:
+    """A PEÇA line summing montagem/manual ops from >1 machine (e.g. MANUAL +
+    EMBALAMENTO) must not claim a single machine's tariff drove the whole
+    formula: the back-derived €/h in the formula is an average across
+    machines, so the note lists each machine's rate instead of naming just the
+    first one found (previously misleading — seen in testing, 2026-07-01)."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_maquinas_montagem_manual_da_linha")
+
+    tarifa_source = inspect.getsource(OrcamentoItemCusteioPage._tarifa_hora_tooltip)
+    assert "_maquinas_montagem_manual_da_linha" in tarifa_source
+    assert "tarifas mistas" in tarifa_source
+
+    dedupe = inspect.getsource(OrcamentoItemCusteioPage._maquinas_montagem_manual_da_linha)
+    assert '"MONTAGEM", "MANUAL"' in dedupe or "'MONTAGEM', 'MANUAL'" in dedupe
+
+
 def test_custeio_page_caixa_preco_item() -> None:
     """The page shows a read-only reference-price box updated on load."""
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage

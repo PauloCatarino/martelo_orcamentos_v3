@@ -1958,21 +1958,63 @@ class OrcamentoItemCusteioPage(QWidget):
             "/peça",
         )
 
+    def _maquinas_montagem_manual_da_linha(self, linha) -> list:
+        """Distinct MONTAGEM/MANUAL machines referenced by the piece's operations."""
+        vistas: set = set()
+        maquinas: list = []
+        for codigo in (linha.maquina or "").split(";"):
+            maquina = self._maquinas_por_codigo.get(codigo.strip())
+            if maquina is None or (maquina.tipo or "").upper() not in ("MONTAGEM", "MANUAL"):
+                continue
+            if maquina.id in vistas:
+                continue
+            vistas.add(maquina.id)
+            maquinas.append(maquina)
+        return maquinas
+
     def _tarifa_hora_tooltip(self, linha) -> str | None:
-        """Tariff note (€/h) of the line's manual/assembly machine, or None."""
-        maquina = None
+        """Tariff note (€/h) of the line's manual/assembly machine(s), or None.
+
+        A PEÇA line can sum montagem/manual/embalamento operations from more than
+        one machine (e.g. MANUAL + EMBALAMENTO), each with its own €/h. In that
+        case the formula's back-derived average doesn't match any single
+        machine's tariff, so list each machine's rate instead of naming just the
+        first one found (which was misleading — seen in testing, 2026-07-01).
+        """
         if linha.def_maquina_id is not None:
             maquina = self._maquinas_por_id.get(linha.def_maquina_id)
-        if maquina is None:
-            maquina = self._maquina_da_linha_por_tipo(linha, ("MONTAGEM", "MANUAL"))
-        if maquina is None:
+            if maquina is not None:
+                return self._descrever_tarifa(
+                    maquina.custo_hora,
+                    maquina.custo_hora_serie,
+                    self._usar_serie_linha(linha),
+                    "/h",
+                )
+
+        maquinas = self._maquinas_montagem_manual_da_linha(linha)
+        if not maquinas:
             return None
-        return self._descrever_tarifa(
-            maquina.custo_hora,
-            maquina.custo_hora_serie,
-            self._usar_serie_linha(linha),
-            "/h",
-        )
+
+        usar_serie = self._usar_serie_linha(linha)
+        valores = [
+            (maquina, escolher_tarifa(maquina.custo_hora, maquina.custo_hora_serie, usar_serie)[0])
+            for maquina in maquinas
+        ]
+        distintos = {valor for _, valor in valores if valor is not None}
+        if len(distintos) <= 1:
+            primeira = maquinas[0]
+            return self._descrever_tarifa(
+                primeira.custo_hora, primeira.custo_hora_serie, usar_serie, "/h"
+            )
+
+        partes = [
+            f"{maquina.codigo} {format_currency(valor)}/h"
+            for maquina, valor in valores
+            if valor is not None
+        ]
+        if not partes:
+            return None
+        return "tarifas mistas: " + " + ".join(partes)
 
     def _com_tarifa(self, substituicao: str, tarifa: str | None) -> str:
         """Append the tariff note to a tooltip substitution block."""
