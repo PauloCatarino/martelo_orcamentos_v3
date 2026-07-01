@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 from decimal import Decimal
+from types import SimpleNamespace
 
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 
@@ -692,6 +693,72 @@ def test_custeio_page_tooltips_tarifa_std_serie() -> None:
     assert "fator" in formula
     assert "_tarifa_ml_tooltip" in formula
     assert "_tarifa_cnc_tooltip" in formula
+
+
+def test_custeio_page_tooltip_decompoe_custos_producao() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._maquinas_por_codigo = {
+        "CORTE": SimpleNamespace(
+            id=1,
+            tipo="CORTE",
+            preco_ml_std=Decimal("0.45"),
+            preco_ml_serie=None,
+            custo_setup_peca_std=Decimal("0.05"),
+            custo_setup_peca_serie=None,
+        ),
+        "ORLAGEM": SimpleNamespace(
+            id=2,
+            tipo="ORLAGEM",
+            preco_ml_std=Decimal("0.70"),
+            preco_ml_serie=None,
+            custo_setup_peca_std=Decimal("0.10"),
+            custo_setup_peca_serie=None,
+        ),
+        "CNC_VERTICAL": SimpleNamespace(id=3, tipo="CNC"),
+    }
+    page._escaloes_por_maquina = {
+        3: [
+            SimpleNamespace(
+                nivel=3,
+                area_max_m2=Decimal("2.00"),
+                preco_peca_std=Decimal("2.60"),
+                preco_peca_serie=None,
+            )
+        ]
+    }
+    linha = SimpleNamespace(
+        quantidade=Decimal("2"),
+        ml_orla_fina=Decimal("4.0"),
+        ml_orla_grossa=Decimal("0.4"),
+        desperdicio_percentagem=None,
+        perimetro_ml=Decimal("3.0"),
+        area_m2=Decimal("1.5433"),
+        custo_corte=Decimal("2.80"),
+        custo_orlagem=Decimal("3.28"),
+        custo_cnc=Decimal("5.20"),
+        maquina="CORTE;ORLAGEM;CNC_VERTICAL",
+        tipo_producao="STD",
+    )
+
+    corte = page._tooltip_formula("Custo corte", linha)
+    orlagem = page._tooltip_formula("Custo orlagem", linha)
+    cnc = page._tooltip_formula("Custo CNC", linha)
+
+    assert "perímetro 3 ml × QT 2 × 0,45 €/ML" in corte
+    assert "= 2,70 € + 0,10 €" in corte
+    assert "tarifa STD 0,45 €/ML" in corte
+    page._maquinas_por_codigo["CORTE"].custo_setup_peca_std = None
+    linha.custo_corte = Decimal("2.70")
+    corte_sem_setup = page._tooltip_formula("Custo corte", linha)
+    assert "setup" not in corte_sem_setup
+    assert "= 2,70 €" in corte_sem_setup
+    assert "ML orla total 4,4 ml × 0,7 €/ML" in orlagem
+    assert "= 3,08 € + 0,20 €" in orlagem
+    assert "tarifa STD 0,70 €/ML" in orlagem
+    assert "Nível 3 (até 2,00 m²) — peça com 1,5433 m²" in cnc
+    assert "tarifa STD 2,60 €/peça" in cnc
 
 
 def test_custeio_page_caixa_preco_item() -> None:

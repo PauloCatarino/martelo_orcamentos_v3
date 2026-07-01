@@ -1754,35 +1754,49 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"{format_currency(linha.custo_acabamento)}",
             )
         if header == "Custo corte" and linha.custo_corte is not None:
+            preco, setup = self._tarifas_ml_valores_tooltip(linha, ("CORTE",))
+            formula = "Custo corte = perímetro × QT × tarifa €/ML"
+            if setup is not None:
+                formula += " + QT × setup €/peça"
             return self._tooltip_3(
                 "Custo de corte: perímetro da peça cortado na seccionadora, "
                 "cobrado ao metro linear, mais movimentação por peça.",
-                "Custo corte = perímetro × QT × tarifa €/ML + QT × setup €/peça",
+                formula,
                 self._com_tarifa(
-                    f"= {format_quantity(linha.perimetro_ml)} ml × "
-                    f"{format_quantity(qt)} → {format_currency(linha.custo_corte)}",
+                    self._substituicao_custo_corte(linha, qt, preco, setup),
                     self._tarifa_ml_tooltip(linha, ("CORTE",)),
                 ),
             )
         if header == "Custo orlagem" and linha.custo_orlagem is not None:
+            preco, setup = self._tarifas_ml_valores_tooltip(linha, ("ORLAGEM",))
+            formula = "Custo orlagem = ML orla total × tarifa €/ML"
+            if setup is not None:
+                formula += " + QT × setup €/peça"
             return self._tooltip_3(
                 "Custo de orlagem: metros de orla colados na orladora, cobrados ao "
                 "metro linear, mais movimentação por peça.",
-                "Custo orlagem = ML orla total × tarifa €/ML + QT × setup €/peça",
+                formula,
                 self._com_tarifa(
-                    f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
-                    f"{format_currency(linha.custo_orlagem)}",
+                    self._substituicao_custo_orlagem(
+                        linha, ml_orla_total, qt, preco, setup
+                    ),
                     self._tarifa_ml_tooltip(linha, ("ORLAGEM",)),
                 ),
             )
         if header == "Custo CNC" and linha.custo_cnc is not None:
+            escalao = self._descricao_escalao_cnc_tooltip(linha)
+            substituicao_cnc = (
+                f"= área {format_quantity(linha.area_m2)} m² × QT "
+                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}"
+            )
+            if escalao:
+                substituicao_cnc = f"{escalao}\n{substituicao_cnc}"
             return self._tooltip_3(
                 "Custo de CNC: maquinação cobrada pelo escalão de área da peça, "
                 "multiplicada pela quantidade.",
                 "Custo CNC = preço do escalão (por área) × QT",
                 self._com_tarifa(
-                    f"= área {format_quantity(linha.area_m2)} m² × QT "
-                    f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}",
+                    substituicao_cnc,
                     self._tarifa_cnc_tooltip(linha),
                 ),
             )
@@ -1915,6 +1929,118 @@ class OrcamentoItemCusteioPage(QWidget):
             if maquina is not None and (maquina.tipo or "").upper() in tipos:
                 return maquina
         return None
+
+    def _tarifas_ml_valores_tooltip(self, linha, tipos: tuple):
+        """Return the effective ML price and setup used by the production cost."""
+        maquina = self._maquina_da_linha_por_tipo(linha, tipos)
+        if maquina is None:
+            return None, None
+        usar_serie = self._usar_serie_linha(linha)
+        preco, _ = escolher_tarifa(
+            getattr(maquina, "preco_ml_std", None),
+            getattr(maquina, "preco_ml_serie", None),
+            usar_serie,
+        )
+        setup, _ = escolher_tarifa(
+            getattr(maquina, "custo_setup_peca_std", None),
+            getattr(maquina, "custo_setup_peca_serie", None),
+            usar_serie,
+        )
+        return preco, setup
+
+    def _substituicao_custo_corte(self, linha, qt, preco, setup) -> str:
+        """Build the substituted cut-cost breakdown."""
+        perimetro = linha.perimetro_ml
+        total = linha.custo_corte
+        if perimetro is None or preco is None:
+            return (
+                f"= {format_quantity(perimetro)} ml × {format_quantity(qt)} → "
+                f"{format_currency(total)}"
+            )
+
+        qt_calc = qt if qt is not None else Decimal("1")
+        parcela_ml = perimetro * qt_calc * preco
+        formula = (
+            f"= (perímetro {format_quantity(perimetro)} ml × QT "
+            f"{format_quantity(qt_calc)} × {format_quantity(preco)} €/ML)"
+        )
+        if setup is None:
+            return f"{formula}\n= {format_currency(total)}"
+
+        parcela_setup = qt_calc * setup
+        formula += (
+            f" + (QT {format_quantity(qt_calc)} × setup "
+            f"{format_quantity(setup)} €/peça)"
+        )
+        return (
+            f"{formula}\n"
+            f"= {format_currency(parcela_ml)} + {format_currency(parcela_setup)}\n"
+            f"= {format_currency(total)}"
+        )
+
+    def _substituicao_custo_orlagem(self, linha, ml_orla_total, qt, preco, setup) -> str:
+        """Build the substituted edging-cost breakdown."""
+        total = linha.custo_orlagem
+        if preco is None:
+            return (
+                f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
+                f"{format_currency(total)}"
+            )
+
+        qt_calc = qt if qt is not None else Decimal("1")
+        parcela_ml = ml_orla_total * preco
+        formula = (
+            f"= (ML orla total {format_quantity(ml_orla_total)} ml × "
+            f"{format_quantity(preco)} €/ML)"
+        )
+        if setup is None:
+            return f"{formula}\n= {format_currency(total)}"
+
+        parcela_setup = qt_calc * setup
+        formula += (
+            f" + (QT {format_quantity(qt_calc)} × setup "
+            f"{format_quantity(setup)} €/peça)"
+        )
+        return (
+            f"{formula}\n"
+            f"= {format_currency(parcela_ml)} + {format_currency(parcela_setup)}\n"
+            f"= {format_currency(total)}"
+        )
+
+    def _escalao_cnc_da_linha(self, linha):
+        """Return the CNC area tier selected for the line, or None."""
+        maquina = self._maquina_da_linha_por_tipo(linha, ("CNC",))
+        if maquina is None:
+            return None
+        return selecionar_escalao_area(
+            self._escaloes_por_maquina.get(maquina.id, []), linha.area_m2
+        )
+
+    def _descricao_escalao_cnc_tooltip(self, linha) -> str | None:
+        """Describe the CNC tier selected for a line."""
+        escalao = self._escalao_cnc_da_linha(linha)
+        if escalao is None:
+            return None
+        return (
+            f"Nível {escalao.nivel} "
+            f"({self._format_area_limite_cnc(getattr(escalao, 'area_max_m2', None))}) "
+            f"— peça com {format_quantity(linha.area_m2)} m²"
+        )
+
+    def _format_area_limite_cnc(self, area_max_m2) -> str:
+        """Format a CNC tier limit for the tooltip."""
+        if area_max_m2 is None:
+            return "sem limite"
+        try:
+            area = (
+                area_max_m2
+                if isinstance(area_max_m2, Decimal)
+                else Decimal(str(area_max_m2))
+            )
+            area_txt = format(area.quantize(Decimal("0.01")), "f").replace(".", ",")
+            return f"até {area_txt} m²"
+        except (InvalidOperation, ValueError):
+            return f"até {format_quantity(area_max_m2)} m²"
 
     def _descrever_tarifa(self, valor_std, valor_serie, usar_serie, unidade) -> str | None:
         """Build the "tarifa SERIE/STD ..." note for a tooltip (or None)."""
