@@ -139,11 +139,10 @@ class DefPecaOperacaoDialog(QDialog):
             self._load_ligacao(ligacao)
 
     def _load_ligacao(self, ligacao: DefPecaOperacaoResumo) -> None:
-        """Populate the form with an existing link and lock the operation."""
+        """Populate the form with an existing link."""
         index = self.operacao_input.findData(ligacao.def_operacao_id)
         if index >= 0:
             self.operacao_input.setCurrentIndex(index)
-        self.operacao_input.setEnabled(False)
 
         self.ordem_input.setValue(ligacao.ordem)
         self._select_regra(ligacao.regra_calculo)

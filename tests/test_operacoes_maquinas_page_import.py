@@ -66,6 +66,7 @@ def test_operacoes_maquinas_page_loads_on_init() -> None:
 
     assert "carregar" in source_names
     assert "QTabWidget" in source_names
+    assert "QCheckBox" in source_names
 
 
 def test_operacoes_maquinas_page_uses_services() -> None:
@@ -77,6 +78,19 @@ def test_operacoes_maquinas_page_uses_services() -> None:
     assert "DefMaquinaService" in source
     assert "listar_operacoes" in source
     assert "listar_maquinas" in source
+
+
+def test_operacoes_maquinas_page_filters_inactive_by_default() -> None:
+    from app.ui.pages.operacoes_maquinas_page import OperacoesMaquinasPage
+
+    init_source = inspect.getsource(OperacoesMaquinasPage.__init__)
+    carregar_source = inspect.getsource(OperacoesMaquinasPage.carregar)
+
+    assert "mostrar_inativas_check" in init_source
+    assert "Mostrar inativas" in init_source
+    assert "not self.mostrar_inativas_check.isChecked()" in carregar_source
+    assert "if operacao.ativo" in carregar_source
+    assert "if maquina.ativo" in carregar_source
 
 
 def test_operacoes_maquinas_page_has_expected_methods() -> None:

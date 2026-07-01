@@ -142,9 +142,21 @@ def test_def_peca_detail_page_operacoes_headers() -> None:
         "Quantidade base",
         "Tempo setup",
         "Tempo por unidade",
+        "Unidade tempo",
         "Obrigatório",
         "Ativo",
+        "Observações",
     ]
+
+
+def test_def_peca_detail_page_operacoes_show_unidade_tempo_e_observacoes() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._preencher_operacoes)
+
+    assert "UNIDADE_TEMPO_LABELS" in source
+    assert "ligacao.unidade_tempo" in source
+    assert "ligacao.observacoes" in source
 
 
 def test_def_peca_detail_page_operacoes_tab_is_real() -> None:

@@ -98,9 +98,10 @@ def test_def_peca_operacao_dialog_unidade_tempo_labels_claros() -> None:
     assert set(UNIDADE_TEMPO_OPCOES) <= set(UNIDADE_TEMPO_LABELS)
 
 
-def test_def_peca_operacao_dialog_locks_operacao_on_edit() -> None:
+def test_def_peca_operacao_dialog_allows_changing_operacao_on_edit() -> None:
     from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
 
     source = inspect.getsource(DefPecaOperacaoDialog._load_ligacao)
 
-    assert "setEnabled" in source
+    assert "setCurrentIndex" in source
+    assert "setEnabled(False)" not in source

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -79,8 +80,14 @@ class OperacoesMaquinasPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
 
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.stateChanged.connect(
+            lambda _state=0: self.carregar()
+        )
+
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addStretch()
 
         self.status_label = QLabel("")
@@ -120,6 +127,10 @@ class OperacoesMaquinasPage(QWidget):
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar operacoes e maquinas.")
             return
+
+        if not self.mostrar_inativas_check.isChecked():
+            operacoes = [operacao for operacao in operacoes if operacao.ativo]
+            maquinas = [maquina for maquina in maquinas if maquina.ativo]
 
         maquina_labels = {maquina.id: f"{maquina.codigo} - {maquina.nome}" for maquina in maquinas}
         self._preencher_operacoes(operacoes, maquina_labels)

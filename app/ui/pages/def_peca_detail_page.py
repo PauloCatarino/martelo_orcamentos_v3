@@ -48,7 +48,10 @@ from app.services.def_peca_operacao_service import (
 from app.services.def_peca_service import DefPecaService
 from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
 from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
-from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+from app.ui.dialogs.def_peca_operacao_dialog import (
+    DefPecaOperacaoDialog,
+    UNIDADE_TEMPO_LABELS,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_quantity
 
@@ -77,8 +80,10 @@ class DefPecaDetailPage(QWidget):
         "Quantidade base",
         "Tempo setup",
         "Tempo por unidade",
+        "Unidade tempo",
         "Obrigatório",
         "Ativo",
+        "Observações",
     ]
 
     def __init__(
@@ -544,8 +549,13 @@ class DefPecaDetailPage(QWidget):
                 format_quantity(ligacao.quantidade_base),
                 format_quantity(ligacao.tempo_setup_minutos),
                 format_quantity(ligacao.tempo_por_unidade_minutos),
+                UNIDADE_TEMPO_LABELS.get(
+                    ligacao.unidade_tempo,
+                    ligacao.unidade_tempo or "",
+                ),
                 self._format_bool(ligacao.obrigatorio),
                 self._format_bool(ligacao.ativo),
+                ligacao.observacoes or "",
             ]
 
             for column_index, value in enumerate(values):
