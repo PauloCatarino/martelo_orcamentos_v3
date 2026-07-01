@@ -6,6 +6,7 @@ from collections.abc import Callable
 from decimal import Decimal
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.domain.acabamentos import SEM_ACABAMENTO, tem_acabamento
 from app.domain.numeros import (
     formatar_percentagem,
     normalize_percentagem_humana,
@@ -86,6 +88,8 @@ class CusteioLinhaAcabamentoDialog(QDialog):
             linha.area_acabamento_sup if face == "sup" else linha.area_acabamento_inf
         )
 
+        ativo_checkbox = QCheckBox("Ativo")
+        ativo_checkbox.setChecked(tem_acabamento(codigo))
         codigo_input = QLineEdit(codigo or "")
         ref_le_input = QLineEdit(ref_le or "")
         descricao_input = QLineEdit(descricao or "")
@@ -94,6 +98,7 @@ class CusteioLinhaAcabamentoDialog(QDialog):
         desp_input = QLineEdit(self._format_desp(desp))
         area_label = QLabel(format_quantity(area))
 
+        setattr(self, f"ativo_{face}_checkbox", ativo_checkbox)
         setattr(self, f"codigo_{face}_input", codigo_input)
         setattr(self, f"ref_le_{face}_input", ref_le_input)
         setattr(self, f"descricao_{face}_input", descricao_input)
@@ -103,6 +108,10 @@ class CusteioLinhaAcabamentoDialog(QDialog):
 
         select_button = QPushButton(f"Selecionar acabamento {titulo.lower()}")
         select_button.clicked.connect(lambda _checked=False, f=face: self._selecionar(f))
+        setattr(self, f"selecionar_{face}_button", select_button)
+        ativo_checkbox.toggled.connect(
+            lambda _checked=False, f=face: self._alternar_ativo(f)
+        )
 
         form = QFormLayout()
         form.addRow("Acabamento (código/opção)", codigo_input)
@@ -114,6 +123,7 @@ class CusteioLinhaAcabamentoDialog(QDialog):
         form.addRow("Área acabamento", area_label)
 
         box_layout = QVBoxLayout()
+        box_layout.addWidget(ativo_checkbox)
         box_layout.addLayout(form)
         button_row = QHBoxLayout()
         button_row.addStretch()
@@ -122,7 +132,27 @@ class CusteioLinhaAcabamentoDialog(QDialog):
 
         box = QGroupBox(titulo)
         box.setLayout(box_layout)
+        self._alternar_ativo(face)
         return box
+
+    def _alternar_ativo(self, face: str) -> None:
+        """Enable or disable the editable finishing fields for one face."""
+        ativo = getattr(self, f"ativo_{face}_checkbox").isChecked()
+        codigo_input = getattr(self, f"codigo_{face}_input")
+
+        for field_name in (
+            "codigo",
+            "ref_le",
+            "descricao",
+            "unidade",
+            "preco",
+            "desp",
+        ):
+            getattr(self, f"{field_name}_{face}_input").setEnabled(ativo)
+        getattr(self, f"selecionar_{face}_button").setEnabled(ativo)
+
+        if ativo and not tem_acabamento(codigo_input.text()):
+            codigo_input.clear()
 
     def _selecionar(self, face: str) -> None:
         """Pick a finishing raw material (family ACABAMENTO) and copy its data."""
@@ -146,9 +176,12 @@ class CusteioLinhaAcabamentoDialog(QDialog):
         """Return the edited finishing fields (raises ValueError on bad numbers)."""
         dados: dict = {}
         for face in ("sup", "inf"):
-            dados[f"acabamento_face_{face}"] = self._empty_to_none(
-                getattr(self, f"codigo_{face}_input").text()
-            )
+            if not getattr(self, f"ativo_{face}_checkbox").isChecked():
+                dados[f"acabamento_face_{face}"] = SEM_ACABAMENTO
+            else:
+                dados[f"acabamento_face_{face}"] = self._empty_to_none(
+                    getattr(self, f"codigo_{face}_input").text()
+                )
             dados[f"acabamento_{face}_ref_le"] = self._empty_to_none(
                 getattr(self, f"ref_le_{face}_input").text()
             )

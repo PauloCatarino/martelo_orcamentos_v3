@@ -46,6 +46,23 @@ def test_acabamento_dialog_get_data_campos() -> None:
         assert fragmento in get_data
 
 
+def test_acabamento_dialog_checkbox_ativo_por_face() -> None:
+    from app.ui.dialogs.custeio_linha_acabamento_dialog import (
+        CusteioLinhaAcabamentoDialog,
+    )
+
+    criar_zona_face = inspect.getsource(CusteioLinhaAcabamentoDialog._criar_zona_face)
+    assert 'QCheckBox("Ativo")' in criar_zona_face
+    assert "tem_acabamento(codigo)" in criar_zona_face
+    assert 'f"ativo_{face}_checkbox"' in criar_zona_face
+    assert "_alternar_ativo(face)" in criar_zona_face
+
+    get_data = inspect.getsource(CusteioLinhaAcabamentoDialog.get_data)
+    assert 'f"ativo_{face}_checkbox"' in get_data
+    assert "isChecked()" in get_data
+    assert "SEM_ACABAMENTO" in get_data
+
+
 def test_acabamento_dialog_formata_euro_e_percentagem() -> None:
     from app.ui.dialogs.custeio_linha_acabamento_dialog import (
         CusteioLinhaAcabamentoDialog,
