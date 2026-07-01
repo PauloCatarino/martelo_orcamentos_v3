@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QPushButton,
     QStackedWidget,
@@ -68,10 +69,14 @@ class DefPecasPage(QWidget):
         self.edit_button = QPushButton("Editar Pe\u00e7a")
         self.edit_button.clicked.connect(self.abrir_editar_peca)
 
+        self.duplicate_button = QPushButton("Duplicar Pe\u00e7a")
+        self.duplicate_button.clicked.connect(self.duplicar_peca_selecionada)
+
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.duplicate_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -230,6 +235,42 @@ class DefPecasPage(QWidget):
 
         self.carregar_pecas(select_codigo=updated_codigo)
         self.status_label.setText(f"Pe\u00e7a {updated_codigo} atualizada.")
+
+    def duplicar_peca_selecionada(self) -> None:
+        """Duplicate the selected piece definition."""
+        peca = self._get_selected_peca()
+        if peca is None:
+            self.status_label.setText("Selecione uma pe\u00e7a para duplicar.")
+            return
+
+        novo_codigo, ok = QInputDialog.getText(
+            self,
+            "Duplicar Pe\u00e7a",
+            "Novo c\u00f3digo:",
+            text=f"{peca.codigo}_COPIA",
+        )
+        novo_codigo = novo_codigo.strip()
+        if not ok or not novo_codigo:
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = DefPecaService(session).duplicar_peca(
+                    peca.id,
+                    novo_codigo,
+                )
+        except IntegrityError:
+            self.status_label.setText("J\u00e1 existe uma pe\u00e7a com esse c\u00f3digo.")
+            return
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("N\u00e3o foi poss\u00edvel duplicar a pe\u00e7a.")
+            return
+
+        self.carregar_pecas(select_codigo=resultado.codigo)
+        self.status_label.setText(
+            f"Pe\u00e7a {resultado.codigo} duplicada. "
+            "Edite-a para ajustar o nome e outros dados."
+        )
 
     def _preencher_tabela(self, pecas: list[DefPecaResumo]) -> None:
         """Fill the table with piece definition read models."""

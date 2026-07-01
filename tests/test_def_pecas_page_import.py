@@ -98,6 +98,20 @@ def test_def_pecas_page_supports_edit() -> None:
     assert hasattr(DefPecasPage, "abrir_editar_peca")
 
 
+def test_def_pecas_page_supports_duplicate() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    init_source = inspect.getsource(DefPecasPage.__init__)
+    duplicate_source = inspect.getsource(DefPecasPage.duplicar_peca_selecionada)
+
+    assert "duplicate_button" in init_source
+    assert "Duplicar Pe" in init_source
+    assert hasattr(DefPecasPage, "duplicar_peca_selecionada")
+    assert "QInputDialog.getText" in duplicate_source
+    assert "duplicar_peca" in duplicate_source
+    assert "carregar_pecas" in duplicate_source
+
+
 def test_def_pecas_page_edit_uses_service_and_dialog() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
