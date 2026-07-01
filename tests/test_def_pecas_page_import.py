@@ -18,6 +18,7 @@ def test_def_pecas_page_loads_on_init() -> None:
 
     assert "carregar_pecas" in source_names
     assert "QStackedWidget" in source_names
+    assert "QTreeWidget" in source_names
 
 
 def test_def_pecas_page_table_headers() -> None:
@@ -110,6 +111,53 @@ def test_def_pecas_page_supports_duplicate() -> None:
     assert "QInputDialog.getText" in duplicate_source
     assert "duplicar_peca" in duplicate_source
     assert "carregar_pecas" in duplicate_source
+
+
+def test_def_pecas_page_supports_active_toggle_and_inactive_filter() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    init_source = inspect.getsource(DefPecasPage.__init__)
+    carregar_source = inspect.getsource(DefPecasPage.carregar_pecas)
+    toggle_source = inspect.getsource(DefPecasPage.alternar_peca_ativa)
+
+    assert "toggle_ativo_button" in init_source
+    assert "Ativar/Desativar" in init_source
+    assert "mostrar_inativas_check" in init_source
+    assert "QMessageBox.question" in toggle_source
+    assert "desativar_peca" in toggle_source
+    assert "ativar_peca" in toggle_source
+    assert "not self.mostrar_inativas_check.isChecked()" in carregar_source
+    assert "if peca.ativo" in carregar_source
+
+
+def test_def_pecas_page_has_resizable_columns() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    init_source = inspect.getsource(DefPecasPage.__init__)
+
+    assert "QHeaderView.ResizeMode.Interactive" in init_source
+    assert "setStretchLastSection(False)" in init_source
+    assert "QHeaderView.ResizeMode.Stretch" not in init_source
+
+
+def test_def_pecas_page_supports_tree_view() -> None:
+    from app.ui.pages.def_pecas_page import DefPecasPage
+
+    init_source = inspect.getsource(DefPecasPage.__init__)
+    preencher_arvore = inspect.getsource(DefPecasPage._preencher_arvore)
+    get_selected = inspect.getsource(DefPecasPage._get_selected_peca)
+
+    assert "toggle_vista_button" in init_source
+    assert "Ver em" in init_source
+    assert "lista_stack" in init_source
+    assert "QTreeWidgetItem" in preencher_arvore
+    assert "SEM GRUPO" in preencher_arvore
+    assert "format_orla_code" in preencher_arvore
+    assert "COMPOSTA" in preencher_arvore
+    assert "Qt.ItemDataRole.UserRole" in preencher_arvore
+    assert "expandAll" in preencher_arvore
+    assert "_pecas_by_id" in get_selected
+    assert "currentItem" in get_selected
 
 
 def test_def_pecas_page_edit_uses_service_and_dialog() -> None:

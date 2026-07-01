@@ -173,6 +173,17 @@ class DefPecaRepository:
 
         return True
 
+    def activate_def_peca(self, id: int) -> bool:
+        """Activate one reusable piece definition."""
+        peca = self.session.get(DefPeca, id)
+        if peca is None:
+            return False
+
+        peca.ativo = True
+        self.session.flush()
+
+        return True
+
     def _to_resumo(self, peca: DefPeca) -> DefPecaResumo:
         """Convert an ORM piece definition to the read model."""
         return DefPecaResumo(

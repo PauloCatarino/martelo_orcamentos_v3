@@ -248,6 +248,14 @@ class DefPecaService:
 
         return deactivated
 
+    def ativar_peca(self, id: int) -> bool:
+        """Activate a reusable piece definition."""
+        activated = self.repository.activate_def_peca(id)
+        if activated:
+            self.session.commit()
+
+        return activated
+
     def _validate(self, *, codigo: str, nome: str) -> None:
         if not codigo:
             raise ValueError("codigo is required")

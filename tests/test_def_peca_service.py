@@ -43,6 +43,8 @@ class _FakeRepository:
     updated_payload: dict[str, object] | None = None
     deactivate_result = True
     deactivated_id: int | None = None
+    activate_result = True
+    activated_id: int | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -96,6 +98,10 @@ class _FakeRepository:
     def deactivate_def_peca(self, id: int) -> bool:
         self.__class__.deactivated_id = id
         return self.deactivate_result
+
+    def activate_def_peca(self, id: int) -> bool:
+        self.__class__.activated_id = id
+        return self.activate_result
 
 
 class _FakeSession:
@@ -565,4 +571,30 @@ def test_def_peca_service_desativa_peca_inexistente_sem_commit(monkeypatch) -> N
 
     assert service.desativar_peca(11) is False
     assert _FakeRepository.deactivated_id == 11
+    assert session.committed is False
+
+
+def test_def_peca_service_ativa_peca_existente(monkeypatch) -> None:
+    _FakeRepository.activate_result = True
+    _FakeRepository.activated_id = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+
+    assert service.ativar_peca(10) is True
+    assert _FakeRepository.activated_id == 10
+    assert session.committed is True
+
+
+def test_def_peca_service_ativa_peca_inexistente_sem_commit(monkeypatch) -> None:
+    _FakeRepository.activate_result = False
+    _FakeRepository.activated_id = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+
+    assert service.ativar_peca(11) is False
+    assert _FakeRepository.activated_id == 11
     assert session.committed is False
