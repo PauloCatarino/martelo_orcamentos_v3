@@ -45,6 +45,7 @@ from app.services.producao_dashboard_service import calcular_dashboard
 from app.services.producao_phc_sync_service import (
     aplicar_estados,
     detetar_diferencas_estado_phc,
+    detetar_diferencas_estado_streamlit,
 )
 from app.services.producao_precos_service import (
     aplicar_precos,
@@ -448,7 +449,7 @@ class PontoSituacaoPage(QWidget):
             QMessageBox.warning(
                 self,
                 "Estado de Produção",
-                self._mensagem_erro_phc(exc),
+                self._mensagem_erro_fonte(exc, "Streamlit"),
             )
             return
         finally:
@@ -708,29 +709,64 @@ class PontoSituacaoPage(QWidget):
         responsavel = nome_login if clicado is btn_minhas else None
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        self.atualizado_label.setText("A consultar o PHC...")
+        self.atualizado_label.setText("A consultar o PHC/Streamlit...")
         QApplication.processEvents()
         try:
-            with SessionLocal() as session:
-                diffs = detetar_diferencas_estado_phc(
-                    session,
-                    responsavel=responsavel,
-                )
-        except Exception as exc:  # ligacao/SQL/config PHC
+            try:
+                with SessionLocal() as session:
+                    diffs_phc = detetar_diferencas_estado_phc(
+                        session,
+                        responsavel=responsavel,
+                    )
+            except Exception as exc:  # ligacao/SQL/config PHC
+                diffs_phc = []
+                erro_phc = exc
+            else:
+                erro_phc = None
+
+            try:
+                with SessionLocal() as session:
+                    diffs_streamlit = detetar_diferencas_estado_streamlit(
+                        session,
+                        responsavel=responsavel,
+                    )
+            except Exception as exc:  # ligacao/SQL/config Streamlit
+                diffs_streamlit = []
+                erro_streamlit = exc
+            else:
+                erro_streamlit = None
+
+            diffs = diffs_phc + diffs_streamlit
+            diffs.sort(key=lambda d: d["codigo"].casefold())
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if erro_phc is not None and erro_streamlit is not None:
             QMessageBox.warning(
                 self,
                 "Sincronizar PHC",
-                self._mensagem_erro_phc(exc),
+                self._mensagem_erro_phc(erro_phc),
             )
             return
-        finally:
-            QApplication.restoreOverrideCursor()
+
+        avisos = []
+        if erro_phc is not None:
+            avisos.append(self._mensagem_erro_fonte(erro_phc, "PHC"))
+        if erro_streamlit is not None:
+            avisos.append(self._mensagem_erro_fonte(erro_streamlit, "Streamlit"))
+        if avisos:
+            QMessageBox.information(
+                self,
+                "Sincronizar PHC",
+                "A sincronização vai continuar só com a fonte disponível:\n\n"
+                + "\n\n".join(avisos),
+            )
 
         if not diffs:
             QMessageBox.information(
                 self,
                 "Sincronizar PHC",
-                "Estados j\u00e1 sincronizados - sem diferen\u00e7as face ao PHC.",
+                "Estados j\u00e1 sincronizados - sem diferen\u00e7as face ao PHC/Streamlit.",
             )
             self._carregar()
             return
@@ -767,7 +803,7 @@ class PontoSituacaoPage(QWidget):
         QMessageBox.information(
             self,
             "Sincronizar PHC",
-            f"{n} obra(s) atualizada(s) a partir do PHC.",
+            f"{n} obra(s) atualizada(s) a partir do PHC/Streamlit.",
         )
 
     def _validar_precos(self) -> None:
@@ -861,14 +897,28 @@ class PontoSituacaoPage(QWidget):
         )
 
     @staticmethod
-    def _mensagem_erro_phc(exc):
+    def _mensagem_erro_fonte(exc, fonte: str):
         texto = str(exc)
-        if "Configuracao PHC" in texto or "Configura\u00e7\u00e3o PHC" in texto:
+        if fonte == "PHC" and (
+            "Configuracao PHC" in texto or "Configura\u00e7\u00e3o PHC" in texto
+        ):
             return (
                 "PHC n\u00e3o configurado. Configure a liga\u00e7\u00e3o em "
                 "Configura\u00e7\u00f5es -> Caminhos/PHC."
             )
-        return f"N\u00e3o foi poss\u00edvel consultar o PHC: {texto}"
+        if fonte == "Streamlit" and (
+            "Configuracao Streamlit" in texto
+            or "Configura\u00e7\u00e3o Streamlit" in texto
+        ):
+            return (
+                "Streamlit n\u00e3o configurado. Configure a liga\u00e7\u00e3o em "
+                "Configura\u00e7\u00f5es -> Caminhos/PHC."
+            )
+        return f"N\u00e3o foi poss\u00edvel consultar {fonte}: {texto}"
+
+    @staticmethod
+    def _mensagem_erro_phc(exc):
+        return PontoSituacaoPage._mensagem_erro_fonte(exc, "PHC")
 
     def _texto_atualizado(self, dados) -> str:
         filtros = []

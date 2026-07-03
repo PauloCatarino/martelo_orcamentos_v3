@@ -14,5 +14,6 @@ def test_producao_phc_sync_dialog_imports_and_has_selection_api() -> None:
     assert "QTableWidget" in source
     assert "ItemIsUserCheckable" in source
     assert '"N\\u00ba Enc PHC"' in source
+    assert '"Fonte"' in source
     assert '"Atualizar selecionados"' in source
     assert hasattr(ProducaoPhcSyncDialog, "selecionados")

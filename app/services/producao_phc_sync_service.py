@@ -8,10 +8,19 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.domain.estado_producao import interpretar_ok
 from app.models.producao import Producao
 from app.services.encomendas_phc_service import query_phc_estado_debug_rows
+from app.services.estado_producao_service import (
+    TIPO_STREAMLIT,
+    _ano_norm,
+    _norm_streamlit,
+    carregar_indice,
+)
+from app.services.streamlit_sql_service import query_encomendas_cliente_final
 
 TIPO_PASTA_PHC = "Encomenda de Cliente"
+_CAMPOS_PRODUCAO_INICIADA = ("bd_corte_ok", "bd_orla_ok", "bd_cnc_ok")
 
 
 def _norm_num(valor) -> str:
@@ -46,6 +55,38 @@ def _map_phc_estado(texto) -> str | None:
     if "DESENHO" in t:
         return "Desenho"
     return None
+
+
+def _mapear_status_streamlit(status_raw) -> str | None:
+    """Map Streamlit Status to a terminal production state."""
+    t = _norm_txt(status_raw)
+    if not t:
+        return None
+    if "ARQUIV" in t or re.search(r"(?<!\d)7(?!\d)", t):
+        return "Arquivado"
+    if "FINALIZ" in t or re.search(r"(?<!\d)5(?!\d)", t):
+        return "Finalizado"
+    return None
+
+
+def _tem_producao_iniciada(linhas: list[dict]) -> bool:
+    for linha in linhas or []:
+        for campo in _CAMPOS_PRODUCAO_INICIADA:
+            pct = interpretar_ok(linha.get(campo))
+            if pct is not None and pct > 0:
+                return True
+    return False
+
+
+def _filtrar_responsavel(processos, responsavel):
+    if not responsavel:
+        return list(processos)
+    alvo = responsavel.strip().casefold()
+    return [
+        processo
+        for processo in processos
+        if (processo.responsavel or "").strip().casefold() == alvo
+    ]
 
 
 def detetar_diferencas_estado_phc(
@@ -104,6 +145,78 @@ def detetar_diferencas_estado_phc(
                     "estado_martelo": atual or "(sem estado)",
                     "estado_sugerido": sugerido,
                     "estado_phc_raw": phc_raw,
+                }
+            )
+
+    diffs.sort(key=lambda d: d["codigo"].casefold())
+    return diffs
+
+
+def detetar_diferencas_estado_streamlit(
+    session: Session,
+    *,
+    responsavel=None,
+) -> list[dict]:
+    """Return Cliente Final processes whose local state differs from Streamlit."""
+    processos = (
+        session.execute(
+            select(Producao).where(
+                Producao.tipo_pasta == TIPO_STREAMLIT,
+                Producao.num_enc_phc.is_not(None),
+                Producao.ano.is_not(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    processos = _filtrar_responsavel(processos, responsavel)
+
+    anos = sorted({_ano_norm(p.ano) for p in processos if _ano_norm(p.ano)})
+    if not processos or not anos:
+        return []
+
+    status_idx: dict[tuple[str, str], object] = {}
+    try:
+        linhas_enc = query_encomendas_cliente_final(
+            session,
+            ano_minimo=int(min(anos)),
+        )
+    except Exception:
+        linhas_enc = []
+    for row in linhas_enc:
+        ano = _ano_norm(row.get("Ano"))
+        numero = _norm_streamlit(row.get("Numero"))
+        if ano in anos and numero:
+            status_idx[(ano, numero)] = row.get("Status")
+
+    try:
+        tp_idx = carregar_indice(session, anos_normais=[], anos_especiais=anos)
+    except Exception:
+        tp_idx = {}
+
+    diffs = []
+    for processo in processos:
+        ano = _ano_norm(processo.ano)
+        numero = _norm_streamlit(processo.num_enc_phc)
+        status_raw = status_idx.get((ano, numero))
+        sugerido = _mapear_status_streamlit(status_raw)
+        if sugerido is None:
+            linhas = tp_idx.get(("E", ano, numero), [])
+            sugerido = "Producao" if _tem_producao_iniciada(linhas) else "Desenho"
+
+        atual = (processo.estado or "").strip()
+        if sugerido and sugerido != atual:
+            status_texto = "" if status_raw is None else str(status_raw).strip()
+            diffs.append(
+                {
+                    "id": processo.id,
+                    "codigo": (processo.codigo_processo or "").strip(),
+                    "num_enc_phc": (processo.num_enc_phc or "").strip(),
+                    "cliente": (processo.nome_cliente or "").strip(),
+                    "estado_martelo": atual or "(sem estado)",
+                    "estado_sugerido": sugerido,
+                    "estado_phc_raw": status_texto or "(sem dados)",
+                    "fonte": "Streamlit",
                 }
             )
 
