@@ -165,7 +165,7 @@ def gerar_codigo_processo(
     """Build the production process code AA.NNNN_VV_PP."""
     ano_text = re.sub(r"\D+", "", str(ano or ""))
     aa = (ano_text[-2:] if ano_text else "00").zfill(2)
-    nnnn = _format_digits(num_enc_phc, 4)
+    nnnn = _num_enc_norm(num_enc_phc)
     vv = _format_digits(versao_obra, 2)
     pp = _format_digits(versao_plano, 2)
     return f"{aa}.{nnnn}_{vv}_{pp}"

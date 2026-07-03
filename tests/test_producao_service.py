@@ -73,7 +73,7 @@ def test_gerar_codigo_processo_formata_chave() -> None:
     from app.services.producao_service import gerar_codigo_processo
 
     assert gerar_codigo_processo("2026", "475", "01", "01") == "26.0475_01_01"
-    assert gerar_codigo_processo("2026", "_054", "1", "1") == "26.0054_01_01"
+    assert gerar_codigo_processo("2026", "_054", "1", "1") == "26._054_01_01"
     assert gerar_codigo_processo("2026", "54", "001", "002") == "26.0054_01_02"
 
 
@@ -381,6 +381,52 @@ def test_criar_nova_versao_recusa_duplicado_db(session) -> None:
         )
 
 
+def test_criar_nova_versao_streamlit_mantem_underline_no_codigo(session) -> None:
+    from app.services.producao_service import criar_nova_versao
+
+    session.add(
+        _processo_producao(
+            id=1,
+            num_enc_phc="_118",
+            versao_obra="01",
+            versao_plano="01",
+        )
+    )
+    processo1 = session.get(Producao, 1)
+    processo1.codigo_processo = "26._118_01_01_TIAGO_LOPES"
+    processo1.nome_cliente = "Tiago Lopes"
+    processo1.nome_cliente_simplex = "TIAGO_LOPES"
+    session.commit()
+
+    processo2 = criar_nova_versao(
+        session,
+        processo_id=1,
+        versao_obra="01",
+        versao_plano="02",
+        criar_pasta=False,
+        current_user_id=None,
+    )
+    assert processo2.codigo_processo == "26._118_01_02_TIAGO_LOPES"
+
+    processo3 = criar_nova_versao(
+        session,
+        processo_id=processo2.id,
+        versao_obra="01",
+        versao_plano="03",
+        criar_pasta=False,
+        current_user_id=None,
+    )
+    assert processo3.codigo_processo == "26._118_01_03_TIAGO_LOPES"
+
+    for codigo in (
+        processo1.codigo_processo,
+        processo2.codigo_processo,
+        processo3.codigo_processo,
+    ):
+        assert codigo.startswith("26._118")
+        assert "0118" not in codigo
+
+
 def test_criar_processo_externo_streamlit_cria_producao_local(session) -> None:
     from app.services.producao_service import criar_processo_externo
 
@@ -420,7 +466,7 @@ def test_criar_processo_externo_streamlit_cria_producao_local(session) -> None:
     assert processo.responsavel == "Ana Silva"
     assert processo.created_by_id == 7
     assert processo.pasta_servidor is None
-    assert processo.codigo_processo == "26.0007_01_01_CLIENTE_FINAL"
+    assert processo.codigo_processo == "26._007_01_01_CLIENTE_FINAL"
 
 
 def test_criar_processo_externo_phc_usa_tipo_pasta_phc(session) -> None:
