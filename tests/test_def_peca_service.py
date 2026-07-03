@@ -257,6 +257,31 @@ def test_def_peca_service_normaliza_valuesets_ao_criar(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_def_peca_service_preserva_chave_valueset_personalizada_ao_criar(
+    monkeypatch,
+) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="NIV",
+            nome="Nivelador",
+            chave_valueset_material=" niveladores/pendurais ",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert (
+        _FakeRepository.created_payload["chave_valueset_material"]
+        == "NIVELADORES/PENDURAIS"
+    )
+    assert result.chave_valueset_material == "NIVELADORES/PENDURAIS"
+    assert session.committed is True
+
+
 def test_def_peca_service_sem_material_limpa_chave(monkeypatch) -> None:
     _FakeRepository.created_payload = None
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
@@ -329,6 +354,32 @@ def test_def_peca_service_normaliza_valuesets_ao_editar(monkeypatch) -> None:
     assert _FakeRepository.updated_payload["chave_valueset_acabamento_sup"] is None
     assert _FakeRepository.updated_payload["chave_valueset_acabamento_inf"] == "ACABAMENTO_FACE_INF"
     assert result.chave_valueset_acabamento_inf == "ACABAMENTO_FACE_INF"
+    assert session.committed is True
+
+
+def test_def_peca_service_preserva_chave_valueset_personalizada_ao_editar(
+    monkeypatch,
+) -> None:
+    _FakeRepository.updated_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service = service_module.DefPecaService(session=session)
+    result = service.editar_peca(
+        8,
+        service_module.EditarDefPecaData(
+            codigo="NIV",
+            nome="Nivelador",
+            chave_valueset_material=" niveladores/pendurais ",
+        ),
+    )
+
+    assert _FakeRepository.updated_payload is not None
+    assert (
+        _FakeRepository.updated_payload["chave_valueset_material"]
+        == "NIVELADORES/PENDURAIS"
+    )
+    assert result.chave_valueset_material == "NIVELADORES/PENDURAIS"
     assert session.committed is True
 
 

@@ -93,8 +93,9 @@ VALUESET_KEY_LABELS = {
 
 
 def get_valueset_key_label(chave: str | None) -> str:
-    """Return the friendly label for a ValueSet key."""
-    return VALUESET_KEY_LABELS[normalize_valueset_key(chave)]
+    """Return the friendly label for a ValueSet key, or the key itself."""
+    chave_normalizada = normalize_valueset_key(chave)
+    return VALUESET_KEY_LABELS.get(chave_normalizada, chave_normalizada)
 
 
 def get_valueset_key_options() -> tuple[tuple[str, str], ...]:
@@ -103,7 +104,7 @@ def get_valueset_key_options() -> tuple[tuple[str, str], ...]:
 
 
 def normalize_valueset_key(chave: str | None) -> str:
-    """Normalize a ValueSet key, falling back to MATERIAL_OUTROS."""
+    """Normalize a ValueSet key, preserving user-defined non-empty keys."""
     if chave is None:
         return DEFAULT_VALUESET_KEY
 
@@ -111,4 +112,4 @@ def normalize_valueset_key(chave: str | None) -> str:
     if not normalized:
         return DEFAULT_VALUESET_KEY
 
-    return normalized if normalized in VALUESET_KEY_LABELS else DEFAULT_VALUESET_KEY
+    return normalized

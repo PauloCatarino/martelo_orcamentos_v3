@@ -13,10 +13,9 @@ from app.domain.valueset_types import (
 )
 
 
-def test_normalize_valueset_key_defaults_to_material_outros() -> None:
+def test_normalize_valueset_key_defaults_to_material_outros_only_when_empty() -> None:
     assert normalize_valueset_key(None) == MATERIAL_OUTROS
     assert normalize_valueset_key("") == MATERIAL_OUTROS
-    assert normalize_valueset_key("desconhecida") == MATERIAL_OUTROS
 
 
 def test_normalize_valueset_key_accepts_known_values_case_insensitive() -> None:
@@ -24,11 +23,19 @@ def test_normalize_valueset_key_accepts_known_values_case_insensitive() -> None:
     assert normalize_valueset_key("orla_fina") == ORLA_FINA
 
 
+def test_normalize_valueset_key_preserves_custom_key() -> None:
+    assert normalize_valueset_key(" niveladores/pendurais ") == "NIVELADORES/PENDURAIS"
+
+
 def test_valueset_key_labels_and_options() -> None:
     assert get_valueset_key_label(FERRAGEM_DOBRADICA) == "Dobradiça"
-    assert get_valueset_key_label("desconhecida") == "Material outros"
+    assert get_valueset_key_label("desconhecida") == "DESCONHECIDA"
     assert (MATERIAL_CAIXOTE, "Material caixote") in get_valueset_key_options()
     assert (FERRAGEM_DOBRADICA, "Dobradiça") in get_valueset_key_options()
+
+
+def test_valueset_key_label_custom_key_returns_key_itself() -> None:
+    assert get_valueset_key_label("NIVELADORES/PENDURAIS") == "NIVELADORES/PENDURAIS"
 
 
 def test_new_valueset_keys_exist_and_normalize() -> None:
