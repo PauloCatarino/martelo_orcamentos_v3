@@ -7,7 +7,9 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHeaderView,
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,6 +30,16 @@ class ProducaoPhcSyncDialog(QDialog):
         )
         info.setWordWrap(True)
         layout.addWidget(info)
+
+        bulk_layout = QHBoxLayout()
+        btn_selecionar_tudo = QPushButton("Selecionar tudo")
+        btn_desmarcar_tudo = QPushButton("Desmarcar tudo")
+        btn_selecionar_tudo.clicked.connect(self._selecionar_tudo)
+        btn_desmarcar_tudo.clicked.connect(self._desmarcar_tudo)
+        bulk_layout.addWidget(btn_selecionar_tudo)
+        bulk_layout.addWidget(btn_desmarcar_tudo)
+        bulk_layout.addStretch(1)
+        layout.addLayout(bulk_layout)
 
         self.table = QTableWidget(len(diffs), 7)
         self.table.setHorizontalHeaderLabels(
@@ -95,3 +107,19 @@ class ProducaoPhcSyncDialog(QDialog):
             if chk is not None and chk.checkState() == Qt.CheckState.Checked:
                 out.append((diff["id"], diff["estado_sugerido"]))
         return out
+
+    def _selecionar_tudo(self) -> None:
+        self._marcar_todas(Qt.CheckState.Checked)
+
+    def _desmarcar_tudo(self) -> None:
+        self._marcar_todas(Qt.CheckState.Unchecked)
+
+    def _marcar_todas(self, estado: Qt.CheckState) -> None:
+        estado_anterior = self.table.blockSignals(True)
+        try:
+            for row in range(self.table.rowCount()):
+                item = self.table.item(row, 0)
+                if item is not None:
+                    item.setCheckState(estado)
+        finally:
+            self.table.blockSignals(estado_anterior)
