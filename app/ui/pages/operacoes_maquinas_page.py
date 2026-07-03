@@ -62,6 +62,8 @@ class OperacoesMaquinasPage(QWidget):
         "Custo/hora SERIE",
         "€/ML STD",
         "€/ML SERIE",
+        "€/lado STD",
+        "€/lado SERIE",
         "Ativo",
     ]
 
@@ -178,6 +180,12 @@ class OperacoesMaquinasPage(QWidget):
                 format_currency(maquina.custo_hora_serie),
                 format_currency(maquina.preco_ml_std),
                 format_currency(maquina.preco_ml_serie),
+                self._format_lados(
+                    maquina.preco_lado_curto_std, maquina.preco_lado_longo_std
+                ),
+                self._format_lados(
+                    maquina.preco_lado_curto_serie, maquina.preco_lado_longo_serie
+                ),
                 self._format_bool(maquina.ativo),
             ]
 
@@ -446,6 +454,11 @@ class OperacoesMaquinasPage(QWidget):
                             custo_hora_serie=form_data.custo_hora_serie,
                             preco_ml_std=form_data.preco_ml_std,
                             preco_ml_serie=form_data.preco_ml_serie,
+                            preco_lado_curto_std=form_data.preco_lado_curto_std,
+                            preco_lado_curto_serie=form_data.preco_lado_curto_serie,
+                            preco_lado_longo_std=form_data.preco_lado_longo_std,
+                            preco_lado_longo_serie=form_data.preco_lado_longo_serie,
+                            limite_lado_mm=form_data.limite_lado_mm,
                             custo_setup_peca_std=form_data.custo_setup_peca_std,
                             custo_setup_peca_serie=form_data.custo_setup_peca_serie,
                             ativo=form_data.ativo,
@@ -495,6 +508,11 @@ class OperacoesMaquinasPage(QWidget):
                             custo_hora_serie=form_data.custo_hora_serie,
                             preco_ml_std=form_data.preco_ml_std,
                             preco_ml_serie=form_data.preco_ml_serie,
+                            preco_lado_curto_std=form_data.preco_lado_curto_std,
+                            preco_lado_curto_serie=form_data.preco_lado_curto_serie,
+                            preco_lado_longo_std=form_data.preco_lado_longo_std,
+                            preco_lado_longo_serie=form_data.preco_lado_longo_serie,
+                            limite_lado_mm=form_data.limite_lado_mm,
                             custo_setup_peca_std=form_data.custo_setup_peca_std,
                             custo_setup_peca_serie=form_data.custo_setup_peca_serie,
                             ativo=form_data.ativo,
@@ -600,3 +618,11 @@ class OperacoesMaquinasPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _format_lados(self, curto, longo) -> str:
+        """Format ORLAGEM short/long side tariffs."""
+        curto_txt = format_quantity(curto)
+        longo_txt = format_quantity(longo)
+        if not curto_txt and not longo_txt:
+            return ""
+        return f"{curto_txt or '-'} / {longo_txt or '-'}"

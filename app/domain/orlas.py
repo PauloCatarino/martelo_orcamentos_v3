@@ -81,7 +81,7 @@ class ResultadoOrlas:
     lados: tuple[LadoOrla, ...]
 
 
-def _digitos_orla(codigo_orlas) -> tuple[int, int, int, int] | None:
+def digitos_orla(codigo_orlas) -> tuple[int, int, int, int] | None:
     """Return the four side codes (C1, C2, L1, L2) or None when invalid."""
     if codigo_orlas is None:
         return None
@@ -153,7 +153,7 @@ def calcular_orlas_linha(
     - missing real measure for a banded side -> (None, None) without raising;
     - qt_total None -> assume 1; qt_total 0 -> result 0.
     """
-    digitos = _digitos_orla(codigo_orlas)
+    digitos = digitos_orla(codigo_orlas)
     if digitos is None or all(digito == 0 for digito in digitos):
         return Decimal("0"), Decimal("0")
 
@@ -290,7 +290,7 @@ def _detalhe_lados(
     preco_ml_grossa,
 ) -> tuple[LadoOrla, ...]:
     """Build the per-side edge banding detail (best-effort, never raises)."""
-    digitos = _digitos_orla(codigo_orlas)
+    digitos = digitos_orla(codigo_orlas)
     if digitos is None:
         return ()
 

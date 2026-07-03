@@ -1,10 +1,11 @@
-"""Cutting/edging production cost helpers from machine tariffs (phase 8S.1/8S.4).
+"""Production cost helpers from machine tariffs (phase 8S.1/8S.4).
 
-Cut cost uses the unit perimeter × quantity × €/ML (+ setup × quantity); edging
-cost uses the line's total edging metres × €/ML (+ setup × quantity). The caller
-only invokes these when the piece actually has the matching operation. The
-tariffs themselves are chosen by the caller via ``escolher_tarifa`` (STD, or
-SERIE with per-field fallback to STD when the SERIE value is not defined).
+Cut cost uses the unit perimeter × quantity × €/ML (+ setup × quantity);
+edging production cost uses a tariff per edged side, split by the real side
+measure (short/long) plus setup × quantity. The caller only invokes these when
+the piece actually has the matching operation. The tariffs themselves are chosen
+by the caller via ``escolher_tarifa`` (STD, or SERIE with per-field fallback to
+STD when the SERIE value is not defined).
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.domain.medidas import normalizar_numero
+from app.domain.orla_types import ORLA_FINA, ORLA_GROSSA
+from app.domain.orlas import digitos_orla
 
 # Reasons returned to the caller, which formats the production observation.
 MOTIVO_SEM_TARIFA = "SEM_TARIFA"
@@ -158,34 +161,60 @@ def calcular_custo_corte(
     return custo, None
 
 
-def calcular_custo_orlagem(
-    ml_orla_total,
+def calcular_custo_orlagem_lados(
+    codigo_orlas,
+    comp_real,
+    larg_real,
     qt_total,
-    preco_ml_std,
-    custo_setup_peca_std,
+    preco_lado_curto,
+    preco_lado_longo,
+    limite_mm,
+    custo_setup_peca,
 ) -> tuple[Decimal | None, str | None]:
-    """Return (custo_orlagem, motivo).
+    """Return (custo_orlagem, motivo), priced by each edged side.
 
-    ``ml_orla_total`` is already the line total (not multiplied by quantity).
-    ``custo = ml_orla_total * preco_ml_std + qt_total * setup``. No edging
-    (ml_orla_total <= 0) -> (0, None) with no setup and no warning. Without the
-    machine €/ML (and there IS edging) -> (None, SEM_TARIFA). Never raises.
+    C1/C2 use ``comp_real``; L1/L2 use ``larg_real``. The raw measure is used
+    as-is, without the edge-bander material margin. No edging (empty/invalid
+    code or ``0000``) -> (0, None) with no setup and no warning. Missing side
+    tariffs when there is edging -> (None, SEM_TARIFA). Missing side measure
+    when a matching side is edged -> (None, SEM_DADOS). Never raises.
     """
-    ml = normalizar_numero(ml_orla_total) or Decimal("0")
-    if ml <= 0:
+    digitos = digitos_orla(codigo_orlas)
+    if (
+        digitos is None
+        or all(digito == 0 for digito in digitos)
+        or any(digito not in (0, ORLA_FINA, ORLA_GROSSA) for digito in digitos)
+    ):
         return Decimal("0"), None
 
-    preco = normalizar_numero(preco_ml_std)
-    if preco is None:
+    lados_orlados = [digito for digito in digitos if digito in (ORLA_FINA, ORLA_GROSSA)]
+    if not lados_orlados:
+        return Decimal("0"), None
+
+    preco_curto = normalizar_numero(preco_lado_curto)
+    preco_longo = normalizar_numero(preco_lado_longo)
+    if preco_curto is None or preco_longo is None:
         return None, MOTIVO_SEM_TARIFA
 
-    custo = ml * preco
+    comp = normalizar_numero(comp_real)
+    larg = normalizar_numero(larg_real)
+    limite = normalizar_numero(limite_mm) or Decimal("1500")
     qt = normalizar_numero(qt_total)
     if qt is None:
         qt = Decimal("1")
-    setup = normalizar_numero(custo_setup_peca_std)
-    if setup is not None:
-        custo += qt * setup
+
+    medidas = (comp, comp, larg, larg)
+    custo_unitario = Decimal("0")
+    for digito, medida in zip(digitos, medidas, strict=True):
+        if digito == 0:
+            continue
+        if medida is None:
+            return None, MOTIVO_SEM_DADOS
+        custo_unitario += preco_curto if medida <= limite else preco_longo
+
+    custo = custo_unitario * qt
+    setup = normalizar_numero(custo_setup_peca) or Decimal("0")
+    custo += qt * setup
 
     return custo, None
 

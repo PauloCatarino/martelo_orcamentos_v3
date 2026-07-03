@@ -147,6 +147,11 @@ def test_criar_maquina_propaga_tarifas(monkeypatch) -> None:
             custo_hora_serie=Decimal("10.0"),
             preco_ml_std=Decimal("0.45"),
             preco_ml_serie=Decimal("0.35"),
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_curto_serie=Decimal("0.40"),
+            preco_lado_longo_std=Decimal("1.10"),
+            preco_lado_longo_serie=Decimal("0.80"),
+            limite_lado_mm=Decimal("1500"),
             custo_setup_peca_std=Decimal("0.15"),
             custo_setup_peca_serie=Decimal("0.08"),
         )
@@ -156,6 +161,11 @@ def test_criar_maquina_propaga_tarifas(monkeypatch) -> None:
     assert payload["custo_hora_serie"] == Decimal("10.0")
     assert payload["preco_ml_std"] == Decimal("0.45")
     assert payload["preco_ml_serie"] == Decimal("0.35")
+    assert payload["preco_lado_curto_std"] == Decimal("0.55")
+    assert payload["preco_lado_curto_serie"] == Decimal("0.40")
+    assert payload["preco_lado_longo_std"] == Decimal("1.10")
+    assert payload["preco_lado_longo_serie"] == Decimal("0.80")
+    assert payload["limite_lado_mm"] == Decimal("1500")
     assert payload["custo_setup_peca_std"] == Decimal("0.15")
     assert payload["custo_setup_peca_serie"] == Decimal("0.08")
 

@@ -32,12 +32,27 @@ class DefMaquina(Base):
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     tipo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Machine tariffs (phase 8S.0). custo_hora is the STD hourly rate; SERIE is the
-    # batch rate. preco_ml: €/ml of perimeter (cut) or edging (orla). setup_peca:
-    # fixed handling/setup cost per piece (€). Not every machine uses every tariff.
+    # batch rate. preco_ml: €/ml of perimeter (cut). setup_peca: fixed
+    # handling/setup cost per piece (€). Not every machine uses every tariff.
     custo_hora: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_hora_serie: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     preco_ml_std: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     preco_ml_serie: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    # ORLAGEM tariffs by edged side; limite_lado_mm is the logical short/long
+    # threshold in mm (default business value: 1500).
+    preco_lado_curto_std: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    preco_lado_curto_serie: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    preco_lado_longo_std: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    preco_lado_longo_serie: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
+    limite_lado_mm: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_setup_peca_std: Mapped[Decimal | None] = mapped_column(
         Numeric(14, 4), nullable=True
     )

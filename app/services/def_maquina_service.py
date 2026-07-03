@@ -22,6 +22,11 @@ class CriarDefMaquinaData:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    preco_lado_curto_std: Decimal | None = None
+    preco_lado_curto_serie: Decimal | None = None
+    preco_lado_longo_std: Decimal | None = None
+    preco_lado_longo_serie: Decimal | None = None
+    limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
     ativo: bool = True
@@ -40,6 +45,11 @@ class EditarDefMaquinaData:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    preco_lado_curto_std: Decimal | None = None
+    preco_lado_curto_serie: Decimal | None = None
+    preco_lado_longo_std: Decimal | None = None
+    preco_lado_longo_serie: Decimal | None = None
+    limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
     ativo: bool = True
@@ -88,6 +98,11 @@ class DefMaquinaService:
             custo_hora_serie=data.custo_hora_serie,
             preco_ml_std=data.preco_ml_std,
             preco_ml_serie=data.preco_ml_serie,
+            preco_lado_curto_std=data.preco_lado_curto_std,
+            preco_lado_curto_serie=data.preco_lado_curto_serie,
+            preco_lado_longo_std=data.preco_lado_longo_std,
+            preco_lado_longo_serie=data.preco_lado_longo_serie,
+            limite_lado_mm=data.limite_lado_mm,
             custo_setup_peca_std=data.custo_setup_peca_std,
             custo_setup_peca_serie=data.custo_setup_peca_serie,
             ativo=data.ativo,
@@ -113,6 +128,11 @@ class DefMaquinaService:
             custo_hora_serie=data.custo_hora_serie,
             preco_ml_std=data.preco_ml_std,
             preco_ml_serie=data.preco_ml_serie,
+            preco_lado_curto_std=data.preco_lado_curto_std,
+            preco_lado_curto_serie=data.preco_lado_curto_serie,
+            preco_lado_longo_std=data.preco_lado_longo_std,
+            preco_lado_longo_serie=data.preco_lado_longo_serie,
+            limite_lado_mm=data.limite_lado_mm,
             custo_setup_peca_std=data.custo_setup_peca_std,
             custo_setup_peca_serie=data.custo_setup_peca_serie,
             ativo=data.ativo,

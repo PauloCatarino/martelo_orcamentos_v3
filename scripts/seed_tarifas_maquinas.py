@@ -1,7 +1,8 @@
 """Idempotent seed of example machine tariffs and CNC area tiers (phase 8S.0).
 
 Fills EXAMPLE, editable values only where they are still empty:
-- CORTE / ORLAGEM: €/ML and setup/piece (STD and SERIE);
+- CORTE: EUR/ML and setup/piece (STD and SERIE);
+- ORLAGEM: EUR/edged side by side length tier and setup/piece (STD and SERIE);
 - CNC_VERTICAL: 5 area tiers (only created when the machine has none);
 - MONTAGEM / MANUAL: custo_hora_serie = custo_hora * 0.85 (only when empty).
 
@@ -25,17 +26,20 @@ from app.models import DefMaquina, DefMaquinaEscalaoArea
 
 _D = Decimal
 
-# €/ML and setup/piece tariffs (only empty fields are filled).
-TARIFAS_ML: dict[str, dict[str, Decimal]] = {
+# Machine tariffs (only empty fields are filled).
+TARIFAS_PRODUCAO: dict[str, dict[str, Decimal]] = {
     "CORTE": {
-        "preco_ml_std": _D("0.45"),
-        "preco_ml_serie": _D("0.35"),
-        "custo_setup_peca_std": _D("0.15"),
-        "custo_setup_peca_serie": _D("0.08"),
+        "preco_ml_std": _D("0.62"),
+        "preco_ml_serie": _D("0.41"),
+        "custo_setup_peca_std": _D("0.06"),
+        "custo_setup_peca_serie": _D("0.03"),
     },
     "ORLAGEM": {
-        "preco_ml_std": _D("0.60"),
-        "preco_ml_serie": _D("0.45"),
+        "preco_lado_curto_std": _D("0.55"),
+        "preco_lado_curto_serie": _D("0.40"),
+        "preco_lado_longo_std": _D("1.10"),
+        "preco_lado_longo_serie": _D("0.80"),
+        "limite_lado_mm": _D("1500"),
         "custo_setup_peca_std": _D("0.10"),
         "custo_setup_peca_serie": _D("0.05"),
     },
@@ -86,7 +90,7 @@ def aplicar_tarifas(
             relatorio.maquinas_em_falta.append(codigo)
         return maquina
 
-    for codigo, valores in TARIFAS_ML.items():
+    for codigo, valores in TARIFAS_PRODUCAO.items():
         maquina = _maquina(codigo)
         if maquina is None:
             continue
@@ -120,7 +124,7 @@ def aplicar_tarifas(
 
 def seed_tarifas_maquinas(session: Session) -> SeedRelatorio:
     """Fill example tariffs/tiers where empty. Idempotent (safe to re-run)."""
-    codigos = list(TARIFAS_ML) + list(MAQUINAS_HORA) + list(ESCALOES_CNC)
+    codigos = list(TARIFAS_PRODUCAO) + list(MAQUINAS_HORA) + list(ESCALOES_CNC)
     maquinas_por_codigo: dict[str, object] = {}
     for codigo in codigos:
         maquina = session.execute(

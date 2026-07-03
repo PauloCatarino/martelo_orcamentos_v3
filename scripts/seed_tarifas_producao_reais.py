@@ -31,6 +31,11 @@ TARIFA_FIELDS: tuple[str, ...] = (
     "custo_hora_serie",
     "preco_ml_std",
     "preco_ml_serie",
+    "preco_lado_curto_std",
+    "preco_lado_curto_serie",
+    "preco_lado_longo_std",
+    "preco_lado_longo_serie",
+    "limite_lado_mm",
     "custo_setup_peca_std",
     "custo_setup_peca_serie",
 )
@@ -45,6 +50,11 @@ class TarifaMaquinaReal:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    preco_lado_curto_std: Decimal | None = None
+    preco_lado_curto_serie: Decimal | None = None
+    preco_lado_longo_std: Decimal | None = None
+    preco_lado_longo_serie: Decimal | None = None
+    limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
 
@@ -62,15 +72,20 @@ class SeedTarifasProducaoReaisResult:
 TARIFAS_REAIS: tuple[TarifaMaquinaReal, ...] = (
     TarifaMaquinaReal(
         codigo="CORTE",
-        preco_ml_std=_D("0.8235"),
-        preco_ml_serie=_D("0.4118"),
-        custo_setup_peca_std=_D("0.0556"),
-        custo_setup_peca_serie=_D("0.0333"),
+        preco_ml_std=_D("0.62"),
+        preco_ml_serie=_D("0.41"),
+        custo_setup_peca_std=_D("0.06"),
+        custo_setup_peca_serie=_D("0.03"),
     ),
     TarifaMaquinaReal(
         codigo="ORLAGEM",
-        preco_ml_std=_D("0.2300"),
-        preco_ml_serie=_D("0.1415"),
+        preco_ml_std=None,
+        preco_ml_serie=None,
+        preco_lado_curto_std=_D("0.55"),
+        preco_lado_curto_serie=_D("0.40"),
+        preco_lado_longo_std=_D("1.10"),
+        preco_lado_longo_serie=_D("0.80"),
+        limite_lado_mm=_D("1500"),
         custo_setup_peca_std=_D("0.10"),
         custo_setup_peca_serie=_D("0.05"),
     ),

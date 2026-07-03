@@ -45,6 +45,8 @@ def test_maquinas_headers() -> None:
         "Custo/hora SERIE",
         "€/ML STD",
         "€/ML SERIE",
+        "€/lado STD",
+        "€/lado SERIE",
         "Ativo",
     ]
 

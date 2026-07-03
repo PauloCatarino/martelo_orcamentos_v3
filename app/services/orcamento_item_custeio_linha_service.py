@@ -39,7 +39,7 @@ from app.domain.custo_producao import (
     aplicar_fator_serie,
     calcular_custo_cnc,
     calcular_custo_corte,
-    calcular_custo_orlagem,
+    calcular_custo_orlagem_lados,
     calcular_custo_por_minutos,
     calcular_tempo_operacao,
     escolher_tarifa,
@@ -1553,8 +1553,8 @@ class OrcamentoItemCusteioLinhaService:
 
         For each PECA line with a def_peca: if the piece has a CORTE operation,
         cost the cutting from that machine's €/ML (perimeter × qt) plus setup ×
-        qt; if it has an ORLAGEM operation, cost the edging from the line's total
-        edging metres × €/ML plus setup × qt. The tariffs follow the item's
+        qt; if it has an ORLAGEM operation, cost the edging by each edged side
+        tariff (short/long side by real measure) plus setup × qt. The tariffs follow the item's
         effective production type (STD, or SERIE with per-field fallback to STD
         when the SERIE value is not defined); custo_producao is the sum (empty
         partials count as 0; NULL when none computed) multiplied by the line's
@@ -1603,12 +1603,18 @@ class OrcamentoItemCusteioLinhaService:
 
             if op_orlagem is not None:
                 maquina = self._maquina_de_operacao(op_orlagem)
-                preco, setup = self._tarifas_ml(maquina, usar_serie)
-                ml_orla_total = (linha.ml_orla_fina or Decimal("0")) + (
-                    linha.ml_orla_grossa or Decimal("0")
+                preco_curto, preco_longo, limite, setup = self._tarifas_lado(
+                    maquina, usar_serie
                 )
-                custo_orlagem, motivo = calcular_custo_orlagem(
-                    ml_orla_total, linha.quantidade, preco, setup
+                custo_orlagem, motivo = calcular_custo_orlagem_lados(
+                    linha.codigo_orlas,
+                    linha.comp_real,
+                    linha.larg_real,
+                    linha.quantidade,
+                    preco_curto,
+                    preco_longo,
+                    limite,
+                    setup,
                 )
                 aviso = self._aviso_producao(motivo, maquina, "orlagem")
                 if aviso:
@@ -1721,6 +1727,30 @@ class OrcamentoItemCusteioLinhaService:
         )
         return preco, setup
 
+    def _tarifas_lado(self, maquina, usar_serie: bool):
+        """Return ORLAGEM (preco_curto, preco_longo, limite, setup).
+
+        SERIE values fall back per field to the STD value when not defined.
+        """
+        if maquina is None:
+            return None, None, None, None
+        preco_curto, _ = escolher_tarifa(
+            getattr(maquina, "preco_lado_curto_std", None),
+            getattr(maquina, "preco_lado_curto_serie", None),
+            usar_serie,
+        )
+        preco_longo, _ = escolher_tarifa(
+            getattr(maquina, "preco_lado_longo_std", None),
+            getattr(maquina, "preco_lado_longo_serie", None),
+            usar_serie,
+        )
+        setup, _ = escolher_tarifa(
+            getattr(maquina, "custo_setup_peca_std", None),
+            getattr(maquina, "custo_setup_peca_serie", None),
+            usar_serie,
+        )
+        return preco_curto, preco_longo, getattr(maquina, "limite_lado_mm", None), setup
+
     def _custo_hora_maquina(self, maquina, usar_serie: bool):
         """Return the machine's hourly rate for the wanted type (SERIE→STD fallback)."""
         if maquina is None:
@@ -1749,6 +1779,11 @@ class OrcamentoItemCusteioLinhaService:
             )
 
         if motivo == MOTIVO_SEM_TARIFA:
+            if etapa == "orlagem":
+                return (
+                    "Custo de produção não calculado: tarifa por lado orlado em "
+                    f"falta na máquina {nome}."
+                )
             return (
                 f"Custo de produção não calculado: tarifa €/ML em falta na "
                 f"máquina {nome}."

@@ -679,6 +679,7 @@ def test_custeio_page_tooltips_tarifa_std_serie() -> None:
     for method in (
         "_descrever_tarifa",
         "_tarifa_ml_tooltip",
+        "_tarifa_lado_tooltip",
         "_tarifa_cnc_tooltip",
         "_tarifa_hora_tooltip",
         "_carregar_tarifas_maquinas",
@@ -692,6 +693,7 @@ def test_custeio_page_tooltips_tarifa_std_serie() -> None:
     formula = inspect.getsource(OrcamentoItemCusteioPage._tooltip_formula)
     assert "fator" in formula
     assert "_tarifa_ml_tooltip" in formula
+    assert "_tarifa_lado_tooltip" in formula
     assert "_tarifa_cnc_tooltip" in formula
 
 
@@ -711,8 +713,11 @@ def test_custeio_page_tooltip_decompoe_custos_producao() -> None:
         "ORLAGEM": SimpleNamespace(
             id=2,
             tipo="ORLAGEM",
-            preco_ml_std=Decimal("0.70"),
-            preco_ml_serie=None,
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_curto_serie=None,
+            preco_lado_longo_std=Decimal("1.10"),
+            preco_lado_longo_serie=None,
+            limite_lado_mm=Decimal("1500"),
             custo_setup_peca_std=Decimal("0.10"),
             custo_setup_peca_serie=None,
         ),
@@ -730,13 +735,16 @@ def test_custeio_page_tooltip_decompoe_custos_producao() -> None:
     }
     linha = SimpleNamespace(
         quantidade=Decimal("2"),
+        codigo_orlas="2111",
+        comp_real=Decimal("2530"),
+        larg_real=Decimal("610"),
         ml_orla_fina=Decimal("4.0"),
         ml_orla_grossa=Decimal("0.4"),
         desperdicio_percentagem=None,
         perimetro_ml=Decimal("3.0"),
         area_m2=Decimal("1.5433"),
         custo_corte=Decimal("2.80"),
-        custo_orlagem=Decimal("3.28"),
+        custo_orlagem=Decimal("6.80"),
         custo_cnc=Decimal("5.20"),
         maquina="CORTE;ORLAGEM;CNC_VERTICAL",
         tipo_producao="STD",
@@ -754,9 +762,10 @@ def test_custeio_page_tooltip_decompoe_custos_producao() -> None:
     corte_sem_setup = page._tooltip_formula("Custo corte", linha)
     assert "setup" not in corte_sem_setup
     assert "= 2,70 €" in corte_sem_setup
-    assert "ML orla total 4,4 ml × 0,7 €/ML" in orlagem
-    assert "= 3,08 € + 0,20 €" in orlagem
-    assert "tarifa STD 0,70 €/ML" in orlagem
+    assert "2 lados > 1500mm × 1,10€" in orlagem
+    assert "2 lados ≤ 1500mm × 0,55€" in orlagem
+    assert "= 3,30€ × QT 2 + (QT 2 × setup 0,10€) = 6,80€" in orlagem
+    assert "tarifa STD 0,55€/lado ≤1500mm · 1,10€/lado >1500mm" in orlagem
     assert "Nível 3 (até 2,00 m²) — peça com 1,5433 m²" in cnc
     assert "tarifa STD 2,60 €/peça" in cnc
 

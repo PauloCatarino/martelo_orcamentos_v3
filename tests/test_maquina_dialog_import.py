@@ -72,6 +72,11 @@ def test_maquina_dialog_tem_tarifas_std_serie() -> None:
         "custo_hora_serie",
         "preco_ml_std",
         "preco_ml_serie",
+        "preco_lado_curto_std",
+        "preco_lado_curto_serie",
+        "preco_lado_longo_std",
+        "preco_lado_longo_serie",
+        "limite_lado_mm",
         "custo_setup_peca_std",
         "custo_setup_peca_serie",
     } <= campos
@@ -79,7 +84,7 @@ def test_maquina_dialog_tem_tarifas_std_serie() -> None:
     # Units are shown as spin-box suffixes and the tariff section adapts to type.
     init = inspect.getsource(MaquinaDialog.__init__)
     assert "QDoubleSpinBox" in MaquinaDialog._criar_spin.__code__.co_names
-    for sufixo in ("€/H", "€/ML", "€/peça"):
+    for sufixo in ("€/H", "€/ML", "€/lado", "mm", "€/peça"):
         assert sufixo in init
 
 
@@ -92,6 +97,8 @@ def test_maquina_dialog_adapta_campos_ao_tipo() -> None:
         assert tipo in source
     assert "hora_section" in source
     assert "ml_section" in source
+    assert "orlagem_section" in source
+    assert "setup_section" in source
     assert "cnc_section" in source
 
     # CNC area-tier editor is reachable from the dialog.

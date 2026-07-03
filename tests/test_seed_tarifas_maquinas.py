@@ -15,6 +15,11 @@ def _maquina(id, **kwargs):
         "custo_hora_serie": None,
         "preco_ml_std": None,
         "preco_ml_serie": None,
+        "preco_lado_curto_std": None,
+        "preco_lado_curto_serie": None,
+        "preco_lado_longo_std": None,
+        "preco_lado_longo_serie": None,
+        "limite_lado_mm": None,
         "custo_setup_peca_std": None,
         "custo_setup_peca_serie": None,
     }
@@ -48,12 +53,17 @@ def test_seed_preenche_valores_de_exemplo() -> None:
 
     relatorio = aplicar_tarifas(maquinas, tem_escaloes, adicionar)
 
-    # CORTE(4) + ORLAGEM(4) + MONTAGEM serie(1) + MANUAL serie(1) = 10.
-    assert relatorio.campos_preenchidos == 10
+    # CORTE(4) + ORLAGEM(7) + MONTAGEM serie(1) + MANUAL serie(1) = 13.
+    assert relatorio.campos_preenchidos == 13
     assert relatorio.escaloes_criados == 5  # CNC tiers
-    assert maquinas["CORTE"].preco_ml_std == Decimal("0.45")
-    assert maquinas["CORTE"].custo_setup_peca_serie == Decimal("0.08")
-    assert maquinas["ORLAGEM"].preco_ml_std == Decimal("0.60")
+    assert maquinas["CORTE"].preco_ml_std == Decimal("0.62")
+    assert maquinas["CORTE"].custo_setup_peca_serie == Decimal("0.03")
+    assert maquinas["ORLAGEM"].preco_ml_std is None
+    assert maquinas["ORLAGEM"].preco_lado_curto_std == Decimal("0.55")
+    assert maquinas["ORLAGEM"].preco_lado_curto_serie == Decimal("0.40")
+    assert maquinas["ORLAGEM"].preco_lado_longo_std == Decimal("1.10")
+    assert maquinas["ORLAGEM"].preco_lado_longo_serie == Decimal("0.80")
+    assert maquinas["ORLAGEM"].limite_lado_mm == Decimal("1500")
     assert maquinas["MONTAGEM"].custo_hora_serie == Decimal("17")  # 20 * 0.85
     assert maquinas["MANUAL"].custo_hora_serie == Decimal("12.75")  # 15 * 0.85
     assert len(adicionados) == 5

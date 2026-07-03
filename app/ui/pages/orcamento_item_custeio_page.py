@@ -33,7 +33,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.custos import eh_unidade_ml, fator_desperdicio
-from app.domain.medidas import construir_contexto_item, normalizar_variaveis_medida
+from app.domain.medidas import (
+    construir_contexto_item,
+    normalizar_numero,
+    normalizar_variaveis_medida,
+)
+from app.domain.orla_types import ORLA_FINA, ORLA_GROSSA
+from app.domain.orlas import digitos_orla
 from app.domain.quantidades import (
     LinhaQuantidade,
     ResultadoQuantidade,
@@ -411,7 +417,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Custo orlas": "Soma do custo das orlas (fina + grossa).",
         "Custo acabamento": "Custo de acabamento: área acab. × preço × (1+desp), por face.",
         "Custo corte": "Custo de corte: perímetro × qt × €/ML + qt × setup.",
-        "Custo orlagem": "Custo de orlagem: ML de orla × €/ML + qt × setup.",
+        "Custo orlagem": "Custo de orlagem: preço por lado orlado (2 escalões "
+        "pela medida do lado; ≤/> limite da máquina) × QT + QT × setup.",
         "Custo CNC": "Custo de CNC pelo escalão de área da máquina × qt.",
         "Custo mont./manual": "Montagem/manual: (tempo / 60) × custo/hora da máquina.",
         "Custo produção": "Soma da produção (corte + orlagem + CNC + mont./manual) "
@@ -1768,19 +1775,21 @@ class OrcamentoItemCusteioPage(QWidget):
                 ),
             )
         if header == "Custo orlagem" and linha.custo_orlagem is not None:
-            preco, setup = self._tarifas_ml_valores_tooltip(linha, ("ORLAGEM",))
-            formula = "Custo orlagem = ML orla total × tarifa €/ML"
+            preco_curto, preco_longo, limite, setup = self._tarifas_lado_valores_tooltip(
+                linha
+            )
+            formula = "Custo orlagem = Σ(preço por lado orlado) × QT"
             if setup is not None:
                 formula += " + QT × setup €/peça"
             return self._tooltip_3(
-                "Custo de orlagem: metros de orla colados na orladora, cobrados ao "
-                "metro linear, mais movimentação por peça.",
+                "Custo de orlagem: cada lado orlado da peça é cobrado pelo escalão "
+                "da sua medida real, mais movimentação por peça.",
                 formula,
                 self._com_tarifa(
-                    self._substituicao_custo_orlagem(
-                        linha, ml_orla_total, qt, preco, setup
+                    self._substituicao_custo_orlagem_lados(
+                        linha, qt, preco_curto, preco_longo, limite, setup
                     ),
-                    self._tarifa_ml_tooltip(linha, ("ORLAGEM",)),
+                    self._tarifa_lado_tooltip(linha),
                 ),
             )
         if header == "Custo CNC" and linha.custo_cnc is not None:
@@ -1948,6 +1957,30 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         return preco, setup
 
+    def _tarifas_lado_valores_tooltip(self, linha):
+        """Return ORLAGEM short/long side tariff, limit and setup for tooltip."""
+        maquina = self._maquina_da_linha_por_tipo(linha, ("ORLAGEM",))
+        if maquina is None:
+            return None, None, Decimal("1500"), None
+        usar_serie = self._usar_serie_linha(linha)
+        preco_curto, _ = escolher_tarifa(
+            getattr(maquina, "preco_lado_curto_std", None),
+            getattr(maquina, "preco_lado_curto_serie", None),
+            usar_serie,
+        )
+        preco_longo, _ = escolher_tarifa(
+            getattr(maquina, "preco_lado_longo_std", None),
+            getattr(maquina, "preco_lado_longo_serie", None),
+            usar_serie,
+        )
+        setup, _ = escolher_tarifa(
+            getattr(maquina, "custo_setup_peca_std", None),
+            getattr(maquina, "custo_setup_peca_serie", None),
+            usar_serie,
+        )
+        limite = normalizar_numero(getattr(maquina, "limite_lado_mm", None))
+        return preco_curto, preco_longo, limite or Decimal("1500"), setup
+
     def _substituicao_custo_corte(self, linha, qt, preco, setup) -> str:
         """Build the substituted cut-cost breakdown."""
         perimetro = linha.perimetro_ml
@@ -1978,33 +2011,69 @@ class OrcamentoItemCusteioPage(QWidget):
             f"= {format_currency(total)}"
         )
 
-    def _substituicao_custo_orlagem(self, linha, ml_orla_total, qt, preco, setup) -> str:
-        """Build the substituted edging-cost breakdown."""
+    def _substituicao_custo_orlagem_lados(
+        self, linha, qt, preco_curto, preco_longo, limite, setup
+    ) -> str:
+        """Build the substituted edge-side production-cost breakdown."""
         total = linha.custo_orlagem
-        if preco is None:
-            return (
-                f"= {format_quantity(ml_orla_total)} ml × {format_quantity(qt)} → "
-                f"{format_currency(total)}"
-            )
+        if preco_curto is None or preco_longo is None:
+            return f"= {format_currency(total)}"
+
+        digitos = digitos_orla(getattr(linha, "codigo_orlas", None))
+        if digitos is None or all(digito == 0 for digito in digitos):
+            return f"= sem lados orlados → {format_currency(total)}"
 
         qt_calc = qt if qt is not None else Decimal("1")
-        parcela_ml = ml_orla_total * preco
-        formula = (
-            f"= (ML orla total {format_quantity(ml_orla_total)} ml × "
-            f"{format_quantity(preco)} €/ML)"
-        )
-        if setup is None:
-            return f"{formula}\n= {format_currency(total)}"
+        comp = normalizar_numero(getattr(linha, "comp_real", None))
+        larg = normalizar_numero(getattr(linha, "larg_real", None))
+        medidas = (comp, comp, larg, larg)
+        curto = longo = 0
+        for digito, medida in zip(digitos, medidas, strict=True):
+            if digito not in (ORLA_FINA, ORLA_GROSSA):
+                continue
+            if medida is None:
+                return f"= dados de medida em falta → {format_currency(total)}"
+            if medida <= limite:
+                curto += 1
+            else:
+                longo += 1
 
-        parcela_setup = qt_calc * setup
-        formula += (
-            f" + (QT {format_quantity(qt_calc)} × setup "
-            f"{format_quantity(setup)} €/peça)"
+        if curto == 0 and longo == 0:
+            return f"= sem lados orlados → {format_currency(total)}"
+
+        parcela_curto = Decimal(curto) * preco_curto
+        parcela_longo = Decimal(longo) * preco_longo
+        custo_lados_unit = parcela_curto + parcela_longo
+        partes = []
+        if longo:
+            partes.append(
+                f"({longo} lados > {format_quantity(limite)}mm × "
+                f"{self._format_euro_compacto(preco_longo)})"
+            )
+        if curto:
+            partes.append(
+                f"({curto} lados ≤ {format_quantity(limite)}mm × "
+                f"{self._format_euro_compacto(preco_curto)})"
+            )
+        primeira_linha = (
+            f"= {' + '.join(partes)} = {self._format_euro_compacto(custo_lados_unit)}"
         )
+
+        setup_calc = setup or Decimal("0")
+        total_setup = qt_calc * setup_calc
+        segunda_linha = (
+            f"= {self._format_euro_compacto(custo_lados_unit)} × QT "
+            f"{format_quantity(qt_calc)}"
+        )
+        if setup is not None:
+            segunda_linha += (
+                f" + (QT {format_quantity(qt_calc)} × setup "
+                f"{self._format_euro_compacto(setup_calc)})"
+            )
+        segunda_linha += f" = {self._format_euro_compacto(total)}"
         return (
-            f"{formula}\n"
-            f"= {format_currency(parcela_ml)} + {format_currency(parcela_setup)}\n"
-            f"= {format_currency(total)}"
+            f"{primeira_linha}\n"
+            f"{segunda_linha}"
         )
 
     def _escalao_cnc_da_linha(self, linha):
@@ -2056,7 +2125,7 @@ class OrcamentoItemCusteioPage(QWidget):
         return f"tarifa {tipo} {format_currency(valor)}{unidade}"
 
     def _tarifa_ml_tooltip(self, linha, tipos: tuple) -> str | None:
-        """Tariff note (€/ML) of the line's cut/edging machine, or None."""
+        """Tariff note (€/ML) of the line's cut machine, or None."""
         maquina = self._maquina_da_linha_por_tipo(linha, tipos)
         if maquina is None:
             return None
@@ -2066,6 +2135,35 @@ class OrcamentoItemCusteioPage(QWidget):
             self._usar_serie_linha(linha),
             "/ML",
         )
+
+    def _tarifa_lado_tooltip(self, linha) -> str | None:
+        """Tariff note (€/lado) of the line's edging machine, or None."""
+        maquina = self._maquina_da_linha_por_tipo(linha, ("ORLAGEM",))
+        if maquina is None:
+            return None
+        usar_serie = self._usar_serie_linha(linha)
+        curto, fallback_curto = escolher_tarifa(
+            maquina.preco_lado_curto_std,
+            maquina.preco_lado_curto_serie,
+            usar_serie,
+        )
+        longo, fallback_longo = escolher_tarifa(
+            maquina.preco_lado_longo_std,
+            maquina.preco_lado_longo_serie,
+            usar_serie,
+        )
+        if curto is None or longo is None:
+            return None
+        limite = normalizar_numero(maquina.limite_lado_mm) or Decimal("1500")
+        tipo = TIPO_PRODUCAO_SERIE if usar_serie else TIPO_PRODUCAO_STD
+        texto = (
+            f"tarifa {tipo} {self._format_euro_compacto(curto)}/lado "
+            f"≤{format_quantity(limite)}mm · "
+            f"{self._format_euro_compacto(longo)}/lado >{format_quantity(limite)}mm"
+        )
+        if usar_serie and (fallback_curto or fallback_longo):
+            texto += " (SERIE não definida — fallback)"
+        return texto
 
     def _tarifa_cnc_tooltip(self, linha) -> str | None:
         """Tariff note (€/peça do escalão) of the line's CNC machine, or None."""
@@ -2105,6 +2203,11 @@ class OrcamentoItemCusteioPage(QWidget):
         if not tarifa:
             return substituicao
         return f"{substituicao}\n{tarifa}"
+
+    @staticmethod
+    def _format_euro_compacto(valor) -> str:
+        """Format currency without the UI space before the euro sign."""
+        return format_currency(valor).replace(" €", "€")
 
     def _tooltip_montagem_manual(
         self, linha: OrcamentoItemCusteioLinhaResumo, qt

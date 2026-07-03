@@ -42,6 +42,11 @@ class MaquinaDialogData:
     custo_hora_serie: Decimal | None
     preco_ml_std: Decimal | None
     preco_ml_serie: Decimal | None
+    preco_lado_curto_std: Decimal | None
+    preco_lado_curto_serie: Decimal | None
+    preco_lado_longo_std: Decimal | None
+    preco_lado_longo_serie: Decimal | None
+    limite_lado_mm: Decimal | None
     custo_setup_peca_std: Decimal | None
     custo_setup_peca_serie: Decimal | None
     observacoes: str | None
@@ -52,8 +57,9 @@ class MaquinaDialog(QDialog):
     """Modal dialog for creating or editing a machine.
 
     The tariff fields show their unit as a suffix and adapt to the machine type:
-    corte/orlagem use €/ML + setup/piece; CNC keeps €/hour (informative) plus the
-    area-tier editor; manual/montagem use €/hour only.
+    corte uses €/ML + setup/piece; orlagem uses €/side by side measure +
+    setup/piece; CNC keeps €/hour (informative) plus the area-tier editor;
+    manual/montagem use €/hour only.
     """
 
     def __init__(
@@ -88,6 +94,11 @@ class MaquinaDialog(QDialog):
         self.custo_hora_serie_input = self._criar_spin(" €/H")
         self.preco_ml_std_input = self._criar_spin(" €/ML")
         self.preco_ml_serie_input = self._criar_spin(" €/ML")
+        self.preco_lado_curto_std_input = self._criar_spin(" €/lado")
+        self.preco_lado_curto_serie_input = self._criar_spin(" €/lado")
+        self.preco_lado_longo_std_input = self._criar_spin(" €/lado")
+        self.preco_lado_longo_serie_input = self._criar_spin(" €/lado")
+        self.limite_lado_mm_input = self._criar_spin(" mm")
         self.custo_setup_peca_std_input = self._criar_spin(" €/peça")
         self.custo_setup_peca_serie_input = self._criar_spin(" €/peça")
 
@@ -97,9 +108,10 @@ class MaquinaDialog(QDialog):
         self.error_label.setWordWrap(True)
 
         self.info_label = QLabel(
-            "Tarifas por máquina (STD = peça única, SERIE = lote): corte e orlagem "
-            "são cobradas ao €/ML sobre os metros lineares; o CNC por escalões de "
-            "área; manual e montagem ao €/hora."
+            "Tarifas por máquina (STD = peça única, SERIE = lote): corte é "
+            "cobrado ao €/ML; orlagem ao € por lado orlado, com 2 escalões pela "
+            "medida do lado; o CNC por escalões de área; manual e montagem ao "
+            "€/hora."
         )
         self.info_label.setWordWrap(True)
         self.info_label.setStyleSheet("color: #666666; font-size: 11px;")
@@ -120,6 +132,19 @@ class MaquinaDialog(QDialog):
             [
                 ("€/ML STD", self.preco_ml_std_input),
                 ("€/ML SERIE", self.preco_ml_serie_input),
+            ]
+        )
+        self.orlagem_section = self._criar_section(
+            [
+                ("€/lado ≤ limite STD", self.preco_lado_curto_std_input),
+                ("€/lado ≤ limite SERIE", self.preco_lado_curto_serie_input),
+                ("€/lado > limite STD", self.preco_lado_longo_std_input),
+                ("€/lado > limite SERIE", self.preco_lado_longo_serie_input),
+                ("Limite do lado (mm)", self.limite_lado_mm_input),
+            ]
+        )
+        self.setup_section = self._criar_section(
+            [
                 ("Setup €/peça STD", self.custo_setup_peca_std_input),
                 ("Setup €/peça SERIE", self.custo_setup_peca_serie_input),
             ]
@@ -143,6 +168,8 @@ class MaquinaDialog(QDialog):
         layout.addLayout(form_basico)
         layout.addWidget(self.hora_section)
         layout.addWidget(self.ml_section)
+        layout.addWidget(self.orlagem_section)
+        layout.addWidget(self.setup_section)
         layout.addWidget(self.cnc_section)
         layout.addLayout(form_final)
         layout.addWidget(self.error_label)
@@ -213,17 +240,51 @@ class MaquinaDialog(QDialog):
     def _update_tarifas_visiveis(self) -> None:
         """Show only the tariff fields that apply to the selected machine type."""
         tipo = (self.tipo_input.currentData() or "").upper()
-        if tipo in ("CORTE", "ORLAGEM"):
-            mostrar_hora, mostrar_ml, mostrar_cnc = False, True, False
+        if tipo == "CORTE":
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                False,
+                True,
+                False,
+                True,
+                False,
+            )
+        elif tipo == "ORLAGEM":
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                False,
+                False,
+                True,
+                True,
+                False,
+            )
         elif tipo == "CNC":
-            mostrar_hora, mostrar_ml, mostrar_cnc = True, False, True
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                True,
+                False,
+                False,
+                False,
+                True,
+            )
         elif tipo in ("MANUAL", "MONTAGEM"):
-            mostrar_hora, mostrar_ml, mostrar_cnc = True, False, False
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                True,
+                False,
+                False,
+                False,
+                False,
+            )
         else:  # empty or other -> show all tariff fields (current behaviour)
-            mostrar_hora, mostrar_ml, mostrar_cnc = True, True, False
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                True,
+                True,
+                True,
+                True,
+                False,
+            )
 
         self.hora_section.setVisible(mostrar_hora)
         self.ml_section.setVisible(mostrar_ml)
+        self.orlagem_section.setVisible(mostrar_orlagem)
+        self.setup_section.setVisible(mostrar_setup)
         self.cnc_section.setVisible(mostrar_cnc)
 
     def _load_maquina(self, maquina: DefMaquinaResumo) -> None:
@@ -237,6 +298,15 @@ class MaquinaDialog(QDialog):
         self._set_spin(self.custo_hora_serie_input, maquina.custo_hora_serie)
         self._set_spin(self.preco_ml_std_input, maquina.preco_ml_std)
         self._set_spin(self.preco_ml_serie_input, maquina.preco_ml_serie)
+        self._set_spin(self.preco_lado_curto_std_input, maquina.preco_lado_curto_std)
+        self._set_spin(
+            self.preco_lado_curto_serie_input, maquina.preco_lado_curto_serie
+        )
+        self._set_spin(self.preco_lado_longo_std_input, maquina.preco_lado_longo_std)
+        self._set_spin(
+            self.preco_lado_longo_serie_input, maquina.preco_lado_longo_serie
+        )
+        self._set_spin(self.limite_lado_mm_input, maquina.limite_lado_mm)
         self._set_spin(self.custo_setup_peca_std_input, maquina.custo_setup_peca_std)
         self._set_spin(self.custo_setup_peca_serie_input, maquina.custo_setup_peca_serie)
         self.observacoes_input.setText(maquina.observacoes or "")
@@ -264,6 +334,19 @@ class MaquinaDialog(QDialog):
             custo_hora_serie=self._spin_to_decimal(self.custo_hora_serie_input),
             preco_ml_std=self._spin_to_decimal(self.preco_ml_std_input),
             preco_ml_serie=self._spin_to_decimal(self.preco_ml_serie_input),
+            preco_lado_curto_std=self._spin_to_decimal(
+                self.preco_lado_curto_std_input
+            ),
+            preco_lado_curto_serie=self._spin_to_decimal(
+                self.preco_lado_curto_serie_input
+            ),
+            preco_lado_longo_std=self._spin_to_decimal(
+                self.preco_lado_longo_std_input
+            ),
+            preco_lado_longo_serie=self._spin_to_decimal(
+                self.preco_lado_longo_serie_input
+            ),
+            limite_lado_mm=self._spin_to_decimal(self.limite_lado_mm_input),
             custo_setup_peca_std=self._spin_to_decimal(self.custo_setup_peca_std_input),
             custo_setup_peca_serie=self._spin_to_decimal(
                 self.custo_setup_peca_serie_input

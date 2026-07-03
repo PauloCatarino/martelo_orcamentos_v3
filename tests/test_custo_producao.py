@@ -13,7 +13,7 @@ from app.domain.custo_producao import (
     aplicar_fator_serie,
     calcular_custo_cnc,
     calcular_custo_corte,
-    calcular_custo_orlagem,
+    calcular_custo_orlagem_lados,
     calcular_custo_por_minutos,
     calcular_tempo_operacao,
     escolher_tarifa,
@@ -68,33 +68,119 @@ def test_custo_corte_sem_perimetro() -> None:
     assert motivo == MOTIVO_SEM_DADOS
 
 
-def test_custo_orlagem_com_setup() -> None:
-    # 4.4 x 0.70 + 1 x 0.10 = 3.08 + 0.10 = 3.18.
-    custo, motivo = calcular_custo_orlagem(
-        Decimal("4.4"), Decimal("1"), Decimal("0.70"), Decimal("0.10")
+def test_custo_orlagem_lados_com_setup() -> None:
+    # [2111]: 2 lados comp > 1500 (2 x 1.10) + 2 lados larg <= 1500 (2 x 0.55)
+    # + setup 0.10 = 3.40.
+    custo, motivo = calcular_custo_orlagem_lados(
+        "2111",
+        Decimal("2530"),
+        Decimal("610"),
+        Decimal("1"),
+        Decimal("0.55"),
+        Decimal("1.10"),
+        Decimal("1500"),
+        Decimal("0.10"),
     )
-    assert custo == Decimal("3.18")
+    assert custo == Decimal("3.40")
     assert motivo is None
 
 
-def test_custo_orlagem_nao_multiplica_ml_por_qt() -> None:
-    # ml_orla_total is already a line total: qt only affects the setup.
-    custo, _ = calcular_custo_orlagem(Decimal("4.4"), Decimal("5"), Decimal("0.70"), None)
-    assert custo == Decimal("3.08")  # 4.4 x 0.70, no qt on the metres
+def test_custo_orlagem_lado_1500_usa_escalao_baixo() -> None:
+    custo, motivo = calcular_custo_orlagem_lados(
+        "1000",
+        Decimal("1500"),
+        Decimal("600"),
+        Decimal("1"),
+        Decimal("0.55"),
+        Decimal("1.10"),
+        Decimal("1500"),
+        None,
+    )
+    assert custo == Decimal("0.55")
+    assert motivo is None
 
 
-def test_custo_orlagem_sem_orla_fica_zero_sem_aviso() -> None:
-    custo, motivo = calcular_custo_orlagem(
-        Decimal("0"), Decimal("2"), Decimal("0.70"), Decimal("0.10")
+def test_custo_orlagem_sem_orla_fica_zero_sem_setup() -> None:
+    custo, motivo = calcular_custo_orlagem_lados(
+        "0000",
+        Decimal("2530"),
+        Decimal("610"),
+        Decimal("2"),
+        Decimal("0.55"),
+        Decimal("1.10"),
+        Decimal("1500"),
+        Decimal("0.10"),
     )
     assert custo == Decimal("0")
     assert motivo is None  # peça sem orla -> sem setup e sem aviso
 
 
-def test_custo_orlagem_sem_tarifa_com_orla() -> None:
-    custo, motivo = calcular_custo_orlagem(Decimal("4.4"), Decimal("1"), None, None)
+def test_custo_orlagem_tarifa_em_falta_com_orla() -> None:
+    custo, motivo = calcular_custo_orlagem_lados(
+        "1000",
+        Decimal("1000"),
+        Decimal("600"),
+        Decimal("1"),
+        None,
+        Decimal("1.10"),
+        Decimal("1500"),
+        None,
+    )
     assert custo is None
     assert motivo == MOTIVO_SEM_TARIFA
+
+
+def test_custo_orlagem_medida_em_falta_com_lado_orlado() -> None:
+    custo, motivo = calcular_custo_orlagem_lados(
+        "1000",
+        None,
+        Decimal("600"),
+        Decimal("1"),
+        Decimal("0.55"),
+        Decimal("1.10"),
+        Decimal("1500"),
+        None,
+    )
+    assert custo is None
+    assert motivo == MOTIVO_SEM_DADOS
+
+
+def test_custo_orlagem_serie_com_fallback_std() -> None:
+    preco_curto, fallback_curto = escolher_tarifa(
+        Decimal("0.55"), None, usar_serie=True
+    )
+    preco_longo, fallback_longo = escolher_tarifa(
+        Decimal("1.10"), Decimal("0.80"), usar_serie=True
+    )
+    custo, motivo = calcular_custo_orlagem_lados(
+        "1010",
+        Decimal("2530"),
+        Decimal("610"),
+        Decimal("1"),
+        preco_curto,
+        preco_longo,
+        Decimal("1500"),
+        None,
+    )
+    assert fallback_curto is True
+    assert fallback_longo is False
+    assert custo == Decimal("1.35")  # lado longo SERIE + lado curto fallback STD
+    assert motivo is None
+
+
+def test_custo_orlagem_qt_duplica_lados_e_setup() -> None:
+    custo, motivo = calcular_custo_orlagem_lados(
+        "2111",
+        Decimal("2530"),
+        Decimal("610"),
+        Decimal("2"),
+        Decimal("0.55"),
+        Decimal("1.10"),
+        Decimal("1500"),
+        Decimal("0.10"),
+    )
+    assert custo == Decimal("6.80")
+    assert motivo is None
 
 
 def test_somar_custo_producao() -> None:

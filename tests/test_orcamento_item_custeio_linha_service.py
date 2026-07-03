@@ -2887,6 +2887,11 @@ def _maquina_tarifa(
     preco_ml_serie=None,
     custo_setup_peca_serie=None,
     custo_hora_serie=None,
+    preco_lado_curto_std=None,
+    preco_lado_curto_serie=None,
+    preco_lado_longo_std=None,
+    preco_lado_longo_serie=None,
+    limite_lado_mm=None,
 ):
     return SimpleNamespace(
         id=id,
@@ -2897,6 +2902,11 @@ def _maquina_tarifa(
         preco_ml_serie=preco_ml_serie,
         custo_setup_peca_serie=custo_setup_peca_serie,
         custo_hora_serie=custo_hora_serie,
+        preco_lado_curto_std=preco_lado_curto_std,
+        preco_lado_curto_serie=preco_lado_curto_serie,
+        preco_lado_longo_std=preco_lado_longo_std,
+        preco_lado_longo_serie=preco_lado_longo_serie,
+        limite_lado_mm=limite_lado_mm,
     )
 
 
@@ -2938,13 +2948,22 @@ def test_recalcular_custos_producao_orlagem(monkeypatch) -> None:
         3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", maquina_id=11),
     }
     _FakeMaquinaRepository.maquinas = {
-        11: _maquina_tarifa("ORLAGEM", preco_ml_std=Decimal("0.70"), custo_setup_peca_std=Decimal("0.10")),
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_longo_std=Decimal("1.10"),
+            limite_lado_mm=Decimal("1500"),
+            custo_setup_peca_std=Decimal("0.10"),
+        ),
     }
     _FakeRepository.active_rows = [
         _resumo(
             id=1,
             tipo_linha="PECA",
             def_peca_id=1,
+            codigo_orlas="2111",
+            comp_real=Decimal("2530"),
+            larg_real=Decimal("610"),
             ml_orla_fina=Decimal("2.4"),
             ml_orla_grossa=Decimal("2.0"),
             quantidade=Decimal("1"),
@@ -2954,8 +2973,8 @@ def test_recalcular_custos_producao_orlagem(monkeypatch) -> None:
     service.recalcular_custos_producao_do_item(30)
 
     payload = _FakeRepository.updated_payload
-    assert payload["custo_orlagem"] == Decimal("3.18")  # 4.4 x 0.70 + 1 x 0.10
-    assert payload["custo_producao"] == Decimal("3.18")
+    assert payload["custo_orlagem"] == Decimal("3.40")
+    assert payload["custo_producao"] == Decimal("3.40")
 
 
 def test_recalcular_custos_producao_corte_e_orlagem(monkeypatch) -> None:
@@ -2968,7 +2987,13 @@ def test_recalcular_custos_producao_corte_e_orlagem(monkeypatch) -> None:
     }
     _FakeMaquinaRepository.maquinas = {
         10: _maquina_tarifa("CORTE", preco_ml_std=Decimal("0.45"), custo_setup_peca_std=Decimal("0.05")),
-        11: _maquina_tarifa("ORLAGEM", preco_ml_std=Decimal("0.70"), custo_setup_peca_std=Decimal("0.10")),
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_longo_std=Decimal("1.10"),
+            limite_lado_mm=Decimal("1500"),
+            custo_setup_peca_std=Decimal("0.10"),
+        ),
     }
     _FakeRepository.active_rows = [
         _resumo(
@@ -2976,6 +3001,9 @@ def test_recalcular_custos_producao_corte_e_orlagem(monkeypatch) -> None:
             tipo_linha="PECA",
             def_peca_id=1,
             perimetro_ml=Decimal("3.0"),
+            codigo_orlas="2111",
+            comp_real=Decimal("2530"),
+            larg_real=Decimal("610"),
             ml_orla_fina=Decimal("2.4"),
             ml_orla_grossa=Decimal("2.0"),
             quantidade=Decimal("2"),
@@ -2986,8 +3014,8 @@ def test_recalcular_custos_producao_corte_e_orlagem(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["custo_corte"] == Decimal("2.80")
-    assert payload["custo_orlagem"] == Decimal("3.28")  # 4.4 x 0.70 + 2 x 0.10
-    assert payload["custo_producao"] == Decimal("6.08")
+    assert payload["custo_orlagem"] == Decimal("6.80")
+    assert payload["custo_producao"] == Decimal("9.60")
 
 
 def test_recalcular_custos_producao_sem_orla(monkeypatch) -> None:
@@ -2998,7 +3026,13 @@ def test_recalcular_custos_producao_sem_orla(monkeypatch) -> None:
         3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", maquina_id=11),
     }
     _FakeMaquinaRepository.maquinas = {
-        11: _maquina_tarifa("ORLAGEM", preco_ml_std=Decimal("0.70"), custo_setup_peca_std=Decimal("0.10")),
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_longo_std=Decimal("1.10"),
+            limite_lado_mm=Decimal("1500"),
+            custo_setup_peca_std=Decimal("0.10"),
+        ),
     }
     _FakeRepository.active_rows = [
         _resumo(id=1, tipo_linha="PECA", def_peca_id=1, quantidade=Decimal("2")),
@@ -3132,7 +3166,13 @@ def test_recalcular_custos_producao_cnc_soma_tres_parciais(monkeypatch) -> None:
     }
     _FakeMaquinaRepository.maquinas = {
         10: _maquina_tarifa("CORTE", preco_ml_std=Decimal("0.45"), custo_setup_peca_std=Decimal("0.05")),
-        11: _maquina_tarifa("ORLAGEM", preco_ml_std=Decimal("0.70"), custo_setup_peca_std=Decimal("0.10")),
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_longo_std=Decimal("1.10"),
+            limite_lado_mm=Decimal("1500"),
+            custo_setup_peca_std=Decimal("0.10"),
+        ),
         12: _maquina_tarifa("CNC_VERTICAL", id=12),
     }
     _FakeEscalaoAreaRepository.escaloes_por_maquina = {
@@ -3144,6 +3184,9 @@ def test_recalcular_custos_producao_cnc_soma_tres_parciais(monkeypatch) -> None:
             tipo_linha="PECA",
             def_peca_id=1,
             perimetro_ml=Decimal("3.0"),
+            codigo_orlas="2111",
+            comp_real=Decimal("2530"),
+            larg_real=Decimal("610"),
             ml_orla_fina=Decimal("2.4"),
             ml_orla_grossa=Decimal("2.0"),
             area_m2=Decimal("2.625"),
@@ -3155,9 +3198,9 @@ def test_recalcular_custos_producao_cnc_soma_tres_parciais(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["custo_corte"] == Decimal("2.80")  # 3 x 2 x 0.45 + 2 x 0.05
-    assert payload["custo_orlagem"] == Decimal("3.28")  # 4.4 x 0.70 + 2 x 0.10
+    assert payload["custo_orlagem"] == Decimal("6.80")
     assert payload["custo_cnc"] == Decimal("11.00")  # 5.50 x 2
-    assert payload["custo_producao"] == Decimal("17.08")
+    assert payload["custo_producao"] == Decimal("20.60")
 
 
 def test_recalcular_custos_producao_montagem(monkeypatch) -> None:
@@ -3783,9 +3826,12 @@ def test_custos_producao_orlagem_serie(monkeypatch) -> None:
     _FakeMaquinaRepository.maquinas = {
         11: _maquina_tarifa(
             "ORLAGEM",
-            preco_ml_std=Decimal("0.70"),
+            preco_lado_curto_std=Decimal("0.55"),
+            preco_lado_longo_std=Decimal("1.10"),
+            preco_lado_curto_serie=Decimal("0.40"),
+            preco_lado_longo_serie=Decimal("0.80"),
+            limite_lado_mm=Decimal("1500"),
             custo_setup_peca_std=Decimal("0.10"),
-            preco_ml_serie=Decimal("0.55"),
             custo_setup_peca_serie=Decimal("0.05"),
         ),
     }
@@ -3794,6 +3840,9 @@ def test_custos_producao_orlagem_serie(monkeypatch) -> None:
             id=1,
             tipo_linha="PECA",
             def_peca_id=1,
+            codigo_orlas="2111",
+            comp_real=Decimal("2530"),
+            larg_real=Decimal("610"),
             ml_orla_fina=Decimal("2.4"),
             ml_orla_grossa=Decimal("2.0"),
             quantidade=Decimal("1"),
@@ -3804,8 +3853,8 @@ def test_custos_producao_orlagem_serie(monkeypatch) -> None:
     service.recalcular_custos_producao_do_item(30)
 
     payload = _FakeRepository.updated_payload
-    # 4.4 × 0.55 + 1 × 0.05 = 2.47.
-    assert payload["custo_orlagem"] == Decimal("2.47")
+    # SERIE: 2 lados longos × 0.80 + 2 lados curtos × 0.40 + setup 0.05.
+    assert payload["custo_orlagem"] == Decimal("2.45")
 
 
 def _cnc_setup(preco_peca_serie=None) -> None:
