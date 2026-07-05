@@ -138,20 +138,7 @@ class DefValuesetChavesPage(QWidget):
             nonlocal saved
 
             try:
-                with SessionLocal() as session:
-                    DefValuesetChaveService(session).criar_chave(
-                        CriarDefValuesetChaveData(
-                            codigo=form_data.codigo,
-                            nome=form_data.nome,
-                            descricao=form_data.descricao,
-                            tipo=form_data.tipo,
-                            grupo=form_data.grupo,
-                            sistema=form_data.sistema,
-                            ativo=form_data.ativo,
-                            ordem=form_data.ordem,
-                            observacoes=form_data.observacoes,
-                        )
-                    )
+                self._criar_chave_from_form_data(form_data)
             except IntegrityError:
                 dialog.set_error("Já existe uma chave com esse código.")
                 return False
@@ -178,6 +165,7 @@ class DefValuesetChavesPage(QWidget):
             return
 
         saved = False
+        saved_as = False
 
         def handle_save(form_data) -> bool:
             nonlocal saved
@@ -211,10 +199,36 @@ class DefValuesetChavesPage(QWidget):
             saved = True
             return True
 
-        dialog = DefValuesetChaveDialog(chave=chave, parent=self, on_save=handle_save)
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as
+
+            try:
+                self._criar_chave_from_form_data(form_data)
+            except IntegrityError:
+                dialog.set_error("Já existe uma chave com esse código.")
+                return False
+            except ValueError as error:
+                dialog.set_error(self._error_message(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível guardar a chave.")
+                return False
+
+            saved_as = True
+            return True
+
+        dialog = DefValuesetChaveDialog(
+            chave=chave,
+            parent=self,
+            on_save=handle_save,
+            on_save_as=handle_save_as,
+        )
         if dialog.exec() and saved:
             self.carregar()
             self.status_label.setText("Chave ValueSet atualizada.")
+        elif saved_as:
+            self.carregar()
+            self.status_label.setText("Chave ValueSet gravada como nova.")
 
     def alternar_chave_ativa(self) -> None:
         """Toggle the active state of the selected ValueSet key after confirmation."""
@@ -255,6 +269,23 @@ class DefValuesetChavesPage(QWidget):
             return None
 
         return self._chaves_by_row.get(row)
+
+    def _criar_chave_from_form_data(self, form_data):
+        """Create a ValueSet key from dialog data."""
+        with SessionLocal() as session:
+            return DefValuesetChaveService(session).criar_chave(
+                CriarDefValuesetChaveData(
+                    codigo=form_data.codigo,
+                    nome=form_data.nome,
+                    descricao=form_data.descricao,
+                    tipo=form_data.tipo,
+                    grupo=form_data.grupo,
+                    sistema=form_data.sistema,
+                    ativo=form_data.ativo,
+                    ordem=form_data.ordem,
+                    observacoes=form_data.observacoes,
+                )
+            )
 
     def _handle_double_click(self, row: int, _column: int) -> None:
         """Edit a ValueSet key when the user double-clicks its row."""

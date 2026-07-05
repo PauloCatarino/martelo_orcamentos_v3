@@ -60,11 +60,14 @@ class EditarDefPecaDialog(QDialog):
         peca: DefPecaResumo,
         parent=None,
         on_save: Callable[[EditarDefPecaDialogData], bool] | None = None,
+        on_save_as: Callable[[EditarDefPecaDialogData], bool] | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.peca = peca
         self.on_save = on_save
+        self.on_save_as = on_save_as
+        self._is_edit = True
 
         self.setWindowTitle("Editar Peça")
         self.setModal(True)
@@ -145,7 +148,15 @@ class EditarDefPecaDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Grava estes dados como um registo novo, sem alterar o original."
+        )
+        self.save_as_button.setVisible(self._is_edit)
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
         orla_group = QGroupBox("Orlas")
@@ -234,7 +245,18 @@ class EditarDefPecaDialog(QDialog):
         )
 
     def _validate_and_accept(self) -> None:
-        """Validate required fields before accepting."""
+        """Validate required fields and save before accepting."""
+        self._validate_and_run(self.on_save)
+
+    def _validate_and_save_as(self) -> None:
+        """Validate required fields and save as a new record before accepting."""
+        self._validate_and_run(self.on_save_as)
+
+    def _validate_and_run(
+        self,
+        callback: Callable[[EditarDefPecaDialogData], bool] | None,
+    ) -> None:
+        """Run validation, then delegate to the requested save callback."""
         data = self.get_data()
 
         if not data.codigo:
@@ -246,7 +268,7 @@ class EditarDefPecaDialog(QDialog):
             return
 
         self.error_label.clear()
-        if self.on_save is not None and not self.on_save(data):
+        if callback is not None and not callback(data):
             return
 
         self.accept()

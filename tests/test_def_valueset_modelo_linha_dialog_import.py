@@ -23,7 +23,21 @@ def test_dialog_accepts_linha_and_callback() -> None:
 
     assert "linha" in signature.parameters
     assert "on_save" in signature.parameters
+    assert "on_save_as" in signature.parameters
     assert hasattr(DefValuesetModeloLinhaDialog, "set_error")
+
+
+def test_dialog_has_save_as_button_only_for_edit_mode() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+
+    init_source = inspect.getsource(DefValuesetModeloLinhaDialog.__init__)
+    validate_source = inspect.getsource(DefValuesetModeloLinhaDialog._validate_and_save_as)
+
+    assert "addButton" in init_source
+    assert '"Gravar como…"' in init_source
+    assert "self.save_as_button.setVisible(self._is_edit)" in init_source
+    assert "self.save_as_button.clicked.connect(self._validate_and_save_as)" in init_source
+    assert "self._validate_and_run(self.on_save_as)" in validate_source
 
 
 def test_dialog_data_fields() -> None:

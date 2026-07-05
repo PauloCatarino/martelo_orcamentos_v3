@@ -174,7 +174,8 @@ class DefPecaService:
         if original is None:
             raise ValueError("peca not found")
 
-        nova_peca = self.criar_peca(
+        return self.gravar_peca_como(
+            id,
             CriarDefPecaData(
                 codigo=novo_codigo,
                 nome=novo_nome or f"{original.nome} (cópia)",
@@ -191,18 +192,33 @@ class DefPecaService:
                 chave_valueset_acabamento_inf=original.chave_valueset_acabamento_inf,
                 sem_material=original.sem_material,
                 ativo=True,
-            )
+            ),
         )
 
+    def gravar_peca_como(
+        self, original_id: int, data: CriarDefPecaData
+    ) -> DefPecaResumo:
+        """Create a new piece from ``data`` and copy operations/components."""
+        original = self.repository.get_by_id(original_id)
+        if original is None:
+            raise ValueError("peca not found")
+
+        nova_peca = self.criar_peca(data)
+        self._copiar_operacoes_e_componentes(original_id, nova_peca.id)
+
+        return nova_peca
+
+    def _copiar_operacoes_e_componentes(self, original_id: int, nova_peca_id: int) -> None:
+        """Copy operation and component links from one piece to another."""
         operacao_service = DefPecaOperacaoService(self.session)
         operacoes = sorted(
-            operacao_service.listar_operacoes_da_peca(id),
+            operacao_service.listar_operacoes_da_peca(original_id),
             key=lambda operacao: operacao.ordem,
         )
         for operacao in operacoes:
             operacao_service.adicionar_operacao_a_peca(
                 CriarDefPecaOperacaoData(
-                    def_peca_id=nova_peca.id,
+                    def_peca_id=nova_peca_id,
                     def_operacao_id=operacao.def_operacao_id,
                     ordem=operacao.ordem,
                     regra_calculo=operacao.regra_calculo,
@@ -218,13 +234,13 @@ class DefPecaService:
 
         componente_service = DefPecaComponenteService(self.session)
         componentes = sorted(
-            componente_service.listar_componentes(id),
+            componente_service.listar_componentes(original_id),
             key=lambda componente: componente.ordem,
         )
         for componente in componentes:
             componente_service.criar_componente(
                 CriarDefPecaComponenteData(
-                    def_peca_pai_id=nova_peca.id,
+                    def_peca_pai_id=nova_peca_id,
                     tipo_componente=componente.tipo_componente,
                     def_peca_componente_id=componente.def_peca_componente_id,
                     referencia_componente=componente.referencia_componente,
@@ -237,8 +253,6 @@ class DefPecaService:
                     observacoes=componente.observacoes,
                 )
             )
-
-        return nova_peca
 
     def desativar_peca(self, id: int) -> bool:
         """Deactivate a reusable piece definition."""

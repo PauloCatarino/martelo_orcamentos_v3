@@ -78,11 +78,13 @@ class DefValuesetModeloLinhaDialog(QDialog):
         linha: DefValuesetModeloLinhaResumo | None = None,
         parent=None,
         on_save: Callable[[DefValuesetModeloLinhaDialogData], bool] | None = None,
+        on_save_as: Callable[[DefValuesetModeloLinhaDialogData], bool] | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.linha = linha
         self.on_save = on_save
+        self.on_save_as = on_save_as
         self._is_edit = linha is not None
         self._suppress = False
 
@@ -185,7 +187,15 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Grava estes dados como um registo novo, sem alterar o original."
+        )
+        self.save_as_button.setVisible(self._is_edit)
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -398,7 +408,18 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
 
     def _validate_and_accept(self) -> None:
-        """Validate required fields before accepting."""
+        """Validate required fields and save before accepting."""
+        self._validate_and_run(self.on_save)
+
+    def _validate_and_save_as(self) -> None:
+        """Validate required fields and save as a new record before accepting."""
+        self._validate_and_run(self.on_save_as)
+
+    def _validate_and_run(
+        self,
+        callback: Callable[[DefValuesetModeloLinhaDialogData], bool] | None,
+    ) -> None:
+        """Run validation, then delegate to the requested save callback."""
         if obter_valor_chave_combo(self.chave_input) is None:
             self.set_error("Selecione uma chave ValueSet.")
             return
@@ -420,7 +441,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
             return
 
         self.error_label.clear()
-        if self.on_save is not None and not self.on_save(data):
+        if callback is not None and not callback(data):
             return
 
         self.accept()

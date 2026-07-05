@@ -66,7 +66,7 @@ def test_def_pecas_page_creates_piece_through_dialog_callback() -> None:
 def test_def_pecas_page_forwards_orlas_to_service() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
-    source = inspect.getsource(DefPecasPage.abrir_nova_peca)
+    source = inspect.getsource(DefPecasPage._criar_peca_data_from_form_data)
 
     assert "orla_c1=form_data.orla_c1" in source
     assert "orla_c2=form_data.orla_c2" in source
@@ -77,7 +77,7 @@ def test_def_pecas_page_forwards_orlas_to_service() -> None:
 def test_def_pecas_page_forwards_valuesets_to_service() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
-    create_source = inspect.getsource(DefPecasPage.abrir_nova_peca)
+    create_source = inspect.getsource(DefPecasPage._criar_peca_data_from_form_data)
     edit_source = inspect.getsource(DefPecasPage.abrir_editar_peca)
 
     for source in (create_source, edit_source):
@@ -167,6 +167,8 @@ def test_def_pecas_page_edit_uses_service_and_dialog() -> None:
 
     assert "EditarDefPecaDialog" in source
     assert "editar_peca" in source
+    assert "on_save_as=handle_save_as" in source
+    assert "gravar_peca_como" in source
     assert "EditarDefPecaData" in source
     assert "carregar_pecas" in source
     assert "orla_c1=form_data.orla_c1" in source

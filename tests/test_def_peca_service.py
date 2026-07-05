@@ -551,6 +551,77 @@ def test_duplicar_peca_copia_dados_operacoes_e_componentes(session) -> None:
     assert componentes_copia_composta[1].ativo is False
 
 
+def test_gravar_peca_como_usa_dados_novos_e_copia_ligacoes(session) -> None:
+    peca_service = service_module.DefPecaService(session=session)
+    operacao_service = DefOperacaoService(session=session)
+    peca_operacao_service = DefPecaOperacaoService(session=session)
+    componente_service = DefPecaComponenteService(session=session)
+
+    corte = operacao_service.criar_operacao(
+        CriarDefOperacaoData(codigo="CORTE", nome="Corte")
+    )
+    filho = peca_service.criar_peca(
+        service_module.CriarDefPecaData(codigo="FILHO", nome="Filho")
+    )
+    original = peca_service.criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="ORIG",
+            nome="Original",
+            tipo_peca="COMPOSTA",
+        )
+    )
+    peca_operacao_service.adicionar_operacao_a_peca(
+        CriarDefPecaOperacaoData(
+            def_peca_id=original.id,
+            def_operacao_id=corte.id,
+            ordem=3,
+            regra_calculo="POR_PECA",
+            obrigatorio=False,
+        )
+    )
+    componente_service.criar_componente(
+        CriarDefPecaComponenteData(
+            def_peca_pai_id=original.id,
+            tipo_componente="PECA",
+            def_peca_componente_id=filho.id,
+            quantidade=Decimal("2"),
+            regra_quantidade="FIXA",
+        )
+    )
+
+    nova = peca_service.gravar_peca_como(
+        original.id,
+        service_module.CriarDefPecaData(
+            codigo="FORM",
+            nome="Nome do formulario",
+            descricao="Descricao nova",
+            grupo="Grupo novo",
+            tipo_peca="SIMPLES",
+            orla_c1=1,
+            orla_c2=2,
+            sem_material=True,
+            ativo=False,
+        ),
+    )
+    operacoes = peca_operacao_service.listar_operacoes_da_peca(nova.id)
+    componentes = componente_service.listar_componentes(nova.id)
+
+    assert nova.codigo == "FORM"
+    assert nova.nome == "Nome do formulario"
+    assert nova.descricao == "Descricao nova"
+    assert nova.grupo == "Grupo novo"
+    assert nova.tipo_peca == "SIMPLES"
+    assert nova.orla_c1 == 1
+    assert nova.orla_c2 == 2
+    assert nova.sem_material is True
+    assert nova.ativo is False
+    assert len(operacoes) == 1
+    assert operacoes[0].def_operacao_id == corte.id
+    assert operacoes[0].ordem == 3
+    assert len(componentes) == 1
+    assert componentes[0].def_peca_componente_id == filho.id
+
+
 def test_def_peca_service_valida_codigo_obrigatorio(monkeypatch) -> None:
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
     session = _FakeSession()

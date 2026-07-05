@@ -23,6 +23,7 @@ def test_dialog_accepts_modelo_and_callback() -> None:
 
     assert "modelo" in signature.parameters
     assert "on_save" in signature.parameters
+    assert "on_save_as" in signature.parameters
     assert hasattr(DefValuesetModeloDialog, "set_error")
 
 
@@ -64,3 +65,16 @@ def test_dialog_syncs_visivel_from_ambito() -> None:
 
     assert "GLOBAL" in source
     assert "visivel" in source
+
+
+def test_dialog_has_save_as_button_only_for_edit_mode() -> None:
+    from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
+
+    init_source = inspect.getsource(DefValuesetModeloDialog.__init__)
+    validate_source = inspect.getsource(DefValuesetModeloDialog._validate_and_save_as)
+
+    assert "addButton" in init_source
+    assert '"Gravar como…"' in init_source
+    assert "self.save_as_button.setVisible(self._is_edit)" in init_source
+    assert "self.save_as_button.clicked.connect(self._validate_and_save_as)" in init_source
+    assert "self._validate_and_run(self.on_save_as)" in validate_source

@@ -177,48 +177,21 @@ class DefValuesetModeloDetailPage(QWidget):
 
     def abrir_nova_linha(self) -> None:
         """Open the dialog to create a new model line."""
+        self._abrir_dialog_criar_linha(success_message="Linha criada.")
+
+    def _abrir_dialog_criar_linha(
+        self,
+        *,
+        success_message: str,
+    ) -> None:
+        """Open a create dialog for a model line."""
         saved = False
 
         def handle_save(form_data) -> bool:
             nonlocal saved
 
             try:
-                with SessionLocal() as session:
-                    service = DefValuesetModeloLinhaService(session)
-                    result = service.criar_linha(
-                        CriarDefValuesetModeloLinhaData(
-                            def_valueset_modelo_id=self.modelo.id,
-                            chave=form_data.chave,
-                            codigo_opcao=form_data.codigo_opcao,
-                            nome_opcao=form_data.nome_opcao,
-                            ref_materia_prima=form_data.ref_materia_prima,
-                            descricao_materia_prima=form_data.descricao_materia_prima,
-                            valor_texto=form_data.valor_texto,
-                            padrao=False,
-                            ordem=form_data.ordem,
-                            observacoes=form_data.observacoes,
-                            ativo=form_data.ativo,
-                            ref_le=form_data.ref_le,
-                            descricao_no_orcamento=form_data.descricao_no_orcamento,
-                            preco_tabela=form_data.preco_tabela,
-                            margem_percentagem=form_data.margem_percentagem,
-                            desconto_percentagem=form_data.desconto_percentagem,
-                            preco_liquido=form_data.preco_liquido,
-                            unidade=form_data.unidade,
-                            desperdicio_percentagem=form_data.desperdicio_percentagem,
-                            tipo_materia_prima=form_data.tipo_materia_prima,
-                            familia_materia_prima=form_data.familia_materia_prima,
-                            coresp_orla_0_4=form_data.coresp_orla_0_4,
-                            coresp_orla_1_0=form_data.coresp_orla_1_0,
-                            comp_mp=form_data.comp_mp,
-                            larg_mp=form_data.larg_mp,
-                            esp_mp=form_data.esp_mp,
-                            origem_dados=form_data.origem_dados,
-                            editado_localmente=form_data.editado_localmente,
-                        )
-                    )
-                    if form_data.padrao:
-                        service.definir_como_padrao(result.id)
+                self._criar_linha_from_form_data(form_data)
             except (IntegrityError, ValueError) as error:
                 dialog.set_error(self._linha_error_message(error))
                 return False
@@ -232,7 +205,48 @@ class DefValuesetModeloDetailPage(QWidget):
         dialog = DefValuesetModeloLinhaDialog(parent=self, on_save=handle_save)
         if dialog.exec() and saved:
             self.carregar_linhas()
-            self.status_label.setText("Linha criada.")
+            self.status_label.setText(success_message)
+
+    def _criar_linha_from_form_data(self, form_data):
+        """Create one model line from dialog data."""
+        with SessionLocal() as session:
+            service = DefValuesetModeloLinhaService(session)
+            result = service.criar_linha(
+                CriarDefValuesetModeloLinhaData(
+                    def_valueset_modelo_id=self.modelo.id,
+                    chave=form_data.chave,
+                    codigo_opcao=form_data.codigo_opcao,
+                    nome_opcao=form_data.nome_opcao,
+                    ref_materia_prima=form_data.ref_materia_prima,
+                    descricao_materia_prima=form_data.descricao_materia_prima,
+                    valor_texto=form_data.valor_texto,
+                    padrao=False,
+                    ordem=form_data.ordem,
+                    observacoes=form_data.observacoes,
+                    ativo=form_data.ativo,
+                    ref_le=form_data.ref_le,
+                    descricao_no_orcamento=form_data.descricao_no_orcamento,
+                    preco_tabela=form_data.preco_tabela,
+                    margem_percentagem=form_data.margem_percentagem,
+                    desconto_percentagem=form_data.desconto_percentagem,
+                    preco_liquido=form_data.preco_liquido,
+                    unidade=form_data.unidade,
+                    desperdicio_percentagem=form_data.desperdicio_percentagem,
+                    tipo_materia_prima=form_data.tipo_materia_prima,
+                    familia_materia_prima=form_data.familia_materia_prima,
+                    coresp_orla_0_4=form_data.coresp_orla_0_4,
+                    coresp_orla_1_0=form_data.coresp_orla_1_0,
+                    comp_mp=form_data.comp_mp,
+                    larg_mp=form_data.larg_mp,
+                    esp_mp=form_data.esp_mp,
+                    origem_dados=form_data.origem_dados,
+                    editado_localmente=form_data.editado_localmente,
+                )
+            )
+            if form_data.padrao:
+                service.definir_como_padrao(result.id)
+
+            return result
 
     def abrir_editar_linha(self) -> None:
         """Open the dialog to edit the selected model line."""
@@ -242,6 +256,7 @@ class DefValuesetModeloDetailPage(QWidget):
             return
 
         saved = False
+        saved_as = False
 
         def handle_save(form_data) -> bool:
             nonlocal saved
@@ -294,10 +309,33 @@ class DefValuesetModeloDetailPage(QWidget):
             saved = True
             return True
 
-        dialog = DefValuesetModeloLinhaDialog(linha=linha, parent=self, on_save=handle_save)
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as
+
+            try:
+                self._criar_linha_from_form_data(form_data)
+            except (IntegrityError, ValueError) as error:
+                dialog.set_error(self._linha_error_message(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível guardar a linha.")
+                return False
+
+            saved_as = True
+            return True
+
+        dialog = DefValuesetModeloLinhaDialog(
+            linha=linha,
+            parent=self,
+            on_save=handle_save,
+            on_save_as=handle_save_as,
+        )
         if dialog.exec() and saved:
             self.carregar_linhas()
             self.status_label.setText("Linha atualizada.")
+        elif saved_as:
+            self.carregar_linhas()
+            self.status_label.setText("Linha gravada como nova opção.")
 
     def alternar_linha_ativa(self) -> None:
         """Toggle the active state of the selected model line after confirmation."""

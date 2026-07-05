@@ -57,11 +57,14 @@ def test_page_actions_use_service_and_dialog() -> None:
     from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
 
     nova = inspect.getsource(DefValuesetChavesPage.abrir_nova_chave)
+    criar = inspect.getsource(DefValuesetChavesPage._criar_chave_from_form_data)
     assert "DefValuesetChaveDialog" in nova
-    assert "criar_chave" in nova
+    assert "criar_chave" in criar
 
     editar = inspect.getsource(DefValuesetChavesPage.abrir_editar_chave)
     assert "editar_chave" in editar
+    assert "on_save_as=handle_save_as" in editar
+    assert "_criar_chave_from_form_data(form_data)" in editar
 
     toggle = inspect.getsource(DefValuesetChavesPage.alternar_chave_ativa)
     assert "ativar_chave" in toggle

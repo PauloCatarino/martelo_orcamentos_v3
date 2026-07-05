@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+from types import SimpleNamespace
+
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services import def_valueset_modelo_service as service_module
 
@@ -74,6 +77,23 @@ class _FakeSession:
         self.committed = True
 
 
+class _FakeLinhaService:
+    linhas: list[SimpleNamespace] = []
+    created_data: list[object] = []
+    listed_modelo_id: int | None = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def listar_linhas_do_modelo(self, modelo_id: int):
+        self.__class__.listed_modelo_id = modelo_id
+        return self.__class__.linhas
+
+    def criar_linha(self, data):
+        self.__class__.created_data.append(data)
+        return SimpleNamespace(id=len(self.__class__.created_data))
+
+
 def _reset() -> None:
     _FakeRepository.rows = []
     _FakeRepository.active_rows = []
@@ -84,6 +104,9 @@ def _reset() -> None:
     _FakeRepository.activate_result = True
     _FakeRepository.deactivated_id = None
     _FakeRepository.activated_id = None
+    _FakeLinhaService.linhas = []
+    _FakeLinhaService.created_data = []
+    _FakeLinhaService.listed_modelo_id = None
 
 
 def _service(monkeypatch):
@@ -181,6 +204,70 @@ def test_editar_modelo_permite_mesmo_codigo_da_propria_linha(monkeypatch) -> Non
     assert _FakeRepository.updated_payload["id"] == 5
     assert result.nome == "Base Editada"
     assert session.committed is True
+
+
+def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    monkeypatch.setattr(
+        service_module, "DefValuesetModeloLinhaService", _FakeLinhaService
+    )
+    _FakeLinhaService.linhas = [
+        SimpleNamespace(
+            chave="MATERIAL_LATERAIS",
+            codigo_opcao="AGL_19",
+            nome_opcao="Aglomerado 19",
+            padrao=True,
+            ordem=2,
+            descricao="Linha base",
+            materia_prima_id=10,
+            ref_materia_prima="REF-10",
+            descricao_materia_prima="Aglomerado",
+            valor_texto="Aglomerado 19",
+            origem="MODELO",
+            ref_le="LE-10",
+            descricao_no_orcamento="Aglomerado orcamento",
+            preco_tabela=Decimal("10"),
+            margem_percentagem=Decimal("20"),
+            desconto_percentagem=Decimal("5"),
+            preco_liquido=Decimal("11.40"),
+            unidade="M2",
+            desperdicio_percentagem=Decimal("7"),
+            tipo_materia_prima="PLACA",
+            familia_materia_prima="AGL",
+            coresp_orla_0_4="ORLA04",
+            coresp_orla_1_0="ORLA10",
+            comp_mp=Decimal("2800"),
+            larg_mp=Decimal("2070"),
+            esp_mp=Decimal("19"),
+            origem_dados="MATERIA_PRIMA",
+            editado_localmente=False,
+            ativo=True,
+            observacoes="obs",
+        )
+    ]
+
+    result = service.duplicar_modelo(
+        7,
+        service_module.CriarDefValuesetModeloData(
+            codigo=" base copia ",
+            nome="Base copia",
+            tipo="Roupeiro",
+            ambito="global",
+            ativo=False,
+        ),
+    )
+
+    assert result.modelo.codigo == "BASE_COPIA"
+    assert result.linhas_copiadas == 1
+    assert _FakeLinhaService.listed_modelo_id == 7
+    assert len(_FakeLinhaService.created_data) == 1
+    criada = _FakeLinhaService.created_data[0]
+    assert criada.def_valueset_modelo_id == result.modelo.id
+    assert criada.chave == "MATERIAL_LATERAIS"
+    assert criada.codigo_opcao == "AGL_19"
+    assert criada.padrao is True
+    assert criada.preco_tabela == Decimal("10")
+    assert criada.origem_dados == "MATERIA_PRIMA"
 
 
 def test_desativar_e_ativar_modelo(monkeypatch) -> None:

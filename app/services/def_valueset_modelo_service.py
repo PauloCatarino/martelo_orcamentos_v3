@@ -10,6 +10,10 @@ from app.repositories.def_valueset_modelo_repository import (
     DefValuesetModeloRepository,
     DefValuesetModeloResumo,
 )
+from app.services.def_valueset_modelo_linha_service import (
+    CriarDefValuesetModeloLinhaData,
+    DefValuesetModeloLinhaService,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,14 @@ class EditarDefValuesetModeloData:
     visivel_para_todos: bool = False
     ativo: bool = True
     observacoes: str | None = None
+
+
+@dataclass(frozen=True)
+class DuplicarDefValuesetModeloResult:
+    """Result of saving a model as a new model with copied lines."""
+
+    modelo: DefValuesetModeloResumo
+    linhas_copiadas: int
 
 
 class DefValuesetModeloService:
@@ -110,6 +122,60 @@ class DefValuesetModeloService:
         self.session.commit()
 
         return result
+
+    def duplicar_modelo(
+        self, original_id: int, dados_novos: CriarDefValuesetModeloData
+    ) -> DuplicarDefValuesetModeloResult:
+        """Create a new model with ``dados_novos`` and copy all original lines."""
+        original = self.repository.get_by_id(original_id)
+        if original is None:
+            raise ValueError("modelo not found")
+
+        novo_modelo = self.criar_modelo(dados_novos)
+        linha_service = DefValuesetModeloLinhaService(self.session)
+        linhas = linha_service.listar_linhas_do_modelo(original_id)
+
+        for linha in linhas:
+            linha_service.criar_linha(
+                CriarDefValuesetModeloLinhaData(
+                    def_valueset_modelo_id=novo_modelo.id,
+                    chave=linha.chave,
+                    codigo_opcao=linha.codigo_opcao,
+                    nome_opcao=linha.nome_opcao,
+                    padrao=linha.padrao,
+                    ordem=linha.ordem,
+                    descricao=linha.descricao,
+                    materia_prima_id=linha.materia_prima_id,
+                    ref_materia_prima=linha.ref_materia_prima,
+                    descricao_materia_prima=linha.descricao_materia_prima,
+                    valor_texto=linha.valor_texto,
+                    origem=linha.origem,
+                    ref_le=linha.ref_le,
+                    descricao_no_orcamento=linha.descricao_no_orcamento,
+                    preco_tabela=linha.preco_tabela,
+                    margem_percentagem=linha.margem_percentagem,
+                    desconto_percentagem=linha.desconto_percentagem,
+                    preco_liquido=linha.preco_liquido,
+                    unidade=linha.unidade,
+                    desperdicio_percentagem=linha.desperdicio_percentagem,
+                    tipo_materia_prima=linha.tipo_materia_prima,
+                    familia_materia_prima=linha.familia_materia_prima,
+                    coresp_orla_0_4=linha.coresp_orla_0_4,
+                    coresp_orla_1_0=linha.coresp_orla_1_0,
+                    comp_mp=linha.comp_mp,
+                    larg_mp=linha.larg_mp,
+                    esp_mp=linha.esp_mp,
+                    origem_dados=linha.origem_dados,
+                    editado_localmente=linha.editado_localmente,
+                    ativo=linha.ativo,
+                    observacoes=linha.observacoes,
+                )
+            )
+
+        return DuplicarDefValuesetModeloResult(
+            modelo=novo_modelo,
+            linhas_copiadas=len(linhas),
+        )
 
     def desativar_modelo(self, id: int) -> bool:
         """Deactivate one reusable ValueSet model."""

@@ -151,19 +151,7 @@ class DefValuesetModelosPage(QWidget):
             nonlocal saved
 
             try:
-                with SessionLocal() as session:
-                    DefValuesetModeloService(session).criar_modelo(
-                        CriarDefValuesetModeloData(
-                            codigo=form_data.codigo,
-                            nome=form_data.nome,
-                            descricao=form_data.descricao,
-                            tipo=form_data.tipo,
-                            ambito=form_data.ambito,
-                            visivel_para_todos=form_data.visivel_para_todos,
-                            observacoes=form_data.observacoes,
-                            ativo=form_data.ativo,
-                        )
-                    )
+                self._criar_modelo_from_form_data(form_data)
             except IntegrityError:
                 dialog.set_error("Já existe um modelo com esse código.")
                 return False
@@ -190,6 +178,9 @@ class DefValuesetModelosPage(QWidget):
             return
 
         saved = False
+        saved_as = False
+        saved_as_codigo: str | None = None
+        saved_as_linhas = 0
 
         def handle_save(form_data) -> bool:
             nonlocal saved
@@ -222,10 +213,46 @@ class DefValuesetModelosPage(QWidget):
             saved = True
             return True
 
-        dialog = DefValuesetModeloDialog(modelo=modelo, parent=self, on_save=handle_save)
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as, saved_as_codigo, saved_as_linhas
+
+            try:
+                with SessionLocal() as session:
+                    result = DefValuesetModeloService(session).duplicar_modelo(
+                        modelo.id,
+                        self._criar_modelo_data_from_form_data(form_data),
+                    )
+            except IntegrityError:
+                dialog.set_error("Já existe um modelo com esse código.")
+                return False
+            except ValueError as error:
+                dialog.set_error(self._error_message(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível guardar o modelo.")
+                return False
+
+            saved_as = True
+            saved_as_codigo = result.modelo.codigo
+            saved_as_linhas = result.linhas_copiadas
+            return True
+
+        dialog = DefValuesetModeloDialog(
+            modelo=modelo,
+            parent=self,
+            on_save=handle_save,
+            on_save_as=handle_save_as,
+        )
         if dialog.exec() and saved:
             self.carregar_modelos()
             self.status_label.setText("Modelo ValueSet atualizado.")
+        elif saved_as:
+            self.carregar_modelos()
+            if saved_as_codigo:
+                self._select_modelo_by_codigo(saved_as_codigo)
+            self.status_label.setText(
+                f"Modelo gravado como novo ({saved_as_linhas} linhas copiadas)."
+            )
 
     def alternar_modelo_ativo(self) -> None:
         """Toggle the active state of the selected model after confirmation."""
@@ -291,6 +318,33 @@ class DefValuesetModelosPage(QWidget):
             return None
 
         return self._modelos_by_row.get(row)
+
+    def _criar_modelo_data_from_form_data(self, form_data) -> CriarDefValuesetModeloData:
+        """Build create-service data from dialog data."""
+        return CriarDefValuesetModeloData(
+            codigo=form_data.codigo,
+            nome=form_data.nome,
+            descricao=form_data.descricao,
+            tipo=form_data.tipo,
+            ambito=form_data.ambito,
+            visivel_para_todos=form_data.visivel_para_todos,
+            observacoes=form_data.observacoes,
+            ativo=form_data.ativo,
+        )
+
+    def _criar_modelo_from_form_data(self, form_data):
+        """Create a ValueSet model from dialog data."""
+        with SessionLocal() as session:
+            return DefValuesetModeloService(session).criar_modelo(
+                self._criar_modelo_data_from_form_data(form_data)
+            )
+
+    def _select_modelo_by_codigo(self, codigo: str) -> None:
+        """Select one model row by code."""
+        for row_index, modelo in self._modelos_by_row.items():
+            if modelo.codigo == codigo:
+                self.table.selectRow(row_index)
+                return
 
     def _handle_double_click(self, row: int, _column: int) -> None:
         """Open the model detail when the user double-clicks its row."""

@@ -23,6 +23,7 @@ def test_editar_def_peca_dialog_accepts_peca_and_save_callback() -> None:
 
     assert "peca" in signature.parameters
     assert "on_save" in signature.parameters
+    assert "on_save_as" in signature.parameters
     assert hasattr(EditarDefPecaDialog, "set_error")
 
 
@@ -101,3 +102,16 @@ def test_editar_def_peca_dialog_uses_valueset_combo_helper() -> None:
     assert "chave_valueset_material" in source_get_data
     assert "chave_valueset_acabamento_sup" in source_get_data
     assert "chave_valueset_acabamento_inf" in source_get_data
+
+
+def test_editar_def_peca_dialog_has_save_as_button() -> None:
+    from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
+
+    init_source = inspect.getsource(EditarDefPecaDialog.__init__)
+    validate_source = inspect.getsource(EditarDefPecaDialog._validate_and_save_as)
+
+    assert "addButton" in init_source
+    assert '"Gravar como…"' in init_source
+    assert "self.save_as_button.setVisible(self._is_edit)" in init_source
+    assert "self.save_as_button.clicked.connect(self._validate_and_save_as)" in init_source
+    assert "self._validate_and_run(self.on_save_as)" in validate_source

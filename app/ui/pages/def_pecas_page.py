@@ -180,23 +180,7 @@ class DefPecasPage(QWidget):
             try:
                 with SessionLocal() as session:
                     DefPecaService(session).criar_peca(
-                        CriarDefPecaData(
-                            codigo=form_data.codigo,
-                            nome=form_data.nome,
-                            descricao=form_data.descricao,
-                            grupo=form_data.grupo,
-                            tipo_peca=form_data.tipo_peca,
-                            orla_c1=form_data.orla_c1,
-                            orla_c2=form_data.orla_c2,
-                            orla_l1=form_data.orla_l1,
-                            orla_l2=form_data.orla_l2,
-                            chave_valueset_material=form_data.chave_valueset_material,
-                            permite_acabamento=form_data.permite_acabamento,
-                            chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
-                            chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
-                            sem_material=form_data.sem_material,
-                            ativo=form_data.ativo,
-                        )
+                        self._criar_peca_data_from_form_data(form_data)
                     )
             except IntegrityError:
                 dialog.set_error("J\u00e1 existe uma pe\u00e7a com esse c\u00f3digo.")
@@ -227,6 +211,7 @@ class DefPecasPage(QWidget):
             return
 
         updated_codigo: str | None = None
+        saved_as_codigo: str | None = None
 
         def handle_save(form_data) -> bool:
             nonlocal updated_codigo
@@ -263,16 +248,41 @@ class DefPecasPage(QWidget):
             updated_codigo = form_data.codigo
             return True
 
-        dialog = EditarDefPecaDialog(peca, self, on_save=handle_save)
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as_codigo
+
+            try:
+                with SessionLocal() as session:
+                    resultado = DefPecaService(session).gravar_peca_como(
+                        peca.id,
+                        self._criar_peca_data_from_form_data(form_data),
+                    )
+            except IntegrityError:
+                dialog.set_error("Já existe uma peça com esse código.")
+                return False
+            except (SQLAlchemyError, ValueError):
+                dialog.set_error("Não foi possível gravar a peça como nova.")
+                return False
+
+            saved_as_codigo = resultado.codigo
+            return True
+
+        dialog = EditarDefPecaDialog(
+            peca,
+            self,
+            on_save=handle_save,
+            on_save_as=handle_save_as,
+        )
 
         if not dialog.exec():
             return
 
-        if updated_codigo is None:
-            return
-
-        self.carregar_pecas(select_codigo=updated_codigo)
-        self.status_label.setText(f"Pe\u00e7a {updated_codigo} atualizada.")
+        if updated_codigo is not None:
+            self.carregar_pecas(select_codigo=updated_codigo)
+            self.status_label.setText(f"Pe\u00e7a {updated_codigo} atualizada.")
+        elif saved_as_codigo is not None:
+            self.carregar_pecas(select_codigo=saved_as_codigo)
+            self.status_label.setText(f"Pe\u00e7a {saved_as_codigo} gravada como nova.")
 
     def duplicar_peca_selecionada(self) -> None:
         """Duplicate the selected piece definition."""
@@ -469,6 +479,26 @@ class DefPecasPage(QWidget):
             return None
 
         return self._pecas_by_row.get(row)
+
+    def _criar_peca_data_from_form_data(self, form_data) -> CriarDefPecaData:
+        """Build create-service data from piece-dialog data."""
+        return CriarDefPecaData(
+            codigo=form_data.codigo,
+            nome=form_data.nome,
+            descricao=form_data.descricao,
+            grupo=form_data.grupo,
+            tipo_peca=form_data.tipo_peca,
+            orla_c1=form_data.orla_c1,
+            orla_c2=form_data.orla_c2,
+            orla_l1=form_data.orla_l1,
+            orla_l2=form_data.orla_l2,
+            chave_valueset_material=form_data.chave_valueset_material,
+            permite_acabamento=form_data.permite_acabamento,
+            chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
+            chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
+            sem_material=form_data.sem_material,
+            ativo=form_data.ativo,
+        )
 
     def _select_peca_by_codigo(self, codigo: str) -> None:
         """Select one table row by piece code."""

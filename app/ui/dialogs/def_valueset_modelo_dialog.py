@@ -44,11 +44,13 @@ class DefValuesetModeloDialog(QDialog):
         modelo: DefValuesetModeloResumo | None = None,
         parent=None,
         on_save: Callable[[DefValuesetModeloDialogData], bool] | None = None,
+        on_save_as: Callable[[DefValuesetModeloDialogData], bool] | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.modelo = modelo
         self.on_save = on_save
+        self.on_save_as = on_save_as
         self._is_edit = modelo is not None
 
         self.setWindowTitle("Editar Modelo ValueSet" if self._is_edit else "Novo Modelo ValueSet")
@@ -96,7 +98,15 @@ class DefValuesetModeloDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Grava estes dados como um registo novo, sem alterar o original."
+        )
+        self.save_as_button.setVisible(self._is_edit)
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -138,7 +148,18 @@ class DefValuesetModeloDialog(QDialog):
         )
 
     def _validate_and_accept(self) -> None:
-        """Validate required fields before accepting."""
+        """Validate required fields and save before accepting."""
+        self._validate_and_run(self.on_save)
+
+    def _validate_and_save_as(self) -> None:
+        """Validate required fields and save as a new record before accepting."""
+        self._validate_and_run(self.on_save_as)
+
+    def _validate_and_run(
+        self,
+        callback: Callable[[DefValuesetModeloDialogData], bool] | None,
+    ) -> None:
+        """Run validation, then delegate to the requested save callback."""
         if not self.codigo_input.text().strip():
             self.set_error("O código é obrigatório.")
             return
@@ -149,7 +170,7 @@ class DefValuesetModeloDialog(QDialog):
 
         self.error_label.clear()
         data = self.get_data()
-        if self.on_save is not None and not self.on_save(data):
+        if callback is not None and not callback(data):
             return
 
         self.accept()
