@@ -85,6 +85,7 @@ def _materia(**kwargs):
 def _vs_linha(**kwargs):
     base = {
         "id": 1,
+        "chave": "MATERIAL_COSTAS",
         "ativo": True,
         "padrao": True,
         "codigo_opcao": "AGL_19",
@@ -104,6 +105,7 @@ def _vs_linha(**kwargs):
         "comp_mp": Decimal("2750"),
         "larg_mp": Decimal("1830"),
         "esp_mp": Decimal("19"),
+        "operacoes": [],
     }
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -2640,8 +2642,13 @@ def test_recalcular_areas_acabamento_sem_area_avisa_dimensoes(monkeypatch) -> No
     assert "dimensões Comp/Larg em falta" in obs
 
 
-def _ligacao_op(def_operacao_id: int):
-    return SimpleNamespace(def_operacao_id=def_operacao_id)
+def _ligacao_op(def_operacao_id: int, id=None, ativo=True, def_operacao=None):
+    return SimpleNamespace(
+        id=id or def_operacao_id,
+        def_operacao_id=def_operacao_id,
+        ativo=ativo,
+        def_operacao=def_operacao,
+    )
 
 
 def _ligacao_tempo(
@@ -2651,9 +2658,15 @@ def _ligacao_tempo(
     tempo_setup_minutos=None,
     tempo_por_unidade_minutos=None,
     regra_calculo=None,
+    id=None,
+    ativo=True,
+    def_operacao=None,
 ):
     return SimpleNamespace(
+        id=id or def_operacao_id,
         def_operacao_id=def_operacao_id,
+        ativo=ativo,
+        def_operacao=def_operacao,
         unidade_tempo=unidade_tempo,
         quantidade_base=quantidade_base,
         tempo_setup_minutos=tempo_setup_minutos,
@@ -3088,6 +3101,226 @@ def test_recalcular_custos_producao_maquina_sem_tarifa(monkeypatch) -> None:
     assert payload["custo_corte"] is None
     assert payload["custo_producao"] is None
     assert "tarifa €/ML em falta na máquina CORTE" in payload["observacoes"]
+
+
+def test_custos_producao_ferragem_usa_operacao_da_variante_valueset(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    op_categoria = _operacao("CNC_CATEGORIA", tipo_operacao="CNC", maquina_id=12)
+    op_variante = _operacao("CNC_VARIANTE", tipo_operacao="CNC", maquina_id=12)
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            _ligacao_tempo(
+                4,
+                unidade_tempo="PECA",
+                tempo_por_unidade_minutos=Decimal("1"),
+                def_operacao=op_categoria,
+            )
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {4: op_categoria, 5: op_variante}
+    _FakeMaquinaRepository.maquinas = {
+        12: _maquina_tarifa("CNC_VERTICAL", id=12, custo_hora=Decimal("60"))
+    }
+    _FakeItemValuesetRepository.active_opcoes = [
+        _vs_linha(
+            id=10,
+            chave="FERRAGEM_PUXADOR",
+            codigo_opcao="PUXADOR_FRESADO",
+            operacoes=[
+                _ligacao_tempo(
+                    5,
+                    unidade_tempo="PECA",
+                    tempo_por_unidade_minutos=Decimal("3"),
+                    def_operacao=op_variante,
+                )
+            ],
+        )
+    ]
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            def_peca_id=1,
+            chave_valueset="FERRAGEM_PUXADOR",
+            mat_default="PUXADOR_FRESADO",
+            quantidade=Decimal("2"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] == Decimal("6")  # 3 min x QT 2 / 60 x 60
+    assert payload["tempo_cnc"] == Decimal("6")
+    assert payload["custo_producao"] == Decimal("6")
+
+
+def test_custos_producao_variante_sem_operacoes_faz_fallback_def_peca(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    op_categoria = _operacao("CNC_CATEGORIA", tipo_operacao="CNC", maquina_id=12)
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            _ligacao_tempo(
+                4,
+                unidade_tempo="PECA",
+                tempo_por_unidade_minutos=Decimal("1.5"),
+                def_operacao=op_categoria,
+            )
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {4: op_categoria}
+    _FakeMaquinaRepository.maquinas = {
+        12: _maquina_tarifa("CNC_VERTICAL", id=12, custo_hora=Decimal("60"))
+    }
+    _FakeItemValuesetRepository.active_opcoes = [
+        _vs_linha(
+            id=10,
+            chave="FERRAGEM_PUXADOR",
+            codigo_opcao="PUXADOR_SIMPLES",
+            operacoes=[],
+        )
+    ]
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            def_peca_id=1,
+            chave_valueset="FERRAGEM_PUXADOR",
+            mat_default="PUXADOR_SIMPLES",
+            quantidade=Decimal("2"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] == Decimal("3.0")  # 1.5 min x QT 2 / 60 x 60
+    assert payload["tempo_cnc"] == Decimal("3.0")
+    assert "observacoes" not in payload
+
+
+def test_operacoes_variante_sem_correspondencia_fallback_e_aviso(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(4)]}
+    _FakeOperacaoRepository.operacoes = {
+        4: _operacao("CNC_CATEGORIA", tipo_operacao="CNC", maquina_id=12),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        12: SimpleNamespace(codigo="CNC_VERTICAL", nome="CNC vertical")
+    }
+    _FakeItemValuesetRepository.active_opcoes = [
+        _vs_linha(
+            id=10,
+            chave="FERRAGEM_PUXADOR",
+            codigo_opcao="PUXADOR_SIMPLES",
+            operacoes=[],
+        )
+    ]
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            def_peca_id=1,
+            chave_valueset="FERRAGEM_PUXADOR",
+            mat_default="PUXADOR_APAGADO",
+        ),
+    ]
+
+    service.aplicar_operacoes_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["operacoes"] == "CNC_CATEGORIA"
+    assert "PUXADOR_APAGADO sem correspond" in payload["observacoes"]
+    assert "usadas as operações da definição de peça" in payload["observacoes"]
+
+
+def test_operacoes_variante_override_total_nao_soma_def_peca(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    op_corte = _operacao("CORTE_CATEGORIA", tipo_operacao="CORTE", maquina_id=10)
+    op_orlagem = _operacao("ORLAGEM_CATEGORIA", tipo_operacao="ORLAGEM", maquina_id=11)
+    op_variante = _operacao("CNC_VARIANTE", tipo_operacao="CNC", maquina_id=12)
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            _ligacao_op(2, def_operacao=op_corte),
+            _ligacao_op(3, def_operacao=op_orlagem),
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {2: op_corte, 3: op_orlagem, 4: op_variante}
+    _FakeMaquinaRepository.maquinas = {
+        10: SimpleNamespace(codigo="CORTE", nome="Corte"),
+        11: SimpleNamespace(codigo="ORLAGEM", nome="Orlagem"),
+        12: SimpleNamespace(codigo="CNC", nome="CNC"),
+    }
+    _FakeItemValuesetRepository.active_opcoes = [
+        _vs_linha(
+            id=10,
+            chave="FERRAGEM_PUXADOR",
+            codigo_opcao="PUXADOR_FRESADO",
+            operacoes=[_ligacao_op(4, def_operacao=op_variante)],
+        )
+    ]
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="FERRAGEM",
+            def_peca_id=1,
+            chave_valueset="FERRAGEM_PUXADOR",
+            mat_default="PUXADOR_FRESADO",
+        ),
+    ]
+
+    service.aplicar_operacoes_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["operacoes"] == "CNC_VARIANTE"
+    assert payload["maquina"] == "CNC"
+
+
+def test_custos_producao_peca_usa_operacao_da_variante_valueset(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    op_variante = _operacao("CORTE_VARIANTE", tipo_operacao="CORTE", maquina_id=10)
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {}
+    _FakeOperacaoRepository.operacoes = {2: op_variante}
+    _FakeMaquinaRepository.maquinas = {
+        10: _maquina_tarifa(
+            "CORTE",
+            preco_ml_std=Decimal("0.50"),
+            custo_setup_peca_std=Decimal("0.10"),
+        )
+    }
+    _FakeItemValuesetRepository.active_opcoes = [
+        _vs_linha(
+            id=10,
+            chave="MATERIAL_LATERAIS",
+            codigo_opcao="AGL_ESPECIAL",
+            operacoes=[_ligacao_op(2, def_operacao=op_variante)],
+        )
+    ]
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            chave_valueset="MATERIAL_LATERAIS",
+            mat_default="AGL_ESPECIAL",
+            perimetro_ml=Decimal("4"),
+            quantidade=Decimal("2"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_corte"] == Decimal("4.20")  # 4 x QT 2 x 0.50 + 2 x 0.10
+    assert payload["custo_producao"] == Decimal("4.20")
 
 
 def test_recalcular_custos_producao_ignora_sem_def_peca_divisao_composta(

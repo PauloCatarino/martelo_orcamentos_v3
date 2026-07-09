@@ -9,7 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
 
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
@@ -72,7 +73,12 @@ from app.domain.numeros import normalize_percentagem_humana
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
-from app.models import OrcamentoItem, OrcamentoVersao
+from app.models import (
+    OrcamentoItem,
+    OrcamentoItemValuesetLinha,
+    OrcamentoItemValuesetLinhaOperacao,
+    OrcamentoVersao,
+)
 from app.repositories.def_maquina_escalao_area_repository import (
     DefMaquinaEscalaoAreaRepository,
 )
@@ -1390,6 +1396,7 @@ class OrcamentoItemCusteioLinhaService:
         processadas = 0
         aplicadas = 0
         ignoradas = 0
+        cache_variantes = self._cache_operacoes_variantes_do_item(orcamento_item_id)
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if not self._linha_recebe_operacoes(linha):
@@ -1400,13 +1407,24 @@ class OrcamentoItemCusteioLinhaService:
                 ignoradas += 1
                 continue
 
-            operacoes_texto, maquina_texto = self._operacoes_da_peca(linha.def_peca_id)
+            operacoes_texto, maquina_texto = self._operacoes_da_linha(
+                linha, cache_variantes
+            )
 
             processadas += 1
             fields: dict = {
                 "operacoes": operacoes_texto or None,
                 "maquina": maquina_texto or None,
             }
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes,
+                "Operações da variante",
+                self._aviso_operacoes_variante_sem_correspondencia(
+                    linha, cache_variantes
+                ),
+            )
+            if nova_obs != linha.observacoes:
+                fields["observacoes"] = nova_obs
             if operacoes_texto:
                 aplicadas += 1
 
@@ -1430,16 +1448,138 @@ class OrcamentoItemCusteioLinhaService:
         """Return True for a service-piece line (no raw material / ValueSet)."""
         return bool(getattr(linha, "sem_material", False))
 
+    def _cache_operacoes_variantes_do_item(self, orcamento_item_id: int) -> dict:
+        """Load active item ValueSet lines and their active operation links once."""
+        cache: dict[tuple[str, str], dict] = {}
+
+        for linha_vs in self._linhas_valueset_item_com_operacoes(orcamento_item_id):
+            chave = normalize_valueset_key(getattr(linha_vs, "chave", None))
+            opcao = self._normalizar_opcao_valueset(
+                getattr(linha_vs, "codigo_opcao", None)
+                or getattr(linha_vs, "nome_opcao", None)
+            )
+            if opcao is None:
+                continue
+
+            pares: list[tuple] = []
+            ligacoes = [
+                ligacao
+                for ligacao in getattr(linha_vs, "operacoes", []) or []
+                if getattr(ligacao, "ativo", False)
+            ]
+            ligacoes.sort(
+                key=lambda ligacao: (
+                    getattr(ligacao, "ordem", None) or 0,
+                    getattr(ligacao, "id", None) or 0,
+                )
+            )
+            for ligacao in ligacoes:
+                operacao = getattr(ligacao, "def_operacao", None)
+                if operacao is None:
+                    operacao = self.operacao_repository.get_by_id(
+                        getattr(ligacao, "def_operacao_id", None)
+                    )
+                if operacao is not None:
+                    pares.append((operacao, ligacao))
+
+            cache[(chave, opcao)] = {"linha": linha_vs, "pares": pares}
+
+        return cache
+
+    def _linhas_valueset_item_com_operacoes(self, orcamento_item_id: int) -> list:
+        """Return active item ValueSet lines with operation links eager-loaded."""
+        try:
+            statement = (
+                select(OrcamentoItemValuesetLinha)
+                .options(
+                    joinedload(OrcamentoItemValuesetLinha.operacoes).joinedload(
+                        OrcamentoItemValuesetLinhaOperacao.def_operacao
+                    )
+                )
+                .where(
+                    OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id,
+                    OrcamentoItemValuesetLinha.ativo.is_(True),
+                )
+            )
+            return self.session.execute(statement).unique().scalars().all()
+        except AttributeError:
+            # Unit-test fakes expose repository summaries directly.
+            return self.item_valueset_repository.list_active_by_orcamento_item(
+                orcamento_item_id
+            )
+
+    def _normalizar_opcao_valueset(self, valor: str | None) -> str | None:
+        """Normalize a ValueSet option code/name for matching against mat_default."""
+        if valor is None:
+            return None
+
+        texto = " ".join(str(valor).strip().upper().split())
+        return texto or None
+
+    def _chave_opcao_operacoes_variante(self, linha) -> tuple[str, str] | None:
+        chave = getattr(linha, "chave_valueset", None)
+        opcao = getattr(linha, "mat_default", None)
+        if not chave or not opcao:
+            return None
+
+        opcao_normalizada = self._normalizar_opcao_valueset(opcao)
+        if opcao_normalizada is None:
+            return None
+
+        return normalize_valueset_key(chave), opcao_normalizada
+
+    def _entrada_operacoes_variante_da_linha(self, linha, cache_variantes: dict):
+        chave_opcao = self._chave_opcao_operacoes_variante(linha)
+        if chave_opcao is None:
+            return None
+
+        return cache_variantes.get(chave_opcao)
+
+    def _pares_operacao_ligacao_da_linha(self, linha, cache_variantes: dict) -> list[tuple]:
+        """Resolve the operation links to use for one costing line.
+
+        Variant operations are a total override: if the selected item ValueSet
+        variant has active operations, only those operations count. Otherwise the
+        line falls back to the operations of its category/def_peca.
+        """
+        entrada = self._entrada_operacoes_variante_da_linha(linha, cache_variantes)
+        if entrada is not None and entrada["pares"]:
+            return entrada["pares"]
+
+        return self._pares_operacao_ligacao_da_peca(linha.def_peca_id)
+
+    def _aviso_operacoes_variante_sem_correspondencia(
+        self, linha, cache_variantes: dict
+    ) -> str | None:
+        chave_opcao = self._chave_opcao_operacoes_variante(linha)
+        if chave_opcao is None:
+            return None
+        if chave_opcao in cache_variantes:
+            return None
+
+        return (
+            f"Operações da variante: opção {linha.mat_default} sem correspondência "
+            "no ValueSet do item — usadas as operações da definição de peça."
+        )
+
+    def _operacoes_da_linha(self, linha, cache_variantes: dict) -> tuple[str, str]:
+        """Build operation and machine text for the operations resolved for a line."""
+        return self._texto_operacoes_de_pares(
+            self._pares_operacao_ligacao_da_linha(linha, cache_variantes)
+        )
+
     def _operacoes_da_peca(self, def_peca_id: int) -> tuple[str, str]:
         """Build the "; "-joined operation codes and the distinct machines of a piece."""
+        return self._texto_operacoes_de_pares(
+            self._pares_operacao_ligacao_da_peca(def_peca_id)
+        )
+
+    def _texto_operacoes_de_pares(self, pares: list[tuple]) -> tuple[str, str]:
+        """Build the "; "-joined operation codes and distinct machines from pairs."""
         nomes: list[str] = []
         maquinas: list[str] = []
 
-        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(def_peca_id):
-            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
-            if operacao is None:
-                continue
-
+        for operacao, _ligacao in pares:
             nome = operacao.codigo or operacao.nome
             if nome:
                 nomes.append(nome)
@@ -1455,12 +1595,16 @@ class OrcamentoItemCusteioLinhaService:
 
     def _operacoes_def_da_peca(self, def_peca_id: int) -> list:
         """Resolve the active operations of a piece into DefOperacao read models."""
-        resumos = []
-        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(def_peca_id):
-            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
-            if operacao is not None:
-                resumos.append(operacao)
-        return resumos
+        return [operacao for operacao, _ligacao in self._pares_operacao_ligacao_da_peca(def_peca_id)]
+
+    def _operacoes_def_da_linha(self, linha, cache_variantes: dict) -> list:
+        """Resolve active operation definitions selected for a costing line."""
+        return [
+            operacao
+            for operacao, _ligacao in self._pares_operacao_ligacao_da_linha(
+                linha, cache_variantes
+            )
+        ]
 
     def recalcular_tempos_producao_do_item(
         self, orcamento_item_id: int
@@ -1482,6 +1626,7 @@ class OrcamentoItemCusteioLinhaService:
         processadas = 0
         calculadas = 0
         ignoradas = 0
+        cache_variantes = self._cache_operacoes_variantes_do_item(orcamento_item_id)
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if not self._linha_recebe_operacoes(linha):
@@ -1495,7 +1640,7 @@ class OrcamentoItemCusteioLinhaService:
                 linha.ml_orla_grossa or Decimal("0")
             )
             tempos = calcular_tempos_producao_ligacoes(
-                self._pares_operacao_ligacao_da_peca(linha.def_peca_id),
+                self._pares_operacao_ligacao_da_linha(linha, cache_variantes),
                 linha.area_m2,
                 linha.quantidade,
                 ml_orla_total,
@@ -1514,6 +1659,13 @@ class OrcamentoItemCusteioLinhaService:
             # "tempos em falta" warning, and clear any still stored.
             nova_obs = self._mesclar_observacao(
                 linha.observacoes, "Tempos de produção", None
+            )
+            nova_obs = self._mesclar_observacao(
+                nova_obs,
+                "Operações da variante",
+                self._aviso_operacoes_variante_sem_correspondencia(
+                    linha, cache_variantes
+                ),
             )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
@@ -1568,6 +1720,7 @@ class OrcamentoItemCusteioLinhaService:
 
         tipo_efetivo = self._tipo_producao_efetivo_do_item(orcamento_item_id)
         usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
+        cache_variantes = self._cache_operacoes_variantes_do_item(orcamento_item_id)
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha == OPERACAO_MANUAL:
@@ -1582,7 +1735,7 @@ class OrcamentoItemCusteioLinhaService:
 
             if linha.tipo_linha == FERRAGEM:
                 custos_ferragem, tempos_ferragem, aviso_ferragem = (
-                    self._custos_producao_ferragem(linha, usar_serie)
+                    self._custos_producao_ferragem(linha, usar_serie, cache_variantes)
                 )
                 custo_producao = aplicar_fator_serie(
                     somar_custo_producao(
@@ -1619,6 +1772,13 @@ class OrcamentoItemCusteioLinhaService:
                 nova_obs = self._mesclar_observacao(
                     nova_obs, "Tempos de produção", None
                 )
+                nova_obs = self._mesclar_observacao(
+                    nova_obs,
+                    "Operações da variante",
+                    self._aviso_operacoes_variante_sem_correspondencia(
+                        linha, cache_variantes
+                    ),
+                )
                 if nova_obs != linha.observacoes:
                     fields["observacoes"] = nova_obs
                 if custo_producao is not None:
@@ -1627,7 +1787,7 @@ class OrcamentoItemCusteioLinhaService:
                 self.repository.update_linha(id=linha.id, **fields)
                 continue
 
-            operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
+            operacoes = self._operacoes_def_da_linha(linha, cache_variantes)
             op_corte = self._operacao_por_bucket(operacoes, "corte")
             op_orlagem = self._operacao_por_bucket(operacoes, "orlagem")
             op_cnc = self._operacao_por_bucket(operacoes, "cnc")
@@ -1680,7 +1840,7 @@ class OrcamentoItemCusteioLinhaService:
                 aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
 
             custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(
-                linha, usar_serie
+                linha, usar_serie, cache_variantes
             )
 
             custo_producao = aplicar_fator_serie(
@@ -1712,6 +1872,13 @@ class OrcamentoItemCusteioLinhaService:
             # Production cost no longer depends on the computed times: clear the old
             # "Tempos de produção" warning from any earlier pass (phase 8S.2).
             nova_obs = self._mesclar_observacao(nova_obs, "Tempos de produção", None)
+            nova_obs = self._mesclar_observacao(
+                nova_obs,
+                "Operações da variante",
+                self._aviso_operacoes_variante_sem_correspondencia(
+                    linha, cache_variantes
+                ),
+            )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
             if custo_producao is not None:
@@ -1845,7 +2012,9 @@ class OrcamentoItemCusteioLinhaService:
             f"máquina {nome}."
         )
 
-    def _custos_producao_ferragem(self, linha, usar_serie: bool = False):
+    def _custos_producao_ferragem(
+        self, linha, usar_serie: bool = False, cache_variantes: dict | None = None
+    ):
         """Return time-based production costs/times for a FERRAGEM line."""
         custos = {
             "corte": None,
@@ -1862,13 +2031,11 @@ class OrcamentoItemCusteioLinhaService:
             "setup": Decimal("0"),
         }
         aviso = None
+        cache_variantes = cache_variantes or {}
 
-        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
-            linha.def_peca_id
+        for operacao, ligacao in self._pares_operacao_ligacao_da_linha(
+            linha, cache_variantes
         ):
-            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
-            if operacao is None:
-                continue
             bucket = classificar_operacao(
                 getattr(operacao, "tipo_operacao", None),
                 getattr(operacao, "codigo", None),
@@ -1910,11 +2077,13 @@ class OrcamentoItemCusteioLinhaService:
 
         return custos, tempos, aviso
 
-    def _custos_montagem_manual_da_peca(self, linha, usar_serie: bool = False):
+    def _custos_montagem_manual_da_peca(
+        self, linha, usar_serie: bool = False, cache_variantes: dict | None = None
+    ):
         """Return (custo_montagem_manual, tempos_por_bucket, aviso) for a PECA line.
 
-        Sums the assembly/manual/packing operations of the piece, reading the time
-        configuration from each DefPecaOperacao link (tempo_setup_minutos /
+        Sums the assembly/manual/packing operations selected for the line, reading
+        the time configuration from the operation link (tempo_setup_minutos /
         tempo_por_unidade_minutos / unidade_tempo / quantidade_base). The hourly
         rate follows ``usar_serie`` (custo_hora_serie with fallback to custo_hora).
         Operations without times are ignored silently; an operation with times but
@@ -1923,13 +2092,11 @@ class OrcamentoItemCusteioLinhaService:
         tempos = {"montagem": Decimal("0"), "manual": Decimal("0"), "setup": Decimal("0")}
         custo = None
         aviso = None
+        cache_variantes = cache_variantes or {}
 
-        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
-            linha.def_peca_id
+        for operacao, ligacao in self._pares_operacao_ligacao_da_linha(
+            linha, cache_variantes
         ):
-            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
-            if operacao is None:
-                continue
             bucket = classificar_operacao(
                 getattr(operacao, "tipo_operacao", None),
                 getattr(operacao, "codigo", None),
