@@ -15,12 +15,16 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
 )
 
+from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
+from app.utils.formatters import format_currency, format_quantity
 
 
 # Stored values are unchanged; only the visible labels are clearer for the user.
@@ -54,6 +58,63 @@ class DefPecaOperacaoDialogData:
     observacoes: str | None
 
 
+@dataclass(frozen=True)
+class SimulacaoOperacaoResultado:
+    """Result of a simulated operation time/cost calculation."""
+
+    qt_total: Decimal
+    setup_minutos: Decimal
+    variavel_minutos: Decimal
+    tempo_total_minutos: Decimal | None
+    custo: Decimal | None
+
+
+def calcular_simulacao_operacao(
+    *,
+    unidade_tempo: str | None,
+    quantidade_base: Decimal | None,
+    tempo_setup_minutos: Decimal | None,
+    tempo_por_unidade_minutos: Decimal | None,
+    area_m2: Decimal | None,
+    ml: Decimal | None,
+    qt_total: Decimal | None,
+    custo_hora: Decimal | None,
+) -> SimulacaoOperacaoResultado:
+    """Calculate one simulator row using the production-cost pure helpers."""
+    unidade = (unidade_tempo or "").strip().upper() or None
+    base_calculo = ml if unidade == "ML" and ml is not None else quantidade_base
+    area_calculo = area_m2 if unidade == "M2" else None
+    qt = qt_total if qt_total is not None else Decimal("1")
+
+    setup_min, variavel_min = calcular_tempo_operacao(
+        unidade,
+        base_calculo,
+        tempo_setup_minutos,
+        tempo_por_unidade_minutos,
+        area_calculo,
+        qt,
+    )
+    if setup_min is None and variavel_min is None:
+        return SimulacaoOperacaoResultado(
+            qt_total=qt,
+            setup_minutos=Decimal("0"),
+            variavel_minutos=Decimal("0"),
+            tempo_total_minutos=None,
+            custo=None,
+        )
+
+    setup = setup_min or Decimal("0")
+    variavel = variavel_min or Decimal("0")
+    total = setup + variavel
+    return SimulacaoOperacaoResultado(
+        qt_total=qt,
+        setup_minutos=setup,
+        variavel_minutos=variavel,
+        tempo_total_minutos=total,
+        custo=calcular_custo_por_minutos(total, custo_hora),
+    )
+
+
 class DefPecaOperacaoDialog(QDialog):
     """Modal dialog for linking or editing an operation of a piece definition."""
 
@@ -69,6 +130,9 @@ class DefPecaOperacaoDialog(QDialog):
         self.ligacao = ligacao
         self.on_save = on_save
         self._is_edit = ligacao is not None
+        self._operacoes_por_id = {
+            operacao.id: operacao for operacao in operacoes_disponiveis
+        }
 
         self.setWindowTitle("Editar Operação da Peça" if self._is_edit else "Nova Operação da Peça")
         self.setModal(True)
@@ -126,8 +190,12 @@ class DefPecaOperacaoDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.simular_button = self.button_box.addButton(
+            "Simular cálculo…", QDialogButtonBox.ButtonRole.ActionRole
+        )
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
+        self.simular_button.clicked.connect(self._abrir_simulador)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -204,6 +272,45 @@ class DefPecaOperacaoDialog(QDialog):
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
 
+    def _abrir_simulador(self) -> None:
+        """Open the operation simulator using the current form values."""
+        operacao = self._operacao_selecionada()
+        dialog = SimuladorOperacaoDialog(
+            unidade_tempo=self.unidade_tempo_input.currentData(),
+            quantidade_base=self._parse_decimal_input_tolerante(
+                self.quantidade_base_input
+            ),
+            tempo_setup_minutos=self._parse_decimal_input_tolerante(
+                self.tempo_setup_input
+            ),
+            tempo_por_unidade_minutos=self._parse_decimal_input_tolerante(
+                self.tempo_por_unidade_input
+            ),
+            custo_hora=self._custo_hora_da_operacao(operacao),
+            operacao_codigo=getattr(operacao, "codigo", None),
+            operacao_nome=getattr(operacao, "nome", None),
+            parent=self,
+        )
+        dialog.exec()
+
+    def _operacao_selecionada(self):
+        """Return the selected operation resumo, when available."""
+        return self._operacoes_por_id.get(self.operacao_input.currentData())
+
+    def _custo_hora_da_operacao(self, operacao) -> Decimal | None:
+        """Best-effort hourly cost from operation or embedded machine info."""
+        if operacao is None:
+            return None
+        custo = getattr(operacao, "custo_hora", None)
+        if custo is not None:
+            return custo
+        maquina = getattr(operacao, "maquina", None)
+        if maquina is not None:
+            custo = getattr(maquina, "custo_hora", None)
+            if custo is not None:
+                return custo
+        return getattr(operacao, "maquina_custo_hora", None)
+
     def _parse_decimal_input(self, widget: QLineEdit) -> Decimal | None:
         text = widget.text().strip()
         if not text:
@@ -215,6 +322,13 @@ class DefPecaOperacaoDialog(QDialog):
         except InvalidOperation as error:
             raise ValueError("valor numerico invalido") from error
 
+    def _parse_decimal_input_tolerante(self, widget: QLineEdit) -> Decimal | None:
+        """Parse while editing; invalid partial input is treated as empty."""
+        try:
+            return self._parse_decimal_input(widget)
+        except ValueError:
+            return None
+
     def _format_decimal(self, value: Decimal | None) -> str:
         if value is None:
             return ""
@@ -224,3 +338,221 @@ class DefPecaOperacaoDialog(QDialog):
     def _empty_to_none(self, value: str) -> str | None:
         normalized = value.strip()
         return normalized or None
+
+
+class SimuladorOperacaoDialog(QDialog):
+    """Live simulator for an operation's time and hourly cost."""
+
+    CENARIOS_QT = (Decimal("1"), Decimal("2"), Decimal("5"), Decimal("10"))
+
+    def __init__(
+        self,
+        *,
+        unidade_tempo: str | None,
+        quantidade_base: Decimal | None,
+        tempo_setup_minutos: Decimal | None,
+        tempo_por_unidade_minutos: Decimal | None,
+        custo_hora: Decimal | None = None,
+        operacao_codigo: str | None = None,
+        operacao_nome: str | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+
+        self.setWindowTitle("Simular cálculo da operação")
+        self.setModal(True)
+        self.setMinimumWidth(620)
+
+        operacao_texto = " - ".join(
+            parte for parte in (operacao_codigo, operacao_nome) if parte
+        )
+        self.operacao_label = QLabel(
+            f"Operação: {operacao_texto}" if operacao_texto else "Operação"
+        )
+
+        self.unidade_tempo_input = QComboBox()
+        for opcao in UNIDADE_TEMPO_OPCOES:
+            self.unidade_tempo_input.addItem(UNIDADE_TEMPO_LABELS[opcao], opcao or None)
+
+        self.quantidade_base_input = QLineEdit()
+        self.tempo_setup_input = QLineEdit()
+        self.tempo_por_unidade_input = QLineEdit()
+        self.custo_hora_input = QLineEdit()
+        self.qt_total_input = QLineEdit("1")
+        self.area_m2_input = QLineEdit()
+        self.ml_input = QLineEdit()
+
+        self.quantidade_base_input.setText(self._format_decimal(quantidade_base))
+        self.tempo_setup_input.setText(self._format_decimal(tempo_setup_minutos))
+        self.tempo_por_unidade_input.setText(
+            self._format_decimal(tempo_por_unidade_minutos)
+        )
+        self.custo_hora_input.setText(self._format_decimal(custo_hora))
+        indice_unidade = self.unidade_tempo_input.findData(unidade_tempo)
+        if indice_unidade >= 0:
+            self.unidade_tempo_input.setCurrentIndex(indice_unidade)
+
+        ajuda = QLabel(
+            "Tempos em minutos (ex.: 0,05 = 3 seg). Custo/hora em €. "
+            "Setup soma 1× por linha; Tempo por unidade multiplica pela QT."
+        )
+        ajuda.setWordWrap(True)
+        ajuda.setStyleSheet("color: #666; font-size: 11px;")
+
+        self.resultado_label = QLabel("")
+        self.resultado_label.setWordWrap(True)
+
+        self.cenarios_table = QTableWidget(len(self.CENARIOS_QT), 3)
+        self.cenarios_table.setHorizontalHeaderLabels(
+            ["QT", "Tempo total (min)", "Custo (€)"]
+        )
+        self.cenarios_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        form = QFormLayout()
+        form.addRow("Unidade tempo", self.unidade_tempo_input)
+        form.addRow("Quantidade base", self.quantidade_base_input)
+        form.addRow("Tempo setup (min)", self.tempo_setup_input)
+        form.addRow("Tempo por unidade (min)", self.tempo_por_unidade_input)
+        form.addRow("Custo/hora (€/h)", self.custo_hora_input)
+        form.addRow("QT total", self.qt_total_input)
+        form.addRow("Área m²", self.area_m2_input)
+        form.addRow("ML", self.ml_input)
+
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        self.button_box.button(QDialogButtonBox.StandardButton.Close).setText("Fechar")
+        self.button_box.clicked.connect(lambda _button: self.accept())
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.operacao_label)
+        layout.addLayout(form)
+        layout.addWidget(ajuda)
+        layout.addWidget(self.resultado_label)
+        layout.addWidget(self.cenarios_table)
+        layout.addWidget(self.button_box)
+        self.setLayout(layout)
+
+        self._ligar_recalculo()
+        self._atualizar_estado_contexto()
+        self._recalcular()
+
+    def _ligar_recalculo(self) -> None:
+        """Connect input changes to live recalculation."""
+        for widget in (
+            self.quantidade_base_input,
+            self.tempo_setup_input,
+            self.tempo_por_unidade_input,
+            self.custo_hora_input,
+            self.qt_total_input,
+            self.area_m2_input,
+            self.ml_input,
+        ):
+            widget.textChanged.connect(self._recalcular)
+        self.unidade_tempo_input.currentIndexChanged.connect(
+            lambda _index: self._on_unidade_changed()
+        )
+
+    def _on_unidade_changed(self) -> None:
+        self._atualizar_estado_contexto()
+        self._recalcular()
+
+    def _atualizar_estado_contexto(self) -> None:
+        unidade = (self.unidade_tempo_input.currentData() or "").upper()
+        self.area_m2_input.setEnabled(unidade == "M2")
+        self.ml_input.setEnabled(unidade == "ML")
+
+    def _recalcular(self) -> None:
+        """Refresh the live result and all scenario rows."""
+        parametros = self._parametros()
+        resultado = calcular_simulacao_operacao(**parametros)
+        self.resultado_label.setText(
+            self._formatar_resultado(resultado, parametros["custo_hora"])
+        )
+
+        for row, qt in enumerate(self.CENARIOS_QT):
+            resultado_linha = calcular_simulacao_operacao(
+                **{**parametros, "qt_total": qt}
+            )
+            self.cenarios_table.setItem(row, 0, QTableWidgetItem(format_quantity(qt)))
+            self.cenarios_table.setItem(
+                row,
+                1,
+                QTableWidgetItem(
+                    format_quantity(resultado_linha.tempo_total_minutos)
+                    if resultado_linha.tempo_total_minutos is not None
+                    else "—"
+                ),
+            )
+            self.cenarios_table.setItem(
+                row,
+                2,
+                QTableWidgetItem(
+                    format_currency(resultado_linha.custo)
+                    if resultado_linha.custo is not None
+                    else "—"
+                ),
+            )
+        self.cenarios_table.resizeColumnsToContents()
+
+    def _parametros(self) -> dict:
+        unidade = self.unidade_tempo_input.currentData()
+        return {
+            "unidade_tempo": unidade,
+            "quantidade_base": self._parse_decimal_text(
+                self.quantidade_base_input.text()
+            ),
+            "tempo_setup_minutos": self._parse_decimal_text(
+                self.tempo_setup_input.text()
+            ),
+            "tempo_por_unidade_minutos": self._parse_decimal_text(
+                self.tempo_por_unidade_input.text()
+            ),
+            "area_m2": self._parse_decimal_text(self.area_m2_input.text())
+            if unidade == "M2"
+            else None,
+            "ml": self._parse_decimal_text(self.ml_input.text())
+            if unidade == "ML"
+            else None,
+            "qt_total": self._parse_decimal_text(self.qt_total_input.text())
+            or Decimal("1"),
+            "custo_hora": self._parse_decimal_text(self.custo_hora_input.text()),
+        }
+
+    def _formatar_resultado(
+        self, resultado: SimulacaoOperacaoResultado, custo_hora: Decimal | None
+    ) -> str:
+        if resultado.tempo_total_minutos is None:
+            return "Tempo total: sem tempos configurados."
+
+        texto = (
+            "tempo total = setup "
+            f"{format_quantity(resultado.setup_minutos)} + variável "
+            f"{format_quantity(resultado.variavel_minutos)} = "
+            f"{format_quantity(resultado.tempo_total_minutos)} min"
+        )
+        if custo_hora is None:
+            return f"{texto}\nsem custo/hora não há custo"
+
+        if resultado.custo is None:
+            return f"{texto}\nsem custo/hora não há custo"
+
+        return (
+            f"{texto}\n"
+            f"custo = {format_quantity(resultado.tempo_total_minutos)} / 60 × "
+            f"{format_currency(custo_hora)}/h = {format_currency(resultado.custo)}"
+        )
+
+    @staticmethod
+    def _parse_decimal_text(text: str) -> Decimal | None:
+        normalized = text.strip().replace(" ", "").replace(",", ".")
+        if not normalized:
+            return None
+        try:
+            return Decimal(normalized)
+        except InvalidOperation:
+            return None
+
+    @staticmethod
+    def _format_decimal(value: Decimal | None) -> str:
+        if value is None:
+            return ""
+        return format(value.normalize(), "f")
