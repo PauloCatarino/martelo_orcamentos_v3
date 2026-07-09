@@ -767,7 +767,43 @@ def test_custeio_page_tooltip_decompoe_custos_producao() -> None:
     assert "= 3,30€ × QT 2 + (QT 2 × setup 0,10€) = 6,80€" in orlagem
     assert "tarifa STD 0,55€/lado ≤1500mm · 1,10€/lado >1500mm" in orlagem
     assert "Nível 3 (até 2,00 m²) — peça com 1,5433 m²" in cnc
+    assert "escalão de área" in cnc
     assert "tarifa STD 2,60 €/peça" in cnc
+
+
+def test_orcamento_item_custeio_page_tooltip_cnc_ferragem_por_tempo() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._maquinas_por_codigo = {
+        "CNC_VERTICAL": SimpleNamespace(
+            id=3,
+            tipo="CNC",
+            custo_hora=Decimal("60"),
+            custo_hora_serie=None,
+        ),
+    }
+    page._escaloes_por_maquina = {}
+    linha = SimpleNamespace(
+        tipo_linha="FERRAGEM",
+        quantidade=Decimal("2"),
+        ml_orla_fina=None,
+        ml_orla_grossa=None,
+        desperdicio_percentagem=None,
+        area_m2=None,
+        custo_cnc=Decimal("3.00"),
+        tempo_cnc=Decimal("3"),
+        maquina="CNC_VERTICAL",
+        tipo_producao="STD",
+    )
+
+    tooltip = page._tooltip_formula("Custo CNC", linha)
+
+    assert "Custo de CNC por tempo" in tooltip
+    assert "1,5 min/peça × QT 2 = 3 min" in tooltip
+    assert "60,00 €" in tooltip
+    assert "tarifa STD 60,00 €/h" in tooltip
+    assert "escalão de área" not in tooltip
 
 
 def test_custeio_page_caixa_preco_item() -> None:

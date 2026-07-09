@@ -419,7 +419,7 @@ class OrcamentoItemCusteioPage(QWidget):
         "Custo corte": "Custo de corte: perímetro × qt × €/ML + qt × setup.",
         "Custo orlagem": "Custo de orlagem: preço por lado orlado (2 escalões "
         "pela medida do lado; ≤/> limite da máquina) × QT + QT × setup.",
-        "Custo CNC": "Custo de CNC pelo escalão de área da máquina × qt.",
+        "Custo CNC": "Custo de CNC por escalão de área (painéis) ou por tempo (ferragens).",
         "Custo mont./manual": "Montagem/manual: (tempo / 60) × custo/hora da máquina.",
         "Custo produção": "Soma da produção (corte + orlagem + CNC + mont./manual) "
         "× fator série (quando definido).",
@@ -1793,6 +1793,8 @@ class OrcamentoItemCusteioPage(QWidget):
                 ),
             )
         if header == "Custo CNC" and linha.custo_cnc is not None:
+            if getattr(linha, "tipo_linha", None) == FERRAGEM or linha.area_m2 is None:
+                return self._tooltip_cnc_tempo(linha, qt)
             escalao = self._descricao_escalao_cnc_tooltip(linha)
             substituicao_cnc = (
                 f"= área {format_quantity(linha.area_m2)} m² × QT "
@@ -2182,6 +2184,18 @@ class OrcamentoItemCusteioPage(QWidget):
             "/peça",
         )
 
+    def _tarifa_cnc_hora_tooltip(self, linha) -> str | None:
+        """Tariff note (€/h) of the line's CNC machine, or None."""
+        maquina = self._maquina_da_linha_por_tipo(linha, ("CNC",))
+        if maquina is None:
+            return None
+        return self._descrever_tarifa(
+            getattr(maquina, "custo_hora", None),
+            getattr(maquina, "custo_hora_serie", None),
+            self._usar_serie_linha(linha),
+            "/h",
+        )
+
     def _tarifa_hora_tooltip(self, linha) -> str | None:
         """Tariff note (€/h) of the line's manual/assembly machine, or None."""
         maquina = None
@@ -2208,6 +2222,37 @@ class OrcamentoItemCusteioPage(QWidget):
     def _format_euro_compacto(valor) -> str:
         """Format currency without the UI space before the euro sign."""
         return format_currency(valor).replace(" €", "€")
+
+    def _tooltip_cnc_tempo(
+        self, linha: OrcamentoItemCusteioLinhaResumo, qt
+    ) -> str:
+        """3-block tooltip for hardware CNC cost by machine time."""
+        custo = linha.custo_cnc
+        tempo_total = linha.tempo_cnc
+        custo_hora = self._custo_hora_derivado(custo, tempo_total)
+
+        if tempo_total is None:
+            substituicao = (
+                f"= tempo / 60 × custo/hora = {format_currency(custo)}"
+            )
+        else:
+            qt_calc = qt if qt is not None else Decimal("1")
+            minutos_por_peca = tempo_total / qt_calc if qt_calc else None
+            substituicao = (
+                f"= {format_quantity(minutos_por_peca)} min/peça × QT "
+                f"{format_quantity(qt_calc)} = {format_quantity(tempo_total)} min\n"
+                f"= {format_quantity(tempo_total)} / 60 × "
+                f"{format_currency(custo_hora)} = {format_currency(custo)}"
+            )
+
+        return self._tooltip_3(
+            "Custo de CNC por tempo: minutos de maquinação da ferragem, ao custo/hora da máquina CNC.",
+            "Custo CNC = (tempo / 60) × custo/hora da máquina",
+            self._com_tarifa(
+                substituicao,
+                self._tarifa_cnc_hora_tooltip(linha),
+            ),
+        )
 
     def _tooltip_montagem_manual(
         self, linha: OrcamentoItemCusteioLinhaResumo, qt
