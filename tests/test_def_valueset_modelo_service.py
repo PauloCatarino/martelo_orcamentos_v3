@@ -94,6 +94,23 @@ class _FakeLinhaService:
         return SimpleNamespace(id=len(self.__class__.created_data))
 
 
+class _FakeLinhaOperacaoService:
+    operacoes_por_linha: dict[int, list[SimpleNamespace]] = {}
+    created_data: list[object] = []
+    listed_linha_ids: list[int] = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def listar_operacoes_da_linha(self, linha_id: int):
+        self.__class__.listed_linha_ids.append(linha_id)
+        return self.__class__.operacoes_por_linha.get(linha_id, [])
+
+    def adicionar_operacao_a_linha(self, data):
+        self.__class__.created_data.append(data)
+        return SimpleNamespace(id=len(self.__class__.created_data))
+
+
 def _reset() -> None:
     _FakeRepository.rows = []
     _FakeRepository.active_rows = []
@@ -107,6 +124,9 @@ def _reset() -> None:
     _FakeLinhaService.linhas = []
     _FakeLinhaService.created_data = []
     _FakeLinhaService.listed_modelo_id = None
+    _FakeLinhaOperacaoService.operacoes_por_linha = {}
+    _FakeLinhaOperacaoService.created_data = []
+    _FakeLinhaOperacaoService.listed_linha_ids = []
 
 
 def _service(monkeypatch):
@@ -211,8 +231,14 @@ def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
     monkeypatch.setattr(
         service_module, "DefValuesetModeloLinhaService", _FakeLinhaService
     )
+    monkeypatch.setattr(
+        service_module,
+        "DefValuesetModeloLinhaOperacaoService",
+        _FakeLinhaOperacaoService,
+    )
     _FakeLinhaService.linhas = [
         SimpleNamespace(
+            id=55,
             chave="MATERIAL_LATERAIS",
             codigo_opcao="AGL_19",
             nome_opcao="Aglomerado 19",
@@ -246,6 +272,22 @@ def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
             observacoes="obs",
         )
     ]
+    _FakeLinhaOperacaoService.operacoes_por_linha = {
+        55: [
+            SimpleNamespace(
+                def_operacao_id=20,
+                ordem=3,
+                regra_calculo="POR_PECA",
+                quantidade_base=Decimal("1"),
+                tempo_setup_minutos=Decimal("0.5"),
+                tempo_por_unidade_minutos=Decimal("0.2"),
+                unidade_tempo="PECA",
+                obrigatorio=True,
+                ativo=True,
+                observacoes="op obs",
+            )
+        ]
+    }
 
     result = service.duplicar_modelo(
         7,
@@ -270,6 +312,17 @@ def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
     assert criada.prioridade == 1
     assert criada.preco_tabela == Decimal("10")
     assert criada.origem_dados == "MATERIA_PRIMA"
+    assert _FakeLinhaOperacaoService.listed_linha_ids == [55]
+    assert len(_FakeLinhaOperacaoService.created_data) == 1
+    operacao_criada = _FakeLinhaOperacaoService.created_data[0]
+    assert operacao_criada.def_valueset_modelo_linha_id == 1
+    assert operacao_criada.def_operacao_id == 20
+    assert operacao_criada.ordem == 3
+    assert operacao_criada.regra_calculo == "POR_PECA"
+    assert operacao_criada.tempo_setup_minutos == Decimal("0.5")
+    assert operacao_criada.tempo_por_unidade_minutos == Decimal("0.2")
+    assert operacao_criada.unidade_tempo == "PECA"
+    assert operacao_criada.observacoes == "op obs"
 
 
 def test_desativar_e_ativar_modelo(monkeypatch) -> None:

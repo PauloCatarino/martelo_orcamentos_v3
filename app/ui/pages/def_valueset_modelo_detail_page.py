@@ -22,6 +22,10 @@ from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
+from app.services.def_operacao_service import DefOperacaoService
+from app.services.def_valueset_modelo_linha_operacao_service import (
+    DefValuesetModeloLinhaOperacaoService,
+)
 from app.services.def_valueset_modelo_linha_service import (
     CriarDefValuesetModeloLinhaData,
     DefValuesetModeloLinhaService,
@@ -60,6 +64,7 @@ class DefValuesetModeloDetailPage(QWidget):
         "Ordem",
         "Editado localmente",
         "Ativo",
+        "Operações",
     ]
 
     def __init__(
@@ -72,6 +77,7 @@ class DefValuesetModeloDetailPage(QWidget):
         self.modelo = modelo
         self.on_back = on_back
         self._linhas_by_row: dict[int, DefValuesetModeloLinhaResumo] = {}
+        self._operacoes_por_linha: dict[int, str] = {}
 
         self.cabecalho = BarraCabecalho(
             f"Modelo ValueSet: {modelo.nome}",
@@ -145,6 +151,20 @@ class DefValuesetModeloDetailPage(QWidget):
                 linhas = DefValuesetModeloLinhaService(session).listar_linhas_do_modelo(
                     self.modelo.id
                 )
+                operacao_service = DefValuesetModeloLinhaOperacaoService(session)
+                operacoes = {
+                    operacao.id: operacao.codigo
+                    for operacao in DefOperacaoService(session).listar_operacoes()
+                }
+                self._operacoes_por_linha = {}
+                for linha in linhas:
+                    ligacoes = operacao_service.listar_operacoes_ativas_da_linha(
+                        linha.id
+                    )
+                    self._operacoes_por_linha[linha.id] = "; ".join(
+                        operacoes.get(ligacao.def_operacao_id, f"#{ligacao.def_operacao_id}")
+                        for ligacao in ligacoes
+                    )
         except SQLAlchemyError as error:
             self.status_label.setText(
                 mensagem_erro_bd("Nao foi possivel carregar as linhas do modelo.", error)
@@ -227,6 +247,7 @@ class DefValuesetModeloDetailPage(QWidget):
                 str(linha.ordem),
                 self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
+                self._operacoes_por_linha.get(linha.id, ""),
             ]
 
             for column_index, value in enumerate(values):
@@ -396,6 +417,9 @@ class DefValuesetModeloDetailPage(QWidget):
         elif saved_as:
             self.carregar_linhas()
             self.status_label.setText("Linha gravada como nova opção.")
+        elif dialog.operacoes_alteradas:
+            self.carregar_linhas()
+            self.status_label.setText("Operações da linha atualizadas.")
 
     def alternar_linha_ativa(self) -> None:
         """Toggle the active state of the selected model line after confirmation."""

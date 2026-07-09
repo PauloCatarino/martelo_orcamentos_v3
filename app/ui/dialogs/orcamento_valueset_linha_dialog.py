@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.db.session import SessionLocal
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -29,7 +30,13 @@ from app.domain.materia_prima_snapshot import (
 from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
 from app.domain.valueset_precos import calcular_preco_liquido
 from app.repositories.orcamento_valueset_linha_repository import OrcamentoValuesetLinhaResumo
+from app.services.orcamento_valueset_linha_operacao_service import (
+    CriarOrcamentoValuesetLinhaOperacaoData,
+    EditarOrcamentoValuesetLinhaOperacaoData,
+    OrcamentoValuesetLinhaOperacaoService,
+)
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+from app.ui.dialogs.valueset_linha_operacoes_dialog import ValuesetLinhaOperacoesDialog
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     obter_valor_chave_combo,
@@ -96,6 +103,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         self.linha = linha
         self.on_save = on_save
         self._suppress = False
+        self.operacoes_alteradas = False
 
         self.setWindowTitle("Editar Linha ValueSet do Orçamento")
         self.setModal(True)
@@ -189,7 +197,15 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.operacoes_button = self.button_box.addButton(
+            "Operações da linha…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.operacoes_button.setToolTip(
+            "Operações de produção específicas desta variante — substituem as "
+            "operações da definição de peça quando definidas."
+        )
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.operacoes_button.clicked.connect(self.abrir_operacoes_da_linha)
         self.button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -200,6 +216,73 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         self._load_linha(linha)
         self._connect_recalculo()
+
+    def abrir_operacoes_da_linha(self) -> None:
+        """Open the operation manager for this budget ValueSet line."""
+        linha_id = self.linha.id
+
+        def listar_operacoes():
+            with SessionLocal() as session:
+                return OrcamentoValuesetLinhaOperacaoService(session).listar_operacoes_da_linha(
+                    linha_id
+                )
+
+        def criar_operacao(form_data) -> None:
+            with SessionLocal() as session:
+                OrcamentoValuesetLinhaOperacaoService(session).adicionar_operacao_a_linha(
+                    CriarOrcamentoValuesetLinhaOperacaoData(
+                        orcamento_valueset_linha_id=linha_id,
+                        def_operacao_id=form_data.def_operacao_id,
+                        ordem=form_data.ordem,
+                        regra_calculo=form_data.regra_calculo,
+                        quantidade_base=form_data.quantidade_base,
+                        tempo_setup_minutos=form_data.tempo_setup_minutos,
+                        tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
+                        unidade_tempo=form_data.unidade_tempo,
+                        obrigatorio=form_data.obrigatorio,
+                        ativo=form_data.ativo,
+                        observacoes=form_data.observacoes,
+                    )
+                )
+
+        def editar_operacao(ligacao_id: int, form_data) -> None:
+            with SessionLocal() as session:
+                OrcamentoValuesetLinhaOperacaoService(session).editar_operacao_da_linha(
+                    ligacao_id,
+                    EditarOrcamentoValuesetLinhaOperacaoData(
+                        orcamento_valueset_linha_id=linha_id,
+                        def_operacao_id=form_data.def_operacao_id,
+                        ordem=form_data.ordem,
+                        regra_calculo=form_data.regra_calculo,
+                        quantidade_base=form_data.quantidade_base,
+                        tempo_setup_minutos=form_data.tempo_setup_minutos,
+                        tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
+                        unidade_tempo=form_data.unidade_tempo,
+                        obrigatorio=form_data.obrigatorio,
+                        ativo=form_data.ativo,
+                        observacoes=form_data.observacoes,
+                    ),
+                )
+
+        def alternar_operacao(ligacao) -> None:
+            with SessionLocal() as session:
+                service = OrcamentoValuesetLinhaOperacaoService(session)
+                if ligacao.ativo:
+                    service.desativar_operacao_da_linha(ligacao.id)
+                else:
+                    service.ativar_operacao_da_linha(ligacao.id)
+
+        dialog = ValuesetLinhaOperacoesDialog(
+            titulo="Operações da linha ValueSet do orçamento",
+            listar_operacoes=listar_operacoes,
+            criar_operacao=criar_operacao,
+            editar_operacao=editar_operacao,
+            alternar_operacao=alternar_operacao,
+            parent=self,
+        )
+        dialog.exec()
+        if dialog.alterado:
+            self.operacoes_alteradas = True
 
     def _connect_recalculo(self) -> None:
         """Wire price recompute and local-edit detection to the input fields."""

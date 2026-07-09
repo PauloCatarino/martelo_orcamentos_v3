@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.session import SessionLocal
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
@@ -29,7 +31,13 @@ from app.domain.materia_prima_snapshot import (
 from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
 from app.domain.valueset_precos import calcular_preco_liquido
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
+from app.services.def_valueset_modelo_linha_operacao_service import (
+    CriarDefValuesetModeloLinhaOperacaoData,
+    DefValuesetModeloLinhaOperacaoService,
+    EditarDefValuesetModeloLinhaOperacaoData,
+)
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+from app.ui.dialogs.valueset_linha_operacoes_dialog import ValuesetLinhaOperacoesDialog
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     obter_valor_chave_combo,
@@ -99,6 +107,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.on_save_as = on_save_as
         self._is_edit = linha is not None
         self._suppress = False
+        self.operacoes_alteradas = False
 
         self.setWindowTitle(
             "Editar Linha do Modelo" if self._is_edit else "Nova Linha do Modelo"
@@ -202,6 +211,18 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.operacoes_button = self.button_box.addButton(
+            "Operações da linha…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.operacoes_button.setToolTip(
+            "Operações de produção específicas desta variante — substituem as "
+            "operações da definição de peça quando definidas."
+        )
+        self.operacoes_button.setEnabled(self._is_edit)
+        if not self._is_edit:
+            self.operacoes_button.setToolTip(
+                "Grave a linha primeiro para poder associar operações."
+            )
         self.save_as_button = self.button_box.addButton(
             "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
         )
@@ -210,6 +231,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
         self.save_as_button.setVisible(self._is_edit)
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.operacoes_button.clicked.connect(self.abrir_operacoes_da_linha)
         self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
@@ -223,6 +245,76 @@ class DefValuesetModeloLinhaDialog(QDialog):
 
         if linha is not None:
             self._load_linha(linha)
+
+    def abrir_operacoes_da_linha(self) -> None:
+        """Open the operation manager for this existing ValueSet model line."""
+        if self.linha is None:
+            return
+
+        linha_id = self.linha.id
+
+        def listar_operacoes():
+            with SessionLocal() as session:
+                return DefValuesetModeloLinhaOperacaoService(
+                    session
+                ).listar_operacoes_da_linha(linha_id)
+
+        def criar_operacao(form_data) -> None:
+            with SessionLocal() as session:
+                DefValuesetModeloLinhaOperacaoService(session).adicionar_operacao_a_linha(
+                    CriarDefValuesetModeloLinhaOperacaoData(
+                        def_valueset_modelo_linha_id=linha_id,
+                        def_operacao_id=form_data.def_operacao_id,
+                        ordem=form_data.ordem,
+                        regra_calculo=form_data.regra_calculo,
+                        quantidade_base=form_data.quantidade_base,
+                        tempo_setup_minutos=form_data.tempo_setup_minutos,
+                        tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
+                        unidade_tempo=form_data.unidade_tempo,
+                        obrigatorio=form_data.obrigatorio,
+                        ativo=form_data.ativo,
+                        observacoes=form_data.observacoes,
+                    )
+                )
+
+        def editar_operacao(ligacao_id: int, form_data) -> None:
+            with SessionLocal() as session:
+                DefValuesetModeloLinhaOperacaoService(session).editar_operacao_da_linha(
+                    ligacao_id,
+                    EditarDefValuesetModeloLinhaOperacaoData(
+                        def_valueset_modelo_linha_id=linha_id,
+                        def_operacao_id=form_data.def_operacao_id,
+                        ordem=form_data.ordem,
+                        regra_calculo=form_data.regra_calculo,
+                        quantidade_base=form_data.quantidade_base,
+                        tempo_setup_minutos=form_data.tempo_setup_minutos,
+                        tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
+                        unidade_tempo=form_data.unidade_tempo,
+                        obrigatorio=form_data.obrigatorio,
+                        ativo=form_data.ativo,
+                        observacoes=form_data.observacoes,
+                    ),
+                )
+
+        def alternar_operacao(ligacao) -> None:
+            with SessionLocal() as session:
+                service = DefValuesetModeloLinhaOperacaoService(session)
+                if ligacao.ativo:
+                    service.desativar_operacao_da_linha(ligacao.id)
+                else:
+                    service.ativar_operacao_da_linha(ligacao.id)
+
+        dialog = ValuesetLinhaOperacoesDialog(
+            titulo="Operações da linha ValueSet",
+            listar_operacoes=listar_operacoes,
+            criar_operacao=criar_operacao,
+            editar_operacao=editar_operacao,
+            alternar_operacao=alternar_operacao,
+            parent=self,
+        )
+        dialog.exec()
+        if dialog.alterado:
+            self.operacoes_alteradas = True
 
     def _connect_recalculo(self) -> None:
         """Wire price recompute and local-edit detection to the input fields."""

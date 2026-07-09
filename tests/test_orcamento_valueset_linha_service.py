@@ -198,6 +198,27 @@ class _FakeItemValuesetRepository:
         return 0
 
 
+class _FakeModeloLinhaOperacaoRepository:
+    ops_by_modelo_linha: dict[int, list] = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_linha(self, def_valueset_modelo_linha_id: int):
+        return self.ops_by_modelo_linha.get(def_valueset_modelo_linha_id, [])
+
+
+class _FakeOperacaoService:
+    copy_calls: list[tuple[list, int]] = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def copiar_operacoes_de(self, origem_ops, orcamento_valueset_linha_id: int) -> int:
+        self.__class__.copy_calls.append((list(origem_ops), orcamento_valueset_linha_id))
+        return len(origem_ops)
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -223,6 +244,8 @@ def _reset() -> None:
     _FakeModeloRepository.modelo = None
     _FakeModeloLinhaRepository.linhas = []
     _FakeItemValuesetRepository.clear_origin_calls = []
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {}
+    _FakeOperacaoService.copy_calls = []
 
 
 def _service(monkeypatch):
@@ -234,6 +257,14 @@ def _service(monkeypatch):
     monkeypatch.setattr(service_module, "DefValuesetModeloRepository", _FakeModeloRepository)
     monkeypatch.setattr(
         service_module, "DefValuesetModeloLinhaRepository", _FakeModeloLinhaRepository
+    )
+    monkeypatch.setattr(
+        service_module,
+        "DefValuesetModeloLinhaOperacaoRepository",
+        _FakeModeloLinhaOperacaoRepository,
+    )
+    monkeypatch.setattr(
+        service_module, "OrcamentoValuesetLinhaOperacaoService", _FakeOperacaoService
     )
     session = _FakeSession()
     return service_module.OrcamentoValuesetLinhaService(session=session), session
@@ -463,6 +494,71 @@ def test_importar_modelo_substituir_elimina_existentes_e_cria_ativas(monkeypatch
     }
     assert _FakeRepository.updated_payload is None
     assert session.committed is True
+
+
+def test_importar_modelo_copia_operacoes_para_linha_criada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo(id=99, codigo="ROUPEIRO_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeRepository.opcao_existing = None
+
+    service.importar_modelo_para_orcamento(20, 99)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    origem_ops, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert [op.def_operacao_id for op in origem_ops] == [55]
+    assert destino_id == 1  # id returned by _FakeRepository.create
+
+
+def test_importar_modelo_substitui_operacoes_de_linha_atualizada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeRepository.opcao_existing = _resumo(id=5, editado_localmente=False)
+
+    service.importar_modelo_para_orcamento(20, 99)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    origem_ops, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert [op.def_operacao_id for op in origem_ops] == [55]
+    assert destino_id == 5
+
+
+def test_importar_modelo_nao_copia_operacoes_de_linha_ignorada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeRepository.opcao_existing = _resumo(id=5, editado_localmente=True)
+
+    service.importar_modelo_para_orcamento(20, 99)
+
+    assert _FakeOperacaoService.copy_calls == []
+
+
+def test_importar_modelo_substituir_copia_operacoes_para_novas_linhas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo(id=99, codigo="ROUPEIRO_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [
+        _modelo_linha(id=1, chave="MATERIAL_FRENTES", codigo_opcao="MDF"),
+        _modelo_linha(id=2, chave="FERRAGEM_CORREDICA", codigo_opcao="TANDEM"),
+    ]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)],
+        2: [],
+    }
+
+    service.importar_modelo_para_orcamento(20, 99, substituir=True)
+
+    assert len(_FakeOperacaoService.copy_calls) == 2
 
 
 def test_importar_modelo_inexistente_levanta(monkeypatch) -> None:

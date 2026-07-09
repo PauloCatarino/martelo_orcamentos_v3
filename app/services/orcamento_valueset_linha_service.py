@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.domain.valueset_precos import calcular_preco_liquido
 from app.domain.valueset_types import normalize_valueset_key
+from app.repositories.def_valueset_modelo_linha_operacao_repository import (
+    DefValuesetModeloLinhaOperacaoRepository,
+)
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaRepository
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloRepository
 from app.repositories.orcamento_item_valueset_linha_repository import (
@@ -18,6 +21,9 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
 from app.repositories.orcamento_valueset_linha_repository import (
     OrcamentoValuesetLinhaRepository,
     OrcamentoValuesetLinhaResumo,
+)
+from app.services.orcamento_valueset_linha_operacao_service import (
+    OrcamentoValuesetLinhaOperacaoService,
 )
 
 # Materia-prima snapshot fields that can be copied, pasted and cleared between
@@ -144,6 +150,8 @@ class OrcamentoValuesetLinhaService:
         self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
         self.modelo_repository = DefValuesetModeloRepository(session)
         self.modelo_linha_repository = DefValuesetModeloLinhaRepository(session)
+        self.modelo_linha_operacao_repository = DefValuesetModeloLinhaOperacaoRepository(session)
+        self.operacao_service = OrcamentoValuesetLinhaOperacaoService(session)
 
     def listar_linhas(self) -> list[OrcamentoValuesetLinhaResumo]:
         """List all budget version ValueSet lines."""
@@ -352,9 +360,11 @@ class OrcamentoValuesetLinhaService:
                 continue
 
             fields = self._build_import_fields(orcamento_versao_id, modelo, linha)
+            modelo_ops = self.modelo_linha_operacao_repository.list_by_linha(linha.id)
 
             if substituir:
-                self.repository.create(**fields)
+                criada = self.repository.create(**fields)
+                self.operacao_service.copiar_operacoes_de(modelo_ops, criada.id)
                 criadas += 1
                 continue
 
@@ -363,12 +373,14 @@ class OrcamentoValuesetLinhaService:
             )
 
             if existing is None:
-                self.repository.create(**fields)
+                criada = self.repository.create(**fields)
+                self.operacao_service.copiar_operacoes_de(modelo_ops, criada.id)
                 criadas += 1
             elif existing.editado_localmente:
                 ignoradas += 1
             else:
                 self.repository.update(id=existing.id, **fields)
+                self.operacao_service.copiar_operacoes_de(modelo_ops, existing.id)
                 atualizadas += 1
 
         self.session.commit()

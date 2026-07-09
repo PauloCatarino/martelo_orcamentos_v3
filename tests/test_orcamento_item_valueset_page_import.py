@@ -46,6 +46,7 @@ def test_page_headers() -> None:
         "Origem",
         "Editado localmente",
         "Ativo",
+        "Operações",
     ]
 
 
@@ -192,3 +193,36 @@ def test_page_propaga_para_custeio() -> None:
     assert "aplicar_valueset_item_em_linhas_custeio" in propagar
     assert "Não existem linhas de custeio associadas a esta chave ValueSet." in propagar
     assert "Linhas de custeio atualizadas:" in propagar
+
+
+def test_page_carrega_coluna_operacoes() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
+    assert "OrcamentoItemValuesetLinhaOperacaoService" in carregar
+    assert "_operacoes_por_linha" in carregar
+
+    preencher = inspect.getsource(OrcamentoItemValuesetPage._preencher)
+    assert "_operacoes_por_linha" in preencher
+
+
+def test_page_edit_lida_com_operacoes_alteradas() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    editar = inspect.getsource(OrcamentoItemValuesetPage.abrir_editar_linha)
+    assert "dialog.operacoes_alteradas" in editar
+    assert "Operações da linha atualizadas." in editar
+
+
+def test_page_copiar_colar_com_operacoes_opt_in() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    copiar = inspect.getsource(OrcamentoItemValuesetPage.copiar_dados)
+    assert "OrcamentoItemValuesetLinhaOperacaoService" in copiar
+    assert "_copied_operacoes" in copiar
+
+    colar = inspect.getsource(OrcamentoItemValuesetPage.colar_dados)
+    assert "_copied_operacoes" in colar
+    assert "copiar_operacoes_de" in colar
+    assert "Colar também" in colar
+    assert "Dados e operações colados" in colar

@@ -248,6 +248,39 @@ class _FakeModeloLinhaRepository:
         return self.linhas
 
 
+class _FakeModeloLinhaOperacaoRepository:
+    ops_by_modelo_linha: dict[int, list] = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_linha(self, def_valueset_modelo_linha_id: int):
+        return self.ops_by_modelo_linha.get(def_valueset_modelo_linha_id, [])
+
+
+class _FakeOrcamentoLinhaOperacaoRepository:
+    ops_by_orcamento_linha: dict[int, list] = {}
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_by_linha(self, orcamento_valueset_linha_id: int):
+        return self.ops_by_orcamento_linha.get(orcamento_valueset_linha_id, [])
+
+
+class _FakeOperacaoService:
+    copy_calls: list[tuple[list, int]] = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def copiar_operacoes_de(self, origem_ops, orcamento_item_valueset_linha_id: int) -> int:
+        self.__class__.copy_calls.append(
+            (list(origem_ops), orcamento_item_valueset_linha_id)
+        )
+        return len(origem_ops)
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -279,6 +312,9 @@ def _reset() -> None:
     _FakeOrcamentoRepository.versao_rows = []
     _FakeModeloRepository.modelo = None
     _FakeModeloLinhaRepository.linhas = []
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {}
+    _FakeOrcamentoLinhaOperacaoRepository.ops_by_orcamento_linha = {}
+    _FakeOperacaoService.copy_calls = []
 
 
 def _service(monkeypatch):
@@ -292,6 +328,19 @@ def _service(monkeypatch):
     monkeypatch.setattr(service_module, "DefValuesetModeloRepository", _FakeModeloRepository)
     monkeypatch.setattr(
         service_module, "DefValuesetModeloLinhaRepository", _FakeModeloLinhaRepository
+    )
+    monkeypatch.setattr(
+        service_module,
+        "DefValuesetModeloLinhaOperacaoRepository",
+        _FakeModeloLinhaOperacaoRepository,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "OrcamentoValuesetLinhaOperacaoRepository",
+        _FakeOrcamentoLinhaOperacaoRepository,
+    )
+    monkeypatch.setattr(
+        service_module, "OrcamentoItemValuesetLinhaOperacaoService", _FakeOperacaoService
     )
     session = _FakeSession()
     return service_module.OrcamentoItemValuesetLinhaService(session=session), session
@@ -535,6 +584,57 @@ def test_criar_a_partir_item_inexistente_levanta(monkeypatch) -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_criar_a_partir_do_orcamento_copia_operacoes_para_linha_criada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7)]
+    _FakeOrcamentoLinhaOperacaoRepository.ops_by_orcamento_linha = {
+        7: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = None
+
+    service.criar_a_partir_do_orcamento(30)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    origem_ops, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert [op.def_operacao_id for op in origem_ops] == [55]
+    assert destino_id == 1  # id returned by _FakeItemRepository.create
+
+
+def test_criar_a_partir_do_orcamento_substitui_operacoes_de_linha_atualizada(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7)]
+    _FakeOrcamentoLinhaOperacaoRepository.ops_by_orcamento_linha = {
+        7: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=False)
+
+    service.criar_a_partir_do_orcamento(30)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    _, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert destino_id == 5
+
+
+def test_criar_a_partir_do_orcamento_nao_copia_operacoes_de_linha_ignorada(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [_versao_resumo(id=7)]
+    _FakeOrcamentoLinhaOperacaoRepository.ops_by_orcamento_linha = {
+        7: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    service.criar_a_partir_do_orcamento(30)
+
+    assert _FakeOperacaoService.copy_calls == []
+
+
 def test_importar_modelo_para_item_cria_linhas(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
@@ -642,6 +742,60 @@ def test_importar_modelo_para_item_substituir_elimina_existentes_e_cria_ativas(
     }
     assert _FakeItemRepository.updated_payload is None
     assert session.committed is True
+
+
+def test_importar_modelo_para_item_copia_operacoes_para_linha_criada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo(id=88, codigo="COZINHA_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = None
+
+    service.importar_modelo_para_item(30, 88)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    origem_ops, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert [op.def_operacao_id for op in origem_ops] == [55]
+    assert destino_id == 1  # id returned by _FakeItemRepository.create
+
+
+def test_importar_modelo_para_item_substitui_operacoes_de_linha_atualizada(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=False)
+
+    service.importar_modelo_para_item(30, 88)
+
+    assert len(_FakeOperacaoService.copy_calls) == 1
+    _, destino_id = _FakeOperacaoService.copy_calls[0]
+    assert destino_id == 5
+
+
+def test_importar_modelo_para_item_nao_copia_operacoes_de_linha_ignorada(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo()
+    _FakeModeloLinhaRepository.linhas = [_modelo_linha(id=1)]
+    _FakeModeloLinhaOperacaoRepository.ops_by_modelo_linha = {
+        1: [SimpleNamespace(def_operacao_id=55)]
+    }
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    service.importar_modelo_para_item(30, 88)
+
+    assert _FakeOperacaoService.copy_calls == []
 
 
 def test_importar_modelo_para_item_modelo_inexistente_levanta(monkeypatch) -> None:

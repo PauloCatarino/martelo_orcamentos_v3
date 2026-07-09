@@ -25,6 +25,9 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.def_materia_prima import DefMateriaPrima
     from app.models.def_valueset_modelo import DefValuesetModelo
+    from app.models.def_valueset_modelo_linha_operacao import (
+        DefValuesetModeloLinhaOperacao,
+    )
 
 
 class DefValuesetModeloLinha(Base):
@@ -100,4 +103,9 @@ class DefValuesetModeloLinha(Base):
     materia_prima: Mapped["DefMateriaPrima | None"] = relationship(
         "DefMateriaPrima",
         foreign_keys=[materia_prima_id],
+    )
+    operacoes: Mapped[list["DefValuesetModeloLinhaOperacao"]] = relationship(
+        "DefValuesetModeloLinhaOperacao",
+        back_populates="def_valueset_modelo_linha",
+        cascade="all, delete-orphan",
     )

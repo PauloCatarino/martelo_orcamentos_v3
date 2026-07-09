@@ -41,6 +41,7 @@ def test_page_line_headers() -> None:
         "Ordem",
         "Editado localmente",
         "Ativo",
+        "Operações",
     ]
 
 
@@ -73,6 +74,9 @@ def test_page_uses_line_service_and_dialog() -> None:
     carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
     assert "DefValuesetModeloLinhaService" in carregar
     assert "listar_linhas_do_modelo" in carregar
+    assert "DefValuesetModeloLinhaOperacaoService" in carregar
+    assert "listar_operacoes_ativas_da_linha" in carregar
+    assert "DefOperacaoService" in carregar
 
     verificar = inspect.getsource(DefValuesetModeloDetailPage.verificar_precos)
     assert "AtualizarPrecosValuesetDialog" in verificar
@@ -96,3 +100,4 @@ def test_page_formats_percentages() -> None:
     source = inspect.getsource(DefValuesetModeloDetailPage._preencher)
 
     assert "formatar_percentagem" in source
+    assert "_operacoes_por_linha" in source

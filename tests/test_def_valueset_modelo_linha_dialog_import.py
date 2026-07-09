@@ -40,6 +40,19 @@ def test_dialog_has_save_as_button_only_for_edit_mode() -> None:
     assert "self._validate_and_run(self.on_save_as)" in validate_source
 
 
+def test_dialog_has_operacoes_button_only_for_existing_line() -> None:
+    from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+
+    init_source = inspect.getsource(DefValuesetModeloLinhaDialog.__init__)
+    abrir = inspect.getsource(DefValuesetModeloLinhaDialog.abrir_operacoes_da_linha)
+
+    assert "Operações da linha…" in init_source
+    assert "self.operacoes_button.setEnabled(self._is_edit)" in init_source
+    assert "Grave a linha primeiro" in init_source
+    assert "ValuesetLinhaOperacoesDialog" in abrir
+    assert "DefValuesetModeloLinhaOperacaoService" in abrir
+
+
 def test_dialog_data_fields() -> None:
     from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialogData
 

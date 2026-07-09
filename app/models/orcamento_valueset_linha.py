@@ -25,6 +25,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.def_materia_prima import DefMateriaPrima
     from app.models.orcamento_versao import OrcamentoVersao
+    from app.models.orcamento_valueset_linha_operacao import OrcamentoValuesetLinhaOperacao
 
 
 class OrcamentoValuesetLinha(Base):
@@ -104,4 +105,9 @@ class OrcamentoValuesetLinha(Base):
     materia_prima: Mapped["DefMateriaPrima | None"] = relationship(
         "DefMateriaPrima",
         foreign_keys=[materia_prima_id],
+    )
+    operacoes: Mapped[list["OrcamentoValuesetLinhaOperacao"]] = relationship(
+        "OrcamentoValuesetLinhaOperacao",
+        back_populates="orcamento_valueset_linha",
+        cascade="all, delete-orphan",
     )

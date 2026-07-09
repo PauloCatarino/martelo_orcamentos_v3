@@ -101,3 +101,15 @@ def test_dialog_uses_materia_prima_picker() -> None:
 
     abrir = inspect.getsource(OrcamentoValuesetLinhaDialog.abrir_picker_materia_prima)
     assert "MateriaPrimaPickerDialog" in abrir
+
+
+def test_dialog_has_operacoes_button() -> None:
+    from app.ui.dialogs.orcamento_valueset_linha_dialog import OrcamentoValuesetLinhaDialog
+
+    init_source = inspect.getsource(OrcamentoValuesetLinhaDialog.__init__)
+    abrir = inspect.getsource(OrcamentoValuesetLinhaDialog.abrir_operacoes_da_linha)
+
+    assert "Operações da linha…" in init_source
+    assert "self.operacoes_button.clicked.connect(self.abrir_operacoes_da_linha)" in init_source
+    assert "ValuesetLinhaOperacoesDialog" in abrir
+    assert "OrcamentoValuesetLinhaOperacaoService" in abrir

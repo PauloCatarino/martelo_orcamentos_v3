@@ -22,8 +22,12 @@ from app.domain.numeros import formatar_percentagem
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
+from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
+)
+from app.services.orcamento_item_valueset_linha_operacao_service import (
+    OrcamentoItemValuesetLinhaOperacaoService,
 )
 from app.services.orcamento_item_valueset_linha_service import (
     SNAPSHOT_FIELDS,
@@ -74,6 +78,7 @@ class OrcamentoItemValuesetPage(QWidget):
         "Origem",
         "Editado localmente",
         "Ativo",
+        "Operações",
     ]
 
     def __init__(self, orcamento_item_id: int) -> None:
@@ -81,7 +86,9 @@ class OrcamentoItemValuesetPage(QWidget):
 
         self.orcamento_item_id = orcamento_item_id
         self._linhas_by_row: dict[int, OrcamentoItemValuesetLinhaResumo] = {}
+        self._operacoes_por_linha: dict[int, str] = {}
         self._copied_snapshot: dict | None = None
+        self._copied_operacoes: list | None = None
 
         self.cabecalho = BarraCabecalho(
             "ValueSet do Item",
@@ -159,6 +166,20 @@ class OrcamentoItemValuesetPage(QWidget):
                 linhas = OrcamentoItemValuesetLinhaService(
                     session
                 ).listar_linhas_ativas_do_item(self.orcamento_item_id)
+                operacao_service = OrcamentoItemValuesetLinhaOperacaoService(session)
+                operacoes_codigos = {
+                    operacao.id: operacao.codigo
+                    for operacao in DefOperacaoService(session).listar_operacoes()
+                }
+                self._operacoes_por_linha = {}
+                for linha in linhas:
+                    ligacoes = operacao_service.listar_operacoes_ativas_da_linha(linha.id)
+                    self._operacoes_por_linha[linha.id] = "; ".join(
+                        operacoes_codigos.get(
+                            ligacao.def_operacao_id, f"#{ligacao.def_operacao_id}"
+                        )
+                        for ligacao in ligacoes
+                    )
         except SQLAlchemyError as error:
             self.status_label.setText(
                 mensagem_erro_bd("Nao foi possivel carregar o ValueSet do item.", error)
@@ -205,6 +226,7 @@ class OrcamentoItemValuesetPage(QWidget):
                 linha.origem_modelo_codigo or linha.origem_dados or "",
                 self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
+                self._operacoes_por_linha.get(linha.id, ""),
             ]
 
             for column_index, value in enumerate(values):
@@ -441,6 +463,9 @@ class OrcamentoItemValuesetPage(QWidget):
             self.carregar()
             self.status_label.setText("Linha ValueSet atualizada.")
             self._perguntar_propagar_custeio(linha.id)
+        elif dialog.operacoes_alteradas:
+            self.carregar()
+            self.status_label.setText("Operações da linha atualizadas.")
 
     def atualizar_custeio_da_linha(self) -> None:
         """Compare and propagate the selected ValueSet line into cost lines."""
@@ -548,7 +573,7 @@ class OrcamentoItemValuesetPage(QWidget):
         self.status_label.setText(f"Linhas de custeio atualizadas: {atualizadas}.")
 
     def copiar_dados(self) -> None:
-        """Copy the materia-prima snapshot of the selected line into memory."""
+        """Copy the materia-prima snapshot and operations of the selected line."""
         linha = self._get_selected_linha()
         if linha is None:
             self.status_label.setText("Selecione uma linha.")
@@ -556,10 +581,23 @@ class OrcamentoItemValuesetPage(QWidget):
 
         self._copied_snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
         self._copied_snapshot["prioridade"] = linha.prioridade
+
+        try:
+            with SessionLocal() as session:
+                self._copied_operacoes = OrcamentoItemValuesetLinhaOperacaoService(
+                    session
+                ).listar_operacoes_da_linha(linha.id)
+        except SQLAlchemyError:
+            self._copied_operacoes = []
+
         self.status_label.setText("Dados da linha copiados.")
 
     def colar_dados(self) -> None:
-        """Apply the copied snapshot to the selected line."""
+        """Apply the copied snapshot to the selected line.
+
+        If the copied line had operations, the user is asked whether to also
+        paste them (replacing the destination line's operations).
+        """
         linha = self._get_selected_linha()
         if linha is None:
             self.status_label.setText("Selecione uma linha.")
@@ -569,11 +607,28 @@ class OrcamentoItemValuesetPage(QWidget):
             self.status_label.setText("Não existem dados copiados.")
             return
 
+        colar_operacoes = False
+        total_operacoes = len(self._copied_operacoes) if self._copied_operacoes else 0
+        if total_operacoes:
+            confirm = QMessageBox.question(
+                self,
+                "Colar operações",
+                f"A linha copiada tem {total_operacoes} operação(ões). Colar também "
+                "as operações? (substituem as da linha de destino)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            colar_operacoes = confirm == QMessageBox.StandardButton.Yes
+
         try:
             with SessionLocal() as session:
                 OrcamentoItemValuesetLinhaService(session).aplicar_snapshot_linha(
                     linha.id, self._copied_snapshot
                 )
+                if colar_operacoes:
+                    OrcamentoItemValuesetLinhaOperacaoService(session).copiar_operacoes_de(
+                        self._copied_operacoes, linha.id
+                    )
+                    session.commit()
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(
                 mensagem_erro_bd("Não foi possível colar os dados.", error)
@@ -581,7 +636,12 @@ class OrcamentoItemValuesetPage(QWidget):
             return
 
         self.carregar()
-        self.status_label.setText("Dados colados na linha.")
+        if colar_operacoes:
+            self.status_label.setText(
+                "Dados e operações colados — valide as operações na linha de destino."
+            )
+        else:
+            self.status_label.setText("Dados colados na linha.")
 
     def limpar_dados(self) -> None:
         """Clear the materia-prima snapshot of the selected lines."""

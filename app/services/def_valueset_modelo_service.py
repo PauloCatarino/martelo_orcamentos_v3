@@ -14,6 +14,10 @@ from app.services.def_valueset_modelo_linha_service import (
     CriarDefValuesetModeloLinhaData,
     DefValuesetModeloLinhaService,
 )
+from app.services.def_valueset_modelo_linha_operacao_service import (
+    CriarDefValuesetModeloLinhaOperacaoData,
+    DefValuesetModeloLinhaOperacaoService,
+)
 
 
 @dataclass(frozen=True)
@@ -133,10 +137,11 @@ class DefValuesetModeloService:
 
         novo_modelo = self.criar_modelo(dados_novos)
         linha_service = DefValuesetModeloLinhaService(self.session)
+        operacao_service = DefValuesetModeloLinhaOperacaoService(self.session)
         linhas = linha_service.listar_linhas_do_modelo(original_id)
 
         for linha in linhas:
-            linha_service.criar_linha(
+            nova_linha = linha_service.criar_linha(
                 CriarDefValuesetModeloLinhaData(
                     def_valueset_modelo_id=novo_modelo.id,
                     chave=linha.chave,
@@ -172,6 +177,22 @@ class DefValuesetModeloService:
                     observacoes=linha.observacoes,
                 )
             )
+            for operacao in operacao_service.listar_operacoes_da_linha(linha.id):
+                operacao_service.adicionar_operacao_a_linha(
+                    CriarDefValuesetModeloLinhaOperacaoData(
+                        def_valueset_modelo_linha_id=nova_linha.id,
+                        def_operacao_id=operacao.def_operacao_id,
+                        ordem=operacao.ordem,
+                        regra_calculo=operacao.regra_calculo,
+                        quantidade_base=operacao.quantidade_base,
+                        tempo_setup_minutos=operacao.tempo_setup_minutos,
+                        tempo_por_unidade_minutos=operacao.tempo_por_unidade_minutos,
+                        unidade_tempo=operacao.unidade_tempo,
+                        obrigatorio=operacao.obrigatorio,
+                        ativo=operacao.ativo,
+                        observacoes=operacao.observacoes,
+                    )
+                )
 
         return DuplicarDefValuesetModeloResult(
             modelo=novo_modelo,

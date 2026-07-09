@@ -46,6 +46,7 @@ def test_page_headers() -> None:
         "Origem",
         "Editado localmente",
         "Ativo",
+        "Operações",
     ]
 
 
@@ -154,3 +155,36 @@ def test_page_uses_multi_selection_for_batch_actions() -> None:
     assert "_get_selected_linhas" in toggle
     assert "commit=False" in toggle
     assert "Estado atualizado em" in toggle
+
+
+def test_page_carrega_coluna_operacoes() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    carregar = inspect.getsource(OrcamentoValuesetPage.carregar)
+    assert "OrcamentoValuesetLinhaOperacaoService" in carregar
+    assert "_operacoes_por_linha" in carregar
+
+    preencher = inspect.getsource(OrcamentoValuesetPage._preencher)
+    assert "_operacoes_por_linha" in preencher
+
+
+def test_page_edit_lida_com_operacoes_alteradas() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    editar = inspect.getsource(OrcamentoValuesetPage.abrir_editar_linha)
+    assert "dialog.operacoes_alteradas" in editar
+    assert "Operações da linha atualizadas." in editar
+
+
+def test_page_copiar_colar_com_operacoes_opt_in() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    copiar = inspect.getsource(OrcamentoValuesetPage.copiar_dados)
+    assert "OrcamentoValuesetLinhaOperacaoService" in copiar
+    assert "_copied_operacoes" in copiar
+
+    colar = inspect.getsource(OrcamentoValuesetPage.colar_dados)
+    assert "_copied_operacoes" in colar
+    assert "copiar_operacoes_de" in colar
+    assert "Colar também" in colar
+    assert "Dados e operações colados" in colar
