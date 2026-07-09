@@ -620,6 +620,23 @@ def test_orcamento_item_custeio_page_atualizar_geral() -> None:
     assert "consumo_ml_total" in valores
 
 
+def test_custeio_page_assinala_erros_e_bloqueia_preco() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    carregar = inspect.getsource(OrcamentoItemCusteioPage.carregar)
+    assert "validar_entradas_do_item" in carregar
+    assert "Preço bloqueado" in carregar
+    assert "_aplicar_erros_entrada" in carregar
+
+    aplicar = inspect.getsource(OrcamentoItemCusteioPage._aplicar_erros_entrada)
+    assert "setBackground" in aplicar
+    assert "setForeground" in aplicar
+    assert "setToolTip" in aplicar
+
+    atualizar = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
+    assert "EntradasCusteioInvalidas" in atualizar
+
+
 def test_custeio_page_menu_operacao_manual() -> None:
     import inspect
 

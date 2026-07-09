@@ -76,6 +76,8 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.orcamento_item_custeio_linha_service import (
     ClipboardCusteio,
+    EntradasCusteioInvalidas,
+    ErroEntradaCusteio,
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
@@ -450,6 +452,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
+        self._erros_entrada: list[ErroEntradaCusteio] = []
         self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
         self._valueset_opcoes: list = []
         self._chave_tipos: dict[str, str | None] = {}
@@ -652,6 +655,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
                 custeio_service = OrcamentoItemCusteioLinhaService(session)
                 linhas = custeio_service.listar_linhas_do_item(self.item_id)
+                erros_entrada = custeio_service.validar_entradas_do_item(self.item_id)
                 # Cache the item ValueSet options + key types once, for the
                 # per-row 'Mat. default' dropdown (filtered by compatibility).
                 self._valueset_opcoes = custeio_service.opcoes_valueset_do_item(
@@ -668,7 +672,20 @@ class OrcamentoItemCusteioPage(QWidget):
         self._update_item_info()
         self._atualizar_producao_label()
         self._preencher_tabela(linhas)
-        self._atualizar_caixa_preco()
+        self._erros_entrada = erros_entrada
+        self._aplicar_erros_entrada()
+
+        if self._erros_entrada:
+            self.preco_item_label.setText(
+                "Preço bloqueado: corrija as entradas assinaladas no custeio."
+            )
+            self.preco_item_label.setToolTip(
+                "O preço não é recalculado enquanto existirem medidas ou "
+                "quantidades inválidas."
+            )
+            self.status_label.setText(self._resumo_erros_entrada())
+        else:
+            self._atualizar_caixa_preco()
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
@@ -775,6 +792,10 @@ class OrcamentoItemCusteioPage(QWidget):
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
                 self._recalcular_item_completo(service)
+        except EntradasCusteioInvalidas as error:
+            self.carregar()
+            self.status_label.setText(str(error))
+            return
         except (SQLAlchemyError, ValueError):
             self.carregar()
             self.status_label.setText("Não foi possível atualizar o item.")
@@ -1266,6 +1287,43 @@ class OrcamentoItemCusteioPage(QWidget):
         if not self._larguras_iniciais_aplicadas and linhas:
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
+
+    def _aplicar_erros_entrada(self) -> None:
+        """Highlight invalid persisted inputs after the table has been filled."""
+        if not self._erros_entrada:
+            return
+
+        row_por_linha_id = {
+            linha.id: row for row, linha in self._custeio_by_row.items()
+        }
+        coluna_por_nome = {
+            header: indice for indice, header in enumerate(self.TABLE_HEADERS)
+        }
+        fundo_erro = QColor("#FDE2E1")
+        texto_erro = QColor("#A11A1A")
+
+        for erro in self._erros_entrada:
+            row = row_por_linha_id.get(erro.linha_id)
+            coluna = coluna_por_nome.get(erro.campo)
+            if row is None or coluna is None:
+                continue
+            item = self.table.item(row, coluna)
+            if item is None:
+                continue
+            item.setBackground(fundo_erro)
+            item.setForeground(texto_erro)
+            tooltip_atual = item.toolTip().strip()
+            item.setToolTip(
+                f"{tooltip_atual}\n\n{erro.mensagem}" if tooltip_atual else erro.mensagem
+            )
+
+    def _resumo_erros_entrada(self) -> str:
+        """Compact validation summary for the page status area."""
+        primeiros = "; ".join(erro.mensagem for erro in self._erros_entrada[:2])
+        restantes = len(self._erros_entrada) - 2
+        if restantes > 0:
+            primeiros += f"; e mais {restantes} erro(s)"
+        return f"Entradas inválidas: {primeiros}"
 
     def _calcular_quantidades_das_linhas(
         self, linhas: list[OrcamentoItemCusteioLinhaResumo]

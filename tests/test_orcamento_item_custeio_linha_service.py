@@ -1449,6 +1449,87 @@ def test_edicao_rapida_resolve_contexto_local_da_divisao(monkeypatch) -> None:
     assert primeiro_payload["esp_real"] == Decimal("20")
 
 
+def test_validar_entradas_item_aceita_expressoes_com_contexto_local(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="DIVISAO_INDEPENDENTE",
+            comp="H-100",
+            larg="L/2",
+            esp="P",
+            qt_mod=Decimal("2"),
+            qt_und=Decimal("1"),
+        ),
+        _resumo(
+            id=2,
+            tipo_linha="PECA",
+            comp="HM/2",
+            larg="LM-50",
+            esp="PM",
+            qt_mod=Decimal("1"),
+            qt_und=Decimal("0"),
+        ),
+    ]
+
+    assert service.validar_entradas_do_item(30) == []
+
+
+def test_validar_entradas_item_lista_campos_invalidos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=Decimal("20")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=7,
+            tipo_linha="PECA",
+            comp="abc",
+            larg="L",
+            esp="P",
+            qt_mod=Decimal("-1"),
+            qt_und=Decimal("-2"),
+        )
+    ]
+
+    erros = service.validar_entradas_do_item(30)
+
+    assert {(erro.linha_id, erro.campo) for erro in erros} == {
+        (7, "QT mod"),
+        (7, "QT und"),
+        (7, "Comp"),
+    }
+
+
+def test_recalcular_item_completo_bloqueia_antes_do_pipeline(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=Decimal("20")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=7, tipo_linha="PECA", comp="H/0", larg="L", esp="P")
+    ]
+    chamado = False
+
+    def _nao_deve_recalcular(_item_id):
+        nonlocal chamado
+        chamado = True
+
+    monkeypatch.setattr(service, "recalcular_medidas_do_item", _nao_deve_recalcular)
+
+    try:
+        service.recalcular_item_completo(30)
+    except service_module.EntradasCusteioInvalidas as error:
+        assert error.erros[0].campo == "Comp"
+    else:
+        raise AssertionError("Expected EntradasCusteioInvalidas")
+
+    assert chamado is False
+
+
 def test_recalcular_linha_antes_de_divisao_com_hm_nao_rebenta(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     service.session.item = SimpleNamespace(

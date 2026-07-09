@@ -85,6 +85,7 @@ def validar_expressao_medida(
     *,
     campo: str = "Medida",
     permitir_vazio: bool = True,
+    permitir_variaveis_sem_valor: bool = False,
 ) -> tuple[str | None, Decimal | None]:
     """Normalize and validate one user-entered measure expression.
 
@@ -103,6 +104,10 @@ def validar_expressao_medida(
     texto = normalizar_variaveis_medida(str(valor).strip())
     resultado = avaliar_medida(texto, contexto)
     if resultado is None:
+        if permitir_variaveis_sem_valor and _expressao_valida_com_placeholders(
+            texto, contexto or {}
+        ):
+            return texto, None
         raise ValueError(
             f"{campo} inválida: use números, H/L/P ou HM/LM/PM "
             "com +, -, *, / e parênteses."
@@ -113,6 +118,24 @@ def validar_expressao_medida(
         raise ValueError(f"{campo} inválida: o resultado tem de ser maior que zero.")
 
     return texto, resultado
+
+
+def _expressao_valida_com_placeholders(texto: str, contexto: dict) -> bool:
+    """Distinguish known variables without values from an invalid expression.
+
+    Costing reports intentionally support items whose base measures are still
+    empty: H/L/P are known variables there, but cannot yet produce an area. For
+    validation purposes only, missing known values are replaced by 1. Unknown
+    names, bad syntax, disallowed operators and explicit division by zero still
+    fail through the regular safe evaluator.
+    """
+    contexto_teste = {
+        str(chave).upper(): (
+            numero if (numero := normalizar_numero(valor)) is not None else Decimal("1")
+        )
+        for chave, valor in contexto.items()
+    }
+    return _avaliar_expressao(texto, contexto_teste) is not None
 
 
 def construir_contexto_item(

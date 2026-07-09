@@ -135,6 +135,28 @@ def test_validar_expressao_medida_rejeita_entradas_invalidas() -> None:
             raise AssertionError(f"Expected ValueError for {invalida!r}")
 
 
+def test_validar_expressao_permite_variavel_conhecida_ainda_sem_valor() -> None:
+    contexto = {"H": None, "L": Decimal("500")}
+
+    assert validar_expressao_medida(
+        "H/2",
+        contexto,
+        permitir_variaveis_sem_valor=True,
+    ) == ("H/2", None)
+
+    for invalida in ("XP/2", "H/0", "H//2"):
+        try:
+            validar_expressao_medida(
+                invalida,
+                contexto,
+                permitir_variaveis_sem_valor=True,
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValueError for {invalida!r}")
+
+
 def test_normalizar_numero() -> None:
     assert normalizar_numero("8,62") == Decimal("8.62")
     assert normalizar_numero(Decimal("5")) == Decimal("5")

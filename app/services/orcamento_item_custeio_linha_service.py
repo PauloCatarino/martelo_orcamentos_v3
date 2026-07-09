@@ -383,6 +383,26 @@ class ExclusaoLoteResult:
     valor: bool
 
 
+@dataclass(frozen=True)
+class ErroEntradaCusteio:
+    """One invalid user-controlled field in a costing line."""
+
+    linha_id: int
+    campo: str
+    mensagem: str
+
+
+class EntradasCusteioInvalidas(ValueError):
+    """Raised when a costing pipeline would run over invalid line inputs."""
+
+    def __init__(self, erros: list[ErroEntradaCusteio]) -> None:
+        self.erros = tuple(erros)
+        resumo = "; ".join(erro.mensagem for erro in self.erros[:3])
+        if len(self.erros) > 3:
+            resumo += f"; e mais {len(self.erros) - 3} erro(s)"
+        super().__init__(f"Corrija as linhas de custeio antes de atualizar: {resumo}")
+
+
 class OrcamentoItemCusteioLinhaService:
     """Application service for OrcamentoItemCusteioLinha workflows."""
 
@@ -1173,6 +1193,7 @@ class OrcamentoItemCusteioLinhaService:
         quantity rules → quantities → finishing → areas → orlas → raw-material →
         hardware → ML → finishing cost → operations → production → times → total.
         """
+        self.garantir_entradas_validas_do_item(orcamento_item_id)
         self.recalcular_medidas_do_item(orcamento_item_id)
         self.aplicar_regras_quantidade_do_item(orcamento_item_id)
         self.recalcular_quantidades_do_item(orcamento_item_id)
@@ -1187,6 +1208,105 @@ class OrcamentoItemCusteioLinhaService:
         self.recalcular_custos_producao_do_item(orcamento_item_id)
         self.recalcular_tempos_producao_do_item(orcamento_item_id)
         self.recalcular_custo_total_do_item(orcamento_item_id)
+
+    def validar_entradas_do_item(
+        self, orcamento_item_id: int
+    ) -> list[ErroEntradaCusteio]:
+        """Return all invalid editable quantities and measure expressions.
+
+        Validation follows the display order so HM/LM/PM resolve from the most
+        recent independent division, exactly like the measure recompute. It is
+        read-only and can therefore be used while loading the page to highlight
+        legacy or imported bad data before any financial calculation runs.
+        """
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+
+        contexto_global = construir_contexto_item(
+            item.altura, item.largura, item.profundidade
+        )
+        contexto_local: dict = {}
+        erros: list[ErroEntradaCusteio] = []
+
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha == SEPARADOR:
+                continue
+
+            self._validar_quantidade_da_linha(
+                linha, "qt_mod", "QT mod", permitir_zero=False, erros=erros
+            )
+            self._validar_quantidade_da_linha(
+                linha, "qt_und", "QT und", permitir_zero=True, erros=erros
+            )
+
+            if linha.tipo_linha in (OPERACAO_MANUAL, PECA_COMPOSTA):
+                continue
+
+            contexto = {**contexto_global, **contexto_local}
+            resultados: dict[str, Decimal | None] = {}
+            for atributo, campo, rotulo in (
+                ("comp", "Comp", "Comprimento"),
+                ("larg", "Larg", "Largura"),
+                ("esp", "Esp", "Espessura"),
+            ):
+                valor = getattr(linha, atributo)
+                obrigatoria = linha.tipo_linha == DIVISAO_INDEPENDENTE
+                try:
+                    _texto, resultado = validar_expressao_medida(
+                        valor,
+                        contexto,
+                        campo=rotulo,
+                        permitir_vazio=not obrigatoria,
+                        permitir_variaveis_sem_valor=True,
+                    )
+                    resultados[atributo] = resultado
+                except ValueError as error:
+                    resultados[atributo] = None
+                    erros.append(
+                        ErroEntradaCusteio(
+                            linha_id=linha.id,
+                            campo=campo,
+                            mensagem=f"Linha {linha.id} · {campo}: {error}",
+                        )
+                    )
+
+            if linha.tipo_linha == DIVISAO_INDEPENDENTE:
+                contexto_local = {
+                    "HM": resultados.get("comp"),
+                    "LM": resultados.get("larg"),
+                    "PM": resultados.get("esp"),
+                }
+
+        return erros
+
+    def garantir_entradas_validas_do_item(self, orcamento_item_id: int) -> None:
+        """Raise before costing when any editable input is invalid."""
+        erros = self.validar_entradas_do_item(orcamento_item_id)
+        if erros:
+            raise EntradasCusteioInvalidas(erros)
+
+    def _validar_quantidade_da_linha(
+        self,
+        linha,
+        atributo: str,
+        campo: str,
+        *,
+        permitir_zero: bool,
+        erros: list[ErroEntradaCusteio],
+    ) -> None:
+        try:
+            self._validar_quantidade_editada(
+                getattr(linha, atributo), campo, permitir_zero=permitir_zero
+            )
+        except ValueError as error:
+            erros.append(
+                ErroEntradaCusteio(
+                    linha_id=linha.id,
+                    campo=campo,
+                    mensagem=f"Linha {linha.id} · {campo}: {error}",
+                )
+            )
 
     def aplicar_acabamentos_do_item(self, orcamento_item_id: int) -> AcabamentoResult:
         """Fill acabamento_face_sup/inf of PECA lines from def_peca + ValueSet.
