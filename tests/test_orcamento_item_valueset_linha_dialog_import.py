@@ -68,6 +68,9 @@ def test_dialog_has_actions() -> None:
     ):
         assert hasattr(OrcamentoItemValuesetLinhaDialog, method)
 
+    calcular = inspect.getsource(OrcamentoItemValuesetLinhaDialog._calcular_preco_liquido)
+    assert "calcular_preco_liquido" in calcular
+
 
 def test_dialog_locks_chave() -> None:
     from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (

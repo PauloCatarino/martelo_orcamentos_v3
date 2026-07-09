@@ -30,12 +30,18 @@ from app.services.orcamento_item_valueset_linha_service import (
     EditarOrcamentoItemValuesetLinhaData,
     OrcamentoItemValuesetLinhaService,
 )
+from app.ui.dialogs.atualizar_precos_valueset_dialog import AtualizarPrecosValuesetDialog
 from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModeloDialog
 from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
     OrcamentoItemValuesetLinhaDialog,
 )
 from app.ui.dialogs.propagar_valueset_custeio_dialog import PropagarValuesetCusteioDialog
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_precos import (
+    atualizacoes_de_divergencias,
+    atualizar_modelo_origem_por_divergencias,
+    detetar_divergencias_valueset,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
@@ -258,17 +264,20 @@ class OrcamentoItemValuesetPage(QWidget):
 
         self.carregar()
         if substituir:
-            self.status_label.setText(
+            mensagem = (
                 f"Modelo {result.modelo_codigo}: tabela substituída, "
                 f"{result.eliminadas} linhas eliminadas, "
                 f"{result.criadas} linhas inseridas."
             )
         else:
-            self.status_label.setText(
+            mensagem = (
                 f"Modelo {result.modelo_codigo} importado: "
                 f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
                 f"{result.ignoradas} ignoradas (editadas localmente)."
             )
+
+        self.status_label.setText(mensagem)
+        self._verificar_precos_apos_importacao(modelo.id, mensagem)
 
     def _perguntar_modo_importacao_modelo(self) -> bool | None:
         """Ask whether importing a model should replace or merge the table."""
@@ -300,6 +309,70 @@ class OrcamentoItemValuesetPage(QWidget):
         if clicked is atualizar_button:
             return False
         return None
+
+    def _verificar_precos_apos_importacao(
+        self, modelo_id: int, mensagem_base: str
+    ) -> None:
+        """Check imported item ValueSet prices only after explicit import."""
+        try:
+            with SessionLocal() as session:
+                linhas = OrcamentoItemValuesetLinhaService(
+                    session
+                ).listar_linhas_ativas_do_item(self.orcamento_item_id)
+                divergencias = detetar_divergencias_valueset(session, linhas)
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível verificar os preços.", error)
+            )
+            return
+
+        if not divergencias:
+            return
+
+        dialog = AtualizarPrecosValuesetDialog(
+            divergencias,
+            mostrar_atualizar_modelo_origem=True,
+            parent=self,
+        )
+        if not dialog.exec():
+            return
+
+        selecionadas = dialog.selected_divergencias
+        if not selecionadas:
+            self.status_label.setText(
+                f"{mensagem_base} {self._status_precos(0, len(divergencias))}"
+            )
+            return
+
+        atualizadas_modelo = 0
+        try:
+            with SessionLocal() as session:
+                atualizadas = OrcamentoItemValuesetLinhaService(
+                    session
+                ).atualizar_precos_linhas(atualizacoes_de_divergencias(selecionadas))
+                if dialog.atualizar_modelo_origem:
+                    atualizadas_modelo = atualizar_modelo_origem_por_divergencias(
+                        session, modelo_id, selecionadas
+                    )
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar os preços.", error)
+            )
+            return
+
+        self.carregar()
+        mensagem = (
+            f"{mensagem_base} "
+            f"{self._status_precos(atualizadas, len(divergencias) - atualizadas)}"
+        )
+        if dialog.atualizar_modelo_origem:
+            mensagem += f" Modelo de origem atualizado em {atualizadas_modelo} linha(s)."
+        self.status_label.setText(mensagem)
+
+        if atualizadas > 0 and self._perguntar_atualizar_custeio_apos_precos():
+            self._atualizar_custeio_para_linhas(
+                [divergencia.linha_id for divergencia in selecionadas]
+            )
 
     def abrir_editar_linha(self) -> None:
         """Open the edit dialog for the selected ValueSet line."""
@@ -404,6 +477,35 @@ class OrcamentoItemValuesetPage(QWidget):
 
         if linha is not None:
             self._propagar_para_custeio(linha)
+
+    def _perguntar_atualizar_custeio_apos_precos(self) -> bool:
+        """Ask whether to review costing after updating ValueSet prices."""
+        resposta = QMessageBox.question(
+            self,
+            "Atualizar custeio",
+            "Atualizar o custeio agora?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
+
+    def _atualizar_custeio_para_linhas(self, valueset_linha_ids: list[int]) -> None:
+        """Run the existing cost propagation flow for the updated ValueSet lines."""
+        for valueset_linha_id in valueset_linha_ids:
+            try:
+                with SessionLocal() as session:
+                    linha = OrcamentoItemValuesetLinhaService(session).obter_por_id(
+                        valueset_linha_id
+                    )
+            except SQLAlchemyError as error:
+                self.status_label.setText(
+                    mensagem_erro_bd(
+                        "Não foi possível carregar a linha ValueSet.", error
+                    )
+                )
+                return
+
+            if linha is not None:
+                self._propagar_para_custeio(linha)
 
     def _propagar_para_custeio(self, valueset_linha) -> None:
         """Open the comparison dialog and apply the ValueSet to chosen cost lines."""
@@ -622,6 +724,11 @@ class OrcamentoItemValuesetPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _status_precos(self, atualizados: int, mantidos: int) -> str:
+        """Format the final price-update status."""
+        mantido_label = "mantido" if mantidos == 1 else "mantidos"
+        return f"{atualizados} preços atualizados; {mantidos} {mantido_label}."
 
     def _format_prioridade(self, prioridade: int | None) -> str:
         """Format the priority for display ("—" when empty)."""

@@ -79,6 +79,7 @@ def test_page_import_modelo_uses_dialog_and_service() -> None:
     )
     assert "importar_modelo_para_item" in importar_selecionado
     assert "substituir=substituir" in importar_selecionado
+    assert "_verificar_precos_apos_importacao" in importar_selecionado
     assert "importado" in importar_selecionado
 
 
@@ -93,6 +94,22 @@ def test_page_import_modelo_pergunta_substituir_ou_atualizar() -> None:
 
     importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
     assert "listar_linhas_ativas_do_item" not in importar
+
+
+def test_page_import_modelo_verifica_precos_e_pode_atualizar_custeio() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    verificar = inspect.getsource(
+        OrcamentoItemValuesetPage._verificar_precos_apos_importacao
+    )
+    assert "AtualizarPrecosValuesetDialog" in verificar
+    assert "detetar_divergencias_valueset" in verificar
+    assert "atualizar_precos_linhas" in verificar
+    assert "atualizar_modelo_origem_por_divergencias" in verificar
+    assert "_perguntar_atualizar_custeio_apos_precos" in verificar
+
+    custeio = inspect.getsource(OrcamentoItemValuesetPage._atualizar_custeio_para_linhas)
+    assert "_propagar_para_custeio" in custeio
 
 
 def test_page_formats_percentages() -> None:

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.domain.valueset_precos import calcular_preco_liquido
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaRepository
@@ -336,6 +338,22 @@ class OrcamentoItemValuesetLinhaService:
         self.session.commit()
 
         return True
+
+    def atualizar_precos_linhas(
+        self, atualizacoes: Iterable[tuple[int, Decimal | None, Decimal | None]]
+    ) -> int:
+        """Update only table and liquid prices for the given item lines."""
+        atualizadas = 0
+        for linha_id, preco_tabela_novo, preco_liquido_novo in atualizacoes:
+            self.repository.update(
+                id=linha_id,
+                preco_tabela=preco_tabela_novo,
+                preco_liquido=preco_liquido_novo,
+            )
+            atualizadas += 1
+
+        self.session.commit()
+        return atualizadas
 
     def obter_valor_resolvido(
         self, orcamento_item_id: int, orcamento_versao_id: int, chave: str
@@ -672,9 +690,7 @@ class OrcamentoItemValuesetLinhaService:
         if preco_tabela is None:
             return preco_liquido
 
-        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
-        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
-        return preco_tabela * desconto_factor * margem_factor
+        return calcular_preco_liquido(preco_tabela, margem, desconto)
 
     def _validate_required_id(self, value: int | None, field_name: str) -> int:
         if not value:

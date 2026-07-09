@@ -477,6 +477,23 @@ def test_importar_modelo_inexistente_levanta(monkeypatch) -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_atualizar_precos_linhas_so_toca_preco_tabela_e_liquido(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    atualizadas = service.atualizar_precos_linhas(
+        [(5, Decimal("12.50"), Decimal("11.25"))]
+    )
+
+    assert atualizadas == 1
+    assert _FakeRepository.updated_payload == {
+        "id": 5,
+        "preco_tabela": Decimal("12.50"),
+        "preco_liquido": Decimal("11.25"),
+    }
+    assert "editado_localmente" not in _FakeRepository.updated_payload
+    assert session.committed is True
+
+
 def test_editar_linha_recalcula_preco_liquido(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 

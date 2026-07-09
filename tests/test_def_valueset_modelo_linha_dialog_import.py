@@ -154,6 +154,8 @@ def test_dialog_normaliza_recalcula_e_marca_editado() -> None:
 
     fill = inspect.getsource(DefValuesetModeloLinhaDialog._preencher_de_materia_prima)
     assert "normalize_percentagem_humana" in fill
+    calcular = inspect.getsource(DefValuesetModeloLinhaDialog._calcular_preco_liquido)
+    assert "calcular_preco_liquido" in calcular
 
     marcar = inspect.getsource(DefValuesetModeloLinhaDialog._marcar_editado_se_necessario)
     assert "EDITADO_LOCALMENTE" in marcar

@@ -27,6 +27,7 @@ from app.domain.materia_prima_snapshot import (
     tipo_materia_prima,
 )
 from app.domain.numeros import normalize_percentagem_humana, parse_decimal_humano
+from app.domain.valueset_precos import calcular_preco_liquido
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.helpers.valueset_combo_helper import (
@@ -377,13 +378,8 @@ class DefValuesetModeloLinhaDialog(QDialog):
     def _calcular_preco_liquido(
         self, preco_tabela: Decimal | None, margem: Decimal | None, desconto: Decimal | None
     ) -> Decimal | None:
-        """preco_liquido = preco_tabela * (1 - desconto/100) * (1 + margem/100)."""
-        if preco_tabela is None:
-            return None
-
-        desconto_factor = Decimal("1") - (desconto or Decimal("0")) / Decimal("100")
-        margem_factor = Decimal("1") + (margem or Decimal("0")) / Decimal("100")
-        return preco_tabela * desconto_factor * margem_factor
+        """Return the shared ValueSet liquid price calculation."""
+        return calcular_preco_liquido(preco_tabela, margem, desconto)
 
     def get_data(self) -> DefValuesetModeloLinhaDialogData:
         """Return dialog data (raises ValueError on invalid numbers)."""

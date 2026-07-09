@@ -447,6 +447,23 @@ def test_preco_tabela_none_mantem_preco_liquido(monkeypatch) -> None:
     assert _FakeRepository.created_payload["preco_liquido"] == Decimal("99")
 
 
+def test_atualizar_precos_linhas_so_toca_preco_tabela_e_liquido(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    atualizadas = service.atualizar_precos_linhas(
+        [(5, Decimal("12.50"), Decimal("11.25"))]
+    )
+
+    assert atualizadas == 1
+    assert _FakeRepository.updated_payload == {
+        "id": 5,
+        "preco_tabela": Decimal("12.50"),
+        "preco_liquido": Decimal("11.25"),
+    }
+    assert "editado_localmente" not in _FakeRepository.updated_payload
+    assert session.committed is True
+
+
 def test_editado_localmente_default_false() -> None:
     data = service_module.CriarDefValuesetModeloLinhaData(
         def_valueset_modelo_id=10, chave="MATERIAL_PORTAS"

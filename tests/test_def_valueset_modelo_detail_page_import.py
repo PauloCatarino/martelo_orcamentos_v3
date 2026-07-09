@@ -52,6 +52,7 @@ def test_page_has_line_actions() -> None:
         "abrir_editar_linha",
         "alternar_linha_ativa",
         "carregar_linhas",
+        "verificar_precos",
         "_get_selected_linha",
         "_abrir_dialog_criar_linha",
         "_criar_linha_from_form_data",
@@ -72,6 +73,11 @@ def test_page_uses_line_service_and_dialog() -> None:
     carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
     assert "DefValuesetModeloLinhaService" in carregar
     assert "listar_linhas_do_modelo" in carregar
+
+    verificar = inspect.getsource(DefValuesetModeloDetailPage.verificar_precos)
+    assert "AtualizarPrecosValuesetDialog" in verificar
+    assert "detetar_divergencias_valueset" in verificar
+    assert "atualizar_precos_linhas" in verificar
 
 
 def test_page_edit_line_has_save_as_create_flow() -> None:

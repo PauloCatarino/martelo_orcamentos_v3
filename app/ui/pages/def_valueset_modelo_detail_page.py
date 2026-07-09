@@ -27,8 +27,13 @@ from app.services.def_valueset_modelo_linha_service import (
     DefValuesetModeloLinhaService,
     EditarDefValuesetModeloLinhaData,
 )
+from app.ui.dialogs.atualizar_precos_valueset_dialog import AtualizarPrecosValuesetDialog
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_precos import (
+    atualizacoes_de_divergencias,
+    detetar_divergencias_valueset,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
@@ -91,6 +96,8 @@ class DefValuesetModeloDetailPage(QWidget):
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_linhas)
+        self.check_prices_button = QPushButton("Verificar preços…")
+        self.check_prices_button.clicked.connect(self.verificar_precos)
         self.back_button = QPushButton("Voltar à lista")
         self.back_button.clicked.connect(self._handle_back)
 
@@ -99,6 +106,7 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.check_prices_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.back_button)
 
@@ -149,6 +157,50 @@ class DefValuesetModeloDetailPage(QWidget):
             self.status_label.setText("Sem linhas neste modelo.")
         else:
             self._avisar_prioridades_repetidas(linhas)
+
+    def verificar_precos(self) -> None:
+        """Explicitly check model line prices against the material catalog."""
+        try:
+            with SessionLocal() as session:
+                linhas = DefValuesetModeloLinhaService(session).listar_linhas_do_modelo(
+                    self.modelo.id
+                )
+                divergencias = detetar_divergencias_valueset(session, linhas)
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível verificar os preços.", error)
+            )
+            return
+
+        if not divergencias:
+            self.status_label.setText("Sem divergências de preço.")
+            return
+
+        dialog = AtualizarPrecosValuesetDialog(divergencias, parent=self)
+        if not dialog.exec():
+            self.status_label.setText(self._status_precos(0, len(divergencias)))
+            return
+
+        selecionadas = dialog.selected_divergencias
+        if not selecionadas:
+            self.status_label.setText(self._status_precos(0, len(divergencias)))
+            return
+
+        try:
+            with SessionLocal() as session:
+                atualizadas = DefValuesetModeloLinhaService(
+                    session
+                ).atualizar_precos_linhas(atualizacoes_de_divergencias(selecionadas))
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar os preços.", error)
+            )
+            return
+
+        self.carregar_linhas()
+        self.status_label.setText(
+            self._status_precos(atualizadas, len(divergencias) - atualizadas)
+        )
 
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
@@ -424,6 +476,11 @@ class DefValuesetModeloDetailPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _status_precos(self, atualizados: int, mantidos: int) -> str:
+        """Format the final price-update status."""
+        mantido_label = "mantido" if mantidos == 1 else "mantidos"
+        return f"{atualizados} preços atualizados; {mantidos} {mantido_label}."
 
     def _format_prioridade(self, prioridade: int | None) -> str:
         """Format the priority for display ("—" when empty)."""
