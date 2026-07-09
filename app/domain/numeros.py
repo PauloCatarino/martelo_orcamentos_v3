@@ -36,6 +36,51 @@ def parse_decimal_humano(texto: str | None) -> Decimal | None:
         raise ValueError("numero invalido") from error
 
 
+def validar_decimal(
+    valor,
+    campo: str,
+    *,
+    permitir_vazio: bool = True,
+    minimo: Decimal | None = None,
+    minimo_exclusivo: bool = False,
+) -> Decimal | None:
+    """Validate a finite decimal and an optional lower bound."""
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        if permitir_vazio:
+            return None
+        raise ValueError(f"{campo} é obrigatório.")
+    if isinstance(valor, bool):
+        raise ValueError(f"{campo} inválido: introduza um número.")
+
+    if isinstance(valor, Decimal):
+        numero = valor
+    elif isinstance(valor, (int, float)):
+        try:
+            numero = Decimal(str(valor))
+        except InvalidOperation as error:
+            raise ValueError(f"{campo} inválido: introduza um número.") from error
+    elif isinstance(valor, str):
+        try:
+            numero = parse_decimal_humano(valor)
+        except ValueError as error:
+            raise ValueError(f"{campo} inválido: introduza um número.") from error
+        if numero is None:
+            if permitir_vazio:
+                return None
+            raise ValueError(f"{campo} é obrigatório.")
+    else:
+        raise ValueError(f"{campo} inválido: introduza um número.")
+
+    if not numero.is_finite():
+        raise ValueError(f"{campo} inválido: o valor tem de ser finito.")
+    if minimo is not None:
+        fora = numero <= minimo if minimo_exclusivo else numero < minimo
+        if fora:
+            comparacao = "maior que" if minimo_exclusivo else "maior ou igual a"
+            raise ValueError(f"{campo} inválido: o valor tem de ser {comparacao} {minimo}.")
+    return numero
+
+
 def formatar_percentagem(valor: Decimal | None) -> str:
     """Format a human percentage for display, dropping needless decimals.
 

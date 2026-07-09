@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.item_types import OUTRO, get_item_type_options, normalize_item_type
+from app.domain.numeros import validar_decimal
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,25 @@ class NovoItemDialog(QDialog):
 
         if data.quantidade <= 0:
             self.error_label.setText("A quantidade deve ser maior que 0.")
+            return
+
+        try:
+            for valor, campo in (
+                (data.altura, "Altura"),
+                (data.largura, "Largura"),
+                (data.profundidade, "Profundidade"),
+            ):
+                validar_decimal(
+                    valor, campo, minimo=Decimal("0"), minimo_exclusivo=True
+                )
+            validar_decimal(
+                data.preco_unitario,
+                "Preço unitário",
+                permitir_vazio=False,
+                minimo=Decimal("0"),
+            )
+        except ValueError as error:
+            self.error_label.setText(str(error))
             return
 
         self.accept()

@@ -2917,7 +2917,10 @@ class OrcamentoItemCusteioPage(QWidget):
                     OrcamentoItemCusteioLinhaService(session).atualizar_material_local_linha(
                         linha.id, dados
                     )
-            except (SQLAlchemyError, ValueError):
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
                 dialog.set_error("Não foi possível atualizar o material da linha.")
                 return False
 
@@ -2977,7 +2980,10 @@ class OrcamentoItemCusteioPage(QWidget):
                     OrcamentoItemCusteioLinhaService(
                         session
                     ).atualizar_acabamento_local_linha(linha.id, dados)
-            except (SQLAlchemyError, ValueError):
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
                 dialog.set_error("Não foi possível atualizar o acabamento da linha.")
                 return False
 

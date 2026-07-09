@@ -10,6 +10,7 @@ from app.domain.numeros import (
     formatar_percentagem,
     normalize_percentagem_humana,
     parse_decimal_humano,
+    validar_decimal,
 )
 
 
@@ -53,3 +54,15 @@ def test_formatar_percentagem() -> None:
     assert formatar_percentagem(Decimal("10.0")) == "10%"
     assert formatar_percentagem(Decimal("6.8")) == "6.8%"
     assert formatar_percentagem(Decimal("12.50")) == "12.5%"
+
+
+def test_validar_decimal_aplica_limites_e_rejeita_nao_finitos() -> None:
+    assert validar_decimal("1,25", "Preço", minimo=Decimal("0")) == Decimal("1.25")
+    assert validar_decimal(None, "Preço") is None
+
+    for valor in ("-1", "NaN", "Infinity"):
+        with pytest.raises(ValueError):
+            validar_decimal(valor, "Preço", minimo=Decimal("0"))
+
+    with pytest.raises(ValueError):
+        validar_decimal("0", "Medida", minimo=Decimal("0"), minimo_exclusivo=True)

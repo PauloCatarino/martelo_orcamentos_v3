@@ -288,6 +288,39 @@ def test_orcamento_item_service_valida_quantidade_positiva(monkeypatch) -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_orcamento_item_service_rejeita_dimensoes_e_preco_invalidos(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "OrcamentoItemRepository", _FakeRepository)
+    service = service_module.OrcamentoItemService(session=_FakeSession())
+
+    for campo, valor in (
+        ("altura", Decimal("0")),
+        ("largura", Decimal("-1")),
+        ("profundidade", Decimal("NaN")),
+        ("preco_unitario", Decimal("-0.01")),
+    ):
+        dados = {
+            "orcamento_versao_id": 20,
+            "codigo": None,
+            "item": "Roupeiro",
+            "descricao": None,
+            "altura": Decimal("2000"),
+            "largura": Decimal("1000"),
+            "profundidade": Decimal("600"),
+            "quantidade": Decimal("1"),
+            "unidade": "un",
+            "preco_unitario": Decimal("0"),
+        }
+        dados[campo] = valor
+        try:
+            service.criar_item_simples(
+                service_module.CriarOrcamentoItemSimplesData(**dados)
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValueError for {campo}={valor}")
+
+
 def test_orcamento_item_service_obtem_item_por_id(monkeypatch) -> None:
     row = OrcamentoItemResumo(
         id=5,

@@ -13,6 +13,7 @@ from app.domain.custeio_linha_types import (
     SEPARADOR,
 )
 from app.domain.item_types import normalize_item_type
+from app.domain.numeros import validar_decimal
 from app.domain.precos import (
     BlocosCusto,
     ItemObjetivo,
@@ -116,11 +117,10 @@ class OrcamentoItemService:
         if not item_name:
             raise ValueError("item is required")
 
-        if data.quantidade <= 0:
-            raise ValueError("quantidade must be greater than 0")
+        valores = self._validar_valores_item(data)
 
         ordem = self.repository.get_next_ordem(data.orcamento_versao_id)
-        preco_total = data.quantidade * data.preco_unitario
+        preco_total = valores["quantidade"] * valores["preco_unitario"]
 
         result = self.repository.create_item(
             orcamento_versao_id=data.orcamento_versao_id,
@@ -129,12 +129,12 @@ class OrcamentoItemService:
             tipo_item=tipo_item,
             item=item_name,
             descricao=data.descricao,
-            altura=data.altura,
-            largura=data.largura,
-            profundidade=data.profundidade,
-            quantidade=data.quantidade,
+            altura=valores["altura"],
+            largura=valores["largura"],
+            profundidade=valores["profundidade"],
+            quantidade=valores["quantidade"],
             unidade=unidade,
-            preco_unitario=data.preco_unitario,
+            preco_unitario=valores["preco_unitario"],
             preco_total=preco_total,
             preco_manual=data.preco_manual,
         )
@@ -164,10 +164,9 @@ class OrcamentoItemService:
         if not item_name:
             raise ValueError("item is required")
 
-        if data.quantidade <= 0:
-            raise ValueError("quantidade must be greater than 0")
+        valores = self._validar_valores_item(data)
 
-        preco_total = data.quantidade * data.preco_unitario
+        preco_total = valores["quantidade"] * valores["preco_unitario"]
         item_anterior = self.repository.get_item_by_id(item_id)
 
         result = self.repository.update_item(
@@ -176,12 +175,12 @@ class OrcamentoItemService:
             tipo_item=tipo_item,
             item=item_name,
             descricao=data.descricao,
-            altura=data.altura,
-            largura=data.largura,
-            profundidade=data.profundidade,
-            quantidade=data.quantidade,
+            altura=valores["altura"],
+            largura=valores["largura"],
+            profundidade=valores["profundidade"],
+            quantidade=valores["quantidade"],
             unidade=unidade,
-            preco_unitario=data.preco_unitario,
+            preco_unitario=valores["preco_unitario"],
             preco_total=preco_total,
             preco_manual=data.preco_manual,
         )
@@ -200,6 +199,36 @@ class OrcamentoItemService:
         self.session.commit()
 
         return result
+
+    @staticmethod
+    def _validar_valores_item(data) -> dict[str, Decimal | None]:
+        """Validate values that can directly affect item quantities and prices."""
+        valores: dict[str, Decimal | None] = {}
+        for campo, rotulo in (
+            ("altura", "Altura"),
+            ("largura", "Largura"),
+            ("profundidade", "Profundidade"),
+        ):
+            valores[campo] = validar_decimal(
+                getattr(data, campo),
+                rotulo,
+                minimo=Decimal("0"),
+                minimo_exclusivo=True,
+            )
+        valores["quantidade"] = validar_decimal(
+            data.quantidade,
+            "quantidade",
+            permitir_vazio=False,
+            minimo=Decimal("0"),
+            minimo_exclusivo=True,
+        )
+        valores["preco_unitario"] = validar_decimal(
+            data.preco_unitario,
+            "Preço unitário",
+            permitir_vazio=False,
+            minimo=Decimal("0"),
+        )
+        return valores
 
     def remover_item(self, item_id: int) -> bool:
         """Remove one budget item."""

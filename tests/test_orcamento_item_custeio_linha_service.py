@@ -1671,6 +1671,52 @@ def test_atualizar_material_local_linha(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_atualizar_material_local_normaliza_numeros_e_unidade(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="FERRAGEM")
+
+    service.atualizar_material_local_linha(
+        5,
+        {
+            "preco_liquido": "1,25",
+            "desperdicio_percentagem": "5",
+            "comp_mp": "1000",
+            "esp_mp": "0",
+            "unidade": " und ",
+        },
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["preco_liquido"] == Decimal("1.25")
+    assert payload["desperdicio_percentagem"] == Decimal("5")
+    assert payload["comp_mp"] == Decimal("1000")
+    assert payload["esp_mp"] == Decimal("0")
+    assert payload["unidade"] == "UND"
+
+
+def test_atualizar_material_local_rejeita_valores_financeiros_invalidos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="FERRAGEM")
+
+    invalidos = (
+        {"preco_liquido": Decimal("-1")},
+        {"desperdicio_percentagem": Decimal("-1")},
+        {"comp_mp": Decimal("-0.01")},
+        {"larg_mp": Decimal("-1")},
+        {"esp_mp": "NaN"},
+        {"unidade": "CAIXA"},
+    )
+    for dados in invalidos:
+        try:
+            service.atualizar_material_local_linha(5, dados)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValueError for {dados!r}")
+
+    assert _FakeRepository.updated_payload is None
+
+
 def test_listar_linhas_custeio_por_chave(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
@@ -4229,6 +4275,27 @@ def test_atualizar_acabamento_local_linha_nao_peca(monkeypatch) -> None:
         pass
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_atualizar_acabamento_local_rejeita_preco_e_desperdicio_negativos(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, tipo_linha="PECA")
+
+    for dados in (
+        {"acabamento_sup_preco_liquido": Decimal("-1")},
+        {"acabamento_inf_desperdicio_percentagem": Decimal("-0.1")},
+        {"acabamento_sup_preco_liquido": "Infinity"},
+    ):
+        try:
+            service.atualizar_acabamento_local_linha(5, dados)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValueError for {dados!r}")
+
+    assert _FakeRepository.updated_payload is None
 
 
 def test_recalcular_custo_acabamento_ignora_ferragem(monkeypatch) -> None:

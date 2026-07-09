@@ -70,7 +70,7 @@ from app.domain.materia_prima_snapshot import (
     familia_materia_prima,
     tipo_materia_prima,
 )
-from app.domain.numeros import normalize_percentagem_humana
+from app.domain.numeros import normalize_percentagem_humana, validar_decimal
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.valueset_types import normalize_valueset_key
@@ -517,6 +517,7 @@ class OrcamentoItemCusteioLinhaService:
         self._validar_linha_aceita_material(linha)
 
         fields = {field: dados.get(field) for field in MATERIAL_FIELDS if field in dados}
+        self._validar_dados_material_local(fields)
         fields["origem_material"] = "EDITADO_LOCALMENTE"
         fields["material_editado_localmente"] = True
         fields["editado_localmente"] = True
@@ -2419,6 +2420,7 @@ class OrcamentoItemCusteioLinhaService:
             for field in ACABAMENTO_LOCAL_FIELDS
             if field in dados
         }
+        self._validar_dados_acabamento_local(fields)
         fields["acabamento_editado_localmente"] = True
         fields["editado_localmente"] = True
 
@@ -2431,6 +2433,22 @@ class OrcamentoItemCusteioLinhaService:
         self.recalcular_custo_total_do_item(item_id)
 
         return self.repository.get_by_id(linha_id)
+
+    @staticmethod
+    def _validar_dados_acabamento_local(fields: dict) -> None:
+        """Validate and normalize local finishing prices and waste rates."""
+        for face in ("sup", "inf"):
+            for sufixo, rotulo in (
+                ("preco_liquido", "Preço líquido"),
+                ("desperdicio_percentagem", "Desperdício %"),
+            ):
+                campo = f"acabamento_{face}_{sufixo}"
+                if campo in fields:
+                    fields[campo] = validar_decimal(
+                        fields[campo],
+                        f"{rotulo} ({face})",
+                        minimo=Decimal("0"),
+                    )
 
     def atualizar_exclusao_linha(
         self, linha_id: int, campo: str, excluir: bool
@@ -3049,6 +3067,31 @@ class OrcamentoItemCusteioLinhaService:
         self.session.commit()
 
         return result
+
+    @staticmethod
+    def _validar_dados_material_local(fields: dict) -> None:
+        """Validate and normalize local material values before persistence."""
+        unidade = fields.get("unidade")
+        if unidade is not None:
+            unidade = str(unidade).strip().upper() or None
+            if unidade is not None and not unidade_custo_valida(unidade):
+                raise ValueError("Unidade inválida. Use M2, ML ou UND.")
+            fields["unidade"] = unidade
+
+        for campo, rotulo in (
+            ("preco_liquido", "Preço líquido"),
+            ("desperdicio_percentagem", "Desperdício %"),
+            ("comp_mp", "Comp MP"),
+            ("larg_mp", "Larg MP"),
+            ("esp_mp", "Esp MP"),
+        ):
+            if campo not in fields:
+                continue
+            fields[campo] = validar_decimal(
+                fields[campo],
+                rotulo,
+                minimo=Decimal("0"),
+            )
 
     def _posicionar_linha_apos(
         self, orcamento_item_id: int, nova_linha_id: int, apos_linha_id: int

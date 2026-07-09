@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from app.domain.numeros import parse_decimal_humano
+from app.domain.custos import unidade_custo_valida
+from app.domain.numeros import parse_decimal_humano, validar_decimal
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
@@ -86,7 +87,7 @@ class CusteioLinhaMaterialDialog(QDialog):
 
     def get_data(self) -> dict:
         """Return the edited material fields (raises ValueError on bad numbers)."""
-        return {
+        dados = {
             "ref_le": self._empty_to_none(self.ref_le_input.text()),
             "descricao_no_orcamento": self._empty_to_none(
                 self.descricao_no_orcamento_input.text()
@@ -104,6 +105,23 @@ class CusteioLinhaMaterialDialog(QDialog):
             "larg_mp": self._parse_decimal(self.larg_mp_input, "Larg MP"),
             "esp_mp": self._parse_decimal(self.esp_mp_input, "Esp MP"),
         }
+        self._validar_dados(dados)
+        return dados
+
+    def _validar_dados(self, dados: dict) -> None:
+        unidade = dados.get("unidade")
+        if unidade and not unidade_custo_valida(unidade):
+            raise ValueError("Unidade inválida. Use M2, ML ou UND.")
+        validar_decimal(dados.get("preco_liquido"), "Preço líquido", minimo=Decimal("0"))
+        validar_decimal(
+            dados.get("desperdicio_percentagem"), "Desperdício %", minimo=Decimal("0")
+        )
+        for campo, rotulo in (
+            ("comp_mp", "Comp MP"),
+            ("larg_mp", "Larg MP"),
+            ("esp_mp", "Esp MP"),
+        ):
+            validar_decimal(dados.get(campo), rotulo, minimo=Decimal("0"))
 
     def _validate_and_accept(self) -> None:
         """Validate numbers before accepting."""

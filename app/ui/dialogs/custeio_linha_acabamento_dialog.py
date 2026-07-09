@@ -23,6 +23,7 @@ from app.domain.numeros import (
     formatar_percentagem,
     normalize_percentagem_humana,
     parse_decimal_humano,
+    validar_decimal,
 )
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
@@ -196,6 +197,16 @@ class CusteioLinhaAcabamentoDialog(QDialog):
             )
             dados[f"acabamento_{face}_desperdicio_percentagem"] = self._parse_desp(
                 getattr(self, f"desp_{face}_input")
+            )
+            validar_decimal(
+                dados[f"acabamento_{face}_preco_liquido"],
+                f"Preço líquido ({face})",
+                minimo=Decimal("0"),
+            )
+            validar_decimal(
+                dados[f"acabamento_{face}_desperdicio_percentagem"],
+                f"Desperdício % ({face})",
+                minimo=Decimal("0"),
             )
         return dados
 

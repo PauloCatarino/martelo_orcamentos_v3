@@ -6,7 +6,19 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -23,6 +35,17 @@ class OrcamentoItem(Base):
     __tablename__ = "orcamento_items"
     __table_args__ = (
         UniqueConstraint("orcamento_versao_id", "ordem", name="uq_orcamento_items_versao_ordem"),
+        CheckConstraint("altura IS NULL OR altura > 0", name="ck_oi_altura_pos"),
+        CheckConstraint("largura IS NULL OR largura > 0", name="ck_oi_largura_pos"),
+        CheckConstraint(
+            "profundidade IS NULL OR profundidade > 0",
+            name="ck_oi_profundidade_pos",
+        ),
+        CheckConstraint("quantidade > 0", name="ck_oi_quantidade_pos"),
+        CheckConstraint(
+            "preco_unitario IS NULL OR preco_unitario >= 0",
+            name="ck_oi_preco_unitario_nonneg",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

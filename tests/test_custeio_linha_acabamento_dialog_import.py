@@ -44,6 +44,7 @@ def test_acabamento_dialog_get_data_campos() -> None:
         "_desperdicio_percentagem",
     ):
         assert fragmento in get_data
+    assert "validar_decimal" in get_data
 
 
 def test_acabamento_dialog_checkbox_ativo_por_face() -> None:

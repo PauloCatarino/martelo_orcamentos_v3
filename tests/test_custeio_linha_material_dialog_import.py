@@ -38,3 +38,8 @@ def test_dialog_get_data_has_material_fields() -> None:
         "esp_mp",
     ):
         assert field in source
+
+    assert "_validar_dados" in source
+    validar = inspect.getsource(CusteioLinhaMaterialDialog._validar_dados)
+    assert "unidade_custo_valida" in validar
+    assert "validar_decimal" in validar

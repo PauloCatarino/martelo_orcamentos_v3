@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -34,6 +35,55 @@ class OrcamentoItemCusteioLinha(Base):
     """One detailed cost line of a budget item."""
 
     __tablename__ = "orcamento_item_custeio_linhas"
+    __table_args__ = (
+        CheckConstraint("qt_mod IS NULL OR qt_mod > 0", name="ck_oicl_qt_mod_pos"),
+        CheckConstraint("qt_und IS NULL OR qt_und >= 0", name="ck_oicl_qt_und_nonneg"),
+        CheckConstraint("quantidade >= 0", name="ck_oicl_quantidade_nonneg"),
+        CheckConstraint(
+            "comp_real IS NULL OR comp_real > 0", name="ck_oicl_comp_real_pos"
+        ),
+        CheckConstraint(
+            "larg_real IS NULL OR larg_real > 0", name="ck_oicl_larg_real_pos"
+        ),
+        CheckConstraint(
+            "esp_real IS NULL OR esp_real > 0", name="ck_oicl_esp_real_pos"
+        ),
+        CheckConstraint(
+            "preco_liquido IS NULL OR preco_liquido >= 0",
+            name="ck_oicl_preco_liquido_nonneg",
+        ),
+        CheckConstraint(
+            "desperdicio_percentagem IS NULL OR desperdicio_percentagem >= 0",
+            name="ck_oicl_desperdicio_nonneg",
+        ),
+        CheckConstraint(
+            "comp_mp IS NULL OR comp_mp >= 0", name="ck_oicl_comp_mp_nonneg"
+        ),
+        CheckConstraint(
+            "larg_mp IS NULL OR larg_mp >= 0", name="ck_oicl_larg_mp_nonneg"
+        ),
+        CheckConstraint("esp_mp IS NULL OR esp_mp >= 0", name="ck_oicl_esp_mp_nonneg"),
+        CheckConstraint(
+            "acabamento_sup_preco_liquido IS NULL OR "
+            "acabamento_sup_preco_liquido >= 0",
+            name="ck_oicl_acab_sup_preco_nonneg",
+        ),
+        CheckConstraint(
+            "acabamento_inf_preco_liquido IS NULL OR "
+            "acabamento_inf_preco_liquido >= 0",
+            name="ck_oicl_acab_inf_preco_nonneg",
+        ),
+        CheckConstraint(
+            "acabamento_sup_desperdicio_percentagem IS NULL OR "
+            "acabamento_sup_desperdicio_percentagem >= 0",
+            name="ck_oicl_acab_sup_desp_nonneg",
+        ),
+        CheckConstraint(
+            "acabamento_inf_desperdicio_percentagem IS NULL OR "
+            "acabamento_inf_desperdicio_percentagem >= 0",
+            name="ck_oicl_acab_inf_desp_nonneg",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     orcamento_item_id: Mapped[int] = mapped_column(
