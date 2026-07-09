@@ -62,3 +62,8 @@ def test_page_uses_service_and_dialog() -> None:
 
     detail = inspect.getsource(DefValuesetModelosPage._show_detail_page)
     assert "DefValuesetModeloDetailPage" in detail
+    assert "on_modelo_duplicado" in detail
+
+    duplicado = inspect.getsource(DefValuesetModelosPage._abrir_modelo_duplicado)
+    assert "_show_detail_page" in duplicado
+    assert "status_label.setText" in duplicado

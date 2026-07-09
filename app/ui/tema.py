@@ -153,13 +153,13 @@ def estilo_linha_custeio(tipo_linha, *, eh_filho: bool = False) -> EstiloLinha:
 
 # Estilo transversal das abas (QTabWidget/QTabBar): tab selecionado destacado a castanho.
 ESTILO_ABAS = (
-    f"QTabWidget::pane {{ border: 1px solid {CINZA_CASTANHO}; border-radius: 4px; top: -1px; }}"
-    f"QTabBar::tab {{ background: {BEGE_CLARO}; color: {CASTANHO_ESCURO};"
+    f"QTabWidget::pane {{ border: 1px solid {CINZA_CASTANHO}; border-radius: 4px; top: -1px; }}\n"
+    f"QTabBar::tab {{ background-color: {BEGE_CLARO}; color: {CASTANHO_ESCURO};"
     f" border: 1px solid {CINZA_CASTANHO}; border-bottom: none;"
     f" border-top-left-radius: 6px; border-top-right-radius: 6px;"
-    f" padding: 6px 16px; margin-right: 2px; }}"
-    f"QTabBar::tab:hover {{ background: {BEGE_AREIA}; }}"
-    f"QTabBar::tab:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF;"
+    f" padding: 6px 16px; margin-right: 2px; }}\n"
+    f"QTabBar::tab:hover {{ background-color: {BEGE_AREIA}; }}\n"
+    f"QTabBar::tab:selected {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF;"
     f" font-weight: bold; border: 1px solid {CASTANHO_ESCURO}; }}"
 )
 
@@ -167,33 +167,33 @@ ESTILO_ABAS = (
 # Estilo da sidebar (main_window): botão da página ativa destacado a castanho.
 ESTILO_SIDEBAR = (
     f"QPushButton {{ text-align: left; padding: 8px 12px; border: none;"
-    f" border-radius: 4px; color: {CASTANHO_ESCURO}; background: transparent;"
-    f" font-weight: bold; }}"
-    f"QPushButton:hover {{ background: {BEGE_AREIA}; }}"
-    f"QPushButton:checked {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+    f" border-radius: 4px; color: {CASTANHO_ESCURO}; background-color: transparent;"
+    f" font-weight: bold; }}\n"
+    f"QPushButton:hover {{ background-color: {BEGE_AREIA}; }}\n"
+    f"QPushButton:checked {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )
 
 
 # Estilo da arvore de navegacao (sidebar): item selecionado a castanho.
 ESTILO_ARVORE_NAV = (
-    "QTreeWidget#navTree { background: transparent; border: none; outline: 0; }"
+    "QTreeWidget#navTree { background-color: transparent; border: none; outline: 0; }\n"
     f"QTreeWidget#navTree::item {{ color: {CASTANHO_ESCURO}; padding: 6px 4px;"
-    " border-radius: 4px; }"
-    f"QTreeWidget#navTree::item:hover {{ background: {BEGE_AREIA}; }}"
-    f"QTreeWidget#navTree::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+    " border-radius: 4px; }\n"
+    f"QTreeWidget#navTree::item:hover {{ background-color: {BEGE_AREIA}; }}\n"
+    f"QTreeWidget#navTree::item:selected {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )
 
 
 # Estilo comum de tabelas de configuracao.
 ESTILO_TABELA_CONFIG = (
-    f"QTableWidget {{ gridline-color: {CINZA_CASTANHO}; }}"
-    "QTableWidget::item { padding: 6px 8px; }"
-    f"QTableWidget::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+    f"QTableWidget {{ gridline-color: {CINZA_CASTANHO}; }}\n"
+    "QTableWidget::item { padding: 6px 8px; }\n"
+    f"QTableWidget::item:selected {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )
 
 
 # Estilo comum de tabelas de configuracao com cabecalho castanho.
 ESTILO_TABELA_CONFIG_CABECALHO = ESTILO_TABELA_CONFIG + (
-    f"QHeaderView::section {{ background: {CASTANHO_ESCURO}; color: #FFFFFF;"
-    " padding: 6px 8px; border: none; font-weight: bold; }}"
+    f"\nQHeaderView::section {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF;"
+    " padding: 6px 8px; border: none; font-weight: bold; }"
 )

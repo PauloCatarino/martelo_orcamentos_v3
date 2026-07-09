@@ -84,6 +84,22 @@ def test_estilo_tabela_config() -> None:
     assert tema.CASTANHO_ESCURO in tema.ESTILO_TABELA_CONFIG
     assert "QHeaderView::section" in tema.ESTILO_TABELA_CONFIG_CABECALHO
     assert "color: #FFFFFF" in tema.ESTILO_TABELA_CONFIG_CABECALHO
+    assert "}Q" not in tema.ESTILO_TABELA_CONFIG_CABECALHO
+    assert "{CASTANHO_ESCURO}" not in tema.ESTILO_TABELA_CONFIG_CABECALHO
+
+
+def test_qss_tema_nao_tem_regras_coladas_ou_placeholders() -> None:
+    for qss in (
+        tema.ESTILO_ABAS,
+        tema.ESTILO_SIDEBAR,
+        tema.ESTILO_ARVORE_NAV,
+        tema.ESTILO_TABELA_CONFIG,
+        tema.ESTILO_TABELA_CONFIG_CABECALHO,
+    ):
+        assert "}Q" not in qss
+        assert "{CASTANHO_ESCURO}" not in qss
+        assert "{BEGE_CLARO}" not in qss
+        assert "{CINZA_CASTANHO}" not in qss
 
 
 def test_colunas_realce_composta() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtWidgets import (
+    QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -23,6 +24,10 @@ from app.domain.numeros import formatar_percentagem
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_operacao_service import DefOperacaoService
+from app.services.def_valueset_modelo_service import (
+    CriarDefValuesetModeloData,
+    DefValuesetModeloService,
+)
 from app.services.def_valueset_modelo_linha_operacao_service import (
     DefValuesetModeloLinhaOperacaoService,
 )
@@ -32,6 +37,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.atualizar_precos_valueset_dialog import AtualizarPrecosValuesetDialog
+from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
 from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.helpers.valueset_precos import (
@@ -81,11 +87,13 @@ class DefValuesetModeloDetailPage(QWidget):
         self,
         modelo: DefValuesetModeloResumo,
         on_back: Callable[[], None] | None = None,
+        on_modelo_duplicado: Callable[[DefValuesetModeloResumo, str], None] | None = None,
     ) -> None:
         super().__init__()
 
         self.modelo = modelo
         self.on_back = on_back
+        self.on_modelo_duplicado = on_modelo_duplicado
         self._linhas_by_row: dict[int, DefValuesetModeloLinhaResumo] = {}
         self._operacoes_por_linha: dict[int, str] = {}
 
@@ -108,6 +116,8 @@ class DefValuesetModeloDetailPage(QWidget):
         self.new_button.clicked.connect(self.abrir_nova_linha)
         self.edit_button = QPushButton("Editar Linha")
         self.edit_button.clicked.connect(self.abrir_editar_linha)
+        self.save_as_button = QPushButton("Gravar como…")
+        self.save_as_button.clicked.connect(self.gravar_modelo_como)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.refresh_button = QPushButton("Atualizar")
@@ -120,6 +130,7 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.save_as_button)
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.check_prices_button)
@@ -237,6 +248,59 @@ class DefValuesetModeloDetailPage(QWidget):
             self._status_precos(atualizadas, len(divergencias) - atualizadas)
         )
 
+    def gravar_modelo_como(self) -> None:
+        """Save this ValueSet model as a new model."""
+        saved_as = False
+        saved_as_codigo: str | None = None
+        saved_as_linhas = 0
+        modelo_novo: DefValuesetModeloResumo | None = None
+
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as, saved_as_codigo, saved_as_linhas, modelo_novo
+
+            try:
+                with SessionLocal() as session:
+                    result = DefValuesetModeloService(session).duplicar_modelo(
+                        self.modelo.id,
+                        self._criar_modelo_data_from_form_data(form_data),
+                    )
+            except IntegrityError:
+                dialog.set_error("Já existe um modelo com esse código.")
+                return False
+            except ValueError as error:
+                dialog.set_error(self._modelo_error_message(error))
+                return False
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar o modelo.", error)
+                )
+                return False
+
+            saved_as = True
+            modelo_novo = result.modelo
+            saved_as_codigo = result.modelo.codigo
+            saved_as_linhas = result.linhas_copiadas
+            return True
+
+        dialog = DefValuesetModeloDialog(
+            modelo=self.modelo,
+            parent=self,
+            on_save_as=handle_save_as,
+        )
+        save_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Save)
+        if save_button is not None:
+            save_button.setVisible(False)
+
+        if not dialog.exec() or not saved_as or modelo_novo is None:
+            return
+
+        mensagem = f"Modelo gravado como {saved_as_codigo}."
+        if self.on_modelo_duplicado is not None:
+            self.on_modelo_duplicado(modelo_novo, mensagem)
+            return
+
+        self.status_label.setText(f"{mensagem} {saved_as_linhas} linhas copiadas.")
+
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
         self._linhas_by_row = {}
@@ -352,6 +416,19 @@ class DefValuesetModeloDetailPage(QWidget):
             )
 
             return result
+
+    def _criar_modelo_data_from_form_data(self, form_data) -> CriarDefValuesetModeloData:
+        """Build create-service data from model dialog data."""
+        return CriarDefValuesetModeloData(
+            codigo=form_data.codigo,
+            nome=form_data.nome,
+            descricao=form_data.descricao,
+            tipo=form_data.tipo,
+            ambito=form_data.ambito,
+            visivel_para_todos=form_data.visivel_para_todos,
+            observacoes=form_data.observacoes,
+            ativo=form_data.ativo,
+        )
 
     def abrir_editar_linha(self) -> None:
         """Open the dialog to edit the selected model line."""
@@ -514,6 +591,12 @@ class DefValuesetModeloDetailPage(QWidget):
             "Não foi possível guardar a linha. Verifique a chave e o código da opção.",
             error,
         )
+
+    def _modelo_error_message(self, error: ValueError) -> str:
+        """Map a model service error to a friendly message."""
+        if "codigo ja existe" in str(error):
+            return "Já existe um modelo com esse código."
+        return "Não foi possível guardar o modelo."
 
     def _format_materia_prima(self, linha: DefValuesetModeloLinhaResumo) -> str:
         """Format the materia-prima / value cell."""

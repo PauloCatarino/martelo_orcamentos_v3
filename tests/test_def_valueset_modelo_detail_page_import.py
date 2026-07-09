@@ -18,6 +18,7 @@ def test_page_accepts_modelo_and_on_back() -> None:
 
     assert "modelo" in signature.parameters
     assert "on_back" in signature.parameters
+    assert "on_modelo_duplicado" in signature.parameters
 
 
 def test_page_line_headers() -> None:
@@ -54,9 +55,12 @@ def test_page_has_line_actions() -> None:
         "alternar_linha_ativa",
         "carregar_linhas",
         "verificar_precos",
+        "gravar_modelo_como",
         "_get_selected_linha",
         "_abrir_dialog_criar_linha",
         "_criar_linha_from_form_data",
+        "_criar_modelo_data_from_form_data",
+        "_modelo_error_message",
     ):
         assert hasattr(DefValuesetModeloDetailPage, method)
 
@@ -82,6 +86,23 @@ def test_page_uses_line_service_and_dialog() -> None:
     assert "AtualizarPrecosValuesetDialog" in verificar
     assert "detetar_divergencias_valueset" in verificar
     assert "atualizar_precos_linhas" in verificar
+
+
+def test_page_detail_gravar_como_usa_dialog_e_duplicacao() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    assert "Gravar como" in init
+    assert "self.gravar_modelo_como" in init
+
+    source = inspect.getsource(DefValuesetModeloDetailPage.gravar_modelo_como)
+    assert "DefValuesetModeloDialog" in source
+    assert "on_save_as=handle_save_as" in source
+    assert "duplicar_modelo" in source
+    assert "_criar_modelo_data_from_form_data" in source
+    assert "Já existe um modelo com esse código." in source
+    assert "on_modelo_duplicado" in source
+    assert "Modelo gravado como" in source
 
 
 def test_page_edit_line_has_save_as_create_flow() -> None:

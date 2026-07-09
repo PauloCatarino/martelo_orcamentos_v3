@@ -313,9 +313,21 @@ class DefValuesetModelosPage(QWidget):
             self.stack.removeWidget(self._detail_page)
             self._detail_page.deleteLater()
 
-        self._detail_page = DefValuesetModeloDetailPage(modelo, on_back=self._voltar_a_lista)
+        self._detail_page = DefValuesetModeloDetailPage(
+            modelo,
+            on_back=self._voltar_a_lista,
+            on_modelo_duplicado=self._abrir_modelo_duplicado,
+        )
         self.stack.addWidget(self._detail_page)
         self.stack.setCurrentWidget(self._detail_page)
+
+    def _abrir_modelo_duplicado(
+        self, modelo: DefValuesetModeloResumo, mensagem: str
+    ) -> None:
+        """Open the newly duplicated model detail."""
+        self._show_detail_page(modelo)
+        if self._detail_page is not None:
+            self._detail_page.status_label.setText(mensagem)
 
     def _voltar_a_lista(self) -> None:
         """Return to the model list."""
