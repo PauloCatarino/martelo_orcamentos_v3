@@ -78,6 +78,11 @@ def cor_zebra(indice_linha: int) -> str:
     return ZEBRA_ALT if indice_linha % 2 else ZEBRA_BASE
 
 
+def cor_grupo_chave(indice_grupo: int) -> str:
+    """Return the background for one ValueSet-key type group."""
+    return BEGE_CLARO if indice_grupo % 2 else ZEBRA_BASE
+
+
 def cor_estado(estado: str | None) -> tuple[str, str]:
     """Return (background, text) colours for a budget status badge."""
     estado_norm = _normalizar_estado(estado)
@@ -176,4 +181,12 @@ ESTILO_ARVORE_NAV = (
     " border-radius: 4px; }"
     f"QTreeWidget#navTree::item:hover {{ background: {BEGE_AREIA}; }}"
     f"QTreeWidget#navTree::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+)
+
+
+# Estilo comum de tabelas de configuracao.
+ESTILO_TABELA_CONFIG = (
+    f"QTableWidget {{ gridline-color: {CINZA_CASTANHO}; }}"
+    "QTableWidget::item { padding: 6px 8px; }"
+    f"QTableWidget::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )

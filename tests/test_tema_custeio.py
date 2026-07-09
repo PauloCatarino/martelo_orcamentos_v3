@@ -10,7 +10,7 @@ from app.domain.custeio_linha_types import (
     SEPARADOR,
 )
 from app.ui import tema
-from app.ui.tema import cor_zebra, estilo_linha_custeio
+from app.ui.tema import cor_grupo_chave, cor_zebra, estilo_linha_custeio
 
 
 def test_palette_constants() -> None:
@@ -70,6 +70,18 @@ def test_cor_zebra_alterna() -> None:
     assert cor_zebra(0) == tema.ZEBRA_BASE == "#FFFFFF"
     assert cor_zebra(1) == tema.ZEBRA_ALT == "#F7F2EA"
     assert cor_zebra(2) == tema.ZEBRA_BASE
+
+
+def test_cor_grupo_chave_alterna() -> None:
+    assert cor_grupo_chave(0) == "#FFFFFF"
+    assert cor_grupo_chave(1) == tema.BEGE_CLARO
+    assert cor_grupo_chave(2) == "#FFFFFF"
+
+
+def test_estilo_tabela_config() -> None:
+    assert "padding: 6px 8px" in tema.ESTILO_TABELA_CONFIG
+    assert tema.CINZA_CASTANHO in tema.ESTILO_TABELA_CONFIG
+    assert tema.CASTANHO_ESCURO in tema.ESTILO_TABELA_CONFIG
 
 
 def test_colunas_realce_composta() -> None:

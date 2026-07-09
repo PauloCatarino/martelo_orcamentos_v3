@@ -53,6 +53,21 @@ def test_page_loads_via_service() -> None:
     assert "listar_chaves" in source
 
 
+def test_page_styles_table_by_tipo_group() -> None:
+    from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
+
+    init = inspect.getsource(DefValuesetChavesPage.__init__)
+    preencher = inspect.getsource(DefValuesetChavesPage._preencher)
+
+    assert "setAlternatingRowColors(False)" in init
+    assert "ESTILO_TABELA_CONFIG" in init
+    assert "cor_grupo_chave" in preencher
+    assert "_chaves_by_row[row_index] = chave" in preencher
+    assert "primeira_linha_grupo" in preencher
+    assert "font.setBold(True)" in preencher
+    assert "font.setItalic(True)" in preencher
+
+
 def test_page_actions_use_service_and_dialog() -> None:
     from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
 

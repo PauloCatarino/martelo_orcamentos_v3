@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -23,6 +24,11 @@ from app.services.def_valueset_chave_service import (
     EditarDefValuesetChaveData,
 )
 from app.ui.dialogs.def_valueset_chave_dialog import DefValuesetChaveDialog
+from app.ui.tema import (
+    CINZA_ESCURO,
+    ESTILO_TABELA_CONFIG,
+    cor_grupo_chave,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
@@ -75,7 +81,8 @@ class DefValuesetChavesPage(QWidget):
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
         self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
+        self.table.setAlternatingRowColors(False)
+        self.table.setStyleSheet(ESTILO_TABELA_CONFIG)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -115,20 +122,37 @@ class DefValuesetChavesPage(QWidget):
         self._chaves_by_row = {}
         self.table.setRowCount(len(chaves))
 
+        tipo_anterior = object()
+        indice_grupo = -1
         for row_index, chave in enumerate(chaves):
             self._chaves_by_row[row_index] = chave
+            tipo_atual = chave.tipo or ""
+            primeira_linha_grupo = tipo_atual != tipo_anterior
+            if primeira_linha_grupo:
+                indice_grupo += 1
+                tipo_anterior = tipo_atual
+            fundo = QBrush(QColor(cor_grupo_chave(indice_grupo)))
             values = [
                 chave.codigo,
                 chave.nome,
-                chave.tipo or "",
-                chave.grupo or "",
+                tipo_atual if primeira_linha_grupo else "",
+                (chave.grupo or "") if primeira_linha_grupo else "",
                 self._format_bool(chave.sistema),
                 str(chave.ordem),
                 self._format_bool(chave.ativo),
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                item.setBackground(fundo)
+                font = QFont(item.font())
+                if column_index == 0:
+                    font.setBold(True)
+                if not chave.ativo:
+                    font.setItalic(True)
+                    item.setForeground(QBrush(QColor(CINZA_ESCURO)))
+                item.setFont(font)
+                self.table.setItem(row_index, column_index, item)
 
     def abrir_nova_chave(self) -> None:
         """Open the dialog to create a new ValueSet key."""
