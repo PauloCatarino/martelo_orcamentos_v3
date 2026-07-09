@@ -1424,7 +1424,7 @@ class OrcamentoItemCusteioLinhaService:
         Service pieces (sem_material) are included: they still cost their
         operations even though they carry no raw material.
         """
-        return linha.tipo_linha == PECA and linha.def_peca_id is not None
+        return linha.tipo_linha in (PECA, FERRAGEM) and linha.def_peca_id is not None
 
     def _linha_sem_material(self, linha) -> bool:
         """Return True for a service-piece line (no raw material / ValueSet)."""
@@ -1578,6 +1578,53 @@ class OrcamentoItemCusteioLinhaService:
 
             if not self._linha_recebe_operacoes(linha):
                 ignoradas += 1
+                continue
+
+            if linha.tipo_linha == FERRAGEM:
+                custos_ferragem, tempos_ferragem, aviso_ferragem = (
+                    self._custos_producao_ferragem(linha, usar_serie)
+                )
+                custo_producao = aplicar_fator_serie(
+                    somar_custo_producao(
+                        custos_ferragem["corte"],
+                        custos_ferragem["orlagem"],
+                        custos_ferragem["cnc"],
+                        custos_ferragem["montagem_manual"],
+                    ),
+                    linha.fator_serie,
+                )
+
+                processadas += 1
+                fields: dict = {
+                    "custo_corte": custos_ferragem["corte"],
+                    "custo_orlagem": custos_ferragem["orlagem"],
+                    "custo_cnc": custos_ferragem["cnc"],
+                    "custo_montagem_manual": custos_ferragem["montagem_manual"],
+                    "custo_producao": custo_producao,
+                    "tipo_producao": tipo_efetivo,
+                    "tempo_corte": tempos_ferragem["corte"] or None,
+                    "tempo_orlagem": tempos_ferragem["orlagem"] or None,
+                    "tempo_cnc": tempos_ferragem["cnc"] or None,
+                    "tempo_montagem": tempos_ferragem["montagem"] or None,
+                    "tempo_manual": tempos_ferragem["manual"] or None,
+                    "tempo_setup": tempos_ferragem["setup"] or None,
+                }
+                nova_obs = self._mesclar_observacao(
+                    linha.observacoes, "Custo de produção", None
+                )
+                nova_obs = self._mesclar_observacao(nova_obs, "Custo CNC", None)
+                nova_obs = self._mesclar_observacao(
+                    nova_obs, "Custo de montagem/manual", aviso_ferragem
+                )
+                nova_obs = self._mesclar_observacao(
+                    nova_obs, "Tempos de produção", None
+                )
+                if nova_obs != linha.observacoes:
+                    fields["observacoes"] = nova_obs
+                if custo_producao is not None:
+                    calculadas += 1
+
+                self.repository.update_linha(id=linha.id, **fields)
                 continue
 
             operacoes = self._operacoes_def_da_peca(linha.def_peca_id)
@@ -1797,6 +1844,71 @@ class OrcamentoItemCusteioLinhaService:
             f"Custo de montagem/manual não calculado: custo/hora em falta na "
             f"máquina {nome}."
         )
+
+    def _custos_producao_ferragem(self, linha, usar_serie: bool = False):
+        """Return time-based production costs/times for a FERRAGEM line."""
+        custos = {
+            "corte": None,
+            "orlagem": None,
+            "cnc": None,
+            "montagem_manual": None,
+        }
+        tempos = {
+            "corte": Decimal("0"),
+            "orlagem": Decimal("0"),
+            "cnc": Decimal("0"),
+            "montagem": Decimal("0"),
+            "manual": Decimal("0"),
+            "setup": Decimal("0"),
+        }
+        aviso = None
+
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
+            linha.def_peca_id
+        ):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is None:
+                continue
+            bucket = classificar_operacao(
+                getattr(operacao, "tipo_operacao", None),
+                getattr(operacao, "codigo", None),
+            )
+            if bucket is None:
+                continue
+
+            setup_min, variavel_min = calcular_tempo_operacao(
+                getattr(ligacao, "unidade_tempo", None),
+                getattr(ligacao, "quantidade_base", None),
+                getattr(ligacao, "tempo_setup_minutos", None),
+                getattr(ligacao, "tempo_por_unidade_minutos", None),
+                linha.area_m2,
+                linha.quantidade,
+            )
+            if setup_min is None and variavel_min is None:
+                continue
+
+            setup_min = setup_min or Decimal("0")
+            variavel_min = variavel_min or Decimal("0")
+            tempos["setup"] += setup_min
+            if bucket == "setup":
+                tempos["setup"] += variavel_min
+            elif bucket in tempos:
+                tempos[bucket] += variavel_min
+
+            maquina = self._maquina_de_operacao(operacao)
+            custo_hora = self._custo_hora_maquina(maquina, usar_serie)
+            custo_op = calcular_custo_por_minutos(setup_min + variavel_min, custo_hora)
+            if custo_op is None:
+                if aviso is None:
+                    aviso = self._aviso_montagem_manual(maquina)
+                continue
+
+            custo_bucket = (
+                bucket if bucket in ("corte", "orlagem", "cnc") else "montagem_manual"
+            )
+            custos[custo_bucket] = (custos[custo_bucket] or Decimal("0")) + custo_op
+
+        return custos, tempos, aviso
 
     def _custos_montagem_manual_da_peca(self, linha, usar_serie: bool = False):
         """Return (custo_montagem_manual, tempos_por_bucket, aviso) for a PECA line.
