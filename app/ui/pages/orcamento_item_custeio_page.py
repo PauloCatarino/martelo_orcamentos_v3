@@ -2502,7 +2502,12 @@ class OrcamentoItemCusteioPage(QWidget):
                     descricao_livre=descricao_livre,
                     propagar_item=False,
                 )
-        except (SQLAlchemyError, ValueError):
+        except ValueError as error:
+            self.carregar()
+            self.status_label.setText(str(error))
+            return
+        except SQLAlchemyError:
+            self.carregar()
             self.status_label.setText("Não foi possível atualizar a linha de custeio.")
             return
 

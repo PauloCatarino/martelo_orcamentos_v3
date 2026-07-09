@@ -28,7 +28,10 @@ def parse_decimal_humano(texto: str | None) -> Decimal | None:
         return None
 
     try:
-        return Decimal(normalized)
+        numero = Decimal(normalized)
+        if not numero.is_finite():
+            raise ValueError("numero invalido")
+        return numero
     except InvalidOperation as error:
         raise ValueError("numero invalido") from error
 

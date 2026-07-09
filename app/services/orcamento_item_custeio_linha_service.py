@@ -28,6 +28,7 @@ from app.domain.medidas import (
     calcular_perimetro_ml,
     construir_contexto_item,
     normalizar_numero,
+    validar_expressao_medida,
 )
 from app.domain.acabamentos import (
     SEM_ACABAMENTO,
@@ -2441,13 +2442,21 @@ class OrcamentoItemCusteioLinhaService:
             return None
 
         item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
-        contexto = (
-            construir_contexto_item(item.altura, item.largura, item.profundidade)
-            if item is not None
-            else {}
-        )
+        contexto = self._contexto_medidas_ate_linha(linha, item)
 
-        fields = self._calcular_medidas_fields(linha, contexto)
+        linhas = self.repository.list_active_by_orcamento_item(
+            linha.orcamento_item_id
+        )
+        quantidades = calcular_quantidades(
+            [self._linha_quantidade(atual) for atual in linhas]
+        )
+        resultado_quantidade = quantidades.get(linha.id)
+        qt_total = (
+            resultado_quantidade.qt_total
+            if resultado_quantidade is not None
+            else (linha.quantidade if linha.quantidade is not None else Decimal("1"))
+        )
+        fields = self._calcular_medidas_fields(linha, contexto, qt_total)
         result = self.repository.update_linha(id=linha_id, **fields)
         self.session.commit()
 
@@ -2499,24 +2508,24 @@ class OrcamentoItemCusteioLinhaService:
             )
 
         item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
-        contexto = (
-            construir_contexto_item(item.altura, item.largura, item.profundidade)
-            if item is not None
-            else {}
+        contexto = self._contexto_medidas_ate_linha(linha, item)
+
+        comp_texto, comp_real = validar_expressao_medida(
+            comp, contexto, campo="Comprimento"
+        )
+        larg_texto, larg_real = validar_expressao_medida(
+            larg, contexto, campo="Largura"
+        )
+        esp_texto, esp_real = validar_expressao_medida(
+            esp, contexto, campo="Espessura"
         )
 
-        comp_texto = self._normalizar_expressao(comp)
-        larg_texto = self._normalizar_expressao(larg)
-        esp_texto = self._normalizar_expressao(esp)
-
-        qt_mod_valor = normalizar_numero(qt_mod)
-        qt_und_valor = normalizar_numero(qt_und)
-        qt_mod_final = qt_mod_valor if qt_mod_valor is not None else Decimal("1")
-        qt_und_final = qt_und_valor if qt_und_valor is not None else Decimal("1")
-
-        comp_real = avaliar_medida(comp_texto, contexto)
-        larg_real = avaliar_medida(larg_texto, contexto)
-        esp_real = avaliar_medida(esp_texto, contexto)
+        qt_mod_final = self._validar_quantidade_editada(
+            qt_mod, "QT mod", permitir_zero=False
+        )
+        qt_und_final = self._validar_quantidade_editada(
+            qt_und, "QT und", permitir_zero=True
+        )
 
         fields = {
             "qt_mod": qt_mod_final,
@@ -2564,10 +2573,12 @@ class OrcamentoItemCusteioLinhaService:
         (minutes / 60) × custo_hora; custo_total follows custo_producao honouring
         Excluir Produção. Description and minutos_unitarios are kept.
         """
-        qt_mod_valor = normalizar_numero(qt_mod)
-        qt_und_valor = normalizar_numero(qt_und)
-        qt_mod_final = qt_mod_valor if qt_mod_valor is not None else Decimal("1")
-        qt_und_final = qt_und_valor if qt_und_valor is not None else Decimal("1")
+        qt_mod_final = self._validar_quantidade_editada(
+            qt_mod, "QT mod", permitir_zero=False
+        )
+        qt_und_final = self._validar_quantidade_editada(
+            qt_und, "QT und", permitir_zero=True
+        )
         quantidade = qt_mod_final * qt_und_final
 
         minutos_unitarios = self._minutos_unitarios_da_linha(linha)
@@ -3010,6 +3021,49 @@ class OrcamentoItemCusteioLinhaService:
 
         texto = str(valor).strip()
         return texto or None
+
+    @staticmethod
+    def _validar_quantidade_editada(
+        valor, campo: str, *, permitir_zero: bool
+    ) -> Decimal:
+        """Validate a quantity typed by the user without silently defaulting errors."""
+        if valor is None or (isinstance(valor, str) and not valor.strip()):
+            return Decimal("1")
+
+        numero = normalizar_numero(valor)
+        if numero is None:
+            raise ValueError(f"{campo} inválida: introduza um número.")
+        if numero < 0 or (numero == 0 and not permitir_zero):
+            limite = "maior ou igual a zero" if permitir_zero else "maior que zero"
+            raise ValueError(f"{campo} inválida: o valor tem de ser {limite}.")
+        return numero
+
+    def _contexto_medidas_ate_linha(self, linha, item) -> dict:
+        """Build global plus active HM/LM/PM context at one line's position."""
+        if item is None:
+            contexto_global: dict = {}
+        else:
+            contexto_global = construir_contexto_item(
+                item.altura, item.largura, item.profundidade
+            )
+
+        contexto_local: dict = {}
+        for atual in self.repository.list_active_by_orcamento_item(
+            linha.orcamento_item_id
+        ):
+            if atual.id == linha.id:
+                break
+            if atual.tipo_linha != DIVISAO_INDEPENDENTE:
+                continue
+
+            contexto = {**contexto_global, **contexto_local}
+            contexto_local = {
+                "HM": avaliar_medida(atual.comp, contexto),
+                "LM": avaliar_medida(atual.larg, contexto),
+                "PM": avaliar_medida(atual.esp, contexto),
+            }
+
+        return {**contexto_global, **contexto_local}
 
     def _calcular_medidas_fields(
         self, linha, contexto: dict, qt_total: Decimal

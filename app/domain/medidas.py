@@ -60,21 +60,59 @@ def normalizar_numero(valor) -> Decimal | None:
         return None
 
     if isinstance(valor, Decimal):
-        return valor
+        return valor if valor.is_finite() else None
 
     if isinstance(valor, (int, float)):
-        return Decimal(str(valor))
+        numero = Decimal(str(valor))
+        return numero if numero.is_finite() else None
 
     if isinstance(valor, str):
         texto = valor.strip().replace(" ", "").replace(",", ".")
         if not texto:
             return None
         try:
-            return Decimal(texto)
+            numero = Decimal(texto)
+            return numero if numero.is_finite() else None
         except InvalidOperation:
             return None
 
     return None
+
+
+def validar_expressao_medida(
+    valor,
+    contexto: dict | None = None,
+    *,
+    campo: str = "Medida",
+    permitir_vazio: bool = True,
+) -> tuple[str | None, Decimal | None]:
+    """Normalize and validate one user-entered measure expression.
+
+    Empty input is allowed by default because some costing line types do not
+    use every measure. A non-empty input must use the supported expression
+    grammar, resolve all its variables in ``contexto`` and produce a finite,
+    strictly positive value. The normalized raw expression and evaluated value
+    are returned together so callers cannot accidentally persist an expression
+    they did not validate.
+    """
+    if valor is None or not str(valor).strip():
+        if permitir_vazio:
+            return None, None
+        raise ValueError(f"{campo} é obrigatória.")
+
+    texto = normalizar_variaveis_medida(str(valor).strip())
+    resultado = avaliar_medida(texto, contexto)
+    if resultado is None:
+        raise ValueError(
+            f"{campo} inválida: use números, H/L/P ou HM/LM/PM "
+            "com +, -, *, / e parênteses."
+        )
+    if not resultado.is_finite():
+        raise ValueError(f"{campo} inválida: o resultado tem de ser finito.")
+    if resultado <= 0:
+        raise ValueError(f"{campo} inválida: o resultado tem de ser maior que zero.")
+
+    return texto, resultado
 
 
 def construir_contexto_item(

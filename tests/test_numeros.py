@@ -42,8 +42,9 @@ def test_parse_vazio_devolve_none() -> None:
 
 
 def test_parse_invalido_levanta_value_error() -> None:
-    with pytest.raises(ValueError):
-        parse_decimal_humano("abc")
+    for invalido in ("abc", "NaN", "Infinity", "-Infinity"):
+        with pytest.raises(ValueError):
+            parse_decimal_humano(invalido)
 
 
 def test_formatar_percentagem() -> None:

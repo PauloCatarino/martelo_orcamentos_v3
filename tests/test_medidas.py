@@ -11,6 +11,7 @@ from app.domain.medidas import (
     construir_contexto_item,
     normalizar_numero,
     normalizar_variaveis_medida,
+    validar_expressao_medida,
 )
 
 
@@ -113,11 +114,34 @@ def test_avaliar_medida_expressoes_invalidas_nao_rebentam() -> None:
     assert avaliar_medida("H1/2", contexto) is None
 
 
+def test_validar_expressao_medida_normaliza_e_devolve_resultado() -> None:
+    contexto = {"H": Decimal("1452"), "HM": Decimal("1000")}
+
+    assert validar_expressao_medida(" hm / 2 ", contexto, campo="Comprimento") == (
+        "HM / 2",
+        Decimal("500"),
+    )
+
+
+def test_validar_expressao_medida_rejeita_entradas_invalidas() -> None:
+    contexto = {"H": Decimal("1452")}
+
+    for invalida in ("abc", "H/0", "H//2", "2H", "NaN", "Infinity", "-10", "0"):
+        try:
+            validar_expressao_medida(invalida, contexto, campo="Comprimento")
+        except ValueError as error:
+            assert "Comprimento" in str(error)
+        else:
+            raise AssertionError(f"Expected ValueError for {invalida!r}")
+
+
 def test_normalizar_numero() -> None:
     assert normalizar_numero("8,62") == Decimal("8.62")
     assert normalizar_numero(Decimal("5")) == Decimal("5")
     assert normalizar_numero(None) is None
     assert normalizar_numero("xpto") is None
+    assert normalizar_numero("NaN") is None
+    assert normalizar_numero("Infinity") is None
 
 
 def test_calcular_area_m2() -> None:

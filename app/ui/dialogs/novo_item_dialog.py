@@ -166,7 +166,10 @@ class NovoItemDialog(QDialog):
             raise ValueError("Preencha os valores numericos obrigatorios.")
 
         try:
-            return Decimal(normalized)
+            numero = Decimal(normalized)
+            if not numero.is_finite():
+                raise ValueError("Valores numericos invalidos.")
+            return numero
         except InvalidOperation as error:
             raise ValueError("Valores numericos invalidos.") from error
 

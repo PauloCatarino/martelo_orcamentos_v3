@@ -1279,19 +1279,57 @@ def test_atualizar_medidas_descricao_nao_marca_editado(monkeypatch) -> None:
     assert payload["descricao"] == "MÓDULO 1"
 
 
-def test_atualizar_medidas_linha_valor_invalido_nao_rebenta(monkeypatch) -> None:
+def test_atualizar_medidas_linha_valor_invalido_bloqueia_gravacao(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     service.session.item = SimpleNamespace(
         altura=Decimal("100"), largura=Decimal("50"), profundidade=None
     )
     _FakeRepository.by_id = _resumo(id=5)
 
-    service.atualizar_medidas_linha(5, qt_mod="1", qt_und="1", comp="xyz", larg=None, esp=None)
+    try:
+        service.atualizar_medidas_linha(
+            5, qt_mod="1", qt_und="1", comp="xyz", larg=None, esp=None
+        )
+    except ValueError as error:
+        assert "Comprimento" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
 
-    payload = _FakeRepository.updated_payload
-    assert payload["comp"] == "xyz"
-    assert payload["comp_real"] is None
-    assert payload["area_m2"] is None
+    assert _FakeRepository.updated_payload is None
+
+
+def test_atualizar_medidas_linha_rejeita_quantidades_invalidas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    for qt_mod, qt_und in (("abc", "1"), ("0", "1"), ("-1", "1"), ("1", "-1")):
+        try:
+            service.atualizar_medidas_linha(
+                5, qt_mod=qt_mod, qt_und=qt_und, comp="H", larg="L", esp=None
+            )
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Expected ValueError for {qt_mod=}, {qt_und=}")
+
+    assert _FakeRepository.updated_payload is None
+
+
+def test_atualizar_medidas_linha_permite_qt_und_zero(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=None
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    service.atualizar_medidas_linha(
+        5, qt_mod="1", qt_und="0", comp="H", larg="L", esp=None
+    )
+
+    assert _FakeRepository.updated_payload["qt_und"] == Decimal("0")
 
 
 def test_atualizar_medidas_linha_nao_altera_valueset(monkeypatch) -> None:
@@ -1354,6 +1392,61 @@ def test_recalcular_com_divisao_propaga_contexto_local(monkeypatch) -> None:
     assert payloads[2]["larg_real"] == Decimal("1830")
     assert payloads[2]["esp_real"] == Decimal("560")
     assert session.committed is True
+
+
+def test_recalcular_medidas_linha_isolada_usa_quantidade_resolvida(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("100"), largura=Decimal("50"), profundidade=Decimal("20")
+    )
+    linha = _resumo(
+        id=5,
+        comp="H",
+        larg="L",
+        esp="P",
+        qt_mod=Decimal("2"),
+        qt_und=Decimal("3"),
+    )
+    _FakeRepository.by_id = linha
+    _FakeRepository.active_rows = [linha]
+
+    service.recalcular_medidas_linha(5)
+
+    assert _FakeRepository.updated_payload["quantidade"] == Decimal("6")
+    assert _FakeRepository.updated_payload["area_m2"] == Decimal("0.005")
+    assert session.committed is True
+
+
+def test_edicao_rapida_resolve_contexto_local_da_divisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    divisao = _resumo(
+        id=1,
+        tipo_linha="DIVISAO_INDEPENDENTE",
+        comp="1000",
+        larg="500",
+        esp="20",
+    )
+    peca = _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM", esp="PM")
+    _FakeRepository.active_rows = [divisao, peca]
+    _FakeRepository.by_id = peca
+
+    service.atualizar_medidas_linha(
+        2,
+        qt_mod="1",
+        qt_und="1",
+        comp="HM/2",
+        larg="LM-50",
+        esp="PM",
+        propagar_item=False,
+    )
+
+    primeiro_payload = _FakeRepository.updated_payloads[0]
+    assert primeiro_payload["comp_real"] == Decimal("500")
+    assert primeiro_payload["larg_real"] == Decimal("450")
+    assert primeiro_payload["esp_real"] == Decimal("20")
 
 
 def test_recalcular_linha_antes_de_divisao_com_hm_nao_rebenta(monkeypatch) -> None:
