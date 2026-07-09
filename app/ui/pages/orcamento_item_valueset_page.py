@@ -236,9 +236,31 @@ class OrcamentoItemValuesetPage(QWidget):
         """Create the item ValueSet from the budget version ValueSet."""
         try:
             with SessionLocal() as session:
+                linhas_existentes = OrcamentoItemValuesetLinhaService(
+                    session
+                ).listar_linhas_do_item(self.orcamento_item_id)
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd(
+                    "Não foi possível verificar o ValueSet atual do item.", error
+                )
+            )
+            return
+
+        substituir = False
+        if linhas_existentes:
+            escolha = self._perguntar_modo_criar_do_orcamento()
+            if escolha is None:
+                return
+            substituir = escolha
+
+        try:
+            with SessionLocal() as session:
                 result = OrcamentoItemValuesetLinhaService(
                     session
-                ).criar_a_partir_do_orcamento(self.orcamento_item_id)
+                ).criar_a_partir_do_orcamento(
+                    self.orcamento_item_id, substituir=substituir
+                )
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(
                 mensagem_erro_bd(
@@ -248,11 +270,53 @@ class OrcamentoItemValuesetPage(QWidget):
             return
 
         self.carregar()
-        self.status_label.setText(
-            f"ValueSet do item criado a partir do orçamento: "
-            f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
-            f"{result.ignoradas} ignoradas (de {result.total_origem} linhas)."
+        if substituir:
+            mensagem = (
+                "ValueSet do item substituído a partir do orçamento: "
+                f"{result.eliminadas} linhas eliminadas, "
+                f"{result.criadas} linhas inseridas."
+            )
+        else:
+            mensagem = (
+                "ValueSet do item criado a partir do orçamento: "
+                f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
+                f"{result.ignoradas} ignoradas (editadas localmente, "
+                f"de {result.total_origem} linhas)."
+            )
+
+        self.status_label.setText(mensagem)
+        self._verificar_precos_apos_importacao(None, mensagem)
+
+    def _perguntar_modo_criar_do_orcamento(self) -> bool | None:
+        """Ask whether copying from the budget should replace or merge item lines."""
+        message = QMessageBox(self)
+        message.setWindowTitle("Criar ValueSet a partir do Orçamento")
+        message.setText("O ValueSet do item já tem linhas. O que pretende fazer?")
+        message.setInformativeText(
+            "Substituir tudo: elimina todas as linhas atuais do item "
+            "(incluindo as editadas localmente) e recria a partir do orçamento.\n"
+            "Atualizar: atualiza as linhas existentes; as editadas localmente "
+            "são mantidas."
         )
+        substituir_button = message.addButton(
+            "Substituir tudo", QMessageBox.ButtonRole.DestructiveRole
+        )
+        atualizar_button = message.addButton(
+            "Atualizar", QMessageBox.ButtonRole.AcceptRole
+        )
+        cancelar_button = message.addButton(
+            "Cancelar", QMessageBox.ButtonRole.RejectRole
+        )
+        message.setDefaultButton(atualizar_button)
+        message.setEscapeButton(cancelar_button)
+        message.exec()
+
+        clicked = message.clickedButton()
+        if clicked is substituir_button:
+            return True
+        if clicked is atualizar_button:
+            return False
+        return None
 
     def importar_modelo(self) -> None:
         """Open the model picker and import the selected model into the item.
@@ -333,9 +397,9 @@ class OrcamentoItemValuesetPage(QWidget):
         return None
 
     def _verificar_precos_apos_importacao(
-        self, modelo_id: int, mensagem_base: str
+        self, modelo_id: int | None, mensagem_base: str
     ) -> None:
-        """Check imported item ValueSet prices only after explicit import."""
+        """Check item ValueSet prices only after an explicit copy/import action."""
         try:
             with SessionLocal() as session:
                 linhas = OrcamentoItemValuesetLinhaService(
@@ -353,7 +417,7 @@ class OrcamentoItemValuesetPage(QWidget):
 
         dialog = AtualizarPrecosValuesetDialog(
             divergencias,
-            mostrar_atualizar_modelo_origem=True,
+            mostrar_atualizar_modelo_origem=modelo_id is not None,
             parent=self,
         )
         if not dialog.exec():
@@ -372,7 +436,7 @@ class OrcamentoItemValuesetPage(QWidget):
                 atualizadas = OrcamentoItemValuesetLinhaService(
                     session
                 ).atualizar_precos_linhas(atualizacoes_de_divergencias(selecionadas))
-                if dialog.atualizar_modelo_origem:
+                if dialog.atualizar_modelo_origem and modelo_id is not None:
                     atualizadas_modelo = atualizar_modelo_origem_por_divergencias(
                         session, modelo_id, selecionadas
                     )
@@ -387,7 +451,7 @@ class OrcamentoItemValuesetPage(QWidget):
             f"{mensagem_base} "
             f"{self._status_precos(atualizadas, len(divergencias) - atualizadas)}"
         )
-        if dialog.atualizar_modelo_origem:
+        if dialog.atualizar_modelo_origem and modelo_id is not None:
             mensagem += f" Modelo de origem atualizado em {atualizadas_modelo} linha(s)."
         self.status_label.setText(mensagem)
 

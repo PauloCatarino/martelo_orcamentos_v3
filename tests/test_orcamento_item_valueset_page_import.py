@@ -62,6 +62,11 @@ def test_page_uses_service() -> None:
 
     criar = inspect.getsource(OrcamentoItemValuesetPage.criar_do_orcamento)
     assert "criar_a_partir_do_orcamento" in criar
+    assert "listar_linhas_do_item" in criar
+    assert "_perguntar_modo_criar_do_orcamento" in criar
+    assert "if linhas_existentes" in criar
+    assert "substituir=substituir" in criar
+    assert "_verificar_precos_apos_importacao(None" in criar
 
     carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
     assert "OrcamentoItemValuesetLinhaService" in carregar
@@ -97,6 +102,24 @@ def test_page_import_modelo_pergunta_substituir_ou_atualizar() -> None:
     assert "listar_linhas_ativas_do_item" not in importar
 
 
+def test_page_criar_do_orcamento_pergunta_substituir_ou_atualizar() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    pergunta = inspect.getsource(
+        OrcamentoItemValuesetPage._perguntar_modo_criar_do_orcamento
+    )
+    assert "Substituir tudo" in pergunta
+    assert "Atualizar" in pergunta
+    assert "Cancelar" in pergunta
+    assert "DestructiveRole" in pergunta
+    assert "incluindo as editadas localmente" in pergunta
+
+    criar = inspect.getsource(OrcamentoItemValuesetPage.criar_do_orcamento)
+    assert "if linhas_existentes" in criar
+    assert "escolha = self._perguntar_modo_criar_do_orcamento()" in criar
+    assert "return" in criar
+
+
 def test_page_import_modelo_verifica_precos_e_pode_atualizar_custeio() -> None:
     from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 
@@ -108,6 +131,9 @@ def test_page_import_modelo_verifica_precos_e_pode_atualizar_custeio() -> None:
     assert "atualizar_precos_linhas" in verificar
     assert "atualizar_modelo_origem_por_divergencias" in verificar
     assert "_perguntar_atualizar_custeio_apos_precos" in verificar
+    assert "modelo_id: int | None" in verificar
+    assert "mostrar_atualizar_modelo_origem=modelo_id is not None" in verificar
+    assert "dialog.atualizar_modelo_origem and modelo_id is not None" in verificar
 
     custeio = inspect.getsource(OrcamentoItemValuesetPage._atualizar_custeio_para_linhas)
     assert "_propagar_para_custeio" in custeio

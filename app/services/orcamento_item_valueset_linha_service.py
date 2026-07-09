@@ -141,6 +141,8 @@ class CriarItemValuesetDoOrcamentoResult:
     atualizadas: int
     ignoradas: int
     total_origem: int
+    eliminadas: int = 0
+    substituir: bool = False
 
 
 @dataclass(frozen=True)
@@ -389,12 +391,14 @@ class OrcamentoItemValuesetLinhaService:
         return None
 
     def criar_a_partir_do_orcamento(
-        self, orcamento_item_id: int
+        self, orcamento_item_id: int, substituir: bool = False
     ) -> CriarItemValuesetDoOrcamentoResult:
         """Copy the budget version ValueSet lines into one item's ValueSet.
 
         Existing item lines (same chave + codigo_opcao) are updated when not
         locally edited, and kept untouched when editado_localmente is True.
+        With substituir=True, the current item table is deleted and rebuilt
+        from the active budget version lines.
         """
         item = self.session.get(OrcamentoItem, orcamento_item_id)
         if item is None:
@@ -406,17 +410,28 @@ class OrcamentoItemValuesetLinhaService:
         atualizadas = 0
         ignoradas = 0
         total_origem = 0
+        eliminadas = 0
+
+        if substituir:
+            eliminadas = self.repository.delete_by_orcamento_item(orcamento_item_id)
 
         for linha in self.orcamento_repository.list_by_orcamento_versao(orcamento_versao_id):
             if not linha.ativo:
                 continue
 
             total_origem += 1
+            fields = self._build_import_fields(orcamento_item_id, orcamento_versao_id, linha)
+            origem_ops = self.orcamento_linha_operacao_repository.list_by_linha(linha.id)
+
+            if substituir:
+                criada = self.repository.create(**fields)
+                self.operacao_service.copiar_operacoes_de(origem_ops, criada.id)
+                criadas += 1
+                continue
+
             existing = self.repository.get_by_item_chave_opcao(
                 orcamento_item_id, linha.chave, linha.codigo_opcao
             )
-            fields = self._build_import_fields(orcamento_item_id, orcamento_versao_id, linha)
-            origem_ops = self.orcamento_linha_operacao_repository.list_by_linha(linha.id)
 
             if existing is None:
                 criada = self.repository.create(**fields)
@@ -436,6 +451,8 @@ class OrcamentoItemValuesetLinhaService:
             atualizadas=atualizadas,
             ignoradas=ignoradas,
             total_origem=total_origem,
+            eliminadas=eliminadas,
+            substituir=substituir,
         )
 
     def _build_import_fields(

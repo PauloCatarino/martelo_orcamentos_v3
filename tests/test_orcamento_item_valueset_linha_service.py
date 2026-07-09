@@ -189,7 +189,7 @@ class _FakeItemRepository:
     def create(self, **fields):
         self.__class__.created_payload = fields
         self.__class__.created_payloads.append(fields)
-        return _item_resumo(id=1, **fields)
+        return _item_resumo(id=len(self.__class__.created_payloads), **fields)
 
     def delete_by_orcamento_item(self, orcamento_item_id: int) -> int:
         self.__class__.deleted_item_ids.append(orcamento_item_id)
@@ -556,6 +556,8 @@ def test_criar_a_partir_protege_linha_editada(monkeypatch) -> None:
     assert result.criadas == 0
     assert result.atualizadas == 0
     assert result.ignoradas == 1
+    assert result.substituir is False
+    assert _FakeItemRepository.deleted_item_ids == []
     assert _FakeItemRepository.updated_payload is None
 
 
@@ -633,6 +635,45 @@ def test_criar_a_partir_do_orcamento_nao_copia_operacoes_de_linha_ignorada(
     service.criar_a_partir_do_orcamento(30)
 
     assert _FakeOperacaoService.copy_calls == []
+
+
+def test_criar_a_partir_do_orcamento_substituir_elimina_existentes_e_recria_com_operacoes(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeOrcamentoRepository.versao_rows = [
+        _versao_resumo(id=7, chave="FERRAGEM_PUXADOR", codigo_opcao="SIMPLES"),
+        _versao_resumo(id=8, chave="FERRAGEM_DOBRADICA", codigo_opcao="BLUM", ativo=False),
+        _versao_resumo(id=9, chave="FERRAGEM_CORREDICA", codigo_opcao="TANDEM"),
+    ]
+    _FakeOrcamentoLinhaOperacaoRepository.ops_by_orcamento_linha = {
+        7: [SimpleNamespace(def_operacao_id=55)],
+        9: [SimpleNamespace(def_operacao_id=77)],
+    }
+    _FakeItemRepository.deleted_count = 4
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    result = service.criar_a_partir_do_orcamento(30, substituir=True)
+
+    assert result.substituir is True
+    assert result.eliminadas == 4
+    assert result.criadas == 2
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert result.total_origem == 2
+    assert _FakeItemRepository.deleted_item_ids == [30]
+    assert len(_FakeItemRepository.created_payloads) == 2
+    assert {payload["codigo_opcao"] for payload in _FakeItemRepository.created_payloads} == {
+        "SIMPLES",
+        "TANDEM",
+    }
+    assert _FakeItemRepository.updated_payload is None
+    assert [
+        ([op.def_operacao_id for op in origem_ops], destino_id)
+        for origem_ops, destino_id in _FakeOperacaoService.copy_calls
+    ] == [([55], 1), ([77], 2)]
+    assert session.committed is True
 
 
 def test_importar_modelo_para_item_cria_linhas(monkeypatch) -> None:
