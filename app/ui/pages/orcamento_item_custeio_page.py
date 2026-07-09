@@ -1849,11 +1849,20 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"{format_quantity(linha.tempo_orlagem)} min",
             )
         if header == "Tempo CNC" and linha.tempo_cnc is not None:
+            qt_calc = qt if qt is not None else Decimal("1")
+            minutos_por_peca = linha.tempo_cnc / qt_calc if qt_calc else None
+            setup = getattr(linha, "tempo_setup", None)
+            nota_setup = (
+                f"   (o setup {format_quantity(setup)} min aparece em Tempo setup)"
+                if setup
+                else ""
+            )
             return self._tooltip_3(
                 self.TEMPO_INFORMATIVO,
-                "Tempo CNC = QT × tempo de CNC por peça",
-                f"= QT {format_quantity(qt)} → "
-                f"{format_quantity(linha.tempo_cnc)} min",
+                "Tempo CNC = tempo por peça × QT",
+                f"= {format_quantity(minutos_por_peca)} min/peça × QT "
+                f"{format_quantity(qt_calc)} = {format_quantity(linha.tempo_cnc)} min"
+                f"{nota_setup}",
             )
         if header == "Tempo montagem" and linha.tempo_montagem is not None:
             return self._tooltip_3(
@@ -2228,26 +2237,46 @@ class OrcamentoItemCusteioPage(QWidget):
     ) -> str:
         """3-block tooltip for hardware CNC cost by machine time."""
         custo = linha.custo_cnc
-        tempo_total = linha.tempo_cnc
+        tempo_variavel = linha.tempo_cnc
+        setup = normalizar_numero(getattr(linha, "tempo_setup", None)) or Decimal("0")
+        tempo_total = None
+        if tempo_variavel is not None:
+            tempo_total = tempo_variavel + setup
+        elif setup:
+            tempo_total = setup
         custo_hora = self._custo_hora_derivado(custo, tempo_total)
 
-        if tempo_total is None:
+        if tempo_variavel is None:
+            formula = "Custo CNC = (tempo / 60) × custo/hora da máquina"
             substituicao = (
                 f"= tempo / 60 × custo/hora = {format_currency(custo)}"
             )
-        else:
+        elif setup:
+            formula = "Custo CNC = (setup + tempo por peça × QT) / 60 × custo/hora"
             qt_calc = qt if qt is not None else Decimal("1")
-            minutos_por_peca = tempo_total / qt_calc if qt_calc else None
+            minutos_por_peca = tempo_variavel / qt_calc if qt_calc else None
+            substituicao = (
+                f"= ({format_quantity(setup)} setup + "
+                f"{format_quantity(minutos_por_peca)} min/peça × QT "
+                f"{format_quantity(qt_calc)}) / 60 × "
+                f"{format_currency(custo_hora)}/h\n"
+                f"= {format_quantity(tempo_total)} min / 60 × "
+                f"{format_quantity(custo_hora)} = {format_currency(custo)}"
+            )
+        else:
+            formula = "Custo CNC = (tempo / 60) × custo/hora da máquina"
+            qt_calc = qt if qt is not None else Decimal("1")
+            minutos_por_peca = tempo_variavel / qt_calc if qt_calc else None
             substituicao = (
                 f"= {format_quantity(minutos_por_peca)} min/peça × QT "
-                f"{format_quantity(qt_calc)} = {format_quantity(tempo_total)} min\n"
-                f"= {format_quantity(tempo_total)} / 60 × "
+                f"{format_quantity(qt_calc)} = {format_quantity(tempo_variavel)} min\n"
+                f"= {format_quantity(tempo_variavel)} / 60 × "
                 f"{format_currency(custo_hora)} = {format_currency(custo)}"
             )
 
         return self._tooltip_3(
             "Custo de CNC por tempo: minutos de maquinação da ferragem, ao custo/hora da máquina CNC.",
-            "Custo CNC = (tempo / 60) × custo/hora da máquina",
+            formula,
             self._com_tarifa(
                 substituicao,
                 self._tarifa_cnc_hora_tooltip(linha),

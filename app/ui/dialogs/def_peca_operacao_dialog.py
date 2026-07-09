@@ -219,7 +219,7 @@ class DefPecaOperacaoDialog(QDialog):
         if value is None:
             return ""
 
-        return format(value, "f")
+        return format(value.normalize(), "f")
 
     def _empty_to_none(self, value: str) -> str | None:
         normalized = value.strip()

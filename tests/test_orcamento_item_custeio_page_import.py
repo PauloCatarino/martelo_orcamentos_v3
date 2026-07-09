@@ -806,6 +806,45 @@ def test_orcamento_item_custeio_page_tooltip_cnc_ferragem_por_tempo() -> None:
     assert "escalão de área" not in tooltip
 
 
+def test_orcamento_item_custeio_page_tooltip_cnc_tempo_mostra_setup() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._maquinas_por_codigo = {
+        "CNC_VERTICAL": SimpleNamespace(
+            id=3,
+            tipo="CNC",
+            custo_hora=Decimal("60"),
+            custo_hora_serie=None,
+        ),
+    }
+    page._escaloes_por_maquina = {}
+    linha = SimpleNamespace(
+        tipo_linha="FERRAGEM",
+        quantidade=Decimal("2"),
+        ml_orla_fina=None,
+        ml_orla_grossa=None,
+        desperdicio_percentagem=None,
+        area_m2=None,
+        custo_cnc=Decimal("1.65"),
+        tempo_cnc=Decimal("1.6"),
+        tempo_setup=Decimal("0.05"),
+        maquina="CNC_VERTICAL",
+        tipo_producao="STD",
+    )
+
+    custo = page._tooltip_formula("Custo CNC", linha)
+    tempo = page._tooltip_formula("Tempo CNC", linha)
+
+    assert "Custo CNC = (setup + tempo por peça × QT) / 60 × custo/hora" in custo
+    assert "(0,05 setup + 0,8 min/peça × QT 2) / 60 × 60,00 €/h" in custo
+    assert "1,65 min / 60 × 60 = 1,65 €" in custo
+    assert "61,88" not in custo
+    assert "Tempo CNC = tempo por peça × QT" in tempo
+    assert "0,8 min/peça × QT 2 = 1,6 min" in tempo
+    assert "o setup 0,05 min aparece em Tempo setup" in tempo
+
+
 def test_custeio_page_caixa_preco_item() -> None:
     """The page shows a read-only reference-price box updated on load."""
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage

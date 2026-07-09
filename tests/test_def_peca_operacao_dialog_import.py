@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+from decimal import Decimal
 
 
 def test_def_peca_operacao_dialog_imports() -> None:
@@ -58,6 +59,16 @@ def test_def_peca_operacao_dialog_parses_decimais() -> None:
     source = inspect.getsource(DefPecaOperacaoDialog._parse_decimal_input)
 
     assert "Decimal" in source
+
+
+def test_def_peca_operacao_dialog_formata_decimais_sem_zeros_finais() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+
+    dialog = DefPecaOperacaoDialog.__new__(DefPecaOperacaoDialog)
+
+    assert dialog._format_decimal(Decimal("1.0000")) == "1"
+    assert dialog._format_decimal(Decimal("0.0500")) == "0.05"
+    assert dialog._format_decimal(Decimal("0.8000")) == "0.8"
 
 
 def test_def_peca_operacao_dialog_tem_campos_de_tempo() -> None:
