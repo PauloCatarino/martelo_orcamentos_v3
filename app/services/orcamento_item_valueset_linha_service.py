@@ -246,7 +246,9 @@ class OrcamentoItemValuesetLinhaService:
 
         return result
 
-    def limpar_snapshot_linha(self, id: int) -> OrcamentoItemValuesetLinhaResumo:
+    def limpar_snapshot_linha(
+        self, id: int, *, commit: bool = True
+    ) -> OrcamentoItemValuesetLinhaResumo:
         """Clear the materia-prima snapshot of one line, keeping key and option."""
         linha = self.repository.get_by_id(id)
         if linha is None:
@@ -257,7 +259,8 @@ class OrcamentoItemValuesetLinhaService:
         fields["editado_localmente"] = True
 
         result = self.repository.update(id=id, **fields)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return result
 
@@ -295,25 +298,27 @@ class OrcamentoItemValuesetLinhaService:
 
         return result
 
-    def desativar_linha(self, id: int) -> bool:
+    def desativar_linha(self, id: int, *, commit: bool = True) -> bool:
         """Deactivate one budget item ValueSet line (marks it locally edited)."""
         linha = self.repository.get_by_id(id)
         if linha is None:
             return False
 
         self.repository.update(id=id, ativo=False, editado_localmente=True)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return True
 
-    def ativar_linha(self, id: int) -> bool:
+    def ativar_linha(self, id: int, *, commit: bool = True) -> bool:
         """Reactivate one budget item ValueSet line (marks it locally edited)."""
         linha = self.repository.get_by_id(id)
         if linha is None:
             return False
 
         self.repository.update(id=id, ativo=True, editado_localmente=True)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return True
 

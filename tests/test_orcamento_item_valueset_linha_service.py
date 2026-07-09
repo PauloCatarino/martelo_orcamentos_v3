@@ -787,6 +787,15 @@ def test_limpar_snapshot_item_mantem_chave(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_limpar_snapshot_item_pode_adiar_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.limpar_snapshot_linha(5, commit=False)
+
+    assert _FakeItemRepository.updated_payload["id"] == 5
+    assert session.committed is False
+
+
 def test_desativar_linha_item_marca_editado(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 

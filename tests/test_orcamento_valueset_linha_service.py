@@ -555,3 +555,12 @@ def test_limpar_snapshot_remove_campos_mantendo_chave(monkeypatch) -> None:
     assert "chave" not in payload
     assert "codigo_opcao" not in payload
     assert session.committed is True
+
+
+def test_limpar_snapshot_pode_adiar_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.limpar_snapshot_linha(5, commit=False)
+
+    assert _FakeRepository.updated_payload["id"] == 5
+    assert session.committed is False

@@ -124,6 +124,7 @@ class OrcamentoItemValuesetPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
@@ -486,62 +487,104 @@ class OrcamentoItemValuesetPage(QWidget):
         self.status_label.setText("Dados colados na linha.")
 
     def limpar_dados(self) -> None:
-        """Clear the materia-prima snapshot of the selected line."""
-        linha = self._get_selected_linha()
-        if linha is None:
-            self.status_label.setText("Selecione uma linha.")
+        """Clear the materia-prima snapshot of the selected lines."""
+        linhas = self._get_selected_linhas()
+        if not linhas:
+            self.status_label.setText("Selecione uma ou mais linhas.")
             return
 
+        total = len(linhas)
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            "Tem a certeza que pretende limpar os dados desta linha?",
+            f"Tem a certeza que pretende limpar os dados de {total} linha(s)?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
+        limpas = 0
         try:
             with SessionLocal() as session:
-                OrcamentoItemValuesetLinhaService(session).limpar_snapshot_linha(linha.id)
-        except (SQLAlchemyError, ValueError) as error:
+                service = OrcamentoItemValuesetLinhaService(session)
+                for linha in linhas:
+                    try:
+                        with session.begin_nested():
+                            service.limpar_snapshot_linha(linha.id, commit=False)
+                            limpas += 1
+                    except (SQLAlchemyError, ValueError):
+                        continue
+                session.commit()
+        except SQLAlchemyError as error:
             self.status_label.setText(
                 mensagem_erro_bd("Não foi possível limpar os dados.", error)
             )
             return
 
         self.carregar()
-        self.status_label.setText("Dados da linha limpos.")
+        if limpas == total:
+            self.status_label.setText(f"Dados limpos em {limpas} linha(s).")
+        else:
+            self.status_label.setText(f"Dados limpos em {limpas} de {total} linhas.")
 
     def alternar_linha_ativa(self) -> None:
-        """Toggle the active state of the selected line."""
-        linha = self._get_selected_linha()
-        if linha is None:
-            self.status_label.setText("Selecione uma linha.")
+        """Toggle the active state of the selected lines."""
+        linhas = self._get_selected_linhas()
+        if not linhas:
+            self.status_label.setText("Selecione uma ou mais linhas.")
             return
 
+        total = len(linhas)
+        confirm = QMessageBox.question(
+            self,
+            "Confirmar",
+            f"Tem a certeza que pretende ativar/desativar {total} linha(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        atualizadas = 0
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemValuesetLinhaService(session)
-                if linha.ativo:
-                    service.desativar_linha(linha.id)
-                else:
-                    service.ativar_linha(linha.id)
+                for linha in linhas:
+                    try:
+                        with session.begin_nested():
+                            if linha.ativo:
+                                atualizadas += int(
+                                    service.desativar_linha(linha.id, commit=False)
+                                )
+                            else:
+                                atualizadas += int(
+                                    service.ativar_linha(linha.id, commit=False)
+                                )
+                    except (SQLAlchemyError, ValueError):
+                        continue
+                session.commit()
         except SQLAlchemyError as error:
             self.status_label.setText(
                 mensagem_erro_bd("Não foi possível atualizar o estado da linha.", error)
             )
             return
 
-        mensagem = "Linha desativada." if linha.ativo else "Linha ativada."
         self.carregar()
-        self.status_label.setText(mensagem)
+        if atualizadas == total:
+            self.status_label.setText(f"Estado atualizado em {atualizadas} linha(s).")
+        else:
+            self.status_label.setText(
+                f"Estado atualizado em {atualizadas} de {total} linhas."
+            )
 
     def _abrir_menu_contexto(self, pos) -> None:
         """Show a right-click menu with the line actions."""
         item = self.table.itemAt(pos)
         if item is not None:
-            self.table.selectRow(item.row())
+            selected_rows = {
+                index.row() for index in self.table.selectionModel().selectedRows()
+            }
+            if item.row() not in selected_rows:
+                self.table.selectRow(item.row())
 
         menu = QMenu(self)
         menu.addAction("Editar Linha", self.abrir_editar_linha)
@@ -562,6 +605,24 @@ class OrcamentoItemValuesetPage(QWidget):
             return None
 
         return self._linhas_by_row.get(row)
+
+    def _get_selected_linhas(self) -> list[OrcamentoItemValuesetLinhaResumo]:
+        """Return selected ValueSet lines ordered by table row."""
+        selection = self.table.selectionModel()
+        if selection is None:
+            return []
+
+        linhas: list[OrcamentoItemValuesetLinhaResumo] = []
+        seen_rows: set[int] = set()
+        for index in sorted(selection.selectedRows(), key=lambda idx: idx.row()):
+            row = index.row()
+            if row in seen_rows:
+                continue
+            seen_rows.add(row)
+            linha = self._linhas_by_row.get(row)
+            if linha is not None:
+                linhas.append(linha)
+        return linhas
 
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""

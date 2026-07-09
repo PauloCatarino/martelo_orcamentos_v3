@@ -111,6 +111,7 @@ def test_page_has_edit_and_snapshot_tools() -> None:
         "_abrir_menu_contexto",
         "_handle_double_click",
         "_get_selected_linha",
+        "_get_selected_linhas",
     ):
         assert hasattr(OrcamentoItemValuesetPage, method)
 
@@ -130,10 +131,25 @@ def test_page_has_edit_and_snapshot_tools() -> None:
     limpar = inspect.getsource(OrcamentoItemValuesetPage.limpar_dados)
     assert "limpar_snapshot_linha" in limpar
     assert "Tem a certeza" in limpar
+    assert "_get_selected_linhas" in limpar
+    assert "commit=False" in limpar
+    assert "Dados limpos em" in limpar
 
     toggle = inspect.getsource(OrcamentoItemValuesetPage.alternar_linha_ativa)
-    assert "Linha ativada." in toggle
-    assert "Linha desativada." in toggle
+    assert "_get_selected_linhas" in toggle
+    assert "commit=False" in toggle
+    assert "Estado atualizado em" in toggle
+
+
+def test_page_uses_multi_selection_for_batch_actions() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+    assert "ExtendedSelection" in init
+
+    selected = inspect.getsource(OrcamentoItemValuesetPage._get_selected_linhas)
+    assert "selectedRows()" in selected
+    assert "seen_rows" in selected
 
 
 def test_page_propaga_para_custeio() -> None:
