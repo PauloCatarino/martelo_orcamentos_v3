@@ -53,6 +53,7 @@ class OrcamentoItemValuesetLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    prioridade: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -112,8 +113,7 @@ class OrcamentoItemValuesetLinhaRepository:
             )
             .order_by(
                 OrcamentoItemValuesetLinha.chave.asc(),
-                OrcamentoItemValuesetLinha.ordem.asc(),
-                OrcamentoItemValuesetLinha.id.asc(),
+                *self._prioridade_order(),
             )
         )
         linhas = self.session.execute(statement).scalars().all()
@@ -123,14 +123,14 @@ class OrcamentoItemValuesetLinhaRepository:
     def list_by_item_chave(
         self, orcamento_item_id: int, chave: str
     ) -> list[OrcamentoItemValuesetLinhaResumo]:
-        """List all options for one budget item and key, ordered by ordem."""
+        """List all options for one budget item and key, best priority first."""
         statement = (
             select(OrcamentoItemValuesetLinha)
             .where(
                 OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id,
                 OrcamentoItemValuesetLinha.chave == chave,
             )
-            .order_by(OrcamentoItemValuesetLinha.ordem.asc(), OrcamentoItemValuesetLinha.id.asc())
+            .order_by(*self._prioridade_order())
         )
         linhas = self.session.execute(statement).scalars().all()
 
@@ -180,16 +180,22 @@ class OrcamentoItemValuesetLinhaRepository:
     def get_default_by_item_chave(
         self, orcamento_item_id: int, chave: str
     ) -> OrcamentoItemValuesetLinhaResumo | None:
-        """Get the active default option for one budget item and key."""
+        """Get the winning active option for one budget item and key.
+
+        The active line with the lowest prioridade wins (NULL last, then id).
+        """
         statement = (
             select(OrcamentoItemValuesetLinha)
             .where(
                 OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id,
                 OrcamentoItemValuesetLinha.chave == chave,
-                OrcamentoItemValuesetLinha.padrao.is_(True),
                 OrcamentoItemValuesetLinha.ativo.is_(True),
             )
-            .order_by(OrcamentoItemValuesetLinha.ordem.asc(), OrcamentoItemValuesetLinha.id.asc())
+            .order_by(
+                OrcamentoItemValuesetLinha.prioridade.is_(None),
+                OrcamentoItemValuesetLinha.prioridade.asc(),
+                OrcamentoItemValuesetLinha.id.asc(),
+            )
         )
         linha = self.session.execute(statement).scalars().first()
         if linha is None:
@@ -265,6 +271,15 @@ class OrcamentoItemValuesetLinhaRepository:
             linha.padrao = False
         self.session.flush()
 
+    def _prioridade_order(self):
+        """Ordering: best priority first (NULL last), then ordem, then id."""
+        return (
+            OrcamentoItemValuesetLinha.prioridade.is_(None),
+            OrcamentoItemValuesetLinha.prioridade.asc(),
+            OrcamentoItemValuesetLinha.ordem.asc(),
+            OrcamentoItemValuesetLinha.id.asc(),
+        )
+
     def _to_resumo(self, linha: OrcamentoItemValuesetLinha) -> OrcamentoItemValuesetLinhaResumo:
         """Convert an ORM line to the read model."""
         return OrcamentoItemValuesetLinhaResumo(
@@ -274,6 +289,7 @@ class OrcamentoItemValuesetLinhaRepository:
             codigo_opcao=linha.codigo_opcao,
             nome_opcao=linha.nome_opcao,
             padrao=linha.padrao,
+            prioridade=linha.prioridade,
             ordem=linha.ordem,
             descricao=linha.descricao,
             materia_prima_id=linha.materia_prima_id,

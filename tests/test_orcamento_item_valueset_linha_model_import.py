@@ -28,6 +28,7 @@ def test_tablename_columns_and_foreign_keys() -> None:
         "codigo_opcao",
         "nome_opcao",
         "padrao",
+        "prioridade",
         "ordem",
         "descricao",
         "materia_prima_id",

@@ -41,7 +41,7 @@ def test_page_headers() -> None:
         "Comp MP",
         "Larg MP",
         "Esp MP",
-        "Padrão",
+        "Prioridade",
         "Ordem",
         "Origem",
         "Editado localmente",

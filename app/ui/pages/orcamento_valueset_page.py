@@ -27,6 +27,7 @@ from app.services.orcamento_valueset_linha_service import (
 )
 from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModeloDialog
 from app.ui.dialogs.orcamento_valueset_linha_dialog import OrcamentoValuesetLinhaDialog
+from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
@@ -54,7 +55,7 @@ class OrcamentoValuesetPage(QWidget):
         "Comp MP",
         "Larg MP",
         "Esp MP",
-        "Padrão",
+        "Prioridade",
         "Ordem",
         "Origem",
         "Editado localmente",
@@ -137,8 +138,10 @@ class OrcamentoValuesetPage(QWidget):
                 linhas = OrcamentoValuesetLinhaService(session).listar_linhas_da_versao(
                     self.orcamento_versao_id
                 )
-        except SQLAlchemyError:
-            self.status_label.setText("Nao foi possivel carregar o ValueSet do orcamento.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Nao foi possivel carregar o ValueSet do orcamento.", error)
+            )
             return
 
         self._preencher(linhas)
@@ -147,6 +150,8 @@ class OrcamentoValuesetPage(QWidget):
             self.status_label.setText(
                 "Sem ValueSet. Use 'Importar Modelo' para preencher este orçamento."
             )
+        else:
+            self._avisar_prioridades_repetidas(linhas)
 
     def _preencher(self, linhas: list[OrcamentoValuesetLinhaResumo]) -> None:
         """Fill the table with ValueSet lines."""
@@ -174,7 +179,7 @@ class OrcamentoValuesetPage(QWidget):
                 format_quantity(linha.comp_mp),
                 format_quantity(linha.larg_mp),
                 format_quantity(linha.esp_mp),
-                self._format_bool(linha.padrao),
+                self._format_prioridade(linha.prioridade),
                 str(linha.ordem),
                 linha.origem_modelo_codigo or linha.origem_dados or "",
                 self._format_bool(linha.editado_localmente),
@@ -197,8 +202,10 @@ class OrcamentoValuesetPage(QWidget):
                 result = OrcamentoValuesetLinhaService(session).importar_modelo_para_orcamento(
                     self.orcamento_versao_id, modelo.id
                 )
-        except (SQLAlchemyError, ValueError):
-            self.status_label.setText("Não foi possível importar o modelo.")
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível importar o modelo.", error)
+            )
             return
 
         self.carregar()
@@ -232,8 +239,10 @@ class OrcamentoValuesetPage(QWidget):
                     service.desativar_linha(linha.id)
                 else:
                     service.ativar_linha(linha.id)
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível atualizar o estado da linha.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar o estado da linha.", error)
+            )
             return
 
         estado = "desativada" if linha.ativo else "reativada"
@@ -285,14 +294,19 @@ class OrcamentoValuesetPage(QWidget):
                             origem_modelo_id=linha.origem_modelo_id,
                             origem_modelo_codigo=linha.origem_modelo_codigo,
                             editado_localmente=form_data.editado_localmente,
-                            padrao=form_data.padrao,
+                            padrao=linha.padrao,
+                            prioridade=form_data.prioridade,
                             ordem=form_data.ordem,
                             observacoes=form_data.observacoes,
                             ativo=form_data.ativo,
                         ),
                     )
-            except (IntegrityError, ValueError):
-                dialog.set_error("Não foi possível guardar a linha. Verifique os dados.")
+            except (IntegrityError, ValueError) as error:
+                dialog.set_error(
+                    mensagem_erro_bd(
+                        "Não foi possível guardar a linha. Verifique os dados.", error
+                    )
+                )
                 return False
 
             saved = True
@@ -315,6 +329,7 @@ class OrcamentoValuesetPage(QWidget):
             return
 
         self._copied_snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        self._copied_snapshot["prioridade"] = linha.prioridade
         self.status_label.setText("Dados da linha copiados.")
 
     def colar_dados(self) -> None:
@@ -333,8 +348,10 @@ class OrcamentoValuesetPage(QWidget):
                 OrcamentoValuesetLinhaService(session).aplicar_snapshot_linha(
                     linha.id, self._copied_snapshot
                 )
-        except (SQLAlchemyError, ValueError):
-            self.status_label.setText("Não foi possível colar os dados.")
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível colar os dados.", error)
+            )
             return
 
         self.carregar()
@@ -359,8 +376,10 @@ class OrcamentoValuesetPage(QWidget):
         try:
             with SessionLocal() as session:
                 OrcamentoValuesetLinhaService(session).limpar_snapshot_linha(linha.id)
-        except (SQLAlchemyError, ValueError):
-            self.status_label.setText("Não foi possível limpar os dados.")
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível limpar os dados.", error)
+            )
             return
 
         self.carregar()
@@ -391,3 +410,24 @@ class OrcamentoValuesetPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _format_prioridade(self, prioridade: int | None) -> str:
+        """Format the priority for display ("—" when empty)."""
+        return "—" if prioridade is None else str(prioridade)
+
+    def _avisar_prioridades_repetidas(self, linhas) -> None:
+        """Soft warning when two active lines of one key share a priority."""
+        contagem: dict[tuple[str, int], int] = {}
+        for linha in linhas:
+            if not linha.ativo or linha.prioridade is None:
+                continue
+            par = (linha.chave, linha.prioridade)
+            contagem[par] = contagem.get(par, 0) + 1
+
+        chaves = sorted({chave for (chave, _), total in contagem.items() if total > 1})
+        if chaves:
+            self.status_label.setText(
+                "Aviso: prioridade repetida nas chaves: "
+                + ", ".join(chaves)
+                + ". O desempate é pelo id da linha."
+            )

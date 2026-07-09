@@ -36,6 +36,17 @@ from app.ui.helpers.valueset_combo_helper import (
 
 ORIGEM_DADOS_OPCOES = ("MODELO_VALUESET", "MATERIA_PRIMA", "LIVRE", "EDITADO_LOCALMENTE")
 
+PRIORIDADE_TOOLTIP = (
+    "Prioridade dentro da chave: a linha ativa com o número mais baixo é a "
+    "escolhida automaticamente no custeio (1 = primeira escolha). "
+    "Vazio = nunca escolhida automaticamente. "
+    "Não confundir com Ordem, que é apenas a posição na lista."
+)
+ORDEM_TOOLTIP = (
+    "Ordem: apenas a posição de exibição na lista. "
+    "Não decide a escolha automática no custeio — isso é a Prioridade."
+)
+
 
 @dataclass(frozen=True)
 class OrcamentoValuesetLinhaDialogData:
@@ -64,7 +75,7 @@ class OrcamentoValuesetLinhaDialogData:
     esp_mp: Decimal | None
     origem_dados: str | None
     editado_localmente: bool
-    padrao: bool
+    prioridade: int | None
     ordem: int
     observacoes: str | None
     ativo: bool
@@ -118,9 +129,12 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         for origem in ORIGEM_DADOS_OPCOES:
             self.origem_dados_input.addItem(origem)
         self.editado_localmente_input = QCheckBox()
-        self.padrao_input = QCheckBox()
+        self.prioridade_input = QLineEdit()
+        self.prioridade_input.setPlaceholderText("Ex.: 1 (vazio = nunca escolhida)")
+        self.prioridade_input.setToolTip(PRIORIDADE_TOOLTIP)
         self.ordem_input = QLineEdit()
         self.ordem_input.setText("1")
+        self.ordem_input.setToolTip(ORDEM_TOOLTIP)
         self.observacoes_input = QLineEdit()
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
@@ -158,7 +172,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         form.addRow("Esp MP", self.esp_mp_input)
         form.addRow("Origem dados", self.origem_dados_input)
         form.addRow("Editado localmente", self.editado_localmente_input)
-        form.addRow("Padrão", self.padrao_input)
+        form.addRow("Prioridade", self.prioridade_input)
         form.addRow("Ordem", self.ordem_input)
         form.addRow("Observações", self.observacoes_input)
         form.addRow("Ativo", self.ativo_input)
@@ -241,7 +255,9 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.esp_mp_input.setText(self._format_decimal(linha.esp_mp))
             self.origem_dados_input.setCurrentText(linha.origem_dados or "")
             self.editado_localmente_input.setChecked(linha.editado_localmente)
-            self.padrao_input.setChecked(linha.padrao)
+            self.prioridade_input.setText(
+                "" if linha.prioridade is None else str(linha.prioridade)
+            )
             self.ordem_input.setText(str(linha.ordem))
             self.observacoes_input.setText(linha.observacoes or "")
             self.ativo_input.setChecked(linha.ativo)
@@ -371,7 +387,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             esp_mp=self._parse_optional_decimal(self.esp_mp_input, "Esp MP"),
             origem_dados=self._empty_to_none(self.origem_dados_input.currentText()),
             editado_localmente=self.editado_localmente_input.isChecked(),
-            padrao=self.padrao_input.isChecked(),
+            prioridade=self._parse_prioridade(),
             ordem=self._parse_ordem(),
             observacoes=self._empty_to_none(self.observacoes_input.text()),
             ativo=self.ativo_input.isChecked(),
@@ -414,6 +430,23 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             return int(text)
         except ValueError as error:
             raise ValueError("Ordem inválida. Use um número inteiro.") from error
+
+    def _parse_prioridade(self) -> int | None:
+        text = self.prioridade_input.text().strip()
+        if not text:
+            return None
+
+        try:
+            prioridade = int(text)
+        except ValueError as error:
+            raise ValueError(
+                "Prioridade inválida. Use um número inteiro (1 = primeira escolha)."
+            ) from error
+
+        if prioridade < 1:
+            raise ValueError("Prioridade inválida. Use um número inteiro maior ou igual a 1.")
+
+        return prioridade
 
     def _parse_optional_decimal(self, widget: QLineEdit, label: str) -> Decimal | None:
         try:

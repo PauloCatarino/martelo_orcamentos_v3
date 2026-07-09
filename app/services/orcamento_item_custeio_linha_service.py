@@ -3510,25 +3510,17 @@ class OrcamentoItemCusteioLinhaService:
     def _resolver_valueset_por_chave(
         self, orcamento_item_id: int, chave: str | None
     ) -> OrcamentoItemValuesetLinhaResumo | None:
-        """Resolve one item ValueSet line for a key (default option first)."""
+        """Resolve one item ValueSet line for a key.
+
+        The active line with the lowest prioridade wins (1 = first choice);
+        lines without prioridade come last, tie broken by id.
+        """
         if not chave:
             return None
 
-        chave_norm = normalize_valueset_key(chave)
-
-        padrao = self.item_valueset_repository.get_default_by_item_chave(
-            orcamento_item_id, chave_norm
+        return self.item_valueset_repository.get_default_by_item_chave(
+            orcamento_item_id, normalize_valueset_key(chave)
         )
-        if padrao is not None:
-            return padrao
-
-        for linha in self.item_valueset_repository.list_by_item_chave(
-            orcamento_item_id, chave_norm
-        ):
-            if linha.ativo:
-                return linha
-
-        return None
 
     def _build_peca_line_fields(
         self,

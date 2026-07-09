@@ -54,7 +54,7 @@ def test_dialog_data_fields() -> None:
         "ref_materia_prima",
         "descricao_materia_prima",
         "valor_texto",
-        "padrao",
+        "prioridade",
         "ordem",
         "observacoes",
         "ativo",

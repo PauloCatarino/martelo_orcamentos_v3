@@ -53,6 +53,7 @@ class CriarOrcamentoItemValuesetLinhaData:
     codigo_opcao: str | None = None
     nome_opcao: str | None = None
     padrao: bool = False
+    prioridade: int | None = None
     ordem: int = 1
     descricao: str | None = None
     materia_prima_id: int | None = None
@@ -91,6 +92,7 @@ class EditarOrcamentoItemValuesetLinhaData:
     codigo_opcao: str | None = None
     nome_opcao: str | None = None
     padrao: bool = False
+    prioridade: int | None = None
     ordem: int = 1
     descricao: str | None = None
     materia_prima_id: int | None = None
@@ -194,7 +196,7 @@ class OrcamentoItemValuesetLinhaService:
     def obter_padrao_por_chave(
         self, orcamento_item_id: int, chave: str
     ) -> OrcamentoItemValuesetLinhaResumo | None:
-        """Get the active default option of one budget item and key."""
+        """Get the winning active option of one budget item and key."""
         return self.repository.get_default_by_item_chave(
             orcamento_item_id, normalize_valueset_key(chave)
         )
@@ -204,12 +206,17 @@ class OrcamentoItemValuesetLinhaService:
         return self.repository.get_by_id(id)
 
     def copiar_snapshot_linha(self, id: int) -> dict:
-        """Return the materia-prima snapshot of one line (key/option excluded)."""
+        """Return the materia-prima snapshot of one line (key/option excluded).
+
+        Also carries the line's prioridade so copy/paste keeps the choice rank.
+        """
         linha = self.repository.get_by_id(id)
         if linha is None:
             raise ValueError("linha nao encontrada")
 
-        return {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        snapshot["prioridade"] = linha.prioridade
+        return snapshot
 
     def aplicar_snapshot_linha(
         self, id: int, snapshot: dict
@@ -223,6 +230,8 @@ class OrcamentoItemValuesetLinhaService:
             raise ValueError("linha nao encontrada")
 
         fields = {field: snapshot.get(field) for field in SNAPSHOT_FIELDS}
+        if "prioridade" in snapshot:
+            fields["prioridade"] = snapshot["prioridade"]
         fields["preco_liquido"] = self._compute_preco_liquido(
             fields["preco_tabela"],
             fields["margem_percentagem"],
@@ -263,13 +272,6 @@ class OrcamentoItemValuesetLinhaService:
             codigo_opcao=fields["codigo_opcao"],
             exclude_id=None,
         )
-        self._validate_padrao_unico(
-            orcamento_item_id=fields["orcamento_item_id"],
-            chave=fields["chave"],
-            padrao=fields["padrao"],
-            ativo=fields["ativo"],
-            exclude_id=None,
-        )
 
         result = self.repository.create(**fields)
         self.session.commit()
@@ -285,13 +287,6 @@ class OrcamentoItemValuesetLinhaService:
             orcamento_item_id=fields["orcamento_item_id"],
             chave=fields["chave"],
             codigo_opcao=fields["codigo_opcao"],
-            exclude_id=id,
-        )
-        self._validate_padrao_unico(
-            orcamento_item_id=fields["orcamento_item_id"],
-            chave=fields["chave"],
-            padrao=fields["padrao"],
-            ativo=fields["ativo"],
             exclude_id=id,
         )
 
@@ -339,7 +334,7 @@ class OrcamentoItemValuesetLinhaService:
     def obter_valor_resolvido(
         self, orcamento_item_id: int, orcamento_versao_id: int, chave: str
     ) -> OrcamentoItemValuesetLinhaResumo | OrcamentoValuesetLinhaResumo | None:
-        """Resolve a ValueSet key default, preferring the item over the version."""
+        """Resolve a ValueSet key by priority, preferring the item over the version."""
         normalized_chave = self._normalize_required_chave(chave)
         item_linha = self.repository.get_default_by_item_chave(
             orcamento_item_id, normalized_chave
@@ -411,6 +406,7 @@ class OrcamentoItemValuesetLinhaService:
             "codigo_opcao": linha.codigo_opcao,
             "nome_opcao": linha.nome_opcao,
             "padrao": linha.padrao,
+            "prioridade": linha.prioridade,
             "ordem": linha.ordem,
             "descricao": linha.descricao,
             "materia_prima_id": linha.materia_prima_id,
@@ -557,6 +553,7 @@ class OrcamentoItemValuesetLinhaService:
             "codigo_opcao": linha.codigo_opcao,
             "nome_opcao": linha.nome_opcao,
             "padrao": linha.padrao,
+            "prioridade": linha.prioridade,
             "ordem": linha.ordem,
             "descricao": linha.descricao,
             "materia_prima_id": linha.materia_prima_id,
@@ -608,6 +605,7 @@ class OrcamentoItemValuesetLinhaService:
             "codigo_opcao": self._normalize_codigo_opcao(data.codigo_opcao, chave),
             "nome_opcao": data.nome_opcao,
             "padrao": data.padrao,
+            "prioridade": self._normalize_prioridade(data.prioridade),
             "ordem": self._normalize_ordem(data.ordem),
             "descricao": data.descricao,
             "materia_prima_id": data.materia_prima_id,
@@ -680,6 +678,14 @@ class OrcamentoItemValuesetLinhaService:
 
         return ordem
 
+    def _normalize_prioridade(self, prioridade: int | None) -> int | None:
+        if prioridade is None:
+            return None
+        if prioridade < 1:
+            raise ValueError("prioridade deve ser um inteiro >= 1")
+
+        return prioridade
+
     def _validate_opcao_unica(
         self,
         orcamento_item_id: int,
@@ -692,18 +698,3 @@ class OrcamentoItemValuesetLinhaService:
         )
         if existing is not None and existing.id != exclude_id:
             raise ValueError("opcao ja existe nesta chave deste item")
-
-    def _validate_padrao_unico(
-        self,
-        orcamento_item_id: int,
-        chave: str,
-        padrao: bool,
-        ativo: bool,
-        exclude_id: int | None,
-    ) -> None:
-        if not (padrao and ativo):
-            return
-
-        existing = self.repository.get_default_by_item_chave(orcamento_item_id, chave)
-        if existing is not None and existing.id != exclude_id:
-            raise ValueError("ja existe uma opcao padrao para esta chave")

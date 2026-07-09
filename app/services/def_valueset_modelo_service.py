@@ -143,6 +143,7 @@ class DefValuesetModeloService:
                     codigo_opcao=linha.codigo_opcao,
                     nome_opcao=linha.nome_opcao,
                     padrao=linha.padrao,
+                    prioridade=linha.prioridade,
                     ordem=linha.ordem,
                     descricao=linha.descricao,
                     materia_prima_id=linha.materia_prima_id,

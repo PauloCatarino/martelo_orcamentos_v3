@@ -37,7 +37,7 @@ def test_page_line_headers() -> None:
         "Desp %",
         "Tipo",
         "Família",
-        "Padrão",
+        "Prioridade",
         "Ordem",
         "Editado localmente",
         "Ativo",
@@ -67,7 +67,7 @@ def test_page_uses_line_service_and_dialog() -> None:
     assert "DefValuesetModeloLinhaDialog" in criar_dialog
     assert "criar_linha" in criar_linha
     assert "editar_linha" not in criar_linha
-    assert "definir_como_padrao" in criar_linha
+    assert "prioridade=form_data.prioridade" in criar_linha
 
     carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
     assert "DefValuesetModeloLinhaService" in carregar

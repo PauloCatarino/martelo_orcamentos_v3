@@ -217,6 +217,7 @@ def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
             codigo_opcao="AGL_19",
             nome_opcao="Aglomerado 19",
             padrao=True,
+            prioridade=1,
             ordem=2,
             descricao="Linha base",
             materia_prima_id=10,
@@ -266,6 +267,7 @@ def test_duplicar_modelo_cria_modelo_e_copia_linhas(monkeypatch) -> None:
     assert criada.chave == "MATERIAL_LATERAIS"
     assert criada.codigo_opcao == "AGL_19"
     assert criada.padrao is True
+    assert criada.prioridade == 1
     assert criada.preco_tabela == Decimal("10")
     assert criada.origem_dados == "MATERIA_PRIMA"
 

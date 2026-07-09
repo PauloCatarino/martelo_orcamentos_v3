@@ -110,6 +110,7 @@ def _modelo_linha(**kwargs):
         "codigo_opcao": "MDF",
         "nome_opcao": "MDF B3002",
         "padrao": True,
+        "prioridade": 1,
         "ordem": 1,
         "descricao": None,
         "materia_prima_id": None,
@@ -342,9 +343,24 @@ def test_varias_opcoes_mesma_chave_permitidas(monkeypatch) -> None:
     assert session.committed is True
 
 
-def test_so_uma_padrao_por_chave(monkeypatch) -> None:
+def test_criar_linha_item_com_prioridade(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeItemRepository.item_default = _item_resumo(id=5, padrao=True, codigo_opcao="BLUM_RETA")
+
+    service.criar_linha(
+        service_module.CriarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="SALICE_RETA",
+            prioridade=2,
+        )
+    )
+
+    assert _FakeItemRepository.created_payload["prioridade"] == 2
+    assert session.committed is True
+
+
+def test_criar_linha_item_prioridade_invalida_recusada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
 
     try:
         service.criar_linha(
@@ -352,11 +368,11 @@ def test_so_uma_padrao_por_chave(monkeypatch) -> None:
                 orcamento_item_id=30,
                 chave="FERRAGEM_DOBRADICA",
                 codigo_opcao="SALICE_RETA",
-                padrao=True,
+                prioridade=0,
             )
         )
     except ValueError as error:
-        assert "padrao" in str(error)
+        assert "prioridade" in str(error)
     else:
         raise AssertionError("Expected ValueError")
 
@@ -365,7 +381,7 @@ def test_so_uma_padrao_por_chave(monkeypatch) -> None:
 
 def test_obter_padrao_por_chave(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakeItemRepository.item_default = _item_resumo(id=7, padrao=True, codigo_opcao="BLUM_RETA")
+    _FakeItemRepository.item_default = _item_resumo(id=7, prioridade=1, codigo_opcao="BLUM_RETA")
 
     result = service.obter_padrao_por_chave(30, "ferragem_dobradica")
 
@@ -426,6 +442,7 @@ def test_criar_a_partir_do_orcamento_cria_linhas(monkeypatch) -> None:
             desconto_percentagem=Decimal("32"),
             comp_mp=Decimal("2750"),
             coresp_orla_0_4="ORLA_A",
+            prioridade=2,
         )
     ]
     _FakeItemRepository.opcao_existing = None
@@ -449,6 +466,7 @@ def test_criar_a_partir_do_orcamento_cria_linhas(monkeypatch) -> None:
     assert payload["desconto_percentagem"] == Decimal("32")
     assert payload["comp_mp"] == Decimal("2750")
     assert payload["coresp_orla_0_4"] == "ORLA_A"
+    assert payload["prioridade"] == 2
     assert session.committed is True
 
 
@@ -534,6 +552,7 @@ def test_importar_modelo_para_item_cria_linhas(monkeypatch) -> None:
     assert payload["desconto_percentagem"] == Decimal("32")
     assert payload["comp_mp"] == Decimal("2750")
     assert payload["coresp_orla_0_4"] == "ORLA_A"
+    assert payload["prioridade"] == 1
     assert session.committed is True
 
 
@@ -705,7 +724,11 @@ def test_editar_linha_item_marca_editado(monkeypatch) -> None:
 def test_copiar_snapshot_item_sem_chave(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeItemRepository.by_id = _item_resumo(
-        id=5, ref_le="FRT0001", preco_tabela=Decimal("10"), comp_mp=Decimal("2750")
+        id=5,
+        ref_le="FRT0001",
+        preco_tabela=Decimal("10"),
+        comp_mp=Decimal("2750"),
+        prioridade=3,
     )
 
     snapshot = service.copiar_snapshot_linha(5)
@@ -713,6 +736,7 @@ def test_copiar_snapshot_item_sem_chave(monkeypatch) -> None:
     assert snapshot["ref_le"] == "FRT0001"
     assert snapshot["preco_tabela"] == Decimal("10")
     assert snapshot["comp_mp"] == Decimal("2750")
+    assert snapshot["prioridade"] == 3
     assert "chave" not in snapshot
     assert "codigo_opcao" not in snapshot
 
@@ -726,12 +750,14 @@ def test_colar_snapshot_item_mantem_chave_e_recalcula(monkeypatch) -> None:
         "preco_tabela": Decimal("10"),
         "margem_percentagem": Decimal("10"),
         "desconto_percentagem": Decimal("10"),
+        "prioridade": 2,
     }
 
     service.aplicar_snapshot_linha(5, snapshot)
 
     payload = _FakeItemRepository.updated_payload
     assert payload["id"] == 5
+    assert payload["prioridade"] == 2
     assert payload["ref_le"] == "FRT0001"
     assert payload["comp_mp"] == Decimal("2750")
     assert payload["preco_liquido"] == Decimal("9.90")
@@ -749,6 +775,7 @@ def test_limpar_snapshot_item_mantem_chave(monkeypatch) -> None:
 
     payload = _FakeItemRepository.updated_payload
     assert payload["id"] == 5
+    assert "prioridade" not in payload  # limpar dados não mexe na prioridade
     assert payload["ref_le"] is None
     assert payload["preco_tabela"] is None
     assert payload["preco_liquido"] is None

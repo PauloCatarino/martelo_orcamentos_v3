@@ -1638,10 +1638,11 @@ def test_recalcular_custo_mp_ignora_sem_material(monkeypatch) -> None:
     assert result.ignoradas == 1
 
 
-def test_resolver_valueset_prefere_padrao(monkeypatch) -> None:
+def test_resolver_valueset_usa_prioridade(monkeypatch) -> None:
+    # The repository resolves the winner (lowest priority); the service returns it.
     service, _ = _service(monkeypatch)
-    _FakeItemValuesetRepository.default_linha = _vs_linha(id=9)
-    _FakeItemValuesetRepository.chave_rows = [_vs_linha(id=8)]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(id=9, prioridade=1)
+    _FakeItemValuesetRepository.chave_rows = [_vs_linha(id=8, prioridade=2)]
 
     resolvido = service.resolver_valueset_para_def_peca(
         10, _peca(chave_valueset_material="MATERIAL_COSTAS")
@@ -1650,19 +1651,15 @@ def test_resolver_valueset_prefere_padrao(monkeypatch) -> None:
     assert resolvido.id == 9
 
 
-def test_resolver_valueset_usa_primeira_ativa_sem_padrao(monkeypatch) -> None:
+def test_resolver_valueset_sem_linha_ativa_devolve_none(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeItemValuesetRepository.default_linha = None
-    _FakeItemValuesetRepository.chave_rows = [
-        _vs_linha(id=7, ativo=False),
-        _vs_linha(id=8, ativo=True),
-    ]
 
     resolvido = service.resolver_valueset_para_def_peca(
         10, _peca(chave_valueset_material="MATERIAL_COSTAS")
     )
 
-    assert resolvido.id == 8
+    assert resolvido is None
 
 
 def test_recalcular_orlas_do_item_ignora_divisao_e_composta(monkeypatch) -> None:

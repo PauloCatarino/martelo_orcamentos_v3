@@ -46,7 +46,7 @@ def test_dialog_data_has_expected_fields() -> None:
         "esp_mp",
         "origem_dados",
         "editado_localmente",
-        "padrao",
+        "prioridade",
         "ordem",
         "observacoes",
         "ativo",

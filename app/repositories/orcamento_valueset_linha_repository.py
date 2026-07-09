@@ -50,6 +50,7 @@ class OrcamentoValuesetLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    prioridade: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -155,16 +156,22 @@ class OrcamentoValuesetLinhaRepository:
     def get_default_by_versao_chave(
         self, orcamento_versao_id: int, chave: str
     ) -> OrcamentoValuesetLinhaResumo | None:
-        """Get the active default option for one budget version and key."""
+        """Get the winning active option for one budget version and key.
+
+        The active line with the lowest prioridade wins (NULL last, then id).
+        """
         statement = (
             select(OrcamentoValuesetLinha)
             .where(
                 OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id,
                 OrcamentoValuesetLinha.chave == chave,
-                OrcamentoValuesetLinha.padrao.is_(True),
                 OrcamentoValuesetLinha.ativo.is_(True),
             )
-            .order_by(OrcamentoValuesetLinha.ordem.asc(), OrcamentoValuesetLinha.id.asc())
+            .order_by(
+                OrcamentoValuesetLinha.prioridade.is_(None),
+                OrcamentoValuesetLinha.prioridade.asc(),
+                OrcamentoValuesetLinha.id.asc(),
+            )
         )
         linha = self.session.execute(statement).scalars().first()
         if linha is None:
@@ -249,6 +256,7 @@ class OrcamentoValuesetLinhaRepository:
             codigo_opcao=linha.codigo_opcao,
             nome_opcao=linha.nome_opcao,
             padrao=linha.padrao,
+            prioridade=linha.prioridade,
             ordem=linha.ordem,
             descricao=linha.descricao,
             materia_prima_id=linha.materia_prima_id,

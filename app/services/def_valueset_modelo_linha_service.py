@@ -23,6 +23,7 @@ class CriarDefValuesetModeloLinhaData:
     codigo_opcao: str | None = None
     nome_opcao: str | None = None
     padrao: bool = False
+    prioridade: int | None = None
     ordem: int = 1
     descricao: str | None = None
     materia_prima_id: int | None = None
@@ -60,6 +61,7 @@ class EditarDefValuesetModeloLinhaData:
     codigo_opcao: str | None = None
     nome_opcao: str | None = None
     padrao: bool = False
+    prioridade: int | None = None
     ordem: int = 1
     descricao: str | None = None
     materia_prima_id: int | None = None
@@ -120,7 +122,7 @@ class DefValuesetModeloLinhaService:
     def obter_padrao_por_chave(
         self, modelo_id: int, chave: str
     ) -> DefValuesetModeloLinhaResumo | None:
-        """Get the active default option of one model and key."""
+        """Get the winning active option of one model and key (best priority)."""
         return self.repository.get_default_by_modelo_chave(
             modelo_id, normalize_valueset_key(chave)
         )
@@ -140,13 +142,6 @@ class DefValuesetModeloLinhaService:
             codigo_opcao=fields["codigo_opcao"],
             exclude_id=None,
         )
-        self._validate_padrao_unico(
-            modelo_id=fields["def_valueset_modelo_id"],
-            chave=fields["chave"],
-            padrao=fields["padrao"],
-            ativo=fields["ativo"],
-            exclude_id=None,
-        )
 
         result = self.repository.create(**fields)
         self.session.commit()
@@ -162,13 +157,6 @@ class DefValuesetModeloLinhaService:
             modelo_id=fields["def_valueset_modelo_id"],
             chave=fields["chave"],
             codigo_opcao=fields["codigo_opcao"],
-            exclude_id=id,
-        )
-        self._validate_padrao_unico(
-            modelo_id=fields["def_valueset_modelo_id"],
-            chave=fields["chave"],
-            padrao=fields["padrao"],
-            ativo=fields["ativo"],
             exclude_id=id,
         )
 
@@ -225,6 +213,7 @@ class DefValuesetModeloLinhaService:
             "codigo_opcao": self._normalize_codigo_opcao(data.codigo_opcao, chave),
             "nome_opcao": data.nome_opcao,
             "padrao": data.padrao,
+            "prioridade": self._normalize_prioridade(data.prioridade),
             "ordem": self._normalize_ordem(data.ordem),
             "descricao": data.descricao,
             "materia_prima_id": data.materia_prima_id,
@@ -299,19 +288,17 @@ class DefValuesetModeloLinhaService:
 
         return ordem
 
+    def _normalize_prioridade(self, prioridade: int | None) -> int | None:
+        if prioridade is None:
+            return None
+        if prioridade < 1:
+            raise ValueError("prioridade deve ser um inteiro >= 1")
+
+        return prioridade
+
     def _validate_opcao_unica(
         self, modelo_id: int, chave: str, codigo_opcao: str, exclude_id: int | None
     ) -> None:
         existing = self.repository.get_by_modelo_chave_opcao(modelo_id, chave, codigo_opcao)
         if existing is not None and existing.id != exclude_id:
             raise ValueError("opcao ja existe nesta chave deste modelo")
-
-    def _validate_padrao_unico(
-        self, modelo_id: int, chave: str, padrao: bool, ativo: bool, exclude_id: int | None
-    ) -> None:
-        if not (padrao and ativo):
-            return
-
-        existing = self.repository.get_default_by_modelo_chave(modelo_id, chave)
-        if existing is not None and existing.id != exclude_id:
-            raise ValueError("ja existe uma opcao padrao para esta chave")

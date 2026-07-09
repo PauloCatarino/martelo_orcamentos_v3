@@ -24,6 +24,7 @@ from app.services.def_valueset_modelo_service import (
     EditarDefValuesetModeloData,
 )
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
+from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -115,8 +116,10 @@ class DefValuesetModelosPage(QWidget):
         try:
             with SessionLocal() as session:
                 modelos = DefValuesetModeloService(session).listar_modelos()
-        except SQLAlchemyError:
-            self.status_label.setText("Nao foi possivel carregar os modelos ValueSet.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Nao foi possivel carregar os modelos ValueSet.", error)
+            )
             return
 
         self._preencher(modelos)
@@ -158,8 +161,10 @@ class DefValuesetModelosPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar o modelo.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar o modelo.", error)
+                )
                 return False
 
             saved = True
@@ -206,8 +211,10 @@ class DefValuesetModelosPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar o modelo.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar o modelo.", error)
+                )
                 return False
 
             saved = True
@@ -228,8 +235,10 @@ class DefValuesetModelosPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar o modelo.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar o modelo.", error)
+                )
                 return False
 
             saved_as = True
@@ -278,8 +287,10 @@ class DefValuesetModelosPage(QWidget):
                     service.desativar_modelo(modelo.id)
                 else:
                     service.ativar_modelo(modelo.id)
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível atualizar o estado do modelo.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar o estado do modelo.", error)
+            )
             return
 
         estado = "desativado" if modelo.ativo else "reativado"

@@ -48,6 +48,7 @@ class DefValuesetModeloLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    prioridade: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -151,16 +152,22 @@ class DefValuesetModeloLinhaRepository:
     def get_default_by_modelo_chave(
         self, modelo_id: int, chave: str
     ) -> DefValuesetModeloLinhaResumo | None:
-        """Get the active default option for one model and key."""
+        """Get the winning active option for one model and key.
+
+        The active line with the lowest prioridade wins (NULL last, then id).
+        """
         statement = (
             select(DefValuesetModeloLinha)
             .where(
                 DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id,
                 DefValuesetModeloLinha.chave == chave,
-                DefValuesetModeloLinha.padrao.is_(True),
                 DefValuesetModeloLinha.ativo.is_(True),
             )
-            .order_by(DefValuesetModeloLinha.ordem.asc(), DefValuesetModeloLinha.id.asc())
+            .order_by(
+                DefValuesetModeloLinha.prioridade.is_(None),
+                DefValuesetModeloLinha.prioridade.asc(),
+                DefValuesetModeloLinha.id.asc(),
+            )
         )
         linha = self.session.execute(statement).scalars().first()
         if linha is None:
@@ -245,6 +252,7 @@ class DefValuesetModeloLinhaRepository:
             codigo_opcao=linha.codigo_opcao,
             nome_opcao=linha.nome_opcao,
             padrao=linha.padrao,
+            prioridade=linha.prioridade,
             ordem=linha.ordem,
             descricao=linha.descricao,
             materia_prima_id=linha.materia_prima_id,

@@ -28,6 +28,7 @@ from app.services.def_valueset_modelo_linha_service import (
     EditarDefValuesetModeloLinhaData,
 )
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
@@ -50,7 +51,7 @@ class DefValuesetModeloDetailPage(QWidget):
         "Desp %",
         "Tipo",
         "Família",
-        "Padrão",
+        "Prioridade",
         "Ordem",
         "Editado localmente",
         "Ativo",
@@ -136,14 +137,18 @@ class DefValuesetModeloDetailPage(QWidget):
                 linhas = DefValuesetModeloLinhaService(session).listar_linhas_do_modelo(
                     self.modelo.id
                 )
-        except SQLAlchemyError:
-            self.status_label.setText("Nao foi possivel carregar as linhas do modelo.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Nao foi possivel carregar as linhas do modelo.", error)
+            )
             return
 
         self._preencher(linhas)
 
         if not linhas:
             self.status_label.setText("Sem linhas neste modelo.")
+        else:
+            self._avisar_prioridades_repetidas(linhas)
 
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
@@ -166,7 +171,7 @@ class DefValuesetModeloDetailPage(QWidget):
                 formatar_percentagem(linha.desperdicio_percentagem),
                 linha.tipo_materia_prima or "",
                 linha.familia_materia_prima or "",
-                self._format_bool(linha.padrao),
+                self._format_prioridade(linha.prioridade),
                 str(linha.ordem),
                 self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
@@ -195,8 +200,10 @@ class DefValuesetModeloDetailPage(QWidget):
             except (IntegrityError, ValueError) as error:
                 dialog.set_error(self._linha_error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a linha.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a linha.", error)
+                )
                 return False
 
             saved = True
@@ -220,7 +227,7 @@ class DefValuesetModeloDetailPage(QWidget):
                     ref_materia_prima=form_data.ref_materia_prima,
                     descricao_materia_prima=form_data.descricao_materia_prima,
                     valor_texto=form_data.valor_texto,
-                    padrao=False,
+                    prioridade=form_data.prioridade,
                     ordem=form_data.ordem,
                     observacoes=form_data.observacoes,
                     ativo=form_data.ativo,
@@ -243,8 +250,6 @@ class DefValuesetModeloDetailPage(QWidget):
                     editado_localmente=form_data.editado_localmente,
                 )
             )
-            if form_data.padrao:
-                service.definir_como_padrao(result.id)
 
             return result
 
@@ -274,7 +279,8 @@ class DefValuesetModeloDetailPage(QWidget):
                             ref_materia_prima=form_data.ref_materia_prima,
                             descricao_materia_prima=form_data.descricao_materia_prima,
                             valor_texto=form_data.valor_texto,
-                            padrao=False,
+                            padrao=linha.padrao,
+                            prioridade=form_data.prioridade,
                             ordem=form_data.ordem,
                             observacoes=form_data.observacoes,
                             ativo=form_data.ativo,
@@ -297,13 +303,13 @@ class DefValuesetModeloDetailPage(QWidget):
                             editado_localmente=form_data.editado_localmente,
                         ),
                     )
-                    if form_data.padrao:
-                        service.definir_como_padrao(linha.id)
             except (IntegrityError, ValueError) as error:
                 dialog.set_error(self._linha_error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a linha.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a linha.", error)
+                )
                 return False
 
             saved = True
@@ -317,8 +323,10 @@ class DefValuesetModeloDetailPage(QWidget):
             except (IntegrityError, ValueError) as error:
                 dialog.set_error(self._linha_error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a linha.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a linha.", error)
+                )
                 return False
 
             saved_as = True
@@ -346,8 +354,8 @@ class DefValuesetModeloDetailPage(QWidget):
 
         acao = "desativar" if linha.ativo else "reativar"
         aviso = ""
-        if linha.ativo and linha.padrao:
-            aviso = " A chave podera ficar sem opcao padrao."
+        if linha.ativo and linha.prioridade is not None:
+            aviso = " A escolha automatica desta chave passa para a proxima prioridade."
         confirm = QMessageBox.question(
             self,
             "Confirmar",
@@ -364,8 +372,10 @@ class DefValuesetModeloDetailPage(QWidget):
                     service.desativar_linha(linha.id)
                 else:
                     service.ativar_linha(linha.id)
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível atualizar o estado da linha.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar o estado da linha.", error)
+            )
             return
 
         estado = "desativada" if linha.ativo else "reativada"
@@ -394,8 +404,13 @@ class DefValuesetModeloDetailPage(QWidget):
         """Map a service error to a friendly message."""
         if "opcao ja existe" in str(error):
             return "Já existe uma opção com esse código nesta chave."
+        if isinstance(error, ValueError):
+            return str(error)
 
-        return "Não foi possível guardar a linha. Verifique a chave e o código da opção."
+        return mensagem_erro_bd(
+            "Não foi possível guardar a linha. Verifique a chave e o código da opção.",
+            error,
+        )
 
     def _format_materia_prima(self, linha: DefValuesetModeloLinhaResumo) -> str:
         """Format the materia-prima / value cell."""
@@ -409,3 +424,24 @@ class DefValuesetModeloDetailPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _format_prioridade(self, prioridade: int | None) -> str:
+        """Format the priority for display ("—" when empty)."""
+        return "—" if prioridade is None else str(prioridade)
+
+    def _avisar_prioridades_repetidas(self, linhas) -> None:
+        """Soft warning when two active lines of one key share a priority."""
+        contagem: dict[tuple[str, int], int] = {}
+        for linha in linhas:
+            if not linha.ativo or linha.prioridade is None:
+                continue
+            par = (linha.chave, linha.prioridade)
+            contagem[par] = contagem.get(par, 0) + 1
+
+        chaves = sorted({chave for (chave, _), total in contagem.items() if total > 1})
+        if chaves:
+            self.status_label.setText(
+                "Aviso: prioridade repetida nas chaves: "
+                + ", ".join(chaves)
+                + ". O desempate é pelo id da linha."
+            )

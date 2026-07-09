@@ -225,41 +225,72 @@ def test_duplicar_chave_e_opcao_recusada(monkeypatch) -> None:
     assert session.committed is False
 
 
-def test_so_uma_padrao_por_chave(monkeypatch) -> None:
+def test_criar_linha_com_prioridade(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeRepository.default_existing = _resumo(id=5, padrao=True, codigo_opcao="BLUM_RETA")
-
-    try:
-        service.criar_linha(
-            service_module.CriarDefValuesetModeloLinhaData(
-                def_valueset_modelo_id=10,
-                chave="FERRAGEM_DOBRADICA",
-                codigo_opcao="EMUCA_RETA",
-                padrao=True,
-            )
-        )
-    except ValueError as error:
-        assert "padrao" in str(error)
-    else:
-        raise AssertionError("Expected ValueError")
-
-    assert session.committed is False
-
-
-def test_criar_padrao_quando_nao_existe(monkeypatch) -> None:
-    service, session = _service(monkeypatch)
-    _FakeRepository.default_existing = None
 
     service.criar_linha(
         service_module.CriarDefValuesetModeloLinhaData(
             def_valueset_modelo_id=10,
             chave="FERRAGEM_DOBRADICA",
             codigo_opcao="BLUM_RETA",
-            padrao=True,
+            prioridade=2,
         )
     )
 
-    assert _FakeRepository.created_payload["padrao"] is True
+    assert _FakeRepository.created_payload["prioridade"] == 2
+    assert session.committed is True
+
+
+def test_criar_linha_prioridade_vazia_fica_none(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="BLUM_RETA",
+        )
+    )
+
+    assert _FakeRepository.created_payload["prioridade"] is None
+
+
+def test_criar_linha_prioridade_invalida_recusada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    try:
+        service.criar_linha(
+            service_module.CriarDefValuesetModeloLinhaData(
+                def_valueset_modelo_id=10,
+                chave="FERRAGEM_DOBRADICA",
+                codigo_opcao="BLUM_RETA",
+                prioridade=0,
+            )
+        )
+    except ValueError as error:
+        assert "prioridade" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
+
+
+def test_prioridades_repetidas_permitidas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.default_existing = _resumo(
+        id=5, prioridade=1, codigo_opcao="BLUM_RETA"
+    )
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="FERRAGEM_DOBRADICA",
+            codigo_opcao="EMUCA_RETA",
+            prioridade=1,
+        )
+    )
+
+    assert _FakeRepository.created_payload["prioridade"] == 1
     assert session.committed is True
 
 

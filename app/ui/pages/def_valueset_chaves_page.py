@@ -24,6 +24,7 @@ from app.services.def_valueset_chave_service import (
     EditarDefValuesetChaveData,
 )
 from app.ui.dialogs.def_valueset_chave_dialog import DefValuesetChaveDialog
+from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.tema import (
     CINZA_ESCURO,
     ESTILO_TABELA_CONFIG,
@@ -108,8 +109,10 @@ class DefValuesetChavesPage(QWidget):
         try:
             with SessionLocal() as session:
                 chaves = DefValuesetChaveService(session).listar_chaves()
-        except SQLAlchemyError:
-            self.status_label.setText("Nao foi possivel carregar as chaves ValueSet.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Nao foi possivel carregar as chaves ValueSet.", error)
+            )
             return
 
         self._preencher(chaves)
@@ -169,8 +172,10 @@ class DefValuesetChavesPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a chave.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a chave.", error)
+                )
                 return False
 
             saved = True
@@ -216,8 +221,10 @@ class DefValuesetChavesPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a chave.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a chave.", error)
+                )
                 return False
 
             saved = True
@@ -234,8 +241,10 @@ class DefValuesetChavesPage(QWidget):
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar a chave.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível guardar a chave.", error)
+                )
                 return False
 
             saved_as = True
@@ -278,8 +287,10 @@ class DefValuesetChavesPage(QWidget):
                     service.desativar_chave(chave.id)
                 else:
                     service.ativar_chave(chave.id)
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível atualizar o estado da chave.")
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível atualizar o estado da chave.", error)
+            )
             return
 
         estado = "desativada" if chave.ativo else "reativada"

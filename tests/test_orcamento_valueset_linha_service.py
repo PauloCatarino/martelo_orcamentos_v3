@@ -64,6 +64,7 @@ def _modelo_linha(**kwargs):
         "codigo_opcao": "MDF_19",
         "nome_opcao": "MDF 19mm",
         "padrao": True,
+        "prioridade": 1,
         "ordem": 1,
         "descricao": None,
         "materia_prima_id": None,
@@ -282,9 +283,24 @@ def test_duplicar_chave_e_opcao_recusada(monkeypatch) -> None:
     assert session.committed is False
 
 
-def test_so_uma_padrao_por_chave(monkeypatch) -> None:
+def test_criar_linha_com_prioridade(monkeypatch) -> None:
     service, session = _service(monkeypatch)
-    _FakeRepository.default_existing = _resumo(id=5, padrao=True, codigo_opcao="BLUM_TANDEM")
+
+    service.criar_linha(
+        service_module.CriarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="FERRAGEM_CORREDICA",
+            codigo_opcao="HETTICH",
+            prioridade=2,
+        )
+    )
+
+    assert _FakeRepository.created_payload["prioridade"] == 2
+    assert session.committed is True
+
+
+def test_criar_linha_prioridade_invalida_recusada(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
 
     try:
         service.criar_linha(
@@ -292,11 +308,11 @@ def test_so_uma_padrao_por_chave(monkeypatch) -> None:
                 orcamento_versao_id=20,
                 chave="FERRAGEM_CORREDICA",
                 codigo_opcao="HETTICH",
-                padrao=True,
+                prioridade=0,
             )
         )
     except ValueError as error:
-        assert "padrao" in str(error)
+        assert "prioridade" in str(error)
     else:
         raise AssertionError("Expected ValueError")
 
@@ -305,7 +321,7 @@ def test_so_uma_padrao_por_chave(monkeypatch) -> None:
 
 def test_obter_padrao_por_chave(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
-    _FakeRepository.default_existing = _resumo(id=7, padrao=True, codigo_opcao="BLUM_TANDEM")
+    _FakeRepository.default_existing = _resumo(id=7, prioridade=1, codigo_opcao="BLUM_TANDEM")
 
     result = service.obter_padrao_por_chave(20, "ferragem_corredica")
 
@@ -342,6 +358,7 @@ def test_importar_modelo_cria_linhas(monkeypatch) -> None:
     assert payload["origem_dados"] == "MODELO_VALUESET"
     assert payload["origem_modelo_id"] == 99
     assert payload["origem_modelo_codigo"] == "ROUPEIRO_STANDARD"
+    assert payload["prioridade"] == 1
     assert payload["editado_localmente"] is False
     assert payload["ativo"] is True
     assert payload["preco_liquido"] == Decimal("7.48")
@@ -476,6 +493,7 @@ def test_copiar_snapshot_devolve_campos_sem_chave(monkeypatch) -> None:
         preco_tabela=Decimal("10"),
         unidade="m2",
         comp_mp=Decimal("2750"),
+        prioridade=3,
     )
 
     snapshot = service.copiar_snapshot_linha(5)
@@ -484,6 +502,7 @@ def test_copiar_snapshot_devolve_campos_sem_chave(monkeypatch) -> None:
     assert snapshot["preco_tabela"] == Decimal("10")
     assert snapshot["unidade"] == "m2"
     assert snapshot["comp_mp"] == Decimal("2750")
+    assert snapshot["prioridade"] == 3
     assert "chave" not in snapshot
     assert "codigo_opcao" not in snapshot
 
@@ -497,12 +516,14 @@ def test_colar_snapshot_mantem_chave_e_recalcula(monkeypatch) -> None:
         "preco_tabela": Decimal("10"),
         "margem_percentagem": Decimal("10"),
         "desconto_percentagem": Decimal("10"),
+        "prioridade": 2,
     }
 
     service.aplicar_snapshot_linha(5, snapshot)
 
     payload = _FakeRepository.updated_payload
     assert payload["id"] == 5
+    assert payload["prioridade"] == 2
     assert payload["ref_le"] == "FRT0001"
     assert payload["unidade"] == "m2"
     assert payload["comp_mp"] == Decimal("2750")
@@ -521,6 +542,7 @@ def test_limpar_snapshot_remove_campos_mantendo_chave(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["id"] == 5
+    assert "prioridade" not in payload  # limpar dados não mexe na prioridade
     assert payload["ref_le"] is None
     assert payload["preco_tabela"] is None
     assert payload["preco_liquido"] is None

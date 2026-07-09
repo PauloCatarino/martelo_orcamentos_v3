@@ -51,6 +51,7 @@ class OrcamentoValuesetLinha(Base):
     codigo_opcao: Mapped[str | None] = mapped_column(String(100), nullable=True)
     nome_opcao: Mapped[str | None] = mapped_column(String(150), nullable=True)
     padrao: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    prioridade: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     descricao: Mapped[str | None] = mapped_column(String(200), nullable=True)
     materia_prima_id: Mapped[int | None] = mapped_column(
