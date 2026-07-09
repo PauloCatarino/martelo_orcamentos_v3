@@ -180,6 +180,20 @@ def test_custeio_table_edicao_rapida() -> None:
     assert "AnyKeyPressed" in init
 
 
+def test_custeio_page_liga_menu_colunas_visiveis() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+
+    assert "ligar_menu_colunas" in init
+    assert "orcamento_item_custeio" in init
+    assert "C\\u00f3digo" in init
+    assert "Descri\\u00e7\\u00e3o" in init
+    assert "Chave ValueSet" in init
+
+
 def test_custeio_page_tooltips_formula_e_cabecalho() -> None:
     import inspect
 

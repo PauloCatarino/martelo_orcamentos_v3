@@ -110,6 +110,7 @@ from app.ui.tema import (
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.colunas_visiveis import ligar_menu_colunas
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
@@ -584,6 +585,11 @@ class OrcamentoItemCusteioPage(QWidget):
         # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
         if ligar_persistencia_larguras(self.table, "orcamento_item_custeio"):
             self._larguras_iniciais_aplicadas = True
+        ligar_menu_colunas(
+            self.table,
+            "orcamento_item_custeio",
+            ocultas_por_defeito=("C\u00f3digo", "Descri\u00e7\u00e3o", "Chave ValueSet"),
+        )
 
         lines_layout = QVBoxLayout()
         lines_title = QLabel("Linhas de custeio do item")
