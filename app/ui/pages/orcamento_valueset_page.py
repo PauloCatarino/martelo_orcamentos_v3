@@ -197,11 +197,14 @@ class OrcamentoValuesetPage(QWidget):
             return
 
         modelo = dialog.selected_modelo
+        substituir = self._perguntar_modo_importacao_modelo()
+        if substituir is None:
+            return
 
         try:
             with SessionLocal() as session:
                 result = OrcamentoValuesetLinhaService(session).importar_modelo_para_orcamento(
-                    self.orcamento_versao_id, modelo.id
+                    self.orcamento_versao_id, modelo.id, substituir=substituir
                 )
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(
@@ -210,11 +213,49 @@ class OrcamentoValuesetPage(QWidget):
             return
 
         self.carregar()
-        self.status_label.setText(
-            f"Modelo {result.modelo_codigo} importado: "
-            f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
-            f"{result.ignoradas} ignoradas (editadas localmente)."
+        if substituir:
+            self.status_label.setText(
+                f"Modelo {result.modelo_codigo}: tabela substituída, "
+                f"{result.eliminadas} linhas eliminadas, "
+                f"{result.criadas} linhas inseridas."
+            )
+        else:
+            self.status_label.setText(
+                f"Modelo {result.modelo_codigo} importado: "
+                f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
+                f"{result.ignoradas} ignoradas (editadas localmente)."
+            )
+
+    def _perguntar_modo_importacao_modelo(self) -> bool | None:
+        """Ask whether importing a model should replace or merge the table."""
+        message = QMessageBox(self)
+        message.setWindowTitle("Importar modelo ValueSet")
+        message.setText("O que pretende fazer aos dados atuais do ValueSet?")
+        message.setInformativeText(
+            "Substituir tudo: elimina todas as linhas atuais do ValueSet "
+            "(incluindo as editadas localmente) e insere as linhas do modelo.\n"
+            "Atualizar: atualiza as linhas existentes; as editadas localmente "
+            "são mantidas."
         )
+        substituir_button = message.addButton(
+            "Substituir tudo", QMessageBox.ButtonRole.DestructiveRole
+        )
+        atualizar_button = message.addButton(
+            "Atualizar", QMessageBox.ButtonRole.AcceptRole
+        )
+        cancelar_button = message.addButton(
+            "Cancelar", QMessageBox.ButtonRole.RejectRole
+        )
+        message.setDefaultButton(atualizar_button)
+        message.setEscapeButton(cancelar_button)
+        message.exec()
+
+        clicked = message.clickedButton()
+        if clicked is substituir_button:
+            return True
+        if clicked is atualizar_button:
+            return False
+        return None
 
     def alternar_linha_ativa(self) -> None:
         """Toggle the active state of the selected lines after confirmation."""

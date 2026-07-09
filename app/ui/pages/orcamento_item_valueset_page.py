@@ -229,49 +229,26 @@ class OrcamentoItemValuesetPage(QWidget):
     def importar_modelo(self) -> None:
         """Open the model picker and import the selected model into the item.
 
-        When the item already has active ValueSet lines, ask the user to
-        confirm replacing them before importing.
+        The user chooses whether the selected model should replace the current
+        table or merge with locally edited lines protected.
         """
         dialog = ImportarValuesetModeloDialog(parent=self)
         if not dialog.exec() or dialog.selected_modelo is None:
             return
 
         modelo = dialog.selected_modelo
-
-        try:
-            with SessionLocal() as session:
-                tem_ativas = bool(
-                    OrcamentoItemValuesetLinhaService(session).listar_linhas_ativas_do_item(
-                        self.orcamento_item_id
-                    )
-                )
-        except SQLAlchemyError as error:
-            self.status_label.setText(
-                mensagem_erro_bd("Não foi possível importar o modelo.", error)
-            )
+        substituir = self._perguntar_modo_importacao_modelo()
+        if substituir is None:
             return
 
-        if tem_ativas:
-            confirm = QMessageBox.question(
-                self,
-                "Substituir ValueSet do Item",
-                "Este item já tem linhas de ValueSet. Pretende substituir os "
-                "dados atuais pelos dados do modelo selecionado?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if confirm != QMessageBox.StandardButton.Yes:
-                return
+        self._importar_modelo_selecionado(modelo, substituir=substituir)
 
-            self._substituir_por_modelo(modelo)
-        else:
-            self._importar_modelo_novo(modelo)
-
-    def _importar_modelo_novo(self, modelo) -> None:
-        """Import the model into an item with no active ValueSet lines."""
+    def _importar_modelo_selecionado(self, modelo, *, substituir: bool) -> None:
+        """Import the selected model into this item."""
         try:
             with SessionLocal() as session:
                 result = OrcamentoItemValuesetLinhaService(session).importar_modelo_para_item(
-                    self.orcamento_item_id, modelo.id
+                    self.orcamento_item_id, modelo.id, substituir=substituir
                 )
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(
@@ -280,31 +257,49 @@ class OrcamentoItemValuesetPage(QWidget):
             return
 
         self.carregar()
-        self.status_label.setText(
-            f"Modelo {result.modelo_codigo} importado: "
-            f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
-            f"{result.ignoradas} ignoradas."
-        )
-
-    def _substituir_por_modelo(self, modelo) -> None:
-        """Replace the item's active ValueSet with the selected model."""
-        try:
-            with SessionLocal() as session:
-                result = OrcamentoItemValuesetLinhaService(session).substituir_por_modelo(
-                    self.orcamento_item_id, modelo.id
-                )
-        except (SQLAlchemyError, ValueError) as error:
+        if substituir:
             self.status_label.setText(
-                mensagem_erro_bd("Não foi possível importar o modelo.", error)
+                f"Modelo {result.modelo_codigo}: tabela substituída, "
+                f"{result.eliminadas} linhas eliminadas, "
+                f"{result.criadas} linhas inseridas."
             )
-            return
+        else:
+            self.status_label.setText(
+                f"Modelo {result.modelo_codigo} importado: "
+                f"{result.criadas} criadas, {result.atualizadas} atualizadas, "
+                f"{result.ignoradas} ignoradas (editadas localmente)."
+            )
 
-        self.carregar()
-        self.status_label.setText(
-            f"Modelo {result.modelo_codigo} importado: "
-            f"{result.desativadas} linhas anteriores desativadas, "
-            f"{result.criadas + result.atualizadas} criadas."
+    def _perguntar_modo_importacao_modelo(self) -> bool | None:
+        """Ask whether importing a model should replace or merge the table."""
+        message = QMessageBox(self)
+        message.setWindowTitle("Importar modelo ValueSet")
+        message.setText("O que pretende fazer aos dados atuais do ValueSet?")
+        message.setInformativeText(
+            "Substituir tudo: elimina todas as linhas atuais do ValueSet "
+            "(incluindo as editadas localmente) e insere as linhas do modelo.\n"
+            "Atualizar: atualiza as linhas existentes; as editadas localmente "
+            "são mantidas."
         )
+        substituir_button = message.addButton(
+            "Substituir tudo", QMessageBox.ButtonRole.DestructiveRole
+        )
+        atualizar_button = message.addButton(
+            "Atualizar", QMessageBox.ButtonRole.AcceptRole
+        )
+        cancelar_button = message.addButton(
+            "Cancelar", QMessageBox.ButtonRole.RejectRole
+        )
+        message.setDefaultButton(atualizar_button)
+        message.setEscapeButton(cancelar_button)
+        message.exec()
+
+        clicked = message.clickedButton()
+        if clicked is substituir_button:
+            return True
+        if clicked is atualizar_button:
+            return False
+        return None
 
     def abrir_editar_linha(self) -> None:
         """Open the edit dialog for the selected ValueSet line."""

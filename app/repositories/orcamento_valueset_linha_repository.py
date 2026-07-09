@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models import OrcamentoValuesetLinha
@@ -186,6 +186,16 @@ class OrcamentoValuesetLinhaRepository:
         self.session.flush()
 
         return self._to_resumo(linha)
+
+    def delete_by_orcamento_versao(self, orcamento_versao_id: int) -> int:
+        """Delete all ValueSet lines of one budget version."""
+        result = self.session.execute(
+            delete(OrcamentoValuesetLinha).where(
+                OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id
+            ).execution_options(synchronize_session=False)
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
 
     def update(self, *, id: int, **fields) -> OrcamentoValuesetLinhaResumo:
         """Update one budget version ValueSet line."""

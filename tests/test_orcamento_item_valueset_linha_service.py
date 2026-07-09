@@ -146,10 +146,13 @@ class _FakeItemRepository:
     item_default: OrcamentoItemValuesetLinhaResumo | None = None
     by_id: OrcamentoItemValuesetLinhaResumo | None = None
     created_payload: dict | None = None
+    created_payloads: list[dict] = []
     updated_payload: dict | None = None
     set_padrao_calls: list = []
     clear_calls: list = []
     deactivated_ids: list = []
+    deleted_item_ids: list[int] = []
+    deleted_count = 0
     deactivate_result = True
     activate_result = True
 
@@ -185,7 +188,12 @@ class _FakeItemRepository:
 
     def create(self, **fields):
         self.__class__.created_payload = fields
+        self.__class__.created_payloads.append(fields)
         return _item_resumo(id=1, **fields)
+
+    def delete_by_orcamento_item(self, orcamento_item_id: int) -> int:
+        self.__class__.deleted_item_ids.append(orcamento_item_id)
+        return self.deleted_count
 
     def update(self, *, id: int, **fields):
         self.__class__.updated_payload = {"id": id, **fields}
@@ -258,10 +266,13 @@ def _reset() -> None:
     _FakeItemRepository.item_default = None
     _FakeItemRepository.by_id = None
     _FakeItemRepository.created_payload = None
+    _FakeItemRepository.created_payloads = []
     _FakeItemRepository.updated_payload = None
     _FakeItemRepository.set_padrao_calls = []
     _FakeItemRepository.clear_calls = []
     _FakeItemRepository.deactivated_ids = []
+    _FakeItemRepository.deleted_item_ids = []
+    _FakeItemRepository.deleted_count = 0
     _FakeItemRepository.deactivate_result = True
     _FakeItemRepository.activate_result = True
     _FakeOrcamentoRepository.versao_default = None
@@ -599,6 +610,38 @@ def test_importar_modelo_para_item_ignora_inativas(monkeypatch) -> None:
     assert result.criadas == 0
     assert result.total_origem == 0
     assert _FakeItemRepository.created_payload is None
+
+
+def test_importar_modelo_para_item_substituir_elimina_existentes_e_cria_ativas(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(id=30, orcamento_versao_id=20)
+    _FakeModeloRepository.modelo = _modelo(id=88, codigo="COZINHA_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [
+        _modelo_linha(id=1, chave="MATERIAL_FRENTES", codigo_opcao="MDF"),
+        _modelo_linha(id=2, chave="FERRAGEM_DOBRADICA", codigo_opcao="BLUM", ativo=False),
+        _modelo_linha(id=3, chave="FERRAGEM_CORREDICA", codigo_opcao="TANDEM"),
+    ]
+    _FakeItemRepository.deleted_count = 3
+    _FakeItemRepository.opcao_existing = _item_resumo(id=5, editado_localmente=True)
+
+    result = service.importar_modelo_para_item(30, 88, substituir=True)
+
+    assert result.modelo_codigo == "COZINHA_STANDARD"
+    assert result.eliminadas == 3
+    assert result.criadas == 2
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert result.total_origem == 2
+    assert _FakeItemRepository.deleted_item_ids == [30]
+    assert len(_FakeItemRepository.created_payloads) == 2
+    assert {payload["codigo_opcao"] for payload in _FakeItemRepository.created_payloads} == {
+        "MDF",
+        "TANDEM",
+    }
+    assert _FakeItemRepository.updated_payload is None
+    assert session.committed is True
 
 
 def test_importar_modelo_para_item_modelo_inexistente_levanta(monkeypatch) -> None:

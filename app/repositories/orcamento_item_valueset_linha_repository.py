@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.models import OrcamentoItemValuesetLinha
+from app.models import OrcamentoItemValuesetLinha, OrcamentoValuesetLinha
 
 
 @dataclass(frozen=True)
@@ -210,6 +210,36 @@ class OrcamentoItemValuesetLinhaRepository:
         self.session.flush()
 
         return self._to_resumo(linha)
+
+    def delete_by_orcamento_item(self, orcamento_item_id: int) -> int:
+        """Delete all ValueSet lines of one budget item."""
+        result = self.session.execute(
+            delete(OrcamentoItemValuesetLinha).where(
+                OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id
+            ).execution_options(synchronize_session=False)
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
+
+    def clear_origem_orcamento_valueset_for_versao(
+        self, orcamento_versao_id: int
+    ) -> int:
+        """Detach item ValueSet lines from budget ValueSet lines of one version."""
+        valueset_ids = select(OrcamentoValuesetLinha.id).where(
+            OrcamentoValuesetLinha.orcamento_versao_id == orcamento_versao_id
+        )
+        result = self.session.execute(
+            update(OrcamentoItemValuesetLinha)
+            .where(
+                OrcamentoItemValuesetLinha.origem_orcamento_valueset_linha_id.in_(
+                    valueset_ids
+                )
+            )
+            .values(origem_orcamento_valueset_linha_id=None)
+            .execution_options(synchronize_session=False)
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
 
     def update(self, *, id: int, **fields) -> OrcamentoItemValuesetLinhaResumo:
         """Update one budget item ValueSet line."""

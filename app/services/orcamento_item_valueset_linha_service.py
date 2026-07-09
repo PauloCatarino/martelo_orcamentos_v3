@@ -141,6 +141,7 @@ class ImportarModeloParaItemResult:
     atualizadas: int
     ignoradas: int
     total_origem: int
+    eliminadas: int = 0
 
 
 @dataclass(frozen=True)
@@ -446,12 +447,17 @@ class OrcamentoItemValuesetLinhaService:
         }
 
     def importar_modelo_para_item(
-        self, orcamento_item_id: int, def_valueset_modelo_id: int
+        self,
+        orcamento_item_id: int,
+        def_valueset_modelo_id: int,
+        substituir: bool = False,
     ) -> ImportarModeloParaItemResult:
         """Copy the active lines of a ValueSet model into one item's ValueSet.
 
         Existing item lines (same chave + codigo_opcao) are updated when not
         locally edited, and kept untouched when editado_localmente is True.
+        With substituir=True, the current table is deleted and rebuilt from the
+        active model lines.
         """
         item = self.session.get(OrcamentoItem, orcamento_item_id)
         if item is None:
@@ -465,16 +471,26 @@ class OrcamentoItemValuesetLinhaService:
         atualizadas = 0
         ignoradas = 0
         total_origem = 0
+        eliminadas = 0
+
+        if substituir:
+            eliminadas = self.repository.delete_by_orcamento_item(orcamento_item_id)
 
         for linha in self.modelo_linha_repository.list_by_modelo(def_valueset_modelo_id):
             if not linha.ativo:
                 continue
 
             total_origem += 1
+            fields = self._build_modelo_import_fields(orcamento_item_id, modelo, linha)
+
+            if substituir:
+                self.repository.create(**fields)
+                criadas += 1
+                continue
+
             existing = self.repository.get_by_item_chave_opcao(
                 orcamento_item_id, linha.chave, linha.codigo_opcao
             )
-            fields = self._build_modelo_import_fields(orcamento_item_id, modelo, linha)
 
             if existing is None:
                 self.repository.create(**fields)
@@ -493,6 +509,7 @@ class OrcamentoItemValuesetLinhaService:
             atualizadas=atualizadas,
             ignoradas=ignoradas,
             total_origem=total_origem,
+            eliminadas=eliminadas,
         )
 
     def substituir_por_modelo(

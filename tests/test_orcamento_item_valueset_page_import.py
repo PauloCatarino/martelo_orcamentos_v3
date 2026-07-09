@@ -72,23 +72,27 @@ def test_page_import_modelo_uses_dialog_and_service() -> None:
 
     importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
     assert "ImportarValuesetModeloDialog" in importar
+    assert "_perguntar_modo_importacao_modelo" in importar
 
-    novo = inspect.getsource(OrcamentoItemValuesetPage._importar_modelo_novo)
-    assert "importar_modelo_para_item" in novo
-    assert "importado" in novo
+    importar_selecionado = inspect.getsource(
+        OrcamentoItemValuesetPage._importar_modelo_selecionado
+    )
+    assert "importar_modelo_para_item" in importar_selecionado
+    assert "substituir=substituir" in importar_selecionado
+    assert "importado" in importar_selecionado
 
 
-def test_page_import_modelo_confirms_replace() -> None:
+def test_page_import_modelo_pergunta_substituir_ou_atualizar() -> None:
     from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 
-    importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
-    assert "listar_linhas_ativas_do_item" in importar
-    assert "Substituir ValueSet do Item" in importar
-    assert "QMessageBox" in importar
+    pergunta = inspect.getsource(OrcamentoItemValuesetPage._perguntar_modo_importacao_modelo)
+    assert "Substituir tudo" in pergunta
+    assert "Atualizar" in pergunta
+    assert "Cancelar" in pergunta
+    assert "DestructiveRole" in pergunta
 
-    substituir = inspect.getsource(OrcamentoItemValuesetPage._substituir_por_modelo)
-    assert "substituir_por_modelo" in substituir
-    assert "desativadas" in substituir
+    importar = inspect.getsource(OrcamentoItemValuesetPage.importar_modelo)
+    assert "listar_linhas_ativas_do_item" not in importar
 
 
 def test_page_formats_percentages() -> None:

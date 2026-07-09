@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from app.domain.valueset_types import normalize_valueset_key
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaRepository
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloRepository
+from app.repositories.orcamento_item_valueset_linha_repository import (
+    OrcamentoItemValuesetLinhaRepository,
+)
 from app.repositories.orcamento_valueset_linha_repository import (
     OrcamentoValuesetLinhaRepository,
     OrcamentoValuesetLinhaResumo,
@@ -127,6 +130,7 @@ class ImportarModeloResult:
     criadas: int
     atualizadas: int
     ignoradas: int
+    eliminadas: int = 0
 
 
 class OrcamentoValuesetLinhaService:
@@ -135,6 +139,7 @@ class OrcamentoValuesetLinhaService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = OrcamentoValuesetLinhaRepository(session)
+        self.item_valueset_repository = OrcamentoItemValuesetLinhaRepository(session)
         self.modelo_repository = DefValuesetModeloRepository(session)
         self.modelo_linha_repository = DefValuesetModeloLinhaRepository(session)
 
@@ -297,12 +302,17 @@ class OrcamentoValuesetLinhaService:
         return True
 
     def importar_modelo_para_orcamento(
-        self, orcamento_versao_id: int, def_valueset_modelo_id: int
+        self,
+        orcamento_versao_id: int,
+        def_valueset_modelo_id: int,
+        substituir: bool = False,
     ) -> ImportarModeloResult:
         """Copy the active lines of a ValueSet model into a budget version.
 
         Existing lines (same chave + codigo_opcao) are updated when they are
         not locally edited, and kept untouched when editado_localmente is True.
+        With substituir=True, the current table is deleted and rebuilt from the
+        active model lines.
         """
         modelo = self.modelo_repository.get_by_id(def_valueset_modelo_id)
         if modelo is None:
@@ -311,15 +321,28 @@ class OrcamentoValuesetLinhaService:
         criadas = 0
         atualizadas = 0
         ignoradas = 0
+        eliminadas = 0
+
+        if substituir:
+            self.item_valueset_repository.clear_origem_orcamento_valueset_for_versao(
+                orcamento_versao_id
+            )
+            eliminadas = self.repository.delete_by_orcamento_versao(orcamento_versao_id)
 
         for linha in self.modelo_linha_repository.list_by_modelo(def_valueset_modelo_id):
             if not linha.ativo:
                 continue
 
+            fields = self._build_import_fields(orcamento_versao_id, modelo, linha)
+
+            if substituir:
+                self.repository.create(**fields)
+                criadas += 1
+                continue
+
             existing = self.repository.get_by_versao_chave_opcao(
                 orcamento_versao_id, linha.chave, linha.codigo_opcao
             )
-            fields = self._build_import_fields(orcamento_versao_id, modelo, linha)
 
             if existing is None:
                 self.repository.create(**fields)
@@ -337,6 +360,7 @@ class OrcamentoValuesetLinhaService:
             criadas=criadas,
             atualizadas=atualizadas,
             ignoradas=ignoradas,
+            eliminadas=eliminadas,
         )
 
     def _build_import_fields(self, orcamento_versao_id: int, modelo, linha) -> dict:

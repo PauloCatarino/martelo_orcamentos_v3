@@ -79,11 +79,24 @@ def test_page_uses_service_and_dialog() -> None:
 
     importar = inspect.getsource(OrcamentoValuesetPage.importar_modelo)
     assert "ImportarValuesetModeloDialog" in importar
+    assert "_perguntar_modo_importacao_modelo" in importar
     assert "importar_modelo_para_orcamento" in importar
+    assert "substituir=substituir" in importar
 
     carregar = inspect.getsource(OrcamentoValuesetPage.carregar)
     assert "OrcamentoValuesetLinhaService" in carregar
     assert "listar_linhas_da_versao" in carregar
+
+
+def test_page_import_modelo_pergunta_substituir_ou_atualizar() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    pergunta = inspect.getsource(OrcamentoValuesetPage._perguntar_modo_importacao_modelo)
+
+    assert "Substituir tudo" in pergunta
+    assert "Atualizar" in pergunta
+    assert "Cancelar" in pergunta
+    assert "DestructiveRole" in pergunta
 
 
 def test_page_formats_percentages() -> None:

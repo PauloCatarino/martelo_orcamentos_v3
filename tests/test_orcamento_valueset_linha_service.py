@@ -102,9 +102,12 @@ class _FakeRepository:
     default_existing: OrcamentoValuesetLinhaResumo | None = None
     by_id: OrcamentoValuesetLinhaResumo | None = None
     created_payload: dict | None = None
+    created_payloads: list[dict] = []
     updated_payload: dict | None = None
     set_padrao_calls: list = []
     clear_calls: list = []
+    deleted_versao_ids: list[int] = []
+    deleted_count = 0
     deactivate_result = True
     activate_result = True
 
@@ -137,7 +140,12 @@ class _FakeRepository:
 
     def create(self, **fields):
         self.__class__.created_payload = fields
+        self.__class__.created_payloads.append(fields)
         return _resumo(id=1, **fields)
+
+    def delete_by_orcamento_versao(self, orcamento_versao_id: int) -> int:
+        self.__class__.deleted_versao_ids.append(orcamento_versao_id)
+        return self.deleted_count
 
     def update(self, *, id: int, **fields):
         self.__class__.updated_payload = {"id": id, **fields}
@@ -177,6 +185,19 @@ class _FakeModeloLinhaRepository:
         return self.linhas
 
 
+class _FakeItemValuesetRepository:
+    clear_origin_calls: list[int] = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def clear_origem_orcamento_valueset_for_versao(
+        self, orcamento_versao_id: int
+    ) -> int:
+        self.__class__.clear_origin_calls.append(orcamento_versao_id)
+        return 0
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -191,18 +212,25 @@ def _reset() -> None:
     _FakeRepository.default_existing = None
     _FakeRepository.by_id = None
     _FakeRepository.created_payload = None
+    _FakeRepository.created_payloads = []
     _FakeRepository.updated_payload = None
     _FakeRepository.set_padrao_calls = []
     _FakeRepository.clear_calls = []
+    _FakeRepository.deleted_versao_ids = []
+    _FakeRepository.deleted_count = 0
     _FakeRepository.deactivate_result = True
     _FakeRepository.activate_result = True
     _FakeModeloRepository.modelo = None
     _FakeModeloLinhaRepository.linhas = []
+    _FakeItemValuesetRepository.clear_origin_calls = []
 
 
 def _service(monkeypatch):
     _reset()
     monkeypatch.setattr(service_module, "OrcamentoValuesetLinhaRepository", _FakeRepository)
+    monkeypatch.setattr(
+        service_module, "OrcamentoItemValuesetLinhaRepository", _FakeItemValuesetRepository
+    )
     monkeypatch.setattr(service_module, "DefValuesetModeloRepository", _FakeModeloRepository)
     monkeypatch.setattr(
         service_module, "DefValuesetModeloLinhaRepository", _FakeModeloLinhaRepository
@@ -406,6 +434,35 @@ def test_importar_modelo_ignora_linhas_inativas(monkeypatch) -> None:
 
     assert result.criadas == 0
     assert _FakeRepository.created_payload is None
+
+
+def test_importar_modelo_substituir_elimina_existentes_e_cria_ativas(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeModeloRepository.modelo = _modelo(id=99, codigo="ROUPEIRO_STANDARD")
+    _FakeModeloLinhaRepository.linhas = [
+        _modelo_linha(id=1, chave="MATERIAL_FRENTES", codigo_opcao="MDF"),
+        _modelo_linha(id=2, chave="FERRAGEM_DOBRADICA", codigo_opcao="BLUM", ativo=False),
+        _modelo_linha(id=3, chave="FERRAGEM_CORREDICA", codigo_opcao="TANDEM"),
+    ]
+    _FakeRepository.deleted_count = 2
+    _FakeRepository.opcao_existing = _resumo(id=5, editado_localmente=True)
+
+    result = service.importar_modelo_para_orcamento(20, 99, substituir=True)
+
+    assert result.modelo_codigo == "ROUPEIRO_STANDARD"
+    assert result.eliminadas == 2
+    assert result.criadas == 2
+    assert result.atualizadas == 0
+    assert result.ignoradas == 0
+    assert _FakeRepository.deleted_versao_ids == [20]
+    assert _FakeItemValuesetRepository.clear_origin_calls == [20]
+    assert len(_FakeRepository.created_payloads) == 2
+    assert {payload["codigo_opcao"] for payload in _FakeRepository.created_payloads} == {
+        "MDF",
+        "TANDEM",
+    }
+    assert _FakeRepository.updated_payload is None
+    assert session.committed is True
 
 
 def test_importar_modelo_inexistente_levanta(monkeypatch) -> None:
