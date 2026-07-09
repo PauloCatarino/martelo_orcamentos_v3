@@ -114,3 +114,16 @@ def test_page_valueset_visual_helper_e_menu_colunas() -> None:
     assert "setAlternatingRowColors(False)" in init
     assert "configurar_tabela_valueset" in init
     assert '"valueset_modelo"' in init
+
+
+def test_page_colunas_redimensionaveis_com_seed() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    assert "QHeaderView.ResizeMode.Interactive" in init
+    assert "setStretchLastSection(False)" in init
+    assert '"valueset_modelo"' in init
+
+    preencher = inspect.getsource(DefValuesetModeloDetailPage._preencher)
+    assert "resizeColumnsToContents" in preencher
+    assert "_larguras_iniciais_aplicadas" in preencher

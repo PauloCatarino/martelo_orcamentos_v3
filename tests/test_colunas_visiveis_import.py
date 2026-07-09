@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 
 def test_helper_importa() -> None:
     from app.ui.widgets.colunas_visiveis import (
@@ -61,3 +63,32 @@ def test_estado_inicial_nao_esconde_todas() -> None:
     estados = estado_inicial_colunas(["A", "B"], {0: False, 1: False}, set())
 
     assert estados == {0: True, 1: False}
+
+
+def test_utilizador_atual_sem_sessao(monkeypatch) -> None:
+    from app.core.session import app_session
+    from app.ui.widgets.colunas_visiveis import _utilizador_atual
+
+    monkeypatch.setattr(app_session, "current_user", None)
+
+    assert _utilizador_atual() == "default"
+
+
+def test_utilizador_atual_com_sessao(monkeypatch) -> None:
+    from app.core.session import app_session
+    from app.ui.widgets.colunas_visiveis import _utilizador_atual
+
+    monkeypatch.setattr(app_session, "current_user", SimpleNamespace(username="paulo"))
+
+    assert _utilizador_atual() == "paulo"
+
+
+def test_settings_key_inclui_utilizador(monkeypatch) -> None:
+    from app.core.session import app_session
+    from app.ui.widgets.colunas_visiveis import _settings_key
+
+    monkeypatch.setattr(app_session, "current_user", SimpleNamespace(username="paulo"))
+    assert _settings_key("valueset_item", 3) == "colunas/paulo/valueset_item/3"
+
+    monkeypatch.setattr(app_session, "current_user", None)
+    assert _settings_key("valueset_item", 3) == "colunas/default/valueset_item/3"

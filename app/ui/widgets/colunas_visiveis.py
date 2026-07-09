@@ -1,4 +1,4 @@
-"""Show/hide table columns per machine (QSettings)."""
+"""Show/hide table columns per machine and per authenticated user (QSettings)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ from collections.abc import Collection, Mapping, Sequence
 
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QMenu, QTableView, QTableWidget
+
+from app.core.session import app_session
 
 _ORG = "Lanca Encanto"
 _APP = "Martelo Orcamentos V3"
@@ -58,7 +60,7 @@ def ligar_menu_colunas(
         settings.sync()
 
     def _repor_padrao() -> None:
-        settings.remove(f"colunas/{chave}")
+        settings.remove(f"colunas/{_utilizador_atual()}/{chave}")
         estados_padrao = estado_inicial_colunas(nomes, {}, ocultas_por_defeito)
         _aplicar_estados(header, estados_padrao)
         settings.sync()
@@ -143,7 +145,13 @@ def _num_colunas_visiveis(header) -> int:
 
 
 def _settings_key(chave: str, indice: int) -> str:
-    return f"colunas/{chave}/{indice}"
+    return f"colunas/{_utilizador_atual()}/{chave}/{indice}"
+
+
+def _utilizador_atual() -> str:
+    """Return the current authenticated username, or "default" without a session."""
+    username = getattr(app_session.current_user, "username", None)
+    return username or "default"
 
 
 def _para_bool(valor) -> bool | None:

@@ -149,11 +149,15 @@ class OrcamentoItemValuesetPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self._larguras_iniciais_aplicadas = False
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
-        ligar_persistencia_larguras(self.table, "orcamento_item_valueset")
+        # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
+        if ligar_persistencia_larguras(self.table, "valueset_item"):
+            self._larguras_iniciais_aplicadas = True
         configurar_tabela_valueset(self.table, "valueset_item")
 
         layout = QVBoxLayout()
@@ -248,6 +252,12 @@ class OrcamentoItemValuesetPage(QWidget):
                     item, self.TABLE_HEADERS[column_index], estado
                 )
                 self.table.setItem(row_index, column_index, item)
+
+        # Seed sensible initial widths once (content-based); after that the
+        # columns stay Interactive and keep the user's manual sizes on reload.
+        if not self._larguras_iniciais_aplicadas and linhas:
+            self.table.resizeColumnsToContents()
+            self._larguras_iniciais_aplicadas = True
 
     def criar_do_orcamento(self) -> None:
         """Create the item ValueSet from the budget version ValueSet."""

@@ -265,3 +265,16 @@ def test_page_copiar_colar_com_operacoes_opt_in() -> None:
     assert "copiar_operacoes_de" in colar
     assert "Colar também" in colar
     assert "Dados e operações colados" in colar
+
+
+def test_page_colunas_redimensionaveis_com_seed() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+    assert "QHeaderView.ResizeMode.Interactive" in init
+    assert "setStretchLastSection(False)" in init
+    assert '"valueset_item"' in init
+
+    preencher = inspect.getsource(OrcamentoItemValuesetPage._preencher)
+    assert "resizeColumnsToContents" in preencher
+    assert "_larguras_iniciais_aplicadas" in preencher
