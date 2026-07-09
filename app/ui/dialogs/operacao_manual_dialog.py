@@ -36,7 +36,7 @@ class OperacaoManualDialog(QDialog):
 
     The cost is computed from the chosen machine's STD hourly rate
     ((minutes / 60) × custo_hora); the user defines the description and minutes.
-    Machines of type MANUAL, MONTAGEM or CNC are offered (e.g. one-off CNC jobs).
+    Machines of type MANUAL, MONTAGEM, EMBALAMENTO or CNC are offered.
     """
 
     def __init__(
@@ -93,8 +93,9 @@ class OperacaoManualDialog(QDialog):
         self.aviso_label.setWordWrap(True)
 
         info = QLabel(
-            "Trabalho avulso (manual, montagem ou CNC). O custo = (tempo total / 60) "
-            "× custo/hora STD da máquina. Tempo total = tempo × quantidade."
+            "Trabalho avulso (manual, montagem, embalamento ou CNC). "
+            "O custo = (tempo total / 60) × custo/hora STD da máquina. "
+            "Tempo total = tempo × quantidade."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: #666666; font-size: 11px;")

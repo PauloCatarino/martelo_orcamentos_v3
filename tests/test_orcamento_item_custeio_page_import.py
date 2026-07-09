@@ -638,10 +638,42 @@ def test_custeio_page_menu_operacao_manual() -> None:
     inserir = inspect.getsource(OrcamentoItemCusteioPage.inserir_operacao_manual_linha)
     assert "OperacaoManualDialog" in inserir
     assert "inserir_operacao_manual" in inserir
+    assert "apos_linha_id=apos_linha_id" in inserir
 
-    # the machine combo offers MANUAL, MONTAGEM and CNC machines
+    # the machine combo offers MANUAL, MONTAGEM, EMBALAMENTO and CNC machines
     maquinas = inspect.getsource(OrcamentoItemCusteioPage._maquinas_montagem_manual)
-    assert '"MANUAL", "MONTAGEM", "CNC"' in maquinas
+    assert '"MANUAL", "MONTAGEM", "EMBALAMENTO", "CNC"' in maquinas
+
+
+def test_custeio_page_tipo_linha_operacao_manual_deriva_da_maquina() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._maquinas_por_id = {
+        10: SimpleNamespace(tipo="CNC"),
+        11: SimpleNamespace(tipo="MONTAGEM"),
+        12: SimpleNamespace(tipo="EMBALAMENTO"),
+    }
+
+    assert (
+        page._tipo_linha_label(
+            SimpleNamespace(tipo_linha="OPERACAO_MANUAL", def_maquina_id=10)
+        )
+        == "Operação CNC"
+    )
+    assert (
+        page._tipo_linha_label(
+            SimpleNamespace(tipo_linha="OPERACAO_MANUAL", def_maquina_id=None)
+        )
+        == "Operação manual"
+    )
+    assert (
+        page._tipo_linha_label(
+            SimpleNamespace(tipo_linha="OPERACAO_MANUAL", def_maquina_id=12)
+        )
+        == "Operação Embalamento"
+    )
+    assert page._tipo_linha_label(SimpleNamespace(tipo_linha="PECA")) == "Peça"
 
 
 def test_orcamento_item_custeio_page_esp_edit_protection() -> None:

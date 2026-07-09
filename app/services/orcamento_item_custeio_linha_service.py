@@ -2868,6 +2868,7 @@ class OrcamentoItemCusteioLinhaService:
         def_maquina_id: int | None,
         tempo_minutos,
         quantidade=None,
+        apos_linha_id: int | None = None,
     ) -> OrcamentoItemCusteioLinhaResumo:
         """Insert a user-defined manual-operation cost line (OPERACAO_MANUAL).
 
@@ -2897,6 +2898,7 @@ class OrcamentoItemCusteioLinhaService:
             orcamento_item_id=item_id,
             tipo_linha=OPERACAO_MANUAL,
             descricao=texto,
+            descricao_livre=texto,
             origem_tipo="MANUAL",
             def_maquina_id=def_maquina_id,
             maquina=maquina_texto,
@@ -2911,9 +2913,24 @@ class OrcamentoItemCusteioLinhaService:
             tipo_producao=tipo_efetivo,
             ativo=True,
         )
+        if apos_linha_id is not None:
+            self._posicionar_linha_apos(item_id, result.id, apos_linha_id)
         self.session.commit()
 
         return result
+
+    def _posicionar_linha_apos(
+        self, orcamento_item_id: int, nova_linha_id: int, apos_linha_id: int
+    ) -> None:
+        """Move ``nova_linha_id`` immediately after ``apos_linha_id`` in display order."""
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        ids = [linha.id for linha in linhas if linha.id != nova_linha_id]
+        if apos_linha_id in ids:
+            indice = ids.index(apos_linha_id)
+            nova_ordem = ids[: indice + 1] + [nova_linha_id] + ids[indice + 1:]
+        else:
+            nova_ordem = ids + [nova_linha_id]
+        self.repository.reordenar_linhas(nova_ordem)
 
     def editar_operacao_manual(
         self,
@@ -2949,6 +2966,7 @@ class OrcamentoItemCusteioLinhaService:
         self.repository.update_linha(
             id=linha_id,
             descricao=texto,
+            descricao_livre=texto,
             def_maquina_id=def_maquina_id,
             maquina=maquina_texto,
             qt_mod=Decimal("1"),

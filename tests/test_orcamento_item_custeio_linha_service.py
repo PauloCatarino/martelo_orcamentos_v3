@@ -183,6 +183,7 @@ class _FakeRepository:
     deleted_ids: list | None = None
     lote_call: tuple | None = None
     lote_count = 0
+    reordenar_order: list[int] | None = None
 
     def __init__(self, _session: object) -> None:
         pass
@@ -216,6 +217,9 @@ class _FakeRepository:
         self.__class__.updated_payload = {"id": id, **fields}
         self.__class__.updated_payloads.append({"id": id, **fields})
         return _resumo(id=id, **fields)
+
+    def reordenar_linhas(self, ordered_ids: list[int]) -> None:
+        self.__class__.reordenar_order = list(ordered_ids)
 
     def deactivate_linha(self, id: int) -> bool:
         self.__class__.deactivated_id = id
@@ -392,6 +396,7 @@ def _reset() -> None:
     _FakeRepository.activate_result = True
     _FakeRepository.activated_id = None
     _FakeRepository.deleted_ids = None
+    _FakeRepository.reordenar_order = None
     _FakePecaRepository.pecas = {}
     _FakeComponenteRepository.componentes = []
     _FakeComponenteRepository.componentes_por_id = {}
@@ -3666,6 +3671,7 @@ def test_inserir_e_recalcular_operacao_manual(monkeypatch) -> None:
     payload = _FakeRepository.created_payload
     assert payload["tipo_linha"] == "OPERACAO_MANUAL"
     assert payload["descricao"] == "cortar perfis alumínio"
+    assert payload["descricao_livre"] == "cortar perfis alumínio"
     assert payload["minutos_unitarios"] == Decimal("0.35")
     assert payload["quantidade"] == Decimal("20")
     assert payload["maquina"] == "MANUAL"
@@ -3673,6 +3679,82 @@ def test_inserir_e_recalcular_operacao_manual(monkeypatch) -> None:
     assert payload["tempo_manual"] == Decimal("7.00")
     assert payload["custo_montagem_manual"] == (Decimal("7.00") * Decimal("20")) / Decimal("60")
     assert payload["custo_producao"] == payload["custo_montagem_manual"]
+    assert _FakeRepository.reordenar_order is None
+
+
+def test_inserir_operacao_manual_apos_linha_posiciona_logo_a_seguir(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.active_rows = [
+        _resumo(id=10, tipo_linha="PECA"),
+        _resumo(id=20, tipo_linha="PECA"),
+        _resumo(id=30, tipo_linha="PECA"),
+    ]
+
+    service.inserir_operacao_manual(
+        30,
+        descricao="afinar dobradiças",
+        def_maquina_id=9,
+        tempo_minutos=Decimal("2"),
+        quantidade=Decimal("1"),
+        apos_linha_id=20,
+    )
+
+    assert _FakeRepository.created_payload["descricao_livre"] == "afinar dobradiças"
+    assert _FakeRepository.reordenar_order == [10, 20, 1, 30]
+
+
+def test_inserir_operacao_manual_sem_apos_linha_fica_no_fim_sem_reordenar(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.active_rows = [
+        _resumo(id=10, tipo_linha="PECA"),
+        _resumo(id=20, tipo_linha="PECA"),
+    ]
+
+    service.inserir_operacao_manual(
+        30,
+        descricao="limpar bancada",
+        def_maquina_id=9,
+        tempo_minutos=Decimal("2"),
+        quantidade=Decimal("1"),
+    )
+
+    assert _FakeRepository.reordenar_order is None
+
+
+def test_editar_operacao_manual_grava_descricao_livre(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMaquinaRepository.maquinas = {
+        9: _maquina_tarifa("MANUAL", id=9, custo_hora=Decimal("20"))
+    }
+    _FakeRepository.by_id = _resumo(
+        id=1,
+        tipo_linha="OPERACAO_MANUAL",
+        descricao="texto antigo",
+        def_maquina_id=9,
+        quantidade=Decimal("1"),
+    )
+
+    service.editar_operacao_manual(
+        1,
+        descricao="texto novo",
+        def_maquina_id=9,
+        tempo_minutos=Decimal("3"),
+        quantidade=Decimal("2"),
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload["descricao"] == "texto novo"
+    assert payload["descricao_livre"] == "texto novo"
 
 
 def test_recalcular_operacao_manual_recalcula_custo(monkeypatch) -> None:

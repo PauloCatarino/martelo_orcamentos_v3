@@ -2927,14 +2927,16 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText("Acabamento da linha atualizado.")
 
     def _maquinas_montagem_manual(self):
-        """Active machines of type MANUAL/MONTAGEM/CNC for the manual-operation dialog."""
+        """Active MANUAL/MONTAGEM/EMBALAMENTO/CNC machines for the manual dialog."""
         try:
             with SessionLocal() as session:
                 maquinas = DefMaquinaService(session).listar_maquinas_ativas()
         except SQLAlchemyError:
             return []
         return [
-            m for m in maquinas if (m.tipo or "").upper() in ("MANUAL", "MONTAGEM", "CNC")
+            m
+            for m in maquinas
+            if (m.tipo or "").upper() in ("MANUAL", "MONTAGEM", "EMBALAMENTO", "CNC")
         ]
 
     def inserir_operacao_manual_linha(self) -> None:
@@ -2942,11 +2944,14 @@ class OrcamentoItemCusteioPage(QWidget):
         maquinas = self._maquinas_montagem_manual()
         if not maquinas:
             self.status_label.setText(
-                "Crie uma máquina MANUAL, MONTAGEM ou CNC (Configurações → Máquinas)."
+                "Crie uma máquina MANUAL, MONTAGEM, EMBALAMENTO ou CNC "
+                "(Configurações → Máquinas)."
             )
             return
 
         saved = False
+        linha_selecionada = self._get_linha_selecionada()
+        apos_linha_id = linha_selecionada.id if linha_selecionada is not None else None
 
         def handle_save(dados) -> bool:
             nonlocal saved
@@ -2958,6 +2963,7 @@ class OrcamentoItemCusteioPage(QWidget):
                         def_maquina_id=dados.def_maquina_id,
                         tempo_minutos=dados.tempo_minutos,
                         quantidade=dados.quantidade,
+                        apos_linha_id=apos_linha_id,
                     )
             except (SQLAlchemyError, ValueError):
                 dialog.set_error("Não foi possível inserir a operação manual.")
@@ -3030,7 +3036,7 @@ class OrcamentoItemCusteioPage(QWidget):
             descricao_livre = linha.descricao_livre or ""
         return {
             "Ordem": "" if linha.ordem is None else str(linha.ordem),
-            "Tipo linha": get_custeio_linha_type_label(linha.tipo_linha),
+            "Tipo linha": self._tipo_linha_label(linha),
             "Código": linha.codigo or "",
             "Descrição livre": descricao_livre,
             "Def. Peça": linha.def_peca_codigo
@@ -3104,6 +3110,23 @@ class OrcamentoItemCusteioPage(QWidget):
             "Editado localmente": self._format_bool(linha.editado_localmente),
             "Ativo": self._format_bool(linha.ativo),
         }
+
+    def _tipo_linha_label(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """Return the display-only type label for one costing line."""
+        if linha.tipo_linha != OPERACAO_MANUAL:
+            return get_custeio_linha_type_label(linha.tipo_linha)
+
+        tipo_maquina = ""
+        if linha.def_maquina_id is not None:
+            maquina = self._maquinas_por_id.get(linha.def_maquina_id)
+            tipo_maquina = (getattr(maquina, "tipo", None) or "").strip().upper()
+
+        labels = {
+            "CNC": "Operação CNC",
+            "MONTAGEM": "Operação Montagem",
+            "EMBALAMENTO": "Operação Embalamento",
+        }
+        return labels.get(tipo_maquina, "Operação manual")
 
     def _handle_back(self) -> None:
         """Return to the items page through the optional callback."""
