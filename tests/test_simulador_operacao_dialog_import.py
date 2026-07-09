@@ -49,3 +49,23 @@ def test_simulador_operacao_calcula_tempo_e_custo_por_cenarios() -> None:
     assert qt2.custo == Decimal("1.65")
     assert qt5.tempo_total_minutos == Decimal("4.05")
     assert qt5.custo == Decimal("4.05")
+
+
+def test_simulador_operacao_cenarios_incluem_qt_atual_sem_duplicar() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import SimuladorOperacaoDialog
+
+    dialog = SimuladorOperacaoDialog.__new__(SimuladorOperacaoDialog)
+
+    assert dialog._cenarios_qt(Decimal("3")) == [
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("3"),
+        Decimal("5"),
+        Decimal("10"),
+    ]
+    assert dialog._cenarios_qt(Decimal("2")) == [
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("5"),
+        Decimal("10"),
+    ]

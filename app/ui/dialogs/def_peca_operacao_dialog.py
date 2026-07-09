@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+from PySide6.QtGui import QColor, QFont
 
 from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
@@ -344,6 +345,7 @@ class SimuladorOperacaoDialog(QDialog):
     """Live simulator for an operation's time and hourly cost."""
 
     CENARIOS_QT = (Decimal("1"), Decimal("2"), Decimal("5"), Decimal("10"))
+    COR_QT_ATUAL = QColor("#f1f5f9")
 
     def __init__(
         self,
@@ -381,6 +383,8 @@ class SimuladorOperacaoDialog(QDialog):
         self.qt_total_input = QLineEdit("1")
         self.area_m2_input = QLineEdit()
         self.ml_input = QLineEdit()
+        self.tempo_setup_segundos_label = self._criar_nota_contexto()
+        self.tempo_por_unidade_segundos_label = self._criar_nota_contexto()
 
         self.quantidade_base_input.setText(self._format_decimal(quantidade_base))
         self.tempo_setup_input.setText(self._format_decimal(tempo_setup_minutos))
@@ -412,7 +416,9 @@ class SimuladorOperacaoDialog(QDialog):
         form.addRow("Unidade tempo", self.unidade_tempo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
         form.addRow("Tempo setup (min)", self.tempo_setup_input)
+        form.addRow("", self.tempo_setup_segundos_label)
         form.addRow("Tempo por unidade (min)", self.tempo_por_unidade_input)
+        form.addRow("", self.tempo_por_unidade_segundos_label)
         form.addRow("Custo/hora (€/h)", self.custo_hora_input)
         form.addRow("QT total", self.qt_total_input)
         form.addRow("Área m²", self.area_m2_input)
@@ -460,37 +466,79 @@ class SimuladorOperacaoDialog(QDialog):
         self.area_m2_input.setEnabled(unidade == "M2")
         self.ml_input.setEnabled(unidade == "ML")
 
+    def _criar_nota_contexto(self) -> QLabel:
+        label = QLabel("")
+        label.setStyleSheet("color: #666; font-size: 11px;")
+        label.setWordWrap(True)
+        return label
+
+    def _atualizar_notas_segundos(self) -> None:
+        self._atualizar_nota_segundos(
+            self.tempo_setup_segundos_label,
+            self._parse_decimal_text(self.tempo_setup_input.text()),
+        )
+        self._atualizar_nota_segundos(
+            self.tempo_por_unidade_segundos_label,
+            self._parse_decimal_text(self.tempo_por_unidade_input.text()),
+        )
+
+    def _atualizar_nota_segundos(self, label: QLabel, minutos: Decimal | None) -> None:
+        if minutos is None:
+            label.clear()
+            label.setVisible(False)
+            return
+        segundos = minutos * Decimal("60")
+        label.setText(f"{format_quantity(minutos)} min = {format_quantity(segundos)} seg")
+        label.setVisible(True)
+
+    def _cenarios_qt(self, qt_atual: Decimal | None) -> list[Decimal]:
+        valores = set(self.CENARIOS_QT)
+        if qt_atual is not None:
+            valores.add(qt_atual)
+        return sorted(valores)
+
+    def _item_cenario(self, texto: str, destaque: bool) -> QTableWidgetItem:
+        item = QTableWidgetItem(texto)
+        if destaque:
+            fonte = QFont(item.font())
+            fonte.setBold(True)
+            item.setFont(fonte)
+            item.setBackground(self.COR_QT_ATUAL)
+        return item
+
     def _recalcular(self) -> None:
         """Refresh the live result and all scenario rows."""
+        self._atualizar_notas_segundos()
         parametros = self._parametros()
         resultado = calcular_simulacao_operacao(**parametros)
         self.resultado_label.setText(
             self._formatar_resultado(resultado, parametros["custo_hora"])
         )
 
-        for row, qt in enumerate(self.CENARIOS_QT):
+        cenarios = self._cenarios_qt(parametros["qt_total"])
+        self.cenarios_table.setRowCount(len(cenarios))
+        for row, qt in enumerate(cenarios):
             resultado_linha = calcular_simulacao_operacao(
                 **{**parametros, "qt_total": qt}
             )
-            self.cenarios_table.setItem(row, 0, QTableWidgetItem(format_quantity(qt)))
-            self.cenarios_table.setItem(
-                row,
-                1,
-                QTableWidgetItem(
+            valores = (
+                format_quantity(qt),
+                (
                     format_quantity(resultado_linha.tempo_total_minutos)
                     if resultado_linha.tempo_total_minutos is not None
                     else "—"
                 ),
-            )
-            self.cenarios_table.setItem(
-                row,
-                2,
-                QTableWidgetItem(
+                (
                     format_currency(resultado_linha.custo)
                     if resultado_linha.custo is not None
                     else "—"
                 ),
             )
+            destaque = qt == parametros["qt_total"]
+            for col, valor in enumerate(valores):
+                self.cenarios_table.setItem(
+                    row, col, self._item_cenario(valor, destaque)
+                )
         self.cenarios_table.resizeColumnsToContents()
 
     def _parametros(self) -> dict:
