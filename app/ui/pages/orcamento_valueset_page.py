@@ -39,6 +39,16 @@ from app.ui.helpers.valueset_precos import (
     detetar_divergencias_valueset,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.estilo_tabela_valueset import (
+    aplicar_estilo_item_valueset,
+    configurar_tabela_valueset,
+    preparar_linhas_valueset,
+    texto_ativo_valueset,
+    texto_chave_valueset,
+    texto_editado_valueset,
+    texto_opcao_valueset,
+    texto_prioridade_valueset,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -121,7 +131,7 @@ class OrcamentoValuesetPage(QWidget):
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
         self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
+        self.table.setAlternatingRowColors(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -130,6 +140,7 @@ class OrcamentoValuesetPage(QWidget):
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
         ligar_persistencia_larguras(self.table, "orcamento_valueset")
+        configurar_tabela_valueset(self.table, "valueset_orcamento")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -184,13 +195,15 @@ class OrcamentoValuesetPage(QWidget):
     def _preencher(self, linhas: list[OrcamentoValuesetLinhaResumo]) -> None:
         """Fill the table with ValueSet lines."""
         self._linhas_by_row = {}
-        self.table.setRowCount(len(linhas))
+        estados = preparar_linhas_valueset(linhas)
+        self.table.setRowCount(len(estados))
 
-        for row_index, linha in enumerate(linhas):
+        for row_index, estado in enumerate(estados):
+            linha = estado.linha
             self._linhas_by_row[row_index] = linha
             values = [
-                linha.chave,
-                linha.codigo_opcao or "",
+                texto_chave_valueset(estado),
+                texto_opcao_valueset(estado, linha.codigo_opcao or ""),
                 linha.nome_opcao or "",
                 linha.ref_le or "",
                 linha.descricao_no_orcamento or "",
@@ -207,16 +220,20 @@ class OrcamentoValuesetPage(QWidget):
                 format_quantity(linha.comp_mp),
                 format_quantity(linha.larg_mp),
                 format_quantity(linha.esp_mp),
-                self._format_prioridade(linha.prioridade),
+                texto_prioridade_valueset(estado),
                 str(linha.ordem),
                 linha.origem_modelo_codigo or linha.origem_dados or "",
-                self._format_bool(linha.editado_localmente),
-                self._format_bool(linha.ativo),
+                texto_editado_valueset(estado),
+                texto_ativo_valueset(estado),
                 self._operacoes_por_linha.get(linha.id, ""),
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                aplicar_estilo_item_valueset(
+                    item, self.TABLE_HEADERS[column_index], estado
+                )
+                self.table.setItem(row_index, column_index, item)
 
     def importar_modelo(self) -> None:
         """Open the model picker and import the selected model."""

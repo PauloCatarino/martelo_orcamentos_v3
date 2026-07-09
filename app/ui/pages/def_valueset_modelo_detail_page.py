@@ -39,6 +39,16 @@ from app.ui.helpers.valueset_precos import (
     detetar_divergencias_valueset,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.estilo_tabela_valueset import (
+    aplicar_estilo_item_valueset,
+    configurar_tabela_valueset,
+    preparar_linhas_valueset,
+    texto_ativo_valueset,
+    texto_chave_valueset,
+    texto_editado_valueset,
+    texto_opcao_valueset,
+    texto_prioridade_valueset,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
 
@@ -122,12 +132,13 @@ class DefValuesetModeloDetailPage(QWidget):
         self.table = QTableWidget(0, len(self.LINHA_HEADERS))
         self.table.setHorizontalHeaderLabels(self.LINHA_HEADERS)
         self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
+        self.table.setAlternatingRowColors(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         ligar_persistencia_larguras(self.table, "valueset_modelo_detail")
+        configurar_tabela_valueset(self.table, "valueset_modelo")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -225,13 +236,15 @@ class DefValuesetModeloDetailPage(QWidget):
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
         self._linhas_by_row = {}
-        self.table.setRowCount(len(linhas))
+        estados = preparar_linhas_valueset(linhas)
+        self.table.setRowCount(len(estados))
 
-        for row_index, linha in enumerate(linhas):
+        for row_index, estado in enumerate(estados):
+            linha = estado.linha
             self._linhas_by_row[row_index] = linha
             values = [
-                linha.chave,
-                linha.codigo_opcao or "",
+                texto_chave_valueset(estado),
+                texto_opcao_valueset(estado, linha.codigo_opcao or ""),
                 linha.nome_opcao or "",
                 linha.ref_le or "",
                 linha.descricao_no_orcamento or "",
@@ -243,15 +256,19 @@ class DefValuesetModeloDetailPage(QWidget):
                 formatar_percentagem(linha.desperdicio_percentagem),
                 linha.tipo_materia_prima or "",
                 linha.familia_materia_prima or "",
-                self._format_prioridade(linha.prioridade),
+                texto_prioridade_valueset(estado),
                 str(linha.ordem),
-                self._format_bool(linha.editado_localmente),
-                self._format_bool(linha.ativo),
+                texto_editado_valueset(estado),
+                texto_ativo_valueset(estado),
                 self._operacoes_por_linha.get(linha.id, ""),
             ]
 
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                aplicar_estilo_item_valueset(
+                    item, self.LINHA_HEADERS[column_index], estado
+                )
+                self.table.setItem(row_index, column_index, item)
 
     def abrir_nova_linha(self) -> None:
         """Open the dialog to create a new model line."""

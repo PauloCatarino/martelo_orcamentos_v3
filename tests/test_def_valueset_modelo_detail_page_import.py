@@ -101,3 +101,16 @@ def test_page_formats_percentages() -> None:
 
     assert "formatar_percentagem" in source
     assert "_operacoes_por_linha" in source
+    assert "preparar_linhas_valueset" in source
+    assert "aplicar_estilo_item_valueset" in source
+    assert "texto_chave_valueset" in source
+
+
+def test_page_valueset_visual_helper_e_menu_colunas() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+
+    assert "setAlternatingRowColors(False)" in init
+    assert "configurar_tabela_valueset" in init
+    assert '"valueset_modelo"' in init

@@ -145,6 +145,19 @@ def test_page_formats_percentages() -> None:
     source = inspect.getsource(OrcamentoItemValuesetPage._preencher)
 
     assert "formatar_percentagem" in source
+    assert "preparar_linhas_valueset" in source
+    assert "aplicar_estilo_item_valueset" in source
+    assert "texto_chave_valueset" in source
+
+
+def test_page_valueset_visual_helper_e_menu_colunas() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+
+    assert "setAlternatingRowColors(False)" in init
+    assert "configurar_tabela_valueset" in init
+    assert '"valueset_item"' in init
 
 
 def test_page_has_edit_and_snapshot_tools() -> None:

@@ -82,6 +82,8 @@ def test_estilo_tabela_config() -> None:
     assert "padding: 6px 8px" in tema.ESTILO_TABELA_CONFIG
     assert tema.CINZA_CASTANHO in tema.ESTILO_TABELA_CONFIG
     assert tema.CASTANHO_ESCURO in tema.ESTILO_TABELA_CONFIG
+    assert "QHeaderView::section" in tema.ESTILO_TABELA_CONFIG_CABECALHO
+    assert "color: #FFFFFF" in tema.ESTILO_TABELA_CONFIG_CABECALHO
 
 
 def test_colunas_realce_composta() -> None:

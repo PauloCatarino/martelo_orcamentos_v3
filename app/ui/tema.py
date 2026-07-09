@@ -190,3 +190,10 @@ ESTILO_TABELA_CONFIG = (
     "QTableWidget::item { padding: 6px 8px; }"
     f"QTableWidget::item:selected {{ background: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
 )
+
+
+# Estilo comum de tabelas de configuracao com cabecalho castanho.
+ESTILO_TABELA_CONFIG_CABECALHO = ESTILO_TABELA_CONFIG + (
+    f"QHeaderView::section {{ background: {CASTANHO_ESCURO}; color: #FFFFFF;"
+    " padding: 6px 8px; border: none; font-weight: bold; }}"
+)
