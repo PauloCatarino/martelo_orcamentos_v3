@@ -22,6 +22,9 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    natureza: str = "MATERIAL"
+    orientacao: str = "NEUTRA"
+    funcao: str | None = None
     orla_c1: int = 0
     orla_c2: int = 0
     orla_l1: int = 0
@@ -84,6 +87,9 @@ class DefPecaRepository:
         descricao: str | None,
         grupo: str | None,
         tipo_peca: str,
+        natureza: str = "MATERIAL",
+        orientacao: str = "NEUTRA",
+        funcao: str | None = None,
         orla_c1: int = 0,
         orla_c2: int = 0,
         orla_l1: int = 0,
@@ -102,6 +108,9 @@ class DefPecaRepository:
             descricao=descricao,
             grupo=grupo,
             tipo_peca=tipo_peca,
+            natureza=natureza,
+            orientacao=orientacao,
+            funcao=funcao,
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -127,6 +136,9 @@ class DefPecaRepository:
         descricao: str | None,
         grupo: str | None,
         tipo_peca: str,
+        natureza: str = "MATERIAL",
+        orientacao: str = "NEUTRA",
+        funcao: str | None = None,
         orla_c1: int = 0,
         orla_c2: int = 0,
         orla_l1: int = 0,
@@ -148,6 +160,9 @@ class DefPecaRepository:
         peca.descricao = descricao
         peca.grupo = grupo
         peca.tipo_peca = tipo_peca
+        peca.natureza = natureza
+        peca.orientacao = orientacao
+        peca.funcao = funcao
         peca.orla_c1 = orla_c1
         peca.orla_c2 = orla_c2
         peca.orla_l1 = orla_l1
@@ -193,6 +208,9 @@ class DefPecaRepository:
             descricao=peca.descricao,
             grupo=peca.grupo,
             tipo_peca=peca.tipo_peca,
+            natureza=peca.natureza,
+            orientacao=peca.orientacao,
+            funcao=peca.funcao,
             ativo=peca.ativo,
             orla_c1=peca.orla_c1,
             orla_c2=peca.orla_c2,

@@ -140,6 +140,29 @@ def test_componente_service_cria_componente_nao_peca_sem_def_peca(monkeypatch) -
     assert session.committed is True
 
 
+def test_associado_guarda_zona_dimensao_e_numero_topos(monkeypatch) -> None:
+    _FakeRepository.next_order = 1
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service_module.DefPecaComponenteService(session=session).criar_componente(
+        service_module.CriarDefPecaComponenteData(
+            def_peca_pai_id=10,
+            tipo_componente="FERRAGEM",
+            referencia_componente="CAVILHA",
+            zona_aplicacao=" dois_topos ",
+            dimensao_referencia=" medida_topo ",
+            numero_topos=2,
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["zona_aplicacao"] == "DOIS_TOPOS"
+    assert _FakeRepository.created_payload["dimensao_referencia"] == "MEDIDA_TOPO"
+    assert _FakeRepository.created_payload["numero_topos"] == 2
+
+
 def test_componente_service_normaliza_regra_legacy_altura(monkeypatch) -> None:
     _FakeRepository.created_payload = None
     _FakeRepository.next_order = 1

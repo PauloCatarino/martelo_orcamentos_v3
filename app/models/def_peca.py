@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.domain.orla_types import SEM_ORLA
 from app.domain.peca_types import SIMPLES
+from app.domain.peca_natureza_types import MATERIAL, NEUTRA
 
 if TYPE_CHECKING:
     from app.models.def_peca_componente import DefPecaComponente
@@ -35,6 +36,13 @@ class DefPeca(Base):
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tipo_peca: Mapped[str] = mapped_column(String(50), nullable=False, default=SIMPLES, server_default=SIMPLES)
+    natureza: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=MATERIAL, server_default=MATERIAL, index=True
+    )
+    orientacao: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=NEUTRA, server_default=NEUTRA, index=True
+    )
+    funcao: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     orla_c1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_c2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")

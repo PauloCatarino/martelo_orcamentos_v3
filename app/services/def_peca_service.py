@@ -7,7 +7,14 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.domain.orla_types import normalize_orla_type
-from app.domain.peca_types import normalize_peca_type
+from app.domain.peca_types import COMPOSTA, SIMPLES, normalize_peca_type
+from app.domain.peca_natureza_types import (
+    CONJUNTO,
+    MATERIAL,
+    SERVICO,
+    normalize_peca_natureza,
+    normalize_peca_orientacao,
+)
 from app.domain.valueset_types import normalize_valueset_key
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.services.def_peca_componente_service import (
@@ -29,6 +36,9 @@ class CriarDefPecaData:
     descricao: str | None = None
     grupo: str | None = None
     tipo_peca: str | None = None
+    natureza: str | None = None
+    orientacao: str | None = None
+    funcao: str | None = None
     orla_c1: int | str | None = None
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
@@ -50,6 +60,9 @@ class EditarDefPecaData:
     descricao: str | None = None
     grupo: str | None = None
     tipo_peca: str | None = None
+    natureza: str | None = None
+    orientacao: str | None = None
+    funcao: str | None = None
     orla_c1: int | str | None = None
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
@@ -82,6 +95,12 @@ class DefPecaService:
         codigo = data.codigo.strip()
         nome = data.nome.strip()
         tipo_peca = normalize_peca_type(data.tipo_peca)
+        natureza = self._normalize_natureza(
+            data.natureza, tipo_peca=tipo_peca, sem_material=data.sem_material
+        )
+        if data.natureza is not None:
+            tipo_peca = COMPOSTA if natureza == CONJUNTO else SIMPLES
+        orientacao = normalize_peca_orientacao(data.orientacao)
         orla_c1 = normalize_orla_type(data.orla_c1)
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
@@ -96,7 +115,8 @@ class DefPecaService:
             data.chave_valueset_acabamento_inf
         )
         # A service piece has no raw material: drop any material ValueSet key.
-        if data.sem_material:
+        sem_material = data.sem_material or natureza in (SERVICO, CONJUNTO)
+        if sem_material:
             chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
 
@@ -106,6 +126,9 @@ class DefPecaService:
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
+            natureza=natureza,
+            orientacao=orientacao,
+            funcao=self._normalize_optional_text(data.funcao),
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -114,7 +137,7 @@ class DefPecaService:
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
-            sem_material=data.sem_material,
+            sem_material=sem_material,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -126,6 +149,12 @@ class DefPecaService:
         codigo = data.codigo.strip()
         nome = data.nome.strip()
         tipo_peca = normalize_peca_type(data.tipo_peca)
+        natureza = self._normalize_natureza(
+            data.natureza, tipo_peca=tipo_peca, sem_material=data.sem_material
+        )
+        if data.natureza is not None:
+            tipo_peca = COMPOSTA if natureza == CONJUNTO else SIMPLES
+        orientacao = normalize_peca_orientacao(data.orientacao)
         orla_c1 = normalize_orla_type(data.orla_c1)
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
@@ -140,7 +169,8 @@ class DefPecaService:
             data.chave_valueset_acabamento_inf
         )
         # A service piece has no raw material: drop any material ValueSet key.
-        if data.sem_material:
+        sem_material = data.sem_material or natureza in (SERVICO, CONJUNTO)
+        if sem_material:
             chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
 
@@ -151,6 +181,9 @@ class DefPecaService:
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
+            natureza=natureza,
+            orientacao=orientacao,
+            funcao=self._normalize_optional_text(data.funcao),
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -159,7 +192,7 @@ class DefPecaService:
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
             chave_valueset_acabamento_inf=chave_valueset_acabamento_inf,
-            sem_material=data.sem_material,
+            sem_material=sem_material,
             ativo=data.ativo,
         )
         self.session.commit()
@@ -182,6 +215,9 @@ class DefPecaService:
                 descricao=original.descricao,
                 grupo=original.grupo,
                 tipo_peca=original.tipo_peca,
+                natureza=original.natureza,
+                orientacao=original.orientacao,
+                funcao=original.funcao,
                 orla_c1=original.orla_c1,
                 orla_c2=original.orla_c2,
                 orla_l1=original.orla_l1,
@@ -248,6 +284,9 @@ class DefPecaService:
                     quantidade=componente.quantidade,
                     regra_quantidade=componente.regra_quantidade,
                     def_regra_quantidade_id=componente.def_regra_quantidade_id,
+                    zona_aplicacao=componente.zona_aplicacao,
+                    dimensao_referencia=componente.dimensao_referencia,
+                    numero_topos=componente.numero_topos,
                     obrigatorio=componente.obrigatorio,
                     ativo=componente.ativo,
                     observacoes=componente.observacoes,
@@ -286,3 +325,24 @@ class DefPecaService:
             return None
 
         return normalize_valueset_key(normalized)
+
+    def _normalize_optional_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+    def _normalize_natureza(
+        self,
+        value: str | None,
+        *,
+        tipo_peca: str,
+        sem_material: bool,
+    ) -> str:
+        """Normalize the new field while preserving calls from the legacy API."""
+        if value is not None:
+            return normalize_peca_natureza(value)
+        if tipo_peca == COMPOSTA:
+            return CONJUNTO
+        if sem_material:
+            return SERVICO
+        return MATERIAL

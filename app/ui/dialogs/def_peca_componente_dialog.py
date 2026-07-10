@@ -28,6 +28,12 @@ from app.domain.componente_types import (
     get_componente_type_options,
     normalize_componente_type,
 )
+from app.domain.associado_types import (
+    COMP,
+    GERAL,
+    get_dimensao_referencia_options,
+    get_zona_aplicacao_options,
+)
 from app.domain.regra_quantidade_types import (
     FIXA,
     get_regra_quantidade_options,
@@ -39,7 +45,8 @@ from app.repositories.def_peca_repository import DefPecaResumo
 
 TOOLTIP_REGRA_QUANTIDADE = (
     "Regra (expressão) que calcula a quantidade deste componente a partir das "
-    "dimensões da peça principal (COMP/LARG/ESP/QT_PAI) no custeio.\n"
+    "dimensões da peça principal "
+    "(COMP/LARG/ESP/QT_PAI/MEDIDA_TOPO/NUM_TOPOS) no custeio.\n"
     "Com uma regra selecionada, a quantidade é calculada automaticamente; "
     "«— sem regra —» mantém a quantidade fixa acima como valor manual."
 )
@@ -57,6 +64,9 @@ class DefPecaComponenteDialogData:
     quantidade: Decimal
     regra_quantidade: str
     def_regra_quantidade_id: int | None
+    zona_aplicacao: str
+    dimensao_referencia: str
+    numero_topos: int
     obrigatorio: bool
     ativo: bool
 
@@ -80,7 +90,7 @@ class DefPecaComponenteDialog(QDialog):
         self._pecas_disponiveis = list(pecas_disponiveis)
         self._regras_disponiveis = list(regras_disponiveis or [])
 
-        self.setWindowTitle("Editar Componente" if self._is_edit else "Novo Componente")
+        self.setWindowTitle("Editar Associado" if self._is_edit else "Novo Associado")
         self.setModal(True)
         self.setMinimumWidth(460)
 
@@ -126,6 +136,18 @@ class DefPecaComponenteDialog(QDialog):
                 f"{regra.codigo} — {regra.nome}", regra.id
             )
 
+        self.zona_aplicacao_input = QComboBox()
+        for code, label in get_zona_aplicacao_options():
+            self.zona_aplicacao_input.addItem(label, code)
+        self.dimensao_referencia_input = QComboBox()
+        for code, label in get_dimensao_referencia_options():
+            self.dimensao_referencia_input.addItem(label, code)
+        self.numero_topos_input = QSpinBox()
+        self.numero_topos_input.setRange(0, 2)
+        self.numero_topos_input.setToolTip(
+            "0 = não aplicável; 1 = um topo; 2 = dois topos. A regra calcula por topo."
+        )
+
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
         self.ativo_input = QCheckBox()
@@ -157,6 +179,9 @@ class DefPecaComponenteDialog(QDialog):
         regra_label = QLabel("Regra de quantidade (opcional)")
         regra_label.setToolTip(TOOLTIP_REGRA_QUANTIDADE)
         form.addRow(regra_label, self.def_regra_quantidade_input)
+        form.addRow("Zona de aplicação", self.zona_aplicacao_input)
+        form.addRow("Dimensão de referência", self.dimensao_referencia_input)
+        form.addRow("Número de topos", self.numero_topos_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
 
@@ -206,6 +231,11 @@ class DefPecaComponenteDialog(QDialog):
             self._select_combo_data(
                 self.def_regra_quantidade_input, componente.def_regra_quantidade_id
             )
+        self._select_combo_data(self.zona_aplicacao_input, componente.zona_aplicacao)
+        self._select_combo_data(
+            self.dimensao_referencia_input, componente.dimensao_referencia
+        )
+        self.numero_topos_input.setValue(componente.numero_topos)
         self.obrigatorio_input.setChecked(componente.obrigatorio)
         self.ativo_input.setChecked(componente.ativo)
 
@@ -272,6 +302,9 @@ class DefPecaComponenteDialog(QDialog):
             quantidade=Decimal(str(self.quantidade_input.value())),
             regra_quantidade=self.regra_quantidade_input.currentData() or FIXA,
             def_regra_quantidade_id=self.def_regra_quantidade_input.currentData(),
+            zona_aplicacao=self.zona_aplicacao_input.currentData() or GERAL,
+            dimensao_referencia=self.dimensao_referencia_input.currentData() or COMP,
+            numero_topos=self.numero_topos_input.value(),
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )

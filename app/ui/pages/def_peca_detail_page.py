@@ -24,7 +24,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.componente_types import get_componente_type_label
 from app.domain.orla_types import format_orla_code, get_orla_type_label
-from app.domain.peca_types import COMPOSTA, get_peca_type_label, normalize_peca_type
+from app.domain.peca_natureza_types import (
+    get_peca_natureza_label,
+    get_peca_orientacao_label,
+)
+from app.domain.associado_types import DIMENSAO_REFERENCIA_LABELS, ZONA_APLICACAO_LABELS
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
 from app.domain.valueset_types import VALUESET_KEY_LABELS
@@ -57,7 +61,7 @@ from app.utils.formatters import format_quantity
 
 
 class DefPecaDetailPage(QWidget):
-    """Detail page for one reusable piece definition and its components."""
+    """Detail page for one reusable piece definition and its associates."""
 
     COMPONENTES_HEADERS = [
         "Ordem",
@@ -67,6 +71,9 @@ class DefPecaDetailPage(QWidget):
         "Quantidade",
         "Regra quantidade",
         "Regra (auto)",
+        "Zona",
+        "Dimensão",
+        "Topos",
         "Obrigat\u00f3rio",
         "Ativo",
     ]
@@ -99,7 +106,6 @@ class DefPecaDetailPage(QWidget):
         self.componentes = componentes or []
         self.component_labels = component_labels or {}
         self.on_back = on_back
-        self._is_composta = normalize_peca_type(peca.tipo_peca) == COMPOSTA
         self._componentes_by_row: dict[int, DefPecaComponenteResumo] = {}
         self.operacoes_peca: list[DefPecaOperacaoResumo] = []
         self._operacoes_by_row: dict[int, DefPecaOperacaoResumo] = {}
@@ -118,7 +124,7 @@ class DefPecaDetailPage(QWidget):
 
         tabs = QTabWidget()
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
-        tabs.addTab(self._create_componentes_tab(), "Componentes")
+        tabs.addTab(self._create_componentes_tab(), "Associados")
         tabs.addTab(self._create_placeholder_tab("Regras da pe\u00e7a ser\u00e3o configuradas numa fase posterior."), "Regras")
         tabs.addTab(self._create_operacoes_tab(), "Opera\u00e7\u00f5es")
 
@@ -148,7 +154,9 @@ class DefPecaDetailPage(QWidget):
             ("C\u00f3digo", self.peca.codigo),
             ("Nome", self.peca.nome),
             ("Descri\u00e7\u00e3o", self.peca.descricao or ""),
-            ("Tipo", get_peca_type_label(self.peca.tipo_peca)),
+            ("Natureza", get_peca_natureza_label(self.peca.natureza)),
+            ("Orientação", get_peca_orientacao_label(self.peca.orientacao)),
+            ("Função", self.peca.funcao or ""),
             ("Grupo", self.peca.grupo or ""),
             (
                 "C\u00f3digo de orlas",
@@ -196,21 +204,14 @@ class DefPecaDetailPage(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        self.novo_componente_button = QPushButton("Novo Componente")
+        self.novo_componente_button = QPushButton("Novo Associado")
         self.novo_componente_button.clicked.connect(self.abrir_novo_componente)
-        self.editar_componente_button = QPushButton("Editar Componente")
+        self.editar_componente_button = QPushButton("Editar Associado")
         self.editar_componente_button.clicked.connect(self.abrir_editar_componente)
-        self.remover_componente_button = QPushButton("Remover Componente")
+        self.remover_componente_button = QPushButton("Remover Associado")
         self.remover_componente_button.clicked.connect(self.remover_componente)
         self.atualizar_componentes_button = QPushButton("Atualizar")
         self.atualizar_componentes_button.clicked.connect(self.recarregar_componentes)
-
-        for button in (
-            self.novo_componente_button,
-            self.editar_componente_button,
-            self.remover_componente_button,
-        ):
-            button.setEnabled(self._is_composta)
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.novo_componente_button)
@@ -257,6 +258,13 @@ class DefPecaDetailPage(QWidget):
                 format_quantity(componente.quantidade),
                 get_regra_quantidade_label(componente.regra_quantidade),
                 componente.def_regra_quantidade_codigo or "—",
+                ZONA_APLICACAO_LABELS.get(
+                    componente.zona_aplicacao, componente.zona_aplicacao
+                ),
+                DIMENSAO_REFERENCIA_LABELS.get(
+                    componente.dimensao_referencia, componente.dimensao_referencia
+                ),
+                str(componente.numero_topos),
                 self._format_bool(componente.obrigatorio),
                 self._format_bool(componente.ativo),
             ]
@@ -271,10 +279,8 @@ class DefPecaDetailPage(QWidget):
 
     def _componentes_status_text(self) -> str:
         """Return the status line for the components table."""
-        if not self._is_composta:
-            return "Esta pe\u00e7a \u00e9 simples e n\u00e3o tem componentes."
         if not self.componentes:
-            return "Sem componentes. Use 'Novo Componente' para adicionar."
+            return "Sem associados. Use 'Novo Associado' para adicionar."
         return ""
 
     def recarregar_componentes(self) -> None:
@@ -302,17 +308,11 @@ class DefPecaDetailPage(QWidget):
 
     def _handle_componente_double_click(self, row: int, _column: int) -> None:
         """Edit a component when the user double-clicks its row."""
-        if not self._is_composta:
-            return
-
         self.componentes_table.selectRow(row)
         self.abrir_editar_componente()
 
     def abrir_novo_componente(self) -> None:
         """Open the dialog to create a new component."""
-        if not self._is_composta:
-            return
-
         pecas_disponiveis = self._carregar_pecas_disponiveis()
         if pecas_disponiveis is None:
             return
@@ -334,6 +334,9 @@ class DefPecaDetailPage(QWidget):
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
                             def_regra_quantidade_id=form_data.def_regra_quantidade_id,
+                            zona_aplicacao=form_data.zona_aplicacao,
+                            dimensao_referencia=form_data.dimensao_referencia,
+                            numero_topos=form_data.numero_topos,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         )
@@ -353,16 +356,13 @@ class DefPecaDetailPage(QWidget):
         )
         if dialog.exec() and saved:
             self.recarregar_componentes()
-            self.componentes_status_label.setText("Componente criado.")
+            self.componentes_status_label.setText("Associado criado.")
 
     def abrir_editar_componente(self) -> None:
         """Open the dialog to edit the selected component."""
-        if not self._is_composta:
-            return
-
         componente = self._get_selected_componente()
         if componente is None:
-            self.componentes_status_label.setText("Selecione um componente para editar.")
+            self.componentes_status_label.setText("Selecione um associado para editar.")
             return
 
         pecas_disponiveis = self._carregar_pecas_disponiveis(componente)
@@ -388,6 +388,9 @@ class DefPecaDetailPage(QWidget):
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
                             def_regra_quantidade_id=form_data.def_regra_quantidade_id,
+                            zona_aplicacao=form_data.zona_aplicacao,
+                            dimensao_referencia=form_data.dimensao_referencia,
+                            numero_topos=form_data.numero_topos,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         ),
@@ -408,22 +411,19 @@ class DefPecaDetailPage(QWidget):
         )
         if dialog.exec() and saved:
             self.recarregar_componentes()
-            self.componentes_status_label.setText("Componente atualizado.")
+            self.componentes_status_label.setText("Associado atualizado.")
 
     def remover_componente(self) -> None:
         """Deactivate the selected component after confirmation."""
-        if not self._is_composta:
-            return
-
         componente = self._get_selected_componente()
         if componente is None:
-            self.componentes_status_label.setText("Selecione um componente para remover.")
+            self.componentes_status_label.setText("Selecione um associado para remover.")
             return
 
         confirm = QMessageBox.question(
             self,
-            "Remover componente",
-            "Remover (desativar) o componente selecionado?",
+            "Remover associado",
+            "Remover (desativar) o associado selecionado?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -437,7 +437,7 @@ class DefPecaDetailPage(QWidget):
             return
 
         self.recarregar_componentes()
-        self.componentes_status_label.setText("Componente removido.")
+        self.componentes_status_label.setText("Associado removido.")
 
     def _carregar_pecas_disponiveis(
         self, componente: DefPecaComponenteResumo | None = None

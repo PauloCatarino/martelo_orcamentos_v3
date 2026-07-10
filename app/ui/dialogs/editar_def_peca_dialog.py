@@ -24,6 +24,16 @@ from app.domain.orla_types import (
     normalize_orla_type,
 )
 from app.domain.peca_types import SIMPLES, get_peca_type_options, normalize_peca_type
+from app.domain.peca_natureza_types import (
+    CONJUNTO,
+    MATERIAL,
+    NEUTRA,
+    SERVICO,
+    get_peca_natureza_options,
+    get_peca_orientacao_options,
+    normalize_peca_natureza,
+    normalize_peca_orientacao,
+)
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
@@ -39,6 +49,9 @@ class EditarDefPecaDialogData:
     nome: str
     descricao: str | None
     tipo_peca: str
+    natureza: str
+    orientacao: str
+    funcao: str | None
     grupo: str | None
     orla_c1: int
     orla_c2: int
@@ -80,6 +93,13 @@ class EditarDefPecaDialog(QDialog):
         self.tipo_peca_input = QComboBox()
         for code, label in get_peca_type_options():
             self.tipo_peca_input.addItem(label, code)
+        self.natureza_input = QComboBox()
+        for code, label in get_peca_natureza_options():
+            self.natureza_input.addItem(label, code)
+        self.orientacao_input = QComboBox()
+        for code, label in get_peca_orientacao_options():
+            self.orientacao_input.addItem(label, code)
+        self.funcao_input = QLineEdit()
         self.grupo_input = QLineEdit()
         self.ativo_input = QCheckBox()
         self.chave_valueset_material_input = QComboBox()
@@ -89,6 +109,7 @@ class EditarDefPecaDialog(QDialog):
             "associadas (corte, CNC, manual, montagem). Ao marcar, a chave de "
             "material ValueSet é desativada e ignorada."
         )
+        self.sem_material_input.setEnabled(False)
         self.permite_acabamento_input = QCheckBox()
         self.chave_valueset_acabamento_sup_input = QComboBox()
         self.chave_valueset_acabamento_inf_input = QComboBox()
@@ -109,6 +130,7 @@ class EditarDefPecaDialog(QDialog):
         )
         self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
         self.sem_material_input.toggled.connect(self._update_sem_material_enabled)
+        self.natureza_input.currentIndexChanged.connect(self._update_natureza)
 
         self.orla_c1_input = QComboBox()
         self.orla_c2_input = QComboBox()
@@ -139,7 +161,9 @@ class EditarDefPecaDialog(QDialog):
         form_layout.addRow("Código", self.codigo_input)
         form_layout.addRow("Nome", self.nome_input)
         form_layout.addRow("Descrição", self.descricao_input)
-        form_layout.addRow("Tipo de peça", self.tipo_peca_input)
+        form_layout.addRow("Natureza", self.natureza_input)
+        form_layout.addRow("Orientação", self.orientacao_input)
+        form_layout.addRow("Função", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
@@ -199,6 +223,13 @@ class EditarDefPecaDialog(QDialog):
         self.nome_input.setText(self.peca.nome)
         self.descricao_input.setPlainText(self.peca.descricao or "")
         self._select_combo_data(self.tipo_peca_input, normalize_peca_type(self.peca.tipo_peca))
+        self._select_combo_data(
+            self.natureza_input, normalize_peca_natureza(self.peca.natureza)
+        )
+        self._select_combo_data(
+            self.orientacao_input, normalize_peca_orientacao(self.peca.orientacao)
+        )
+        self.funcao_input.setText(self.peca.funcao or "")
         self.grupo_input.setText(self.peca.grupo or "")
         self.ativo_input.setChecked(self.peca.ativo)
         self._select_combo_data(self.orla_c1_input, normalize_orla_type(self.peca.orla_c1))
@@ -207,6 +238,7 @@ class EditarDefPecaDialog(QDialog):
         self._select_combo_data(self.orla_l2_input, normalize_orla_type(self.peca.orla_l2))
         self.permite_acabamento_input.setChecked(self.peca.permite_acabamento)
         self.sem_material_input.setChecked(getattr(self.peca, "sem_material", False))
+        self._update_natureza()
         self._update_acabamento_enabled()
         self._update_sem_material_enabled()
         self._update_orla_preview()
@@ -218,11 +250,15 @@ class EditarDefPecaDialog(QDialog):
 
     def get_data(self) -> EditarDefPecaDialogData:
         """Return normalized dialog data."""
+        natureza = self.natureza_input.currentData() or MATERIAL
         return EditarDefPecaDialogData(
             codigo=self.codigo_input.text().strip(),
             nome=self.nome_input.text().strip(),
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
-            tipo_peca=self.tipo_peca_input.currentData() or SIMPLES,
+            tipo_peca="COMPOSTA" if natureza == CONJUNTO else SIMPLES,
+            natureza=natureza,
+            orientacao=self.orientacao_input.currentData() or NEUTRA,
+            funcao=self._empty_to_none(self.funcao_input.text()),
             grupo=self._empty_to_none(self.grupo_input.text()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
@@ -240,7 +276,7 @@ class EditarDefPecaDialog(QDialog):
             chave_valueset_acabamento_inf=obter_valor_chave_combo(
                 self.chave_valueset_acabamento_inf_input
             ),
-            sem_material=self.sem_material_input.isChecked(),
+            sem_material=natureza in (SERVICO, CONJUNTO),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -304,3 +340,9 @@ class EditarDefPecaDialog(QDialog):
         """Normalize empty text input."""
         normalized = value.strip()
         return normalized or None
+
+    def _update_natureza(self) -> None:
+        """Derive legacy material behavior from the unified nature field."""
+        self.sem_material_input.setChecked(
+            self.natureza_input.currentData() in (SERVICO, CONJUNTO)
+        )

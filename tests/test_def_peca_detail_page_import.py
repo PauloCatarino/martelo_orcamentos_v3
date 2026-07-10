@@ -32,6 +32,9 @@ def test_def_peca_detail_page_component_headers() -> None:
         "Quantidade",
         "Regra quantidade",
         "Regra (auto)",
+        "Zona",
+        "Dimensão",
+        "Topos",
         "Obrigat\u00f3rio",
         "Ativo",
     ]
@@ -113,13 +116,13 @@ def test_def_peca_detail_page_components_use_service() -> None:
     assert "QMessageBox" in remover
 
 
-def test_def_peca_detail_page_disables_actions_for_simples() -> None:
+def test_def_peca_detail_page_allows_associates_for_any_piece() -> None:
     from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 
     source = inspect.getsource(DefPecaDetailPage._create_componentes_tab)
 
-    assert "_is_composta" in source
-    assert "setEnabled" in source
+    assert "_is_composta" not in source
+    assert "setEnabled" not in source
 
 
 def test_def_peca_detail_page_shows_regra_label() -> None:

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.domain.componente_types import PECA
+from app.domain.associado_types import COMP, GERAL
 
 if TYPE_CHECKING:
     from app.models.def_peca import DefPeca
@@ -68,6 +69,15 @@ class DefPecaComponente(Base):
         ForeignKey("def_regras_quantidade.id"),
         nullable=True,
         index=True,
+    )
+    zona_aplicacao: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=GERAL, server_default=GERAL, index=True
+    )
+    dimensao_referencia: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=COMP, server_default=COMP
+    )
+    numero_topos: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
     obrigatorio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)

@@ -20,6 +20,14 @@ from PySide6.QtWidgets import (
 
 from app.domain.orla_types import format_orla_code, get_orla_type_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options
+from app.domain.peca_natureza_types import (
+    CONJUNTO,
+    MATERIAL,
+    NEUTRA,
+    SERVICO,
+    get_peca_natureza_options,
+    get_peca_orientacao_options,
+)
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     obter_valor_chave_combo,
@@ -34,6 +42,9 @@ class NovaDefPecaDialogData:
     nome: str
     descricao: str | None
     tipo_peca: str
+    natureza: str
+    orientacao: str
+    funcao: str | None
     grupo: str | None
     orla_c1: int
     orla_c2: int
@@ -70,6 +81,13 @@ class NovaDefPecaDialog(QDialog):
         self.tipo_peca_input = QComboBox()
         for code, label in get_peca_type_options():
             self.tipo_peca_input.addItem(label, code)
+        self.natureza_input = QComboBox()
+        for code, label in get_peca_natureza_options():
+            self.natureza_input.addItem(label, code)
+        self.orientacao_input = QComboBox()
+        for code, label in get_peca_orientacao_options():
+            self.orientacao_input.addItem(label, code)
+        self.funcao_input = QLineEdit()
         self.grupo_input = QLineEdit()
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
@@ -80,12 +98,15 @@ class NovaDefPecaDialog(QDialog):
             "associadas (corte, CNC, manual, montagem). Ao marcar, a chave de "
             "material ValueSet é desativada e ignorada."
         )
+        self.sem_material_input.setEnabled(False)
         self.permite_acabamento_input = QCheckBox()
         self.chave_valueset_acabamento_sup_input = QComboBox()
         self.chave_valueset_acabamento_inf_input = QComboBox()
 
         carregar_chaves_valueset_combo(self.chave_valueset_material_input)
         self.sem_material_input.toggled.connect(self._update_sem_material_enabled)
+        self.natureza_input.currentIndexChanged.connect(self._update_natureza)
+        self._update_natureza()
         self._update_sem_material_enabled()
         carregar_chaves_valueset_combo(
             self.chave_valueset_acabamento_sup_input, tipo="ACABAMENTO"
@@ -126,7 +147,9 @@ class NovaDefPecaDialog(QDialog):
         form_layout.addRow("C\u00f3digo", self.codigo_input)
         form_layout.addRow("Nome", self.nome_input)
         form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
-        form_layout.addRow("Tipo de pe\u00e7a", self.tipo_peca_input)
+        form_layout.addRow("Natureza", self.natureza_input)
+        form_layout.addRow("Orienta\u00e7\u00e3o", self.orientacao_input)
+        form_layout.addRow("Fun\u00e7\u00e3o", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
@@ -172,11 +195,15 @@ class NovaDefPecaDialog(QDialog):
 
     def get_data(self) -> NovaDefPecaDialogData:
         """Return normalized dialog data."""
+        natureza = self.natureza_input.currentData() or MATERIAL
         return NovaDefPecaDialogData(
             codigo=self.codigo_input.text().strip(),
             nome=self.nome_input.text().strip(),
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
-            tipo_peca=self.tipo_peca_input.currentData() or SIMPLES,
+            tipo_peca="COMPOSTA" if natureza == CONJUNTO else SIMPLES,
+            natureza=natureza,
+            orientacao=self.orientacao_input.currentData() or NEUTRA,
+            funcao=self._empty_to_none(self.funcao_input.text()),
             grupo=self._empty_to_none(self.grupo_input.text()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
@@ -194,7 +221,7 @@ class NovaDefPecaDialog(QDialog):
             chave_valueset_acabamento_inf=obter_valor_chave_combo(
                 self.chave_valueset_acabamento_inf_input
             ),
-            sem_material=self.sem_material_input.isChecked(),
+            sem_material=natureza in (SERVICO, CONJUNTO),
             ativo=self.ativo_input.isChecked(),
         )
 
@@ -247,3 +274,9 @@ class NovaDefPecaDialog(QDialog):
         """Normalize empty text input."""
         normalized = value.strip()
         return normalized or None
+
+    def _update_natureza(self) -> None:
+        """Derive legacy material behavior from the unified nature field."""
+        self.sem_material_input.setChecked(
+            self.natureza_input.currentData() in (SERVICO, CONJUNTO)
+        )

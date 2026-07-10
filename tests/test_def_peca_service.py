@@ -199,8 +199,49 @@ def test_def_peca_service_normaliza_tipo_ao_editar(monkeypatch) -> None:
     assert _FakeRepository.updated_payload is not None
     assert _FakeRepository.updated_payload["id"] == 8
     assert _FakeRepository.updated_payload["tipo_peca"] == "COMPOSTA"
+    assert _FakeRepository.updated_payload["natureza"] == "CONJUNTO"
     assert result.tipo_peca == "COMPOSTA"
     assert session.committed is True
+
+
+def test_def_peca_service_guarda_classificacao_unificada(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service_module.DefPecaService(session=session).criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="PRAT",
+            nome="Prateleira",
+            natureza=" material ",
+            orientacao=" horizontal ",
+            funcao="  Prateleira móvel  ",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["natureza"] == "MATERIAL"
+    assert _FakeRepository.created_payload["orientacao"] == "HORIZONTAL"
+    assert _FakeRepository.created_payload["funcao"] == "Prateleira móvel"
+
+
+def test_conjunto_virtual_fica_sem_material(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service_module.DefPecaService(session=session).criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="CJ",
+            nome="Conjunto",
+            natureza="CONJUNTO",
+            chave_valueset_material="PLACA",
+        )
+    )
+
+    assert _FakeRepository.created_payload is not None
+    assert _FakeRepository.created_payload["sem_material"] is True
+    assert _FakeRepository.created_payload["chave_valueset_material"] is None
 
 
 def test_def_peca_service_normaliza_orlas_ao_criar(monkeypatch) -> None:

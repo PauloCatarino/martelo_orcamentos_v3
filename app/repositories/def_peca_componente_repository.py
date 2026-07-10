@@ -30,6 +30,9 @@ class DefPecaComponenteResumo:
     observacoes: str | None
     def_regra_quantidade_id: int | None = None
     def_regra_quantidade_codigo: str | None = None
+    zona_aplicacao: str = "GERAL"
+    dimensao_referencia: str = "COMP"
+    numero_topos: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -86,6 +89,9 @@ class DefPecaComponenteRepository:
         ativo: bool,
         observacoes: str | None,
         def_regra_quantidade_id: int | None = None,
+        zona_aplicacao: str = "GERAL",
+        dimensao_referencia: str = "COMP",
+        numero_topos: int = 0,
     ) -> DefPecaComponenteResumo:
         """Create one composite piece component."""
         componente = DefPecaComponente(
@@ -98,6 +104,9 @@ class DefPecaComponenteRepository:
             quantidade=quantidade,
             regra_quantidade=regra_quantidade,
             def_regra_quantidade_id=def_regra_quantidade_id,
+            zona_aplicacao=zona_aplicacao,
+            dimensao_referencia=dimensao_referencia,
+            numero_topos=numero_topos,
             obrigatorio=obrigatorio,
             ativo=ativo,
             observacoes=observacoes,
@@ -123,6 +132,9 @@ class DefPecaComponenteRepository:
         ativo: bool,
         observacoes: str | None,
         def_regra_quantidade_id: int | None = None,
+        zona_aplicacao: str = "GERAL",
+        dimensao_referencia: str = "COMP",
+        numero_topos: int = 0,
     ) -> DefPecaComponenteResumo:
         """Update one composite piece component."""
         componente = self.session.get(DefPecaComponente, id)
@@ -138,6 +150,9 @@ class DefPecaComponenteRepository:
         componente.quantidade = quantidade
         componente.regra_quantidade = regra_quantidade
         componente.def_regra_quantidade_id = def_regra_quantidade_id
+        componente.zona_aplicacao = zona_aplicacao
+        componente.dimensao_referencia = dimensao_referencia
+        componente.numero_topos = numero_topos
         componente.obrigatorio = obrigatorio
         componente.ativo = ativo
         componente.observacoes = observacoes
@@ -177,6 +192,9 @@ class DefPecaComponenteRepository:
                 if componente.def_regra_quantidade is not None
                 else None
             ),
+            zona_aplicacao=componente.zona_aplicacao,
+            dimensao_referencia=componente.dimensao_referencia,
+            numero_topos=componente.numero_topos,
             created_at=componente.created_at,
             updated_at=componente.updated_at,
         )

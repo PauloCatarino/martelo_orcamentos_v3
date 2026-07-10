@@ -27,7 +27,8 @@ def test_def_pecas_page_table_headers() -> None:
     assert DefPecasPage.TABLE_HEADERS == [
         "C\u00f3digo",
         "Nome",
-        "Tipo",
+        "Natureza",
+        "Função",
         "Grupo",
         "Orlas",
         "Ativo",
@@ -153,7 +154,7 @@ def test_def_pecas_page_supports_tree_view() -> None:
     assert "QTreeWidgetItem" in preencher_arvore
     assert "SEM GRUPO" in preencher_arvore
     assert "format_orla_code" in preencher_arvore
-    assert "COMPOSTA" in preencher_arvore
+    assert "COMPOSTA" not in preencher_arvore
     assert "Qt.ItemDataRole.UserRole" in preencher_arvore
     assert "expandAll" in preencher_arvore
     assert "_pecas_by_id" in get_selected

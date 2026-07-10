@@ -156,6 +156,26 @@ def test_elemento_nao_permitido_devolve_motivo() -> None:
 
 
 def test_variaveis_e_funcoes_publicadas() -> None:
-    assert VARIAVEIS_REGRA == ("COMP", "LARG", "ESP", "QT_PAI")
+    assert VARIAVEIS_REGRA == (
+        "COMP",
+        "LARG",
+        "ESP",
+        "QT_PAI",
+        "MEDIDA_TOPO",
+        "NUM_TOPOS",
+    )
     assert set(FUNCOES_REGRA) == {"CEIL", "FLOOR", "MIN", "MAX"}
     assert CONTEXTO_EXEMPLO["COMP"] == Decimal("2000")
+
+
+def test_regra_uniao_topos_128_respeita_tabela_confirmada() -> None:
+    expressao = "MAX(2, CEIL(MEDIDA_TOPO / 128))"
+    casos = ((80, 2), (100, 2), (128, 2), (256, 2), (257, 3), (500, 4), (600, 5))
+
+    for medida_topo, esperado in casos:
+        quantidade, motivo = avaliar_regra_quantidade(
+            expressao,
+            {"MEDIDA_TOPO": medida_topo, "NUM_TOPOS": 1},
+        )
+        assert motivo is None
+        assert quantidade == esperado

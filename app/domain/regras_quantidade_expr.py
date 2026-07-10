@@ -10,6 +10,8 @@ disallowed construct) it returns ``(None, motivo)`` so the UI can show the error
 Context variables (case-insensitive, exposed uppercase):
   COMP, LARG, ESP  -> the main piece's real dimensions (mm)
   QT_PAI           -> the main piece's quantity (per module)
+  MEDIDA_TOPO      -> selected top measurement (mm)
+  NUM_TOPOS        -> number of tops where the association is applied
 
 Supported on top of +, -, *, /, parentheses:
   - integer division //                          (FloorDiv)
@@ -28,7 +30,7 @@ from decimal import Decimal
 from app.domain.medidas import normalizar_numero
 
 # Context variables and functions available in a rule expression (for the UI).
-VARIAVEIS_REGRA = ("COMP", "LARG", "ESP", "QT_PAI")
+VARIAVEIS_REGRA = ("COMP", "LARG", "ESP", "QT_PAI", "MEDIDA_TOPO", "NUM_TOPOS")
 FUNCOES_REGRA = ("CEIL", "FLOOR", "MIN", "MAX")
 
 # Sample context used to validate an expression before saving it.
@@ -37,6 +39,8 @@ CONTEXTO_EXEMPLO: dict[str, Decimal] = {
     "LARG": Decimal("600"),
     "ESP": Decimal("19"),
     "QT_PAI": Decimal("1"),
+    "MEDIDA_TOPO": Decimal("600"),
+    "NUM_TOPOS": Decimal("1"),
 }
 
 # Whitelisted AST node types (defence-in-depth on top of the recursive walk).

@@ -41,6 +41,16 @@ class RegraSeed:
 # Default (example) quantity rules. All seeded active.
 DEFAULT_REGRAS_QUANTIDADE: tuple[RegraSeed, ...] = (
     RegraSeed(
+        codigo="UNIAO_TOPOS_128",
+        nome="Uniões por topo (intervalos de 128 mm)",
+        expressao="MAX(2, CEIL(MEDIDA_TOPO / 128))",
+        descricao=(
+            "Quantidade por topo: mínimo 2; acrescenta uma união quando a medida "
+            "ultrapassa cada intervalo de 128 mm. O número de topos é aplicado "
+            "separadamente pelo associado."
+        ),
+    ),
+    RegraSeed(
         codigo="DOBRADICA",
         nome="Dobradiças",
         expressao=(

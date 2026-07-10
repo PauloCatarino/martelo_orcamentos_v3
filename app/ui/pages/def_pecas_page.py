@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.orla_types import format_orla_code
-from app.domain.peca_types import COMPOSTA, get_peca_type_label
+from app.domain.peca_natureza_types import get_peca_natureza_label
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_componente_service import DefPecaComponenteService
 from app.services.def_peca_service import (
@@ -44,7 +44,8 @@ class DefPecasPage(QWidget):
     TABLE_HEADERS = [
         "C\u00f3digo",
         "Nome",
-        "Tipo",
+        "Natureza",
+        "Função",
         "Grupo",
         "Orlas",
         "Ativo",
@@ -226,6 +227,9 @@ class DefPecasPage(QWidget):
                             descricao=form_data.descricao,
                             grupo=form_data.grupo,
                             tipo_peca=form_data.tipo_peca,
+                            natureza=form_data.natureza,
+                            orientacao=form_data.orientacao,
+                            funcao=form_data.funcao,
                             orla_c1=form_data.orla_c1,
                             orla_c2=form_data.orla_c2,
                             orla_l1=form_data.orla_l1,
@@ -371,7 +375,8 @@ class DefPecasPage(QWidget):
             values = [
                 peca.codigo,
                 peca.nome,
-                get_peca_type_label(peca.tipo_peca),
+                get_peca_natureza_label(peca.natureza),
+                peca.funcao or "",
                 peca.grupo or "",
                 format_orla_code(peca.orla_c1, peca.orla_c2, peca.orla_l1, peca.orla_l2),
                 "Sim" if peca.ativo else "N\u00e3o",
@@ -404,9 +409,6 @@ class DefPecasPage(QWidget):
                 peca.orla_l2,
             )
             texto = f"{peca.codigo} - {peca.nome} [{codigo_orlas}]"
-            if peca.tipo_peca == COMPOSTA:
-                texto += " (composta)"
-
             leaf = QTreeWidgetItem([texto])
             leaf.setData(0, Qt.ItemDataRole.UserRole, peca.id)
             parent.addChild(leaf)
@@ -488,6 +490,9 @@ class DefPecasPage(QWidget):
             descricao=form_data.descricao,
             grupo=form_data.grupo,
             tipo_peca=form_data.tipo_peca,
+            natureza=form_data.natureza,
+            orientacao=form_data.orientacao,
+            funcao=form_data.funcao,
             orla_c1=form_data.orla_c1,
             orla_c2=form_data.orla_c2,
             orla_l1=form_data.orla_l1,

@@ -8,6 +8,10 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.componente_types import PECA, normalize_componente_type
+from app.domain.associado_types import (
+    normalize_dimensao_referencia,
+    normalize_zona_aplicacao,
+)
 from app.domain.regra_quantidade_types import normalize_regra_quantidade
 from app.repositories.def_peca_componente_repository import (
     DefPecaComponenteRepository,
@@ -27,6 +31,9 @@ class CriarDefPecaComponenteData:
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
     def_regra_quantidade_id: int | None = None
+    zona_aplicacao: str | None = None
+    dimensao_referencia: str | None = None
+    numero_topos: int = 0
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -45,6 +52,9 @@ class EditarDefPecaComponenteData:
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
     def_regra_quantidade_id: int | None = None
+    zona_aplicacao: str | None = None
+    dimensao_referencia: str | None = None
+    numero_topos: int = 0
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -66,10 +76,13 @@ class DefPecaComponenteService:
         def_peca_pai_id = self._validate_parent_id(data.def_peca_pai_id)
         tipo_componente = normalize_componente_type(data.tipo_componente)
         regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
+        zona_aplicacao = normalize_zona_aplicacao(data.zona_aplicacao)
+        dimensao_referencia = normalize_dimensao_referencia(data.dimensao_referencia)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
             quantidade=data.quantidade,
+            numero_topos=data.numero_topos,
         )
 
         ordem = self.repository.get_next_ordem(def_peca_pai_id)
@@ -83,6 +96,9 @@ class DefPecaComponenteService:
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
             def_regra_quantidade_id=data.def_regra_quantidade_id,
+            zona_aplicacao=zona_aplicacao,
+            dimensao_referencia=dimensao_referencia,
+            numero_topos=data.numero_topos,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -100,10 +116,13 @@ class DefPecaComponenteService:
         def_peca_pai_id = self._validate_parent_id(data.def_peca_pai_id)
         tipo_componente = normalize_componente_type(data.tipo_componente)
         regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
+        zona_aplicacao = normalize_zona_aplicacao(data.zona_aplicacao)
+        dimensao_referencia = normalize_dimensao_referencia(data.dimensao_referencia)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
             quantidade=data.quantidade,
+            numero_topos=data.numero_topos,
         )
 
         result = self.repository.update_componente(
@@ -117,6 +136,9 @@ class DefPecaComponenteService:
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
             def_regra_quantidade_id=data.def_regra_quantidade_id,
+            zona_aplicacao=zona_aplicacao,
+            dimensao_referencia=dimensao_referencia,
+            numero_topos=data.numero_topos,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -145,9 +167,13 @@ class DefPecaComponenteService:
         tipo_componente: str,
         def_peca_componente_id: int | None,
         quantidade: Decimal,
+        numero_topos: int = 0,
     ) -> None:
         if quantidade <= 0:
             raise ValueError("quantidade must be greater than 0")
+
+        if numero_topos not in (0, 1, 2):
+            raise ValueError("numero_topos must be 0, 1 or 2")
 
         if tipo_componente == PECA and not def_peca_componente_id:
             raise ValueError("def_peca_componente_id is required for PECA components")
