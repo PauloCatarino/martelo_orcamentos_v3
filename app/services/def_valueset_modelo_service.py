@@ -183,6 +183,7 @@ class DefValuesetModeloService:
                         def_valueset_modelo_linha_id=nova_linha.id,
                         def_operacao_id=operacao.def_operacao_id,
                         ordem=operacao.ordem,
+                        acao=getattr(operacao, "acao", None),
                         regra_calculo=operacao.regra_calculo,
                         quantidade_base=operacao.quantidade_base,
                         tempo_setup_minutos=operacao.tempo_setup_minutos,

@@ -20,6 +20,7 @@ def test_dialog_headers_and_callables() -> None:
 
     assert ValuesetLinhaOperacoesDialog.OPERACOES_HEADERS == [
         "Ordem",
+        "Ação",
         "Operação",
         "Tipo",
         "Máquina",

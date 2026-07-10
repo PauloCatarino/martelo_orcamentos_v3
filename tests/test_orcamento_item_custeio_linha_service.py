@@ -3012,12 +3012,19 @@ def test_recalcular_areas_acabamento_sem_area_avisa_dimensoes(monkeypatch) -> No
     assert "dimensões Comp/Larg em falta" in obs
 
 
-def _ligacao_op(def_operacao_id: int, id=None, ativo=True, def_operacao=None):
+def _ligacao_op(
+    def_operacao_id: int,
+    id=None,
+    ativo=True,
+    def_operacao=None,
+    acao="ADICIONAR",
+):
     return SimpleNamespace(
         id=id or def_operacao_id,
         def_operacao_id=def_operacao_id,
         ativo=ativo,
         def_operacao=def_operacao,
+        acao=acao,
     )
 
 
@@ -3031,6 +3038,7 @@ def _ligacao_tempo(
     id=None,
     ativo=True,
     def_operacao=None,
+    acao="ADICIONAR",
 ):
     return SimpleNamespace(
         id=id or def_operacao_id,
@@ -3042,6 +3050,7 @@ def _ligacao_tempo(
         tempo_setup_minutos=tempo_setup_minutos,
         tempo_por_unidade_minutos=tempo_por_unidade_minutos,
         regra_calculo=regra_calculo,
+        acao=acao,
     )
 
 
@@ -3535,6 +3544,7 @@ def test_custos_producao_ferragem_usa_operacao_da_variante_valueset(
                     unidade_tempo="PECA",
                     tempo_por_unidade_minutos=Decimal("3"),
                     def_operacao=op_variante,
+                    acao="SUBSTITUIR",
                 )
             ],
         )
@@ -3638,10 +3648,10 @@ def test_operacoes_variante_sem_correspondencia_fallback_e_aviso(
     payload = _FakeRepository.updated_payload
     assert payload["operacoes"] == "CNC_CATEGORIA"
     assert "PUXADOR_APAGADO sem correspond" in payload["observacoes"]
-    assert "usadas as operações da definição de peça" in payload["observacoes"]
+    assert "operações base congeladas" in payload["observacoes"]
 
 
-def test_operacoes_variante_override_total_nao_soma_def_peca(monkeypatch) -> None:
+def test_operacoes_variante_adicionar_mantem_operacoes_base(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     op_corte = _operacao("CORTE_CATEGORIA", tipo_operacao="CORTE", maquina_id=10)
     op_orlagem = _operacao("ORLAGEM_CATEGORIA", tipo_operacao="ORLAGEM", maquina_id=11)
@@ -3679,8 +3689,53 @@ def test_operacoes_variante_override_total_nao_soma_def_peca(monkeypatch) -> Non
     service.aplicar_operacoes_do_item(30)
 
     payload = _FakeRepository.updated_payload
-    assert payload["operacoes"] == "CNC_VARIANTE"
-    assert payload["maquina"] == "CNC"
+    assert payload["operacoes"] == (
+        "CORTE_CATEGORIA; ORLAGEM_CATEGORIA; CNC_VARIANTE"
+    )
+    assert payload["maquina"] == "CORTE; ORLAGEM; CNC"
+
+
+def test_operacoes_variante_substitui_apenas_o_mesmo_tipo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    corte = _operacao("CORTE_BASE", tipo_operacao="CORTE")
+    cnc_base = _operacao("CNC_BASE", tipo_operacao="CNC")
+    cnc_vertical = _operacao("CNC_VERTICAL", tipo_operacao="CNC")
+
+    resultado = service._compor_operacoes_variante(
+        [
+            (corte, _ligacao_op(1, def_operacao=corte)),
+            (cnc_base, _ligacao_op(2, def_operacao=cnc_base)),
+        ],
+        [
+            (
+                cnc_vertical,
+                _ligacao_op(
+                    3, def_operacao=cnc_vertical, acao="SUBSTITUIR"
+                ),
+            )
+        ],
+    )
+
+    assert [operacao.codigo for operacao, _ in resultado] == [
+        "CORTE_BASE",
+        "CNC_VERTICAL",
+    ]
+
+
+def test_operacoes_variante_desativar_remove_operacao_exata(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    corte = _operacao("CORTE_BASE", tipo_operacao="CORTE")
+    cnc = _operacao("CNC_BASE", tipo_operacao="CNC")
+
+    resultado = service._compor_operacoes_variante(
+        [
+            (corte, _ligacao_op(1, def_operacao=corte)),
+            (cnc, _ligacao_op(2, def_operacao=cnc)),
+        ],
+        [(corte, _ligacao_op(1, def_operacao=corte, acao="DESATIVAR"))],
+    )
+
+    assert [operacao.codigo for operacao, _ in resultado] == ["CNC_BASE"]
 
 
 def test_custos_producao_peca_usa_operacao_da_variante_valueset(

@@ -75,6 +75,12 @@ from app.domain.associado_types import (
     normalize_dimensao_referencia,
     normalize_modo_quantidade,
 )
+from app.domain.operacao_acao_types import (
+    ADICIONAR,
+    DESATIVAR,
+    SUBSTITUIR,
+    normalize_operacao_acao,
+)
 from app.domain.valueset_compat import TIPOS_FERRAGEM, opcoes_valueset_compativeis
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
@@ -1762,19 +1768,81 @@ class OrcamentoItemCusteioLinhaService:
     def _pares_operacao_ligacao_da_linha(self, linha, cache_variantes: dict) -> list[tuple]:
         """Resolve the operation links to use for one costing line.
 
-        Variant operations are a total override: if the selected item ValueSet
-        variant has active operations, only those operations count. Otherwise the
-        line falls back to the operations of its category/def_peca.
+        The piece snapshot is the base. Variant operations then compose it with
+        explicit ADICIONAR/SUBSTITUIR/DESATIVAR actions.
         """
-        entrada = self._entrada_operacoes_variante_da_linha(linha, cache_variantes)
-        if entrada is not None and entrada["pares"]:
-            return entrada["pares"]
-
         pares_snapshot = self._pares_operacoes_snapshot(linha)
-        if pares_snapshot is not None:
-            return pares_snapshot
+        pares_base = (
+            pares_snapshot
+            if pares_snapshot is not None
+            else self._pares_operacao_ligacao_da_peca(linha.def_peca_id)
+        )
 
-        return self._pares_operacao_ligacao_da_peca(linha.def_peca_id)
+        entrada = self._entrada_operacoes_variante_da_linha(linha, cache_variantes)
+        if entrada is None or not entrada["pares"]:
+            return pares_base
+
+        return self._compor_operacoes_variante(pares_base, entrada["pares"])
+
+    def _compor_operacoes_variante(
+        self, pares_base: list[tuple], pares_variante: list[tuple]
+    ) -> list[tuple]:
+        """Apply explicit variant actions without duplicate operation ids."""
+        resultado = list(pares_base)
+
+        for operacao, ligacao in pares_variante:
+            acao = normalize_operacao_acao(getattr(ligacao, "acao", None))
+            operacao_id = getattr(operacao, "id", None) or getattr(
+                ligacao, "def_operacao_id", None
+            )
+
+            if acao == DESATIVAR:
+                resultado = [
+                    par
+                    for par in resultado
+                    if self._id_operacao_par(par) != operacao_id
+                ]
+                continue
+
+            if acao == SUBSTITUIR:
+                bucket_novo = classificar_operacao(
+                    getattr(operacao, "tipo_operacao", None),
+                    getattr(operacao, "codigo", None),
+                )
+                if bucket_novo is not None:
+                    resultado = [
+                        par
+                        for par in resultado
+                        if classificar_operacao(
+                            getattr(par[0], "tipo_operacao", None),
+                            getattr(par[0], "codigo", None),
+                        )
+                        != bucket_novo
+                    ]
+                else:
+                    resultado = [
+                        par
+                        for par in resultado
+                        if self._id_operacao_par(par) != operacao_id
+                    ]
+
+            # ADICIONAR and SUBSTITUIR both add the configured variant operation;
+            # replacing the same id first prevents accidental double charging.
+            resultado = [
+                par
+                for par in resultado
+                if self._id_operacao_par(par) != operacao_id
+            ]
+            resultado.append((operacao, ligacao))
+
+        return resultado
+
+    @staticmethod
+    def _id_operacao_par(par: tuple):
+        operacao, ligacao = par
+        return getattr(operacao, "id", None) or getattr(
+            ligacao, "def_operacao_id", None
+        )
 
     @staticmethod
     def _pares_operacoes_snapshot(linha) -> list[tuple] | None:
@@ -1809,7 +1877,7 @@ class OrcamentoItemCusteioLinhaService:
 
         return (
             f"Operações da variante: opção {linha.mat_default} sem correspondência "
-            "no ValueSet do item — usadas as operações da definição de peça."
+            "no ValueSet do item — usadas as operações base congeladas da linha."
         )
 
     def _operacoes_da_linha(self, linha, cache_variantes: dict) -> tuple[str, str]:

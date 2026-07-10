@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.domain.operacao_acao_types import ADICIONAR
 
 if TYPE_CHECKING:
     from app.models.def_operacao import DefOperacao
@@ -53,6 +54,9 @@ class OrcamentoValuesetLinhaOperacao(Base):
         index=True,
     )
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    acao: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=ADICIONAR, server_default=ADICIONAR
+    )
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_setup_minutos: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)

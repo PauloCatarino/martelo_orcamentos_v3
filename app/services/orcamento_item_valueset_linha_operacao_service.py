@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.regra_operacao_types import normalize_regra_operacao
+from app.domain.operacao_acao_types import normalize_operacao_acao
 from app.repositories.orcamento_item_valueset_linha_operacao_repository import (
     OrcamentoItemValuesetLinhaOperacaoRepository,
     OrcamentoItemValuesetLinhaOperacaoResumo,
@@ -22,6 +23,7 @@ class CriarOrcamentoItemValuesetLinhaOperacaoData:
     orcamento_item_valueset_linha_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     tempo_setup_minutos: Decimal | None = None
@@ -39,6 +41,7 @@ class EditarOrcamentoItemValuesetLinhaOperacaoData:
     orcamento_item_valueset_linha_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     tempo_setup_minutos: Decimal | None = None
@@ -86,6 +89,7 @@ class OrcamentoItemValuesetLinhaOperacaoService:
             orcamento_item_valueset_linha_id=linha_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             tempo_setup_minutos=data.tempo_setup_minutos,
@@ -114,6 +118,7 @@ class OrcamentoItemValuesetLinhaOperacaoService:
             orcamento_item_valueset_linha_id=linha_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             tempo_setup_minutos=data.tempo_setup_minutos,
@@ -160,6 +165,7 @@ class OrcamentoItemValuesetLinhaOperacaoService:
                 orcamento_item_valueset_linha_id=orcamento_item_valueset_linha_id,
                 def_operacao_id=operacao.def_operacao_id,
                 ordem=operacao.ordem,
+                acao=normalize_operacao_acao(getattr(operacao, "acao", None)),
                 regra_calculo=operacao.regra_calculo,
                 quantidade_base=operacao.quantidade_base,
                 tempo_setup_minutos=operacao.tempo_setup_minutos,

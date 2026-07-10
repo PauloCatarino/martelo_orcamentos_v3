@@ -214,8 +214,8 @@ def test_desativar_e_ativar(monkeypatch) -> None:
 def test_copiar_operacoes_de_substitui_e_nao_faz_commit(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     origem = [
-        _resumo(id=1, def_operacao_id=20, ordem=1),
-        _resumo(id=2, def_operacao_id=21, ordem=2),
+        _resumo(id=1, def_operacao_id=20, ordem=1, acao="ADICIONAR"),
+        _resumo(id=2, def_operacao_id=21, ordem=2, acao="DESATIVAR"),
     ]
 
     total = service.copiar_operacoes_de(origem, 99)
@@ -230,6 +230,10 @@ def test_copiar_operacoes_de_substitui_e_nao_faz_commit(monkeypatch) -> None:
         payload["orcamento_valueset_linha_id"] == 99
         for payload in _FakeRepository.created_payloads
     )
+    assert [p["acao"] for p in _FakeRepository.created_payloads] == [
+        "ADICIONAR",
+        "DESATIVAR",
+    ]
     assert session.committed is False
 
 

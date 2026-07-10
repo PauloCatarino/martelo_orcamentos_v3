@@ -25,6 +25,7 @@ class DefValuesetModeloLinhaOperacaoResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    acao: str = "ADICIONAR"
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -91,6 +92,7 @@ class DefValuesetModeloLinhaOperacaoRepository:
         def_valueset_modelo_linha_id: int,
         def_operacao_id: int,
         ordem: int = 1,
+        acao: str = "ADICIONAR",
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
         tempo_setup_minutos: Decimal | None = None,
@@ -105,6 +107,7 @@ class DefValuesetModeloLinhaOperacaoRepository:
             def_valueset_modelo_linha_id=def_valueset_modelo_linha_id,
             def_operacao_id=def_operacao_id,
             ordem=ordem,
+            acao=acao,
             regra_calculo=regra_calculo,
             quantidade_base=quantidade_base,
             tempo_setup_minutos=tempo_setup_minutos,
@@ -126,6 +129,7 @@ class DefValuesetModeloLinhaOperacaoRepository:
         def_valueset_modelo_linha_id: int,
         def_operacao_id: int,
         ordem: int = 1,
+        acao: str = "ADICIONAR",
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
         tempo_setup_minutos: Decimal | None = None,
@@ -143,6 +147,7 @@ class DefValuesetModeloLinhaOperacaoRepository:
         ligacao.def_valueset_modelo_linha_id = def_valueset_modelo_linha_id
         ligacao.def_operacao_id = def_operacao_id
         ligacao.ordem = ordem
+        ligacao.acao = acao
         ligacao.regra_calculo = regra_calculo
         ligacao.quantidade_base = quantidade_base
         ligacao.tempo_setup_minutos = tempo_setup_minutos
@@ -186,6 +191,7 @@ class DefValuesetModeloLinhaOperacaoRepository:
             def_valueset_modelo_linha_id=ligacao.def_valueset_modelo_linha_id,
             def_operacao_id=ligacao.def_operacao_id,
             ordem=ligacao.ordem,
+            acao=ligacao.acao,
             regra_calculo=ligacao.regra_calculo,
             quantidade_base=ligacao.quantidade_base,
             tempo_setup_minutos=ligacao.tempo_setup_minutos,

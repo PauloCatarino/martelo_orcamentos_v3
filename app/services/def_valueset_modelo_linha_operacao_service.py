@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.regra_operacao_types import normalize_regra_operacao
+from app.domain.operacao_acao_types import normalize_operacao_acao
 from app.repositories.def_valueset_modelo_linha_operacao_repository import (
     DefValuesetModeloLinhaOperacaoRepository,
     DefValuesetModeloLinhaOperacaoResumo,
@@ -21,6 +22,7 @@ class CriarDefValuesetModeloLinhaOperacaoData:
     def_valueset_modelo_linha_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     tempo_setup_minutos: Decimal | None = None
@@ -38,6 +40,7 @@ class EditarDefValuesetModeloLinhaOperacaoData:
     def_valueset_modelo_linha_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     tempo_setup_minutos: Decimal | None = None
@@ -85,6 +88,7 @@ class DefValuesetModeloLinhaOperacaoService:
             def_valueset_modelo_linha_id=linha_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             tempo_setup_minutos=data.tempo_setup_minutos,
@@ -113,6 +117,7 @@ class DefValuesetModeloLinhaOperacaoService:
             def_valueset_modelo_linha_id=linha_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             tempo_setup_minutos=data.tempo_setup_minutos,

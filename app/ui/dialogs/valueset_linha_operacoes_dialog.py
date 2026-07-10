@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.regra_operacao_types import get_regra_operacao_label
+from app.domain.operacao_acao_types import get_operacao_acao_label
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.services.def_maquina_service import DefMaquinaService
 from app.services.def_operacao_service import DefOperacaoService
@@ -42,6 +43,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
 
     OPERACOES_HEADERS = [
         "Ordem",
+        "Ação",
         "Operação",
         "Tipo",
         "Máquina",
@@ -82,8 +84,8 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         self.setMinimumSize(980, 460)
 
         info = QLabel(
-            "Operações específicas desta variante ValueSet. Quando definidas, "
-            "substituem as operações da definição de peça em fases posteriores."
+            "Operações específicas desta variante ValueSet. Cada linha indica "
+            "explicitamente se adiciona, substitui ou desativa uma operação base."
         )
         info.setWordWrap(True)
 
@@ -155,6 +157,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             operacao = self._operacao_resumos.get(ligacao.def_operacao_id)
             values = [
                 str(ligacao.ordem),
+                get_operacao_acao_label(getattr(ligacao, "acao", None)),
                 self._format_operacao_label(ligacao.def_operacao_id, operacao),
                 (operacao.tipo_operacao or "") if operacao is not None else "",
                 self._format_operacao_maquina(operacao),
@@ -201,7 +204,9 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             saved = True
             return True
 
-        dialog = DefPecaOperacaoDialog(operacoes, parent=self, on_save=handle_save)
+        dialog = DefPecaOperacaoDialog(
+            operacoes, parent=self, on_save=handle_save, mostrar_acao=True
+        )
         if dialog.exec() and saved:
             self.alterado = True
             self.recarregar_operacoes()
@@ -235,6 +240,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             ligacao=ligacao,
             parent=self,
             on_save=handle_save,
+            mostrar_acao=True,
         )
         if dialog.exec() and saved:
             self.alterado = True

@@ -23,6 +23,11 @@ from PySide6.QtGui import QColor, QFont
 
 from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
+from app.domain.operacao_acao_types import (
+    ADICIONAR,
+    get_operacao_acao_options,
+    normalize_operacao_acao,
+)
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 from app.utils.formatters import format_currency, format_quantity
@@ -57,6 +62,7 @@ class DefPecaOperacaoDialogData:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    acao: str = ADICIONAR
 
 
 @dataclass(frozen=True)
@@ -125,12 +131,14 @@ class DefPecaOperacaoDialog(QDialog):
         ligacao: DefPecaOperacaoResumo | None = None,
         parent=None,
         on_save: Callable[[DefPecaOperacaoDialogData], bool] | None = None,
+        mostrar_acao: bool = False,
     ) -> None:
         super().__init__(parent)
 
         self.ligacao = ligacao
         self.on_save = on_save
         self._is_edit = ligacao is not None
+        self._mostrar_acao = mostrar_acao
         self._operacoes_por_id = {
             operacao.id: operacao for operacao in operacoes_disponiveis
         }
@@ -146,6 +154,14 @@ class DefPecaOperacaoDialog(QDialog):
         self.ordem_input = QSpinBox()
         self.ordem_input.setRange(1, 9999)
         self.ordem_input.setValue(1)
+
+        self.acao_input = QComboBox()
+        for code, label in get_operacao_acao_options():
+            self.acao_input.addItem(label, code)
+        self.acao_input.setToolTip(
+            "Adicionar mantém as operações base; Substituir troca a operação do "
+            "mesmo tipo; Desativar remove a operação selecionada."
+        )
 
         self.regra_calculo_input = QComboBox()
         for code, label in get_regra_operacao_options():
@@ -176,6 +192,10 @@ class DefPecaOperacaoDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Operação", self.operacao_input)
+        self.acao_label = QLabel("Ação da variante")
+        form.addRow(self.acao_label, self.acao_input)
+        self.acao_label.setVisible(mostrar_acao)
+        self.acao_input.setVisible(mostrar_acao)
         form.addRow("Ordem", self.ordem_input)
         form.addRow("Regra cálculo", self.regra_calculo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
@@ -197,6 +217,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
         self.simular_button.clicked.connect(self._abrir_simulador)
+        self.acao_input.currentIndexChanged.connect(self._update_acao_fields)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -206,6 +227,7 @@ class DefPecaOperacaoDialog(QDialog):
 
         if ligacao is not None:
             self._load_ligacao(ligacao)
+        self._update_acao_fields()
 
     def _load_ligacao(self, ligacao: DefPecaOperacaoResumo) -> None:
         """Populate the form with an existing link."""
@@ -214,6 +236,11 @@ class DefPecaOperacaoDialog(QDialog):
             self.operacao_input.setCurrentIndex(index)
 
         self.ordem_input.setValue(ligacao.ordem)
+        acao_index = self.acao_input.findData(
+            normalize_operacao_acao(getattr(ligacao, "acao", None))
+        )
+        if acao_index >= 0:
+            self.acao_input.setCurrentIndex(acao_index)
         self._select_regra(ligacao.regra_calculo)
         self.quantidade_base_input.setText(self._format_decimal(ligacao.quantidade_base))
         self.tempo_setup_input.setText(self._format_decimal(ligacao.tempo_setup_minutos))
@@ -247,6 +274,9 @@ class DefPecaOperacaoDialog(QDialog):
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
             observacoes=self._empty_to_none(self.observacoes_input.text()),
+            acao=(
+                self.acao_input.currentData() if self._mostrar_acao else ADICIONAR
+            ),
         )
 
     def _validate_and_accept(self) -> None:
@@ -272,6 +302,20 @@ class DefPecaOperacaoDialog(QDialog):
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
+
+    def _update_acao_fields(self) -> None:
+        """Disable calculation inputs when the variant only removes an operation."""
+        desativar = self._mostrar_acao and self.acao_input.currentData() == "DESATIVAR"
+        for widget in (
+            self.regra_calculo_input,
+            self.quantidade_base_input,
+            self.tempo_setup_input,
+            self.tempo_por_unidade_input,
+            self.unidade_tempo_input,
+            self.obrigatorio_input,
+        ):
+            widget.setEnabled(not desativar)
+        self.simular_button.setEnabled(not desativar)
 
     def _abrir_simulador(self) -> None:
         """Open the operation simulator using the current form values."""

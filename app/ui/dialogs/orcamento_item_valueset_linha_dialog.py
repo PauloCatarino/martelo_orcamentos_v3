@@ -209,8 +209,8 @@ class OrcamentoItemValuesetLinhaDialog(QDialog):
             "Operações da linha…", QDialogButtonBox.ButtonRole.ActionRole
         )
         self.operacoes_button.setToolTip(
-            "Operações de produção específicas desta variante — substituem as "
-            "operações da definição de peça quando definidas."
+            "Operações específicas desta variante, com ação explícita para "
+            "adicionar, substituir ou desativar operações base."
         )
         self.button_box.accepted.connect(self._validate_and_accept)
         self.operacoes_button.clicked.connect(self.abrir_operacoes_da_linha)
@@ -242,6 +242,7 @@ class OrcamentoItemValuesetLinhaDialog(QDialog):
                         orcamento_item_valueset_linha_id=linha_id,
                         def_operacao_id=form_data.def_operacao_id,
                         ordem=form_data.ordem,
+                        acao=form_data.acao,
                         regra_calculo=form_data.regra_calculo,
                         quantidade_base=form_data.quantidade_base,
                         tempo_setup_minutos=form_data.tempo_setup_minutos,
@@ -261,6 +262,7 @@ class OrcamentoItemValuesetLinhaDialog(QDialog):
                         orcamento_item_valueset_linha_id=linha_id,
                         def_operacao_id=form_data.def_operacao_id,
                         ordem=form_data.ordem,
+                        acao=form_data.acao,
                         regra_calculo=form_data.regra_calculo,
                         quantidade_base=form_data.quantidade_base,
                         tempo_setup_minutos=form_data.tempo_setup_minutos,
