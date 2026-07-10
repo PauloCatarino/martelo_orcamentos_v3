@@ -35,6 +35,7 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Margens por Defeito",
         "Regras de Quantidade",
         "Biblioteca de Módulos",
+        "Auditoria do Catálogo",
         "Regras de Custeio",
     ]
 

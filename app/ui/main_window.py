@@ -21,6 +21,7 @@ from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui import tema
 from app.ui.pages import (
     BibliotecaModulosPage,
+    CatalogoAuditoriaPage,
     CaminhosSistemaPage,
     ClientesPage,
     ConfiguracoesPage,
@@ -158,6 +159,7 @@ class MainWindow(QMainWindow):
         self.margens_padrao_page = MargensPadraoPage()
         self.regras_quantidade_page = RegrasQuantidadePage()
         self.biblioteca_modulos_page = BibliotecaModulosPage()
+        self.catalogo_auditoria_page = CatalogoAuditoriaPage()
         self.clientes_page = ClientesPage()
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
@@ -172,6 +174,7 @@ class MainWindow(QMainWindow):
             on_open_margens_padrao=self._open_margens_padrao,
             on_open_regras_quantidade=self._open_regras_quantidade,
             on_open_biblioteca_modulos=self._open_biblioteca_modulos,
+            on_open_catalogo_auditoria=self._open_catalogo_auditoria,
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
@@ -185,6 +188,7 @@ class MainWindow(QMainWindow):
         self._add_page("margens_padrao", self.margens_padrao_page)
         self._add_page("regras_quantidade", self.regras_quantidade_page)
         self._add_page("biblioteca_modulos", self.biblioteca_modulos_page)
+        self._add_page("catalogo_auditoria", self.catalogo_auditoria_page)
         self._add_page("clientes", self.clientes_page)
         self._add_page("producao", self.producao_page)
         self._add_page("encomendas_phc", self.encomendas_page)
@@ -243,6 +247,11 @@ class MainWindow(QMainWindow):
         """Open the module library page with fresh data."""
         self.biblioteca_modulos_page.carregar()
         self.show_page("biblioteca_modulos")
+
+    def _open_catalogo_auditoria(self) -> None:
+        """Open the read-only catalog audit with fresh results."""
+        self.catalogo_auditoria_page.carregar()
+        self.show_page("catalogo_auditoria")
 
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""

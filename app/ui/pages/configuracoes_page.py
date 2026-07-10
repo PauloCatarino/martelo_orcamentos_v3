@@ -28,6 +28,7 @@ class ConfiguracoesPage(QWidget):
         "Margens por Defeito",
         "Regras de Quantidade",
         "Biblioteca de Módulos",
+        "Auditoria do Catálogo",
         "Regras de Custeio",
     ]
 
@@ -42,6 +43,7 @@ class ConfiguracoesPage(QWidget):
         on_open_margens_padrao: Callable[[], None] | None = None,
         on_open_regras_quantidade: Callable[[], None] | None = None,
         on_open_biblioteca_modulos: Callable[[], None] | None = None,
+        on_open_catalogo_auditoria: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -54,6 +56,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_margens_padrao = on_open_margens_padrao
         self.on_open_regras_quantidade = on_open_regras_quantidade
         self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
+        self.on_open_catalogo_auditoria = on_open_catalogo_auditoria
 
         self.cabecalho = BarraCabecalho(
             "Configura\u00e7\u00f5es",
@@ -111,6 +114,15 @@ class ConfiguracoesPage(QWidget):
         )
         self.biblioteca_modulos_button.clicked.connect(self._open_biblioteca_modulos)
 
+        self.catalogo_auditoria_button = QPushButton("Auditoria do Catálogo")
+        self.catalogo_auditoria_button.setToolTip(
+            "Detetar incoerências em peças, associados, operações, regras, "
+            "ValueSets e módulos, sem alterar dados."
+        )
+        self.catalogo_auditoria_button.clicked.connect(
+            self._open_catalogo_auditoria
+        )
+
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
 
@@ -129,6 +141,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.margens_padrao_button)
         layout.addWidget(self.regras_quantidade_button)
         layout.addWidget(self.biblioteca_modulos_button)
+        layout.addWidget(self.catalogo_auditoria_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -174,6 +187,11 @@ class ConfiguracoesPage(QWidget):
         """Open the module library page through the optional callback."""
         if self.on_open_biblioteca_modulos is not None:
             self.on_open_biblioteca_modulos()
+
+    def _open_catalogo_auditoria(self) -> None:
+        """Open the read-only catalog audit page."""
+        if self.on_open_catalogo_auditoria is not None:
+            self.on_open_catalogo_auditoria()
 
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""
