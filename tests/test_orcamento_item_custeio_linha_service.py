@@ -5,6 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
@@ -468,6 +470,150 @@ def test_listar_linhas_da_versao(monkeypatch) -> None:
     _FakeRepository.versao_rows = [_resumo(id=4, orcamento_item_id=20)]
 
     assert service.listar_linhas_da_versao(99) == [_resumo(id=4, orcamento_item_id=20)]
+
+
+def test_analisar_atualizacao_biblioteca_a_partir_de_associado(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    raiz = _resumo(
+        id=100,
+        tipo_linha="PECA",
+        origem_tipo="BIBLIOTECA_PECA",
+        def_peca_id=1,
+        def_peca_codigo="PRATELEIRA",
+    )
+    associado = _resumo(
+        id=101,
+        linha_pai_id=100,
+        nivel=1,
+        tipo_linha="FERRAGEM",
+        origem_tipo="PECA_ASSOCIADA",
+        def_peca_id=2,
+        editado_localmente=True,
+    )
+    _FakeRepository.by_id = associado
+    _FakeRepository.active_rows = [raiz, associado]
+    _FakePecaRepository.pecas = {1: _peca(id=1, codigo="PRATELEIRA")}
+    _FakeComponenteRepository.componentes = [
+        _componente(id=7, def_peca_pai_id=1, def_peca_componente_id=2)
+    ]
+
+    analise = service.analisar_atualizacao_da_biblioteca(101)
+
+    assert analise.linha_raiz_id == 100
+    assert analise.peca_codigo == "PRATELEIRA"
+    assert analise.associados_atuais == 1
+    assert analise.associados_catalogo == 1
+    assert analise.linhas_editadas_localmente == 1
+
+
+def test_atualizar_biblioteca_exige_confirmacao_para_filhos_editados(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    raiz = _resumo(id=100, def_peca_id=1, origem_tipo="BIBLIOTECA_PECA")
+    associado = _resumo(
+        id=101,
+        linha_pai_id=100,
+        origem_tipo="PECA_ASSOCIADA",
+        def_peca_id=2,
+        material_editado_localmente=True,
+    )
+    _FakeRepository.by_id = raiz
+    _FakeRepository.active_rows = [raiz, associado]
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+
+    with pytest.raises(ValueError, match="edições locais"):
+        service.atualizar_peca_da_biblioteca(100)
+
+    assert _FakeRepository.deleted_ids is None
+    assert session.committed is False
+
+
+def test_analisar_atualizacao_bloqueia_bloco_importado_de_modulo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    raiz = _resumo(
+        id=100,
+        tipo_linha="PECA_COMPOSTA",
+        origem_tipo="BIBLIOTECA_PECA",
+        def_peca_id=1,
+    )
+    filho_modulo = _resumo(
+        id=101,
+        linha_pai_id=100,
+        origem_tipo="MODULO",
+        def_peca_id=2,
+    )
+    _FakeRepository.by_id = raiz
+    _FakeRepository.active_rows = [raiz, filho_modulo]
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+
+    with pytest.raises(ValueError, match="importado de um módulo"):
+        service.analisar_atualizacao_da_biblioteca(100)
+
+
+def test_atualizar_biblioteca_preserva_inputs_da_raiz_e_reconstroi_filhos(
+    monkeypatch,
+) -> None:
+    service, session = _service(monkeypatch)
+    raiz = _resumo(
+        id=100,
+        tipo_linha="PECA",
+        codigo="ANTIGO",
+        descricao="Antiga",
+        origem_tipo="BIBLIOTECA_PECA",
+        def_peca_id=1,
+        def_peca_codigo="ANTIGO",
+        comp="H-20",
+        larg="L/2",
+        esp="19",
+        qt_mod=Decimal("3"),
+        qt_und=Decimal("2"),
+        material_editado_localmente=True,
+        ref_le="LOCAL",
+    )
+    antigo = _resumo(
+        id=101,
+        linha_pai_id=100,
+        nivel=1,
+        origem_tipo="PECA_ASSOCIADA",
+        def_peca_id=2,
+    )
+    manual = _resumo(id=200, tipo_linha="MANUAL", descricao="Manter")
+    _FakeRepository.by_id = raiz
+    _FakeRepository.active_rows = [raiz, antigo, manual]
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA", nome="Prateleira nova"),
+        2: _peca(
+            id=2,
+            codigo="SUPORTE",
+            nome="Suporte",
+            chave_valueset_material=None,
+        ),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=9,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            referencia_componente="SUPORTE",
+        )
+    ]
+
+    resultado = service.atualizar_peca_da_biblioteca(100)
+
+    atualizacao = _FakeRepository.updated_payloads[0]
+    assert atualizacao["codigo"] == "PRATELEIRA"
+    assert "comp" not in atualizacao
+    assert "larg" not in atualizacao
+    assert "esp" not in atualizacao
+    assert "qt_mod" not in atualizacao
+    assert "qt_und" not in atualizacao
+    assert "ref_le" not in atualizacao
+    assert _FakeRepository.deleted_ids == [101]
+    assert _FakeRepository.created_payload["linha_pai_id"] == 100
+    assert _FakeRepository.created_payload["origem_tipo"] == "PECA_ASSOCIADA"
+    assert _FakeRepository.reordenar_order == [100, 1, 200]
+    assert resultado.associados_removidos == 1
+    assert resultado.associados_criados == 1
+    assert session.committed is True
 
 
 def test_criar_linha_default_tipo_manual(monkeypatch) -> None:

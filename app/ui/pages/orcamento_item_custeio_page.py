@@ -471,6 +471,17 @@ class OrcamentoItemCusteioPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.atualizar_geral)
 
+        self.refresh_library_piece_button = QPushButton("Atualizar peça da biblioteca")
+        self.refresh_library_piece_button.setToolTip(
+            "Atualiza explicitamente a peça selecionada e os seus associados "
+            "a partir do catálogo. As medidas e quantidades da peça no orçamento "
+            "são mantidas."
+        )
+        self.refresh_library_piece_button.setEnabled(False)
+        self.refresh_library_piece_button.clicked.connect(
+            self.atualizar_peca_da_biblioteca
+        )
+
         self.producao_label = QLabel("")
         self.producao_label.setObjectName("orcamentoItemCusteioProducao")
         self.producao_label.setToolTip(
@@ -530,6 +541,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.refresh_library_piece_button)
         actions_layout.addWidget(self.producao_label)
         actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addWidget(self.insert_division_button)
@@ -582,6 +594,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._larguras_iniciais_aplicadas = False
         self.table.cellChanged.connect(self._on_cell_changed)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
+        self.table.itemSelectionChanged.connect(self._atualizar_botao_biblioteca)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
         self._instalar_atalhos_clipboard()
@@ -807,6 +820,76 @@ class OrcamentoItemCusteioPage(QWidget):
             "recalculados)."
         )
 
+    def atualizar_peca_da_biblioteca(self) -> None:
+        """Explicitly replace one frozen piece snapshot with the current catalog."""
+        linha = self._get_linha_selecionada()
+        if linha is None:
+            self.status_label.setText("Selecione uma peça ou um associado.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                analise = OrcamentoItemCusteioLinhaService(
+                    session
+                ).analisar_atualizacao_da_biblioteca(linha.id)
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(str(error) or "Não foi possível analisar a peça.")
+            return
+
+        mensagem = (
+            f"Atualizar a peça {analise.peca_codigo} a partir da biblioteca?\n\n"
+            f"Associados atuais: {analise.associados_atuais}\n"
+            f"Associados configurados agora: {analise.associados_catalogo}\n\n"
+            "As medidas, quantidades e alterações locais da linha principal "
+            "serão mantidas. Os associados gerados serão reconstruídos."
+        )
+        if analise.linhas_editadas_localmente:
+            mensagem += (
+                f"\n\nATENÇÃO: {analise.linhas_editadas_localmente} associado(s) "
+                "têm edições locais. Essas edições serão perdidas."
+            )
+
+        confirmar = QMessageBox.question(
+            self,
+            "Atualizar peça da biblioteca",
+            mensagem,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmar != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                resultado = service.atualizar_peca_da_biblioteca(
+                    linha.id,
+                    confirmar_perda_edicoes=bool(
+                        analise.linhas_editadas_localmente
+                    ),
+                )
+                self._recalcular_item_completo(service)
+        except EntradasCusteioInvalidas as error:
+            self.carregar()
+            self.status_label.setText(str(error))
+            return
+        except (SQLAlchemyError, ValueError) as error:
+            self.carregar()
+            self.status_label.setText(
+                str(error) or "Não foi possível atualizar a peça da biblioteca."
+            )
+            return
+
+        self.carregar()
+        mensagem_resultado = (
+            f"Peça {resultado.peca_codigo} atualizada: "
+            f"{resultado.associados_removidos} associado(s) substituído(s), "
+            f"{resultado.associados_criados} criado(s)."
+        )
+        if resultado.avisos:
+            mensagem_resultado += " " + " ".join(resultado.avisos)
+        self.status_label.setText(mensagem_resultado)
+
     def _recalcular_item_completo(self, service) -> None:
         """Run the full costing pipeline for the item (shared by Atualizar and the
         Mat. default dropdown). Delegates to the single service orchestrator."""
@@ -899,6 +982,16 @@ class OrcamentoItemCusteioPage(QWidget):
     def _atualizar_botao_modulo(self) -> None:
         """Enable 'Guardar como Módulo' only when lines are selected."""
         self.guardar_modulo_button.setEnabled(bool(self._ids_linhas_selecionadas()))
+
+    def _atualizar_botao_biblioteca(self) -> None:
+        """Enable catalog refresh for a library piece or generated child."""
+        linha = self._get_linha_selecionada()
+        self.refresh_library_piece_button.setEnabled(
+            bool(
+                linha is not None
+                and (linha.def_peca_id is not None or linha.linha_pai_id is not None)
+            )
+        )
 
     def _copiar_imagem_modulo(
         self, origem: str | None, codigo: str

@@ -244,6 +244,29 @@ class AdicionarPecasResult:
 
 
 @dataclass(frozen=True)
+class AtualizacaoBibliotecaAnalise:
+    """Read-only preview of refreshing one frozen library-piece block."""
+
+    linha_raiz_id: int
+    peca_codigo: str
+    associados_atuais: int
+    associados_catalogo: int
+    linhas_editadas_localmente: int
+
+
+@dataclass(frozen=True)
+class AtualizacaoBibliotecaResult:
+    """Summary of an explicit refresh from the current piece catalog."""
+
+    linha_raiz_id: int
+    peca_codigo: str
+    associados_removidos: int
+    associados_criados: int
+    linhas_editadas_substituidas: int
+    avisos: list[str]
+
+
+@dataclass(frozen=True)
 class InserirModuloResult:
     """Summary of importing a saved module into an item's costing (phase 8U.2)."""
 
@@ -469,6 +492,195 @@ class OrcamentoItemCusteioLinhaService:
     def obter_por_id(self, id: int) -> OrcamentoItemCusteioLinhaResumo | None:
         """Get one cost line by id."""
         return self.repository.get_by_id(id)
+
+    def analisar_atualizacao_da_biblioteca(
+        self, linha_id: int
+    ) -> AtualizacaoBibliotecaAnalise:
+        """Preview an explicit catalog refresh without changing the quote."""
+        raiz, peca, descendentes = self._contexto_atualizacao_biblioteca(linha_id)
+        gerados = self._descendentes_gerados_biblioteca(descendentes)
+        editados = sum(1 for linha in gerados if self._linha_tem_edicao_local(linha))
+        return AtualizacaoBibliotecaAnalise(
+            linha_raiz_id=raiz.id,
+            peca_codigo=peca.codigo,
+            associados_atuais=len(gerados),
+            associados_catalogo=len(self._associados_ativos(peca.id)),
+            linhas_editadas_localmente=editados,
+        )
+
+    def atualizar_peca_da_biblioteca(
+        self, linha_id: int, *, confirmar_perda_edicoes: bool = False
+    ) -> AtualizacaoBibliotecaResult:
+        """Refresh a frozen piece snapshot and rebuild its generated children.
+
+        Measures, quantities, free description, exclusions and local material/
+        finishing overrides on the root line remain untouched. Generated child
+        lines are replaced from the current catalog. If any such child carries
+        a local override, the caller must explicitly confirm its replacement.
+        """
+        raiz, peca, descendentes = self._contexto_atualizacao_biblioteca(linha_id)
+        gerados = self._descendentes_gerados_biblioteca(descendentes)
+        editados = [linha for linha in gerados if self._linha_tem_edicao_local(linha)]
+        if editados and not confirmar_perda_edicoes:
+            raise ValueError(
+                "Existem linhas associadas com edições locais; confirme a "
+                "substituição para atualizar a partir da biblioteca."
+            )
+
+        linhas_antes = self.repository.list_active_by_orcamento_item(
+            raiz.orcamento_item_id
+        )
+        ids_remover = {linha.id for linha in gerados}
+        ordem_mantida = [
+            linha.id for linha in linhas_antes if linha.id not in ids_remover
+        ]
+
+        self.repository.update_linha(
+            id=raiz.id,
+            **self._campos_atualizacao_raiz(raiz, peca),
+        )
+        if ids_remover:
+            self.repository.delete_linhas(list(ids_remover))
+
+        avisos: list[str] = []
+        ids_criados: list[int] = []
+        associados = self._associados_ativos(peca.id)
+        origem = (
+            "PECA_COMPOSTA"
+            if self._eh_conjunto_virtual(peca)
+            else "PECA_ASSOCIADA"
+        )
+        if associados:
+            self._criar_linhas_componentes(
+                raiz.orcamento_item_id,
+                associados,
+                raiz.id,
+                avisos,
+                origem=origem,
+                pecas_ancestrais={peca.id},
+                ids_criados=ids_criados,
+            )
+        elif self._eh_conjunto_virtual(peca):
+            self._adicionar_aviso(
+                avisos, f"Peça/conjunto {peca.codigo} sem associados configurados."
+            )
+
+        # Keep the refreshed children immediately below their root, without
+        # disturbing the relative order of unrelated/manual costing lines.
+        if raiz.id in ordem_mantida:
+            posicao = ordem_mantida.index(raiz.id) + 1
+            ordem_final = (
+                ordem_mantida[:posicao]
+                + ids_criados
+                + ordem_mantida[posicao:]
+            )
+        else:
+            ordem_final = ordem_mantida + ids_criados
+        self.repository.reordenar_linhas(ordem_final)
+        self.session.commit()
+
+        return AtualizacaoBibliotecaResult(
+            linha_raiz_id=raiz.id,
+            peca_codigo=peca.codigo,
+            associados_removidos=len(ids_remover),
+            associados_criados=len(ids_criados),
+            linhas_editadas_substituidas=len(editados),
+            avisos=avisos,
+        )
+
+    def _contexto_atualizacao_biblioteca(self, linha_id: int):
+        selecionada = self.repository.get_by_id(linha_id)
+        if selecionada is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        linhas = self.repository.list_active_by_orcamento_item(
+            selecionada.orcamento_item_id
+        )
+        por_id = {linha.id: linha for linha in linhas}
+        raiz = self._linha_topo_do_bloco(selecionada, por_id)
+        if raiz.def_peca_id is None:
+            raise ValueError(
+                "A linha selecionada não está ligada à biblioteca de peças."
+            )
+        peca = self.peca_repository.get_by_id(raiz.def_peca_id)
+        if peca is None:
+            raise ValueError("A peça ligada a esta linha já não existe na biblioteca.")
+        if not peca.ativo:
+            raise ValueError("A peça ligada a esta linha está inativa na biblioteca.")
+        descendentes = [
+            linha
+            for linha in linhas
+            if linha.id != raiz.id
+            and self._linha_topo_do_bloco(linha, por_id).id == raiz.id
+        ]
+        if raiz.origem_tipo == "MODULO" or any(
+            linha.origem_tipo == "MODULO" for linha in descendentes
+        ):
+            raise ValueError(
+                "Este bloco foi importado de um módulo. A atualização de módulos "
+                "será tratada numa fase própria para preservar os seus desvios."
+            )
+        return raiz, peca, descendentes
+
+    @staticmethod
+    def _descendentes_gerados_biblioteca(descendentes: list) -> list:
+        return [
+            linha
+            for linha in descendentes
+            if linha.origem_tipo in {"PECA_ASSOCIADA", "PECA_COMPOSTA"}
+        ]
+
+    @staticmethod
+    def _linha_tem_edicao_local(linha) -> bool:
+        return bool(
+            linha.editado_localmente
+            or linha.material_editado_localmente
+            or linha.acabamento_editado_localmente
+        )
+
+    def _campos_atualizacao_raiz(self, raiz, peca: DefPecaResumo) -> dict:
+        """Build catalog fields while preserving quote-specific root inputs."""
+        tipo = (
+            PECA_COMPOSTA
+            if self._eh_conjunto_virtual(peca)
+            else self._tipo_linha_da_def_peca(peca)
+        )
+        fields = {
+            "tipo_linha": tipo,
+            "codigo": peca.codigo,
+            "def_peca_id": peca.id,
+            "def_peca_codigo": peca.codigo,
+            "descricao": peca.nome or peca.descricao or peca.codigo,
+            "codigo_orlas": (
+                None
+                if getattr(peca, "sem_material", False)
+                else self._format_codigo_orlas(peca)
+            ),
+            "chave_valueset": (
+                None
+                if getattr(peca, "sem_material", False)
+                else peca.chave_valueset_material
+            ),
+            "operacoes_snapshot_json": self._snapshot_operacoes_peca(peca.id),
+            "sem_material": bool(getattr(peca, "sem_material", False)),
+        }
+        if tipo == PECA_COMPOSTA:
+            fields["codigo_orlas"] = self._format_codigo_orlas(peca)
+            fields["chave_valueset"] = peca.chave_valueset_material
+            return fields
+
+        if not raiz.material_editado_localmente:
+            fresh, _aviso = self._build_peca_line_fields(
+                raiz.orcamento_item_id, peca, tipo_linha=tipo
+            )
+            for campo in (
+                "materia_prima_id",
+                "ref_materia_prima",
+                "descricao_materia_prima",
+                *MATERIAL_FIELDS,
+                "origem_material",
+            ):
+                fields[campo] = fresh.get(campo)
+        return fields
 
     def eliminar_linhas(self, ids: list[int]) -> int:
         """Physically delete the given cost lines; returns how many were removed."""
@@ -4044,6 +4256,7 @@ class OrcamentoItemCusteioLinhaService:
         origem: str = "PECA_COMPOSTA",
         nivel: int = 1,
         pecas_ancestrais: set[int] | None = None,
+        ids_criados: list[int] | None = None,
     ) -> int:
         """Create one sub-line per component, returning how many were created."""
         criadas = 0
@@ -4068,6 +4281,8 @@ class OrcamentoItemCusteioLinhaService:
             if aviso:
                 self._adicionar_aviso(avisos, aviso)
             criada = self.repository.create_linha(**fields)
+            if ids_criados is not None:
+                ids_criados.append(criada.id)
             criadas += 1
 
             if peca_filha is None:
@@ -4082,6 +4297,7 @@ class OrcamentoItemCusteioLinhaService:
                     origem=origem,
                     nivel=nivel + 1,
                     pecas_ancestrais={*ancestrais, peca_filha.id},
+                    ids_criados=ids_criados,
                 )
 
         return criadas
