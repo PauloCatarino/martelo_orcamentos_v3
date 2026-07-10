@@ -65,6 +65,13 @@ class OrcamentoItemCusteioLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    associado_regra_codigo: str | None = None
+    associado_regra_expressao: str | None = None
+    associado_modo_quantidade: str | None = None
+    associado_zona_aplicacao: str | None = None
+    associado_dimensao_referencia: str | None = None
+    associado_numero_topos: int | None = None
+    operacoes_snapshot_json: str | None = None
     def_peca_id: int | None = None
     def_peca_codigo: str | None = None
     chave_valueset: str | None = None
@@ -308,6 +315,13 @@ class OrcamentoItemCusteioLinhaRepository:
             ordem=linha.ordem,
             origem_tipo=linha.origem_tipo,
             origem_id=linha.origem_id,
+            associado_regra_codigo=linha.associado_regra_codigo,
+            associado_regra_expressao=linha.associado_regra_expressao,
+            associado_modo_quantidade=linha.associado_modo_quantidade,
+            associado_zona_aplicacao=linha.associado_zona_aplicacao,
+            associado_dimensao_referencia=linha.associado_dimensao_referencia,
+            associado_numero_topos=linha.associado_numero_topos,
+            operacoes_snapshot_json=linha.operacoes_snapshot_json,
             tipo_linha=linha.tipo_linha,
             codigo=linha.codigo,
             descricao=linha.descricao,

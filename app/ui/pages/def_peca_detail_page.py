@@ -28,7 +28,11 @@ from app.domain.peca_natureza_types import (
     get_peca_natureza_label,
     get_peca_orientacao_label,
 )
-from app.domain.associado_types import DIMENSAO_REFERENCIA_LABELS, ZONA_APLICACAO_LABELS
+from app.domain.associado_types import (
+    DIMENSAO_REFERENCIA_LABELS,
+    MODO_QUANTIDADE_LABELS,
+    ZONA_APLICACAO_LABELS,
+)
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
 from app.domain.valueset_types import VALUESET_KEY_LABELS
@@ -74,6 +78,7 @@ class DefPecaDetailPage(QWidget):
         "Zona",
         "Dimensão",
         "Topos",
+        "Aplicação",
         "Obrigat\u00f3rio",
         "Ativo",
     ]
@@ -265,6 +270,9 @@ class DefPecaDetailPage(QWidget):
                     componente.dimensao_referencia, componente.dimensao_referencia
                 ),
                 str(componente.numero_topos),
+                MODO_QUANTIDADE_LABELS.get(
+                    componente.modo_quantidade, componente.modo_quantidade
+                ),
                 self._format_bool(componente.obrigatorio),
                 self._format_bool(componente.ativo),
             ]
@@ -337,12 +345,16 @@ class DefPecaDetailPage(QWidget):
                             zona_aplicacao=form_data.zona_aplicacao,
                             dimensao_referencia=form_data.dimensao_referencia,
                             numero_topos=form_data.numero_topos,
+                            modo_quantidade=form_data.modo_quantidade,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         )
                     )
-            except (SQLAlchemyError, ValueError):
-                dialog.set_error("N\u00e3o foi poss\u00edvel guardar o componente.")
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("N\u00e3o foi poss\u00edvel guardar o associado.")
                 return False
 
             saved = True
@@ -391,12 +403,16 @@ class DefPecaDetailPage(QWidget):
                             zona_aplicacao=form_data.zona_aplicacao,
                             dimensao_referencia=form_data.dimensao_referencia,
                             numero_topos=form_data.numero_topos,
+                            modo_quantidade=form_data.modo_quantidade,
                             obrigatorio=form_data.obrigatorio,
                             ativo=form_data.ativo,
                         ),
                     )
-            except (SQLAlchemyError, ValueError):
-                dialog.set_error("N\u00e3o foi poss\u00edvel guardar o componente.")
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("N\u00e3o foi poss\u00edvel guardar o associado.")
                 return False
 
             saved = True

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import re
 
 from sqlalchemy.orm import Session
 
 from app.domain.componente_types import PECA, normalize_componente_type
 from app.domain.associado_types import (
+    POR_TOPO,
+    normalize_modo_quantidade,
     normalize_dimensao_referencia,
     normalize_zona_aplicacao,
 )
@@ -17,6 +20,7 @@ from app.repositories.def_peca_componente_repository import (
     DefPecaComponenteRepository,
     DefPecaComponenteResumo,
 )
+from app.repositories.def_regra_quantidade_repository import DefRegraQuantidadeRepository
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,7 @@ class CriarDefPecaComponenteData:
     zona_aplicacao: str | None = None
     dimensao_referencia: str | None = None
     numero_topos: int = 0
+    modo_quantidade: str | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -55,6 +60,7 @@ class EditarDefPecaComponenteData:
     zona_aplicacao: str | None = None
     dimensao_referencia: str | None = None
     numero_topos: int = 0
+    modo_quantidade: str | None = None
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -66,6 +72,7 @@ class DefPecaComponenteService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = DefPecaComponenteRepository(session)
+        self.regra_repository = DefRegraQuantidadeRepository(session)
 
     def listar_componentes(self, def_peca_pai_id: int) -> list[DefPecaComponenteResumo]:
         """List components for one parent piece definition."""
@@ -78,11 +85,16 @@ class DefPecaComponenteService:
         regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
         zona_aplicacao = normalize_zona_aplicacao(data.zona_aplicacao)
         dimensao_referencia = normalize_dimensao_referencia(data.dimensao_referencia)
+        modo_quantidade = normalize_modo_quantidade(data.modo_quantidade)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
             quantidade=data.quantidade,
             numero_topos=data.numero_topos,
+            modo_quantidade=modo_quantidade,
+        )
+        self._validate_rule_topos(
+            data.def_regra_quantidade_id, modo_quantidade
         )
 
         ordem = self.repository.get_next_ordem(def_peca_pai_id)
@@ -99,6 +111,7 @@ class DefPecaComponenteService:
             zona_aplicacao=zona_aplicacao,
             dimensao_referencia=dimensao_referencia,
             numero_topos=data.numero_topos,
+            modo_quantidade=modo_quantidade,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -118,11 +131,16 @@ class DefPecaComponenteService:
         regra_quantidade = normalize_regra_quantidade(data.regra_quantidade)
         zona_aplicacao = normalize_zona_aplicacao(data.zona_aplicacao)
         dimensao_referencia = normalize_dimensao_referencia(data.dimensao_referencia)
+        modo_quantidade = normalize_modo_quantidade(data.modo_quantidade)
         self._validate_component(
             tipo_componente=tipo_componente,
             def_peca_componente_id=data.def_peca_componente_id,
             quantidade=data.quantidade,
             numero_topos=data.numero_topos,
+            modo_quantidade=modo_quantidade,
+        )
+        self._validate_rule_topos(
+            data.def_regra_quantidade_id, modo_quantidade
         )
 
         result = self.repository.update_componente(
@@ -139,6 +157,7 @@ class DefPecaComponenteService:
             zona_aplicacao=zona_aplicacao,
             dimensao_referencia=dimensao_referencia,
             numero_topos=data.numero_topos,
+            modo_quantidade=modo_quantidade,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -168,6 +187,7 @@ class DefPecaComponenteService:
         def_peca_componente_id: int | None,
         quantidade: Decimal,
         numero_topos: int = 0,
+        modo_quantidade: str = "TOTAL",
     ) -> None:
         if quantidade <= 0:
             raise ValueError("quantidade must be greater than 0")
@@ -175,5 +195,23 @@ class DefPecaComponenteService:
         if numero_topos not in (0, 1, 2):
             raise ValueError("numero_topos must be 0, 1 or 2")
 
+        if modo_quantidade == POR_TOPO and numero_topos not in (1, 2):
+            raise ValueError("numero_topos must be 1 or 2 for POR_TOPO")
+
         if tipo_componente == PECA and not def_peca_componente_id:
             raise ValueError("def_peca_componente_id is required for PECA components")
+
+    def _validate_rule_topos(
+        self, def_regra_quantidade_id: int | None, modo_quantidade: str
+    ) -> None:
+        """Prevent NUM_TOPOS from being applied once in the rule and again outside."""
+        if modo_quantidade != POR_TOPO or def_regra_quantidade_id is None:
+            return
+        regra = self.regra_repository.get_by_id(def_regra_quantidade_id)
+        if regra is None:
+            return
+        if re.search(r"\bNUM_TOPOS\b", regra.expressao or "", flags=re.IGNORECASE):
+            raise ValueError(
+                "NUM_TOPOS já é usado na expressão; escolha Quantidade total "
+                "para evitar multiplicação duplicada"
+            )

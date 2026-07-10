@@ -111,6 +111,15 @@ class OrcamentoItemCusteioLinha(Base):
     ordem_visual: Mapped[int | None] = mapped_column(Integer, nullable=True)
     origem_tipo: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     origem_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Frozen association/rule snapshot. Catalog changes do not alter an existing
+    # quote until an explicit refresh workflow is requested.
+    associado_regra_codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    associado_regra_expressao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    associado_modo_quantidade: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    associado_zona_aplicacao: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    associado_dimensao_referencia: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    associado_numero_topos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    operacoes_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     tipo_linha: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     descricao: Mapped[str] = mapped_column(Text, nullable=False)

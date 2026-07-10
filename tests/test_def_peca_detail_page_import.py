@@ -35,6 +35,7 @@ def test_def_peca_detail_page_component_headers() -> None:
         "Zona",
         "Dimensão",
         "Topos",
+        "Aplicação",
         "Obrigat\u00f3rio",
         "Ativo",
     ]

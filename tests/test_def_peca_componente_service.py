@@ -68,6 +68,16 @@ class _FakeRepository:
         return self.deactivate_result
 
 
+class _FakeRegraRepository:
+    regra = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def get_by_id(self, _id: int):
+        return self.regra
+
+
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
@@ -161,6 +171,56 @@ def test_associado_guarda_zona_dimensao_e_numero_topos(monkeypatch) -> None:
     assert _FakeRepository.created_payload["zona_aplicacao"] == "DOIS_TOPOS"
     assert _FakeRepository.created_payload["dimensao_referencia"] == "MEDIDA_TOPO"
     assert _FakeRepository.created_payload["numero_topos"] == 2
+
+
+def test_associado_por_topo_exige_numero_de_topos(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    monkeypatch.setattr(
+        service_module, "DefRegraQuantidadeRepository", _FakeRegraRepository
+    )
+    service = service_module.DefPecaComponenteService(session=_FakeSession())
+
+    try:
+        service.criar_componente(
+            service_module.CriarDefPecaComponenteData(
+                def_peca_pai_id=10,
+                tipo_componente="FERRAGEM",
+                referencia_componente="CAVILHA",
+                modo_quantidade="POR_TOPO",
+                numero_topos=0,
+            )
+        )
+    except ValueError as error:
+        assert "numero_topos" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_associado_impede_num_topos_duplicado_na_expressao(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    monkeypatch.setattr(
+        service_module, "DefRegraQuantidadeRepository", _FakeRegraRepository
+    )
+    _FakeRegraRepository.regra = SimpleNamespace(expressao="2 * NUM_TOPOS")
+    service = service_module.DefPecaComponenteService(session=_FakeSession())
+
+    try:
+        service.criar_componente(
+            service_module.CriarDefPecaComponenteData(
+                def_peca_pai_id=10,
+                tipo_componente="FERRAGEM",
+                referencia_componente="CAVILHA",
+                def_regra_quantidade_id=1,
+                modo_quantidade="POR_TOPO",
+                numero_topos=2,
+            )
+        )
+    except ValueError as error:
+        assert "multiplicação duplicada" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
 
 
 def test_componente_service_normaliza_regra_legacy_altura(monkeypatch) -> None:

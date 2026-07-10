@@ -32,6 +32,7 @@ from app.domain.associado_types import (
     COMP,
     GERAL,
     get_dimensao_referencia_options,
+    get_modo_quantidade_options,
     get_zona_aplicacao_options,
 )
 from app.domain.regra_quantidade_types import (
@@ -67,6 +68,7 @@ class DefPecaComponenteDialogData:
     zona_aplicacao: str
     dimensao_referencia: str
     numero_topos: int
+    modo_quantidade: str
     obrigatorio: bool
     ativo: bool
 
@@ -145,7 +147,15 @@ class DefPecaComponenteDialog(QDialog):
         self.numero_topos_input = QSpinBox()
         self.numero_topos_input.setRange(0, 2)
         self.numero_topos_input.setToolTip(
-            "0 = não aplicável; 1 = um topo; 2 = dois topos. A regra calcula por topo."
+            "0 = não aplicável; 1 = um topo; 2 = dois topos. "
+            "Só multiplica quando a aplicação escolhida for 'Quantidade por topo'."
+        )
+        self.modo_quantidade_input = QComboBox()
+        for code, label in get_modo_quantidade_options():
+            self.modo_quantidade_input.addItem(label, code)
+        self.modo_quantidade_input.setToolTip(
+            "Quantidade total: o resultado da regra já é o total da peça. "
+            "Quantidade por topo: o resultado é multiplicado por 1 ou 2 topos."
         )
 
         self.obrigatorio_input = QCheckBox()
@@ -182,6 +192,7 @@ class DefPecaComponenteDialog(QDialog):
         form.addRow("Zona de aplicação", self.zona_aplicacao_input)
         form.addRow("Dimensão de referência", self.dimensao_referencia_input)
         form.addRow("Número de topos", self.numero_topos_input)
+        form.addRow("Aplicação da quantidade", self.modo_quantidade_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
 
@@ -236,6 +247,9 @@ class DefPecaComponenteDialog(QDialog):
             self.dimensao_referencia_input, componente.dimensao_referencia
         )
         self.numero_topos_input.setValue(componente.numero_topos)
+        self._select_combo_data(
+            self.modo_quantidade_input, componente.modo_quantidade
+        )
         self.obrigatorio_input.setChecked(componente.obrigatorio)
         self.ativo_input.setChecked(componente.ativo)
 
@@ -305,6 +319,7 @@ class DefPecaComponenteDialog(QDialog):
             zona_aplicacao=self.zona_aplicacao_input.currentData() or GERAL,
             dimensao_referencia=self.dimensao_referencia_input.currentData() or COMP,
             numero_topos=self.numero_topos_input.value(),
+            modo_quantidade=self.modo_quantidade_input.currentData() or "TOTAL",
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )
@@ -327,6 +342,12 @@ class DefPecaComponenteDialog(QDialog):
 
         if data.quantidade <= 0:
             self.error_label.setText("A quantidade deve ser maior que 0.")
+            return
+
+        if data.modo_quantidade == "POR_TOPO" and data.numero_topos == 0:
+            self.error_label.setText(
+                "Na quantidade por topo, indique 1 ou 2 no número de topos."
+            )
             return
 
         self.error_label.clear()

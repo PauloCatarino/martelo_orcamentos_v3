@@ -87,15 +87,23 @@ def calcular_quantidades(
             qt_mod_divisao if qt_mod_divisao is not None else _num(linha.qt_mod)
         )
 
-        pai = (
-            por_id.get(linha.linha_pai_id)
-            if linha.linha_pai_id is not None
-            else None
-        )
-        if pai is not None:
-            qt_und_principal = _num(pai.qt_und)
-            qt_total = qt_mod_efetivo * qt_und_principal * qt_und
-            cadeia = (qt_mod_efetivo, qt_und_principal, qt_und)
+        fatores_ancestrais: list[Decimal] = []
+        pai_id = linha.linha_pai_id
+        vistos: set[int] = set()
+        while pai_id is not None and pai_id not in vistos:
+            vistos.add(pai_id)
+            pai = por_id.get(pai_id)
+            if pai is None:
+                break
+            fatores_ancestrais.append(_num(pai.qt_und))
+            pai_id = pai.linha_pai_id
+
+        if fatores_ancestrais:
+            fatores_ancestrais.reverse()
+            qt_total = qt_mod_efetivo * qt_und
+            for fator in fatores_ancestrais:
+                qt_total *= fator
+            cadeia = (qt_mod_efetivo, *fatores_ancestrais, qt_und)
         else:
             qt_total = qt_mod_efetivo * qt_und
             cadeia = (qt_mod_efetivo, qt_und)

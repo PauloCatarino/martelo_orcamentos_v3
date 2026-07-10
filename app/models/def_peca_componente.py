@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.domain.componente_types import PECA
-from app.domain.associado_types import COMP, GERAL
+from app.domain.associado_types import COMP, GERAL, TOTAL
 
 if TYPE_CHECKING:
     from app.models.def_peca import DefPeca
@@ -78,6 +78,9 @@ class DefPecaComponente(Base):
     )
     numero_topos: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    modo_quantidade: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=TOTAL, server_default=TOTAL
     )
     obrigatorio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)

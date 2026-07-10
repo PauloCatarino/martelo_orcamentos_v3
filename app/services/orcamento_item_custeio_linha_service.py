@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+import json
+from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -63,6 +65,16 @@ from app.domain.custos import (
 )
 from app.domain.quantidades import LinhaQuantidade, calcular_quantidades
 from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
+from app.domain.associado_types import (
+    COMP as DIM_COMP,
+    ESP as DIM_ESP,
+    LARG as DIM_LARG,
+    MEDIDA_TOPO,
+    POR_TOPO,
+    TOTAL,
+    normalize_dimensao_referencia,
+    normalize_modo_quantidade,
+)
 from app.domain.valueset_compat import TIPOS_FERRAGEM, opcoes_valueset_compativeis
 from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
@@ -73,6 +85,7 @@ from app.domain.materia_prima_snapshot import (
 from app.domain.numeros import normalize_percentagem_humana, validar_decimal
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
+from app.domain.peca_natureza_types import CONJUNTO
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import (
     OrcamentoItem,
@@ -363,6 +376,14 @@ class RegrasQuantidadeResult:
     processadas: int
     calculadas: int
     ignoradas: int
+
+
+@dataclass(frozen=True)
+class RegraQuantidadeAplicavel:
+    """Frozen or legacy quantity rule used by one costing line."""
+
+    codigo: str
+    expressao: str
 
 
 @dataclass(frozen=True)
@@ -841,6 +862,13 @@ class OrcamentoItemCusteioLinhaService:
 
     def _regra_quantidade_da_linha(self, linha):
         """Resolve the active quantity rule linked to a component line, or None."""
+        expressao_snapshot = getattr(linha, "associado_regra_expressao", None)
+        if expressao_snapshot:
+            return RegraQuantidadeAplicavel(
+                codigo=getattr(linha, "associado_regra_codigo", None) or "SNAPSHOT",
+                expressao=expressao_snapshot,
+            )
+
         if linha.linha_pai_id is None or linha.origem_id is None:
             return None
 
@@ -876,11 +904,27 @@ class OrcamentoItemCusteioLinhaService:
                 "da peça principal em falta."
             )
 
+        numero_topos, modo_quantidade, dimensao_referencia = (
+            self._configuracao_quantidade_associado(linha)
+        )
+        medida_topo = self._medida_topo_principal(
+            principal, dimensao_referencia
+        )
+        if (
+            "MEDIDA_TOPO" in (regra.expressao or "").upper()
+            and normalizar_numero(medida_topo) is None
+        ):
+            return None, (
+                f"Regra de quantidade {regra.codigo} não calculada: "
+                "medida do topo em falta."
+            )
         contexto = {
             "COMP": principal.comp_real,
             "LARG": principal.larg_real,
             "ESP": principal.esp_real,
             "QT_PAI": principal.qt_und,
+            "MEDIDA_TOPO": medida_topo,
+            "NUM_TOPOS": numero_topos,
         }
         quantidade, motivo = avaliar_regra_quantidade(regra.expressao, contexto)
         if motivo is not None:
@@ -888,7 +932,55 @@ class OrcamentoItemCusteioLinhaService:
                 f"Regra de quantidade {regra.codigo} não calculada: {motivo}"
             )
 
-        return Decimal(quantidade), None
+        resultado = Decimal(quantidade)
+        if modo_quantidade == POR_TOPO:
+            if numero_topos not in (1, 2):
+                return None, (
+                    f"Regra de quantidade {regra.codigo} não calculada: "
+                    "número de topos deve ser 1 ou 2."
+                )
+            resultado *= Decimal(numero_topos)
+
+        return resultado, None
+
+    def _configuracao_quantidade_associado(self, linha) -> tuple[int, str, str]:
+        """Return the frozen association settings, with legacy fallback."""
+        componente = None
+        if linha.origem_id is not None:
+            componente = self.componente_repository.get_by_id(linha.origem_id)
+
+        numero_topos = getattr(linha, "associado_numero_topos", None)
+        if numero_topos is None and componente is not None:
+            numero_topos = getattr(componente, "numero_topos", 0)
+
+        modo = getattr(linha, "associado_modo_quantidade", None)
+        if modo is None and componente is not None:
+            modo = getattr(componente, "modo_quantidade", TOTAL)
+
+        dimensao = getattr(linha, "associado_dimensao_referencia", None)
+        if dimensao is None and componente is not None:
+            dimensao = getattr(componente, "dimensao_referencia", DIM_COMP)
+
+        return (
+            int(numero_topos or 0),
+            normalize_modo_quantidade(modo),
+            normalize_dimensao_referencia(dimensao),
+        )
+
+    @staticmethod
+    def _medida_topo_principal(principal, dimensao_referencia: str):
+        """Resolve MEDIDA_TOPO from the selected real parent dimension.
+
+        ``MEDIDA_TOPO`` means the short end of the piece and therefore maps to
+        LARG. The explicit COMP/LARG/ESP options allow overriding that mapping.
+        """
+        if dimensao_referencia == DIM_COMP:
+            return principal.comp_real
+        if dimensao_referencia == DIM_ESP:
+            return principal.esp_real
+        if dimensao_referencia in (DIM_LARG, MEDIDA_TOPO):
+            return principal.larg_real
+        return principal.larg_real
 
     def _peca_principal_do_bloco(self, linha, linhas):
         """Return the composite block's main piece for a component line, or None.
@@ -899,6 +991,16 @@ class OrcamentoItemCusteioLinhaService:
         one with the lowest ordem (then id) wins, so the rule reads the real
         dimensions of the block's structural piece (e.g. the FUNDO for the PES).
         """
+        por_id = {outra.id: outra for outra in linhas}
+        pai = por_id.get(linha.linha_pai_id)
+        if (
+            pai is not None
+            and pai.tipo_linha == PECA
+            and pai.comp_real is not None
+            and pai.larg_real is not None
+        ):
+            return pai
+
         candidatas = [
             outra
             for outra in linhas
@@ -1668,7 +1770,33 @@ class OrcamentoItemCusteioLinhaService:
         if entrada is not None and entrada["pares"]:
             return entrada["pares"]
 
+        pares_snapshot = self._pares_operacoes_snapshot(linha)
+        if pares_snapshot is not None:
+            return pares_snapshot
+
         return self._pares_operacao_ligacao_da_peca(linha.def_peca_id)
+
+    @staticmethod
+    def _pares_operacoes_snapshot(linha) -> list[tuple] | None:
+        """Rebuild frozen operation/link objects; None means a legacy line."""
+        texto = getattr(linha, "operacoes_snapshot_json", None)
+        if texto is None:
+            return None
+        try:
+            dados = json.loads(texto)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        if not isinstance(dados, list):
+            return []
+
+        pares: list[tuple] = []
+        for item in dados:
+            if not isinstance(item, dict):
+                continue
+            operacao = item.get("operacao") or {}
+            ligacao = item.get("ligacao") or {}
+            pares.append((SimpleNamespace(**operacao), SimpleNamespace(**ligacao)))
+        return pares
 
     def _aviso_operacoes_variante_sem_correspondencia(
         self, linha, cache_variantes: dict
@@ -2839,8 +2967,8 @@ class OrcamentoItemCusteioLinhaService:
             return linha_id
 
         topo = self._linha_topo_do_bloco(selecionada, por_id)
-        if topo.tipo_linha != PECA_COMPOSTA:
-            return linha_id  # simple piece / hardware / division / operation
+        if not any(linha.linha_pai_id == topo.id for linha in linhas):
+            return linha_id  # standalone piece / hardware / division / operation
 
         # Composite block: anchor = the last display-order line of the block.
         ancora_id = topo.id
@@ -2871,6 +2999,10 @@ class OrcamentoItemCusteioLinhaService:
         "def_peca_id", "def_peca_codigo", "chave_valueset", "codigo_orlas",
         "qt_mod", "qt_und", "quantidade", "comp", "larg", "esp",
         "nivel", "origem_tipo", "origem_id", "mat_default",
+        "associado_regra_codigo", "associado_regra_expressao",
+        "associado_modo_quantidade", "associado_zona_aplicacao",
+        "associado_dimensao_referencia", "associado_numero_topos",
+        "operacoes_snapshot_json",
         "materia_prima_id", "ref_materia_prima", "descricao_materia_prima",
         "ref_le", "descricao_no_orcamento", "unidade", "preco_liquido",
         "desperdicio_percentagem", "tipo_materia_prima", "familia_materia_prima",
@@ -2930,7 +3062,7 @@ class OrcamentoItemCusteioLinhaService:
             if selecionada is None:
                 continue
             topo = self._linha_topo_do_bloco(selecionada, por_id)
-            if topo.tipo_linha == PECA_COMPOSTA:
+            if any(linha.linha_pai_id == topo.id for linha in linhas):
                 for linha in linhas:
                     if self._linha_topo_do_bloco(linha, por_id).id == topo.id:
                         ids.add(linha.id)
@@ -3277,10 +3409,20 @@ class OrcamentoItemCusteioLinhaService:
                 ignoradas += 1
                 continue
 
-            if peca.tipo_peca == COMPOSTA:
+            if self._eh_conjunto_virtual(peca):
                 componentes += self._adicionar_peca_composta(item_id, peca, avisos)
             else:
-                self._adicionar_peca_simples(item_id, peca, avisos)
+                principal = self._adicionar_peca_simples(item_id, peca, avisos)
+                associados = self._associados_ativos(peca.id)
+                if associados:
+                    componentes += self._criar_linhas_componentes(
+                        item_id,
+                        associados,
+                        principal.id,
+                        avisos,
+                        origem="PECA_ASSOCIADA",
+                        pecas_ancestrais={peca.id},
+                    )
             criadas += 1
 
         self.session.commit()
@@ -3291,6 +3433,18 @@ class OrcamentoItemCusteioLinhaService:
             ignoradas=ignoradas,
             avisos=avisos,
         )
+
+    @staticmethod
+    def _eh_conjunto_virtual(peca: DefPecaResumo) -> bool:
+        """Recognize the unified nature, preserving legacy COMPOSTA records."""
+        return getattr(peca, "natureza", None) == CONJUNTO or peca.tipo_peca == COMPOSTA
+
+    def _associados_ativos(self, def_peca_id: int) -> list:
+        return [
+            associado
+            for associado in self.componente_repository.list_by_peca_pai_id(def_peca_id)
+            if associado.ativo
+        ]
 
     # --- Import a saved module into the item (phase 8U.2) --------------------
 
@@ -3497,7 +3651,11 @@ class OrcamentoItemCusteioLinhaService:
             return 0
 
         return self._criar_linhas_componentes(
-            orcamento_item_id, componentes, principal.id, avisos
+            orcamento_item_id,
+            componentes,
+            principal.id,
+            avisos,
+            pecas_ancestrais={peca.id},
         )
 
     def _criar_cabecalho_composta_modulo(
@@ -3619,6 +3777,7 @@ class OrcamentoItemCusteioLinhaService:
         componente = self._componente_para_filho_modulo(filho, componentes_def)
         if componente is not None:
             fields["origem_id"] = componente.id
+            fields.update(self._snapshot_regra_associado(componente))
 
         self.repository.create_linha(**fields)
 
@@ -3717,7 +3876,7 @@ class OrcamentoItemCusteioLinhaService:
 
     def _adicionar_peca_simples(
         self, orcamento_item_id: int, peca: DefPecaResumo, avisos: list[str]
-    ) -> None:
+    ) -> OrcamentoItemCusteioLinhaResumo:
         """Create one cost line for a simple library piece.
 
         The line type is DERIVED from the piece's material nature (see
@@ -3737,7 +3896,7 @@ class OrcamentoItemCusteioLinhaService:
         if aviso:
             self._adicionar_aviso(avisos, aviso)
 
-        self.repository.create_linha(**fields)
+        return self.repository.create_linha(**fields)
 
     def _tipo_linha_da_def_peca(self, peca: DefPecaResumo) -> str:
         """Derive a simple piece's cost-line type from its material nature.
@@ -3750,6 +3909,8 @@ class OrcamentoItemCusteioLinhaService:
         board key, an unknown key, or a service piece without material stays PECA.
         The key type is resolved from the configurable ValueSet keys repository.
         """
+        if getattr(peca, "natureza", None) == "FERRAGEM":
+            return FERRAGEM
         if getattr(peca, "sem_material", False):
             return PECA
 
@@ -3771,11 +3932,7 @@ class OrcamentoItemCusteioLinhaService:
         """
         principal = self._criar_linha_principal_composta(orcamento_item_id, peca)
 
-        componentes = [
-            componente
-            for componente in self.componente_repository.list_by_peca_pai_id(peca.id)
-            if componente.ativo
-        ]
+        componentes = self._associados_ativos(peca.id)
         if not componentes:
             self._adicionar_aviso(
                 avisos, f"Peça composta {peca.codigo} sem componentes configurados."
@@ -3816,38 +3973,88 @@ class OrcamentoItemCusteioLinhaService:
         componentes: list,
         linha_pai_id: int,
         avisos: list[str],
+        origem: str = "PECA_COMPOSTA",
+        nivel: int = 1,
+        pecas_ancestrais: set[int] | None = None,
     ) -> int:
         """Create one sub-line per component, returning how many were created."""
         criadas = 0
         for ordem, componente in enumerate(componentes, start=1):
+            peca_filha = self._obter_def_peca_filha(componente)
+            ancestrais = set(pecas_ancestrais or set())
+            if peca_filha is not None and peca_filha.id in ancestrais:
+                self._adicionar_aviso(
+                    avisos,
+                    f"Associação circular detetada em {peca_filha.codigo}; "
+                    "a linha repetida não foi inserida.",
+                )
+                continue
             fields, aviso = self._build_componente_line_fields(
-                orcamento_item_id, componente, linha_pai_id, ordem
+                orcamento_item_id,
+                componente,
+                linha_pai_id,
+                ordem,
+                origem=origem,
+                nivel=nivel,
             )
             if aviso:
                 self._adicionar_aviso(avisos, aviso)
-            self.repository.create_linha(**fields)
+            criada = self.repository.create_linha(**fields)
             criadas += 1
+
+            if peca_filha is None:
+                continue
+            associados_filha = self._associados_ativos(peca_filha.id)
+            if associados_filha:
+                criadas += self._criar_linhas_componentes(
+                    orcamento_item_id,
+                    associados_filha,
+                    criada.id,
+                    avisos,
+                    origem=origem,
+                    nivel=nivel + 1,
+                    pecas_ancestrais={*ancestrais, peca_filha.id},
+                )
 
         return criadas
 
     def _build_componente_line_fields(
-        self, orcamento_item_id: int, componente, linha_pai_id: int, ordem: int
+        self,
+        orcamento_item_id: int,
+        componente,
+        linha_pai_id: int,
+        ordem: int,
+        *,
+        origem: str = "PECA_COMPOSTA",
+        nivel: int = 1,
     ) -> tuple[dict, str | None]:
         """Build the cost line fields for one composite component sub-line."""
         qt_und = (
             componente.quantidade if componente.quantidade is not None else Decimal("1")
         )
-        tipo_linha = normalize_custeio_linha_type(componente.tipo_componente)
+        modo_quantidade = normalize_modo_quantidade(
+            getattr(componente, "modo_quantidade", TOTAL)
+        )
+        numero_topos = int(getattr(componente, "numero_topos", 0) or 0)
+        if modo_quantidade == POR_TOPO and numero_topos in (1, 2):
+            qt_und *= Decimal(numero_topos)
+        snapshot = self._snapshot_regra_associado(componente)
 
         peca_filha = self._obter_def_peca_filha(componente)
 
         if peca_filha is not None:
+            if componente.tipo_componente != "PECA":
+                tipo_linha = normalize_custeio_linha_type(
+                    componente.tipo_componente
+                )
+            else:
+                tipo_linha = self._tipo_linha_da_def_peca(peca_filha)
             fields, aviso = self._build_peca_line_fields(
                 orcamento_item_id,
                 peca_filha,
                 tipo_linha=tipo_linha,
-                origem="PECA_COMPOSTA",
-                nivel=1,
+                origem=origem,
+                nivel=nivel,
                 linha_pai_id=linha_pai_id,
                 ordem=ordem,
                 qt_und=qt_und,
@@ -3859,8 +4066,10 @@ class OrcamentoItemCusteioLinhaService:
             # Link the cost line back to the DefPecaComponente so the Atualizar
             # pipeline can resolve its quantity rule (phase 8T.5.1).
             fields["origem_id"] = componente.id
+            fields.update(snapshot)
             return fields, aviso
 
+        tipo_linha = normalize_custeio_linha_type(componente.tipo_componente)
         fields: dict = {
             "orcamento_item_id": orcamento_item_id,
             "tipo_linha": tipo_linha,
@@ -3868,9 +4077,9 @@ class OrcamentoItemCusteioLinhaService:
             "descricao": componente.descricao
             or componente.referencia_componente
             or "Componente",
-            "origem_tipo": "PECA_COMPOSTA",
+            "origem_tipo": origem,
             "origem_id": componente.id,
-            "nivel": 1,
+            "nivel": nivel,
             "linha_pai_id": linha_pai_id,
             "ordem": ordem,
             "qt_mod": Decimal("1"),
@@ -3883,7 +4092,36 @@ class OrcamentoItemCusteioLinhaService:
                 "da biblioteca (com chave de material) para herdar o material."
             ),
         }
+        fields.update(snapshot)
         return fields, None
+
+    def _snapshot_regra_associado(self, componente) -> dict:
+        """Freeze the association and its current active quantity rule."""
+        regra = None
+        regra_id = getattr(componente, "def_regra_quantidade_id", None)
+        if regra_id is not None:
+            regra = self.regra_quantidade_repository.get_by_id(
+                regra_id
+            )
+            if regra is not None and not regra.ativo:
+                regra = None
+
+        return {
+            "associado_regra_codigo": getattr(regra, "codigo", None),
+            "associado_regra_expressao": getattr(regra, "expressao", None),
+            "associado_modo_quantidade": normalize_modo_quantidade(
+                getattr(componente, "modo_quantidade", TOTAL)
+            ),
+            "associado_zona_aplicacao": getattr(
+                componente, "zona_aplicacao", None
+            ),
+            "associado_dimensao_referencia": normalize_dimensao_referencia(
+                getattr(componente, "dimensao_referencia", DIM_COMP)
+            ),
+            "associado_numero_topos": int(
+                getattr(componente, "numero_topos", 0) or 0
+            ),
+        }
 
     def _obter_def_peca_filha(self, componente) -> DefPecaResumo | None:
         """Resolve the child piece definition of a component.
@@ -3946,6 +4184,7 @@ class OrcamentoItemCusteioLinhaService:
             "codigo": peca.codigo,
             "def_peca_id": peca.id,
             "def_peca_codigo": peca.codigo,
+            "operacoes_snapshot_json": self._snapshot_operacoes_peca(peca.id),
             "descricao": peca.nome or peca.descricao or peca.codigo,
             "codigo_orlas": self._format_codigo_orlas(peca),
             "chave_valueset": peca.chave_valueset_material,
@@ -4012,6 +4251,68 @@ class OrcamentoItemCusteioLinhaService:
                 fields["esp"] = esp_texto
 
         return fields, None
+
+    def _snapshot_operacoes_peca(self, def_peca_id: int) -> str:
+        """Serialize the active operation links used when the quote line is born."""
+        itens: list[dict] = []
+        for ligacao in self.peca_operacao_repository.list_active_by_def_peca(
+            def_peca_id
+        ):
+            operacao = self.operacao_repository.get_by_id(ligacao.def_operacao_id)
+            if operacao is None or not getattr(operacao, "ativo", True):
+                continue
+            itens.append(
+                {
+                    "operacao": {
+                        "id": getattr(operacao, "id", ligacao.def_operacao_id),
+                        "codigo": getattr(operacao, "codigo", None),
+                        "nome": getattr(operacao, "nome", None),
+                        "tipo_operacao": getattr(operacao, "tipo_operacao", None),
+                        "unidade_calculo": getattr(
+                            operacao, "unidade_calculo", None
+                        ),
+                        "tempo_base": self._json_numero(
+                            getattr(operacao, "tempo_base", None)
+                        ),
+                        "tempo_setup": self._json_numero(
+                            getattr(operacao, "tempo_setup", None)
+                        ),
+                        "custo_hora": self._json_numero(
+                            getattr(operacao, "custo_hora", None)
+                        ),
+                        "custo_minimo": self._json_numero(
+                            getattr(operacao, "custo_minimo", None)
+                        ),
+                        "maquina_id": getattr(operacao, "maquina_id", None),
+                        "ativo": True,
+                    },
+                    "ligacao": {
+                        "id": ligacao.id,
+                        "def_peca_id": getattr(ligacao, "def_peca_id", def_peca_id),
+                        "def_operacao_id": ligacao.def_operacao_id,
+                        "ordem": getattr(ligacao, "ordem", 1),
+                        "regra_calculo": getattr(ligacao, "regra_calculo", None),
+                        "quantidade_base": self._json_numero(
+                            getattr(ligacao, "quantidade_base", None)
+                        ),
+                        "tempo_setup_minutos": self._json_numero(
+                            getattr(ligacao, "tempo_setup_minutos", None)
+                        ),
+                        "tempo_por_unidade_minutos": self._json_numero(
+                            getattr(ligacao, "tempo_por_unidade_minutos", None)
+                        ),
+                        "unidade_tempo": getattr(ligacao, "unidade_tempo", None),
+                        "obrigatorio": getattr(ligacao, "obrigatorio", True),
+                        "ativo": True,
+                    },
+                }
+            )
+        return json.dumps(itens, ensure_ascii=False, separators=(",", ":"))
+
+    @staticmethod
+    def _json_numero(value) -> str | None:
+        numero = normalizar_numero(value)
+        return format(numero, "f") if numero is not None else None
 
     def _espessura_material_para_esp(self, espessura) -> str | None:
         """Format a material thickness as a clean Esp expression (or None)."""

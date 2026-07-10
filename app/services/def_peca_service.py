@@ -287,6 +287,7 @@ class DefPecaService:
                     zona_aplicacao=componente.zona_aplicacao,
                     dimensao_referencia=componente.dimensao_referencia,
                     numero_topos=componente.numero_topos,
+                    modo_quantidade=componente.modo_quantidade,
                     obrigatorio=componente.obrigatorio,
                     ativo=componente.ativo,
                     observacoes=componente.observacoes,

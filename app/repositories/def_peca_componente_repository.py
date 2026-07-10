@@ -33,6 +33,7 @@ class DefPecaComponenteResumo:
     zona_aplicacao: str = "GERAL"
     dimensao_referencia: str = "COMP"
     numero_topos: int = 0
+    modo_quantidade: str = "TOTAL"
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -92,6 +93,7 @@ class DefPecaComponenteRepository:
         zona_aplicacao: str = "GERAL",
         dimensao_referencia: str = "COMP",
         numero_topos: int = 0,
+        modo_quantidade: str = "TOTAL",
     ) -> DefPecaComponenteResumo:
         """Create one composite piece component."""
         componente = DefPecaComponente(
@@ -107,6 +109,7 @@ class DefPecaComponenteRepository:
             zona_aplicacao=zona_aplicacao,
             dimensao_referencia=dimensao_referencia,
             numero_topos=numero_topos,
+            modo_quantidade=modo_quantidade,
             obrigatorio=obrigatorio,
             ativo=ativo,
             observacoes=observacoes,
@@ -135,6 +138,7 @@ class DefPecaComponenteRepository:
         zona_aplicacao: str = "GERAL",
         dimensao_referencia: str = "COMP",
         numero_topos: int = 0,
+        modo_quantidade: str = "TOTAL",
     ) -> DefPecaComponenteResumo:
         """Update one composite piece component."""
         componente = self.session.get(DefPecaComponente, id)
@@ -153,6 +157,7 @@ class DefPecaComponenteRepository:
         componente.zona_aplicacao = zona_aplicacao
         componente.dimensao_referencia = dimensao_referencia
         componente.numero_topos = numero_topos
+        componente.modo_quantidade = modo_quantidade
         componente.obrigatorio = obrigatorio
         componente.ativo = ativo
         componente.observacoes = observacoes
@@ -195,6 +200,7 @@ class DefPecaComponenteRepository:
             zona_aplicacao=componente.zona_aplicacao,
             dimensao_referencia=componente.dimensao_referencia,
             numero_topos=componente.numero_topos,
+            modo_quantidade=componente.modo_quantidade,
             created_at=componente.created_at,
             updated_at=componente.updated_at,
         )

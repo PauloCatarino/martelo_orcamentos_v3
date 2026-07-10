@@ -44,6 +44,11 @@ def _componente(**kwargs):
         "ordem": 1,
         "quantidade": Decimal("1"),
         "regra_quantidade": "FIXA",
+        "def_regra_quantidade_id": None,
+        "zona_aplicacao": "GERAL",
+        "dimensao_referencia": "COMP",
+        "numero_topos": 0,
+        "modo_quantidade": "TOTAL",
         "obrigatorio": True,
         "ativo": True,
         "observacoes": None,
@@ -254,7 +259,11 @@ class _FakeComponenteRepository:
         pass
 
     def list_by_peca_pai_id(self, def_peca_pai_id: int):
-        return self.componentes
+        return [
+            componente
+            for componente in self.componentes
+            if getattr(componente, "def_peca_pai_id", None) == def_peca_pai_id
+        ]
 
     def get_by_id(self, id: int):
         return self.componentes_por_id.get(id)
@@ -689,6 +698,78 @@ def test_adicionar_peca_simples_sem_material_fica_peca(monkeypatch) -> None:
     service.adicionar_pecas_da_biblioteca(10, [1])
 
     assert _FakeRepository.created_payload["tipo_linha"] == "PECA"
+
+
+def test_peca_fisica_expande_associado_com_snapshot(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA", natureza="MATERIAL"),
+        2: _peca(
+            id=2,
+            codigo="SUPORTE_PRATELEIRA",
+            natureza="FERRAGEM",
+            chave_valueset_material="FERRAGEM_SUPORTE",
+        ),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=20,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            def_regra_quantidade_id=100,
+            zona_aplicacao="DOIS_TOPOS",
+            dimensao_referencia="MEDIDA_TOPO",
+            numero_topos=2,
+            modo_quantidade="TOTAL",
+        )
+    ]
+    _FakeRegraQuantidadeRepository.regras_por_id = {
+        100: _regra_q("SUPORTE_PRATELEIRA", "4")
+    }
+    _FakeItemValuesetRepository.default_linha = _vs_linha(
+        unidade="UND", chave="FERRAGEM_SUPORTE"
+    )
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.criadas == 1
+    assert result.componentes == 1
+    assert len(_FakeRepository.created_payloads) == 2
+    principal, associado = _FakeRepository.created_payloads
+    assert principal["tipo_linha"] == "PECA"
+    assert associado["tipo_linha"] == "FERRAGEM"
+    assert associado["linha_pai_id"] == 1
+    assert associado["origem_tipo"] == "PECA_ASSOCIADA"
+    assert associado["associado_regra_codigo"] == "SUPORTE_PRATELEIRA"
+    assert associado["associado_regra_expressao"] == "4"
+    assert associado["associado_modo_quantidade"] == "TOTAL"
+    assert associado["associado_numero_topos"] == 2
+    # TOTAL protects a rule that already returns the final amount from doubling.
+    assert associado["qt_und"] == Decimal("1")
+
+
+def test_associados_aninhados_sao_expandidos_com_hierarquia(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA", natureza="MATERIAL"),
+        2: _peca(id=2, codigo="KIT_SUPORTE", natureza="MATERIAL"),
+        3: _peca(id=3, codigo="PARAFUSO", natureza="FERRAGEM"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(id=20, def_peca_pai_id=1, def_peca_componente_id=2),
+        _componente(id=21, def_peca_pai_id=2, def_peca_componente_id=3),
+    ]
+    _FakeItemValuesetRepository.default_linha = _vs_linha(unidade="UND")
+
+    result = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert result.componentes == 2
+    assert len(_FakeRepository.created_payloads) == 3
+    primeiro, segundo = _FakeRepository.created_payloads[1:]
+    assert primeiro["nivel"] == 1
+    assert primeiro["linha_pai_id"] == 1
+    assert segundo["nivel"] == 2
+    assert segundo["linha_pai_id"] == 2
 
 
 def test_adicionar_peca_composta_cria_principal_e_componentes(monkeypatch) -> None:
@@ -1155,6 +1236,70 @@ def test_aplicar_regras_usa_qt_pai(monkeypatch) -> None:
         pai_qt_und=Decimal("2"),
     )
     assert payload["qt_und"] == Decimal("2")
+
+
+def test_regra_snapshot_usa_pai_fisico_e_nao_catalogo_atual(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            comp_real=Decimal("1200"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            qt_und=Decimal("1"),
+        ),
+        _resumo(
+            id=2,
+            tipo_linha="FERRAGEM",
+            linha_pai_id=1,
+            origem_id=20,
+            associado_regra_codigo="CONGELADA",
+            associado_regra_expressao="2",
+            associado_modo_quantidade="TOTAL",
+            associado_dimensao_referencia="MEDIDA_TOPO",
+            associado_numero_topos=2,
+        ),
+    ]
+    _FakeComponenteRepository.componentes_por_id = {
+        20: _componente_com_regra(20, 100)
+    }
+    _FakeRegraQuantidadeRepository.regras_por_id = {
+        100: _regra_q("ALTERADA_NO_CATALOGO", "99")
+    }
+
+    service.aplicar_regras_quantidade_do_item(30)
+
+    assert _FakeRepository.updated_payload["qt_und"] == Decimal("2")
+
+
+def test_regra_por_topo_multiplica_explicitamente(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            comp_real=Decimal("1200"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            qt_und=Decimal("1"),
+        ),
+        _resumo(
+            id=2,
+            tipo_linha="FERRAGEM",
+            linha_pai_id=1,
+            associado_regra_codigo="UNIAO_TOPOS_128",
+            associado_regra_expressao="MAX(2, CEIL(MEDIDA_TOPO / 128))",
+            associado_modo_quantidade="POR_TOPO",
+            associado_dimensao_referencia="MEDIDA_TOPO",
+            associado_numero_topos=2,
+        ),
+    ]
+
+    service.aplicar_regras_quantidade_do_item(30)
+
+    # LARG/MEDIDA_TOPO=600 -> 5 por topo; dois topos -> 10.
+    assert _FakeRepository.updated_payload["qt_und"] == Decimal("10")
 
 
 def test_aplicar_regras_sem_dimensoes_nao_calcula_e_avisa(monkeypatch) -> None:
@@ -2917,6 +3062,37 @@ def _operacao(
         tempo_base=tempo_base,
         tempo_setup=tempo_setup,
     )
+
+
+def test_operacoes_da_peca_ficam_congeladas_na_linha(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1, codigo="PRAT")}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
+    _FakeOperacaoRepository.operacoes = {2: _operacao("CORTE", maquina_id=5)}
+    _FakeItemValuesetRepository.default_linha = _vs_linha()
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+    snapshot = _FakeRepository.created_payload["operacoes_snapshot_json"]
+
+    # The catalog is changed after insertion, but the quote keeps CORTE.
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(3)]}
+    _FakeOperacaoRepository.operacoes = {3: _operacao("CNC", maquina_id=6)}
+    _FakeMaquinaRepository.maquinas = {
+        5: SimpleNamespace(codigo="SECCIONADORA", nome="Seccionadora")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            operacoes_snapshot_json=snapshot,
+        )
+    ]
+
+    service.aplicar_operacoes_do_item(10)
+
+    assert _FakeRepository.updated_payload["operacoes"] == "CORTE"
+    assert _FakeRepository.updated_payload["maquina"] == "SECCIONADORA"
 
 
 def test_aplicar_operacoes_preenche_operacoes_e_maquina(monkeypatch) -> None:

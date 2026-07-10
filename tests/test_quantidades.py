@@ -103,6 +103,24 @@ def test_qt_total_componente_multiplica_qt_und_principal() -> None:
     assert res[2].cadeia == (Decimal("1"), Decimal("2"), Decimal("5"))
 
 
+def test_qt_total_associado_aninhado_multiplica_todos_os_ancestrais() -> None:
+    linhas = [
+        _peca(1, Decimal("2")),
+        _peca(2, Decimal("3"), linha_pai_id=1),
+        _peca(3, Decimal("4"), tipo=FERRAGEM, linha_pai_id=2),
+    ]
+
+    res = calcular_quantidades(linhas)
+
+    assert res[3].qt_total == Decimal("24")
+    assert res[3].cadeia == (
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("3"),
+        Decimal("4"),
+    )
+
+
 def test_divisao_governa_o_bloco_e_para_na_proxima_divisao() -> None:
     linhas = [
         _peca(1, Decimal("1"), qt_mod=Decimal("2")),  # above any division

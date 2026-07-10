@@ -28,6 +28,14 @@ DIMENSAO_REFERENCIA_LABELS = {
     MEDIDA_TOPO: "Medida do topo",
 }
 
+TOTAL = "TOTAL"
+POR_TOPO = "POR_TOPO"
+
+MODO_QUANTIDADE_LABELS = {
+    TOTAL: "Quantidade total",
+    POR_TOPO: "Quantidade por topo",
+}
+
 
 def normalize_zona_aplicacao(value: str | None) -> str:
     normalized = (value or "").strip().upper()
@@ -45,3 +53,12 @@ def get_zona_aplicacao_options() -> tuple[tuple[str, str], ...]:
 
 def get_dimensao_referencia_options() -> tuple[tuple[str, str], ...]:
     return tuple(DIMENSAO_REFERENCIA_LABELS.items())
+
+
+def normalize_modo_quantidade(value: str | None) -> str:
+    normalized = (value or "").strip().upper()
+    return normalized if normalized in MODO_QUANTIDADE_LABELS else TOTAL
+
+
+def get_modo_quantidade_options() -> tuple[tuple[str, str], ...]:
+    return tuple(MODO_QUANTIDADE_LABELS.items())
