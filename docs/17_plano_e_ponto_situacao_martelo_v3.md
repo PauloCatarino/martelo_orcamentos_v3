@@ -125,6 +125,51 @@ Commit: `f567817 Auditar e detalhar piloto de unioes`.
 - A base funcional está preparada para generalizar as uniões a outras peças.
 - Não existem alterações de esquema pendentes nesta fase.
 
+### Generalização controlada — proteção contra CNC duplicado
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- inventário confirmado das famílias estruturais atuais do catálogo;
+- no Martelo, a peça horizontal inferior chama-se `Fundo`; não existe uma
+  família autónoma `Base`;
+- nomes e aplicações diferentes podem derivar da mesma origem estrutural
+  horizontal ou vertical, alterando materiais, orlas, uniões e operações;
+- a `DIVISORIA_2000` foi configurada pelo utilizador com cavilha de prioridade 1,
+  `UNIAO_TOPOS_128`, dois topos e quantidade por topo, sem parafuso;
+- o CNC direto da divisória foi desativado pelo utilizador, ficando a maquinação
+  da união na origem associada;
+- a Auditoria distingue agora CNC diferentes na peça e no associado, que geram
+  aviso para confirmação, da mesma operação CNC repetida nas duas origens, que
+  gera o erro `CNC_DUPLICADO_PECA_ASSOCIADO`;
+- a proteção não remove operações automaticamente, porque duas maquinações
+  distintas podem ser fisicamente necessárias.
+
+Testes automáticos:
+
+- testes focados: `231 passed`;
+- bateria completa: `1905 passed`;
+- tabela de `UNIAO_TOPOS_128` cobre explicitamente 100, 128, 600 e 601 mm;
+- auditoria da base atual: 0 ocorrências `CNC_DUPLICADO_PECA_ASSOCIADO` e 0
+  ocorrências `UNIAO_*` na configuração atual da divisória.
+
+Validação local pedida:
+
+1. executar a Auditoria do Catálogo com a divisória corretamente configurada;
+2. confirmar que não aparece `CNC_DUPLICADO_PECA_ASSOCIADO`;
+3. ativar temporariamente na divisória a mesma CNC usada pela cavilha;
+4. confirmar que a Auditoria apresenta o novo erro de duplicação;
+5. voltar a desativar a CNC direta e confirmar que o erro desaparece.
+
+Validação do utilizador: pendente.
+
+Commit: `Proteger contra CNC duplicado nas unioes`.
+
+Próximo passo recomendado: rever e normalizar as peças estruturais de
+`def_pecas` antes de criar um módulo de teste tipo caixote. Esse módulo deverá
+incluir, de forma progressiva, teto, fundo, prateleira fixa, prateleira amovível,
+laterais ou divisória, costa e porta, herdando materiais e regras do ValueSet do
+item onde for inserido.
+
 ## Próxima fase proposta
 
 ### Generalização das uniões estruturais

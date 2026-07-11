@@ -170,7 +170,10 @@ def test_variaveis_e_funcoes_publicadas() -> None:
 
 def test_regra_uniao_topos_128_respeita_tabela_confirmada() -> None:
     expressao = "MAX(2, CEIL(MEDIDA_TOPO / 128))"
-    casos = ((80, 2), (100, 2), (128, 2), (256, 2), (257, 3), (500, 4), (600, 5))
+    casos = (
+        (80, 2), (100, 2), (128, 2), (256, 2), (257, 3),
+        (500, 4), (600, 5), (601, 5),
+    )
 
     for medida_topo, esperado in casos:
         quantidade, motivo = avaliar_regra_quantidade(

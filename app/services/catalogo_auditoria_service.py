@@ -373,13 +373,30 @@ class CatalogoAuditoriaService:
                         navegacao_id=getattr(pai, "id", None),
                     )
 
-                pai_cnc = cls._peca_tem_cnc(
+                cnc_pai = cls._ids_cnc_da_peca(
                     componente.def_peca_pai_id, ligacoes_por_peca, operacoes
                 )
-                filho_cnc = cls._peca_tem_cnc(
+                cnc_filho = cls._ids_cnc_da_peca(
                     filho.id, ligacoes_por_peca, operacoes
                 )
-                if pai_cnc and filho_cnc:
+                cnc_repetido = cnc_pai & cnc_filho
+                if cnc_repetido:
+                    codigos = ", ".join(
+                        sorted(
+                            getattr(operacoes[operacao_id], "codigo", str(operacao_id))
+                            for operacao_id in cnc_repetido
+                        )
+                    )
+                    add(
+                        ERRO, "CNC_DUPLICADO_PECA_ASSOCIADO", "Custos", "Associado",
+                        componente, codigo_pai,
+                        f"A operação CNC {codigos} está ativa na peça {codigo_pai} e no associado {filho.codigo}.",
+                        "A mesma maquinação e o respetivo setup podem ser contabilizados duas vezes.",
+                        "Manter a operação numa única origem: peça principal ou associado.",
+                        navegacao_tipo="PECA",
+                        navegacao_id=getattr(pai, "id", None),
+                    )
+                elif cnc_pai and cnc_filho:
                     add(
                         AVISO, "CNC_PECA_E_ASSOCIADO", "Custos", "Associado",
                         componente, codigo_pai,
@@ -615,13 +632,21 @@ class CatalogoAuditoriaService:
 
     @classmethod
     def _peca_tem_cnc(cls, peca_id, ligacoes_por_peca, operacoes) -> bool:
-        return any(
-            getattr(ligacao, "ativo", True)
-            and ligacao.def_operacao_id in operacoes
-            and getattr(operacoes[ligacao.def_operacao_id], "ativo", True)
-            and cls._eh_cnc(operacoes[ligacao.def_operacao_id])
+        return bool(cls._ids_cnc_da_peca(peca_id, ligacoes_por_peca, operacoes))
+
+    @classmethod
+    def _ids_cnc_da_peca(cls, peca_id, ligacoes_por_peca, operacoes) -> set[int]:
+        """Return active CNC operation ids owned by one catalog piece."""
+        return {
+            ligacao.def_operacao_id
             for ligacao in ligacoes_por_peca.get(peca_id, [])
-        )
+            if (
+                getattr(ligacao, "ativo", True)
+                and ligacao.def_operacao_id in operacoes
+                and getattr(operacoes[ligacao.def_operacao_id], "ativo", True)
+                and cls._eh_cnc(operacoes[ligacao.def_operacao_id])
+            )
+        }
 
     @classmethod
     def _resolver_peca_componente(cls, componente, pecas, pecas_codigo):

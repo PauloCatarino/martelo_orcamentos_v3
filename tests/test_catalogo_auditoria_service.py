@@ -168,7 +168,7 @@ def test_audita_associados_regras_ciclos_e_cnc_potencialmente_duplicado() -> Non
         "REGRA_INATIVA_ASSOCIADA",
         "REGRA_NAO_UTILIZADA",
         "ASSOCIACAO_CIRCULAR",
-        "CNC_PECA_E_ASSOCIADO",
+        "CNC_DUPLICADO_PECA_ASSOCIADO",
     } <= _codigos(resultado)
     regra_sem_uso = next(
         item
@@ -176,6 +176,40 @@ def test_audita_associados_regras_ciclos_e_cnc_potencialmente_duplicado() -> Non
         if item.codigo_teste == "REGRA_NAO_UTILIZADA"
     )
     assert regra_sem_uso.correcao_codigo == "DESATIVAR_REGRA_NAO_UTILIZADA"
+
+
+def test_audita_cnc_diferentes_na_peca_e_associado_como_aviso() -> None:
+    pai = _peca(1, "DIVISORIA_2000")
+    filho = _peca(2, "SISTEMAS_UNIAO")
+    cnc_vertical = _obj(
+        id=10, codigo="CNC_VERTICAL", nome="CNC vertical",
+        tipo_operacao="CNC", maquina_id=None, ativo=True,
+    )
+    cnc_abd = _obj(
+        id=11, codigo="CNC_ABD", nome="CNC ABD",
+        tipo_operacao="CNC", maquina_id=None, ativo=True,
+    )
+    resultado = CatalogoAuditoriaService.auditar_dados(
+        _dados(
+            pecas=(pai, filho),
+            componentes=(
+                _obj(
+                    id=1, def_peca_pai_id=1, def_peca_componente_id=2,
+                    referencia_componente="SISTEMAS_UNIAO",
+                    def_regra_quantidade_id=None, ativo=True,
+                ),
+            ),
+            operacoes=(cnc_vertical, cnc_abd),
+            ligacoes_operacoes=(
+                _obj(id=1, def_peca_id=1, def_operacao_id=10, ativo=True),
+                _obj(id=2, def_peca_id=2, def_operacao_id=11, ativo=True),
+            ),
+            chaves_valueset=(_obj(id=1, codigo="MATERIAL", ativo=True),),
+        )
+    )
+
+    assert "CNC_PECA_E_ASSOCIADO" in _codigos(resultado)
+    assert "CNC_DUPLICADO_PECA_ASSOCIADO" not in _codigos(resultado)
 
 
 def test_audita_substituicao_valueset_e_referencia_modulo_desatualizada() -> None:
