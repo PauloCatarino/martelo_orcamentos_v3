@@ -25,6 +25,10 @@ def test_catalogo_auditoria_page_contract() -> None:
     assert "Abrir configuração" in source
     assert hasattr(CatalogoAuditoriaPage, "resolver_selecionado")
     assert hasattr(CatalogoAuditoriaPage, "abrir_configuracao")
+    status_pos = source.index("layout.addWidget(self.status_label)")
+    resumo_pos = source.index("layout.addWidget(self.resumo_label)")
+    tabela_pos = source.index("layout.addWidget(self.table, stretch=1)")
+    assert status_pos < resumo_pos < tabela_pos
 
 
 def test_catalogo_auditoria_esta_ligada_as_configuracoes() -> None:

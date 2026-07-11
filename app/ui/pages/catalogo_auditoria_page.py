@@ -109,6 +109,7 @@ class CatalogoAuditoriaPage(QWidget):
         self.resumo_label.setObjectName("catalogoAuditoriaResumo")
         self.status_label = QLabel("")
         self.status_label.setObjectName("catalogoAuditoriaStatus")
+        self.status_label.setWordWrap(True)
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -133,9 +134,9 @@ class CatalogoAuditoriaPage(QWidget):
         layout.setSpacing(10)
         layout.addWidget(self.cabecalho)
         layout.addLayout(filtros)
+        layout.addWidget(self.status_label)
         layout.addWidget(self.resumo_label)
         layout.addWidget(self.table, stretch=1)
-        layout.addWidget(self.status_label)
         self.setLayout(layout)
 
     def carregar(self) -> None:
