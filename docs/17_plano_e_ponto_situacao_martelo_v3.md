@@ -208,13 +208,65 @@ Validação local pedida:
 5. cancelar sem guardar numa peça produtiva;
 6. criar ou usar uma peça de teste, guardar e reabrir para confirmar a origem.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída. O utilizador confirmou o novo campo e
+preencheu origem estrutural/orientação em várias peças `def_pecas`.
 
-Commit: `Normalizar origem estrutural das pecas`.
+Commit: `12a5e09 Normalizar origem estrutural das pecas`.
 
 Próximo passo recomendado: depois desta validação, preencher
 progressivamente origem e orientação nas peças que entrarão no primeiro
 módulo caixote, sem fazer uma migração automática do catálogo completo.
+
+### Piloto de módulo paramétrico — caixote simples
+
+Configuração criada na base de testes e a aguardar validação local do
+utilizador:
+
+- confirmado como fluxo principal: preparar linhas e fórmulas no custeio,
+  selecionar as linhas, usar **Guardar como Módulo** e gerir nome, categoria,
+  âmbito e imagem na Biblioteca de Módulos;
+- não foi criado um mecanismo alternativo de módulos;
+- criado o módulo global `PILOTO_CAIXOTE_SIMPLES`, separado do módulo antigo
+  `1_MOD_2_PORTAS`;
+- o piloto guarda apenas referências `def_pecas`, fórmulas, quantidades, chaves
+  ValueSet e códigos de orla; não guarda materiais, preços nem dimensões reais;
+- linhas: divisão paramétrica, duas laterais, teto, fundo, prateleira fixa,
+  prateleira amovível, costa e porta;
+- fórmulas iniciais: laterais `HM × PM`; horizontais entre laterais
+  `LM-38 × PM`; prateleira amovível `LM-40 × PM-20`; costa `HM × LM`;
+  porta `HM-4 × LM-4`;
+- espessuras piloto: 19 mm nas peças principais e 10 mm na costa;
+- as fórmulas são hipóteses iniciais editáveis e precisam de validação
+  dimensional/industrial pelo utilizador;
+- a imagem fica por associar na Biblioteca de Módulos.
+
+Validação técnica:
+
+- para `H=2000`, `L=600`, `P=500`, as fórmulas resolvem para laterais
+  `2000 × 500`, horizontais `562 × 500`, prateleira amovível `560 × 480`,
+  costa `2000 × 600` e porta `1996 × 596`;
+- Auditoria do Catálogo: nenhuma ocorrência associada ao novo módulo;
+- testes focados de módulos/auditoria: `36 passed`;
+- bateria completa: `1909 passed`.
+
+Validação local pedida:
+
+1. abrir um item de teste com dimensões conhecidas;
+2. importar `PILOTO_CAIXOTE_SIMPLES`;
+3. executar **Atualizar** no custeio;
+4. confirmar quantidades, dimensões, materiais ValueSet, orlas e associados;
+5. confirmar especialmente se teto/fundo/prateleira ficam entre laterais e se
+   as folgas de prateleira amovível e porta são adequadas;
+6. verificar que cavilhas/CNC não aparecem duplicados;
+7. associar uma imagem apenas depois de validar a estrutura.
+
+Validação do utilizador: pendente.
+
+Commit de registo: `Registar piloto de modulo caixote simples`.
+
+Próximo passo recomendado: ajustar as fórmulas e as peças do piloto com base
+no teste local; depois recriar/substituir o módulo pelo fluxo normal a partir do
+custeio, consolidando-o como primeiro módulo produtivo.
 
 ## Próxima fase proposta
 
