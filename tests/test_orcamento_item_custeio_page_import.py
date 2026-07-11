@@ -217,7 +217,7 @@ def test_label_mat_default_e_conciso_e_mostra_preco_liquido() -> None:
 
     assert "MATERIAL_COSTAS" in label
     assert "AGL MLM LINHO CANCUN 12G 10MM" in label
-    assert "preço líquido" in label
+    assert "Pliq" in label
     assert "12,35 €" in label
     assert "COSTA_12_STANDARD" not in label
     assert "prioridade" not in label

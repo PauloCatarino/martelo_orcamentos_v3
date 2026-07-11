@@ -1704,7 +1704,7 @@ class OrcamentoItemCusteioPage(QWidget):
             or codigo
         )
         preco = format_currency(opcao.preco_liquido)
-        return f"{opcao.chave} · {descricao} · preço líquido {preco or '—'}"
+        return f"{opcao.chave} · {descricao} · Pliq {preco or '—'}"
 
     @staticmethod
     def _opcao_atual_id(linha: OrcamentoItemCusteioLinhaResumo, opcoes: list):

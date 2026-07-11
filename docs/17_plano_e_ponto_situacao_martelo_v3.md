@@ -398,9 +398,24 @@ Validação local pedida:
 5. confirmar que Prioridade pode voltar a ser mostrada pelo mesmo menu;
 6. alterar `Mat. default` e confirmar que prioridade/módulo continuam corretos.
 
+Validação do utilizador: concluída. O utilizador confirmou que a apresentação
+ficou mais clara e compacta, mantendo materiais e prioridades corretos.
+
+Commit: `f552730 Simplificar material predefinido no custeio`.
+
+### Abreviatura final do preço no material predefinido
+
+- substituído o texto `preço líquido` por `Pliq` no dropdown `Mat. default`;
+- formato final: `chave · descrição útil · Pliq valor`;
+- alteração exclusivamente visual, sem impacto nos dados, prioridades ou
+  cálculos.
+
 Validação do utilizador: pendente.
 
-Commit: `Simplificar material predefinido no custeio`.
+Próximo passo: iniciar numa nova tarefa a fase de fórmulas dimensionais
+predefinidas nas `def_pecas` e dimensões no cabeçalho de peça/conjunto, com
+regras explícitas para preencher automaticamente os filhos de portas, gavetas
+e outros conjuntos.
 
 ## Próxima fase proposta
 
