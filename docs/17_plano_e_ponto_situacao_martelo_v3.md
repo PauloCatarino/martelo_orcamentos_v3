@@ -410,7 +410,7 @@ Commit: `f552730 Simplificar material predefinido no custeio`.
 - alteração exclusivamente visual, sem impacto nos dados, prioridades ou
   cálculos.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída (11 de julho de 2026).
 
 Próximo passo: iniciar numa nova tarefa a fase de fórmulas dimensionais
 predefinidas nas `def_pecas` e dimensões no cabeçalho de peça/conjunto, com
@@ -607,14 +607,69 @@ Validação local pedida:
 8. confirmar que uma peça configurada apenas com `H/L` pode ser inserida sem
    divisão independente.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída (11 de julho de 2026). O utilizador
+confirmou a correção do item afetado e o aviso de divisão independente.
 
 Commit: `Proteger pecas parametricas sem divisao`.
 
 Próximo passo recomendado: validar esta recuperação antes de retomar a Fase C
 dos módulos.
 
-## Próxima fase proposta
+## Próxima fase em curso
+
+### Fórmulas dimensionais predefinidas — Fase C: módulos (plano detalhado)
+
+Decisão do utilizador (11 de julho de 2026): a Fase C é a próxima etapa; a
+generalização das uniões estruturais fica para depois.
+
+Objetivo: guardar e importar as fórmulas dimensionais dos cabeçalhos de
+peça/conjunto nos módulos, para que um módulo importado resolva as dimensões
+dos cabeçalhos e as transformações `PAI_*` dos filhos sem intervenção manual.
+
+Estado atual constatado no código:
+
+- ao gravar um módulo, `_linha_modulo_de_custeio` descarta deliberadamente
+  `comp/larg/esp` dos cabeçalhos compostos (`def_modulo_service.py`);
+- na importação, `_criar_cabecalho_composta_modulo` força `comp/larg/esp` a
+  vazio (comentário explícito a adiar para a Fase C);
+- os filhos já guardam e reaplicam as fórmulas como texto, incluindo `PAI_*`,
+  mas sem dimensões no cabeçalho as `PAI_*` não têm valores para resolver;
+- a proteção de peças `HM/LM/PM` sem divisão independente existe apenas em
+  `adicionar_pecas_da_biblioteca`, não em `inserir_modulo_no_item`;
+- as colunas `comp/larg/esp` de `def_modulo_linhas` já são texto livre, pelo
+  que não é necessária nenhuma migração de esquema.
+
+Passos previstos:
+
+1. **C1 — Gravar**: o cabeçalho composto passa a persistir as suas fórmulas
+   `comp/larg/esp` (texto editável da linha de custeio) ao guardar/substituir
+   um módulo. Divisões e filhos mantêm o comportamento atual.
+2. **C2 — Importar**: se a linha de cabeçalho do módulo tiver fórmulas,
+   aplicá-las ao cabeçalho criado (com e sem `def_peca` resolvida); módulos
+   antigos, com os três campos vazios, mantêm exatamente o comportamento
+   anterior (sem dimensões automáticas), o mesmo padrão de compatibilidade
+   usado na prioridade ValueSet.
+3. **C3 — Recalcular e proteger**: garantir que **Atualizar** resolve primeiro
+   o cabeçalho importado e depois as `PAI_*` dos filhos; alargar a proteção de
+   divisão independente à importação de módulos, com recusa atómica quando o
+   módulo usa `HM/LM/PM` e não inclui nem encontra uma divisão no item.
+4. **C4 — Interface**: confirmar que **Biblioteca de Módulos → Ver linhas** e o
+   preview de importação apresentam as fórmulas do cabeçalho.
+5. **C5 — Testes e registo**: testes focados (gravar preserva fórmulas do
+   cabeçalho; importar aplica-as; módulo antigo mantém comportamento; `PAI_*`
+   resolve após importação e Atualizar; proteção de divisão na importação),
+   bateria completa e atualização deste documento.
+
+Critérios de conclusão:
+
+- um módulo com conjunto dimensionado (por exemplo, cabeçalho `HM × LM/2` e
+  filho `PAI_COMP-4 × PAI_LARG-4`) importa e resolve dimensões reais corretas
+  só com **Atualizar**;
+- módulos gravados antes da Fase C importam sem alteração de resultados;
+- nenhuma linha existente de orçamento é alterada automaticamente;
+- testes automáticos completos e validação local do utilizador.
+
+## Fase seguinte proposta
 
 ### Generalização das uniões estruturais
 
