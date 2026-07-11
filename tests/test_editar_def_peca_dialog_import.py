@@ -39,6 +39,16 @@ def test_editar_def_peca_dialog_loads_current_values() -> None:
     assert "setChecked" in source
 
 
+def test_editar_def_peca_dialog_preserves_custom_structural_origin() -> None:
+    from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
+
+    init_source = inspect.getsource(EditarDefPecaDialog.__init__)
+    load_source = inspect.getsource(EditarDefPecaDialog._load_peca)
+    assert "get_peca_funcao_options" in init_source
+    assert "Origem estrutural" in init_source
+    assert "_select_editable_combo" in load_source
+
+
 def test_editar_def_peca_dialog_data_has_all_fields() -> None:
     from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialogData
 

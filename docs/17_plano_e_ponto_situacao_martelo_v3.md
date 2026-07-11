@@ -160,15 +160,61 @@ Validação local pedida:
 4. confirmar que a Auditoria apresenta o novo erro de duplicação;
 5. voltar a desativar a CNC direta e confirmar que o erro desaparece.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída. O utilizador confirmou na Auditoria do
+Catálogo que `CNC_DUPLICADO_PECA_ASSOCIADO` deixou de aparecer com a origem CNC
+corretamente configurada.
 
-Commit: `Proteger contra CNC duplicado nas unioes`.
+Commit: `909bd79 Proteger contra CNC duplicado nas unioes`.
 
 Próximo passo recomendado: rever e normalizar as peças estruturais de
 `def_pecas` antes de criar um módulo de teste tipo caixote. Esse módulo deverá
 incluir, de forma progressiva, teto, fundo, prateleira fixa, prateleira amovível,
 laterais ou divisória, costa e porta, herdando materiais e regras do ValueSet do
 item onde for inserido.
+
+### Normalização da origem estrutural das peças
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- analisada a organização de peças do Martelo V2/iMos fornecida pelo
+  utilizador;
+- confirmado que a origem estrutural deve sobreviver a nomes e aplicações
+  diferentes: por exemplo, um teto, tampo de acabamento ou tampo de secretária
+  podem partir de uma origem horizontal comum e depois divergir em material,
+  orlas, uniões e operações;
+- o campo técnico existente `funcao` passou a ser apresentado nos formulários
+  como **Origem estrutural**, sem alteração de esquema;
+- foram criadas opções controladas para teto, fundo, prateleira fixa,
+  prateleira amovível, lateral, divisória, costa, portas, gaveta, remate,
+  ferragem, acessório e serviço;
+- o campo continua editável, permitindo origens novas sem bloquear casos que
+  ainda não existam na lista;
+- o grupo passou igualmente a apresentar as famílias mais comuns, mantendo a
+  possibilidade de texto livre;
+- valores antigos ou personalizados continuam preservados ao editar;
+- nenhuma das 63 peças atuais foi alterada automaticamente.
+
+Testes automáticos:
+
+- testes focados: `48 passed`;
+- bateria completa: `1909 passed`.
+
+Validação local pedida:
+
+1. abrir uma peça existente em modo de edição;
+2. confirmar o campo **Origem estrutural** e a lista de famílias;
+3. escolher uma origem e confirmar que o grupo continua independente;
+4. testar uma origem escrita manualmente e confirmar que é preservada;
+5. cancelar sem guardar numa peça produtiva;
+6. criar ou usar uma peça de teste, guardar e reabrir para confirmar a origem.
+
+Validação do utilizador: pendente.
+
+Commit: `Normalizar origem estrutural das pecas`.
+
+Próximo passo recomendado: depois desta validação, preencher
+progressivamente origem e orientação nas peças que entrarão no primeiro
+módulo caixote, sem fazer uma migração automática do catálogo completo.
 
 ## Próxima fase proposta
 

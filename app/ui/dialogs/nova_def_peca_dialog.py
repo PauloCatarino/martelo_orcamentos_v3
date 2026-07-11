@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.orla_types import format_orla_code, get_orla_type_options
+from app.domain.peca_funcao_types import get_peca_funcao_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options
 from app.domain.peca_natureza_types import (
     CONJUNTO,
@@ -87,8 +88,25 @@ class NovaDefPecaDialog(QDialog):
         self.orientacao_input = QComboBox()
         for code, label in get_peca_orientacao_options():
             self.orientacao_input.addItem(label, code)
-        self.funcao_input = QLineEdit()
-        self.grupo_input = QLineEdit()
+        self.funcao_input = QComboBox()
+        self.funcao_input.setEditable(True)
+        self.funcao_input.addItem("Selecionar origem…", None)
+        for code, label in get_peca_funcao_options():
+            self.funcao_input.addItem(label, code)
+        self.funcao_input.setCurrentText("")
+        self.funcao_input.setToolTip(
+            "Origem estrutural da peça. Nome, material, orlas, uniões e operações "
+            "podem variar sem alterar esta origem. Pode também escrever uma origem nova."
+        )
+        self.grupo_input = QComboBox()
+        self.grupo_input.setEditable(True)
+        for grupo in (
+            "", "TETOS", "FUNDOS", "PRATELEIRAS FIXAS",
+            "PRATELEIRAS AMOVIVEIS", "LATERAIS", "COSTAS", "PORTAS",
+            "GAVETAS", "REMATES/GUARNICOES", "FERRAGENS", "ACESSORIOS",
+            "SERVICOS",
+        ):
+            self.grupo_input.addItem(grupo)
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
         self.chave_valueset_material_input = QComboBox()
@@ -149,7 +167,7 @@ class NovaDefPecaDialog(QDialog):
         form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
         form_layout.addRow("Natureza", self.natureza_input)
         form_layout.addRow("Orienta\u00e7\u00e3o", self.orientacao_input)
-        form_layout.addRow("Fun\u00e7\u00e3o", self.funcao_input)
+        form_layout.addRow("Origem estrutural", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
@@ -203,8 +221,11 @@ class NovaDefPecaDialog(QDialog):
             tipo_peca="COMPOSTA" if natureza == CONJUNTO else SIMPLES,
             natureza=natureza,
             orientacao=self.orientacao_input.currentData() or NEUTRA,
-            funcao=self._empty_to_none(self.funcao_input.text()),
-            grupo=self._empty_to_none(self.grupo_input.text()),
+            funcao=(
+                self.funcao_input.currentData()
+                or self._empty_to_none(self.funcao_input.currentText())
+            ),
+            grupo=self._empty_to_none(self.grupo_input.currentText()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),

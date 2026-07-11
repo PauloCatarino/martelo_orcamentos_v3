@@ -23,6 +23,7 @@ from app.domain.orla_types import (
     get_orla_type_options,
     normalize_orla_type,
 )
+from app.domain.peca_funcao_types import get_peca_funcao_options
 from app.domain.peca_types import SIMPLES, get_peca_type_options, normalize_peca_type
 from app.domain.peca_natureza_types import (
     CONJUNTO,
@@ -99,8 +100,25 @@ class EditarDefPecaDialog(QDialog):
         self.orientacao_input = QComboBox()
         for code, label in get_peca_orientacao_options():
             self.orientacao_input.addItem(label, code)
-        self.funcao_input = QLineEdit()
-        self.grupo_input = QLineEdit()
+        self.funcao_input = QComboBox()
+        self.funcao_input.setEditable(True)
+        self.funcao_input.addItem("Selecionar origem…", None)
+        for code, label in get_peca_funcao_options():
+            self.funcao_input.addItem(label, code)
+        self.funcao_input.setCurrentText("")
+        self.funcao_input.setToolTip(
+            "Origem estrutural da peça. Nome, material, orlas, uniões e operações "
+            "podem variar sem alterar esta origem. Pode também escrever uma origem nova."
+        )
+        self.grupo_input = QComboBox()
+        self.grupo_input.setEditable(True)
+        for grupo in (
+            "", "TETOS", "FUNDOS", "PRATELEIRAS FIXAS",
+            "PRATELEIRAS AMOVIVEIS", "LATERAIS", "COSTAS", "PORTAS",
+            "GAVETAS", "REMATES/GUARNICOES", "FERRAGENS", "ACESSORIOS",
+            "SERVICOS",
+        ):
+            self.grupo_input.addItem(grupo)
         self.ativo_input = QCheckBox()
         self.chave_valueset_material_input = QComboBox()
         self.sem_material_input = QCheckBox("Peça de serviço (sem material)")
@@ -163,7 +181,7 @@ class EditarDefPecaDialog(QDialog):
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Natureza", self.natureza_input)
         form_layout.addRow("Orientação", self.orientacao_input)
-        form_layout.addRow("Função", self.funcao_input)
+        form_layout.addRow("Origem estrutural", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
@@ -229,8 +247,8 @@ class EditarDefPecaDialog(QDialog):
         self._select_combo_data(
             self.orientacao_input, normalize_peca_orientacao(self.peca.orientacao)
         )
-        self.funcao_input.setText(self.peca.funcao or "")
-        self.grupo_input.setText(self.peca.grupo or "")
+        self._select_editable_combo(self.funcao_input, self.peca.funcao)
+        self.grupo_input.setCurrentText(self.peca.grupo or "")
         self.ativo_input.setChecked(self.peca.ativo)
         self._select_combo_data(self.orla_c1_input, normalize_orla_type(self.peca.orla_c1))
         self._select_combo_data(self.orla_c2_input, normalize_orla_type(self.peca.orla_c2))
@@ -248,6 +266,14 @@ class EditarDefPecaDialog(QDialog):
         index = combo.findData(value)
         combo.setCurrentIndex(index if index >= 0 else 0)
 
+    def _select_editable_combo(self, combo: QComboBox, value: str | None) -> None:
+        """Select a known structural origin or preserve a custom legacy value."""
+        index = combo.findData(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+        else:
+            combo.setCurrentText(value or "")
+
     def get_data(self) -> EditarDefPecaDialogData:
         """Return normalized dialog data."""
         natureza = self.natureza_input.currentData() or MATERIAL
@@ -258,8 +284,11 @@ class EditarDefPecaDialog(QDialog):
             tipo_peca="COMPOSTA" if natureza == CONJUNTO else SIMPLES,
             natureza=natureza,
             orientacao=self.orientacao_input.currentData() or NEUTRA,
-            funcao=self._empty_to_none(self.funcao_input.text()),
-            grupo=self._empty_to_none(self.grupo_input.text()),
+            funcao=(
+                self.funcao_input.currentData()
+                or self._empty_to_none(self.funcao_input.currentText())
+            ),
+            grupo=self._empty_to_none(self.grupo_input.currentText()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),

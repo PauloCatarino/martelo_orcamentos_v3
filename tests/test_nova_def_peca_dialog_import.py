@@ -22,6 +22,15 @@ def test_nova_def_peca_dialog_uses_peca_type_options() -> None:
     assert "QCheckBox" in source_names
 
 
+def test_nova_def_peca_dialog_uses_controlled_structural_origins() -> None:
+    from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
+
+    source = inspect.getsource(NovaDefPecaDialog.__init__)
+    assert "get_peca_funcao_options" in source
+    assert "Origem estrutural" in source
+    assert "setEditable(True)" in source
+
+
 def test_nova_def_peca_dialog_accepts_save_callback() -> None:
     from app.ui.dialogs.nova_def_peca_dialog import NovaDefPecaDialog
 
