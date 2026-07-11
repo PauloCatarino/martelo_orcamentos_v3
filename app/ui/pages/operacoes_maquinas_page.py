@@ -103,9 +103,9 @@ class OperacoesMaquinasPage(QWidget):
         ligar_persistencia_larguras(self.operacoes_table, "operacoes")
         ligar_persistencia_larguras(self.maquinas_table, "maquinas")
 
-        tabs = QTabWidget()
-        tabs.addTab(self._create_operacoes_tab(), "Operações")
-        tabs.addTab(self._create_maquinas_tab(), "Máquinas")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._create_operacoes_tab(), "Operações")
+        self.tabs.addTab(self._create_maquinas_tab(), "Máquinas")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -113,7 +113,7 @@ class OperacoesMaquinasPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
-        layout.addWidget(tabs, stretch=1)
+        layout.addWidget(self.tabs, stretch=1)
 
         self.setLayout(layout)
         self.carregar()
@@ -226,6 +226,20 @@ class OperacoesMaquinasPage(QWidget):
             return None
 
         return self._operacoes_by_row.get(row)
+
+    def abrir_operacao_por_id(self, operacao_id: int) -> None:
+        """Show and select one operation, including inactive operations."""
+        self.mostrar_inativas_check.setChecked(True)
+        self.carregar()
+        self.tabs.setCurrentIndex(0)
+        for row, operacao in self._operacoes_by_row.items():
+            if operacao.id == operacao_id:
+                self.operacoes_table.selectRow(row)
+                self.operacoes_table.scrollToItem(
+                    self.operacoes_table.item(row, 0)
+                )
+                return
+        self.status_label.setText("A operação indicada já não existe.")
 
     def _handle_operacao_double_click(self, row: int, _column: int) -> None:
         """Edit an operation when the user double-clicks its row."""

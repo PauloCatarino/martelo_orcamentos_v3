@@ -223,3 +223,13 @@ class RegrasQuantidadePage(QWidget):
             return None
 
         return self._registos_por_linha.get(row)
+
+    def selecionar_regra_por_id(self, regra_id: int) -> None:
+        """Reload and select one rule from the audit page."""
+        self.carregar()
+        for row, regra in self._registos_por_linha.items():
+            if regra.id == regra_id:
+                self.table.selectRow(row)
+                self.table.scrollToItem(self.table.item(row, 0))
+                return
+        self.status_label.setText("A regra indicada já não existe.")

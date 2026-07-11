@@ -293,6 +293,21 @@ class BibliotecaModulosPage(QWidget):
             return None
         return self._por_linha.get(tabela, {}).get(row)
 
+    def selecionar_modulo_por_id(self, modulo_id: int) -> None:
+        """Reload and select one saved module from the audit page."""
+        self.carregar()
+        for tab_index in range(self.tabs.count()):
+            tabela = self.tabs.widget(tab_index)
+            if not isinstance(tabela, QTableWidget):
+                continue
+            for row, item in self._por_linha.get(tabela, {}).items():
+                if item.modulo.id == modulo_id:
+                    self.tabs.setCurrentIndex(tab_index)
+                    tabela.selectRow(row)
+                    tabela.scrollToItem(tabela.item(row, 0))
+                    return
+        self.status_label.setText("O módulo indicado já não existe.")
+
     # ----- Actions -----
 
     def editar_modulo(self) -> None:

@@ -99,6 +99,13 @@ def test_audita_nomes_cnc_orlas_operacoes_e_maquinas() -> None:
         "OPERACAO_INATIVA_ASSOCIADA",
         "MAQUINA_INATIVA_OPERACAO",
     } <= _codigos(resultado)
+    inativa = next(
+        item
+        for item in resultado.itens
+        if item.codigo_teste == "OPERACAO_INATIVA_ASSOCIADA"
+    )
+    assert inativa.navegacao_tipo == "PECA"
+    assert inativa.correcao_codigo == "DESATIVAR_LIGACAO_OPERACAO_INATIVA"
 
 
 def test_audita_associados_regras_ciclos_e_cnc_potencialmente_duplicado() -> None:
@@ -162,6 +169,12 @@ def test_audita_associados_regras_ciclos_e_cnc_potencialmente_duplicado() -> Non
         "ASSOCIACAO_CIRCULAR",
         "CNC_PECA_E_ASSOCIADO",
     } <= _codigos(resultado)
+    regra_sem_uso = next(
+        item
+        for item in resultado.itens
+        if item.codigo_teste == "REGRA_NAO_UTILIZADA"
+    )
+    assert regra_sem_uso.correcao_codigo == "DESATIVAR_REGRA_NAO_UTILIZADA"
 
 
 def test_audita_substituicao_valueset_e_referencia_modulo_desatualizada() -> None:
@@ -213,6 +226,13 @@ def test_audita_substituicao_valueset_e_referencia_modulo_desatualizada() -> Non
 
     assert "VALUESET_SUBSTITUICAO" in _codigos(resultado)
     assert "MODULO_CODIGO_DESATUALIZADO" in _codigos(resultado)
+    modulo = next(
+        item
+        for item in resultado.itens
+        if item.codigo_teste == "MODULO_CODIGO_DESATUALIZADO"
+    )
+    assert modulo.navegacao_tipo == "MODULO"
+    assert modulo.correcao_codigo == "ATUALIZAR_CODIGO_PECA_MODULO"
 
 
 def test_conjunto_virtual_nao_exige_chave_valueset() -> None:

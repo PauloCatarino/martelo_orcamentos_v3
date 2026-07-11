@@ -159,7 +159,9 @@ class MainWindow(QMainWindow):
         self.margens_padrao_page = MargensPadraoPage()
         self.regras_quantidade_page = RegrasQuantidadePage()
         self.biblioteca_modulos_page = BibliotecaModulosPage()
-        self.catalogo_auditoria_page = CatalogoAuditoriaPage()
+        self.catalogo_auditoria_page = CatalogoAuditoriaPage(
+            on_open_configuracao=self._open_catalogo_auditoria_item
+        )
         self.clientes_page = ClientesPage()
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
@@ -252,6 +254,26 @@ class MainWindow(QMainWindow):
         """Open the read-only catalog audit with fresh results."""
         self.catalogo_auditoria_page.carregar()
         self.show_page("catalogo_auditoria")
+
+    def _open_catalogo_auditoria_item(self, item) -> None:
+        """Navigate from an audit finding to its responsible configuration."""
+        tipo = item.navegacao_tipo
+        alvo_id = item.navegacao_id
+        if tipo == "PECA":
+            self.show_page("pecas")
+            self.def_pecas_page.abrir_peca_por_id(alvo_id)
+        elif tipo == "OPERACAO":
+            self.show_page("operacoes_maquinas")
+            self.operacoes_maquinas_page.abrir_operacao_por_id(alvo_id)
+        elif tipo == "REGRA":
+            self.show_page("regras_quantidade")
+            self.regras_quantidade_page.selecionar_regra_por_id(alvo_id)
+        elif tipo == "VALUESET_MODELO":
+            self.show_page("valueset_modelos")
+            self.valueset_modelos_page.abrir_modelo_por_id(alvo_id)
+        elif tipo == "MODULO":
+            self.show_page("biblioteca_modulos")
+            self.biblioteca_modulos_page.selecionar_modulo_por_id(alvo_id)
 
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""

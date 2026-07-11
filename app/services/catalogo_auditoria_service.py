@@ -45,6 +45,11 @@ class CatalogoAuditoriaItem:
     problema: str
     impacto: str
     sugestao: str
+    navegacao_tipo: str | None = None
+    navegacao_id: int | None = None
+    correcao_codigo: str | None = None
+    correcao_descricao: str | None = None
+    correcao_alvo_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -126,7 +131,23 @@ class CatalogoAuditoriaService:
                 componente.def_peca_pai_id, []
             ).append(componente)
 
-        def add(severidade, teste, area, entidade, obj, codigo, problema, impacto, sugestao):
+        def add(
+            severidade,
+            teste,
+            area,
+            entidade,
+            obj,
+            codigo,
+            problema,
+            impacto,
+            sugestao,
+            *,
+            navegacao_tipo=None,
+            navegacao_id=None,
+            correcao_codigo=None,
+            correcao_descricao=None,
+            correcao_alvo_id=None,
+        ):
             itens.append(
                 CatalogoAuditoriaItem(
                     severidade=severidade,
@@ -138,6 +159,11 @@ class CatalogoAuditoriaService:
                     problema=problema,
                     impacto=impacto,
                     sugestao=sugestao,
+                    navegacao_tipo=navegacao_tipo,
+                    navegacao_id=navegacao_id,
+                    correcao_codigo=correcao_codigo,
+                    correcao_descricao=correcao_descricao,
+                    correcao_alvo_id=correcao_alvo_id,
                 )
             )
 
@@ -161,6 +187,7 @@ class CatalogoAuditoriaService:
                     peca.codigo, "O nome indica COM_CNC, mas não existe CNC direto ativo.",
                     "O nome pode induzir o utilizador a assumir um custo CNC inexistente.",
                     "Confirmar se o CNC vem de um associado ou associar/renomear a peça.",
+                    navegacao_tipo="PECA", navegacao_id=peca.id,
                 )
             if "SEM_CNC" in nome_codigo and tem_cnc:
                 add(
@@ -168,6 +195,7 @@ class CatalogoAuditoriaService:
                     peca.codigo, "O nome indica SEM_CNC, mas existe CNC direto ativo.",
                     "Pode ser contabilizado CNC numa peça apresentada como sem CNC.",
                     "Remover/desativar o CNC ou corrigir o nome da peça.",
+                    navegacao_tipo="PECA", navegacao_id=peca.id,
                 )
 
             codigo_orla = f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
@@ -179,6 +207,7 @@ class CatalogoAuditoriaService:
                     peca.codigo, f"Código de orla {codigo_orla} sem operação de orlagem ativa.",
                     "O consumo de orla pode existir sem o respetivo custo de produção.",
                     "Associar uma operação de orlagem ou rever o código de orla.",
+                    navegacao_tipo="PECA", navegacao_id=peca.id,
                 )
             if not tem_orla and tem_orlagem:
                 add(
@@ -186,6 +215,7 @@ class CatalogoAuditoriaService:
                     peca.codigo, "Existe operação de orlagem, mas o código de orla é 0000.",
                     "Pode existir tempo/custo de orlagem sem lados configurados.",
                     "Rever os lados de orla ou remover a operação de orlagem.",
+                    navegacao_tipo="PECA", navegacao_id=peca.id,
                 )
 
             eh_conjunto = (
@@ -202,6 +232,7 @@ class CatalogoAuditoriaService:
                         peca.codigo, "Peça com material sem chave ValueSet.",
                         "A matéria-prima e o preço podem ficar vazios no custeio.",
                         "Associar uma chave ValueSet ou marcar a peça como sem material.",
+                        navegacao_tipo="PECA", navegacao_id=peca.id,
                     )
                 elif chave_codigo not in chaves:
                     add(
@@ -209,6 +240,7 @@ class CatalogoAuditoriaService:
                         peca.codigo, f"A chave ValueSet {chave_codigo} não existe.",
                         "A peça não consegue resolver a matéria-prima no orçamento.",
                         "Criar/corrigir a chave ValueSet da peça.",
+                        navegacao_tipo="PECA", navegacao_id=peca.id,
                     )
                 elif not getattr(chaves[chave_codigo], "ativo", True):
                     add(
@@ -216,6 +248,7 @@ class CatalogoAuditoriaService:
                         peca.codigo, f"A chave ValueSet {chave_codigo} está inativa.",
                         "Novos orçamentos podem não resolver o material da peça.",
                         "Ativar a chave ou escolher outra chave ativa.",
+                        navegacao_tipo="PECA", navegacao_id=peca.id,
                     )
 
             vistos: set[int] = set()
@@ -226,6 +259,7 @@ class CatalogoAuditoriaService:
                         peca.codigo, "A mesma operação está associada mais de uma vez.",
                         "Tempos e custos podem ser contabilizados em duplicado.",
                         "Manter apenas uma ligação ativa para a operação.",
+                        navegacao_tipo="PECA", navegacao_id=peca.id,
                     )
                 vistos.add(ligacao.def_operacao_id)
                 op = operacoes.get(ligacao.def_operacao_id)
@@ -235,6 +269,7 @@ class CatalogoAuditoriaService:
                         peca.codigo, "Ligação para uma operação inexistente.",
                         "O cálculo ignora ou falha ao resolver a operação.",
                         "Remover a ligação inválida e associar uma operação existente.",
+                        navegacao_tipo="PECA", navegacao_id=peca.id,
                     )
                 elif not getattr(op, "ativo", True):
                     add(
@@ -242,6 +277,14 @@ class CatalogoAuditoriaService:
                         peca.codigo, f"A operação {op.codigo} está inativa mas a ligação está ativa.",
                         "A operação não entra no snapshot e o custo pode ficar incompleto.",
                         "Ativar a operação ou desativar/remover a ligação na peça.",
+                        navegacao_tipo="PECA",
+                        navegacao_id=peca.id,
+                        correcao_codigo="DESATIVAR_LIGACAO_OPERACAO_INATIVA",
+                        correcao_descricao=(
+                            f"Desativar apenas a ligação de {op.codigo} na peça "
+                            f"{peca.codigo}. A operação global permanece inativa."
+                        ),
+                        correcao_alvo_id=ligacao.id,
                     )
 
         # Global operation -> machine consistency.
@@ -255,6 +298,7 @@ class CatalogoAuditoriaService:
                     op.codigo, "Operação ativa ligada a máquina inexistente ou inativa.",
                     "O tempo pode ser calculado sem tarifa/máquina válida.",
                     "Associar uma máquina ativa ou desativar a operação.",
+                    navegacao_tipo="OPERACAO", navegacao_id=op.id,
                 )
 
         # Components, quantity rules and possible CNC double counting.
@@ -286,6 +330,8 @@ class CatalogoAuditoriaService:
                     f"Associado {getattr(componente, 'referencia_componente', '') or componente.id} sem ligação real à biblioteca.",
                     "Material, operações e preço do associado podem ficar incompletos.",
                     "Selecionar uma peça existente no campo Peça componente.",
+                    navegacao_tipo="PECA",
+                    navegacao_id=getattr(pai, "id", None),
                 )
             else:
                 graph.setdefault(componente.def_peca_pai_id, set()).add(filho.id)
@@ -296,6 +342,8 @@ class CatalogoAuditoriaService:
                         f"O associado {filho.codigo} está inativo.",
                         "Novas inserções podem gerar uma referência desatualizada.",
                         "Ativar/substituir o associado ou desativar esta ligação.",
+                        navegacao_tipo="PECA",
+                        navegacao_id=getattr(pai, "id", None),
                     )
 
                 pai_cnc = cls._peca_tem_cnc(
@@ -311,6 +359,8 @@ class CatalogoAuditoriaService:
                         f"A peça {codigo_pai} e o associado {filho.codigo} têm CNC ativo.",
                         "O CNC pode ser contabilizado duas vezes sem intenção explícita.",
                         "Confirmar se são operações diferentes; caso contrário manter apenas a origem correta.",
+                        navegacao_tipo="PECA",
+                        navegacao_id=getattr(pai, "id", None),
                     )
 
             regra_id = getattr(componente, "def_regra_quantidade_id", None)
@@ -323,6 +373,8 @@ class CatalogoAuditoriaService:
                         "Associado ligado a regra de quantidade inexistente ou inativa.",
                         "A quantidade pode usar um valor fixo inesperado.",
                         "Selecionar uma regra ativa ou remover a ligação à regra.",
+                        navegacao_tipo="PECA",
+                        navegacao_id=getattr(pai, "id", None),
                     )
 
         for regra in dados.regras:
@@ -332,6 +384,14 @@ class CatalogoAuditoriaService:
                     regra.codigo, "Regra ativa sem utilização em associados ou módulos.",
                     "Não altera custos, mas aumenta a configuração sem efeito.",
                     "Confirmar utilização futura ou desativar a regra.",
+                    navegacao_tipo="REGRA",
+                    navegacao_id=regra.id,
+                    correcao_codigo="DESATIVAR_REGRA_NAO_UTILIZADA",
+                    correcao_descricao=(
+                        f"Desativar a regra {regra.codigo}. A regra não será eliminada "
+                        "e poderá ser reativada mais tarde."
+                    ),
+                    correcao_alvo_id=regra.id,
                 )
 
         cls._auditar_ciclos(graph, pecas, add)
@@ -357,6 +417,8 @@ class CatalogoAuditoriaService:
                     "Ação ValueSet ligada a operação inexistente ou inativa.",
                     "A ação não produzirá o resultado esperado no custeio.",
                     "Escolher uma operação ativa ou desativar a ação.",
+                    navegacao_tipo="VALUESET_MODELO",
+                    navegacao_id=getattr(modelo, "id", None),
                 )
             if normalize_operacao_acao(getattr(ligacao, "acao", None)) == SUBSTITUIR:
                 add(
@@ -366,6 +428,8 @@ class CatalogoAuditoriaService:
                     f"A variante substitui operações da categoria de {getattr(op, 'codigo', 'operação desconhecida')}.",
                     "Ao aplicar a variante, uma operação base da mesma categoria pode desaparecer.",
                     "Rever no orçamento se SUBSTITUIR é preferível a ADICIONAR.",
+                    navegacao_tipo="VALUESET_MODELO",
+                    navegacao_id=getattr(modelo, "id", None),
                 )
 
         # Saved modules: stale piece ids/codes and inactive references.
@@ -387,6 +451,7 @@ class CatalogoAuditoriaService:
                     linha, referencia_linha, "Linha ligada a uma peça que já não existe.",
                     "A importação pode criar uma linha incompleta e sem material.",
                     "Substituir a referência da linha ou recriar o módulo.",
+                    navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
                 )
             elif peca is not None:
                 if not getattr(peca, "ativo", True):
@@ -395,6 +460,7 @@ class CatalogoAuditoriaService:
                         linha, referencia_linha, f"O módulo referencia a peça inativa {peca.codigo}.",
                         "A importação reutiliza uma definição que deixou de estar disponível.",
                         "Atualizar a referência do módulo para uma peça ativa.",
+                        navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
                     )
                 if codigo_guardado and codigo_guardado != cls._norm(peca.codigo):
                     add(
@@ -403,6 +469,14 @@ class CatalogoAuditoriaService:
                         f"Código guardado {codigo_guardado} difere da peça atual {peca.codigo}.",
                         "O módulo contém um snapshot de referência desatualizado.",
                         "Atualizar explicitamente o módulo preservando os desvios.",
+                        navegacao_tipo="MODULO",
+                        navegacao_id=getattr(modulo, "id", None),
+                        correcao_codigo="ATUALIZAR_CODIGO_PECA_MODULO",
+                        correcao_descricao=(
+                            f"Atualizar apenas o código guardado de {codigo_guardado} "
+                            f"para {peca.codigo}; a ligação, fórmulas e desvios permanecem."
+                        ),
+                        correcao_alvo_id=linha.id,
                     )
             elif codigo_guardado and codigo_guardado not in pecas_codigo:
                 add(
@@ -411,6 +485,7 @@ class CatalogoAuditoriaService:
                     f"A referência {codigo_guardado} não corresponde a uma peça atual.",
                     "A linha será importada sem ligação completa à biblioteca.",
                     "Associar uma peça existente ou remover a linha obsoleta do módulo.",
+                    navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
                 )
 
         ordem = {ERRO: 0, AVISO: 1, INFORMACAO: 2}

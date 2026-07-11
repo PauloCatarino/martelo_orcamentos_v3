@@ -439,6 +439,32 @@ class DefPecasPage(QWidget):
         self.status_label.clear()
         self._show_detail_page(peca, componentes, component_labels)
 
+    def abrir_peca_por_id(self, peca_id: int) -> None:
+        """Open one piece detail directly from another technical page."""
+        self.carregar_pecas()
+        peca = self._pecas_by_id.get(peca_id)
+        if peca is None:
+            self.status_label.setText("A peça indicada já não existe.")
+            return
+        tree_item = self._tree_items_by_id.get(peca_id)
+        if tree_item is not None:
+            self.tree.setCurrentItem(tree_item)
+        for row, atual in self._pecas_by_row.items():
+            if atual.id == peca_id:
+                self.table.selectRow(row)
+                break
+        try:
+            with SessionLocal() as session:
+                componentes = DefPecaComponenteService(session).listar_componentes(
+                    peca.id
+                )
+                all_pecas = DefPecaService(session).listar_pecas()
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível abrir a definição de peça.")
+            return
+        labels = {item.id: f"{item.codigo} - {item.nome}" for item in all_pecas}
+        self._show_detail_page(peca, componentes, labels)
+
     def _show_detail_page(
         self,
         peca: DefPecaResumo,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -26,12 +29,15 @@ from app.services.catalogo_auditoria_service import (
     CatalogoAuditoriaItem,
     CatalogoAuditoriaService,
 )
+from app.services.catalogo_auditoria_correcao_service import (
+    CatalogoAuditoriaCorrecaoService,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class CatalogoAuditoriaPage(QWidget):
-    """Display technical findings; intentionally offers no mutation actions."""
+    """Display findings and offer only explicit, supervised safe corrections."""
 
     TABLE_HEADERS = [
         "Severidade",
@@ -44,21 +50,38 @@ class CatalogoAuditoriaPage(QWidget):
         "Teste",
     ]
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_open_configuracao: Callable[[CatalogoAuditoriaItem], None] | None = None,
+    ) -> None:
         super().__init__()
+        self.on_open_configuracao = on_open_configuracao
         self._itens: tuple[CatalogoAuditoriaItem, ...] = tuple()
+        self._itens_por_linha: dict[int, CatalogoAuditoriaItem] = {}
 
         self.cabecalho = BarraCabecalho(
             "Auditoria do Catálogo",
             [
                 "Análise apenas de leitura das peças, associados, operações, "
-                "regras, ValueSets e módulos. Nenhum registo é corrigido, "
-                "desativado ou eliminado por esta página."
+                "regras, ValueSets e módulos. A análise nunca altera dados; "
+                "algumas ocorrências permitem uma correção separada, explicada "
+                "e confirmada pelo utilizador."
             ],
         )
 
-        self.executar_button = QPushButton("Executar auditoria")
+        self.executar_button = QPushButton("Atualizar análise")
+        self.executar_button.setToolTip(
+            "Voltar a analisar o estado atual do catálogo; não aplica correções."
+        )
         self.executar_button.clicked.connect(self.carregar)
+
+        self.abrir_button = QPushButton("Abrir configuração")
+        self.abrir_button.setEnabled(False)
+        self.abrir_button.clicked.connect(self.abrir_configuracao)
+
+        self.resolver_button = QPushButton("Resolver com supervisão...")
+        self.resolver_button.setEnabled(False)
+        self.resolver_button.clicked.connect(self.resolver_selecionado)
 
         self.severidade_combo = QComboBox()
         self.severidade_combo.addItem("Todas as severidades", None)
@@ -76,6 +99,8 @@ class CatalogoAuditoriaPage(QWidget):
 
         filtros = QHBoxLayout()
         filtros.addWidget(self.executar_button)
+        filtros.addWidget(self.abrir_button)
+        filtros.addWidget(self.resolver_button)
         filtros.addWidget(QLabel("Severidade:"))
         filtros.addWidget(self.severidade_combo)
         filtros.addWidget(self.pesquisa_input, stretch=1)
@@ -93,6 +118,10 @@ class CatalogoAuditoriaPage(QWidget):
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setWordWrap(True)
+        self.table.itemSelectionChanged.connect(self._atualizar_acoes)
+        self.table.cellDoubleClicked.connect(
+            lambda _row, _column: self.abrir_configuracao()
+        )
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
@@ -159,6 +188,7 @@ class CatalogoAuditoriaPage(QWidget):
         )
 
     def _preencher_tabela(self, itens: list[CatalogoAuditoriaItem]) -> None:
+        self._itens_por_linha = {}
         self.table.setRowCount(len(itens))
         cores = {
             ERRO: QColor("#f8d7da"),
@@ -166,6 +196,7 @@ class CatalogoAuditoriaPage(QWidget):
             INFORMACAO: QColor("#dbeafe"),
         }
         for row, item in enumerate(itens):
+            self._itens_por_linha[row] = item
             valores = [
                 item.severidade,
                 item.area,
@@ -184,3 +215,86 @@ class CatalogoAuditoriaPage(QWidget):
                     cell.setBackground(cores[item.severidade])
                 self.table.setItem(row, column, cell)
         self.table.resizeRowsToContents()
+        self._atualizar_acoes()
+
+    def _item_selecionado(self) -> CatalogoAuditoriaItem | None:
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        return self._itens_por_linha.get(row)
+
+    def _atualizar_acoes(self) -> None:
+        item = self._item_selecionado()
+        pode_abrir = bool(
+            item is not None
+            and item.navegacao_tipo
+            and item.navegacao_id is not None
+            and self.on_open_configuracao is not None
+        )
+        pode_resolver = bool(
+            item is not None
+            and item.correcao_codigo
+            and item.correcao_alvo_id is not None
+        )
+        self.abrir_button.setEnabled(pode_abrir)
+        self.resolver_button.setEnabled(pode_resolver)
+        if item is not None and not pode_resolver:
+            self.resolver_button.setToolTip(
+                "Esta ocorrência exige uma decisão humana; abra a configuração."
+            )
+        else:
+            self.resolver_button.setToolTip(
+                "Mostrar a correção proposta e pedir confirmação antes de alterar."
+            )
+
+    def abrir_configuracao(self) -> None:
+        """Navigate to the configuration that originated the selected finding."""
+        item = self._item_selecionado()
+        if (
+            item is None
+            or not item.navegacao_tipo
+            or item.navegacao_id is None
+            or self.on_open_configuracao is None
+        ):
+            self.status_label.setText(
+                "Esta ocorrência ainda não tem abertura direta disponível."
+            )
+            return
+        self.on_open_configuracao(item)
+
+    def resolver_selecionado(self) -> None:
+        """Explain and apply one safe correction after explicit confirmation."""
+        item = self._item_selecionado()
+        if item is None or not item.correcao_codigo:
+            self.status_label.setText(
+                "Esta ocorrência exige análise manual; use Abrir configuração."
+            )
+            return
+
+        mensagem = (
+            f"Problema:\n{item.problema}\n\n"
+            f"Correção proposta:\n{item.correcao_descricao}\n\n"
+            "A correção só será aplicada após escolher Sim. Depois será executada "
+            "uma nova auditoria. Deseja continuar?"
+        )
+        resposta = QMessageBox.question(
+            self,
+            "Confirmar correção supervisionada",
+            mensagem,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = CatalogoAuditoriaCorrecaoService(session).aplicar(item)
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(f"Correção não aplicada: {error}")
+            return
+
+        self.carregar()
+        self.status_label.setText(
+            f"{resultado} A auditoria foi atualizada automaticamente."
+        )

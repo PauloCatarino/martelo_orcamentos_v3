@@ -307,6 +307,16 @@ class DefValuesetModelosPage(QWidget):
         self.status_label.clear()
         self._show_detail_page(modelo)
 
+    def abrir_modelo_por_id(self, modelo_id: int) -> None:
+        """Reload and open one ValueSet model from the audit page."""
+        self.carregar_modelos()
+        for row, modelo in self._modelos_by_row.items():
+            if modelo.id == modelo_id:
+                self.table.selectRow(row)
+                self._show_detail_page(modelo)
+                return
+        self.status_label.setText("O modelo ValueSet indicado já não existe.")
+
     def _show_detail_page(self, modelo: DefValuesetModeloResumo) -> None:
         """Replace the list with the model detail page."""
         if self._detail_page is not None:
