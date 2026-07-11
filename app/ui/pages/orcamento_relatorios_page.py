@@ -111,6 +111,11 @@ class OrcamentoRelatoriosPage(QWidget):
         "Operação", "Custo Total", "ML Corte", "ML Orlado", "Nº Peças",
     ]
 
+    OPERACOES_DETALHE_HEADERS = [
+        "Operação efetiva", "Máquina", "Qt", "Setup (min)", "Tempo CNC (min)",
+        "Outros tempos (min)", "Custo produção",
+    ]
+
     # Initial column widths suited to the content (phase 8W.2-UX, Part D);
     # "Descrição" is wide enough to show the full text. Columns stay resizable
     # (Interactive), so the user can still adjust them.
@@ -131,6 +136,11 @@ class OrcamentoRelatoriosPage(QWidget):
     MAQUINAS_LARGURAS = {
         "Operação": 200, "Custo Total": 100, "ML Corte": 90, "ML Orlado": 90,
         "Nº Peças": 80,
+    }
+    OPERACOES_DETALHE_LARGURAS = {
+        "Operação efetiva": 220, "Máquina": 180, "Qt": 70,
+        "Setup (min)": 90, "Tempo CNC (min)": 110,
+        "Outros tempos (min)": 125, "Custo produção": 110,
     }
 
     # 3-block formula tooltips (descrição / fórmula / valores) on the calculated
@@ -395,6 +405,13 @@ class OrcamentoRelatoriosPage(QWidget):
             larguras=self.MAQUINAS_LARGURAS,
         )
         ligar_persistencia_larguras(self.maquinas_table, "rel_maquinas")
+        self.operacoes_detalhe_table = self._criar_tabela(
+            self.OPERACOES_DETALHE_HEADERS,
+            larguras=self.OPERACOES_DETALHE_LARGURAS,
+        )
+        ligar_persistencia_larguras(
+            self.operacoes_detalhe_table, "rel_operacoes_detalhe"
+        )
 
         # Compact, scrollable content: each table is fitted to its row count
         # (Part C), so the sections sit close together with no empty gaps and
@@ -412,6 +429,10 @@ class OrcamentoRelatoriosPage(QWidget):
         conteudo_layout.addWidget(self.ferragens_table)
         conteudo_layout.addWidget(self._titulo_seccao("Resumo de Máquinas / MO"))
         conteudo_layout.addWidget(self.maquinas_table)
+        conteudo_layout.addWidget(
+            self._titulo_seccao("Operações efetivas por máquina")
+        )
+        conteudo_layout.addWidget(self.operacoes_detalhe_table)
         conteudo_layout.addStretch()
         conteudo.setLayout(conteudo_layout)
 
@@ -894,11 +915,13 @@ class OrcamentoRelatoriosPage(QWidget):
         self._preencher_orlas(resumo.orlas)
         self._preencher_ferragens(resumo.ferragens)
         self._preencher_maquinas(resumo.maquinas)
+        self._preencher_operacoes_detalhe(getattr(resumo, "operacoes", []))
         # Compact heights fitted to each table's row count (Part C).
         self._ajustar_altura_tabela(self.placas_table, max_linhas=12)
         self._ajustar_altura_tabela(self.orlas_table, max_linhas=8)
         self._ajustar_altura_tabela(self.ferragens_table, max_linhas=12)
         self._ajustar_altura_tabela(self.maquinas_table, max_linhas=6)
+        self._ajustar_altura_tabela(self.operacoes_detalhe_table, max_linhas=10)
 
     def _preencher_placas(self, placas) -> None:
         self._carregando_placas = True
@@ -1055,6 +1078,30 @@ class OrcamentoRelatoriosPage(QWidget):
             ]
             for col, texto in enumerate(valores):
                 self.maquinas_table.setItem(row, col, criar_item_tabela(texto))
+
+    def _preencher_operacoes_detalhe(self, operacoes) -> None:
+        self.operacoes_detalhe_table.setRowCount(0)
+        for operacao in operacoes:
+            row = self.operacoes_detalhe_table.rowCount()
+            self.operacoes_detalhe_table.insertRow(row)
+            outros_tempos = (
+                operacao.tempo_corte
+                + operacao.tempo_orlagem
+                + operacao.tempo_montagem_manual
+            )
+            valores = [
+                operacao.operacoes,
+                operacao.maquina,
+                format_quantity(operacao.qt_total),
+                format_quantity(operacao.tempo_setup),
+                format_quantity(operacao.tempo_cnc),
+                format_quantity(outros_tempos),
+                format_currency(operacao.custo_total),
+            ]
+            for col, texto in enumerate(valores):
+                self.operacoes_detalhe_table.setItem(
+                    row, col, criar_item_tabela(texto)
+                )
 
     # ----- Formatting helpers -----
 

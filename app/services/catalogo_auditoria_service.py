@@ -131,6 +131,12 @@ class CatalogoAuditoriaService:
                 componente.def_peca_pai_id, []
             ).append(componente)
 
+        operacoes_vs_por_linha: dict[int, list] = {}
+        for ligacao in dados.operacoes_valueset:
+            operacoes_vs_por_linha.setdefault(
+                ligacao.def_valueset_modelo_linha_id, []
+            ).append(ligacao)
+
         def add(
             severidade,
             teste,
@@ -313,6 +319,7 @@ class CatalogoAuditoriaService:
             if getattr(l, "ativo", True) and l.def_regra_quantidade_id is not None
         )
         graph: dict[int, set[int]] = {}
+        prioridades_associados: set[tuple[int, str, int]] = set()
         for componente in dados.componentes:
             if not getattr(componente, "ativo", True):
                 continue
@@ -323,6 +330,26 @@ class CatalogoAuditoriaService:
                 componente, pecas, pecas_codigo
             )
             codigo_pai = getattr(pai, "codigo", componente.def_peca_pai_id)
+            referencia = cls._norm(
+                getattr(componente, "referencia_componente", None)
+                or getattr(filho, "codigo", None)
+            )
+            prioridade = getattr(componente, "prioridade_valueset", 1) or 1
+            chave_prioridade = (
+                componente.def_peca_pai_id,
+                referencia,
+                prioridade,
+            )
+            if chave_prioridade in prioridades_associados:
+                add(
+                    ERRO, "ASSOCIADO_PRIORIDADE_DUPLICADA", "Associados", "Associado",
+                    componente, codigo_pai,
+                    f"A prioridade ValueSet {prioridade} está repetida para o associado {referencia}.",
+                    "Duas linhas podem resolver a mesma ferragem e duplicar quantidade e custo.",
+                    "Atribuir uma prioridade diferente a cada componente da mesma referência.",
+                    navegacao_tipo="PECA", navegacao_id=getattr(pai, "id", None),
+                )
+            prioridades_associados.add(chave_prioridade)
             if filho is None:
                 add(
                     ERRO, "ASSOCIADO_SEM_BIBLIOTECA", "Associados", "Associado",
@@ -395,6 +422,68 @@ class CatalogoAuditoriaService:
                 )
 
         cls._auditar_ciclos(graph, pecas, add)
+
+        # Pilot of top unions: exact ValueSet priorities and auditable CNC time.
+        prioridades_uniao: dict[tuple[int, str, int], object] = {}
+        for linha in dados.linhas_valueset:
+            if not getattr(linha, "ativo", True):
+                continue
+            modelo = modelos.get(getattr(linha, "def_valueset_modelo_id", None))
+            if modelo is not None and not getattr(modelo, "ativo", True):
+                continue
+            chave = cls._norm(getattr(linha, "chave", None))
+            if "UNIA" not in chave and "UNIO" not in chave and "UNIÃO" not in chave:
+                continue
+            codigo = getattr(linha, "codigo_opcao", None) or chave
+            prioridade = getattr(linha, "prioridade", None)
+            if prioridade is None or prioridade < 1:
+                add(
+                    ERRO, "UNIAO_VALUESET_SEM_PRIORIDADE", "ValueSet", "Linha ValueSet",
+                    linha, codigo,
+                    "Linha de união sem prioridade ValueSet válida (mínimo 1).",
+                    "O associado pode não resolver a cavilha ou o parafuso pretendido.",
+                    "Definir uma prioridade única e positiva nesta chave de união.",
+                    navegacao_tipo="VALUESET_MODELO", navegacao_id=getattr(modelo, "id", None),
+                )
+            else:
+                chave_prioridade = (getattr(linha, "def_valueset_modelo_id", 0), chave, prioridade)
+                if chave_prioridade in prioridades_uniao:
+                    add(
+                        ERRO, "UNIAO_VALUESET_PRIORIDADE_DUPLICADA", "ValueSet", "Linha ValueSet",
+                        linha, codigo,
+                        f"A prioridade {prioridade} está repetida na chave {chave}.",
+                        "A resolução exata fica ambígua e pode escolher uma ferragem inesperada.",
+                        "Manter apenas uma linha ativa por prioridade nesta chave e modelo.",
+                        navegacao_tipo="VALUESET_MODELO", navegacao_id=getattr(modelo, "id", None),
+                    )
+                prioridades_uniao[chave_prioridade] = linha
+
+            ligacoes_cnc = []
+            for ligacao in operacoes_vs_por_linha.get(linha.id, []):
+                if not getattr(ligacao, "ativo", True):
+                    continue
+                op = operacoes.get(ligacao.def_operacao_id)
+                if op is not None and getattr(op, "ativo", True) and cls._eh_cnc(op):
+                    ligacoes_cnc.append((ligacao, op))
+            if not ligacoes_cnc:
+                add(
+                    AVISO, "UNIAO_SEM_CNC", "ValueSet", "Linha ValueSet", linha, codigo,
+                    "A ferragem de união não tem uma operação CNC ativa.",
+                    "O material pode ser contabilizado sem o tempo e custo da furação.",
+                    "Associar a operação CNC correta à linha da cavilha ou do parafuso.",
+                    navegacao_tipo="VALUESET_MODELO", navegacao_id=getattr(modelo, "id", None),
+                )
+            for ligacao, op in ligacoes_cnc:
+                tempo = getattr(ligacao, "tempo_por_unidade_minutos", None)
+                if tempo is None or tempo <= 0:
+                    add(
+                        ERRO, "UNIAO_CNC_SEM_TEMPO_UNITARIO", "ValueSet", "Linha ValueSet",
+                        linha, codigo,
+                        f"A operação {op.codigo} não tem tempo por unidade positivo.",
+                        "A quantidade de furos/uniões não aumenta o tempo e o custo CNC.",
+                        "Definir o tempo por unidade; manter o setup no campo separado.",
+                        navegacao_tipo="VALUESET_MODELO", navegacao_id=getattr(modelo, "id", None),
+                    )
 
         # ValueSet actions: make every replacement visible for review.
         for ligacao in dados.operacoes_valueset:

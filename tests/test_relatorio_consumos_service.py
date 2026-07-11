@@ -125,6 +125,34 @@ def test_resumo_versao_sem_linhas(session) -> None:
     assert resumo.distribuicao.custo_produzido == Decimal("0")
     # The four machine centres always exist (with zero cost).
     assert len(resumo.maquinas) == 4
+    assert resumo.operacoes == []
+
+
+def test_resumo_expoe_operacao_e_maquina_efetivas(session) -> None:
+    versao_id = _criar_versao(session)
+    item = _criar_item(session, versao_id, ordem=1, quantidade=2)
+    _linha_placa(
+        session,
+        item,
+        quantidade=Decimal("10"),
+        operacoes="CNC_ABD",
+        maquina="CNC_ABD",
+        tempo_setup=Decimal("0.01"),
+        tempo_cnc=Decimal("0.10"),
+        custo_cnc=Decimal("0.055"),
+        custo_producao=Decimal("0.055"),
+    )
+    session.commit()
+
+    resumo = RelatorioConsumosService(session).resumo_da_versao(versao_id)
+
+    (operacao,) = resumo.operacoes
+    assert operacao.operacoes == "CNC_ABD"
+    assert operacao.maquina == "CNC_ABD"
+    assert operacao.qt_total == Decimal("20")
+    assert operacao.tempo_setup == Decimal("0.02")
+    assert operacao.tempo_cnc == Decimal("0.20")
+    assert operacao.custo_total == Decimal("0.110")
 
 
 # --- Phase 8W.1.1: recompute-before-aggregate + Excluir semantics ------------

@@ -8,6 +8,7 @@ from app.domain.consumos import (
     LinhaConsumo,
     agregar_ferragens,
     agregar_maquinas,
+    agregar_operacoes,
     agregar_orlas,
     agregar_placas,
     distribuicao_custos,
@@ -206,6 +207,28 @@ def test_maquinas_soma_por_centro() -> None:
 
     assert por_centro["CNC (Mecanizações)"].custo_total == Decimal("7")
     assert por_centro["Montagem / Manual"].custo_total == Decimal("9")
+
+
+def test_operacoes_detalhadas_separam_cnc_e_aplicam_quantidade_item() -> None:
+    cavilha = _linha(
+        operacoes="CNC_ABD", maquina="CNC_ABD", quantidade=Decimal("10"),
+        item_qt=Decimal("2"), tempo_setup=Decimal("0.01"),
+        tempo_cnc=Decimal("0.10"), custo_producao=Decimal("0.055"),
+    )
+    parafuso = _linha(
+        operacoes="CNC_VERTICAL", maquina="CNC_VERTICAL", quantidade=Decimal("10"),
+        tempo_setup=Decimal("0.01"), tempo_cnc=Decimal("0.10"),
+        custo_producao=Decimal("0.11"),
+    )
+
+    por_operacao = {o.operacoes: o for o in agregar_operacoes([cavilha, parafuso])}
+
+    assert por_operacao["CNC_ABD"].maquina == "CNC_ABD"
+    assert por_operacao["CNC_ABD"].qt_total == Decimal("20")
+    assert por_operacao["CNC_ABD"].tempo_setup == Decimal("0.02")
+    assert por_operacao["CNC_ABD"].tempo_cnc == Decimal("0.20")
+    assert por_operacao["CNC_ABD"].custo_total == Decimal("0.110")
+    assert por_operacao["CNC_VERTICAL"].qt_total == Decimal("10")
 
 
 # --- Consumo conta com Excluir; distribuição respeita Excluir ----------------

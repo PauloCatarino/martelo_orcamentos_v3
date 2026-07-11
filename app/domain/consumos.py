@@ -90,6 +90,14 @@ class LinhaConsumo:
     custo_orlagem: Decimal | None = None
     custo_cnc: Decimal | None = None
     custo_montagem_manual: Decimal | None = None
+    operacoes: str | None = None
+    maquina: str | None = None
+    tempo_corte: Decimal | None = None
+    tempo_orlagem: Decimal | None = None
+    tempo_cnc: Decimal | None = None
+    tempo_montagem: Decimal | None = None
+    tempo_manual: Decimal | None = None
+    tempo_setup: Decimal | None = None
     # Exclusions (only the distribution honours them)
     excluir_mp: bool = False
     excluir_orla: bool = False
@@ -157,6 +165,21 @@ class ConsumoMaquina:
 
 
 @dataclass(frozen=True)
+class ConsumoOperacao:
+    """Exact operation/machine snapshot carried by the costing lines."""
+
+    operacoes: str
+    maquina: str
+    qt_total: Decimal
+    tempo_setup: Decimal
+    tempo_corte: Decimal
+    tempo_orlagem: Decimal
+    tempo_cnc: Decimal
+    tempo_montagem_manual: Decimal
+    custo_total: Decimal
+
+
+@dataclass(frozen=True)
 class DistribuicaoCategoria:
     nome: str
     euros: Decimal
@@ -178,6 +201,7 @@ class ResumoConsumos:
     ferragens: list
     maquinas: list
     distribuicao: DistribuicaoCustos
+    operacoes: list = field(default_factory=list)
 
 
 # --- Helpers -----------------------------------------------------------------
@@ -515,6 +539,48 @@ def agregar_maquinas(linhas) -> list:
     return centros
 
 
+def agregar_operacoes(linhas) -> list:
+    """Aggregate exact operation/machine snapshots without inventing splits.
+
+    A line containing several operations remains a combined entry, preserving
+    its stored times and cost instead of distributing them arbitrarily.
+    """
+    grupos: dict[tuple[str, str], dict] = {}
+    for linha in _linhas_reais(linhas):
+        operacoes = str(getattr(linha, "operacoes", None) or "").strip()
+        maquina = str(getattr(linha, "maquina", None) or "").strip()
+        if not operacoes and not maquina:
+            continue
+        chave = (operacoes or "—", maquina or "—")
+        grupo = grupos.setdefault(
+            chave,
+            {
+                "qt_total": _ZERO,
+                "tempo_setup": _ZERO,
+                "tempo_corte": _ZERO,
+                "tempo_orlagem": _ZERO,
+                "tempo_cnc": _ZERO,
+                "tempo_montagem_manual": _ZERO,
+                "custo_total": _ZERO,
+            },
+        )
+        item_qt = _num(linha.item_qt)
+        grupo["qt_total"] += _num(linha.quantidade) * item_qt
+        grupo["tempo_setup"] += _num(linha.tempo_setup) * item_qt
+        grupo["tempo_corte"] += _num(linha.tempo_corte) * item_qt
+        grupo["tempo_orlagem"] += _num(linha.tempo_orlagem) * item_qt
+        grupo["tempo_cnc"] += _num(linha.tempo_cnc) * item_qt
+        grupo["tempo_montagem_manual"] += (
+            _num(linha.tempo_montagem) + _num(linha.tempo_manual)
+        ) * item_qt
+        grupo["custo_total"] += _num(linha.custo_producao) * item_qt
+
+    return [
+        ConsumoOperacao(operacoes=chave[0], maquina=chave[1], **valores)
+        for chave, valores in sorted(grupos.items())
+    ]
+
+
 # --- 5. Cost distribution (pie chart) ---------------------------------------
 
 
@@ -581,4 +647,5 @@ def agregar_consumos(
         ferragens=agregar_ferragens(linhas),
         maquinas=agregar_maquinas(linhas),
         distribuicao=distribuicao_custos(linhas, margens, ajuste_eur_total),
+        operacoes=agregar_operacoes(linhas),
     )

@@ -1,5 +1,6 @@
 """Tests for the read-only technical catalog audit."""
 
+from decimal import Decimal
 from types import SimpleNamespace
 
 from app.services.catalogo_auditoria_service import (
@@ -248,3 +249,51 @@ def test_conjunto_virtual_nao_exige_chave_valueset() -> None:
     )
 
     assert "PECA_SEM_VALUESET" not in _codigos(resultado)
+
+
+def test_audita_protecoes_do_piloto_de_unioes() -> None:
+    modelo = _obj(id=20, codigo="STANDARD", ativo=True)
+    linhas = (
+        _obj(
+            id=21, def_valueset_modelo_id=20, chave="FERRAGEM_UNIOES",
+            codigo_opcao="CAVILHA", prioridade=1, ativo=True,
+        ),
+        _obj(
+            id=22, def_valueset_modelo_id=20, chave="FERRAGEM_UNIOES",
+            codigo_opcao="PARAFUSO", prioridade=1, ativo=True,
+        ),
+        _obj(
+            id=23, def_valueset_modelo_id=20, chave="SISTEMA_UNIAO",
+            codigo_opcao="SEM_PRIORIDADE", prioridade=None, ativo=True,
+        ),
+    )
+    cnc = _obj(
+        id=10, codigo="CNC_VERTICAL", nome="CNC vertical",
+        tipo_operacao="CNC", maquina_id=None, ativo=True,
+    )
+    resultado = CatalogoAuditoriaService.auditar_dados(
+        _dados(
+            operacoes=(cnc,),
+            modelos_valueset=(modelo,),
+            linhas_valueset=linhas,
+            operacoes_valueset=(
+                _obj(
+                    id=30, def_valueset_modelo_linha_id=21,
+                    def_operacao_id=10, acao="ADICIONAR", ativo=True,
+                    tempo_por_unidade_minutos=Decimal("0.01"),
+                ),
+                _obj(
+                    id=31, def_valueset_modelo_linha_id=22,
+                    def_operacao_id=10, acao="ADICIONAR", ativo=True,
+                    tempo_por_unidade_minutos=Decimal("0"),
+                ),
+            ),
+        )
+    )
+
+    assert {
+        "UNIAO_VALUESET_PRIORIDADE_DUPLICADA",
+        "UNIAO_VALUESET_SEM_PRIORIDADE",
+        "UNIAO_CNC_SEM_TEMPO_UNITARIO",
+        "UNIAO_SEM_CNC",
+    } <= _codigos(resultado)
