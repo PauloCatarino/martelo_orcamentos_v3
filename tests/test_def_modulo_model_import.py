@@ -33,6 +33,7 @@ def test_def_modulo_linha_has_no_material_snapshot() -> None:
         "larg",
         "esp",
         "chave_valueset",
+        "prioridade_valueset",
         "codigo_orlas",
         "def_regra_quantidade_id",
         "linha_pai_ordem",

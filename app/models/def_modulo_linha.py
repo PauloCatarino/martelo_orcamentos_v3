@@ -65,6 +65,10 @@ class DefModuloLinha(Base):
     larg: Mapped[str | None] = mapped_column(String(100), nullable=True)
     esp: Mapped[str | None] = mapped_column(String(100), nullable=True)
     chave_valueset: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Exact ValueSet rank selected when the module was saved.  The concrete
+    # material is deliberately not stored; import resolves this rank against
+    # the target item's ValueSet and never falls back to another rank.
+    prioridade_valueset: Mapped[int | None] = mapped_column(Integer, nullable=True)
     codigo_orlas: Mapped[str | None] = mapped_column(String(10), nullable=True)
     def_regra_quantidade_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("def_regras_quantidade.id"), nullable=True

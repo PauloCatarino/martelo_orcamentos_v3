@@ -260,13 +260,66 @@ Validação local pedida:
 6. verificar que cavilhas/CNC não aparecem duplicados;
 7. associar uma imagem apenas depois de validar a estrutura.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída com correções. O utilizador confirmou que o
+piloto inicial não continha as peças compostas/associados pretendidos, recriou
+um novo módulo pelo fluxo normal do custeio e validou gravar/importar com os
+dados corrigidos.
 
 Commit de registo: `Registar piloto de modulo caixote simples`.
 
 Próximo passo recomendado: ajustar as fórmulas e as peças do piloto com base
 no teste local; depois recriar/substituir o módulo pelo fluxo normal a partir do
 custeio, consolidando-o como primeiro módulo produtivo.
+
+### Prioridade ValueSet preservada nos módulos
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- acrescentada `prioridade_valueset` às linhas guardadas dos módulos;
+- ao guardar/substituir um módulo a partir do custeio, a prioridade é obtida da
+  opção `Mat. default` selecionada na chave ValueSet do item;
+- nos filhos associados é preservado o snapshot
+  `associado_valueset_prioridade`;
+- o módulo continua sem guardar matéria-prima, referência ou preço concretos;
+- ao importar, a prioridade é resolvida exatamente contra o ValueSet do item
+  de destino;
+- se a prioridade não existir, não existe fallback para outra opção:
+  `Mat. default` e material ficam vazios e é criada uma observação/aviso;
+- linhas de módulos antigos mantêm prioridade vazia e o comportamento anterior;
+  ganham prioridade explícita quando o módulo é substituído a partir de um
+  custeio atualizado;
+- a Biblioteca de Módulos e o preview de importação mostram a nova coluna
+  **Prioridade**;
+- migração aplicada: `20260717_56`.
+
+Testes automáticos:
+
+- prioridade 2 é gravada a partir da opção selecionada;
+- prioridade 2 é resolvida na importação mesmo existindo prioridade 1;
+- prioridade inexistente deixa material vazio e produz aviso, sem fallback;
+- testes focados: `44 passed`;
+- bateria completa: `1912 passed`.
+
+Validação local pedida:
+
+1. num item de teste, escolher opções com prioridades diferentes para materiais
+   e ferragens, por exemplo pés Axilo/prioridade 1 e Boné/prioridade 2;
+2. selecionar as linhas e substituir/gravar um módulo;
+3. abrir **Biblioteca de Módulos → Ver linhas** e confirmar as prioridades;
+4. importar o módulo num item cujo ValueSet contenha essas prioridades;
+5. confirmar que `Mat. default` resolve as opções da prioridade guardada;
+6. remover temporariamente uma prioridade do ValueSet do item de destino e
+   importar novamente;
+7. confirmar material vazio e aviso de produção, sem seleção silenciosa de
+   outra prioridade.
+
+Validação do utilizador: pendente.
+
+Commit: `Preservar prioridade ValueSet nos modulos`.
+
+Próximo passo recomendado: depois desta validação, modelar fórmulas dimensionais
+predefinidas nas `def_pecas` e a herança explícita de dimensões do cabeçalho de
+peça/conjunto para os seus filhos.
 
 ## Próxima fase proposta
 

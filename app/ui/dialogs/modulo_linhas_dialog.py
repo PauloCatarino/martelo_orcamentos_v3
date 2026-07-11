@@ -32,12 +32,13 @@ class ModuloLinhasDialog(QDialog):
         "Tipo",
         "Código/Def. peça",
         "Descrição",
+        "Prioridade",
         "QT",
         "Comp",
         "Larg",
         "Esp",
     )
-    _LARGURAS = (130, 140, 200, 50, 60, 60, 60)
+    _LARGURAS = (130, 140, 200, 75, 50, 60, 60, 60)
     _TAMANHO_IMAGEM = 180
 
     def __init__(self, parent=None, *, modulo=None, linhas: Sequence | None = None) -> None:
@@ -106,6 +107,7 @@ class ModuloLinhasDialog(QDialog):
                 linha.tipo_linha or "",
                 linha.def_peca_codigo or linha.codigo or "",
                 linha.descricao or linha.descricao_livre or "",
+                str(linha.prioridade_valueset or ""),
                 str(qt),
                 linha.comp or "",
                 linha.larg or "",

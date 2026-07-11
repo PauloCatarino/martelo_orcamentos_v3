@@ -72,6 +72,7 @@ def test_modulo_linhas_dialog_imports() -> None:
         "Tipo",
         "Código/Def. peça",
         "Descrição",
+        "Prioridade",
         "QT",
         "Comp",
         "Larg",

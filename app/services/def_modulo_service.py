@@ -36,6 +36,9 @@ from app.repositories.def_peca_componente_repository import DefPecaComponenteRep
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
+from app.repositories.orcamento_item_valueset_linha_repository import (
+    OrcamentoItemValuesetLinhaRepository,
+)
 
 
 @dataclass(frozen=True)
@@ -55,6 +58,7 @@ class CriarDefModuloLinhaData:
     larg: str | None = None
     esp: str | None = None
     chave_valueset: str | None = None
+    prioridade_valueset: int | None = None
     codigo_orlas: str | None = None
     def_regra_quantidade_id: int | None = None
     linha_pai_ordem: int | None = None
@@ -222,6 +226,7 @@ class DefModuloService:
                 larg=linha.larg,
                 esp=linha.esp,
                 chave_valueset=linha.chave_valueset,
+                prioridade_valueset=linha.prioridade_valueset,
                 codigo_orlas=linha.codigo_orlas,
                 def_regra_quantidade_id=linha.def_regra_quantidade_id,
                 linha_pai_ordem=linha.linha_pai_ordem,
@@ -260,7 +265,10 @@ class DefModuloService:
             raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
 
         linhas_modulo = self._linhas_modulo_de_custeio(
-            linhas, topo, componente_repository
+            linhas,
+            topo,
+            componente_repository,
+            self._prioridades_valueset_das_linhas(orcamento_item_id, linhas),
         )
 
         return self.criar(
@@ -347,7 +355,10 @@ class DefModuloService:
             raise ValueError("Selecione pelo menos uma linha de custeio para guardar.")
 
         linhas_modulo = self._linhas_modulo_de_custeio(
-            linhas, topo, componente_repository
+            linhas,
+            topo,
+            componente_repository,
+            self._prioridades_valueset_das_linhas(orcamento_item_id, linhas),
         )
 
         # The code is fixed on replace; pass the existing one through CriarDefModuloData.
@@ -369,7 +380,7 @@ class DefModuloService:
         )
 
     def _linhas_modulo_de_custeio(
-        self, linhas, topo, componente_repository
+        self, linhas, topo, componente_repository, prioridades_por_linha: dict[int, int]
     ) -> list[CriarDefModuloLinhaData]:
         """Build the module lines for the selection, INCLUDING composite children.
 
@@ -393,7 +404,9 @@ class DefModuloService:
             ordem += 1
             ordem_pai = ordem
             resultado.append(
-                self._linha_modulo_de_custeio(pai, ordem_pai, componente_repository)
+                self._linha_modulo_de_custeio(
+                    pai, ordem_pai, componente_repository, prioridades_por_linha
+                )
             )
             if pai.tipo_linha == PECA_COMPOSTA:
                 for filho in filhos_por_pai.get(pai.id, []):
@@ -403,6 +416,7 @@ class DefModuloService:
                             filho,
                             ordem,
                             componente_repository,
+                            prioridades_por_linha,
                             linha_pai_ordem=ordem_pai,
                         )
                     )
@@ -414,6 +428,7 @@ class DefModuloService:
         linha,
         ordem: int,
         componente_repository,
+        prioridades_por_linha: dict[int, int],
         linha_pai_ordem: int | None = None,
     ) -> CriarDefModuloLinhaData:
         """Build one module line from a costing line (structure only).
@@ -441,6 +456,7 @@ class DefModuloService:
             larg=None if eh_composta else linha.larg,
             esp=None if eh_composta else linha.esp,
             chave_valueset=linha.chave_valueset,
+            prioridade_valueset=prioridades_por_linha.get(linha.id),
             codigo_orlas=linha.codigo_orlas,
             def_regra_quantidade_id=self._regra_quantidade_id(
                 linha, componente_repository
@@ -449,6 +465,46 @@ class DefModuloService:
             nivel=linha.nivel,
             ativo=True,
         )
+
+    def _prioridades_valueset_das_linhas(
+        self, orcamento_item_id: int, linhas
+    ) -> dict[int, int]:
+        """Snapshot the selected ValueSet rank, never the concrete material."""
+        opcoes = OrcamentoItemValuesetLinhaRepository(
+            self.session
+        ).list_active_by_orcamento_item(orcamento_item_id)
+        por_chave_opcao: dict[tuple[str, str], int] = {}
+        for opcao in opcoes:
+            if opcao.prioridade is None:
+                continue
+            chave = self._texto_chave(opcao.chave)
+            for valor in (
+                opcao.codigo_opcao,
+                opcao.nome_opcao,
+                opcao.ref_le,
+            ):
+                normalizado = self._texto_chave(valor)
+                if chave and normalizado:
+                    por_chave_opcao[(chave, normalizado)] = opcao.prioridade
+
+        resultado: dict[int, int] = {}
+        for linha in linhas:
+            prioridade_associado = getattr(
+                linha, "associado_valueset_prioridade", None
+            )
+            if prioridade_associado is not None:
+                resultado[linha.id] = prioridade_associado
+                continue
+            chave = self._texto_chave(getattr(linha, "chave_valueset", None))
+            opcao = self._texto_chave(getattr(linha, "mat_default", None))
+            prioridade = por_chave_opcao.get((chave, opcao))
+            if prioridade is not None:
+                resultado[linha.id] = prioridade
+        return resultado
+
+    @staticmethod
+    def _texto_chave(valor) -> str:
+        return " ".join(str(valor or "").strip().upper().split())
 
     @staticmethod
     def _regra_quantidade_id(linha, componente_repository) -> int | None:

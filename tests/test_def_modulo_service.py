@@ -18,7 +18,7 @@ from app.domain.modulo_categorias import (
 )
 from decimal import Decimal
 
-from app.models import DefModulo, DefModuloLinha
+from app.models import DefModulo, DefModuloLinha, OrcamentoItemValuesetLinha
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
@@ -56,6 +56,7 @@ def _linhas_roupeiro() -> list[CriarDefModuloLinhaData]:
             larg="P",
             esp="19",
             chave_valueset="MATERIAL_LATERAIS",
+            prioridade_valueset=2,
             codigo_orlas="2200",
             qt_und="2",
         ),
@@ -109,6 +110,7 @@ def test_criar_modulo_com_linhas(session) -> None:
     lateral = com_linhas.linhas[1]
     assert lateral.comp == "H"
     assert lateral.chave_valueset == "MATERIAL_LATERAIS"
+    assert lateral.prioridade_valueset == 2
     assert lateral.codigo_orlas == "2200"
     # Composite parent-by-order is kept for resolution on import.
     assert com_linhas.linhas[2].linha_pai_ordem == 2
@@ -371,6 +373,42 @@ def test_guardar_de_linhas_custeio_topo_e_estrutura(session) -> None:
     # Header scoped to the user.
     assert com_linhas.modulo.user_id == 7
     assert com_linhas.modulo.ambito == AMBITO_UTILIZADOR
+
+
+def test_guardar_modulo_preserva_prioridade_do_material_selecionado(session) -> None:
+    linha = _inserir_custeio(
+        session,
+        tipo_linha="PECA",
+        def_peca_codigo="LATERAL",
+        chave_valueset="MATERIAL_LATERAIS",
+        mat_default="BRANCO",
+    )
+    session.add_all(
+        [
+            OrcamentoItemValuesetLinha(
+                orcamento_item_id=10,
+                chave="MATERIAL_LATERAIS",
+                codigo_opcao=codigo,
+                nome_opcao=codigo,
+                prioridade=prioridade,
+                padrao=prioridade == 1,
+                ordem=prioridade,
+                ativo=True,
+            )
+            for prioridade, codigo in ((1, "LINHO"), (2, "BRANCO"))
+        ]
+    )
+    session.commit()
+
+    modulo = DefModuloService(session).guardar_de_linhas_custeio(
+        orcamento_item_id=10,
+        linha_ids=[linha.id],
+        codigo="MOD_P2",
+        nome="Módulo prioridade 2",
+        user_id=7,
+    )
+
+    assert modulo.linhas[0].prioridade_valueset == 2
 
 
 def test_guardar_so_o_filho_inclui_o_cabecalho(session) -> None:

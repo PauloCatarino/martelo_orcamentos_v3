@@ -47,6 +47,7 @@ class DefModuloLinhaResumo:
     larg: str | None
     esp: str | None
     chave_valueset: str | None
+    prioridade_valueset: int | None
     codigo_orlas: str | None
     def_regra_quantidade_id: int | None
     linha_pai_ordem: int | None
@@ -241,6 +242,7 @@ class DefModuloRepository:
             larg=linha.larg,
             esp=linha.esp,
             chave_valueset=linha.chave_valueset,
+            prioridade_valueset=linha.prioridade_valueset,
             codigo_orlas=linha.codigo_orlas,
             def_regra_quantidade_id=linha.def_regra_quantidade_id,
             linha_pai_ordem=linha.linha_pai_ordem,

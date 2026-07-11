@@ -3866,6 +3866,7 @@ class OrcamentoItemCusteioLinhaService:
             linha_pai_id=None,
             ordem=None,
             qt_und=self._qt_modulo(linha.qt_und, Decimal("1")),
+            prioridade_valueset=getattr(linha, "prioridade_valueset", None),
         )
         if aviso:
             self._adicionar_aviso(avisos, aviso)
@@ -4018,6 +4019,9 @@ class OrcamentoItemCusteioLinhaService:
                 linha_pai_id=linha_pai_id,
                 ordem=ordem,
                 qt_und=self._qt_modulo(filho.qt_und, Decimal("1")),
+                prioridade_valueset=getattr(
+                    filho, "prioridade_valueset", None
+                ),
                 sem_chave_observacao=(
                     "Componente sem chave ValueSet: atribua uma chave de "
                     "material à definição da peça."
@@ -4062,6 +4066,8 @@ class OrcamentoItemCusteioLinhaService:
         if componente is not None:
             fields["origem_id"] = componente.id
             fields.update(self._snapshot_regra_associado(componente))
+        if getattr(filho, "prioridade_valueset", None) is not None:
+            fields["associado_valueset_prioridade"] = filho.prioridade_valueset
 
         self.repository.create_linha(**fields)
 

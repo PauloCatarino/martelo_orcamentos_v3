@@ -49,6 +49,7 @@ class ImportarModuloDialog(QDialog):
         "Tipo",
         "Código/Def. peça",
         "Descrição",
+        "Prioridade",
         "QT",
         "Comp",
         "Larg",
@@ -57,7 +58,7 @@ class ImportarModuloDialog(QDialog):
     _TAMANHO_MINIATURA = 48
     # Initial column widths (the user can drag the borders afterwards).
     _LARGURAS_LISTA = (64, 150, 240, 80)
-    _LARGURAS_PREVIEW = (130, 140, 200, 50, 60, 60, 60)
+    _LARGURAS_PREVIEW = (130, 140, 200, 75, 50, 60, 60, 60)
 
     def __init__(
         self,
@@ -371,6 +372,7 @@ class ImportarModuloDialog(QDialog):
                 linha.tipo_linha or "",
                 linha.def_peca_codigo or linha.codigo or "",
                 linha.descricao or linha.descricao_livre or "",
+                str(linha.prioridade_valueset or ""),
                 str(qt),
                 linha.comp or "",
                 linha.larg or "",

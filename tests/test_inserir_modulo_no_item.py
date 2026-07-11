@@ -193,6 +193,94 @@ def test_importar_modulo_cria_linhas_reexpande_composta(session) -> None:
     assert lateral.unidade == "m2"
 
 
+def test_importar_modulo_resolve_material_pela_prioridade_exata(session) -> None:
+    item_id = _criar_item(session)
+    for prioridade, codigo, ref in (
+        (1, "LINHO", "LE01"),
+        (2, "BRANCO", "LE02"),
+    ):
+        session.add(
+            OrcamentoItemValuesetLinha(
+                orcamento_item_id=item_id,
+                chave="MATERIAL_LATERAIS",
+                codigo_opcao=codigo,
+                nome_opcao=codigo,
+                prioridade=prioridade,
+                padrao=prioridade == 1,
+                ordem=prioridade,
+                materia_prima_id=prioridade,
+                ref_materia_prima=ref,
+                descricao_materia_prima=codigo,
+                ref_le=ref,
+                descricao_no_orcamento=codigo,
+                preco_liquido=Decimal("5"),
+                unidade="m2",
+                desperdicio_percentagem=Decimal("5"),
+                esp_mp=Decimal("19"),
+                ativo=True,
+            )
+        )
+    lateral_id, _gaveta_id = _criar_pecas(session)
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="COZINHA_P2",
+            nome="Cozinha prioridade 2",
+            user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1,
+                    def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL",
+                    chave_valueset="MATERIAL_LATERAIS",
+                    prioridade_valueset=2,
+                )
+            ],
+        )
+    )
+
+    OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(
+        item_id, modulo.modulo.id
+    )
+    linha = OrcamentoItemCusteioLinhaRepository(
+        session
+    ).list_active_by_orcamento_item(item_id)[0]
+    assert linha.mat_default == "BRANCO"
+    assert linha.ref_le == "LE02"
+
+
+def test_importar_modulo_prioridade_inexistente_nao_faz_fallback(session) -> None:
+    item_id = _criar_item(session)
+    _criar_valueset_laterais(session, item_id)
+    lateral_id, _gaveta_id = _criar_pecas(session)
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="SEM_P2",
+            nome="Sem prioridade 2",
+            user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1,
+                    def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL",
+                    chave_valueset="MATERIAL_LATERAIS",
+                    prioridade_valueset=2,
+                )
+            ],
+        )
+    )
+
+    resultado = OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(
+        item_id, modulo.modulo.id
+    )
+    linha = OrcamentoItemCusteioLinhaRepository(
+        session
+    ).list_active_by_orcamento_item(item_id)[0]
+    assert linha.mat_default is None
+    assert linha.ref_le is None
+    assert "Prioridade ValueSet 2 não configurada" in linha.observacoes
+    assert any("Prioridade ValueSet 2 não configurada" in aviso for aviso in resultado.avisos)
+
+
 def test_importar_modulo_grava_imagem_na_primeira_linha(session) -> None:
     item_id = _criar_item(session)
     _criar_valueset_laterais(session, item_id)
