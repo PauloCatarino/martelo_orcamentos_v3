@@ -806,9 +806,13 @@ Validação local pedida:
    inserir peças: deve funcionar e atribuir materiais;
 4. confirmar que itens já preenchidos abrem no separador Custeio como antes.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída (11 de julho de 2026).
 
-Próximo passo recomendado: generalização das uniões estruturais.
+Commit: `Encaminhar para o ValueSet quando o item nao tem dados`.
+
+Próximo passo recomendado: generalização das uniões estruturais (fase
+seguinte proposta abaixo). Nesta data o `main` foi atualizado com todo o
+trabalho da Fase C.
 
 ## Fase seguinte proposta
 
