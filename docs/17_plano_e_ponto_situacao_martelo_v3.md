@@ -468,7 +468,12 @@ Validação local pedida:
 10. confirmar que nenhuma linha de custeio existente ou nova mudou ainda as
     dimensões automaticamente nesta fase.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída. No primeiro arranque, `def_pecas` ficou vazio
+porque a base ainda estava em `20260718_57`; confirmou-se que reiniciar a
+aplicação não executa migrações automaticamente. Depois de aplicar manualmente
+`alembic upgrade head`, a base passou para `20260719_58`, as 63 peças voltaram a
+ser apresentadas e o utilizador guardou fórmulas dimensionais no piloto de
+porta.
 
 Commit: `Configurar formulas dimensionais nas definicoes`.
 
@@ -476,6 +481,79 @@ Próximo passo recomendado: depois da validação local desta configuração,
 implementar a Fase B, aplicando as fórmulas aos cabeçalhos e as transformações
 `PAI_*` aos filhos no custeio, incluindo conjuntos aninhados e preservação das
 edições locais.
+
+### Fórmulas dimensionais predefinidas — Fase B: aplicação no custeio
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- novas peças simples recebem `formula_comp`, `formula_larg` e `formula_esp` da
+  respetiva `DefPeca` como fórmulas editáveis da linha de custeio;
+- novos cabeçalhos de peça/conjunto recebem as fórmulas dimensionais
+  configuradas na `DefPeca` quando existirem;
+- cada filho recebe, com precedência, as fórmulas configuradas na associação
+  `DefPecaComponente`, preservando-as como texto editável na linha;
+- filhos podem continuar a usar diretamente `H/L/P` ou `HM/LM/PM`, como no
+  piloto `PORTA_SIMPLES+DOBRADICA`, onde o filho `PORTA_SIMPLES` foi configurado
+  com Comp `HM` e Larg `LM`;
+- `PAI_COMP`, `PAI_LARG` e `PAI_ESP` resolvem sempre as dimensões reais do pai
+  imediato, permitindo transformações explícitas e conjuntos aninhados;
+- o recálculo segue a ordem estrutural, calculando primeiro o pai e depois os
+  filhos, sem reutilizar dimensões de um irmão ou de outro conjunto;
+- a validação anterior ao custeio passou também a validar cabeçalhos compostos
+  dimensionados e fórmulas `PAI_*`;
+- se a fórmula de espessura da peça estiver vazia, mantém-se o comportamento
+  anterior de obter Esp a partir do material ValueSet; uma fórmula explícita de
+  Esp tem precedência;
+- as fórmulas ficam congeladas nas linhas criadas: alterações posteriores no
+  catálogo não se propagam automaticamente;
+- **Atualizar peça da biblioteca** preserva as dimensões/fórmulas editadas da
+  raiz e reconstrói os filhos com as transformações atuais do catálogo, mantendo
+  a confirmação já existente para perda de edições locais;
+- cabeçalhos importados de módulos mantêm nesta fase o comportamento anterior,
+  sem dimensões automáticas; a persistência/importação dessas fórmulas fica
+  reservada para a Fase C;
+- nenhuma peça do catálogo nem linha de orçamento existente foi alterada
+  automaticamente.
+
+Testes automáticos:
+
+- testes focados de custeio, interface e medidas: `279 passed`;
+- bateria completa: `1925 passed`;
+- cenários novos cobrem inserção do piloto com `HM/LM`, cabeçalho
+  `HM × LM/2`, transformação `PAI_COMP-4 × PAI_LARG-4`, espessura explícita,
+  conjuntos aninhados e reconstrução através de **Atualizar peça da biblioteca**.
+
+Validação local pedida:
+
+1. criar ou abrir um item de teste com uma divisão independente e dimensões
+   conhecidas, por exemplo HM `2000` e LM `600`;
+2. inserir novamente da biblioteca `PORTA_SIMPLES+DOBRADICA` — não reutilizar
+   uma linha inserida antes desta fase;
+3. confirmar que o cabeçalho do conjunto aparece e que o filho
+   `PORTA_SIMPLES` recebe automaticamente Comp `HM` e Larg `LM`;
+4. executar **Atualizar** no custeio e confirmar Comp real `2000` e Larg real
+   `600` no filho;
+5. confirmar que a dobradiça continua associada e que a sua quantidade/regra
+   não foi alterada por esta fase;
+6. editar manualmente no filho Comp para `HM-4`, executar **Atualizar** e
+   confirmar Comp real `1996`;
+7. alterar no catálogo a transformação do filho apenas numa peça de teste para
+   `PAI_COMP-4`/`PAI_LARG-4`, inserir um novo conjunto cujo cabeçalho tenha
+   dimensões e confirmar a derivação a partir do pai;
+8. confirmar que a primeira linha já inserida não muda com a alteração do
+   catálogo;
+9. usar **Atualizar peça da biblioteca** nessa primeira linha apenas se quiser
+   testar a reconstrução explícita dos filhos e confirmar previamente qualquer
+   aviso de perda de edições locais;
+10. confirmar que módulos existentes continuam a importar como antes.
+
+Validação do utilizador: pendente.
+
+Commit: `Aplicar formulas dimensionais no custeio`.
+
+Próximo passo recomendado: depois da validação local do piloto de porta,
+implementar a Fase C para guardar/importar fórmulas de cabeçalhos nos módulos;
+só depois generalizar as transformações a gavetas e ao restante catálogo.
 
 ## Próxima fase proposta
 

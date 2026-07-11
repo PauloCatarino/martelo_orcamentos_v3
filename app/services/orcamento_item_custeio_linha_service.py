@@ -967,6 +967,7 @@ class OrcamentoItemCusteioLinhaService:
             item.altura, item.largura, item.profundidade
         )
         contexto_local: dict = {}
+        medidas_calculadas: dict[int, dict] = {}
 
         linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
         quantidades = calcular_quantidades(
@@ -981,10 +982,15 @@ class OrcamentoItemCusteioLinhaService:
                 continue
 
             contexto = {**contexto_global, **contexto_local}
+            if linha.linha_pai_id is not None:
+                pai = medidas_calculadas.get(linha.linha_pai_id)
+                if pai is not None:
+                    contexto.update(self._contexto_dimensoes_pai(pai))
             fields = self._calcular_medidas_fields(
                 linha, contexto, quantidades[linha.id].qt_total
             )
 
+            medidas_calculadas[linha.id] = fields
             if linha.tipo_linha == DIVISAO_INDEPENDENTE:
                 contexto_local = {
                     "HM": fields["comp_real"],
@@ -1551,6 +1557,7 @@ class OrcamentoItemCusteioLinhaService:
             item.altura, item.largura, item.profundidade
         )
         contexto_local: dict = {}
+        medidas_calculadas: dict[int, dict] = {}
         erros: list[ErroEntradaCusteio] = []
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
@@ -1564,10 +1571,14 @@ class OrcamentoItemCusteioLinhaService:
                 linha, "qt_und", "QT und", permitir_zero=True, erros=erros
             )
 
-            if linha.tipo_linha in (OPERACAO_MANUAL, PECA_COMPOSTA):
+            if linha.tipo_linha == OPERACAO_MANUAL:
                 continue
 
             contexto = {**contexto_global, **contexto_local}
+            if linha.linha_pai_id is not None:
+                pai = medidas_calculadas.get(linha.linha_pai_id)
+                if pai is not None:
+                    contexto.update(self._contexto_dimensoes_pai(pai))
             resultados: dict[str, Decimal | None] = {}
             for atributo, campo, rotulo in (
                 ("comp", "Comp", "Comprimento"),
@@ -1601,6 +1612,11 @@ class OrcamentoItemCusteioLinhaService:
                     "LM": resultados.get("larg"),
                     "PM": resultados.get("esp"),
                 }
+            medidas_calculadas[linha.id] = {
+                "comp_real": resultados.get("comp"),
+                "larg_real": resultados.get("larg"),
+                "esp_real": resultados.get("esp"),
+            }
 
         return erros
 
@@ -3630,9 +3646,9 @@ class OrcamentoItemCusteioLinhaService:
             )
 
         contexto_local: dict = {}
-        for atual in self.repository.list_active_by_orcamento_item(
-            linha.orcamento_item_id
-        ):
+        linhas = self.repository.list_active_by_orcamento_item(linha.orcamento_item_id)
+        por_id = {atual.id: atual for atual in linhas}
+        for atual in linhas:
             if atual.id == linha.id:
                 break
             if atual.tipo_linha != DIVISAO_INDEPENDENTE:
@@ -3645,7 +3661,24 @@ class OrcamentoItemCusteioLinhaService:
                 "PM": avaliar_medida(atual.esp, contexto),
             }
 
-        return {**contexto_global, **contexto_local}
+        contexto = {**contexto_global, **contexto_local}
+        pai = por_id.get(linha.linha_pai_id)
+        if pai is not None:
+            contexto.update(self._contexto_dimensoes_pai(pai))
+        return contexto
+
+    @staticmethod
+    def _contexto_dimensoes_pai(pai) -> dict:
+        """Expose the evaluated dimensions of the immediate parent only."""
+        if isinstance(pai, dict):
+            obter = pai.get
+        else:
+            obter = lambda campo: getattr(pai, campo, None)
+        return {
+            "PAI_COMP": obter("comp_real"),
+            "PAI_LARG": obter("larg_real"),
+            "PAI_ESP": obter("esp_real"),
+        }
 
     def _calcular_medidas_fields(
         self, linha, contexto: dict, qt_total: Decimal
@@ -3953,7 +3986,9 @@ class OrcamentoItemCusteioLinhaService:
         line. Uses the def_peca when available; otherwise a best-effort header."""
         if peca is not None:
             principal = self._criar_linha_principal_composta(orcamento_item_id, peca)
-            override: dict = {}
+            # Module header formulas are intentionally deferred to Phase C;
+            # preserve the previous dimensionless module-header behaviour.
+            override: dict = {"comp": None, "larg": None, "esp": None}
             qt_und = self._qt_modulo(linha.qt_und)
             if qt_und is not None:
                 override["qt_und"] = qt_und
@@ -4256,6 +4291,7 @@ class OrcamentoItemCusteioLinhaService:
             qt_mod=Decimal("1"),
             qt_und=Decimal("1"),
             quantidade=Decimal("1"),
+            **self._formulas_peca(peca),
             editado_localmente=False,
             ativo=True,
         )
@@ -4366,6 +4402,7 @@ class OrcamentoItemCusteioLinhaService:
             # Link the cost line back to the DefPecaComponente so the Atualizar
             # pipeline can resolve its quantity rule (phase 8T.5.1).
             fields["origem_id"] = componente.id
+            self._aplicar_formulas_componente(fields, componente)
             fields.update(snapshot)
             return fields, aviso
 
@@ -4393,7 +4430,24 @@ class OrcamentoItemCusteioLinhaService:
             ),
         }
         fields.update(snapshot)
+        self._aplicar_formulas_componente(fields, componente)
         return fields, None
+
+    @staticmethod
+    def _aplicar_formulas_componente(fields: dict, componente) -> None:
+        """Overlay the association formulas on the child snapshot."""
+        for campo in ("comp", "larg", "esp"):
+            formula = getattr(componente, f"formula_{campo}", None)
+            if formula is not None:
+                fields[campo] = formula
+
+    @staticmethod
+    def _formulas_peca(peca) -> dict:
+        return {
+            campo: formula
+            for campo in ("comp", "larg", "esp")
+            if (formula := getattr(peca, f"formula_{campo}", None)) is not None
+        }
 
     def _snapshot_regra_associado(self, componente) -> dict:
         """Freeze the association and its current active quantity rule."""
@@ -4514,6 +4568,7 @@ class OrcamentoItemCusteioLinhaService:
             "sem_material": bool(getattr(peca, "sem_material", False)),
             "ativo": True,
         }
+        fields.update(self._formulas_peca(peca))
 
         if fields["sem_material"]:
             # Service piece: no raw material / ValueSet. Leave the material and
@@ -4581,7 +4636,7 @@ class OrcamentoItemCusteioLinhaService:
 
         # Default the piece thickness (Esp) from the inherited material, for real
         # pieces/hardware only (never division or composite-parent lines).
-        if tipo_linha in (PECA, FERRAGEM):
+        if tipo_linha in (PECA, FERRAGEM) and not fields.get("esp"):
             esp_texto = self._espessura_material_para_esp(linha_vs.esp_mp)
             if esp_texto is not None:
                 fields["esp"] = esp_texto

@@ -607,6 +607,8 @@ def test_atualizar_biblioteca_preserva_inputs_da_raiz_e_reconstroi_filhos(
             def_peca_pai_id=1,
             def_peca_componente_id=2,
             referencia_componente="SUPORTE",
+            formula_comp="PAI_COMP/2",
+            formula_larg="PAI_LARG",
         )
     ]
 
@@ -623,6 +625,8 @@ def test_atualizar_biblioteca_preserva_inputs_da_raiz_e_reconstroi_filhos(
     assert _FakeRepository.deleted_ids == [101]
     assert _FakeRepository.created_payload["linha_pai_id"] == 100
     assert _FakeRepository.created_payload["origem_tipo"] == "PECA_ASSOCIADA"
+    assert _FakeRepository.created_payload["comp"] == "PAI_COMP/2"
+    assert _FakeRepository.created_payload["larg"] == "PAI_LARG"
     assert _FakeRepository.reordenar_order == [100, 1, 200]
     assert resultado.associados_removidos == 1
     assert resultado.associados_criados == 1
@@ -5392,3 +5396,97 @@ def test_aplicar_opcao_valueset_rejeita_opcao_de_outro_item(monkeypatch) -> None
         pass
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_fase_b_porta_aplica_formulas_do_cabecalho_e_associado(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1, codigo="PORTA_SIMPLES_DOBRADICA", tipo_peca="COMPOSTA",
+            formula_comp="HM", formula_larg="LM/2",
+        ),
+        2: _peca(id=2, codigo="PORTA_SIMPLES"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=10, def_peca_componente_id=2,
+            formula_comp="PAI_COMP-4", formula_larg="PAI_LARG-4", formula_esp="19",
+        )
+    ]
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    cabecalho, porta = _FakeRepository.created_payloads
+    assert cabecalho["comp"] == "HM"
+    assert cabecalho["larg"] == "LM/2"
+    assert "esp" not in cabecalho
+    assert porta["comp"] == "PAI_COMP-4"
+    assert porta["larg"] == "PAI_LARG-4"
+    assert porta["esp"] == "19"
+
+
+def test_fase_b_associado_aceita_hm_lm_do_piloto(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="COMPOSTA"),
+        2: _peca(id=2, codigo="PORTA_SIMPLES"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(def_peca_componente_id=2, formula_comp="HM", formula_larg="LM")
+    ]
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    porta = _FakeRepository.created_payloads[1]
+    assert porta["comp"] == "HM"
+    assert porta["larg"] == "LM"
+
+
+def test_fase_b_recalcula_porta_com_dimensoes_do_pai(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("2200"), largura=Decimal("1000"), profundidade=Decimal("600")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="L", esp="P"),
+        _resumo(id=2, tipo_linha="PECA_COMPOSTA", comp="HM", larg="LM/2"),
+        _resumo(
+            id=3, tipo_linha="PECA", linha_pai_id=2, nivel=1,
+            comp="PAI_COMP-4", larg="PAI_LARG-4", esp="19",
+        ),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payloads = {payload["id"]: payload for payload in _FakeRepository.updated_payloads}
+    assert payloads[2]["comp_real"] == Decimal("2200")
+    assert payloads[2]["larg_real"] == Decimal("500")
+    assert payloads[3]["comp_real"] == Decimal("2196")
+    assert payloads[3]["larg_real"] == Decimal("496")
+    assert payloads[3]["esp_real"] == Decimal("19")
+
+
+def test_fase_b_recalcula_conjunto_aninhado_com_pai_imediato(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=Decimal("1000"), largura=Decimal("600"), profundidade=None
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA", comp="H", larg="L"),
+        _resumo(
+            id=2, tipo_linha="PECA", linha_pai_id=1, nivel=1,
+            comp="PAI_COMP-10", larg="PAI_LARG-20",
+        ),
+        _resumo(
+            id=3, tipo_linha="FERRAGEM", linha_pai_id=2, nivel=2,
+            comp="PAI_COMP/2", larg="PAI_LARG/2",
+        ),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payloads = {payload["id"]: payload for payload in _FakeRepository.updated_payloads}
+    assert payloads[2]["comp_real"] == Decimal("990")
+    assert payloads[2]["larg_real"] == Decimal("580")
+    assert payloads[3]["comp_real"] == Decimal("495")
+    assert payloads[3]["larg_real"] == Decimal("290")
