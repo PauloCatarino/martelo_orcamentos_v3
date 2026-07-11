@@ -34,6 +34,7 @@ class DefPecaComponenteResumo:
     dimensao_referencia: str = "COMP"
     numero_topos: int = 0
     modo_quantidade: str = "TOTAL"
+    prioridade_valueset: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -94,6 +95,7 @@ class DefPecaComponenteRepository:
         dimensao_referencia: str = "COMP",
         numero_topos: int = 0,
         modo_quantidade: str = "TOTAL",
+        prioridade_valueset: int = 1,
     ) -> DefPecaComponenteResumo:
         """Create one composite piece component."""
         componente = DefPecaComponente(
@@ -110,6 +112,7 @@ class DefPecaComponenteRepository:
             dimensao_referencia=dimensao_referencia,
             numero_topos=numero_topos,
             modo_quantidade=modo_quantidade,
+            prioridade_valueset=prioridade_valueset,
             obrigatorio=obrigatorio,
             ativo=ativo,
             observacoes=observacoes,
@@ -139,6 +142,7 @@ class DefPecaComponenteRepository:
         dimensao_referencia: str = "COMP",
         numero_topos: int = 0,
         modo_quantidade: str = "TOTAL",
+        prioridade_valueset: int = 1,
     ) -> DefPecaComponenteResumo:
         """Update one composite piece component."""
         componente = self.session.get(DefPecaComponente, id)
@@ -158,6 +162,7 @@ class DefPecaComponenteRepository:
         componente.dimensao_referencia = dimensao_referencia
         componente.numero_topos = numero_topos
         componente.modo_quantidade = modo_quantidade
+        componente.prioridade_valueset = prioridade_valueset
         componente.obrigatorio = obrigatorio
         componente.ativo = ativo
         componente.observacoes = observacoes
@@ -201,6 +206,7 @@ class DefPecaComponenteRepository:
             dimensao_referencia=componente.dimensao_referencia,
             numero_topos=componente.numero_topos,
             modo_quantidade=componente.modo_quantidade,
+            prioridade_valueset=componente.prioridade_valueset,
             created_at=componente.created_at,
             updated_at=componente.updated_at,
         )

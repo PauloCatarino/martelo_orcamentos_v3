@@ -71,6 +71,7 @@ class OrcamentoItemCusteioLinhaResumo:
     associado_zona_aplicacao: str | None = None
     associado_dimensao_referencia: str | None = None
     associado_numero_topos: int | None = None
+    associado_valueset_prioridade: int | None = None
     operacoes_snapshot_json: str | None = None
     def_peca_id: int | None = None
     def_peca_codigo: str | None = None
@@ -321,6 +322,7 @@ class OrcamentoItemCusteioLinhaRepository:
             associado_zona_aplicacao=linha.associado_zona_aplicacao,
             associado_dimensao_referencia=linha.associado_dimensao_referencia,
             associado_numero_topos=linha.associado_numero_topos,
+            associado_valueset_prioridade=linha.associado_valueset_prioridade,
             operacoes_snapshot_json=linha.operacoes_snapshot_json,
             tipo_linha=linha.tipo_linha,
             codigo=linha.codigo,

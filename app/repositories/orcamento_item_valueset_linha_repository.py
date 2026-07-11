@@ -203,6 +203,41 @@ class OrcamentoItemValuesetLinhaRepository:
 
         return self._to_resumo(linha)
 
+    def get_active_by_item_chave_prioridade(
+        self, orcamento_item_id: int, chave: str, prioridade: int
+    ) -> OrcamentoItemValuesetLinhaResumo | None:
+        """Get exactly one active option rank, without fallback to another rank."""
+        statement = (
+            select(OrcamentoItemValuesetLinha)
+            .where(
+                OrcamentoItemValuesetLinha.orcamento_item_id == orcamento_item_id,
+                OrcamentoItemValuesetLinha.chave == chave,
+                OrcamentoItemValuesetLinha.prioridade == prioridade,
+                OrcamentoItemValuesetLinha.ativo.is_(True),
+            )
+            .order_by(OrcamentoItemValuesetLinha.id.asc())
+        )
+        linha = self.session.execute(statement).scalars().first()
+        # Before priorities existed, the implicit first option was stored with
+        # NULL. It is equivalent only to priority 1. Priorities > 1 never fall
+        # back to another option.
+        if linha is None and prioridade == 1:
+            legacy_statement = (
+                select(OrcamentoItemValuesetLinha)
+                .where(
+                    OrcamentoItemValuesetLinha.orcamento_item_id
+                    == orcamento_item_id,
+                    OrcamentoItemValuesetLinha.chave == chave,
+                    OrcamentoItemValuesetLinha.prioridade.is_(None),
+                    OrcamentoItemValuesetLinha.ativo.is_(True),
+                )
+                .order_by(OrcamentoItemValuesetLinha.id.asc())
+            )
+            linha = self.session.execute(legacy_statement).scalars().first()
+        if linha is None:
+            return None
+        return self._to_resumo(linha)
+
     def create(self, **fields) -> OrcamentoItemValuesetLinhaResumo:
         """Create one budget item ValueSet line."""
         linha = OrcamentoItemValuesetLinha(**fields)

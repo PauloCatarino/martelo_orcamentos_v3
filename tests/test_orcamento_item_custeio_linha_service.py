@@ -51,6 +51,7 @@ def _componente(**kwargs):
         "dimensao_referencia": "COMP",
         "numero_topos": 0,
         "modo_quantidade": "TOTAL",
+        "prioridade_valueset": 1,
         "obrigatorio": True,
         "ativo": True,
         "observacoes": None,
@@ -342,6 +343,7 @@ class _FakeItemValuesetRepository:
     by_id_map: dict = {}
     active_opcoes: list = []
     defaults_by_chave: dict = {}
+    defaults_by_chave_prioridade: dict = {}
 
     def __init__(self, _session: object) -> None:
         pass
@@ -350,6 +352,15 @@ class _FakeItemValuesetRepository:
         if chave in self.defaults_by_chave:
             return self.defaults_by_chave[chave]
         return self.default_linha
+
+    def get_active_by_item_chave_prioridade(
+        self, orcamento_item_id: int, chave: str, prioridade: int
+    ):
+        if (chave, prioridade) in self.defaults_by_chave_prioridade:
+            return self.defaults_by_chave_prioridade[(chave, prioridade)]
+        if prioridade == 1:
+            return self.defaults_by_chave.get(chave, self.default_linha)
+        return None
 
     def list_by_item_chave(self, orcamento_item_id: int, chave: str):
         return self.chave_rows
@@ -418,6 +429,7 @@ def _reset() -> None:
     _FakeItemValuesetRepository.by_id_map = {}
     _FakeItemValuesetRepository.active_opcoes = []
     _FakeItemValuesetRepository.defaults_by_chave = {}
+    _FakeItemValuesetRepository.defaults_by_chave_prioridade = {}
     _FakeValuesetChaveRepository.chaves = []
     _FakeMateriaPrimaRepository.materia = None
     _FakeMateriaPrimaRepository.materias_por_ref = {}
@@ -986,7 +998,7 @@ def test_adicionar_componente_sem_valueset(monkeypatch) -> None:
 
     assert result.componentes == 1
     sub = _FakeRepository.created_payloads[1]
-    assert "Sem ValueSet" in sub["observacoes"]
+    assert "Prioridade ValueSet 1 não configurada" in sub["observacoes"]
 
 
 def test_adicionar_componente_ferragem_resolve_chave_da_def_peca_filha(monkeypatch) -> None:
@@ -1034,6 +1046,134 @@ def test_adicionar_componente_ferragem_resolve_chave_da_def_peca_filha(monkeypat
     assert sub["nivel"] == 1
     assert sub["editado_localmente"] is False
     assert sub["ativo"] is True
+
+
+def test_associados_mesma_chave_resolvem_prioridades_valueset_distintas(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA_FIXA", natureza="MATERIAL"),
+        2: _peca(
+            id=2,
+            codigo="SISTEMAS_UNIAO",
+            natureza="FERRAGEM",
+            chave_valueset_material="FERRAGEM_UNIOES",
+        ),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=20,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            referencia_componente="SISTEMAS_UNIAO",
+            prioridade_valueset=1,
+        ),
+        _componente(
+            id=21,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            referencia_componente="SISTEMAS_UNIAO",
+            prioridade_valueset=2,
+        ),
+    ]
+    _FakeItemValuesetRepository.defaults_by_chave_prioridade = {
+        ("FERRAGEM_UNIOES", 1): _vs_linha(
+            chave="FERRAGEM_UNIOES",
+            codigo_opcao="CAVILHA_8X35",
+            ref_le="FER0145",
+        ),
+        ("FERRAGEM_UNIOES", 2): _vs_linha(
+            chave="FERRAGEM_UNIOES",
+            codigo_opcao="PARAFUSO_3_5X50",
+            ref_le="FER0146",
+        ),
+    }
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    cavilha, parafuso = _FakeRepository.created_payloads[1:3]
+    assert cavilha["mat_default"] == "CAVILHA_8X35"
+    assert cavilha["ref_le"] == "FER0145"
+    assert cavilha["associado_valueset_prioridade"] == 1
+    assert parafuso["mat_default"] == "PARAFUSO_3_5X50"
+    assert parafuso["ref_le"] == "FER0146"
+    assert parafuso["associado_valueset_prioridade"] == 2
+
+
+def test_associado_nao_cai_para_prioridade_um_quando_prioridade_dois_vazia(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA_FIXA", natureza="MATERIAL"),
+        2: _peca(
+            id=2,
+            codigo="SISTEMAS_UNIAO",
+            natureza="FERRAGEM",
+            chave_valueset_material="FERRAGEM_UNIOES",
+        ),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=21,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            prioridade_valueset=2,
+        )
+    ]
+    _FakeItemValuesetRepository.defaults_by_chave_prioridade = {
+        ("FERRAGEM_UNIOES", 1): _vs_linha(
+            chave="FERRAGEM_UNIOES", codigo_opcao="CAVILHA_8X35"
+        )
+    }
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    associado = _FakeRepository.created_payloads[1]
+    assert associado.get("mat_default") is None
+    assert associado.get("ref_le") is None
+    assert "Prioridade ValueSet 2 não configurada" in associado["observacoes"]
+
+
+def test_associado_com_opcao_prioridade_sem_material_mantem_mat_default_vazio(
+    monkeypatch,
+) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PRATELEIRA_FIXA", natureza="MATERIAL"),
+        2: _peca(
+            id=2,
+            codigo="SISTEMAS_UNIAO",
+            natureza="FERRAGEM",
+            chave_valueset_material="FERRAGEM_UNIOES",
+        ),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(
+            id=21,
+            def_peca_pai_id=1,
+            def_peca_componente_id=2,
+            prioridade_valueset=2,
+        )
+    ]
+    _FakeItemValuesetRepository.defaults_by_chave_prioridade = {
+        ("FERRAGEM_UNIOES", 2): _vs_linha(
+            chave="FERRAGEM_UNIOES",
+            codigo_opcao="PARAFUSO_POR_CONFIGURAR",
+            materia_prima_id=None,
+            ref_materia_prima=None,
+            ref_le=None,
+            descricao_no_orcamento=None,
+            preco_liquido=None,
+        )
+    }
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    associado = _FakeRepository.created_payloads[1]
+    assert associado.get("mat_default") is None
+    assert "não tem dados de material" in associado["observacoes"]
 
 
 def test_adicionar_componente_def_peca_sem_chave(monkeypatch) -> None:

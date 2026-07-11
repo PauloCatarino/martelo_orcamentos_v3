@@ -39,6 +39,7 @@ class CriarDefPecaComponenteData:
     dimensao_referencia: str | None = None
     numero_topos: int = 0
     modo_quantidade: str | None = None
+    prioridade_valueset: int = 1
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -61,6 +62,7 @@ class EditarDefPecaComponenteData:
     dimensao_referencia: str | None = None
     numero_topos: int = 0
     modo_quantidade: str | None = None
+    prioridade_valueset: int = 1
     obrigatorio: bool = True
     ativo: bool = True
     observacoes: str | None = None
@@ -92,6 +94,7 @@ class DefPecaComponenteService:
             quantidade=data.quantidade,
             numero_topos=data.numero_topos,
             modo_quantidade=modo_quantidade,
+            prioridade_valueset=data.prioridade_valueset,
         )
         self._validate_rule_topos(
             data.def_regra_quantidade_id, modo_quantidade
@@ -112,6 +115,7 @@ class DefPecaComponenteService:
             dimensao_referencia=dimensao_referencia,
             numero_topos=data.numero_topos,
             modo_quantidade=modo_quantidade,
+            prioridade_valueset=data.prioridade_valueset,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -138,6 +142,7 @@ class DefPecaComponenteService:
             quantidade=data.quantidade,
             numero_topos=data.numero_topos,
             modo_quantidade=modo_quantidade,
+            prioridade_valueset=data.prioridade_valueset,
         )
         self._validate_rule_topos(
             data.def_regra_quantidade_id, modo_quantidade
@@ -158,6 +163,7 @@ class DefPecaComponenteService:
             dimensao_referencia=dimensao_referencia,
             numero_topos=data.numero_topos,
             modo_quantidade=modo_quantidade,
+            prioridade_valueset=data.prioridade_valueset,
             obrigatorio=data.obrigatorio,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -188,6 +194,7 @@ class DefPecaComponenteService:
         quantidade: Decimal,
         numero_topos: int = 0,
         modo_quantidade: str = "TOTAL",
+        prioridade_valueset: int = 1,
     ) -> None:
         if quantidade <= 0:
             raise ValueError("quantidade must be greater than 0")
@@ -197,6 +204,9 @@ class DefPecaComponenteService:
 
         if modo_quantidade == POR_TOPO and numero_topos not in (1, 2):
             raise ValueError("numero_topos must be 1 or 2 for POR_TOPO")
+
+        if prioridade_valueset < 1:
+            raise ValueError("prioridade ValueSet deve ser um inteiro maior ou igual a 1")
 
         if tipo_componente == PECA and not def_peca_componente_id:
             raise ValueError("def_peca_componente_id is required for PECA components")

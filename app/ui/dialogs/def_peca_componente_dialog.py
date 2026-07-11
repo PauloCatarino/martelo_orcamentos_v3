@@ -69,6 +69,7 @@ class DefPecaComponenteDialogData:
     dimensao_referencia: str
     numero_topos: int
     modo_quantidade: str
+    prioridade_valueset: int
     obrigatorio: bool
     ativo: bool
 
@@ -158,6 +159,15 @@ class DefPecaComponenteDialog(QDialog):
             "Quantidade por topo: o resultado é multiplicado por 1 ou 2 topos."
         )
 
+        self.prioridade_valueset_input = QSpinBox()
+        self.prioridade_valueset_input.setRange(1, 999)
+        self.prioridade_valueset_input.setValue(1)
+        self.prioridade_valueset_input.setToolTip(
+            "Seleciona exatamente a opção desta prioridade na chave ValueSet "
+            "do componente. Não existe substituição automática pela prioridade 1 "
+            "quando a prioridade escolhida estiver vazia."
+        )
+
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
         self.ativo_input = QCheckBox()
@@ -193,6 +203,7 @@ class DefPecaComponenteDialog(QDialog):
         form.addRow("Dimensão de referência", self.dimensao_referencia_input)
         form.addRow("Número de topos", self.numero_topos_input)
         form.addRow("Aplicação da quantidade", self.modo_quantidade_input)
+        form.addRow("Prioridade ValueSet", self.prioridade_valueset_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
 
@@ -249,6 +260,9 @@ class DefPecaComponenteDialog(QDialog):
         self.numero_topos_input.setValue(componente.numero_topos)
         self._select_combo_data(
             self.modo_quantidade_input, componente.modo_quantidade
+        )
+        self.prioridade_valueset_input.setValue(
+            getattr(componente, "prioridade_valueset", 1) or 1
         )
         self.obrigatorio_input.setChecked(componente.obrigatorio)
         self.ativo_input.setChecked(componente.ativo)
@@ -320,6 +334,7 @@ class DefPecaComponenteDialog(QDialog):
             dimensao_referencia=self.dimensao_referencia_input.currentData() or COMP,
             numero_topos=self.numero_topos_input.value(),
             modo_quantidade=self.modo_quantidade_input.currentData() or "TOTAL",
+            prioridade_valueset=self.prioridade_valueset_input.value(),
             obrigatorio=self.obrigatorio_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
         )

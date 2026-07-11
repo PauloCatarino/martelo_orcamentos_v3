@@ -119,6 +119,9 @@ class OrcamentoItemCusteioLinha(Base):
     associado_zona_aplicacao: Mapped[str | None] = mapped_column(String(30), nullable=True)
     associado_dimensao_referencia: Mapped[str | None] = mapped_column(String(30), nullable=True)
     associado_numero_topos: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    associado_valueset_prioridade: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     operacoes_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     tipo_linha: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)

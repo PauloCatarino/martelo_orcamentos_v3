@@ -3282,6 +3282,7 @@ class OrcamentoItemCusteioLinhaService:
         "associado_regra_codigo", "associado_regra_expressao",
         "associado_modo_quantidade", "associado_zona_aplicacao",
         "associado_dimensao_referencia", "associado_numero_topos",
+        "associado_valueset_prioridade",
         "operacoes_snapshot_json",
         "materia_prima_id", "ref_materia_prima", "descricao_materia_prima",
         "ref_le", "descricao_no_orcamento", "unidade", "preco_liquido",
@@ -3418,7 +3419,10 @@ class OrcamentoItemCusteioLinhaService:
         chave = fields.get("chave_valueset")
         if not chave:
             return
-        vs_linha = self._resolver_valueset_por_chave(item_id, chave)
+        prioridade = fields.get("associado_valueset_prioridade")
+        vs_linha = self._resolver_valueset_por_chave(
+            item_id, chave, prioridade
+        )
         if vs_linha is not None:
             fields.update(self._build_valueset_material_fields(vs_linha))
 
@@ -4342,6 +4346,9 @@ class OrcamentoItemCusteioLinhaService:
                 linha_pai_id=linha_pai_id,
                 ordem=ordem,
                 qt_und=qt_und,
+                prioridade_valueset=(
+                    getattr(componente, "prioridade_valueset", 1) or 1
+                ),
                 sem_chave_observacao=(
                     "Componente sem chave ValueSet: atribua uma chave de "
                     "material à definição da peça."
@@ -4405,6 +4412,9 @@ class OrcamentoItemCusteioLinhaService:
             "associado_numero_topos": int(
                 getattr(componente, "numero_topos", 0) or 0
             ),
+            "associado_valueset_prioridade": int(
+                getattr(componente, "prioridade_valueset", 1) or 1
+            ),
         }
 
     def _obter_def_peca_filha(self, componente) -> DefPecaResumo | None:
@@ -4424,15 +4434,21 @@ class OrcamentoItemCusteioLinhaService:
         return None
 
     def resolver_valueset_para_def_peca(
-        self, orcamento_item_id: int, peca: DefPecaResumo
+        self,
+        orcamento_item_id: int,
+        peca: DefPecaResumo,
+        prioridade: int | None = None,
     ) -> OrcamentoItemValuesetLinhaResumo | None:
         """Resolve the item ValueSet line for a piece material key."""
         return self._resolver_valueset_por_chave(
-            orcamento_item_id, peca.chave_valueset_material
+            orcamento_item_id, peca.chave_valueset_material, prioridade
         )
 
     def _resolver_valueset_por_chave(
-        self, orcamento_item_id: int, chave: str | None
+        self,
+        orcamento_item_id: int,
+        chave: str | None,
+        prioridade: int | None = None,
     ) -> OrcamentoItemValuesetLinhaResumo | None:
         """Resolve one item ValueSet line for a key.
 
@@ -4442,8 +4458,13 @@ class OrcamentoItemCusteioLinhaService:
         if not chave:
             return None
 
+        chave_normalizada = normalize_valueset_key(chave)
+        if prioridade is not None:
+            return self.item_valueset_repository.get_active_by_item_chave_prioridade(
+                orcamento_item_id, chave_normalizada, prioridade
+            )
         return self.item_valueset_repository.get_default_by_item_chave(
-            orcamento_item_id, normalize_valueset_key(chave)
+            orcamento_item_id, chave_normalizada
         )
 
     def _build_peca_line_fields(
@@ -4457,6 +4478,7 @@ class OrcamentoItemCusteioLinhaService:
         linha_pai_id: int | None = None,
         ordem: int | None = None,
         qt_und: Decimal = Decimal("1"),
+        prioridade_valueset: int | None = None,
         sem_chave_observacao: str = "Definição de peça sem chave ValueSet.",
     ) -> tuple[dict, str | None]:
         """Build the cost line fields for one piece, resolving the item ValueSet."""
@@ -4496,12 +4518,32 @@ class OrcamentoItemCusteioLinhaService:
             fields["observacoes"] = sem_chave_observacao
             return fields, None
 
-        linha_vs = self.resolver_valueset_para_def_peca(orcamento_item_id, peca)
+        linha_vs = self.resolver_valueset_para_def_peca(
+            orcamento_item_id, peca, prioridade_valueset
+        )
         if linha_vs is None:
+            if prioridade_valueset is not None:
+                aviso = (
+                    f"Prioridade ValueSet {prioridade_valueset} não configurada "
+                    f"para a chave {peca.chave_valueset_material}; a linha ficou "
+                    "sem material."
+                )
+            else:
+                aviso = (
+                    f"Sem ValueSet encontrado para a chave "
+                    f"{peca.chave_valueset_material}: configure o material desta "
+                    "chave no ValueSet do item."
+                )
+            fields["observacoes"] = aviso
+            return fields, aviso
+
+        if prioridade_valueset is not None and not self._valueset_tem_material(
+            linha_vs
+        ):
             aviso = (
-                f"Sem ValueSet encontrado para a chave "
-                f"{peca.chave_valueset_material}: configure o material desta "
-                "chave no ValueSet do item."
+                f"Prioridade ValueSet {prioridade_valueset} da chave "
+                f"{peca.chave_valueset_material} não tem dados de material; "
+                "Mat. default ficou vazio."
             )
             fields["observacoes"] = aviso
             return fields, aviso
@@ -4535,6 +4577,20 @@ class OrcamentoItemCusteioLinhaService:
                 fields["esp"] = esp_texto
 
         return fields, None
+
+    @staticmethod
+    def _valueset_tem_material(linha_vs) -> bool:
+        """Distinguish a configured material from an empty priority placeholder."""
+        return any(
+            getattr(linha_vs, campo, None) not in (None, "")
+            for campo in (
+                "materia_prima_id",
+                "ref_materia_prima",
+                "ref_le",
+                "descricao_no_orcamento",
+                "preco_liquido",
+            )
+        )
 
     def _snapshot_operacoes_peca(self, def_peca_id: int) -> str:
         """Serialize the active operation links used when the quote line is born."""

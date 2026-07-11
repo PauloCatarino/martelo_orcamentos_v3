@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,6 +24,10 @@ class DefPecaComponente(Base):
     __tablename__ = "def_peca_componentes"
     __table_args__ = (
         UniqueConstraint("def_peca_pai_id", "ordem", name="uq_def_peca_componentes_pai_ordem"),
+        CheckConstraint(
+            "prioridade_valueset >= 1",
+            name="ck_def_peca_componentes_prioridade_valueset_pos",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -81,6 +85,12 @@ class DefPecaComponente(Base):
     )
     modo_quantidade: Mapped[str] = mapped_column(
         String(30), nullable=False, default=TOTAL, server_default=TOTAL
+    )
+    # Exact rank of the item ValueSet option used by this association. This
+    # allows two associations with the same component/key to resolve different
+    # materials (for example, priority 1 = dowel, priority 2 = screw).
+    prioridade_valueset: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
     )
     obrigatorio: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1", index=True)

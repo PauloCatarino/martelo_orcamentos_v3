@@ -44,6 +44,7 @@ class _FakeRepository:
             obrigatorio=kwargs["obrigatorio"],
             ativo=kwargs["ativo"],
             observacoes=kwargs["observacoes"],
+            prioridade_valueset=kwargs["prioridade_valueset"],
         )
 
     def update_componente(self, **kwargs) -> DefPecaComponenteResumo:
@@ -61,6 +62,7 @@ class _FakeRepository:
             obrigatorio=kwargs["obrigatorio"],
             ativo=kwargs["ativo"],
             observacoes=kwargs["observacoes"],
+            prioridade_valueset=kwargs["prioridade_valueset"],
         )
 
     def deactivate_componente(self, id: int) -> bool:
@@ -171,6 +173,43 @@ def test_associado_guarda_zona_dimensao_e_numero_topos(monkeypatch) -> None:
     assert _FakeRepository.created_payload["zona_aplicacao"] == "DOIS_TOPOS"
     assert _FakeRepository.created_payload["dimensao_referencia"] == "MEDIDA_TOPO"
     assert _FakeRepository.created_payload["numero_topos"] == 2
+
+
+def test_associado_guarda_prioridade_valueset(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+
+    service_module.DefPecaComponenteService(session=_FakeSession()).criar_componente(
+        service_module.CriarDefPecaComponenteData(
+            def_peca_pai_id=10,
+            tipo_componente="FERRAGEM",
+            referencia_componente="SISTEMAS_UNIAO",
+            prioridade_valueset=2,
+        )
+    )
+
+    assert _FakeRepository.created_payload["prioridade_valueset"] == 2
+
+
+def test_associado_rejeita_prioridade_valueset_inferior_a_um(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    session = _FakeSession()
+
+    try:
+        service_module.DefPecaComponenteService(session=session).criar_componente(
+            service_module.CriarDefPecaComponenteData(
+                def_peca_pai_id=10,
+                tipo_componente="FERRAGEM",
+                referencia_componente="SISTEMAS_UNIAO",
+                prioridade_valueset=0,
+            )
+        )
+    except ValueError as error:
+        assert "prioridade ValueSet" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
 
 
 def test_associado_por_topo_exige_numero_de_topos(monkeypatch) -> None:

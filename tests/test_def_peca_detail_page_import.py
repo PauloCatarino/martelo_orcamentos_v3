@@ -29,6 +29,7 @@ def test_def_peca_detail_page_component_headers() -> None:
         "Tipo componente",
         "Componente / Refer\u00eancia",
         "Descri\u00e7\u00e3o",
+        "Prioridade ValueSet",
         "Quantidade",
         "Regra quantidade",
         "Regra (auto)",
