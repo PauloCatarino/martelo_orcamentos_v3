@@ -715,11 +715,57 @@ Validação local pedida:
 6. importar um módulo ANTIGO (gravado antes desta fase) e confirmar que o
    cabeçalho continua sem dimensões e o resultado não mudou.
 
+Validação do utilizador: concluída (11 de julho de 2026). O utilizador testou
+os pontos do guião e confirmou o comportamento correto.
+
+Commit: `Guardar e importar formulas de cabecalho nos modulos`.
+
+### Fase C — C3: proteção HM/LM/PM na importação de módulos
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- a proteção de divisão independente já existia na inserção de peças da
+  biblioteca (fase anterior); a importação de módulos não a tinha;
+- `inserir_modulo_no_item` valida agora, ANTES de criar qualquer linha, se o
+  módulo precisa do contexto `HM/LM/PM`: a recusa é atómica e nenhuma linha
+  parcial é gravada;
+- o contexto é aceite quando o ITEM já tem uma divisão independente ativa, ou
+  quando o MÓDULO inclui a sua própria divisão acima das linhas que usam
+  `HM/LM/PM` (a ordem das linhas do módulo é respeitada);
+- a verificação usa as fórmulas EFETIVAS de cada linha: o texto guardado no
+  módulo com fallback, campo a campo, para a fórmula da `def_peca` que a
+  importação aplicaria;
+- num cabeçalho composto sem filhos guardados (módulo antigo que re-expande do
+  catálogo), os associados são verificados recursivamente, como na biblioteca;
+- a página do custeio passou a mostrar a CAUSA do erro de importação num
+  aviso (antes apresentava apenas "Não foi possível importar o módulo").
+
+Testes automáticos:
+
+- recusa atómica sem divisão (zero linhas criadas); permissão com divisão no
+  item; permissão com divisão própria do módulo acima das linhas `HM`;
+  recusa pela fórmula efetiva da `def_peca` (texto do módulo vazio); recusa
+  pelo associado `LM/PM` na re-expansão de módulo antigo e importação normal
+  do mesmo módulo depois de existir divisão;
+- testes focados de módulos/página: `93 passed`;
+- bateria completa: `1939 passed`.
+
+Validação local pedida:
+
+1. num item de teste com o custeio VAZIO, importar um módulo que use
+   `HM/LM/PM` e não comece por uma divisão independente;
+2. confirmar o aviso com a causa e que nenhuma linha foi criada;
+3. inserir uma divisão independente e repetir a importação, confirmando que
+   passa;
+4. importar um módulo que inclua a sua própria divisão num item vazio e
+   confirmar que passa sem aviso;
+5. confirmar que módulos só com `H/L/P` continuam a importar sem divisão.
+
 Validação do utilizador: pendente.
 
-Próximo passo recomendado: depois da validação local, implementar o C3
-(proteção `HM/LM/PM` sem divisão independente na importação de módulos e
-garantias adicionais de recálculo) e fechar a Fase C.
+Próximo passo recomendado: com o C3 validado, a Fase C fica concluída
+(C4 verificado sem alterações; C5 coberto pelos testes e por este registo).
+Segue-se a generalização das uniões estruturais.
 
 ## Fase seguinte proposta
 

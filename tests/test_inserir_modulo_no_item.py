@@ -720,3 +720,170 @@ def test_importar_composta_sem_filhos_fallback_reexpande(session) -> None:
         item_id
     )
     assert [l.tipo_linha for l in linhas] == ["PECA_COMPOSTA", "PECA", "FERRAGEM"]
+
+
+# --- Phase C3: HM/LM/PM guard on module import --------------------------------
+
+
+def _criar_modulo_hm_sem_divisao(session, lateral_id: int) -> int:
+    """Module whose piece uses HM/PM but that brings no independent division."""
+    com_linhas = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_HM", nome="Peça HM sem divisão", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA", def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL", comp="HM", larg="PM",
+                    chave_valueset="MATERIAL_LATERAIS", qt_und="2",
+                ),
+            ],
+        )
+    )
+    return com_linhas.modulo.id
+
+
+def _inserir_divisao_no_item(session, item_id: int) -> None:
+    OrcamentoItemCusteioLinhaRepository(session).create_linha(
+        orcamento_item_id=item_id, tipo_linha="DIVISAO_INDEPENDENTE",
+        descricao="Corpo", quantidade=Decimal("1"), nivel=0, ativo=True,
+        comp="H", larg="L", esp="P",
+    )
+    session.commit()
+
+
+def test_importar_modulo_hm_sem_divisao_recusa_atomicamente(session) -> None:
+    item_id = _criar_item(session)
+    _criar_valueset_laterais(session, item_id)
+    lateral_id, _gaveta_id = _criar_pecas(session)
+    modulo_id = _criar_modulo_hm_sem_divisao(session, lateral_id)
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    with pytest.raises(ValueError, match="divisão independente"):
+        service.inserir_modulo_no_item(item_id, modulo_id)
+
+    # Atomic refusal: nothing was created.
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    assert linhas == []
+
+
+def test_importar_modulo_hm_com_divisao_no_item_permite(session) -> None:
+    item_id = _criar_item(session)
+    _criar_valueset_laterais(session, item_id)
+    lateral_id, _gaveta_id = _criar_pecas(session)
+    modulo_id = _criar_modulo_hm_sem_divisao(session, lateral_id)
+    _inserir_divisao_no_item(session, item_id)
+
+    resultado = OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(
+        item_id, modulo_id
+    )
+
+    assert resultado.criadas == 1
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    lateral = next(l for l in linhas if l.tipo_linha == "PECA")
+    assert lateral.comp == "HM"
+
+
+def test_importar_modulo_com_divisao_propria_permite(session) -> None:
+    """A module that brings its own division above the HM lines imports fine."""
+    item_id = _criar_item(session)
+    _criar_valueset_laterais(session, item_id)
+    lateral_id, _gaveta_id = _criar_pecas(session)
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_HM_DIV", nome="Divisão própria", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod="1",
+                    descricao_livre="Corpo", comp="H", larg="L", esp="P",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_id=lateral_id,
+                    def_peca_codigo="LATERAL", comp="HM", larg="PM",
+                    chave_valueset="MATERIAL_LATERAIS", qt_und="2",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    resultado = OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(
+        item_id, modulo.modulo.id
+    )
+
+    assert resultado.criadas == 2
+
+
+def test_importar_modulo_formula_hm_da_def_peca_recusa(session) -> None:
+    """The guard checks the EFFECTIVE formula: module text empty, def_peca HM."""
+    item_id = _criar_item(session)
+    peca_repo = DefPecaRepository(session)
+    peca = peca_repo.create_def_peca(
+        codigo="COSTA_HM", nome="Costa", descricao=None, grupo="COSTAS",
+        tipo_peca="SIMPLES", chave_valueset_material="MATERIAL_COSTAS",
+        formula_comp="HM", formula_larg="LM",
+    )
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_DEF_HM", nome="Costa por fórmula", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA", def_peca_id=peca.id,
+                    def_peca_codigo="COSTA_HM", qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    with pytest.raises(ValueError, match="divisão independente"):
+        service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+
+
+def test_importar_modulo_fallback_composta_com_associado_hm_recusa(session) -> None:
+    """Old module (no stored children): the re-expanded associates are checked."""
+    item_id = _criar_item(session)
+    peca_repo = DefPecaRepository(session)
+    componente_repo = DefPecaComponenteRepository(session)
+    filho = peca_repo.create_def_peca(
+        codigo="PRATELEIRA_HM", nome="Prateleira", descricao=None, grupo="PRATELEIRAS",
+        tipo_peca="SIMPLES", chave_valueset_material="MATERIAL_PRATELEIRAS",
+    )
+    conjunto = peca_repo.create_def_peca(
+        codigo="CONJ_HM", nome="Conjunto", descricao=None, grupo="GAVETAS",
+        tipo_peca="COMPOSTA",
+    )
+    componente_repo.create_componente(
+        def_peca_pai_id=conjunto.id, tipo_componente="PECA",
+        def_peca_componente_id=filho.id, referencia_componente="PRATELEIRA_HM",
+        descricao="Prateleira", ordem=1, quantidade=Decimal("1"),
+        regra_quantidade="FIXA", obrigatorio=True, ativo=True, observacoes=None,
+        formula_comp="LM-38", formula_larg="PM",
+    )
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_CONJ_HM", nome="Conjunto antigo", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA_COMPOSTA", def_peca_id=conjunto.id,
+                    def_peca_codigo="CONJ_HM", descricao="Conjunto", qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    with pytest.raises(ValueError, match="divisão independente"):
+        service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+
+    # With a division in the item, the same old module re-expands normally.
+    _inserir_divisao_no_item(session, item_id)
+    resultado = service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+    assert resultado.criadas == 1
+    assert resultado.componentes == 1

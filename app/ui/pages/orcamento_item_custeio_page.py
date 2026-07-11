@@ -963,7 +963,11 @@ class OrcamentoItemCusteioPage(QWidget):
                     self.item_id, dialog.modulo_id_selecionado
                 )
                 self._recalcular_item_completo(service)
-        except (SQLAlchemyError, ValueError):
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            QMessageBox.warning(self, "Importar módulo", str(error))
+            return
+        except SQLAlchemyError:
             self.status_label.setText("Não foi possível importar o módulo.")
             return
 

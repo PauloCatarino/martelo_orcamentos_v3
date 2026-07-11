@@ -3788,6 +3788,12 @@ class OrcamentoItemCusteioLinhaService:
             getattr(peca, "formula_esp", None),
         ):
             return True
+        return self._associados_requerem_divisao(peca, visitadas)
+
+    def _associados_requerem_divisao(
+        self, peca: DefPecaResumo, visitadas: set[int]
+    ) -> bool:
+        """Whether any active associate (recursively) uses HM/LM/PM formulas."""
         for componente in self._associados_ativos(peca.id):
             if self._formulas_usam_contexto_local(
                 getattr(componente, "formula_comp", None),
@@ -3855,6 +3861,8 @@ class OrcamentoItemCusteioLinhaService:
                 modulo_codigo=modulo.codigo, criadas=0, componentes=0, avisos=avisos
             )
 
+        self._validar_contexto_divisao_para_modulo(item_id, linhas_modulo)
+
         # Group composite children by the ordem of their parent header line.
         filhos_por_pai_ordem: dict[int, list] = {}
         for linha in linhas_modulo:
@@ -3895,6 +3903,63 @@ class OrcamentoItemCusteioLinhaService:
             componentes=componentes,
             avisos=avisos,
         )
+
+    def _validar_contexto_divisao_para_modulo(
+        self, orcamento_item_id: int, linhas_modulo
+    ) -> None:
+        """Refuse the import atomically when HM/LM/PM context is missing (C3).
+
+        Mirrors the library-insertion guard: a module line that uses HM/LM/PM
+        needs an independent division, provided either by the ITEM (any active
+        division) or by the MODULE itself (a division line above, in module
+        order). Nothing is created when the import is refused.
+        """
+        linhas_item = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        if any(l.tipo_linha == DIVISAO_INDEPENDENTE for l in linhas_item):
+            return
+
+        ordens_com_filhos = {
+            l.linha_pai_ordem for l in linhas_modulo if l.linha_pai_ordem is not None
+        }
+        for linha in linhas_modulo:
+            tipo = normalize_custeio_linha_type(linha.tipo_linha)
+            if tipo == DIVISAO_INDEPENDENTE:
+                return  # everything below the module's own division has context
+            if self._linha_modulo_requer_divisao(linha, tipo, ordens_com_filhos):
+                raise ValueError(
+                    "Este módulo usa HM, LM ou PM, mas não inclui uma divisão "
+                    "independente acima dessas linhas e o custeio ainda não tem "
+                    "nenhuma. Comece por inserir uma Divisão independente e "
+                    "importe o módulo logo abaixo."
+                )
+
+    def _linha_modulo_requer_divisao(
+        self, linha, tipo: str, ordens_com_filhos: set[int]
+    ) -> bool:
+        """Whether one module line will need HM/LM/PM context when imported.
+
+        Checks the EFFECTIVE formulas: the module's stored text, falling back
+        per field to the def_peca formula the import would apply. A composite
+        without stored children re-expands from the catalog, so its associates'
+        formulas are checked too.
+        """
+        peca = self._resolver_def_peca_modulo(linha)
+        efetivas = [
+            texto if texto is not None else (
+                getattr(peca, f"formula_{campo}", None) if peca is not None else None
+            )
+            for campo in ("comp", "larg", "esp")
+            for texto in (getattr(linha, campo, None),)
+        ]
+        if self._formulas_usam_contexto_local(*efetivas):
+            return True
+        if (
+            tipo == PECA_COMPOSTA
+            and peca is not None
+            and linha.ordem not in ordens_com_filhos
+        ):
+            return self._associados_requerem_divisao(peca, {peca.id})
+        return False
 
     def _marcar_imagem_modulo(
         self, item_id: int, ids_antes: set[int], imagem_path: str | None
