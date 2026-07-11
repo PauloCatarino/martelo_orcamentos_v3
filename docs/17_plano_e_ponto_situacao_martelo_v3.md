@@ -814,9 +814,20 @@ Próximo passo recomendado: generalização das uniões estruturais (fase
 seguinte proposta abaixo). Nesta data o `main` foi atualizado com todo o
 trabalho da Fase C.
 
-## Fase seguinte proposta
+## Fase em curso
 
-### Generalização das uniões estruturais
+### Generalização das uniões estruturais — passo 1 concluído
+
+O inventário das peças estruturais (leitura só-leitura da base de dados,
+61 peças ativas, cruzado com o catálogo V2) está em
+`docs/18_inventario_unioes_estruturais.md`: uniões já configuradas
+(prateleira fixa, divisória, teto, fundos), tabela de decisão por família
+para o utilizador (passo 2), relações topo/lateral, inconsistências
+encontradas (placeholder gravado em `funcao`, duas formas de ligar
+SISTEMAS_UNIAO, orientação da travessa, gaveta+puxador sem fórmulas `PAI_*`)
+e cobertura vs V2. Aguarda as decisões do utilizador família a família.
+
+### Generalização das uniões estruturais — plano original
 
 Objetivo: aplicar a lógica validada do piloto a laterais, bases, tampos,
 divisórias e outras peças horizontais, mantendo uma única lógica de cálculo.
