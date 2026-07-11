@@ -5400,6 +5400,7 @@ def test_aplicar_opcao_valueset_rejeita_opcao_de_outro_item(monkeypatch) -> None
 
 def test_fase_b_porta_aplica_formulas_do_cabecalho_e_associado(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [_resumo(id=90, tipo_linha="DIVISAO_INDEPENDENTE")]
     _FakePecaRepository.pecas = {
         1: _peca(
             id=1, codigo="PORTA_SIMPLES_DOBRADICA", tipo_peca="COMPOSTA",
@@ -5427,6 +5428,7 @@ def test_fase_b_porta_aplica_formulas_do_cabecalho_e_associado(monkeypatch) -> N
 
 def test_fase_b_associado_aceita_hm_lm_do_piloto(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [_resumo(id=90, tipo_linha="DIVISAO_INDEPENDENTE")]
     _FakePecaRepository.pecas = {
         1: _peca(id=1, tipo_peca="COMPOSTA"),
         2: _peca(id=2, codigo="PORTA_SIMPLES"),
@@ -5490,3 +5492,46 @@ def test_fase_b_recalcula_conjunto_aninhado_com_pai_imediato(monkeypatch) -> Non
     assert payloads[2]["larg_real"] == Decimal("580")
     assert payloads[3]["comp_real"] == Decimal("495")
     assert payloads[3]["larg_real"] == Decimal("290")
+
+
+def test_bloqueia_peca_hm_lm_quando_custeio_nao_tem_divisao(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = []
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, tipo_peca="COMPOSTA"),
+        2: _peca(id=2, codigo="COSTA"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(def_peca_pai_id=1, def_peca_componente_id=2, formula_comp="HM", formula_larg="LM")
+    ]
+
+    with pytest.raises(ValueError, match="Divisão independente"):
+        service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert _FakeRepository.created_payloads == []
+    assert session.committed is False
+
+
+def test_permite_peca_hm_lm_quando_ja_existe_divisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [_resumo(id=90, tipo_linha="DIVISAO_INDEPENDENTE")]
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, formula_comp="HM", formula_larg="LM"),
+    }
+
+    resultado = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert resultado.criadas == 1
+    assert _FakeRepository.created_payloads[0]["comp"] == "HM"
+
+
+def test_permite_peca_com_h_l_sem_divisao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = []
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, formula_comp="H", formula_larg="L"),
+    }
+
+    resultado = service.adicionar_pecas_da_biblioteca(10, [1])
+
+    assert resultado.criadas == 1

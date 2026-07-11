@@ -15,6 +15,30 @@ def test_orcamento_item_custeio_page_imports() -> None:
     assert OrcamentoItemCusteioPage is not None
 
 
+def test_adicionar_peca_avisa_quando_falta_divisao() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.adicionar_selecoes)
+    assert "except ValueError as error" in source
+    assert "Divisão independente necessária" in source
+    assert "QMessageBox.warning" in source
+
+
+def test_erro_inline_restaura_linha_sem_recarregar_recursivamente() -> None:
+    import inspect
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    bloco = source.split("except ValueError as error:", 1)[1].split(
+        "except SQLAlchemyError:", 1
+    )[0]
+    assert "_atualizar_linha_visivel" in bloco
+    assert "self.carregar()" not in bloco
+
+
 def test_orcamento_item_custeio_page_accepts_expected_arguments() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

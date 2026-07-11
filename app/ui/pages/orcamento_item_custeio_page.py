@@ -1344,6 +1344,10 @@ class OrcamentoItemCusteioPage(QWidget):
                 result = OrcamentoItemCusteioLinhaService(
                     session
                 ).adicionar_pecas_da_biblioteca(self.item_id, def_peca_ids)
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            QMessageBox.warning(self, "Divisão independente necessária", str(error))
+            return
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível adicionar as peças ao custeio.")
             return
@@ -2659,11 +2663,13 @@ class OrcamentoItemCusteioPage(QWidget):
                     propagar_item=False,
                 )
         except ValueError as error:
-            self.carregar()
+            # Avoid a recursive cellChanged loop: restore only this row while
+            # the table signal guard is active.
+            self._atualizar_linha_visivel(row, linha)
             self.status_label.setText(str(error))
             return
         except SQLAlchemyError:
-            self.carregar()
+            self._atualizar_linha_visivel(row, linha)
             self.status_label.setText("Não foi possível atualizar a linha de custeio.")
             return
 

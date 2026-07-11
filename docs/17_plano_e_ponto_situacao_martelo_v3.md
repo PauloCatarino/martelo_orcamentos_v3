@@ -547,13 +547,72 @@ Validação local pedida:
    aviso de perda de edições locais;
 10. confirmar que módulos existentes continuam a importar como antes.
 
-Validação do utilizador: pendente.
+Validação do utilizador: concluída. O utilizador confirmou que o piloto de
+porta aplicou corretamente as fórmulas dimensionais no custeio.
 
 Commit: `Aplicar formulas dimensionais no custeio`.
 
 Próximo passo recomendado: depois da validação local do piloto de porta,
 implementar a Fase C para guardar/importar fórmulas de cabeçalhos nos módulos;
 só depois generalizar as transformações a gavetas e ao restante catálogo.
+
+### Proteção de peças paramétricas sem divisão independente
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- identificado o cenário de uma tabela de custeio vazia onde foi inserida uma
+  peça previamente configurada com `HM/LM` sem existir uma divisão independente;
+- a expressão não tinha contexto local e era corretamente rejeitada, mas o
+  tratamento do erro chamava `carregar()` dentro do sinal `cellChanged`;
+- a recarga voltava a emitir o mesmo sinal para a expressão inválida, criando
+  um ciclo recursivo de `ValueError` que impedia voltar a abrir o item;
+- a recuperação de uma edição inválida passa agora a restaurar apenas a linha
+  afetada sob a proteção de sinais da tabela, sem executar uma recarga completa
+  dentro de `cellChanged`;
+- antes de criar qualquer linha, a inserção da biblioteca percorre a peça, os
+  seus associados e conjuntos aninhados à procura de `HM`, `LM` ou `PM`;
+- se essas variáveis forem usadas e ainda não existir uma divisão independente
+  no custeio, toda a inserção é recusada atomicamente e nenhuma linha parcial é
+  gravada;
+- a interface apresenta o aviso: começar por inserir uma **Divisão
+  independente** e adicionar a peça logo abaixo;
+- peças que usam apenas dimensões globais `H/L/P` continuam permitidas sem
+  divisão independente;
+- peças `HM/LM/PM` continuam permitidas quando já existe uma divisão;
+- inspeção somente de leitura encontrou uma única ocorrência preexistente:
+  item `10`, linha `668`, peça `COSTA_SEM_CNC_0000`, com `HM × LM × 10` antes de
+  qualquer divisão;
+- essa linha não foi apagada nem alterada automaticamente; deve ser removida
+  pelo utilizador depois de reabrir o item, inserindo em seguida primeiro a
+  divisão independente e só depois a peça.
+
+Testes automáticos:
+
+- testes focados de serviço e interface: `267 passed`;
+- bateria completa: `1930 passed`;
+- cenários cobrem bloqueio atómico sem divisão, permissão com divisão,
+  permissão de `H/L`, aviso visível e ausência de `carregar()` recursivo no
+  tratamento de erro da célula.
+
+Validação local pedida:
+
+1. reiniciar a aplicação e abrir o item afetado;
+2. confirmar que o item abre sem ciclo de erros;
+3. eliminar a linha `COSTA_SEM_CNC_0000` inválida;
+4. com a tabela vazia, tentar inserir novamente a mesma Costa e confirmar que
+   aparece o aviso de divisão independente e que nenhuma linha é criada;
+5. inserir uma **Divisão independente** e preencher as dimensões necessárias;
+6. inserir a Costa logo abaixo e confirmar que `HM/LM` são aceites;
+7. executar **Atualizar** e confirmar as dimensões reais;
+8. confirmar que uma peça configurada apenas com `H/L` pode ser inserida sem
+   divisão independente.
+
+Validação do utilizador: pendente.
+
+Commit: `Proteger pecas parametricas sem divisao`.
+
+Próximo passo recomendado: validar esta recuperação antes de retomar a Fase C
+dos módulos.
 
 ## Próxima fase proposta
 

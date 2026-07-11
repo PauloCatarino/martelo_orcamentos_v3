@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 import json
+import re
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -3718,13 +3719,21 @@ class OrcamentoItemCusteioLinhaService:
         """
         item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
 
+        pecas_selecionadas = [
+            peca
+            for def_peca_id in def_peca_ids
+            if (peca := self.peca_repository.get_by_id(def_peca_id)) is not None
+        ]
+        self._validar_contexto_divisao_para_pecas(item_id, pecas_selecionadas)
+
         criadas = 0
         componentes = 0
         ignoradas = 0
         avisos: list[str] = []
 
+        pecas_por_id = {peca.id: peca for peca in pecas_selecionadas}
         for def_peca_id in def_peca_ids:
-            peca = self.peca_repository.get_by_id(def_peca_id)
+            peca = pecas_por_id.get(def_peca_id)
             if peca is None:
                 ignoradas += 1
                 continue
@@ -3752,6 +3761,51 @@ class OrcamentoItemCusteioLinhaService:
             componentes=componentes,
             ignoradas=ignoradas,
             avisos=avisos,
+        )
+
+    def _validar_contexto_divisao_para_pecas(
+        self, orcamento_item_id: int, pecas: list[DefPecaResumo]
+    ) -> None:
+        """Require an earlier independent division for catalog formulas HM/LM/PM."""
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        if any(linha.tipo_linha == DIVISAO_INDEPENDENTE for linha in linhas):
+            return
+        if not any(self._peca_requer_divisao(peca, set()) for peca in pecas):
+            return
+        raise ValueError(
+            "Esta peça usa HM, LM ou PM, mas o custeio ainda não tem uma divisão "
+            "independente. Comece por inserir uma Divisão independente e adicione "
+            "a peça logo abaixo."
+        )
+
+    def _peca_requer_divisao(self, peca: DefPecaResumo, visitadas: set[int]) -> bool:
+        if peca.id in visitadas:
+            return False
+        visitadas = {*visitadas, peca.id}
+        if self._formulas_usam_contexto_local(
+            getattr(peca, "formula_comp", None),
+            getattr(peca, "formula_larg", None),
+            getattr(peca, "formula_esp", None),
+        ):
+            return True
+        for componente in self._associados_ativos(peca.id):
+            if self._formulas_usam_contexto_local(
+                getattr(componente, "formula_comp", None),
+                getattr(componente, "formula_larg", None),
+                getattr(componente, "formula_esp", None),
+            ):
+                return True
+            filha = self._obter_def_peca_filha(componente)
+            if filha is not None and self._peca_requer_divisao(filha, visitadas):
+                return True
+        return False
+
+    @staticmethod
+    def _formulas_usam_contexto_local(*formulas) -> bool:
+        return any(
+            re.search(r"\b(?:HM|LM|PM)\b", str(formula), flags=re.IGNORECASE)
+            for formula in formulas
+            if formula
         )
 
     @staticmethod
