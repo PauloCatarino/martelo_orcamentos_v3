@@ -607,7 +607,12 @@ class OrcamentoItemCusteioPage(QWidget):
         ligar_menu_colunas(
             self.table,
             "orcamento_item_custeio",
-            ocultas_por_defeito=("C\u00f3digo", "Descri\u00e7\u00e3o", "Chave ValueSet"),
+            ocultas_por_defeito=(
+                "C\u00f3digo",
+                "Descri\u00e7\u00e3o",
+                "Chave ValueSet",
+                "Prioridade",
+            ),
         )
 
         lines_layout = QVBoxLayout()
@@ -1690,21 +1695,16 @@ class OrcamentoItemCusteioPage(QWidget):
 
     @staticmethod
     def _label_opcao_material(opcao) -> str:
-        """Clear label for one ValueSet option in the dropdown."""
+        """Concise label: key, useful description and net price."""
         codigo = opcao.codigo_opcao or opcao.nome_opcao or "—"
         descricao = (
             opcao.descricao_no_orcamento
             or opcao.descricao_materia_prima
             or opcao.descricao
-            or ""
+            or codigo
         )
-        ref = opcao.ref_le or "—"
-        rotulo = f"{opcao.chave} · {codigo}"
-        if opcao.prioridade is not None:
-            rotulo += f" · prioridade {opcao.prioridade}"
-        if descricao:
-            rotulo += f" · {descricao}"
-        return f"{rotulo} (Ref {ref})"
+        preco = format_currency(opcao.preco_liquido)
+        return f"{opcao.chave} · {descricao} · preço líquido {preco or '—'}"
 
     @staticmethod
     def _opcao_atual_id(linha: OrcamentoItemCusteioLinhaResumo, opcoes: list):

@@ -193,6 +193,35 @@ def test_custeio_page_liga_menu_colunas_visiveis() -> None:
     assert "C\\u00f3digo" in init
     assert "Descri\\u00e7\\u00e3o" in init
     assert "Chave ValueSet" in init
+    assert "Prioridade" in init
+
+
+def test_label_mat_default_e_conciso_e_mostra_preco_liquido() -> None:
+    from types import SimpleNamespace
+
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    opcao = SimpleNamespace(
+        chave="MATERIAL_COSTAS",
+        codigo_opcao="COSTA_12_STANDARD",
+        nome_opcao="Costa standard",
+        descricao_no_orcamento="AGL MLM LINHO CANCUN 12G 10MM",
+        descricao_materia_prima=None,
+        descricao=None,
+        ref_le="PLC0033",
+        prioridade=1,
+        preco_liquido=Decimal("12.3456"),
+    )
+
+    label = OrcamentoItemCusteioPage._label_opcao_material(opcao)
+
+    assert "MATERIAL_COSTAS" in label
+    assert "AGL MLM LINHO CANCUN 12G 10MM" in label
+    assert "preço líquido" in label
+    assert "12,35 €" in label
+    assert "COSTA_12_STANDARD" not in label
+    assert "prioridade" not in label
+    assert "PLC0033" not in label
 
 
 def test_custeio_page_tooltips_formula_e_cabecalho() -> None:

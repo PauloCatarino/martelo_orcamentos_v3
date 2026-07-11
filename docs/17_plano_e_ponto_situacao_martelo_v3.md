@@ -360,9 +360,47 @@ Validação local pedida:
 6. importar noutro item e confirmar prioridade/material 2;
 7. testar uma prioridade inexistente e confirmar material vazio mais aviso.
 
+Validação do utilizador: concluída. O utilizador confirmou que a prioridade
+passou a ser gravada no custeio, preservada no módulo e aplicada corretamente
+na importação.
+
+Commit: `b0d3cbc Corrigir prioridade explicita no custeio`.
+
+### Simplificação visual do material predefinido
+
+Implementação concluída e a aguardar validação local:
+
+- o dropdown `Mat. default` deixou de repetir código interno da opção,
+  prioridade e referência LE;
+- o texto visível passa a usar apenas `chave · descrição útil · preço líquido`;
+- exemplo: `MATERIAL_COSTAS · AGL MLM LINHO CANCUN 12G 10MM · preço líquido
+  12,35 €`;
+- quando não existe descrição, é usado o código/nome da opção como fallback;
+- a coluna **Prioridade** continua existente e persistida, mas passa a estar
+  oculta por predefinição para novos estados de visualização;
+- **Chave ValueSet**, código e descrição técnica continuam igualmente
+  disponíveis no menu de colunas;
+- ocultar colunas altera apenas a apresentação, nunca os dados ou a lógica dos
+  módulos.
+
+Testes automáticos:
+
+- testes focados de interface/colunas: `64 passed`;
+- bateria completa: `1913 passed`.
+
+Validação local pedida:
+
+1. reiniciar a aplicação e abrir o custeio;
+2. confirmar o novo texto conciso em `Mat. default`;
+3. confirmar a presença do preço líquido;
+4. clicar com o botão direito no cabeçalho e usar **Repor padrão** se a coluna
+   Prioridade continuar visível devido a uma preferência anteriormente guardada;
+5. confirmar que Prioridade pode voltar a ser mostrada pelo mesmo menu;
+6. alterar `Mat. default` e confirmar que prioridade/módulo continuam corretos.
+
 Validação do utilizador: pendente.
 
-Commit: `Corrigir prioridade explicita no custeio`.
+Commit: `Simplificar material predefinido no custeio`.
 
 ## Próxima fase proposta
 
