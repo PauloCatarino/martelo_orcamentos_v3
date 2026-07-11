@@ -669,6 +669,58 @@ Critérios de conclusão:
 - nenhuma linha existente de orçamento é alterada automaticamente;
 - testes automáticos completos e validação local do utilizador.
 
+### Fase C — C1 (gravar) e C2 (importar): implementados
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- ao guardar/substituir um módulo a partir do custeio, o cabeçalho de
+  peça/conjunto passa a persistir as suas fórmulas `comp/larg/esp` como texto,
+  tal como já acontecia com os filhos (`def_modulo_service`);
+- ao importar, um cabeçalho guardado COM fórmulas aplica-as exatamente como
+  foram gravadas (retrato fiel: campos vazios ficam vazios), tanto com a
+  `def_peca` resolvida como no cabeçalho de recurso quando a peça já não
+  existe;
+- módulos antigos, gravados com os três campos vazios, mantêm exatamente o
+  comportamento anterior (cabeçalho sem dimensões), mesmo que a `def_peca`
+  tenha entretanto ganho fórmulas — o mesmo padrão de compatibilidade da
+  prioridade ValueSet;
+- confirmado que **Biblioteca de Módulos → Ver linhas** e o preview de
+  importação já apresentam as colunas Comp/Larg/Esp genericamente, pelo que as
+  fórmulas do cabeçalho aparecem sem alterações de interface (C4);
+- sem alterações de esquema: as colunas do módulo já eram texto livre.
+
+Testes automáticos:
+
+- gravar preserva as fórmulas do cabeçalho e as transformações `PAI_*` dos
+  filhos; importar aplica as fórmulas do cabeçalho (com e sem `def_peca`);
+  módulo antigo mantém o cabeçalho sem dimensões; após
+  `recalcular_medidas_do_item`, o cabeçalho `H × L/2` resolve 2000 × 500 e o
+  filho `PAI_COMP-4 × PAI_LARG-4` resolve 1996 × 496;
+- testes focados de módulos: `34 passed`;
+- bateria completa: `1934 passed`.
+
+Validação local pedida:
+
+1. reiniciar a aplicação (não é necessária migração);
+2. num item de teste com dimensões conhecidas, inserir uma divisão e um
+   conjunto dimensionado (por exemplo o piloto de porta com cabeçalho
+   `HM`/`LM`) e executar **Atualizar**;
+3. selecionar as linhas e **Guardar como Módulo** (ou substituir um módulo de
+   teste);
+4. abrir **Biblioteca de Módulos → Ver linhas** e confirmar que o cabeçalho
+   mostra as fórmulas Comp/Larg/Esp;
+5. importar o módulo noutro item com divisão e dimensões diferentes, executar
+   **Atualizar** e confirmar que o cabeçalho e os filhos resolvem as dimensões
+   reais sem edição manual;
+6. importar um módulo ANTIGO (gravado antes desta fase) e confirmar que o
+   cabeçalho continua sem dimensões e o resultado não mudou.
+
+Validação do utilizador: pendente.
+
+Próximo passo recomendado: depois da validação local, implementar o C3
+(proteção `HM/LM/PM` sem divisão independente na importação de módulos e
+garantias adicionais de recálculo) e fechar a Fase C.
+
 ## Fase seguinte proposta
 
 ### Generalização das uniões estruturais

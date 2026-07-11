@@ -434,11 +434,10 @@ class DefModuloService:
         """Build one module line from a costing line (structure only).
 
         ``linha_pai_ordem`` is set for composite children; top-level lines pass
-        None. The composite HEADER is an aggregator and keeps comp/larg/esp
-        empty; every other line keeps its measure TEXT/formulas.
+        None. Every line — including the composite HEADER since dimension
+        formulas exist on headers (Phase C) — keeps its measure TEXT/formulas.
         """
         eh_divisao = linha.tipo_linha == DIVISAO_INDEPENDENTE
-        eh_composta = linha.tipo_linha == PECA_COMPOSTA
         return CriarDefModuloLinhaData(
             ordem=ordem,
             tipo_linha=linha.tipo_linha,
@@ -450,11 +449,10 @@ class DefModuloService:
             qt_mod=self._texto_quantidade(linha.qt_mod),
             qt_und=self._texto_quantidade(linha.qt_und),
             # comp/larg/esp keep the TEXT/formula (H, L/3, HM, LM...), never the
-            # evaluated comp_real/larg_real/esp_real. The composite header is an
-            # aggregator: no dimensions.
-            comp=None if eh_composta else linha.comp,
-            larg=None if eh_composta else linha.larg,
-            esp=None if eh_composta else linha.esp,
+            # evaluated comp_real/larg_real/esp_real.
+            comp=linha.comp,
+            larg=linha.larg,
+            esp=linha.esp,
             chave_valueset=linha.chave_valueset,
             prioridade_valueset=prioridades_por_linha.get(linha.id),
             codigo_orlas=linha.codigo_orlas,

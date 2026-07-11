@@ -4036,13 +4036,16 @@ class OrcamentoItemCusteioLinhaService:
     def _criar_cabecalho_composta_modulo(
         self, orcamento_item_id: int, linha, peca, avisos: list[str]
     ):
-        """Create the composite header (aggregator: no comp/larg), from a module
-        line. Uses the def_peca when available; otherwise a best-effort header."""
+        """Create the composite header from a module line (Phase C).
+
+        A header saved WITH dimension formulas applies them exactly as stored
+        (a faithful snapshot: empty fields stay empty). Old modules, saved with
+        the three fields empty, keep the previous dimensionless header — even
+        when the def_peca meanwhile gained formulas. Uses the def_peca when
+        available; otherwise a best-effort header."""
         if peca is not None:
             principal = self._criar_linha_principal_composta(orcamento_item_id, peca)
-            # Module header formulas are intentionally deferred to Phase C;
-            # preserve the previous dimensionless module-header behaviour.
-            override: dict = {"comp": None, "larg": None, "esp": None}
+            override: dict = self._formulas_cabecalho_modulo(linha)
             qt_und = self._qt_modulo(linha.qt_und)
             if qt_und is not None:
                 override["qt_und"] = qt_und
@@ -4079,9 +4082,25 @@ class OrcamentoItemCusteioLinhaService:
             qt_mod=Decimal("1"),
             qt_und=qt_und,
             quantidade=qt_und,
+            **self._formulas_cabecalho_modulo(linha),
             editado_localmente=False,
             ativo=True,
         )
+
+    @staticmethod
+    def _formulas_cabecalho_modulo(linha) -> dict:
+        """Header dimension formulas stored on a module line (Phase C).
+
+        Returns the stored comp/larg/esp trio when the module saved ANY of
+        them; an all-None trio otherwise, so old modules (saved before Phase C)
+        keep the previous dimensionless header regardless of current def_peca
+        formulas."""
+        if any(
+            getattr(linha, campo, None) is not None
+            for campo in ("comp", "larg", "esp")
+        ):
+            return {"comp": linha.comp, "larg": linha.larg, "esp": linha.esp}
+        return {"comp": None, "larg": None, "esp": None}
 
     def _importar_filho_composta_modulo(
         self,

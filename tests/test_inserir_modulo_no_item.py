@@ -559,6 +559,136 @@ def test_importar_composta_recria_filhos_com_formulas(session) -> None:
     assert pes.qt_und == Decimal("2")
 
 
+def test_importar_composta_aplica_formulas_do_cabecalho(session) -> None:
+    """Phase C: header formulas stored on the module apply on import and the
+    children's PAI_* transformations resolve from the header's real size."""
+    item_id = _criar_item(session, altura="2000", largura="1000", profundidade="500")
+    _criar_valueset_chave(session, item_id, "MATERIAL_FUNDOS")
+    gaveta_id, fundo_id, _pes_id, _comp_fundo_id, _comp_pes_id = (
+        _criar_composta_com_regra(session)
+    )
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_DIM", nome="Gaveta dimensionada", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA_COMPOSTA", def_peca_id=gaveta_id,
+                    def_peca_codigo="GAVETA", descricao="Gaveta", qt_und="1",
+                    comp="H", larg="L/2", esp="19",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_id=fundo_id,
+                    def_peca_codigo="FUNDO", linha_pai_ordem=1, nivel=1,
+                    comp="PAI_COMP-4", larg="PAI_LARG-4",
+                    chave_valueset="MATERIAL_FUNDOS", qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+
+    repo = OrcamentoItemCusteioLinhaRepository(session)
+    linhas = repo.list_active_by_orcamento_item(item_id)
+    cabecalho = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
+    fundo = next(l for l in linhas if l.def_peca_codigo == "FUNDO")
+
+    # The module's header formulas were applied (not dropped, not the def_peca's).
+    assert cabecalho.comp == "H"
+    assert cabecalho.larg == "L/2"
+    assert cabecalho.esp == "19"
+    assert fundo.comp == "PAI_COMP-4"
+    assert fundo.larg == "PAI_LARG-4"
+
+    # Atualizar resolves the header first, then the child's PAI_* from it.
+    service.recalcular_medidas_do_item(item_id)
+    linhas = repo.list_active_by_orcamento_item(item_id)
+    cabecalho = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
+    fundo = next(l for l in linhas if l.def_peca_codigo == "FUNDO")
+    assert cabecalho.comp_real == Decimal("2000.000")
+    assert cabecalho.larg_real == Decimal("500.000")  # L/2 = 1000/2
+    assert fundo.comp_real == Decimal("1996.000")  # PAI_COMP-4
+    assert fundo.larg_real == Decimal("496.000")  # PAI_LARG-4
+
+
+def test_importar_composta_cabecalho_antigo_fica_sem_dimensoes(session) -> None:
+    """Phase C compat: an old module (header saved without formulas) keeps the
+    dimensionless header even when the def_peca meanwhile gained formulas."""
+    item_id = _criar_item(session)
+    _criar_valueset_chave(session, item_id, "MATERIAL_FUNDOS")
+    peca_repo = DefPecaRepository(session)
+    gaveta = peca_repo.create_def_peca(
+        codigo="GAVETA_F", nome="Gaveta", descricao=None, grupo="GAVETAS",
+        tipo_peca="COMPOSTA", formula_comp="H", formula_larg="L",
+    )
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_ANTIGO_DIM", nome="Gaveta antiga", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA_COMPOSTA", def_peca_id=gaveta.id,
+                    def_peca_codigo="GAVETA_F", descricao="Gaveta", qt_und="1",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_codigo="FUNDO_F",
+                    linha_pai_ordem=1, nivel=1, comp="L", larg="P",
+                    chave_valueset="MATERIAL_FUNDOS", qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    OrcamentoItemCusteioLinhaService(session).inserir_modulo_no_item(
+        item_id, modulo.modulo.id
+    )
+
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    cabecalho = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
+    assert cabecalho.comp is None
+    assert cabecalho.larg is None
+    assert cabecalho.esp is None
+
+
+def test_importar_composta_sem_def_peca_aplica_formulas_do_cabecalho(session) -> None:
+    """Phase C: the best-effort header (piece gone) still gets the formulas."""
+    item_id = _criar_item(session)
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_ORFAO_DIM", nome="Conjunto órfão", user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1, tipo_linha="PECA_COMPOSTA",
+                    def_peca_codigo="CONJ_APAGADO", descricao="Conjunto",
+                    qt_und="1", comp="H", larg="L",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="PECA", def_peca_codigo="FILHO_APAGADO",
+                    linha_pai_ordem=1, nivel=1, comp="PAI_COMP", larg="PAI_LARG",
+                    qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    resultado = service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+
+    assert any("CONJ_APAGADO" in aviso for aviso in resultado.avisos)
+    linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
+        item_id
+    )
+    cabecalho = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
+    assert cabecalho.comp == "H"
+    assert cabecalho.larg == "L"
+    assert cabecalho.esp is None
+
+
 def test_importar_composta_sem_filhos_fallback_reexpande(session) -> None:
     """Old modules (no stored children) still re-expand from the def_peca."""
     item_id = _criar_item(session)

@@ -339,7 +339,8 @@ def test_guardar_de_linhas_custeio_topo_e_estrutura(session) -> None:
     ]
     assert [linha.ordem for linha in linhas] == [1, 2, 3, 4, 5]
 
-    # Composite header saved by def_peca_id, as an aggregator (no comp/larg).
+    # Composite header saved by def_peca_id; without formulas on the costing
+    # header, comp/larg stay empty (a dimensioned header keeps them — Phase C).
     composta_linha = next(l for l in linhas if l.tipo_linha == "PECA_COMPOSTA")
     assert composta_linha.def_peca_id == 5
     assert composta_linha.linha_pai_ordem is None
@@ -597,3 +598,41 @@ def test_substituir_de_linhas_custeio_mantem_codigo(session) -> None:
         "CORREDICA",
         "PE",
     }
+
+
+def test_guardar_modulo_preserva_formulas_do_cabecalho_composta(session) -> None:
+    """Phase C: a dimensioned composite header keeps its comp/larg/esp formulas."""
+    composta = _inserir_custeio(
+        session, tipo_linha="PECA_COMPOSTA", ordem=1, def_peca_id=5,
+        def_peca_codigo="PORTA_CONJ", descricao="Conjunto porta",
+        comp="HM", larg="LM/2", esp="19",
+    )
+    filho = _inserir_custeio(
+        session, tipo_linha="PECA", ordem=2, nivel=1, linha_pai_id=composta.id,
+        def_peca_codigo="PORTA", descricao="Porta simples",
+        comp="PAI_COMP-4", larg="PAI_LARG-4",
+    )
+    session.commit()
+    service = DefModuloService(session)
+
+    com_linhas = service.guardar_de_linhas_custeio(
+        orcamento_item_id=10,
+        linha_ids=[composta.id, filho.id],
+        codigo="MOD_PORTA",
+        nome="Porta em conjunto",
+        ambito=AMBITO_UTILIZADOR,
+        user_id=7,
+        categoria=ROUPEIROS,
+    )
+
+    cabecalho = next(
+        l for l in com_linhas.linhas if l.tipo_linha == "PECA_COMPOSTA"
+    )
+    assert cabecalho.comp == "HM"
+    assert cabecalho.larg == "LM/2"
+    assert cabecalho.esp == "19"
+    # The child keeps its PAI_* transformations as text.
+    porta = next(l for l in com_linhas.linhas if l.def_peca_codigo == "PORTA")
+    assert porta.comp == "PAI_COMP-4"
+    assert porta.larg == "PAI_LARG-4"
+    assert porta.linha_pai_ordem == cabecalho.ordem
