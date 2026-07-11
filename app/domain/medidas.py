@@ -29,6 +29,11 @@ VARIAVEIS_ITEM = (
 # after an independent-division line and override nothing in the global context.
 VARIAVEIS_LOCAIS = ("HM", "LM", "PM")
 
+# Explicit dimensions of the immediate parent piece/conjunto. They are reserved
+# for formulas configured on DefPecaComponente and will be wired into costing in
+# the next phase.
+VARIAVEIS_PAI = ("PAI_COMP", "PAI_LARG", "PAI_ESP")
+
 # Identifier tokens (variable names) inside a measure expression.
 _TOKEN_VARIAVEL = re.compile(r"[A-Za-z_]\w*")
 
@@ -118,6 +123,45 @@ def validar_expressao_medida(
         raise ValueError(f"{campo} inválida: o resultado tem de ser maior que zero.")
 
     return texto, resultado
+
+
+def validar_formula_dimensional(
+    valor,
+    *,
+    campo: str,
+    permitir_pai: bool = False,
+) -> str | None:
+    """Validate and normalize a catalog dimensional formula.
+
+    Catalog formulas have no real item dimensions while being edited, so known
+    variables are evaluated with safe positive placeholders. Parent variables
+    are accepted only for component transformations; header formulas must use
+    the item/division context exclusively.
+    """
+    if valor is None or not str(valor).strip():
+        return None
+
+    texto = normalizar_variaveis_medida(str(valor).strip())
+    permitidas = set(VARIAVEIS_ITEM) | set(VARIAVEIS_LOCAIS)
+    if permitir_pai:
+        permitidas.update(VARIAVEIS_PAI)
+    usadas = {token.upper() for token in _TOKEN_VARIAVEL.findall(texto)}
+    desconhecidas = sorted(usadas - permitidas)
+    if desconhecidas:
+        raise ValueError(
+            f"{campo} inválida: variável não permitida {desconhecidas[0]}."
+        )
+
+    contexto = {variavel: Decimal("1000") for variavel in permitidas}
+    resultado = avaliar_medida(texto, contexto)
+    if resultado is None or not resultado.is_finite() or resultado <= 0:
+        variaveis = "H/L/P, HM/LM/PM"
+        if permitir_pai:
+            variaveis += " ou PAI_COMP/PAI_LARG/PAI_ESP"
+        raise ValueError(
+            f"{campo} inválida: use números, {variaveis} com +, -, *, / e parênteses."
+        )
+    return texto
 
 
 def _expressao_valida_com_placeholders(texto: str, contexto: dict) -> bool:

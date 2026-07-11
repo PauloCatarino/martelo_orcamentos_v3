@@ -16,6 +16,7 @@ from app.domain.peca_natureza_types import (
     normalize_peca_orientacao,
 )
 from app.domain.valueset_types import normalize_valueset_key
+from app.domain.medidas import validar_formula_dimensional
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.services.def_peca_componente_service import (
     CriarDefPecaComponenteData,
@@ -39,6 +40,9 @@ class CriarDefPecaData:
     natureza: str | None = None
     orientacao: str | None = None
     funcao: str | None = None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     orla_c1: int | str | None = None
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
@@ -63,6 +67,9 @@ class EditarDefPecaData:
     natureza: str | None = None
     orientacao: str | None = None
     funcao: str | None = None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     orla_c1: int | str | None = None
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
@@ -119,6 +126,7 @@ class DefPecaService:
         if sem_material:
             chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
+        formulas = self._normalizar_formulas(data)
 
         result = self.repository.create_def_peca(
             codigo=codigo,
@@ -129,6 +137,7 @@ class DefPecaService:
             natureza=natureza,
             orientacao=orientacao,
             funcao=self._normalize_optional_text(data.funcao),
+            **formulas,
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -173,6 +182,7 @@ class DefPecaService:
         if sem_material:
             chave_valueset_material = None
         self._validate(codigo=codigo, nome=nome)
+        formulas = self._normalizar_formulas(data)
 
         result = self.repository.update_def_peca(
             id=id,
@@ -184,6 +194,7 @@ class DefPecaService:
             natureza=natureza,
             orientacao=orientacao,
             funcao=self._normalize_optional_text(data.funcao),
+            **formulas,
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -218,6 +229,9 @@ class DefPecaService:
                 natureza=original.natureza,
                 orientacao=original.orientacao,
                 funcao=original.funcao,
+                formula_comp=original.formula_comp,
+                formula_larg=original.formula_larg,
+                formula_esp=original.formula_esp,
                 orla_c1=original.orla_c1,
                 orla_c2=original.orla_c2,
                 orla_l1=original.orla_l1,
@@ -281,6 +295,9 @@ class DefPecaService:
                     def_peca_componente_id=componente.def_peca_componente_id,
                     referencia_componente=componente.referencia_componente,
                     descricao=componente.descricao,
+                    formula_comp=componente.formula_comp,
+                    formula_larg=componente.formula_larg,
+                    formula_esp=componente.formula_esp,
                     quantidade=componente.quantidade,
                     regra_quantidade=componente.regra_quantidade,
                     def_regra_quantidade_id=componente.def_regra_quantidade_id,
@@ -310,12 +327,47 @@ class DefPecaService:
 
         return activated
 
+    def atualizar_formulas_dimensionais(
+        self,
+        id: int,
+        *,
+        formula_comp: str | None,
+        formula_larg: str | None,
+        formula_esp: str | None,
+    ) -> DefPecaResumo:
+        formulas = self._normalizar_formulas(
+            CriarDefPecaData(
+                codigo="FORMULAS",
+                nome="Fórmulas",
+                formula_comp=formula_comp,
+                formula_larg=formula_larg,
+                formula_esp=formula_esp,
+            )
+        )
+        result = self.repository.update_formulas_dimensionais(id, **formulas)
+        self.session.commit()
+        return result
+
     def _validate(self, *, codigo: str, nome: str) -> None:
         if not codigo:
             raise ValueError("codigo is required")
 
         if not nome:
             raise ValueError("nome is required")
+
+    @staticmethod
+    def _normalizar_formulas(data) -> dict[str, str | None]:
+        return {
+            "formula_comp": validar_formula_dimensional(
+                data.formula_comp, campo="Fórmula Comp"
+            ),
+            "formula_larg": validar_formula_dimensional(
+                data.formula_larg, campo="Fórmula Larg"
+            ),
+            "formula_esp": validar_formula_dimensional(
+                data.formula_esp, campo="Fórmula Esp"
+            ),
+        }
 
     def _normalize_optional_valueset_key(self, value: str | None) -> str | None:
         if value is None:

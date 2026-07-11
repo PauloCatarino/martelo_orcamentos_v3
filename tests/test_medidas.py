@@ -15,6 +15,35 @@ from app.domain.medidas import (
 )
 
 
+def test_validar_formula_dimensional_cabecalho_normaliza_variaveis() -> None:
+    from app.domain.medidas import validar_formula_dimensional
+
+    assert validar_formula_dimensional(" hm - 4 ", campo="Comp") == "HM - 4"
+    assert validar_formula_dimensional("lm/2", campo="Larg") == "LM/2"
+
+
+def test_validar_formula_dimensional_cabecalho_rejeita_variavel_pai() -> None:
+    from app.domain.medidas import validar_formula_dimensional
+
+    try:
+        validar_formula_dimensional("PAI_COMP-4", campo="Comp")
+    except ValueError as error:
+        assert "PAI_COMP" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+
+def test_validar_formula_dimensional_filho_aceita_variaveis_pai() -> None:
+    from app.domain.medidas import validar_formula_dimensional
+
+    assert (
+        validar_formula_dimensional(
+            "pai_larg-4", campo="Larg do filho", permitir_pai=True
+        )
+        == "PAI_LARG-4"
+    )
+
+
 def test_normalizar_variaveis_medida_maiusculas() -> None:
     # Variable letters are uppercased; numbers/operators/spacing are kept.
     assert normalizar_variaveis_medida("l/5*2") == "L/5*2"

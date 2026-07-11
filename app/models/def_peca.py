@@ -43,6 +43,9 @@ class DefPeca(Base):
         String(30), nullable=False, default=NEUTRA, server_default=NEUTRA, index=True
     )
     funcao: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    formula_comp: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    formula_larg: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    formula_esp: Mapped[str | None] = mapped_column(String(100), nullable=True)
     orla_c1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_c2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")

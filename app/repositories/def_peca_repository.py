@@ -25,6 +25,9 @@ class DefPecaResumo:
     natureza: str = "MATERIAL"
     orientacao: str = "NEUTRA"
     funcao: str | None = None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     orla_c1: int = 0
     orla_c2: int = 0
     orla_l1: int = 0
@@ -90,6 +93,9 @@ class DefPecaRepository:
         natureza: str = "MATERIAL",
         orientacao: str = "NEUTRA",
         funcao: str | None = None,
+        formula_comp: str | None = None,
+        formula_larg: str | None = None,
+        formula_esp: str | None = None,
         orla_c1: int = 0,
         orla_c2: int = 0,
         orla_l1: int = 0,
@@ -111,6 +117,9 @@ class DefPecaRepository:
             natureza=natureza,
             orientacao=orientacao,
             funcao=funcao,
+            formula_comp=formula_comp,
+            formula_larg=formula_larg,
+            formula_esp=formula_esp,
             orla_c1=orla_c1,
             orla_c2=orla_c2,
             orla_l1=orla_l1,
@@ -139,6 +148,9 @@ class DefPecaRepository:
         natureza: str = "MATERIAL",
         orientacao: str = "NEUTRA",
         funcao: str | None = None,
+        formula_comp: str | None = None,
+        formula_larg: str | None = None,
+        formula_esp: str | None = None,
         orla_c1: int = 0,
         orla_c2: int = 0,
         orla_l1: int = 0,
@@ -163,6 +175,9 @@ class DefPecaRepository:
         peca.natureza = natureza
         peca.orientacao = orientacao
         peca.funcao = funcao
+        peca.formula_comp = formula_comp
+        peca.formula_larg = formula_larg
+        peca.formula_esp = formula_esp
         peca.orla_c1 = orla_c1
         peca.orla_c2 = orla_c2
         peca.orla_l1 = orla_l1
@@ -188,6 +203,23 @@ class DefPecaRepository:
 
         return True
 
+    def update_formulas_dimensionais(
+        self,
+        id: int,
+        *,
+        formula_comp: str | None,
+        formula_larg: str | None,
+        formula_esp: str | None,
+    ) -> DefPecaResumo:
+        peca = self.session.get(DefPeca, id)
+        if peca is None:
+            raise ValueError("def_peca not found")
+        peca.formula_comp = formula_comp
+        peca.formula_larg = formula_larg
+        peca.formula_esp = formula_esp
+        self.session.flush()
+        return self._to_resumo(peca)
+
     def activate_def_peca(self, id: int) -> bool:
         """Activate one reusable piece definition."""
         peca = self.session.get(DefPeca, id)
@@ -211,6 +243,9 @@ class DefPecaRepository:
             natureza=peca.natureza,
             orientacao=peca.orientacao,
             funcao=peca.funcao,
+            formula_comp=peca.formula_comp,
+            formula_larg=peca.formula_larg,
+            formula_esp=peca.formula_esp,
             ativo=peca.ativo,
             orla_c1=peca.orla_c1,
             orla_c2=peca.orla_c2,

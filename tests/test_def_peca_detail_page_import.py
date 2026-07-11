@@ -19,6 +19,18 @@ def test_def_peca_detail_page_tabs_are_declared() -> None:
     assert "QTabWidget" in source_names
     assert "_create_dados_gerais_tab" in source_names
     assert "_create_componentes_tab" in source_names
+    assert "_create_regras_tab" in source_names
+
+
+def test_def_peca_detail_page_regras_dimensionais_are_functional() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    source = inspect.getsource(DefPecaDetailPage._create_regras_tab)
+    guardar = inspect.getsource(DefPecaDetailPage.guardar_formulas_dimensionais)
+    assert "PAI_COMP" in source
+    assert "formula_comp_input" in source
+    assert "atualizar_formulas_dimensionais" in guardar
+    assert "regras_componentes_table" in source
 
 
 def test_def_peca_detail_page_component_headers() -> None:

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTabWidget,
@@ -131,7 +132,7 @@ class DefPecaDetailPage(QWidget):
         tabs = QTabWidget()
         tabs.addTab(self._create_dados_gerais_tab(), "Dados Gerais")
         tabs.addTab(self._create_componentes_tab(), "Associados")
-        tabs.addTab(self._create_placeholder_tab("Regras da pe\u00e7a ser\u00e3o configuradas numa fase posterior."), "Regras")
+        tabs.addTab(self._create_regras_tab(), "Regras")
         tabs.addTab(self._create_operacoes_tab(), "Opera\u00e7\u00f5es")
 
         layout = QVBoxLayout()
@@ -249,6 +250,87 @@ class DefPecaDetailPage(QWidget):
         tab.setLayout(layout)
         return tab
 
+    def _create_regras_tab(self) -> QWidget:
+        """Edit catalog defaults without applying them to existing costing lines."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(12, 12, 12, 12)
+        ajuda = QLabel(
+            "Fórmulas do cabeçalho: H/L/P são dimensões do item e HM/LM/PM da "
+            "divisão ativa. As transformações dos associados podem também usar "
+            "PAI_COMP, PAI_LARG e PAI_ESP. Nesta fase as regras são apenas guardadas "
+            "no catálogo; a aplicação ao custeio entra na fase seguinte."
+        )
+        ajuda.setWordWrap(True)
+        layout.addWidget(ajuda)
+
+        form = QFormLayout()
+        self.formula_comp_input = QLineEdit(self.peca.formula_comp or "")
+        self.formula_larg_input = QLineEdit(self.peca.formula_larg or "")
+        self.formula_esp_input = QLineEdit(self.peca.formula_esp or "")
+        form.addRow("Comp do cabeçalho", self.formula_comp_input)
+        form.addRow("Larg do cabeçalho", self.formula_larg_input)
+        form.addRow("Esp do cabeçalho", self.formula_esp_input)
+        layout.addLayout(form)
+
+        self.guardar_formulas_button = QPushButton("Guardar fórmulas do cabeçalho")
+        self.guardar_formulas_button.clicked.connect(self.guardar_formulas_dimensionais)
+        self.formulas_status_label = QLabel("")
+        layout.addWidget(self.guardar_formulas_button)
+        layout.addWidget(self.formulas_status_label)
+
+        layout.addWidget(QLabel("Transformações dimensionais dos associados"))
+        self.regras_componentes_table = QTableWidget(0, 5)
+        self.regras_componentes_table.setHorizontalHeaderLabels(
+            ["Ordem", "Associado", "Comp", "Larg", "Esp"]
+        )
+        self.regras_componentes_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.regras_componentes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.regras_componentes_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.regras_componentes_table.cellDoubleClicked.connect(
+            self._editar_transformacao_componente
+        )
+        layout.addWidget(self.regras_componentes_table, stretch=1)
+        self._preencher_regras_componentes()
+        return tab
+
+    def guardar_formulas_dimensionais(self) -> None:
+        try:
+            with SessionLocal() as session:
+                self.peca = DefPecaService(session).atualizar_formulas_dimensionais(
+                    self.peca.id,
+                    formula_comp=self.formula_comp_input.text(),
+                    formula_larg=self.formula_larg_input.text(),
+                    formula_esp=self.formula_esp_input.text(),
+                )
+        except (SQLAlchemyError, ValueError) as error:
+            self.formulas_status_label.setText(str(error))
+            return
+        self.formulas_status_label.setText("Fórmulas do cabeçalho guardadas.")
+
+    def _preencher_regras_componentes(self) -> None:
+        if not hasattr(self, "regras_componentes_table"):
+            return
+        self.regras_componentes_table.setRowCount(len(self.componentes))
+        for row, componente in enumerate(self.componentes):
+            valores = (
+                str(componente.ordem),
+                self._format_componente_ref(componente),
+                componente.formula_comp or "",
+                componente.formula_larg or "",
+                componente.formula_esp or "",
+            )
+            for column, valor in enumerate(valores):
+                self.regras_componentes_table.setItem(row, column, QTableWidgetItem(valor))
+
+    def _editar_transformacao_componente(self, row: int, _column: int) -> None:
+        self.componentes_table.selectRow(row)
+        self.abrir_editar_componente()
+
     def _preencher_componentes(self) -> None:
         """Fill the components table from the current read models."""
         self._componentes_by_row = {}
@@ -286,6 +368,7 @@ class DefPecaDetailPage(QWidget):
                 self.componentes_table.setItem(row_index, column_index, item)
 
         self.componentes_status_label.setText(self._componentes_status_text())
+        self._preencher_regras_componentes()
 
     def _componentes_status_text(self) -> str:
         """Return the status line for the components table."""
@@ -341,6 +424,9 @@ class DefPecaDetailPage(QWidget):
                             def_peca_componente_id=form_data.def_peca_componente_id,
                             referencia_componente=form_data.referencia_componente,
                             descricao=form_data.descricao,
+                            formula_comp=form_data.formula_comp,
+                            formula_larg=form_data.formula_larg,
+                            formula_esp=form_data.formula_esp,
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
                             def_regra_quantidade_id=form_data.def_regra_quantidade_id,
@@ -400,6 +486,9 @@ class DefPecaDetailPage(QWidget):
                             def_peca_componente_id=form_data.def_peca_componente_id,
                             referencia_componente=form_data.referencia_componente,
                             descricao=form_data.descricao,
+                            formula_comp=form_data.formula_comp,
+                            formula_larg=form_data.formula_larg,
+                            formula_esp=form_data.formula_esp,
                             quantidade=form_data.quantidade,
                             regra_quantidade=form_data.regra_quantidade,
                             def_regra_quantidade_id=form_data.def_regra_quantidade_id,

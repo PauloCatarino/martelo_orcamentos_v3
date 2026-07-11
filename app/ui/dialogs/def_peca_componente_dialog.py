@@ -61,6 +61,9 @@ class DefPecaComponenteDialogData:
     def_peca_componente_id: int | None
     referencia_componente: str | None
     descricao: str | None
+    formula_comp: str | None
+    formula_larg: str | None
+    formula_esp: str | None
     ordem: int
     quantidade: Decimal
     regra_quantidade: str
@@ -117,6 +120,19 @@ class DefPecaComponenteDialog(QDialog):
         self.referencia_row.setLayout(referencia_row_layout)
 
         self.descricao_input = QLineEdit()
+        self.formula_comp_input = QLineEdit()
+        self.formula_larg_input = QLineEdit()
+        self.formula_esp_input = QLineEdit()
+        formula_tooltip = (
+            "Transformação dimensional do filho. Pode usar H/L/P, HM/LM/PM e "
+            "PAI_COMP/PAI_LARG/PAI_ESP. Só será aplicada ao custeio na fase seguinte."
+        )
+        for entrada in (
+            self.formula_comp_input,
+            self.formula_larg_input,
+            self.formula_esp_input,
+        ):
+            entrada.setToolTip(formula_tooltip)
 
         self.ordem_input = QSpinBox()
         self.ordem_input.setRange(1, 9999)
@@ -193,6 +209,9 @@ class DefPecaComponenteDialog(QDialog):
         form.addRow(self.referencia_label, self.referencia_row)
         form.addRow(self.tipo_hint_label)
         form.addRow("Descrição", self.descricao_input)
+        form.addRow("Fórmula Comp do filho", self.formula_comp_input)
+        form.addRow("Fórmula Larg do filho", self.formula_larg_input)
+        form.addRow("Fórmula Esp do filho", self.formula_esp_input)
         form.addRow(self.ordem_label, self.ordem_input)
         form.addRow("Quantidade", self.quantidade_input)
         form.addRow("Regra quantidade", self.regra_quantidade_input)
@@ -243,6 +262,9 @@ class DefPecaComponenteDialog(QDialog):
             )
         self.referencia_input.setText(componente.referencia_componente or "")
         self.descricao_input.setText(componente.descricao or "")
+        self.formula_comp_input.setText(componente.formula_comp or "")
+        self.formula_larg_input.setText(componente.formula_larg or "")
+        self.formula_esp_input.setText(componente.formula_esp or "")
         self.ordem_input.setValue(componente.ordem)
         self.quantidade_input.setValue(float(componente.quantidade))
         self._select_combo_data(
@@ -326,6 +348,9 @@ class DefPecaComponenteDialog(QDialog):
                 None if is_peca else self._empty_to_none(self.referencia_input.text())
             ),
             descricao=self._empty_to_none(self.descricao_input.text()),
+            formula_comp=self._empty_to_none(self.formula_comp_input.text()),
+            formula_larg=self._empty_to_none(self.formula_larg_input.text()),
+            formula_esp=self._empty_to_none(self.formula_esp_input.text()),
             ordem=self.ordem_input.value(),
             quantidade=Decimal(str(self.quantidade_input.value())),
             regra_quantidade=self.regra_quantidade_input.currentData() or FIXA,

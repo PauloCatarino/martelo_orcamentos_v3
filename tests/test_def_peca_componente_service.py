@@ -191,6 +191,45 @@ def test_associado_guarda_prioridade_valueset(monkeypatch) -> None:
     assert _FakeRepository.created_payload["prioridade_valueset"] == 2
 
 
+def test_associado_guarda_transformacoes_dimensionais_do_pai(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+
+    service_module.DefPecaComponenteService(session=_FakeSession()).criar_componente(
+        service_module.CriarDefPecaComponenteData(
+            def_peca_pai_id=10,
+            tipo_componente="PECA",
+            def_peca_componente_id=20,
+            formula_comp="pai_comp-4",
+            formula_larg="PAI_LARG-4",
+            formula_esp="19",
+        )
+    )
+
+    assert _FakeRepository.created_payload["formula_comp"] == "PAI_COMP-4"
+    assert _FakeRepository.created_payload["formula_larg"] == "PAI_LARG-4"
+    assert _FakeRepository.created_payload["formula_esp"] == "19"
+
+
+def test_associado_rejeita_variavel_dimensional_desconhecida(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
+    session = _FakeSession()
+    try:
+        service_module.DefPecaComponenteService(session=session).criar_componente(
+            service_module.CriarDefPecaComponenteData(
+                def_peca_pai_id=10,
+                tipo_componente="PECA",
+                def_peca_componente_id=20,
+                formula_comp="FILHO_COMP-4",
+            )
+        )
+    except ValueError as error:
+        assert "FILHO_COMP" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+    assert session.committed is False
+
+
 def test_associado_rejeita_prioridade_valueset_inferior_a_um(monkeypatch) -> None:
     monkeypatch.setattr(service_module, "DefPecaComponenteRepository", _FakeRepository)
     session = _FakeSession()

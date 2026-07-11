@@ -28,6 +28,9 @@ class DefPecaComponenteResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     def_regra_quantidade_id: int | None = None
     def_regra_quantidade_codigo: str | None = None
     zona_aplicacao: str = "GERAL"
@@ -90,6 +93,9 @@ class DefPecaComponenteRepository:
         obrigatorio: bool,
         ativo: bool,
         observacoes: str | None,
+        formula_comp: str | None = None,
+        formula_larg: str | None = None,
+        formula_esp: str | None = None,
         def_regra_quantidade_id: int | None = None,
         zona_aplicacao: str = "GERAL",
         dimensao_referencia: str = "COMP",
@@ -104,6 +110,9 @@ class DefPecaComponenteRepository:
             def_peca_componente_id=def_peca_componente_id,
             referencia_componente=referencia_componente,
             descricao=descricao,
+            formula_comp=formula_comp,
+            formula_larg=formula_larg,
+            formula_esp=formula_esp,
             ordem=ordem,
             quantidade=quantidade,
             regra_quantidade=regra_quantidade,
@@ -137,6 +146,9 @@ class DefPecaComponenteRepository:
         obrigatorio: bool,
         ativo: bool,
         observacoes: str | None,
+        formula_comp: str | None = None,
+        formula_larg: str | None = None,
+        formula_esp: str | None = None,
         def_regra_quantidade_id: int | None = None,
         zona_aplicacao: str = "GERAL",
         dimensao_referencia: str = "COMP",
@@ -154,6 +166,9 @@ class DefPecaComponenteRepository:
         componente.def_peca_componente_id = def_peca_componente_id
         componente.referencia_componente = referencia_componente
         componente.descricao = descricao
+        componente.formula_comp = formula_comp
+        componente.formula_larg = formula_larg
+        componente.formula_esp = formula_esp
         componente.ordem = ordem
         componente.quantidade = quantidade
         componente.regra_quantidade = regra_quantidade
@@ -190,6 +205,9 @@ class DefPecaComponenteRepository:
             def_peca_componente_id=componente.def_peca_componente_id,
             referencia_componente=componente.referencia_componente,
             descricao=componente.descricao,
+            formula_comp=componente.formula_comp,
+            formula_larg=componente.formula_larg,
+            formula_esp=componente.formula_esp,
             ordem=componente.ordem,
             quantidade=componente.quantidade,
             regra_quantidade=componente.regra_quantidade,

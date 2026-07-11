@@ -61,6 +61,9 @@ def test_componente_dialog_data_fields() -> None:
         "regra_quantidade",
         "obrigatorio",
         "ativo",
+        "formula_comp",
+        "formula_larg",
+        "formula_esp",
     }
     assert expected <= field_names
 

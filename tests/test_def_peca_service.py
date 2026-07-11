@@ -371,6 +371,45 @@ def test_def_peca_service_normaliza_orlas_ao_editar(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_def_peca_service_guarda_formulas_dimensionais_normalizadas(monkeypatch) -> None:
+    _FakeRepository.created_payload = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    service_module.DefPecaService(session=session).criar_peca(
+        service_module.CriarDefPecaData(
+            codigo="PORTA_2",
+            nome="Porta dupla",
+            formula_comp="hm",
+            formula_larg="lm/2",
+            formula_esp=None,
+        )
+    )
+
+    assert _FakeRepository.created_payload["formula_comp"] == "HM"
+    assert _FakeRepository.created_payload["formula_larg"] == "LM/2"
+    assert _FakeRepository.created_payload["formula_esp"] is None
+
+
+def test_def_peca_service_rejeita_formula_de_cabecalho_com_pai(monkeypatch) -> None:
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    try:
+        service_module.DefPecaService(session=session).criar_peca(
+            service_module.CriarDefPecaData(
+                codigo="INVALIDA",
+                nome="Inválida",
+                formula_comp="PAI_COMP",
+            )
+        )
+    except ValueError as error:
+        assert "PAI_COMP" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+    assert session.committed is False
+
+
 def test_def_peca_service_normaliza_valuesets_ao_editar(monkeypatch) -> None:
     _FakeRepository.updated_payload = None
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)

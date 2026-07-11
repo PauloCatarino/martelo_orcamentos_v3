@@ -230,6 +230,11 @@ class DefPecasPage(QWidget):
                             natureza=form_data.natureza,
                             orientacao=form_data.orientacao,
                             funcao=form_data.funcao,
+                            # Formulas are managed in the Regras tab; a general
+                            # data edit must preserve them unchanged.
+                            formula_comp=peca.formula_comp,
+                            formula_larg=peca.formula_larg,
+                            formula_esp=peca.formula_esp,
                             orla_c1=form_data.orla_c1,
                             orla_c2=form_data.orla_c2,
                             orla_l1=form_data.orla_l1,

@@ -16,6 +16,7 @@ from app.domain.associado_types import (
     normalize_zona_aplicacao,
 )
 from app.domain.regra_quantidade_types import normalize_regra_quantidade
+from app.domain.medidas import validar_formula_dimensional
 from app.repositories.def_peca_componente_repository import (
     DefPecaComponenteRepository,
     DefPecaComponenteResumo,
@@ -32,6 +33,9 @@ class CriarDefPecaComponenteData:
     def_peca_componente_id: int | None = None
     referencia_componente: str | None = None
     descricao: str | None = None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
     def_regra_quantidade_id: int | None = None
@@ -55,6 +59,9 @@ class EditarDefPecaComponenteData:
     def_peca_componente_id: int | None = None
     referencia_componente: str | None = None
     descricao: str | None = None
+    formula_comp: str | None = None
+    formula_larg: str | None = None
+    formula_esp: str | None = None
     quantidade: Decimal = Decimal("1")
     regra_quantidade: str | None = None
     def_regra_quantidade_id: int | None = None
@@ -99,6 +106,7 @@ class DefPecaComponenteService:
         self._validate_rule_topos(
             data.def_regra_quantidade_id, modo_quantidade
         )
+        formulas = self._normalizar_formulas(data)
 
         ordem = self.repository.get_next_ordem(def_peca_pai_id)
         result = self.repository.create_componente(
@@ -107,6 +115,7 @@ class DefPecaComponenteService:
             def_peca_componente_id=data.def_peca_componente_id,
             referencia_componente=data.referencia_componente,
             descricao=data.descricao,
+            **formulas,
             ordem=ordem,
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
@@ -147,6 +156,7 @@ class DefPecaComponenteService:
         self._validate_rule_topos(
             data.def_regra_quantidade_id, modo_quantidade
         )
+        formulas = self._normalizar_formulas(data)
 
         result = self.repository.update_componente(
             id=id,
@@ -155,6 +165,7 @@ class DefPecaComponenteService:
             def_peca_componente_id=data.def_peca_componente_id,
             referencia_componente=data.referencia_componente,
             descricao=data.descricao,
+            **formulas,
             ordem=data.ordem,
             quantidade=data.quantidade,
             regra_quantidade=regra_quantidade,
@@ -225,3 +236,17 @@ class DefPecaComponenteService:
                 "NUM_TOPOS já é usado na expressão; escolha Quantidade total "
                 "para evitar multiplicação duplicada"
             )
+
+    @staticmethod
+    def _normalizar_formulas(data) -> dict[str, str | None]:
+        return {
+            "formula_comp": validar_formula_dimensional(
+                data.formula_comp, campo="Fórmula Comp do filho", permitir_pai=True
+            ),
+            "formula_larg": validar_formula_dimensional(
+                data.formula_larg, campo="Fórmula Larg do filho", permitir_pai=True
+            ),
+            "formula_esp": validar_formula_dimensional(
+                data.formula_esp, campo="Fórmula Esp do filho", permitir_pai=True
+            ),
+        }

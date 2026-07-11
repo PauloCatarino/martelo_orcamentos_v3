@@ -417,6 +417,66 @@ predefinidas nas `def_pecas` e dimensões no cabeçalho de peça/conjunto, com
 regras explícitas para preencher automaticamente os filhos de portas, gavetas
 e outros conjuntos.
 
+### Fórmulas dimensionais predefinidas — Fase A: modelo e configuração
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- acrescentadas às `def_pecas` as fórmulas opcionais `formula_comp`,
+  `formula_larg` e `formula_esp`, destinadas às dimensões predefinidas do
+  cabeçalho de peça/conjunto;
+- acrescentadas às associações `DefPecaComponente` as transformações opcionais
+  `formula_comp`, `formula_larg` e `formula_esp` de pai para filho;
+- mantidas separadas as variáveis globais `H/L/P`, as variáveis da divisão
+  ativa `HM/LM/PM` e as novas variáveis explícitas do pai imediato
+  `PAI_COMP/PAI_LARG/PAI_ESP`;
+- fórmulas de cabeçalho aceitam apenas `H/L/P` e `HM/LM/PM`; transformações de
+  associados aceitam também `PAI_COMP/PAI_LARG/PAI_ESP`;
+- validação usa a mesma gramática segura de medidas: números, variáveis
+  permitidas, `+`, `-`, `*`, `/` e parênteses, sem `eval`;
+- o separador **Regras** da definição de peça deixou de ser um placeholder e
+  permite guardar as três fórmulas do cabeçalho, consultar as transformações
+  dos associados e abrir a edição do associado por duplo clique;
+- a duplicação/**Gravar como** preserva as fórmulas da peça e as transformações
+  dos associados;
+- editar os dados gerais de uma peça preserva as fórmulas geridas no separador
+  **Regras**;
+- migração criada: `20260719_58`;
+- nenhum registo do catálogo foi preenchido automaticamente;
+- nesta Fase A as fórmulas são apenas configuradas e persistidas: ainda não são
+  aplicadas às linhas do custeio, aos módulos ou à atualização da biblioteca.
+
+Testes automáticos:
+
+- testes focados de modelos, repositórios, serviços, validação e interface:
+  `90 passed`;
+- bateria completa: `1921 passed`.
+
+Validação local pedida:
+
+1. reiniciar a aplicação para aplicar a migração `20260719_58`;
+2. abrir uma peça/conjunto de teste e entrar no separador **Regras**;
+3. guardar no cabeçalho, por exemplo, Comp `HM`, Larg `LM/2` e Esp vazio;
+4. sair e voltar a abrir a definição, confirmando que as fórmulas persistem;
+5. no mesmo separador, fazer duplo clique num associado e guardar, por exemplo,
+   Comp `PAI_COMP-4`, Larg `PAI_LARG-4` e Esp `19`;
+6. confirmar que as transformações aparecem na tabela do separador **Regras**;
+7. tentar guardar `PAI_COMP` numa fórmula do cabeçalho e confirmar a rejeição;
+8. tentar guardar uma variável desconhecida num associado e confirmar a
+   rejeição;
+9. editar apenas os **Dados Gerais** da peça e confirmar que as fórmulas não são
+   apagadas;
+10. confirmar que nenhuma linha de custeio existente ou nova mudou ainda as
+    dimensões automaticamente nesta fase.
+
+Validação do utilizador: pendente.
+
+Commit: `Configurar formulas dimensionais nas definicoes`.
+
+Próximo passo recomendado: depois da validação local desta configuração,
+implementar a Fase B, aplicando as fórmulas aos cabeçalhos e as transformações
+`PAI_*` aos filhos no custeio, incluindo conjuntos aninhados e preservação das
+edições locais.
+
 ## Próxima fase proposta
 
 ### Generalização das uniões estruturais

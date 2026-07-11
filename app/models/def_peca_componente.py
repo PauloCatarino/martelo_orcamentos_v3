@@ -52,6 +52,9 @@ class DefPecaComponente(Base):
     )
     referencia_componente: Mapped[str | None] = mapped_column(String(150), nullable=True)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    formula_comp: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    formula_larg: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    formula_esp: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     quantidade: Mapped[Decimal] = mapped_column(
         Numeric(12, 3),
