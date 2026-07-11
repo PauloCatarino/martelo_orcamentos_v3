@@ -761,11 +761,54 @@ Validação local pedida:
    confirmar que passa sem aviso;
 5. confirmar que módulos só com `H/L/P` continuam a importar sem divisão.
 
+Validação do utilizador: concluída (11 de julho de 2026). O utilizador testou
+a fase, incluindo o piloto de porta e o módulo com uniões, e confirmou o
+comportamento correto. **FASE C CONCLUÍDA** (C4 verificado sem alterações;
+C5 coberto pelos testes e por este registo).
+
+Commit: `Proteger importacao de modulos sem divisao independente`.
+
+### Encaminhar para o ValueSet quando o item ainda não tem dados
+
+Problema detetado pelo utilizador (11 de julho de 2026): num orçamento novo,
+ao inserir peças num item cuja tabela ValueSet ainda está vazia, as linhas
+ficam sem materiais atribuídos. O fluxo correto é preencher primeiro o
+separador ValueSet e só depois inserir peças.
+
+Implementação concluída e a aguardar validação local do utilizador:
+
+- ao abrir o custeio de um item SEM linhas de ValueSet, a página abre
+  diretamente no separador **ValueSet**, com a instrução na barra de estado;
+- **Adicionar Seleções** (biblioteca de peças) e **Importar Módulo** verificam
+  primeiro, na base de dados, se o ValueSet do item tem opções ativas; se
+  estiver vazio, mostram um aviso com a explicação, mudam para o separador
+  ValueSet e não criam nenhuma linha;
+- a verificação é feita à base de dados no momento da ação (não à cache da
+  página), para reconhecer um ValueSet acabado de preencher sem recarregar;
+- inserções que não precisam de materiais (Divisão independente, separadores,
+  operações manuais) não são afetadas.
+
+Testes automáticos:
+
+- teste de página cobre o guarda nas duas ações, a mudança de separador e a
+  abertura direta no ValueSet em item vazio;
+- testes focados da página: `55 passed`;
+- bateria completa: `1940 passed`.
+
+Validação local pedida:
+
+1. criar um orçamento/item NOVO e abrir o custeio: deve abrir já no separador
+   ValueSet com a instrução;
+2. sem preencher nada, voltar ao Custeio e tentar **Adicionar Seleções** e
+   **Importar Módulo**: aviso + regresso ao separador ValueSet, sem linhas
+   criadas;
+3. preencher o ValueSet (por exemplo **Importar Modelo**) e, sem sair do item,
+   inserir peças: deve funcionar e atribuir materiais;
+4. confirmar que itens já preenchidos abrem no separador Custeio como antes.
+
 Validação do utilizador: pendente.
 
-Próximo passo recomendado: com o C3 validado, a Fase C fica concluída
-(C4 verificado sem alterações; C5 coberto pelos testes e por este registo).
-Segue-se a generalização das uniões estruturais.
+Próximo passo recomendado: generalização das uniões estruturais.
 
 ## Fase seguinte proposta
 

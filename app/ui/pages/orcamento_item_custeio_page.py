@@ -640,9 +640,10 @@ class OrcamentoItemCusteioPage(QWidget):
         custeio_tab = QWidget()
         custeio_tab.setLayout(workspace_layout)
 
+        self.valueset_page = OrcamentoItemValuesetPage(item.id)
         self.tabs = QTabWidget()
         self.tabs.addTab(custeio_tab, "Custeio")
-        self.tabs.addTab(OrcamentoItemValuesetPage(item.id), "ValueSet")
+        self.tabs.addTab(self.valueset_page, "ValueSet")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -656,6 +657,13 @@ class OrcamentoItemCusteioPage(QWidget):
         self.setLayout(layout)
         self._update_item_info()
         self.carregar()
+        # A new item without ValueSet opens directly on the ValueSet tab, so
+        # the user fills the materials before inserting pieces.
+        if not getattr(self, "_valueset_opcoes", None):
+            self._abrir_separador_valueset(
+                "O ValueSet do item está vazio: preencha os materiais e "
+                "ferragens neste separador antes de inserir peças no custeio."
+            )
 
     def carregar(self) -> None:
         """Reload the item data, its costing lines and the parts library."""
@@ -919,8 +927,43 @@ class OrcamentoItemCusteioPage(QWidget):
 
     # --- Import a saved module into the item (phase 8U.2) ---------------------
 
+    def _abrir_separador_valueset(self, mensagem: str) -> None:
+        """Show the guidance message and open the ValueSet tab."""
+        self.status_label.setText(mensagem)
+        self.tabs.setCurrentWidget(self.valueset_page)
+
+    def _valueset_vazio_redireciona(self) -> bool:
+        """True when the item ValueSet is empty: guide the user to fill it first.
+
+        Checked against the database (not the cached options), because the
+        user may have just filled the ValueSet tab without reloading the
+        costing. Pieces inserted with an empty ValueSet would get no material
+        assigned, so insertion is refused and the ValueSet tab is opened.
+        """
+        try:
+            with SessionLocal() as session:
+                opcoes = OrcamentoItemCusteioLinhaService(
+                    session
+                ).opcoes_valueset_do_item(self.item_id)
+        except SQLAlchemyError:
+            return False  # never block on a read error; the action reports it
+        if opcoes:
+            return False
+        mensagem = (
+            "O ValueSet do item ainda está vazio, por isso as peças ficariam "
+            "sem materiais atribuídos. Preencha primeiro o separador ValueSet "
+            "— por exemplo com «Importar Modelo» ou «Criar a partir do "
+            "Orçamento» — e só depois insira peças."
+        )
+        QMessageBox.information(self, "Preencher ValueSet primeiro", mensagem)
+        self._abrir_separador_valueset(mensagem)
+        return True
+
     def importar_modulo(self) -> None:
         """Open the import dialog and append the chosen module to the costing."""
+        if self._valueset_vazio_redireciona():
+            return
+
         utilizador = app_session.current_user
         user_id = utilizador.id if utilizador is not None else None
 
@@ -1338,6 +1381,9 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def adicionar_selecoes(self) -> None:
         """Create cost lines for the selected simple library pieces."""
+        if self._valueset_vazio_redireciona():
+            return
+
         if not self._selecionados:
             self.status_label.setText("Selecione pelo menos uma peça.")
             return

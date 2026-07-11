@@ -1272,3 +1272,34 @@ def test_custeio_tem_barra_cabecalho_unica() -> None:
     assert "Largura:" in atualizar
     assert "Prof:" in atualizar
     assert "Qtd:" in atualizar
+
+
+def test_custeio_page_exige_valueset_antes_de_inserir() -> None:
+    """Inserting pieces/modules with an empty item ValueSet redirects the user
+    to the ValueSet tab instead of creating material-less lines."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for method in ("_valueset_vazio_redireciona", "_abrir_separador_valueset"):
+        assert hasattr(OrcamentoItemCusteioPage, method)
+
+    guarda = inspect.getsource(OrcamentoItemCusteioPage._valueset_vazio_redireciona)
+    # Fresh DB check (not the cached options) + message + tab switch.
+    assert "opcoes_valueset_do_item" in guarda
+    assert "QMessageBox.information" in guarda
+    assert "_abrir_separador_valueset" in guarda
+    assert "Preencher ValueSet primeiro" in guarda
+
+    abrir = inspect.getsource(OrcamentoItemCusteioPage._abrir_separador_valueset)
+    assert "setCurrentWidget" in abrir
+    assert "valueset_page" in abrir
+
+    # Both insertion entry points are guarded.
+    adicionar = inspect.getsource(OrcamentoItemCusteioPage.adicionar_selecoes)
+    assert "_valueset_vazio_redireciona" in adicionar
+    importar = inspect.getsource(OrcamentoItemCusteioPage.importar_modulo)
+    assert "_valueset_vazio_redireciona" in importar
+
+    # A new item without ValueSet opens directly on the ValueSet tab.
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    assert "self.valueset_page" in init
+    assert "_abrir_separador_valueset" in init
