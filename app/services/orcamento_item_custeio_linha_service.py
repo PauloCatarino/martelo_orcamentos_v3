@@ -201,6 +201,7 @@ class EditarLinhaCusteioData:
 # locally (the line keeps its key, def_peca, type, quantities, measures...).
 MATERIAL_FIELDS = (
     "mat_default",
+    "valueset_prioridade",
     "ref_le",
     "descricao_no_orcamento",
     "unidade",
@@ -713,6 +714,7 @@ class OrcamentoItemCusteioLinhaService:
 
         fields = {
             "mat_default": materia.ref_le,
+            "valueset_prioridade": None,
             "ref_le": materia.ref_le,
             "descricao_no_orcamento": materia.descricao,
             "unidade": materia.unidade,
@@ -851,6 +853,7 @@ class OrcamentoItemCusteioLinhaService:
         """Build the material fields to copy from an item ValueSet line."""
         fields = {
             "mat_default": vs_linha.codigo_opcao or vs_linha.nome_opcao,
+            "valueset_prioridade": vs_linha.prioridade,
             "ref_le": vs_linha.ref_le,
             "descricao_no_orcamento": vs_linha.descricao_no_orcamento,
             "unidade": vs_linha.unidade,
@@ -4560,6 +4563,7 @@ class OrcamentoItemCusteioLinhaService:
                 "ref_materia_prima": linha_vs.ref_materia_prima,
                 "descricao_materia_prima": linha_vs.descricao_materia_prima,
                 "mat_default": linha_vs.codigo_opcao or linha_vs.nome_opcao,
+                "valueset_prioridade": linha_vs.prioridade,
                 "ref_le": linha_vs.ref_le,
                 "descricao_no_orcamento": linha_vs.descricao_no_orcamento,
                 "unidade": linha_vs.unidade,

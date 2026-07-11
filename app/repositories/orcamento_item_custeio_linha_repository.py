@@ -78,6 +78,7 @@ class OrcamentoItemCusteioLinhaResumo:
     chave_valueset: str | None = None
     codigo_orlas: str | None = None
     mat_default: str | None = None
+    valueset_prioridade: int | None = None
     modulo_imagem_path: str | None = None
     descricao_livre: str | None = None
     ordem_visual: int | None = None
@@ -406,6 +407,7 @@ class OrcamentoItemCusteioLinhaRepository:
             chave_valueset=linha.chave_valueset,
             codigo_orlas=linha.codigo_orlas,
             mat_default=linha.mat_default,
+            valueset_prioridade=linha.valueset_prioridade,
             modulo_imagem_path=linha.modulo_imagem_path,
             ordem_visual=linha.ordem_visual,
             ref_le=linha.ref_le,

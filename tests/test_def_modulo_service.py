@@ -382,6 +382,7 @@ def test_guardar_modulo_preserva_prioridade_do_material_selecionado(session) -> 
         def_peca_codigo="LATERAL",
         chave_valueset="MATERIAL_LATERAIS",
         mat_default="BRANCO",
+        associado_valueset_prioridade=1,
     )
     session.add_all(
         [

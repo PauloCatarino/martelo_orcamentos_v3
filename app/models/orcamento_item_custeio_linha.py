@@ -140,6 +140,8 @@ class OrcamentoItemCusteioLinha(Base):
     chave_valueset: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     codigo_orlas: Mapped[str | None] = mapped_column(String(20), nullable=True)
     mat_default: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    # Exact rank of the ValueSet option currently applied to this line.
+    valueset_prioridade: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Path of the source module's image, stored on the FIRST line of an imported
     # block so the costing table can show a thumbnail / zoom tooltip (phase 8U.4).
     modulo_imagem_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

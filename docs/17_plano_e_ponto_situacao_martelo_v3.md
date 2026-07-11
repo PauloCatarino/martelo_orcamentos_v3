@@ -313,13 +313,56 @@ Validação local pedida:
 7. confirmar material vazio e aviso de produção, sem seleção silenciosa de
    outra prioridade.
 
-Validação do utilizador: pendente.
+Validação do utilizador: falhou no primeiro teste. O utilizador confirmou que,
+apesar de escolher materiais/ferragens diferentes, os módulos eram sempre
+gravados e importados com prioridade 1. Foi identificado que o custeio não
+guardava a prioridade aplicada e que o snapshot original do associado tinha
+precedência sobre a escolha atual em `Mat. default`.
 
 Commit: `Preservar prioridade ValueSet nos modulos`.
 
 Próximo passo recomendado: depois desta validação, modelar fórmulas dimensionais
 predefinidas nas `def_pecas` e a herança explícita de dimensões do cabeçalho de
 peça/conjunto para os seus filhos.
+
+### Correção da prioridade explícita no custeio
+
+Implementação concluída e a aguardar nova validação local:
+
+- acrescentada `valueset_prioridade` às linhas do custeio;
+- criada a coluna visível **Prioridade** junto de Chave ValueSet/Mat. default;
+- a lista `Mat. default` mostra também a prioridade de cada opção;
+- selecionar uma opção ValueSet grava material e prioridade na mesma operação;
+- materiais escolhidos diretamente fora do ValueSet ficam com prioridade vazia;
+- ao guardar um módulo, a precedência é agora:
+  1. prioridade explícita da linha do custeio;
+  2. prioridade correspondente ao `Mat. default` atual;
+  3. prioridade histórica do associado, apenas como compatibilidade;
+- uma escolha manual de prioridade 2 já não é substituída pelo snapshot de
+  prioridade 1 com que o associado foi originalmente criado;
+- migração aplicada: `20260718_57`.
+
+Testes automáticos:
+
+- escolha no dropdown grava `valueset_prioridade=2`;
+- linha antiga com associado/prioridade 1 e `Mat. default` de prioridade 2
+  grava o módulo com prioridade 2;
+- testes focados: `298 passed`;
+- bateria completa: `1912 passed`.
+
+Validação local pedida:
+
+1. reiniciar a aplicação e confirmar a coluna **Prioridade** no custeio;
+2. escolher uma opção de prioridade 2 em `Mat. default`;
+3. confirmar que a coluna muda imediatamente para 2 depois da atualização;
+4. substituir o módulo a partir dessas linhas;
+5. confirmar prioridade 2 em **Biblioteca de Módulos → Ver linhas**;
+6. importar noutro item e confirmar prioridade/material 2;
+7. testar uma prioridade inexistente e confirmar material vazio mais aviso.
+
+Validação do utilizador: pendente.
+
+Commit: `Corrigir prioridade explicita no custeio`.
 
 ## Próxima fase proposta
 

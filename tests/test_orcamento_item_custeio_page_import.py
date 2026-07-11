@@ -37,6 +37,7 @@ def test_orcamento_item_custeio_page_headers() -> None:
         "C\u00f3digo",
         "Def. Pe\u00e7a",
         "Chave ValueSet",
+        "Prioridade",
         "Ref LE",
         "Descri\u00e7\u00e3o no or\u00e7amento",
         "\u00c1rea m\u00b2",

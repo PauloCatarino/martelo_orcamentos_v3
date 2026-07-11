@@ -96,6 +96,7 @@ def _vs_linha(**kwargs):
         "chave": "MATERIAL_COSTAS",
         "ativo": True,
         "padrao": True,
+        "prioridade": 1,
         "codigo_opcao": "AGL_19",
         "nome_opcao": "AGL 19mm",
         "materia_prima_id": 5,
@@ -5261,13 +5262,14 @@ def _chave_vs(codigo, tipo):
 
 
 def _opcao_vs(id, chave, codigo_opcao, *, orcamento_item_id=10, ref_le=None,
-              preco_liquido=None, esp_mp=None):
+              preco_liquido=None, esp_mp=None, prioridade=1):
     return SimpleNamespace(
         id=id,
         orcamento_item_id=orcamento_item_id,
         chave=chave,
         codigo_opcao=codigo_opcao,
         nome_opcao=codigo_opcao,
+        prioridade=prioridade,
         ref_le=ref_le,
         descricao_no_orcamento=None,
         descricao_materia_prima=None,
@@ -5346,7 +5348,7 @@ def test_aplicar_opcao_valueset_copia_snapshot_e_marca_deliberada(monkeypatch) -
     )
     _FakeItemValuesetRepository.by_id = _opcao_vs(
         2, "MATERIAL_PORTAS", "TERMO_BRANCO", ref_le="LE0007",
-        preco_liquido=Decimal("12.5"),
+        preco_liquido=Decimal("12.5"), prioridade=2,
     )
 
     result = service.aplicar_opcao_valueset_na_linha(5, 2)
@@ -5355,6 +5357,7 @@ def test_aplicar_opcao_valueset_copia_snapshot_e_marca_deliberada(monkeypatch) -
     assert payload["id"] == 5
     assert payload["chave_valueset"] == "MATERIAL_PORTAS"  # cross-material carried
     assert payload["mat_default"] == "TERMO_BRANCO"
+    assert payload["valueset_prioridade"] == 2
     assert payload["ref_le"] == "LE0007"
     assert payload["preco_liquido"] == Decimal("12.5")
     # Deliberate choice -> the item ValueSet propagation won't revert it.

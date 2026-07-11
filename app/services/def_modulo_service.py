@@ -489,17 +489,22 @@ class DefModuloService:
 
         resultado: dict[int, int] = {}
         for linha in linhas:
-            prioridade_associado = getattr(
-                linha, "associado_valueset_prioridade", None
-            )
-            if prioridade_associado is not None:
-                resultado[linha.id] = prioridade_associado
+            prioridade_linha = getattr(linha, "valueset_prioridade", None)
+            if prioridade_linha is not None:
+                resultado[linha.id] = prioridade_linha
                 continue
             chave = self._texto_chave(getattr(linha, "chave_valueset", None))
             opcao = self._texto_chave(getattr(linha, "mat_default", None))
             prioridade = por_chave_opcao.get((chave, opcao))
             if prioridade is not None:
                 resultado[linha.id] = prioridade
+                continue
+            prioridade_associado = getattr(
+                linha, "associado_valueset_prioridade", None
+            )
+            if prioridade_associado is not None:
+                resultado[linha.id] = prioridade_associado
+                continue
         return resultado
 
     @staticmethod

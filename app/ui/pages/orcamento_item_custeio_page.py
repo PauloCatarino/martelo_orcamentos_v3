@@ -285,6 +285,7 @@ class OrcamentoItemCusteioPage(QWidget):
         "Per\u00edmetro ML",
         # ValueSet / materia-prima
         "Chave ValueSet",
+        "Prioridade",
         "Mat. default",
         "Ref LE",
         "Descri\u00e7\u00e3o no or\u00e7amento",
@@ -395,6 +396,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Mat. default": "Material da linha, escolhível das opções do ValueSet do "
         "item (dropdown). Placas: troca entre materiais; Ferragens/sistemas: só a "
         "mesma família. ORLA/ACABAMENTO têm tratamento próprio.",
+        "Prioridade": "Prioridade exata da opção ValueSet aplicada à linha. "
+        "Atualiza ao escolher Mat. default e é preservada ao gravar módulos.",
         "Área m²": "Área por unidade da peça (Comp × Larg).",
         "Perímetro ML": "Perímetro por unidade, em metros lineares.",
         "ML orla fina": "Metros lineares de orla fina (total da linha).",
@@ -1697,6 +1700,8 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         ref = opcao.ref_le or "—"
         rotulo = f"{opcao.chave} · {codigo}"
+        if opcao.prioridade is not None:
+            rotulo += f" · prioridade {opcao.prioridade}"
         if descricao:
             rotulo += f" · {descricao}"
         return f"{rotulo} (Ref {ref})"
@@ -3221,6 +3226,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Área m²": self._format_medida3(linha.area_m2),
             "Perímetro ML": self._format_medida3(linha.perimetro_ml),
             "Chave ValueSet": linha.chave_valueset or "",
+            "Prioridade": (
+                ""
+                if linha.valueset_prioridade is None
+                else str(linha.valueset_prioridade)
+            ),
             "Mat. default": linha.mat_default or "",
             "Ref LE": linha.ref_le or "",
             "Descrição no orçamento": linha.descricao_no_orcamento or "",
