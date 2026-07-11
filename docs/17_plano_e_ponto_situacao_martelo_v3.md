@@ -1,0 +1,170 @@
+# Martelo V3 — plano e ponto de situação
+
+Última atualização: 11 de julho de 2026
+
+Este documento é a memória permanente da evolução funcional e técnica do
+Martelo V3. Deve ser consultado no início de cada nova fase e atualizado no fim
+de cada alteração validada pelo utilizador.
+
+## Regras de trabalho
+
+- Desenvolver por fases pequenas e verificáveis.
+- No fim de cada alteração, fornecer instruções de teste local.
+- Só considerar uma fase validada depois do retorno do utilizador.
+- Executar testes focados e a bateria completa antes do commit.
+- Criar um commit por marco funcional coerente.
+- Não propagar alterações do catálogo para peças já inseridas no orçamento.
+- Uma peça do orçamento fica congelada até atualização explícita através de
+  **Atualizar peça da biblioteca**.
+- As correções automáticas da auditoria exigem descrição, supervisão e
+  confirmação do utilizador.
+
+## Decisões funcionais confirmadas
+
+1. Peças inseridas no orçamento ficam congeladas até atualização explícita.
+2. Alterações do catálogo não se propagam automaticamente.
+3. Regra inicial de uniões por topo: mínimo 2 e intervalos de 128 mm.
+4. Aos 100 mm, o resultado é 2.
+5. O custo direto CNC é configurado na operação, com máquina associada.
+6. O setup é separado e não é multiplicado pelo número de furos/uniões.
+7. ValueSet usa ações explícitas por operação: ADICIONAR ou SUBSTITUIR.
+8. Módulos guardam referências e desvios, não filhos derivados.
+9. Peças compostas são substituídas na interface pelo conceito único de
+   peça/conjunto.
+10. Conjuntos virtuais continuam identificados internamente.
+11. Regras técnicas, incluindo quantidades por topo, são editáveis nas
+    Configurações e usadas como valores predefinidos.
+
+## Fases concluídas e validadas
+
+### Proteção de entradas e fórmulas de custeio
+
+- Validação dos campos de dimensões e fórmulas.
+- Suporte controlado das variáveis `H`, `HM`, `P` e `PM` combinadas com números.
+- Rejeição de letras, expressões e valores que possam comprometer o cálculo.
+- Mensagens de validação apresentadas ao utilizador.
+
+### Peças, associados e regras de quantidade
+
+- Associados ligados à biblioteca de peças.
+- Quantidade fixa ou calculada por regra.
+- Zona de aplicação, dimensão de referência e número de topos.
+- Aplicação **Quantidade por topo**.
+- Regra `UNIAO_TOPOS_128`, equivalente a
+  `MAX(2, CEIL(MEDIDA_TOPO / 128))`.
+- Teste validado: medida do topo 600 mm, 5 uniões por topo e 10 para dois
+  topos.
+
+### Operações das peças e ValueSets
+
+- Operações de peças associadas entram no custeio.
+- Operações específicas de variantes ValueSet suportam ADICIONAR e SUBSTITUIR.
+- A utilidade e os efeitos de ADICIONAR/SUBSTITUIR devem voltar a ser explicados
+  numa fase futura com casos práticos completos.
+- Botão **Atualizar peça da biblioteca** validado localmente.
+
+### Auditoria do Catálogo
+
+- Auditoria apenas de leitura para peças, associados, operações, máquinas,
+  regras, ValueSets e módulos.
+- Navegação direta para a configuração que origina a ocorrência.
+- Correções supervisionadas apenas quando são seguras e explícitas.
+- Estado das ações colocado abaixo dos botões e antes dos totais.
+- Deteção, entre outros casos, de operações inativas, operações duplicadas,
+  códigos de orla incompatíveis, referências desatualizadas, regras sem uso e
+  substituições ValueSet.
+
+### Prioridade ValueSet nos associados
+
+- Cada associado pode escolher a prioridade ValueSet pretendida.
+- A resolução é exata para prioridades superiores a 1, sem fallback silencioso.
+- Se a prioridade não estiver configurada, `Mat. default` fica vazio e é criada
+  uma observação de produção.
+- Cenários positivos e negativos validados pelo utilizador.
+
+Commit principal: `9896d60 Resolver associados pela prioridade ValueSet`.
+
+### Piloto de uniões nos topos
+
+Configuração piloto validada na peça `PRATELEIRA FIXA 2000`:
+
+- associado `SISTEMAS_UNIAO`, prioridade 1: cavilha `FER0145`, 8 × 35;
+- associado `SISTEMAS_UNIAO`, prioridade 2: parafuso `FER0146`, 3,5 × 50;
+- ambos usam `UNIAO_TOPOS_128`, dois topos e quantidade por topo;
+- para largura 600 mm, cada ferragem recebe quantidade 10;
+- cavilha usa a operação/máquina `CNC_ABD`;
+- parafuso usa a operação/máquina `CNC_VERTICAL`;
+- tempo variável é multiplicado pelas uniões e o setup é aplicado uma vez.
+
+Foi acrescentado ao Resumo de Consumos o quadro
+**Operações efetivas por máquina**, apresentando operação, máquina, quantidade,
+setup, tempo CNC, outros tempos e custo de produção. O utilizador confirmou que
+o resultado aparece organizado e separado.
+
+A Auditoria passou a detetar:
+
+- prioridades repetidas nos associados;
+- prioridades repetidas na chave ValueSet de união;
+- prioridade de união inválida;
+- união sem CNC ativo;
+- CNC de união sem tempo unitário positivo.
+
+O teste negativo com duas prioridades iguais a 1 foi validado: a Auditoria
+identificou corretamente a ocorrência. Com a configuração correta não aparecem
+ocorrências `UNIAO_*`.
+
+Validação automática deste marco: `1904 passed`.
+
+Commit: `f567817 Auditar e detalhar piloto de unioes`.
+
+## Estado atual
+
+- Branch de desenvolvimento: `codex/pecas-associados`.
+- O piloto completo de prateleira fixa, cavilha, parafuso, operações CNC,
+  relatórios e auditoria está validado.
+- A base funcional está preparada para generalizar as uniões a outras peças.
+- Não existem alterações de esquema pendentes nesta fase.
+
+## Próxima fase proposta
+
+### Generalização das uniões estruturais
+
+Objetivo: aplicar a lógica validada do piloto a laterais, bases, tampos,
+divisórias e outras peças horizontais, mantendo uma única lógica de cálculo.
+
+Passos previstos:
+
+1. Inventariar as peças estruturais atuais e identificar relações topo/lateral.
+2. Definir quando uma peça recebe cavilha, parafuso ou ambos, evitando assumir
+   que todas as peças horizontais usam automaticamente as mesmas ferragens.
+3. Reutilizar regras configuráveis por topo e prioridades ValueSet.
+4. Garantir que cada união pertence a uma única origem para evitar duplicação
+   entre peça principal e associado.
+5. Mostrar alertas no custeio quando uma união obrigatória fica sem ferragem,
+   prioridade, operação ou máquina.
+6. Acrescentar auditorias de duplicação e configuração incompleta específicas
+   das novas peças estruturais.
+7. Testar primeiro um módulo simples e só depois generalizar ao catálogo.
+
+## Critérios para concluir a próxima fase
+
+- Quantidades corretas por topo para várias dimensões.
+- Cavilhas e parafusos resolvidos pelas prioridades corretas.
+- Nenhuma duplicação de ferragens ou CNC.
+- Setup aplicado uma vez por operação configurada.
+- Materiais, operações e máquinas separados no custeio e nos relatórios.
+- Alertas claros para configurações incompletas.
+- Auditoria sem novas ocorrências estruturais depois da configuração correta.
+- Testes automáticos completos e validação local do utilizador.
+
+## Registo obrigatório nas próximas fases
+
+Ao terminar cada fase, atualizar neste ficheiro:
+
+- alterações implementadas;
+- decisões tomadas;
+- testes automáticos e resultado;
+- testes locais pedidos ao utilizador;
+- validação recebida;
+- commit criado;
+- próximo passo recomendado.
