@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -31,15 +31,19 @@ from app.domain.componente_types import (
 from app.domain.associado_types import (
     COMP,
     GERAL,
+    POR_TOPO,
     get_dimensao_referencia_options,
     get_modo_quantidade_options,
     get_zona_aplicacao_options,
+    normalize_dimensao_referencia,
 )
+from app.domain.associado_types import ESP as DIM_ESP
 from app.domain.regra_quantidade_types import (
     FIXA,
     get_regra_quantidade_options,
     normalize_regra_quantidade,
 )
+from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_repository import DefPecaResumo
 
@@ -265,8 +269,16 @@ class DefPecaComponenteDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.simular_button = self.button_box.addButton(
+            "Simular quantidade…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.simular_button.setToolTip(
+            "Mostra a quantidade que o custeio calcularia para este associado "
+            "com dimensões de exemplo da peça principal."
+        )
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
+        self.simular_button.clicked.connect(self._abrir_simulador_quantidade)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -434,7 +446,184 @@ class DefPecaComponenteDialog(QDialog):
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
 
+    def _abrir_simulador_quantidade(self) -> None:
+        """Open the quantity simulator with the form's current configuration."""
+        regra_id = self.def_regra_quantidade_input.currentData()
+        regra = next(
+            (r for r in self._regras_disponiveis if r.id == regra_id), None
+        )
+        SimuladorQuantidadeAssociadoDialog(
+            regra=regra,
+            quantidade_fixa=Decimal(str(self.quantidade_input.value())),
+            modo_quantidade=self.modo_quantidade_input.currentData() or "TOTAL",
+            numero_topos=self.numero_topos_input.value(),
+            dimensao_referencia=self.dimensao_referencia_input.currentData() or COMP,
+            parent=self,
+        ).exec()
+
     def _empty_to_none(self, value: str) -> str | None:
         """Normalize empty text input."""
         normalized = value.strip()
         return normalized or None
+
+
+class SimuladorQuantidadeAssociadoDialog(QDialog):
+    """Live simulator of an associated component's calculated quantity.
+
+    Mirrors the costing rule exactly: the configurable expression rule (when
+    selected) is evaluated with COMP/LARG/ESP/QT_PAI/MEDIDA_TOPO/NUM_TOPOS,
+    otherwise the fixed quantity is used; 'Quantidade por topo' multiplies the
+    result by 1 or 2 tops.
+    """
+
+    def __init__(
+        self,
+        *,
+        regra,
+        quantidade_fixa: Decimal,
+        modo_quantidade: str,
+        numero_topos: int,
+        dimensao_referencia: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Simular quantidade do associado")
+        self.setModal(True)
+        self.setMinimumWidth(560)
+
+        self._regra = regra
+        self._quantidade_fixa = quantidade_fixa
+        self._modo_quantidade = modo_quantidade
+        self._numero_topos = numero_topos
+        self._dimensao_referencia = normalize_dimensao_referencia(dimensao_referencia)
+
+        if regra is not None:
+            config = QLabel(
+                f"Regra: {getattr(regra, 'codigo', '—')} — expressão "
+                f"«{getattr(regra, 'expressao', '')}»"
+            )
+        else:
+            config = QLabel(
+                "Sem regra de quantidade: usa a quantidade fixa "
+                f"{self._fmt(quantidade_fixa)} do formulário."
+            )
+        config.setWordWrap(True)
+
+        self.comp_input = QLineEdit("2000")
+        self.comp_input.setToolTip("COMP de exemplo da peça principal (mm).")
+        self.larg_input = QLineEdit("600")
+        self.larg_input.setToolTip("LARG de exemplo da peça principal (mm).")
+        self.esp_input = QLineEdit("19")
+        self.esp_input.setToolTip("ESP de exemplo da peça principal (mm).")
+        self.qt_pai_input = QLineEdit("1")
+        self.qt_pai_input.setToolTip("QT_PAI: quantidade da peça principal.")
+
+        self.resultado = QLabel("")
+        self.resultado.setWordWrap(True)
+
+        form = QFormLayout()
+        form.addRow("COMP peça principal (mm)", self.comp_input)
+        form.addRow("LARG peça principal (mm)", self.larg_input)
+        form.addRow("ESP peça principal (mm)", self.esp_input)
+        form.addRow("QT peça principal", self.qt_pai_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText("Fechar")
+        buttons.rejected.connect(self.reject)
+        buttons.clicked.connect(lambda _button: self.accept())
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(config)
+        layout.addLayout(form)
+        layout.addWidget(self.resultado)
+        layout.addWidget(buttons)
+
+        for widget in (
+            self.comp_input,
+            self.larg_input,
+            self.esp_input,
+            self.qt_pai_input,
+        ):
+            widget.textChanged.connect(self._recalcular)
+        self._recalcular()
+
+    def _recalcular(self) -> None:
+        comp = self._parse(self.comp_input.text())
+        larg = self._parse(self.larg_input.text())
+        esp = self._parse(self.esp_input.text())
+        qt_pai = self._parse(self.qt_pai_input.text()) or Decimal("1")
+
+        medida_topo = self._medida_topo(comp, larg, esp)
+        linhas = [
+            f"MEDIDA_TOPO ({self._dimensao_referencia}) = "
+            f"{self._fmt(medida_topo) if medida_topo is not None else '—'} mm; "
+            f"NUM_TOPOS = {self._numero_topos}"
+        ]
+
+        if self._regra is None:
+            base = self._quantidade_fixa
+            linhas.append(f"Quantidade fixa = {self._fmt(base)}")
+        else:
+            contexto = {
+                "COMP": comp,
+                "LARG": larg,
+                "ESP": esp,
+                "QT_PAI": qt_pai,
+                "MEDIDA_TOPO": medida_topo,
+                "NUM_TOPOS": self._numero_topos,
+            }
+            quantidade, motivo = avaliar_regra_quantidade(
+                getattr(self._regra, "expressao", None), contexto
+            )
+            if motivo is not None:
+                linhas.append(f"Regra não calculada: {motivo}")
+                self.resultado.setText("\n".join(linhas))
+                return
+            base = Decimal(quantidade)
+            linhas.append(f"Resultado da expressão = {self._fmt(base)}")
+
+        if self._modo_quantidade == POR_TOPO:
+            if self._numero_topos not in (1, 2):
+                linhas.append(
+                    "Quantidade por topo exige 1 ou 2 topos — corrija o "
+                    "'Número de topos'."
+                )
+                self.resultado.setText("\n".join(linhas))
+                return
+            total = base * Decimal(self._numero_topos)
+            linhas.append(
+                f"Quantidade por topo × {self._numero_topos} topo(s) = "
+                f"{self._fmt(total)}"
+            )
+        else:
+            total = base
+
+        linhas.append(
+            f"Quantidade do associado por peça principal (qt_und) = {self._fmt(total)}"
+        )
+        self.resultado.setText("\n".join(linhas))
+
+    def _medida_topo(self, comp, larg, esp):
+        """Resolve MEDIDA_TOPO like the costing (COMP/ESP explicit; else LARG)."""
+        if self._dimensao_referencia == COMP:
+            return comp
+        if self._dimensao_referencia == DIM_ESP:
+            return esp
+        # LARG and MEDIDA_TOPO (the short end) both map to LARG.
+        return larg
+
+    @staticmethod
+    def _parse(text: str) -> Decimal | None:
+        try:
+            return Decimal(text.strip().replace(",", ".")) if text.strip() else None
+        except InvalidOperation:
+            return None
+
+    @staticmethod
+    def _fmt(valor: Decimal | None) -> str:
+        if valor is None:
+            return ""
+        normalized = valor.normalize()
+        if normalized == normalized.to_integral_value():
+            normalized = normalized.quantize(Decimal("1"))
+        return format(normalized, "f").replace(".", ",")

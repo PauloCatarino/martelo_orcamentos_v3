@@ -994,9 +994,92 @@ Testes locais pedidos ao utilizador:
 5. variante com ação "Desativar": os campos ficam todos desativados com a
    explicação própria (comportamento anterior mantido).
 
-Validação recebida: pendente.
+Validação recebida: 2026-07-12 — o utilizador testou ANTES do merge (a app
+corria a pasta principal, então no branch codex/pecas-associados) e por isso
+não viu as alterações; aprovou avançar. A pasta principal foi mudada para o
+`main` e o G1 foi merged (fast-forward) para o utilizador testar na app.
+Pedido novo do utilizador: no fim de cada alteração, entregar um guião de
+testes DETALHADO com o caminho exato dos menus (registado na memória do
+assistente e aplicado a partir do G2).
 
-Commit: `Guia de configuracao G1 nos dialogos de operacoes`.
+Commit: `Guia de configuracao G1 nos dialogos de operacoes` (+ fix
+`Repor regra ao sair do rasgo e testar o guia no dialogo real`).
 
 Próximo passo recomendado: G2 — simulador completo com tarifa real da
 máquina, também no "Editar Associado".
+
+## G2 implementado — simulador com tarifas reais + Editar Associado (2026-07-12)
+
+Alterações implementadas:
+
+- `DefOperacaoResumo` passa a embutir as tarifas REAIS (STD) da máquina da
+  operação: custo/hora (STD e SÉRIE), €/ML de corte, € lado curto/longo +
+  limite mm, setup por peça — as mesmas colunas que o custeio usa.
+- Simulador por tempo ("Simular cálculo…"): o campo Custo/hora vem agora
+  pré-preenchido com o custo/hora real da máquina (antes vinha vazio na
+  maioria dos casos, porque só lia o custo/hora da própria operação).
+- NOVO simulador de tarifa de painel (`SimuladorTarifaPainelDialog`): para
+  operações de CORTE / ORLAGEM / CNC numa peça de painel, o botão
+  "Simular cálculo…" abre agora a decomposição em € com a tarifa real:
+  corte = perímetro × QT × €/ML + QT × setup; orlagem = lado a lado
+  (C1/C2/L1/L2, curto/longo conforme o limite) × QT + setup; CNC = área →
+  escalão de área da máquina (lidos da BD) → € por peça × QT. Em ferragens
+  continua a abrir o simulador por tempo; no CNC_RASGO o do rasgo.
+- NOVO "Simular quantidade…" no "Editar Associado"
+  (`SimuladorQuantidadeAssociadoDialog`): com COMP/LARG/ESP/QT de exemplo da
+  peça principal, mostra a MEDIDA_TOPO derivada da dimensão de referência,
+  o resultado da expressão da regra de quantidade (ou a quantidade fixa),
+  a multiplicação por topos no modo "Quantidade por topo" e o qt_und final —
+  exatamente a regra do custeio (`avaliar_regra_quantidade` + POR_TOPO).
+
+Decisões tomadas:
+
+- Tarifas do simulador são as STD (o custeio escolhe STD/SÉRIE pelo tipo do
+  item; o simulador documenta a base STD — SÉRIE fica para evolução).
+- Valores de exemplo pré-preenchidos: peça 600×400 mm (painel), peça
+  principal 2000×600×19 mm (associado), QT 1 — todos editáveis em direto.
+
+Testes automáticos: 1981 a passar (10 novos) — testes offscreen dos dois
+simuladores (corte 2,70 €, orlagem por lados, CNC por escalão,
+regra CEIL(MEDIDA_TOPO/300) × topos, quantidade fixa, erros amigáveis) e
+inspeção do read model com as tarifas.
+
+Guião de teste local (caminhos exatos):
+
+1. **Reiniciar a app** (pasta principal, agora no branch `main`).
+2. **Simulador de corte com tarifa real** — Catálogo Técnico → separador
+   Peças → abrir a peça `COSTA_ONS_0022` → separador Operações → selecionar
+   a linha 1 `CORTE_PAINEL` → botão "Editar Operação" → botão
+   "Simular cálculo…". DEVE abrir "Simular custo por tarifa da máquina" com
+   COMP 600 / LARG 400 / QT 1 e mostrar: perímetro 2 ML e o custo com o €/ML
+   real da máquina CORTE (linha cinzenta por baixo da operação mostra as
+   tarifas). Mudar COMP para 1000 → o custo recalcula em direto.
+3. **Simulador de orlagem** — mesma peça → linha 2 `ORLAGEM_PECA` → Editar
+   Operação → Simular cálculo…. Alterar o código de orlas (ex.: `1100`) e
+   ver o detalhe lado a lado (C1, C2) e o total; `0000` deve dar 0,00 €.
+4. **Simulador CNC por escalão** — mesma peça → linha 3 `CNC_MECANIZACAO` →
+   Editar Operação → Simular cálculo…. Com 600×400 deve indicar a área
+   0,24 m², o escalão correspondente da máquina CNC_VERTICAL e o preço por
+   peça; aumentar COMP/LARG muda de escalão. (Se a máquina não tiver
+   escalões ativos, aparece o aviso "escalões de área em falta" — configurar
+   em Operações/Máquinas.)
+5. **Custo/hora real no simulador por tempo** — mesma peça → linha 4
+   `EMBALAMENTO` (ou 5 `OPERACAO_MANUAL`) → Editar Operação → Simular
+   cálculo…. O campo "Custo/hora (€/h)" deve vir PRÉ-PREENCHIDO com o
+   custo/hora da máquina MANUAL (antes vinha vazio).
+6. **Painel-guia G1 (agora visível)** — no mesmo diálogo "Editar Operação da
+   Peça" deve aparecer uma CAIXA CINZENTA por baixo do formulário com a
+   fórmula ativa; muda em direto ao trocar a Operação / Unidade tempo.
+7. **Simular quantidade no Associado** — Catálogo Técnico → Peças → abrir
+   uma peça composta com associados (ex.: uma lateral/prateleira com
+   cavilhas) → separador Associados → Editar Associado → novo botão
+   "Simular quantidade…". Com uma regra de quantidade selecionada deve
+   mostrar: MEDIDA_TOPO derivada, resultado da expressão, multiplicação por
+   topos (se "Quantidade por topo") e o qt_und final; sem regra mostra a
+   quantidade fixa. Mudar LARG de 600 para 900 recalcula em direto.
+
+Validação recebida: pendente.
+
+Commit: `Simuladores com tarifas reais da maquina e quantidade do associado`.
+
+Próximo passo recomendado: G3 — receitas "Configurar como…".

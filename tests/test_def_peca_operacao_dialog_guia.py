@@ -34,6 +34,11 @@ def _operacao(id: int, codigo: str, tipo: str, **kw) -> DefOperacaoResumo:
         maquina_codigo=kw.get("maquina_codigo"),
         maquina_permite_rasgos=kw.get("permite_rasgos", False),
         maquina_preco_rasgo_ml_std=kw.get("preco_rasgo"),
+        maquina_preco_ml_std=kw.get("preco_ml"),
+        maquina_preco_lado_curto_std=kw.get("preco_lado_curto"),
+        maquina_preco_lado_longo_std=kw.get("preco_lado_longo"),
+        maquina_limite_lado_mm=kw.get("limite_lado"),
+        maquina_custo_setup_peca_std=kw.get("custo_setup_peca"),
     )
 
 
@@ -114,3 +119,78 @@ def test_acao_desativar_mostra_explicacao_propria() -> None:
 
     assert "desativa" in dialog.guia_label.text().lower()
     assert not dialog.quantidade_base_input.isEnabled()
+
+
+# --- G2: panel tariff simulator --------------------------------------------------
+
+
+def test_simulador_tarifa_corte_decompoe_em_euros() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import SimuladorTarifaPainelDialog
+
+    operacao = _operacao(
+        10, "CORTE_SEC", "CORTE",
+        preco_ml=Decimal("1.2"), custo_setup_peca=Decimal("0.3"),
+    )
+
+    dialog = SimuladorTarifaPainelDialog(bucket="corte", operacao=operacao, escaloes=[])
+    # COMP 600 + LARG 400 -> perímetro 2 ML; 2 × 1 × 1,2 + 1 × 0,3 = 2,70 €
+    texto = dialog.resultado.text()
+    assert "2 ML" in texto
+    assert "2,70 €" in texto
+
+
+def test_simulador_tarifa_orlagem_lista_lados() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import SimuladorTarifaPainelDialog
+
+    operacao = _operacao(
+        11, "ORLA_1", "ORLAGEM",
+        preco_lado_curto=Decimal("0.5"), preco_lado_longo=Decimal("0.8"),
+        limite_lado=Decimal("1500"),
+    )
+
+    dialog = SimuladorTarifaPainelDialog(bucket="orlagem", operacao=operacao, escaloes=[])
+    # Código 1111, 600/400 mm: 4 lados curtos × 0,5 € = 2,00 €
+    texto = dialog.resultado.text()
+    assert "C1" in texto and "L2" in texto
+    assert "2,00 €" in texto
+
+    dialog.orlas_input.setText("0000")
+    assert "custo 0,00 €" in dialog.resultado.text()
+
+
+def test_simulador_tarifa_cnc_usa_escalao_de_area() -> None:
+    from app.repositories.def_maquina_escalao_area_repository import (
+        DefMaquinaEscalaoAreaResumo,
+    )
+    from app.ui.dialogs.def_peca_operacao_dialog import SimuladorTarifaPainelDialog
+
+    escaloes = [
+        DefMaquinaEscalaoAreaResumo(
+            id=1, def_maquina_id=1, nivel=1, area_max_m2=Decimal("0.25"),
+            preco_peca_std=Decimal("1.5"), preco_peca_serie=None, ativo=True,
+        ),
+        DefMaquinaEscalaoAreaResumo(
+            id=2, def_maquina_id=1, nivel=2, area_max_m2=None,
+            preco_peca_std=Decimal("2.5"), preco_peca_serie=None, ativo=True,
+        ),
+    ]
+    operacao = _operacao(12, "CNC_STD", "CNC")
+
+    dialog = SimuladorTarifaPainelDialog(bucket="cnc", operacao=operacao, escaloes=escaloes)
+    # 600 × 400 = 0,24 m² -> escalão 1 (≤ 0,25) -> 1,5 € × QT 1
+    texto = dialog.resultado.text()
+    assert "0,24 m²" in texto
+    assert "1,50 €" in texto
+
+    dialog.comp_input.setText("1000")
+    dialog.larg_input.setText("500")  # 0,5 m² -> escalão 2 sem limite
+    assert "2,50 €" in dialog.resultado.text()
+
+
+def test_simular_abre_tarifa_para_paineis_e_tempo_para_ferragens() -> None:
+    import inspect
+
+    source = inspect.getsource(DefPecaOperacaoDialog._abrir_simulador)
+    assert "SimuladorTarifaPainelDialog" in source
+    assert "classificar_operacao" in source
+    assert "FERRAGEM" in source

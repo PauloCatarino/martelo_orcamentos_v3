@@ -25,6 +25,15 @@ from PySide6.QtGui import QColor, QFont
 
 from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
 from app.domain.custo_producao import calcular_comprimento_rasgo_ml, calcular_custo_rasgo_cnc
+from app.domain.custo_producao import (
+    calcular_custo_cnc,
+    calcular_custo_corte,
+    calcular_custo_orlagem_lados,
+    selecionar_escalao_area,
+)
+from app.domain.medidas import normalizar_numero
+from app.domain.peca_natureza_types import FERRAGEM
+from app.domain.tempos_producao import classificar_operacao
 from app.domain.operacao_guia import (
     CAMPO_QUANTIDADE_BASE,
     CAMPO_TEMPO_POR_UNIDADE,
@@ -502,7 +511,7 @@ class DefPecaOperacaoDialog(QDialog):
             widget.setToolTip(tooltip)
 
     def _abrir_simulador(self) -> None:
-        """Open the operation simulator using the current form values."""
+        """Open the simulator matching how the operation is actually costed."""
         operacao = self._operacao_selecionada()
         if getattr(operacao, "codigo", "") == "CNC_RASGO":
             SimuladorRasgoCncDialog(
@@ -510,6 +519,18 @@ class DefPecaOperacaoDialog(QDialog):
                 rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
                 preco_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
                 maquina_codigo=getattr(operacao, "maquina_codigo", None),
+                parent=self,
+            ).exec()
+            return
+        bucket = classificar_operacao(
+            getattr(operacao, "tipo_operacao", None), getattr(operacao, "codigo", None)
+        )
+        natureza = (self._natureza_peca or "").strip().upper() or None
+        if bucket in ("corte", "orlagem", "cnc") and natureza != FERRAGEM:
+            SimuladorTarifaPainelDialog(
+                bucket=bucket,
+                operacao=operacao,
+                escaloes=self._escaloes_da_operacao(operacao) if bucket == "cnc" else [],
                 parent=self,
             ).exec()
             return
@@ -547,7 +568,29 @@ class DefPecaOperacaoDialog(QDialog):
             custo = getattr(maquina, "custo_hora", None)
             if custo is not None:
                 return custo
-        return getattr(operacao, "maquina_custo_hora", None)
+        custo = getattr(operacao, "maquina_custo_hora", None)
+        if custo is not None:
+            return custo
+        # Real machine STD tariff embedded in the read model (phase G2).
+        return getattr(operacao, "maquina_custo_hora_std", None)
+
+    def _escaloes_da_operacao(self, operacao) -> list:
+        """Load the machine's active area tiers for the CNC simulator."""
+        maquina_id = getattr(operacao, "maquina_id", None)
+        if maquina_id is None:
+            return []
+        try:
+            from app.db.session import SessionLocal
+            from app.repositories.def_maquina_escalao_area_repository import (
+                DefMaquinaEscalaoAreaRepository,
+            )
+
+            with SessionLocal() as session:
+                return DefMaquinaEscalaoAreaRepository(session).list_active_by_maquina(
+                    maquina_id
+                )
+        except Exception:  # noqa: BLE001 - simulator must open even without DB
+            return []
 
     def _parse_decimal_input(self, widget: QLineEdit) -> Decimal | None:
         text = widget.text().strip()
@@ -644,6 +687,227 @@ class SimuladorRasgoCncDialog(QDialog):
     @staticmethod
     def _format_decimal(value: Decimal | None) -> str:
         return "" if value is None else format(value.normalize(), "f")
+
+
+class SimuladorTarifaPainelDialog(QDialog):
+    """Live € decomposition of a panel tariff operation (corte/orlagem/CNC).
+
+    Uses the REAL machine tariffs embedded in the operation read model and the
+    same pure cost helpers as the costing engine, so the simulated value always
+    matches the production cost of a panel line with these measures.
+    """
+
+    def __init__(self, *, bucket: str, operacao, escaloes: list, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Simular custo por tarifa da máquina")
+        self.setModal(True)
+        self.setMinimumWidth(560)
+
+        self._bucket = bucket
+        self._escaloes = list(escaloes or [])
+        self._preco_ml = getattr(operacao, "maquina_preco_ml_std", None)
+        self._preco_lado_curto = getattr(operacao, "maquina_preco_lado_curto_std", None)
+        self._preco_lado_longo = getattr(operacao, "maquina_preco_lado_longo_std", None)
+        self._limite_lado_mm = getattr(operacao, "maquina_limite_lado_mm", None)
+        self._custo_setup_peca = getattr(operacao, "maquina_custo_setup_peca_std", None)
+
+        operacao_texto = " - ".join(
+            parte
+            for parte in (
+                getattr(operacao, "codigo", None),
+                getattr(operacao, "nome", None),
+            )
+            if parte
+        )
+        titulo = QLabel(f"Operação: {operacao_texto or '—'}")
+        maquina = QLabel(self._texto_tarifas(getattr(operacao, "maquina_codigo", None)))
+        maquina.setWordWrap(True)
+        maquina.setStyleSheet("color: #666; font-size: 11px;")
+
+        self.comp_input = QLineEdit("600")
+        self.comp_input.setToolTip("Comprimento real da peça em milímetros.")
+        self.larg_input = QLineEdit("400")
+        self.larg_input.setToolTip("Largura real da peça em milímetros.")
+        self.qt_input = QLineEdit("1")
+        self.qt_input.setToolTip("Quantidade total de peças da linha.")
+        self.orlas_input = QLineEdit("1111")
+        self.orlas_input.setToolTip(
+            "Código de orlas C1 C2 L1 L2 (0 = sem orla, 1 = fina, 2 = grossa). "
+            "Só os lados com 1/2 são orlados."
+        )
+
+        self.resultado = QLabel("")
+        self.resultado.setWordWrap(True)
+
+        form = QFormLayout()
+        form.addRow("COMP real (mm)", self.comp_input)
+        form.addRow("LARG real (mm)", self.larg_input)
+        form.addRow("QT peças", self.qt_input)
+        if bucket == "orlagem":
+            form.addRow("Código orlas", self.orlas_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.button(QDialogButtonBox.StandardButton.Close).setText("Fechar")
+        buttons.rejected.connect(self.reject)
+        buttons.clicked.connect(lambda _button: self.accept())
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(titulo)
+        layout.addWidget(maquina)
+        layout.addLayout(form)
+        layout.addWidget(self.resultado)
+        layout.addWidget(buttons)
+
+        for widget in (self.comp_input, self.larg_input, self.qt_input, self.orlas_input):
+            widget.textChanged.connect(self._recalcular)
+        self._recalcular()
+
+    def _texto_tarifas(self, maquina_codigo: str | None) -> str:
+        nome = maquina_codigo or "—"
+        if self._bucket == "corte":
+            return (
+                f"Máquina {nome} — €/ML: {self._fmt_tarifa(self._preco_ml)} • "
+                f"setup/peça: {self._fmt_tarifa(self._custo_setup_peca)} €"
+            )
+        if self._bucket == "orlagem":
+            limite = self._limite_lado_mm
+            return (
+                f"Máquina {nome} — lado curto: {self._fmt_tarifa(self._preco_lado_curto)} € • "
+                f"lado longo: {self._fmt_tarifa(self._preco_lado_longo)} € • "
+                f"limite: {format_quantity(limite) if limite is not None else '1500'} mm • "
+                f"setup/peça: {self._fmt_tarifa(self._custo_setup_peca)} €"
+            )
+        return (
+            f"Máquina {nome} — {len(self._escaloes)} escalão(ões) de área ativos"
+        )
+
+    def _recalcular(self) -> None:
+        comp = self._parse(self.comp_input.text())
+        larg = self._parse(self.larg_input.text())
+        qt = self._parse(self.qt_input.text()) or Decimal("1")
+        if comp is None or larg is None:
+            self.resultado.setText("Preencha COMP e LARG para simular.")
+            return
+
+        if self._bucket == "corte":
+            self.resultado.setText(self._simular_corte(comp, larg, qt))
+        elif self._bucket == "orlagem":
+            self.resultado.setText(self._simular_orlagem(comp, larg, qt))
+        else:
+            self.resultado.setText(self._simular_cnc(comp, larg, qt))
+
+    def _simular_corte(self, comp: Decimal, larg: Decimal, qt: Decimal) -> str:
+        perimetro = (comp + larg) * Decimal("2") / Decimal("1000")
+        custo, _motivo = calcular_custo_corte(
+            perimetro, qt, self._preco_ml, self._custo_setup_peca
+        )
+        texto = (
+            f"Perímetro = 2 × ({format_quantity(comp)} + {format_quantity(larg)}) "
+            f"/ 1000 = {format_quantity(perimetro)} ML por peça"
+        )
+        if custo is None:
+            return f"{texto}\nSem custo: tarifa €/ML em falta na máquina."
+        setup = normalizar_numero(self._custo_setup_peca)
+        detalhe = (
+            f"{format_quantity(perimetro)} ML × QT {format_quantity(qt)} × "
+            f"{format_quantity(self._preco_ml)} €/ML"
+        )
+        if setup is not None:
+            detalhe += f" + QT × {format_quantity(setup)} € setup"
+        return f"{texto}\nCusto = {detalhe} = {format_currency(custo)}"
+
+    def _simular_orlagem(self, comp: Decimal, larg: Decimal, qt: Decimal) -> str:
+        codigo = self.orlas_input.text().strip()
+        custo, motivo = calcular_custo_orlagem_lados(
+            codigo,
+            comp,
+            larg,
+            qt,
+            self._preco_lado_curto,
+            self._preco_lado_longo,
+            self._limite_lado_mm,
+            self._custo_setup_peca,
+        )
+        linhas = [self._detalhe_lados_orlados(codigo, comp, larg)]
+        if custo is None:
+            if motivo == "SEM_TARIFA":
+                linhas.append("Sem custo: tarifas por lado orlado em falta na máquina.")
+            else:
+                linhas.append("Sem custo: dados em falta.")
+            return "\n".join(linhas)
+        if custo == 0:
+            return "Sem lados orlados (código 0000 ou inválido) → custo 0,00 €."
+        linhas.append(
+            f"Custo = soma dos lados × QT {format_quantity(qt)}"
+            + (
+                f" + QT × {format_quantity(self._custo_setup_peca)} € setup"
+                if normalizar_numero(self._custo_setup_peca) is not None
+                else ""
+            )
+            + f" = {format_currency(custo)}"
+        )
+        return "\n".join(linhas)
+
+    def _detalhe_lados_orlados(self, codigo: str, comp: Decimal, larg: Decimal) -> str:
+        from app.domain.orlas import digitos_orla
+
+        digitos = digitos_orla(codigo)
+        if digitos is None:
+            return "Código de orlas inválido."
+        limite = normalizar_numero(self._limite_lado_mm) or Decimal("1500")
+        nomes = ("C1", "C2", "L1", "L2")
+        medidas = (comp, comp, larg, larg)
+        partes = []
+        for nome, digito, medida in zip(nomes, digitos, medidas, strict=True):
+            if digito == 0:
+                continue
+            lado_curto = medida <= limite
+            tarifa = self._preco_lado_curto if lado_curto else self._preco_lado_longo
+            partes.append(
+                f"{nome} ({format_quantity(medida)} mm "
+                f"{'≤' if lado_curto else '>'} {format_quantity(limite)}) → "
+                f"lado {'curto' if lado_curto else 'longo'} "
+                f"{format_quantity(tarifa) if tarifa is not None else '—'} €"
+            )
+        if not partes:
+            return "Sem lados orlados no código indicado."
+        return "Lados orlados: " + "; ".join(partes)
+
+    def _simular_cnc(self, comp: Decimal, larg: Decimal, qt: Decimal) -> str:
+        area = comp * larg / Decimal("1000000")
+        custo, motivo = calcular_custo_cnc(area, qt, self._escaloes)
+        texto = (
+            f"Área = {format_quantity(comp)} × {format_quantity(larg)} / 1 000 000 "
+            f"= {format_quantity(area)} m² por peça"
+        )
+        if custo is None:
+            return (
+                f"{texto}\nSem custo: escalões de área em falta (ou nenhum escalão "
+                "cobre esta área) na máquina."
+            )
+        escalao = selecionar_escalao_area(self._escaloes, area)
+        limite = getattr(escalao, "area_max_m2", None)
+        preco = getattr(escalao, "preco_peca_std", None)
+        texto += (
+            f"\nEscalão nível {getattr(escalao, 'nivel', '—')} "
+            f"({'≤ ' + format_quantity(limite) + ' m²' if limite is not None else 'sem limite'}) "
+            f"→ {format_quantity(preco)} € por peça"
+        )
+        return (
+            f"{texto}\nCusto = {format_quantity(preco)} € × QT {format_quantity(qt)} "
+            f"= {format_currency(custo)}"
+        )
+
+    @staticmethod
+    def _fmt_tarifa(valor: Decimal | None) -> str:
+        return format_quantity(valor) if valor is not None else "—"
+
+    @staticmethod
+    def _parse(text: str) -> Decimal | None:
+        try:
+            return Decimal(text.strip().replace(",", ".")) if text.strip() else None
+        except InvalidOperation:
+            return None
 
 
 class SimuladorOperacaoDialog(QDialog):
