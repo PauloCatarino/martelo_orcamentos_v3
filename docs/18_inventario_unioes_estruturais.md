@@ -35,25 +35,46 @@ SUPORTE_PRATELEIRA por regra própria, zona DOIS_TOPOS), COSTAS (a variante
 cozinha COSTA_COM_CNC_0000_PENDURAIS leva NIVELADORES/PENDURAIS), portas e
 gavetas (ferragens próprias: dobradiças/corrediças/puxadores).
 
-## 3. Peças estruturais SEM uniões — decisão necessária (passo 2)
+## 3. Decisões do passo 2 — TOMADAS (12 de julho de 2026)
 
-Proposta pré-preenchida para o utilizador CONFIRMAR ou CORRIGIR, família a
-família. "Igual ao piloto" = cavilha P1 + parafuso P2, `UNIAO_TOPOS_128`,
-2 topos, POR_TOPO.
+O utilizador confirmou a regra-chave e configurou ele próprio as uniões na
+aplicação (verificado por releitura da base de dados):
 
-| Família / peça | Situação | Proposta | Decisão do utilizador |
-|---|---|---|---|
-| FUNDO_2000 | sem uniões (inconsistente com FUNDO_0000) | igual ao piloto | |
-| LATERAL_0000/1111/2000/2011/2022/2100/2111/2222 | sem uniões | NENHUMA união própria (recebem a furação via peça que encosta) | |
-| TRAVESSA_2200 / TRAVESSA_2222 | sem uniões | igual ao piloto (liga aos 2 topos entre laterais)? | |
-| PRUMO_2200 | sem uniões | a definir (prumo liga a quê? topo/fundo?) | |
-| TAMPO_2222 (PAINEIS ACABAMENTO) | sem uniões | a definir (aparafusado por baixo? sem união custeada?) | |
-| COSTAS (SEM/COM CNC, 0000/0022/2222) | sem uniões de topo | manter sem união (rasgo/agrafada); confirmar se a colocação leva operação | |
-| GAVETA (LADO/TRASEIRA/FUNDO/FRENTE) | montagem via MONTAGEM_GERAL no conjunto | manter (a união da caixa é montagem, não UNIAO_TOPOS)? | |
+| Família / peça | Decisão aplicada |
+|---|---|
+| LATERAIS (todas) | CONFIRMADO: nenhuma união própria — a união pertence à peça que encosta |
+| FUNDO_2000 | igual ao piloto (cavilha P1 + parafuso P2) ✅ configurado |
+| TRAVESSA_2200 / TRAVESSA_2222 | igual ao piloto (cavilha P1 + parafuso P2) ✅ configurado |
+| PRUMO_2200 | só cavilha P1 ✅ configurado |
+| TAMPO_2222 | só cavilha P1 ✅ configurado |
+| LADO_GAVETA / TRASEIRA_GAVETA | só cavilha P1 ✅ configurado (uniões da caixa custeadas) |
+| COSTAS | reorganizadas: `COSTA_INS_*` (inserida: +RASGO / +MEIA_MADEIRA / +RASGO+PENDURAIS) e `COSTA_ONS_*` (0000/0022/2222); sem união de topo |
+| ILUMINACAO | LED → FITA_LED + CALHA_LED (rasgo CNC em curso pelo Codex) |
 
-Nota: as LATERAIS ficarem sem união própria é a peça-chave do modelo — se o
-utilizador preferir o contrário (união na lateral), o piloto tem de ser
-reconfigurado ao contrário para nunca haver dupla contagem.
+Todas com `UNIAO_TOPOS_128`, zona DOIS_TOPOS, quantidade POR_TOPO — o modelo
+do piloto está generalizado de forma consistente.
+
+## 3b. Auditoria do Catálogo após a configuração (12 de julho, só-leitura)
+
+Resultado: 4 ERROS + 11 avisos + 9 informações. A corrigir pelo utilizador
+na aplicação:
+
+1. **CNC duplicado (4 erros)** — a mesma operação CNC está ativa no conjunto
+   E no filho/associado (contaria 2×):
+   - `COSTA_INS_0000+RASGO+PENDURAIS` × associado NIVELADORES/PENDURAIS
+     (CNC_VERTICAL) — desativar numa das origens;
+   - `PORTA_SIMPLES+DOBRADICA`, `PORTA_SIMPLES+DOBRADICA+PUXADOR` e
+     `PORTA_DUPLA+DOBRADICA+PUXADOR` × filho PORTA_SIMPLES (CNC_MECANIZACAO)
+     — desativar a CNC no CONJUNTO (a maquinação pertence à porta simples).
+2. **Orlagem sem orla (3 avisos)** — `COSTA_INS_0000+MEIA_MADEIRA`,
+   `FUNDO_0000` e `LATERAL_0000` têm ORLAGEM_PECA ativa com código de orlas
+   0000 — desativar a operação nessas variantes.
+3. **Módulos desatualizados (3 avisos)** — `1_MOD_2_PORTAS`, `MODULO_COZINHA`
+   e `PILOTO_CAIXOTE_SIMPLES` guardam o código antigo `COSTA_SEM_CNC_0000`
+   (a peça foi renomeada para `COSTA_INS_0000+RASGO`) — substituir os módulos
+   a partir de um custeio atualizado quando conveniente.
+4. Os avisos `CNC_PECA_E_ASSOCIADO` das portas (dobradiça/puxador) e as
+   informações (regras sem uso, substituições ValueSet) são esperados.
 
 ## 4. Relações topo/lateral (quem encosta a quem)
 
@@ -98,13 +119,25 @@ O V3 tem 61 peças ativas vs ~150 entradas no V2; a estratégia confirmada é
 menos peças + variantes por ValueSet/prioridade, pelo que NÃO se pretende
 migração 1:1.
 
-## 7. Próximos passos propostos
+## 7. Próximos passos (atualizado 12 de julho de 2026)
 
-1. Utilizador preenche a coluna "Decisão" da tabela do ponto 3 (pode ser em
-   conversa, família a família).
-2. Corrigir as inconsistências do ponto 5 (algumas são configuração manual
-   do utilizador; a normalização do ponto 5.2 e a proteção do 5.1 são código).
-3. Aplicar as uniões decididas às peças (utilizador na app, com a Auditoria
-   do Catálogo a validar: 0 ocorrências `UNIAO_*`/`CNC_DUPLICADO_*`).
-4. Só depois: módulo caixote de teste completo (teto+fundo+laterais+
-   divisória+prateleiras+costa+porta) e verificação dos consumos por máquina.
+Estado: passos 1 e 2 concluídos; passo 3 (aplicar uniões) feito pelo
+utilizador para as famílias principais. Em aberto:
+
+1. Utilizador corrige na app as ocorrências do ponto 3b (4 erros CNC
+   duplicado + 3 avisos de orlagem) e recorre a Auditoria até 0 erros.
+2. NOTA DE COORDENAÇÃO: o Codex tem em curso (não commitado, na pasta
+   principal) a funcionalidade "rasgos CNC por comprimento geométrico"
+   (migrações `20260720_59` e `20260721_60`), a partir da branch
+   `codex/pecas-associados`, que NÃO inclui a Fase C já no `main`. Quando o
+   Codex commitar, é preciso fazer um merge cuidado das duas linhas (ambas
+   tocam no serviço de custeio e no doc 17) ANTES de mais alterações de
+   código nesta área.
+3. Depois do merge: proteções/normalizações de código pendentes — placeholder
+   "Selecionar origem…" rejeitado no diálogo da peça; normalizar a ligação a
+   SISTEMAS_UNIAO (peça-filha vs referência); alertas no custeio para uniões
+   incompletas (passo 5 do plano) e auditorias adicionais (passo 6).
+4. Módulo caixote de teste completo (teto+fundo+laterais+divisória+
+   prateleiras+costa+porta) e verificação dos consumos por máquina (passo 7).
+5. Completar as fórmulas `PAI_*` na `GAVETA_CAIXA_MADEIRA+PUXADOR` e a
+   orientação da `TRAVESSA_2222` (dados, na app).
