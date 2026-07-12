@@ -37,7 +37,10 @@ from app.services.def_valueset_modelo_linha_operacao_service import (
     EditarDefValuesetModeloLinhaOperacaoData,
 )
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
-from app.ui.dialogs.valueset_linha_operacoes_dialog import ValuesetLinhaOperacoesDialog
+from app.ui.dialogs.valueset_linha_operacoes_dialog import (
+    ValuesetLinhaOperacoesDialog,
+    carregar_configuracoes_para_sugestoes,
+)
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     natureza_peca_da_chave,
@@ -320,6 +323,9 @@ class DefValuesetModeloLinhaDialog(QDialog):
             parent=self,
             natureza_peca=natureza_peca_da_chave(
                 obter_valor_chave_combo(self.chave_input)
+            ),
+            configuracoes_existentes=carregar_configuracoes_para_sugestoes(
+                excluir_modelo_linha_id=linha_id
             ),
         )
         dialog.exec()

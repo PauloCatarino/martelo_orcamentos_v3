@@ -45,6 +45,29 @@ def test_corte_em_peca_de_painel_usa_tarifa() -> None:
     assert not any("FERRAGEM" in linha for linha in guia.linhas)
 
 
+def test_tarifa_com_tempos_preenchidos_avisa_que_nao_contam() -> None:
+    # G4 reinforcement: hinge-cup drilling times configured on a PANEL piece.
+    guia = _guia(
+        tipo_operacao="CNC",
+        codigo="CNC_VERTICAL",
+        natureza_peca="MATERIAL",
+        unidade_tempo="FURO",
+        quantidade_base=Decimal("3"),
+        tempo_por_unidade_minutos=Decimal("0.04"),
+    )
+
+    assert guia.modo == MODO_TARIFA
+    assert any("ATENÇÃO" in linha for linha in guia.linhas)
+    assert any("NÃO entram no custo" in linha for linha in guia.linhas)
+
+
+def test_tarifa_sem_tempos_nao_mostra_o_aviso_reforcado() -> None:
+    guia = _guia(tipo_operacao="CNC", codigo="CNC_VERTICAL", natureza_peca="MATERIAL")
+
+    assert guia.modo == MODO_TARIFA
+    assert not any("ATENÇÃO" in linha for linha in guia.linhas)
+
+
 def test_orlagem_explica_lados_orlados() -> None:
     guia = _guia(tipo_operacao="ORLAGEM", codigo="ORLA_1", natureza_peca="MATERIAL")
 

@@ -34,9 +34,14 @@ from app.domain.associado_types import (
     MODO_QUANTIDADE_LABELS,
     ZONA_APLICACAO_LABELS,
 )
+from app.domain.configuracao_sugestoes import ORIGEM_PECA
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
 from app.domain.valueset_types import VALUESET_KEY_LABELS
+from app.repositories.configuracao_sugestoes_repository import (
+    listar_configuracoes_associado,
+    listar_configuracoes_operacao,
+)
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
@@ -455,6 +460,7 @@ class DefPecaDetailPage(QWidget):
             parent=self,
             on_save=handle_save,
             regras_disponiveis=self._carregar_regras_quantidade(),
+            configuracoes_existentes=self._carregar_configuracoes_associado(),
         )
         if dialog.exec() and saved:
             self.recarregar_componentes()
@@ -518,6 +524,7 @@ class DefPecaDetailPage(QWidget):
             parent=self,
             on_save=handle_save,
             regras_disponiveis=self._carregar_regras_quantidade(),
+            configuracoes_existentes=self._carregar_configuracoes_associado(),
         )
         if dialog.exec() and saved:
             self.recarregar_componentes()
@@ -574,6 +581,33 @@ class DefPecaDetailPage(QWidget):
                 return DefRegraQuantidadeService(session).listar_ativas()
         except SQLAlchemyError:
             return []
+
+    def _carregar_configuracoes_operacao(self) -> list:
+        """Copy-suggestion sources (G4), excluding this piece's own links."""
+        try:
+            with SessionLocal() as session:
+                configs = listar_configuracoes_operacao(session)
+        except SQLAlchemyError:
+            return []
+        return [
+            config
+            for config in configs
+            if not (
+                config.origem_tipo == ORIGEM_PECA
+                and config.origem_id == self.peca.id
+            )
+        ]
+
+    def _carregar_configuracoes_associado(self) -> list:
+        """Copy-suggestion sources (G4), excluding this piece's own components."""
+        try:
+            with SessionLocal() as session:
+                configs = listar_configuracoes_associado(session)
+        except SQLAlchemyError:
+            return []
+        return [
+            config for config in configs if config.def_peca_pai_id != self.peca.id
+        ]
 
     def _create_operacoes_tab(self) -> QWidget:
         """Create the operations tab with management actions."""
@@ -752,6 +786,7 @@ class DefPecaDetailPage(QWidget):
             parent=self,
             on_save=handle_save,
             natureza_peca=getattr(self.peca, "natureza", None),
+            configuracoes_existentes=self._carregar_configuracoes_operacao(),
         )
         if dialog.exec() and saved:
             self.recarregar_operacoes()
@@ -806,6 +841,7 @@ class DefPecaDetailPage(QWidget):
             parent=self,
             on_save=handle_save,
             natureza_peca=getattr(self.peca, "natureza", None),
+            configuracoes_existentes=self._carregar_configuracoes_operacao(),
         )
         if dialog.exec() and saved:
             self.recarregar_operacoes()

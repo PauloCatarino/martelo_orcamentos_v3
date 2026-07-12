@@ -48,6 +48,10 @@ from app.domain.operacao_receitas import (
     CAMPO_REGRA_CALCULO,
     get_receitas_operacao,
 )
+from app.domain.configuracao_sugestoes import (
+    ConfigOperacaoExistente,
+    construir_sugestoes_operacao,
+)
 from app.domain.regra_operacao_types import FIXA, RASGO_CNC
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.domain.operacao_acao_types import (
@@ -162,6 +166,7 @@ class DefPecaOperacaoDialog(QDialog):
         on_save: Callable[[DefPecaOperacaoDialogData], bool] | None = None,
         mostrar_acao: bool = False,
         natureza_peca: str | None = None,
+        configuracoes_existentes: list[ConfigOperacaoExistente] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -170,6 +175,8 @@ class DefPecaOperacaoDialog(QDialog):
         self._is_edit = ligacao is not None
         self._mostrar_acao = mostrar_acao
         self._natureza_peca = natureza_peca
+        self._configuracoes_existentes = configuracoes_existentes
+        self._sugestoes_atual: list = []
         self._regra_rasgo_automatica = False
         self._operacoes_por_id = {
             operacao.id: operacao for operacao in operacoes_disponiveis
@@ -217,6 +224,18 @@ class DefPecaOperacaoDialog(QDialog):
             "(regra, unidade, tempos). Os valores ficam editáveis."
         )
         self.receita_input.currentIndexChanged.connect(self._aplicar_receita_selecionada)
+
+        # G4: deterministic copy suggestions from configurations that already
+        # exist for the selected operation (other pieces / ValueSet lines).
+        self.sugestao_input = QComboBox()
+        self.sugestao_input.setToolTip(
+            "Configurações já existentes desta operação noutras peças ou "
+            "linhas ValueSet. Escolher uma copia os valores (regra, "
+            "quantidade, tempos, unidade) para este formulário."
+        )
+        self.sugestao_input.currentIndexChanged.connect(
+            self._aplicar_sugestao_selecionada
+        )
 
         self.regra_calculo_input = QComboBox()
         for code, label in get_regra_operacao_options():
@@ -312,6 +331,11 @@ class DefPecaOperacaoDialog(QDialog):
         self.acao_input.setVisible(mostrar_acao)
         form.addRow("Ordem", self.ordem_input)
         form.addRow("Configurar como…", self.receita_input)
+        self.sugestao_label = QLabel("Copiar configuração de…")
+        form.addRow(self.sugestao_label, self.sugestao_input)
+        if configuracoes_existentes is None:
+            self.sugestao_label.setVisible(False)
+            self.sugestao_input.setVisible(False)
         form.addRow("Regra cálculo", self.regra_calculo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
         self.rasgo_comp_label = QLabel("N.º comprimentos do rasgo")
@@ -356,10 +380,13 @@ class DefPecaOperacaoDialog(QDialog):
         layout.addWidget(self.button_box)
         self.setLayout(layout)
 
+        self.operacao_input.currentIndexChanged.connect(self._atualizar_sugestoes)
+
         if ligacao is not None:
             self._load_ligacao(ligacao)
         self._update_acao_fields()
         self._update_rasgo_fields()
+        self._atualizar_sugestoes()
 
     def _load_ligacao(self, ligacao: DefPecaOperacaoResumo) -> None:
         """Populate the form with an existing link."""
@@ -461,6 +488,7 @@ class DefPecaOperacaoDialog(QDialog):
             widget.setEnabled(not desativar)
         self.simular_button.setEnabled(not desativar)
         self.receita_input.setEnabled(not desativar)
+        self.sugestao_input.setEnabled(not desativar and bool(self._sugestoes_atual))
         self._atualizar_guia()
 
     def _update_rasgo_fields(self) -> None:
@@ -521,7 +549,28 @@ class DefPecaOperacaoDialog(QDialog):
                 return
             self.operacao_input.setCurrentIndex(indice)
 
-        valores = receita.valores
+        self._preencher_valores(receita.valores)
+
+        self.error_label.clear()
+        foco = self._campos_texto_valores().get(receita.foco) or {
+            CAMPO_RASGO_QT_COMP: self.rasgo_qt_comp_input,
+            CAMPO_RASGO_QT_LARG: self.rasgo_qt_larg_input,
+        }.get(receita.foco)
+        if foco is not None:
+            foco.setFocus()
+            if isinstance(foco, QLineEdit):
+                foco.selectAll()
+
+    def _campos_texto_valores(self) -> dict:
+        """Map recipe/suggestion text-field keys to the dialog widgets."""
+        return {
+            CAMPO_QUANTIDADE_BASE: self.quantidade_base_input,
+            CAMPO_TEMPO_SETUP: self.tempo_setup_input,
+            CAMPO_TEMPO_POR_UNIDADE: self.tempo_por_unidade_input,
+        }
+
+    def _preencher_valores(self, valores: dict) -> None:
+        """Fill the form fields present in a recipe/suggestion values dict."""
         if CAMPO_REGRA_CALCULO in valores:
             self._select_regra(valores[CAMPO_REGRA_CALCULO])
         if CAMPO_UNIDADE_TEMPO in valores:
@@ -530,12 +579,7 @@ class DefPecaOperacaoDialog(QDialog):
             )
             if indice_unidade >= 0:
                 self.unidade_tempo_input.setCurrentIndex(indice_unidade)
-        campos_texto = {
-            CAMPO_QUANTIDADE_BASE: self.quantidade_base_input,
-            CAMPO_TEMPO_SETUP: self.tempo_setup_input,
-            CAMPO_TEMPO_POR_UNIDADE: self.tempo_por_unidade_input,
-        }
-        for campo, widget in campos_texto.items():
+        for campo, widget in self._campos_texto_valores().items():
             if campo in valores:
                 widget.setText(str(valores[campo]))
         if CAMPO_RASGO_QT_COMP in valores:
@@ -543,15 +587,45 @@ class DefPecaOperacaoDialog(QDialog):
         if CAMPO_RASGO_QT_LARG in valores:
             self.rasgo_qt_larg_input.setValue(int(valores[CAMPO_RASGO_QT_LARG]))
 
+    def _atualizar_sugestoes(self) -> None:
+        """Rebuild the copy suggestions for the currently selected operation."""
+        if self._configuracoes_existentes is None:
+            return
+        self._sugestoes_atual = construir_sugestoes_operacao(
+            self._configuracoes_existentes, self.operacao_input.currentData()
+        )
+        combo = self.sugestao_input
+        combo.blockSignals(True)
+        combo.clear()
+        if self._sugestoes_atual:
+            combo.addItem("— escolher configuração a copiar —", None)
+            for indice, sugestao in enumerate(self._sugestoes_atual):
+                combo.addItem(sugestao.label, indice)
+                combo.setItemData(
+                    combo.count() - 1,
+                    sugestao.detalhe,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        else:
+            combo.addItem("— sem configurações desta operação para copiar —", None)
+        combo.blockSignals(False)
+        combo.setEnabled(bool(self._sugestoes_atual) and not self._acao_desativar())
+
+    def _aplicar_sugestao_selecionada(self) -> None:
+        """Copy the chosen existing configuration into the form."""
+        indice = self.sugestao_input.currentData()
+        # Reset to the placeholder so the same suggestion can be re-applied.
+        self.sugestao_input.blockSignals(True)
+        self.sugestao_input.setCurrentIndex(0)
+        self.sugestao_input.blockSignals(False)
+        if indice is None or indice >= len(self._sugestoes_atual):
+            return
+
+        self._preencher_valores(self._sugestoes_atual[indice].valores)
         self.error_label.clear()
-        foco = campos_texto.get(receita.foco) or {
-            CAMPO_RASGO_QT_COMP: self.rasgo_qt_comp_input,
-            CAMPO_RASGO_QT_LARG: self.rasgo_qt_larg_input,
-        }.get(receita.foco)
-        if foco is not None:
-            foco.setFocus()
-            if isinstance(foco, QLineEdit):
-                foco.selectAll()
+        if self.quantidade_base_input.isEnabled():
+            self.quantidade_base_input.setFocus()
+            self.quantidade_base_input.selectAll()
 
     def _widgets_guia(self) -> dict:
         """Map the guide's field keys to the dialog widgets."""

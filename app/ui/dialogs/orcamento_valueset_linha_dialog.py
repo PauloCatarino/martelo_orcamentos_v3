@@ -36,7 +36,10 @@ from app.services.orcamento_valueset_linha_operacao_service import (
     OrcamentoValuesetLinhaOperacaoService,
 )
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
-from app.ui.dialogs.valueset_linha_operacoes_dialog import ValuesetLinhaOperacoesDialog
+from app.ui.dialogs.valueset_linha_operacoes_dialog import (
+    ValuesetLinhaOperacoesDialog,
+    carregar_configuracoes_para_sugestoes,
+)
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     natureza_peca_da_chave,
@@ -289,6 +292,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             natureza_peca=natureza_peca_da_chave(
                 obter_valor_chave_combo(self.chave_input)
             ),
+            configuracoes_existentes=carregar_configuracoes_para_sugestoes(),
         )
         dialog.exec()
         if dialog.alterado:

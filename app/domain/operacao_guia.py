@@ -96,7 +96,11 @@ def construir_guia_operacao(
         return _guia_sem_custeio()
 
     if bucket in _BUCKETS_TARIFA and natureza != FERRAGEM:
-        return _guia_tarifa(bucket, natureza)
+        tempos_preenchidos = (
+            tempo_setup_minutos is not None
+            or tempo_por_unidade_minutos is not None
+        )
+        return _guia_tarifa(bucket, natureza, tempos_preenchidos)
 
     return _guia_tempo(
         bucket,
@@ -131,12 +135,24 @@ def _guia_sem_custeio() -> GuiaOperacao:
     )
 
 
-def _guia_tarifa(bucket: str, natureza: str | None) -> GuiaOperacao:
+def _guia_tarifa(
+    bucket: str, natureza: str | None, tempos_preenchidos: bool = False
+) -> GuiaOperacao:
     linhas = [
         _FORMULAS_TARIFA[bucket],
         "As tarifas vêm da máquina da operação (STD/SÉRIE conforme o item).",
         NOTA_TEMPOS_INFORMATIVOS,
     ]
+    if tempos_preenchidos:
+        # Reinforced warning (G4): the user DID fill times on a tariff-mode
+        # operation — e.g. hinge-cup drilling configured on a panel piece.
+        linhas.insert(
+            0,
+            "⚠️ ATENÇÃO: os tempos que preencheu NÃO entram no custo desta "
+            "operação — numa peça de painel o custo vem da tarifa da máquina. "
+            "Para custear estes tempos (ex.: furação de uma dobradiça), "
+            "configure a operação na peça ou linha ValueSet de FERRAGEM.",
+        )
     if natureza is None:
         linhas.append(
             "Nota: numa peça de FERRAGEM esta operação contaria por tempo: "

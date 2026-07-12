@@ -49,6 +49,13 @@ from app.domain.operacao_receitas import (
     CAMPO_ZONA_APLICACAO,
     get_receitas_associado,
 )
+from app.domain.configuracao_sugestoes import (
+    CAMPO_FORMULA_COMP,
+    CAMPO_FORMULA_ESP,
+    CAMPO_FORMULA_LARG,
+    ConfigAssociadoExistente,
+    construir_sugestoes_associado,
+)
 from app.domain.regra_quantidade_types import (
     FIXA,
     get_regra_quantidade_options,
@@ -102,6 +109,7 @@ class DefPecaComponenteDialog(QDialog):
         parent=None,
         on_save: Callable[[DefPecaComponenteDialogData], bool] | None = None,
         regras_disponiveis: list | None = None,
+        configuracoes_existentes: list[ConfigAssociadoExistente] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -110,6 +118,8 @@ class DefPecaComponenteDialog(QDialog):
         self._is_edit = componente is not None
         self._pecas_disponiveis = list(pecas_disponiveis)
         self._regras_disponiveis = list(regras_disponiveis or [])
+        self._configuracoes_existentes = configuracoes_existentes
+        self._sugestoes_atual: list = []
 
         self.setWindowTitle("Editar Associado" if self._is_edit else "Novo Associado")
         self.setModal(True)
@@ -130,6 +140,18 @@ class DefPecaComponenteDialog(QDialog):
             "(zona, topos, modo, dimensão). Os valores ficam editáveis."
         )
         self.receita_input.currentIndexChanged.connect(self._aplicar_receita_selecionada)
+
+        # G4: deterministic copy suggestions from the SAME component (piece or
+        # reference) already configured on other parent pieces.
+        self.sugestao_input = QComboBox()
+        self.sugestao_input.setToolTip(
+            "Configurações deste componente já usadas noutras peças. Escolher "
+            "uma copia os valores (quantidade, regra, zona, topos, fórmulas) "
+            "para este formulário."
+        )
+        self.sugestao_input.currentIndexChanged.connect(
+            self._aplicar_sugestao_selecionada
+        )
 
         self.tipo_componente_input = QComboBox()
         for code, label in get_componente_type_options():
@@ -270,6 +292,11 @@ class DefPecaComponenteDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Configurar como…", self.receita_input)
+        self.sugestao_label = QLabel("Copiar configuração de…")
+        form.addRow(self.sugestao_label, self.sugestao_input)
+        if configuracoes_existentes is None:
+            self.sugestao_label.setVisible(False)
+            self.sugestao_input.setVisible(False)
         form.addRow("Tipo de componente", self.tipo_componente_input)
         form.addRow(self.peca_componente_label, self.peca_componente_input)
         form.addRow(self.referencia_label, self.referencia_row)
@@ -315,6 +342,13 @@ class DefPecaComponenteDialog(QDialog):
         self.setLayout(layout)
 
         self.tipo_componente_input.currentIndexChanged.connect(self._update_tipo_fields)
+        self.tipo_componente_input.currentIndexChanged.connect(
+            self._atualizar_sugestoes
+        )
+        self.peca_componente_input.currentIndexChanged.connect(
+            self._atualizar_sugestoes
+        )
+        self.referencia_input.textChanged.connect(self._atualizar_sugestoes)
 
         if componente is not None:
             self._load_componente(componente)
@@ -323,6 +357,7 @@ class DefPecaComponenteDialog(QDialog):
             self.ordem_input.setVisible(False)
 
         self._update_tipo_fields()
+        self._atualizar_sugestoes()
 
     def _load_componente(self, componente: DefPecaComponenteResumo) -> None:
         """Populate the form with an existing component."""
@@ -489,28 +524,86 @@ class DefPecaComponenteDialog(QDialog):
         if receita is None:
             return
 
-        valores = receita.valores
-        combos = {
+        self._preencher_valores(receita.valores)
+
+        self.error_label.clear()
+        foco = self._combos_valores().get(receita.foco) or (
+            self.quantidade_input if receita.foco == CAMPO_QUANTIDADE else None
+        )
+        if foco is not None:
+            foco.setFocus()
+
+    def _combos_valores(self) -> dict:
+        """Map recipe/suggestion combo keys to the dialog widgets."""
+        return {
             CAMPO_REGRA_QUANTIDADE: self.regra_quantidade_input,
             CAMPO_DEF_REGRA_QUANTIDADE: self.def_regra_quantidade_input,
             CAMPO_ZONA_APLICACAO: self.zona_aplicacao_input,
             CAMPO_DIMENSAO_REFERENCIA: self.dimensao_referencia_input,
             CAMPO_MODO_QUANTIDADE: self.modo_quantidade_input,
         }
-        for campo, combo in combos.items():
+
+    def _preencher_valores(self, valores: dict) -> None:
+        """Fill the form fields present in a recipe/suggestion values dict."""
+        for campo, combo in self._combos_valores().items():
             if campo in valores:
                 self._select_combo_data(combo, valores[campo])
         if CAMPO_QUANTIDADE in valores:
             self.quantidade_input.setValue(float(valores[CAMPO_QUANTIDADE]))
         if CAMPO_NUMERO_TOPOS in valores:
             self.numero_topos_input.setValue(int(valores[CAMPO_NUMERO_TOPOS]))
+        campos_formula = {
+            CAMPO_FORMULA_COMP: self.formula_comp_input,
+            CAMPO_FORMULA_LARG: self.formula_larg_input,
+            CAMPO_FORMULA_ESP: self.formula_esp_input,
+        }
+        for campo, widget in campos_formula.items():
+            if campo in valores:
+                widget.setText(str(valores[campo]))
 
-        self.error_label.clear()
-        foco = combos.get(receita.foco) or (
-            self.quantidade_input if receita.foco == CAMPO_QUANTIDADE else None
+    def _atualizar_sugestoes(self) -> None:
+        """Rebuild the copy suggestions for the selected component/reference."""
+        if self._configuracoes_existentes is None:
+            return
+        is_peca = self.tipo_componente_input.currentData() == PECA
+        self._sugestoes_atual = construir_sugestoes_associado(
+            self._configuracoes_existentes,
+            def_peca_componente_id=(
+                self.peca_componente_input.currentData() if is_peca else None
+            ),
+            referencia_componente=(
+                None if is_peca else self.referencia_input.text()
+            ),
         )
-        if foco is not None:
-            foco.setFocus()
+        combo = self.sugestao_input
+        combo.blockSignals(True)
+        combo.clear()
+        if self._sugestoes_atual:
+            combo.addItem("— escolher configuração a copiar —", None)
+            for indice, sugestao in enumerate(self._sugestoes_atual):
+                combo.addItem(sugestao.label, indice)
+                combo.setItemData(
+                    combo.count() - 1,
+                    sugestao.detalhe,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        else:
+            combo.addItem("— sem configurações deste componente para copiar —", None)
+        combo.blockSignals(False)
+        combo.setEnabled(bool(self._sugestoes_atual))
+
+    def _aplicar_sugestao_selecionada(self) -> None:
+        """Copy the chosen existing configuration into the form."""
+        indice = self.sugestao_input.currentData()
+        # Reset to the placeholder so the same suggestion can be re-applied.
+        self.sugestao_input.blockSignals(True)
+        self.sugestao_input.setCurrentIndex(0)
+        self.sugestao_input.blockSignals(False)
+        if indice is None or indice >= len(self._sugestoes_atual):
+            return
+
+        self._preencher_valores(self._sugestoes_atual[indice].valores)
+        self.error_label.clear()
 
     def _abrir_simulador_quantidade(self) -> None:
         """Open the quantity simulator with the form's current configuration."""

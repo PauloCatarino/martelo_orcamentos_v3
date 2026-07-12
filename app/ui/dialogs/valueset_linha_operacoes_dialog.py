@@ -19,8 +19,12 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.configuracao_sugestoes import ORIGEM_MODELO_LINHA
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.operacao_acao_types import get_operacao_acao_label
+from app.repositories.configuracao_sugestoes_repository import (
+    listar_configuracoes_operacao,
+)
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.services.def_maquina_service import DefMaquinaService
 from app.services.def_operacao_service import DefOperacaoService
@@ -36,6 +40,31 @@ ListarOperacoesCallable = Callable[[], list]
 GuardarOperacaoCallable = Callable[[DefPecaOperacaoDialogData], None]
 EditarOperacaoCallable = Callable[[int, DefPecaOperacaoDialogData], None]
 AlternarOperacaoCallable = Callable[[object], None]
+
+
+def carregar_configuracoes_para_sugestoes(
+    excluir_modelo_linha_id: int | None = None,
+) -> list:
+    """Load the G4 copy-suggestion sources for a line operation manager.
+
+    Optionally excludes the configurations of one ValueSet model line (the
+    line being edited must not suggest copying itself).
+    """
+    try:
+        with SessionLocal() as session:
+            configs = listar_configuracoes_operacao(session)
+    except SQLAlchemyError:
+        return []
+    if excluir_modelo_linha_id is None:
+        return configs
+    return [
+        config
+        for config in configs
+        if not (
+            config.origem_tipo == ORIGEM_MODELO_LINHA
+            and config.origem_id == excluir_modelo_linha_id
+        )
+    ]
 
 
 class ValuesetLinhaOperacoesDialog(QDialog):
@@ -68,6 +97,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         alternar_operacao: AlternarOperacaoCallable,
         parent=None,
         natureza_peca: str | None = None,
+        configuracoes_existentes: list | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -76,6 +106,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         self._editar_operacao = editar_operacao
         self._alternar_operacao = alternar_operacao
         self._natureza_peca = natureza_peca
+        self._configuracoes_existentes = configuracoes_existentes
         self.operacoes_linha: list = []
         self._operacoes_by_row: dict[int, object] = {}
         self._operacao_resumos: dict[int, DefOperacaoResumo] = {}
@@ -219,6 +250,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             on_save=handle_save,
             mostrar_acao=True,
             natureza_peca=self._natureza_peca,
+            configuracoes_existentes=self._configuracoes_existentes,
         )
         if dialog.exec() and saved:
             self.alterado = True
@@ -255,6 +287,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             on_save=handle_save,
             mostrar_acao=True,
             natureza_peca=self._natureza_peca,
+            configuracoes_existentes=self._configuracoes_existentes,
         )
         if dialog.exec() and saved:
             self.alterado = True

@@ -1166,3 +1166,85 @@ Próximo passo recomendado: G4 — sugestão por semelhança ("Copiar
 configuração de X"): ao criar operação/associado, procurar configurações
 existentes na mesma categoria/chave e propor copiar (determinístico; a
 camada IA generativa fica para a visão futura).
+
+## G4 implementado — sugestão por semelhança "Copiar configuração de…" (2026-07-12)
+
+Alterações implementadas:
+
+- Novo domínio puro `app/domain/configuracao_sugestoes.py`: dado o conjunto
+  de configurações EXISTENTES da mesma operação (ou do mesmo componente
+  associado), agrupa as configurações idênticas numa só sugestão, ordena por
+  n.º de utilizações (desempate: mais recente, depois nome da origem) e
+  produz um resumo humano (ex.: "4 furo(s) × 0,04 min, setup 0,5 min" ou
+  "regra CAV300, por topo × 2, Medida do topo"). Determinístico, sem IA.
+- Novo repositório `app/repositories/configuracao_sugestoes_repository.py`:
+  fontes das sugestões de operação = ligações ativas `DefPecaOperacao`
+  (com a peça) + operações ativas de linhas de MODELO ValueSet
+  (`DefValuesetModeloLinhaOperacao`, com modelo › chave: opção). As
+  operações de linhas de orçamento/item são cópias por orçamento e ficaram
+  de fora de propósito. Associados = `DefPecaComponente` ativos (com a peça
+  pai e o código da regra de quantidade).
+- "Editar Operação da Peça": novo campo **"Copiar configuração de…"** por
+  baixo do "Configurar como…". Atualiza ao mudar a Operação; sem
+  configurações existentes mostra "— sem configurações desta operação para
+  copiar —" desativado. Escolher uma sugestão copia regra, quantidade,
+  construção do rasgo, tempos e unidade (o painel-guia G1 mostra logo a
+  fórmula com os valores copiados). O tooltip de cada sugestão lista TODOS
+  os sítios que usam aquela configuração.
+- "Editar Associado": novo campo **"Copiar configuração de…"** que sugere
+  as configurações do MESMO componente (mesma peça componente, ou mesma
+  referência quando é ferragem/acessório) noutras peças pai; copia
+  quantidade, regra base, regra de quantidade configurável, zona, dimensão,
+  topos, modo e as fórmulas dimensionais do filho.
+- Exclusões: a própria peça (detalhe da peça) e a própria linha de modelo
+  ValueSet nunca aparecem como origem; nos diálogos de orçamento/item não é
+  preciso excluir (as fontes são só de catálogo).
+- ⚠️ do arranque (furação configurada em modo TARIFA): o guia G1 passa a
+  mostrar um aviso REFORÇADO quando o utilizador preenche tempos numa
+  operação de tarifa de painel: "⚠️ ATENÇÃO: os tempos que preencheu NÃO
+  entram no custo … configure a operação na peça ou linha ValueSet de
+  FERRAGEM." (só aparece com tempos preenchidos).
+
+Testes automáticos: 2008 a passar (17 novos) — domínio das sugestões
+(agrupamento/dedup, ordenação, filtros, resumos, associado por peça e por
+referência), aviso reforçado do guia, e os dois diálogos offscreen
+(preencher ao escolher, combo desativado sem sugestões, linha escondida sem
+fontes, troca de operação/peça componente atualiza as sugestões).
+
+Guião de teste local (caminhos exatos):
+
+1. **Reiniciar a app** (pasta principal, branch `main`).
+2. **Sugestão numa operação de ferragem** — ValueSets → Modelos → abrir um
+   modelo com uma dobradiça JÁ CONFIGURADA (com operação CNC por furo) →
+   escolher/criar OUTRA linha de dobradiça na mesma chave → "Operações da
+   linha" → Nova Operação → escolher a MESMA operação CNC. DEVE aparecer o
+   campo "Copiar configuração de…" com pelo menos uma sugestão do tipo
+   "Modelo X › DOBRADICAS: DOBRADICA_Y — 4 furo(s) × 0,04 min, setup 0,5
+   min". Escolhê-la preenche regra/quantidade/tempos/unidade de uma vez e a
+   caixa-guia mostra o custo de exemplo. Pousar o rato na sugestão mostra
+   onde ela é usada.
+3. **Sugestão no Catálogo Técnico** — Catálogo Técnico → Peças → abrir uma
+   peça → Operações → Nova Operação → escolher uma operação usada noutras
+   peças (ex.: EMBALAMENTO): as configurações das outras peças aparecem
+   para copiar; a peça atual nunca aparece como origem.
+4. **Sem configurações** — escolher uma operação que ainda não está
+   configurada em lado nenhum: o campo mostra "— sem configurações desta
+   operação para copiar —" e fica desativado (cinzento).
+5. **Sugestão num associado** — Catálogo Técnico → Peças → peça composta →
+   Associados → Novo Associado → escolher uma peça componente (ex.: a
+   cavilha) que já esteja configurada noutras peças: aparece "Copiar
+   configuração de… Peça X — regra …, por topo × 2, Medida do topo".
+   Escolher copia zona/topos/modo/dimensão/regra/fórmulas. Com tipo
+   Ferragem/Acessório, a sugestão segue a REFERÊNCIA escrita.
+6. **Aviso reforçado (⚠️ do G1–G3)** — numa peça de PAINEL (ex.:
+   `COSTA_ONS_0022`) → Operações → Editar a operação `CNC_MECANIZACAO` →
+   preencher "Tempo por unidade" 0,04: a caixa-guia passa a mostrar
+   "⚠️ ATENÇÃO: os tempos que preencheu NÃO entram no custo…". Apagar o
+   tempo faz o aviso desaparecer.
+
+Commit: `Sugestoes Copiar configuracao de nos dialogos de operacoes e associados`.
+
+Estado: G1+G2+G3+G4 completos — fim do plano de configuração guiada.
+Próximo: avaliação global do utilizador com dados reais; pendentes antigos
+(placeholder "Selecionar origem…", ligação SISTEMAS_UNIAO, caixote de teste
+completo) e a visão de IA nos menus.
