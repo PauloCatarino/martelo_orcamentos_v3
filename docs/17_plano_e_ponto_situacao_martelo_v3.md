@@ -877,3 +877,44 @@ Ao terminar cada fase, atualizar neste ficheiro:
 - A definição da peça mostra a construção do rasgo e o simulador permite introduzir COMP, LARG, QT e tarifa.
 - Exemplos de teste: `COSTA_INS_0000+RASGO` com `2 × COMP + 2 × LARG`; `LED` com `1 × COMP`.
 - Correção posterior: a geometria do rasgo passa também pelos três níveis de operações ValueSet (modelo, orçamento e item) e pelos snapshots congelados das linhas. Snapshots antigos sem os novos campos são hidratados de forma compatível. Os avisos CNC são substituídos em vez de acumulados a cada atualização.
+
+## Próxima fase proposta — Configuração guiada de operações e associados (2026-07-12)
+
+Pedido do utilizador: os diálogos "Editar Operação da Peça", "Editar Associado"
+e as operações das variantes ValueSet têm demasiadas opções e não é claro que
+campos contam para o custo em cada combinação; pediu ajuda profunda, simulação
+do resultado, interatividade e sugestões automáticas por semelhança.
+
+Factos do modelo de cálculo (confirmados no código, base da solução):
+
+- operações de PAINEL (corte/orlagem/CNC de peça com material) custeiam por
+  tarifas automáticas: perímetro × €/ML, € por lado orlado (apenas os lados
+  com dígito 1/2 no código de orlas) e escalão de área; nestas, a "Regra
+  cálculo" é informativa — EXCEÇÃO: `RASGO_CNC`, que ativa o cálculo
+  geométrico `n×COMP + n×LARG` × €/ML de rasgo;
+- operações POR TEMPO (ferragens, manual/montagem/embalamento) custeiam por
+  `(setup + quantidade_calculada × tempo_por_unidade) / 60 × €/h`, e a
+  quantidade calculada depende da "Unidade tempo": PECA/UN/FURO/ML →
+  quantidade_base × QT; M2 → área × QT; HORA → base em horas; LOTE → base;
+- ou seja: por combinação (tipo de operação × regra × unidade) só um
+  subconjunto pequeno de campos afeta o custo — os restantes são ruído visual.
+
+Plano proposto (fases pequenas, por ordem de valor):
+
+1. **G1 — Campos dinâmicos + fórmula visível**: nos diálogos de operação,
+   mostrar apenas os campos que contam para a combinação escolhida (desativar
+   os restantes com explicação) e apresentar SEMPRE a fórmula ativa com um
+   mini-exemplo numérico em linguagem simples.
+2. **G2 — Simulador completo**: alargar o "Simular cálculo…" para decompor o
+   resultado em € com a tarifa REAL da máquina e QT de exemplo, igual à
+   tooltip do custeio; disponibilizá-lo também no "Editar Associado".
+3. **G3 — Receitas ("Configurar como…")**: pré-definições que preenchem os
+   campos certos: ferragem com furação CNC (N furos), cavidade/pocket CNC por
+   tempo, união por topos, suporte com regra por medida, operação manual por
+   peça, rasgo por comprimento.
+4. **G4 — Sugestão por semelhança**: ao criar operação/associado, procurar
+   configurações existentes na mesma categoria/chave ValueSet e propor
+   "Copiar configuração de X" (determinístico; a camada IA generativa fica
+   para a visão futura do assistente).
+
+Validação do utilizador: pendente (aguarda escolha da fase inicial).
