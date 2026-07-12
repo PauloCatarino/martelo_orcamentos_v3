@@ -1244,6 +1244,12 @@ Guião de teste local (caminhos exatos):
 
 Commit: `Sugestoes Copiar configuracao de nos dialogos de operacoes e associados`.
 
+Validação recebida: 2026-07-12 — o utilizador testou ("ficou melhor") e
+fechou este ciclo. No teste real (operação CNC_VERTICAL numa linha de
+dobradiça do modelo Roupeiro standard) o guia mostrou corretamente o modo
+por TEMPO com a nota "Peça de FERRAGEM" — o contexto da natureza chega bem
+ao diálogo das linhas ValueSet.
+
 Estado: G1+G2+G3+G4 completos — fim do plano de configuração guiada.
 Próximo: avaliação global do utilizador com dados reais; pendentes antigos
 (placeholder "Selecionar origem…", ligação SISTEMAS_UNIAO, caixote de teste
