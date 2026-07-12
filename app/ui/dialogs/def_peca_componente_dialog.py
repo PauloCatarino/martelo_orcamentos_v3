@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -38,6 +39,16 @@ from app.domain.associado_types import (
     normalize_dimensao_referencia,
 )
 from app.domain.associado_types import ESP as DIM_ESP
+from app.domain.operacao_receitas import (
+    CAMPO_DEF_REGRA_QUANTIDADE,
+    CAMPO_DIMENSAO_REFERENCIA,
+    CAMPO_MODO_QUANTIDADE,
+    CAMPO_NUMERO_TOPOS,
+    CAMPO_QUANTIDADE,
+    CAMPO_REGRA_QUANTIDADE,
+    CAMPO_ZONA_APLICACAO,
+    get_receitas_associado,
+)
 from app.domain.regra_quantidade_types import (
     FIXA,
     get_regra_quantidade_options,
@@ -103,6 +114,22 @@ class DefPecaComponenteDialog(QDialog):
         self.setWindowTitle("Editar Associado" if self._is_edit else "Novo Associado")
         self.setModal(True)
         self.setMinimumWidth(460)
+
+        # G3: one-step presets that fill the right fields for a common intent.
+        self.receita_input = QComboBox()
+        self.receita_input.addItem("— escolher receita —", None)
+        for receita in get_receitas_associado():
+            self.receita_input.addItem(receita.label, receita.key)
+            self.receita_input.setItemData(
+                self.receita_input.count() - 1,
+                receita.descricao,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self.receita_input.setToolTip(
+            "Preenche de uma vez os campos certos para o caso escolhido "
+            "(zona, topos, modo, dimensão). Os valores ficam editáveis."
+        )
+        self.receita_input.currentIndexChanged.connect(self._aplicar_receita_selecionada)
 
         self.tipo_componente_input = QComboBox()
         for code, label in get_componente_type_options():
@@ -242,6 +269,7 @@ class DefPecaComponenteDialog(QDialog):
         self.tipo_hint_label.setStyleSheet("color: #666666; font-size: 11px;")
 
         form = QFormLayout()
+        form.addRow("Configurar como…", self.receita_input)
         form.addRow("Tipo de componente", self.tipo_componente_input)
         form.addRow(self.peca_componente_label, self.peca_componente_input)
         form.addRow(self.referencia_label, self.referencia_row)
@@ -445,6 +473,44 @@ class DefPecaComponenteDialog(QDialog):
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
+
+    def _aplicar_receita_selecionada(self) -> None:
+        """Fill the form from the chosen 'Configurar como…' preset."""
+        key = self.receita_input.currentData()
+        if key is None:
+            return
+        receita = next(
+            (r for r in get_receitas_associado() if r.key == key), None
+        )
+        # Reset to the placeholder so the same recipe can be re-applied later.
+        self.receita_input.blockSignals(True)
+        self.receita_input.setCurrentIndex(0)
+        self.receita_input.blockSignals(False)
+        if receita is None:
+            return
+
+        valores = receita.valores
+        combos = {
+            CAMPO_REGRA_QUANTIDADE: self.regra_quantidade_input,
+            CAMPO_DEF_REGRA_QUANTIDADE: self.def_regra_quantidade_input,
+            CAMPO_ZONA_APLICACAO: self.zona_aplicacao_input,
+            CAMPO_DIMENSAO_REFERENCIA: self.dimensao_referencia_input,
+            CAMPO_MODO_QUANTIDADE: self.modo_quantidade_input,
+        }
+        for campo, combo in combos.items():
+            if campo in valores:
+                self._select_combo_data(combo, valores[campo])
+        if CAMPO_QUANTIDADE in valores:
+            self.quantidade_input.setValue(float(valores[CAMPO_QUANTIDADE]))
+        if CAMPO_NUMERO_TOPOS in valores:
+            self.numero_topos_input.setValue(int(valores[CAMPO_NUMERO_TOPOS]))
+
+        self.error_label.clear()
+        foco = combos.get(receita.foco) or (
+            self.quantidade_input if receita.foco == CAMPO_QUANTIDADE else None
+        )
+        if foco is not None:
+            foco.setFocus()
 
     def _abrir_simulador_quantidade(self) -> None:
         """Open the quantity simulator with the form's current configuration."""

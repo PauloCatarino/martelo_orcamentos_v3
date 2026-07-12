@@ -194,3 +194,62 @@ def test_simular_abre_tarifa_para_paineis_e_tempo_para_ferragens() -> None:
     assert "SimuladorTarifaPainelDialog" in source
     assert "classificar_operacao" in source
     assert "FERRAGEM" in source
+
+
+# --- G3: configuration recipes ----------------------------------------------------
+
+
+def _aplicar_receita(dialog: DefPecaOperacaoDialog, key: str) -> None:
+    dialog.receita_input.setCurrentIndex(dialog.receita_input.findData(key))
+
+
+def test_receita_furacao_preenche_os_campos_certos() -> None:
+    dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="FERRAGEM")
+    _selecionar_operacao(dialog, 3)
+
+    _aplicar_receita(dialog, "FERRAGEM_FURACAO_CNC")
+
+    assert dialog.unidade_tempo_input.currentData() == "FURO"
+    assert dialog.quantidade_base_input.text() == "4"
+    assert dialog.tempo_por_unidade_input.text() == "0.04"
+    assert dialog.regra_calculo_input.currentData() == "POR_FURACAO"
+    # The combo returns to the placeholder so it can be re-applied later.
+    assert dialog.receita_input.currentIndex() == 0
+    # The live guide immediately shows the resulting formula.
+    assert "min" in dialog.guia_label.text()
+
+
+def test_receita_rasgo_muda_para_a_operacao_cnc_rasgo() -> None:
+    dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="MATERIAL")
+    _selecionar_operacao(dialog, 1)
+
+    _aplicar_receita(dialog, "RASGO_POR_COMPRIMENTO")
+
+    operacao = dialog._operacao_selecionada()
+    assert operacao is not None and operacao.codigo == "CNC_RASGO"
+    assert dialog.rasgo_qt_comp_input.value() == 1
+    assert dialog.regra_calculo_input.currentData() == RASGO_CNC
+
+
+def test_receita_rasgo_sem_operacao_disponivel_avisa() -> None:
+    operacoes = [op for op in _operacoes() if op.codigo != "CNC_RASGO"]
+    dialog = DefPecaOperacaoDialog(operacoes, natureza_peca="MATERIAL")
+
+    _aplicar_receita(dialog, "RASGO_POR_COMPRIMENTO")
+
+    assert "CNC_RASGO" in dialog.error_label.text()
+
+
+def test_regras_informativas_estao_marcadas_no_dropdown() -> None:
+    dialog = DefPecaOperacaoDialog(_operacoes())
+
+    textos = [
+        dialog.regra_calculo_input.itemText(i)
+        for i in range(dialog.regra_calculo_input.count())
+    ]
+    informativas = [t for t in textos if "(informativa)" in t]
+    # Every rule except 'Rasgo CNC' is documentation only — and now says so.
+    assert len(informativas) == len(textos) - 1
+    assert not any(
+        "(informativa)" in t and "Rasgo CNC" in t for t in textos
+    )

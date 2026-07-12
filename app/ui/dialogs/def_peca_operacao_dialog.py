@@ -41,6 +41,13 @@ from app.domain.operacao_guia import (
     CAMPO_UNIDADE_TEMPO,
     construir_guia_operacao,
 )
+# The recipe field keys for quantity/times/unit share the guide's values.
+from app.domain.operacao_receitas import (
+    CAMPO_RASGO_QT_COMP,
+    CAMPO_RASGO_QT_LARG,
+    CAMPO_REGRA_CALCULO,
+    get_receitas_operacao,
+)
 from app.domain.regra_operacao_types import FIXA, RASGO_CNC
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.domain.operacao_acao_types import (
@@ -195,9 +202,26 @@ class DefPecaOperacaoDialog(QDialog):
             "mesmo tipo; Desativar remove a operação selecionada."
         )
 
+        # G3: one-step presets that fill the right fields for a common intent.
+        self.receita_input = QComboBox()
+        self.receita_input.addItem("— escolher receita —", None)
+        for receita in get_receitas_operacao():
+            self.receita_input.addItem(receita.label, receita.key)
+            self.receita_input.setItemData(
+                self.receita_input.count() - 1,
+                receita.descricao,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self.receita_input.setToolTip(
+            "Preenche de uma vez os campos certos para o caso escolhido "
+            "(regra, unidade, tempos). Os valores ficam editáveis."
+        )
+        self.receita_input.currentIndexChanged.connect(self._aplicar_receita_selecionada)
+
         self.regra_calculo_input = QComboBox()
         for code, label in get_regra_operacao_options():
-            self.regra_calculo_input.addItem(label, code)
+            sufixo = "" if code == RASGO_CNC else " (informativa)"
+            self.regra_calculo_input.addItem(f"{label}{sufixo}", code)
         self.regra_calculo_input.setToolTip(
             "Informativa: documenta o critério mas não altera o custo. "
             "Exceção: 'Rasgo CNC por comprimento geométrico', que ativa o "
@@ -287,6 +311,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.acao_label.setVisible(mostrar_acao)
         self.acao_input.setVisible(mostrar_acao)
         form.addRow("Ordem", self.ordem_input)
+        form.addRow("Configurar como…", self.receita_input)
         form.addRow("Regra cálculo", self.regra_calculo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
         self.rasgo_comp_label = QLabel("N.º comprimentos do rasgo")
@@ -435,6 +460,7 @@ class DefPecaOperacaoDialog(QDialog):
         ):
             widget.setEnabled(not desativar)
         self.simular_button.setEnabled(not desativar)
+        self.receita_input.setEnabled(not desativar)
         self._atualizar_guia()
 
     def _update_rasgo_fields(self) -> None:
@@ -457,6 +483,75 @@ class DefPecaOperacaoDialog(QDialog):
 
     def _acao_desativar(self) -> bool:
         return self._mostrar_acao and self.acao_input.currentData() == "DESATIVAR"
+
+    def _aplicar_receita_selecionada(self) -> None:
+        """Fill the form from the chosen 'Configurar como…' preset."""
+        key = self.receita_input.currentData()
+        if key is None:
+            return
+        receita = next(
+            (r for r in get_receitas_operacao() if r.key == key), None
+        )
+        # Reset to the placeholder so the same recipe can be re-applied later.
+        self.receita_input.blockSignals(True)
+        self.receita_input.setCurrentIndex(0)
+        self.receita_input.blockSignals(False)
+        if receita is None:
+            return
+
+        if receita.operacao_codigo is not None:
+            indice = next(
+                (
+                    i
+                    for i in range(self.operacao_input.count())
+                    if getattr(
+                        self._operacoes_por_id.get(self.operacao_input.itemData(i)),
+                        "codigo",
+                        "",
+                    )
+                    == receita.operacao_codigo
+                ),
+                None,
+            )
+            if indice is None:
+                self.set_error(
+                    f"A receita «{receita.label}» precisa da operação "
+                    f"{receita.operacao_codigo}, que não está disponível."
+                )
+                return
+            self.operacao_input.setCurrentIndex(indice)
+
+        valores = receita.valores
+        if CAMPO_REGRA_CALCULO in valores:
+            self._select_regra(valores[CAMPO_REGRA_CALCULO])
+        if CAMPO_UNIDADE_TEMPO in valores:
+            indice_unidade = self.unidade_tempo_input.findData(
+                valores[CAMPO_UNIDADE_TEMPO]
+            )
+            if indice_unidade >= 0:
+                self.unidade_tempo_input.setCurrentIndex(indice_unidade)
+        campos_texto = {
+            CAMPO_QUANTIDADE_BASE: self.quantidade_base_input,
+            CAMPO_TEMPO_SETUP: self.tempo_setup_input,
+            CAMPO_TEMPO_POR_UNIDADE: self.tempo_por_unidade_input,
+        }
+        for campo, widget in campos_texto.items():
+            if campo in valores:
+                widget.setText(str(valores[campo]))
+        if CAMPO_RASGO_QT_COMP in valores:
+            self.rasgo_qt_comp_input.setValue(int(valores[CAMPO_RASGO_QT_COMP]))
+        if CAMPO_RASGO_QT_LARG in valores:
+            self.rasgo_qt_larg_input.setValue(int(valores[CAMPO_RASGO_QT_LARG]))
+
+        self.error_label.clear()
+        foco = campos_texto.get(receita.foco) or {
+            CAMPO_RASGO_QT_COMP: self.rasgo_qt_comp_input,
+            CAMPO_RASGO_QT_LARG: self.rasgo_qt_larg_input,
+        }.get(receita.foco)
+        if foco is not None:
+            foco.setFocus()
+            if isinstance(foco, QLineEdit):
+                foco.selectAll()
 
     def _widgets_guia(self) -> dict:
         """Map the guide's field keys to the dialog widgets."""

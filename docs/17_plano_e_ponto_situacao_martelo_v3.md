@@ -1078,8 +1078,80 @@ Guião de teste local (caminhos exatos):
    topos (se "Quantidade por topo") e o qt_und final; sem regra mostra a
    quantidade fixa. Mudar LARG de 600 para 900 recalcula em direto.
 
-Validação recebida: pendente.
+Validação recebida: 2026-07-12 — o utilizador confirmou melhorias mas
+esperava mais: "tenho opções a mais que não dão resultado nenhum" (muitas
+regras/unidades selecionáveis sem efeito). Pediu para avançar já para o G3
+e avaliar o conjunto no fim.
 
 Commit: `Simuladores com tarifas reais da maquina e quantidade do associado`.
 
 Próximo passo recomendado: G3 — receitas "Configurar como…".
+
+## G3 implementado — receitas "Configurar como…" (2026-07-12)
+
+Resposta direta ao feedback "opções a mais": em vez de escolher entre 11
+regras e 9 unidades, o utilizador escolhe UMA receita e os campos certos
+ficam preenchidos de uma vez (tudo continua editável e o painel-guia mostra
+logo a fórmula resultante).
+
+Alterações implementadas:
+
+- Novo domínio puro `app/domain/operacao_receitas.py` com as receitas dos
+  dois diálogos (chave, nome, descrição, valores, campo a rever primeiro).
+- "Editar Operação da Peça": novo campo **"Configurar como…"** no topo com
+  5 receitas — *Ferragem com furação CNC (por furo)* (unidade FURO, 4 furos,
+  0,04 min/furo, setup 0,5), *Cavidade/bolsa (pocket) CNC por tempo* (Fixa,
+  base 1, Por peça), *Operação manual/montagem por peça*, *Tempo fixo por
+  lote/encomenda* (unidade LOTE, não multiplica pela QT) e *Rasgo CNC por
+  comprimento* (esta muda também a Operação para CNC_RASGO e põe
+  1 × COMP; avisa se a operação CNC_RASGO não existir). Depois de aplicar,
+  o cursor fica no campo que o utilizador deve rever (ex.: n.º de furos).
+- Dropdown "Regra cálculo": todas as regras exceto "Rasgo CNC" passam a
+  mostrar o sufixo **"(informativa)"** — as opções que não fazem nada agora
+  dizem-no explicitamente.
+- "Editar Associado": novo campo **"Configurar como…"** com 4 receitas —
+  *União nos dois topos* (zona DOIS_TOPOS, por topo × 2, MEDIDA_TOPO),
+  *União num topo*, *Suporte/ferragem com regra por medida* (total, COMP,
+  foco na escolha da regra) e *Acessório fixo por peça* (quantidade 1, sem
+  regra — limpa a regra configurável se estava escolhida).
+
+Testes automáticos: 1991 a passar (10 novos) — receitas bem formadas no
+domínio + aplicação real das receitas nos dois diálogos offscreen (furação,
+rasgo com/sem CNC_RASGO disponível, marcação "(informativa)", união dois
+topos, acessório fixo limpa a regra).
+
+Guião de teste local (caminhos exatos):
+
+1. **Reiniciar a app** (pasta principal, branch `main`).
+2. **Receita de furação** — Catálogo Técnico → Peças → abrir uma def_peça
+   de ferragem (ex.: a genérica DOBRADICA) → separador Operações → Editar
+   Operação (ou Nova Operação com uma operação CNC) → no topo do diálogo,
+   campo "Configurar como…" → escolher **"Ferragem com furação CNC (por
+   furo)"**. DEVE preencher: Regra "Por furação (informativa)", Quantidade
+   base 4 (cursor fica aqui), Tempo setup 0,5, Tempo por unidade 0,04,
+   Unidade "Por furo (× QT)"; a caixa-guia mostra logo o tempo/custo de
+   exemplo. Ajustar o 4 para o n.º real de furos.
+3. **Receita de rasgo** — na peça `COSTA_INS_0000+RASGO` → Operações →
+   Editar Operação → "Configurar como…" → **"Rasgo CNC por comprimento"**.
+   DEVE mudar a Operação para CNC_RASGO, pôr 1 comprimento × 0 larguras e
+   regra "Rasgo CNC"; os campos de tempo ficam desativados (G1).
+4. **Regras marcadas** — em qualquer "Editar Operação da Peça", abrir o
+   dropdown "Regra cálculo": todas as opções exceto "Rasgo CNC por
+   comprimento geométrico" dizem "(informativa)".
+5. **Receita união dois topos** — Catálogo Técnico → Peças → peça composta
+   → separador Associados → Editar Associado → "Configurar como…" →
+   **"União nos dois topos (cavilhas/parafusos)"**. DEVE pôr Zona "Dois
+   topos", Aplicação "Quantidade por topo", Número de topos 2, Dimensão
+   "Medida do topo", e o cursor fica na "Regra de quantidade (opcional)"
+   para escolher a regra (ex.: por medida do topo). Confirmar com o botão
+   "Simular quantidade…" (G2) que o qt_und dá o esperado.
+6. **Receita acessório fixo** — no mesmo diálogo, escolher **"Acessório
+   fixo por peça"**: quantidade volta a 1, regra configurável volta a
+   "— sem regra —", zona Geral, modo "Quantidade total".
+
+Validação recebida: pendente (o utilizador vai avaliar G1+G2+G3 em conjunto).
+
+Commit: `Receitas Configurar como nos dialogos de operacoes e associados`.
+
+Próximo passo recomendado: G4 — sugestão por semelhança ("Copiar
+configuração de X"), ou afinar as receitas com casos reais do utilizador.

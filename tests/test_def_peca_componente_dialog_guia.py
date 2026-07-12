@@ -91,3 +91,46 @@ def test_expressao_invalida_mostra_motivo() -> None:
 
     assert "Regra não calculada" in dialog.resultado.text()
     assert "Variável desconhecida" in dialog.resultado.text()
+
+
+# --- G3: configuration recipes ----------------------------------------------------
+
+
+def _dialog_componente():
+    from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
+
+    regras = [
+        SimpleNamespace(
+            id=7, codigo="TOPO_300", nome="1 por 300 mm de topo",
+            expressao="CEIL(MEDIDA_TOPO / 300)",
+        )
+    ]
+    return DefPecaComponenteDialog([], regras_disponiveis=regras)
+
+
+def test_receita_uniao_dois_topos_preenche_zona_modo_topos() -> None:
+    dialog = _dialog_componente()
+
+    dialog.receita_input.setCurrentIndex(
+        dialog.receita_input.findData("UNIAO_DOIS_TOPOS")
+    )
+
+    assert dialog.zona_aplicacao_input.currentData() == "DOIS_TOPOS"
+    assert dialog.modo_quantidade_input.currentData() == "POR_TOPO"
+    assert dialog.numero_topos_input.value() == 2
+    assert dialog.dimensao_referencia_input.currentData() == "MEDIDA_TOPO"
+    assert dialog.receita_input.currentIndex() == 0
+
+
+def test_receita_acessorio_fixo_limpa_a_regra() -> None:
+    dialog = _dialog_componente()
+    # Start from a rule-based setup to prove the recipe resets it.
+    dialog.def_regra_quantidade_input.setCurrentIndex(1)
+
+    dialog.receita_input.setCurrentIndex(
+        dialog.receita_input.findData("ACESSORIO_FIXO")
+    )
+
+    assert dialog.def_regra_quantidade_input.currentData() is None
+    assert dialog.quantidade_input.value() == 1
+    assert dialog.modo_quantidade_input.currentData() == "TOTAL"
