@@ -127,6 +127,28 @@ def test_componente_dialog_validates_before_save() -> None:
     assert "referencia_componente" in source
 
 
+def test_componente_dialog_tem_tooltips_de_configuracao() -> None:
+    """G1: every configuration field explains its effect on the costing."""
+    from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
+
+    init = inspect.getsource(DefPecaComponenteDialog.__init__)
+
+    for widget in (
+        "tipo_componente_input",
+        "descricao_input",
+        "quantidade_input",
+        "regra_quantidade_input",
+        "zona_aplicacao_input",
+        "dimensao_referencia_input",
+        "numero_topos_input",
+        "modo_quantidade_input",
+        "prioridade_valueset_input",
+        "obrigatorio_input",
+        "ativo_input",
+    ):
+        assert f"self.{widget}.setToolTip(" in init
+
+
 def test_componente_dialog_tem_seletor_de_referencia() -> None:
     from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 

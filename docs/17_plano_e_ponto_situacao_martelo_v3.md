@@ -917,4 +917,78 @@ Plano proposto (fases pequenas, por ordem de valor):
    "Copiar configuração de X" (determinístico; a camada IA generativa fica
    para a visão futura do assistente).
 
-Validação do utilizador: pendente (aguarda escolha da fase inicial).
+Validação do utilizador: aprovado começar pelo G1 (12 de julho de 2026).
+
+## G1 implementado — campos dinâmicos + fórmula visível (2026-07-12)
+
+Alterações implementadas:
+
+- Novo módulo puro `app/domain/operacao_guia.py`: dado (tipo de operação ×
+  regra × unidade tempo × natureza da peça), devolve o modo de custeio, a
+  fórmula ativa em linguagem simples com mini-exemplo numérico e os campos
+  que NÃO contam (com o motivo). Reutiliza `classificar_operacao` e os
+  helpers reais de custo (`calcular_tempo_operacao`,
+  `calcular_custo_por_minutos`, `calcular_comprimento_rasgo_ml`), pelo que o
+  guia nunca diverge do motor de custeio. Modos: TARIFA (corte/orlagem/CNC
+  em peça de painel), RASGO (CNC_RASGO ou regra Rasgo CNC), TEMPO
+  (montagem/manual/embalamento/setup e QUALQUER operação numa ferragem) e
+  SEM_CUSTEIO (tipo/código não reconhecido — a operação é ignorada).
+- `DefPecaOperacaoDialog` ("Editar Operação da Peça", também usado pelas
+  operações de variante ValueSet): painel de fórmula SEMPRE visível por
+  baixo do formulário, atualizado ao vivo ao mudar operação, regra, unidade,
+  quantidades, tempos ou construção do rasgo; campos que não contam ficam
+  desativados com o motivo acrescentado ao tooltip (rasgo → quantidade e
+  tempos; unidade M2 → quantidade base; unidade HORA → tempo por unidade);
+  tooltips em todos os campos. A ação DESATIVAR das variantes mantém o
+  comportamento anterior e mostra a sua própria explicação. O simulador
+  "Simular cálculo…" e a construção do rasgo do Codex não foram tocados.
+- Contexto painel vs ferragem: a página de detalhe da peça passa a
+  `natureza` da def_peça ao diálogo; os três diálogos de linha ValueSet
+  (modelo, orçamento e item) derivam o contexto da chave via novo helper
+  `natureza_peca_da_chave` (tipo configurado na BD com fallback ao prefixo,
+  as mesmas famílias FERRAGEM/SISTEMA_CORRER/ILUMINACAO/ACESSORIO do
+  custeio). Sem contexto conhecido, o guia mostra as duas fórmulas
+  (tarifa em painel + tempo em ferragem).
+- "Editar Associado": tooltips completados em todos os campos de
+  configuração (tipo, descrição, quantidade, regra base, zona de aplicação,
+  dimensão de referência; os restantes já existiam). O simulador neste
+  diálogo fica para o G2.
+
+Decisões tomadas:
+
+- Nas operações por TARIFA, os campos de tempo NÃO são desativados: não
+  alteram o custo mas alimentam os tempos de produção informativos — o guia
+  e os tooltips explicam isso em vez de bloquear.
+- A regra de cálculo continua sempre editável (é informativa, exceto Rasgo
+  CNC) com tooltip a explicar.
+- Exemplos numéricos usam QT 10, área 0,5 m² e COMP 600/LARG 400 como
+  valores de demonstração, calculados pelos próprios helpers do motor.
+
+Testes automáticos: 1966 a passar (21 novos — `tests/test_operacao_guia.py`
+com o comportamento do guia por modo, mais inspeções nos diálogos e no
+helper da chave).
+
+Testes locais pedidos ao utilizador:
+
+1. Catálogo Técnico → peça de painel → operações → "Editar Operação da
+   Peça": com uma operação de CORTE/ORLAGEM/CNC deve aparecer o painel com a
+   fórmula da tarifa e a nota de que os tempos são só informativos;
+2. na mesma peça, escolher a operação `CNC_RASGO`: quantidade e tempos ficam
+   desativados (motivo no tooltip) e o painel mostra `ML = n×COMP + n×LARG`
+   com exemplo em euros quando a máquina tem €/ML de rasgo;
+3. operação MANUAL/MONTAGEM com unidade "Por furo": preencher quantidade
+   base 5, setup 2 e tempo 0,04 → o exemplo deve dizer "4 min … 3,00 €"
+   (com custo/hora 45); mudar a unidade para "Por m2" desativa a quantidade
+   base; "Por hora" desativa o tempo por unidade;
+4. ValueSets → chave de ferragem (ex.: dobradiça) → operações da linha →
+   nova operação CNC: o painel deve indicar custo por TEMPO (contexto
+   ferragem), não por escalão de área;
+5. variante com ação "Desativar": os campos ficam todos desativados com a
+   explicação própria (comportamento anterior mantido).
+
+Validação recebida: pendente.
+
+Commit: `Guia de configuracao G1 nos dialogos de operacoes`.
+
+Próximo passo recomendado: G2 — simulador completo com tarifa real da
+máquina, também no "Editar Associado".

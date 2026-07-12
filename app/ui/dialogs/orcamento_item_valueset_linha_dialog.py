@@ -41,6 +41,7 @@ from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.valueset_linha_operacoes_dialog import ValuesetLinhaOperacoesDialog
 from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
+    natureza_peca_da_chave,
     obter_valor_chave_combo,
 )
 
@@ -293,6 +294,9 @@ class OrcamentoItemValuesetLinhaDialog(QDialog):
             editar_operacao=editar_operacao,
             alternar_operacao=alternar_operacao,
             parent=self,
+            natureza_peca=natureza_peca_da_chave(
+                obter_valor_chave_combo(self.chave_input)
+            ),
         )
         dialog.exec()
         if dialog.alterado:

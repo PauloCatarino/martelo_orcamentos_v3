@@ -42,3 +42,18 @@ def test_obter_valor_returns_current_data() -> None:
     source = inspect.getsource(obter_valor_chave_combo)
 
     assert "currentData" in source
+
+
+def test_natureza_peca_da_chave_espelha_regra_do_custeio() -> None:
+    """G1: hardware-like keys give the FERRAGEM context to the operation guide."""
+    from app.ui.helpers.valueset_combo_helper import natureza_peca_da_chave
+
+    source = inspect.getsource(natureza_peca_da_chave)
+
+    # DB-configured type first, prefix fallback after (same families as costing).
+    assert "obter_por_codigo" in source
+    assert "TIPOS_FERRAGEM" in source
+
+    # Pure paths (no DB configured key): prefix fallback and empty key.
+    assert natureza_peca_da_chave(None) is None
+    assert natureza_peca_da_chave("  ") is None

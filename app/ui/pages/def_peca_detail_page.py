@@ -747,7 +747,12 @@ class DefPecaDetailPage(QWidget):
             saved = True
             return True
 
-        dialog = DefPecaOperacaoDialog(operacoes, parent=self, on_save=handle_save)
+        dialog = DefPecaOperacaoDialog(
+            operacoes,
+            parent=self,
+            on_save=handle_save,
+            natureza_peca=getattr(self.peca, "natureza", None),
+        )
         if dialog.exec() and saved:
             self.recarregar_operacoes()
             self.operacoes_status_label.setText("Operacao associada.")
@@ -795,7 +800,13 @@ class DefPecaDetailPage(QWidget):
             saved = True
             return True
 
-        dialog = DefPecaOperacaoDialog(operacoes, ligacao=ligacao, parent=self, on_save=handle_save)
+        dialog = DefPecaOperacaoDialog(
+            operacoes,
+            ligacao=ligacao,
+            parent=self,
+            on_save=handle_save,
+            natureza_peca=getattr(self.peca, "natureza", None),
+        )
         if dialog.exec() and saved:
             self.recarregar_operacoes()
             self.operacoes_status_label.setText("Operacao atualizada.")

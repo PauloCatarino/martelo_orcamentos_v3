@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from html import escape
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -23,6 +25,13 @@ from PySide6.QtGui import QColor, QFont
 
 from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
 from app.domain.custo_producao import calcular_comprimento_rasgo_ml, calcular_custo_rasgo_cnc
+from app.domain.operacao_guia import (
+    CAMPO_QUANTIDADE_BASE,
+    CAMPO_TEMPO_POR_UNIDADE,
+    CAMPO_TEMPO_SETUP,
+    CAMPO_UNIDADE_TEMPO,
+    construir_guia_operacao,
+)
 from app.domain.regra_operacao_types import RASGO_CNC
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.domain.operacao_acao_types import (
@@ -136,6 +145,7 @@ class DefPecaOperacaoDialog(QDialog):
         parent=None,
         on_save: Callable[[DefPecaOperacaoDialogData], bool] | None = None,
         mostrar_acao: bool = False,
+        natureza_peca: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -143,6 +153,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.on_save = on_save
         self._is_edit = ligacao is not None
         self._mostrar_acao = mostrar_acao
+        self._natureza_peca = natureza_peca
         self._operacoes_por_id = {
             operacao.id: operacao for operacao in operacoes_disponiveis
         }
@@ -154,10 +165,17 @@ class DefPecaOperacaoDialog(QDialog):
         self.operacao_input = QComboBox()
         for operacao in operacoes_disponiveis:
             self.operacao_input.addItem(f"{operacao.codigo} - {operacao.nome}", operacao.id)
+        self.operacao_input.setToolTip(
+            "Operação do catálogo a ligar à peça. O tipo da operação e a "
+            "máquina associada decidem como o custo é calculado."
+        )
 
         self.ordem_input = QSpinBox()
         self.ordem_input.setRange(1, 9999)
         self.ordem_input.setValue(1)
+        self.ordem_input.setToolTip(
+            "Ordem de apresentação da operação na lista (não altera o custo)."
+        )
 
         self.acao_input = QComboBox()
         for code, label in get_operacao_acao_options():
@@ -170,13 +188,25 @@ class DefPecaOperacaoDialog(QDialog):
         self.regra_calculo_input = QComboBox()
         for code, label in get_regra_operacao_options():
             self.regra_calculo_input.addItem(label, code)
+        self.regra_calculo_input.setToolTip(
+            "Informativa: documenta o critério mas não altera o custo. "
+            "Exceção: 'Rasgo CNC por comprimento geométrico', que ativa o "
+            "custeio do rasgo (selecionada automaticamente na operação "
+            "CNC_RASGO)."
+        )
 
         self.quantidade_base_input = QLineEdit()
         self.quantidade_base_input.setPlaceholderText("Ex.: 1.5")
         self.rasgo_qt_comp_input = QSpinBox()
         self.rasgo_qt_comp_input.setRange(0, 99)
+        self.rasgo_qt_comp_input.setToolTip(
+            "Quantos rasgos seguem o COMPRIMENTO da peça (cada um mede COMP)."
+        )
         self.rasgo_qt_larg_input = QSpinBox()
         self.rasgo_qt_larg_input.setRange(0, 99)
+        self.rasgo_qt_larg_input.setToolTip(
+            "Quantos rasgos seguem a LARGURA da peça (cada um mede LARG)."
+        )
 
         self.tempo_setup_input = QLineEdit()
         self.tempo_setup_input.setPlaceholderText("Ex.: 2 (minutos)")
@@ -188,10 +218,52 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
+        self.obrigatorio_input.setToolTip(
+            "Marca a operação como obrigatória na definição da peça "
+            "(informativo; não altera o custo)."
+        )
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
+        self.ativo_input.setToolTip(
+            "Só as operações ativas entram no custeio."
+        )
 
         self.observacoes_input = QLineEdit()
+        self.observacoes_input.setToolTip(
+            "Notas livres sobre esta operação (não alteram o custo)."
+        )
+
+        # Base tooltips of the fields the guide enables/disables dynamically;
+        # when a field is disabled, the reason is appended to its tooltip.
+        self._tooltips_base_guia = {
+            CAMPO_QUANTIDADE_BASE: (
+                "Quantidade por peça (n.º de furos, unidades, metros…) "
+                "multiplicada pelo tempo por unidade. Vazia conta como 1. "
+                "Com a unidade 'Por hora' é a duração em horas."
+            ),
+            CAMPO_TEMPO_SETUP: (
+                "Minutos de preparação, somados 1× por linha do orçamento "
+                "(não multiplicam pela QT)."
+            ),
+            CAMPO_TEMPO_POR_UNIDADE: (
+                "Minutos por unidade (ex.: 0,05 = 3 seg por furo). "
+                "Multiplica pela quantidade calculada."
+            ),
+            CAMPO_UNIDADE_TEMPO: (
+                "Decide a quantidade calculada: por peça/furo/unidade/ML "
+                "(× QT), por m² (área × QT), por hora (base em horas) ou "
+                "por lote/operação (fixo)."
+            ),
+        }
+
+        self.guia_label = QLabel("")
+        self.guia_label.setObjectName("defPecaOperacaoDialogGuia")
+        self.guia_label.setWordWrap(True)
+        self.guia_label.setTextFormat(Qt.TextFormat.RichText)
+        self.guia_label.setStyleSheet(
+            "background-color: #f1f5f9; border: 1px solid #cbd5e1; "
+            "border-radius: 4px; padding: 8px; color: #0f172a;"
+        )
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("defPecaOperacaoDialogError")
@@ -231,9 +303,20 @@ class DefPecaOperacaoDialog(QDialog):
         self.simular_button.clicked.connect(self._abrir_simulador)
         self.acao_input.currentIndexChanged.connect(self._update_acao_fields)
         self.operacao_input.currentIndexChanged.connect(self._update_rasgo_fields)
+        self.regra_calculo_input.currentIndexChanged.connect(self._atualizar_guia)
+        self.unidade_tempo_input.currentIndexChanged.connect(self._atualizar_guia)
+        for widget in (
+            self.quantidade_base_input,
+            self.tempo_setup_input,
+            self.tempo_por_unidade_input,
+        ):
+            widget.textChanged.connect(self._atualizar_guia)
+        self.rasgo_qt_comp_input.valueChanged.connect(self._atualizar_guia)
+        self.rasgo_qt_larg_input.valueChanged.connect(self._atualizar_guia)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
+        layout.addWidget(self.guia_label)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
@@ -331,7 +414,7 @@ class DefPecaOperacaoDialog(QDialog):
 
     def _update_acao_fields(self) -> None:
         """Disable calculation inputs when the variant only removes an operation."""
-        desativar = self._mostrar_acao and self.acao_input.currentData() == "DESATIVAR"
+        desativar = self._acao_desativar()
         for widget in (
             self.regra_calculo_input,
             self.quantidade_base_input,
@@ -342,6 +425,7 @@ class DefPecaOperacaoDialog(QDialog):
         ):
             widget.setEnabled(not desativar)
         self.simular_button.setEnabled(not desativar)
+        self._atualizar_guia()
 
     def _update_rasgo_fields(self) -> None:
         visivel = getattr(self._operacao_selecionada(), "codigo", "") == "CNC_RASGO"
@@ -350,6 +434,62 @@ class DefPecaOperacaoDialog(QDialog):
             widget.setVisible(visivel)
         if visivel:
             self._select_regra(RASGO_CNC)
+        self._atualizar_guia()
+
+    def _acao_desativar(self) -> bool:
+        return self._mostrar_acao and self.acao_input.currentData() == "DESATIVAR"
+
+    def _widgets_guia(self) -> dict:
+        """Map the guide's field keys to the dialog widgets."""
+        return {
+            CAMPO_QUANTIDADE_BASE: self.quantidade_base_input,
+            CAMPO_TEMPO_SETUP: self.tempo_setup_input,
+            CAMPO_TEMPO_POR_UNIDADE: self.tempo_por_unidade_input,
+            CAMPO_UNIDADE_TEMPO: self.unidade_tempo_input,
+        }
+
+    def _atualizar_guia(self) -> None:
+        """Refresh the always-visible formula panel and the dynamic fields."""
+        if self._acao_desativar():
+            self.guia_label.setText(
+                "<b>Variante: desativar operação</b><br>"
+                "Esta variante remove a operação base do mesmo tipo — os "
+                "restantes campos não se aplicam."
+            )
+            return
+
+        operacao = self._operacao_selecionada()
+        guia = construir_guia_operacao(
+            tipo_operacao=getattr(operacao, "tipo_operacao", None),
+            codigo=getattr(operacao, "codigo", None),
+            regra_calculo=self.regra_calculo_input.currentData(),
+            unidade_tempo=self.unidade_tempo_input.currentData(),
+            quantidade_base=self._parse_decimal_input_tolerante(
+                self.quantidade_base_input
+            ),
+            tempo_setup_minutos=self._parse_decimal_input_tolerante(
+                self.tempo_setup_input
+            ),
+            tempo_por_unidade_minutos=self._parse_decimal_input_tolerante(
+                self.tempo_por_unidade_input
+            ),
+            rasgo_qt_comp=self.rasgo_qt_comp_input.value(),
+            rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
+            custo_hora=self._custo_hora_da_operacao(operacao),
+            preco_rasgo_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
+            natureza_peca=self._natureza_peca,
+        )
+
+        linhas = "<br>".join(escape(linha) for linha in guia.linhas)
+        self.guia_label.setText(f"<b>{escape(guia.titulo)}</b><br>{linhas}")
+
+        for campo, widget in self._widgets_guia().items():
+            motivo = guia.campos_inativos.get(campo)
+            widget.setEnabled(motivo is None)
+            tooltip = self._tooltips_base_guia[campo]
+            if motivo is not None:
+                tooltip = f"{tooltip}\n\n{motivo}"
+            widget.setToolTip(tooltip)
 
     def _abrir_simulador(self) -> None:
         """Open the operation simulator using the current form values."""

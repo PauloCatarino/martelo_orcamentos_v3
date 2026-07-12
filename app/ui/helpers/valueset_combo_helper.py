@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QComboBox
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.peca_natureza_types import FERRAGEM
+from app.domain.valueset_compat import TIPOS_FERRAGEM
 from app.domain.valueset_types import get_valueset_key_options
 from app.services.def_valueset_chave_service import DefValuesetChaveService
 
@@ -70,3 +72,34 @@ def carregar_chaves_valueset_combo(
 def obter_valor_chave_combo(combo: QComboBox) -> str | None:
     """Return the selected ValueSet key code (None for 'Sem chave')."""
     return combo.currentData()
+
+
+def natureza_peca_da_chave(chave: str | None) -> str | None:
+    """Return FERRAGEM when a ValueSet key is hardware-like, else None.
+
+    Mirrors the costing rule that derives a FERRAGEM cost line from the key's
+    configured type (FERRAGEM / SISTEMA_CORRER / ILUMINACAO / ACESSORIO), with
+    a prefix fallback when the key is not configured in the database. Used to
+    give the operation dialogs the right costing context (por tempo vs tarifa).
+    """
+    codigo = (chave or "").strip().upper()
+    if not codigo:
+        return None
+
+    tipo = None
+    try:
+        with SessionLocal() as session:
+            resumo = DefValuesetChaveService(session).obter_por_codigo(codigo)
+            tipo = getattr(resumo, "tipo", None)
+    except SQLAlchemyError:
+        tipo = None
+
+    if tipo is None:
+        tipo = next(
+            (t for t in TIPOS_FERRAGEM if codigo.startswith(f"{t}_") or codigo == t),
+            None,
+        )
+
+    if tipo in TIPOS_FERRAGEM:
+        return FERRAGEM
+    return None

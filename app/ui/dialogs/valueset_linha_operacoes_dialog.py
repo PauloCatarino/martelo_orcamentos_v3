@@ -67,6 +67,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         editar_operacao: EditarOperacaoCallable,
         alternar_operacao: AlternarOperacaoCallable,
         parent=None,
+        natureza_peca: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -74,6 +75,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         self._criar_operacao = criar_operacao
         self._editar_operacao = editar_operacao
         self._alternar_operacao = alternar_operacao
+        self._natureza_peca = natureza_peca
         self.operacoes_linha: list = []
         self._operacoes_by_row: dict[int, object] = {}
         self._operacao_resumos: dict[int, DefOperacaoResumo] = {}
@@ -212,7 +214,11 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             return True
 
         dialog = DefPecaOperacaoDialog(
-            operacoes, parent=self, on_save=handle_save, mostrar_acao=True
+            operacoes,
+            parent=self,
+            on_save=handle_save,
+            mostrar_acao=True,
+            natureza_peca=self._natureza_peca,
         )
         if dialog.exec() and saved:
             self.alterado = True
@@ -248,6 +254,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
             parent=self,
             on_save=handle_save,
             mostrar_acao=True,
+            natureza_peca=self._natureza_peca,
         )
         if dialog.exec() and saved:
             self.alterado = True

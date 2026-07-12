@@ -103,6 +103,10 @@ class DefPecaComponenteDialog(QDialog):
         self.tipo_componente_input = QComboBox()
         for code, label in get_componente_type_options():
             self.tipo_componente_input.addItem(label, code)
+        self.tipo_componente_input.setToolTip(
+            "Peça: outra peça do catálogo (gera sub-linha própria no custeio). "
+            "Ferragem/Acessório: referência avulsa contada em UND/ML."
+        )
 
         self.peca_componente_input = QComboBox()
         for peca in pecas_disponiveis:
@@ -120,6 +124,9 @@ class DefPecaComponenteDialog(QDialog):
         self.referencia_row.setLayout(referencia_row_layout)
 
         self.descricao_input = QLineEdit()
+        self.descricao_input.setToolTip(
+            "Descrição livre do componente (mostrada nas linhas do custeio)."
+        )
         self.formula_comp_input = QLineEdit()
         self.formula_larg_input = QLineEdit()
         self.formula_esp_input = QLineEdit()
@@ -141,10 +148,20 @@ class DefPecaComponenteDialog(QDialog):
         self.quantidade_input.setDecimals(3)
         self.quantidade_input.setRange(0.001, 1_000_000)
         self.quantidade_input.setValue(1)
+        self.quantidade_input.setToolTip(
+            "Quantidade do componente por peça principal (multiplicada pela QT "
+            "da linha no custeio). Ignorada quando uma regra de quantidade "
+            "estiver selecionada abaixo."
+        )
 
         self.regra_quantidade_input = QComboBox()
         for code, label in get_regra_quantidade_options():
             self.regra_quantidade_input.addItem(label, code)
+        self.regra_quantidade_input.setToolTip(
+            "Critério base da quantidade: fixa, por dimensão da peça ou por "
+            "topo. Para cálculo por expressão use a 'Regra de quantidade "
+            "(opcional)' abaixo."
+        )
 
         # Configurable quantity rule (phase 8T.5.1): "— sem regra —" + active rules.
         self.def_regra_quantidade_input = QComboBox()
@@ -158,9 +175,19 @@ class DefPecaComponenteDialog(QDialog):
         self.zona_aplicacao_input = QComboBox()
         for code, label in get_zona_aplicacao_options():
             self.zona_aplicacao_input.addItem(label, code)
+        self.zona_aplicacao_input.setToolTip(
+            "Onde o componente é aplicado na peça principal: geral, num topo "
+            "específico (topo 1/topo 2), nos dois topos ou na face. Define os "
+            "topos disponíveis para a quantidade por topo."
+        )
         self.dimensao_referencia_input = QComboBox()
         for code, label in get_dimensao_referencia_options():
             self.dimensao_referencia_input.addItem(label, code)
+        self.dimensao_referencia_input.setToolTip(
+            "Dimensão da peça principal usada como MEDIDA_TOPO nas regras de "
+            "quantidade (ex.: uniões nos topos usam a medida do topo onde "
+            "encaixam)."
+        )
         self.numero_topos_input = QSpinBox()
         self.numero_topos_input.setRange(0, 2)
         self.numero_topos_input.setToolTip(
@@ -186,8 +213,15 @@ class DefPecaComponenteDialog(QDialog):
 
         self.obrigatorio_input = QCheckBox()
         self.obrigatorio_input.setChecked(True)
+        self.obrigatorio_input.setToolTip(
+            "Marca o componente como obrigatório na definição da peça "
+            "(informativo; não altera o custo)."
+        )
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
+        self.ativo_input.setToolTip(
+            "Só os componentes ativos entram no custeio da peça composta."
+        )
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("defPecaComponenteError")

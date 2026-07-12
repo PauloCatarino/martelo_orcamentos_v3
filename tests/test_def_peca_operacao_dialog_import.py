@@ -116,3 +116,54 @@ def test_def_peca_operacao_dialog_allows_changing_operacao_on_edit() -> None:
 
     assert "setCurrentIndex" in source
     assert "setEnabled(False)" not in source
+
+
+def test_def_peca_operacao_dialog_tem_guia_de_configuracao() -> None:
+    """G1: the dialog shows the active formula and disables fields per guide."""
+    from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+
+    signature = inspect.signature(DefPecaOperacaoDialog)
+    assert "natureza_peca" in signature.parameters
+
+    init = inspect.getsource(DefPecaOperacaoDialog.__init__)
+    assert "guia_label" in init
+    assert "_tooltips_base_guia" in init
+
+    assert hasattr(DefPecaOperacaoDialog, "_atualizar_guia")
+    guia = inspect.getsource(DefPecaOperacaoDialog._atualizar_guia)
+    assert "construir_guia_operacao" in guia
+    assert "campos_inativos" in guia
+    assert "setToolTip" in guia
+    # The DESATIVAR variant action keeps its own explanation.
+    assert "desativa" in guia.lower()
+
+
+def test_def_peca_operacao_dialog_guia_recalcula_ao_mudar_campos() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+
+    init = inspect.getsource(DefPecaOperacaoDialog.__init__)
+    # Formula panel follows the operation, rule, unit, quantities and times.
+    assert init.count("_atualizar_guia") >= 3
+
+    acao = inspect.getsource(DefPecaOperacaoDialog._update_acao_fields)
+    assert "_atualizar_guia" in acao
+    rasgo = inspect.getsource(DefPecaOperacaoDialog._update_rasgo_fields)
+    assert "_atualizar_guia" in rasgo
+
+
+def test_def_peca_operacao_dialog_tem_tooltips_nos_campos() -> None:
+    from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
+
+    init = inspect.getsource(DefPecaOperacaoDialog.__init__)
+
+    for widget in (
+        "operacao_input",
+        "ordem_input",
+        "regra_calculo_input",
+        "rasgo_qt_comp_input",
+        "rasgo_qt_larg_input",
+        "obrigatorio_input",
+        "ativo_input",
+        "observacoes_input",
+    ):
+        assert f"self.{widget}.setToolTip(" in init
