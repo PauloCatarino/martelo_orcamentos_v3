@@ -964,8 +964,16 @@ Decisões tomadas:
 - Exemplos numéricos usam QT 10, área 0,5 m² e COMP 600/LARG 400 como
   valores de demonstração, calculados pelos próprios helpers do motor.
 
-Testes automáticos: 1966 a passar (21 novos — `tests/test_operacao_guia.py`
-com o comportamento do guia por modo, mais inspeções nos diálogos e no
+Correção apanhada em smoke test offscreen: ao trocar da operação
+`CNC_RASGO` para outra, a regra ficava presa em "Rasgo CNC" (o diálogo
+tinha-a forçado) e os tempos continuavam desativados. O diálogo agora
+desfaz apenas a regra que ELE forçou (volta a "Fixa"); uma regra Rasgo CNC
+gravada deliberadamente noutra operação não é tocada ao abrir.
+
+Testes automáticos: 1971 a passar (26 novos — `tests/test_operacao_guia.py`
+com o comportamento do guia por modo, `tests/
+test_def_peca_operacao_dialog_guia.py` com o diálogo real offscreen
+(inclui a regressão da regra presa), mais inspeções nos diálogos e no
 helper da chave).
 
 Testes locais pedidos ao utilizador:

@@ -32,7 +32,7 @@ from app.domain.operacao_guia import (
     CAMPO_UNIDADE_TEMPO,
     construir_guia_operacao,
 )
-from app.domain.regra_operacao_types import RASGO_CNC
+from app.domain.regra_operacao_types import FIXA, RASGO_CNC
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.domain.operacao_acao_types import (
     ADICIONAR,
@@ -154,6 +154,7 @@ class DefPecaOperacaoDialog(QDialog):
         self._is_edit = ligacao is not None
         self._mostrar_acao = mostrar_acao
         self._natureza_peca = natureza_peca
+        self._regra_rasgo_automatica = False
         self._operacoes_por_id = {
             operacao.id: operacao for operacao in operacoes_disponiveis
         }
@@ -434,6 +435,15 @@ class DefPecaOperacaoDialog(QDialog):
             widget.setVisible(visivel)
         if visivel:
             self._select_regra(RASGO_CNC)
+            self._regra_rasgo_automatica = True
+        elif (
+            self._regra_rasgo_automatica
+            and self.regra_calculo_input.currentData() == RASGO_CNC
+        ):
+            # Undo only the rule THIS dialog forced for CNC_RASGO; a RASGO_CNC
+            # rule stored deliberately on another operation is left untouched.
+            self._select_regra(FIXA)
+            self._regra_rasgo_automatica = False
         self._atualizar_guia()
 
     def _acao_desativar(self) -> bool:
