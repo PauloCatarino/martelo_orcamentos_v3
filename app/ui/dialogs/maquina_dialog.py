@@ -42,6 +42,9 @@ class MaquinaDialogData:
     custo_hora_serie: Decimal | None
     preco_ml_std: Decimal | None
     preco_ml_serie: Decimal | None
+    permite_rasgos: bool
+    preco_rasgo_ml_std: Decimal | None
+    preco_rasgo_ml_serie: Decimal | None
     preco_lado_curto_std: Decimal | None
     preco_lado_curto_serie: Decimal | None
     preco_lado_longo_std: Decimal | None
@@ -94,6 +97,9 @@ class MaquinaDialog(QDialog):
         self.custo_hora_serie_input = self._criar_spin(" €/H")
         self.preco_ml_std_input = self._criar_spin(" €/ML")
         self.preco_ml_serie_input = self._criar_spin(" €/ML")
+        self.permite_rasgos_input = QCheckBox("Permite fresagem de rasgos")
+        self.preco_rasgo_ml_std_input = self._criar_spin(" €/ML de rasgo")
+        self.preco_rasgo_ml_serie_input = self._criar_spin(" €/ML de rasgo")
         self.preco_lado_curto_std_input = self._criar_spin(" €/lado")
         self.preco_lado_curto_serie_input = self._criar_spin(" €/lado")
         self.preco_lado_longo_std_input = self._criar_spin(" €/lado")
@@ -223,6 +229,11 @@ class MaquinaDialog(QDialog):
             )
 
         vbox.addWidget(self.cnc_note)
+        groove_form = QFormLayout()
+        groove_form.addRow("Capacidade", self.permite_rasgos_input)
+        groove_form.addRow("Rasgo STD", self.preco_rasgo_ml_std_input)
+        groove_form.addRow("Rasgo SERIE", self.preco_rasgo_ml_serie_input)
+        vbox.addLayout(groove_form)
         row = QHBoxLayout()
         row.addWidget(self.escaloes_button)
         row.addStretch()
@@ -298,6 +309,10 @@ class MaquinaDialog(QDialog):
         self._set_spin(self.custo_hora_serie_input, maquina.custo_hora_serie)
         self._set_spin(self.preco_ml_std_input, maquina.preco_ml_std)
         self._set_spin(self.preco_ml_serie_input, maquina.preco_ml_serie)
+        self.permite_rasgos_input.setChecked(maquina.permite_rasgos)
+        self.permite_rasgos_input.setEnabled(maquina.codigo != "CNC_ABD")
+        self._set_spin(self.preco_rasgo_ml_std_input, maquina.preco_rasgo_ml_std)
+        self._set_spin(self.preco_rasgo_ml_serie_input, maquina.preco_rasgo_ml_serie)
         self._set_spin(self.preco_lado_curto_std_input, maquina.preco_lado_curto_std)
         self._set_spin(
             self.preco_lado_curto_serie_input, maquina.preco_lado_curto_serie
@@ -334,6 +349,12 @@ class MaquinaDialog(QDialog):
             custo_hora_serie=self._spin_to_decimal(self.custo_hora_serie_input),
             preco_ml_std=self._spin_to_decimal(self.preco_ml_std_input),
             preco_ml_serie=self._spin_to_decimal(self.preco_ml_serie_input),
+            permite_rasgos=(
+                self.permite_rasgos_input.isChecked()
+                and self.codigo_input.text().strip().upper() != "CNC_ABD"
+            ),
+            preco_rasgo_ml_std=self._spin_to_decimal(self.preco_rasgo_ml_std_input),
+            preco_rasgo_ml_serie=self._spin_to_decimal(self.preco_rasgo_ml_serie_input),
             preco_lado_curto_std=self._spin_to_decimal(
                 self.preco_lado_curto_std_input
             ),

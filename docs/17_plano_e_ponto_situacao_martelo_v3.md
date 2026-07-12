@@ -868,3 +868,12 @@ Ao terminar cada fase, atualizar neste ficheiro:
 - validação recebida;
 - commit criado;
 - próximo passo recomendado.
+# Alteração CNC — rasgos por comprimento geométrico (2026-07-12)
+
+- Criada tarifa autónoma de rasgo CNC em €/ML STD e SÉRIE, sem reutilizar o €/ML de corte.
+- O comprimento faturado é o comprimento geométrico: `n × COMP + n × LARG`; a ida e volta da fresa não duplica os ML.
+- O CNC por escalão de área continua válido e pode coexistir com o rasgo na mesma peça.
+- A máquina `CNC_ABD` não permite rasgos; as restantes CNC de fresagem iniciam com 0,40 €/ML.
+- A definição da peça mostra a construção do rasgo e o simulador permite introduzir COMP, LARG, QT e tarifa.
+- Exemplos de teste: `COSTA_INS_0000+RASGO` com `2 × COMP + 2 × LARG`; `LED` com `1 × COMP`.
+- Correção posterior: a geometria do rasgo passa também pelos três níveis de operações ValueSet (modelo, orçamento e item) e pelos snapshots congelados das linhas. Snapshots antigos sem os novos campos são hidratados de forma compatível. Os avisos CNC são substituídos em vez de acumulados a cada atualização.

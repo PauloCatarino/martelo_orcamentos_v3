@@ -22,6 +22,9 @@ class CriarDefMaquinaData:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    permite_rasgos: bool = False
+    preco_rasgo_ml_std: Decimal | None = None
+    preco_rasgo_ml_serie: Decimal | None = None
     preco_lado_curto_std: Decimal | None = None
     preco_lado_curto_serie: Decimal | None = None
     preco_lado_longo_std: Decimal | None = None
@@ -45,6 +48,9 @@ class EditarDefMaquinaData:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    permite_rasgos: bool = False
+    preco_rasgo_ml_std: Decimal | None = None
+    preco_rasgo_ml_serie: Decimal | None = None
     preco_lado_curto_std: Decimal | None = None
     preco_lado_curto_serie: Decimal | None = None
     preco_lado_longo_std: Decimal | None = None
@@ -98,6 +104,9 @@ class DefMaquinaService:
             custo_hora_serie=data.custo_hora_serie,
             preco_ml_std=data.preco_ml_std,
             preco_ml_serie=data.preco_ml_serie,
+            permite_rasgos=data.permite_rasgos,
+            preco_rasgo_ml_std=data.preco_rasgo_ml_std,
+            preco_rasgo_ml_serie=data.preco_rasgo_ml_serie,
             preco_lado_curto_std=data.preco_lado_curto_std,
             preco_lado_curto_serie=data.preco_lado_curto_serie,
             preco_lado_longo_std=data.preco_lado_longo_std,
@@ -128,6 +137,9 @@ class DefMaquinaService:
             custo_hora_serie=data.custo_hora_serie,
             preco_ml_std=data.preco_ml_std,
             preco_ml_serie=data.preco_ml_serie,
+            permite_rasgos=data.permite_rasgos,
+            preco_rasgo_ml_std=data.preco_rasgo_ml_std,
+            preco_rasgo_ml_serie=data.preco_rasgo_ml_serie,
             preco_lado_curto_std=data.preco_lado_curto_std,
             preco_lado_curto_serie=data.preco_lado_curto_serie,
             preco_lado_longo_std=data.preco_lado_longo_std,

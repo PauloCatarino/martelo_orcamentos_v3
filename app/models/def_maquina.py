@@ -38,6 +38,11 @@ class DefMaquina(Base):
     custo_hora_serie: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     preco_ml_std: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     preco_ml_serie: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    permite_rasgos: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    preco_rasgo_ml_std: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    preco_rasgo_ml_serie: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     # ORLAGEM tariffs by edged side; limite_lado_mm is the logical short/long
     # threshold in mm (default business value: 1500).
     preco_lado_curto_std: Mapped[Decimal | None] = mapped_column(

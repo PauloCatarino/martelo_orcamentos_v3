@@ -45,6 +45,7 @@ def test_default_operacoes_constants_import() -> None:
         "CORTE_PAINEL",
         "ORLAGEM_PECA",
         "CNC_MECANIZACAO",
+        "CNC_RASGO",
         "FURACAO_MANUAL",
         "RASGO_MANUAL",
         "COLAGEM_MANUAL",

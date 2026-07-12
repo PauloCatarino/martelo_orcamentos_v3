@@ -25,6 +25,8 @@ class CriarDefValuesetModeloLinhaOperacaoData:
     acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -43,6 +45,8 @@ class EditarDefValuesetModeloLinhaOperacaoData:
     acao: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -91,6 +95,8 @@ class DefValuesetModeloLinhaOperacaoService:
             acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            rasgo_qt_comp=data.rasgo_qt_comp,
+            rasgo_qt_larg=data.rasgo_qt_larg,
             tempo_setup_minutos=data.tempo_setup_minutos,
             tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
             unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),
@@ -120,6 +126,8 @@ class DefValuesetModeloLinhaOperacaoService:
             acao=normalize_operacao_acao(data.acao),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            rasgo_qt_comp=data.rasgo_qt_comp,
+            rasgo_qt_larg=data.rasgo_qt_larg,
             tempo_setup_minutos=data.tempo_setup_minutos,
             tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
             unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),

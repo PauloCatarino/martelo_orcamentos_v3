@@ -41,8 +41,10 @@ from app.domain.acabamentos import (
 from app.domain.custo_producao import (
     MOTIVO_SEM_DADOS,
     MOTIVO_SEM_TARIFA,
+    MOTIVO_MAQUINA_INCOMPATIVEL,
     aplicar_fator_serie,
     calcular_custo_cnc,
+    calcular_custo_rasgo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem_lados,
     calcular_custo_por_minutos,
@@ -2076,8 +2078,7 @@ class OrcamentoItemCusteioLinhaService:
             ligacao, "def_operacao_id", None
         )
 
-    @staticmethod
-    def _pares_operacoes_snapshot(linha) -> list[tuple] | None:
+    def _pares_operacoes_snapshot(self, linha) -> list[tuple] | None:
         """Rebuild frozen operation/link objects; None means a legacy line."""
         texto = getattr(linha, "operacoes_snapshot_json", None)
         if texto is None:
@@ -2095,6 +2096,17 @@ class OrcamentoItemCusteioLinhaService:
                 continue
             operacao = item.get("operacao") or {}
             ligacao = item.get("ligacao") or {}
+            # Legacy frozen snapshots predate CNC groove geometry. Hydrate only
+            # the missing new fields from the identified source link; all older
+            # frozen fields remain untouched.
+            if "rasgo_qt_comp" not in ligacao or "rasgo_qt_larg" not in ligacao:
+                origem = (
+                    self.peca_operacao_repository.get_by_id(ligacao.get("id"))
+                    if ligacao.get("id") is not None
+                    else None
+                )
+                ligacao["rasgo_qt_comp"] = getattr(origem, "rasgo_qt_comp", 0)
+                ligacao["rasgo_qt_larg"] = getattr(origem, "rasgo_qt_larg", 0)
             pares.append((SimpleNamespace(**operacao), SimpleNamespace(**ligacao)))
         return pares
 
@@ -2315,9 +2327,16 @@ class OrcamentoItemCusteioLinhaService:
                 nova_obs = self._mesclar_observacao(
                     linha.observacoes, "Custo de produção", None
                 )
-                nova_obs = self._mesclar_observacao(nova_obs, "Custo CNC", None)
+                aviso_rasgo = (
+                    aviso_ferragem
+                    if (aviso_ferragem or "").startswith("Rasgo CNC")
+                    else None
+                )
+                nova_obs = self._mesclar_aviso_cnc(nova_obs, aviso_rasgo)
                 nova_obs = self._mesclar_observacao(
-                    nova_obs, "Custo de montagem/manual", aviso_ferragem
+                    nova_obs,
+                    "Custo de montagem/manual",
+                    None if aviso_rasgo else aviso_ferragem,
                 )
                 nova_obs = self._mesclar_observacao(
                     nova_obs, "Tempos de produção", None
@@ -2338,9 +2357,19 @@ class OrcamentoItemCusteioLinhaService:
                 continue
 
             operacoes = self._operacoes_def_da_linha(linha, cache_variantes)
+            pares_operacoes = self._pares_operacao_ligacao_da_linha(linha, cache_variantes)
             op_corte = self._operacao_por_bucket(operacoes, "corte")
             op_orlagem = self._operacao_por_bucket(operacoes, "orlagem")
-            op_cnc = self._operacao_por_bucket(operacoes, "cnc")
+            op_cnc = next(
+                (
+                    operacao for operacao, ligacao in pares_operacoes
+                    if classificar_operacao(
+                        getattr(operacao, "tipo_operacao", None),
+                        getattr(operacao, "codigo", None),
+                    ) == "cnc" and not self._eh_rasgo_cnc(operacao, ligacao)
+                ),
+                None,
+            )
 
             custo_corte = None
             custo_orlagem = None
@@ -2389,6 +2418,17 @@ class OrcamentoItemCusteioLinhaService:
                 )
                 aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
 
+            for operacao_rasgo, ligacao_rasgo in pares_operacoes:
+                if not self._eh_rasgo_cnc(operacao_rasgo, ligacao_rasgo):
+                    continue
+                custo_rasgo, aviso_rasgo = self._custo_rasgo_da_linha(
+                    linha, operacao_rasgo, ligacao_rasgo, usar_serie
+                )
+                if custo_rasgo is not None:
+                    custo_cnc = (custo_cnc or Decimal("0")) + custo_rasgo
+                elif aviso_cnc is None:
+                    aviso_cnc = aviso_rasgo
+
             custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(
                 linha, usar_serie, cache_variantes
             )
@@ -2415,7 +2455,7 @@ class OrcamentoItemCusteioLinhaService:
                 "Custo de produção",
                 avisos_ml[0] if avisos_ml else None,
             )
-            nova_obs = self._mesclar_observacao(nova_obs, "Custo CNC", aviso_cnc)
+            nova_obs = self._mesclar_aviso_cnc(nova_obs, aviso_cnc)
             nova_obs = self._mesclar_observacao(
                 nova_obs, "Custo de montagem/manual", aviso_mm
             )
@@ -2490,6 +2530,42 @@ class OrcamentoItemCusteioLinhaService:
             usar_serie,
         )
         return preco, setup
+
+    def _tarifa_rasgo_ml(self, maquina, usar_serie: bool):
+        if maquina is None:
+            return None
+        preco, _ = escolher_tarifa(
+            getattr(maquina, "preco_rasgo_ml_std", None),
+            getattr(maquina, "preco_rasgo_ml_serie", None),
+            usar_serie,
+        )
+        return preco
+
+    @staticmethod
+    def _eh_rasgo_cnc(operacao, ligacao=None) -> bool:
+        return (
+            (getattr(operacao, "codigo", "") or "").strip().upper() == "CNC_RASGO"
+            or (getattr(ligacao, "regra_calculo", "") or "").strip().upper() == "RASGO_CNC"
+        )
+
+    def _custo_rasgo_da_linha(self, linha, operacao, ligacao, usar_serie: bool):
+        maquina = self._maquina_de_operacao(operacao)
+        custo, motivo = calcular_custo_rasgo_cnc(
+            linha.comp_real,
+            linha.larg_real,
+            linha.quantidade,
+            getattr(ligacao, "rasgo_qt_comp", 0),
+            getattr(ligacao, "rasgo_qt_larg", 0),
+            self._tarifa_rasgo_ml(maquina, usar_serie),
+            bool(getattr(maquina, "permite_rasgos", False)),
+        )
+        if motivo == MOTIVO_MAQUINA_INCOMPATIVEL:
+            return custo, f"Rasgo CNC não calculado: a máquina {getattr(maquina, 'codigo', '—')} não permite fresagem."
+        if motivo == MOTIVO_SEM_TARIFA:
+            return custo, f"Rasgo CNC não calculado: tarifa €/ML de rasgo em falta na máquina {getattr(maquina, 'codigo', '—')}."
+        if motivo == MOTIVO_SEM_DADOS:
+            return custo, "Rasgo CNC não calculado: medidas ou construção do rasgo em falta."
+        return custo, None
 
     def _tarifas_lado(self, maquina, usar_serie: bool):
         """Return ORLAGEM (preco_curto, preco_longo, limite, setup).
@@ -2591,6 +2667,16 @@ class OrcamentoItemCusteioLinhaService:
                 getattr(operacao, "codigo", None),
             )
             if bucket is None:
+                continue
+
+            if self._eh_rasgo_cnc(operacao, ligacao):
+                custo_rasgo, aviso_rasgo = self._custo_rasgo_da_linha(
+                    linha, operacao, ligacao, usar_serie
+                )
+                if custo_rasgo is not None:
+                    custos["cnc"] = (custos["cnc"] or Decimal("0")) + custo_rasgo
+                elif aviso is None:
+                    aviso = aviso_rasgo
                 continue
 
             setup_min, variavel_min = calcular_tempo_operacao(
@@ -2998,6 +3084,17 @@ class OrcamentoItemCusteioLinhaService:
             linhas.append(nova_mensagem)
 
         return "\n".join(linhas) or None
+
+    def _mesclar_aviso_cnc(
+        self, observacoes_atuais: str | None, aviso: str | None
+    ) -> str | None:
+        """Replace both area-CNC and groove-CNC warnings without duplicates."""
+        texto = self._mesclar_observacao(observacoes_atuais, "Custo CNC", None)
+        texto = self._mesclar_observacao(texto, "Rasgo CNC", None)
+        if aviso:
+            prefixo = "Rasgo CNC" if aviso.startswith("Rasgo CNC") else "Custo CNC"
+            texto = self._mesclar_observacao(texto, prefixo, aviso)
+        return texto
 
     def recalcular_medidas_linha(
         self, linha_id: int
@@ -4838,6 +4935,8 @@ class OrcamentoItemCusteioLinhaService:
                         "quantidade_base": self._json_numero(
                             getattr(ligacao, "quantidade_base", None)
                         ),
+                        "rasgo_qt_comp": getattr(ligacao, "rasgo_qt_comp", 0),
+                        "rasgo_qt_larg": getattr(ligacao, "rasgo_qt_larg", 0),
                         "tempo_setup_minutos": self._json_numero(
                             getattr(ligacao, "tempo_setup_minutos", None)
                         ),

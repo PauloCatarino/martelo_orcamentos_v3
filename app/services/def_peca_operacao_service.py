@@ -23,6 +23,8 @@ class CriarDefPecaOperacaoData:
     ordem: int = 1
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -40,6 +42,8 @@ class EditarDefPecaOperacaoData:
     ordem: int = 1
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -81,6 +85,8 @@ class DefPecaOperacaoService:
             ordem=self._normalize_ordem(data.ordem),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            rasgo_qt_comp=self._normalize_rasgo_qt(data.rasgo_qt_comp),
+            rasgo_qt_larg=self._normalize_rasgo_qt(data.rasgo_qt_larg),
             tempo_setup_minutos=data.tempo_setup_minutos,
             tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
             unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),
@@ -107,6 +113,8 @@ class DefPecaOperacaoService:
             ordem=self._normalize_ordem(data.ordem),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
+            rasgo_qt_comp=self._normalize_rasgo_qt(data.rasgo_qt_comp),
+            rasgo_qt_larg=self._normalize_rasgo_qt(data.rasgo_qt_larg),
             tempo_setup_minutos=data.tempo_setup_minutos,
             tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
             unidade_tempo=self._normalize_unidade_tempo(data.unidade_tempo),
@@ -145,6 +153,12 @@ class DefPecaOperacaoService:
             return 1
 
         return ordem
+
+    def _normalize_rasgo_qt(self, value: int | None) -> int:
+        value = int(value or 0)
+        if value < 0 or value > 99:
+            raise ValueError("quantidade de lados de rasgo deve estar entre 0 e 99")
+        return value
 
     def _normalize_regra_calculo(self, regra_calculo: str | None) -> str | None:
         if regra_calculo is None or not regra_calculo.strip():

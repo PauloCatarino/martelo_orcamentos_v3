@@ -13,6 +13,7 @@ from app.domain.regra_operacao_types import (
     POR_PECA,
     POR_QUANTIDADE,
     POR_SETUP,
+    RASGO_CNC,
     get_regra_operacao_label,
     get_regra_operacao_options,
     normalize_regra_operacao,
@@ -66,5 +67,6 @@ def test_options_list_all_rules_in_order() -> None:
         POR_ORLAS,
         POR_FURACAO,
         POR_SETUP,
+        RASGO_CNC,
         MANUAL,
     ]

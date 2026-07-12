@@ -25,6 +25,8 @@ class OrcamentoValuesetLinhaOperacaoResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     acao: str = "ADICIONAR"
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
@@ -95,6 +97,8 @@ class OrcamentoValuesetLinhaOperacaoRepository:
         acao: str = "ADICIONAR",
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        rasgo_qt_comp: int = 0,
+        rasgo_qt_larg: int = 0,
         tempo_setup_minutos: Decimal | None = None,
         tempo_por_unidade_minutos: Decimal | None = None,
         unidade_tempo: str | None = None,
@@ -110,6 +114,8 @@ class OrcamentoValuesetLinhaOperacaoRepository:
             acao=acao,
             regra_calculo=regra_calculo,
             quantidade_base=quantidade_base,
+            rasgo_qt_comp=rasgo_qt_comp,
+            rasgo_qt_larg=rasgo_qt_larg,
             tempo_setup_minutos=tempo_setup_minutos,
             tempo_por_unidade_minutos=tempo_por_unidade_minutos,
             unidade_tempo=unidade_tempo,
@@ -132,6 +138,8 @@ class OrcamentoValuesetLinhaOperacaoRepository:
         acao: str = "ADICIONAR",
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        rasgo_qt_comp: int = 0,
+        rasgo_qt_larg: int = 0,
         tempo_setup_minutos: Decimal | None = None,
         tempo_por_unidade_minutos: Decimal | None = None,
         unidade_tempo: str | None = None,
@@ -150,6 +158,8 @@ class OrcamentoValuesetLinhaOperacaoRepository:
         ligacao.acao = acao
         ligacao.regra_calculo = regra_calculo
         ligacao.quantidade_base = quantidade_base
+        ligacao.rasgo_qt_comp = rasgo_qt_comp
+        ligacao.rasgo_qt_larg = rasgo_qt_larg
         ligacao.tempo_setup_minutos = tempo_setup_minutos
         ligacao.tempo_por_unidade_minutos = tempo_por_unidade_minutos
         ligacao.unidade_tempo = unidade_tempo
@@ -207,6 +217,8 @@ class OrcamentoValuesetLinhaOperacaoRepository:
             acao=ligacao.acao,
             regra_calculo=ligacao.regra_calculo,
             quantidade_base=ligacao.quantidade_base,
+            rasgo_qt_comp=ligacao.rasgo_qt_comp,
+            rasgo_qt_larg=ligacao.rasgo_qt_larg,
             tempo_setup_minutos=ligacao.tempo_setup_minutos,
             tempo_por_unidade_minutos=ligacao.tempo_por_unidade_minutos,
             unidade_tempo=ligacao.unidade_tempo,

@@ -20,6 +20,36 @@ from app.domain.orlas import digitos_orla
 MOTIVO_SEM_TARIFA = "SEM_TARIFA"
 MOTIVO_SEM_DADOS = "SEM_DADOS"
 MOTIVO_SEM_ESCALOES = "SEM_ESCALOES"
+MOTIVO_MAQUINA_INCOMPATIVEL = "MAQUINA_INCOMPATIVEL"
+
+
+def calcular_comprimento_rasgo_ml(comp_real, larg_real, rasgo_qt_comp, rasgo_qt_larg):
+    """Return geometric groove length in metres for one piece."""
+    qt_comp = int(rasgo_qt_comp or 0)
+    qt_larg = int(rasgo_qt_larg or 0)
+    if qt_comp < 0 or qt_larg < 0 or (qt_comp == 0 and qt_larg == 0):
+        return None
+    comp = normalizar_numero(comp_real)
+    larg = normalizar_numero(larg_real)
+    if (qt_comp and comp is None) or (qt_larg and larg is None):
+        return None
+    return ((comp or Decimal("0")) * qt_comp + (larg or Decimal("0")) * qt_larg) / Decimal("1000")
+
+
+def calcular_custo_rasgo_cnc(
+    comp_real, larg_real, qt_total, rasgo_qt_comp, rasgo_qt_larg, preco_ml, permite_rasgos=True
+):
+    """Price a groove by its geometric length, never by cutter travel."""
+    if not permite_rasgos:
+        return None, MOTIVO_MAQUINA_INCOMPATIVEL
+    preco = normalizar_numero(preco_ml)
+    if preco is None:
+        return None, MOTIVO_SEM_TARIFA
+    ml = calcular_comprimento_rasgo_ml(comp_real, larg_real, rasgo_qt_comp, rasgo_qt_larg)
+    if ml is None:
+        return None, MOTIVO_SEM_DADOS
+    qt = normalizar_numero(qt_total) or Decimal("1")
+    return ml * qt * preco, None
 
 
 def escolher_tarifa(valor_std, valor_serie, usar_serie: bool) -> tuple:
