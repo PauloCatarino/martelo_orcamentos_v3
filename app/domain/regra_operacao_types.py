@@ -11,6 +11,7 @@ POR_AREA_FACE = "POR_AREA_FACE"
 POR_ORLAS = "POR_ORLAS"
 POR_FURACAO = "POR_FURACAO"
 POR_SETUP = "POR_SETUP"
+RASGO_CNC = "RASGO_CNC"
 MANUAL = "MANUAL"
 
 REGRA_OPERACAO_LABELS = {
@@ -23,6 +24,7 @@ REGRA_OPERACAO_LABELS = {
     POR_ORLAS: "Por orlas",
     POR_FURACAO: "Por furação",
     POR_SETUP: "Por setup",
+    RASGO_CNC: "Rasgo CNC por comprimento geométrico",
     MANUAL: "Manual",
 }
 

@@ -41,6 +41,9 @@ class DefMaquinaSeed:
     tipo: str | None = None
     custo_hora: Decimal | None = None
     descricao: str | None = None
+    permite_rasgos: bool = False
+    preco_rasgo_ml_std: Decimal | None = None
+    preco_rasgo_ml_serie: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +98,9 @@ DEFAULT_MAQUINAS: tuple[DefMaquinaSeed, ...] = (
             "quantidades e pecas sem grande complexidade; furacao, cavilhas, rasgos com "
             "disco/fresa e algumas operacoes de milling."
         ),
+        permite_rasgos=True,
+        preco_rasgo_ml_std=Decimal("0.40"),
+        preco_rasgo_ml_serie=Decimal("0.40"),
     ),
     DefMaquinaSeed(
         codigo="CNC_HORIZONTAL",
@@ -104,6 +110,9 @@ DEFAULT_MAQUINAS: tuple[DefMaquinaSeed, ...] = (
             "Pecas em serie ou maior quantidade, sem grande complexidade; furacao, "
             "cavilhas, rasgos com disco e fresagens limitadas."
         ),
+        permite_rasgos=True,
+        preco_rasgo_ml_std=Decimal("0.40"),
+        preco_rasgo_ml_serie=Decimal("0.40"),
     ),
     DefMaquinaSeed(
         codigo="CNC_5_EIXOS_ORLAGEM",
@@ -114,6 +123,9 @@ DEFAULT_MAQUINAS: tuple[DefMaquinaSeed, ...] = (
             "redondos, recortes e orlagem de formas nao retangulares; custo mais elevado "
             "e menos orientada para producao em serie."
         ),
+        permite_rasgos=True,
+        preco_rasgo_ml_std=Decimal("0.40"),
+        preco_rasgo_ml_serie=Decimal("0.40"),
     ),
     DefMaquinaSeed(codigo="MONTAGEM", nome="Montagem", tipo=MONTAGEM),
     DefMaquinaSeed(codigo="MANUAL", nome="Manual", tipo=MANUAL),
@@ -143,6 +155,13 @@ DEFAULT_OPERACOES: tuple[DefOperacaoSeed, ...] = (
         nome="CNC / Mecanizacao",
         tipo_operacao=CNC,
         unidade_calculo="PECA",
+        maquina_codigo="CNC_VERTICAL",
+    ),
+    DefOperacaoSeed(
+        codigo="CNC_RASGO",
+        nome="Rasgo CNC",
+        tipo_operacao=CNC,
+        unidade_calculo="ML",
         maquina_codigo="CNC_VERTICAL",
     ),
     DefOperacaoSeed(
@@ -216,6 +235,9 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
         maquina.tipo = seed.tipo
         maquina.descricao = seed.descricao
         maquina.custo_hora = seed.custo_hora
+        maquina.permite_rasgos = seed.permite_rasgos
+        maquina.preco_rasgo_ml_std = seed.preco_rasgo_ml_std
+        maquina.preco_rasgo_ml_serie = seed.preco_rasgo_ml_serie
         maquina.ativo = True
         session.flush()
         return EntityResult(status="reutilizada", entity=maquina)
@@ -226,6 +248,9 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
         tipo=seed.tipo,
         descricao=seed.descricao,
         custo_hora=seed.custo_hora,
+        permite_rasgos=seed.permite_rasgos,
+        preco_rasgo_ml_std=seed.preco_rasgo_ml_std,
+        preco_rasgo_ml_serie=seed.preco_rasgo_ml_serie,
         ativo=True,
     )
     session.add(maquina)

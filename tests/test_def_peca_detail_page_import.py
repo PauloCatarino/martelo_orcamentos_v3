@@ -157,6 +157,7 @@ def test_def_peca_detail_page_operacoes_headers() -> None:
         "Máquina",
         "Regra cálculo",
         "Quantidade base",
+        "Construção rasgo",
         "Tempo setup",
         "Tempo por unidade",
         "Unidade tempo",

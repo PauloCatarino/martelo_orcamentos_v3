@@ -27,6 +27,9 @@ class DefMaquinaResumo:
     custo_hora_serie: Decimal | None = None
     preco_ml_std: Decimal | None = None
     preco_ml_serie: Decimal | None = None
+    permite_rasgos: bool = False
+    preco_rasgo_ml_std: Decimal | None = None
+    preco_rasgo_ml_serie: Decimal | None = None
     preco_lado_curto_std: Decimal | None = None
     preco_lado_curto_serie: Decimal | None = None
     preco_lado_longo_std: Decimal | None = None
@@ -90,6 +93,9 @@ class DefMaquinaRepository:
         custo_hora_serie: Decimal | None = None,
         preco_ml_std: Decimal | None = None,
         preco_ml_serie: Decimal | None = None,
+        permite_rasgos: bool = False,
+        preco_rasgo_ml_std: Decimal | None = None,
+        preco_rasgo_ml_serie: Decimal | None = None,
         preco_lado_curto_std: Decimal | None = None,
         preco_lado_curto_serie: Decimal | None = None,
         preco_lado_longo_std: Decimal | None = None,
@@ -110,6 +116,9 @@ class DefMaquinaRepository:
             custo_hora_serie=custo_hora_serie,
             preco_ml_std=preco_ml_std,
             preco_ml_serie=preco_ml_serie,
+            permite_rasgos=permite_rasgos,
+            preco_rasgo_ml_std=preco_rasgo_ml_std,
+            preco_rasgo_ml_serie=preco_rasgo_ml_serie,
             preco_lado_curto_std=preco_lado_curto_std,
             preco_lado_curto_serie=preco_lado_curto_serie,
             preco_lado_longo_std=preco_lado_longo_std,
@@ -137,6 +146,9 @@ class DefMaquinaRepository:
         custo_hora_serie: Decimal | None = None,
         preco_ml_std: Decimal | None = None,
         preco_ml_serie: Decimal | None = None,
+        permite_rasgos: bool = False,
+        preco_rasgo_ml_std: Decimal | None = None,
+        preco_rasgo_ml_serie: Decimal | None = None,
         preco_lado_curto_std: Decimal | None = None,
         preco_lado_curto_serie: Decimal | None = None,
         preco_lado_longo_std: Decimal | None = None,
@@ -160,6 +172,9 @@ class DefMaquinaRepository:
         maquina.custo_hora_serie = custo_hora_serie
         maquina.preco_ml_std = preco_ml_std
         maquina.preco_ml_serie = preco_ml_serie
+        maquina.permite_rasgos = permite_rasgos
+        maquina.preco_rasgo_ml_std = preco_rasgo_ml_std
+        maquina.preco_rasgo_ml_serie = preco_rasgo_ml_serie
         maquina.preco_lado_curto_std = preco_lado_curto_std
         maquina.preco_lado_curto_serie = preco_lado_curto_serie
         maquina.preco_lado_longo_std = preco_lado_longo_std
@@ -207,6 +222,9 @@ class DefMaquinaRepository:
             custo_hora_serie=maquina.custo_hora_serie,
             preco_ml_std=maquina.preco_ml_std,
             preco_ml_serie=maquina.preco_ml_serie,
+            permite_rasgos=maquina.permite_rasgos,
+            preco_rasgo_ml_std=maquina.preco_rasgo_ml_std,
+            preco_rasgo_ml_serie=maquina.preco_rasgo_ml_serie,
             preco_lado_curto_std=maquina.preco_lado_curto_std,
             preco_lado_curto_serie=maquina.preco_lado_curto_serie,
             preco_lado_longo_std=maquina.preco_lado_longo_std,

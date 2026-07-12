@@ -92,6 +92,7 @@ class DefPecaDetailPage(QWidget):
         "Máquina",
         "Regra cálculo",
         "Quantidade base",
+        "Construção rasgo",
         "Tempo setup",
         "Tempo por unidade",
         "Unidade tempo",
@@ -656,6 +657,11 @@ class DefPecaDetailPage(QWidget):
                 self._format_operacao_maquina(operacao),
                 get_regra_operacao_label(ligacao.regra_calculo),
                 format_quantity(ligacao.quantidade_base),
+                (
+                    f"{ligacao.rasgo_qt_comp} × COMP + {ligacao.rasgo_qt_larg} × LARG"
+                    if ligacao.rasgo_qt_comp or ligacao.rasgo_qt_larg
+                    else ""
+                ),
                 format_quantity(ligacao.tempo_setup_minutos),
                 format_quantity(ligacao.tempo_por_unidade_minutos),
                 UNIDADE_TEMPO_LABELS.get(
@@ -724,6 +730,8 @@ class DefPecaDetailPage(QWidget):
                             ordem=form_data.ordem,
                             regra_calculo=form_data.regra_calculo,
                             quantidade_base=form_data.quantidade_base,
+                            rasgo_qt_comp=form_data.rasgo_qt_comp,
+                            rasgo_qt_larg=form_data.rasgo_qt_larg,
                             tempo_setup_minutos=form_data.tempo_setup_minutos,
                             tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
                             unidade_tempo=form_data.unidade_tempo,
@@ -770,6 +778,8 @@ class DefPecaDetailPage(QWidget):
                             ordem=form_data.ordem,
                             regra_calculo=form_data.regra_calculo,
                             quantidade_base=form_data.quantidade_base,
+                            rasgo_qt_comp=form_data.rasgo_qt_comp,
+                            rasgo_qt_larg=form_data.rasgo_qt_larg,
                             tempo_setup_minutos=form_data.tempo_setup_minutos,
                             tempo_por_unidade_minutos=form_data.tempo_por_unidade_minutos,
                             unidade_tempo=form_data.unidade_tempo,

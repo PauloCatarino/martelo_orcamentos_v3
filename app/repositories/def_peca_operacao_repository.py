@@ -25,6 +25,8 @@ class DefPecaOperacaoResumo:
     obrigatorio: bool
     ativo: bool
     observacoes: str | None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
@@ -79,6 +81,8 @@ class DefPecaOperacaoRepository:
         ordem: int = 1,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        rasgo_qt_comp: int = 0,
+        rasgo_qt_larg: int = 0,
         tempo_setup_minutos: Decimal | None = None,
         tempo_por_unidade_minutos: Decimal | None = None,
         unidade_tempo: str | None = None,
@@ -93,6 +97,8 @@ class DefPecaOperacaoRepository:
             ordem=ordem,
             regra_calculo=regra_calculo,
             quantidade_base=quantidade_base,
+            rasgo_qt_comp=rasgo_qt_comp,
+            rasgo_qt_larg=rasgo_qt_larg,
             tempo_setup_minutos=tempo_setup_minutos,
             tempo_por_unidade_minutos=tempo_por_unidade_minutos,
             unidade_tempo=unidade_tempo,
@@ -114,6 +120,8 @@ class DefPecaOperacaoRepository:
         ordem: int = 1,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
+        rasgo_qt_comp: int = 0,
+        rasgo_qt_larg: int = 0,
         tempo_setup_minutos: Decimal | None = None,
         tempo_por_unidade_minutos: Decimal | None = None,
         unidade_tempo: str | None = None,
@@ -131,6 +139,8 @@ class DefPecaOperacaoRepository:
         ligacao.ordem = ordem
         ligacao.regra_calculo = regra_calculo
         ligacao.quantidade_base = quantidade_base
+        ligacao.rasgo_qt_comp = rasgo_qt_comp
+        ligacao.rasgo_qt_larg = rasgo_qt_larg
         ligacao.tempo_setup_minutos = tempo_setup_minutos
         ligacao.tempo_por_unidade_minutos = tempo_por_unidade_minutos
         ligacao.unidade_tempo = unidade_tempo
@@ -172,6 +182,8 @@ class DefPecaOperacaoRepository:
             ordem=ligacao.ordem,
             regra_calculo=ligacao.regra_calculo,
             quantidade_base=ligacao.quantidade_base,
+            rasgo_qt_comp=ligacao.rasgo_qt_comp,
+            rasgo_qt_larg=ligacao.rasgo_qt_larg,
             tempo_setup_minutos=ligacao.tempo_setup_minutos,
             tempo_por_unidade_minutos=ligacao.tempo_por_unidade_minutos,
             unidade_tempo=ligacao.unidade_tempo,

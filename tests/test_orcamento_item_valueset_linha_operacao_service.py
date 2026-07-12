@@ -140,6 +140,8 @@ def test_adicionar_normaliza_ordem_regra_e_tempos(monkeypatch) -> None:
             ordem=0,
             regra_calculo=" por_m2 ",
             quantidade_base=Decimal("1.5"),
+            rasgo_qt_comp=2,
+            rasgo_qt_larg=1,
             tempo_setup_minutos=Decimal("2"),
             tempo_por_unidade_minutos=Decimal("0.35"),
             unidade_tempo="ml",
@@ -153,6 +155,8 @@ def test_adicionar_normaliza_ordem_regra_e_tempos(monkeypatch) -> None:
     assert payload["ordem"] == 1
     assert payload["regra_calculo"] == "POR_M2"
     assert payload["quantidade_base"] == Decimal("1.5")
+    assert payload["rasgo_qt_comp"] == 2
+    assert payload["rasgo_qt_larg"] == 1
     assert payload["tempo_setup_minutos"] == Decimal("2")
     assert payload["tempo_por_unidade_minutos"] == Decimal("0.35")
     assert payload["unidade_tempo"] == "ML"

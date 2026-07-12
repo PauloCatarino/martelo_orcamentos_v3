@@ -59,6 +59,8 @@ class OrcamentoValuesetLinhaOperacao(Base):
     )
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    rasgo_qt_comp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    rasgo_qt_larg: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     tempo_setup_minutos: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     tempo_por_unidade_minutos: Mapped[Decimal | None] = mapped_column(
         Numeric(14, 4), nullable=True

@@ -26,6 +26,7 @@ def test_dialog_headers_and_callables() -> None:
         "Máquina",
         "Regra cálculo",
         "Quantidade base",
+        "Construção rasgo",
         "Tempo setup",
         "Tempo por unidade",
         "Unidade tempo",

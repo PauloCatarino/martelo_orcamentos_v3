@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor, QFont
 
 from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
+from app.domain.custo_producao import calcular_comprimento_rasgo_ml, calcular_custo_rasgo_cnc
+from app.domain.regra_operacao_types import RASGO_CNC
 from app.domain.regra_operacao_types import get_regra_operacao_options, normalize_regra_operacao
 from app.domain.operacao_acao_types import (
     ADICIONAR,
@@ -56,6 +58,8 @@ class DefPecaOperacaoDialogData:
     ordem: int
     regra_calculo: str | None
     quantidade_base: Decimal | None
+    rasgo_qt_comp: int
+    rasgo_qt_larg: int
     tempo_setup_minutos: Decimal | None
     tempo_por_unidade_minutos: Decimal | None
     unidade_tempo: str | None
@@ -169,6 +173,10 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.quantidade_base_input = QLineEdit()
         self.quantidade_base_input.setPlaceholderText("Ex.: 1.5")
+        self.rasgo_qt_comp_input = QSpinBox()
+        self.rasgo_qt_comp_input.setRange(0, 99)
+        self.rasgo_qt_larg_input = QSpinBox()
+        self.rasgo_qt_larg_input.setRange(0, 99)
 
         self.tempo_setup_input = QLineEdit()
         self.tempo_setup_input.setPlaceholderText("Ex.: 2 (minutos)")
@@ -199,6 +207,10 @@ class DefPecaOperacaoDialog(QDialog):
         form.addRow("Ordem", self.ordem_input)
         form.addRow("Regra cálculo", self.regra_calculo_input)
         form.addRow("Quantidade base", self.quantidade_base_input)
+        self.rasgo_comp_label = QLabel("N.º comprimentos do rasgo")
+        self.rasgo_larg_label = QLabel("N.º larguras do rasgo")
+        form.addRow(self.rasgo_comp_label, self.rasgo_qt_comp_input)
+        form.addRow(self.rasgo_larg_label, self.rasgo_qt_larg_input)
         form.addRow("Tempo setup (min)", self.tempo_setup_input)
         form.addRow("Tempo por unidade (min)", self.tempo_por_unidade_input)
         form.addRow("Unidade tempo", self.unidade_tempo_input)
@@ -218,6 +230,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         self.simular_button.clicked.connect(self._abrir_simulador)
         self.acao_input.currentIndexChanged.connect(self._update_acao_fields)
+        self.operacao_input.currentIndexChanged.connect(self._update_rasgo_fields)
 
         layout = QVBoxLayout()
         layout.addLayout(form)
@@ -228,6 +241,7 @@ class DefPecaOperacaoDialog(QDialog):
         if ligacao is not None:
             self._load_ligacao(ligacao)
         self._update_acao_fields()
+        self._update_rasgo_fields()
 
     def _load_ligacao(self, ligacao: DefPecaOperacaoResumo) -> None:
         """Populate the form with an existing link."""
@@ -243,6 +257,8 @@ class DefPecaOperacaoDialog(QDialog):
             self.acao_input.setCurrentIndex(acao_index)
         self._select_regra(ligacao.regra_calculo)
         self.quantidade_base_input.setText(self._format_decimal(ligacao.quantidade_base))
+        self.rasgo_qt_comp_input.setValue(getattr(ligacao, "rasgo_qt_comp", 0))
+        self.rasgo_qt_larg_input.setValue(getattr(ligacao, "rasgo_qt_larg", 0))
         self.tempo_setup_input.setText(self._format_decimal(ligacao.tempo_setup_minutos))
         self.tempo_por_unidade_input.setText(
             self._format_decimal(ligacao.tempo_por_unidade_minutos)
@@ -266,6 +282,8 @@ class DefPecaOperacaoDialog(QDialog):
             ordem=self.ordem_input.value(),
             regra_calculo=self.regra_calculo_input.currentData(),
             quantidade_base=self._parse_decimal_input(self.quantidade_base_input),
+            rasgo_qt_comp=self.rasgo_qt_comp_input.value(),
+            rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
             tempo_setup_minutos=self._parse_decimal_input(self.tempo_setup_input),
             tempo_por_unidade_minutos=self._parse_decimal_input(
                 self.tempo_por_unidade_input
@@ -294,6 +312,14 @@ class DefPecaOperacaoDialog(QDialog):
             return
 
         self.error_label.clear()
+        operacao = self._operacao_selecionada()
+        if getattr(operacao, "codigo", "") == "CNC_RASGO":
+            if data.rasgo_qt_comp + data.rasgo_qt_larg <= 0:
+                self.set_error("Defina pelo menos um comprimento ou uma largura de rasgo.")
+                return
+            if not getattr(operacao, "maquina_permite_rasgos", False):
+                self.set_error("A máquina associada não permite fresagem de rasgos.")
+                return
         if self.on_save is not None and not self.on_save(data):
             return
 
@@ -317,9 +343,26 @@ class DefPecaOperacaoDialog(QDialog):
             widget.setEnabled(not desativar)
         self.simular_button.setEnabled(not desativar)
 
+    def _update_rasgo_fields(self) -> None:
+        visivel = getattr(self._operacao_selecionada(), "codigo", "") == "CNC_RASGO"
+        for widget in (self.rasgo_comp_label, self.rasgo_qt_comp_input,
+                       self.rasgo_larg_label, self.rasgo_qt_larg_input):
+            widget.setVisible(visivel)
+        if visivel:
+            self._select_regra(RASGO_CNC)
+
     def _abrir_simulador(self) -> None:
         """Open the operation simulator using the current form values."""
         operacao = self._operacao_selecionada()
+        if getattr(operacao, "codigo", "") == "CNC_RASGO":
+            SimuladorRasgoCncDialog(
+                rasgo_qt_comp=self.rasgo_qt_comp_input.value(),
+                rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
+                preco_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
+                maquina_codigo=getattr(operacao, "maquina_codigo", None),
+                parent=self,
+            ).exec()
+            return
         dialog = SimuladorOperacaoDialog(
             unidade_tempo=self.unidade_tempo_input.currentData(),
             quantidade_base=self._parse_decimal_input_tolerante(
@@ -383,6 +426,74 @@ class DefPecaOperacaoDialog(QDialog):
     def _empty_to_none(self, value: str) -> str | None:
         normalized = value.strip()
         return normalized or None
+
+
+class SimuladorRasgoCncDialog(QDialog):
+    """Live geometric-length and price simulator for a CNC groove."""
+
+    def __init__(self, *, rasgo_qt_comp: int, rasgo_qt_larg: int,
+                 preco_ml: Decimal | None, maquina_codigo: str | None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Simular rasgo CNC")
+        self.setModal(True)
+        self.setMinimumWidth(480)
+        self.rasgo_qt_comp = rasgo_qt_comp
+        self.rasgo_qt_larg = rasgo_qt_larg
+        self.comp_input = QLineEdit()
+        self.larg_input = QLineEdit()
+        self.qt_input = QLineEdit("1")
+        self.preco_input = QLineEdit(self._format_decimal(preco_ml))
+        self.resultado = QLabel()
+        self.resultado.setWordWrap(True)
+        form = QFormLayout()
+        form.addRow("Máquina", QLabel(maquina_codigo or "—"))
+        form.addRow("Construção", QLabel(f"{rasgo_qt_comp} × COMP + {rasgo_qt_larg} × LARG"))
+        form.addRow("COMP real (mm)", self.comp_input)
+        form.addRow("LARG real (mm)", self.larg_input)
+        form.addRow("QT peças", self.qt_input)
+        form.addRow("Preço rasgo (€/ML)", self.preco_input)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.clicked.connect(lambda _button: self.accept())
+        layout = QVBoxLayout(self)
+        layout.addLayout(form)
+        layout.addWidget(QLabel("O comprimento é geométrico; a ida e volta da fresa não duplica os ML."))
+        layout.addWidget(self.resultado)
+        layout.addWidget(buttons)
+        for widget in (self.comp_input, self.larg_input, self.qt_input, self.preco_input):
+            widget.textChanged.connect(self._recalcular)
+        self._recalcular()
+
+    def _recalcular(self) -> None:
+        comp = self._parse(self.comp_input.text())
+        larg = self._parse(self.larg_input.text())
+        qt = self._parse(self.qt_input.text()) or Decimal("1")
+        preco = self._parse(self.preco_input.text())
+        ml = calcular_comprimento_rasgo_ml(
+            comp, larg, self.rasgo_qt_comp, self.rasgo_qt_larg
+        )
+        custo, _ = calcular_custo_rasgo_cnc(
+            comp, larg, qt, self.rasgo_qt_comp, self.rasgo_qt_larg, preco
+        )
+        if ml is None:
+            self.resultado.setText("Preencha as medidas necessárias para simular.")
+            return
+        self.resultado.setText(
+            f"Rasgo por peça: {format_quantity(ml)} ML\n"
+            f"Rasgo total: {format_quantity(ml * qt)} ML\n"
+            f"Custo: {format_currency(custo) if custo is not None else 'sem tarifa'}"
+        )
+
+    @staticmethod
+    def _parse(text: str) -> Decimal | None:
+        try:
+            return Decimal(text.strip().replace(",", ".")) if text.strip() else None
+        except InvalidOperation:
+            return None
+
+    @staticmethod
+    def _format_decimal(value: Decimal | None) -> str:
+        return "" if value is None else format(value.normalize(), "f")
 
 
 class SimuladorOperacaoDialog(QDialog):

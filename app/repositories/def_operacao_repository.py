@@ -29,6 +29,9 @@ class DefOperacaoResumo:
     maquina_id: int | None
     ativo: bool
     observacoes: str | None
+    maquina_codigo: str | None = None
+    maquina_permite_rasgos: bool = False
+    maquina_preco_rasgo_ml_std: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -189,6 +192,9 @@ class DefOperacaoRepository:
             maquina_id=operacao.maquina_id,
             ativo=operacao.ativo,
             observacoes=operacao.observacoes,
+            maquina_codigo=getattr(operacao.maquina, "codigo", None),
+            maquina_permite_rasgos=bool(getattr(operacao.maquina, "permite_rasgos", False)),
+            maquina_preco_rasgo_ml_std=getattr(operacao.maquina, "preco_rasgo_ml_std", None),
             created_at=operacao.created_at,
             updated_at=operacao.updated_at,
         )

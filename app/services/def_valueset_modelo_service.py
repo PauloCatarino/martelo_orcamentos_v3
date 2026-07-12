@@ -186,6 +186,8 @@ class DefValuesetModeloService:
                         acao=getattr(operacao, "acao", None),
                         regra_calculo=operacao.regra_calculo,
                         quantidade_base=operacao.quantidade_base,
+                        rasgo_qt_comp=getattr(operacao, "rasgo_qt_comp", 0),
+                        rasgo_qt_larg=getattr(operacao, "rasgo_qt_larg", 0),
                         tempo_setup_minutos=operacao.tempo_setup_minutos,
                         tempo_por_unidade_minutos=operacao.tempo_por_unidade_minutos,
                         unidade_tempo=operacao.unidade_tempo,

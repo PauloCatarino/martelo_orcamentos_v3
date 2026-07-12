@@ -55,6 +55,12 @@ class DefPecaOperacao(Base):
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    rasgo_qt_comp: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    rasgo_qt_larg: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     # Time configuration (phase 8R.0): fixed setup time and variable time per
     # technical unit (minutes). No defaults — filled manually per operation.
     tempo_setup_minutos: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)

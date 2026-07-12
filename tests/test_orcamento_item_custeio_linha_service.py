@@ -3625,6 +3625,9 @@ def _maquina_tarifa(
     preco_lado_longo_std=None,
     preco_lado_longo_serie=None,
     limite_lado_mm=None,
+    permite_rasgos=False,
+    preco_rasgo_ml_std=None,
+    preco_rasgo_ml_serie=None,
 ):
     return SimpleNamespace(
         id=id,
@@ -3640,7 +3643,29 @@ def _maquina_tarifa(
         preco_lado_longo_std=preco_lado_longo_std,
         preco_lado_longo_serie=preco_lado_longo_serie,
         limite_lado_mm=limite_lado_mm,
+        permite_rasgos=permite_rasgos,
+        preco_rasgo_ml_std=preco_rasgo_ml_std,
+        preco_rasgo_ml_serie=preco_rasgo_ml_serie,
     )
+
+
+def test_custo_rasgo_cnc_integrado_usa_geometria_da_linha() -> None:
+    service = object.__new__(service_module.OrcamentoItemCusteioLinhaService)
+    maquina = _maquina_tarifa(
+        "CNC_VERTICAL", id=12, permite_rasgos=True,
+        preco_rasgo_ml_std=Decimal("0.40")
+    )
+    service.maquina_repository = SimpleNamespace(get_by_id=lambda _id: maquina)
+    linha = SimpleNamespace(
+        comp_real=Decimal("2000"), larg_real=Decimal("600"), quantidade=Decimal("1")
+    )
+    operacao = SimpleNamespace(maquina_id=12, codigo="CNC_RASGO")
+    ligacao = SimpleNamespace(rasgo_qt_comp=2, rasgo_qt_larg=2, regra_calculo="RASGO_CNC")
+
+    custo, aviso = service._custo_rasgo_da_linha(linha, operacao, ligacao, False)
+
+    assert custo == Decimal("2.080")
+    assert aviso is None
 
 
 def test_recalcular_custos_producao_corte(monkeypatch) -> None:

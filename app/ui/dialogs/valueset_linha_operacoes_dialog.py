@@ -49,6 +49,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         "Máquina",
         "Regra cálculo",
         "Quantidade base",
+        "Construção rasgo",
         "Tempo setup",
         "Tempo por unidade",
         "Unidade tempo",
@@ -163,6 +164,12 @@ class ValuesetLinhaOperacoesDialog(QDialog):
                 self._format_operacao_maquina(operacao),
                 get_regra_operacao_label(ligacao.regra_calculo),
                 format_quantity(ligacao.quantidade_base),
+                (
+                    f"{getattr(ligacao, 'rasgo_qt_comp', 0)} × COMP + "
+                    f"{getattr(ligacao, 'rasgo_qt_larg', 0)} × LARG"
+                    if getattr(ligacao, "rasgo_qt_comp", 0) or getattr(ligacao, "rasgo_qt_larg", 0)
+                    else ""
+                ),
                 format_quantity(ligacao.tempo_setup_minutos),
                 format_quantity(ligacao.tempo_por_unidade_minutos),
                 UNIDADE_TEMPO_LABELS.get(
