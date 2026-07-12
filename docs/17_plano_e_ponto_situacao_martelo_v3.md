@@ -1149,9 +1149,20 @@ Guião de teste local (caminhos exatos):
    fixo por peça"**: quantidade volta a 1, regra configurável volta a
    "— sem regra —", zona Geral, modo "Quantidade total".
 
-Validação recebida: pendente (o utilizador vai avaliar G1+G2+G3 em conjunto).
+Validação recebida: 2026-07-12 — "já existe alguma melhoria"; o utilizador
+conta aprender com o uso e quer, a prazo, IA dentro dos menus (sugerir
+preenchimentos e analisar se o que o operador seleciona faz sentido).
+Aprovou avançar para o G4 em nova conversa.
+
+Nota a verificar no G4: no teste do utilizador, a receita de furação foi
+aplicada numa operação CNC_VERTICAL com o guia em modo TARIFA ("cnc") — se
+foi numa peça de painel, os tempos configurados não contam para o custo
+(reforçar o aviso?); se foi numa ferragem, a natureza não chegou ao diálogo
+nesse caminho.
 
 Commit: `Receitas Configurar como nos dialogos de operacoes e associados`.
 
 Próximo passo recomendado: G4 — sugestão por semelhança ("Copiar
-configuração de X"), ou afinar as receitas com casos reais do utilizador.
+configuração de X"): ao criar operação/associado, procurar configurações
+existentes na mesma categoria/chave e propor copiar (determinístico; a
+camada IA generativa fica para a visão futura).
