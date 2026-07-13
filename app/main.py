@@ -29,6 +29,7 @@ from app.config.logging_config import configure_logging
 from app.core.session import app_session
 from app.ui import tema
 from app.ui.login_window import LoginWindow
+from app.ui.introducao_window import IntroducaoWindow
 from app.ui.main_window import MainWindow
 
 
@@ -70,8 +71,9 @@ def main() -> int:
         paleta.setColor(grupo, QPalette.ColorRole.HighlightedText, realce_texto)
     qt_app.setPalette(paleta)
     # Realce transversal do separador selecionado (R2.11).
-    qt_app.setStyleSheet(tema.ESTILO_ABAS)
+    qt_app.setStyleSheet(tema.ESTILO_GLOBAL)
 
+    introducao_mostrada = False
     while True:
         login_window = LoginWindow()
         if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
@@ -82,6 +84,13 @@ def main() -> int:
 
         logout_requested = False
 
+        introducao = None
+        if not introducao_mostrada:
+            introducao_mostrada = True
+            introducao = IntroducaoWindow(app_session.current_user.nome)
+            introducao.show()
+            qt_app.processEvents()
+
         window = MainWindow(authenticated_user=app_session.current_user)
 
         def handle_logout() -> None:
@@ -91,7 +100,11 @@ def main() -> int:
             window.close()
 
         window.logout_requested.connect(handle_logout)
-        window.showMaximized()
+        if introducao is not None:
+            introducao.concluida.connect(window.showMaximized)
+            introducao.marcar_aplicacao_pronta()
+        else:
+            window.showMaximized()
 
         qt_app.exec()
 

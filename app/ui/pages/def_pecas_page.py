@@ -7,13 +7,10 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -48,13 +45,13 @@ class DefPecasPage(QWidget):
         "Função",
         "Grupo",
         "Orlas",
+        "Revisão",
         "Ativo",
     ]
 
     def __init__(self) -> None:
         super().__init__()
 
-        self._pecas_by_row: dict[int, DefPecaResumo] = {}
         self._pecas_by_id: dict[int, DefPecaResumo] = {}
         self._tree_items_by_id: dict[int, QTreeWidgetItem] = {}
         self._detail_page: DefPecaDetailPage | None = None
@@ -76,14 +73,8 @@ class DefPecasPage(QWidget):
         self.edit_button = QPushButton("Editar Pe\u00e7a")
         self.edit_button.clicked.connect(self.abrir_editar_peca)
 
-        self.duplicate_button = QPushButton("Duplicar Pe\u00e7a")
-        self.duplicate_button.clicked.connect(self.duplicar_peca_selecionada)
-
         self.toggle_ativo_button = QPushButton("Ativar/Desativar")
         self.toggle_ativo_button.clicked.connect(self.alternar_peca_ativa)
-
-        self.toggle_vista_button = QPushButton("Ver em \u00c1rvore")
-        self.toggle_vista_button.clicked.connect(self.alternar_vista)
 
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
         self.mostrar_inativas_check.stateChanged.connect(
@@ -94,9 +85,7 @@ class DefPecasPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
-        actions_layout.addWidget(self.duplicate_button)
         actions_layout.addWidget(self.toggle_ativo_button)
-        actions_layout.addWidget(self.toggle_vista_button)
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -104,27 +93,17 @@ class DefPecasPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("defPecasStatus")
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Interactive
-        )
-        self.table.horizontalHeader().setStretchLastSection(False)
-        self.table.cellDoubleClicked.connect(self._handle_row_double_click)
-        ligar_persistencia_larguras(self.table, "def_pecas")
-
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabel("Pe\u00e7as")
+        self.tree.setColumnCount(len(self.TABLE_HEADERS))
+        self.tree.setHeaderLabels(self.TABLE_HEADERS)
+        self.tree.setRootIsDecorated(True)
+        self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionBehavior(QTreeWidget.SelectionBehavior.SelectRows)
+        self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.tree.header().setStretchLastSection(False)
         self.tree.itemDoubleClicked.connect(self._handle_tree_item_double_click)
-
-        self.lista_stack = QStackedWidget()
-        self.lista_stack.addWidget(self.table)
-        self.lista_stack.addWidget(self.tree)
+        ligar_persistencia_larguras(self.tree, "def_pecas_arvore")
 
         self.list_widget = QWidget()
         list_layout = QVBoxLayout()
@@ -133,7 +112,7 @@ class DefPecasPage(QWidget):
         list_layout.addWidget(self.cabecalho)
         list_layout.addLayout(actions_layout)
         list_layout.addWidget(self.status_label)
-        list_layout.addWidget(self.lista_stack, stretch=1)
+        list_layout.addWidget(self.tree, stretch=1)
         self.list_widget.setLayout(list_layout)
 
         self.stack = QStackedWidget()
@@ -148,7 +127,6 @@ class DefPecasPage(QWidget):
 
     def carregar_pecas(self, select_codigo: str | None = None) -> None:
         """Load piece definitions into the table and tree views."""
-        self.table.setRowCount(0)
         self.tree.clear()
         self.status_label.clear()
 
@@ -163,7 +141,6 @@ class DefPecasPage(QWidget):
             pecas = [peca for peca in pecas if peca.ativo]
 
         self._pecas_by_id = {peca.id: peca for peca in pecas}
-        self._preencher_tabela(pecas)
         self._preencher_arvore(pecas)
         if select_codigo:
             self._select_peca_by_codigo(select_codigo)
@@ -293,42 +270,6 @@ class DefPecasPage(QWidget):
             self.carregar_pecas(select_codigo=saved_as_codigo)
             self.status_label.setText(f"Pe\u00e7a {saved_as_codigo} gravada como nova.")
 
-    def duplicar_peca_selecionada(self) -> None:
-        """Duplicate the selected piece definition."""
-        peca = self._get_selected_peca()
-        if peca is None:
-            self.status_label.setText("Selecione uma pe\u00e7a para duplicar.")
-            return
-
-        novo_codigo, ok = QInputDialog.getText(
-            self,
-            "Duplicar Pe\u00e7a",
-            "Novo c\u00f3digo:",
-            text=f"{peca.codigo}_COPIA",
-        )
-        novo_codigo = novo_codigo.strip()
-        if not ok or not novo_codigo:
-            return
-
-        try:
-            with SessionLocal() as session:
-                resultado = DefPecaService(session).duplicar_peca(
-                    peca.id,
-                    novo_codigo,
-                )
-        except IntegrityError:
-            self.status_label.setText("J\u00e1 existe uma pe\u00e7a com esse c\u00f3digo.")
-            return
-        except (SQLAlchemyError, ValueError):
-            self.status_label.setText("N\u00e3o foi poss\u00edvel duplicar a pe\u00e7a.")
-            return
-
-        self.carregar_pecas(select_codigo=resultado.codigo)
-        self.status_label.setText(
-            f"Pe\u00e7a {resultado.codigo} duplicada. "
-            "Edite-a para ajustar o nome e outros dados."
-        )
-
     def alternar_peca_ativa(self) -> None:
         """Toggle the active state of the selected piece after confirmation."""
         peca = self._get_selected_peca()
@@ -353,6 +294,9 @@ class DefPecasPage(QWidget):
                     service.desativar_peca(peca.id)
                 else:
                     service.ativar_peca(peca.id)
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
         except SQLAlchemyError:
             self.status_label.setText("N\u00e3o foi poss\u00edvel atualizar o estado da pe\u00e7a.")
             return
@@ -361,40 +305,8 @@ class DefPecasPage(QWidget):
         self.carregar_pecas()
         self.status_label.setText(f"Pe\u00e7a {peca.codigo} {estado}.")
 
-    def alternar_vista(self) -> None:
-        """Switch between the table and tree views."""
-        if self.lista_stack.currentWidget() == self.table:
-            self.lista_stack.setCurrentWidget(self.tree)
-            self.toggle_vista_button.setText("Ver em Lista")
-        else:
-            self.lista_stack.setCurrentWidget(self.table)
-            self.toggle_vista_button.setText("Ver em \u00c1rvore")
-
-    def _preencher_tabela(self, pecas: list[DefPecaResumo]) -> None:
-        """Fill the table with piece definition read models."""
-        self._pecas_by_row = {}
-        self.table.setRowCount(len(pecas))
-
-        for row_index, peca in enumerate(pecas):
-            self._pecas_by_row[row_index] = peca
-            values = [
-                peca.codigo,
-                peca.nome,
-                get_peca_natureza_label(peca.natureza),
-                peca.funcao or "",
-                peca.grupo or "",
-                format_orla_code(peca.orla_c1, peca.orla_c2, peca.orla_l1, peca.orla_l2),
-                "Sim" if peca.ativo else "N\u00e3o",
-            ]
-
-            for column_index, value in enumerate(values):
-                table_item = QTableWidgetItem(value)
-                if column_index == 0:
-                    table_item.setData(Qt.ItemDataRole.UserRole, peca.id)
-                self.table.setItem(row_index, column_index, table_item)
-
     def _preencher_arvore(self, pecas: list[DefPecaResumo]) -> None:
-        """Fill the tree view grouped by piece group."""
+        """Fill the permanent tree-table, grouped by piece group."""
         self._tree_items_by_id = {}
         self.tree.clear()
 
@@ -403,7 +315,8 @@ class DefPecasPage(QWidget):
             grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
             parent = grupos.get(grupo)
             if parent is None:
-                parent = QTreeWidgetItem([grupo])
+                parent = QTreeWidgetItem([grupo, *("" for _ in self.TABLE_HEADERS[1:])])
+                parent.setFirstColumnSpanned(True)
                 self.tree.addTopLevelItem(parent)
                 grupos[grupo] = parent
 
@@ -413,8 +326,16 @@ class DefPecasPage(QWidget):
                 peca.orla_l1,
                 peca.orla_l2,
             )
-            texto = f"{peca.codigo} - {peca.nome} [{codigo_orlas}]"
-            leaf = QTreeWidgetItem([texto])
+            leaf = QTreeWidgetItem([
+                peca.codigo,
+                peca.nome,
+                get_peca_natureza_label(peca.natureza),
+                peca.funcao or "",
+                peca.grupo or "",
+                codigo_orlas,
+                f"R{peca.revisao_numero}",
+                "Sim" if peca.ativo else "N\u00e3o",
+            ])
             leaf.setData(0, Qt.ItemDataRole.UserRole, peca.id)
             parent.addChild(leaf)
             self._tree_items_by_id[peca.id] = leaf
@@ -454,10 +375,6 @@ class DefPecasPage(QWidget):
         tree_item = self._tree_items_by_id.get(peca_id)
         if tree_item is not None:
             self.tree.setCurrentItem(tree_item)
-        for row, atual in self._pecas_by_row.items():
-            if atual.id == peca_id:
-                self.table.selectRow(row)
-                break
         try:
             with SessionLocal() as session:
                 componentes = DefPecaComponenteService(session).listar_componentes(
@@ -486,32 +403,24 @@ class DefPecasPage(QWidget):
             componentes=componentes,
             component_labels=component_labels,
             on_back=self._voltar_a_lista,
+            on_revision_created=self.abrir_peca_por_id,
         )
         self.stack.addWidget(self._detail_page)
         self.stack.setCurrentWidget(self._detail_page)
 
     def _voltar_a_lista(self) -> None:
-        """Return to the already-loaded piece definition table."""
+        """Return to the already-loaded piece definition tree-table."""
         self.stack.setCurrentWidget(self.list_widget)
 
     def _get_selected_peca(self) -> DefPecaResumo | None:
         """Return the selected piece definition read model."""
-        if self.lista_stack.currentWidget() == self.tree:
-            item = self.tree.currentItem()
-            if item is None:
-                return None
-
-            peca_id = item.data(0, Qt.ItemDataRole.UserRole)
-            if peca_id is None:
-                return None
-
-            return self._pecas_by_id.get(int(peca_id))
-
-        row = self.table.currentRow()
-        if row < 0:
+        item = self.tree.currentItem()
+        if item is None:
             return None
-
-        return self._pecas_by_row.get(row)
+        peca_id = item.data(0, Qt.ItemDataRole.UserRole)
+        if peca_id is None:
+            return None
+        return self._pecas_by_id.get(int(peca_id))
 
     def _criar_peca_data_from_form_data(self, form_data) -> CriarDefPecaData:
         """Build create-service data from piece-dialog data."""
@@ -537,19 +446,13 @@ class DefPecasPage(QWidget):
         )
 
     def _select_peca_by_codigo(self, codigo: str) -> None:
-        """Select one table row by piece code."""
-        for row_index, peca in self._pecas_by_row.items():
+        """Select one tree-table row by piece code."""
+        for peca in self._pecas_by_id.values():
             if peca.codigo == codigo:
-                self.table.selectRow(row_index)
                 tree_item = self._tree_items_by_id.get(peca.id)
                 if tree_item is not None:
                     self.tree.setCurrentItem(tree_item)
                 return
-
-    def _handle_row_double_click(self, row: int, _column: int) -> None:
-        """Edit a piece definition when the user double-clicks its row."""
-        self.table.selectRow(row)
-        self.abrir_editar_peca()
 
     def _handle_tree_item_double_click(
         self, item: QTreeWidgetItem, _column: int

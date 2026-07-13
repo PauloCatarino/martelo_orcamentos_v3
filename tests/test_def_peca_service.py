@@ -45,6 +45,7 @@ class _FakeRepository:
     deactivated_id: int | None = None
     activate_result = True
     activated_id: int | None = None
+    newer_revision = False
 
     def __init__(self, _session: object) -> None:
         pass
@@ -102,6 +103,9 @@ class _FakeRepository:
     def activate_def_peca(self, id: int) -> bool:
         self.__class__.activated_id = id
         return self.activate_result
+
+    def has_newer_revision(self, id: int) -> bool:
+        return self.newer_revision
 
 
 class _FakeSession:
@@ -779,6 +783,7 @@ def test_def_peca_service_desativa_peca_inexistente_sem_commit(monkeypatch) -> N
 def test_def_peca_service_ativa_peca_existente(monkeypatch) -> None:
     _FakeRepository.activate_result = True
     _FakeRepository.activated_id = None
+    _FakeRepository.newer_revision = False
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
     session = _FakeSession()
 
@@ -792,6 +797,7 @@ def test_def_peca_service_ativa_peca_existente(monkeypatch) -> None:
 def test_def_peca_service_ativa_peca_inexistente_sem_commit(monkeypatch) -> None:
     _FakeRepository.activate_result = False
     _FakeRepository.activated_id = None
+    _FakeRepository.newer_revision = False
     monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
     session = _FakeSession()
 
@@ -800,3 +806,17 @@ def test_def_peca_service_ativa_peca_inexistente_sem_commit(monkeypatch) -> None
     assert service.ativar_peca(11) is False
     assert _FakeRepository.activated_id == 11
     assert session.committed is False
+
+
+def test_def_peca_service_nao_reativa_revisao_historica(monkeypatch) -> None:
+    _FakeRepository.newer_revision = True
+    _FakeRepository.activated_id = None
+    monkeypatch.setattr(service_module, "DefPecaRepository", _FakeRepository)
+    session = _FakeSession()
+
+    with pytest.raises(ValueError, match="revisão histórica"):
+        service_module.DefPecaService(session=session).ativar_peca(10)
+
+    assert _FakeRepository.activated_id is None
+    assert session.committed is False
+    _FakeRepository.newer_revision = False

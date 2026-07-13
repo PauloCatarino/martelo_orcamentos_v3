@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -68,11 +69,14 @@ class DefValuesetChavesPage(QWidget):
         self.toggle_button.clicked.connect(self.alternar_chave_ativa)
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.stateChanged.connect(lambda _=0: self.carregar())
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_button)
+        actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -86,7 +90,8 @@ class DefValuesetChavesPage(QWidget):
         self.table.setStyleSheet(ESTILO_TABELA_CONFIG)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         ligar_persistencia_larguras(self.table, "valueset_chaves")
 
@@ -114,6 +119,9 @@ class DefValuesetChavesPage(QWidget):
                 mensagem_erro_bd("Nao foi possivel carregar as chaves ValueSet.", error)
             )
             return
+
+        if not self.mostrar_inativas_check.isChecked():
+            chaves = [chave for chave in chaves if chave.ativo]
 
         self._preencher(chaves)
 

@@ -215,7 +215,9 @@ class _FakeRepository:
         return self.versao_rows
 
     def get_by_id(self, id: int):
-        return self.by_id
+        if self.by_id is not None and self.by_id.id == id:
+            return self.by_id
+        return next((linha for linha in self.active_rows if linha.id == id), None)
 
     def create_linha(self, **fields):
         self.__class__.created_payload = fields
@@ -291,6 +293,48 @@ class _FakePecaOperacaoRepository:
 
     def list_active_by_def_peca(self, def_peca_id: int):
         return self.ligacoes_por_peca.get(def_peca_id, [])
+
+
+class _FakeLinhaOperacaoRepository:
+    rows: list = []
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def list_all(self, linha_id: int):
+        return [row for row in self.rows if row.linha_id == linha_id]
+
+    def list_active(self, linha_id: int):
+        return [row for row in self.list_all(linha_id) if row.ativo]
+
+    def has_any(self, linha_id: int) -> bool:
+        return bool(self.list_all(linha_id))
+
+    def get_by_id(self, id: int):
+        return next((row for row in self.rows if row.id == id), None)
+
+    def create(self, **fields):
+        row = SimpleNamespace(id=len(self.rows) + 1, **fields)
+        self.rows.append(row)
+        return row
+
+    def update(self, id: int, **fields):
+        row = self.get_by_id(id)
+        for field, value in fields.items():
+            setattr(row, field, value)
+        return row
+
+    def deactivate(self, id: int) -> bool:
+        row = self.get_by_id(id)
+        if row is None:
+            return False
+        row.ativo = False
+        return True
+
+    def delete_by_linha(self, linha_id: int) -> int:
+        anteriores = len(self.rows)
+        self.__class__.rows = [row for row in self.rows if row.linha_id != linha_id]
+        return anteriores - len(self.rows)
 
 
 class _FakeOperacaoRepository:
@@ -435,6 +479,7 @@ def _reset() -> None:
     _FakeMateriaPrimaRepository.materia = None
     _FakeMateriaPrimaRepository.materias_por_ref = {}
     _FakePecaOperacaoRepository.ligacoes_por_peca = {}
+    _FakeLinhaOperacaoRepository.rows = []
     _FakeOperacaoRepository.operacoes = {}
     _FakeMaquinaRepository.maquinas = {}
     _FakeEscalaoAreaRepository.escaloes_por_maquina = {}
@@ -461,6 +506,11 @@ def _service(monkeypatch):
     )
     monkeypatch.setattr(
         service_module, "DefPecaOperacaoRepository", _FakePecaOperacaoRepository
+    )
+    monkeypatch.setattr(
+        service_module,
+        "OrcamentoItemCusteioLinhaOperacaoRepository",
+        _FakeLinhaOperacaoRepository,
     )
     monkeypatch.setattr(service_module, "DefOperacaoRepository", _FakeOperacaoRepository)
     monkeypatch.setattr(service_module, "DefMaquinaRepository", _FakeMaquinaRepository)
@@ -540,12 +590,11 @@ def test_atualizar_biblioteca_exige_confirmacao_para_filhos_editados(monkeypatch
     assert session.committed is False
 
 
-def test_analisar_atualizacao_bloqueia_bloco_importado_de_modulo(monkeypatch) -> None:
+def test_analisar_atualizacao_permite_peca_importada_de_modulo(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     raiz = _resumo(
         id=100,
         tipo_linha="PECA_COMPOSTA",
-        origem_tipo="BIBLIOTECA_PECA",
         def_peca_id=1,
     )
     filho_modulo = _resumo(
@@ -554,12 +603,17 @@ def test_analisar_atualizacao_bloqueia_bloco_importado_de_modulo(monkeypatch) ->
         origem_tipo="MODULO",
         def_peca_id=2,
     )
-    _FakeRepository.by_id = raiz
+    _FakeRepository.by_id = filho_modulo
     _FakeRepository.active_rows = [raiz, filho_modulo]
-    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1),
+        2: _peca(id=2, codigo="FUNDO"),
+    }
 
-    with pytest.raises(ValueError, match="importado de um módulo"):
-        service.analisar_atualizacao_da_biblioteca(100)
+    analise = service.analisar_atualizacao_da_biblioteca(101)
+    assert analise.linha_raiz_id == 101
+    assert analise.peca_codigo == "FUNDO"
+    assert analise.origem_modulo is True
 
 
 def test_atualizar_biblioteca_preserva_inputs_da_raiz_e_reconstroi_filhos(
@@ -630,6 +684,58 @@ def test_atualizar_biblioteca_preserva_inputs_da_raiz_e_reconstroi_filhos(
     assert _FakeRepository.reordenar_order == [100, 1, 200]
     assert resultado.associados_removidos == 1
     assert resultado.associados_criados == 1
+    assert session.committed is True
+
+
+def test_atualizar_peca_modulo_preserva_estrutura_e_reaplica_valueset(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    raiz = _resumo(id=100, tipo_linha="PECA_COMPOSTA", def_peca_id=1)
+    modulo = _resumo(
+        id=101, linha_pai_id=100, nivel=1, origem_tipo="MODULO",
+        def_peca_id=2, codigo="ANTIGO", comp="LM-10", larg="PM",
+        qt_und=Decimal("3"),
+    )
+    _FakeRepository.by_id = modulo
+    _FakeRepository.active_rows = [raiz, modulo]
+    _FakePecaRepository.pecas = {
+        2: _peca(
+            id=2, codigo="FUNDO", nome="Fundo atual",
+            chave_valueset_material="MATERIAL_FUNDOS",
+        )
+    }
+    _FakeItemValuesetRepository.defaults_by_chave = {
+        "MATERIAL_FUNDOS": _vs_linha(chave="MATERIAL_FUNDOS")
+    }
+
+    resultado = service.atualizar_peca_da_biblioteca(101)
+
+    payload = _FakeRepository.updated_payloads[0]
+    assert payload["id"] == 101
+    assert payload["codigo"] == "FUNDO"
+    assert payload["ref_le"] == "LE01"
+    assert "comp" not in payload and "larg" not in payload and "qt_und" not in payload
+    assert _FakeRepository.deleted_ids is None
+    assert resultado.associados_removidos == resultado.associados_criados == 0
+    assert "módulo preservados" in resultado.avisos[0]
+    assert session.committed is True
+
+
+def test_atualizar_varias_pecas_modulo_num_unico_lote(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    linhas = [
+        _resumo(id=101, origem_tipo="MODULO", def_peca_id=1, codigo="A"),
+        _resumo(id=102, origem_tipo="MODULO", def_peca_id=2, codigo="B"),
+    ]
+    _FakeRepository.active_rows = linhas
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="A_NOVO", chave_valueset_material=None),
+        2: _peca(id=2, codigo="B_NOVO", chave_valueset_material=None),
+    }
+
+    resultado = service.atualizar_pecas_da_biblioteca([101, 102, 101])
+
+    assert resultado.pecas_atualizadas == 2
+    assert {p["id"] for p in _FakeRepository.updated_payloads} == {101, 102}
     assert session.committed is True
 
 
@@ -3347,6 +3453,7 @@ def _ligacao_tempo(
 
 def _operacao(
     codigo: str,
+    id=None,
     maquina_id=None,
     tipo_operacao=None,
     unidade_calculo=None,
@@ -3354,6 +3461,7 @@ def _operacao(
     tempo_setup=None,
 ):
     return SimpleNamespace(
+        id=id,
         codigo=codigo,
         nome=codigo,
         maquina_id=maquina_id,
@@ -3362,6 +3470,132 @@ def _operacao(
         tempo_base=tempo_base,
         tempo_setup=tempo_setup,
     )
+
+
+def test_operacao_local_adiciona_recalcula_e_fica_identificada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    linha = _resumo(
+        id=7,
+        tipo_linha="FERRAGEM",
+        def_peca_id=4,
+        operacoes_snapshot_json="[]",
+    )
+    _FakeRepository.by_id = linha
+    _FakeRepository.active_rows = [linha]
+    _FakeOperacaoRepository.operacoes = {
+        12: _operacao("CNC_FURACAO", id=12, tipo_operacao="CNC", maquina_id=3)
+    }
+    _FakeMaquinaRepository.maquinas = {
+        3: SimpleNamespace(codigo="CNC_VERTICAL", nome="CNC vertical")
+    }
+    recalculados = []
+    monkeypatch.setattr(
+        service, "recalcular_item_completo", lambda item_id: recalculados.append(item_id)
+    )
+
+    service.adicionar_operacao_local(
+        7,
+        service_module.OperacaoLocalData(
+            def_operacao_id=12,
+            ordem=1,
+            quantidade_base=Decimal("4"),
+            tempo_setup_minutos=Decimal("1"),
+            tempo_por_unidade_minutos=Decimal("0.5"),
+            unidade_tempo="FURO",
+        ),
+    )
+
+    operacoes = service.listar_operacoes_efetivas_da_linha(7)
+    assert recalculados == [10]
+    assert len(operacoes) == 1
+    assert operacoes[0].codigo == "CNC_FURACAO"
+    assert operacoes[0].origem == "Edição local"
+    assert operacoes[0].quantidade_base == Decimal("4")
+
+
+def test_operacao_local_remove_ultima_e_repor_volta_a_origem(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    linha = _resumo(
+        id=8,
+        tipo_linha="FERRAGEM",
+        def_peca_id=4,
+        operacoes_snapshot_json="[]",
+    )
+    _FakeRepository.by_id = linha
+    _FakeRepository.active_rows = [linha]
+    _FakeOperacaoRepository.operacoes = {
+        12: _operacao("CNC_FURACAO", id=12, tipo_operacao="CNC")
+    }
+    monkeypatch.setattr(service, "recalcular_item_completo", lambda _item_id: None)
+    dados = service_module.OperacaoLocalData(def_operacao_id=12)
+    service.adicionar_operacao_local(8, dados)
+
+    service.remover_operacao_local(8, 12)
+    assert service.listar_operacoes_efetivas_da_linha(8) == []
+    assert _FakeLinhaOperacaoRepository.rows[0].ativo is False
+
+    service.repor_operacoes_da_origem(8)
+    assert _FakeLinhaOperacaoRepository.rows == []
+    assert service.listar_operacoes_efetivas_da_linha(8) == []
+
+
+def test_auditoria_operacoes_destaca_sem_operacoes_e_custo_zero(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=20,
+            ordem=2,
+            tipo_linha="FERRAGEM",
+            def_peca_id=1,
+            codigo="DOBRADICA",
+            operacoes_snapshot_json="[]",
+            custo_producao=None,
+        ),
+        _resumo(
+            id=21,
+            ordem=1,
+            tipo_linha="PECA",
+            def_peca_id=2,
+            codigo="PORTA",
+            custo_producao=Decimal("0"),
+        ),
+    ]
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {2: [_ligacao_op(12)]}
+    _FakeOperacaoRepository.operacoes = {
+        12: _operacao("CNC", id=12, tipo_operacao="CNC")
+    }
+
+    resultado = service.auditar_operacoes_do_item(10)
+
+    assert [linha.codigo for linha in resultado] == ["DOBRADICA", "PORTA"]
+    assert resultado[0].estado == "ATENÇÃO"
+    assert "Ferragem sem operações" in resultado[0].diagnostico
+    assert resultado[1].estado == "VERIFICAR"
+    assert resultado[1].operacoes_efetivas == 1
+
+
+def test_auditoria_operacoes_marca_ok_e_ignora_divisoes(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=30, tipo_linha="DIVISAO_INDEPENDENTE"),
+        _resumo(
+            id=31,
+            tipo_linha="PECA",
+            def_peca_id=3,
+            codigo="LATERAL",
+            custo_producao=Decimal("5"),
+        ),
+    ]
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {3: [_ligacao_op(13)]}
+    _FakeOperacaoRepository.operacoes = {
+        13: _operacao("CORTE", id=13, tipo_operacao="CORTE")
+    }
+
+    resultado = service.auditar_operacoes_do_item(10)
+
+    assert len(resultado) == 1
+    assert resultado[0].codigo == "LATERAL"
+    assert resultado[0].estado == "OK"
 
 
 def test_operacoes_da_peca_ficam_congeladas_na_linha(monkeypatch) -> None:

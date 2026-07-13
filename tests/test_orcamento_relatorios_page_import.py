@@ -20,6 +20,8 @@ def test_orcamento_relatorios_page_imports() -> None:
     assert OrcamentoRelatoriosPage.MAQUINAS_HEADERS == [
         "Operação", "Custo Total", "ML Corte", "ML Orlado", "Nº Peças",
     ]
+    assert "Peça/Ferragem" in OrcamentoRelatoriosPage.OPERACOES_LINHAS_HEADERS
+    assert "Custo atribuído" in OrcamentoRelatoriosPage.OPERACOES_LINHAS_HEADERS
 
     for method in ("carregar", "_preencher_items", "_preencher_consumos"):
         assert hasattr(OrcamentoRelatoriosPage, method)
@@ -30,6 +32,57 @@ def test_orcamento_relatorios_page_imports() -> None:
     assert "get_cliente_da_versao" in carregar
     # Recompute the version before aggregating (8W.1.1).
     assert "recalcular_versao" in carregar
+    assert "RelatorioOperacoesService" in carregar
+    assert "listar_da_versao" in carregar
+
+
+def test_relatorio_operacoes_em_linhas_tem_separador_proprio() -> None:
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+
+    init = inspect.getsource(OrcamentoRelatoriosPage.__init__)
+    criar = inspect.getsource(OrcamentoRelatoriosPage._criar_tab_operacoes)
+    preencher = inspect.getsource(OrcamentoRelatoriosPage._preencher_operacoes_linhas)
+    assert '"Operações"' in init
+    assert "mesmo centro" in criar
+    assert "(sem operações)" in preencher
+    assert "Edição local" in preencher
+
+
+def test_supervisor_confirma_pdf_e_email_com_saude_da_versao() -> None:
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+
+    confirmar = inspect.getsource(OrcamentoRelatoriosPage._confirmar_supervisor)
+    pdf = inspect.getsource(OrcamentoRelatoriosPage._exportar_pdf)
+    email = inspect.getsource(OrcamentoRelatoriosPage._enviar_email)
+    assert "executar_versao" in confirmar
+    assert "resumir_saude_versao" in confirmar
+    assert "< 75" in confirmar
+    assert "Rever orçamento" in confirmar
+    assert "Assumir e continuar" in confirmar
+    assert "_confirmar_supervisor" in pdf
+    assert "_confirmar_supervisor" in email
+
+
+def test_supervisor_abre_operacoes_e_auditoria_no_contexto() -> None:
+    from app.ui.main_window import MainWindow
+    from app.ui.pages.custeio_auditoria_page import CusteioAuditoriaPage
+    from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+
+    confirmar = inspect.getsource(OrcamentoRelatoriosPage._confirmar_supervisor)
+    init = inspect.signature(OrcamentoRelatoriosPage.__init__)
+    detalhe = inspect.getsource(OrcamentoDetailPage.__init__)
+    janela = inspect.getsource(MainWindow._open_custeio_auditoria_contexto)
+    foco = inspect.getsource(CusteioAuditoriaPage.focar_ocorrencia)
+    assert "Abrir Operações" in confirmar
+    assert "Abrir Auditoria do Custeio" in confirmar
+    assert "setCurrentWidget(self.operacoes_tab)" in confirmar
+    assert "on_open_custeio_auditoria" in init.parameters
+    assert "on_open_custeio_auditoria" in detalhe
+    assert 'show_page("custeio_auditoria")' in janela
+    assert "focar_ocorrencia" in janela
+    assert "codigo_orcamento" in foco
+    assert "selectRow" in foco
 
 
 def test_relatorios_consumos_nota_e_tooltips() -> None:

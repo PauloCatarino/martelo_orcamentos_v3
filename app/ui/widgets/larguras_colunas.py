@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QHeaderView, QTableView, QTableWidget
+from PySide6.QtWidgets import QHeaderView, QTableView, QTableWidget, QTreeView
 
 from app.core.session import app_session
 
@@ -11,7 +11,12 @@ _ORG = "Lanca Encanto"
 _APP = "Martelo Orcamentos V3"
 
 
-def ligar_persistencia_larguras(table: QTableView | QTableWidget, chave: str) -> bool:
+def ligar_persistencia_larguras(
+    table: QTableView | QTableWidget | QTreeView,
+    chave: str,
+    *,
+    forcar_interativas: bool = True,
+) -> bool:
     """Restaura/persiste as larguras das colunas REDIMENSIONÁVEIS de ``table``.
 
     Guardado localmente (QSettings) por máquina e por utilizador autenticado
@@ -21,8 +26,18 @@ def ligar_persistencia_larguras(table: QTableView | QTableWidget, chave: str) ->
     Devolve ``True`` se restaurou alguma largura guardada (útil para tabelas que
     semeiam larguras-por-conteúdo só quando ainda não há nada guardado).
     """
-    header = table.horizontalHeader()
+    # QTableView/QTableWidget expose ``horizontalHeader()``, while QTreeView
+    # and QTreeWidget expose the same QHeaderView through ``header()``.
+    if isinstance(table, QTreeView):
+        header = table.header()
+    else:
+        header = table.horizontalHeader()
     interativo = QHeaderView.ResizeMode.Interactive
+
+    if forcar_interativas:
+        for col in range(header.count()):
+            header.setSectionResizeMode(col, interativo)
+        header.setStretchLastSection(False)
 
     restaurou = False
     settings = QSettings(_ORG, _APP)

@@ -19,6 +19,7 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class PropagarValuesetCusteioDialog(QDialog):
@@ -84,6 +85,7 @@ class PropagarValuesetCusteioDialog(QDialog):
         self.table.setAlternatingRowColors(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        ligar_persistencia_larguras(self.table, "dialog_propagar_valueset_custeio")
 
         self.update_button = QPushButton("Atualizar selecionadas")
         self.update_button.clicked.connect(self._atualizar_selecionadas)

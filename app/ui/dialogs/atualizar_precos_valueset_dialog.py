@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.domain.valueset_precos import DivergenciaPreco
 from app.utils.formatters import format_currency
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class AtualizarPrecosValuesetDialog(QDialog):
@@ -74,6 +75,7 @@ class AtualizarPrecosValuesetDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
         )
+        ligar_persistencia_larguras(self.table, "dialog_atualizar_precos_valueset")
         for index, tooltip in enumerate(self.HEADER_TOOLTIPS):
             item = self.table.horizontalHeaderItem(index)
             if item is not None:

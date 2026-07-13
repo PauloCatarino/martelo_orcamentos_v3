@@ -67,3 +67,13 @@ def test_page_uses_service_and_dialog() -> None:
     duplicado = inspect.getsource(DefValuesetModelosPage._abrir_modelo_duplicado)
     assert "_show_detail_page" in duplicado
     assert "status_label.setText" in duplicado
+def test_modelos_ocultam_inativos_e_guardam_larguras() -> None:
+    import inspect
+    from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
+
+    init = inspect.getsource(DefValuesetModelosPage.__init__)
+    carregar = inspect.getsource(DefValuesetModelosPage.carregar_modelos)
+    assert "mostrar_inativos_check" in init
+    assert "QHeaderView.ResizeMode.Interactive" in init
+    assert "ligar_persistencia_larguras" in init
+    assert "if modelo.ativo" in carregar

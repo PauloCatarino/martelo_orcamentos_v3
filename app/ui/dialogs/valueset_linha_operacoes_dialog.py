@@ -34,6 +34,7 @@ from app.ui.dialogs.def_peca_operacao_dialog import (
     UNIDADE_TEMPO_LABELS,
 )
 from app.utils.formatters import format_quantity
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 ListarOperacoesCallable = Callable[[], list]
@@ -150,6 +151,9 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         self.operacoes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.operacoes_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
+        )
+        ligar_persistencia_larguras(
+            self.operacoes_table, "dialog_valueset_linha_operacoes"
         )
         self.operacoes_table.cellDoubleClicked.connect(
             self._handle_operacao_double_click

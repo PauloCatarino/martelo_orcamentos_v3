@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -28,10 +29,27 @@ class DefPeca(Base):
         Index("ix_def_pecas_grupo", "grupo"),
         Index("ix_def_pecas_tipo_peca", "tipo_peca"),
         Index("ix_def_pecas_ativo", "ativo"),
+        UniqueConstraint(
+            "revisao_serie", "revisao_numero", name="uq_def_pecas_revisao_serie_numero"
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     codigo: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Stable identity shared by every revision of the same catalog piece.
+    # Existing pieces start an independent series at revision 1.
+    revisao_serie: Mapped[str] = mapped_column(
+        String(36), nullable=False, default=lambda: str(uuid4()), index=True
+    )
+    revisao_numero: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    revisao_anterior_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("def_pecas.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo: Mapped[str | None] = mapped_column(String(100), nullable=True)

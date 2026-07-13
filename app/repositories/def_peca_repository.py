@@ -22,6 +22,9 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    revisao_serie: str | None = None
+    revisao_numero: int = 1
+    revisao_anterior_id: int | None = None
     natureza: str = "MATERIAL"
     orientacao: str = "NEUTRA"
     funcao: str | None = None
@@ -81,6 +84,17 @@ class DefPecaRepository:
             return None
 
         return self._to_resumo(peca)
+
+    def has_newer_revision(self, id: int) -> bool:
+        """Return whether a later revision exists in the same series."""
+        peca = self.session.get(DefPeca, id)
+        if peca is None:
+            return False
+        statement = select(DefPeca.id).where(
+            DefPeca.revisao_serie == peca.revisao_serie,
+            DefPeca.revisao_numero > peca.revisao_numero,
+        )
+        return self.session.execute(statement).first() is not None
 
     def create_def_peca(
         self,
@@ -240,6 +254,9 @@ class DefPecaRepository:
             descricao=peca.descricao,
             grupo=peca.grupo,
             tipo_peca=peca.tipo_peca,
+            revisao_serie=peca.revisao_serie,
+            revisao_numero=peca.revisao_numero,
+            revisao_anterior_id=peca.revisao_anterior_id,
             natureza=peca.natureza,
             orientacao=peca.orientacao,
             funcao=peca.funcao,

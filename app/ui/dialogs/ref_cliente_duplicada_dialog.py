@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_version
 
 
@@ -71,6 +72,7 @@ class RefClienteDuplicadaDialog(QDialog):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
+        ligar_persistencia_larguras(self.table, "dialog_ref_cliente_duplicada")
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"

@@ -27,6 +27,7 @@ from app.domain.numeros import formatar_percentagem, normalize_percentagem_human
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.ui.widgets.table_item import criar_item_tabela
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -109,7 +110,9 @@ class MateriaPrimaPickerDialog(QDialog):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        ligar_persistencia_larguras(self.table, "selecionar_materia_prima")
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         self.select_button = QPushButton("Selecionar")

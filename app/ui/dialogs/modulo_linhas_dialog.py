@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.modulo_categorias import get_modulo_categoria_label
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ModuloLinhasDialog(QDialog):
@@ -70,6 +71,7 @@ class ModuloLinhasDialog(QDialog):
         header = self.tabela.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
+        ligar_persistencia_larguras(self.tabela, "dialog_modulo_linhas")
         for indice, largura in enumerate(self._LARGURAS):
             self.tabela.setColumnWidth(indice, largura)
 

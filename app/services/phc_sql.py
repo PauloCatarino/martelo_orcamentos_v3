@@ -41,6 +41,7 @@ _BANNED_TOKENS = (
     "MERGE",
     "EXEC",
     "CREATE",
+    "INTO",
 )
 
 
@@ -166,7 +167,7 @@ if (-not $query.TrimStart().ToUpper().StartsWith('SELECT')) {
 $q2 = $query.Trim()
 $q2 = $q2.TrimEnd(';').Trim()
 if ($q2.Contains(';')) { throw 'Query invalida: multiplos statements nao sao permitidos.' }
-$banned = @('INSERT','UPDATE','DELETE','DROP','ALTER','TRUNCATE','MERGE','EXEC','CREATE')
+$banned = @('INSERT','UPDATE','DELETE','DROP','ALTER','TRUNCATE','MERGE','EXEC','CREATE','INTO')
 foreach ($t in $banned) {
   if ([regex]::IsMatch($q2, ('\b' + [regex]::Escape($t) + '\b'), [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
     throw 'Query invalida: apenas SELECT e permitido.'

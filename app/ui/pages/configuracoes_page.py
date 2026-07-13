@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtWidgets import (
+    QGridLayout,
+    QGroupBox,
     QLabel,
     QPushButton,
     QVBoxLayout,
@@ -20,8 +22,7 @@ class ConfiguracoesPage(QWidget):
     TECHNICAL_AREAS = [
         "Defini\u00e7\u00f5es de Pe\u00e7as",
         "Caminhos do Sistema",
-        "Materiais",
-        "Ferragens",
+        "Liga\u00e7\u00e3o iMos (leitura)",
         "Opera\u00e7\u00f5es / M\u00e1quinas",
         "Chaves ValueSet",
         "Modelos ValueSet",
@@ -29,14 +30,57 @@ class ConfiguracoesPage(QWidget):
         "Regras de Quantidade",
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
-        "Regras de Custeio",
     ]
+
+    TOOLTIP_DESCRICOES = {
+        "Defini\u00e7\u00f5es de Pe\u00e7as": (
+            "Criar e manter a biblioteca de pe\u00e7as reutiliz\u00e1veis, incluindo "
+            "dimens\u00f5es, orlas, materiais, associados e opera\u00e7\u00f5es."
+        ),
+        "Caminhos do Sistema": (
+            "Configurar as pastas e ficheiros externos usados pelo Martelo, "
+            "incluindo imagens, exporta\u00e7\u00f5es e integra\u00e7\u00f5es."
+        ),
+        "Liga\u00e7\u00e3o iMos (leitura)": (
+            "Configurar e testar o acesso SQL ao iMos. O Martelo bloqueia qualquer "
+            "comando que n\u00e3o seja uma consulta de leitura."
+        ),
+        "Opera\u00e7\u00f5es / M\u00e1quinas": (
+            "Gerir opera\u00e7\u00f5es de produ\u00e7\u00e3o, m\u00e1quinas, tempos, setups e "
+            "tarifas que transformam trabalho em custo."
+        ),
+        "Chaves ValueSet": (
+            "Definir os tipos de escolha usados nas pe\u00e7as, como materiais, "
+            "ferragens, acabamentos e sistemas de uni\u00e3o."
+        ),
+        "Modelos ValueSet": (
+            "Criar conjuntos reutiliz\u00e1veis de op\u00e7\u00f5es e respetivas regras, "
+            "materiais e opera\u00e7\u00f5es."
+        ),
+        "Margens por Defeito": (
+            "Definir as margens iniciais dos novos or\u00e7amentos: Standard, por "
+            "cliente e por utilizador. Podem ser ajustadas em cada or\u00e7amento."
+        ),
+        "Regras de Quantidade": (
+            "Gerir express\u00f5es que calculam quantidades de componentes a partir "
+            "das dimens\u00f5es e quantidade da pe\u00e7a principal."
+        ),
+        "Biblioteca de M\u00f3dulos": (
+            "Consultar e manter m\u00f3dulos reutiliz\u00e1veis criados no custeio, "
+            "prontos para inserir noutros itens."
+        ),
+        "Auditoria do Cat\u00e1logo": (
+            "Validar pe\u00e7as, associados, opera\u00e7\u00f5es, tarifas, ValueSets e "
+            "m\u00f3dulos, explicando o impacto das falhas no custo final."
+        ),
+    }
 
     def __init__(
         self,
         on_open_def_pecas: Callable[[], None] | None = None,
         on_open_materias_primas: Callable[[], None] | None = None,
         on_open_caminhos_sistema: Callable[[], None] | None = None,
+        on_open_imos_ligacao: Callable[[], None] | None = None,
         on_open_operacoes_maquinas: Callable[[], None] | None = None,
         on_open_valueset_chaves: Callable[[], None] | None = None,
         on_open_valueset_modelos: Callable[[], None] | None = None,
@@ -50,6 +94,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_def_pecas = on_open_def_pecas
         self.on_open_materias_primas = on_open_materias_primas
         self.on_open_caminhos_sistema = on_open_caminhos_sistema
+        self.on_open_imos_ligacao = on_open_imos_ligacao
         self.on_open_operacoes_maquinas = on_open_operacoes_maquinas
         self.on_open_valueset_chaves = on_open_valueset_chaves
         self.on_open_valueset_modelos = on_open_valueset_modelos
@@ -76,11 +121,8 @@ class ConfiguracoesPage(QWidget):
         self.caminhos_sistema_button = QPushButton("Caminhos do Sistema")
         self.caminhos_sistema_button.clicked.connect(self._open_caminhos_sistema)
 
-        materiais_button = QPushButton("Materiais")
-        materiais_button.clicked.connect(self._show_future_message)
-
-        ferragens_button = QPushButton("Ferragens")
-        ferragens_button.clicked.connect(self._show_future_message)
+        self.imos_ligacao_button = QPushButton("Liga\u00e7\u00e3o iMos (leitura)")
+        self.imos_ligacao_button.clicked.connect(self._open_imos_ligacao)
 
         self.operacoes_maquinas_button = QPushButton("Opera\u00e7\u00f5es / M\u00e1quinas")
         self.operacoes_maquinas_button.clicked.connect(self._open_operacoes_maquinas)
@@ -123,26 +165,32 @@ class ConfiguracoesPage(QWidget):
             self._open_catalogo_auditoria
         )
 
-        regras_button = QPushButton("Regras de Custeio")
-        regras_button.clicked.connect(self._show_future_message)
-
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
         layout.addSpacing(8)
-        layout.addWidget(self.def_pecas_button)
-        layout.addWidget(self.caminhos_sistema_button)
-        layout.addWidget(materiais_button)
-        layout.addWidget(ferragens_button)
-        layout.addWidget(self.operacoes_maquinas_button)
-        layout.addWidget(self.valueset_chaves_button)
-        layout.addWidget(self.valueset_modelos_button)
-        layout.addWidget(self.margens_padrao_button)
-        layout.addWidget(self.regras_quantidade_button)
-        layout.addWidget(self.biblioteca_modulos_button)
-        layout.addWidget(self.catalogo_auditoria_button)
-        layout.addWidget(regras_button)
+        painel = QGroupBox("\u00c1reas de configura\u00e7\u00e3o")
+        painel.setObjectName("configuracoesPainel")
+        grelha = QGridLayout(painel)
+        grelha.setSpacing(12)
+        botoes = [
+            self.def_pecas_button,
+            self.caminhos_sistema_button,
+            self.imos_ligacao_button,
+            self.operacoes_maquinas_button,
+            self.valueset_chaves_button,
+            self.valueset_modelos_button,
+            self.margens_padrao_button,
+            self.regras_quantidade_button,
+            self.biblioteca_modulos_button,
+            self.catalogo_auditoria_button,
+        ]
+        for indice, botao in enumerate(botoes):
+            botao.setMinimumHeight(48)
+            botao.setToolTip(self.TOOLTIP_DESCRICOES[botao.text()])
+            grelha.addWidget(botao, indice // 3, indice % 3)
+        layout.addWidget(painel)
         layout.addWidget(self.status_label)
         layout.addStretch()
 
@@ -157,6 +205,10 @@ class ConfiguracoesPage(QWidget):
         """Open the system paths page through the optional callback."""
         if self.on_open_caminhos_sistema is not None:
             self.on_open_caminhos_sistema()
+
+    def _open_imos_ligacao(self) -> None:
+        if self.on_open_imos_ligacao is not None:
+            self.on_open_imos_ligacao()
 
     def _open_operacoes_maquinas(self) -> None:
         """Open the operations / machines page through the optional callback."""
@@ -192,7 +244,3 @@ class ConfiguracoesPage(QWidget):
         """Open the read-only catalog audit page."""
         if self.on_open_catalogo_auditoria is not None:
             self.on_open_catalogo_auditoria()
-
-    def _show_future_message(self) -> None:
-        """Show the placeholder message for future settings areas."""
-        self.status_label.setText("Esta \u00e1rea ser\u00e1 desenvolvida numa fase posterior.")

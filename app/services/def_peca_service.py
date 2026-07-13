@@ -323,6 +323,10 @@ class DefPecaService:
 
     def ativar_peca(self, id: int) -> bool:
         """Activate a reusable piece definition."""
+        if self.repository.has_newer_revision(id):
+            raise ValueError(
+                "Esta é uma revisão histórica. Ative ou edite a revisão mais recente."
+            )
         activated = self.repository.activate_def_peca(id)
         if activated:
             self.session.commit()

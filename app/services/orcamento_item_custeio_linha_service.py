@@ -118,6 +118,9 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
     OrcamentoItemCusteioLinhaResumo,
 )
+from app.repositories.orcamento_item_custeio_linha_operacao_repository import (
+    OrcamentoItemCusteioLinhaOperacaoRepository,
+)
 from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaRepository,
     OrcamentoItemValuesetLinhaResumo,
@@ -256,6 +259,7 @@ class AtualizacaoBibliotecaAnalise:
     associados_atuais: int
     associados_catalogo: int
     linhas_editadas_localmente: int
+    origem_modulo: bool = False
 
 
 @dataclass(frozen=True)
@@ -268,6 +272,72 @@ class AtualizacaoBibliotecaResult:
     associados_criados: int
     linhas_editadas_substituidas: int
     avisos: list[str]
+
+
+@dataclass(frozen=True)
+class AtualizacaoBibliotecaLoteResult:
+    """Summary of refreshing multiple selected library pieces."""
+
+    pecas_atualizadas: int
+    associados_removidos: int
+    associados_criados: int
+    linhas_editadas_substituidas: int
+    avisos: list[str]
+
+
+@dataclass(frozen=True)
+class OperacaoEfetivaLinhaResumo:
+    """One effective operation shown inside a costing line detail."""
+
+    ordem: int
+    codigo: str
+    nome: str
+    tipo_operacao: str | None
+    maquina: str
+    origem: str
+    acao: str | None
+    regra_calculo: str | None
+    quantidade_base: Decimal | None
+    rasgo_qt_comp: int
+    rasgo_qt_larg: int
+    tempo_setup_minutos: Decimal | None
+    tempo_por_unidade_minutos: Decimal | None
+    unidade_tempo: str | None
+    obrigatorio: bool
+    local_id: int | None = None
+    def_operacao_id: int | None = None
+
+
+@dataclass(frozen=True)
+class OperacaoLocalData:
+    def_operacao_id: int
+    ordem: int = 1
+    regra_calculo: str | None = None
+    quantidade_base: Decimal | None = None
+    rasgo_qt_comp: int = 0
+    rasgo_qt_larg: int = 0
+    tempo_setup_minutos: Decimal | None = None
+    tempo_por_unidade_minutos: Decimal | None = None
+    unidade_tempo: str | None = None
+    obrigatorio: bool = True
+    observacoes: str | None = None
+
+
+@dataclass(frozen=True)
+class AuditoriaOperacaoLinhaResumo:
+    """Read-only operation coverage check for one costing line."""
+
+    linha_id: int
+    ordem: int
+    tipo_linha: str
+    codigo: str
+    descricao: str
+    operacoes_efetivas: int
+    origens: str
+    maquinas: str
+    custo_producao: Decimal | None
+    estado: str
+    diagnostico: str
 
 
 @dataclass(frozen=True)
@@ -474,6 +544,9 @@ class OrcamentoItemCusteioLinhaService:
         self.maquina_repository = DefMaquinaRepository(session)
         self.escalao_area_repository = DefMaquinaEscalaoAreaRepository(session)
         self.def_modulo_repository = DefModuloRepository(session)
+        self.linha_operacao_repository = (
+            OrcamentoItemCusteioLinhaOperacaoRepository(session)
+        )
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -510,10 +583,12 @@ class OrcamentoItemCusteioLinhaService:
             associados_atuais=len(gerados),
             associados_catalogo=len(self._associados_ativos(peca.id)),
             linhas_editadas_localmente=editados,
+            origem_modulo=raiz.origem_tipo == "MODULO",
         )
 
     def atualizar_peca_da_biblioteca(
-        self, linha_id: int, *, confirmar_perda_edicoes: bool = False
+        self, linha_id: int, *, confirmar_perda_edicoes: bool = False,
+        _commit: bool = True,
     ) -> AtualizacaoBibliotecaResult:
         """Refresh a frozen piece snapshot and rebuild its generated children.
 
@@ -534,6 +609,23 @@ class OrcamentoItemCusteioLinhaService:
         linhas_antes = self.repository.list_active_by_orcamento_item(
             raiz.orcamento_item_id
         )
+        if raiz.origem_tipo == "MODULO":
+            self.repository.update_linha(
+                id=raiz.id,
+                **self._campos_atualizacao_raiz(raiz, peca),
+            )
+            if _commit:
+                self.session.commit()
+            return AtualizacaoBibliotecaResult(
+                linha_raiz_id=raiz.id,
+                peca_codigo=peca.codigo,
+                associados_removidos=0,
+                associados_criados=0,
+                linhas_editadas_substituidas=0,
+                avisos=[
+                    "Estrutura e desvios do módulo preservados; definição da peça e ValueSet atualizados."
+                ],
+            )
         ids_remover = {linha.id for linha in gerados}
         ordem_mantida = [
             linha.id for linha in linhas_antes if linha.id not in ids_remover
@@ -581,7 +673,8 @@ class OrcamentoItemCusteioLinhaService:
         else:
             ordem_final = ordem_mantida + ids_criados
         self.repository.reordenar_linhas(ordem_final)
-        self.session.commit()
+        if _commit:
+            self.session.commit()
 
         return AtualizacaoBibliotecaResult(
             linha_raiz_id=raiz.id,
@@ -592,6 +685,34 @@ class OrcamentoItemCusteioLinhaService:
             avisos=avisos,
         )
 
+    def atualizar_pecas_da_biblioteca(
+        self, linha_ids: list[int], *, confirmar_perda_edicoes: bool = False
+    ) -> AtualizacaoBibliotecaLoteResult:
+        """Refresh every distinct selected piece block in one transaction."""
+        raizes: list[int] = []
+        for linha_id in linha_ids:
+            analise = self.analisar_atualizacao_da_biblioteca(linha_id)
+            if analise.linha_raiz_id not in raizes:
+                raizes.append(analise.linha_raiz_id)
+        resultados = [
+            self.atualizar_peca_da_biblioteca(
+                raiz_id,
+                confirmar_perda_edicoes=confirmar_perda_edicoes,
+                _commit=False,
+            )
+            for raiz_id in raizes
+        ]
+        self.session.commit()
+        return AtualizacaoBibliotecaLoteResult(
+            pecas_atualizadas=len(resultados),
+            associados_removidos=sum(r.associados_removidos for r in resultados),
+            associados_criados=sum(r.associados_criados for r in resultados),
+            linhas_editadas_substituidas=sum(
+                r.linhas_editadas_substituidas for r in resultados
+            ),
+            avisos=[aviso for resultado in resultados for aviso in resultado.avisos],
+        )
+
     def _contexto_atualizacao_biblioteca(self, linha_id: int):
         selecionada = self.repository.get_by_id(linha_id)
         if selecionada is None:
@@ -600,7 +721,11 @@ class OrcamentoItemCusteioLinhaService:
             selecionada.orcamento_item_id
         )
         por_id = {linha.id: linha for linha in linhas}
-        raiz = self._linha_topo_do_bloco(selecionada, por_id)
+        raiz = (
+            selecionada
+            if selecionada.origem_tipo == "MODULO" and selecionada.def_peca_id is not None
+            else self._linha_topo_do_bloco(selecionada, por_id)
+        )
         if raiz.def_peca_id is None:
             raise ValueError(
                 "A linha selecionada não está ligada à biblioteca de peças."
@@ -616,13 +741,6 @@ class OrcamentoItemCusteioLinhaService:
             if linha.id != raiz.id
             and self._linha_topo_do_bloco(linha, por_id).id == raiz.id
         ]
-        if raiz.origem_tipo == "MODULO" or any(
-            linha.origem_tipo == "MODULO" for linha in descendentes
-        ):
-            raise ValueError(
-                "Este bloco foi importado de um módulo. A atualização de módulos "
-                "será tratada numa fase própria para preservar os seus desvios."
-            )
         return raiz, peca, descendentes
 
     @staticmethod
@@ -2005,6 +2123,9 @@ class OrcamentoItemCusteioLinhaService:
         The piece snapshot is the base. Variant operations then compose it with
         explicit ADICIONAR/SUBSTITUIR/DESATIVAR actions.
         """
+        if self.linha_operacao_repository.has_any(linha.id):
+            return self._pares_operacoes_locais(linha.id)
+
         pares_snapshot = self._pares_operacoes_snapshot(linha)
         pares_base = (
             pares_snapshot
@@ -2017,6 +2138,39 @@ class OrcamentoItemCusteioLinhaService:
             return pares_base
 
         return self._compor_operacoes_variante(pares_base, entrada["pares"])
+
+    def _pares_operacoes_locais(self, linha_id: int) -> list[tuple]:
+        pares: list[tuple] = []
+        for row in self.linha_operacao_repository.list_active(linha_id):
+            operacao = SimpleNamespace(
+                id=row.def_operacao_id,
+                codigo=row.codigo,
+                nome=row.nome,
+                tipo_operacao=row.tipo_operacao,
+                unidade_calculo=row.unidade_calculo,
+                maquina_id=row.maquina_id,
+                ativo=True,
+            )
+            ligacao = SimpleNamespace(
+                id=row.id,
+                local_id=row.id,
+                def_operacao_id=row.def_operacao_id,
+                ordem=row.ordem,
+                origem=row.origem,
+                acao=row.acao,
+                regra_calculo=row.regra_calculo,
+                quantidade_base=row.quantidade_base,
+                rasgo_qt_comp=row.rasgo_qt_comp,
+                rasgo_qt_larg=row.rasgo_qt_larg,
+                tempo_setup_minutos=row.tempo_setup_minutos,
+                tempo_por_unidade_minutos=row.tempo_por_unidade_minutos,
+                unidade_tempo=row.unidade_tempo,
+                obrigatorio=row.obrigatorio,
+                ativo=True,
+                observacoes=row.observacoes,
+            )
+            pares.append((operacao, ligacao))
+        return pares
 
     def _compor_operacoes_variante(
         self, pares_base: list[tuple], pares_variante: list[tuple]
@@ -2259,6 +2413,309 @@ class OrcamentoItemCusteioLinhaService:
             if operacao is not None:
                 pares.append((operacao, ligacao))
         return pares
+
+    def listar_operacoes_efetivas_da_linha(
+        self, linha_id: int
+    ) -> list[OperacaoEfetivaLinhaResumo]:
+        """Return the frozen piece operations composed with item ValueSet actions.
+
+        This is a read-only projection for the costing UI. It never refreshes the
+        catalog snapshot and never changes costs or historical quote data.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        if not self._linha_recebe_operacoes(linha):
+            return []
+
+        cache = self._cache_operacoes_variantes_do_item(linha.orcamento_item_id)
+        pares = self._pares_operacao_ligacao_da_linha(linha, cache)
+        resultado: list[OperacaoEfetivaLinhaResumo] = []
+        for posicao, (operacao, ligacao) in enumerate(pares, start=1):
+            maquina = self._maquina_de_operacao(operacao)
+            acao = getattr(ligacao, "acao", None)
+            origem_local = getattr(ligacao, "origem", None)
+            resultado.append(
+                OperacaoEfetivaLinhaResumo(
+                    ordem=int(getattr(ligacao, "ordem", None) or posicao),
+                    codigo=(getattr(operacao, "codigo", None) or "").strip(),
+                    nome=(getattr(operacao, "nome", None) or "").strip(),
+                    tipo_operacao=getattr(operacao, "tipo_operacao", None),
+                    maquina=(
+                        (getattr(maquina, "codigo", None) or getattr(maquina, "nome", None) or "")
+                        .strip()
+                    ),
+                    origem=(
+                        "Edição local"
+                        if origem_local is not None
+                        else "ValueSet do item"
+                        if acao is not None
+                        else (
+                            "Peça congelada"
+                            if linha.operacoes_snapshot_json is not None
+                            else "Catálogo legado"
+                        )
+                    ),
+                    acao=acao,
+                    regra_calculo=getattr(ligacao, "regra_calculo", None),
+                    quantidade_base=normalizar_numero(
+                        getattr(ligacao, "quantidade_base", None)
+                    ),
+                    rasgo_qt_comp=int(getattr(ligacao, "rasgo_qt_comp", 0) or 0),
+                    rasgo_qt_larg=int(getattr(ligacao, "rasgo_qt_larg", 0) or 0),
+                    tempo_setup_minutos=normalizar_numero(
+                        getattr(ligacao, "tempo_setup_minutos", None)
+                    ),
+                    tempo_por_unidade_minutos=normalizar_numero(
+                        getattr(ligacao, "tempo_por_unidade_minutos", None)
+                    ),
+                    unidade_tempo=getattr(ligacao, "unidade_tempo", None),
+                    obrigatorio=bool(getattr(ligacao, "obrigatorio", True)),
+                    local_id=getattr(ligacao, "local_id", None),
+                    def_operacao_id=(
+                        getattr(operacao, "id", None)
+                        or getattr(ligacao, "def_operacao_id", None)
+                    ),
+                )
+            )
+        return sorted(resultado, key=lambda item: (item.ordem, item.codigo))
+
+    def tem_edicao_operacoes_local(self, linha_id: int) -> bool:
+        """Return whether the line has a materialized local operation set."""
+        return self.linha_operacao_repository.has_any(linha_id)
+
+    def auditar_operacoes_do_item(
+        self, orcamento_item_id: int
+    ) -> list[AuditoriaOperacaoLinhaResumo]:
+        """Check operation coverage without changing or recalculating the item."""
+        resultado: list[AuditoriaOperacaoLinhaResumo] = []
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        for posicao, linha in enumerate(linhas, start=1):
+            if linha.tipo_linha not in (PECA, FERRAGEM):
+                continue
+            operacoes = self.listar_operacoes_efetivas_da_linha(linha.id)
+            origens = sorted({operacao.origem for operacao in operacoes})
+            maquinas = sorted(
+                {operacao.maquina for operacao in operacoes if operacao.maquina}
+            )
+            if not operacoes:
+                estado = "ATENÇÃO"
+                diagnostico = (
+                    "Ferragem sem operações: confirmar se falta CNC/furação ou "
+                    "montagem."
+                    if linha.tipo_linha == FERRAGEM
+                    else "Peça sem operações: confirmar se o custo de produção está completo."
+                )
+            elif (
+                not linha.excluir_producao
+                and (linha.custo_producao is None or linha.custo_producao == 0)
+            ):
+                estado = "VERIFICAR"
+                diagnostico = (
+                    "Existem operações, mas o custo de produção está vazio ou zero; "
+                    "validar máquina, tarifa, regra e tempos."
+                )
+            else:
+                estado = "OK"
+                diagnostico = "Operações e custo de produção presentes."
+            resultado.append(
+                AuditoriaOperacaoLinhaResumo(
+                    linha_id=linha.id,
+                    ordem=int(linha.ordem or posicao),
+                    tipo_linha=linha.tipo_linha,
+                    codigo=(linha.codigo or linha.def_peca_codigo or "").strip(),
+                    descricao=(linha.descricao or "").strip(),
+                    operacoes_efetivas=len(operacoes),
+                    origens="; ".join(origens) or "—",
+                    maquinas="; ".join(maquinas) or "—",
+                    custo_producao=linha.custo_producao,
+                    estado=estado,
+                    diagnostico=diagnostico,
+                )
+            )
+        prioridade = {"ATENÇÃO": 0, "VERIFICAR": 1, "OK": 2}
+        return sorted(
+            resultado,
+            key=lambda item: (prioridade.get(item.estado, 9), item.ordem, item.codigo),
+        )
+
+    def materializar_operacoes_locais(self, linha_id: int) -> None:
+        """Freeze the currently effective set into editable child records."""
+        if self.linha_operacao_repository.has_any(linha_id):
+            return
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        cache = self._cache_operacoes_variantes_do_item(linha.orcamento_item_id)
+        pares = self._pares_operacao_ligacao_da_linha(linha, cache)
+        for posicao, (operacao, ligacao) in enumerate(pares, start=1):
+            self.linha_operacao_repository.create(
+                linha_id=linha.id,
+                def_operacao_id=(
+                    getattr(operacao, "id", None)
+                    or getattr(ligacao, "def_operacao_id", None)
+                ),
+                ordem=int(getattr(ligacao, "ordem", None) or posicao),
+                codigo=(getattr(operacao, "codigo", None) or "OP_LOCAL").strip(),
+                nome=(getattr(operacao, "nome", None) or "Operação local").strip(),
+                tipo_operacao=getattr(operacao, "tipo_operacao", None),
+                unidade_calculo=getattr(operacao, "unidade_calculo", None),
+                maquina_id=getattr(operacao, "maquina_id", None),
+                origem="LOCAL",
+                acao="LOCAL",
+                regra_calculo=getattr(ligacao, "regra_calculo", None),
+                quantidade_base=normalizar_numero(
+                    getattr(ligacao, "quantidade_base", None)
+                ),
+                rasgo_qt_comp=int(getattr(ligacao, "rasgo_qt_comp", 0) or 0),
+                rasgo_qt_larg=int(getattr(ligacao, "rasgo_qt_larg", 0) or 0),
+                tempo_setup_minutos=normalizar_numero(
+                    getattr(ligacao, "tempo_setup_minutos", None)
+                ),
+                tempo_por_unidade_minutos=normalizar_numero(
+                    getattr(ligacao, "tempo_por_unidade_minutos", None)
+                ),
+                unidade_tempo=getattr(ligacao, "unidade_tempo", None),
+                obrigatorio=bool(getattr(ligacao, "obrigatorio", True)),
+                ativo=True,
+                observacoes=getattr(ligacao, "observacoes", None),
+            )
+
+    def adicionar_operacao_local(
+        self, linha_id: int, data: OperacaoLocalData
+    ) -> None:
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        self.materializar_operacoes_locais(linha_id)
+        existentes = self.linha_operacao_repository.list_active(linha_id)
+        if any(row.def_operacao_id == data.def_operacao_id for row in existentes):
+            raise ValueError("Esta operação já existe na linha.")
+        operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
+        if operacao is None:
+            raise ValueError("Operação do catálogo não encontrada.")
+        self.linha_operacao_repository.create(
+            linha_id=linha_id,
+            **self._campos_operacao_local(operacao, data),
+        )
+        self._recalcular_apos_edicao_operacoes(linha)
+
+    def editar_operacao_local(self, local_id: int, data: OperacaoLocalData) -> None:
+        row = self.linha_operacao_repository.get_by_id(local_id)
+        if row is None:
+            raise ValueError("Operação local não encontrada.")
+        linha = self.repository.get_by_id(row.linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
+        if operacao is None:
+            raise ValueError("Operação do catálogo não encontrada.")
+        duplicada = any(
+            other.id != row.id
+            and other.ativo
+            and other.def_operacao_id == data.def_operacao_id
+            for other in self.linha_operacao_repository.list_all(row.linha_id)
+        )
+        if duplicada:
+            raise ValueError("Esta operação já existe na linha.")
+        self.linha_operacao_repository.update(
+            local_id, **self._campos_operacao_local(operacao, data)
+        )
+        self._recalcular_apos_edicao_operacoes(linha)
+
+    def editar_operacao_efetiva_local(
+        self,
+        linha_id: int,
+        def_operacao_id_original: int,
+        data: OperacaoLocalData,
+    ) -> None:
+        """Materialize and edit an effective operation only after Save.
+
+        Keeping materialization inside this mutation means that merely opening
+        the editor and cancelling it never changes the quote.
+        """
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        self.materializar_operacoes_locais(linha_id)
+        row = next(
+            (
+                item
+                for item in self.linha_operacao_repository.list_active(linha_id)
+                if item.def_operacao_id == def_operacao_id_original
+            ),
+            None,
+        )
+        if row is None:
+            raise ValueError("Operação efetiva não encontrada.")
+        operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
+        if operacao is None:
+            raise ValueError("Operação do catálogo não encontrada.")
+        duplicada = any(
+            other.id != row.id
+            and other.ativo
+            and other.def_operacao_id == data.def_operacao_id
+            for other in self.linha_operacao_repository.list_all(linha_id)
+        )
+        if duplicada:
+            raise ValueError("Esta operação já existe na linha.")
+        self.linha_operacao_repository.update(
+            row.id, **self._campos_operacao_local(operacao, data)
+        )
+        self._recalcular_apos_edicao_operacoes(linha)
+
+    def remover_operacao_local(self, linha_id: int, def_operacao_id: int) -> None:
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        self.materializar_operacoes_locais(linha_id)
+        row = next(
+            (
+                item
+                for item in self.linha_operacao_repository.list_active(linha_id)
+                if item.def_operacao_id == def_operacao_id
+            ),
+            None,
+        )
+        if row is None:
+            raise ValueError("Operação efetiva não encontrada.")
+        self.linha_operacao_repository.deactivate(row.id)
+        self._recalcular_apos_edicao_operacoes(linha)
+
+    def repor_operacoes_da_origem(self, linha_id: int) -> None:
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("Linha de custeio não encontrada.")
+        self.linha_operacao_repository.delete_by_linha(linha_id)
+        self.recalcular_item_completo(linha.orcamento_item_id)
+
+    @staticmethod
+    def _campos_operacao_local(operacao, data: OperacaoLocalData) -> dict:
+        return {
+            "def_operacao_id": operacao.id,
+            "ordem": max(int(data.ordem or 1), 1),
+            "codigo": operacao.codigo,
+            "nome": operacao.nome,
+            "tipo_operacao": operacao.tipo_operacao,
+            "unidade_calculo": operacao.unidade_calculo,
+            "maquina_id": operacao.maquina_id,
+            "origem": "LOCAL",
+            "acao": "LOCAL",
+            "regra_calculo": data.regra_calculo,
+            "quantidade_base": data.quantidade_base,
+            "rasgo_qt_comp": max(int(data.rasgo_qt_comp or 0), 0),
+            "rasgo_qt_larg": max(int(data.rasgo_qt_larg or 0), 0),
+            "tempo_setup_minutos": data.tempo_setup_minutos,
+            "tempo_por_unidade_minutos": data.tempo_por_unidade_minutos,
+            "unidade_tempo": data.unidade_tempo,
+            "obrigatorio": data.obrigatorio,
+            "ativo": True,
+            "observacoes": data.observacoes,
+        }
+
+    def _recalcular_apos_edicao_operacoes(self, linha) -> None:
+        self.repository.update_linha(id=linha.id, editado_localmente=True)
+        self.recalcular_item_completo(linha.orcamento_item_id)
 
     def recalcular_custos_producao_do_item(
         self, orcamento_item_id: int

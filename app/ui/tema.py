@@ -197,3 +197,25 @@ ESTILO_TABELA_CONFIG_CABECALHO = ESTILO_TABELA_CONFIG + (
     f"\nQHeaderView::section {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF;"
     " padding: 6px 8px; border: none; font-weight: bold; }"
 )
+
+
+# Estilo global moderado dos controlos. Páginas podem continuar a sobrepor
+# regras específicas sem perder a identidade visual comum.
+ESTILO_CONTROLOS = (
+    f"QPushButton {{ background-color: #FFFFFF; color: {CASTANHO_ESCURO};"
+    f" border: 1px solid {CINZA_CASTANHO}; border-radius: 5px;"
+    " padding: 5px 11px; min-height: 18px; }}\n"
+    f"QPushButton:hover {{ background-color: {BEGE_AREIA}; border-color: {CASTANHO_MEDIO}; }}\n"
+    f"QPushButton:pressed {{ background-color: {CASTANHO_MEDIO}; color: #FFFFFF; }}\n"
+    "QPushButton:disabled { background-color: #F2F0EC; color: #9A958E; border-color: #DED9D1; }\n"
+    f"QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {{ background-color: #FFFFFF;"
+    f" color: {TEXTO_NORMAL}; border: 1px solid {CINZA_CASTANHO}; border-radius: 4px;"
+    " padding: 4px 7px; min-height: 18px; }}\n"
+    f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus {{"
+    f" border: 1px solid {CASTANHO_MEDIO}; }}\n"
+    f"QGroupBox {{ color: {CASTANHO_ESCURO}; font-weight: bold;"
+    f" border: 1px solid {CINZA_CASTANHO}; border-radius: 6px; margin-top: 8px; padding-top: 7px; }}\n"
+    "QGroupBox::title { subcontrol-origin: margin; left: 9px; padding: 0 4px; }"
+)
+
+ESTILO_GLOBAL = ESTILO_ABAS + "\n" + ESTILO_CONTROLOS

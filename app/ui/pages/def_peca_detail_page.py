@@ -60,7 +60,9 @@ from app.services.def_peca_operacao_service import (
     EditarDefPecaOperacaoData,
 )
 from app.services.def_peca_service import DefPecaService
+from app.services.def_peca_revisao_service import DefPecaRevisaoService
 from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
+from app.ui.dialogs.criar_revisao_peca_dialog import CriarRevisaoPecaDialog
 from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 from app.ui.dialogs.def_peca_operacao_dialog import (
     DefPecaOperacaoDialog,
@@ -112,6 +114,7 @@ class DefPecaDetailPage(QWidget):
         componentes: list[DefPecaComponenteResumo] | None = None,
         component_labels: dict[int, str] | None = None,
         on_back: Callable[[], None] | None = None,
+        on_revision_created: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -119,20 +122,26 @@ class DefPecaDetailPage(QWidget):
         self.componentes = componentes or []
         self.component_labels = component_labels or {}
         self.on_back = on_back
+        self.on_revision_created = on_revision_created
         self._componentes_by_row: dict[int, DefPecaComponenteResumo] = {}
         self.operacoes_peca: list[DefPecaOperacaoResumo] = []
         self._operacoes_by_row: dict[int, DefPecaOperacaoResumo] = {}
         self._operacao_resumos: dict[int, DefOperacaoResumo] = {}
         self._maquina_labels: dict[int, str] = {}
 
-        title = QLabel(f"Defini\u00e7\u00e3o de Pe\u00e7a: {peca.codigo}")
+        title = QLabel(
+            f"Defini\u00e7\u00e3o de Pe\u00e7a: {peca.codigo} · R{peca.revisao_numero}"
+        )
         title.setObjectName("defPecaDetailTitle")
 
         self.back_button = QPushButton("Voltar \u00e0 lista")
         self.back_button.clicked.connect(self._handle_back)
+        self.criar_revisao_button = QPushButton("Criar nova revisão")
+        self.criar_revisao_button.clicked.connect(self.criar_nova_revisao)
 
         header_layout = QHBoxLayout()
         header_layout.addWidget(title, stretch=1)
+        header_layout.addWidget(self.criar_revisao_button)
         header_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         tabs = QTabWidget()
@@ -140,6 +149,7 @@ class DefPecaDetailPage(QWidget):
         tabs.addTab(self._create_componentes_tab(), "Associados")
         tabs.addTab(self._create_regras_tab(), "Regras")
         tabs.addTab(self._create_operacoes_tab(), "Opera\u00e7\u00f5es")
+        tabs.addTab(self._create_revisoes_tab(), "Revisões")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -165,6 +175,7 @@ class DefPecaDetailPage(QWidget):
 
         fields = [
             ("C\u00f3digo", self.peca.codigo),
+            ("Revisão", f"R{self.peca.revisao_numero}"),
             ("Nome", self.peca.nome),
             ("Descri\u00e7\u00e3o", self.peca.descricao or ""),
             ("Natureza", get_peca_natureza_label(self.peca.natureza)),
@@ -209,6 +220,93 @@ class DefPecaDetailPage(QWidget):
 
         tab.setLayout(form)
         return tab
+
+    def _create_revisoes_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(12, 12, 12, 12)
+        ajuda = QLabel(
+            "Cada revisão é uma definição independente. Orçamentos antigos mantêm "
+            "o snapshot da revisão usada; apenas a revisão ativa aparece para novas inserções."
+        )
+        ajuda.setWordWrap(True)
+        layout.addWidget(ajuda)
+
+        self.revisoes_table = QTableWidget(0, 5)
+        self.revisoes_table.setHorizontalHeaderLabels(
+            ["Revisão", "Código", "Nome", "Estado", "Criada em"]
+        )
+        self.revisoes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.revisoes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.revisoes_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.revisoes_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.revisoes_table, stretch=1)
+        self.revisoes_status_label = QLabel("")
+        layout.addWidget(self.revisoes_status_label)
+        self.recarregar_revisoes()
+        return tab
+
+    def recarregar_revisoes(self) -> None:
+        try:
+            with SessionLocal() as session:
+                revisoes = DefPecaRevisaoService(session).listar_revisoes(self.peca.id)
+        except SQLAlchemyError:
+            self.revisoes_status_label.setText("Não foi possível carregar as revisões.")
+            return
+        self.revisoes_table.setRowCount(len(revisoes))
+        for row, revisao in enumerate(revisoes):
+            valores = (
+                f"R{revisao.revisao_numero}",
+                revisao.codigo,
+                revisao.nome,
+                "Ativa" if revisao.ativo else "Inativa",
+                self._format_datetime(revisao.created_at),
+            )
+            for coluna, valor in enumerate(valores):
+                self.revisoes_table.setItem(row, coluna, QTableWidgetItem(valor))
+        self.revisoes_status_label.setText(
+            f"{len(revisoes)} revisão(ões) nesta série."
+        )
+
+    def criar_nova_revisao(self) -> None:
+        try:
+            with SessionLocal() as session:
+                preparacao = DefPecaRevisaoService(session).preparar_revisao(
+                    self.peca.id
+                )
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Criar nova revisão", str(error))
+            return
+
+        dialog = CriarRevisaoPecaDialog(self.peca, preparacao, self)
+        if not dialog.exec():
+            return
+        dados = dialog.form_data()
+        try:
+            with SessionLocal() as session:
+                resultado = DefPecaRevisaoService(session).criar_revisao(
+                    self.peca.id,
+                    novo_codigo=dados.codigo,
+                    novo_nome=dados.nome,
+                )
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Criar nova revisão", str(error))
+            return
+
+        QMessageBox.information(
+            self,
+            "Nova revisão criada",
+            f"{resultado.codigo} · R{resultado.revisao_numero} criada.\n"
+            f"Operações copiadas: {resultado.operacoes_copiadas}\n"
+            f"Associados copiados: {resultado.componentes_copiados}\n\n"
+            "A revisão anterior ficou inativa. Orçamentos existentes não foram alterados.",
+        )
+        if self.on_revision_created is not None:
+            self.on_revision_created(resultado.nova_peca_id)
+        else:
+            self.recarregar_revisoes()
 
     def _create_componentes_tab(self) -> QWidget:
         """Create the components tab with management actions."""
@@ -295,7 +393,12 @@ class DefPecaDetailPage(QWidget):
         )
         self.regras_componentes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.regras_componentes_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.regras_componentes_table.horizontalHeader().setStretchLastSection(False)
+        ligar_persistencia_larguras(
+            self.regras_componentes_table,
+            "def_peca_regras_componentes",
         )
         self.regras_componentes_table.cellDoubleClicked.connect(
             self._editar_transformacao_componente

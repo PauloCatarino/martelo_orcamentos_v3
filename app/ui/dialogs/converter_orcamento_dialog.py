@@ -22,6 +22,7 @@ from app.services.producao_service import (
     validar_conversao,
 )
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_version
 
 
@@ -65,6 +66,7 @@ class ConverterOrcamentoDialog(QDialog):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        ligar_persistencia_larguras(self.table, "dialog_converter_orcamento")
         self.table.itemSelectionChanged.connect(self._atualizar_ok)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 

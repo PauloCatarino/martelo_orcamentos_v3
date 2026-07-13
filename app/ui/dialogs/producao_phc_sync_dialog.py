@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ProducaoPhcSyncDialog(QDialog):
@@ -87,6 +88,7 @@ class ProducaoPhcSyncDialog(QDialog):
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        ligar_persistencia_larguras(self.table, "dialog_producao_phc_sync")
         layout.addWidget(self.table, 1)
 
         buttons = QDialogButtonBox(

@@ -19,6 +19,7 @@ def test_configuracoes_page_accepts_def_pecas_callback() -> None:
     assert "on_open_def_pecas" in signature.parameters
     assert "on_open_materias_primas" in signature.parameters
     assert "on_open_caminhos_sistema" in signature.parameters
+    assert "on_open_imos_ligacao" in signature.parameters
 
 
 def test_configuracoes_page_declares_technical_areas() -> None:
@@ -27,8 +28,7 @@ def test_configuracoes_page_declares_technical_areas() -> None:
     assert ConfiguracoesPage.TECHNICAL_AREAS == [
         "Defini\u00e7\u00f5es de Pe\u00e7as",
         "Caminhos do Sistema",
-        "Materiais",
-        "Ferragens",
+        "Liga\u00e7\u00e3o iMos (leitura)",
         "Opera\u00e7\u00f5es / M\u00e1quinas",
         "Chaves ValueSet",
         "Modelos ValueSet",
@@ -36,8 +36,16 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Regras de Quantidade",
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
-        "Regras de Custeio",
     ]
+
+
+def test_configuracoes_page_tem_tooltip_em_todas_as_areas() -> None:
+    from app.ui.pages.configuracoes_page import ConfiguracoesPage
+
+    assert set(ConfiguracoesPage.TOOLTIP_DESCRICOES) == set(
+        ConfiguracoesPage.TECHNICAL_AREAS
+    )
+    assert all(ConfiguracoesPage.TOOLTIP_DESCRICOES.values())
 
 
 def test_configuracoes_page_has_biblioteca_modulos_shortcut() -> None:
@@ -93,6 +101,9 @@ def test_configuracoes_page_nao_tem_materias_primas_shortcut() -> None:
     assert not hasattr(ConfiguracoesPage, "_open_materias_primas")
     assert "materias_primas_button" not in init_source
     assert "Mat\\u00e9rias-Primas" not in init_source
+    assert 'QPushButton("Materiais")' not in init_source
+    assert 'QPushButton("Ferragens")' not in init_source
+    assert 'QPushButton("Regras de Custeio")' not in init_source
 
 
 def test_configuracoes_page_has_caminhos_sistema_shortcut() -> None:

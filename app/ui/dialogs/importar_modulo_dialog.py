@@ -39,6 +39,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ImportarModuloDialog(QDialog):
@@ -159,6 +160,7 @@ class ImportarModuloDialog(QDialog):
         self._configurar_colunas(tabela, self._LARGURAS_LISTA)
         tabela.cellClicked.connect(self._on_tabela_clicada)
         tabela.cellDoubleClicked.connect(self._on_tabela_duplo_clique)
+        ligar_persistencia_larguras(tabela, "dialog_importar_modulo_lista")
         return tabela
 
     @staticmethod
@@ -211,6 +213,9 @@ class ImportarModuloDialog(QDialog):
         )
         self.preview_linhas.verticalHeader().setVisible(False)
         self._configurar_colunas(self.preview_linhas, self._LARGURAS_PREVIEW)
+        ligar_persistencia_larguras(
+            self.preview_linhas, "dialog_importar_modulo_preview"
+        )
 
         baixo = QWidget()
         baixo_layout = QVBoxLayout()

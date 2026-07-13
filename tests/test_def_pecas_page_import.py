@@ -17,7 +17,6 @@ def test_def_pecas_page_loads_on_init() -> None:
     source_names = DefPecasPage.__init__.__code__.co_names
 
     assert "carregar_pecas" in source_names
-    assert "QStackedWidget" in source_names
     assert "QTreeWidget" in source_names
 
 
@@ -31,14 +30,15 @@ def test_def_pecas_page_table_headers() -> None:
         "Função",
         "Grupo",
         "Orlas",
+        "Revisão",
         "Ativo",
     ]
 
 
-def test_def_pecas_page_shows_orla_code() -> None:
+def test_def_pecas_tree_table_shows_orla_code() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
-    source = inspect.getsource(DefPecasPage._preencher_tabela)
+    source = inspect.getsource(DefPecasPage._preencher_arvore)
 
     assert "format_orla_code" in source
 
@@ -51,7 +51,7 @@ def test_def_pecas_page_supports_open_detail() -> None:
     assert hasattr(DefPecasPage, "_show_detail_page")
     assert hasattr(DefPecasPage, "_voltar_a_lista")
     assert hasattr(DefPecasPage, "_select_peca_by_codigo")
-    assert hasattr(DefPecasPage, "_handle_row_double_click")
+    assert hasattr(DefPecasPage, "_handle_tree_item_double_click")
 
 
 def test_def_pecas_page_creates_piece_through_dialog_callback() -> None:
@@ -100,18 +100,13 @@ def test_def_pecas_page_supports_edit() -> None:
     assert hasattr(DefPecasPage, "abrir_editar_peca")
 
 
-def test_def_pecas_page_supports_duplicate() -> None:
+def test_def_pecas_page_nao_tem_duplicacao_redundante() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
     init_source = inspect.getsource(DefPecasPage.__init__)
-    duplicate_source = inspect.getsource(DefPecasPage.duplicar_peca_selecionada)
-
-    assert "duplicate_button" in init_source
-    assert "Duplicar Pe" in init_source
-    assert hasattr(DefPecasPage, "duplicar_peca_selecionada")
-    assert "QInputDialog.getText" in duplicate_source
-    assert "duplicar_peca" in duplicate_source
-    assert "carregar_pecas" in duplicate_source
+    assert "duplicate_button" not in init_source
+    assert "Duplicar Pe" not in init_source
+    assert not hasattr(DefPecasPage, "duplicar_peca_selecionada")
 
 
 def test_def_pecas_page_supports_active_toggle_and_inactive_filter() -> None:
@@ -138,27 +133,28 @@ def test_def_pecas_page_has_resizable_columns() -> None:
 
     assert "QHeaderView.ResizeMode.Interactive" in init_source
     assert "setStretchLastSection(False)" in init_source
+    assert "ligar_persistencia_larguras" in init_source
     assert "QHeaderView.ResizeMode.Stretch" not in init_source
 
 
-def test_def_pecas_page_supports_tree_view() -> None:
+def test_def_pecas_page_uses_permanent_tree_table() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
     init_source = inspect.getsource(DefPecasPage.__init__)
     preencher_arvore = inspect.getsource(DefPecasPage._preencher_arvore)
-    get_selected = inspect.getsource(DefPecasPage._get_selected_peca)
-
-    assert "toggle_vista_button" in init_source
-    assert "Ver em" in init_source
-    assert "lista_stack" in init_source
+    assert "toggle_vista_button" not in init_source
+    assert "lista_stack" not in init_source
+    assert "setColumnCount" in init_source
+    assert "setHeaderLabels" in init_source
     assert "QTreeWidgetItem" in preencher_arvore
     assert "SEM GRUPO" in preencher_arvore
     assert "format_orla_code" in preencher_arvore
     assert "COMPOSTA" not in preencher_arvore
     assert "Qt.ItemDataRole.UserRole" in preencher_arvore
     assert "expandAll" in preencher_arvore
-    assert "_pecas_by_id" in get_selected
-    assert "currentItem" in get_selected
+    assert "get_peca_natureza_label" in preencher_arvore
+    assert '"Sim" if peca.ativo else "N\\u00e3o"' in preencher_arvore
+    assert 'f"R{peca.revisao_numero}"' in preencher_arvore
 
 
 def test_def_pecas_page_edit_uses_service_and_dialog() -> None:
@@ -178,6 +174,6 @@ def test_def_pecas_page_edit_uses_service_and_dialog() -> None:
 def test_def_pecas_page_double_click_edits() -> None:
     from app.ui.pages.def_pecas_page import DefPecasPage
 
-    source = inspect.getsource(DefPecasPage._handle_row_double_click)
+    source = inspect.getsource(DefPecasPage._handle_tree_item_double_click)
 
     assert "abrir_editar_peca" in source

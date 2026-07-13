@@ -85,3 +85,13 @@ def test_page_actions_use_service_and_dialog() -> None:
     assert "ativar_chave" in toggle
     assert "desativar_chave" in toggle
     assert "QMessageBox" in toggle
+def test_chaves_ocultam_inativas_e_guardam_larguras() -> None:
+    import inspect
+    from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
+
+    init = inspect.getsource(DefValuesetChavesPage.__init__)
+    carregar = inspect.getsource(DefValuesetChavesPage.carregar)
+    assert "mostrar_inativas_check" in init
+    assert "QHeaderView.ResizeMode.Interactive" in init
+    assert "ligar_persistencia_larguras" in init
+    assert "if chave.ativo" in carregar

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -60,8 +61,9 @@ class RegrasQuantidadePage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
+        self.table.horizontalHeader().setStretchLastSection(False)
         ligar_persistencia_larguras(self.table, "regras_quantidade")
 
         self.nova_button = QPushButton("Nova Regra")
@@ -72,11 +74,14 @@ class RegrasQuantidadePage(QWidget):
 
         self.ativar_button = QPushButton("Ativar/Desativar")
         self.ativar_button.clicked.connect(self.alternar_ativo)
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.stateChanged.connect(lambda _=0: self.carregar())
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.nova_button)
         buttons_layout.addWidget(self.editar_button)
         buttons_layout.addWidget(self.ativar_button)
+        buttons_layout.addWidget(self.mostrar_inativas_check)
         buttons_layout.addStretch()
 
         layout = QVBoxLayout()
@@ -98,6 +103,9 @@ class RegrasQuantidadePage(QWidget):
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar as regras.")
             return
+
+        if not self.mostrar_inativas_check.isChecked():
+            registos = [registo for registo in registos if registo.ativo]
 
         self._preencher_tabela(registos)
 

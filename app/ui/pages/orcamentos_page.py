@@ -51,6 +51,10 @@ from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.estilo_tabela_orcamentos import (
+    aplicar_estilo_linha_orcamento,
+    configurar_tabela_orcamentos,
+)
 from app.utils.formatters import format_currency, format_version
 
 
@@ -184,6 +188,7 @@ class OrcamentosPage(QWidget):
         self._aplicar_larguras_colunas()
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         ligar_persistencia_larguras(self.table, "orcamentos")
+        configurar_tabela_orcamentos(self.table)
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("orcamentosFooter")
@@ -445,6 +450,15 @@ class OrcamentosPage(QWidget):
                         "Inclui preço(s) manual(is) — não totalmente do custeio."
                     )
                 self.table.setItem(row_index, column_index, item)
+            aplicar_estilo_linha_orcamento(
+                self.table,
+                row_index,
+                coluna_codigo=1,
+                coluna_estado=3,
+                estado=orcamento.estado,
+                coluna_total=11,
+                preco_manual=orcamento.tem_preco_manual,
+            )
 
     def _criar_item_tabela(self, value: str, header: str) -> QTableWidgetItem:
         """Create a table item with the list page alignment conventions."""

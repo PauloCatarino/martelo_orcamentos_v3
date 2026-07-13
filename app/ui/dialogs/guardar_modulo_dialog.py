@@ -49,6 +49,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 @dataclass(frozen=True)
@@ -184,6 +185,7 @@ class GuardarModuloDialog(QDialog):
         tabela.verticalHeader().setVisible(False)
         header = tabela.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        ligar_persistencia_larguras(tabela, "dialog_guardar_modulo")
         tabela.cellClicked.connect(self._on_tabela_clicada)
         tabela.cellDoubleClicked.connect(self._on_tabela_clicada)
         return tabela

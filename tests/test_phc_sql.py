@@ -39,6 +39,7 @@ def test_assert_select_only_aceita_select() -> None:
         "DROP TABLE CL",
         "EXEC sp_who",
         "SELECT 1; DROP TABLE CL",
+        "SELECT NOME INTO dbo.COPIA FROM dbo.CL",
     ],
 )
 def test_assert_select_only_rejeita_nao_select(query: str) -> None:

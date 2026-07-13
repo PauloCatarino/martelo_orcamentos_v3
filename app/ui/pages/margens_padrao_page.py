@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
@@ -73,6 +74,7 @@ class MargensPadraoPage(QWidget):
             AMBITO_UTILIZADOR: {},
         }
         self._tabelas: dict[str, QTableWidget] = {}
+        self._mostrar_inativos: dict[str, QCheckBox] = {}
 
         tabs = QTabWidget()
         tabs.addTab(self._criar_tab_standard(), "Standard")
@@ -154,8 +156,9 @@ class MargensPadraoPage(QWidget):
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.ResizeToContents
+            QHeaderView.ResizeMode.Interactive
         )
+        table.horizontalHeader().setStretchLastSection(False)
         self._tabelas[ambito] = table
         ligar_persistencia_larguras(table, f"margens_{ambito}")
 
@@ -167,6 +170,9 @@ class MargensPadraoPage(QWidget):
 
         ativar_button = QPushButton("Ativar/Desativar")
         ativar_button.clicked.connect(lambda: self.alternar_ativo(ambito))
+        mostrar_inativos = QCheckBox("Mostrar inativos")
+        mostrar_inativos.stateChanged.connect(lambda _=0: self.carregar())
+        self._mostrar_inativos[ambito] = mostrar_inativos
 
         for botao in (novo_button, editar_button, ativar_button):
             botao.setToolTip(TOOLTIP_VALOR_INICIAL)
@@ -175,6 +181,7 @@ class MargensPadraoPage(QWidget):
         buttons_layout.addWidget(novo_button)
         buttons_layout.addWidget(editar_button)
         buttons_layout.addWidget(ativar_button)
+        buttons_layout.addWidget(mostrar_inativos)
         buttons_layout.addStretch()
 
         tab = QWidget()
@@ -197,6 +204,10 @@ class MargensPadraoPage(QWidget):
             return
 
         self._preencher_standard(standard)
+        if not self._mostrar_inativos[AMBITO_CLIENTE].isChecked():
+            clientes = [registo for registo in clientes if registo.ativo]
+        if not self._mostrar_inativos[AMBITO_UTILIZADOR].isChecked():
+            utilizadores = [registo for registo in utilizadores if registo.ativo]
         self._preencher_tabela(AMBITO_CLIENTE, clientes)
         self._preencher_tabela(AMBITO_UTILIZADOR, utilizadores)
 

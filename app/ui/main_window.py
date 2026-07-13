@@ -15,20 +15,27 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.session import SessionLocal
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
+from app.services.orcamento_service import OrcamentoService
 from app.ui import tema
 from app.ui.pages import (
     BibliotecaModulosPage,
+    ArquivoV2Page,
     CatalogoAuditoriaPage,
     CaminhosSistemaPage,
     ClientesPage,
+    CusteioAuditoriaPage,
     ConfiguracoesPage,
     DefPecasPage,
     DefValuesetChavesPage,
     DefValuesetModelosPage,
     EncomendasPage,
+    InicioPage,
+    ImosLigacaoPage,
     MargensPadraoPage,
     MateriasPrimasPage,
     OperacoesMaquinasPage,
@@ -48,6 +55,9 @@ class MainWindow(QMainWindow):
     _NAV_POR_PAGINA = {
         "inicio": "inicio",
         "orcamentos": "orcamentos",
+        "orcamentos_dashboard": "orcamentos",
+        "custeio_auditoria": "orcamentos",
+        "arquivo_v2": "orcamentos",
         "orcamento_detail": "orcamentos",
         "materias_primas": "materias_primas",
         "clientes": "clientes",
@@ -132,6 +142,9 @@ class MainWindow(QMainWindow):
 
         _criar_item("In\u00edcio", "inicio")
         item_orcamentos = _criar_item("Or\u00e7amentos", "orcamentos")
+        _criar_item("Dashboard", "orcamentos_dashboard", parent=item_orcamentos)
+        _criar_item("Auditoria de Custeio", "custeio_auditoria", parent=item_orcamentos)
+        _criar_item("Arquivo V2", "arquivo_v2", parent=item_orcamentos)
         _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
         _criar_item("Pesquisa IA", "pesquisa_ia", parent=item_orcamentos)
         _criar_item("Clientes", "clientes")
@@ -149,10 +162,28 @@ class MainWindow(QMainWindow):
         self._page_indexes: dict[str, int] = {}
         self._pages_by_name: dict[str, QWidget] = {}
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
+        self.inicio_page = InicioPage(
+            on_open_orcamentos=lambda: self.show_page("orcamentos"),
+            on_open_producao=lambda: self.show_page("producao"),
+            on_open_auditoria=self._open_catalogo_auditoria,
+            on_open_orcamento=self.open_orcamento_detail,
+        )
+        self.orcamentos_dashboard_page = InicioPage(
+            on_open_orcamentos=lambda: self.show_page("orcamentos"),
+            on_open_auditoria=self._open_catalogo_auditoria,
+            on_open_orcamento=self.open_orcamento_detail,
+            titulo="Dashboard de Orçamentos",
+            incluir_producao=False,
+        )
+        self.custeio_auditoria_page = CusteioAuditoriaPage(
+            on_open_orcamento=self._open_custeio_auditoria_item
+        )
+        self.arquivo_v2_page = ArquivoV2Page()
         self.def_pecas_page = DefPecasPage()
         self.materias_primas_page = MateriasPrimasPage()
         self.pesquisa_ia_page = PesquisaIAPage()
         self.caminhos_sistema_page = CaminhosSistemaPage()
+        self.imos_ligacao_page = ImosLigacaoPage()
         self.operacoes_maquinas_page = OperacoesMaquinasPage()
         self.valueset_chaves_page = DefValuesetChavesPage()
         self.valueset_modelos_page = DefValuesetModelosPage()
@@ -170,6 +201,7 @@ class MainWindow(QMainWindow):
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
             on_open_caminhos_sistema=lambda: self.show_page("caminhos_sistema"),
+            on_open_imos_ligacao=lambda: self.show_page("imos_ligacao"),
             on_open_operacoes_maquinas=lambda: self.show_page("operacoes_maquinas"),
             on_open_valueset_chaves=lambda: self.show_page("valueset_chaves"),
             on_open_valueset_modelos=lambda: self.show_page("valueset_modelos"),
@@ -178,12 +210,16 @@ class MainWindow(QMainWindow):
             on_open_biblioteca_modulos=self._open_biblioteca_modulos,
             on_open_catalogo_auditoria=self._open_catalogo_auditoria,
         )
-        self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
+        self._add_page("inicio", self.inicio_page)
         self._add_page("orcamentos", self.orcamentos_page)
+        self._add_page("orcamentos_dashboard", self.orcamentos_dashboard_page)
+        self._add_page("custeio_auditoria", self.custeio_auditoria_page)
+        self._add_page("arquivo_v2", self.arquivo_v2_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("materias_primas", self.materias_primas_page)
         self._add_page("pesquisa_ia", self.pesquisa_ia_page)
         self._add_page("caminhos_sistema", self.caminhos_sistema_page)
+        self._add_page("imos_ligacao", self.imos_ligacao_page)
         self._add_page("operacoes_maquinas", self.operacoes_maquinas_page)
         self._add_page("valueset_chaves", self.valueset_chaves_page)
         self._add_page("valueset_modelos", self.valueset_modelos_page)
@@ -282,6 +318,14 @@ class MainWindow(QMainWindow):
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
+        if name == "inicio" and hasattr(self, "inicio_page"):
+            self.inicio_page.carregar()
+        elif name == "orcamentos_dashboard" and hasattr(self, "orcamentos_dashboard_page"):
+            self.orcamentos_dashboard_page.carregar()
+        elif name == "custeio_auditoria" and hasattr(self, "custeio_auditoria_page"):
+            self.custeio_auditoria_page.carregar()
+        elif name == "arquivo_v2" and hasattr(self, "arquivo_v2_page"):
+            self.arquivo_v2_page.carregar()
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
         self._destacar_nav(name)
@@ -302,9 +346,39 @@ class MainWindow(QMainWindow):
 
     def open_orcamento_detail(self, orcamento: OrcamentoResumo) -> None:
         """Open the detail page for a selected budget."""
-        detail_page = OrcamentoDetailPage(orcamento, on_back=lambda: self.show_page("orcamentos"))
+        detail_page = OrcamentoDetailPage(
+            orcamento,
+            on_back=lambda: self.show_page("orcamentos"),
+            on_open_custeio_auditoria=self._open_custeio_auditoria_contexto,
+        )
         self._replace_page("orcamento_detail", detail_page)
         self.show_page("orcamento_detail")
+
+    def _open_custeio_auditoria_contexto(self, ocorrencia=None) -> None:
+        """Open the global costing audit focused on the supervisor finding."""
+        self.show_page("custeio_auditoria")
+        self.custeio_auditoria_page.focar_ocorrencia(ocorrencia)
+
+    def _open_custeio_auditoria_item(self, ocorrencia) -> None:
+        """Open the budget version referenced by a financial audit finding."""
+        try:
+            with SessionLocal() as session:
+                orcamentos = OrcamentoService(session).list_orcamentos()
+        except SQLAlchemyError:
+            return
+        orcamento = next(
+            (item for item in orcamentos
+             if item.orcamento_versao_id == ocorrencia.orcamento_versao_id),
+            None,
+        )
+        if orcamento is not None:
+            self.open_orcamento_detail(orcamento)
+            detail = self._pages_by_name.get("orcamento_detail")
+            if isinstance(detail, OrcamentoDetailPage):
+                detail.abrir_item_custeio_por_id(
+                    ocorrencia.orcamento_item_id,
+                    getattr(ocorrencia, "linha_id", None),
+                )
 
     def _replace_page(self, name: str, page: QWidget) -> None:
         """Replace a named page in the central workspace."""

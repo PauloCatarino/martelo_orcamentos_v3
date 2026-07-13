@@ -12,11 +12,13 @@ No exports (8W.4) nor pie chart (8W.3b) here yet.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -37,6 +39,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.export_paths import subpasta_versao
+from app.domain.custeio_linha_types import get_custeio_linha_type_label
 from app.domain.relatorio_totais import (
     IVA_PADRAO_PCT,
     TotaisRelatorio,
@@ -50,6 +53,11 @@ from app.services.email_service import (
     escrever_relatorio_email,
     get_email_log_path,
 )
+from app.services.custeio_auditoria_service import (
+    CRITICO,
+    CusteioAuditoriaService,
+    resumir_saude_versao,
+)
 from app.services.orcamento_export_service import OrcamentoExportService
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.orcamento_item_service import OrcamentoItemService
@@ -57,6 +65,7 @@ from app.services.orcamento_pdf_export import REPORTLAB_DISPONIVEL
 from app.services.orcamento_service import OrcamentoService
 from app.services.plano_corte_service import PlanoCorteService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
+from app.services.relatorio_operacoes_service import RelatorioOperacoesService
 from app.ui import tema
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -114,6 +123,12 @@ class OrcamentoRelatoriosPage(QWidget):
     OPERACOES_DETALHE_HEADERS = [
         "Operação efetiva", "Máquina", "Qt", "Setup (min)", "Tempo CNC (min)",
         "Outros tempos (min)", "Custo produção",
+    ]
+    OPERACOES_LINHAS_HEADERS = [
+        "Item", "Tipo linha", "Peça/Ferragem", "Ordem", "Operação",
+        "Tipo operação", "Máquina", "Origem", "Ação", "Regra",
+        "Qt total versão", "Qt base", "Setup cfg. (min)", "Tempo/un. (min)",
+        "Unidade tempo", "Tempo atribuído (min)", "Custo atribuído", "Diagnóstico",
     ]
 
     # Initial column widths suited to the content (phase 8W.2-UX, Part D);
@@ -224,11 +239,17 @@ class OrcamentoRelatoriosPage(QWidget):
         ),
     }
 
-    def __init__(self, orcamento_versao_id: int, orcamento=None) -> None:
+    def __init__(
+        self,
+        orcamento_versao_id: int,
+        orcamento=None,
+        on_open_custeio_auditoria: Callable[[object | None], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.orcamento_versao_id = orcamento_versao_id
         self.orcamento = orcamento
+        self.on_open_custeio_auditoria = on_open_custeio_auditoria
         self._iva_pct = IVA_PADRAO_PCT
         # Não-Stock editing state (phase 8W.2). Toggling a checkbox persists and
         # recalculates immediately (8W.2-UX, Part A) — there is no save button.
@@ -243,6 +264,8 @@ class OrcamentoRelatoriosPage(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._criar_tab_relatorio(), "Relatório de Orçamento")
         self.tabs.addTab(self._criar_tab_consumos(), "Resumo de Consumos")
+        self.operacoes_tab = self._criar_tab_operacoes()
+        self.tabs.addTab(self.operacoes_tab, "Operações")
         self.tabs.addTab(self.dashboards, "Dashboards")
 
         layout = QVBoxLayout()
@@ -449,6 +472,32 @@ class OrcamentoRelatoriosPage(QWidget):
         tab.setLayout(layout)
         return tab
 
+    def _criar_tab_operacoes(self) -> QWidget:
+        nota = QLabel(
+            "Cada operação efetiva aparece numa linha. Os valores já incluem a "
+            "quantidade dos items desta versão. Quando várias operações pertencem "
+            "ao mesmo centro na mesma peça, o custo/tempo consolidado é atribuído "
+            "apenas à primeira para não duplicar os totais."
+        )
+        nota.setWordWrap(True)
+        nota.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
+        )
+        self.operacoes_linhas_resumo = QLabel("")
+        self.operacoes_linhas_resumo.setStyleSheet("font-weight: bold; padding: 4px;")
+        self.operacoes_linhas_table = self._criar_tabela(
+            self.OPERACOES_LINHAS_HEADERS
+        )
+        ligar_persistencia_larguras(
+            self.operacoes_linhas_table, "rel_operacoes_linhas"
+        )
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.addWidget(nota)
+        layout.addWidget(self.operacoes_linhas_resumo)
+        layout.addWidget(self.operacoes_linhas_table, stretch=1)
+        return tab
+
     # ----- Widgets helpers -----
 
     def _criar_banner(self) -> QLabel:
@@ -552,6 +601,9 @@ class OrcamentoRelatoriosPage(QWidget):
                     self.orcamento_versao_id
                 )
                 resumo = relatorio.resumo_da_versao(self.orcamento_versao_id)
+                operacoes_linhas = RelatorioOperacoesService(
+                    session
+                ).listar_da_versao(self.orcamento_versao_id)
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar os relatórios.")
             return
@@ -563,6 +615,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self._preencher_identificacao()
         self._preencher_items(items)
         self._preencher_consumos(resumo)
+        self._preencher_operacoes_linhas(operacoes_linhas)
         self.dashboards.atualizar(resumo)
 
         hora = datetime.now().strftime("%H:%M:%S")
@@ -580,6 +633,9 @@ class OrcamentoRelatoriosPage(QWidget):
                 "A biblioteca 'reportlab' não está instalada.\n"
                 "Instale-a (pip install reportlab) para exportar o PDF.",
             )
+            return
+
+        if not self._confirmar_supervisor("gerar o PDF"):
             return
 
         try:
@@ -712,6 +768,8 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _enviar_email(self) -> None:
         """Send the budget PDF by email and register the send in history."""
+        if not self._confirmar_supervisor("preparar o email"):
+            return
         orcamento = None
         cliente = None
         pdf_path = None
@@ -857,6 +915,106 @@ class OrcamentoRelatoriosPage(QWidget):
         if relatorio is not None:
             msg += f"\n\nRegisto gravado em:\n{relatorio}"
         QMessageBox.information(self, "Email", msg)
+
+    def _confirmar_supervisor(self, acao: str) -> bool:
+        """Always show version health before customer-facing PDF/email output."""
+        try:
+            with SessionLocal() as session:
+                resultado = CusteioAuditoriaService(session).executar_versao(
+                    self.orcamento_versao_id
+                )
+        except SQLAlchemyError:
+            resposta = QMessageBox.warning(
+                self,
+                "Supervisor — saúde indisponível",
+                "Não foi possível avaliar a saúde do orçamento neste momento.\n\n"
+                f"Pretende {acao} sem a validação do supervisor?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            return resposta == QMessageBox.StandardButton.Yes
+
+        saude = resumir_saude_versao(resultado)
+        abaixo_limite = saude.saude_pct < 75
+        if abaixo_limite:
+            titulo = "Supervisor — saúde crítica"
+            introducao = (
+                f"A saúde do orçamento é {saude.saude_pct}%, abaixo do limite "
+                "recomendado de 75%."
+            )
+        elif saude.saude_pct < 100:
+            titulo = "Supervisor — orçamento com avisos"
+            introducao = (
+                f"A saúde do orçamento é {saude.saude_pct}%. Existem ocorrências "
+                "que devem ser analisadas antes do envio ao cliente."
+            )
+        else:
+            titulo = "Supervisor — orçamento verificado"
+            introducao = "A saúde do orçamento é 100%. Não foram detetadas ocorrências."
+
+        ocorrencias = sorted(
+            resultado.itens,
+            key=lambda item: (
+                0 if item.severidade == CRITICO else 1,
+                item.item,
+                item.linha,
+            ),
+        )
+        detalhes = "\n".join(
+            f"• [{item.severidade}] {item.item} / {item.linha}: {item.problema}"
+            for item in ocorrencias[:8]
+        )
+        if len(ocorrencias) > 8:
+            detalhes += f"\n• … e mais {len(ocorrencias) - 8} ocorrência(s)."
+
+        mensagem = (
+            f"{introducao}\n\n"
+            f"Críticas: {saude.criticos}  |  Avisos: {saude.avisos}  |  "
+            f"Ocorrências: {saude.ocorrencias}"
+        )
+        if detalhes:
+            mensagem += f"\n\nPrincipais ocorrências:\n{detalhes}"
+        mensagem += (
+            "\n\nPode rever e corrigir o orçamento, ou assumir conscientemente "
+            f"as ocorrências e {acao}."
+        )
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle(titulo)
+        dialog.setIcon(
+            QMessageBox.Icon.Critical
+            if abaixo_limite
+            else QMessageBox.Icon.Warning
+            if saude.saude_pct < 100
+            else QMessageBox.Icon.Information
+        )
+        dialog.setText(mensagem)
+        continuar_button = dialog.addButton(
+            "Assumir e continuar"
+            if saude.saude_pct < 100
+            else "Confirmar e continuar",
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        operacoes_button = dialog.addButton(
+            "Abrir Operações", QMessageBox.ButtonRole.ActionRole
+        )
+        auditoria_button = dialog.addButton(
+            "Abrir Auditoria do Custeio", QMessageBox.ButtonRole.ActionRole
+        )
+        rever_button = dialog.addButton(
+            "Rever orçamento", QMessageBox.ButtonRole.RejectRole
+        )
+        dialog.setDefaultButton(rever_button)
+        dialog.exec()
+        escolhido = dialog.clickedButton()
+        if escolhido is operacoes_button:
+            self.tabs.setCurrentWidget(self.operacoes_tab)
+            return False
+        if escolhido is auditoria_button:
+            if self.on_open_custeio_auditoria is not None:
+                self.on_open_custeio_auditoria(ocorrencias[0] if ocorrencias else None)
+            return False
+        return escolhido is continuar_button
 
     def _preencher_cliente(self, cliente) -> None:
         nome = self.orcamento.cliente_nome if self.orcamento is not None else ""
@@ -1102,6 +1260,54 @@ class OrcamentoRelatoriosPage(QWidget):
                 self.operacoes_detalhe_table.setItem(
                     row, col, criar_item_tabela(texto)
                 )
+
+    def _preencher_operacoes_linhas(self, linhas) -> None:
+        self.operacoes_linhas_table.setRowCount(0)
+        sem_operacoes = 0
+        maquinas: set[str] = set()
+        custo_total = Decimal("0")
+        for linha in linhas:
+            row = self.operacoes_linhas_table.rowCount()
+            self.operacoes_linhas_table.insertRow(row)
+            if linha.operacao == "(sem operações)":
+                sem_operacoes += 1
+            if linha.maquina and linha.maquina != "—":
+                maquinas.add(linha.maquina)
+            if linha.custo_atribuido is not None:
+                custo_total += linha.custo_atribuido
+            valores = (
+                linha.item,
+                get_custeio_linha_type_label(linha.tipo_linha),
+                linha.linha,
+                str(linha.operacao_ordem or ""),
+                linha.operacao,
+                linha.tipo_operacao,
+                linha.maquina,
+                linha.origem,
+                linha.acao,
+                linha.regra,
+                format_quantity(linha.quantidade_total),
+                format_quantity(linha.quantidade_base),
+                format_quantity(linha.setup_configurado_min),
+                format_quantity(linha.tempo_unidade_min),
+                linha.unidade_tempo,
+                format_quantity(linha.tempo_atribuido_min),
+                format_currency(linha.custo_atribuido),
+                linha.diagnostico,
+            )
+            for col, texto in enumerate(valores):
+                item = criar_item_tabela(texto)
+                item.setToolTip(texto)
+                if linha.operacao == "(sem operações)":
+                    item.setBackground(QColor("#F8D7DA"))
+                elif linha.origem == "Edição local":
+                    item.setBackground(QColor("#FFF3CD"))
+                self.operacoes_linhas_table.setItem(row, col, item)
+        self.operacoes_linhas_resumo.setText(
+            f"Linhas do relatório: {len(linhas)}  |  Sem operações: {sem_operacoes}  |  "
+            f"Máquinas: {len(maquinas)}  |  Custo de produção atribuído: "
+            f"{format_currency(custo_total)}"
+        )
 
     # ----- Formatting helpers -----
 

@@ -25,11 +25,13 @@ from app.db.session import SessionLocal
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
+from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_service import OrcamentoService
 from app.ui import tema
 from app.ui.pages.orcamento_custeio_page import OrcamentoCusteioPage
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
 from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
@@ -39,7 +41,12 @@ from app.utils.formatters import format_currency, format_version
 class OrcamentoDetailPage(QWidget):
     """Read-only detail page for a selected budget version."""
 
-    def __init__(self, orcamento: OrcamentoResumo, on_back=None) -> None:
+    def __init__(
+        self,
+        orcamento: OrcamentoResumo,
+        on_back=None,
+        on_open_custeio_auditoria=None,
+    ) -> None:
         super().__init__()
 
         self.orcamento = orcamento
@@ -74,7 +81,9 @@ class OrcamentoDetailPage(QWidget):
         tabs.addTab(OrcamentoValuesetPage(orcamento.orcamento_versao_id), "ValueSet")
         tabs.addTab(
             OrcamentoRelatoriosPage(
-                orcamento.orcamento_versao_id, orcamento=orcamento
+                orcamento.orcamento_versao_id,
+                orcamento=orcamento,
+                on_open_custeio_auditoria=on_open_custeio_auditoria,
             ),
             "Relat\u00f3rios",
         )
@@ -166,6 +175,19 @@ class OrcamentoDetailPage(QWidget):
         self.items_stack.addWidget(self._item_custeio_page)
         self.items_stack.setCurrentWidget(self._item_custeio_page)
 
+    def abrir_item_custeio_por_id(self, item_id: int, linha_id: int | None = None) -> None:
+        """Open one audited item and select the exact costing line when available."""
+        try:
+            with SessionLocal() as session:
+                item = OrcamentoItemService(session).get_item_by_id(item_id)
+        except SQLAlchemyError:
+            return
+        if item is None or item.orcamento_versao_id != self.orcamento.orcamento_versao_id:
+            return
+        self._open_item_custeio(item)
+        if linha_id is not None and self._item_custeio_page is not None:
+            self._item_custeio_page.selecionar_linha_por_id(linha_id)
+
     def _voltar_aos_items(self) -> None:
         """Return from item costing to the items table."""
         self.items_stack.setCurrentWidget(self.items_page)
@@ -185,11 +207,12 @@ class OrcamentoDetailPage(QWidget):
         )
         header = self.historico_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header.setStretchLastSection(True)
+        header.setStretchLastSection(False)
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
+        ligar_persistencia_larguras(self.historico_table, "orcamento_historico")
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.addWidget(self.historico_table)

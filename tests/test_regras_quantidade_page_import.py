@@ -57,3 +57,13 @@ def test_main_window_wires_regras_quantidade() -> None:
     assert "RegrasQuantidadePage" in source
     assert "regras_quantidade" in source
     assert "_open_regras_quantidade" in source
+def test_regras_ocultam_inativas_e_guardam_larguras() -> None:
+    import inspect
+    from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
+
+    init = inspect.getsource(RegrasQuantidadePage.__init__)
+    carregar = inspect.getsource(RegrasQuantidadePage.carregar)
+    assert "mostrar_inativas_check" in init
+    assert "QHeaderView.ResizeMode.Interactive" in init
+    assert "ligar_persistencia_larguras" in init
+    assert "if registo.ativo" in carregar

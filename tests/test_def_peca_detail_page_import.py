@@ -216,3 +216,16 @@ def test_def_peca_detail_page_operacoes_use_service_and_dialog() -> None:
     assert "ativar_operacao_da_peca" in toggle
     assert "desativar_operacao_da_peca" in toggle
     assert "QMessageBox" in toggle
+
+
+def test_def_peca_detail_page_expoe_revisoes_e_criacao_supervisionada() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    init_source = inspect.getsource(DefPecaDetailPage.__init__)
+    criar_source = inspect.getsource(DefPecaDetailPage.criar_nova_revisao)
+    assert "Criar nova revisão" in init_source
+    assert "_create_revisoes_tab" in init_source
+    assert "CriarRevisaoPecaDialog" in criar_source
+    assert "preparar_revisao" in criar_source
+    assert "criar_revisao" in criar_source
+    assert "on_revision_created" in criar_source

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
@@ -116,10 +117,12 @@ class DefValuesetModeloDetailPage(QWidget):
         self.new_button.clicked.connect(self.abrir_nova_linha)
         self.edit_button = QPushButton("Editar Linha")
         self.edit_button.clicked.connect(self.abrir_editar_linha)
-        self.save_as_button = QPushButton("Gravar como…")
-        self.save_as_button.clicked.connect(self.gravar_modelo_como)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.stateChanged.connect(
+            lambda _=0: self.carregar_linhas()
+        )
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_linhas)
         self.check_prices_button = QPushButton("Verificar preços…")
@@ -130,8 +133,8 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
-        actions_layout.addWidget(self.save_as_button)
         actions_layout.addWidget(self.toggle_button)
+        actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.check_prices_button)
         actions_layout.addStretch()
@@ -196,6 +199,9 @@ class DefValuesetModeloDetailPage(QWidget):
                 mensagem_erro_bd("Nao foi possivel carregar as linhas do modelo.", error)
             )
             return
+
+        if not self.mostrar_inativas_check.isChecked():
+            linhas = [linha for linha in linhas if linha.ativo]
 
         self._preencher(linhas)
 

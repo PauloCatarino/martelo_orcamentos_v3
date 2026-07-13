@@ -70,6 +70,7 @@ from app.domain.producao_types import (
 from app.domain.numeros import formatar_percentagem
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
+from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
 )
@@ -78,6 +79,7 @@ from app.services.orcamento_item_custeio_linha_service import (
     ClipboardCusteio,
     EntradasCusteioInvalidas,
     ErroEntradaCusteio,
+    OperacaoLocalData,
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.def_maquina_escalao_area_service import DefMaquinaEscalaoAreaService
@@ -89,6 +91,7 @@ from app.domain.modulo_imagem import (
 from app.services.def_modulo_service import DefModuloService
 from app.services.system_setting_service import SystemSettingService
 from app.services.def_peca_service import DefPecaService
+from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.core.session import app_session
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
@@ -100,6 +103,14 @@ from app.ui.dialogs.importar_modulo_dialog import ImportarModuloDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
+from app.ui.dialogs.custeio_linha_operacoes_dialog import CusteioLinhaOperacoesDialog
+from app.ui.dialogs.custeio_operacoes_auditoria_dialog import (
+    CusteioOperacoesAuditoriaDialog,
+)
+from app.ui.dialogs.def_peca_operacao_dialog import (
+    DefPecaOperacaoDialog,
+    DefPecaOperacaoDialogData,
+)
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 from app.ui.tema import (
     BEGE_AREIA,
@@ -485,6 +496,21 @@ class OrcamentoItemCusteioPage(QWidget):
             self.atualizar_peca_da_biblioteca
         )
 
+        self.operacoes_peca_button = QPushButton("Operações da peça…")
+        self.operacoes_peca_button.setToolTip(
+            "Mostra as operações efetivas dentro da peça selecionada, sem criar "
+            "linhas adicionais no custeio."
+        )
+        self.operacoes_peca_button.setEnabled(False)
+        self.operacoes_peca_button.clicked.connect(self.abrir_operacoes_da_linha)
+
+        self.auditar_operacoes_button = QPushButton("Auditar operações")
+        self.auditar_operacoes_button.setToolTip(
+            "Analisa todas as peças e ferragens deste item e destaca linhas sem "
+            "operações ou com custo de produção vazio/zero. Não altera o orçamento."
+        )
+        self.auditar_operacoes_button.clicked.connect(self.auditar_operacoes_do_item)
+
         self.producao_label = QLabel("")
         self.producao_label.setObjectName("orcamentoItemCusteioProducao")
         self.producao_label.setToolTip(
@@ -545,6 +571,8 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.back_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.refresh_library_piece_button)
+        actions_layout.addWidget(self.operacoes_peca_button)
+        actions_layout.addWidget(self.auditar_operacoes_button)
         actions_layout.addWidget(self.producao_label)
         actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addWidget(self.insert_division_button)
@@ -598,6 +626,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.cellChanged.connect(self._on_cell_changed)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_biblioteca)
+        self.table.itemSelectionChanged.connect(self._atualizar_botao_operacoes)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
         self._instalar_atalhos_clipboard()
@@ -837,31 +866,36 @@ class OrcamentoItemCusteioPage(QWidget):
         )
 
     def atualizar_peca_da_biblioteca(self) -> None:
-        """Explicitly replace one frozen piece snapshot with the current catalog."""
-        linha = self._get_linha_selecionada()
-        if linha is None:
-            self.status_label.setText("Selecione uma peça ou um associado.")
+        """Refresh every selected library piece, including module-origin lines."""
+        linhas = self._linhas_biblioteca_selecionadas()
+        if not linhas:
+            self.status_label.setText("Selecione uma ou mais peças/associados.")
             return
 
         try:
             with SessionLocal() as session:
-                analise = OrcamentoItemCusteioLinhaService(
-                    session
-                ).analisar_atualizacao_da_biblioteca(linha.id)
+                service = OrcamentoItemCusteioLinhaService(session)
+                analises_por_raiz = {}
+                for linha in linhas:
+                    analise = service.analisar_atualizacao_da_biblioteca(linha.id)
+                    analises_por_raiz[analise.linha_raiz_id] = analise
+                analises = list(analises_por_raiz.values())
         except (SQLAlchemyError, ValueError) as error:
-            self.status_label.setText(str(error) or "Não foi possível analisar a peça.")
+            self.status_label.setText(str(error) or "Não foi possível analisar as peças.")
             return
 
         mensagem = (
-            f"Atualizar a peça {analise.peca_codigo} a partir da biblioteca?\n\n"
-            f"Associados atuais: {analise.associados_atuais}\n"
-            f"Associados configurados agora: {analise.associados_catalogo}\n\n"
-            "As medidas, quantidades e alterações locais da linha principal "
-            "serão mantidas. Os associados gerados serão reconstruídos."
+            f"Atualizar {len(analises)} peça(s) a partir da biblioteca?\n\n"
+            + "\n".join(f"• {analise.peca_codigo}" for analise in analises[:12])
+            + (f"\n• … e mais {len(analises) - 12}" if len(analises) > 12 else "")
+            + "\n\nMedidas, quantidades e alterações locais das linhas principais serão mantidas. "
+            "Nas peças de módulo, a estrutura/desvios do módulo são preservados "
+            "e o ValueSet atual do item é reaplicado."
         )
-        if analise.linhas_editadas_localmente:
+        editadas = sum(a.linhas_editadas_localmente for a in analises)
+        if editadas:
             mensagem += (
-                f"\n\nATENÇÃO: {analise.linhas_editadas_localmente} associado(s) "
+                f"\n\nATENÇÃO: {editadas} associado(s) "
                 "têm edições locais. Essas edições serão perdidas."
             )
 
@@ -878,11 +912,9 @@ class OrcamentoItemCusteioPage(QWidget):
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
-                resultado = service.atualizar_peca_da_biblioteca(
-                    linha.id,
-                    confirmar_perda_edicoes=bool(
-                        analise.linhas_editadas_localmente
-                    ),
+                resultado = service.atualizar_pecas_da_biblioteca(
+                    [linha.id for linha in linhas],
+                    confirmar_perda_edicoes=bool(editadas),
                 )
                 self._recalcular_item_completo(service)
         except EntradasCusteioInvalidas as error:
@@ -898,7 +930,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.carregar()
         mensagem_resultado = (
-            f"Peça {resultado.peca_codigo} atualizada: "
+            f"{resultado.pecas_atualizadas} peça(s) atualizada(s): "
             f"{resultado.associados_removidos} associado(s) substituído(s), "
             f"{resultado.associados_criados} criado(s)."
         )
@@ -1039,14 +1071,223 @@ class OrcamentoItemCusteioPage(QWidget):
         self.guardar_modulo_button.setEnabled(bool(self._ids_linhas_selecionadas()))
 
     def _atualizar_botao_biblioteca(self) -> None:
-        """Enable catalog refresh for a library piece or generated child."""
-        linha = self._get_linha_selecionada()
-        self.refresh_library_piece_button.setEnabled(
-            bool(
-                linha is not None
-                and (linha.def_peca_id is not None or linha.linha_pai_id is not None)
-            )
+        """Enable catalog refresh when at least one refreshable line is selected."""
+        linhas = self._linhas_biblioteca_selecionadas()
+        self.refresh_library_piece_button.setEnabled(bool(linhas))
+        self.refresh_library_piece_button.setText(
+            "Atualizar peças da biblioteca" if len(linhas) > 1
+            else "Atualizar peça da biblioteca"
         )
+
+    def _atualizar_botao_operacoes(self) -> None:
+        linha = self._get_linha_selecionada()
+        self.operacoes_peca_button.setEnabled(
+            linha is not None and linha.tipo_linha in (PECA, FERRAGEM)
+        )
+
+    def abrir_operacoes_da_linha(self) -> None:
+        linha = self._get_linha_selecionada()
+        if linha is None or linha.tipo_linha not in (PECA, FERRAGEM):
+            self.status_label.setText("Selecione uma linha de peça ou ferragem.")
+            return
+
+        linha_id = linha.id
+
+        def carregar_detalhe():
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                linha_atual = service.obter_por_id(linha_id)
+                if linha_atual is None:
+                    raise ValueError("Linha de custeio não encontrada.")
+                return (
+                    linha_atual,
+                    service.listar_operacoes_efetivas_da_linha(linha_id),
+                    service.tem_edicao_operacoes_local(linha_id),
+                )
+
+        def converter_dados(data: DefPecaOperacaoDialogData) -> OperacaoLocalData:
+            return OperacaoLocalData(
+                def_operacao_id=int(data.def_operacao_id),
+                ordem=data.ordem,
+                regra_calculo=data.regra_calculo,
+                quantidade_base=data.quantidade_base,
+                rasgo_qt_comp=data.rasgo_qt_comp,
+                rasgo_qt_larg=data.rasgo_qt_larg,
+                tempo_setup_minutos=data.tempo_setup_minutos,
+                tempo_por_unidade_minutos=data.tempo_por_unidade_minutos,
+                unidade_tempo=data.unidade_tempo,
+                obrigatorio=data.obrigatorio,
+                observacoes=data.observacoes,
+            )
+
+        def abrir_editor(operacao=None) -> bool:
+            try:
+                with SessionLocal() as session:
+                    disponiveis = DefOperacaoService(session).listar_operacoes_ativas()
+            except SQLAlchemyError:
+                QMessageBox.warning(
+                    self, "Operações", "Não foi possível carregar as operações."
+                )
+                return False
+            if not disponiveis:
+                QMessageBox.information(
+                    self, "Operações", "Não existem operações ativas no catálogo."
+                )
+                return False
+
+            ligacao = None
+            if operacao is not None:
+                ligacao = DefPecaOperacaoResumo(
+                    id=operacao.local_id or 0,
+                    def_peca_id=linha.def_peca_id or 0,
+                    def_operacao_id=int(operacao.def_operacao_id),
+                    ordem=operacao.ordem,
+                    regra_calculo=operacao.regra_calculo,
+                    quantidade_base=operacao.quantidade_base,
+                    obrigatorio=operacao.obrigatorio,
+                    ativo=True,
+                    observacoes=None,
+                    rasgo_qt_comp=operacao.rasgo_qt_comp,
+                    rasgo_qt_larg=operacao.rasgo_qt_larg,
+                    tempo_setup_minutos=operacao.tempo_setup_minutos,
+                    tempo_por_unidade_minutos=operacao.tempo_por_unidade_minutos,
+                    unidade_tempo=operacao.unidade_tempo,
+                )
+
+            guardado = False
+
+            def guardar(data: DefPecaOperacaoDialogData) -> bool:
+                nonlocal guardado
+                try:
+                    with SessionLocal() as session:
+                        service = OrcamentoItemCusteioLinhaService(session)
+                        dados = converter_dados(data)
+                        if operacao is None:
+                            service.adicionar_operacao_local(linha_id, dados)
+                        else:
+                            service.editar_operacao_efetiva_local(
+                                linha_id,
+                                int(operacao.def_operacao_id),
+                                dados,
+                            )
+                    guardado = True
+                    return True
+                except (SQLAlchemyError, ValueError) as error:
+                    QMessageBox.warning(self, "Operações", str(error))
+                    return False
+
+            dialog = DefPecaOperacaoDialog(
+                disponiveis,
+                ligacao=ligacao,
+                parent=self,
+                on_save=guardar,
+                natureza_peca=linha.tipo_linha,
+            )
+            dialog.exec()
+            return guardado
+
+        def remover(operacao) -> bool:
+            resposta = QMessageBox.question(
+                self,
+                "Remover operação local",
+                f"Remover {operacao.codigo} apenas desta linha de custeio?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return False
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(
+                        session
+                    ).remover_operacao_local(
+                        linha_id, int(operacao.def_operacao_id)
+                    )
+                return True
+            except (SQLAlchemyError, ValueError) as error:
+                QMessageBox.warning(self, "Operações", str(error))
+                return False
+
+        def repor() -> bool:
+            resposta = QMessageBox.question(
+                self,
+                "Repor operações da origem",
+                "Eliminar todas as edições locais desta linha e voltar às "
+                "operações congeladas da peça e às regras ValueSet do item?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return False
+            try:
+                with SessionLocal() as session:
+                    OrcamentoItemCusteioLinhaService(
+                        session
+                    ).repor_operacoes_da_origem(linha_id)
+                return True
+            except (SQLAlchemyError, ValueError) as error:
+                QMessageBox.warning(self, "Operações", str(error))
+                return False
+
+        try:
+            linha_atual, operacoes, tem_edicao_local = carregar_detalhe()
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(str(error))
+            return
+        CusteioLinhaOperacoesDialog(
+            linha_atual,
+            operacoes,
+            self,
+            on_recarregar=carregar_detalhe,
+            on_adicionar=lambda: abrir_editor(),
+            on_editar=abrir_editor,
+            on_remover=remover,
+            on_repor=repor,
+            tem_edicao_local=tem_edicao_local,
+        ).exec()
+        self.carregar()
+
+    def auditar_operacoes_do_item(self) -> None:
+        """Show all operation coverage warnings for this item, read-only."""
+        try:
+            with SessionLocal() as session:
+                linhas = OrcamentoItemCusteioLinhaService(
+                    session
+                ).auditar_operacoes_do_item(self.item_id)
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                str(error) or "Não foi possível auditar as operações do item."
+            )
+            return
+
+        linha_alvo: dict[str, int] = {}
+
+        def abrir(linha_id: int) -> None:
+            linha_alvo["id"] = linha_id
+
+        CusteioOperacoesAuditoriaDialog(
+            linhas,
+            self,
+            on_abrir_linha=abrir,
+        ).exec()
+        linha_id = linha_alvo.get("id")
+        if linha_id is None:
+            return
+        if self.selecionar_linha_por_id(linha_id):
+            self.abrir_operacoes_da_linha()
+
+    def _linhas_biblioteca_selecionadas(self) -> list:
+        """Return selected rows that can resolve to a library piece block."""
+        rows = sorted(idx.row() for idx in self.table.selectionModel().selectedRows())
+        return [
+            self._custeio_by_row[row]
+            for row in rows
+            if row in self._custeio_by_row
+            and (
+                self._custeio_by_row[row].def_peca_id is not None
+                or self._custeio_by_row[row].linha_pai_id is not None
+            )
+        ]
 
     def _copiar_imagem_modulo(
         self, origem: str | None, codigo: str
@@ -1442,6 +1683,19 @@ class OrcamentoItemCusteioPage(QWidget):
         if not self._larguras_iniciais_aplicadas and linhas:
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
+
+    def selecionar_linha_por_id(self, linha_id: int) -> bool:
+        """Select and reveal one costing line referenced by an external audit."""
+        for row, linha in self._custeio_by_row.items():
+            if linha.id == linha_id:
+                self.tabs.setCurrentIndex(0)
+                self.table.selectRow(row)
+                item = self.table.item(row, 0)
+                if item is not None:
+                    self.table.scrollToItem(item)
+                self.status_label.setText(f"Linha {linha.codigo or linha.descricao} indicada pela Auditoria de Custeio.")
+                return True
+        return False
 
     def _aplicar_erros_entrada(self) -> None:
         """Highlight invalid persisted inputs after the table has been filled."""
@@ -2937,7 +3191,13 @@ class OrcamentoItemCusteioPage(QWidget):
         menu.addAction("Editar Dados do Acabamento", self.editar_dados_acabamento_linha)
         menu.addSeparator()
         menu.addAction("Inserir operação manual...", self.inserir_operacao_manual_linha)
+        acao_operacoes = menu.addAction(
+            "Ver operações da peça...", self.abrir_operacoes_da_linha
+        )
         linha_sel = self._get_linha_selecionada()
+        acao_operacoes.setEnabled(
+            linha_sel is not None and linha_sel.tipo_linha in (PECA, FERRAGEM)
+        )
         if linha_sel is not None and linha_sel.tipo_linha == OPERACAO_MANUAL:
             menu.addAction(
                 "Editar operação manual...", self.editar_operacao_manual_linha

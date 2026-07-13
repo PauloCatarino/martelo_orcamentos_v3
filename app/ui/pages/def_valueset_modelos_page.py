@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -66,12 +67,17 @@ class DefValuesetModelosPage(QWidget):
         self.toggle_button.clicked.connect(self.alternar_modelo_ativo)
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_modelos)
+        self.mostrar_inativos_check = QCheckBox("Mostrar inativos")
+        self.mostrar_inativos_check.stateChanged.connect(
+            lambda _=0: self.carregar_modelos()
+        )
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_button)
+        actions_layout.addWidget(self.mostrar_inativos_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -84,7 +90,8 @@ class DefValuesetModelosPage(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         ligar_persistencia_larguras(self.table, "valueset_modelos")
 
@@ -121,6 +128,9 @@ class DefValuesetModelosPage(QWidget):
                 mensagem_erro_bd("Nao foi possivel carregar os modelos ValueSet.", error)
             )
             return
+
+        if not self.mostrar_inativos_check.isChecked():
+            modelos = [modelo for modelo in modelos if modelo.ativo]
 
         self._preencher(modelos)
 

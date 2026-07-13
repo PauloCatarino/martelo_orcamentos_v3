@@ -1303,3 +1303,13 @@ def test_custeio_page_exige_valueset_antes_de_inserir() -> None:
     init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
     assert "self.valueset_page" in init
     assert "_abrir_separador_valueset" in init
+def test_atualizar_biblioteca_suporta_selecao_multipla_e_modulos() -> None:
+    import inspect
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    atualizar = inspect.getsource(OrcamentoItemCusteioPage.atualizar_peca_da_biblioteca)
+    botao = inspect.getsource(OrcamentoItemCusteioPage._atualizar_botao_biblioteca)
+    assert "_linhas_biblioteca_selecionadas" in atualizar
+    assert "atualizar_pecas_da_biblioteca" in atualizar
+    assert "estrutura/desvios do módulo" in atualizar
+    assert "Atualizar peças da biblioteca" in botao

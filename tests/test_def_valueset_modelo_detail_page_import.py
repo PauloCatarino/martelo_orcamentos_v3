@@ -88,12 +88,11 @@ def test_page_uses_line_service_and_dialog() -> None:
     assert "atualizar_precos_linhas" in verificar
 
 
-def test_page_detail_gravar_como_usa_dialog_e_duplicacao() -> None:
+def test_page_detail_nao_mostra_gravar_modelo_como_redundante() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
     init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
-    assert "Gravar como" in init
-    assert "self.gravar_modelo_como" in init
+    assert "save_as_button" not in init
 
     source = inspect.getsource(DefValuesetModeloDetailPage.gravar_modelo_como)
     assert "DefValuesetModeloDialog" in source
@@ -148,3 +147,11 @@ def test_page_colunas_redimensionaveis_com_seed() -> None:
     preencher = inspect.getsource(DefValuesetModeloDetailPage._preencher)
     assert "resizeColumnsToContents" in preencher
     assert "_larguras_iniciais_aplicadas" in preencher
+def test_linhas_modelo_ocultam_inativas_por_defeito() -> None:
+    import inspect
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
+    assert "mostrar_inativas_check" in init
+    assert "if linha.ativo" in carregar

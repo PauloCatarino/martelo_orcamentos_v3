@@ -33,3 +33,13 @@ def test_margens_padrao_page_explica_valor_inicial() -> None:
 
     assert "VALOR INICIAL" in TOOLTIP_VALOR_INICIAL
     assert "altera livremente" in TOOLTIP_VALOR_INICIAL
+def test_margens_ocultam_inativas_e_tem_larguras_interativas() -> None:
+    import inspect
+    from app.ui.pages.margens_padrao_page import MargensPadraoPage
+
+    criar_tab = inspect.getsource(MargensPadraoPage._criar_tab_registos)
+    carregar = inspect.getsource(MargensPadraoPage.carregar)
+    assert "Mostrar inativos" in criar_tab
+    assert "QHeaderView.ResizeMode.Interactive" in criar_tab
+    assert "ligar_persistencia_larguras" in criar_tab
+    assert "if registo.ativo" in carregar

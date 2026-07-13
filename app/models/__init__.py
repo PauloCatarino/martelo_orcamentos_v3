@@ -20,6 +20,7 @@ from app.models.descricao_predefinida import DescricaoPredefinida
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
 from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
+from app.models.orcamento_item_custeio_linha_operacao import OrcamentoItemCusteioLinhaOperacao
 from app.models.orcamento_item_modulo import OrcamentoItemModulo
 from app.models.orcamento_item_variavel import OrcamentoItemVariavel
 from app.models.orcamento_item_valueset_linha import OrcamentoItemValuesetLinha
@@ -56,6 +57,7 @@ __all__ = [
     "Orcamento",
     "OrcamentoItem",
     "OrcamentoItemCusteioLinha",
+    "OrcamentoItemCusteioLinhaOperacao",
     "OrcamentoItemModulo",
     "OrcamentoItemVariavel",
     "OrcamentoItemValuesetLinha",

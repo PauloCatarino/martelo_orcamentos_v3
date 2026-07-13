@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_service import DefValuesetModeloService
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ImportarValuesetModeloDialog(QDialog):
@@ -78,6 +79,7 @@ class ImportarValuesetModeloDialog(QDialog):
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        ligar_persistencia_larguras(table, f"dialog_importar_valueset_{key}")
         table.cellDoubleClicked.connect(
             lambda row, _column, aba_key=key: self._selecionar_da_aba(aba_key, row)
         )

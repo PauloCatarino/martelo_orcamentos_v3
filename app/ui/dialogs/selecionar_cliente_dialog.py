@@ -18,6 +18,7 @@ from app.domain.clientes_lista import filtrar_clientes
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.table_item import criar_item_tabela
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class SelecionarClienteDialog(QDialog):
@@ -54,6 +55,8 @@ class SelecionarClienteDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
+        self.table.horizontalHeader().setStretchLastSection(False)
+        ligar_persistencia_larguras(self.table, "selecionar_cliente")
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         self.select_button = QPushButton("Selecionar")

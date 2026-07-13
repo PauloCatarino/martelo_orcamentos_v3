@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class ProducaoPrecosDialog(QDialog):
@@ -88,6 +89,7 @@ class ProducaoPrecosDialog(QDialog):
         for col in (0, 1, 2, 3, 5, 6):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        ligar_persistencia_larguras(self.table, "dialog_producao_precos")
         layout.addWidget(self.table, 1)
 
         buttons = QDialogButtonBox(

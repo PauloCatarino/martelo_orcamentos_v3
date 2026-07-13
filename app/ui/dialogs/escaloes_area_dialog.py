@@ -26,6 +26,7 @@ from app.services.def_maquina_escalao_area_service import (
 )
 from app.ui.dialogs.escalao_area_dialog import EscalaoAreaDialog
 from app.ui.widgets.table_item import criar_item_tabela
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
 
 
@@ -59,6 +60,7 @@ class EscaloesAreaDialog(QDialog):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        ligar_persistencia_larguras(self.table, "dialog_escaloes_area")
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         self.status_label = QLabel("")
