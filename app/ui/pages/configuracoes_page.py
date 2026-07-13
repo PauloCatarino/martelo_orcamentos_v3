@@ -44,6 +44,7 @@ class ConfiguracoesPage(QWidget):
         on_open_regras_quantidade: Callable[[], None] | None = None,
         on_open_biblioteca_modulos: Callable[[], None] | None = None,
         on_open_catalogo_auditoria: Callable[[], None] | None = None,
+        on_open_user_management: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -57,6 +58,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_regras_quantidade = on_open_regras_quantidade
         self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
         self.on_open_catalogo_auditoria = on_open_catalogo_auditoria
+        self.on_open_user_management = on_open_user_management
 
         self.cabecalho = BarraCabecalho(
             "Configura\u00e7\u00f5es",
@@ -126,6 +128,13 @@ class ConfiguracoesPage(QWidget):
         regras_button = QPushButton("Regras de Custeio")
         regras_button.clicked.connect(self._show_future_message)
 
+        self.user_management_button = QPushButton("Utilizadores e Acessos")
+        self.user_management_button.setToolTip(
+            "Criar utilizadores e personalizar os menus disponíveis em cada conta."
+        )
+        self.user_management_button.clicked.connect(self._open_user_management)
+        self.user_management_button.setVisible(self.on_open_user_management is not None)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
@@ -142,6 +151,7 @@ class ConfiguracoesPage(QWidget):
         layout.addWidget(self.regras_quantidade_button)
         layout.addWidget(self.biblioteca_modulos_button)
         layout.addWidget(self.catalogo_auditoria_button)
+        layout.addWidget(self.user_management_button)
         layout.addWidget(regras_button)
         layout.addWidget(self.status_label)
         layout.addStretch()
@@ -196,3 +206,8 @@ class ConfiguracoesPage(QWidget):
     def _show_future_message(self) -> None:
         """Show the placeholder message for future settings areas."""
         self.status_label.setText("Esta \u00e1rea ser\u00e1 desenvolvida numa fase posterior.")
+
+    def _open_user_management(self) -> None:
+        """Open account and access administration for the administrator."""
+        if self.on_open_user_management is not None:
+            self.on_open_user_management()
