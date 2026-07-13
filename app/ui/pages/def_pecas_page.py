@@ -67,11 +67,8 @@ class DefPecasPage(QWidget):
         self.new_button = QPushButton("Nova Pe\u00e7a")
         self.new_button.clicked.connect(self.abrir_nova_peca)
 
-        self.open_button = QPushButton("Abrir Pe\u00e7a")
+        self.open_button = QPushButton("Abrir / Editar Pe\u00e7a")
         self.open_button.clicked.connect(self.abrir_peca_selecionada)
-
-        self.edit_button = QPushButton("Editar Pe\u00e7a")
-        self.edit_button.clicked.connect(self.abrir_editar_peca)
 
         self.toggle_ativo_button = QPushButton("Ativar/Desativar")
         self.toggle_ativo_button.clicked.connect(self.alternar_peca_ativa)
@@ -84,7 +81,6 @@ class DefPecasPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
-        actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_ativo_button)
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
@@ -410,6 +406,10 @@ class DefPecasPage(QWidget):
 
     def _voltar_a_lista(self) -> None:
         """Return to the already-loaded piece definition tree-table."""
+        codigo = self._detail_page.peca.codigo if self._detail_page is not None else None
+        # General data can have been edited in the detail page; reload the
+        # list so the unified editor and the list never show different values.
+        self.carregar_pecas(select_codigo=codigo)
         self.stack.setCurrentWidget(self.list_widget)
 
     def _get_selected_peca(self) -> DefPecaResumo | None:
@@ -457,9 +457,11 @@ class DefPecasPage(QWidget):
     def _handle_tree_item_double_click(
         self, item: QTreeWidgetItem, _column: int
     ) -> None:
-        """Edit a piece definition when the user double-clicks a tree leaf."""
+        """Open the unified detail/editor page for a tree leaf."""
         if item.data(0, Qt.ItemDataRole.UserRole) is None:
             return
 
         self.tree.setCurrentItem(item)
-        self.abrir_editar_peca()
+        # ``abrir_editar_peca`` remains as a compatibility API for older callers;
+        # the normal UI now uses the same page as the Abrir / Editar button.
+        self.abrir_peca_selecionada()

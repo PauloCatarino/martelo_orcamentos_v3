@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -69,22 +70,31 @@ class EditarDefPecaDialogData:
 class EditarDefPecaDialog(QDialog):
     """Modal dialog for editing an existing reusable piece definition."""
 
+    saved = Signal()
+
     def __init__(
         self,
         peca: DefPecaResumo,
         parent=None,
         on_save: Callable[[EditarDefPecaDialogData], bool] | None = None,
         on_save_as: Callable[[EditarDefPecaDialogData], bool] | None = None,
+        embedded: bool = False,
     ) -> None:
         super().__init__(parent)
 
         self.peca = peca
         self.on_save = on_save
         self.on_save_as = on_save_as
+        self.embedded = embedded
         self._is_edit = True
 
         self.setWindowTitle("Editar Peça")
         self.setModal(True)
+        if self.embedded:
+            # The same form is hosted in the Dados Gerais tab; it behaves as a
+            # child widget instead of opening a modal window.
+            self.setModal(False)
+            self.setWindowFlags(Qt.WindowType.Widget)
         self.setMinimumWidth(460)
 
         self.codigo_input = QLineEdit()
@@ -197,6 +207,9 @@ class EditarDefPecaDialog(QDialog):
             "Grava estes dados como um registo novo, sem alterar o original."
         )
         self.save_as_button.setVisible(self._is_edit)
+        if self.embedded:
+            self.save_as_button.setVisible(False)
+            self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setVisible(False)
         self.button_box.accepted.connect(self._validate_and_accept)
         self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
@@ -336,7 +349,10 @@ class EditarDefPecaDialog(QDialog):
         if callback is not None and not callback(data):
             return
 
-        self.accept()
+        if self.embedded:
+            self.saved.emit()
+        else:
+            self.accept()
 
     def _update_orla_preview(self) -> None:
         """Refresh the edge banding code preview from the combo boxes."""

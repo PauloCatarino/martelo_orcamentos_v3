@@ -28,6 +28,7 @@ from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -92,6 +93,7 @@ class DefValuesetModelosPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(False)
+        configurar_tabela_orcamentos(self.table, compacta=True)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         ligar_persistencia_larguras(self.table, "valueset_modelos")
 

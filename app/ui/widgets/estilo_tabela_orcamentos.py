@@ -19,10 +19,11 @@ def configurar_tabela_orcamentos(table: QTableWidget, *, compacta: bool = False)
     table.setStyleSheet(
         f"QTableWidget {{ background: #FFFFFF; alternate-background-color: {tema.BEGE_CLARO};"
         f" border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 6px;"
-        " selection-background-color: #D6C2A5; selection-color: #2E2A26;"
+        f" selection-background-color: {tema.CASTANHO_ESCURO}; selection-color: #FFFFFF;"
         " font-size: 11px; outline: 0; }}\n"
         "QTableWidget::item { padding: 3px 7px; border-bottom: 1px solid #E8E1D7; }\n"
-        f"QTableWidget::item:selected {{ background: #D6C2A5; color: {tema.TEXTO_NORMAL}; }}\n"
+        f"QTableWidget::item:hover {{ background: {tema.BEGE_AREIA}; color: {tema.TEXTO_NORMAL}; }}\n"
+        f"QTableWidget::item:selected {{ background: {tema.CASTANHO_ESCURO}; color: #FFFFFF; }}\n"
         f"QHeaderView::section {{ background: {tema.CASTANHO_MEDIO}; color: #FFFFFF;"
         " padding: 6px 7px; border: none; border-right: 1px solid #A99175;"
         " font-weight: bold; }}\n"

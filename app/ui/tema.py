@@ -9,12 +9,18 @@ from __future__ import annotations
 
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     PECA_COMPOSTA,
     SEPARADOR,
 )
+
+_ICONES_DIR = Path(__file__).parent / "assets" / "icons"
+_DROPDOWN_ARROW = (_ICONES_DIR / "dropdown_arrow.svg").as_posix()
+_SPIN_UP_ARROW = (_ICONES_DIR / "spin_up.svg").as_posix()
+_SPIN_DOWN_ARROW = (_ICONES_DIR / "spin_down.svg").as_posix()
 
 # --- Palette (Lança Encanto) -------------------------------------------------
 CASTANHO_ESCURO = "#5A3E2B"   # text / strong accent
@@ -204,15 +210,27 @@ ESTILO_TABELA_CONFIG_CABECALHO = ESTILO_TABELA_CONFIG + (
 ESTILO_CONTROLOS = (
     f"QPushButton {{ background-color: #FFFFFF; color: {CASTANHO_ESCURO};"
     f" border: 1px solid {CINZA_CASTANHO}; border-radius: 5px;"
-    " padding: 5px 11px; min-height: 18px; }}\n"
-    f"QPushButton:hover {{ background-color: {BEGE_AREIA}; border-color: {CASTANHO_MEDIO}; }}\n"
-    f"QPushButton:pressed {{ background-color: {CASTANHO_MEDIO}; color: #FFFFFF; }}\n"
+    " padding: 5px 11px; min-height: 18px; }\n"
+    f"QPushButton:hover {{ background-color: #D8B98C; color: {CASTANHO_ESCURO};"
+    f" border: 2px solid {CASTANHO_MEDIO}; font-weight: bold; }}\n"
+    f"QPushButton:pressed {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; border-color: {CASTANHO_ESCURO}; }}\n"
     "QPushButton:disabled { background-color: #F2F0EC; color: #9A958E; border-color: #DED9D1; }\n"
     f"QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateEdit {{ background-color: #FFFFFF;"
     f" color: {TEXTO_NORMAL}; border: 1px solid {CINZA_CASTANHO}; border-radius: 4px;"
-    " padding: 4px 7px; min-height: 18px; }}\n"
+    " padding: 4px 7px; min-height: 18px; }\n"
     f"QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateEdit:focus {{"
     f" border: 1px solid {CASTANHO_MEDIO}; }}\n"
+    f"QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right;"
+    f" width: 18px; border-left: 1px solid {CINZA_CASTANHO}; }}\n"
+    f"QComboBox::down-arrow {{ image: url({_DROPDOWN_ARROW}); width: 8px; height: 8px; }}\n"
+    "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-origin: border;"
+    " subcontrol-position: top right; width: 15px; height: 10px; border: none; }\n"
+    "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-origin: border;"
+    " subcontrol-position: bottom right; width: 15px; height: 10px; border: none; }\n"
+    f"QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url({_SPIN_UP_ARROW});"
+    " width: 8px; height: 8px; }\n"
+    f"QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({_SPIN_DOWN_ARROW});"
+    " width: 8px; height: 8px; }\n"
     f"QGroupBox {{ color: {CASTANHO_ESCURO}; font-weight: bold;"
     f" border: 1px solid {CINZA_CASTANHO}; border-radius: 6px; margin-top: 8px; padding-top: 7px; }}\n"
     "QGroupBox::title { subcontrol-origin: margin; left: 9px; padding: 0 4px; }"

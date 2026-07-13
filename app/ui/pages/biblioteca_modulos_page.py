@@ -51,6 +51,7 @@ from app.ui.dialogs.editar_modulo_dialog import (
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -217,6 +218,9 @@ class BibliotecaModulosPage(QWidget):
         tabela.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         tabela.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tabela.setIconSize(QSize(self._TAMANHO_MINIATURA, self._TAMANHO_MINIATURA))
+        configurar_tabela_orcamentos(tabela, compacta=True)
+        # Preserve the thumbnail size while keeping the remaining rows compact.
+        tabela.verticalHeader().setDefaultSectionSize(self._TAMANHO_MINIATURA + 4)
         header = tabela.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)

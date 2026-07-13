@@ -31,7 +31,7 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 PAULO_USERNAME = "paulo"
 PAULO_NOME = "Paulo Catarino"
 PAULO_EMAIL = "projetos@lancaencanto.pt"
-PAULO_ROLE = "admin"
+PAULO_ROLE = "user"
 PAULO_PASSWORD_ENV = "PAULO_INITIAL_PASSWORD"
 DEFAULT_PAULO_PASSWORD = "paulo"
 
@@ -99,6 +99,9 @@ def ensure_paulo_user(session: Session, password: str | None = None) -> str:
     paulo_user = get_user_by_username(session, PAULO_USERNAME)
 
     if paulo_user is not None:
+        paulo_user.role = PAULO_ROLE
+        paulo_user.is_active = True
+        session.flush()
         return "exists"
 
     paulo_user = User(

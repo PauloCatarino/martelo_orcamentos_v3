@@ -70,6 +70,15 @@ Recomendação de segurança: usar no V2 uma conta MySQL dedicada, com permissã
 python -m app.main
 ```
 
+Para criar um atalho sem terminal no menu Iniciar (e opcionalmente no Ambiente de Trabalho):
+
+```powershell
+.\scripts\instalar_atalho_martelo_v3.ps1
+.\scripts\instalar_atalho_martelo_v3.ps1 -Desktop
+```
+
+O atalho usa o `pythonw.exe` do ambiente virtual e abre sempre o código desta pasta.
+
 ## Validação técnica
 
 Executar a compilação e os testes antes de criar uma versão candidata:

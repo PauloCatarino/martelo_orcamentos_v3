@@ -19,6 +19,7 @@ from app.services.custeio_auditoria_service import (
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui import tema
 from app.utils.formatters import format_currency
 
 
@@ -88,6 +89,7 @@ class CusteioAuditoriaPage(QWidget):
         self.saude_table.verticalHeader().setVisible(False)
         self.saude_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.saude_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._preparar_tabela(self.saude_table)
         self.saude_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.saude_table.cellDoubleClicked.connect(self._abrir_resumo)
         ligar_persistencia_larguras(self.saude_table, "auditoria_custeio_saude")
@@ -98,6 +100,7 @@ class CusteioAuditoriaPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setWordWrap(True)
+        self._preparar_tabela(self.table)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.itemSelectionChanged.connect(self._atualizar_abrir)
@@ -114,6 +117,23 @@ class CusteioAuditoriaPage(QWidget):
         layout.addWidget(self.saude_table)
         layout.addWidget(QLabel("Ocorrências detalhadas"))
         layout.addWidget(self.table, stretch=1)
+
+    @staticmethod
+    def _preparar_tabela(table: QTableWidget) -> None:
+        """Apply the shared V3 colour, header and selection language."""
+        table.setStyleSheet(
+            tema.ESTILO_TABELA_CONFIG_CABECALHO
+            + f"\nQTableWidget {{ alternate-background-color: {tema.BEGE_CLARO};"
+              f" selection-background-color: {tema.CASTANHO_ESCURO};"
+              " selection-color: #FFFFFF; outline: 0; }"
+              f"\nQTableWidget::item:hover {{ background-color: {tema.BEGE_AREIA};"
+              f" color: {tema.TEXTO_NORMAL}; }}"
+        )
+        table.setMouseTracking(True)
+        table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        table.verticalHeader().setDefaultSectionSize(30)
 
     def carregar(self) -> None:
         self.atualizar_button.setEnabled(False)
@@ -164,9 +184,17 @@ class CusteioAuditoriaPage(QWidget):
                        format_currency(resumo.impacto_conhecido)]
             for col, valor in enumerate(valores):
                 cell = QTableWidgetItem(valor)
+                cell.setToolTip(valor)
                 if col == 3:
-                    cor = "#d4edda" if resumo.saude_pct >= 80 else "#fff3cd" if resumo.saude_pct >= 50 else "#f8d7da"
-                    cell.setBackground(QColor(cor))
+                    fundo, texto = (
+                        (tema.VERDE_SUAVE, tema.VERDE_ESCURO)
+                        if resumo.saude_pct >= 80
+                        else (tema.OCRE_SUAVE, tema.OCRE_ESCURO)
+                        if resumo.saude_pct >= 50
+                        else (tema.VERMELHO_SUAVE, tema.VERMELHO_ESCURO)
+                    )
+                    cell.setBackground(QColor(fundo))
+                    cell.setForeground(QColor(texto))
                     cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.saude_table.setItem(row, col, cell)
 
@@ -205,7 +233,14 @@ class CusteioAuditoriaPage(QWidget):
                 cell = QTableWidgetItem(valor)
                 cell.setToolTip(valor)
                 if col == 0:
-                    cell.setBackground(QColor("#f8d7da" if item.severidade == CRITICO else "#fff3cd"))
+                    fundo, texto = (
+                        (tema.VERMELHO_SUAVE, tema.VERMELHO_ESCURO)
+                        if item.severidade == CRITICO
+                        else (tema.OCRE_SUAVE, tema.OCRE_ESCURO)
+                    )
+                    cell.setBackground(QColor(fundo))
+                    cell.setForeground(QColor(texto))
+                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     cell.setData(Qt.ItemDataRole.UserRole, item.linha_id)
                 self.table.setItem(row, col, cell)
         self.table.resizeRowsToContents()

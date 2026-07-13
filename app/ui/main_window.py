@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QPushButton,
     QStackedWidget,
+    QStyle,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -21,6 +22,12 @@ from app.db.session import SessionLocal
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
+from app.services.permission_service import (
+    DEFAULT_USER_PERMISSIONS,
+    MENU_PERMISSIONS,
+    is_admin,
+    permissions_for_user,
+)
 from app.ui import tema
 from app.ui.pages import (
     BibliotecaModulosPage,
@@ -45,6 +52,7 @@ from app.ui.pages import (
     PontoSituacaoPage,
     ProducaoPage,
     RegrasQuantidadePage,
+    UserManagementPage,
 )
 
 
@@ -66,12 +74,39 @@ class MainWindow(QMainWindow):
         "ponto_situacao": "producao",
     }
 
+    _PAGE_PERMISSION = {
+        "orcamentos": "menu.orcamentos",
+        "orcamentos_dashboard": "menu.orcamentos",
+        "custeio_auditoria": "menu.orcamentos",
+        "arquivo_v2": "menu.orcamentos",
+        "orcamento_detail": "menu.orcamentos",
+        "materias_primas": "menu.materias_primas",
+        "pesquisa_ia": "menu.pesquisa_ia",
+        "clientes": "menu.clientes",
+        "producao": "menu.producao",
+        "encomendas_phc": "menu.encomendas_phc",
+        "ponto_situacao": "menu.ponto_situacao",
+        "configuracoes": "menu.configuracoes",
+        "pecas": "menu.configuracoes",
+        "caminhos_sistema": "menu.configuracoes",
+        "imos_ligacao": "menu.configuracoes",
+        "operacoes_maquinas": "menu.configuracoes",
+        "valueset_chaves": "menu.configuracoes",
+        "valueset_modelos": "menu.configuracoes",
+        "margens_padrao": "menu.configuracoes",
+        "regras_quantidade": "menu.configuracoes",
+        "biblioteca_modulos": "menu.configuracoes",
+        "catalogo_auditoria": "menu.configuracoes",
+        "user_management": "menu.configuracoes",
+    }
+
     logout_requested = Signal()
 
     def __init__(self, authenticated_user: User | None = None) -> None:
         super().__init__()
 
         self.authenticated_user = authenticated_user
+        self._permissions = self._load_permissions()
 
         self.setWindowTitle("Martelo Or\u00e7amentos V3")
         self.resize(1100, 720)
@@ -85,9 +120,13 @@ class MainWindow(QMainWindow):
 
         # Toggle to hide/show the left navigation menu (phase 8V.2): purely
         # visual; the page stack (and the current selection) is untouched.
-        self.toggle_sidebar_button = QPushButton("\u2261")  # \u2261
+        self.toggle_sidebar_button = QPushButton()
         self.toggle_sidebar_button.setObjectName("toggleSidebarButton")
-        self.toggle_sidebar_button.setFixedWidth(36)
+        self.toggle_sidebar_button.setFixedSize(36, 32)
+        self.toggle_sidebar_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft)
+        )
+        self.toggle_sidebar_button.setAccessibleName("Ocultar menu principal")
         self.toggle_sidebar_button.setToolTip("Ocultar menu")
         self.toggle_sidebar_button.clicked.connect(self.toggle_sidebar)
 
@@ -154,6 +193,7 @@ class MainWindow(QMainWindow):
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
         item_producao.setExpanded(True)
+        self._apply_navigation_permissions()
 
         sidebar_layout.addWidget(self.nav_tree, stretch=1)
         sidebar.setLayout(sidebar_layout)
@@ -197,6 +237,7 @@ class MainWindow(QMainWindow):
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
         self.ponto_situacao_page = PontoSituacaoPage()
+        self.user_management_page = UserManagementPage() if is_admin(authenticated_user) else None
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
@@ -209,6 +250,9 @@ class MainWindow(QMainWindow):
             on_open_regras_quantidade=self._open_regras_quantidade,
             on_open_biblioteca_modulos=self._open_biblioteca_modulos,
             on_open_catalogo_auditoria=self._open_catalogo_auditoria,
+            on_open_user_management=(
+                self._open_user_management if self.user_management_page is not None else None
+            ),
         )
         self._add_page("inicio", self.inicio_page)
         self._add_page("orcamentos", self.orcamentos_page)
@@ -232,6 +276,8 @@ class MainWindow(QMainWindow):
         self._add_page("encomendas_phc", self.encomendas_page)
         self._add_page("ponto_situacao", self.ponto_situacao_page)
         self._add_page("configuracoes", self.configuracoes_page)
+        if self.user_management_page is not None:
+            self._add_page("user_management", self.user_management_page)
 
         content_layout.addWidget(sidebar)
         content_layout.addWidget(self.pages, stretch=1)
@@ -253,6 +299,35 @@ class MainWindow(QMainWindow):
             f"@{self.authenticated_user.username} | {self.authenticated_user.role}"
         )
 
+    def _load_permissions(self) -> dict[str, bool]:
+        """Load the authenticated account's menu visibility rules."""
+        if is_admin(self.authenticated_user):
+            return {key: True for key in MENU_PERMISSIONS}
+        try:
+            with SessionLocal() as session:
+                return permissions_for_user(session, self.authenticated_user)
+        except Exception:
+            # Keeps the app usable during a first migration while still denying
+            # technical configuration to normal users.
+            return dict(DEFAULT_USER_PERMISSIONS)
+
+    def _apply_navigation_permissions(self) -> None:
+        """Hide menu entries that the current account cannot access."""
+        nav_permissions = {
+            "orcamentos": "menu.orcamentos",
+            "materias_primas": "menu.materias_primas",
+            "pesquisa_ia": "menu.pesquisa_ia",
+            "clientes": "menu.clientes",
+            "producao": "menu.producao",
+            "encomendas_phc": "menu.encomendas_phc",
+            "ponto_situacao": "menu.ponto_situacao",
+            "configuracoes": "menu.configuracoes",
+        }
+        for page_name, permission_key in nav_permissions.items():
+            item = self._nav_items.get(page_name)
+            if item is not None:
+                item.setHidden(not self._permissions.get(permission_key, False))
+
     def request_logout(self) -> None:
         """Emit a logout request."""
         self.logout_requested.emit()
@@ -267,6 +342,18 @@ class MainWindow(QMainWindow):
         """
         self._sidebar_visivel = not self._sidebar_visivel
         self.sidebar.setVisible(self._sidebar_visivel)
+        self.toggle_sidebar_button.setIcon(
+            self.style().standardIcon(
+                QStyle.StandardPixmap.SP_ArrowLeft
+                if self._sidebar_visivel
+                else QStyle.StandardPixmap.SP_ArrowRight
+            )
+        )
+        self.toggle_sidebar_button.setAccessibleName(
+            "Ocultar menu principal"
+            if self._sidebar_visivel
+            else "Mostrar menu principal"
+        )
         self.toggle_sidebar_button.setToolTip(
             "Ocultar menu" if self._sidebar_visivel else "Mostrar menu"
         )
@@ -290,6 +377,13 @@ class MainWindow(QMainWindow):
         """Open the read-only catalog audit with fresh results."""
         self.catalogo_auditoria_page.carregar()
         self.show_page("catalogo_auditoria")
+
+    def _open_user_management(self) -> None:
+        """Open and refresh administrator-only account management."""
+        if self.user_management_page is None:
+            return
+        self.user_management_page.carregar()
+        self.show_page("user_management")
 
     def _open_catalogo_auditoria_item(self, item) -> None:
         """Navigate from an audit finding to its responsible configuration."""
@@ -318,6 +412,9 @@ class MainWindow(QMainWindow):
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
+        permission_key = self._PAGE_PERMISSION.get(name)
+        if permission_key is not None and not self._permissions.get(permission_key, False):
+            return
         if name == "inicio" and hasattr(self, "inicio_page"):
             self.inicio_page.carregar()
         elif name == "orcamentos_dashboard" and hasattr(self, "orcamentos_dashboard_page"):

@@ -103,6 +103,33 @@ def test_qt_total_componente_multiplica_qt_und_principal() -> None:
     assert res[2].cadeia == (Decimal("1"), Decimal("2"), Decimal("5"))
 
 
+def test_componente_composta_multiplica_cabecalho_e_peca_principal() -> None:
+    """A double-door block counts both units and doors per unit."""
+    linhas = [
+        _peca(1, Decimal("2"), tipo=PECA_COMPOSTA),
+        _peca(2, Decimal("2"), tipo=PECA, linha_pai_id=1),
+        _peca(3, Decimal("6"), tipo=FERRAGEM, linha_pai_id=1),
+    ]
+    res = calcular_quantidades(linhas)
+
+    assert res[3].qt_total == Decimal("24")
+    assert res[3].cadeia == (
+        Decimal("1"), Decimal("2"), Decimal("2"), Decimal("6")
+    )
+
+
+def test_componente_porta_simples_nao_cria_fator_extra() -> None:
+    linhas = [
+        _peca(1, Decimal("2"), tipo=PECA_COMPOSTA),  # 2 single-door units
+        _peca(2, Decimal("1"), tipo=PECA, linha_pai_id=1),
+        _peca(3, Decimal("6"), tipo=FERRAGEM, linha_pai_id=1),
+    ]
+    res = calcular_quantidades(linhas)
+
+    assert res[3].qt_total == Decimal("12")
+    assert formatar_cadeia(res[3].cadeia) == "1 x 2 x 6"
+
+
 def test_qt_total_associado_aninhado_multiplica_todos_os_ancestrais() -> None:
     linhas = [
         _peca(1, Decimal("2")),

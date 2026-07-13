@@ -35,6 +35,7 @@ from app.models.orcamento_valueset_linha_operacao import OrcamentoValuesetLinhaO
 from app.models.producao import Producao
 from app.models.system_setting import SystemSetting
 from app.models.user import User
+from app.models.user_permission import UserPermission
 
 __all__ = [
     "Cliente",
@@ -70,4 +71,5 @@ __all__ = [
     "Producao",
     "SystemSetting",
     "User",
+    "UserPermission",
 ]

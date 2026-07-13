@@ -26,6 +26,7 @@ from app.ui.pages.pesquisa_ia_page import PesquisaIAPage
 from app.ui.pages.ponto_situacao_page import PontoSituacaoPage
 from app.ui.pages.producao_page import ProducaoPage
 from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
+from app.ui.pages.user_management_page import UserManagementPage
 
 __all__ = [
     "BibliotecaModulosPage",
@@ -54,4 +55,5 @@ __all__ = [
     "PontoSituacaoPage",
     "ProducaoPage",
     "RegrasQuantidadePage",
+    "UserManagementPage",
 ]

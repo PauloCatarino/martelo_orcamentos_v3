@@ -88,6 +88,7 @@ class ConfiguracoesPage(QWidget):
         on_open_regras_quantidade: Callable[[], None] | None = None,
         on_open_biblioteca_modulos: Callable[[], None] | None = None,
         on_open_catalogo_auditoria: Callable[[], None] | None = None,
+        on_open_user_management: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -102,6 +103,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_regras_quantidade = on_open_regras_quantidade
         self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
         self.on_open_catalogo_auditoria = on_open_catalogo_auditoria
+        self.on_open_user_management = on_open_user_management
 
         self.cabecalho = BarraCabecalho(
             "Configura\u00e7\u00f5es",
@@ -165,6 +167,12 @@ class ConfiguracoesPage(QWidget):
             self._open_catalogo_auditoria
         )
 
+        self.user_management_button = QPushButton("Utilizadores e Acessos")
+        self.user_management_button.setToolTip(
+            "Criar utilizadores e personalizar os menus disponíveis em cada conta."
+        )
+        self.user_management_button.clicked.connect(self._open_user_management)
+        self.user_management_button.setVisible(self.on_open_user_management is not None)
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
@@ -186,9 +194,11 @@ class ConfiguracoesPage(QWidget):
             self.biblioteca_modulos_button,
             self.catalogo_auditoria_button,
         ]
+        if self.on_open_user_management is not None:
+            botoes.append(self.user_management_button)
         for indice, botao in enumerate(botoes):
             botao.setMinimumHeight(48)
-            botao.setToolTip(self.TOOLTIP_DESCRICOES[botao.text()])
+            botao.setToolTip(self.TOOLTIP_DESCRICOES.get(botao.text(), botao.toolTip()))
             grelha.addWidget(botao, indice // 3, indice % 3)
         layout.addWidget(painel)
         layout.addWidget(self.status_label)
@@ -244,3 +254,7 @@ class ConfiguracoesPage(QWidget):
         """Open the read-only catalog audit page."""
         if self.on_open_catalogo_auditoria is not None:
             self.on_open_catalogo_auditoria()
+    def _open_user_management(self) -> None:
+        """Open account and access administration for the administrator."""
+        if self.on_open_user_management is not None:
+            self.on_open_user_management()

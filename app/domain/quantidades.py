@@ -3,7 +3,8 @@
 qt_total of a line = qt_mod_efetivo x qt_und, where qt_mod_efetivo is the qt_mod
 of the DIVISAO_INDEPENDENTE line that governs the block above it (or the line's
 own qt_mod when no division is active). A composite component (linha_pai set)
-also multiplies by the main piece's qt_und.
+also multiplies by the composed-unit quantity and, when present, the sibling
+main piece's qt_und (e.g. two doors per double-door unit).
 
 Pure and deterministic: the caller passes the lines in display (id) order.
 """
@@ -14,7 +15,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, SEPARADOR
+from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
+    PECA,
+    PECA_COMPOSTA,
+    SEPARADOR,
+)
 from app.domain.medidas import normalizar_numero
 
 _UM = Decimal("1")
@@ -100,6 +106,25 @@ def calcular_quantidades(
 
         if fatores_ancestrais:
             fatores_ancestrais.reverse()
+            # The composite header and its main PECA are siblings. A component
+            # such as a hinge/handle needs both the composed-unit count and the
+            # number of main pieces per unit (double door = 2 doors).
+            pai_direto = por_id.get(linha.linha_pai_id)
+            if pai_direto is not None and pai_direto.tipo_linha == PECA_COMPOSTA:
+                principais = [
+                    outra
+                    for outra in linhas
+                    if outra.linha_pai_id == pai_direto.id
+                    and outra.tipo_linha == PECA
+                    and outra.id != linha.id
+                ]
+                if principais:
+                    # ``linhas`` is already in display order; use the first
+                    # structural PECA rather than assuming IDs are sequential.
+                    principal = principais[0]
+                    fator_principal = _num(principal.qt_und)
+                    if fator_principal != _UM:
+                        fatores_ancestrais.append(fator_principal)
             qt_total = qt_mod_efetivo * qt_und
             for fator in fatores_ancestrais:
                 qt_total *= fator

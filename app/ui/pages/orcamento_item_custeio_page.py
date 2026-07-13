@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStyle,
     QStyledItemDelegate,
     QTabWidget,
     QTableWidget,
@@ -112,6 +113,7 @@ from app.ui.dialogs.def_peca_operacao_dialog import (
     DefPecaOperacaoDialogData,
 )
 from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+from app.ui import tema
 from app.ui.tema import (
     BEGE_AREIA,
     COLUNAS_REALCE_COMPOSTA,
@@ -518,23 +520,14 @@ class OrcamentoItemCusteioPage(QWidget):
             "A alteração faz-se na página de Items do orçamento."
         )
 
-        self.recalc_measures_button = QPushButton("Recalcular Medidas")
-        self.recalc_measures_button.clicked.connect(self.recalcular_medidas)
+        # Recalcular Medidas is part of the full Atualizar pipeline below, so
+        # users have one clear action for refreshing measures and all costs.
 
         self.insert_division_button = QPushButton("Inserir Divis\u00e3o")
         self.insert_division_button.clicked.connect(self.inserir_divisao)
 
-        # Auto-hide toggle for the parts library: lives in the button bar (always
-        # visible) so hiding the library leaves NO residual strip (phase 8V.2).
-        self.toggle_biblioteca_button = QPushButton("Ocultar Biblioteca")
-        self.toggle_biblioteca_button.setObjectName(
-            "orcamentoItemCusteioToggleBiblioteca"
-        )
-        self.toggle_biblioteca_button.setToolTip(
-            "Ocultar a biblioteca de pe\u00e7as para a tabela ocupar todo o espa\u00e7o."
-        )
-        self.toggle_biblioteca_button.clicked.connect(self.toggle_biblioteca)
-
+        # The library visibility toggle is kept beside the splitter so it stays
+        # available even after the collapsible panel is hidden.
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
         self.import_module_button.setToolTip(
             "Importa um m\u00f3dulo guardado para o fim do custeio deste item "
@@ -574,10 +567,8 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.operacoes_peca_button)
         actions_layout.addWidget(self.auditar_operacoes_button)
         actions_layout.addWidget(self.producao_label)
-        actions_layout.addWidget(self.recalc_measures_button)
         actions_layout.addWidget(self.insert_division_button)
         actions_layout.addSpacing(12)
-        actions_layout.addWidget(self.toggle_biblioteca_button)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.guardar_modulo_button)
         actions_layout.addStretch()
@@ -589,6 +580,10 @@ class OrcamentoItemCusteioPage(QWidget):
         # Auto-hide state for the parts library panel (phase 8V.2).
         self._biblioteca_visivel = True
         self._biblioteca_sizes: list[int] | None = None
+        self._biblioteca_pressed_states: dict[int, Qt.CheckState] = {}
+        # The toggle_biblioteca_button now lives in the library header rather
+        # than the old actions_layout.addWidget(self.toggle_biblioteca_button)
+        # toolbar slot, keeping the costing bar focused on actions.
         self.library_panel = self._create_library_panel()
 
         self.table = CusteioLinhasTable(0, len(self.TABLE_HEADERS))
@@ -603,6 +598,15 @@ class OrcamentoItemCusteioPage(QWidget):
                 header_item.setToolTip(self.HEADER_TOOLTIPS[header])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
+        self.table.setMouseTracking(True)
+        self.table.setStyleSheet(
+            f"QTableWidget {{ selection-background-color: {tema.CASTANHO_ESCURO};"
+            " selection-color: #FFFFFF; outline: 0; }\n"
+            f"QTableWidget::item:hover {{ background-color: {BEGE_AREIA};"
+            f" color: {tema.TEXTO_NORMAL}; }}\n"
+            f"QTableWidget::item:selected {{ background-color: {tema.CASTANHO_ESCURO};"
+            " color: #FFFFFF; }}"
+        )
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         # Fast (Excel-like) editing: one click / typing enters edit; read-only
@@ -664,6 +668,13 @@ class OrcamentoItemCusteioPage(QWidget):
 
         workspace_layout = QHBoxLayout()
         workspace_layout.setContentsMargins(0, 0, 0, 0)
+        workspace_layout.setSpacing(4)
+        # Keep the arrow outside the collapsible panel so it remains available
+        # to restore the library after it has been hidden.
+        workspace_layout.addWidget(
+            self.toggle_biblioteca_button,
+            alignment=Qt.AlignmentFlag.AlignTop,
+        )
         workspace_layout.addWidget(self.workspace_splitter)
 
         custeio_tab = QWidget()
@@ -1436,12 +1447,32 @@ class OrcamentoItemCusteioPage(QWidget):
         self.library_title = QLabel("Biblioteca de peças")
         self.library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
 
+        self.toggle_biblioteca_button = QPushButton()
+        self.toggle_biblioteca_button.setObjectName("orcamentoItemCusteioToggleBiblioteca")
+        self.toggle_biblioteca_button.setFixedSize(30, 28)
+        self.toggle_biblioteca_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft)
+        )
+        self.toggle_biblioteca_button.setAccessibleName("Ocultar biblioteca de peças")
+        self.toggle_biblioteca_button.setToolTip(
+            "Ocultar a biblioteca de peças para a tabela ocupar todo o espaço."
+        )
+        self.toggle_biblioteca_button.clicked.connect(self.toggle_biblioteca)
+
         self.library_search = CampoPesquisa(placeholder="Pesquisar peça…")
         self.library_search.pesquisa_mudou.connect(self._aplicar_filtro_biblioteca)
 
         self.tree_biblioteca_pecas = QTreeWidget()
+        # Keep child rows close to the group label so the check indicator and
+        # the useful part of the piece name remain visible in this narrow panel.
+        self.tree_biblioteca_pecas.setIndentation(10)
+        self.tree_biblioteca_pecas.setUniformRowHeights(True)
+        self.tree_biblioteca_pecas.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.tree_biblioteca_pecas.setHeaderLabel("Peças")
         self.tree_biblioteca_pecas.setAlternatingRowColors(True)
+        self.tree_biblioteca_pecas.setMouseTracking(True)
+        self.tree_biblioteca_pecas.itemPressed.connect(self._on_biblioteca_item_pressed)
+        self.tree_biblioteca_pecas.itemClicked.connect(self._on_biblioteca_item_clicked)
         self.tree_biblioteca_pecas.itemChanged.connect(self._on_biblioteca_item_changed)
 
         self.so_selecionados_check = QCheckBox("Só selecionados")
@@ -1466,7 +1497,10 @@ class OrcamentoItemCusteioPage(QWidget):
         return panel
 
     def toggle_biblioteca(self) -> None:
-        """Fully hide the parts library (table takes all the width), or restore it."""
+        """Fully hide the parts library (table takes all the width), or restore it.
+
+        The arrow replaces the former text action ("Mostrar Biblioteca").
+        """
         if self._biblioteca_visivel:
             # Remember the current widths to restore them later.
             self._biblioteca_sizes = self.workspace_splitter.sizes()
@@ -1474,7 +1508,10 @@ class OrcamentoItemCusteioPage(QWidget):
             total = sum(self.workspace_splitter.sizes()) or 1000
             # Give ALL the space to the table: no residual strip on the left.
             self.workspace_splitter.setSizes([0, total])
-            self.toggle_biblioteca_button.setText("Mostrar Biblioteca")
+            self.toggle_biblioteca_button.setIcon(
+                self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowRight)
+            )
+            self.toggle_biblioteca_button.setAccessibleName("Mostrar biblioteca de peças")
             self.toggle_biblioteca_button.setToolTip(
                 "Mostrar novamente a biblioteca de peças."
             )
@@ -1482,7 +1519,10 @@ class OrcamentoItemCusteioPage(QWidget):
         else:
             self.library_panel.setVisible(True)
             self.workspace_splitter.setSizes(self._biblioteca_sizes or [320, 1000])
-            self.toggle_biblioteca_button.setText("Ocultar Biblioteca")
+            self.toggle_biblioteca_button.setIcon(
+                self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft)
+            )
+            self.toggle_biblioteca_button.setAccessibleName("Ocultar biblioteca de peças")
             self.toggle_biblioteca_button.setToolTip(
                 "Ocultar a biblioteca de peças para a tabela ocupar todo o espaço."
             )
@@ -1615,6 +1655,28 @@ class OrcamentoItemCusteioPage(QWidget):
             self._selecionados.discard(peca_id)
 
         self._atualizar_contador()
+
+    def _on_biblioteca_item_pressed(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Remember the state before a click, including clicks on the checkbox."""
+        dados = item.data(0, Qt.ItemDataRole.UserRole)
+        if dados is not None:
+            self._biblioteca_pressed_states[id(item)] = item.checkState(0)
+
+    def _on_biblioteca_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Make the whole piece row act as its checkbox."""
+        dados = item.data(0, Qt.ItemDataRole.UserRole)
+        antes = self._biblioteca_pressed_states.pop(id(item), None)
+        if dados is None or antes is None:
+            return
+        # Qt has already toggled when the indicator itself was clicked.  If the
+        # state did not change, the user clicked the row text, so toggle it now.
+        if item.checkState(0) == antes:
+            item.setCheckState(
+                0,
+                Qt.CheckState.Unchecked
+                if antes == Qt.CheckState.Checked
+                else Qt.CheckState.Checked,
+            )
 
     def _atualizar_contador(self) -> None:
         """Update the selected pieces counter label."""

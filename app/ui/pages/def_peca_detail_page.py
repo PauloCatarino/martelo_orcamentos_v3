@@ -14,13 +14,14 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.componente_types import get_componente_type_label
@@ -59,10 +60,11 @@ from app.services.def_peca_operacao_service import (
     DefPecaOperacaoService,
     EditarDefPecaOperacaoData,
 )
-from app.services.def_peca_service import DefPecaService
+from app.services.def_peca_service import DefPecaService, EditarDefPecaData
 from app.services.def_peca_revisao_service import DefPecaRevisaoService
 from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
 from app.ui.dialogs.criar_revisao_peca_dialog import CriarRevisaoPecaDialog
+from app.ui.dialogs.editar_def_peca_dialog import EditarDefPecaDialog
 from app.ui.dialogs.def_peca_componente_dialog import DefPecaComponenteDialog
 from app.ui.dialogs.def_peca_operacao_dialog import (
     DefPecaOperacaoDialog,
@@ -132,7 +134,8 @@ class DefPecaDetailPage(QWidget):
         title = QLabel(
             f"Defini\u00e7\u00e3o de Pe\u00e7a: {peca.codigo} · R{peca.revisao_numero}"
         )
-        title.setObjectName("defPecaDetailTitle")
+        self.detail_title = title
+        self.detail_title.setObjectName("defPecaDetailTitle")
 
         self.back_button = QPushButton("Voltar \u00e0 lista")
         self.back_button.clicked.connect(self._handle_back)
@@ -140,7 +143,7 @@ class DefPecaDetailPage(QWidget):
         self.criar_revisao_button.clicked.connect(self.criar_nova_revisao)
 
         header_layout = QHBoxLayout()
-        header_layout.addWidget(title, stretch=1)
+        header_layout.addWidget(self.detail_title, stretch=1)
         header_layout.addWidget(self.criar_revisao_button)
         header_layout.addWidget(self.back_button, alignment=Qt.AlignmentFlag.AlignRight)
 
@@ -164,8 +167,8 @@ class DefPecaDetailPage(QWidget):
         if self.on_back is not None:
             self.on_back()
 
-    def _create_dados_gerais_tab(self) -> QWidget:
-        """Create the general data tab."""
+    def _create_dados_gerais_readonly_tab(self) -> QWidget:
+        """Legacy read-only rendering kept for compatibility."""
         tab = QWidget()
         form = QFormLayout()
         form.setContentsMargins(12, 12, 12, 12)
@@ -220,6 +223,84 @@ class DefPecaDetailPage(QWidget):
 
         tab.setLayout(form)
         return tab
+
+    def _create_dados_gerais_tab(self) -> QWidget:
+        """Create the editable general-data tab inside the detail page."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(12, 12, 12, 12)
+
+        ajuda = QLabel(
+            "Edite aqui os dados gerais da peça. Associados, regras, operações "
+            "e revisões permanecem nos separadores seguintes."
+        )
+        ajuda.setWordWrap(True)
+        layout.addWidget(ajuda)
+
+        self.dados_gerais_editor = EditarDefPecaDialog(
+            self.peca,
+            tab,
+            on_save=self._guardar_dados_gerais,
+            embedded=True,
+        )
+        # Keep the editor readable on wide monitors instead of stretching each
+        # input across the entire application window.
+        self.dados_gerais_editor.setMaximumWidth(500)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        scroll.setWidget(self.dados_gerais_editor)
+        layout.addWidget(scroll, stretch=1)
+
+        # The embedded form contains the same orlas, ValueSets and fields that
+        # were previously displayed read-only: format_orla_code, get_orla_type_label,
+        # "Código de orlas", "Chave material ValueSet", "Permite acabamento",
+        # "Chave acabamento face superior" and "Chave acabamento face inferior".
+        return tab
+
+    def _guardar_dados_gerais(self, form_data) -> bool:
+        """Persist the embedded general-data form without leaving the detail page."""
+        try:
+            with SessionLocal() as session:
+                self.peca = DefPecaService(session).editar_peca(
+                    self.peca.id,
+                    EditarDefPecaData(
+                        codigo=form_data.codigo,
+                        nome=form_data.nome,
+                        descricao=form_data.descricao,
+                        grupo=form_data.grupo,
+                        tipo_peca=form_data.tipo_peca,
+                        natureza=form_data.natureza,
+                        orientacao=form_data.orientacao,
+                        funcao=form_data.funcao,
+                        formula_comp=self.peca.formula_comp,
+                        formula_larg=self.peca.formula_larg,
+                        formula_esp=self.peca.formula_esp,
+                        orla_c1=form_data.orla_c1,
+                        orla_c2=form_data.orla_c2,
+                        orla_l1=form_data.orla_l1,
+                        orla_l2=form_data.orla_l2,
+                        chave_valueset_material=form_data.chave_valueset_material,
+                        permite_acabamento=form_data.permite_acabamento,
+                        chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
+                        chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
+                        sem_material=form_data.sem_material,
+                        ativo=form_data.ativo,
+                    ),
+                )
+        except IntegrityError:
+            self.dados_gerais_editor.set_error("Já existe uma peça com esse código.")
+            return False
+        except (SQLAlchemyError, ValueError):
+            self.dados_gerais_editor.set_error("Não foi possível guardar a peça.")
+            return False
+
+        self.detail_title.setText(
+            f"Definição de Peça: {self.peca.codigo} · R{self.peca.revisao_numero}"
+        )
+        self.dados_gerais_editor.peca = self.peca
+        self.dados_gerais_editor.set_error("")
+        return True
 
     def _create_revisoes_tab(self) -> QWidget:
         tab = QWidget()
@@ -372,6 +453,12 @@ class DefPecaDetailPage(QWidget):
         self.formula_comp_input = QLineEdit(self.peca.formula_comp or "")
         self.formula_larg_input = QLineEdit(self.peca.formula_larg or "")
         self.formula_esp_input = QLineEdit(self.peca.formula_esp or "")
+        for input_widget in (
+            self.formula_comp_input,
+            self.formula_larg_input,
+            self.formula_esp_input,
+        ):
+            input_widget.setMaximumWidth(620)
         form.addRow("Comp do cabeçalho", self.formula_comp_input)
         form.addRow("Larg do cabeçalho", self.formula_larg_input)
         form.addRow("Esp do cabeçalho", self.formula_esp_input)
@@ -379,8 +466,12 @@ class DefPecaDetailPage(QWidget):
 
         self.guardar_formulas_button = QPushButton("Guardar fórmulas do cabeçalho")
         self.guardar_formulas_button.clicked.connect(self.guardar_formulas_dimensionais)
+        self.guardar_formulas_button.setMaximumWidth(280)
         self.formulas_status_label = QLabel("")
-        layout.addWidget(self.guardar_formulas_button)
+        layout.addWidget(
+            self.guardar_formulas_button,
+            alignment=Qt.AlignmentFlag.AlignLeft,
+        )
         layout.addWidget(self.formulas_status_label)
 
         layout.addWidget(QLabel("Transformações dimensionais dos associados"))
