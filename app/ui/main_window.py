@@ -20,6 +20,7 @@ from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.ui import tema
 from app.ui.pages import (
+    ArquivoV2Page,
     BibliotecaModulosPage,
     CatalogoAuditoriaPage,
     CaminhosSistemaPage,
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
     _NAV_POR_PAGINA = {
         "inicio": "inicio",
         "orcamentos": "orcamentos",
+        "arquivo_v2": "orcamentos",
         "orcamento_detail": "orcamentos",
         "materias_primas": "materias_primas",
         "clientes": "clientes",
@@ -132,6 +134,7 @@ class MainWindow(QMainWindow):
 
         _criar_item("In\u00edcio", "inicio")
         item_orcamentos = _criar_item("Or\u00e7amentos", "orcamentos")
+        _criar_item("Arquivo V2", "arquivo_v2", parent=item_orcamentos)
         _criar_item("Mat\u00e9rias-Primas", "materias_primas", parent=item_orcamentos)
         _criar_item("Pesquisa IA", "pesquisa_ia", parent=item_orcamentos)
         _criar_item("Clientes", "clientes")
@@ -149,6 +152,7 @@ class MainWindow(QMainWindow):
         self._page_indexes: dict[str, int] = {}
         self._pages_by_name: dict[str, QWidget] = {}
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
+        self.arquivo_v2_page = ArquivoV2Page()
         self.def_pecas_page = DefPecasPage()
         self.materias_primas_page = MateriasPrimasPage()
         self.pesquisa_ia_page = PesquisaIAPage()
@@ -180,6 +184,7 @@ class MainWindow(QMainWindow):
         )
         self._add_page("inicio", self._create_text_page("Bem-vindo ao Martelo Or\u00e7amentos V3"))
         self._add_page("orcamentos", self.orcamentos_page)
+        self._add_page("arquivo_v2", self.arquivo_v2_page)
         self._add_page("pecas", self.def_pecas_page)
         self._add_page("materias_primas", self.materias_primas_page)
         self._add_page("pesquisa_ia", self.pesquisa_ia_page)
@@ -282,6 +287,8 @@ class MainWindow(QMainWindow):
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
+        if name == "arquivo_v2" and hasattr(self, "arquivo_v2_page"):
+            self.arquivo_v2_page.carregar()
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
         self._destacar_nav(name)
