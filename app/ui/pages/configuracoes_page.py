@@ -88,6 +88,7 @@ class ConfiguracoesPage(QWidget):
         on_open_regras_quantidade: Callable[[], None] | None = None,
         on_open_biblioteca_modulos: Callable[[], None] | None = None,
         on_open_catalogo_auditoria: Callable[[], None] | None = None,
+        on_open_custeio_simplificado_tarifas: Callable[[], None] | None = None,
         on_open_user_management: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
@@ -103,6 +104,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_regras_quantidade = on_open_regras_quantidade
         self.on_open_biblioteca_modulos = on_open_biblioteca_modulos
         self.on_open_catalogo_auditoria = on_open_catalogo_auditoria
+        self.on_open_custeio_simplificado_tarifas = on_open_custeio_simplificado_tarifas
         self.on_open_user_management = on_open_user_management
 
         self.cabecalho = BarraCabecalho(
@@ -166,6 +168,13 @@ class ConfiguracoesPage(QWidget):
         self.catalogo_auditoria_button.clicked.connect(
             self._open_catalogo_auditoria
         )
+        self.custeio_simplificado_tarifas_button = QPushButton("Tarifas Custeio Simplificado")
+        self.custeio_simplificado_tarifas_button.setToolTip(
+            "Definir as tarifas por escalão de corte, PUR/LASER, urgência e sem Excel."
+        )
+        self.custeio_simplificado_tarifas_button.clicked.connect(
+            self._open_custeio_simplificado_tarifas
+        )
 
         self.user_management_button = QPushButton("Utilizadores e Acessos")
         self.user_management_button.setToolTip(
@@ -193,6 +202,7 @@ class ConfiguracoesPage(QWidget):
             self.regras_quantidade_button,
             self.biblioteca_modulos_button,
             self.catalogo_auditoria_button,
+            self.custeio_simplificado_tarifas_button,
         ]
         if self.on_open_user_management is not None:
             botoes.append(self.user_management_button)
@@ -254,6 +264,10 @@ class ConfiguracoesPage(QWidget):
         """Open the read-only catalog audit page."""
         if self.on_open_catalogo_auditoria is not None:
             self.on_open_catalogo_auditoria()
+
+    def _open_custeio_simplificado_tarifas(self) -> None:
+        if self.on_open_custeio_simplificado_tarifas is not None:
+            self.on_open_custeio_simplificado_tarifas()
     def _open_user_management(self) -> None:
         """Open account and access administration for the administrator."""
         if self.on_open_user_management is not None:

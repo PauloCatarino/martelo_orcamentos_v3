@@ -33,6 +33,11 @@ class OrcamentoItemResumo:
     tipo_producao: str | None = None
     ajuste_eur: Decimal = Decimal("0")
     preco_manual: bool = False
+    modalidade_custeio: str = "STANDARD"
+    simplificado_urgente: bool = False
+    simplificado_sem_excel: bool = False
+    custo_simplificado_urgencia: Decimal = Decimal("0")
+    custo_simplificado_sem_excel: Decimal = Decimal("0")
 
 
 class OrcamentoItemRepository:
@@ -173,6 +178,33 @@ class OrcamentoItemRepository:
 
         return True
 
+    def update_modalidade_custeio(
+        self, item_id: int, modalidade: str, *, urgente: bool | None = None,
+        sem_excel: bool | None = None,
+    ) -> bool:
+        """Store the separate per-item costing mode and optional flags."""
+        item = self.session.get(OrcamentoItem, item_id)
+        if item is None:
+            return False
+        item.modalidade_custeio = modalidade
+        if urgente is not None:
+            item.simplificado_urgente = urgente
+        if sem_excel is not None:
+            item.simplificado_sem_excel = sem_excel
+        self.session.flush()
+        return True
+
+    def update_custos_simplificado(
+        self, item_id: int, urgencia: Decimal, sem_excel: Decimal
+    ) -> bool:
+        item = self.session.get(OrcamentoItem, item_id)
+        if item is None:
+            return False
+        item.custo_simplificado_urgencia = urgencia
+        item.custo_simplificado_sem_excel = sem_excel
+        self.session.flush()
+        return True
+
     def get_tipo_producao_default(self, orcamento_versao_id: int) -> str | None:
         """Return the version's default production type (or None when not found)."""
         versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
@@ -290,4 +322,9 @@ class OrcamentoItemRepository:
             tipo_producao=item.tipo_producao,
             ajuste_eur=item.ajuste_eur,
             preco_manual=item.preco_manual,
+            modalidade_custeio=item.modalidade_custeio,
+            simplificado_urgente=item.simplificado_urgente,
+            simplificado_sem_excel=item.simplificado_sem_excel,
+            custo_simplificado_urgencia=item.custo_simplificado_urgencia,
+            custo_simplificado_sem_excel=item.custo_simplificado_sem_excel,
         )

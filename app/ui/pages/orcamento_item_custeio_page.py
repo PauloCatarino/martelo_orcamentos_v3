@@ -68,6 +68,11 @@ from app.domain.producao_types import (
     normalize_tipo_producao,
     tipo_producao_efetivo,
 )
+from app.domain.custeio_simplificado import (
+    MODALIDADE_CUSTEIO_SIMPLIFICADO,
+    ORLAGEM_SIMPLIFICADA_LASER,
+    ORLAGEM_SIMPLIFICADA_PUR,
+)
 from app.domain.numeros import formatar_percentagem
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
@@ -336,6 +341,7 @@ class OrcamentoItemCusteioPage(QWidget):
         "Tempo manual",
         "Tempo setup",
         "Custo corte",
+        "Orlagem simp.",
         "Custo orlagem",
         "Custo CNC",
         "Custo mont./manual",
@@ -519,6 +525,13 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tipo de produção do item (padrão da versão ou exceção do item). "
             "A alteração faz-se na página de Items do orçamento."
         )
+        self.modalidade_label = QLabel("")
+        self.modalidade_label.setObjectName("orcamentoItemCusteioModalidade")
+        self.opcoes_simplificado_button = QPushButton("Opções Simplificado")
+        self.opcoes_simplificado_button.setToolTip(
+            "Urgência e acréscimo sem listagem Excel, aplicados no fim do custo do item."
+        )
+        self.opcoes_simplificado_button.clicked.connect(self._abrir_opcoes_simplificado)
 
         # Recalcular Medidas is part of the full Atualizar pipeline below, so
         # users have one clear action for refreshing measures and all costs.
@@ -567,6 +580,8 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.operacoes_peca_button)
         actions_layout.addWidget(self.auditar_operacoes_button)
         actions_layout.addWidget(self.producao_label)
+        actions_layout.addWidget(self.modalidade_label)
+        actions_layout.addWidget(self.opcoes_simplificado_button)
         actions_layout.addWidget(self.insert_division_button)
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.import_module_button)
@@ -740,6 +755,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._tipo_producao_default = tipo_default
         self._update_item_info()
         self._atualizar_producao_label()
+        self._atualizar_modalidade_custeio()
         self._preencher_tabela(linhas)
         self._erros_entrada = erros_entrada
         self._aplicar_erros_entrada()
@@ -840,6 +856,42 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         origem = "exceção" if excecao else "padrão"
         self.producao_label.setText(f"Produção: {efetivo} ({origem})")
+
+    def _atualizar_modalidade_custeio(self) -> None:
+        """Show the independent costing mode and the restricted options menu."""
+        simplificado = self.item.modalidade_custeio == MODALIDADE_CUSTEIO_SIMPLIFICADO
+        self.modalidade_label.setText(
+            "Custeio: Simplificado" if simplificado else "Custeio: Standard"
+        )
+        self.opcoes_simplificado_button.setVisible(simplificado)
+
+    def _abrir_opcoes_simplificado(self) -> None:
+        """Small per-item menu, only available in Simplificado mode."""
+        menu = QMenu(self)
+        urgente = menu.addAction("Urgente")
+        urgente.setCheckable(True)
+        urgente.setChecked(bool(self.item.simplificado_urgente))
+        sem_excel = menu.addAction("Sem listagem Excel (+ €0,10/peça)")
+        sem_excel.setCheckable(True)
+        sem_excel.setChecked(bool(self.item.simplificado_sem_excel))
+        escolha = menu.exec(self.opcoes_simplificado_button.mapToGlobal(self.opcoes_simplificado_button.rect().bottomLeft()))
+        if escolha is None:
+            return
+        novo_urgente = urgente.isChecked()
+        novo_sem_excel = sem_excel.isChecked()
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemService(session).definir_opcoes_simplificado_item(
+                    self.item_id, urgente=novo_urgente, sem_excel=novo_sem_excel
+                )
+                self._recalcular_item_completo(OrcamentoItemCusteioLinhaService(session))
+                OrcamentoItemService(session).recalcular_preco_item(self.item_id)
+                session.commit()
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível guardar as opções Simplificado.")
+            return
+        self.carregar()
+        self.status_label.setText("Opções Simplificado atualizadas.")
 
     def recalcular_medidas(self) -> None:
         """Recompute quantities, real measures, area and perimeter of the item."""
@@ -1828,6 +1880,10 @@ class OrcamentoItemCusteioPage(QWidget):
                 row_index, column_index, linha
             ):
                 continue
+            if header == "Orlagem simp." and self._montar_combo_orlagem_simplificada(
+                row_index, column_index, linha
+            ):
+                continue
             if header == "Módulo":
                 self.table.setItem(
                     row_index, column_index, self._criar_item_modulo(linha)
@@ -2006,6 +2062,42 @@ class OrcamentoItemCusteioPage(QWidget):
         )
 
     # --- 'Mat. default' dropdown (item ValueSet options per line) -------------
+
+    def _montar_combo_orlagem_simplificada(
+        self, row_index: int, column_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> bool:
+        if (
+            self.item.modalidade_custeio != MODALIDADE_CUSTEIO_SIMPLIFICADO
+            or linha.tipo_linha != PECA
+        ):
+            return False
+        combo = QComboBox()
+        combo.addItem("PUR", ORLAGEM_SIMPLIFICADA_PUR)
+        combo.addItem("LASER", ORLAGEM_SIMPLIFICADA_LASER)
+        combo.setCurrentIndex(
+            1 if linha.tipo_orlagem_simplificado == ORLAGEM_SIMPLIFICADA_LASER else 0
+        )
+        combo.setToolTip("Tarifa Simplificado de orlagem desta peça (PUR por defeito).")
+        combo.currentIndexChanged.connect(
+            lambda _i, linha_id=linha.id, c=combo: self._on_orlagem_simplificada_changed(linha_id, c)
+        )
+        self.table.setCellWidget(row_index, column_index, combo)
+        return True
+
+    def _on_orlagem_simplificada_changed(self, linha_id: int, combo: QComboBox) -> None:
+        if self._carregando_tabela:
+            return
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).definir_tipo_orlagem_simplificada_linha(
+                    linha_id, combo.currentData()
+                )
+                OrcamentoItemService(session).recalcular_preco_item(self.item_id)
+                session.commit()
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível alterar PUR/LASER.")
+            return
+        QTimer.singleShot(0, self.carregar)
 
     def _linha_aceita_dropdown_material(
         self, linha: OrcamentoItemCusteioLinhaResumo
@@ -3648,6 +3740,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Tempo setup": format_quantity(linha.tempo_setup),
             "Custo corte": format_currency(linha.custo_corte),
+            "Orlagem simp.": (
+                linha.tipo_orlagem_simplificado
+                if self.item.modalidade_custeio == MODALIDADE_CUSTEIO_SIMPLIFICADO
+                else ""
+            ),
             "Custo orlagem": format_currency(linha.custo_orlagem),
             "Custo CNC": format_currency(linha.custo_cnc),
             "Custo mont./manual": format_currency(linha.custo_montagem_manual),

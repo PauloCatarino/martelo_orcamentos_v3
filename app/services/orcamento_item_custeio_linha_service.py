@@ -53,6 +53,14 @@ from app.domain.custo_producao import (
     somar_custo_producao,
 )
 from app.domain.producao_types import TIPO_PRODUCAO_SERIE, tipo_producao_efetivo
+from app.domain.custeio_simplificado import (
+    MODALIDADE_CUSTEIO_SIMPLIFICADO,
+    calcular_custo_simplificado_linha,
+    calcular_opcoes_simplificado,
+    escolher_escalao_simplificado,
+    normalizar_modalidade_custeio,
+    normalizar_tipo_orlagem_simplificada,
+)
 from app.domain.tempos_producao import (
     calcular_tempos_producao_ligacoes,
     classificar_operacao,
@@ -113,6 +121,7 @@ from app.repositories.def_operacao_repository import DefOperacaoRepository
 from app.repositories.def_peca_componente_repository import DefPecaComponenteRepository
 from app.repositories.def_regra_quantidade_repository import DefRegraQuantidadeRepository
 from app.repositories.def_valueset_chave_repository import DefValuesetChaveRepository
+from app.services.custeio_simplificado_tarifas_service import CusteioSimplificadoTarifasService
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoRepository
 from app.repositories.def_peca_repository import DefPecaRepository, DefPecaResumo
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -1691,8 +1700,56 @@ class OrcamentoItemCusteioLinhaService:
         self.recalcular_custo_acabamento_do_item(orcamento_item_id)
         self.aplicar_operacoes_do_item(orcamento_item_id)
         self.recalcular_custos_producao_do_item(orcamento_item_id)
+        self.recalcular_opcoes_simplificado_do_item(orcamento_item_id)
         self.recalcular_tempos_producao_do_item(orcamento_item_id)
         self.recalcular_custo_total_do_item(orcamento_item_id)
+
+    def _quantidade_pecas_simplificado(self, orcamento_item_id: int) -> Decimal:
+        """Total active pieces of this item; it deliberately never crosses items."""
+        return sum(
+            (normalizar_numero(linha.quantidade) or Decimal("0"))
+            for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id)
+            if linha.tipo_linha == PECA
+        )
+
+    def _modalidade_custeio_do_item(self, orcamento_item_id: int) -> str:
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        return normalizar_modalidade_custeio(
+            getattr(item, "modalidade_custeio", None) if item else None
+        )
+
+    def recalcular_opcoes_simplificado_do_item(self, orcamento_item_id: int) -> None:
+        """Store item-level urgency/no-Excel surcharges after all quantities."""
+        item = self.session.get(OrcamentoItem, orcamento_item_id)
+        if item is None:
+            raise ValueError("item nao encontrado")
+        if self._modalidade_custeio_do_item(orcamento_item_id) != MODALIDADE_CUSTEIO_SIMPLIFICADO:
+            item.custo_simplificado_urgencia = Decimal("0")
+            item.custo_simplificado_sem_excel = Decimal("0")
+        else:
+            quantidade = self._quantidade_pecas_simplificado(orcamento_item_id)
+            tarifa = escolher_escalao_simplificado(
+                quantidade, CusteioSimplificadoTarifasService(self.session).obter()
+            )
+            urgencia, sem_excel = calcular_opcoes_simplificado(
+                quantidade, tarifa,
+                urgente=bool(item.simplificado_urgente),
+                sem_excel=bool(item.simplificado_sem_excel),
+            )
+            item.custo_simplificado_urgencia = urgencia
+            item.custo_simplificado_sem_excel = sem_excel
+        self.session.flush()
+
+    def definir_tipo_orlagem_simplificada_linha(self, linha_id: int, tipo: str) -> None:
+        """Set PUR/LASER locally on one piece and fully recalculate its item."""
+        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+        self.repository.update_linha(
+            id=linha_id,
+            tipo_orlagem_simplificado=normalizar_tipo_orlagem_simplificada(tipo),
+        )
+        self.recalcular_item_completo(linha.orcamento_item_id)
 
     def validar_entradas_do_item(
         self, orcamento_item_id: int
@@ -2772,6 +2829,14 @@ class OrcamentoItemCusteioLinhaService:
         ignoradas = 0
 
         tipo_efetivo = self._tipo_producao_efetivo_do_item(orcamento_item_id)
+        modo_simplificado = (
+            self._modalidade_custeio_do_item(orcamento_item_id)
+            == MODALIDADE_CUSTEIO_SIMPLIFICADO
+        )
+        tarifa_simplificada = escolher_escalao_simplificado(
+            self._quantidade_pecas_simplificado(orcamento_item_id),
+            CusteioSimplificadoTarifasService(self.session).obter(),
+        ) if modo_simplificado else None
         usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
         cache_variantes = self._cache_operacoes_variantes_do_item(orcamento_item_id)
 
@@ -2923,6 +2988,17 @@ class OrcamentoItemCusteioLinhaService:
             custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(
                 linha, usar_serie, cache_variantes
             )
+
+            if modo_simplificado and linha.tipo_linha == PECA:
+                custo_corte, custo_orlagem = calcular_custo_simplificado_linha(
+                    linha.quantidade,
+                    linha.codigo_orlas,
+                    normalizar_tipo_orlagem_simplificada(
+                        getattr(linha, "tipo_orlagem_simplificado", None)
+                    ),
+                    tarifa_simplificada,
+                )
+                avisos_ml = []
 
             custo_producao = aplicar_fator_serie(
                 somar_custo_producao(custo_corte, custo_orlagem, custo_cnc, custo_mm),

@@ -4,6 +4,7 @@ from app.ui.pages.biblioteca_modulos_page import BibliotecaModulosPage
 from app.ui.pages.arquivo_v2_page import ArquivoV2Page
 from app.ui.pages.catalogo_auditoria_page import CatalogoAuditoriaPage
 from app.ui.pages.configuracoes_page import ConfiguracoesPage
+from app.ui.pages.custeio_simplificado_tarifas_page import CusteioSimplificadoTarifasPage
 from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
 from app.ui.pages.clientes_page import ClientesPage
 from app.ui.pages.custeio_auditoria_page import CusteioAuditoriaPage
@@ -33,6 +34,7 @@ __all__ = [
     "ArquivoV2Page",
     "CatalogoAuditoriaPage",
     "ConfiguracoesPage",
+    "CusteioSimplificadoTarifasPage",
     "CaminhosSistemaPage",
     "ClientesPage",
     "CusteioAuditoriaPage",

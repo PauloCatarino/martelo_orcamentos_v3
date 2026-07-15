@@ -139,6 +139,7 @@ class OrcamentoItemCusteioLinha(Base):
     def_peca_codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     chave_valueset: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     codigo_orlas: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    tipo_orlagem_simplificado: Mapped[str] = mapped_column(String(10), nullable=False, default="PUR", server_default="PUR")
     mat_default: Mapped[str | None] = mapped_column(String(150), nullable=True)
     # Exact rank of the ValueSet option currently applied to this line.
     valueset_prioridade: Mapped[int | None] = mapped_column(Integer, nullable=True)

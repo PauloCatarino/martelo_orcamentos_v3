@@ -137,6 +137,7 @@ class OrcamentoItemCusteioLinhaResumo:
     tempo_setup: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    tipo_orlagem_simplificado: str = "PUR"
 
 
 class OrcamentoItemCusteioLinhaRepository:
@@ -408,6 +409,7 @@ class OrcamentoItemCusteioLinhaRepository:
             def_peca_codigo=linha.def_peca_codigo,
             chave_valueset=linha.chave_valueset,
             codigo_orlas=linha.codigo_orlas,
+            tipo_orlagem_simplificado=linha.tipo_orlagem_simplificado,
             mat_default=linha.mat_default,
             valueset_prioridade=linha.valueset_prioridade,
             modulo_imagem_path=linha.modulo_imagem_path,

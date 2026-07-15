@@ -81,6 +81,11 @@ class OrcamentoItem(Base):
     # Per-item production type exception: NULL inherits the version's
     # tipo_producao_default; 'STD'/'SERIE' overrides it (phase 8S.4).
     tipo_producao: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    modalidade_custeio: Mapped[str] = mapped_column(String(20), nullable=False, default="STANDARD", server_default="STANDARD")
+    simplificado_urgente: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    simplificado_sem_excel: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    custo_simplificado_urgencia: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False, default=Decimal("0"), server_default="0")
+    custo_simplificado_sem_excel: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False, default=Decimal("0"), server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

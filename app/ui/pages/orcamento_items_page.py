@@ -38,6 +38,10 @@ from app.domain.producao_types import (
     TIPO_PRODUCAO_STD,
     tipo_producao_efetivo,
 )
+from app.domain.custeio_simplificado import (
+    MODALIDADE_CUSTEIO_SIMPLIFICADO,
+    MODALIDADE_CUSTEIO_STANDARD,
+)
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.orcamento_item_custeio_linha_service import (
@@ -79,6 +83,7 @@ class OrcamentoItemsPage(QWidget):
         "Custo Produ\u00e7\u00e3o",
         "Custo Acabamentos",
         "Margem Lucro Efetiva",
+        "Custeio",
         "Produ\u00e7\u00e3o",
     ]
 
@@ -823,6 +828,7 @@ class OrcamentoItemsPage(QWidget):
                             blocos.custo_produzido if blocos else None,
                         )
                     ),
+                    item.modalidade_custeio,
                     producao_efetiva,
                 ]
 
@@ -853,6 +859,11 @@ class OrcamentoItemsPage(QWidget):
                     row_index,
                     self.TABLE_HEADERS.index("Produção"),
                     self._criar_combo_producao(item),
+                )
+                self.table.setCellWidget(
+                    row_index,
+                    self.TABLE_HEADERS.index("Custeio"),
+                    self._criar_combo_custeio(item),
                 )
         finally:
             self._carregando_tabela = False
@@ -1065,6 +1076,39 @@ class OrcamentoItemsPage(QWidget):
         )
         return combo
 
+    def _criar_combo_custeio(self, item: OrcamentoItemResumo) -> QComboBox:
+        """Build the independent Standard/Simplificado selector."""
+        combo = QComboBox()
+        combo.setToolTip(
+            "Simplificado usa tarifas por escalão das peças deste item; "
+            "STD/SERIE continua no campo Produção."
+        )
+        combo.addItem("Standard", MODALIDADE_CUSTEIO_STANDARD)
+        combo.addItem("Simplificado", MODALIDADE_CUSTEIO_SIMPLIFICADO)
+        combo.setCurrentIndex(1 if item.modalidade_custeio == MODALIDADE_CUSTEIO_SIMPLIFICADO else 0)
+        combo.currentIndexChanged.connect(
+            lambda _indice, item_id=item.id, c=combo: self._on_custeio_item_changed(item_id, c)
+        )
+        return combo
+
+    def _on_custeio_item_changed(self, item_id: int, combo: QComboBox) -> None:
+        try:
+            with SessionLocal() as session:
+                item_service = OrcamentoItemService(session)
+                item_service.definir_modalidade_custeio_item(item_id, combo.currentData())
+                self._recalcular_custeio_do_item(session, item_id)
+                item_service.recalcular_preco_item(item_id)
+                session.commit()
+            mensagem = "Modalidade de custeio atualizada."
+        except (SQLAlchemyError, ValueError):
+            mensagem = "Não foi possível mudar a modalidade de custeio."
+
+        def _recarregar() -> None:
+            self.carregar_items()
+            self.status_label.setText(mensagem)
+            self._notify_items_changed()
+        QTimer.singleShot(0, _recarregar)
+
     def _on_producao_default_clicked(self, tipo_producao: str) -> None:
         """Save the version's production default and recompute every item."""
         if self._carregando_producao:
@@ -1120,18 +1164,7 @@ class OrcamentoItemsPage(QWidget):
 
     def _recalcular_custeio_do_item(self, session, item_id: int) -> None:
         """Run the costing Atualizar pipeline for one item (same as the page)."""
-        service = OrcamentoItemCusteioLinhaService(session)
-        service.recalcular_medidas_do_item(item_id)
-        service.aplicar_acabamentos_do_item(item_id)
-        service.recalcular_areas_acabamento_do_item(item_id)
-        service.recalcular_orlas_do_item(item_id)
-        service.recalcular_custo_materia_prima_do_item(item_id)
-        service.recalcular_custos_ferragens_do_item(item_id)
-        service.recalcular_custos_ml_do_item(item_id)
-        service.recalcular_custo_acabamento_do_item(item_id)
-        service.aplicar_operacoes_do_item(item_id)
-        service.recalcular_custos_producao_do_item(item_id)
-        service.recalcular_custo_total_do_item(item_id)
+        OrcamentoItemCusteioLinhaService(session).recalcular_item_completo(item_id)
 
     def _get_selected_item_id(self) -> int | None:
         """Return the selected item id from the table."""

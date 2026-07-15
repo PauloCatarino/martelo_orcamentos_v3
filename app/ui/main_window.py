@@ -37,6 +37,7 @@ from app.ui.pages import (
     ClientesPage,
     CusteioAuditoriaPage,
     ConfiguracoesPage,
+    CusteioSimplificadoTarifasPage,
     DefPecasPage,
     DefValuesetChavesPage,
     DefValuesetModelosPage,
@@ -97,6 +98,7 @@ class MainWindow(QMainWindow):
         "regras_quantidade": "menu.configuracoes",
         "biblioteca_modulos": "menu.configuracoes",
         "catalogo_auditoria": "menu.configuracoes",
+        "custeio_simplificado_tarifas": "menu.configuracoes",
         "user_management": "menu.configuracoes",
     }
 
@@ -233,6 +235,9 @@ class MainWindow(QMainWindow):
         self.catalogo_auditoria_page = CatalogoAuditoriaPage(
             on_open_configuracao=self._open_catalogo_auditoria_item
         )
+        self.custeio_simplificado_tarifas_page = CusteioSimplificadoTarifasPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.clientes_page = ClientesPage()
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
@@ -250,6 +255,7 @@ class MainWindow(QMainWindow):
             on_open_regras_quantidade=self._open_regras_quantidade,
             on_open_biblioteca_modulos=self._open_biblioteca_modulos,
             on_open_catalogo_auditoria=self._open_catalogo_auditoria,
+            on_open_custeio_simplificado_tarifas=lambda: self.show_page("custeio_simplificado_tarifas"),
             on_open_user_management=(
                 self._open_user_management if self.user_management_page is not None else None
             ),
@@ -271,6 +277,7 @@ class MainWindow(QMainWindow):
         self._add_page("regras_quantidade", self.regras_quantidade_page)
         self._add_page("biblioteca_modulos", self.biblioteca_modulos_page)
         self._add_page("catalogo_auditoria", self.catalogo_auditoria_page)
+        self._add_page("custeio_simplificado_tarifas", self.custeio_simplificado_tarifas_page)
         self._add_page("clientes", self.clientes_page)
         self._add_page("producao", self.producao_page)
         self._add_page("encomendas_phc", self.encomendas_page)

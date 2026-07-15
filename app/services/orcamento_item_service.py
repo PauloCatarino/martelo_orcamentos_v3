@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy.orm import Session
@@ -29,6 +29,10 @@ from app.domain.producao_types import (
     TIPO_PRODUCAO_STD,
     normalize_tipo_producao,
     tipo_producao_efetivo,
+)
+from app.domain.custeio_simplificado import (
+    MODALIDADE_CUSTEIO_SIMPLIFICADO,
+    normalizar_modalidade_custeio,
 )
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
@@ -323,7 +327,9 @@ class OrcamentoItemService:
             )
 
         return {
-            item_id: somar_blocos_custo(blocos)
+            item_id: self._adicionar_opcoes_simplificado(
+                self.repository.get_item_by_id(item_id), somar_blocos_custo(blocos)
+            )
             for item_id, blocos in blocos_por_item.items()
         }
 
@@ -482,7 +488,23 @@ class OrcamentoItemService:
         if not blocos:
             return None
 
-        return somar_blocos_custo(blocos)
+        return self._adicionar_opcoes_simplificado(
+            self.repository.get_item_by_id(orcamento_item_id), somar_blocos_custo(blocos)
+        )
+
+    @staticmethod
+    def _adicionar_opcoes_simplificado(item, blocos: BlocosCusto) -> BlocosCusto:
+        """Append the two item-level simplified charges to the labour block."""
+        if item is None or normalizar_modalidade_custeio(item.modalidade_custeio) != MODALIDADE_CUSTEIO_SIMPLIFICADO:
+            return blocos
+        adicional = (item.custo_simplificado_urgencia or Decimal("0")) + (
+            item.custo_simplificado_sem_excel or Decimal("0")
+        )
+        return replace(
+            blocos,
+            bloco_producao=blocos.bloco_producao + adicional,
+            parcela_montagem_manual=blocos.parcela_montagem_manual + adicional,
+        )
 
     @staticmethod
     def _blocos_da_linha(linha) -> BlocosCusto:
@@ -557,6 +579,23 @@ class OrcamentoItemService:
         self.session.commit()
 
         return tipo
+
+    def definir_modalidade_custeio_item(self, item_id: int, modalidade: str) -> str:
+        modo = normalizar_modalidade_custeio(modalidade)
+        if not self.repository.update_modalidade_custeio(item_id, modo):
+            raise ValueError("item not found")
+        self.session.commit()
+        return modo
+
+    def definir_opcoes_simplificado_item(
+        self, item_id: int, *, urgente: bool, sem_excel: bool
+    ) -> None:
+        if not self.repository.update_modalidade_custeio(
+            item_id, MODALIDADE_CUSTEIO_SIMPLIFICADO,
+            urgente=urgente, sem_excel=sem_excel,
+        ):
+            raise ValueError("item not found")
+        self.session.commit()
 
     def get_tipo_producao_efetivo(self, item: OrcamentoItemResumo) -> str:
         """Resolve the effective production type of an item (exception or default)."""

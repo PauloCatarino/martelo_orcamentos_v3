@@ -37,6 +37,7 @@ def test_orcamento_items_page_ordem_e_nomes_das_colunas() -> None:
         "Custo Produ\u00e7\u00e3o",
         "Custo Acabamentos",
         "Margem Lucro Efetiva",
+        "Custeio",
         "Produ\u00e7\u00e3o",
     ]
 
@@ -211,8 +212,7 @@ def test_orcamento_items_page_recalcula_pipeline_do_custeio() -> None:
     from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
 
     source = inspect.getsource(OrcamentoItemsPage._recalcular_custeio_do_item)
-    assert "recalcular_custos_producao_do_item" in source
-    assert "recalcular_custo_total_do_item" in source
+    assert "recalcular_item_completo" in source
 
     default_source = inspect.getsource(OrcamentoItemsPage._on_producao_default_clicked)
     assert "definir_tipo_producao_default" in default_source
@@ -220,3 +220,14 @@ def test_orcamento_items_page_recalcula_pipeline_do_custeio() -> None:
 
     item_source = inspect.getsource(OrcamentoItemsPage._on_producao_item_changed)
     assert "definir_tipo_producao_item" in item_source
+
+
+def test_orcamento_items_page_seletor_custeio_simplificado() -> None:
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+
+    assert "Custeio" in OrcamentoItemsPage.TABLE_HEADERS
+    assert hasattr(OrcamentoItemsPage, "_criar_combo_custeio")
+    assert hasattr(OrcamentoItemsPage, "_on_custeio_item_changed")
+    assert "definir_modalidade_custeio_item" in inspect.getsource(
+        OrcamentoItemsPage._on_custeio_item_changed
+    )

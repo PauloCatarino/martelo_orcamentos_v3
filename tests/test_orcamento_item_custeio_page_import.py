@@ -68,6 +68,7 @@ def test_orcamento_item_custeio_page_headers() -> None:
         "ML orla fina",
         "ML orla grossa",
         "Custo total",
+        "Orlagem simp.",
         "Pre\u00e7o total",
         "Editado localmente",
         "Ativo",
@@ -84,6 +85,15 @@ def test_orcamento_item_custeio_page_headers() -> None:
     # The old "Inclui X" headers must be gone.
     for antigo in ("Inclui MP", "Inclui Orla", "Inclui Ferragem"):
         assert antigo not in headers
+
+
+def test_custeio_page_opcoes_simplificado_e_pur_laser_por_peca() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "_abrir_opcoes_simplificado")
+    assert hasattr(OrcamentoItemCusteioPage, "_montar_combo_orlagem_simplificada")
+    assert "PUR" in inspect.getsource(OrcamentoItemCusteioPage._montar_combo_orlagem_simplificada)
+    assert "LASER" in inspect.getsource(OrcamentoItemCusteioPage._montar_combo_orlagem_simplificada)
 
 
 def test_orcamento_item_custeio_page_exclusao_checkboxes() -> None:
