@@ -110,6 +110,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         self.linha = linha
         self.on_save = on_save
+        self._codigo_opcao_original = linha.codigo_opcao
         self._suppress = False
         self.operacoes_alteradas = False
 
@@ -122,7 +123,9 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         self.chave_input.setEnabled(False)
 
         self.codigo_opcao_input = QLineEdit()
+        self.codigo_opcao_input.setVisible(False)
         self.nome_opcao_input = QLineEdit()
+        self.nome_opcao_input.setPlaceholderText("Nome amigável da opção")
         self.ref_le_input = QLineEdit()
         self.descricao_no_orcamento_input = QLineEdit()
         self.ref_materia_prima_input = QLineEdit()
@@ -172,8 +175,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Chave ValueSet", self.chave_input)
-        form.addRow("Código opção", self.codigo_opcao_input)
-        form.addRow("Nome opção", self.nome_opcao_input)
+        form.addRow("Opção", self.nome_opcao_input)
         form.addRow("", self.selecionar_mp_button)
         form.addRow("Ref LE", self.ref_le_input)
         form.addRow("Descrição no orçamento", self.descricao_no_orcamento_input)
@@ -347,6 +349,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         """Populate the form with the line values."""
         self._suppress = True
         try:
+            self._codigo_opcao_original = linha.codigo_opcao
             self.codigo_opcao_input.setText(linha.codigo_opcao or "")
             self.nome_opcao_input.setText(linha.nome_opcao or "")
             self.ref_le_input.setText(linha.ref_le or "")
@@ -437,6 +440,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.comp_mp_input.setText(self._format_decimal(materia.comprimento))
             self.larg_mp_input.setText(self._format_decimal(materia.largura))
             self.esp_mp_input.setText(self._format_decimal(materia.espessura))
+            self.nome_opcao_input.setText(materia.descricao or materia.ref_le or "")
             self.origem_dados_input.setCurrentText("MATERIA_PRIMA")
             self.editado_localmente_input.setChecked(True)
         finally:
@@ -487,7 +491,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         """Return dialog data (raises ValueError on invalid numbers)."""
         return OrcamentoValuesetLinhaDialogData(
             chave=obter_valor_chave_combo(self.chave_input),
-            codigo_opcao=self.codigo_opcao_input.text().strip(),
+            codigo_opcao=self._codigo_opcao_original,
             nome_opcao=self.nome_opcao_input.text().strip(),
             ref_le=self._empty_to_none(self.ref_le_input.text()),
             descricao_no_orcamento=self._empty_to_none(
@@ -529,12 +533,8 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Validate required fields before accepting."""
-        if not self.codigo_opcao_input.text().strip():
-            self.set_error("O código da opção é obrigatório.")
-            return
-
         if not self.nome_opcao_input.text().strip():
-            self.set_error("O nome da opção é obrigatório.")
+            self.set_error("A opção é obrigatória.")
             return
 
         self._recalcular_preco_liquido()

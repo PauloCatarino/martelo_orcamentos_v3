@@ -330,6 +330,7 @@ def test_definir_como_padrao(monkeypatch) -> None:
 
 def test_editar_linha_permite_a_propria_opcao(monkeypatch) -> None:
     service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=7, codigo_opcao="BLUM_RETA")
     _FakeRepository.opcao_existing = _resumo(id=7, codigo_opcao="BLUM_RETA")
 
     service.editar_linha(
@@ -486,3 +487,18 @@ def test_origem_dados_aceita_texto(monkeypatch) -> None:
         )
 
         assert _FakeRepository.created_payload["origem_dados"] == origem
+
+
+def test_criar_opcao_livre_gera_identidade_tecnica_a_partir_do_nome(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarDefValuesetModeloLinhaData(
+            def_valueset_modelo_id=10,
+            chave="MATERIAL_PORTAS",
+            nome_opcao="MDF branco 19mm",
+        )
+    )
+
+    assert _FakeRepository.created_payload["codigo_opcao"] == "OP_MDF_BRANCO_19MM"
+    assert _FakeRepository.created_payload["nome_opcao"] == "MDF branco 19mm"

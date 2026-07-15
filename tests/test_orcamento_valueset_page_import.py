@@ -25,7 +25,6 @@ def test_page_headers() -> None:
     assert OrcamentoValuesetPage.TABLE_HEADERS == [
         "Chave",
         "Opção",
-        "Nome opção",
         "Ref LE",
         "Descrição orçamento",
         "Unidade",

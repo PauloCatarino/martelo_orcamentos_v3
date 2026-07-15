@@ -360,7 +360,7 @@ def test_criar_linha_do_item(monkeypatch) -> None:
     payload = _FakeItemRepository.created_payload
     assert payload is not None
     assert payload["chave"] == "MATERIAL_PORTAS"
-    assert payload["codigo_opcao"] == "MATERIAL_PORTAS"
+    assert payload["codigo_opcao"] == "MP_PORTA_01"
     assert payload["herdado_do_orcamento"] is True
     assert payload["editado_localmente"] is False
     assert result.ref_materia_prima == "PORTA-01"
@@ -1073,3 +1073,18 @@ def test_ativar_linha_item_marca_editado(monkeypatch) -> None:
     assert payload["ativo"] is True
     assert payload["editado_localmente"] is True
     assert session.committed is True
+
+
+def test_criar_opcao_livre_do_item_gera_identidade_tecnica(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="MATERIAL_PORTAS",
+            nome_opcao="MDF branco 19mm",
+        )
+    )
+
+    assert _FakeItemRepository.created_payload["codigo_opcao"] == "OP_MDF_BRANCO_19MM"
+    assert _FakeItemRepository.created_payload["nome_opcao"] == "MDF branco 19mm"

@@ -9,6 +9,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.valueset_precos import calcular_preco_liquido
+from app.domain.valueset_opcoes import base_codigo_opcao
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import OrcamentoItem
 from app.repositories.def_valueset_modelo_linha_operacao_repository import (
@@ -308,7 +309,12 @@ class OrcamentoItemValuesetLinhaService:
         self, id: int, data: EditarOrcamentoItemValuesetLinhaData
     ) -> OrcamentoItemValuesetLinhaResumo:
         """Edit one budget item ValueSet line."""
-        fields = self._build_fields(data)
+        existing = self.repository.get_by_id(id)
+        if existing is None:
+            raise ValueError("linha nao encontrada")
+
+        # The technical identity is immutable from the friendly-name dialog.
+        fields = self._build_fields(data, codigo_opcao_original=existing.codigo_opcao)
         self._validate_opcao_unica(
             orcamento_item_id=fields["orcamento_item_id"],
             chave=fields["chave"],
@@ -671,7 +677,7 @@ class OrcamentoItemValuesetLinhaService:
             "observacoes": linha.observacoes,
         }
 
-    def _build_fields(self, data) -> dict:
+    def _build_fields(self, data, *, codigo_opcao_original: str | None = None) -> dict:
         orcamento_item_id = self._validate_required_id(
             data.orcamento_item_id, "orcamento_item_id"
         )
@@ -683,11 +689,18 @@ class OrcamentoItemValuesetLinhaService:
             data.preco_liquido,
         )
 
+        codigo_opcao = self._resolver_codigo_opcao(
+            data,
+            chave=chave,
+            codigo_opcao_original=codigo_opcao_original,
+            orcamento_item_id=orcamento_item_id,
+        )
+
         return {
             "orcamento_item_id": orcamento_item_id,
             "chave": chave,
-            "codigo_opcao": self._normalize_codigo_opcao(data.codigo_opcao, chave),
-            "nome_opcao": data.nome_opcao,
+            "codigo_opcao": codigo_opcao,
+            "nome_opcao": self._normalize_nome_opcao(data.nome_opcao),
             "padrao": data.padrao,
             "prioridade": self._normalize_prioridade(data.prioridade),
             "ordem": self._normalize_ordem(data.ordem),
@@ -753,8 +766,45 @@ class OrcamentoItemValuesetLinhaService:
     def _normalize_codigo_opcao(self, codigo_opcao: str | None, chave: str) -> str:
         if codigo_opcao is None or not codigo_opcao.strip():
             return chave
-
         return codigo_opcao.strip().upper()
+
+    def _normalize_nome_opcao(self, nome_opcao: str | None) -> str | None:
+        texto = (nome_opcao or "").strip()
+        return texto or None
+
+    def _resolver_codigo_opcao(
+        self,
+        data,
+        *,
+        chave: str,
+        codigo_opcao_original: str | None,
+        orcamento_item_id: int,
+    ) -> str:
+        if codigo_opcao_original:
+            return codigo_opcao_original
+
+        codigo_interno = (data.codigo_opcao or "").strip()
+        if codigo_interno:
+            return self._normalize_codigo_opcao(codigo_interno, chave)
+
+        base = base_codigo_opcao(
+            chave=chave,
+            nome_opcao=data.nome_opcao,
+            ref_le=data.ref_le,
+            ref_materia_prima=data.ref_materia_prima,
+        )
+        return self._codigo_disponivel(orcamento_item_id, chave, base)
+
+    def _codigo_disponivel(self, orcamento_item_id: int, chave: str, base: str) -> str:
+        candidato = base
+        sufixo = 2
+        while self.repository.get_by_item_chave_opcao(
+            orcamento_item_id, chave, candidato
+        ):
+            separador = f"_{sufixo}"
+            candidato = f"{base[:100 - len(separador)]}{separador}"
+            sufixo += 1
+        return candidato
 
     def _normalize_ordem(self, ordem: int | None) -> int:
         if ordem is None:

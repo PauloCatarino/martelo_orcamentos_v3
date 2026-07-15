@@ -27,7 +27,6 @@ def test_page_line_headers() -> None:
     assert DefValuesetModeloDetailPage.LINHA_HEADERS == [
         "Chave",
         "Opção",
-        "Nome opção",
         "Ref LE",
         "Descrição orçamento",
         "Unidade",

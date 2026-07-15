@@ -734,3 +734,18 @@ def test_limpar_snapshot_pode_adiar_commit(monkeypatch) -> None:
 
     assert _FakeRepository.updated_payload["id"] == 5
     assert session.committed is False
+
+
+def test_criar_opcao_livre_gera_identidade_tecnica_a_partir_do_nome(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="MATERIAL_PORTAS",
+            nome_opcao="MDF branco 19mm",
+        )
+    )
+
+    assert _FakeRepository.created_payload["codigo_opcao"] == "OP_MDF_BRANCO_19MM"
+    assert _FakeRepository.created_payload["nome_opcao"] == "MDF branco 19mm"

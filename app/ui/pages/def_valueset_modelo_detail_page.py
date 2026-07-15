@@ -66,7 +66,6 @@ class DefValuesetModeloDetailPage(QWidget):
     LINHA_HEADERS = [
         "Chave",
         "Opção",
-        "Nome opção",
         "Ref LE",
         "Descrição orçamento",
         "Unidade",
@@ -318,8 +317,9 @@ class DefValuesetModeloDetailPage(QWidget):
             self._linhas_by_row[row_index] = linha
             values = [
                 texto_chave_valueset(estado),
-                texto_opcao_valueset(estado, linha.codigo_opcao or ""),
-                linha.nome_opcao or "",
+                texto_opcao_valueset(
+                    estado, linha.nome_opcao or linha.codigo_opcao or ""
+                ),
                 linha.ref_le or "",
                 linha.descricao_no_orcamento or "",
                 linha.unidade or "",

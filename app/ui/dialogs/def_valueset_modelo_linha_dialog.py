@@ -114,6 +114,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.on_save = on_save
         self.on_save_as = on_save_as
         self._is_edit = linha is not None
+        self._codigo_opcao_original = linha.codigo_opcao if linha is not None else None
         self._suppress = False
         self.operacoes_alteradas = False
 
@@ -130,8 +131,9 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
 
         self.codigo_opcao_input = QLineEdit()
-        self.codigo_opcao_input.setPlaceholderText("Ex.: AGL_19_STANDARD")
+        self.codigo_opcao_input.setVisible(False)
         self.nome_opcao_input = QLineEdit()
+        self.nome_opcao_input.setPlaceholderText("Nome amigável da opção")
         self.ref_materia_prima_input = QLineEdit()
         self.descricao_materia_prima_input = QLineEdit()
         self.valor_texto_input = QLineEdit()
@@ -186,8 +188,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Chave ValueSet", self.chave_input)
-        form.addRow("Código opção", self.codigo_opcao_input)
-        form.addRow("Nome opção", self.nome_opcao_input)
+        form.addRow("Opção", self.nome_opcao_input)
         form.addRow("", self.selecionar_mp_button)
         form.addRow("Ref LE", self.ref_le_input)
         form.addRow("Descrição no orçamento", self.descricao_no_orcamento_input)
@@ -419,6 +420,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
             self._suppress = False
 
     def _fill_from_linha(self, linha: DefValuesetModeloLinhaResumo) -> None:
+        self._codigo_opcao_original = linha.codigo_opcao
         self.codigo_opcao_input.setText(linha.codigo_opcao or "")
         self.nome_opcao_input.setText(linha.nome_opcao or "")
         self.ref_materia_prima_input.setText(linha.ref_materia_prima or "")
@@ -512,8 +514,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
             self.origem_dados_input.setCurrentText("MATERIA_PRIMA")
             self.editado_localmente_input.setChecked(False)
 
-            if not self.nome_opcao_input.text().strip():
-                self.nome_opcao_input.setText(materia.descricao or "")
+            self.nome_opcao_input.setText(materia.descricao or materia.ref_le or "")
             if not self.valor_texto_input.text().strip():
                 self.valor_texto_input.setText(materia.descricao or "")
         finally:
@@ -529,7 +530,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         """Return dialog data (raises ValueError on invalid numbers)."""
         return DefValuesetModeloLinhaDialogData(
             chave=obter_valor_chave_combo(self.chave_input),
-            codigo_opcao=self.codigo_opcao_input.text().strip(),
+            codigo_opcao=(self._codigo_opcao_original or "") if self._is_edit else "",
             nome_opcao=self.nome_opcao_input.text().strip(),
             ref_materia_prima=self._empty_to_none(self.ref_materia_prima_input.text()),
             descricao_materia_prima=self._empty_to_none(
@@ -586,12 +587,8 @@ class DefValuesetModeloLinhaDialog(QDialog):
             self.set_error("Selecione uma chave ValueSet.")
             return
 
-        if not self.codigo_opcao_input.text().strip():
-            self.set_error("O código da opção é obrigatório.")
-            return
-
         if not self.nome_opcao_input.text().strip():
-            self.set_error("O nome da opção é obrigatório.")
+            self.set_error("A opção é obrigatória.")
             return
 
         self._recalcular_preco_liquido()
