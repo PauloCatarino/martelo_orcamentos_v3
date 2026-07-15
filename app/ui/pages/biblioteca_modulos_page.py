@@ -31,22 +31,30 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.modulo_categorias import (
+    AMBITO_GLOBAL,
+    AMBITO_UTILIZADOR,
     MODULO_AMBITO_LABELS,
     get_modulo_categoria_label,
     get_modulo_categoria_options,
     normalize_modulo_ambito,
     normalize_modulo_categoria,
+    pode_gerir_modulo,
 )
 from app.domain.modulo_imagem import copiar_imagem_para_pasta
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.services.def_modulo_categoria_service import DefModuloCategoriaService
 from app.services.def_modulo_service import (
     DefModuloService,
     EditarDefModuloCabecalhoData,
 )
+from app.services.permission_service import is_admin
 from app.services.system_setting_service import SystemSettingService
 from app.ui.dialogs.editar_modulo_dialog import (
     EditarModuloDialog,
     EditarModuloDialogData,
+)
+from app.ui.dialogs.gerir_categorias_modulos_dialog import (
+    GerirCategoriasModulosDialog,
 )
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
@@ -76,6 +84,8 @@ class BibliotecaModulosPage(QWidget):
         self._modulos_utilizador: list = []
         self._modulos_globais: list = []
         self._por_linha: dict[QTableWidget, dict[int, object]] = {}
+        # {codigo: nome} of the manageable categories (phase 6).
+        self._categoria_labels: dict[str, str] = {}
 
         self.cabecalho = BarraCabecalho(
             "Biblioteca de Módulos",
@@ -97,15 +107,24 @@ class BibliotecaModulosPage(QWidget):
         self.pesquisa_input.pesquisa_mudou.connect(self._refill)
 
         self.categoria_filtro = QComboBox()
+        self.categoria_filtro.setToolTip("Filtrar os módulos por categoria")
         self.categoria_filtro.addItem("Todas", None)
         for code, label in get_modulo_categoria_options():
             self.categoria_filtro.addItem(label, code)
         self.categoria_filtro.currentIndexChanged.connect(self._refill)
 
+        self.gerir_categorias_button = QPushButton("Gerir Categorias…")
+        self.gerir_categorias_button.setToolTip(
+            "Criar, renomear, arquivar e eliminar categorias de módulos "
+            "(pode usar o nome de um cliente)"
+        )
+        self.gerir_categorias_button.clicked.connect(self.gerir_categorias)
+
         filtro_row = QHBoxLayout()
         filtro_row.addWidget(self.pesquisa_input, stretch=1)
         filtro_row.addWidget(QLabel("Categoria"))
         filtro_row.addWidget(self.categoria_filtro)
+        filtro_row.addWidget(self.gerir_categorias_button)
 
         self.tabela_utilizador = self._criar_tabela()
         self.tabela_globais = self._criar_tabela()
@@ -116,17 +135,28 @@ class BibliotecaModulosPage(QWidget):
         self.tabs.addTab(self.tabela_globais, "Global")
 
         self.editar_button = QPushButton("Editar")
+        self.editar_button.setToolTip("Editar o cabeçalho do módulo selecionado")
         self.editar_button.clicked.connect(self.editar_modulo)
         self.eliminar_button = QPushButton("Eliminar")
+        self.eliminar_button.setToolTip("Eliminar o módulo selecionado")
         self.eliminar_button.clicked.connect(self.eliminar_modulo)
+        self.converter_button = QPushButton("Converter Âmbito")
+        self.converter_button.setToolTip(
+            "Converter o módulo entre Utilizador e Global (reversível; "
+            "módulos globais são geridos pelo administrador)"
+        )
+        self.converter_button.clicked.connect(self.converter_ambito)
         self.ver_linhas_button = QPushButton("Ver linhas")
+        self.ver_linhas_button.setToolTip("Ver as linhas do módulo (só leitura)")
         self.ver_linhas_button.clicked.connect(self.ver_linhas)
         self.atualizar_button = QPushButton("Atualizar")
+        self.atualizar_button.setToolTip("Recarregar a biblioteca")
         self.atualizar_button.clicked.connect(self.carregar)
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.editar_button)
         buttons_layout.addWidget(self.eliminar_button)
+        buttons_layout.addWidget(self.converter_button)
         buttons_layout.addWidget(self.ver_linhas_button)
         buttons_layout.addWidget(self.atualizar_button)
         buttons_layout.addStretch()
@@ -170,19 +200,36 @@ class BibliotecaModulosPage(QWidget):
         return resultado.caminho, resultado.aviso
 
     def carregar(self) -> None:
-        """Load the user's own and the global modules into the tables."""
+        """Load the modules and the manageable categories into the page."""
         try:
             with SessionLocal() as session:
                 utilizador, globais = DefModuloService(
                     session
                 ).listar_modulos_para_dialogo(self._user_id())
+                categorias_service = DefModuloCategoriaService(session)
+                opcoes = categorias_service.listar_opcoes()
+                self._categoria_labels = categorias_service.labels()
+                session.commit()
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar os módulos.")
             return
 
         self._modulos_utilizador = utilizador
         self._modulos_globais = globais
+        self._recarregar_filtro_categorias(opcoes)
         self._refill()
+
+    def _recarregar_filtro_categorias(self, opcoes) -> None:
+        """Rebuild the category filter with the manageable categories."""
+        selecionada = self.categoria_filtro.currentData()
+        self.categoria_filtro.blockSignals(True)
+        self.categoria_filtro.clear()
+        self.categoria_filtro.addItem("Todas", None)
+        for code, label in opcoes:
+            self.categoria_filtro.addItem(label, code)
+        indice = self.categoria_filtro.findData(selecionada)
+        self.categoria_filtro.setCurrentIndex(indice if indice >= 0 else 0)
+        self.categoria_filtro.blockSignals(False)
 
     def _refill(self) -> None:
         self._preencher_tabela(self.tabela_utilizador, self._modulos_utilizador)
@@ -253,7 +300,7 @@ class BibliotecaModulosPage(QWidget):
             valores = (
                 modulo.codigo or "",
                 modulo.nome or "",
-                get_modulo_categoria_label(modulo.categoria),
+                get_modulo_categoria_label(modulo.categoria, self._categoria_labels),
                 MODULO_AMBITO_LABELS.get(
                     normalize_modulo_ambito(modulo.ambito), modulo.ambito
                 ),
@@ -314,6 +361,82 @@ class BibliotecaModulosPage(QWidget):
 
     # ----- Actions -----
 
+    def _pode_gerir(self, modulo) -> bool:
+        """Phase 6 permission gate for edit/delete/convert on one module."""
+        utilizador = app_session.current_user
+        return pode_gerir_modulo(
+            modulo.ambito,
+            modulo.user_id,
+            user_id=utilizador.id if utilizador is not None else None,
+            is_admin=is_admin(utilizador),
+        )
+
+    def _avisar_sem_permissao(self) -> None:
+        QMessageBox.information(
+            self,
+            "Biblioteca de Módulos",
+            "Sem permissão para gerir este módulo.\n\n"
+            "Módulos globais são geridos pelo administrador; módulos de "
+            "utilizador apenas pelo próprio (ou pelo administrador).",
+        )
+
+    def gerir_categorias(self) -> None:
+        """Open the category management dialog (phase 6)."""
+        dialog = GerirCategoriasModulosDialog(self)
+        dialog.exec()
+        if dialog.alterado:
+            self.carregar()
+
+    def converter_ambito(self) -> None:
+        """Convert the selected module between Utilizador and Global."""
+        item = self._modulo_selecionado()
+        if item is None:
+            self.status_label.setText("Selecione um módulo para converter.")
+            return
+
+        modulo = item.modulo
+        if not self._pode_gerir(modulo):
+            self._avisar_sem_permissao()
+            return
+
+        atual = normalize_modulo_ambito(modulo.ambito)
+        novo = AMBITO_UTILIZADOR if atual == AMBITO_GLOBAL else AMBITO_GLOBAL
+        rotulo_novo = MODULO_AMBITO_LABELS[novo]
+        resposta = QMessageBox.question(
+            self,
+            "Converter Âmbito",
+            f"Converter o módulo {modulo.codigo} de "
+            f"{MODULO_AMBITO_LABELS[atual]} para {rotulo_novo}?\n\n"
+            "A conversão é reversível.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        utilizador = app_session.current_user
+        try:
+            with SessionLocal() as session:
+                DefModuloService(session).converter_ambito(
+                    modulo.id,
+                    novo,
+                    acting_user_id=(
+                        utilizador.id if utilizador is not None else None
+                    ),
+                    is_admin=is_admin(utilizador),
+                )
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível converter o módulo.")
+            return
+
+        self.carregar()
+        self.status_label.setText(
+            f"Módulo {modulo.codigo} convertido para {rotulo_novo}."
+        )
+
     def editar_modulo(self) -> None:
         """Edit the selected module's header."""
         item = self._modulo_selecionado()
@@ -322,6 +445,9 @@ class BibliotecaModulosPage(QWidget):
             return
 
         modulo = item.modulo
+        if not self._pode_gerir(modulo):
+            self._avisar_sem_permissao()
+            return
         guardado: dict = {}
 
         def handle_save(dados: EditarModuloDialogData) -> bool:
@@ -377,6 +503,9 @@ class BibliotecaModulosPage(QWidget):
             return
 
         modulo = item.modulo
+        if not self._pode_gerir(modulo):
+            self._avisar_sem_permissao()
+            return
         resposta = QMessageBox.question(
             self,
             "Eliminar módulo",

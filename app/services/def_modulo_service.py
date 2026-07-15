@@ -24,6 +24,7 @@ from app.domain.modulo_categorias import (
     OUTROS,
     normalize_modulo_ambito,
     normalize_modulo_categoria,
+    pode_gerir_modulo,
 )
 from app.domain.modulo_estrutura import selecionar_linhas_topo
 from app.domain.modulo_pesquisa import filtrar_por_termo
@@ -563,6 +564,55 @@ class DefModuloService:
             self.session.commit()
 
         return deleted
+
+    def converter_ambito(
+        self,
+        modulo_id: int,
+        novo_ambito: str,
+        *,
+        acting_user_id: int | None,
+        is_admin: bool,
+    ) -> DefModuloResumo:
+        """Convert a module between UTILIZADOR and GLOBAL (phase 6, reversible).
+
+        Permissions follow pode_gerir_modulo: GLOBAL modules only by admins,
+        UTILIZADOR modules by their owner or an admin. Converting to
+        UTILIZADOR assigns the module to the acting user.
+        """
+        modulo = self.repository.get_by_id(modulo_id)
+        if modulo is None:
+            raise ValueError("Módulo não encontrado.")
+
+        if not pode_gerir_modulo(
+            modulo.ambito,
+            modulo.user_id,
+            user_id=acting_user_id,
+            is_admin=is_admin,
+        ):
+            raise ValueError(
+                "Sem permissão para converter este módulo "
+                "(módulos globais são geridos pelo administrador)."
+            )
+
+        ambito = normalize_modulo_ambito(novo_ambito)
+        if ambito == normalize_modulo_ambito(modulo.ambito):
+            return modulo
+
+        if ambito == AMBITO_UTILIZADOR:
+            if acting_user_id is None:
+                raise ValueError(
+                    "É necessário um utilizador para converter para o âmbito Utilizador."
+                )
+            result = self.repository.update_ambito(
+                id=modulo_id, ambito=AMBITO_UTILIZADOR, user_id=acting_user_id
+            )
+        else:
+            result = self.repository.update_ambito(
+                id=modulo_id, ambito=AMBITO_GLOBAL, user_id=None
+            )
+        self.session.commit()
+
+        return result
 
     # ----- helpers -----
 

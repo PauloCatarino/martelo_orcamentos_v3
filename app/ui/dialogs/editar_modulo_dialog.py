@@ -30,10 +30,11 @@ from app.domain.modulo_categorias import (
     AMBITO_GLOBAL,
     AMBITO_UTILIZADOR,
     OUTROS,
-    get_modulo_categoria_options,
+    get_modulo_categoria_label,
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
+from app.ui.helpers.modulo_categoria_opcoes import carregar_opcoes_categorias
 
 
 @dataclass(frozen=True)
@@ -83,11 +84,15 @@ class EditarModuloDialog(QDialog):
         self._selecionar(self.ambito_input, normalize_modulo_ambito(dados.ambito))
 
         self.categoria_input = QComboBox()
-        for code, label in get_modulo_categoria_options():
+        for code, label in carregar_opcoes_categorias():
             self.categoria_input.addItem(label, code)
-        self._selecionar(
-            self.categoria_input, normalize_modulo_categoria(dados.categoria)
-        )
+        categoria_atual = normalize_modulo_categoria(dados.categoria)
+        if self.categoria_input.findData(categoria_atual) < 0:
+            # Archived/legacy category: keep it selectable on this module.
+            self.categoria_input.addItem(
+                get_modulo_categoria_label(categoria_atual), categoria_atual
+            )
+        self._selecionar(self.categoria_input, categoria_atual)
 
         self.imagem_input = QLineEdit(dados.imagem_path or "")
         self.imagem_input.setPlaceholderText("(opcional) caminho da imagem")

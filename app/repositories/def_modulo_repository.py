@@ -149,6 +149,20 @@ class DefModuloRepository:
 
         return self._to_modulo_resumo(modulo)
 
+    def update_ambito(
+        self, *, id: int, ambito: str, user_id: int | None
+    ) -> DefModuloResumo:
+        """Update only a module's scope/owner (phase 6 conversion)."""
+        modulo = self.session.get(DefModulo, id)
+        if modulo is None:
+            raise ValueError("def_modulo not found")
+
+        modulo.ambito = ambito
+        modulo.user_id = user_id
+        self.session.flush()
+
+        return self._to_modulo_resumo(modulo)
+
     def delete_modulo(self, id: int) -> bool:
         """Delete one module and all its lines (explicit cascade)."""
         modulo = self.session.get(DefModulo, id)

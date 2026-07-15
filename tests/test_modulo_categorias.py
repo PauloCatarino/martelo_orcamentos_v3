@@ -30,8 +30,10 @@ def test_normalize_categoria_com_fallback() -> None:
     assert normalize_modulo_categoria("roupeiros") == ROUPEIROS
     assert normalize_modulo_categoria("  COZINHAS  ") == COZINHAS
     assert normalize_modulo_categoria("MOVEIS_WC") == MOVEIS_WC
-    # Unknown / empty / None -> OUTROS.
-    assert normalize_modulo_categoria("desconhecida") == OUTROS
+    # Phase 6: unknown codes are user-managed categories and are KEPT (slug).
+    assert normalize_modulo_categoria("desconhecida") == "DESCONHECIDA"
+    assert normalize_modulo_categoria("Cliente Silva") == "CLIENTE_SILVA"
+    # Empty / None -> OUTROS.
     assert normalize_modulo_categoria("") == OUTROS
     assert normalize_modulo_categoria(None) == OUTROS
 
@@ -39,6 +41,12 @@ def test_normalize_categoria_com_fallback() -> None:
 def test_categoria_label() -> None:
     assert get_modulo_categoria_label("cozinhas") == "Cozinhas"
     assert get_modulo_categoria_label(None) == "Outros"
+    # Managed labels take precedence; unknown codes fall back to title-case.
+    assert (
+        get_modulo_categoria_label("CLIENTE_SILVA", {"CLIENTE_SILVA": "Cliente Silva"})
+        == "Cliente Silva"
+    )
+    assert get_modulo_categoria_label("CLIENTE_SILVA") == "Cliente Silva"
 
 
 def test_normalize_ambito_com_fallback() -> None:

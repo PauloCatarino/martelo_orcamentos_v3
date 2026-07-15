@@ -35,10 +35,13 @@ from PySide6.QtWidgets import (
 
 from app.domain.modulo_categorias import (
     get_modulo_categoria_label,
-    get_modulo_categoria_options,
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.ui.helpers.modulo_categoria_opcoes import (
+    carregar_labels_categorias,
+    carregar_opcoes_categorias,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -74,6 +77,9 @@ class ImportarModuloDialog(QDialog):
         self._modulos_utilizador = list(modulos_utilizador or [])
         self._modulos_globais = list(modulos_globais or [])
         self._obter_linhas = obter_linhas
+        # Manageable categories (phase 6): options for the filter + labels.
+        self._opcoes_categorias = carregar_opcoes_categorias()
+        self._categoria_labels = carregar_labels_categorias()
         self._modulo_selecionado = None
         self.modulo_id_selecionado: int | None = None
         self._preview_pixmap_original: QPixmap | None = None
@@ -122,7 +128,7 @@ class ImportarModuloDialog(QDialog):
 
         self.categoria_filtro = QComboBox()
         self.categoria_filtro.addItem("Todas", None)
-        for code, label in get_modulo_categoria_options():
+        for code, label in self._opcoes_categorias:
             self.categoria_filtro.addItem(label, code)
         self.categoria_filtro.currentIndexChanged.connect(self._recarregar_tabelas)
 
@@ -329,7 +335,9 @@ class ImportarModuloDialog(QDialog):
         self._ajustar_imagem_preview()
 
         nome = modulo.nome or modulo.codigo or ""
-        categoria = get_modulo_categoria_label(modulo.categoria)
+        categoria = get_modulo_categoria_label(
+            modulo.categoria, self._categoria_labels
+        )
         self.preview_nome.setText(f"{modulo.codigo} — {nome}  ({categoria})")
         self.preview_descricao.setPlainText(modulo.descricao or "")
 

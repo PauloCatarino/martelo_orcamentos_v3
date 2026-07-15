@@ -44,11 +44,14 @@ from app.domain.modulo_categorias import (
     MODULO_AMBITO_LABELS,
     OUTROS,
     get_modulo_categoria_label,
-    get_modulo_categoria_options,
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.ui.helpers.modulo_categoria_opcoes import (
+    carregar_labels_categorias,
+    carregar_opcoes_categorias,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -90,6 +93,9 @@ class GuardarModuloDialog(QDialog):
         super().__init__(parent)
 
         self.on_save = on_save
+        # Manageable categories (phase 6): options for pickers + name labels.
+        self._opcoes_categorias = carregar_opcoes_categorias()
+        self._categoria_labels = carregar_labels_categorias()
         self._modulos_utilizador = list(modulos_utilizador or [])
         self._modulos_globais = list(modulos_globais or [])
         self._modulos_por_id = {
@@ -150,7 +156,7 @@ class GuardarModuloDialog(QDialog):
 
         self.categoria_filtro = QComboBox()
         self.categoria_filtro.addItem("Todas", None)
-        for code, label in get_modulo_categoria_options():
+        for code, label in self._opcoes_categorias:
             self.categoria_filtro.addItem(label, code)
         self.categoria_filtro.currentIndexChanged.connect(self._recarregar_tabelas)
 
@@ -218,7 +224,7 @@ class GuardarModuloDialog(QDialog):
         self.ambito_input.addItem("Global (todos)", AMBITO_GLOBAL)
 
         self.categoria_input = QComboBox()
-        for code, label in get_modulo_categoria_options():
+        for code, label in self._opcoes_categorias:
             self.categoria_input.addItem(label, code)
         self._selecionar_categoria(OUTROS)
 
@@ -267,7 +273,7 @@ class GuardarModuloDialog(QDialog):
             valores = (
                 modulo.codigo or "",
                 modulo.nome or "",
-                get_modulo_categoria_label(modulo.categoria),
+                get_modulo_categoria_label(modulo.categoria, self._categoria_labels),
                 MODULO_AMBITO_LABELS.get(
                     normalize_modulo_ambito(modulo.ambito), modulo.ambito
                 ),
@@ -355,8 +361,13 @@ class GuardarModuloDialog(QDialog):
 
     def _selecionar_categoria(self, code: str) -> None:
         index = self.categoria_input.findData(code)
-        if index >= 0:
-            self.categoria_input.setCurrentIndex(index)
+        if index < 0:
+            # Archived/legacy category of an existing module: keep it selectable.
+            self.categoria_input.addItem(
+                get_modulo_categoria_label(code, self._categoria_labels), code
+            )
+            index = self.categoria_input.findData(code)
+        self.categoria_input.setCurrentIndex(index)
 
     def _selecionar_ambito(self, code: str) -> None:
         index = self.ambito_input.findData(code)
