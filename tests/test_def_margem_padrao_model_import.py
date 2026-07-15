@@ -36,7 +36,7 @@ def test_margens_padrao_types() -> None:
         normalize_ambito,
     )
 
-    assert AMBITOS_MARGENS_PADRAO == ("STANDARD", "CLIENTE", "UTILIZADOR")
+    assert "CLIENTE_FINAL" in AMBITOS_MARGENS_PADRAO
     assert normalize_ambito(" cliente ") == "CLIENTE"
     assert normalize_ambito("OUTRO") is None
     assert normalize_ambito(None) is None

@@ -71,15 +71,14 @@ class MargensPadraoPage(QWidget):
         # Per-scope state: table + records of the visible rows.
         self._registos_por_ambito: dict[str, dict[int, DefMargemPadraoResumo]] = {
             AMBITO_CLIENTE: {},
-            AMBITO_UTILIZADOR: {},
         }
         self._tabelas: dict[str, QTableWidget] = {}
         self._mostrar_inativos: dict[str, QCheckBox] = {}
 
         tabs = QTabWidget()
         tabs.addTab(self._criar_tab_standard(), "Standard")
+        tabs.addTab(self._criar_tab_cliente_final(), "Cliente Final")
         tabs.addTab(self._criar_tab_registos(AMBITO_CLIENTE), "Por Cliente")
-        tabs.addTab(self._criar_tab_registos(AMBITO_UTILIZADOR), "Por Utilizador")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -145,6 +144,49 @@ class MargensPadraoPage(QWidget):
 
         self.status_label.setText("Margens Standard guardadas.")
 
+    def _criar_tab_cliente_final(self) -> QWidget:
+        """Build the single shared Cliente Final margin profile."""
+        self.cf_lucro_spin = self._criar_spin()
+        self.cf_mp_spin = self._criar_spin()
+        self.cf_mao_obra_spin = self._criar_spin()
+        self.cf_acabamentos_spin = self._criar_spin()
+        self.cf_administrativos_spin = self._criar_spin()
+        form = QFormLayout()
+        for label, spin in (
+            ("Margem Lucro", self.cf_lucro_spin),
+            ("Margem Matérias-Primas", self.cf_mp_spin),
+            ("Margem Mão de Obra", self.cf_mao_obra_spin),
+            ("Margem Acabamentos", self.cf_acabamentos_spin),
+            ("Custos Administrativos", self.cf_administrativos_spin),
+        ):
+            form.addRow(label, spin)
+        guardar = QPushButton("Guardar")
+        guardar.clicked.connect(self.guardar_cliente_final)
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Perfil único para orçamentos de Cliente Final."))
+        layout.addLayout(form)
+        layout.addWidget(guardar)
+        layout.addStretch()
+        tab = QWidget(); tab.setLayout(layout)
+        return tab
+
+    def guardar_cliente_final(self) -> None:
+        try:
+            with SessionLocal() as session:
+                DefMargemPadraoService(session).guardar_cliente_final(
+                    EditarMargemPadraoData(
+                        margem_lucro_pct=self._valor(self.cf_lucro_spin),
+                        margem_mp_pct=self._valor(self.cf_mp_spin),
+                        margem_mao_obra_pct=self._valor(self.cf_mao_obra_spin),
+                        margem_acabamentos_pct=self._valor(self.cf_acabamentos_spin),
+                        custos_administrativos_pct=self._valor(self.cf_administrativos_spin),
+                    )
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível guardar as margens Cliente Final.")
+            return
+        self.status_label.setText("Margens Cliente Final guardadas.")
+
     # ----- Per-customer / per-user tabs -----
 
     def _criar_tab_registos(self, ambito: str) -> QWidget:
@@ -197,19 +239,17 @@ class MargensPadraoPage(QWidget):
             with SessionLocal() as session:
                 service = DefMargemPadraoService(session)
                 standard = service.obter_standard()
+                cliente_final = service.obter_cliente_final()
                 clientes = service.listar_por_ambito(AMBITO_CLIENTE)
-                utilizadores = service.listar_por_ambito(AMBITO_UTILIZADOR)
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar as margens por defeito.")
             return
 
         self._preencher_standard(standard)
+        self._preencher_cliente_final(cliente_final)
         if not self._mostrar_inativos[AMBITO_CLIENTE].isChecked():
             clientes = [registo for registo in clientes if registo.ativo]
-        if not self._mostrar_inativos[AMBITO_UTILIZADOR].isChecked():
-            utilizadores = [registo for registo in utilizadores if registo.ativo]
         self._preencher_tabela(AMBITO_CLIENTE, clientes)
-        self._preencher_tabela(AMBITO_UTILIZADOR, utilizadores)
 
     def _preencher_standard(self, registo: DefMargemPadraoResumo | None) -> None:
         """Reflect the STANDARD record on the form (zeros when missing)."""
@@ -227,6 +267,17 @@ class MargensPadraoPage(QWidget):
         self.std_administrativos_spin.setValue(
             float(margens.custos_administrativos_pct) if margens else 0.0
         )
+
+    def _preencher_cliente_final(self, registo: DefMargemPadraoResumo | None) -> None:
+        margens = registo.to_margens() if registo is not None else None
+        for spin, valor in (
+            (self.cf_lucro_spin, margens.margem_lucro_pct if margens else 0),
+            (self.cf_mp_spin, margens.margem_mp_pct if margens else 0),
+            (self.cf_mao_obra_spin, margens.margem_mao_obra_pct if margens else 0),
+            (self.cf_acabamentos_spin, margens.margem_acabamentos_pct if margens else 0),
+            (self.cf_administrativos_spin, margens.custos_administrativos_pct if margens else 0),
+        ):
+            spin.setValue(float(valor))
 
     def _preencher_tabela(
         self, ambito: str, registos: list[DefMargemPadraoResumo]

@@ -29,7 +29,7 @@ def test_novo_orcamento_dialog_tem_combo_de_margens_iniciais() -> None:
     assert "Utilizador" in source
     assert '"Standard"' in source
     assert '"Do cliente"' in source
-    assert '"Do utilizador"' in source
+    assert '"Cliente Final"' in source
     assert "Margens iniciais:" in source
 
     # The customer/user options are enabled only when a record applies.

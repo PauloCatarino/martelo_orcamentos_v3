@@ -34,6 +34,7 @@ from app.domain.custeio_simplificado import (
     MODALIDADE_CUSTEIO_SIMPLIFICADO,
     normalizar_modalidade_custeio,
 )
+from app.domain.margens_padrao_types import normalizar_perfil_margens
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
@@ -272,6 +273,18 @@ class OrcamentoItemService:
             raise ValueError("orcamento_versao not found")
         self._registar_margens_alteradas(orcamento_versao_id, anteriores, margens)
         return self.aplicar_precos_da_versao(orcamento_versao_id)
+
+    def get_perfil_margens_versao(self, orcamento_versao_id: int) -> str:
+        return normalizar_perfil_margens(
+            self.repository.get_perfil_margens_versao(orcamento_versao_id)
+        )
+
+    def definir_perfil_margens_versao(self, orcamento_versao_id: int, perfil: str) -> str:
+        perfil = normalizar_perfil_margens(perfil)
+        if not self.repository.update_perfil_margens_versao(orcamento_versao_id, perfil):
+            raise ValueError("orcamento_versao not found")
+        self.session.commit()
+        return perfil
 
     def _registar_margens_alteradas(
         self,

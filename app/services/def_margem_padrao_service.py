@@ -13,9 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
+    AMBITO_CLIENTE_FINAL,
     AMBITO_STANDARD,
     AMBITO_UTILIZADOR,
+    PERFIL_MARGENS_CLIENTE,
+    PERFIL_MARGENS_CLIENTE_FINAL,
+    PERFIL_MARGENS_STANDARD,
     normalize_ambito,
+    normalizar_perfil_margens,
 )
 from app.domain.precos import MargensOrcamento
 from app.repositories.def_margem_padrao_repository import (
@@ -28,6 +33,7 @@ from app.repositories.def_margem_padrao_repository import (
 # Resolution origins reported by resolver_margens_padrao.
 ORIGEM_CLIENTE = "cliente"
 ORIGEM_UTILIZADOR = "utilizador"
+ORIGEM_CLIENTE_FINAL = "cliente_final"
 ORIGEM_STANDARD = "standard"
 ORIGEM_ZEROS = "zeros"
 
@@ -97,6 +103,32 @@ class DefMargemPadraoService:
             )
         self.session.commit()
 
+        return result
+
+    def obter_cliente_final(self) -> DefMargemPadraoResumo | None:
+        return self.repository.get_cliente_final()
+
+    def guardar_cliente_final(self, data: EditarMargemPadraoData) -> DefMargemPadraoResumo:
+        registo = self.repository.get_cliente_final()
+        if registo is None:
+            result = self.repository.create_margem(
+                ambito=AMBITO_CLIENTE_FINAL,
+                margem_lucro_pct=data.margem_lucro_pct,
+                margem_mp_pct=data.margem_mp_pct,
+                margem_mao_obra_pct=data.margem_mao_obra_pct,
+                margem_acabamentos_pct=data.margem_acabamentos_pct,
+                custos_administrativos_pct=data.custos_administrativos_pct,
+            )
+        else:
+            result = self.repository.update_margens(
+                id=registo.id,
+                margem_lucro_pct=data.margem_lucro_pct,
+                margem_mp_pct=data.margem_mp_pct,
+                margem_mao_obra_pct=data.margem_mao_obra_pct,
+                margem_acabamentos_pct=data.margem_acabamentos_pct,
+                custos_administrativos_pct=data.custos_administrativos_pct,
+            )
+        self.session.commit()
         return result
 
     def criar(self, data: CriarMargemPadraoData) -> DefMargemPadraoResumo:
@@ -210,6 +242,22 @@ class DefMargemPadraoService:
             return margens, ORIGEM_STANDARD
 
         return MargensOrcamento(), ORIGEM_ZEROS
+
+    def resolver_margens_perfil(
+        self, perfil: str | None, cliente_id: int | None
+    ) -> tuple[MargensOrcamento, str]:
+        """Resolve exactly the selected profile; no user-based fallback."""
+        perfil = normalizar_perfil_margens(perfil)
+        if perfil == PERFIL_MARGENS_CLIENTE and cliente_id is not None:
+            margens = self.repository.get_margens_ativas_por_cliente(cliente_id)
+            if margens is not None:
+                return margens, ORIGEM_CLIENTE
+        elif perfil == PERFIL_MARGENS_CLIENTE_FINAL:
+            margens = self.repository.get_margens_ativas_cliente_final()
+            if margens is not None:
+                return margens, ORIGEM_CLIENTE_FINAL
+        margens = self.repository.get_margens_ativas_standard()
+        return (margens, ORIGEM_STANDARD) if margens is not None else (MargensOrcamento(), ORIGEM_ZEROS)
 
     def listar_clientes(self) -> list[ClienteRef]:
         """List customers for the per-customer combo."""

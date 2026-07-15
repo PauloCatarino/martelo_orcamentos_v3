@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
+    AMBITO_CLIENTE_FINAL,
     AMBITO_STANDARD,
     AMBITO_UTILIZADOR,
 )
@@ -128,6 +129,15 @@ class DefMargemPadraoRepository:
 
         return self._to_resumo(registo)
 
+    def get_cliente_final(self) -> DefMargemPadraoResumo | None:
+        """Return the single Cliente Final record (active or not), if any."""
+        registo = self.session.execute(
+            select(DefMargemPadrao)
+            .where(DefMargemPadrao.ambito == AMBITO_CLIENTE_FINAL)
+            .order_by(DefMargemPadrao.id.asc())
+        ).scalars().first()
+        return self._to_resumo(registo) if registo is not None else None
+
     def get_margens_ativas_standard(self) -> MargensOrcamento | None:
         """Margins of the active STANDARD record, or None."""
         registo = self.get_standard()
@@ -151,6 +161,10 @@ class DefMargemPadraoRepository:
             return None
 
         return registo.to_margens()
+
+    def get_margens_ativas_cliente_final(self) -> MargensOrcamento | None:
+        registo = self.get_cliente_final()
+        return registo.to_margens() if registo is not None and registo.ativo else None
 
     def find_cliente_id_por_contacto(
         self, nome: str | None, email: str | None

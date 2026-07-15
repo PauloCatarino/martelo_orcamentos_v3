@@ -66,6 +66,11 @@ class OrcamentoVersao(Base):
     custos_administrativos_pct: Mapped[Decimal] = mapped_column(
         Numeric(8, 4), nullable=False, default=Decimal("0"), server_default="0"
     )
+    # Selected source for "Repor Padrão"; the copied values above remain
+    # editable locally in the budget version.
+    perfil_margens: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="STANDARD", server_default="STANDARD"
+    )
     # Production type applied to all the version items ('STD'/'SERIE'); each item
     # may override it with its own tipo_producao (phase 8S.4).
     tipo_producao_default: Mapped[str] = mapped_column(

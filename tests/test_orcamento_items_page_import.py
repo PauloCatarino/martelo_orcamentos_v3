@@ -101,7 +101,7 @@ def test_orcamento_items_page_repor_padrao() -> None:
 
     source = inspect.getsource(OrcamentoItemsPage.repor_margens_padrao)
     assert "QMessageBox.question" in source  # confirmation before replacing
-    assert "resolver_margens_padrao" in source  # cliente -> utilizador -> standard
+    assert "resolver_margens_perfil" in source
     assert "definir_margens_versao" in source  # re-applies prices
 
     init_source = inspect.getsource(OrcamentoItemsPage._criar_painel_margens)

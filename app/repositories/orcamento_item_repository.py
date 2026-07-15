@@ -257,6 +257,18 @@ class OrcamentoItemRepository:
 
         return True
 
+    def get_perfil_margens_versao(self, orcamento_versao_id: int) -> str | None:
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        return versao.perfil_margens if versao is not None else None
+
+    def update_perfil_margens_versao(self, orcamento_versao_id: int, perfil: str) -> bool:
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+        versao.perfil_margens = perfil
+        self.session.flush()
+        return True
+
     def update_ajuste_item(self, item_id: int, ajuste_eur: Decimal) -> bool:
         """Set one item's manual price adjustment (EUR)."""
         orcamento_item = self.session.get(OrcamentoItem, item_id)

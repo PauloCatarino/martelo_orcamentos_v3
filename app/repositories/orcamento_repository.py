@@ -173,6 +173,7 @@ class OrcamentoRepository:
         info_1: str | None = None,
         info_2: str | None = None,
         margens: MargensOrcamento | None = None,
+        perfil_margens: str = "STANDARD",
     ) -> OrcamentoCriado:
         """Create a simple budget with version 01.
 
@@ -208,6 +209,7 @@ class OrcamentoRepository:
             enc_phc=enc_phc,
             preco_total=Decimal("0"),
             preco_origem=Decimal("0"),
+            perfil_margens=perfil_margens,
             is_locked=False,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
@@ -260,6 +262,7 @@ class OrcamentoRepository:
             preco_total=Decimal("0"),
             preco_origem=origem.preco_total,
             tipo_producao_default=origem.tipo_producao_default,
+            perfil_margens=origem.perfil_margens,
             is_locked=False,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
@@ -321,6 +324,7 @@ class OrcamentoRepository:
             margem_acabamentos_pct=origem.margem_acabamentos_pct,
             custos_administrativos_pct=origem.custos_administrativos_pct,
             tipo_producao_default=origem.tipo_producao_default,
+            perfil_margens=origem.perfil_margens,
             is_locked=False,
             locked_at=None,
             created_by_id=created_by_id,

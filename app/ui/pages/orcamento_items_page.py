@@ -42,6 +42,11 @@ from app.domain.custeio_simplificado import (
     MODALIDADE_CUSTEIO_SIMPLIFICADO,
     MODALIDADE_CUSTEIO_STANDARD,
 )
+from app.domain.margens_padrao_types import (
+    PERFIL_MARGENS_CLIENTE,
+    PERFIL_MARGENS_CLIENTE_FINAL,
+    PERFIL_MARGENS_STANDARD,
+)
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.orcamento_item_custeio_linha_service import (
@@ -302,6 +307,7 @@ class OrcamentoItemsPage(QWidget):
                     self.orcamento_versao_id
                 )
                 margens = item_service.get_margens_versao(self.orcamento_versao_id)
+                perfil_margens = item_service.get_perfil_margens_versao(self.orcamento_versao_id)
                 blocos_por_item = item_service.get_blocos_custo_por_item(
                     self.orcamento_versao_id
                 )
@@ -311,6 +317,7 @@ class OrcamentoItemsPage(QWidget):
 
         self._tipo_producao_default = tipo_default
         self._margens = margens
+        self._perfil_margens = perfil_margens
         self._blocos_por_item = blocos_por_item
         self._atualizar_seletor_producao()
         self._atualizar_painel_margens()
@@ -380,6 +387,15 @@ class OrcamentoItemsPage(QWidget):
         )
         self.repor_padrao_button.clicked.connect(self.repor_margens_padrao)
 
+        self.perfil_margens_combo = QComboBox()
+        self.perfil_margens_combo.addItem("Standard", PERFIL_MARGENS_STANDARD)
+        self.perfil_margens_combo.addItem("Cliente Final", PERFIL_MARGENS_CLIENTE_FINAL)
+        self.perfil_margens_combo.addItem("Por Cliente", PERFIL_MARGENS_CLIENTE)
+        self.perfil_margens_combo.setToolTip(
+            "Perfil a usar quando escolher Repor Padrão. As margens do orçamento permanecem editáveis."
+        )
+        self.perfil_margens_combo.currentIndexChanged.connect(self._on_perfil_margens_changed)
+
         layout = QHBoxLayout()
         layout.addWidget(titulo)
         for label, spin in (
@@ -402,6 +418,8 @@ class OrcamentoItemsPage(QWidget):
         layout.addWidget(self.objetivo_spin)
         layout.addWidget(self.objetivo_button)
         layout.addWidget(self.atualizar_custos_button)
+        layout.addWidget(QLabel("Perfil:"))
+        layout.addWidget(self.perfil_margens_combo)
         layout.addWidget(self.repor_padrao_button)
         layout.addStretch()
 
@@ -432,6 +450,8 @@ class OrcamentoItemsPage(QWidget):
             self.custos_administrativos_spin.setValue(
                 float(self._margens.custos_administrativos_pct)
             )
+            indice = self.perfil_margens_combo.findData(self._perfil_margens)
+            self.perfil_margens_combo.setCurrentIndex(indice if indice >= 0 else 0)
         finally:
             self._carregando_margens = False
 
@@ -512,10 +532,23 @@ class OrcamentoItemsPage(QWidget):
 
     ORIGEM_MARGENS_LABELS = {
         "cliente": "margens do cliente",
-        "utilizador": "margens do utilizador",
+        "cliente_final": "margens Cliente Final",
         "standard": "margens Standard",
         "zeros": "zeros (sem registo por defeito ativo)",
     }
+
+    def _on_perfil_margens_changed(self) -> None:
+        if self._carregando_margens:
+            return
+        try:
+            with SessionLocal() as session:
+                perfil = OrcamentoItemService(session).definir_perfil_margens_versao(
+                    self.orcamento_versao_id, self.perfil_margens_combo.currentData()
+                )
+            self._perfil_margens = perfil
+            self.status_label.setText("Perfil de margens guardado. Use Repor Padrão para o aplicar.")
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível guardar o perfil de margens.")
 
     def repor_margens_padrao(self) -> None:
         """Replace the version margins with the default set and re-price.
@@ -534,9 +567,6 @@ class OrcamentoItemsPage(QWidget):
         if response != QMessageBox.StandardButton.Yes:
             return
 
-        current_user = app_session.current_user
-        user_id = current_user.id if current_user is not None else None
-
         try:
             with SessionLocal() as session:
                 cliente_id = OrcamentoService(session).get_cliente_id_by_versao(
@@ -544,7 +574,7 @@ class OrcamentoItemsPage(QWidget):
                 )
                 margens, origem = DefMargemPadraoService(
                     session
-                ).resolver_margens_padrao(cliente_id, user_id)
+                ).resolver_margens_perfil(self._perfil_margens, cliente_id)
                 resultado = OrcamentoItemService(session).definir_margens_versao(
                     self.orcamento_versao_id, margens
                 )

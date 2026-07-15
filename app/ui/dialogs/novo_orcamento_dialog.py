@@ -24,6 +24,7 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
+    AMBITO_CLIENTE_FINAL,
     AMBITO_STANDARD,
     AMBITO_UTILIZADOR,
 )
@@ -92,7 +93,7 @@ class NovoOrcamentoDialog(QDialog):
         self.margens_combo.setToolTip(self.MARGENS_TOOLTIP)
         self.margens_combo.addItem("Standard", AMBITO_STANDARD)
         self.margens_combo.addItem("Do cliente", AMBITO_CLIENTE)
-        self.margens_combo.addItem("Do utilizador", AMBITO_UTILIZADOR)
+        self.margens_combo.addItem("Cliente Final", AMBITO_CLIENTE_FINAL)
         self._carregar_disponibilidade_margens()
 
         self.error_label = QLabel("")
@@ -191,6 +192,14 @@ class NovoOrcamentoDialog(QDialog):
                 tem_margens_user = False
 
         self._set_opcao_margens_enabled(AMBITO_UTILIZADOR, tem_margens_user)
+        try:
+            with SessionLocal() as session:
+                tem_cliente_final = (
+                    DefMargemPadraoService(session).obter_cliente_final() is not None
+                )
+        except SQLAlchemyError:
+            tem_cliente_final = False
+        self._set_opcao_margens_enabled(AMBITO_CLIENTE_FINAL, tem_cliente_final)
         self._atualizar_opcao_margens_cliente()
 
     def _atualizar_opcao_margens_cliente(self) -> None:

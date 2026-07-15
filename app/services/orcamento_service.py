@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
+    AMBITO_CLIENTE_FINAL,
     AMBITO_STANDARD,
     AMBITO_UTILIZADOR,
+    normalizar_perfil_margens,
     normalize_ambito,
 )
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
@@ -112,6 +114,7 @@ class OrcamentoService:
             info_1=data.info_1,
             info_2=data.info_2,
             margens=self._resolver_margens_iniciais(data),
+            perfil_margens=normalizar_perfil_margens(data.margens_escolha),
         )
         self.session.commit()
 
@@ -214,6 +217,9 @@ class OrcamentoService:
             return self.margens_repository.get_margens_ativas_por_cliente(
                 data.cliente_id
             )
+
+        if escolha == AMBITO_CLIENTE_FINAL:
+            return self.margens_repository.get_margens_ativas_cliente_final()
 
         if escolha == AMBITO_UTILIZADOR:
             if data.created_by_id is None:
