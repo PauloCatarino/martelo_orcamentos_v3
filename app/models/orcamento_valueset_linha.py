@@ -77,6 +77,8 @@ class OrcamentoValuesetLinha(Base):
     familia_materia_prima: Mapped[str | None] = mapped_column(String(100), nullable=True)
     coresp_orla_0_4: Mapped[str | None] = mapped_column(String(100), nullable=True)
     coresp_orla_1_0: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    preco_orla_0_4_m2: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    preco_orla_1_0_m2: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     comp_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     larg_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     esp_mp: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)

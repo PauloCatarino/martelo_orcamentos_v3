@@ -109,6 +109,8 @@ class OrcamentoItemCusteioLinhaResumo:
     excluir_producao: bool = False
     excluir_acabamento: bool = False
     excluir_mo: bool = False
+    preco_orla_0_4_m2: Decimal | None = None
+    preco_orla_1_0_m2: Decimal | None = None
     acabamento_face_sup: str | None = None
     acabamento_face_inf: str | None = None
     area_acabamento_sup: Decimal | None = None
@@ -419,6 +421,8 @@ class OrcamentoItemCusteioLinhaRepository:
             familia_materia_prima=linha.familia_materia_prima,
             coresp_orla_0_4=linha.coresp_orla_0_4,
             coresp_orla_1_0=linha.coresp_orla_1_0,
+            preco_orla_0_4_m2=linha.preco_orla_0_4_m2,
+            preco_orla_1_0_m2=linha.preco_orla_1_0_m2,
             comp_mp=linha.comp_mp,
             larg_mp=linha.larg_mp,
             esp_mp=linha.esp_mp,

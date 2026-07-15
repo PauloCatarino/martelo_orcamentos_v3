@@ -60,12 +60,16 @@ class MateriaPrimaPickerDialog(QDialog):
         parent=None,
         initial_tipo: str | None = None,
         initial_familia: str | None = None,
+        apenas_orlas: bool = False,
     ) -> None:
         super().__init__(parent)
 
         self.selected_materia: DefMateriaPrimaResumo | None = None
         self._materias_by_row: dict[int, DefMateriaPrimaResumo] = {}
         self._aplicando_filtros = False
+        self.apenas_orlas = apenas_orlas
+        if self.apenas_orlas:
+            self.setWindowTitle("Selecionar Orla (família ORLA / Ref LE ORL*)")
 
         self.setWindowTitle("Selecionar Matéria-Prima")
         self.setModal(True)
@@ -230,16 +234,27 @@ class MateriaPrimaPickerDialog(QDialog):
 
         tipo_filtro = self._filtro_atual(self.tipo_filter)
         familia_filtro = self._filtro_atual(self.familia_filter)
-        if tipo_filtro:
-            materias = [
-                m for m in materias if self._corresponde(tipo_materia_prima(m), tipo_filtro)
-            ]
-        if familia_filtro:
+        if self.apenas_orlas:
             materias = [
                 m
                 for m in materias
-                if self._corresponde(familia_materia_prima(m), familia_filtro)
+                if (m.ref_le or "").strip().upper().startswith("ORL")
+                or self._corresponde(familia_materia_prima(m), "ORLA")
+                or self._corresponde(tipo_materia_prima(m), "ORLA")
             ]
+        else:
+            if tipo_filtro:
+                materias = [
+                    m
+                    for m in materias
+                    if self._corresponde(tipo_materia_prima(m), tipo_filtro)
+                ]
+            if familia_filtro:
+                materias = [
+                    m
+                    for m in materias
+                    if self._corresponde(familia_materia_prima(m), familia_filtro)
+                ]
 
         self._preencher(materias)
 

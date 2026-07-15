@@ -84,6 +84,8 @@ class CriarOrcamentoItemValuesetLinhaData:
     familia_materia_prima: str | None = None
     coresp_orla_0_4: str | None = None
     coresp_orla_1_0: str | None = None
+    preco_orla_0_4_m2: Decimal | None = None
+    preco_orla_1_0_m2: Decimal | None = None
     comp_mp: Decimal | None = None
     larg_mp: Decimal | None = None
     esp_mp: Decimal | None = None
@@ -123,6 +125,8 @@ class EditarOrcamentoItemValuesetLinhaData:
     familia_materia_prima: str | None = None
     coresp_orla_0_4: str | None = None
     coresp_orla_1_0: str | None = None
+    preco_orla_0_4_m2: Decimal | None = None
+    preco_orla_1_0_m2: Decimal | None = None
     comp_mp: Decimal | None = None
     larg_mp: Decimal | None = None
     esp_mp: Decimal | None = None
@@ -484,6 +488,8 @@ class OrcamentoItemValuesetLinhaService:
             "familia_materia_prima": linha.familia_materia_prima,
             "coresp_orla_0_4": linha.coresp_orla_0_4,
             "coresp_orla_1_0": linha.coresp_orla_1_0,
+            "preco_orla_0_4_m2": getattr(linha, "preco_orla_0_4_m2", None),
+            "preco_orla_1_0_m2": getattr(linha, "preco_orla_1_0_m2", None),
             "comp_mp": linha.comp_mp,
             "larg_mp": linha.larg_mp,
             "esp_mp": linha.esp_mp,
@@ -703,6 +709,8 @@ class OrcamentoItemValuesetLinhaService:
             "familia_materia_prima": data.familia_materia_prima,
             "coresp_orla_0_4": data.coresp_orla_0_4,
             "coresp_orla_1_0": data.coresp_orla_1_0,
+            "preco_orla_0_4_m2": data.preco_orla_0_4_m2,
+            "preco_orla_1_0_m2": data.preco_orla_1_0_m2,
             "comp_mp": data.comp_mp,
             "larg_mp": data.larg_mp,
             "esp_mp": data.esp_mp,

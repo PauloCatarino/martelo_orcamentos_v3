@@ -463,6 +463,8 @@ class OrcamentoValuesetPage(QWidget):
                             familia_materia_prima=form_data.familia_materia_prima,
                             coresp_orla_0_4=form_data.coresp_orla_0_4,
                             coresp_orla_1_0=form_data.coresp_orla_1_0,
+                            preco_orla_0_4_m2=form_data.preco_orla_0_4_m2,
+                            preco_orla_1_0_m2=form_data.preco_orla_1_0_m2,
                             comp_mp=form_data.comp_mp,
                             larg_mp=form_data.larg_mp,
                             esp_mp=form_data.esp_mp,

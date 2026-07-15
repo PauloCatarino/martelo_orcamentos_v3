@@ -89,6 +89,7 @@ from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
     familia_materia_prima,
+    precos_orlas_m2,
     tipo_materia_prima,
 )
 from app.domain.numeros import normalize_percentagem_humana, validar_decimal
@@ -126,6 +127,12 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
 
+AVISO_PRECO_ORLA_LEGACY = (
+    "Compatibilidade: esta linha ainda não tinha snapshot local da orla em €/m²; "
+    "foi usado temporariamente o preço atual do catálogo. Edite/guarde a linha "
+    "para congelar o preço local."
+)
+
 
 @dataclass(frozen=True)
 class CriarLinhaCusteioData:
@@ -150,6 +157,8 @@ class CriarLinhaCusteioData:
     perimetro_ml: Decimal | None = None
     ml_orla_fina: Decimal | None = None
     ml_orla_grossa: Decimal | None = None
+    preco_orla_0_4_m2: Decimal | None = None
+    preco_orla_1_0_m2: Decimal | None = None
     custo_unitario: Decimal | None = None
     custo_total: Decimal | None = None
     margem_percentagem: Decimal | None = None
@@ -188,6 +197,8 @@ class EditarLinhaCusteioData:
     perimetro_ml: Decimal | None = None
     ml_orla_fina: Decimal | None = None
     ml_orla_grossa: Decimal | None = None
+    preco_orla_0_4_m2: Decimal | None = None
+    preco_orla_1_0_m2: Decimal | None = None
     custo_unitario: Decimal | None = None
     custo_total: Decimal | None = None
     margem_percentagem: Decimal | None = None
@@ -217,6 +228,8 @@ MATERIAL_FIELDS = (
     "familia_materia_prima",
     "coresp_orla_0_4",
     "coresp_orla_1_0",
+    "preco_orla_0_4_m2",
+    "preco_orla_1_0_m2",
     "comp_mp",
     "larg_mp",
     "esp_mp",
@@ -833,6 +846,9 @@ class OrcamentoItemCusteioLinhaService:
         if materia is None:
             raise ValueError("materia-prima nao encontrada")
 
+        preco_orla_fina_m2, preco_orla_grossa_m2 = precos_orlas_m2(
+            materia, self.materia_prima_repository.get_by_ref_le
+        )
         fields = {
             "mat_default": materia.ref_le,
             "valueset_prioridade": None,
@@ -847,6 +863,8 @@ class OrcamentoItemCusteioLinhaService:
             "familia_materia_prima": familia_materia_prima(materia),
             "coresp_orla_0_4": coresp_orla_0_4(materia),
             "coresp_orla_1_0": coresp_orla_1_0(materia),
+            "preco_orla_0_4_m2": preco_orla_fina_m2,
+            "preco_orla_1_0_m2": preco_orla_grossa_m2,
             "comp_mp": materia.comprimento,
             "larg_mp": materia.largura,
             "esp_mp": materia.espessura,
@@ -984,6 +1002,8 @@ class OrcamentoItemCusteioLinhaService:
             "familia_materia_prima": vs_linha.familia_materia_prima,
             "coresp_orla_0_4": vs_linha.coresp_orla_0_4,
             "coresp_orla_1_0": vs_linha.coresp_orla_1_0,
+            "preco_orla_0_4_m2": getattr(vs_linha, "preco_orla_0_4_m2", None),
+            "preco_orla_1_0_m2": getattr(vs_linha, "preco_orla_1_0_m2", None),
             "comp_mp": vs_linha.comp_mp,
             "larg_mp": vs_linha.larg_mp,
             "esp_mp": vs_linha.esp_mp,
@@ -1388,11 +1408,15 @@ class OrcamentoItemCusteioLinhaService:
             if self._linha_sem_material(linha):
                 continue  # service piece: no orla
 
-            preco_fina, unidade_fina = self._orla_preco_unidade(
-                linha.coresp_orla_0_4, precos_cache
+            preco_fina, unidade_fina, fallback_fina = self._orla_preco_unidade(
+                linha.coresp_orla_0_4,
+                linha.preco_orla_0_4_m2,
+                precos_cache,
             )
-            preco_grossa, unidade_grossa = self._orla_preco_unidade(
-                linha.coresp_orla_1_0, precos_cache
+            preco_grossa, unidade_grossa, fallback_grossa = self._orla_preco_unidade(
+                linha.coresp_orla_1_0,
+                linha.preco_orla_1_0_m2,
+                precos_cache,
             )
 
             # The orla covers the board edge, whose height is the piece thickness.
@@ -1421,8 +1445,13 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_orla_grossa": resultado.custo_orla_grossa,
                 "custo_orlas": resultado.custo_orlas,
             }
+            avisos = [resultado.aviso] if resultado.aviso else []
+            if fallback_fina or fallback_grossa:
+                avisos.append(AVISO_PRECO_ORLA_LEGACY)
             nova_obs = self._mesclar_observacao(
-                linha.observacoes, "Custo de orla", resultado.aviso
+                linha.observacoes,
+                "Custo de orla",
+                " ".join(dict.fromkeys(avisos)) or None,
             )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs
@@ -1437,14 +1466,19 @@ class OrcamentoItemCusteioLinhaService:
     def _orla_preco_unidade(
         self,
         ref_orla: str | None,
+        preco_orla_m2: Decimal | None,
         cache: dict[str, tuple[Decimal | None, str | None]],
-    ) -> tuple[Decimal | None, str | None]:
-        """Resolve an orla (net price, unit) by its raw-material reference, cached."""
+    ) -> tuple[Decimal | None, str | None, bool]:
+        """Resolve local EUR/m² first, then use an explicit legacy fallback."""
+        if preco_orla_m2 is not None:
+            return preco_orla_m2, "M2", False
+
         if not ref_orla:
-            return None, None
+            return None, None, False
 
         if ref_orla in cache:
-            return cache[ref_orla]
+            preco, unidade = cache[ref_orla]
+            return preco, unidade, True
 
         materia = self.materia_prima_repository.get_by_ref_le(ref_orla)
         resultado = (
@@ -1453,7 +1487,7 @@ class OrcamentoItemCusteioLinhaService:
             else (None, None)
         )
         cache[ref_orla] = resultado
-        return resultado
+        return resultado[0], resultado[1], True
 
     def recalcular_custo_materia_prima_do_item(
         self, orcamento_item_id: int
@@ -3861,7 +3895,8 @@ class OrcamentoItemCusteioLinhaService:
         "materia_prima_id", "ref_materia_prima", "descricao_materia_prima",
         "ref_le", "descricao_no_orcamento", "unidade", "preco_liquido",
         "desperdicio_percentagem", "tipo_materia_prima", "familia_materia_prima",
-        "coresp_orla_0_4", "coresp_orla_1_0", "comp_mp", "larg_mp", "esp_mp",
+        "coresp_orla_0_4", "coresp_orla_1_0", "preco_orla_0_4_m2",
+        "preco_orla_1_0_m2", "comp_mp", "larg_mp", "esp_mp",
         "acabamento_face_sup", "acabamento_face_inf",
         "acabamento_editado_localmente", "editado_localmente",
         "material_editado_localmente", "origem_material", "sem_material",
@@ -5320,6 +5355,8 @@ class OrcamentoItemCusteioLinhaService:
                 "familia_materia_prima": linha_vs.familia_materia_prima,
                 "coresp_orla_0_4": linha_vs.coresp_orla_0_4,
                 "coresp_orla_1_0": linha_vs.coresp_orla_1_0,
+                "preco_orla_0_4_m2": getattr(linha_vs, "preco_orla_0_4_m2", None),
+                "preco_orla_1_0_m2": getattr(linha_vs, "preco_orla_1_0_m2", None),
                 "comp_mp": linha_vs.comp_mp,
                 "larg_mp": linha_vs.larg_mp,
                 "esp_mp": linha_vs.esp_mp,
@@ -5496,6 +5533,8 @@ class OrcamentoItemCusteioLinhaService:
             "perimetro_ml": data.perimetro_ml,
             "ml_orla_fina": data.ml_orla_fina,
             "ml_orla_grossa": data.ml_orla_grossa,
+            "preco_orla_0_4_m2": data.preco_orla_0_4_m2,
+            "preco_orla_1_0_m2": data.preco_orla_1_0_m2,
             "custo_unitario": data.custo_unitario,
             "custo_total": custo_total,
             "margem_percentagem": data.margem_percentagem,

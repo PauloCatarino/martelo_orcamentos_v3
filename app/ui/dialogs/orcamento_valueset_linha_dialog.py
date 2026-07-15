@@ -36,6 +36,8 @@ from app.services.orcamento_valueset_linha_operacao_service import (
     OrcamentoValuesetLinhaOperacaoService,
 )
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+from app.ui.helpers.orla_picker import obter_precos_orlas_m2
+from app.ui.widgets.orla_line_edit import OrlaLineEdit
 from app.ui.dialogs.valueset_linha_operacoes_dialog import (
     ValuesetLinhaOperacoesDialog,
     carregar_configuracoes_para_sugestoes,
@@ -82,6 +84,8 @@ class OrcamentoValuesetLinhaDialogData:
     familia_materia_prima: str | None
     coresp_orla_0_4: str | None
     coresp_orla_1_0: str | None
+    preco_orla_0_4_m2: Decimal | None
+    preco_orla_1_0_m2: Decimal | None
     comp_mp: Decimal | None
     larg_mp: Decimal | None
     esp_mp: Decimal | None
@@ -132,8 +136,14 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         self.desperdicio_input = QLineEdit()
         self.tipo_mp_input = QLineEdit()
         self.familia_mp_input = QLineEdit()
-        self.orla_0_4_input = QLineEdit()
-        self.orla_1_0_input = QLineEdit()
+        self.orla_0_4_input = OrlaLineEdit()
+        self.orla_1_0_input = OrlaLineEdit()
+        self.preco_orla_0_4_input = QLineEdit()
+        self.preco_orla_1_0_input = QLineEdit()
+        for widget in (self.preco_orla_0_4_input, self.preco_orla_1_0_input):
+            widget.setToolTip(
+                "Snapshot local da orla. Unidade obrigatória: euros por metro quadrado (€/m²)."
+            )
         self.comp_mp_input = QLineEdit()
         self.larg_mp_input = QLineEdit()
         self.esp_mp_input = QLineEdit()
@@ -178,8 +188,10 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         form.addRow("Desperdício %", self.desperdicio_input)
         form.addRow("Tipo matéria-prima", self.tipo_mp_input)
         form.addRow("Família matéria-prima", self.familia_mp_input)
-        form.addRow("Orla 0.4", self.orla_0_4_input)
-        form.addRow("Orla 1.0", self.orla_1_0_input)
+        form.addRow("Orla 0.4 (duplo clique para selecionar)", self.orla_0_4_input)
+        form.addRow("Preço orla 0.4 (€/m²)", self.preco_orla_0_4_input)
+        form.addRow("Orla 1.0 (duplo clique para selecionar)", self.orla_1_0_input)
+        form.addRow("Preço orla 1.0 (€/m²)", self.preco_orla_1_0_input)
         form.addRow("Comp MP", self.comp_mp_input)
         form.addRow("Larg MP", self.larg_mp_input)
         form.addRow("Esp MP", self.esp_mp_input)
@@ -220,6 +232,8 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         self._load_linha(linha)
         self._connect_recalculo()
+        self.orla_0_4_input.doubleClicked.connect(lambda: self._abrir_picker_orla("0_4"))
+        self.orla_1_0_input.doubleClicked.connect(lambda: self._abrir_picker_orla("1_0"))
 
     def abrir_operacoes_da_linha(self) -> None:
         """Open the operation manager for this budget ValueSet line."""
@@ -319,6 +333,8 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.familia_mp_input,
             self.orla_0_4_input,
             self.orla_1_0_input,
+            self.preco_orla_0_4_input,
+            self.preco_orla_1_0_input,
             self.comp_mp_input,
             self.larg_mp_input,
             self.esp_mp_input,
@@ -348,6 +364,8 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.familia_mp_input.setText(linha.familia_materia_prima or "")
             self.orla_0_4_input.setText(linha.coresp_orla_0_4 or "")
             self.orla_1_0_input.setText(linha.coresp_orla_1_0 or "")
+            self.preco_orla_0_4_input.setText(self._format_decimal(linha.preco_orla_0_4_m2))
+            self.preco_orla_1_0_input.setText(self._format_decimal(linha.preco_orla_1_0_m2))
             self.comp_mp_input.setText(self._format_decimal(linha.comp_mp))
             self.larg_mp_input.setText(self._format_decimal(linha.larg_mp))
             self.esp_mp_input.setText(self._format_decimal(linha.esp_mp))
@@ -367,6 +385,20 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         picker = MateriaPrimaPickerDialog(parent=self)
         if picker.exec() and picker.selected_materia is not None:
             self._preencher_de_materia_prima(picker.selected_materia)
+
+    def _abrir_picker_orla(self, espessura: str) -> None:
+        picker = MateriaPrimaPickerDialog(
+            parent=self, initial_familia="ORLA", apenas_orlas=True
+        )
+        if not picker.exec() or picker.selected_materia is None:
+            return
+        materia = picker.selected_materia
+        ref_input = self.orla_0_4_input if espessura == "0_4" else self.orla_1_0_input
+        preco_input = (
+            self.preco_orla_0_4_input if espessura == "0_4" else self.preco_orla_1_0_input
+        )
+        ref_input.setText(materia.ref_le or "")
+        preco_input.setText(self._format_decimal(materia.preco_liquido))
 
     def _preencher_de_materia_prima(self, materia) -> None:
         """Copy the raw material snapshot into the line (marks it locally chosen)."""
@@ -399,6 +431,9 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.familia_mp_input.setText(familia_materia_prima(materia) or "")
             self.orla_0_4_input.setText(coresp_orla_0_4(materia) or "")
             self.orla_1_0_input.setText(coresp_orla_1_0(materia) or "")
+            preco_fina, preco_grossa = obter_precos_orlas_m2(materia)
+            self.preco_orla_0_4_input.setText(self._format_decimal(preco_fina))
+            self.preco_orla_1_0_input.setText(self._format_decimal(preco_grossa))
             self.comp_mp_input.setText(self._format_decimal(materia.comprimento))
             self.larg_mp_input.setText(self._format_decimal(materia.largura))
             self.esp_mp_input.setText(self._format_decimal(materia.espessura))
@@ -475,6 +510,12 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             familia_materia_prima=self._empty_to_none(self.familia_mp_input.text()),
             coresp_orla_0_4=self._empty_to_none(self.orla_0_4_input.text()),
             coresp_orla_1_0=self._empty_to_none(self.orla_1_0_input.text()),
+            preco_orla_0_4_m2=self._parse_optional_decimal(
+                self.preco_orla_0_4_input, "Preço orla 0.4 (€/m²)"
+            ),
+            preco_orla_1_0_m2=self._parse_optional_decimal(
+                self.preco_orla_1_0_input, "Preço orla 1.0 (€/m²)"
+            ),
             comp_mp=self._parse_optional_decimal(self.comp_mp_input, "Comp MP"),
             larg_mp=self._parse_optional_decimal(self.larg_mp_input, "Larg MP"),
             esp_mp=self._parse_optional_decimal(self.esp_mp_input, "Esp MP"),

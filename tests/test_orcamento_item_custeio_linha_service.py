@@ -2514,6 +2514,36 @@ def test_recalcular_orlas_fallback_esp_mp_quando_esp_real_vazio(monkeypatch) -> 
     assert payload["custo_orla_fina"] == Decimal("0.6149")
     assert payload["custo_orla_grossa"] == Decimal("0.5313")
     assert payload["custo_orlas"] == Decimal("1.1462")
+    assert "Compatibilidade" in payload["observacoes"]
+
+
+def test_recalcular_orlas_prefere_snapshot_local_em_m2(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0002": SimpleNamespace(preco_liquido=Decimal("99.00"), unidade="M2"),
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("99.00"), unidade="M2"),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2111",
+            comp_real=Decimal("2000"),
+            larg_real=Decimal("1000"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+            preco_orla_0_4_m2=Decimal("6.50"),
+            preco_orla_1_0_m2=Decimal("11.50"),
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_orla_fina"] == Decimal("0.6149")
+    assert payload["custo_orla_grossa"] == Decimal("0.5313")
     assert "observacoes" not in payload
 
 

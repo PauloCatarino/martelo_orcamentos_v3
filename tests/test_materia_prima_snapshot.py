@@ -8,6 +8,8 @@ from app.domain.materia_prima_snapshot import (
     coresp_orla_0_4,
     coresp_orla_1_0,
     familia_materia_prima,
+    preco_orla_m2,
+    precos_orlas_m2,
     tipo_materia_prima,
 )
 
@@ -67,3 +69,21 @@ def test_resolvers_nao_alteram_materia() -> None:
     assert materia.tipo_original_excel == "PUXADOR"
     assert materia.coresp_orla_0_4 == "ORL0002"
     assert materia.tipo_martelo is None
+
+
+def test_preco_orla_m2_aceita_apenas_unidade_m2() -> None:
+    catalogo = {
+        "ORL-M2": SimpleNamespace(preco_liquido=12, unidade="M2"),
+        "ORL-ML": SimpleNamespace(preco_liquido=3, unidade="ML"),
+    }
+    assert preco_orla_m2("ORL-M2", catalogo.get) == 12
+    assert preco_orla_m2("ORL-ML", catalogo.get) is None
+
+
+def test_precos_orlas_m2_resolve_fina_e_grossa() -> None:
+    materia = _materia(coresp_orla_0_4="ORL-F", coresp_orla_1_0="ORL-G")
+    catalogo = {
+        "ORL-F": SimpleNamespace(preco_liquido=4.25, unidade="M2"),
+        "ORL-G": SimpleNamespace(preco_liquido=7.50, unidade="M2"),
+    }
+    assert precos_orlas_m2(materia, catalogo.get) == (4.25, 7.50)
