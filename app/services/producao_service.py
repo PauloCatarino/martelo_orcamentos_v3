@@ -13,6 +13,9 @@ from app.models.cliente import Cliente
 from app.models.orcamento import Orcamento
 from app.models.orcamento_versao import OrcamentoVersao
 from app.models.producao import Producao
+from app.services.orcamento_encomenda_phc_service import (
+    OrcamentoEncomendaPhcService,
+)
 from app.services.producao_pastas_service import (
     caminho_versao,
     caminho_versao_de_processo,
@@ -249,10 +252,12 @@ def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
     )
 
     rows = session.execute(statement).all()
+    encomendas_service = OrcamentoEncomendaPhcService(session)
     resultado = []
     for orcamento, versao, cliente in rows:
         if _normalizar_texto(versao.estado) != "adjudicado":
             continue
+        encomendas = encomendas_service.listar_encomendas(versao.id)
         resultado.append(
             {
                 "orcamento_id": orcamento.id,
@@ -262,6 +267,8 @@ def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
                 "numero_versao": versao.numero_versao,
                 "cliente_nome": cliente.nome,
                 "enc_phc": versao.enc_phc,
+                # Phase 5: every PHC order of the version, principal first.
+                "encomendas_phc": [enc.numero for enc in encomendas],
                 "preco_total": versao.preco_total,
                 "is_temporary": cliente.is_temporary,
                 "source_system": cliente.source_system,
@@ -300,8 +307,13 @@ def converter_orcamento(
     orcamento_id: int,
     versao_id: int,
     created_by_id: int | None,
+    num_enc_phc: str | None = None,
 ) -> Producao:
-    """Convert one adjudicated budget version into a production process."""
+    """Convert one adjudicated budget version into a production process.
+
+    ``num_enc_phc`` selects which PHC order of the version becomes the
+    process (phase 5); None uses the principal order.
+    """
     statement = (
         select(Orcamento, OrcamentoVersao, Cliente)
         .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
@@ -313,12 +325,26 @@ def converter_orcamento(
         raise ValueError("Orçamento não encontrado.")
 
     orcamento, versao, cliente = row
+    encomendas = OrcamentoEncomendaPhcService(session).listar_encomendas(versao.id)
+    escolhida = (num_enc_phc or "").strip()
+    if escolhida:
+        numeros = {enc.numero.casefold() for enc in encomendas}
+        if escolhida.casefold() not in numeros:
+            raise ValueError(
+                f"A encomenda PHC '{escolhida}' não pertence a este orçamento."
+            )
+    else:
+        principal = next(
+            (enc.numero for enc in encomendas if enc.is_principal), None
+        )
+        escolhida = principal or ""
+
     erros = validar_conversao(
         estado=versao.estado,
         is_temporary=cliente.is_temporary,
         source_system=cliente.source_system,
         num_cliente_phc=cliente.num_cliente_phc,
-        enc_phc=versao.enc_phc,
+        enc_phc=escolhida,
     )
     if erros:
         raise ValueError("\n".join(erros))
@@ -327,7 +353,7 @@ def converter_orcamento(
     versao_plano = "01"
     codigo_processo = codigo_processo_com_cliente(
         orcamento.ano,
-        versao.enc_phc,
+        escolhida,
         versao_obra,
         versao_plano,
         nome_simplex=cliente.nome_simplex,
@@ -337,7 +363,7 @@ def converter_orcamento(
     duplicado = session.scalar(
         select(Producao).where(
             Producao.ano == str(orcamento.ano),
-            Producao.num_enc_phc == str(versao.enc_phc).strip(),
+            Producao.num_enc_phc == escolhida,
             Producao.versao_obra == versao_obra,
             Producao.versao_plano == versao_plano,
         )
@@ -352,7 +378,7 @@ def converter_orcamento(
         versao_plano=versao_plano,
         codigo_processo=codigo_processo,
         ano=str(orcamento.ano),
-        num_enc_phc=str(versao.enc_phc).strip(),
+        num_enc_phc=escolhida,
         orcamento_id=orcamento.id,
         cliente_id=cliente.id,
         nome_cliente=cliente.nome,

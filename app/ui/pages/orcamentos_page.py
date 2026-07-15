@@ -32,6 +32,10 @@ from app.services.orcamento_service import (
     EditarOrcamentoData,
     OrcamentoService,
 )
+from app.services.orcamento_encomenda_phc_service import (
+    EncomendaPhcInput,
+    OrcamentoEncomendaPhcService,
+)
 from app.services.orcamento_delete_service import (
     PRODUCAO_LIGADA_MSG,
     contar_versoes,
@@ -411,12 +415,17 @@ class OrcamentosPage(QWidget):
 
         for row_index, orcamento in enumerate(orcamentos):
             self._orcamentos_by_row[row_index] = orcamento
+            enc_phc_display = orcamento.enc_phc or ""
+            if orcamento.encomendas_phc_total > 1:
+                enc_phc_display = (
+                    f"{enc_phc_display} (+{orcamento.encomendas_phc_total - 1})"
+                )
             values = [
                 str(orcamento.ano),
                 orcamento.num_orcamento,
                 format_version(orcamento.numero_versao),
                 orcamento.estado,
-                orcamento.enc_phc or "",
+                enc_phc_display,
                 orcamento.cliente_nome,
                 orcamento.ref_cliente or "",
                 orcamento.obra or "",
@@ -847,8 +856,18 @@ class OrcamentosPage(QWidget):
                     if cliente_id_atual is not None
                     else None
                 )
+                encomendas_atuais = tuple(
+                    EncomendaPhcInput(
+                        numero=encomenda.numero,
+                        is_principal=encomenda.is_principal,
+                    )
+                    for encomenda in OrcamentoEncomendaPhcService(
+                        session
+                    ).listar_encomendas(orcamento.orcamento_versao_id)
+                )
         except SQLAlchemyError:
             cliente_id_atual, cliente_atual = None, None
+            encomendas_atuais = ()
 
         dialog = EditarOrcamentoDialog(
             self,
@@ -863,6 +882,7 @@ class OrcamentosPage(QWidget):
                 info_2=orcamento.info_2,
                 utilizador_id=orcamento.utilizador_id,
                 cliente_id=cliente_id_atual,
+                encomendas_phc=encomendas_atuais,
             ),
             contexto=EditarOrcamentoContexto(
                 num_orcamento=orcamento.num_orcamento,
@@ -897,6 +917,7 @@ class OrcamentosPage(QWidget):
                         info_2=form_data.info_2,
                         utilizador_id=utilizador_id,
                         cliente_id=form_data.cliente_id,
+                        encomendas_phc=form_data.encomendas_phc,
                     ),
                     updated_by_id=updated_by_id,
                     orcamento_versao_id=orcamento.orcamento_versao_id,

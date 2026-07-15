@@ -26,6 +26,10 @@ from app.repositories.orcamento_repository import (
     OrcamentoResumo,
     OrcamentoVersaoCriada,
 )
+from app.services.orcamento_encomenda_phc_service import (
+    EncomendaPhcInput,
+    OrcamentoEncomendaPhcService,
+)
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
 
 
@@ -61,6 +65,9 @@ class EditarOrcamentoData:
     info_2: str | None = None
     utilizador_id: int | None = None
     cliente_id: int | None = None
+    # Phase 5: full set of PHC orders for the version. None keeps the legacy
+    # behaviour of treating ``enc_phc`` as the single (principal) order.
+    encomendas_phc: tuple[EncomendaPhcInput, ...] | None = None
 
 
 class OrcamentoService:
@@ -116,6 +123,12 @@ class OrcamentoService:
             margens=self._resolver_margens_iniciais(data),
             perfil_margens=normalizar_perfil_margens(data.margens_escolha),
         )
+        enc_phc = (data.enc_phc or "").strip()
+        if enc_phc and result.orcamento_versao_id is not None:
+            OrcamentoEncomendaPhcService(self.session).substituir_encomendas(
+                result.orcamento_versao_id,
+                [EncomendaPhcInput(numero=enc_phc, is_principal=True)],
+            )
         self.session.commit()
 
         return result
@@ -147,10 +160,22 @@ class OrcamentoService:
             info_2=data.info_2,
             updated_by_id=updated_by_id,
         )
-        enc_phc_result = self.repository.update_enc_phc(
-            orcamento_versao_id,
-            data.enc_phc,
-        )
+        if versao_atual is None:
+            enc_phc_result = False
+        else:
+            if data.encomendas_phc is not None:
+                encomendas = list(data.encomendas_phc)
+            elif data.enc_phc and data.enc_phc.strip():
+                encomendas = [
+                    EncomendaPhcInput(numero=data.enc_phc, is_principal=True)
+                ]
+            else:
+                encomendas = []
+            OrcamentoEncomendaPhcService(self.session).substituir_encomendas(
+                orcamento_versao_id,
+                encomendas,
+            )
+            enc_phc_result = True
         estado_result = self.repository.update_estado(
             orcamento_versao_id,
             data.estado,

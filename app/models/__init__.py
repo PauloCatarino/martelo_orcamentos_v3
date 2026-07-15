@@ -28,6 +28,7 @@ from app.models.orcamento_item_valueset_linha_operacao import (
     OrcamentoItemValuesetLinhaOperacao,
 )
 from app.models.orcamento_versao import OrcamentoVersao
+from app.models.orcamento_versao_encomenda_phc import OrcamentoVersaoEncomendaPhc
 from app.models.orcamento_versao_evento import OrcamentoVersaoEvento
 from app.models.orcamento_versao_placa_nao_stock import OrcamentoVersaoPlacaNaoStock
 from app.models.orcamento_valueset_linha import OrcamentoValuesetLinha
@@ -64,6 +65,7 @@ __all__ = [
     "OrcamentoItemValuesetLinha",
     "OrcamentoItemValuesetLinhaOperacao",
     "OrcamentoVersao",
+    "OrcamentoVersaoEncomendaPhc",
     "OrcamentoVersaoEvento",
     "OrcamentoVersaoPlacaNaoStock",
     "OrcamentoValuesetLinha",

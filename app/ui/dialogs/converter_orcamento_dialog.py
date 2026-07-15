@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -44,6 +45,7 @@ class ConverterOrcamentoDialog(QDialog):
 
         self.selected_orcamento_id: int | None = None
         self.selected_versao_id: int | None = None
+        self.selected_num_enc_phc: str | None = None
         self._todos: list[dict] = []
         self._linhas: list[dict] = []
 
@@ -70,6 +72,19 @@ class ConverterOrcamentoDialog(QDialog):
         self.table.itemSelectionChanged.connect(self._atualizar_ok)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
+        # Phase 5: a version may have several PHC orders; the user picks the
+        # one to convert (the principal order is pre-selected).
+        self.encomenda_label = QLabel("Encomenda PHC a converter:")
+        self.encomenda_combo = QComboBox()
+        self.encomenda_combo.setToolTip(
+            "Encomenda PHC que dará origem ao processo de produção"
+        )
+        self.encomenda_combo.setEnabled(False)
+
+        encomenda_layout = QHBoxLayout()
+        encomenda_layout.addWidget(self.encomenda_label)
+        encomenda_layout.addWidget(self.encomenda_combo, stretch=1)
+
         self.ok_button = QPushButton("OK")
         self.ok_button.setToolTip("Converter o orçamento selecionado")
         self.ok_button.setEnabled(False)
@@ -88,6 +103,7 @@ class ConverterOrcamentoDialog(QDialog):
         layout.addWidget(self.campo_pesquisa)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
+        layout.addLayout(encomenda_layout)
         layout.addLayout(buttons_layout)
         self.setLayout(layout)
 
@@ -137,12 +153,16 @@ class ConverterOrcamentoDialog(QDialog):
                 num_cliente_phc=item["num_cliente_phc"],
                 enc_phc=item["enc_phc"],
             )
+            encomendas = item.get("encomendas_phc") or []
+            enc_display = item["enc_phc"] or ""
+            if len(encomendas) > 1:
+                enc_display = f"{enc_display} (+{len(encomendas) - 1})"
             values = [
                 str(item["ano"]),
                 item["num_orcamento"],
                 format_version(item["numero_versao"]),
                 item["cliente_nome"],
-                item["enc_phc"] or "",
+                enc_display,
                 format_currency(item["preco_total"]),
                 "✓" if not erros else erros[0],
             ]
@@ -161,7 +181,19 @@ class ConverterOrcamentoDialog(QDialog):
         return self._linhas[row]
 
     def _atualizar_ok(self) -> None:
-        self.ok_button.setEnabled(self._get_selected() is not None)
+        item = self._get_selected()
+        self.ok_button.setEnabled(item is not None)
+        self._atualizar_encomendas(item)
+
+    def _atualizar_encomendas(self, item: dict | None) -> None:
+        """Fill the PHC-order combo for the selected budget version."""
+        self.encomenda_combo.clear()
+        encomendas = list((item or {}).get("encomendas_phc") or [])
+        if not encomendas and item is not None and item.get("enc_phc"):
+            encomendas = [item["enc_phc"]]
+        for numero in encomendas:
+            self.encomenda_combo.addItem(str(numero))
+        self.encomenda_combo.setEnabled(len(encomendas) > 1)
 
     def _confirmar(self) -> None:
         item = self._get_selected()
@@ -171,6 +203,8 @@ class ConverterOrcamentoDialog(QDialog):
 
         self.selected_orcamento_id = item["orcamento_id"]
         self.selected_versao_id = item["versao_id"]
+        numero = self.encomenda_combo.currentText().strip()
+        self.selected_num_enc_phc = numero or None
         self.accept()
 
     def _handle_double_click(self, row: int, _column: int) -> None:

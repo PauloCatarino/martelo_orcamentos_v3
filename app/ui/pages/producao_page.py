@@ -1834,6 +1834,7 @@ class ProducaoPage(QWidget):
                     orcamento_id=dialog.selected_orcamento_id,
                     versao_id=dialog.selected_versao_id,
                     created_by_id=created_by_id,
+                    num_enc_phc=dialog.selected_num_enc_phc,
                 )
                 processo_id = processo.id
                 codigo_processo = processo.codigo_processo

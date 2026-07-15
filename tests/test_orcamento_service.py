@@ -146,6 +146,19 @@ class _FakeSession:
         return self.current_versao
 
 
+class _FakeEncomendasService:
+    """Fake PHC-orders service capturing the replaced set (phase 5)."""
+
+    substituir_payload: tuple[int, list] | None = None
+
+    def __init__(self, _session: object) -> None:
+        pass
+
+    def substituir_encomendas(self, orcamento_versao_id: int, encomendas) -> list:
+        self.__class__.substituir_payload = (orcamento_versao_id, list(encomendas))
+        return list(encomendas)
+
+
 def test_orcamento_service_returns_empty_list_when_repository_is_empty(monkeypatch) -> None:
     _FakeRepository.rows = []
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -243,9 +256,13 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.nova_versao_payload = None
     _FakeRepository.ref_cliente_pesquisada = None
     _FakeMargensRepository.reset()
+    _FakeEncomendasService.substituir_payload = None
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
     monkeypatch.setattr(
         service_module, "DefMargemPadraoRepository", _FakeMargensRepository
+    )
+    monkeypatch.setattr(
+        service_module, "OrcamentoEncomendaPhcService", _FakeEncomendasService
     )
     session = _FakeSession()
     return service_module.OrcamentoService(session=session), session
@@ -325,7 +342,12 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     assert result is True
     assert _FakeRepository.update_payload["info_1"] == "A"
     assert _FakeRepository.update_payload["info_2"] == "B"
-    assert _FakeRepository.enc_phc_payload == (10, "1028")
+    # Legacy enc_phc becomes the single principal order (phase 5).
+    versao_id, encomendas = _FakeEncomendasService.substituir_payload
+    assert versao_id == 10
+    assert [(enc.numero, enc.is_principal) for enc in encomendas] == [
+        ("1028", True)
+    ]
     assert _FakeRepository.estado_payload == (10, "Enviado")
     assert _FakeRepository.utilizador_payload == (10, 7)
     assert _FakeRepository.cliente_payload is None

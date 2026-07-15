@@ -24,6 +24,7 @@ from app.models import (
     OrcamentoItemVariavel,
     OrcamentoValuesetLinha,
     OrcamentoVersao,
+    OrcamentoVersaoEncomendaPhc,
     OrcamentoVersaoPlacaNaoStock,
     User,
 )
@@ -53,6 +54,9 @@ class OrcamentoResumo:
     utilizador: str | None = None
     utilizador_id: int | None = None
     tem_preco_manual: bool = False
+    # Phase 5: how many PHC orders the version has (enc_phc holds the
+    # principal one; legacy versions without child rows count as 1).
+    encomendas_phc_total: int = 0
 
 
 @dataclass(frozen=True)
@@ -662,6 +666,14 @@ class OrcamentoRepository:
                     OrcamentoItem.preco_manual.is_(True),
                 )
                 .label("tem_preco_manual"),
+                select(func.count(OrcamentoVersaoEncomendaPhc.id))
+                .where(
+                    OrcamentoVersaoEncomendaPhc.orcamento_versao_id
+                    == OrcamentoVersao.id
+                )
+                .correlate(OrcamentoVersao)
+                .scalar_subquery()
+                .label("encomendas_phc_total"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
             .join(Cliente, Orcamento.cliente_id == Cliente.id)
@@ -670,6 +682,10 @@ class OrcamentoRepository:
 
     def _row_to_orcamento_resumo(self, row: Mapping[str, Any]) -> OrcamentoResumo:
         """Convert a database row mapping into the UI read model."""
+        encomendas_total = int(row["encomendas_phc_total"] or 0)
+        if encomendas_total == 0 and (row["enc_phc"] or "").strip():
+            # Legacy version saved before the child table existed.
+            encomendas_total = 1
         return OrcamentoResumo(
             orcamento_id=row["orcamento_id"],
             orcamento_versao_id=row["orcamento_versao_id"],
@@ -691,4 +707,5 @@ class OrcamentoRepository:
             utilizador=row["utilizador"],
             utilizador_id=row["utilizador_id"],
             tem_preco_manual=bool(row["tem_preco_manual"]),
+            encomendas_phc_total=encomendas_total,
         )
