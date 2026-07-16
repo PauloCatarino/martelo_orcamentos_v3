@@ -169,9 +169,10 @@ class InicioPage(QWidget):
         layout.setSpacing(14)
         layout.addLayout(topo)
         layout.addLayout(filtros)
+        # Linha de acompanhamento logo abaixo dos filtros, como nos outros menus.
+        layout.addWidget(self.status_label)
         layout.addLayout(self.cards_layout)
         layout.addLayout(centro, stretch=1)
-        layout.addWidget(self.status_label)
         self.carregar()
 
     def _criar_cartao(self, titulo: str, cor: str) -> tuple[QGroupBox, QLabel, QLabel]:

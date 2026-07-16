@@ -23,7 +23,6 @@ class CusteioSimplificadoTarifasPage(QWidget):
         layout.addWidget(BarraCabecalho("Tarifas Custeio Simplificado", ["PUR/LASER são preços para quatro lados; a peça paga a proporção dos lados orlados.", "O escalão ≥25 inclui exatamente 25 peças."]))
         self.table = QTableWidget(4, len(self.HEADERS))
         self.table.setHorizontalHeaderLabels(self.HEADERS)
-        layout.addWidget(self.table)
         actions = QHBoxLayout()
         back = QPushButton("Voltar")
         back.clicked.connect(lambda: self.on_back() if self.on_back else None)
@@ -31,7 +30,9 @@ class CusteioSimplificadoTarifasPage(QWidget):
         save.clicked.connect(self.guardar)
         actions.addWidget(back); actions.addStretch(); actions.addWidget(save)
         layout.addLayout(actions)
+        # Linha de acompanhamento logo abaixo dos botões, como nos outros menus.
         self.status = QLabel(""); layout.addWidget(self.status)
+        layout.addWidget(self.table)
         self.carregar()
 
     def carregar(self) -> None:

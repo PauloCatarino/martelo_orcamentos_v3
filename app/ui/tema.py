@@ -223,6 +223,15 @@ ESTILO_CONTROLOS = (
     f"QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right;"
     f" width: 18px; border-left: 1px solid {CINZA_CASTANHO}; }}\n"
     f"QComboBox::down-arrow {{ image: url({_DROPDOWN_ARROW}); width: 8px; height: 8px; }}\n"
+    # Lista pendente do QComboBox: sem esta regra o Qt desenha o item corrente
+    # com texto branco sobre cinza claro (ilegível); a seleção/hover fica
+    # castanho escuro com texto branco, como nas tabelas.
+    f"QComboBox QAbstractItemView {{ background-color: #FFFFFF; color: {TEXTO_NORMAL};"
+    f" border: 1px solid {CINZA_CASTANHO};"
+    f" selection-background-color: {CASTANHO_ESCURO}; selection-color: #FFFFFF; outline: 0; }}\n"
+    "QComboBox QAbstractItemView::item { padding: 3px 7px; }\n"
+    f"QComboBox QAbstractItemView::item:hover {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}\n"
+    f"QComboBox QAbstractItemView::item:selected {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}\n"
     "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-origin: border;"
     " subcontrol-position: top right; width: 15px; height: 10px; border: none; }\n"
     "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-origin: border;"

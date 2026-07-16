@@ -94,10 +94,15 @@ class UserManagementPage(QWidget):
         buttons.addWidget(self.reload_button)
         buttons.addWidget(self.save_button)
 
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("userManagementStatus")
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.addWidget(self.cabecalho)
         layout.addLayout(buttons)
+        # Linha de acompanhamento logo abaixo dos botões, como nos outros menus.
+        layout.addWidget(self.status_label)
         layout.addWidget(self.table, 1)
         self.carregar()
 
@@ -116,6 +121,7 @@ class UserManagementPage(QWidget):
             with SessionLocal() as session:
                 users = list_managed_users(session)
         except Exception as exc:
+            self.status_label.setText("Não foi possível carregar os utilizadores.")
             QMessageBox.critical(self, "Utilizadores", f"Não foi possível carregar: {exc}")
             return
         self.table.setRowCount(len(users))
@@ -137,6 +143,10 @@ class UserManagementPage(QWidget):
                     self._check_item(user.permissions[key], not is_admin),
                 )
         self.table.resizeColumnsToContents()
+        self.status_label.setText(
+            f"{len(users)} utilizador(es). Marque os menus visíveis e clique "
+            "em Gravar acessos para aplicar."
+        )
 
     def _new_user(self) -> None:
         dialog = NewUserDialog(self)
@@ -208,3 +218,7 @@ class UserManagementPage(QWidget):
             return
         QMessageBox.information(self, "Utilizadores", "Acessos gravados.")
         self.carregar()
+        self.status_label.setText(
+            "Acessos gravados. As alterações aplicam-se no próximo login de "
+            "cada utilizador."
+        )

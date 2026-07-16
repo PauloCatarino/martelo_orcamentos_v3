@@ -84,8 +84,9 @@ class MargensPadraoPage(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
-        layout.addWidget(tabs, stretch=1)
+        # Linha de acompanhamento sempre visível no topo, como nos outros menus.
         layout.addWidget(self.status_label)
+        layout.addWidget(tabs, stretch=1)
         self.setLayout(layout)
 
         self.carregar()

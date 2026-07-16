@@ -271,8 +271,9 @@ class OrcamentoRelatoriosPage(QWidget):
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(self.tabs, stretch=1)
+        # Linha de acompanhamento sempre visível no topo, como nos outros menus.
         layout.addWidget(self.status_label)
+        layout.addWidget(self.tabs, stretch=1)
         self.setLayout(layout)
 
     def showEvent(self, event) -> None:  # noqa: N802 (Qt override)

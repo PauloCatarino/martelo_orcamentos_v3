@@ -167,8 +167,10 @@ class BibliotecaModulosPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(filtro_row)
         layout.addLayout(buttons_layout)
-        layout.addWidget(self.tabs, stretch=1)
+        # Linha de acompanhamento sempre visível logo abaixo dos botões,
+        # como nos restantes menus da app.
         layout.addWidget(self.status_label)
+        layout.addWidget(self.tabs, stretch=1)
         self.setLayout(layout)
 
         self.carregar()

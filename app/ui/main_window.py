@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QStyle,
     QTreeWidget,
@@ -203,6 +204,10 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self._page_indexes: dict[str, int] = {}
         self._pages_by_name: dict[str, QWidget] = {}
+        # Scroll area de cada página: páginas muito largas (ex.: items do
+        # orçamento) ganham scrollbar em vez de forçarem a janela maximizada a
+        # crescer para fora do ecrã.
+        self._page_containers: dict[str, QScrollArea] = {}
         self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
         self.inicio_page = InicioPage(
             on_open_orcamentos=lambda: self.show_page("orcamentos"),
@@ -412,10 +417,22 @@ class MainWindow(QMainWindow):
             self.show_page("biblioteca_modulos")
             self.biblioteca_modulos_page.selecionar_modulo_por_id(alvo_id)
 
+    def _embrulhar_pagina(self, page: QWidget) -> QScrollArea:
+        """Wrap one page in a scroll area so its minimum size never forces the
+        (maximized) window to grow beyond the screen; oversized content gets a
+        scrollbar instead of ending up unreachable off-screen."""
+        container = QScrollArea()
+        container.setWidgetResizable(True)
+        container.setFrameShape(QFrame.Shape.NoFrame)
+        container.setWidget(page)
+        return container
+
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""
+        container = self._embrulhar_pagina(page)
         self._pages_by_name[name] = page
-        self._page_indexes[name] = self.pages.addWidget(page)
+        self._page_containers[name] = container
+        self._page_indexes[name] = self.pages.addWidget(container)
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
@@ -486,20 +503,22 @@ class MainWindow(QMainWindow):
 
     def _replace_page(self, name: str, page: QWidget) -> None:
         """Replace a named page in the central workspace."""
-        old_page = self._pages_by_name.get(name)
-        if old_page is not None:
-            self.pages.removeWidget(old_page)
-            old_page.deleteLater()
+        old_container = self._page_containers.get(name)
+        if old_container is not None:
+            self.pages.removeWidget(old_container)
+            old_container.deleteLater()
 
+        container = self._embrulhar_pagina(page)
         self._pages_by_name[name] = page
-        self.pages.addWidget(page)
+        self._page_containers[name] = container
+        self.pages.addWidget(container)
         self._rebuild_page_indexes()
 
     def _rebuild_page_indexes(self) -> None:
         """Rebuild page indexes after adding or removing widgets."""
         self._page_indexes = {
-            name: self.pages.indexOf(page)
-            for name, page in self._pages_by_name.items()
+            name: self.pages.indexOf(container)
+            for name, container in self._page_containers.items()
         }
 
     def _create_text_page(self, text: str) -> QWidget:

@@ -216,7 +216,6 @@ class PontoSituacaoPage(QWidget):
         report_layout = QVBoxLayout(self.report_widget)
         report_layout.setContentsMargins(0, 0, 0, 0)
         report_layout.setSpacing(12)
-        report_layout.addWidget(self.atualizado_label)
         report_layout.addLayout(kpi_row)
         report_layout.addLayout(topo_graf)
         report_layout.addWidget(w_cli)
@@ -240,6 +239,9 @@ class PontoSituacaoPage(QWidget):
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
         layout.addLayout(toolbar)
+        # Linha de acompanhamento logo abaixo da toolbar, sempre visível em
+        # ambos os separadores (como nos outros menus).
+        layout.addWidget(self.atualizado_label)
         layout.addWidget(self.tabs, stretch=1)
 
         self._carregar()

@@ -210,6 +210,10 @@ class OrcamentoItemsPage(QWidget):
             lambda: self._on_producao_default_clicked(TIPO_PRODUCAO_SERIE)
         )
 
+        # Cria o painel de margens primeiro para os botões "Atualizar Custos",
+        # "Perfil" e "Repor Padrão" existirem e poderem ir para esta linha.
+        margens_layout = self._criar_painel_margens()
+
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
@@ -221,8 +225,12 @@ class OrcamentoItemsPage(QWidget):
         actions_layout.addWidget(self.producao_std_button)
         actions_layout.addWidget(self.producao_serie_button)
         actions_layout.addStretch()
-
-        margens_layout = self._criar_painel_margens()
+        # Ações de custeio/perfil movidas da linha das margens para aqui (à
+        # direita), para a linha das margens não sair fora do ecrã.
+        actions_layout.addWidget(self.atualizar_custos_button)
+        actions_layout.addWidget(QLabel("Perfil:"))
+        actions_layout.addWidget(self.perfil_margens_combo)
+        actions_layout.addWidget(self.repor_padrao_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemsStatus")
@@ -362,6 +370,7 @@ class OrcamentoItemsPage(QWidget):
         self.objetivo_spin.setDecimals(2)
         self.objetivo_spin.setRange(0.0, 99_999_999.99)
         self.objetivo_spin.setSuffix(" €")
+        self.objetivo_spin.setMaximumWidth(120)
         self.objetivo_spin.setToolTip(
             "Valor final desejado para o orçamento (€). Use o botão ao lado "
             "para resolver as margens que o atingem."
@@ -417,11 +426,10 @@ class OrcamentoItemsPage(QWidget):
         layout.addWidget(objetivo_label)
         layout.addWidget(self.objetivo_spin)
         layout.addWidget(self.objetivo_button)
-        layout.addWidget(self.atualizar_custos_button)
-        layout.addWidget(QLabel("Perfil:"))
-        layout.addWidget(self.perfil_margens_combo)
-        layout.addWidget(self.repor_padrao_button)
         layout.addStretch()
+        # "Atualizar Custos", "Perfil" e "Repor Padrão" ficam na linha de cima
+        # (junto aos botões STD/SERIE) — ver _criar_linha_acoes —, para a linha
+        # das margens não sair fora do ecrã com a janela maximizada.
 
         return layout
 
@@ -431,6 +439,9 @@ class OrcamentoItemsPage(QWidget):
         spin.setDecimals(2)
         spin.setRange(-100.0, 999.99)
         spin.setSuffix(" %")
+        # Caixas compactas: um valor como "15,00 %" cabe em ~78px. Sem este limite
+        # o QDoubleSpinBox estica-se e a linha das margens sai fora do ecrã.
+        spin.setMaximumWidth(78)
         spin.setToolTip(tooltip)
         spin.editingFinished.connect(self._on_margens_editadas)
         return spin

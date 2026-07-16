@@ -89,8 +89,9 @@ class RegrasQuantidadePage(QWidget):
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
         layout.addLayout(buttons_layout)
-        layout.addWidget(self.table, stretch=1)
+        # Linha de acompanhamento logo abaixo dos botões, como nos outros menus.
         layout.addWidget(self.status_label)
+        layout.addWidget(self.table, stretch=1)
         self.setLayout(layout)
 
         self.carregar()
