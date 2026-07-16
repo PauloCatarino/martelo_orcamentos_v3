@@ -43,3 +43,8 @@ Thumbs.db
 # Exported reports (output do "Exportar PDF" do Ponto Situacao)
 /Ponto_Situacao.pdf
 
+# Permissoes pessoais do Claude Code (nao partilhar); os guardas
+# .claude/settings.json e .claude/hooks/ SAO para commitar.
+.claude/settings.local.json
+.claude/worktrees/
+

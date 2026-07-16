@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard_projeto.py\"",
+            "timeout": 15,
+            "statusMessage": "A verificar riscos para a BD do Martelo..."
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/guard_projeto.py\"",
+            "timeout": 15,
+            "statusMessage": "A verificar ficheiros criticos e migracoes..."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "deny": [
+      "Bash(alembic downgrade base)",
+      "Bash(mysqladmin drop *)",
+      "Bash(dropdb *)"
+    ]
+  }
+}
