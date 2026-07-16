@@ -20,6 +20,7 @@ env/
 /build/
 /dist/
 installer/Output/
+*.log
 !.env.example
 
 # Test and coverage output

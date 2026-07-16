@@ -43,19 +43,42 @@ def _versao() -> str:
     return version_completa()
 
 
+LOG = ROOT / "build_last.log"
+
+
 def _pyinstaller(profile: str) -> None:
     print(f"[1/3] PyInstaller (perfil {profile})... isto pode demorar varios minutos.")
+    print(f"      (log completo em {LOG.name})")
     env = dict(os.environ)
     env["MARTELO_BUILD_PROFILE"] = profile
     for pasta in (ROOT / "build", DIST.parent):
         if pasta.exists():
-            shutil.rmtree(pasta, ignore_errors=True)
-    res = subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", str(SPEC)],
-        cwd=str(ROOT), env=env,
-    )
-    if res.returncode != 0:
-        raise SystemExit("[ERRO] PyInstaller falhou.")
+            try:
+                shutil.rmtree(pasta)
+            except OSError as e:
+                raise SystemExit(
+                    f"[ERRO] nao consegui limpar {pasta}: {e}\n"
+                    "       Feche o Explorador de Ficheiros e outras janelas abertas "
+                    "nessa pasta e tente de novo."
+                )
+    # Grava o output todo num ficheiro E mostra no ecra ao mesmo tempo.
+    with LOG.open("w", encoding="utf-8", errors="replace") as log:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "PyInstaller", "--noconfirm", str(SPEC)],
+            cwd=str(ROOT), env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        for linha in proc.stdout:
+            log.write(linha)
+            if any(p in linha for p in ("ERROR", "WARNING", "Traceback", "Build complete")):
+                print("      " + linha.rstrip())
+        rc = proc.wait()
+
+    if rc != 0:
+        print("\n----- fim do log do PyInstaller (erro real) -----")
+        for linha in LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]:
+            print("  " + linha)
+        raise SystemExit(f"\n[ERRO] PyInstaller falhou (codigo {rc}). Log completo: {LOG}")
     if not (DIST / "Martelo_Orcamentos_V3.exe").exists():
         raise SystemExit("[ERRO] o .exe nao foi gerado.")
     print(f"      OK -> {DIST}")
