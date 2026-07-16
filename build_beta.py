@@ -43,6 +43,56 @@ def _versao() -> str:
     return version_completa()
 
 
+def _ler_env(caminho: Path) -> dict[str, str]:
+    dados: dict[str, str] = {}
+    for linha in caminho.read_text(encoding="utf-8", errors="replace").splitlines():
+        linha = linha.strip()
+        if linha and not linha.startswith("#") and "=" in linha:
+            k, _, v = linha.partition("=")
+            dados[k.strip()] = v.strip()
+    return dados
+
+
+def _verificar_env() -> None:
+    """Confirma que deploy/.env.beta liga mesmo a` base de dados ANTES de construir.
+
+    Fail-fast: evita gastar minutos a gerar um instalador que nao conecta.
+    """
+    print("[0/3] verificar deploy/.env.beta")
+    if not ENV_ORIGEM.exists():
+        raise SystemExit(
+            f"[ERRO] falta {ENV_ORIGEM}.\n"
+            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta e "
+            "preencha a DB_PASSWORD."
+        )
+    env = _ler_env(ENV_ORIGEM)
+    if env.get("DB_PASSWORD", "") in ("", "POR_DEFINIR"):
+        raise SystemExit(
+            f"[ERRO] a DB_PASSWORD em {ENV_ORIGEM} ainda esta por preencher "
+            "(POR_DEFINIR).\n"
+            "       Abra o ficheiro no VS Code, ponha a password do utilizador "
+            "martelo_v3 e GRAVE (Ctrl+S)."
+        )
+    try:
+        import pymysql
+        con = pymysql.connect(
+            host=env.get("DB_HOST", "127.0.0.1"),
+            port=int(env.get("DB_PORT", "3306")),
+            user=env.get("DB_USER", ""),
+            password=env.get("DB_PASSWORD", ""),
+            database=env.get("DB_NAME", ""),
+            connect_timeout=6,
+        )
+        con.close()
+    except Exception as e:  # noqa: BLE001
+        raise SystemExit(
+            f"[ERRO] o .env.beta nao liga a` base de dados: {e}\n"
+            f"       Confirme DB_HOST={env.get('DB_HOST')}, "
+            f"DB_NAME={env.get('DB_NAME')}, DB_USER={env.get('DB_USER')} e a password."
+        )
+    print(f"      OK -> liga a {env.get('DB_NAME')} @ {env.get('DB_HOST')}")
+
+
 LOG = ROOT / "build_last.log"
 
 
@@ -118,6 +168,7 @@ def main() -> None:
 
     versao = _versao()
     print(f"Martelo V3  versao {versao}  (perfil {args.profile})\n")
+    _verificar_env()
     _pyinstaller(args.profile)
     _copiar_env()
     if args.installer:
