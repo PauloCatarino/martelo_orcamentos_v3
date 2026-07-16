@@ -13,6 +13,13 @@ env/
 # Environment files
 .env
 .env.*
+# ... mas o modelo (sem password) fica versionado:
+!deploy/.env.beta.exemplo
+
+# Build do executavel / instalador
+/build/
+/dist/
+installer/Output/
 !.env.example
 
 # Test and coverage output
