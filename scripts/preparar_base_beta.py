@@ -86,7 +86,12 @@ def _copiar_tudo(dry_run: bool) -> None:
         tabelas = [t for t in tabelas if t not in NAO_COPIAR]
 
         # Salvaguarda: nao correr por cima de um beta ja' povoado.
-        destino = con.execute(sa.text("SELECT COUNT(*) FROM def_materias_primas")).scalar()
+        # (a tabela pode ainda nao existir se o alembic nao correu -- ex.: dry-run)
+        existe = con.execute(sa.text(
+            f"SELECT COUNT(*) FROM information_schema.TABLES "
+            f"WHERE TABLE_SCHEMA = '{BASE_BETA}' AND TABLE_NAME = 'def_materias_primas'"
+        )).scalar()
+        destino = con.execute(sa.text("SELECT COUNT(*) FROM def_materias_primas")).scalar() if existe else 0
         if destino:
             raise SystemExit(
                 f"[ABORTADO] {BASE_BETA} ja' tem {destino} materias-primas. "
