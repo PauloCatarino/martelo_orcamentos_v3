@@ -1,20 +1,21 @@
 """Preparar a base de dados PARTILHADA do beta (martelo_v3_beta).
 
-O que faz, contra a base beta (que ja' foi criada com criar_base_beta.sql):
+Faz uma COPIA COMPLETA da base de desenvolvimento para o beta:
   1. Cria o esquema completo (as 37 tabelas) correndo `alembic upgrade head`.
-  2. Copia SO' a parametrizacao a partir da base de desenvolvimento:
-     matterias-primas, pecas, operacoes, valuesets, modulos, maquinas,
-     margens (so' as globais), regras, descricoes, system_settings e os
-     utilizadores da app.
-  3. NAO copia clientes, orcamentos nem producao -- ficam vazios de proposito,
-     para os testadores criarem os seus. Ver a decisao do Paulo no historico.
+  2. Copia os dados de TODAS as tabelas dev -> beta.
 
-Usa uma LISTA BRANCA (copiar estas) em vez de lista negra: se falhar em
-identificar uma tabela, no pior caso ela fica vazia -- nunca expoe dados a
-mais na base partilhada.
+Porque copia tudo (incluindo clientes): o id da tabela `clientes` e'
+auto-incremento LOCAL, nao vem do PHC. Se o beta arrancasse sem clientes,
+os orcamentos copiados (que apontam para cliente_id do dev) ficariam com
+os links partidos, e re-mapear o PHC nao os restauraria (o PHC entraria com
+ids novos). Copiando `clientes` com os seus ids, os orcamentos ligam-se de
+imediato; o sync do PHC no beta depois so' ATUALIZA esses clientes (casa
+pelo num_cliente_phc), sem partir nada.
 
-Seguro de repetir: recusa-se a correr se o beta ja' tiver dados de
-parametrizacao, para nao duplicar.
+Contexto: base de TESTES, dados descartaveis. No fim, a base de producao
+sera' criada de novo e limpa. Ver historico da decisao do Paulo.
+
+Seguro de repetir: recusa correr se o beta ja' tiver dados, para nao duplicar.
 
 Pre-requisito (uma linha corrida pelo Paulo no Workbench, como root):
     GRANT ALL PRIVILEGES ON martelo_v3_beta.* TO 'martelo_v3'@'localhost';
@@ -42,33 +43,8 @@ from app.config.settings import settings  # noqa: E402
 
 BASE_BETA = "martelo_v3_beta"
 
-# Lista branca: tabelas de PARAMETRIZACAO cujos dados sao copiados dev -> beta.
-# Tudo o resto (clientes, orcamentos, producao, ...) fica vazio.
-TABELAS_PARAMETRIZACAO = [
-    "def_maquinas",
-    "def_maquina_escaloes_area",
-    "def_materias_primas",
-    "def_modulos",
-    "def_modulo_categorias",
-    "def_modulo_linhas",
-    "def_operacoes",
-    "def_pecas",
-    "def_peca_componentes",
-    "def_peca_operacoes",
-    "def_regras_quantidade",
-    "def_valueset_modelos",
-    "def_valueset_chaves",
-    "def_valueset_modelo_linhas",
-    "def_valueset_modelo_linha_operacoes",
-    "descricoes_predefinidas",
-    "system_settings",
-    "users",
-    "user_permissions",
-]
-
-# def_margens_padrao e' copiada a` parte: SO' as margens globais (sem cliente),
-# porque as margens por cliente referem clientes que nao vamos trazer.
-TABELA_MARGENS = "def_margens_padrao"
+# O alembic define a sua propria linha; nao copiar (evita conflito de versao).
+NAO_COPIAR = {"alembic_version"}
 
 
 def _beta_url() -> str:
@@ -96,65 +72,67 @@ def _correr_alembic_no_beta() -> None:
         print(res.stdout)
         print(res.stderr, file=sys.stderr)
         raise SystemExit("[ERRO] alembic upgrade head falhou. Nada foi copiado.")
-    print("      esquema criado (37 tabelas).")
+    print("      esquema criado.")
 
 
-def _copiar_parametrizacao(dry_run: bool) -> None:
+def _copiar_tudo(dry_run: bool) -> None:
     src = settings.db_name  # base de origem (dev)
     eng = sa.create_engine(_beta_url())
     with eng.begin() as con:
+        tabelas = [r[0] for r in con.execute(sa.text(
+            f"SELECT TABLE_NAME FROM information_schema.TABLES "
+            f"WHERE TABLE_SCHEMA = '{src}' AND TABLE_TYPE = 'BASE TABLE' "
+            f"ORDER BY TABLE_NAME"))]
+        tabelas = [t for t in tabelas if t not in NAO_COPIAR]
+
         # Salvaguarda: nao correr por cima de um beta ja' povoado.
-        ja = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.def_materias_primas")).scalar()
         destino = con.execute(sa.text("SELECT COUNT(*) FROM def_materias_primas")).scalar()
         if destino:
             raise SystemExit(
                 f"[ABORTADO] {BASE_BETA} ja' tem {destino} materias-primas. "
                 "Se quer reconstruir do zero, esvazie o beta primeiro."
             )
-        print(f"[2/3] copiar parametrizacao  {src} -> {BASE_BETA}  ({ja} materias-primas na origem)")
 
+        print(f"[2/3] copiar {len(tabelas)} tabelas  {src} -> {BASE_BETA}")
         if dry_run:
-            print("      (dry-run: nada e' escrito)")
+            for t in tabelas:
+                n = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.`{t}`")).scalar()
+                print(f"      {t:42} {n:>7} linhas (dry-run)")
             return
 
         con.execute(sa.text("SET FOREIGN_KEY_CHECKS = 0"))
         total = 0
-        for tab in TABELAS_PARAMETRIZACAO:
-            n = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.`{tab}`")).scalar()
-            con.execute(sa.text(f"INSERT INTO `{tab}` SELECT * FROM `{src}`.`{tab}`"))
-            print(f"      {tab:40} {n:>6} linhas")
+        for t in tabelas:
+            n = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.`{t}`")).scalar()
+            if n:
+                con.execute(sa.text(f"INSERT INTO `{t}` SELECT * FROM `{src}`.`{t}`"))
+            print(f"      {t:42} {n:>7} linhas")
             total += n
-
-        # Margens: so' as globais (cliente_id IS NULL).
-        cols = [r[0] for r in con.execute(sa.text(
-            f"SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-            f"WHERE TABLE_SCHEMA = '{src}' AND TABLE_NAME = '{TABELA_MARGENS}' "
-            f"ORDER BY ORDINAL_POSITION"))]
-        lista = ", ".join(f"`{c}`" for c in cols)
-        nm = con.execute(sa.text(
-            f"INSERT INTO `{TABELA_MARGENS}` ({lista}) "
-            f"SELECT {lista} FROM `{src}`.`{TABELA_MARGENS}` WHERE cliente_id IS NULL"
-        )).rowcount
-        saltadas = con.execute(sa.text(
-            f"SELECT COUNT(*) FROM `{src}`.`{TABELA_MARGENS}` WHERE cliente_id IS NOT NULL")).scalar()
-        print(f"      {TABELA_MARGENS:40} {nm:>6} linhas  ({saltadas} por-cliente ignoradas)")
-        total += nm
-
         con.execute(sa.text("SET FOREIGN_KEY_CHECKS = 1"))
         print(f"      total copiado: {total} linhas")
 
 
 def _verificar() -> None:
-    print("[3/3] verificacao")
+    print("[3/3] verificacao (dev vs beta, deve bater certo)")
+    src = settings.db_name
     eng = sa.create_engine(_beta_url())
+    diferencas = 0
     with eng.connect() as con:
-        vazias = ["clientes", "orcamentos", "producao"]
-        for t in vazias:
-            n = con.execute(sa.text(f"SELECT COUNT(*) FROM `{t}`")).scalar()
-            estado = "OK (vazia)" if n == 0 else f"!! TEM {n} LINHAS"
-            print(f"      {t:20} {estado}")
-        mp = con.execute(sa.text("SELECT COUNT(*) FROM def_materias_primas")).scalar()
-        print(f"      def_materias_primas  {mp} linhas (deve ser > 0)")
+        tabelas = [r[0] for r in con.execute(sa.text(
+            f"SELECT TABLE_NAME FROM information_schema.TABLES "
+            f"WHERE TABLE_SCHEMA = '{src}' AND TABLE_TYPE = 'BASE TABLE'"))]
+        for t in tabelas:
+            if t in NAO_COPIAR:
+                continue
+            a = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.`{t}`")).scalar()
+            b = con.execute(sa.text(f"SELECT COUNT(*) FROM `{t}`")).scalar()
+            if a != b:
+                print(f"      !! {t}: dev={a} beta={b}")
+                diferencas += 1
+    if diferencas:
+        print(f"      {diferencas} tabelas com contagem diferente -- verificar!")
+    else:
+        print("      todas as tabelas com a mesma contagem. OK.")
 
 
 def main() -> None:
@@ -167,7 +145,7 @@ def main() -> None:
     print()
     if not args.dry_run:
         _correr_alembic_no_beta()
-    _copiar_parametrizacao(args.dry_run)
+    _copiar_tudo(args.dry_run)
     if not args.dry_run:
         _verificar()
     print("\nConcluido." if not args.dry_run else "\nDry-run concluido.")
