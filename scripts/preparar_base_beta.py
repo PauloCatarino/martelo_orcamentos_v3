@@ -109,6 +109,10 @@ def _copiar_tudo(dry_run: bool) -> None:
         total = 0
         for t in tabelas:
             n = con.execute(sa.text(f"SELECT COUNT(*) FROM `{src}`.`{t}`")).scalar()
+            # O alembic semeia dados por omissao nalgumas tabelas (margens,
+            # operacoes, regras...). Limpar antes para o beta ficar um clone
+            # exato do dev, sem colisoes de chave primaria.
+            con.execute(sa.text(f"DELETE FROM `{t}`"))
             if n:
                 con.execute(sa.text(f"INSERT INTO `{t}` SELECT * FROM `{src}`.`{t}`"))
             print(f"      {t:42} {n:>7} linhas")
