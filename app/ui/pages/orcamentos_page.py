@@ -57,6 +57,7 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.estilo_tabela_orcamentos import (
+    FUNDO_LINHA_ROLE,
     aplicar_estilo_linha_orcamento,
     configurar_tabela_orcamentos,
     grupos_versoes,
@@ -468,6 +469,10 @@ class OrcamentosPage(QWidget):
                 header = self.TABLE_HEADERS[column_index]
                 item = self._criar_item_tabela(value, header)
                 item.setBackground(QColor(fundo_linha))
+                if grupo_versoes is not None:
+                    # The table stylesheet ignores setBackground; the row
+                    # delegate repaints this colour so the group stands out.
+                    item.setData(FUNDO_LINHA_ROLE, QColor(fundo_linha))
                 if header == "Versão" and grupo_versoes is not None:
                     item.setToolTip(
                         f"Este orçamento tem {total_versoes[orcamento.orcamento_id]}"

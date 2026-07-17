@@ -7,9 +7,31 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QTableWidget
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableWidget
 
 from app.ui import tema
+
+# Custom data role holding the QColor a whole row should be painted with.
+# A stylesheet ``QTableWidget::item`` rule makes Qt ignore the model's normal
+# background brush, so we repaint it ourselves from this role in the delegate.
+FUNDO_LINHA_ROLE = Qt.ItemDataRole.UserRole + 100
+
+
+class FundoLinhaDelegate(QStyledItemDelegate):
+    """Paint the per-row background stored in :data:`FUNDO_LINHA_ROLE`.
+
+    Needed because the table stylesheet suppresses ``item.setBackground``.
+    Cells without the role fall back to the stylesheet's zebra; selected cells
+    keep the selection highlight.
+    """
+
+    def paint(self, painter, option, index):  # noqa: D102 - Qt override
+        cor = index.data(FUNDO_LINHA_ROLE)
+        if isinstance(cor, QColor) and not (
+            option.state & QStyle.StateFlag.State_Selected
+        ):
+            painter.fillRect(option.rect, cor)
+        super().paint(painter, option, index)
 
 
 def grupos_versoes(orcamento_ids: Sequence[int]) -> dict[int, int]:
@@ -45,6 +67,9 @@ def configurar_tabela_orcamentos(table: QTableWidget, *, compacta: bool = False)
         " font-weight: bold; }}\n"
         f"QHeaderView::section:hover {{ background: {tema.CASTANHO_ESCURO}; }}"
     )
+    # The stylesheet above blocks item background brushes; this delegate paints
+    # the per-row colour stored in FUNDO_LINHA_ROLE back on top.
+    table.setItemDelegate(FundoLinhaDelegate(table))
 
 
 def aplicar_estilo_linha_orcamento(

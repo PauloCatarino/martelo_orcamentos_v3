@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QTableWidget, QTableWidgetItem
 
 from app.ui import tema
 from app.ui.widgets.estilo_tabela_orcamentos import (
+    FUNDO_LINHA_ROLE,
+    FundoLinhaDelegate,
     aplicar_estilo_linha_orcamento,
     configurar_tabela_orcamentos,
     grupos_versoes,
@@ -45,3 +48,40 @@ def test_cor_grupo_versoes_alterna_e_difere_da_zebra() -> None:
     cores_zebra = {tema.cor_zebra(0), tema.cor_zebra(1)}
     assert tema.cor_grupo_versoes(0) != tema.cor_grupo_versoes(1)
     assert not cores_zebra & {tema.cor_grupo_versoes(0), tema.cor_grupo_versoes(1)}
+
+
+def test_configurar_instala_delegate_de_fundo() -> None:
+    app = QApplication.instance() or QApplication([])
+    tabela = QTableWidget(1, 1)
+    configurar_tabela_orcamentos(tabela)
+    assert isinstance(tabela.itemDelegate(), FundoLinhaDelegate)
+    tabela.deleteLater()
+    app.processEvents()
+
+
+def test_delegate_pinta_fundo_da_linha_apesar_do_stylesheet() -> None:
+    # Guards the regression: the ``::item`` stylesheet rule makes Qt ignore
+    # setBackground, so the highlight must come from the delegate + role.
+    app = QApplication.instance() or QApplication([])
+    tabela = QTableWidget(2, 1)
+    realce = tema.cor_grupo_versoes(0)
+    com_realce = QTableWidgetItem("A")
+    com_realce.setData(FUNDO_LINHA_ROLE, QColor(realce))
+    tabela.setItem(0, 0, com_realce)
+    tabela.setItem(1, 0, QTableWidgetItem("B"))
+    configurar_tabela_orcamentos(tabela)
+    tabela.resize(200, 80)
+    tabela.show()
+    app.processEvents()
+
+    imagem = tabela.grab().toImage()
+    cabecalho = tabela.horizontalHeader().height()
+    y_realce = cabecalho + tabela.rowViewportPosition(0) + tabela.rowHeight(0) // 2
+    y_normal = cabecalho + tabela.rowViewportPosition(1) + tabela.rowHeight(1) // 2
+    cor_realce = imagem.pixelColor(20, y_realce)
+    cor_normal = imagem.pixelColor(20, y_normal)
+
+    assert cor_realce.name() == QColor(realce).name()
+    assert cor_normal.name() != QColor(realce).name()
+    tabela.deleteLater()
+    app.processEvents()
