@@ -66,6 +66,7 @@ from app.services.orcamento_service import OrcamentoService
 from app.services.plano_corte_service import PlanoCorteService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.relatorio_operacoes_service import RelatorioOperacoesService
+from app.services.relatorio_simplificado_service import RelatorioSimplificadoService
 from app.ui import tema
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -156,6 +157,29 @@ class OrcamentoRelatoriosPage(QWidget):
         "Operação efetiva": 220, "Máquina": 180, "Qt": 70,
         "Setup (min)": 90, "Tempo CNC (min)": 110,
         "Outros tempos (min)": 125, "Custo produção": 110,
+    }
+
+    SIMPLIFICADO_HEADERS = [
+        "Item", "Código", "Nº peças", "Escalão", "Peças ≤19 mm", "Peças >19 mm",
+        "Custo corte", "Custo orlagem", "Urgência", "Custo urgência",
+        "Sem Excel", "Custo sem Excel", "Total simplificado",
+    ]
+    SIMPLIFICADO_LARGURAS = {
+        "Item": 220, "Código": 90, "Nº peças": 70, "Escalão": 70,
+        "Peças ≤19 mm": 95, "Peças >19 mm": 95, "Custo corte": 90,
+        "Custo orlagem": 95, "Urgência": 70, "Custo urgência": 100,
+        "Sem Excel": 75, "Custo sem Excel": 105, "Total simplificado": 115,
+    }
+    SIMPLIFICADO_TOOLTIPS = {
+        "Nº peças": "Quantidade total de linhas PEÇA ativas do item (determina o escalão).",
+        "Escalão": "Escalão de tarifas aplicado pela quantidade total de peças (≥25 inclui exatamente 25).",
+        "Peças ≤19 mm": "Peças com espessura até 19 mm — pagam as tarifas do escalão (corte + PUR/LASER por lados orlados).",
+        "Peças >19 mm": "Peças com espessura acima de 19 mm — pagam a tarifa própria (corte por peça + orlagem por lado orlado).",
+        "Custo corte": "Soma do custo de corte simplificado das peças do item (por unidade de item).",
+        "Custo orlagem": "Soma do custo de orlagem simplificada das peças do item (por unidade de item).",
+        "Custo urgência": "Valor de urgência do escalão, cobrado UMA vez por item (não multiplica pelas peças).",
+        "Custo sem Excel": "Custo adicional por peça quando a lista não veio em Excel (tarifa × nº peças).",
+        "Total simplificado": "Corte + orlagem + urgência + sem Excel (por unidade de item).",
     }
 
     # 3-block formula tooltips (descrição / fórmula / valores) on the calculated
@@ -266,6 +290,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self.tabs.addTab(self._criar_tab_consumos(), "Resumo de Consumos")
         self.operacoes_tab = self._criar_tab_operacoes()
         self.tabs.addTab(self.operacoes_tab, "Operações")
+        self.tabs.addTab(self._criar_tab_simplificado(), "Custeio Simplificado")
         self.tabs.addTab(self.dashboards, "Dashboards")
 
         layout = QVBoxLayout()
@@ -499,6 +524,33 @@ class OrcamentoRelatoriosPage(QWidget):
         layout.addWidget(self.operacoes_linhas_table, stretch=1)
         return tab
 
+    def _criar_tab_simplificado(self) -> QWidget:
+        """Summary of how each Simplificado item reached its value."""
+        nota = QLabel(
+            "Resumo do método Simplificado por item: quantidade de peças, escalão "
+            "aplicado, divisão ≤19/>19 mm, urgência e custo de inserção manual "
+            "(sem Excel). Os valores são por unidade de item — o orçamento "
+            "multiplica pela quantidade do item."
+        )
+        nota.setWordWrap(True)
+        nota.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
+        )
+        self.simplificado_resumo = QLabel("")
+        self.simplificado_resumo.setStyleSheet("font-weight: bold; padding: 4px;")
+        self.simplificado_table = self._criar_tabela(
+            self.SIMPLIFICADO_HEADERS,
+            tooltips=self.SIMPLIFICADO_TOOLTIPS,
+            larguras=self.SIMPLIFICADO_LARGURAS,
+        )
+        ligar_persistencia_larguras(self.simplificado_table, "rel_simplificado")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.addWidget(nota)
+        layout.addWidget(self.simplificado_resumo)
+        layout.addWidget(self.simplificado_table, stretch=1)
+        return tab
+
     # ----- Widgets helpers -----
 
     def _criar_banner(self) -> QLabel:
@@ -605,6 +657,9 @@ class OrcamentoRelatoriosPage(QWidget):
                 operacoes_linhas = RelatorioOperacoesService(
                     session
                 ).listar_da_versao(self.orcamento_versao_id)
+                resumos_simplificado = RelatorioSimplificadoService(
+                    session
+                ).listar_da_versao(self.orcamento_versao_id)
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar os relatórios.")
             return
@@ -617,6 +672,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self._preencher_items(items)
         self._preencher_consumos(resumo)
         self._preencher_operacoes_linhas(operacoes_linhas)
+        self._preencher_simplificado(resumos_simplificado)
         self.dashboards.atualizar(resumo)
 
         hora = datetime.now().strftime("%H:%M:%S")
@@ -1261,6 +1317,46 @@ class OrcamentoRelatoriosPage(QWidget):
                 self.operacoes_detalhe_table.setItem(
                     row, col, criar_item_tabela(texto)
                 )
+
+    def _preencher_simplificado(self, resumos) -> None:
+        self.simplificado_table.setRowCount(0)
+        if not resumos:
+            self.simplificado_resumo.setText(
+                "Esta versão não tem itens em custeio Simplificado."
+            )
+            return
+        total_pecas = Decimal("0")
+        total_custo = Decimal("0")
+        for resumo in resumos:
+            row = self.simplificado_table.rowCount()
+            self.simplificado_table.insertRow(row)
+            total_pecas += resumo.total_pecas
+            total_custo += resumo.total_simplificado
+            valores = (
+                resumo.item_nome,
+                resumo.codigo or "",
+                format_quantity(resumo.total_pecas),
+                resumo.escalao,
+                format_quantity(resumo.pecas_finas),
+                format_quantity(resumo.pecas_grossas),
+                format_currency(resumo.custo_corte),
+                format_currency(resumo.custo_orlagem),
+                "Sim" if resumo.urgente else "Não",
+                format_currency(resumo.custo_urgencia) if resumo.urgente else "—",
+                "Sim" if resumo.sem_excel else "Não",
+                format_currency(resumo.custo_sem_excel) if resumo.sem_excel else "—",
+                format_currency(resumo.total_simplificado),
+            )
+            for col, texto in enumerate(valores):
+                item = criar_item_tabela(texto)
+                item.setToolTip(texto)
+                if resumo.pecas_grossas and self.SIMPLIFICADO_HEADERS[col] == "Peças >19 mm":
+                    item.setBackground(QColor(tema.OCRE_SUAVE))
+                self.simplificado_table.setItem(row, col, item)
+        self.simplificado_resumo.setText(
+            f"Itens Simplificado: {len(resumos)}  |  Peças: {format_quantity(total_pecas)}  |  "
+            f"Custo simplificado (por unidade de item): {format_currency(total_custo)}"
+        )
 
     def _preencher_operacoes_linhas(self, linhas) -> None:
         self.operacoes_linhas_table.setRowCount(0)

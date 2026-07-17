@@ -7,7 +7,7 @@ from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, QSize, QEvent
-from PySide6.QtGui import QColor, QFont, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QCheckBox,
@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.colar_excel import parse_bloco_medidas_excel
 from app.domain.custos import eh_unidade_ml, fator_desperdicio
 from app.domain.medidas import (
     construir_contexto_item,
@@ -529,7 +530,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self.modalidade_label.setObjectName("orcamentoItemCusteioModalidade")
         self.opcoes_simplificado_button = QPushButton("Opções Simplificado")
         self.opcoes_simplificado_button.setToolTip(
-            "Urgência e acréscimo sem listagem Excel, aplicados no fim do custo do item."
+            "Urgência (valor único por item, escolhido pelo escalão) e acréscimo "
+            "por peça sem listagem Excel, aplicados no fim do custo do item."
         )
         self.opcoes_simplificado_button.clicked.connect(self._abrir_opcoes_simplificado)
 
@@ -3300,6 +3302,11 @@ class OrcamentoItemCusteioPage(QWidget):
     def colar_linhas(self) -> None:
         """Paste the clipboard block below the selected line (never inside a
         composite), then run the full Atualizar pipeline on this item."""
+        # Comp/Larg copied from an Excel piece list take priority: with the
+        # cursor on one of those columns and a purely numeric block in the
+        # system clipboard, Ctrl+V fills the measures instead of pasting lines.
+        if self._colar_medidas_do_excel():
+            return
         clipboard = OrcamentoItemCusteioPage._clipboard_custeio
         if clipboard is None or not clipboard.linhas:
             self.status_label.setText("Não há linhas para colar.")
@@ -3328,6 +3335,88 @@ class OrcamentoItemCusteioPage(QWidget):
         if resultado.cortadas:
             mensagem += f" Linhas cortadas: {resultado.cortadas}."
         self.status_label.setText(mensagem)
+
+    def _colar_medidas_do_excel(self) -> bool:
+        """Paste Comp/Larg columns copied from Excel onto the piece lines.
+
+        Only triggers with the cursor on the Comp or Larg column and a purely
+        numeric tab-separated block in the system clipboard (anything else —
+        letters, symbols — falls back to the normal line paste and can never
+        corrupt the measures). Values go DOWN the consecutive PIECE lines from
+        the selected row (divisions/separators/composite headers are skipped);
+        starting on Comp a second Excel column fills Larg. Esp is never touched
+        (it keeps coming from the material). Returns True when handled.
+        """
+        row = self.table.currentRow()
+        col = self.table.currentColumn()
+        if row < 0 or col < 0 or col >= len(self.TABLE_HEADERS):
+            return False
+        header = self.TABLE_HEADERS[col]
+        if header not in ("Comp", "Larg"):
+            return False
+        bloco = parse_bloco_medidas_excel(QGuiApplication.clipboard().text())
+        if bloco is None:
+            return False
+
+        alvos = ("Comp", "Larg") if header == "Comp" else ("Larg",)
+        destinos: list[tuple[OrcamentoItemCusteioLinhaResumo, tuple[str, ...]]] = []
+        linha_tabela = row
+        for celulas in bloco:
+            while linha_tabela < self.table.rowCount():
+                linha = self._custeio_by_row.get(linha_tabela)
+                linha_tabela += 1
+                if (
+                    linha is not None
+                    and linha.tipo_linha == PECA
+                    and self._coluna_editavel(header, linha)
+                ):
+                    destinos.append((linha, celulas))
+                    break
+            else:
+                break
+
+        if not destinos:
+            self.status_label.setText(
+                "Sem linhas de peça a partir da célula selecionada para colar as medidas."
+            )
+            return True
+
+        atualizadas = 0
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                for linha, celulas in destinos:
+                    valores = {"comp": linha.comp, "larg": linha.larg}
+                    for indice, campo in enumerate(alvos):
+                        if indice < len(celulas) and celulas[indice]:
+                            valores[campo.lower()] = celulas[indice]
+                    service.atualizar_medidas_linha(
+                        linha.id,
+                        qt_mod=linha.qt_mod,
+                        qt_und=linha.qt_und,
+                        comp=valores["comp"],
+                        larg=valores["larg"],
+                        esp=linha.esp,
+                        propagar_item=False,
+                    )
+                    atualizadas += 1
+        except (SQLAlchemyError, ValueError) as error:
+            self.carregar()
+            self.status_label.setText(
+                f"Não foi possível colar as medidas do Excel: {error}"
+            )
+            return True
+
+        self.carregar()
+        em_falta = len(bloco) - atualizadas
+        mensagem = (
+            f"Medidas do Excel coladas em {atualizadas} peça(s). "
+            "Use Atualizar para recalcular custos."
+        )
+        if em_falta > 0:
+            mensagem += f" ({em_falta} linha(s) do Excel sem peça correspondente.)"
+        self.status_label.setText(mensagem)
+        return True
 
     def _menu_contexto_material(self, pos) -> None:
         """Show a right-click menu with the line material and delete actions."""

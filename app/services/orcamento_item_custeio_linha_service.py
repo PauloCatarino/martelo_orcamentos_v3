@@ -2833,10 +2833,15 @@ class OrcamentoItemCusteioLinhaService:
             self._modalidade_custeio_do_item(orcamento_item_id)
             == MODALIDADE_CUSTEIO_SIMPLIFICADO
         )
-        tarifa_simplificada = escolher_escalao_simplificado(
-            self._quantidade_pecas_simplificado(orcamento_item_id),
-            CusteioSimplificadoTarifasService(self.session).obter(),
-        ) if modo_simplificado else None
+        tarifa_simplificada = None
+        tarifa_esp_grossa = None
+        if modo_simplificado:
+            escaloes, tarifa_esp_grossa = CusteioSimplificadoTarifasService(
+                self.session
+            ).obter_completo()
+            tarifa_simplificada = escolher_escalao_simplificado(
+                self._quantidade_pecas_simplificado(orcamento_item_id), escaloes
+            )
         usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
         cache_variantes = self._cache_operacoes_variantes_do_item(orcamento_item_id)
 
@@ -2997,6 +3002,8 @@ class OrcamentoItemCusteioLinhaService:
                         getattr(linha, "tipo_orlagem_simplificado", None)
                     ),
                     tarifa_simplificada,
+                    esp=linha.esp_real,
+                    tarifa_grossa=tarifa_esp_grossa,
                 )
                 avisos_ml = []
 
