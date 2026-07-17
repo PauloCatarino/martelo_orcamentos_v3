@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session
 
-from app.db.base import Base
-import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.repositories.system_setting_repository import SystemSettingRepository
 from app.services.system_setting_service import SystemSettingService
 from scripts.create_default_system_settings import (
@@ -30,19 +25,6 @@ from scripts.create_default_system_settings import (
     DefaultSystemSettingsResult,
     ensure_default_system_settings,
 )
-
-
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
-@pytest.fixture()
-def session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 def test_default_system_settings_constants_import() -> None:

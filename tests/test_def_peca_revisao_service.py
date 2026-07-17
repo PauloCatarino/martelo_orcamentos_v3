@@ -5,12 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session
 
-from app.db.base import Base
-import app.models  # noqa: F401
 from app.services.def_operacao_service import CriarDefOperacaoData, DefOperacaoService
 from app.services.def_peca_componente_service import (
     CriarDefPecaComponenteData,
@@ -22,19 +17,6 @@ from app.services.def_peca_operacao_service import (
 )
 from app.services.def_peca_revisao_service import DefPecaRevisaoService
 from app.services.def_peca_service import CriarDefPecaData, DefPecaService
-
-
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
-@pytest.fixture()
-def session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 def test_criar_revisao_copia_configuracao_e_desativa_anterior(session) -> None:

@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from sqlalchemy import BigInteger, create_engine, select
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session
+from sqlalchemy import select
 
-from app.db.base import Base
 from app.domain.orcamento_estados import ESTADO_INICIAL
 import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.models import (
@@ -27,19 +24,6 @@ from app.services.orcamento_service import (
     EditarOrcamentoData,
     OrcamentoService,
 )
-
-
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
-@pytest.fixture()
-def session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 def _criar_cliente(session, *, phc: bool = False) -> int:

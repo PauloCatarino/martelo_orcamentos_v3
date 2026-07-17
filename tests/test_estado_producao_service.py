@@ -7,26 +7,9 @@ mockado (monkeypatch) e uma sessão SQLite em memória para as obras (``producao
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session
 
-from app.db.base import Base
 import app.models  # noqa: F401  (regista todos os modelos em Base.metadata)
 from app.models.producao import Producao
-
-
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
-@pytest.fixture()
-def session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 def _processo(
