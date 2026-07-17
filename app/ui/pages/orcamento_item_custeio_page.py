@@ -48,6 +48,11 @@ from app.domain.quantidades import (
     calcular_quantidades,
     formatar_cadeia,
 )
+from app.domain.custeio_colapso import (
+    descendentes_por_composta,
+    eh_ferragem_auto,
+    resumo_composta,
+)
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     FERRAGEM,
@@ -56,6 +61,7 @@ from app.domain.custeio_linha_types import (
     PECA_COMPOSTA,
     SEPARADOR,
     get_custeio_linha_type_label,
+    normalize_custeio_linha_type,
 )
 from app.domain.valueset_compat import opcoes_valueset_compativeis
 from app.domain.custo_producao import (
@@ -509,6 +515,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
+        # Composite pieces are collapsed by default; this set holds the line ids
+        # the user has expanded (kept across reloads so an edit doesn't re-hide).
+        self._compostas_expandidas: set[int] = set()
+        self._descendentes_composta: dict[int, list[int]] = {}
         self._erros_entrada: list[ErroEntradaCusteio] = []
         self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
         self._valueset_opcoes: list = []
@@ -682,6 +692,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.setIconSize(QSize(self._TAMANHO_MINIATURA_MODULO, self._TAMANHO_MINIATURA_MODULO))
         self._larguras_iniciais_aplicadas = False
         self.table.cellChanged.connect(self._on_cell_changed)
+        self.table.cellClicked.connect(self._on_cell_clicked_composta)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_biblioteca)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_operacoes)
@@ -1842,6 +1853,7 @@ class OrcamentoItemCusteioPage(QWidget):
             for row_index, linha in enumerate(linhas):
                 self._custeio_by_row[row_index] = linha
                 self._preencher_linha(row_index, linha)
+            self._aplicar_estado_compostas(linhas)
         finally:
             self._carregando_tabela = False
 
@@ -1851,8 +1863,137 @@ class OrcamentoItemCusteioPage(QWidget):
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
 
+    # --- Peças compostas colapsáveis (variante A) -------------------------
+    # A peça composta nasce colapsada: mostra só um resumo e esconde as suas
+    # peças/ferragens filhas. É 100% visual — o cálculo usa sempre todas as
+    # linhas. Clicar na célula "Tipo linha" (a seta ▶/▼) expande/colapsa.
+
+    def _aplicar_estado_compostas(
+        self, linhas: list[OrcamentoItemCusteioLinhaResumo]
+    ) -> None:
+        """Adorn composite rows, mark auto hardware and hide collapsed children.
+
+        Runs inside the ``_carregando_tabela`` guard (called from
+        :meth:`_preencher_tabela`), so the cell edits here never trigger a save.
+        """
+        self._descendentes_composta = descendentes_por_composta(linhas)
+        for row, linha in self._custeio_by_row.items():
+            tipo = normalize_custeio_linha_type(linha.tipo_linha)
+            if tipo == PECA_COMPOSTA:
+                expandida = linha.id in self._compostas_expandidas
+                self._definir_seta_composta(row, expandida)
+                resumo = resumo_composta(
+                    linhas, self._descendentes_composta.get(linha.id, [])
+                )
+                self._anexar_resumo_composta(row, resumo)
+            elif eh_ferragem_auto(linha):
+                self._marcar_ferragem_auto(row)
+        self._aplicar_visibilidade_compostas()
+
+    def _aplicar_visibilidade_compostas(self) -> None:
+        """Hide the descendant rows of every collapsed composite."""
+        id_por_row = {
+            linha.id: row for row, linha in self._custeio_by_row.items()
+        }
+        for comp_id, descendentes in self._descendentes_composta.items():
+            esconder = comp_id not in self._compostas_expandidas
+            for linha_id in descendentes:
+                row = id_por_row.get(linha_id)
+                if row is not None:
+                    self.table.setRowHidden(row, esconder)
+
+    def _definir_seta_composta(self, row: int, expandida: bool) -> None:
+        """Set the ▶/▼ toggle on a composite row's 'Tipo linha' cell."""
+        try:
+            col = self.TABLE_HEADERS.index("Tipo linha")
+        except ValueError:
+            return
+        item = self.table.item(row, col)
+        if item is None:
+            return
+        seta = "▼" if expandida else "▶"  # ▼ aberta / ▶ fechada
+        item.setText(f"{seta}  {get_custeio_linha_type_label(PECA_COMPOSTA)}")
+        item.setToolTip(
+            "Clique para expandir/colapsar os componentes desta peça composta."
+        )
+
+    def _anexar_resumo_composta(self, row: int, resumo) -> None:
+        """Append the '· N peças · N ferragens · € total' summary to the name."""
+        try:
+            col = self.TABLE_HEADERS.index("Def. Peça")
+        except ValueError:
+            return
+        item = self.table.item(row, col)
+        if item is None:
+            return
+        item.setText(f"{item.text()}    ·  {self._texto_resumo_composta(resumo)}")
+
+    def _texto_resumo_composta(self, resumo) -> str:
+        """'2 peças · 7 ferragens · 45,20 €' — counts + cost of the block."""
+        pecas = f"{resumo.n_pecas} " + ("peça" if resumo.n_pecas == 1 else "peças")
+        ferr = f"{resumo.n_ferragens} " + (
+            "ferragem" if resumo.n_ferragens == 1 else "ferragens"
+        )
+        return f"{pecas} · {ferr} · {format_currency(resumo.custo_total)}"
+
+    def _marcar_ferragem_auto(self, row: int) -> None:
+        """Tag a rule-filled hardware line with an 'auto' marker on its name."""
+        try:
+            col = self.TABLE_HEADERS.index("Def. Peça")
+        except ValueError:
+            return
+        item = self.table.item(row, col)
+        if item is None:
+            return
+        item.setText(f"{item.text()}   ·auto")
+        item.setToolTip(
+            "Ferragem preenchida automaticamente por regra do componente composto."
+        )
+
+    def _on_cell_clicked_composta(self, row: int, col: int) -> None:
+        """Toggle a composite when its 'Tipo linha' (arrow) cell is clicked."""
+        linha = self._custeio_by_row.get(row)
+        if linha is None:
+            return
+        if normalize_custeio_linha_type(linha.tipo_linha) != PECA_COMPOSTA:
+            return
+        try:
+            col_tipo = self.TABLE_HEADERS.index("Tipo linha")
+        except ValueError:
+            return
+        if col != col_tipo:
+            return
+        self._toggle_composta(linha.id)
+
+    def _toggle_composta(self, comp_id: int) -> None:
+        """Flip a composite's expanded state, refreshing arrow + visibility."""
+        if comp_id in self._compostas_expandidas:
+            self._compostas_expandidas.discard(comp_id)
+        else:
+            self._compostas_expandidas.add(comp_id)
+        self._carregando_tabela = True
+        try:
+            for row, linha in self._custeio_by_row.items():
+                if (
+                    linha.id == comp_id
+                    and normalize_custeio_linha_type(linha.tipo_linha) == PECA_COMPOSTA
+                ):
+                    self._definir_seta_composta(
+                        row, comp_id in self._compostas_expandidas
+                    )
+            self._aplicar_visibilidade_compostas()
+        finally:
+            self._carregando_tabela = False
+
     def selecionar_linha_por_id(self, linha_id: int) -> bool:
         """Select and reveal one costing line referenced by an external audit."""
+        # A linha alvo pode ser uma filha escondida de uma composta colapsada:
+        # expande a composta que a contém para a tornar visível.
+        for comp_id, descendentes in self._descendentes_composta.items():
+            if linha_id in descendentes and comp_id not in self._compostas_expandidas:
+                self._toggle_composta(comp_id)
+                break
+
         for row, linha in self._custeio_by_row.items():
             if linha.id == linha_id:
                 self.tabs.setCurrentIndex(0)
