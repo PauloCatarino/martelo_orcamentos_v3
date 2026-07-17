@@ -49,6 +49,9 @@ class OrcamentoResumo:
     preco_total: Decimal | None
     created_at: datetime
     enc_phc: str | None = None
+    # All PHC order numbers of the version (principal + extras), joined for
+    # searching; None for legacy versions without child rows.
+    enc_phc_todos: str | None = None
     info_1: str | None = None
     info_2: str | None = None
     utilizador: str | None = None
@@ -693,6 +696,14 @@ class OrcamentoRepository:
                 .correlate(OrcamentoVersao)
                 .scalar_subquery()
                 .label("encomendas_phc_total"),
+                select(func.group_concat(OrcamentoVersaoEncomendaPhc.numero))
+                .where(
+                    OrcamentoVersaoEncomendaPhc.orcamento_versao_id
+                    == OrcamentoVersao.id
+                )
+                .correlate(OrcamentoVersao)
+                .scalar_subquery()
+                .label("enc_phc_todos"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
             .join(Cliente, Orcamento.cliente_id == Cliente.id)
@@ -721,6 +732,7 @@ class OrcamentoRepository:
             preco_total=row["preco_total"],
             created_at=row["created_at"],
             enc_phc=row["enc_phc"],
+            enc_phc_todos=row["enc_phc_todos"],
             info_1=row["info_1"],
             info_2=row["info_2"],
             utilizador=row["utilizador"],

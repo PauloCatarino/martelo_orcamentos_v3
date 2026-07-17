@@ -292,6 +292,43 @@ def test_lista_conta_encomendas_da_versao(session) -> None:
     assert resumo.encomendas_phc_total == 3
 
 
+def test_lista_junta_todos_os_numeros_phc_para_pesquisa(session) -> None:
+    _orcamento_id, versao_id = _criar_orcamento(session, enc_phc="100")
+    OrcamentoEncomendaPhcService(session).substituir_encomendas(
+        versao_id,
+        [
+            EncomendaPhcInput(numero="100", is_principal=True),
+            EncomendaPhcInput(numero="200"),
+            EncomendaPhcInput(numero="300"),
+        ],
+    )
+
+    resumo = OrcamentoService(session).list_orcamentos()[0]
+
+    assert resumo.enc_phc == "100"
+    for numero in ("100", "200", "300"):
+        assert numero in (resumo.enc_phc_todos or "")
+
+
+def test_pesquisa_encontra_encomenda_phc_secundaria(session) -> None:
+    from app.domain.orcamentos_lista import filtrar_orcamentos
+
+    _orcamento_id, versao_id = _criar_orcamento(session, enc_phc="100")
+    OrcamentoEncomendaPhcService(session).substituir_encomendas(
+        versao_id,
+        [
+            EncomendaPhcInput(numero="100", is_principal=True),
+            EncomendaPhcInput(numero="200"),
+        ],
+    )
+    orcamentos = OrcamentoService(session).list_orcamentos()
+
+    # "200" não é a principal (a coluna mostra a "100"), mas a pesquisa
+    # tem de a encontrar na mesma.
+    assert filtrar_orcamentos(orcamentos, texto="200") == orcamentos
+    assert filtrar_orcamentos(orcamentos, texto="999") == []
+
+
 def test_lista_conta_uma_encomenda_para_versao_legada(session) -> None:
     _orcamento_id, versao_id = _criar_orcamento(session)
     versao = session.get(OrcamentoVersao, versao_id)

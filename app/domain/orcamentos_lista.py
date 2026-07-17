@@ -15,6 +15,7 @@ _CAMPOS_PESQUISA = (
     "estado",
     "utilizador",
     "enc_phc",
+    "enc_phc_todos",
     "info_1",
     "info_2",
 )
