@@ -519,6 +519,8 @@ class OrcamentoItemCusteioPage(QWidget):
         # the user has expanded (kept across reloads so an edit doesn't re-hide).
         self._compostas_expandidas: set[int] = set()
         self._descendentes_composta: dict[int, list[int]] = {}
+        # Line id under the floating "✕ delete" button (hover over a hardware row).
+        self._x_ferragem_target_id: int | None = None
         self._erros_entrada: list[ErroEntradaCusteio] = []
         self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
         self._valueset_opcoes: list = []
@@ -698,6 +700,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.itemSelectionChanged.connect(self._atualizar_botao_operacoes)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._menu_contexto_material)
+        self._instalar_botao_apagar_ferragem()
         self._instalar_atalhos_clipboard()
         # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
         if ligar_persistencia_larguras(self.table, "orcamento_item_custeio"):
@@ -1844,6 +1847,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _preencher_tabela(self, linhas: list[OrcamentoItemCusteioLinhaResumo]) -> None:
         """Fill the costing lines table, mapping known fields to columns."""
+        self._esconder_x_ferragem()
         self._carregando_tabela = True
         try:
             self._custeio_by_row = {}
@@ -1984,6 +1988,99 @@ class OrcamentoItemCusteioPage(QWidget):
             self._aplicar_visibilidade_compostas()
         finally:
             self._carregando_tabela = False
+
+    # --- ✕ rápido para eliminar ferragens (aparece ao passar o rato) ------
+
+    def _instalar_botao_apagar_ferragem(self) -> None:
+        """Create the floating ✕ pinned to the right of the hovered hardware row."""
+        botao = QPushButton("✕", self.table.viewport())
+        botao.setCursor(Qt.CursorShape.PointingHandCursor)
+        botao.setToolTip("Eliminar esta ferragem")
+        botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        botao.setFixedSize(20, 20)
+        botao.setStyleSheet(
+            "QPushButton { border: none; border-radius: 10px; color: #7A6C5A;"
+            " background: rgba(247,242,234,0.9); font-weight: bold; }"
+            "QPushButton:hover { color: #FFFFFF; background: #9A2B22; }"
+        )
+        botao.hide()
+        botao.clicked.connect(self._eliminar_ferragem_hover)
+        self._btn_x_ferragem = botao
+
+        self.table.setMouseTracking(True)
+        self.table.viewport().setMouseTracking(True)
+        self.table.cellEntered.connect(self._on_cell_entered_ferragem)
+        self.table.verticalScrollBar().valueChanged.connect(self._esconder_x_ferragem)
+        self.table.horizontalScrollBar().valueChanged.connect(self._esconder_x_ferragem)
+        self.table.viewport().installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt override)
+        """Hide the ✕ when the cursor leaves the table (but not for the ✕ itself)."""
+        if obj is self.table.viewport() and event.type() == QEvent.Type.Leave:
+            QTimer.singleShot(0, self._esconder_x_ferragem_se_fora)
+        return super().eventFilter(obj, event)
+
+    def _esconder_x_ferragem_se_fora(self) -> None:
+        if not self._btn_x_ferragem.underMouse():
+            self._esconder_x_ferragem()
+
+    def _on_cell_entered_ferragem(self, row: int, _col: int) -> None:
+        """Show the ✕ pinned to a visible hardware row; hide otherwise."""
+        linha = self._custeio_by_row.get(row)
+        if (
+            linha is None
+            or normalize_custeio_linha_type(linha.tipo_linha) != FERRAGEM
+            or self.table.isRowHidden(row)
+        ):
+            self._esconder_x_ferragem()
+            return
+        self._x_ferragem_target_id = linha.id
+        botao = self._btn_x_ferragem
+        altura = self.table.rowHeight(row)
+        pos_y = self.table.rowViewportPosition(row) + (altura - botao.height()) // 2
+        pos_x = self.table.viewport().width() - botao.width() - 6
+        botao.move(max(pos_x, 0), pos_y)
+        botao.show()
+        botao.raise_()
+
+    def _esconder_x_ferragem(self) -> None:
+        """Hide the floating ✕ and clear its target."""
+        self._x_ferragem_target_id = None
+        botao = getattr(self, "_btn_x_ferragem", None)
+        if botao is not None:
+            botao.hide()
+
+    def _eliminar_ferragem_hover(self) -> None:
+        """Delete the hardware line under the ✕ (confirming, showing its name)."""
+        linha_id = self._x_ferragem_target_id
+        if linha_id is None:
+            return
+        linha = next(
+            (l for l in self._custeio_by_row.values() if l.id == linha_id), None
+        )
+        nome = ""
+        if linha is not None:
+            nome = linha.def_peca_codigo or linha.descricao_no_orcamento or ""
+        self._esconder_x_ferragem()
+
+        pergunta = "Eliminar definitivamente a ferragem"
+        pergunta += f" {nome}?" if nome else "?"
+        confirm = QMessageBox.question(
+            self,
+            "Eliminar ferragem",
+            pergunta,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with SessionLocal() as session:
+                OrcamentoItemCusteioLinhaService(session).eliminar_linhas([linha_id])
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível eliminar a ferragem.")
+            return
+        self.carregar()
+        self.status_label.setText("Ferragem eliminada.")
 
     def selecionar_linha_por_id(self, linha_id: int) -> bool:
         """Select and reveal one costing line referenced by an external audit."""

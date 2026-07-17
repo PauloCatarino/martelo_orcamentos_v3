@@ -8,7 +8,12 @@ from decimal import Decimal
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QTableWidget, QTableWidgetItem
+from PySide6.QtWidgets import (
+    QApplication,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage as P
 
@@ -32,6 +37,8 @@ class _FakePage:
     _texto_resumo_composta = P._texto_resumo_composta
     _marcar_ferragem_auto = P._marcar_ferragem_auto
     _toggle_composta = P._toggle_composta
+    _on_cell_entered_ferragem = P._on_cell_entered_ferragem
+    _esconder_x_ferragem = P._esconder_x_ferragem
 
 
 def _montar():
@@ -58,6 +65,9 @@ def _montar():
     fake._compostas_expandidas = set()
     fake._descendentes_composta = {}
     fake._carregando_tabela = False
+    fake._x_ferragem_target_id = None
+    fake._btn_x_ferragem = QPushButton("✕", table.viewport())
+    fake._btn_x_ferragem.hide()
     return app, fake, table, linhas, col_tipo, col_def
 
 
@@ -94,5 +104,24 @@ def test_toggle_expande_e_repoe_a_seta():
     fake._toggle_composta(1)
     assert table.isRowHidden(1) is True
     assert table.item(0, col_tipo).text().startswith("▶")
+    table.deleteLater()
+    app.processEvents()
+
+
+def test_x_ferragem_aparece_so_em_ferragem_visivel():
+    app, fake, table, linhas, col_tipo, col_def = _montar()
+    fake._aplicar_estado_compostas(linhas)
+    fake._toggle_composta(1)  # expande para a ferragem (linha 2) ficar visível
+
+    fake._on_cell_entered_ferragem(2, 0)  # ferragem
+    assert fake._x_ferragem_target_id == 3  # id da ferragem na linha 2
+    assert fake._btn_x_ferragem.isHidden() is False
+
+    fake._on_cell_entered_ferragem(0, 0)  # peça composta -> esconde
+    assert fake._x_ferragem_target_id is None
+    assert fake._btn_x_ferragem.isHidden() is True
+
+    fake._on_cell_entered_ferragem(3, 0)  # peça solta -> esconde
+    assert fake._btn_x_ferragem.isHidden() is True
     table.deleteLater()
     app.processEvents()
