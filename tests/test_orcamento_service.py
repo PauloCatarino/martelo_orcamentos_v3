@@ -27,6 +27,7 @@ class _FakeRepository:
     cliente_payload: tuple[int, int] | None = None
     nova_versao_payload: tuple | None = None
     ref_cliente_pesquisada: str | None = None
+    numeros_existentes: set[tuple[int, str]] = set()
 
     def __init__(self, _session: object) -> None:
         pass
@@ -48,6 +49,9 @@ class _FakeRepository:
     def get_next_num_orcamento(self, ano: int) -> str:
         self.__class__.next_ano = ano
         return self.next_number
+
+    def num_orcamento_existe(self, ano: int, num_orcamento: str) -> bool:
+        return (ano, num_orcamento) in self.numeros_existentes
 
     def create_orcamento_com_versao_01(self, **kwargs) -> OrcamentoCriado:
         self.__class__.created_payload = kwargs
@@ -246,6 +250,7 @@ def test_orcamento_service_find_orcamentos_por_ref_cliente(monkeypatch) -> None:
 
 
 def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSession]:
+    _FakeRepository.next_number = "260002"
     _FakeRepository.next_ano = None
     _FakeRepository.created_payload = None
     _FakeRepository.update_payload = None
@@ -255,6 +260,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.cliente_payload = None
     _FakeRepository.nova_versao_payload = None
     _FakeRepository.ref_cliente_pesquisada = None
+    _FakeRepository.numeros_existentes = set()
     _FakeMargensRepository.reset()
     _FakeEncomendasService.substituir_payload = None
     monkeypatch.setattr(service_module, "OrcamentoRepository", _FakeRepository)
@@ -295,6 +301,57 @@ def test_orcamento_service_cria_orcamento_com_proximo_numero(monkeypatch) -> Non
     assert _FakeRepository.created_payload["created_by_id"] == 7
     assert result.codigo_versao == "260002_01"
     assert session.committed is True
+
+
+def test_criar_orcamento_antigo_usa_numero_e_pasta_manual(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    result = service.criar_orcamento_simples(
+        _criar_data(
+            ano=2025,
+            num_orcamento="1049",
+            pasta_manual=r"\\SERVER_LE\Dep._Orcamentos\2025\1049_COSTA",
+        )
+    )
+
+    # O número manual é usado tal e qual; a numeração sequencial não corre.
+    assert _FakeRepository.next_ano is None
+    assert _FakeRepository.created_payload["ano"] == 2025
+    assert _FakeRepository.created_payload["num_orcamento"] == "1049"
+    assert (
+        _FakeRepository.created_payload["pasta_manual"]
+        == r"\\SERVER_LE\Dep._Orcamentos\2025\1049_COSTA"
+    )
+    assert result.codigo_versao == "1049_01"
+    assert session.committed is True
+
+
+def test_criar_orcamento_antigo_rejeita_numero_duplicado(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+    _FakeRepository.numeros_existentes = {(2025, "1049")}
+
+    try:
+        service.criar_orcamento_simples(
+            _criar_data(ano=2025, num_orcamento="1049")
+        )
+    except ValueError as error:
+        assert "1049" in str(error)
+        assert "2025" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert session.committed is False
+
+
+def test_criar_orcamento_sem_numero_manual_mantem_sequencial(monkeypatch) -> None:
+    service, _session = _make_service(monkeypatch)
+    _FakeRepository.next_number = "260007"
+
+    service.criar_orcamento_simples(_criar_data(num_orcamento="   "))
+
+    assert _FakeRepository.next_ano == 2026
+    assert _FakeRepository.created_payload["num_orcamento"] == "260007"
+    assert _FakeRepository.created_payload["pasta_manual"] is None
 
 
 def test_criar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:

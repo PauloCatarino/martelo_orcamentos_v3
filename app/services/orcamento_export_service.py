@@ -63,12 +63,21 @@ class OrcamentoExportService:
         Convenção: ``base / ano / {num}_{SIMPLEX} / versao2dig``. Reutiliza uma
         subpasta do ano que já comece por ``f"{num}_"``. Devolve None quando a
         pasta base não está configurada ou o orçamento/cliente não existe.
+
+        Orçamentos antigos com ``pasta_manual`` gravam diretamente nessa pasta
+        (sem subpasta de versão) — os ficheiros incluem a versão no nome.
         """
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
+        if orcamento is not None and orcamento.pasta_manual:
+            destino = Path(orcamento.pasta_manual)
+            if criar:
+                destino.mkdir(parents=True, exist_ok=True)
+            return destino
+
         base = self.settings_service.obter_valor("pasta_base_orcamentos")
         if not base:
             return None
 
-        orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
         if orcamento is None or cliente is None:
             return None
@@ -94,14 +103,18 @@ class OrcamentoExportService:
 
     def pasta_orcamento_atual(self, orcamento_versao_id: int) -> Path | None:
         """Existing budget parent folder (``{num}_*``), or None."""
-        base = self.settings_service.obter_valor("pasta_base_orcamentos")
-        if not base:
-            return None
-
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(
             orcamento_versao_id
         )
         if orcamento is None:
+            return None
+
+        if orcamento.pasta_manual:
+            pasta = Path(orcamento.pasta_manual)
+            return pasta if pasta.exists() else None
+
+        base = self.settings_service.obter_valor("pasta_base_orcamentos")
+        if not base:
             return None
 
         ano_dir = Path(base) / str(orcamento.ano)
@@ -112,12 +125,15 @@ class OrcamentoExportService:
     def nome_pasta_orcamento_pretendido(
         self, orcamento_versao_id: int
     ) -> str | None:
-        """Folder name matching the budget's current customer."""
+        """Folder name matching the budget's current customer.
+
+        None para orçamentos com pasta manual (o nome é livre; não renomear).
+        """
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(
             orcamento_versao_id
         )
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
-        if orcamento is None or cliente is None:
+        if orcamento is None or cliente is None or orcamento.pasta_manual:
             return None
 
         return export_paths.nome_pasta_orcamento(
@@ -138,7 +154,7 @@ class OrcamentoExportService:
             orcamento_versao_id
         )
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
-        if orcamento is None or cliente is None:
+        if orcamento is None or cliente is None or orcamento.pasta_manual:
             return None
 
         ano_dir = Path(base) / str(orcamento.ano)

@@ -57,6 +57,8 @@ class OrcamentoResumo:
     # Phase 5: how many PHC orders the version has (enc_phc holds the
     # principal one; legacy versions without child rows count as 1).
     encomendas_phc_total: int = 0
+    # Pasta escolhida manualmente (orçamentos antigos, pré-V3).
+    pasta_manual: str | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +164,20 @@ class OrcamentoRepository:
 
         return f"{ano % 100:02d}0001"
 
+    def num_orcamento_existe(self, ano: int, num_orcamento: str) -> bool:
+        """Return whether a budget with this year/number already exists."""
+        return (
+            self.session.scalar(
+                select(func.count())
+                .select_from(Orcamento)
+                .where(
+                    Orcamento.ano == ano,
+                    Orcamento.num_orcamento == num_orcamento,
+                )
+            )
+            or 0
+        ) > 0
+
     def create_orcamento_com_versao_01(
         self,
         *,
@@ -176,6 +192,7 @@ class OrcamentoRepository:
         enc_phc: str | None = None,
         info_1: str | None = None,
         info_2: str | None = None,
+        pasta_manual: str | None = None,
         margens: MargensOrcamento | None = None,
         perfil_margens: str = "STANDARD",
     ) -> OrcamentoCriado:
@@ -198,6 +215,7 @@ class OrcamentoRepository:
             ref_cliente=ref_cliente,
             info_1=info_1,
             info_2=info_2,
+            pasta_manual=pasta_manual,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
         )
@@ -655,6 +673,7 @@ class OrcamentoRepository:
                 OrcamentoVersao.enc_phc.label("enc_phc"),
                 Orcamento.info_1.label("info_1"),
                 Orcamento.info_2.label("info_2"),
+                Orcamento.pasta_manual.label("pasta_manual"),
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
@@ -708,4 +727,5 @@ class OrcamentoRepository:
             utilizador_id=row["utilizador_id"],
             tem_preco_manual=bool(row["tem_preco_manual"]),
             encomendas_phc_total=encomendas_total,
+            pasta_manual=row["pasta_manual"],
         )

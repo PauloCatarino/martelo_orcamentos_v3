@@ -47,6 +47,10 @@ class CriarOrcamentoSimplesData:
     info_1: str | None = None
     info_2: str | None = None
     ano: int | None = None
+    # Registo manual (orçamentos antigos): número indicado pelo utilizador e
+    # pasta de servidor já existente; None mantém a numeração sequencial.
+    num_orcamento: str | None = None
+    pasta_manual: str | None = None
     # Initial-margins choice: 'STANDARD' / 'CLIENTE' / 'UTILIZADOR' (phase 8T.1).
     margens_escolha: str = AMBITO_STANDARD
 
@@ -106,7 +110,17 @@ class OrcamentoService:
             raise ValueError("cliente_id is required")
 
         ano = data.ano or date.today().year
-        num_orcamento = self.repository.get_next_num_orcamento(ano)
+        num_manual = (data.num_orcamento or "").strip()
+        if num_manual:
+            if self.repository.num_orcamento_existe(ano, num_manual):
+                raise ValueError(
+                    f"Já existe o orçamento {num_manual} no ano {ano}."
+                )
+            num_orcamento = num_manual
+        else:
+            num_orcamento = self.repository.get_next_num_orcamento(ano)
+
+        pasta_manual = (data.pasta_manual or "").strip() or None
 
         result = self.repository.create_orcamento_com_versao_01(
             ano=ano,
@@ -120,6 +134,7 @@ class OrcamentoService:
             enc_phc=data.enc_phc,
             info_1=data.info_1,
             info_2=data.info_2,
+            pasta_manual=pasta_manual,
             margens=self._resolver_margens_iniciais(data),
             perfil_margens=normalizar_perfil_margens(data.margens_escolha),
         )

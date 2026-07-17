@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,6 +35,7 @@ from app.domain.margens_padrao_types import (
 )
 from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
+from app.services.system_setting_service import SystemSettingService
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -46,6 +52,12 @@ class NovoOrcamentoDialogData:
     info_2: str | None = None
     margens_escolha: str = AMBITO_STANDARD
     utilizador_id: int | None = None
+    # Registo manual (orçamento antigo): ano + número indicados pelo
+    # utilizador e pasta de servidor já existente.
+    manual: bool = False
+    ano: int | None = None
+    num_orcamento: str | None = None
+    pasta_manual: str | None = None
 
 
 class NovoOrcamentoDialog(QDialog):
@@ -75,6 +87,44 @@ class NovoOrcamentoDialog(QDialog):
         cliente_layout.addWidget(self.cliente_label, stretch=1)
         cliente_layout.addWidget(self.escolher_cliente_button)
 
+        self.antigo_checkbox = QCheckBox("Orçamento antigo (registo manual)")
+        self.antigo_checkbox.setToolTip(
+            "Registar um orçamento antigo (pré-V3): o ano e o número são "
+            "indicados manualmente e os ficheiros (PDF, Excel, relatórios) "
+            "gravam diretamente na pasta de servidor escolhida abaixo."
+        )
+        self.antigo_checkbox.toggled.connect(self._toggle_modo_antigo)
+
+        self.ano_input = QSpinBox()
+        self.ano_input.setRange(2000, date.today().year)
+        self.ano_input.setValue(date.today().year - 1)
+        self.ano_input.setToolTip("Ano do orçamento antigo (ex.: 2025).")
+
+        self.num_orcamento_input = QLineEdit()
+        self.num_orcamento_input.setToolTip(
+            "Número do orçamento antigo, tal como usado na pasta do servidor "
+            "(ex.: 1049)."
+        )
+
+        self._pasta_manual: str | None = None
+        self.pasta_label = QLabel("— nenhuma pasta escolhida —")
+        self.pasta_label.setWordWrap(True)
+        self.pasta_label.setToolTip(
+            "Pasta do servidor onde os ficheiros deste orçamento serão "
+            "gravados (PDF, Excel, relatórios)."
+        )
+        self.escolher_pasta_button = QPushButton("Escolher pasta…")
+        self.escolher_pasta_button.setToolTip(
+            "Selecionar a pasta já existente do orçamento antigo no servidor."
+        )
+        self.escolher_pasta_button.clicked.connect(self._escolher_pasta)
+        pasta_widget = QWidget()
+        pasta_layout = QHBoxLayout(pasta_widget)
+        pasta_layout.setContentsMargins(0, 0, 0, 0)
+        pasta_layout.addWidget(self.pasta_label, stretch=1)
+        pasta_layout.addWidget(self.escolher_pasta_button)
+        self._pasta_widget = pasta_widget
+
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
@@ -103,6 +153,10 @@ class NovoOrcamentoDialog(QDialog):
 
         form_layout = QFormLayout()
         form_layout.addRow("Cliente", cliente_widget)
+        form_layout.addRow("", self.antigo_checkbox)
+        form_layout.addRow("Ano", self.ano_input)
+        form_layout.addRow("N.º orçamento", self.num_orcamento_input)
+        form_layout.addRow("Pasta do orçamento", pasta_widget)
         form_layout.addRow("Obra", self.obra_input)
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
@@ -127,8 +181,12 @@ class NovoOrcamentoDialog(QDialog):
         layout.addWidget(self.button_box)
         self.setLayout(layout)
 
+        self._form_layout = form_layout
+        self._toggle_modo_antigo(False)
+
     def get_data(self) -> NovoOrcamentoDialogData:
         """Return normalized dialog data."""
+        manual = self.antigo_checkbox.isChecked()
         return NovoOrcamentoDialogData(
             cliente_id=self._cliente_id,
             obra=self.obra_input.text().strip(),
@@ -140,7 +198,52 @@ class NovoOrcamentoDialog(QDialog):
             info_2=self._empty_to_none(self.info_2_input.toPlainText()),
             margens_escolha=self.margens_combo.currentData() or AMBITO_STANDARD,
             utilizador_id=self.utilizador_combo.currentData(),
+            manual=manual,
+            ano=self.ano_input.value() if manual else None,
+            num_orcamento=(
+                self._empty_to_none(self.num_orcamento_input.text())
+                if manual
+                else None
+            ),
+            pasta_manual=self._pasta_manual if manual else None,
         )
+
+    def _toggle_modo_antigo(self, checked: bool) -> None:
+        """Show/hide the manual fields of the legacy-budget mode."""
+        self._form_layout.setRowVisible(self.ano_input, checked)
+        self._form_layout.setRowVisible(self.num_orcamento_input, checked)
+        self._form_layout.setRowVisible(self._pasta_widget, checked)
+        self.error_label.setText("")
+        self.adjustSize()
+
+    def _escolher_pasta(self) -> None:
+        """Pick the existing server folder of the legacy budget."""
+        inicio = ""
+        try:
+            with SessionLocal() as session:
+                base = SystemSettingService(session).obter_valor(
+                    "pasta_base_orcamentos"
+                )
+        except SQLAlchemyError:
+            base = None
+
+        if base:
+            candidato = Path(base) / str(self.ano_input.value())
+            if candidato.exists():
+                inicio = str(candidato)
+            elif Path(base).exists():
+                inicio = base
+
+        pasta = QFileDialog.getExistingDirectory(
+            self,
+            "Escolher pasta do orçamento",
+            inicio,
+        )
+        if not pasta:
+            return
+
+        self._pasta_manual = pasta
+        self.pasta_label.setText(pasta)
 
     def _carregar_utilizadores(self) -> None:
         """Populate the active-users combo, preselecting the logged-in user."""
@@ -241,6 +344,23 @@ class NovoOrcamentoDialog(QDialog):
         if data.cliente_id is None:
             self.error_label.setText("Escolha um cliente.")
             return
+
+        if data.manual:
+            if not data.num_orcamento:
+                self.error_label.setText(
+                    "Indique o número do orçamento antigo."
+                )
+                return
+            if not data.pasta_manual:
+                self.error_label.setText(
+                    "Escolha a pasta do orçamento no servidor."
+                )
+                return
+            if not Path(data.pasta_manual).exists():
+                self.error_label.setText(
+                    f"A pasta escolhida não existe:\n{data.pasta_manual}"
+                )
+                return
 
         self.accept()
 

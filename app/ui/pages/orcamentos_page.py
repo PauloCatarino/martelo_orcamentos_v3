@@ -362,14 +362,28 @@ class OrcamentosPage(QWidget):
                         info_1=form_data.info_1,
                         info_2=form_data.info_2,
                         created_by_id=created_by_id,
+                        ano=form_data.ano,
+                        num_orcamento=form_data.num_orcamento,
+                        pasta_manual=form_data.pasta_manual,
                         margens_escolha=form_data.margens_escolha,
                     )
                 )
-        except (SQLAlchemyError, ValueError):
+        except ValueError as error:
+            QMessageBox.warning(self, "Novo Orçamento", str(error))
+            self.status_label.setText("Nao foi possivel criar o orcamento.")
+            return
+        except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel criar o orcamento.")
             return
 
         self.carregar_orcamentos()
+        if form_data.manual:
+            self.status_label.setText(
+                f"Orcamento antigo {result.codigo_versao} criado "
+                f"(pasta: {form_data.pasta_manual})."
+            )
+            return
+
         self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
         self._perguntar_criar_pasta_novo_orcamento(result)
 
@@ -606,6 +620,11 @@ class OrcamentosPage(QWidget):
             if not apagar_registo:
                 aviso_extra = (
                     "\n\nNota: o registo fica a apontar para uma pasta inexistente."
+                )
+            if orcamento.pasta_manual:
+                aviso_extra += (
+                    "\n\nATENÇÃO: esta é a pasta ANTIGA associada manualmente "
+                    "a este orçamento; pode conter ficheiros históricos."
                 )
             resposta = QMessageBox.question(
                 self,

@@ -39,6 +39,9 @@ class Orcamento(Base):
     ref_cliente: Mapped[str | None] = mapped_column(String(255), nullable=True)
     info_1: Mapped[str | None] = mapped_column(Text, nullable=True)
     info_2: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Pasta escolhida manualmente (orçamentos antigos); quando preenchida, as
+    # exportações gravam diretamente aqui em vez da convenção base/ano/num.
+    pasta_manual: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.id"),
