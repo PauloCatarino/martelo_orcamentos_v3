@@ -1804,6 +1804,34 @@ def test_atualizar_medidas_linha_resolve_variaveis_e_area(monkeypatch) -> None:
     assert "editado_localmente" not in payload
 
 
+def test_atualizar_medidas_simplificado_suprime_variaveis(monkeypatch) -> None:
+    """Peças soltas (Simplificado): as medidas levam números, nunca variáveis."""
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=None, largura=None, profundidade=None,
+        modalidade_custeio="SIMPLIFICADO",
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    try:
+        service.atualizar_medidas_linha(
+            5, qt_mod="1", qt_und="1", comp="h", larg="300", esp=None
+        )
+    except ValueError as error:
+        assert "suprimidas" in str(error)
+        assert "Comprimento" in str(error)
+    else:
+        raise AssertionError("Expected ValueError")
+    assert _FakeRepository.updated_payload is None
+
+    # Números (escritos ou colados do Excel) continuam aceites.
+    service.atualizar_medidas_linha(
+        5, qt_mod="1", qt_und="1", comp="600", larg="300", esp="19"
+    )
+    assert _FakeRepository.updated_payload["comp_real"] == Decimal("600")
+    assert _FakeRepository.updated_payload["larg_real"] == Decimal("300")
+
+
 def test_atualizar_medidas_descricao_nao_marca_editado(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     service.session.item = SimpleNamespace(

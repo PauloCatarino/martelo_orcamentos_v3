@@ -28,6 +28,11 @@ O modo **Simplificado** é definido por item e é independente de **Produção**
   a vírgula é convertida em ponto ao guardar). Guardar novas tarifas não
   reescreve orçamentos automaticamente: atualize o item para lhes aplicar os
   novos valores.
+- **Variáveis suprimidas**: em Simplificado as peças são soltas (o item
+  normalmente não tem Altura/Largura/Prof), por isso editar Comp/Larg/Esp com
+  variáveis (H/L/P, HM/LM/PM) é recusado com uma mensagem própria — as
+  medidas escrevem-se em números. A linha supervisor do custeio lembra esta
+  regra quando o item está em Simplificado.
 - **Colar do Excel**: na tabela de custeio, com o cursor na coluna Comp (ou
   Larg) e um bloco numérico copiado do Excel, Ctrl+V preenche Comp e Larg das
   linhas PEÇA seguintes (divisões/separadores/compostas são saltados). Texto

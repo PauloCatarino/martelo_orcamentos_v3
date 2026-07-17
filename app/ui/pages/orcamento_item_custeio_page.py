@@ -896,6 +896,14 @@ class OrcamentoItemCusteioPage(QWidget):
         origem = "exceção" if excecao else "padrão"
         self.producao_label.setText(f"Produção: {efetivo} ({origem})")
 
+    # Lembrete da linha supervisor em Simplificado (peças soltas): mostrado
+    # sempre que nenhuma ação acabou de escrever uma mensagem mais recente.
+    AVISO_SIMPLIFICADO_MEDIDAS = (
+        "Custeio Simplificado (peças soltas): escreva Comp e Larg em números — "
+        "as variáveis H/L/P estão suprimidas. Pode colar as colunas do Excel "
+        "(Ctrl+V na coluna Comp)."
+    )
+
     def _atualizar_modalidade_custeio(self) -> None:
         """Show the independent costing mode and the restricted options menu."""
         simplificado = self.item.modalidade_custeio == MODALIDADE_CUSTEIO_SIMPLIFICADO
@@ -903,6 +911,12 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custeio: Simplificado" if simplificado else "Custeio: Standard"
         )
         self.opcoes_simplificado_button.setVisible(simplificado)
+        # Supervisor: em Simplificado, com a linha de estado livre, lembra que
+        # as medidas são escritas em números (variáveis suprimidas).
+        if simplificado and not self.status_label.text():
+            self.status_label.setText(self.AVISO_SIMPLIFICADO_MEDIDAS)
+        elif not simplificado and self.status_label.text() == self.AVISO_SIMPLIFICADO_MEDIDAS:
+            self.status_label.setText("")
 
     def _abrir_opcoes_simplificado(self) -> None:
         """Small per-item menu, only available in Simplificado mode."""

@@ -30,7 +30,9 @@ from app.domain.medidas import (
     calcular_area_m2,
     calcular_perimetro_ml,
     construir_contexto_item,
+    expressao_usa_variaveis,
     normalizar_numero,
+    normalizar_variaveis_medida,
     validar_expressao_medida,
 )
 from app.domain.acabamentos import (
@@ -3746,6 +3748,29 @@ class OrcamentoItemCusteioLinhaService:
 
         item = self.session.get(OrcamentoItem, linha.orcamento_item_id)
         contexto = self._contexto_medidas_ate_linha(linha, item)
+
+        # Custeio Simplificado = peças soltas: o item normalmente não tem
+        # Altura/Largura/Prof, por isso as variáveis dimensionais estão
+        # suprimidas nas medidas — cada peça leva números escritos (ou colados
+        # do Excel). A mensagem substitui o aviso genérico de H/L/P.
+        if (
+            normalizar_modalidade_custeio(
+                getattr(item, "modalidade_custeio", None) if item else None
+            )
+            == MODALIDADE_CUSTEIO_SIMPLIFICADO
+        ):
+            for campo, valor in (
+                ("Comprimento", comp),
+                ("Largura", larg),
+                ("Espessura", esp),
+            ):
+                if expressao_usa_variaveis(normalizar_variaveis_medida(valor)):
+                    raise ValueError(
+                        f"{campo}: no custeio Simplificado (peças soltas) as "
+                        "variáveis H/L/P estão suprimidas — escreva a medida "
+                        "em números. Dica: pode colar as colunas Comp/Larg do "
+                        "Excel (Ctrl+V na coluna Comp)."
+                    )
 
         comp_texto, comp_real = validar_expressao_medida(
             comp, contexto, campo="Comprimento"

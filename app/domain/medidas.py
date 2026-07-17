@@ -38,6 +38,11 @@ VARIAVEIS_PAI = ("PAI_COMP", "PAI_LARG", "PAI_ESP")
 _TOKEN_VARIAVEL = re.compile(r"[A-Za-z_]\w*")
 
 
+def expressao_usa_variaveis(texto) -> bool:
+    """True when a measure expression contains variable tokens (H, L, HM, ...)."""
+    return isinstance(texto, str) and bool(_TOKEN_VARIAVEL.search(texto))
+
+
 def normalizar_variaveis_medida(texto):
     """Uppercase the variable letters of a measure expression text.
 
