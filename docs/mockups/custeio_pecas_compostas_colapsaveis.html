@@ -1,0 +1,480 @@
+<title>Custeio — peças compostas colapsáveis</title>
+<style>
+  :root {
+    --ground: #FBF8F3;
+    --surface: #FFFFFF;
+    --ink: #2E2A26;
+    --ink-soft: #7A6C5A;
+    --line: #EAE1D3;
+    --rail: #D9CFC2;
+    --brown: #8B6F4E;
+    --brown-dark: #5A3E2B;
+    --sand: #EFE7DA;
+    --sand-2: #F5EFE5;
+    --zebra: #FBF7F0;
+    --chip-auto-bg: #EDE3D2;
+    --chip-auto-ink: #6D5A3E;
+    --danger: #9A2B22;
+    --divis-bg: #8B6F4E;
+    --divis-ink: #FBF6EE;
+    --focus: #B98F53;
+    --shadow: 0 1px 2px rgba(74,44,20,.06), 0 8px 24px rgba(74,44,20,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1E1A15;
+      --surface: #26201A;
+      --ink: #ECE3D4;
+      --ink-soft: #AE9F89;
+      --line: #372F26;
+      --rail: #483E32;
+      --brown: #BE9A72;
+      --brown-dark: #E0CBA9;
+      --sand: #322619;
+      --sand-2: #2A2116;
+      --zebra: #241E18;
+      --chip-auto-bg: #3A2F20;
+      --chip-auto-ink: #D8C4A2;
+      --danger: #E8988C;
+      --divis-bg: #6E5636;
+      --divis-ink: #F6EDDD;
+      --focus: #C79A5B;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --ground: #FBF8F3; --surface: #FFFFFF; --ink: #2E2A26; --ink-soft: #7A6C5A;
+    --line: #EAE1D3; --rail: #D9CFC2; --brown: #8B6F4E; --brown-dark: #5A3E2B;
+    --sand: #EFE7DA; --sand-2: #F5EFE5; --zebra: #FBF7F0; --chip-auto-bg: #EDE3D2;
+    --chip-auto-ink: #6D5A3E; --danger: #9A2B22; --divis-bg: #8B6F4E; --divis-ink: #FBF6EE; --focus: #B98F53;
+  }
+  :root[data-theme="dark"] {
+    --ground: #1E1A15; --surface: #26201A; --ink: #ECE3D4; --ink-soft: #AE9F89;
+    --line: #372F26; --rail: #483E32; --brown: #BE9A72; --brown-dark: #E0CBA9;
+    --sand: #322619; --sand-2: #2A2116; --zebra: #241E18; --chip-auto-bg: #3A2F20;
+    --chip-auto-ink: #D8C4A2; --danger: #E8988C; --divis-bg: #6E5636; --divis-ink: #F6EDDD; --focus: #C79A5B;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 56px; }
+
+  header.page { margin-bottom: 18px; }
+  .eyebrow {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--brown); font-weight: 700; margin: 0 0 6px;
+  }
+  h1 { font-size: 22px; line-height: 1.2; margin: 0 0 6px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: var(--shadow); margin: 20px 0 10px;
+  }
+  .field-label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; display: block; margin-bottom: 7px; }
+  .seg { display: inline-flex; background: var(--sand-2); border: 1px solid var(--rail); border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--ink);
+    font: inherit; font-weight: 600; padding: 7px 12px; border-radius: 6px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; min-width: 108px;
+  }
+  .seg button .v-name { font-size: 13px; }
+  .seg button .v-sub { font-size: 10.5px; color: var(--ink-soft); font-weight: 500; letter-spacing: .01em; }
+  .seg button[aria-pressed="true"] { background: var(--brown); color: var(--divis-ink); box-shadow: 0 1px 2px rgba(74,44,20,.25); }
+  .seg button[aria-pressed="true"] .v-sub { color: rgba(251,246,238,.82); }
+  .seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .spacer { flex: 1 1 auto; }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    appearance: none; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--rail);
+    border-radius: 8px; padding: 8px 12px;
+  }
+  .btn:hover { border-color: var(--brown); }
+  .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .btn[disabled] { opacity: .4; cursor: not-allowed; }
+
+  .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; font-weight: 600; font-size: 13px; }
+  .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .track { width: 40px; height: 23px; border-radius: 999px; background: var(--rail); position: relative; transition: background .18s ease; flex: none; }
+  .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .18s ease; }
+  .switch input:checked + .track { background: var(--brown); }
+  .switch input:checked + .track::after { transform: translateX(17px); }
+  .switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .caption { color: var(--ink-soft); font-size: 12.5px; margin: 4px 2px 14px; min-height: 18px; }
+  .caption b { color: var(--brown-dark); font-weight: 700; }
+
+  /* Table */
+  .tablecard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .scroller { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  thead th {
+    background: var(--brown); color: var(--divis-ink); text-align: left; font-weight: 700;
+    font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; padding: 10px 12px;
+    border-right: 1px solid rgba(255,255,255,.14); white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  }
+  thead th:last-child { border-right: 0; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .col-ord { width: 46px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .col-tipo { width: 132px; white-space: nowrap; }
+  .col-def { width: 210px; }
+  .col-qt { width: 52px; }
+  .col-custo { width: 92px; }
+
+  tr.row-normal.alt td { background: var(--zebra); }
+  tr.row-peca td.col-def { font-weight: 600; }
+  .mat { color: var(--ink); }
+  .def-mono { font-variant-numeric: tabular-nums; }
+
+  /* Division block header */
+  tr.row-div td {
+    background: var(--divis-bg); color: var(--divis-ink); font-weight: 700;
+    letter-spacing: .02em; border-bottom: 1px solid rgba(0,0,0,.12);
+  }
+  tr.row-div td .dim { font-weight: 500; opacity: .85; font-variant-numeric: tabular-nums; }
+
+  /* Composite header row */
+  tr.row-comp td { background: var(--sand); border-bottom: 1px solid var(--rail); }
+  tr.row-comp.clickable td { cursor: pointer; }
+  tr.row-comp.clickable:hover td { background: var(--sand-2); }
+  tr.row-comp:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .comp-head { display: flex; align-items: center; gap: 9px; }
+  .chev {
+    display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+    color: var(--brown-dark); flex: none; transition: transform .16s ease;
+  }
+  .chev svg { width: 11px; height: 11px; }
+  tr.row-comp.open .chev { transform: rotate(90deg); }
+  tr.row-comp.static .chev { visibility: hidden; }
+  .comp-name { font-weight: 700; color: var(--brown-dark); }
+  .comp-summary { color: var(--ink-soft); font-weight: 500; font-size: 12.5px; }
+  .comp-summary .dot { opacity: .5; margin: 0 5px; }
+  .comp-summary .hidden-note { color: var(--brown); font-weight: 600; }
+
+  /* Child rows */
+  tr.child td:first-child { position: relative; }
+  .indent { display: inline-block; }
+  tr.row-ferragem td.col-def { color: var(--ink-soft); }
+  tr.row-ferragem.auto td.col-def .mat { font-style: italic; }
+  tr.row-oper td { color: var(--ink-soft); font-style: italic; }
+
+  .chip {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 999px; background: var(--chip-auto-bg); color: var(--chip-auto-ink); margin-left: 8px; vertical-align: middle;
+  }
+  .tipo-badge { font-weight: 600; }
+  tr.row-div .tipo-badge, tr.row-comp .tipo-badge { font-weight: 700; }
+
+  /* delete affordance */
+  .del {
+    appearance: none; border: 0; background: transparent; color: var(--ink-soft); cursor: pointer;
+    border-radius: 6px; width: 24px; height: 24px; line-height: 1; font-size: 15px; opacity: 0; transition: opacity .12s ease, color .12s ease, background .12s ease;
+  }
+  tr:hover .del { opacity: 1; }
+  .del:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .del:focus-visible { opacity: 1; outline: 2px solid var(--focus); outline-offset: 1px; }
+  .col-act { width: 40px; text-align: center; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 16px 2px 0; color: var(--ink-soft); font-size: 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 26px; height: 14px; border-radius: 4px; border: 1px solid var(--rail); flex: none; }
+  .foot { color: var(--ink-soft); font-size: 12px; margin-top: 22px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (max-width: 620px) {
+    .seg button { min-width: 92px; }
+    h1 { font-size: 19px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="page">
+    <p class="eyebrow">Martelo V3 · Pré-visualização</p>
+    <h1>Custeio do item — peças compostas colapsáveis</h1>
+    <p class="lede">Mockup interativo para experimentares as três variantes. Nada é gravado; todas as
+      linhas continuam a existir e a ser calculadas — só muda o que está visível.</p>
+  </header>
+
+  <div class="toolbar">
+    <div>
+      <span class="field-label">Variante</span>
+      <div class="seg" role="group" aria-label="Escolher variante">
+        <button data-variant="A" aria-pressed="true"><span class="v-name">A · Colapsar tudo</span><span class="v-sub">peças + ferragens</span></button>
+        <button data-variant="B" aria-pressed="false"><span class="v-name">B · Só ferragens</span><span class="v-sub">peças ficam à vista</span></button>
+        <button data-variant="C" aria-pressed="false"><span class="v-name">C · Modo simplificado</span><span class="v-sub">interruptor global</span></button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="actions" id="actions"></div>
+  </div>
+
+  <p class="caption" id="caption"></p>
+
+  <div class="tablecard">
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-ord">Ord.</th>
+            <th class="col-tipo">Tipo linha</th>
+            <th class="col-def">Def. Peça</th>
+            <th class="col-qt num">QT</th>
+            <th>Mat. default / Descrição</th>
+            <th class="col-custo num">Custo €</th>
+            <th class="col-act" aria-label="Ações"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--divis-bg)"></span> Divisão independente</span>
+    <span><span class="sw" style="background:var(--sand)"></span> Peça composta (clicável)</span>
+    <span><span class="chip" style="margin:0">auto</span> Ferragem preenchida por regra</span>
+    <span>▸ clica na peça composta para abrir/fechar · passa o rato para ver o ✕ eliminar</span>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Dados (baseados no ecrã real de custeio) ----------------------------
+  // tipo: DIV | COMP | PECA | FERR | OPER   ·  auto = ferragem preenchida por regra
+  let rows = [
+    { tipo:"DIV", def:"Divisão independente", mat:"2500 × 1313 × 600" },
+    { tipo:"PECA", ord:"", def:"LATERAL_0000", qt:1, mat:"AGL MLM BRANCO B3768/SC 19MM", custo:8.20 },
+    { tipo:"PECA", ord:"", def:"LATERAL_1111", qt:1, mat:"AGL TERM BRANCO GH 19MM", custo:8.50 },
+    { tipo:"PECA", ord:"", def:"PORTA_SIMPLES", qt:1, mat:"MDF MR MLM BRANCA 19MM", custo:21.40 },
+    { tipo:"COMP", id:"c1", def:"PORTA_DUPLA+DOBRADICA+PUXADOR" },
+    { tipo:"PECA", parent:"c1", ord:1, def:"PORTA_SIMPLES", qt:2, mat:"AGL TERM BEGE ARDENNE 413/MATE 19MM", custo:47.30 },
+    { tipo:"FERR", parent:"c1", auto:true, ord:2, def:"DOBRADICA", qt:6, mat:"DOBRADIÇA BLUM RETA 107º (SOFT CLOSE) + CALÇO H0", custo:15.18 },
+    { tipo:"FERR", parent:"c1", auto:true, ord:3, def:"PUXADOR", qt:1, mat:'PUXADOR "J" FRESADO', custo:3.00 },
+
+    { tipo:"DIV", def:"Divisão independente", mat:"800 × 1000 × 600" },
+    { tipo:"PECA", def:"LATERAL_0000", qt:1, mat:"AGL MLM BRANCO B3768/SC 19MM", custo:6.40 },
+    { tipo:"PECA", def:"LATERAL_1111", qt:1, mat:"AGL MLM BRANCO B3768/SC 19MM", custo:6.40 },
+    { tipo:"PECA", def:"PORTA_SIMPLES", qt:1, mat:"MDF MR MLM BRANCA 19MM", custo:12.30 },
+    { tipo:"COMP", id:"c2", def:"PORTA_DUPLA+DOBRADICA+PUXADOR" },
+    { tipo:"PECA", parent:"c2", ord:1, def:"PORTA_SIMPLES", qt:2, mat:"MDF MR MLM BRANCA 19MM", custo:15.40 },
+    { tipo:"FERR", parent:"c2", auto:true, ord:2, def:"DOBRADICA", qt:2, mat:"DOBRADIÇA BLUM RETA 107º (SOFT CLOSE) + CALÇO H0", custo:5.06 },
+    { tipo:"FERR", parent:"c2", auto:true, ord:3, def:"PUXADOR", qt:1, mat:'PUXADOR "J" FRESADO', custo:3.00 },
+    { tipo:"FERR", def:"DOBRADICA", qt:1, mat:"DOBRADIÇA BLUM RETA 155º (SOFT CLOSE) + CALÇO H0", custo:5.99 },
+    { tipo:"FERR", def:"CALHA_LED", qt:1, mat:"CALHA + LED EMBUTIR VERSALINE 15X6 COM DIFUSOR (3000MM)", custo:24.50 },
+    { tipo:"OPER", def:"Operação CNC", qt:1, mat:"RASGO LED", custo:6.00 },
+    { tipo:"COMP", id:"c3", def:"FUNDO+PES" },
+    { tipo:"PECA", parent:"c3", ord:1, def:"FUNDO_2000", qt:1, mat:"AGL MLM LINHO CANCUN 12G 19MM", custo:7.12 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:1, def:"SISTEMAS_UNIAO", qt:10, mat:"CAVILHA MADEIRA 8 X 35", custo:0.00 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:2, def:"SISTEMAS_UNIAO", qt:10, mat:"PARAFUSO POZIDRIVE ESTRELA 3.5 X 50", custo:0.05 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:2, def:"PES", qt:6, mat:"PE NIVELADOR AXILO H55-75 + BASE", custo:4.98 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:3, def:"SISTEMAS_UNIAO", qt:10, mat:"CAVILHA MADEIRA 8 X 35", custo:0.00 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:4, def:"SISTEMAS_UNIAO", qt:10, mat:"PARAFUSO POZIDRIVE ESTRELA 3.5 X 50", custo:0.05 },
+    { tipo:"PECA", parent:"c3", ord:1, def:"FUNDO_0000", qt:1, mat:"AGL MLM LINHO CANCUN 12G 19MM", custo:7.12 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:1, def:"SISTEMAS_UNIAO", qt:2, mat:"CAVILHA MADEIRA 8 X 35", custo:0.00 },
+    { tipo:"FERR", parent:"c3", auto:true, ord:2, def:"SISTEMAS_UNIAO", qt:2, mat:"PARAFUSO POZIDRIVE ESTRELA 3.5 X 50", custo:0.05 },
+  ];
+
+  let uid = 0;
+  rows.forEach(function (r) { r._id = ++uid; });
+
+  // ---- Estado --------------------------------------------------------------
+  var variant = "A";
+  var expanded = {};          // composite id -> aberto? (variantes A e B)
+  var cHide = true;           // variante C: esconder ferragens automáticas
+
+  var TIPO_LABEL = { DIV:"Divisão independente", COMP:"Peça composta", PECA:"Peça", FERR:"Ferragem", OPER:"Operação CNC" };
+
+  var CHEV = '<span class="chev" aria-hidden="true"><svg viewBox="0 0 8 12" fill="none"><path d="M1.5 1.5 6 6l-4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+
+  function eur(v) { return v.toLocaleString("pt-PT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  function compChildren(id) { return rows.filter(function (r) { return r.parent === id; }); }
+  function compSummary(id) {
+    var ch = compChildren(id);
+    var pecas = ch.filter(function (r) { return r.tipo === "PECA"; }).length;
+    var ferr = ch.filter(function (r) { return r.tipo === "FERR"; }).length;
+    var total = ch.reduce(function (s, r) { return s + (r.custo || 0); }, 0);
+    return { pecas: pecas, ferr: ferr, total: total };
+  }
+
+  // A ferragem-auto está escondida nesta variante/estado?
+  function childHidden(r) {
+    if (r.tipo === "COMP" || r.tipo === "DIV" || !r.parent) return false;
+    if (variant === "A") return !expanded[r.parent];
+    if (variant === "B") return r.tipo === "FERR" && r.auto && !expanded[r.parent];
+    if (variant === "C") return r.tipo === "FERR" && r.auto && cHide;
+    return false;
+  }
+  function compIsOpen(id) {
+    if (variant === "C") return true;
+    return !!expanded[id];
+  }
+  function compIsClickable() { return variant === "A" || variant === "B"; }
+
+  // ---- Render --------------------------------------------------------------
+  var tbody = document.getElementById("tbody");
+
+  function render() {
+    tbody.innerHTML = "";
+    var normalCount = 0;
+    rows.forEach(function (r) {
+      if (childHidden(r)) return;
+      var el = rowEl(r);
+      if (r.tipo === "PECA" || r.tipo === "FERR" || r.tipo === "OPER") {
+        if (normalCount % 2 === 1) el.classList.add("alt");
+        normalCount++;
+      }
+      tbody.appendChild(el);
+    });
+    renderActions();
+    renderCaption();
+  }
+
+  function rowEl(r) {
+    var tr = document.createElement("tr");
+    if (r.tipo === "DIV") {
+      tr.className = "row-div";
+      tr.innerHTML =
+        '<td></td>' +
+        '<td class="col-tipo"><span class="tipo-badge">Divisão indep.</span></td>' +
+        '<td class="col-def">Divisão independente</td>' +
+        '<td class="num"></td>' +
+        '<td><span class="dim">' + r.mat + ' mm</span></td>' +
+        '<td class="num"></td><td class="col-act"></td>';
+      return tr;
+    }
+    if (r.tipo === "COMP") {
+      var s = compSummary(r.id);
+      var open = compIsOpen(r.id);
+      var clickable = compIsClickable();
+      tr.className = "row-comp" + (open ? " open" : "") + (clickable ? " clickable" : " static");
+      var hiddenNote = "";
+      if (!open || (variant === "C" && cHide)) {
+        if (variant === "C" && cHide) hiddenNote = ' <span class="hidden-note">· ' + s.ferr + ' ferragens automáticas ocultas</span>';
+        else if (variant === "B") hiddenNote = ' <span class="hidden-note">· ' + s.ferr + ' ferragens ocultas</span>';
+      }
+      var summary =
+        '<span class="comp-summary">' +
+          '<span class="dot">·</span>' + s.pecas + ' peça' + (s.pecas === 1 ? '' : 's') +
+          '<span class="dot">·</span>' + s.ferr + ' ' + (s.ferr === 1 ? 'ferragem' : 'ferragens') +
+          '<span class="dot">·</span>' + eur(s.total) + ' €' + hiddenNote +
+        '</span>';
+      tr.innerHTML =
+        '<td></td>' +
+        '<td class="col-tipo"><span class="tipo-badge">Peça composta</span></td>' +
+        '<td class="col-def" colspan="4"><span class="comp-head">' + CHEV +
+          '<span class="comp-name">' + r.def + '</span>' + summary + '</span></td>' +
+        '<td class="col-act"></td>';
+      if (clickable) {
+        tr.tabIndex = 0;
+        tr.setAttribute("role", "button");
+        tr.setAttribute("aria-expanded", open ? "true" : "false");
+        var toggle = function () { expanded[r.id] = !expanded[r.id]; render(); };
+        tr.addEventListener("click", toggle);
+        tr.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+        });
+      }
+      return tr;
+    }
+
+    // Peça / Ferragem / Operação
+    var isChild = !!r.parent;
+    var cls = "row-normal " + (r.tipo === "PECA" ? "row-peca" : r.tipo === "FERR" ? "row-ferragem" : "row-oper");
+    if (isChild) cls += " child";
+    if (r.tipo === "FERR" && r.auto) cls += " auto";
+    tr.className = cls;
+    var indent = isChild ? '<span class="indent" style="width:16px"></span>' : '';
+    var chip = (r.tipo === "FERR" && r.auto) ? '<span class="chip">auto</span>' : '';
+    tr.innerHTML =
+      '<td class="col-ord">' + (r.ord || '') + '</td>' +
+      '<td class="col-tipo"><span class="tipo-badge">' + TIPO_LABEL[r.tipo] + '</span></td>' +
+      '<td class="col-def">' + indent + '<span class="def-name">' + r.def + '</span>' + chip + '</td>' +
+      '<td class="num">' + (r.qt != null ? r.qt : '') + '</td>' +
+      '<td><span class="mat">' + r.mat + '</span></td>' +
+      '<td class="num">' + eur(r.custo || 0) + '</td>' +
+      '<td class="col-act"></td>';
+    if (r.tipo === "FERR") {
+      var actCell = tr.lastElementChild;
+      var del = document.createElement("button");
+      del.className = "del";
+      del.type = "button";
+      del.title = "Eliminar linha de ferragem";
+      del.setAttribute("aria-label", "Eliminar " + r.def);
+      del.textContent = "✕";
+      del.addEventListener("click", function (e) {
+        e.stopPropagation();
+        rows = rows.filter(function (x) { return x._id !== r._id; });
+        render();
+      });
+      actCell.appendChild(del);
+    }
+    return tr;
+  }
+
+  // ---- Toolbar dinâmica -----------------------------------------------------
+  var actionsEl = document.getElementById("actions");
+  function renderActions() {
+    actionsEl.innerHTML = "";
+    if (variant === "C") {
+      var lab = document.createElement("label");
+      lab.className = "switch";
+      lab.innerHTML = '<input type="checkbox" ' + (cHide ? "checked" : "") + '><span class="track"></span><span>Esconder ferragens automáticas</span>';
+      lab.querySelector("input").addEventListener("change", function (e) { cHide = e.target.checked; render(); });
+      actionsEl.appendChild(lab);
+      return;
+    }
+    var comps = rows.filter(function (r) { return r.tipo === "COMP"; });
+    var allOpen = comps.every(function (c) { return expanded[c.id]; });
+    var allClosed = comps.every(function (c) { return !expanded[c.id]; });
+    var bExp = document.createElement("button");
+    bExp.className = "btn"; bExp.textContent = "Expandir tudo"; bExp.disabled = allOpen;
+    bExp.addEventListener("click", function () { comps.forEach(function (c) { expanded[c.id] = true; }); render(); });
+    var bCol = document.createElement("button");
+    bCol.className = "btn"; bCol.textContent = "Colapsar tudo"; bCol.disabled = allClosed;
+    bCol.addEventListener("click", function () { comps.forEach(function (c) { expanded[c.id] = false; }); render(); });
+    actionsEl.appendChild(bExp);
+    actionsEl.appendChild(bCol);
+  }
+
+  var CAPTIONS = {
+    A: "<b>A · Colapsar tudo:</b> cada peça composta nasce fechada e mostra só o resumo (peças · ferragens · custo). Um clique abre para veres ou editares as linhas filhas.",
+    B: "<b>B · Só ferragens:</b> as peças filhas ficam sempre à vista; escondem-se só as ferragens automáticas (uniões, dobradiças…). O clique na peça composta mostra/esconde essas ferragens.",
+    C: "<b>C · Modo simplificado:</b> um único interruptor esconde todas as ferragens automáticas da tabela inteira; as peças ficam todas visíveis. Desliga para rever ou eliminar ferragens."
+  };
+  function renderCaption() { document.getElementById("caption").innerHTML = CAPTIONS[variant]; }
+
+  // ---- Selector de variante -------------------------------------------------
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function (btn) {
+    btn.addEventListener("click", function () {
+      variant = btn.getAttribute("data-variant");
+      Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function (b) {
+        b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+      });
+      render();
+    });
+  });
+
+  document.getElementById("foot").innerHTML =
+    "Mockup — as linhas eliminadas aqui não afetam nada real. Na app, esconder é só visual: cálculo, quantidades, preços, plano de corte e exports usam sempre todas as linhas.";
+
+  render();
+})();
+</script>
