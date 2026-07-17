@@ -47,6 +47,11 @@ SEPARADOR_FUNDO = CINZA_CASTANHO     # discreet separator background
 ZEBRA_BASE = "#FFFFFF"               # normal rows (even)
 ZEBRA_ALT = BEGE_CLARO               # normal rows (odd)
 
+# Budgets with more than one version: every row of the group gets a sand
+# background so the block stands out from the white/beige zebra.
+VERSOES_FUNDO = BEGE_AREIA           # multi-version group (even groups)
+VERSOES_FUNDO_ALT = "#E4D7C0"        # multi-version group (odd groups)
+
 # Whole-board (Não-Stock) adjusted waste cell: a warm ochre highlight that stands
 # out from the beige/white zebra, with dark-brown text (phase 8W.2.1).
 PLACA_INTEIRA_FUNDO = "#E3B872"      # warm ochre highlight
@@ -87,6 +92,15 @@ def cor_zebra(indice_linha: int) -> str:
 def cor_grupo_chave(indice_grupo: int) -> str:
     """Return the background for one ValueSet-key type group."""
     return BEGE_CLARO if indice_grupo % 2 else ZEBRA_BASE
+
+
+def cor_grupo_versoes(indice_grupo: int) -> str:
+    """Return the background of the rows of a budget that has several versions.
+
+    Consecutive groups alternate so two adjacent multi-version budgets do not
+    read as a single block.
+    """
+    return VERSOES_FUNDO_ALT if indice_grupo % 2 else VERSOES_FUNDO
 
 
 def cor_estado(estado: str | None) -> tuple[str, str]:

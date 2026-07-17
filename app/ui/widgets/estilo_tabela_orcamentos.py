@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Sequence
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QTableWidget
 
 from app.ui import tema
+
+
+def grupos_versoes(orcamento_ids: Sequence[int]) -> dict[int, int]:
+    """Map budget id -> group index, only for budgets listed with several versions.
+
+    Budgets with a single visible version are absent from the mapping and keep
+    the normal zebra background.
+    """
+    contagem = Counter(orcamento_ids)
+    grupos: dict[int, int] = {}
+    for orcamento_id in orcamento_ids:
+        if contagem[orcamento_id] > 1 and orcamento_id not in grupos:
+            grupos[orcamento_id] = len(grupos)
+    return grupos
 
 
 def configurar_tabela_orcamentos(table: QTableWidget, *, compacta: bool = False) -> None:

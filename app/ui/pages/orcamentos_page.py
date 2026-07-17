@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
 
@@ -58,6 +59,7 @@ from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.estilo_tabela_orcamentos import (
     aplicar_estilo_linha_orcamento,
     configurar_tabela_orcamentos,
+    grupos_versoes,
 )
 from app.utils.formatters import format_currency, format_version
 
@@ -427,8 +429,18 @@ class OrcamentosPage(QWidget):
         self._orcamentos_by_row = {}
         self.table.setRowCount(len(orcamentos))
 
+        ids_listados = [orcamento.orcamento_id for orcamento in orcamentos]
+        grupos = grupos_versoes(ids_listados)
+        total_versoes = Counter(ids_listados)
+
         for row_index, orcamento in enumerate(orcamentos):
             self._orcamentos_by_row[row_index] = orcamento
+            grupo_versoes = grupos.get(orcamento.orcamento_id)
+            fundo_linha = (
+                tema.cor_zebra(row_index)
+                if grupo_versoes is None
+                else tema.cor_grupo_versoes(grupo_versoes)
+            )
             enc_phc_display = orcamento.enc_phc or ""
             if orcamento.encomendas_phc_total > 1:
                 enc_phc_display = (
@@ -455,7 +467,12 @@ class OrcamentosPage(QWidget):
             for column_index, value in enumerate(values):
                 header = self.TABLE_HEADERS[column_index]
                 item = self._criar_item_tabela(value, header)
-                item.setBackground(QColor(tema.cor_zebra(row_index)))
+                item.setBackground(QColor(fundo_linha))
+                if header == "Versão" and grupo_versoes is not None:
+                    item.setToolTip(
+                        f"Este orçamento tem {total_versoes[orcamento.orcamento_id]}"
+                        " versões na lista."
+                    )
                 if column_index == 0:
                     item.setData(
                         Qt.ItemDataRole.UserRole,
