@@ -2038,8 +2038,18 @@ class OrcamentoItemCusteioPage(QWidget):
         botao = self._btn_x_ferragem
         altura = self.table.rowHeight(row)
         pos_y = self.table.rowViewportPosition(row) + (altura - botao.height()) // 2
-        pos_x = self.table.viewport().width() - botao.width() - 6
-        botao.move(max(pos_x, 0), pos_y)
+        # Fixa o ✕ ao fim da coluna "Def. Peça" (junto ao nome), não à borda
+        # direita da tabela; fica mais perto e acessível.
+        try:
+            col_def = self.TABLE_HEADERS.index("Def. Peça")
+        except ValueError:
+            col_def = 0
+        borda_dir = self.table.columnViewportPosition(col_def) + self.table.columnWidth(
+            col_def
+        )
+        pos_x = borda_dir - botao.width() - 6
+        limite = self.table.viewport().width() - botao.width()
+        botao.move(max(0, min(pos_x, limite)), pos_y)
         botao.show()
         botao.raise_()
 
