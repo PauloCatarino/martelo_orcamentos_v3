@@ -137,6 +137,12 @@ from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
 
+def _clipboard_tem_bloco_medidas_multicelula() -> bool:
+    """True when the system clipboard holds a multi-cell numeric Excel block."""
+    bloco = parse_bloco_medidas_excel(QGuiApplication.clipboard().text())
+    return bloco is not None and (len(bloco) > 1 or len(bloco[0]) > 1)
+
+
 class CusteioEnterDelegate(QStyledItemDelegate):
     """Delegate that makes Enter/Tab advance within the fast-edit flow while EDITING.
 
@@ -144,9 +150,37 @@ class CusteioEnterDelegate(QStyledItemDelegate):
     view's default "move down" can win), so we intercept Enter/Tab in the
     editor's eventFilter, commit + close the editor, and ask the table to advance
     to the next fast-flow editable cell — independent of the close hint.
+
+    Ctrl+V with a MULTI-CELL numeric Excel block on a Comp/Larg cell is also
+    intercepted here: with the CurrentChanged edit trigger the cell editor is
+    already open when the user pastes, so without this the whole block would
+    land horizontally inside one editor. A single value keeps the editor's own
+    normal paste.
     """
 
     def eventFilter(self, editor, event) -> bool:  # noqa: N802 (Qt override)
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and event.matches(QKeySequence.StandardKey.Paste)
+        ):
+            tabela = self.parent()
+            handler = getattr(tabela, "colar_medidas_excel_handler", None)
+            coluna = tabela.currentColumn() if isinstance(tabela, QTableWidget) else -1
+            header = (
+                tabela.horizontalHeaderItem(coluna).text()
+                if coluna >= 0 and tabela.horizontalHeaderItem(coluna) is not None
+                else ""
+            )
+            if (
+                handler is not None
+                and header in ("Comp", "Larg")
+                and _clipboard_tem_bloco_medidas_multicelula()
+            ):
+                # Close the editor WITHOUT committing its pending text; the
+                # paste below rewrites the measures and reloads the table.
+                self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+                handler()
+                return True
         if (
             event.type() == QEvent.Type.KeyPress
             and event.key()
@@ -605,6 +639,9 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self.table = CusteioLinhasTable(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        # O delegate usa este handler para colar blocos Comp/Larg do Excel
+        # mesmo com o editor da célula aberto (edição rápida CurrentChanged).
+        self.table.colar_medidas_excel_handler = self._colar_medidas_do_excel
         for column_index, header in enumerate(self.TABLE_HEADERS):
             header_item = self.table.horizontalHeaderItem(column_index)
             if header_item is None:
