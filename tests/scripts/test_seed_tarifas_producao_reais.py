@@ -5,8 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import BigInteger, create_engine, select
-from sqlalchemy.ext.compiler import compiles
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
@@ -16,18 +15,16 @@ from scripts.create_default_operacoes import ensure_default_operacoes
 from scripts.seed_tarifas_producao_reais import seed_tarifas_producao_reais
 
 
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
 @pytest.fixture()
 def session():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        ensure_default_operacoes(session)
-        yield session
+    try:
+        with Session(engine) as session:
+            ensure_default_operacoes(session)
+            yield session
+    finally:
+        engine.dispose()
 
 
 def _maquina(session: Session, codigo: str) -> DefMaquina:

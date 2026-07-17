@@ -6,29 +6,12 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from sqlalchemy import BigInteger, create_engine
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session
-
-from app.db.base import Base
 from app.models import Cliente
 from app.services import cliente_phc_sync_service as service_module
 from app.services.cliente_phc_sync_service import ClientePhcSyncService
 
 
-@compiles(BigInteger, "sqlite")
-def _bigint_as_integer_on_sqlite(type_, compiler, **kw):  # noqa: ANN001
-    return "INTEGER"
-
-
-def _session():
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    return Session(engine)
-
-
-def test_sincronizar_cria_e_atualiza(monkeypatch) -> None:
-    session = _session()
+def test_sincronizar_cria_e_atualiza(monkeypatch, session) -> None:
     # já existe um PHC (num 100) e um temporário (não deve ser tocado)
     session.add(Cliente(nome="Antigo", num_cliente_phc="100", is_temporary=False, source_system="phc"))
     session.add(Cliente(nome="Temp", is_temporary=True, source_system="manual"))

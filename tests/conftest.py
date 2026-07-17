@@ -1,25 +1,19 @@
 """Shared pytest configuration and fixtures.
 
-Two things live here:
+The shared ``session`` fixture hands each test a SQLAlchemy ``Session`` on a
+fresh in-memory SQLite database and — crucially — **disposes the engine** on
+teardown. Test modules used to inline this boilerplate but never disposed the
+engine, leaking native connections that the cyclic garbage collector then
+finalized at an arbitrary later moment; on Windows that occasionally fired
+mid-test and aborted the whole run with a native "access violation". With every
+engine now disposed deterministically (here and in the few modules that keep a
+bespoke fixture), that crash no longer happens and no GC workaround is needed.
 
-* A shared ``session`` fixture that hands each test a SQLAlchemy ``Session`` on a
-  fresh in-memory SQLite database and — crucially — **disposes the engine** on
-  teardown. Most test modules used to inline this boilerplate but never disposed
-  the engine, leaking native connections. Modules can still define their own
-  ``session`` fixture when they need something different (it overrides this one).
-
-* A session-wide guard that disables the *cyclic* garbage collector. Tests that
-  still create engines/Qt widgets inline (without the shared fixture) leave
-  objects for the cyclic collector to finalize at an arbitrary later moment; on
-  Windows that occasionally fired mid-test and aborted the whole run with a
-  native "access violation". Reference-counted cleanup (the shared fixture's
-  ``engine.dispose()`` included) keeps working; only the unpredictable cyclic
-  pass is turned off.
+Modules can still define their own ``session`` fixture when they need something
+different (it overrides this one).
 """
 
 from __future__ import annotations
-
-import gc
 
 import pytest
 from sqlalchemy import BigInteger, create_engine
@@ -46,15 +40,3 @@ def session():
             yield db
     finally:
         engine.dispose()
-
-
-@pytest.fixture(autouse=True, scope="session")
-def _disable_cyclic_gc_during_session():
-    """Keep the cyclic GC from finalizing native objects mid-test on Windows."""
-    was_enabled = gc.isenabled()
-    gc.disable()
-    try:
-        yield
-    finally:
-        if was_enabled:
-            gc.enable()
