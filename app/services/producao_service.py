@@ -387,9 +387,9 @@ def converter_orcamento(
         ref_cliente=orcamento.ref_cliente,
         num_orcamento=orcamento.num_orcamento,
         versao_orc=f"{int(versao.numero_versao):02d}",
-        obra=orcamento.obra,
-        localizacao=orcamento.localizacao,
-        descricao_orcamento=orcamento.descricao,
+        obra=versao.obra,
+        localizacao=versao.localizacao,
+        descricao_orcamento=versao.descricao,
         preco_total=versao.preco_total,
         created_by_id=created_by_id,
     )

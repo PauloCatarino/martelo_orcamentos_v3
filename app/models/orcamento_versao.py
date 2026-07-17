@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -47,6 +48,14 @@ class OrcamentoVersao(Base):
     codigo_versao: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     estado: Mapped[str] = mapped_column(String(50), nullable=False)
     enc_phc: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # General data owned by each version (obra/descricao/localizacao/info_1/2):
+    # editing one version must not change the others. ``ref_cliente`` and the
+    # customer stay on the parent Orcamento (shared across versions).
+    obra: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    localizacao: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    info_1: Mapped[str | None] = mapped_column(Text, nullable=True)
+    info_2: Mapped[str | None] = mapped_column(Text, nullable=True)
     preco_total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     preco_origem: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     # Budget-level margins (phase 8T.0), human percentages (15 = 15%), applied

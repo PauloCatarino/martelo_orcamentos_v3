@@ -232,6 +232,11 @@ class OrcamentoRepository:
             codigo_versao=codigo_versao,
             estado=ESTADO_INICIAL,
             enc_phc=enc_phc,
+            obra=obra,
+            descricao=descricao,
+            localizacao=localizacao,
+            info_1=info_1,
+            info_2=info_2,
             preco_total=Decimal("0"),
             preco_origem=Decimal("0"),
             perfil_margens=perfil_margens,
@@ -284,6 +289,11 @@ class OrcamentoRepository:
             numero_versao=proximo_numero,
             codigo_versao=codigo_versao,
             estado=ESTADO_INICIAL,
+            obra=origem.obra,
+            descricao=origem.descricao,
+            localizacao=origem.localizacao,
+            info_1=origem.info_1,
+            info_2=origem.info_2,
             preco_total=Decimal("0"),
             preco_origem=origem.preco_total,
             tipo_producao_default=origem.tipo_producao_default,
@@ -341,6 +351,11 @@ class OrcamentoRepository:
             numero_versao=proximo_numero,
             codigo_versao=codigo_versao,
             estado=ESTADO_INICIAL,
+            obra=origem.obra,
+            descricao=origem.descricao,
+            localizacao=origem.localizacao,
+            info_1=origem.info_1,
+            info_2=origem.info_2,
             preco_total=origem.preco_total,
             preco_origem=origem.preco_total,
             margem_lucro_pct=origem.margem_lucro_pct,
@@ -527,27 +542,48 @@ class OrcamentoRepository:
         self,
         orcamento_id: int,
         *,
-        descricao: str | None,
-        obra: str,
-        localizacao: str | None,
         ref_cliente: str | None,
-        info_1: str | None,
-        info_2: str | None,
         updated_by_id: int | None = None,
     ) -> bool:
-        """Update a budget's general data; False when it does not exist."""
+        """Update the parent-level data shared by all versions (ref_cliente)."""
         orcamento = self.session.get(Orcamento, orcamento_id)
         if orcamento is None:
             return False
 
-        orcamento.descricao = descricao
-        orcamento.obra = obra
-        orcamento.localizacao = localizacao
         orcamento.ref_cliente = ref_cliente
-        orcamento.info_1 = info_1
-        orcamento.info_2 = info_2
         if updated_by_id is not None:
             orcamento.updated_by_id = updated_by_id
+        self.session.flush()
+
+        return True
+
+    def update_versao_dados(
+        self,
+        orcamento_versao_id: int,
+        *,
+        obra: str,
+        descricao: str | None,
+        localizacao: str | None,
+        info_1: str | None,
+        info_2: str | None,
+        updated_by_id: int | None = None,
+    ) -> bool:
+        """Update the general data owned by one budget version.
+
+        These fields belong to the version so editing one does not change the
+        others; ``ref_cliente`` stays on the parent (see :meth:`update_orcamento`).
+        """
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+
+        versao.obra = obra
+        versao.descricao = descricao
+        versao.localizacao = localizacao
+        versao.info_1 = info_1
+        versao.info_2 = info_2
+        if updated_by_id is not None:
+            versao.updated_by_id = updated_by_id
         self.session.flush()
 
         return True
@@ -669,13 +705,13 @@ class OrcamentoRepository:
                 OrcamentoVersao.numero_versao.label("numero_versao"),
                 OrcamentoVersao.codigo_versao.label("codigo_versao"),
                 Cliente.nome.label("cliente_nome"),
-                Orcamento.obra.label("obra"),
-                Orcamento.descricao.label("descricao"),
-                Orcamento.localizacao.label("localizacao"),
+                OrcamentoVersao.obra.label("obra"),
+                OrcamentoVersao.descricao.label("descricao"),
+                OrcamentoVersao.localizacao.label("localizacao"),
                 Orcamento.ref_cliente.label("ref_cliente"),
                 OrcamentoVersao.enc_phc.label("enc_phc"),
-                Orcamento.info_1.label("info_1"),
-                Orcamento.info_2.label("info_2"),
+                OrcamentoVersao.info_1.label("info_1"),
+                OrcamentoVersao.info_2.label("info_2"),
                 Orcamento.pasta_manual.label("pasta_manual"),
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),

@@ -21,6 +21,7 @@ class _FakeRepository:
     next_ano: int | None = None
     created_payload: dict[str, object] | None = None
     update_payload: dict[str, object] | None = None
+    dados_versao_payload: dict[str, object] | None = None
     enc_phc_payload: tuple[int, str | None] | None = None
     estado_payload: tuple[int, str] | None = None
     utilizador_payload: tuple[int, int | None] | None = None
@@ -87,6 +88,10 @@ class _FakeRepository:
 
     def update_orcamento(self, orcamento_id, **kwargs) -> bool:
         self.__class__.update_payload = kwargs
+        return True
+
+    def update_versao_dados(self, orcamento_versao_id, **kwargs) -> bool:
+        self.__class__.dados_versao_payload = kwargs
         return True
 
     def update_enc_phc(self, orcamento_versao_id: int, enc_phc: str | None) -> bool:
@@ -254,6 +259,7 @@ def _make_service(monkeypatch) -> tuple[service_module.OrcamentoService, _FakeSe
     _FakeRepository.next_ano = None
     _FakeRepository.created_payload = None
     _FakeRepository.update_payload = None
+    _FakeRepository.dados_versao_payload = None
     _FakeRepository.enc_phc_payload = None
     _FakeRepository.estado_payload = None
     _FakeRepository.utilizador_payload = None
@@ -397,8 +403,10 @@ def test_editar_orcamento_passa_enc_phc_e_info(monkeypatch) -> None:
     )
 
     assert result is True
-    assert _FakeRepository.update_payload["info_1"] == "A"
-    assert _FakeRepository.update_payload["info_2"] == "B"
+    # info_1/info_2 (e obra/descricao/localizacao) pertencem agora à versão.
+    assert _FakeRepository.dados_versao_payload["info_1"] == "A"
+    assert _FakeRepository.dados_versao_payload["info_2"] == "B"
+    assert _FakeRepository.dados_versao_payload["obra"] == "X"
     # Legacy enc_phc becomes the single principal order (phase 5).
     versao_id, encomendas = _FakeEncomendasService.substituir_payload
     assert versao_id == 10

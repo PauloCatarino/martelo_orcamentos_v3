@@ -62,12 +62,13 @@ def test_editar_orcamento_persiste_os_campos_e_estado(session) -> None:
     )
 
     assert resultado is True
-    atualizado = session.get(Orcamento, orcamento_id)
-    assert atualizado.obra == "Obra Nova"
-    assert atualizado.descricao == "Descricao Nova"
-    assert atualizado.localizacao == "Local Novo"
-    assert atualizado.ref_cliente == "REF-2"
-    assert session.get(OrcamentoVersao, orcamento_versao_id).estado == "Enviado"
+    versao = session.get(OrcamentoVersao, orcamento_versao_id)
+    assert versao.obra == "Obra Nova"
+    assert versao.descricao == "Descricao Nova"
+    assert versao.localizacao == "Local Novo"
+    # ref_cliente stays on the parent (shared by all versions).
+    assert session.get(Orcamento, orcamento_id).ref_cliente == "REF-2"
+    assert versao.estado == "Enviado"
     evento = session.query(OrcamentoVersaoEvento).one()
     assert evento.orcamento_versao_id == orcamento_versao_id
     assert evento.tipo == "estado"
@@ -108,12 +109,12 @@ def test_editar_orcamento_guarda_updated_by_id(session) -> None:
         orcamento_versao_id=orcamento_versao_id,
     )
 
-    atualizado = session.get(Orcamento, orcamento_id)
-    # Optional fields cleared; obra kept.
-    assert atualizado.obra == "Obra Nova"
-    assert atualizado.descricao is None
-    assert atualizado.localizacao is None
-    assert atualizado.ref_cliente is None
+    versao = session.get(OrcamentoVersao, orcamento_versao_id)
+    # Optional fields cleared; obra kept. These belong to the version now.
+    assert versao.obra == "Obra Nova"
+    assert versao.descricao is None
+    assert versao.localizacao is None
+    assert session.get(Orcamento, orcamento_id).ref_cliente is None
 
 
 def test_editar_orcamento_inexistente_devolve_false(session) -> None:
@@ -148,7 +149,7 @@ def test_editar_orcamento_aceita_obra_vazia(session) -> None:
     )
 
     assert resultado is True
-    assert session.get(Orcamento, orcamento_id).obra == ""
+    assert session.get(OrcamentoVersao, orcamento_versao_id).obra == ""
 
 
 def test_editar_orcamento_troca_o_cliente(session) -> None:
@@ -172,6 +173,49 @@ def test_editar_orcamento_troca_o_cliente(session) -> None:
     )
 
     assert session.get(Orcamento, orcamento_id).cliente_id == outro.id
+
+
+def test_editar_uma_versao_nao_altera_as_outras(session) -> None:
+    orcamento_id, versao_1_id = _criar_orcamento(session)
+    service = OrcamentoService(session)
+    # Versão 02 criada a partir da 01 (herda os dados gerais iniciais).
+    v2 = service.duplicar_versao(versao_1_id)
+    versao_2_id = v2.orcamento_versao_id
+
+    service.editar_orcamento(
+        orcamento_id,
+        EditarOrcamentoData(
+            obra="Obra so v1",
+            descricao="Desc so v1",
+            localizacao="Local so v1",
+            ref_cliente="REF-1",
+            estado="Enviado",
+            enc_phc="111",
+            info_1="Info1 v1",
+            info_2="Info2 v1",
+        ),
+        orcamento_versao_id=versao_1_id,
+    )
+
+    v1 = session.get(OrcamentoVersao, versao_1_id)
+    v2r = session.get(OrcamentoVersao, versao_2_id)
+    # A versão editada recebeu as alterações...
+    assert (
+        v1.obra,
+        v1.descricao,
+        v1.localizacao,
+        v1.info_1,
+        v1.info_2,
+        v1.estado,
+    ) == ("Obra so v1", "Desc so v1", "Local so v1", "Info1 v1", "Info2 v1", "Enviado")
+    # ...e a outra versão manteve os valores herdados, sem contágio.
+    assert (v2r.obra, v2r.descricao, v2r.localizacao) == (
+        "Obra Inicial",
+        "Descricao Inicial",
+        "Local Inicial",
+    )
+    assert v2r.info_1 is None and v2r.info_2 is None
+    assert v2r.estado == ESTADO_INICIAL
 
 
 def test_lista_marca_orcamento_com_preco_manual(session) -> None:

@@ -167,10 +167,16 @@ class OrcamentoService:
 
         result = self.repository.update_orcamento(
             orcamento_id,
-            descricao=data.descricao,
-            obra=obra,
-            localizacao=data.localizacao,
             ref_cliente=data.ref_cliente,
+            updated_by_id=updated_by_id,
+        )
+        # obra/descricao/localizacao/info_1/info_2 belong to the version, so
+        # editing this version must not touch the others.
+        dados_versao_result = self.repository.update_versao_dados(
+            orcamento_versao_id,
+            obra=obra,
+            descricao=data.descricao,
+            localizacao=data.localizacao,
             info_1=data.info_1,
             info_2=data.info_2,
             updated_by_id=updated_by_id,
@@ -215,6 +221,7 @@ class OrcamentoService:
 
         return (
             result
+            and dados_versao_result
             and enc_phc_result
             and estado_result
             and utilizador_result
