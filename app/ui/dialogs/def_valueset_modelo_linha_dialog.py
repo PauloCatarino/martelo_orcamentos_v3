@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -129,7 +130,13 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(560)
         self.setMinimumHeight(680)
-        self.resize(600, 780)
+        # Open as tall as the screen comfortably allows (more fields visible
+        # without scrolling), while never overflowing smaller screens.
+        ecra = QGuiApplication.primaryScreen()
+        altura_disponivel = (
+            ecra.availableGeometry().height() if ecra is not None else 900
+        )
+        self.resize(620, max(780, min(altura_disponivel - 80, 1000)))
 
         self.chave_input = QComboBox()
         carregar_chaves_valueset_combo(

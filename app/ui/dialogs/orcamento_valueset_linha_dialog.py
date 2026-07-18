@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -37,6 +38,7 @@ from app.services.orcamento_valueset_linha_operacao_service import (
 )
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.helpers.orla_picker import obter_precos_orlas_m2
+from app.ui.widgets.campo_valor_unidade import CampoValorComUnidade
 from app.ui.widgets.orla_line_edit import OrlaLineEdit
 from app.ui.dialogs.valueset_linha_operacoes_dialog import (
     ValuesetLinhaOperacoesDialog,
@@ -59,6 +61,10 @@ PRIORIDADE_TOOLTIP = (
 ORDEM_TOOLTIP = (
     "Ordem: apenas a posição de exibição na lista. "
     "Não decide a escolha automática no custeio — isso é a Prioridade."
+)
+PRECO_LIQUIDO_TOOLTIP = (
+    "Calculado automaticamente (campo protegido, não editável):\n"
+    "Preço líquido = Preço tabela × (1 − Desconto %) × (1 + Margem %)"
 )
 
 
@@ -116,7 +122,15 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         self.setWindowTitle("Editar Linha ValueSet do Orçamento")
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(680)
+        # Open as tall as the screen comfortably allows (more fields visible
+        # without scrolling), while never overflowing smaller screens.
+        ecra = QGuiApplication.primaryScreen()
+        altura_disponivel = (
+            ecra.availableGeometry().height() if ecra is not None else 900
+        )
+        self.resize(620, max(780, min(altura_disponivel - 80, 1000)))
 
         self.chave_input = QComboBox()
         carregar_chaves_valueset_combo(self.chave_input, valor_atual=linha.chave)
@@ -131,18 +145,19 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         self.ref_materia_prima_input = QLineEdit()
         self.descricao_materia_prima_input = QLineEdit()
         self.valor_texto_input = QLineEdit()
-        self.preco_tabela_input = QLineEdit()
-        self.margem_input = QLineEdit()
-        self.desconto_input = QLineEdit()
-        self.preco_liquido_input = QLineEdit()
+        self.preco_tabela_input = CampoValorComUnidade("€")
+        self.margem_input = CampoValorComUnidade("%")
+        self.desconto_input = CampoValorComUnidade("%")
+        self.preco_liquido_input = CampoValorComUnidade("€")
+        self.preco_liquido_input.marcar_como_resultado(PRECO_LIQUIDO_TOOLTIP)
         self.unidade_input = QLineEdit()
-        self.desperdicio_input = QLineEdit()
+        self.desperdicio_input = CampoValorComUnidade("%")
         self.tipo_mp_input = QLineEdit()
         self.familia_mp_input = QLineEdit()
         self.orla_0_4_input = OrlaLineEdit()
         self.orla_1_0_input = OrlaLineEdit()
-        self.preco_orla_0_4_input = QLineEdit()
-        self.preco_orla_1_0_input = QLineEdit()
+        self.preco_orla_0_4_input = CampoValorComUnidade("€/m²")
+        self.preco_orla_1_0_input = CampoValorComUnidade("€/m²")
         for widget in (self.preco_orla_0_4_input, self.preco_orla_1_0_input):
             widget.setToolTip(
                 "Snapshot local da orla. Unidade obrigatória: euros por metro quadrado (€/m²)."
@@ -183,17 +198,17 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         form.addRow("Descrição matéria-prima", self.descricao_materia_prima_input)
         form.addRow("Valor texto", self.valor_texto_input)
         form.addRow("Preço tabela", self.preco_tabela_input)
-        form.addRow("Margem %", self.margem_input)
-        form.addRow("Desconto %", self.desconto_input)
+        form.addRow("Margem", self.margem_input)
+        form.addRow("Desconto", self.desconto_input)
         form.addRow("Preço líquido", self.preco_liquido_input)
         form.addRow("Unidade", self.unidade_input)
-        form.addRow("Desperdício %", self.desperdicio_input)
+        form.addRow("Desperdício", self.desperdicio_input)
         form.addRow("Tipo matéria-prima", self.tipo_mp_input)
         form.addRow("Família matéria-prima", self.familia_mp_input)
         form.addRow("Orla 0.4 (duplo clique para selecionar)", self.orla_0_4_input)
-        form.addRow("Preço orla 0.4 (€/m²)", self.preco_orla_0_4_input)
+        form.addRow("Preço orla 0.4", self.preco_orla_0_4_input)
         form.addRow("Orla 1.0 (duplo clique para selecionar)", self.orla_1_0_input)
-        form.addRow("Preço orla 1.0 (€/m²)", self.preco_orla_1_0_input)
+        form.addRow("Preço orla 1.0", self.preco_orla_1_0_input)
         form.addRow("Comp MP", self.comp_mp_input)
         form.addRow("Larg MP", self.larg_mp_input)
         form.addRow("Esp MP", self.esp_mp_input)
