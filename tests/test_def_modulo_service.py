@@ -232,6 +232,22 @@ def test_editar_cabecalho_persiste_todos_os_campos(session) -> None:
     assert recarregado.imagem_path == "C:/imagens/roupeiro.png"
 
 
+def test_criar_persiste_subcategoria(session) -> None:
+    """Saving a module (e.g. from the costing) keeps its subcategory."""
+    service = DefModuloService(session)
+    resultado = service.criar(
+        CriarDefModuloData(
+            codigo="MOD_SUB_CRIAR",
+            nome="Módulo com subcategoria",
+            categoria=COZINHAS,
+            subcategoria="Cliente Silva",
+            user_id=7,
+            linhas=[],
+        )
+    )
+    assert resultado.modulo.subcategoria == "CLIENTE_SILVA"
+
+
 def test_editar_cabecalho_persiste_subcategoria(session) -> None:
     """Editing a module can assign (and later clear) a subcategory."""
     service = DefModuloService(session)

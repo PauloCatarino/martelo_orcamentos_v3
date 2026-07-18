@@ -1476,6 +1476,7 @@ class OrcamentoItemCusteioPage(QWidget):
                             ambito=dados.ambito,
                             user_id=user_id,
                             categoria=dados.categoria,
+                            subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
                         )
                     else:
@@ -1488,6 +1489,7 @@ class OrcamentoItemCusteioPage(QWidget):
                             ambito=dados.ambito,
                             user_id=user_id,
                             categoria=dados.categoria,
+                            subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
                         )
             except ValueError as error:

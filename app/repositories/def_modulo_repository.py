@@ -105,6 +105,7 @@ class DefModuloRepository:
         ambito: str = "UTILIZADOR",
         user_id: int | None = None,
         categoria: str = "OUTROS",
+        subcategoria: str | None = None,
         imagem_path: str | None = None,
         ativo: bool = True,
     ) -> DefModuloResumo:
@@ -116,6 +117,7 @@ class DefModuloRepository:
             ambito=ambito,
             user_id=user_id,
             categoria=categoria,
+            subcategoria=subcategoria,
             imagem_path=imagem_path,
             ativo=ativo,
         )

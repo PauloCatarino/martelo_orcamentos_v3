@@ -39,6 +39,7 @@ from app.domain.modulo_categorias import (
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
 from app.ui.helpers.modulo_categoria_opcoes import (
+    carregar_arvore_categorias,
     carregar_labels_categorias,
     carregar_opcoes_categorias,
 )
@@ -80,6 +81,7 @@ class ImportarModuloDialog(QDialog):
         # Manageable categories (phase 6): options for the filter + labels.
         self._opcoes_categorias = carregar_opcoes_categorias()
         self._categoria_labels = carregar_labels_categorias()
+        self._arvore_subcategorias = carregar_arvore_categorias()
         self._modulo_selecionado = None
         self.modulo_id_selecionado: int | None = None
         self._preview_pixmap_original: QPixmap | None = None
@@ -130,13 +132,22 @@ class ImportarModuloDialog(QDialog):
         self.categoria_filtro.addItem("Todas", None)
         for code, label in self._opcoes_categorias:
             self.categoria_filtro.addItem(label, code)
-        self.categoria_filtro.currentIndexChanged.connect(self._recarregar_tabelas)
+        self.categoria_filtro.currentIndexChanged.connect(self._on_categoria_filtro_mudou)
+
+        self.subcategoria_filtro = QComboBox()
+        self.subcategoria_filtro.setToolTip(
+            "Filtrar por subcategoria da categoria escolhida"
+        )
+        self._recarregar_subcategoria_filtro(None)
+        self.subcategoria_filtro.currentIndexChanged.connect(self._recarregar_tabelas)
 
         filtro_row = QHBoxLayout()
         filtro_row.setContentsMargins(0, 0, 0, 0)
         filtro_row.addWidget(self.pesquisa_input, stretch=1)
         filtro_row.addWidget(QLabel("Categoria"))
         filtro_row.addWidget(self.categoria_filtro)
+        filtro_row.addWidget(QLabel("Subcategoria"))
+        filtro_row.addWidget(self.subcategoria_filtro)
 
         self.tabela_utilizador = self._criar_tabela_lista()
         self.tabela_globais = self._criar_tabela_lista()
@@ -275,13 +286,35 @@ class ImportarModuloDialog(QDialog):
             tabela.setItem(row, 2, QTableWidgetItem(modulo.nome or ""))
             tabela.setItem(row, 3, QTableWidgetItem(str(item.num_linhas)))
 
+    def _on_categoria_filtro_mudou(self) -> None:
+        """Rebuild the subcategory filter for the chosen category, then refilter."""
+        self._recarregar_subcategoria_filtro(self.categoria_filtro.currentData())
+        self._recarregar_tabelas()
+
+    def _recarregar_subcategoria_filtro(self, categoria_codigo: str | None) -> None:
+        """Populate the subcategory filter with the chosen category's subcategories."""
+        self.subcategoria_filtro.blockSignals(True)
+        self.subcategoria_filtro.clear()
+        self.subcategoria_filtro.addItem("Todas", None)
+        for code, label in self._arvore_subcategorias.get(categoria_codigo or "", ()):
+            self.subcategoria_filtro.addItem(label, code)
+        self.subcategoria_filtro.setCurrentIndex(0)
+        self.subcategoria_filtro.setEnabled(self.subcategoria_filtro.count() > 1)
+        self.subcategoria_filtro.blockSignals(False)
+
     def _filtrar(self, itens: Sequence) -> list:
         categoria = self.categoria_filtro.currentData()
+        subcategoria = self.subcategoria_filtro.currentData()
         tokens = termo_tokens(self.pesquisa_input.text())
         resultado = []
         for item in itens:
             modulo = item.modulo
             if categoria and normalize_modulo_categoria(modulo.categoria) != categoria:
+                continue
+            if subcategoria and (
+                not modulo.subcategoria
+                or normalize_modulo_categoria(modulo.subcategoria) != subcategoria
+            ):
                 continue
             if not modulo_corresponde(modulo, tokens):
                 continue

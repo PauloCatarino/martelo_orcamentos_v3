@@ -77,6 +77,7 @@ class CriarDefModuloData:
     ambito: str = AMBITO_UTILIZADOR
     user_id: int | None = None
     categoria: str = "OUTROS"
+    subcategoria: str | None = None
     imagem_path: str | None = None
     ativo: bool = True
     linhas: list[CriarDefModuloLinhaData] = field(default_factory=list)
@@ -197,6 +198,7 @@ class DefModuloService:
             ambito=ambito,
             user_id=user_id,
             categoria=normalize_modulo_categoria(data.categoria),
+            subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
             ativo=data.ativo,
         )
@@ -247,6 +249,7 @@ class DefModuloService:
         ambito: str = AMBITO_UTILIZADOR,
         user_id: int | None = None,
         categoria: str = OUTROS,
+        subcategoria: str | None = None,
         imagem_path: str | None = None,
     ) -> DefModuloComLinhas:
         """Save selected costing lines as a reusable module (phase 8U.1/8U.2).
@@ -281,6 +284,7 @@ class DefModuloService:
                 ambito=ambito,
                 user_id=user_id,
                 categoria=categoria,
+                subcategoria=subcategoria,
                 imagem_path=imagem_path,
                 linhas=linhas_modulo,
             )
@@ -316,6 +320,7 @@ class DefModuloService:
             ambito=ambito,
             user_id=user_id,
             categoria=normalize_modulo_categoria(data.categoria),
+            subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
         )
 
@@ -340,6 +345,7 @@ class DefModuloService:
         ambito: str = AMBITO_UTILIZADOR,
         user_id: int | None = None,
         categoria: str = OUTROS,
+        subcategoria: str | None = None,
         imagem_path: str | None = None,
     ) -> DefModuloComLinhas:
         """Overwrite an existing module from the current costing selection.
@@ -376,6 +382,7 @@ class DefModuloService:
                 ambito=ambito,
                 user_id=user_id,
                 categoria=categoria,
+                subcategoria=subcategoria,
                 imagem_path=imagem_path,
                 linhas=linhas_modulo,
             ),
@@ -545,7 +552,6 @@ class DefModuloService:
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
 
-        subcategoria = self._normalize_optional(data.subcategoria)
         result = self.repository.update_cabecalho(
             id=modulo_id,
             nome=nome,
@@ -553,11 +559,7 @@ class DefModuloService:
             ambito=ambito,
             user_id=user_id,
             categoria=normalize_modulo_categoria(data.categoria),
-            subcategoria=(
-                normalize_modulo_categoria(subcategoria)
-                if subcategoria is not None
-                else None
-            ),
+            subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
         )
         self.session.commit()
@@ -662,3 +664,10 @@ class DefModuloService:
 
         normalized = value.strip()
         return normalized or None
+
+    @staticmethod
+    def _normalize_subcategoria(value: str | None) -> str | None:
+        """Normalize an optional subcategory code (slug) or None when empty."""
+        if not value or not value.strip():
+            return None
+        return normalize_modulo_categoria(value)

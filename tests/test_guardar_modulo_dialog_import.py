@@ -19,6 +19,7 @@ def test_guardar_modulo_dialog_imports() -> None:
         "descricao",
         "ambito",
         "categoria",
+        "subcategoria",
         "imagem_path",
         "modulo_id",
     }

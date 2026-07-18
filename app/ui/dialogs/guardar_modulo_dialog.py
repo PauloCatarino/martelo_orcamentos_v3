@@ -49,6 +49,7 @@ from app.domain.modulo_categorias import (
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
 from app.ui.helpers.modulo_categoria_opcoes import (
+    carregar_arvore_categorias,
     carregar_labels_categorias,
     carregar_opcoes_categorias,
 )
@@ -69,6 +70,7 @@ class GuardarModuloDialogData:
     ambito: str
     categoria: str
     imagem_path: str | None
+    subcategoria: str | None = None
     modulo_id: int | None = None
 
 
@@ -96,6 +98,8 @@ class GuardarModuloDialog(QDialog):
         # Manageable categories (phase 6): options for pickers + name labels.
         self._opcoes_categorias = carregar_opcoes_categorias()
         self._categoria_labels = carregar_labels_categorias()
+        # Subcategories available per top-level category.
+        self._arvore_subcategorias = carregar_arvore_categorias()
         self._modulos_utilizador = list(modulos_utilizador or [])
         self._modulos_globais = list(modulos_globais or [])
         self._modulos_por_id = {
@@ -228,6 +232,24 @@ class GuardarModuloDialog(QDialog):
             self.categoria_input.addItem(label, code)
         self._selecionar_categoria(OUTROS)
 
+        self.subcategoria_input = QComboBox()
+        self.subcategoria_input.setToolTip(
+            "Subcategoria (opcional) dentro da categoria escolhida."
+        )
+        self._recarregar_subcategorias(self.categoria_input.currentData())
+        self.categoria_input.currentIndexChanged.connect(
+            lambda _=0: self._recarregar_subcategorias(
+                self.categoria_input.currentData()
+            )
+        )
+
+        self.categorias_info = QLabel(
+            "As categorias e subcategorias criam-se e gerem-se na Biblioteca de "
+            "Módulos › Gerir Categorias."
+        )
+        self.categorias_info.setWordWrap(True)
+        self.categorias_info.setStyleSheet("color: #6b6b6b; font-style: italic;")
+
         self.imagem_input = QLineEdit()
         self.imagem_input.setPlaceholderText("(opcional) caminho da imagem")
         self.procurar_button = QPushButton("Procurar...")
@@ -245,6 +267,7 @@ class GuardarModuloDialog(QDialog):
         form.addRow("Descrição", self.descricao_input)
         form.addRow("Âmbito", self.ambito_input)
         form.addRow("Categoria", self.categoria_input)
+        form.addRow("Subcategoria", self.subcategoria_input)
         form.addRow("Imagem", imagem_row)
 
         painel = QWidget()
@@ -252,6 +275,7 @@ class GuardarModuloDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(topo_row)
         layout.addLayout(form)
+        layout.addWidget(self.categorias_info)
         layout.addStretch(1)
         painel.setLayout(layout)
         return painel
@@ -324,6 +348,7 @@ class GuardarModuloDialog(QDialog):
         self.imagem_input.clear()
         self.ambito_input.setCurrentIndex(0)
         self._selecionar_categoria(OUTROS)
+        self._recarregar_subcategorias(self.categoria_input.currentData())
         self.error_label.clear()
 
         self.tabela_utilizador.clearSelection()
@@ -344,6 +369,14 @@ class GuardarModuloDialog(QDialog):
         self.imagem_input.setText(modulo.imagem_path or "")
         self._selecionar_ambito(normalize_modulo_ambito(modulo.ambito))
         self._selecionar_categoria(normalize_modulo_categoria(modulo.categoria))
+        self._recarregar_subcategorias(
+            self.categoria_input.currentData(),
+            selecionar=(
+                normalize_modulo_categoria(modulo.subcategoria)
+                if getattr(modulo, "subcategoria", None)
+                else None
+            ),
+        )
         self.error_label.clear()
 
     # ----- Helpers -----
@@ -369,6 +402,19 @@ class GuardarModuloDialog(QDialog):
             index = self.categoria_input.findData(code)
         self.categoria_input.setCurrentIndex(index)
 
+    def _recarregar_subcategorias(
+        self, categoria_codigo: str | None, selecionar: str | None = None
+    ) -> None:
+        """Rebuild the subcategory picker for the chosen top-level category."""
+        self.subcategoria_input.blockSignals(True)
+        self.subcategoria_input.clear()
+        self.subcategoria_input.addItem("— Nenhuma —", None)
+        for code, label in self._arvore_subcategorias.get(categoria_codigo or "", ()):
+            self.subcategoria_input.addItem(label, code)
+        indice = self.subcategoria_input.findData(selecionar)
+        self.subcategoria_input.setCurrentIndex(indice if indice >= 0 else 0)
+        self.subcategoria_input.blockSignals(False)
+
     def _selecionar_ambito(self, code: str) -> None:
         index = self.ambito_input.findData(code)
         if index >= 0:
@@ -385,6 +431,7 @@ class GuardarModuloDialog(QDialog):
             ambito=self.ambito_input.currentData() or AMBITO_UTILIZADOR,
             categoria=self.categoria_input.currentData() or OUTROS,
             imagem_path=imagem or None,
+            subcategoria=self.subcategoria_input.currentData(),
             modulo_id=self._modulo_id,
         )
 
