@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models import DefValuesetModelo
 
@@ -27,6 +27,7 @@ class DefValuesetModeloResumo:
     observacoes: str | None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    owner_username: str | None = None
 
 
 class DefValuesetModeloRepository:
@@ -37,8 +38,10 @@ class DefValuesetModeloRepository:
 
     def list_all(self) -> list[DefValuesetModeloResumo]:
         """List all reusable ValueSet models."""
-        statement = select(DefValuesetModelo).order_by(
-            DefValuesetModelo.codigo.asc(), DefValuesetModelo.id.asc()
+        statement = (
+            select(DefValuesetModelo)
+            .options(joinedload(DefValuesetModelo.user))
+            .order_by(DefValuesetModelo.codigo.asc(), DefValuesetModelo.id.asc())
         )
         modelos = self.session.execute(statement).scalars().all()
 
@@ -48,6 +51,7 @@ class DefValuesetModeloRepository:
         """List active reusable ValueSet models."""
         statement = (
             select(DefValuesetModelo)
+            .options(joinedload(DefValuesetModelo.user))
             .where(DefValuesetModelo.ativo.is_(True))
             .order_by(DefValuesetModelo.codigo.asc(), DefValuesetModelo.id.asc())
         )
@@ -129,4 +133,5 @@ class DefValuesetModeloRepository:
             observacoes=modelo.observacoes,
             created_at=modelo.created_at,
             updated_at=modelo.updated_at,
+            owner_username=modelo.user.username if modelo.user is not None else None,
         )

@@ -158,6 +158,34 @@ def test_listar_modelos_utilizador_e_globais(monkeypatch) -> None:
     assert sorted(modelo.codigo for modelo in globais) == ["GLOB", "SHARED"]
 
 
+def test_separadores_utilizador_ve_so_os_seus(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, codigo="MEU", ambito="UTILIZADOR", user_id=7),
+        _resumo(id=2, codigo="DOUTRO", ambito="UTILIZADOR", user_id=9),
+        _resumo(id=3, codigo="GLOB", ambito="GLOBAL", user_id=9),
+    ]
+
+    utilizador, globais = service.listar_modelos_para_separadores(7, is_admin=False)
+
+    assert [m.codigo for m in utilizador] == ["MEU"]
+    assert [m.codigo for m in globais] == ["GLOB"]
+
+
+def test_separadores_admin_ve_todos(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, codigo="MEU", ambito="UTILIZADOR", user_id=7),
+        _resumo(id=2, codigo="DOUTRO", ambito="UTILIZADOR", user_id=9),
+        _resumo(id=3, codigo="GLOB", ambito="GLOBAL", user_id=9),
+    ]
+
+    utilizador, globais = service.listar_modelos_para_separadores(7, is_admin=True)
+
+    assert sorted(m.codigo for m in utilizador) == ["DOUTRO", "MEU"]
+    assert [m.codigo for m in globais] == ["GLOB"]
+
+
 def test_criar_modelo_normaliza_campos(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 

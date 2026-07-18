@@ -72,8 +72,22 @@ def test_modelos_ocultam_inativos_e_guardam_larguras() -> None:
     from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
 
     init = inspect.getsource(DefValuesetModelosPage.__init__)
+    classe = inspect.getsource(DefValuesetModelosPage)
     carregar = inspect.getsource(DefValuesetModelosPage.carregar_modelos)
     assert "mostrar_inativos_check" in init
-    assert "QHeaderView.ResizeMode.Interactive" in init
-    assert "ligar_persistencia_larguras" in init
+    assert "QHeaderView.ResizeMode.Interactive" in classe
+    assert "ligar_persistencia_larguras" in classe
     assert "if modelo.ativo" in carregar
+
+
+def test_modelos_usam_dois_separadores() -> None:
+    import inspect
+    from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
+
+    init = inspect.getsource(DefValuesetModelosPage.__init__)
+    assert "QTabWidget" in init
+    assert "tabela_utilizador" in init
+    assert "tabela_globais" in init
+
+    carregar = inspect.getsource(DefValuesetModelosPage.carregar_modelos)
+    assert "listar_modelos_para_separadores" in carregar

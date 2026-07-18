@@ -22,6 +22,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.def_valueset_modelo_linha import DefValuesetModeloLinha
+    from app.models.user import User
 
 
 class DefValuesetModelo(Base):
@@ -58,6 +59,10 @@ class DefValuesetModelo(Base):
         onupdate=func.now(),
     )
 
+    user: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[user_id],
+    )
     linhas: Mapped[list["DefValuesetModeloLinha"]] = relationship(
         "DefValuesetModeloLinha",
         back_populates="modelo",

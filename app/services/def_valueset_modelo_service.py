@@ -89,6 +89,32 @@ class DefValuesetModeloService:
             if self._e_global(modelo)
         ]
 
+    def listar_modelos_para_separadores(
+        self,
+        user_id: int | None,
+        is_admin: bool = False,
+        incluir_inativos: bool = False,
+    ) -> tuple[list[DefValuesetModeloResumo], list[DefValuesetModeloResumo]]:
+        """Return (utilizador, globais) models for the two-tab library page.
+
+        Globais tab: models scoped GLOBAL or shared with everyone.
+        Utilizador tab: the caller's own (non-global) models; an administrator
+        sees every user's non-global models here.
+        """
+        if incluir_inativos:
+            modelos = self.repository.list_all()
+        else:
+            modelos = self.repository.list_active()
+
+        utilizador: list[DefValuesetModeloResumo] = []
+        globais: list[DefValuesetModeloResumo] = []
+        for modelo in modelos:
+            if self._e_global(modelo):
+                globais.append(modelo)
+            elif is_admin or modelo.user_id == user_id:
+                utilizador.append(modelo)
+        return utilizador, globais
+
     def _e_global(self, modelo: DefValuesetModeloResumo) -> bool:
         ambito = (modelo.ambito or "").strip().upper()
         return ambito == "GLOBAL" or bool(modelo.visivel_para_todos)

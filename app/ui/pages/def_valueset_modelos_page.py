@@ -12,11 +12,13 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_service import (
@@ -24,6 +26,7 @@ from app.services.def_valueset_modelo_service import (
     DefValuesetModeloService,
     EditarDefValuesetModeloData,
 )
+from app.services.permission_service import is_admin
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
@@ -48,7 +51,8 @@ class DefValuesetModelosPage(QWidget):
         super().__init__()
 
         self.on_back = on_back
-        self._modelos_by_row: dict[int, DefValuesetModeloResumo] = {}
+        # {tabela: {row: resumo}} for the two tabs (own / global).
+        self._por_linha: dict[QTableWidget, dict[int, DefValuesetModeloResumo]] = {}
         self._detail_page: DefValuesetModeloDetailPage | None = None
 
         self.cabecalho = BarraCabecalho(
@@ -92,17 +96,11 @@ class DefValuesetModelosPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModelosStatus")
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.horizontalHeader().setStretchLastSection(False)
-        configurar_tabela_orcamentos(self.table, compacta=True)
-        self.table.cellDoubleClicked.connect(self._handle_double_click)
-        ligar_persistencia_larguras(self.table, "valueset_modelos")
+        self.tabela_utilizador = self._criar_tabela("valueset_modelos_utilizador")
+        self.tabela_globais = self._criar_tabela("valueset_modelos_globais")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.tabela_utilizador, "Utilizador")
+        self.tabs.addTab(self.tabela_globais, "Global")
 
         self.list_widget = QWidget()
         list_layout = QVBoxLayout()
@@ -111,7 +109,7 @@ class DefValuesetModelosPage(QWidget):
         list_layout.addWidget(self.cabecalho)
         list_layout.addLayout(actions_layout)
         list_layout.addWidget(self.status_label)
-        list_layout.addWidget(self.table, stretch=1)
+        list_layout.addWidget(self.tabs, stretch=1)
         self.list_widget.setLayout(list_layout)
 
         self.stack = QStackedWidget()
@@ -124,46 +122,87 @@ class DefValuesetModelosPage(QWidget):
         self.setLayout(layout)
         self.carregar_modelos()
 
+    def _criar_tabela(self, chave_larguras: str) -> QTableWidget:
+        """Build one models table configured like the rest of the app."""
+        tabela = QTableWidget(0, len(self.TABLE_HEADERS))
+        tabela.setHorizontalHeaderLabels(self.TABLE_HEADERS)
+        tabela.verticalHeader().setVisible(False)
+        tabela.setAlternatingRowColors(True)
+        tabela.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        tabela.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        tabela.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tabela.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        tabela.horizontalHeader().setStretchLastSection(False)
+        configurar_tabela_orcamentos(tabela, compacta=True)
+        tabela.cellDoubleClicked.connect(
+            lambda row, _col, alvo=tabela: self._handle_double_click(alvo, row)
+        )
+        ligar_persistencia_larguras(tabela, chave_larguras)
+        return tabela
+
     def carregar_modelos(self) -> None:
-        """Load ValueSet models into the table."""
-        self.table.setRowCount(0)
+        """Load ValueSet models into the two tabs (own / global)."""
         self.status_label.clear()
 
+        user_id = self._current_user_id()
+        admin = is_admin(app_session.current_user)
         try:
             with SessionLocal() as session:
-                modelos = DefValuesetModeloService(session).listar_modelos()
+                utilizador, globais = DefValuesetModeloService(
+                    session
+                ).listar_modelos_para_separadores(
+                    user_id, is_admin=admin, incluir_inativos=True
+                )
         except SQLAlchemyError as error:
+            self.tabela_utilizador.setRowCount(0)
+            self.tabela_globais.setRowCount(0)
             self.status_label.setText(
                 mensagem_erro_bd("Nao foi possivel carregar os modelos ValueSet.", error)
             )
             return
 
         if not self.mostrar_inativos_check.isChecked():
-            modelos = [modelo for modelo in modelos if modelo.ativo]
+            utilizador = [modelo for modelo in utilizador if modelo.ativo]
+            globais = [modelo for modelo in globais if modelo.ativo]
 
-        self._preencher(modelos)
+        self._preencher_tabela(self.tabela_utilizador, utilizador)
+        self._preencher_tabela(self.tabela_globais, globais)
 
-        if not modelos:
+        if not utilizador and not globais:
             self.status_label.setText("Sem modelos ValueSet para mostrar.")
 
-    def _preencher(self, modelos: list[DefValuesetModeloResumo]) -> None:
-        """Fill the table with ValueSet models."""
-        self._modelos_by_row = {}
-        self.table.setRowCount(len(modelos))
+    def _preencher_tabela(
+        self, tabela: QTableWidget, modelos: list[DefValuesetModeloResumo]
+    ) -> None:
+        """Fill one table with ValueSet models."""
+        por_linha: dict[int, DefValuesetModeloResumo] = {}
+        tabela.setRowCount(len(modelos))
 
         for row_index, modelo in enumerate(modelos):
-            self._modelos_by_row[row_index] = modelo
+            por_linha[row_index] = modelo
             values = [
                 modelo.codigo,
                 modelo.nome,
                 modelo.tipo or "",
                 modelo.ambito,
-                str(modelo.user_id) if modelo.user_id else "",
+                self._dono_display(modelo),
                 self._format_bool(modelo.ativo),
             ]
-
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, QTableWidgetItem(value))
+                tabela.setItem(row_index, column_index, QTableWidgetItem(value))
+
+        self._por_linha[tabela] = por_linha
+
+    def _dono_display(self, modelo: DefValuesetModeloResumo) -> str:
+        """Owner label: GLOBAL for shared models, else the owner username."""
+        if self._e_global(modelo):
+            return "GLOBAL"
+        return modelo.owner_username or ""
+
+    @staticmethod
+    def _e_global(modelo: DefValuesetModeloResumo) -> bool:
+        ambito = (modelo.ambito or "").strip().upper()
+        return ambito == "GLOBAL" or bool(modelo.visivel_para_todos)
 
     def abrir_novo_modelo(self) -> None:
         """Open the dialog to create a new ValueSet model."""
@@ -219,6 +258,7 @@ class DefValuesetModelosPage(QWidget):
                             descricao=form_data.descricao,
                             tipo=form_data.tipo,
                             ambito=form_data.ambito,
+                            user_id=modelo.user_id,
                             visivel_para_todos=form_data.visivel_para_todos,
                             observacoes=form_data.observacoes,
                             ativo=form_data.ativo,
@@ -329,11 +369,13 @@ class DefValuesetModelosPage(QWidget):
     def abrir_modelo_por_id(self, modelo_id: int) -> None:
         """Reload and open one ValueSet model from the audit page."""
         self.carregar_modelos()
-        for row, modelo in self._modelos_by_row.items():
-            if modelo.id == modelo_id:
-                self.table.selectRow(row)
-                self._show_detail_page(modelo)
-                return
+        for tabela in (self.tabela_utilizador, self.tabela_globais):
+            for row, modelo in self._por_linha.get(tabela, {}).items():
+                if modelo.id == modelo_id:
+                    self.tabs.setCurrentWidget(tabela)
+                    tabela.selectRow(row)
+                    self._show_detail_page(modelo)
+                    return
         self.status_label.setText("O modelo ValueSet indicado já não existe.")
 
     def _show_detail_page(self, modelo: DefValuesetModeloResumo) -> None:
@@ -364,12 +406,14 @@ class DefValuesetModelosPage(QWidget):
         self.carregar_modelos()
 
     def _get_selected_modelo(self) -> DefValuesetModeloResumo | None:
-        """Return the selected ValueSet model."""
-        row = self.table.currentRow()
+        """Return the selected ValueSet model from the active tab."""
+        tabela = self.tabs.currentWidget()
+        if not isinstance(tabela, QTableWidget):
+            return None
+        row = tabela.currentRow()
         if row < 0:
             return None
-
-        return self._modelos_by_row.get(row)
+        return self._por_linha.get(tabela, {}).get(row)
 
     def _criar_modelo_data_from_form_data(self, form_data) -> CriarDefValuesetModeloData:
         """Build create-service data from dialog data."""
@@ -379,6 +423,7 @@ class DefValuesetModelosPage(QWidget):
             descricao=form_data.descricao,
             tipo=form_data.tipo,
             ambito=form_data.ambito,
+            user_id=self._current_user_id(),
             visivel_para_todos=form_data.visivel_para_todos,
             observacoes=form_data.observacoes,
             ativo=form_data.ativo,
@@ -392,16 +437,25 @@ class DefValuesetModelosPage(QWidget):
             )
 
     def _select_modelo_by_codigo(self, codigo: str) -> None:
-        """Select one model row by code."""
-        for row_index, modelo in self._modelos_by_row.items():
-            if modelo.codigo == codigo:
-                self.table.selectRow(row_index)
-                return
+        """Select one model row by code across both tabs."""
+        for tabela in (self.tabela_utilizador, self.tabela_globais):
+            for row_index, modelo in self._por_linha.get(tabela, {}).items():
+                if modelo.codigo == codigo:
+                    self.tabs.setCurrentWidget(tabela)
+                    tabela.selectRow(row_index)
+                    return
 
-    def _handle_double_click(self, row: int, _column: int) -> None:
+    def _handle_double_click(self, tabela: QTableWidget, row: int) -> None:
         """Open the model detail when the user double-clicks its row."""
-        self.table.selectRow(row)
+        self.tabs.setCurrentWidget(tabela)
+        tabela.selectRow(row)
         self.abrir_modelo_selecionado()
+
+    @staticmethod
+    def _current_user_id() -> int | None:
+        """Return the logged-in user's id, or None."""
+        user = app_session.current_user
+        return user.id if user is not None else None
 
     def _error_message(self, error: ValueError) -> str:
         """Map a service ValueError to a friendly message."""
