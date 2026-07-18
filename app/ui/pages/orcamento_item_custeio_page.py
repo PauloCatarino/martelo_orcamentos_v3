@@ -1685,7 +1685,8 @@ class OrcamentoItemCusteioPage(QWidget):
                 self.tree_biblioteca_pecas.addTopLevelItem(parent)
                 grupos[grupo] = parent
 
-            texto = f"{peca.codigo} - {peca.nome} [{codigo_orlas}]"
+            nome_exibido = peca.nome_biblioteca or peca.nome
+            texto = f"{nome_exibido} [{codigo_orlas}]"
             if peca.tipo_peca == COMPOSTA:
                 texto += " (composta)"
 
@@ -1741,6 +1742,7 @@ class OrcamentoItemCusteioPage(QWidget):
             [
                 f"Código: {peca.codigo}",
                 f"Nome: {peca.nome}",
+                f"Nome na biblioteca: {peca.nome_biblioteca or '—'}",
                 f"Tipo: {tipo}",
                 f"Grupo: {peca.grupo or '—'}",
                 f"Código de orlas: [{codigo_orlas}]",
@@ -1753,6 +1755,7 @@ class OrcamentoItemCusteioPage(QWidget):
         campos = [
             peca.codigo,
             peca.nome,
+            peca.nome_biblioteca or "",
             peca.grupo or "",
             peca.tipo_peca,
             codigo_orlas,

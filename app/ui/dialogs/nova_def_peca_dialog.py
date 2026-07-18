@@ -41,6 +41,7 @@ class NovaDefPecaDialogData:
 
     codigo: str
     nome: str
+    nome_biblioteca: str | None
     descricao: str | None
     tipo_peca: str
     natureza: str
@@ -77,6 +78,12 @@ class NovaDefPecaDialog(QDialog):
 
         self.codigo_input = QLineEdit()
         self.nome_input = QLineEdit()
+        self.nome_biblioteca_input = QLineEdit()
+        self.nome_biblioteca_input.setPlaceholderText("Vazio = usa o Nome")
+        self.nome_biblioteca_input.setToolTip(
+            "Texto que aparece na biblioteca de peças do custeio (seguido do "
+            "código de orlas). Se ficar vazio, a biblioteca mostra o Nome."
+        )
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
         self.tipo_peca_input = QComboBox()
@@ -164,6 +171,7 @@ class NovaDefPecaDialog(QDialog):
         form_layout = QFormLayout()
         form_layout.addRow("C\u00f3digo", self.codigo_input)
         form_layout.addRow("Nome", self.nome_input)
+        form_layout.addRow("Nome na biblioteca", self.nome_biblioteca_input)
         form_layout.addRow("Descri\u00e7\u00e3o", self.descricao_input)
         form_layout.addRow("Natureza", self.natureza_input)
         form_layout.addRow("Orienta\u00e7\u00e3o", self.orientacao_input)
@@ -217,6 +225,7 @@ class NovaDefPecaDialog(QDialog):
         return NovaDefPecaDialogData(
             codigo=self.codigo_input.text().strip(),
             nome=self.nome_input.text().strip(),
+            nome_biblioteca=self._empty_to_none(self.nome_biblioteca_input.text()),
             descricao=self._empty_to_none(self.descricao_input.toPlainText()),
             tipo_peca="COMPOSTA" if natureza == CONJUNTO else SIMPLES,
             natureza=natureza,

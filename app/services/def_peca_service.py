@@ -52,6 +52,7 @@ class CriarDefPecaData:
     chave_valueset_acabamento_sup: str | None = None
     chave_valueset_acabamento_inf: str | None = None
     sem_material: bool = False
+    nome_biblioteca: str | None = None
     ativo: bool = True
 
 
@@ -79,6 +80,7 @@ class EditarDefPecaData:
     chave_valueset_acabamento_sup: str | None = None
     chave_valueset_acabamento_inf: str | None = None
     sem_material: bool = False
+    nome_biblioteca: str | None = None
     ativo: bool = True
 
 
@@ -131,6 +133,7 @@ class DefPecaService:
         result = self.repository.create_def_peca(
             codigo=codigo,
             nome=nome,
+            nome_biblioteca=self._normalize_optional_text(data.nome_biblioteca),
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
@@ -188,6 +191,7 @@ class DefPecaService:
             id=id,
             codigo=codigo,
             nome=nome,
+            nome_biblioteca=self._normalize_optional_text(data.nome_biblioteca),
             descricao=data.descricao,
             grupo=data.grupo,
             tipo_peca=tipo_peca,
@@ -223,6 +227,7 @@ class DefPecaService:
             CriarDefPecaData(
                 codigo=novo_codigo,
                 nome=novo_nome or f"{original.nome} (cópia)",
+                nome_biblioteca=original.nome_biblioteca,
                 descricao=original.descricao,
                 grupo=original.grupo,
                 tipo_peca=original.tipo_peca,

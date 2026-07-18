@@ -22,6 +22,7 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    nome_biblioteca: str | None = None
     revisao_serie: str | None = None
     revisao_numero: int = 1
     revisao_anterior_id: int | None = None
@@ -119,12 +120,14 @@ class DefPecaRepository:
         chave_valueset_acabamento_sup: str | None = None,
         chave_valueset_acabamento_inf: str | None = None,
         sem_material: bool = False,
+        nome_biblioteca: str | None = None,
         ativo: bool = True,
     ) -> DefPecaResumo:
         """Create one reusable piece definition."""
         peca = DefPeca(
             codigo=codigo,
             nome=nome,
+            nome_biblioteca=nome_biblioteca,
             descricao=descricao,
             grupo=grupo,
             tipo_peca=tipo_peca,
@@ -174,6 +177,7 @@ class DefPecaRepository:
         chave_valueset_acabamento_sup: str | None = None,
         chave_valueset_acabamento_inf: str | None = None,
         sem_material: bool = False,
+        nome_biblioteca: str | None = None,
         ativo: bool,
     ) -> DefPecaResumo:
         """Update one reusable piece definition."""
@@ -183,6 +187,7 @@ class DefPecaRepository:
 
         peca.codigo = codigo
         peca.nome = nome
+        peca.nome_biblioteca = nome_biblioteca
         peca.descricao = descricao
         peca.grupo = grupo
         peca.tipo_peca = tipo_peca
@@ -251,6 +256,7 @@ class DefPecaRepository:
             id=peca.id,
             codigo=peca.codigo,
             nome=peca.nome,
+            nome_biblioteca=peca.nome_biblioteca,
             descricao=peca.descricao,
             grupo=peca.grupo,
             tipo_peca=peca.tipo_peca,

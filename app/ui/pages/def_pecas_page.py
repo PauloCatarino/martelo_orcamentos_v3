@@ -197,6 +197,7 @@ class DefPecasPage(QWidget):
                         EditarDefPecaData(
                             codigo=form_data.codigo,
                             nome=form_data.nome,
+                            nome_biblioteca=form_data.nome_biblioteca,
                             descricao=form_data.descricao,
                             grupo=form_data.grupo,
                             tipo_peca=form_data.tipo_peca,
@@ -427,6 +428,7 @@ class DefPecasPage(QWidget):
         return CriarDefPecaData(
             codigo=form_data.codigo,
             nome=form_data.nome,
+            nome_biblioteca=form_data.nome_biblioteca,
             descricao=form_data.descricao,
             grupo=form_data.grupo,
             tipo_peca=form_data.tipo_peca,

@@ -180,6 +180,7 @@ class DefPecaDetailPage(QWidget):
             ("C\u00f3digo", self.peca.codigo),
             ("Revisão", f"R{self.peca.revisao_numero}"),
             ("Nome", self.peca.nome),
+            ("Nome na biblioteca", self.peca.nome_biblioteca or ""),
             ("Descri\u00e7\u00e3o", self.peca.descricao or ""),
             ("Natureza", get_peca_natureza_label(self.peca.natureza)),
             ("Orientação", get_peca_orientacao_label(self.peca.orientacao)),
@@ -267,6 +268,7 @@ class DefPecaDetailPage(QWidget):
                     EditarDefPecaData(
                         codigo=form_data.codigo,
                         nome=form_data.nome,
+                        nome_biblioteca=form_data.nome_biblioteca,
                         descricao=form_data.descricao,
                         grupo=form_data.grupo,
                         tipo_peca=form_data.tipo_peca,

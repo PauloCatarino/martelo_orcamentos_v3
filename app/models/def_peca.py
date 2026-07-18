@@ -51,6 +51,8 @@ class DefPeca(Base):
         index=True,
     )
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
+    # Text shown in the costing library tree; empty falls back to ``nome``.
+    nome_biblioteca: Mapped[str | None] = mapped_column(String(150), nullable=True)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tipo_peca: Mapped[str] = mapped_column(String(50), nullable=False, default=SIMPLES, server_default=SIMPLES)

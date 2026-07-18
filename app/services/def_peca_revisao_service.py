@@ -42,6 +42,7 @@ class DefPecaRevisaoService:
 
     _CAMPOS_PECA = (
         "nome",
+        "nome_biblioteca",
         "descricao",
         "grupo",
         "tipo_peca",
