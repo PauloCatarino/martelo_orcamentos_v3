@@ -104,6 +104,10 @@ from app.domain.modulo_imagem import (
 from app.services.def_modulo_service import DefModuloService
 from app.services.system_setting_service import SystemSettingService
 from app.services.def_peca_service import DefPecaService
+from app.services.def_peca_user_pref_service import (
+    SEM_PREFERENCIAS,
+    DefPecaUserPrefService,
+)
 from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.core.session import app_session
@@ -513,6 +517,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.orcamento_versao_id = orcamento_versao_id
         self.on_back = on_back
         self._biblioteca_pecas: list[DefPecaResumo] = []
+        self._prefs_biblioteca = SEM_PREFERENCIAS
         self._selecionados: set[int] = set()
         self._custeio_by_row: dict[int, OrcamentoItemCusteioLinhaResumo] = {}
         # Composite pieces are collapsed by default; this set holds the line ids
@@ -1568,6 +1573,22 @@ class OrcamentoItemCusteioPage(QWidget):
         self.library_title = QLabel("Biblioteca de peças")
         self.library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
 
+        self.preferencias_biblioteca_button = QPushButton("⚙")
+        self.preferencias_biblioteca_button.setObjectName(
+            "orcamentoItemCusteioPreferenciasBiblioteca"
+        )
+        self.preferencias_biblioteca_button.setFixedSize(30, 28)
+        self.preferencias_biblioteca_button.setAccessibleName(
+            "Preferências da biblioteca de peças"
+        )
+        self.preferencias_biblioteca_button.setToolTip(
+            "A Minha Biblioteca de Peças: escolher as peças disponíveis e as "
+            "favoritas deste utilizador (o mesmo menu existe em Configurações)."
+        )
+        self.preferencias_biblioteca_button.clicked.connect(
+            self._abrir_preferencias_biblioteca
+        )
+
         self.toggle_biblioteca_button = QPushButton()
         self.toggle_biblioteca_button.setObjectName("orcamentoItemCusteioToggleBiblioteca")
         self.toggle_biblioteca_button.setFixedSize(30, 28)
@@ -1605,7 +1626,12 @@ class OrcamentoItemCusteioPage(QWidget):
         self.add_selections_button = QPushButton("Adicionar Seleções")
         self.add_selections_button.clicked.connect(self.adicionar_selecoes)
 
-        layout.addWidget(self.library_title)
+        library_header_layout = QHBoxLayout()
+        library_header_layout.addWidget(self.library_title)
+        library_header_layout.addStretch()
+        library_header_layout.addWidget(self.preferencias_biblioteca_button)
+
+        layout.addLayout(library_header_layout)
         layout.addWidget(self.library_search)
         layout.addWidget(self.tree_biblioteca_pecas, stretch=1)
         layout.addWidget(self.so_selecionados_check)
@@ -1649,15 +1675,31 @@ class OrcamentoItemCusteioPage(QWidget):
             )
             self._biblioteca_visivel = True
 
+    def _abrir_preferencias_biblioteca(self) -> None:
+        """Open the per-user library preferences and reload on change."""
+        from app.ui.dialogs.preferencias_biblioteca_pecas_dialog import (
+            PreferenciasBibliotecaPecasDialog,
+        )
+
+        dialog = PreferenciasBibliotecaPecasDialog(self)
+        dialog.exec()
+        if dialog.alterado:
+            self._carregar_biblioteca()
+
     def _carregar_biblioteca(self) -> None:
-        """Load active piece definitions for the library tree."""
+        """Load active piece definitions and user preferences for the library."""
+        user_id = getattr(app_session.current_user, "id", None)
         try:
             with SessionLocal() as session:
                 self._biblioteca_pecas = DefPecaService(
                     session
                 ).listar_ativas_para_biblioteca()
+                self._prefs_biblioteca = DefPecaUserPrefService(
+                    session
+                ).obter_preferencias(user_id)
         except SQLAlchemyError:
             self._biblioteca_pecas = []
+            self._prefs_biblioteca = SEM_PREFERENCIAS
 
         self._preencher_biblioteca()
 
@@ -1671,6 +1713,9 @@ class OrcamentoItemCusteioPage(QWidget):
 
         grupos: dict[str, QTreeWidgetItem] = {}
         for peca in self._biblioteca_pecas:
+            if not self._prefs_biblioteca.peca_visivel(peca.id):
+                continue
+
             codigo_orlas = self._format_codigo_orlas(peca)
 
             if termo and not self._peca_matches(peca, codigo_orlas, termo):

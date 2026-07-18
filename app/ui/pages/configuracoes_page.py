@@ -30,6 +30,7 @@ class ConfiguracoesPage(QWidget):
         "Regras de Quantidade",
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
+        "A Minha Biblioteca de Peças",
     ]
 
     TOOLTIP_DESCRICOES = {
@@ -72,6 +73,10 @@ class ConfiguracoesPage(QWidget):
         "Auditoria do Cat\u00e1logo": (
             "Validar pe\u00e7as, associados, opera\u00e7\u00f5es, tarifas, ValueSets e "
             "m\u00f3dulos, explicando o impacto das falhas no custo final."
+        ),
+        "A Minha Biblioteca de Pe\u00e7as": (
+            "Escolher as pe\u00e7as que aparecem na sua biblioteca do custeio e "
+            "marcar as favoritas. Cada utilizador tem a sua sele\u00e7\u00e3o."
         ),
     }
 
@@ -176,6 +181,11 @@ class ConfiguracoesPage(QWidget):
             self._open_custeio_simplificado_tarifas
         )
 
+        self.minha_biblioteca_pecas_button = QPushButton("A Minha Biblioteca de Peças")
+        self.minha_biblioteca_pecas_button.clicked.connect(
+            self._open_minha_biblioteca_pecas
+        )
+
         self.user_management_button = QPushButton("Utilizadores e Acessos")
         self.user_management_button.setToolTip(
             "Criar utilizadores e personalizar os menus disponíveis em cada conta."
@@ -203,6 +213,7 @@ class ConfiguracoesPage(QWidget):
             self.biblioteca_modulos_button,
             self.catalogo_auditoria_button,
             self.custeio_simplificado_tarifas_button,
+            self.minha_biblioteca_pecas_button,
         ]
         if self.on_open_user_management is not None:
             botoes.append(self.user_management_button)
@@ -268,6 +279,15 @@ class ConfiguracoesPage(QWidget):
     def _open_custeio_simplificado_tarifas(self) -> None:
         if self.on_open_custeio_simplificado_tarifas is not None:
             self.on_open_custeio_simplificado_tarifas()
+
+    def _open_minha_biblioteca_pecas(self) -> None:
+        """Open the per-user piece library preferences dialog."""
+        from app.ui.dialogs.preferencias_biblioteca_pecas_dialog import (
+            PreferenciasBibliotecaPecasDialog,
+        )
+
+        PreferenciasBibliotecaPecasDialog(self).exec()
+
     def _open_user_management(self) -> None:
         """Open account and access administration for the administrator."""
         if self.on_open_user_management is not None:

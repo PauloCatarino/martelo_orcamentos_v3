@@ -36,6 +36,7 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Regras de Quantidade",
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
+        "A Minha Biblioteca de Peças",
     ]
 
 
