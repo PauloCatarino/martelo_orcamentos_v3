@@ -1,13 +1,16 @@
-"""Dialog to manage the module-library categories (phase 6).
+"""Dialog to manage the module-library categories and subcategories.
 
-Single-level categories (a customer name is fine). Create, rename, archive /
-reactivate and safe-delete; a category in use by modules cannot be deleted
-and OUTROS (the fallback) is protected.
+Two levels only: top-level categories and their subcategories (a customer name
+or a project inside a zone, for example). Create, rename, archive / reactivate
+and safe-delete; a category with subcategories or modules cannot be deleted and
+OUTROS (the fallback) is protected. The tree shows categoria -> subcategoria.
 """
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -16,8 +19,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
 )
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,47 +33,59 @@ from app.services.def_modulo_categoria_service import (
 
 
 class GerirCategoriasModulosDialog(QDialog):
-    """Modal dialog to manage the module categories."""
+    """Modal dialog to manage the module categories and subcategories."""
 
-    TABLE_HEADERS = ["Nome", "Código", "Módulos", "Estado"]
+    TREE_HEADERS = ["Nome", "Código", "Módulos", "Estado"]
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
         self.alterado = False
-        self._categorias: list[ModuloCategoriaResumo] = []
+        # (topo, [subcategorias...]) as returned by the service.
+        self._arvore: list[tuple[ModuloCategoriaResumo, list[ModuloCategoriaResumo]]] = []
 
         self.setWindowTitle("Gerir Categorias de Módulos")
         self.setModal(True)
-        self.setMinimumSize(520, 420)
+        self.setMinimumSize(560, 460)
 
         self.nova_input = QLineEdit()
         self.nova_input.setPlaceholderText(
-            "Nome da nova categoria (ex.: Roupeiros ou o nome de um cliente)"
+            "Nome da nova categoria ou subcategoria (ex.: Roupeiros, ou o nome de um cliente)"
         )
-        self.nova_input.setToolTip("Nome da nova categoria de módulos")
+        self.nova_input.setToolTip("Nome da nova categoria/subcategoria de módulos")
         self.nova_input.returnPressed.connect(self._criar)
+
+        self.pai_combo = QComboBox()
+        self.pai_combo.setToolTip(
+            "Escolha a categoria-pai para criar uma subcategoria, ou "
+            "'— Categoria de topo —' para criar uma categoria principal."
+        )
+
         self.criar_button = QPushButton("Criar")
-        self.criar_button.setToolTip("Criar a categoria")
+        self.criar_button.setToolTip("Criar a categoria ou subcategoria")
         self.criar_button.clicked.connect(self._criar)
 
         nova_layout = QHBoxLayout()
         nova_layout.addWidget(self.nova_input, stretch=1)
+        nova_layout.addWidget(QLabel("Dentro de"))
+        nova_layout.addWidget(self.pai_combo)
         nova_layout.addWidget(self.criar_button)
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        self.table.verticalHeader().setVisible(False)
-        self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(len(self.TREE_HEADERS))
+        self.tree.setHeaderLabels(self.TREE_HEADERS)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self.tree.setRootIsDecorated(True)
+        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for coluna in range(1, len(self.TREE_HEADERS)):
+            self.tree.header().setSectionResizeMode(
+                coluna, QHeaderView.ResizeMode.ResizeToContents
+            )
+        self.tree.itemSelectionChanged.connect(self._atualizar_botoes)
 
         self.renomear_button = QPushButton("Renomear")
-        self.renomear_button.setToolTip("Renomear a categoria selecionada")
+        self.renomear_button.setToolTip("Renomear a categoria/subcategoria selecionada")
         self.renomear_button.clicked.connect(self._renomear)
         self.arquivar_button = QPushButton("Arquivar")
         self.arquivar_button.setToolTip(
@@ -80,7 +95,7 @@ class GerirCategoriasModulosDialog(QDialog):
         self.arquivar_button.clicked.connect(self._arquivar_ou_reativar)
         self.eliminar_button = QPushButton("Eliminar")
         self.eliminar_button.setToolTip(
-            "Eliminar a categoria (apenas quando nenhum módulo a usa)"
+            "Eliminar (apenas quando não tem subcategorias nem módulos a usá-la)"
         )
         self.eliminar_button.clicked.connect(self._eliminar)
 
@@ -103,13 +118,12 @@ class GerirCategoriasModulosDialog(QDialog):
 
         layout = QVBoxLayout()
         layout.addLayout(nova_layout)
-        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(self.tree, stretch=1)
         layout.addLayout(acoes_layout)
         layout.addWidget(self.status_label)
         layout.addLayout(fechar_layout)
         self.setLayout(layout)
 
-        self.table.itemSelectionChanged.connect(self._atualizar_botoes)
         self._carregar()
 
     # ----- data -----
@@ -117,7 +131,7 @@ class GerirCategoriasModulosDialog(QDialog):
     def _carregar(self) -> None:
         try:
             with SessionLocal() as session:
-                self._categorias = DefModuloCategoriaService(session).listar()
+                self._arvore = DefModuloCategoriaService(session).listar_arvore()
                 session.commit()
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível carregar as categorias.")
@@ -125,25 +139,45 @@ class GerirCategoriasModulosDialog(QDialog):
         self._render()
 
     def _render(self) -> None:
-        self.table.setRowCount(len(self._categorias))
-        for row, categoria in enumerate(self._categorias):
-            values = (
+        self.tree.clear()
+        self._recarregar_pai_combo()
+        for topo, subcategorias in self._arvore:
+            item_topo = self._criar_item(topo)
+            self.tree.addTopLevelItem(item_topo)
+            for sub in subcategorias:
+                item_topo.addChild(self._criar_item(sub))
+            item_topo.setExpanded(True)
+        self._atualizar_botoes()
+
+    def _criar_item(self, categoria: ModuloCategoriaResumo) -> QTreeWidgetItem:
+        item = QTreeWidgetItem(
+            [
                 categoria.nome,
                 categoria.codigo,
                 str(categoria.modulos_em_uso),
                 "Ativa" if categoria.ativo else "Arquivada",
-            )
-            for col, texto in enumerate(values):
-                item = QTableWidgetItem(texto)
-                item.setToolTip(texto)
-                self.table.setItem(row, col, item)
-        self._atualizar_botoes()
+            ]
+        )
+        item.setData(0, Qt.ItemDataRole.UserRole, categoria)
+        return item
+
+    def _recarregar_pai_combo(self) -> None:
+        """Rebuild the parent picker with the current top-level categories."""
+        selecionado = self.pai_combo.currentData()
+        self.pai_combo.blockSignals(True)
+        self.pai_combo.clear()
+        self.pai_combo.addItem("— Categoria de topo —", None)
+        for topo, _subs in self._arvore:
+            self.pai_combo.addItem(topo.nome, topo.id)
+        indice = self.pai_combo.findData(selecionado)
+        self.pai_combo.setCurrentIndex(indice if indice >= 0 else 0)
+        self.pai_combo.blockSignals(False)
 
     def _selecionada(self) -> ModuloCategoriaResumo | None:
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self._categorias):
+        item = self.tree.currentItem()
+        if item is None:
             return None
-        return self._categorias[row]
+        return item.data(0, Qt.ItemDataRole.UserRole)
 
     def _atualizar_botoes(self) -> None:
         categoria = self._selecionada()
@@ -163,9 +197,10 @@ class GerirCategoriasModulosDialog(QDialog):
         if not nome:
             self.status_label.setText("Escreva o nome da nova categoria.")
             return
+        parent_id = self.pai_combo.currentData()
         try:
             with SessionLocal() as session:
-                DefModuloCategoriaService(session).criar(nome)
+                DefModuloCategoriaService(session).criar(nome, parent_id=parent_id)
         except ValueError as error:
             self.status_label.setText(str(error))
             return
@@ -174,7 +209,8 @@ class GerirCategoriasModulosDialog(QDialog):
             return
         self.alterado = True
         self.nova_input.clear()
-        self.status_label.setText(f"Categoria {nome} criada.")
+        destino = "subcategoria" if parent_id is not None else "categoria"
+        self.status_label.setText(f"{destino.capitalize()} {nome} criada.")
         self._carregar()
 
     def _renomear(self) -> None:
@@ -191,9 +227,7 @@ class GerirCategoriasModulosDialog(QDialog):
             return
         try:
             with SessionLocal() as session:
-                DefModuloCategoriaService(session).renomear(
-                    categoria.id, nome
-                )
+                DefModuloCategoriaService(session).renomear(categoria.id, nome)
         except ValueError as error:
             self.status_label.setText(str(error))
             return
@@ -201,7 +235,7 @@ class GerirCategoriasModulosDialog(QDialog):
             self.status_label.setText("Não foi possível renomear a categoria.")
             return
         self.alterado = True
-        self.status_label.setText(f"Categoria renomeada para {nome.strip()}.")
+        self.status_label.setText(f"Renomeada para {nome.strip()}.")
         self._carregar()
 
     def _arquivar_ou_reativar(self) -> None:
@@ -234,8 +268,8 @@ class GerirCategoriasModulosDialog(QDialog):
         resposta = QMessageBox.question(
             self,
             "Eliminar categoria",
-            f"Eliminar a categoria {categoria.nome}?\n\n"
-            "Só é possível quando nenhum módulo a usa.",
+            f"Eliminar {categoria.nome}?\n\n"
+            "Só é possível quando não tem subcategorias nem módulos a usá-la.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel,
         )
@@ -251,5 +285,5 @@ class GerirCategoriasModulosDialog(QDialog):
             self.status_label.setText("Não foi possível eliminar a categoria.")
             return
         self.alterado = True
-        self.status_label.setText(f"Categoria {categoria.nome} eliminada.")
+        self.status_label.setText(f"{categoria.nome} eliminada.")
         self._carregar()

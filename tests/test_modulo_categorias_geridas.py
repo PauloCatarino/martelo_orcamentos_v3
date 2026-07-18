@@ -158,6 +158,75 @@ def test_eliminar_categoria_sem_uso(session) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Subcategorias (um nível)
+
+
+def test_criar_subcategoria_dentro_de_categoria(session) -> None:
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+
+    sub = service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    assert sub.parent_id == roupeiros.id
+    assert sub.parent_nome == "Roupeiros"
+
+
+def test_nao_permite_subcategoria_de_subcategoria(session) -> None:
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+    sub = service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    with pytest.raises(ValueError, match="um nível"):
+        service.criar("Projeto A", parent_id=sub.id)
+
+
+def test_arvore_agrupa_subcategorias(session) -> None:
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+    service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    arvore = dict((topo.codigo, subs) for topo, subs in service.listar_arvore())
+
+    assert [s.codigo for s in arvore["ROUPEIROS"]] == ["CLIENTE_SILVA"]
+    assert arvore["OUTROS"] == []
+
+
+def test_opcoes_excluem_subcategorias(session) -> None:
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+    service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    codigos = dict(service.listar_opcoes())
+    assert "ROUPEIROS" in codigos
+    assert "CLIENTE_SILVA" not in codigos
+
+
+def test_nao_elimina_categoria_com_subcategorias(session) -> None:
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+    service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    with pytest.raises(ValueError, match="subcategorias"):
+        service.eliminar(roupeiros.id)
+
+
+def test_subcategoria_conta_modulos_pela_coluna_subcategoria(session) -> None:
+    user_id = _criar_user(session)
+    service = DefModuloCategoriaService(session)
+    roupeiros = next(c for c in service.listar() if c.codigo == "ROUPEIROS")
+    sub = service.criar("Cliente Silva", parent_id=roupeiros.id)
+
+    modulo = _criar_modulo(
+        session, codigo="MOD_SUB", categoria="ROUPEIROS", user_id=user_id
+    )
+    modulo.subcategoria = "CLIENTE_SILVA"
+    session.flush()
+
+    atualizada = next(c for c in service.listar() if c.id == sub.id)
+    assert atualizada.modulos_em_uso == 1
+
+
+# ---------------------------------------------------------------------------
 # Módulos antigos preservados + filtros
 
 

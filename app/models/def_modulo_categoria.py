@@ -14,6 +14,8 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    ForeignKey,
+    Index,
     String,
     UniqueConstraint,
     func,
@@ -24,16 +26,26 @@ from app.db.base import Base
 
 
 class DefModuloCategoria(Base):
-    """One manageable category of the module library."""
+    """One manageable category (or subcategory) of the module library.
+
+    A row with ``parent_id`` NULL is a top-level category; with ``parent_id``
+    set it is a subcategory of that parent (one level only — subcategories
+    cannot themselves have subcategories).
+    """
 
     __tablename__ = "def_modulo_categorias"
     __table_args__ = (
         UniqueConstraint("codigo", name="uq_def_modulo_categorias_codigo"),
+        Index("ix_def_modulo_categorias_parent_id", "parent_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     codigo: Mapped[str] = mapped_column(String(60), nullable=False)
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
+    # NULL = top-level category; set = subcategory of that category.
+    parent_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("def_modulo_categorias.id"), nullable=True
+    )
     # Archived categories stay on old modules but leave the pickers.
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"

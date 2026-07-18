@@ -40,6 +40,7 @@ class DefModulo(Base):
         UniqueConstraint("codigo", name="uq_def_modulos_codigo"),
         Index("ix_def_modulos_ambito", "ambito"),
         Index("ix_def_modulos_categoria", "categoria"),
+        Index("ix_def_modulos_subcategoria", "subcategoria"),
         Index("ix_def_modulos_user_id", "user_id"),
         Index("ix_def_modulos_ativo", "ativo"),
     )
@@ -59,6 +60,8 @@ class DefModulo(Base):
     categoria: Mapped[str] = mapped_column(
         String(30), nullable=False, default=OUTROS, server_default=OUTROS
     )
+    # Optional subcategory (codigo of a category whose parent is `categoria`).
+    subcategoria: Mapped[str | None] = mapped_column(String(60), nullable=True)
     imagem_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"
