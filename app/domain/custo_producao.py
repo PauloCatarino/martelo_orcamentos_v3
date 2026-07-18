@@ -52,6 +52,46 @@ def calcular_custo_rasgo_cnc(
     return ml * qt * preco, None
 
 
+def calcular_custo_furacao(
+    furos_por_unidade, qt_total, preco_furo, permite_furacao=True
+) -> tuple[Decimal | None, str | None]:
+    """Return (custo_furacao, motivo): n.º furos × QT × €/furo da máquina.
+
+    Machine without drilling capability -> (None, MAQUINA_INCOMPATIVEL);
+    missing €/furo tariff -> (None, SEM_TARIFA); missing/zero hole count ->
+    (None, SEM_DADOS). Never raises.
+    """
+    if not permite_furacao:
+        return None, MOTIVO_MAQUINA_INCOMPATIVEL
+    preco = normalizar_numero(preco_furo)
+    if preco is None:
+        return None, MOTIVO_SEM_TARIFA
+    furos = normalizar_numero(furos_por_unidade)
+    if furos is None or furos <= 0:
+        return None, MOTIVO_SEM_DADOS
+    qt = normalizar_numero(qt_total) or Decimal("1")
+    return furos * qt * preco, None
+
+
+def calcular_custo_revestimento_faces(
+    area_m2, num_faces, qt_total, preco_m2_face
+) -> tuple[Decimal | None, str | None]:
+    """Return (custo_revestimento, motivo): área × n.º faces × QT × €/m²/face.
+
+    Missing €/m² tariff -> (None, SEM_TARIFA); missing area or zero faces ->
+    (None, SEM_DADOS). Never raises.
+    """
+    preco = normalizar_numero(preco_m2_face)
+    if preco is None:
+        return None, MOTIVO_SEM_TARIFA
+    area = normalizar_numero(area_m2)
+    faces = normalizar_numero(num_faces)
+    if area is None or faces is None or faces <= 0:
+        return None, MOTIVO_SEM_DADOS
+    qt = normalizar_numero(qt_total) or Decimal("1")
+    return area * faces * qt * preco, None
+
+
 def escolher_tarifa(valor_std, valor_serie, usar_serie: bool) -> tuple:
     """Pick a tariff value: STD, or SERIE with fallback to STD when undefined.
 
