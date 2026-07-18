@@ -232,6 +232,36 @@ def test_editar_cabecalho_persiste_todos_os_campos(session) -> None:
     assert recarregado.imagem_path == "C:/imagens/roupeiro.png"
 
 
+def test_editar_cabecalho_persiste_subcategoria(session) -> None:
+    """Editing a module can assign (and later clear) a subcategory."""
+    service = DefModuloService(session)
+    modulo_id = _criar_roupeiro(service)
+
+    service.editar_cabecalho(
+        modulo_id,
+        EditarDefModuloCabecalhoData(
+            nome="Roupeiro",
+            categoria=COZINHAS,
+            ambito=AMBITO_UTILIZADOR,
+            user_id=7,
+            subcategoria="Cliente Silva",
+        ),
+    )
+    assert service.obter_com_linhas(modulo_id).modulo.subcategoria == "CLIENTE_SILVA"
+
+    service.editar_cabecalho(
+        modulo_id,
+        EditarDefModuloCabecalhoData(
+            nome="Roupeiro",
+            categoria=COZINHAS,
+            ambito=AMBITO_UTILIZADOR,
+            user_id=7,
+            subcategoria=None,
+        ),
+    )
+    assert service.obter_com_linhas(modulo_id).modulo.subcategoria is None
+
+
 def test_eliminar_apaga_modulo_e_linhas(session) -> None:
     service = DefModuloService(session)
     modulo_id = _criar_roupeiro(service)

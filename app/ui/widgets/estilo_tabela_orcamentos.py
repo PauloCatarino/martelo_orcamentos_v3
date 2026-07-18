@@ -72,6 +72,22 @@ def configurar_tabela_orcamentos(table: QTableWidget, *, compacta: bool = False)
     table.setItemDelegate(FundoLinhaDelegate(table))
 
 
+def estilo_arvore() -> str:
+    """Return the app tables' visual language adapted to a QTreeWidget."""
+    return (
+        f"QTreeWidget {{ background: #FFFFFF; alternate-background-color: {tema.BEGE_CLARO};"
+        f" border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 6px;"
+        " selection-background-color: #D6C2A5; selection-color: #2E2A26;"
+        " font-size: 11px; outline: 0; }\n"
+        "QTreeWidget::item { padding: 3px 7px; border-bottom: 1px solid #E8E1D7; }\n"
+        f"QTreeWidget::item:selected {{ background: #D6C2A5; color: {tema.TEXTO_NORMAL}; }}\n"
+        f"QHeaderView::section {{ background: {tema.CASTANHO_MEDIO}; color: #FFFFFF;"
+        " padding: 6px 7px; border: none; border-right: 1px solid #A99175;"
+        " font-weight: bold; }}\n"
+        f"QHeaderView::section:hover {{ background: {tema.CASTANHO_ESCURO}; }}"
+    )
+
+
 def aplicar_estilo_linha_orcamento(
     table: QTableWidget,
     row: int,

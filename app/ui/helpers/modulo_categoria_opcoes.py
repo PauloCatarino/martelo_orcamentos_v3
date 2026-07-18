@@ -28,6 +28,26 @@ def carregar_opcoes_categorias() -> tuple[tuple[str, str], ...]:
     return opcoes or get_modulo_categoria_options()
 
 
+def carregar_arvore_categorias() -> dict[str, tuple[tuple[str, str], ...]]:
+    """Return {categoria_codigo: ((sub_codigo, sub_nome), ...)} for ACTIVE nodes.
+
+    Used by pickers that offer a subcategory choice dependent on the selected
+    top-level category. On any database problem an empty mapping is returned.
+    """
+    try:
+        with SessionLocal() as session:
+            arvore = DefModuloCategoriaService(session).listar_arvore(
+                incluir_arquivadas=False
+            )
+            session.commit()
+    except SQLAlchemyError:
+        return {}
+    return {
+        topo.codigo: tuple((sub.codigo, sub.nome) for sub in subs)
+        for topo, subs in arvore
+    }
+
+
 def carregar_labels_categorias() -> dict[str, str]:
     """Return {codigo: nome} of every category (including archived)."""
     try:

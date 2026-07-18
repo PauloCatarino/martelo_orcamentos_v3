@@ -24,6 +24,7 @@ class DefModuloResumo:
     categoria: str
     imagem_path: str | None
     ativo: bool
+    subcategoria: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -133,6 +134,7 @@ class DefModuloRepository:
         user_id: int | None,
         categoria: str,
         imagem_path: str | None,
+        subcategoria: str | None = None,
     ) -> DefModuloResumo:
         """Update one module's header (the code is fixed)."""
         modulo = self.session.get(DefModulo, id)
@@ -144,6 +146,7 @@ class DefModuloRepository:
         modulo.ambito = ambito
         modulo.user_id = user_id
         modulo.categoria = categoria
+        modulo.subcategoria = subcategoria
         modulo.imagem_path = imagem_path
         self.session.flush()
 
@@ -233,6 +236,7 @@ class DefModuloRepository:
             ambito=modulo.ambito,
             user_id=modulo.user_id,
             categoria=modulo.categoria,
+            subcategoria=modulo.subcategoria,
             imagem_path=modulo.imagem_path,
             ativo=modulo.ativo,
             created_at=modulo.created_at,

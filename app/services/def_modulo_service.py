@@ -91,6 +91,7 @@ class EditarDefModuloCabecalhoData:
     ambito: str = AMBITO_UTILIZADOR
     user_id: int | None = None
     categoria: str = "OUTROS"
+    subcategoria: str | None = None
     imagem_path: str | None = None
 
 
@@ -544,6 +545,7 @@ class DefModuloService:
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
 
+        subcategoria = self._normalize_optional(data.subcategoria)
         result = self.repository.update_cabecalho(
             id=modulo_id,
             nome=nome,
@@ -551,6 +553,11 @@ class DefModuloService:
             ambito=ambito,
             user_id=user_id,
             categoria=normalize_modulo_categoria(data.categoria),
+            subcategoria=(
+                normalize_modulo_categoria(subcategoria)
+                if subcategoria is not None
+                else None
+            ),
             imagem_path=self._normalize_optional(data.imagem_path),
         )
         self.session.commit()

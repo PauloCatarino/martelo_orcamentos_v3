@@ -1,9 +1,9 @@
 """Module library management page (phase 8U.3).
 
-Manage the reusable modules saved from costings: list (own / global), search
-('%'), filter by category, edit the header, delete (module + lines) and view a
-module's lines (read-only). Modules are NOT created here — they are saved from
-the costing screen.
+Manage the reusable modules saved from costings, shown as a tree grouped by
+Categoria -> Subcategoria -> Módulo (own / global tabs). Search ('%'), filter by
+category, edit the header, delete (module + lines) and view a module's lines.
+Modules are NOT created here — they are saved from the costing screen.
 """
 
 from __future__ import annotations
@@ -11,18 +11,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QTreeWidgetItemIterator,
     QVBoxLayout,
     QWidget,
 )
@@ -59,13 +59,14 @@ from app.ui.dialogs.gerir_categorias_modulos_dialog import (
 from app.ui.dialogs.modulo_linhas_dialog import ModuloLinhasDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
-from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
+from app.ui.widgets.estilo_tabela_orcamentos import estilo_arvore
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class BibliotecaModulosPage(QWidget):
     """Settings page to manage the reusable module library."""
 
+    # Kept for reference / backwards compatibility; the page now renders a tree.
     TABLE_HEADERS = [
         "Imagem",
         "Código",
@@ -75,7 +76,8 @@ class BibliotecaModulosPage(QWidget):
         "Nº linhas",
         "Criado em",
     ]
-    _LARGURAS = (60, 150, 220, 110, 90, 70, 130)
+    TREE_HEADERS = ["Categoria / Código", "Nome", "Âmbito", "Nº linhas", "Criado em"]
+    _LARGURAS = (300, 240, 90, 70, 130)
     _TAMANHO_MINIATURA = 36
 
     def __init__(self, on_back=None) -> None:
@@ -84,18 +86,18 @@ class BibliotecaModulosPage(QWidget):
         self.on_back = on_back
         self._modulos_utilizador: list = []
         self._modulos_globais: list = []
-        self._por_linha: dict[QTableWidget, dict[int, object]] = {}
-        # {codigo: nome} of the manageable categories (phase 6).
+        # {codigo: nome} of the manageable categories (incl. subcategories).
         self._categoria_labels: dict[str, str] = {}
 
         self.cabecalho = BarraCabecalho(
             "Biblioteca de Módulos",
             [
                 "Gestão dos módulos reutilizáveis guardados a partir do custeio "
-                "(roupeiros, cozinhas, móveis...). Aqui pode pesquisar, editar o "
-                "cabeçalho, eliminar e ver as linhas de cada módulo. Os módulos "
-                "criam-se no custeio (botão Guardar como Módulo) e importam-se para "
-                "os itens (botão Importar Módulo) — não se criam aqui."
+                "(roupeiros, cozinhas, móveis...), organizados por categoria e "
+                "subcategoria. Aqui pode pesquisar, editar o cabeçalho, eliminar "
+                "e ver as linhas de cada módulo. Os módulos criam-se no custeio "
+                "(botão Guardar como Módulo) e importam-se para os itens (botão "
+                "Importar Módulo) — não se criam aqui."
             ],
         )
 
@@ -116,8 +118,8 @@ class BibliotecaModulosPage(QWidget):
 
         self.gerir_categorias_button = QPushButton("Gerir Categorias…")
         self.gerir_categorias_button.setToolTip(
-            "Criar, renomear, arquivar e eliminar categorias de módulos "
-            "(pode usar o nome de um cliente)"
+            "Criar, renomear, arquivar e eliminar categorias e subcategorias de "
+            "módulos (pode usar o nome de um cliente)"
         )
         self.gerir_categorias_button.clicked.connect(self.gerir_categorias)
 
@@ -127,13 +129,11 @@ class BibliotecaModulosPage(QWidget):
         filtro_row.addWidget(self.categoria_filtro)
         filtro_row.addWidget(self.gerir_categorias_button)
 
-        self.tabela_utilizador = self._criar_tabela()
-        self.tabela_globais = self._criar_tabela()
-        ligar_persistencia_larguras(self.tabela_utilizador, "biblioteca_modulos_utilizador")
-        ligar_persistencia_larguras(self.tabela_globais, "biblioteca_modulos_globais")
+        self.arvore_utilizador = self._criar_arvore("biblioteca_modulos_utilizador")
+        self.arvore_globais = self._criar_arvore("biblioteca_modulos_globais")
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.tabela_utilizador, "Utilizador")
-        self.tabs.addTab(self.tabela_globais, "Global")
+        self.tabs.addTab(self.arvore_utilizador, "Utilizador")
+        self.tabs.addTab(self.arvore_globais, "Global")
 
         self.editar_button = QPushButton("Editar")
         self.editar_button.setToolTip("Editar o cabeçalho do módulo selecionado")
@@ -150,6 +150,12 @@ class BibliotecaModulosPage(QWidget):
         self.ver_linhas_button = QPushButton("Ver linhas")
         self.ver_linhas_button.setToolTip("Ver as linhas do módulo (só leitura)")
         self.ver_linhas_button.clicked.connect(self.ver_linhas)
+        self.expandir_button = QPushButton("Expandir tudo")
+        self.expandir_button.setToolTip("Expandir todas as categorias")
+        self.expandir_button.clicked.connect(lambda: self._expandir(True))
+        self.colapsar_button = QPushButton("Colapsar tudo")
+        self.colapsar_button.setToolTip("Colapsar todas as categorias")
+        self.colapsar_button.clicked.connect(lambda: self._expandir(False))
         self.atualizar_button = QPushButton("Atualizar")
         self.atualizar_button.setToolTip("Recarregar a biblioteca")
         self.atualizar_button.clicked.connect(self.carregar)
@@ -164,6 +170,8 @@ class BibliotecaModulosPage(QWidget):
         buttons_layout.addWidget(self.eliminar_button)
         buttons_layout.addWidget(self.converter_button)
         buttons_layout.addWidget(self.ver_linhas_button)
+        buttons_layout.addWidget(self.expandir_button)
+        buttons_layout.addWidget(self.colapsar_button)
         buttons_layout.addWidget(self.atualizar_button)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.voltar_button)
@@ -174,8 +182,6 @@ class BibliotecaModulosPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(filtro_row)
         layout.addLayout(buttons_layout)
-        # Linha de acompanhamento sempre visível logo abaixo dos botões,
-        # como nos restantes menus da app.
         layout.addWidget(self.status_label)
         layout.addWidget(self.tabs, stretch=1)
         self.setLayout(layout)
@@ -229,7 +235,7 @@ class BibliotecaModulosPage(QWidget):
         self._refill()
 
     def _recarregar_filtro_categorias(self, opcoes) -> None:
-        """Rebuild the category filter with the manageable categories."""
+        """Rebuild the category filter with the manageable top-level categories."""
         selecionada = self.categoria_filtro.currentData()
         self.categoria_filtro.blockSignals(True)
         self.categoria_filtro.clear()
@@ -241,8 +247,8 @@ class BibliotecaModulosPage(QWidget):
         self.categoria_filtro.blockSignals(False)
 
     def _refill(self) -> None:
-        self._preencher_tabela(self.tabela_utilizador, self._modulos_utilizador)
-        self._preencher_tabela(self.tabela_globais, self._modulos_globais)
+        self._preencher_arvore(self.arvore_utilizador, self._modulos_utilizador)
+        self._preencher_arvore(self.arvore_globais, self._modulos_globais)
 
         total = len(self._modulos_utilizador) + len(self._modulos_globais)
         if total == 0:
@@ -263,63 +269,104 @@ class BibliotecaModulosPage(QWidget):
             resultado.append(item)
         return resultado
 
-    # ----- Tables -----
+    # ----- Tree -----
 
-    def _criar_tabela(self) -> QTableWidget:
-        tabela = QTableWidget(0, len(self.TABLE_HEADERS))
-        tabela.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        tabela.verticalHeader().setVisible(False)
-        tabela.setAlternatingRowColors(True)
-        tabela.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        tabela.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        tabela.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        tabela.setIconSize(QSize(self._TAMANHO_MINIATURA, self._TAMANHO_MINIATURA))
-        configurar_tabela_orcamentos(tabela, compacta=True)
-        # Preserve the thumbnail size while keeping the remaining rows compact.
-        tabela.verticalHeader().setDefaultSectionSize(self._TAMANHO_MINIATURA + 4)
-        header = tabela.horizontalHeader()
+    def _criar_arvore(self, chave_larguras: str) -> QTreeWidget:
+        arvore = QTreeWidget()
+        arvore.setColumnCount(len(self.TREE_HEADERS))
+        arvore.setHeaderLabels(self.TREE_HEADERS)
+        arvore.setAlternatingRowColors(True)
+        arvore.setRootIsDecorated(True)
+        arvore.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        arvore.setUniformRowHeights(False)
+        arvore.setIconSize(QSize(self._TAMANHO_MINIATURA, self._TAMANHO_MINIATURA))
+        arvore.setStyleSheet(estilo_arvore())
+        header = arvore.header()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
         for indice, largura in enumerate(self._LARGURAS):
-            tabela.setColumnWidth(indice, largura)
-        tabela.cellDoubleClicked.connect(
-            lambda *_: self.editar_modulo()
-        )
-        return tabela
+            arvore.setColumnWidth(indice, largura)
+        ligar_persistencia_larguras(arvore, chave_larguras)
+        arvore.itemDoubleClicked.connect(self._on_duplo_clique)
+        return arvore
 
-    def _preencher_tabela(self, tabela: QTableWidget, itens: Sequence) -> None:
+    def _label(self, codigo: str | None) -> str:
+        return get_modulo_categoria_label(codigo, self._categoria_labels)
+
+    def _preencher_arvore(self, arvore: QTreeWidget, itens: Sequence) -> None:
         filtrados = self._filtrar(itens)
-        por_linha: dict[int, object] = {}
-        tabela.setRowCount(0)
+        arvore.clear()
+
+        # Group modules by top-level category, then optional subcategory.
+        grupos: dict[str, dict] = {}
         for item in filtrados:
             modulo = item.modulo
-            row = tabela.rowCount()
-            tabela.insertRow(row)
-            por_linha[row] = item
-
-            celula_img = QTableWidgetItem()
-            pixmap = self._miniatura(modulo.imagem_path)
-            if pixmap is not None:
-                celula_img.setIcon(QIcon(pixmap))
+            cat = normalize_modulo_categoria(modulo.categoria)
+            grupo = grupos.setdefault(cat, {"diretos": [], "subs": {}})
+            if modulo.subcategoria:
+                sub = normalize_modulo_categoria(modulo.subcategoria)
+                grupo["subs"].setdefault(sub, []).append(item)
             else:
-                celula_img.setText("—")
-            celula_img.setData(Qt.ItemDataRole.UserRole, modulo.id)
-            tabela.setItem(row, 0, celula_img)
+                grupo["diretos"].append(item)
 
-            valores = (
+        for cat in sorted(grupos, key=lambda c: self._label(c).lower()):
+            grupo = grupos[cat]
+            total = len(grupo["diretos"]) + sum(
+                len(v) for v in grupo["subs"].values()
+            )
+            no_categoria = self._criar_no_grupo(f"{self._label(cat)}  ({total})")
+            arvore.addTopLevelItem(no_categoria)
+            for item in grupo["diretos"]:
+                no_categoria.addChild(self._criar_no_modulo(item))
+            for sub in sorted(grupo["subs"], key=lambda c: self._label(c).lower()):
+                sub_itens = grupo["subs"][sub]
+                no_sub = self._criar_no_grupo(
+                    f"{self._label(sub)}  ({len(sub_itens)})"
+                )
+                no_categoria.addChild(no_sub)
+                for item in sub_itens:
+                    no_sub.addChild(self._criar_no_modulo(item))
+            no_categoria.setExpanded(True)
+
+    def _criar_no_grupo(self, texto: str) -> QTreeWidgetItem:
+        no = QTreeWidgetItem([texto, "", "", "", ""])
+        fonte = QFont(no.font(0))
+        fonte.setBold(True)
+        no.setFont(0, fonte)
+        # Group nodes are not selectable module rows.
+        no.setData(0, Qt.ItemDataRole.UserRole, None)
+        return no
+
+    def _criar_no_modulo(self, item) -> QTreeWidgetItem:
+        modulo = item.modulo
+        no = QTreeWidgetItem(
+            [
                 modulo.codigo or "",
                 modulo.nome or "",
-                get_modulo_categoria_label(modulo.categoria, self._categoria_labels),
                 MODULO_AMBITO_LABELS.get(
                     normalize_modulo_ambito(modulo.ambito), modulo.ambito
                 ),
                 str(item.num_linhas),
                 self._formatar_data(modulo.created_at),
-            )
-            for col, texto in enumerate(valores, start=1):
-                tabela.setItem(row, col, QTableWidgetItem(texto))
+            ]
+        )
+        pixmap = self._miniatura(modulo.imagem_path)
+        if pixmap is not None:
+            no.setIcon(0, QIcon(pixmap))
+        no.setData(0, Qt.ItemDataRole.UserRole, item)
+        return no
 
-        self._por_linha[tabela] = por_linha
+    def _expandir(self, expandir: bool) -> None:
+        arvore = self.tabs.currentWidget()
+        if isinstance(arvore, QTreeWidget):
+            if expandir:
+                arvore.expandAll()
+            else:
+                arvore.collapseAll()
+
+    def _on_duplo_clique(self, item, _column) -> None:
+        if item is not None and item.data(0, Qt.ItemDataRole.UserRole) is not None:
+            self.editar_modulo()
 
     @staticmethod
     def _formatar_data(valor) -> str:
@@ -345,27 +392,31 @@ class BibliotecaModulosPage(QWidget):
 
     def _modulo_selecionado(self):
         """Return the selected ModuloComContagem of the active tab, or None."""
-        tabela = self.tabs.currentWidget()
-        if not isinstance(tabela, QTableWidget):
+        arvore = self.tabs.currentWidget()
+        if not isinstance(arvore, QTreeWidget):
             return None
-        row = tabela.currentRow()
-        if row < 0:
+        item = arvore.currentItem()
+        if item is None:
             return None
-        return self._por_linha.get(tabela, {}).get(row)
+        return item.data(0, Qt.ItemDataRole.UserRole)
 
     def selecionar_modulo_por_id(self, modulo_id: int) -> None:
         """Reload and select one saved module from the audit page."""
         self.carregar()
         for tab_index in range(self.tabs.count()):
-            tabela = self.tabs.widget(tab_index)
-            if not isinstance(tabela, QTableWidget):
+            arvore = self.tabs.widget(tab_index)
+            if not isinstance(arvore, QTreeWidget):
                 continue
-            for row, item in self._por_linha.get(tabela, {}).items():
-                if item.modulo.id == modulo_id:
+            iterador = QTreeWidgetItemIterator(arvore)
+            while iterador.value():
+                no = iterador.value()
+                item = no.data(0, Qt.ItemDataRole.UserRole)
+                if item is not None and item.modulo.id == modulo_id:
                     self.tabs.setCurrentIndex(tab_index)
-                    tabela.selectRow(row)
-                    tabela.scrollToItem(tabela.item(row, 0))
+                    arvore.setCurrentItem(no)
+                    arvore.scrollToItem(no)
                     return
+                iterador += 1
         self.status_label.setText("O módulo indicado já não existe.")
 
     # ----- Actions -----
@@ -473,6 +524,7 @@ class BibliotecaModulosPage(QWidget):
                             ambito=dados.ambito,
                             user_id=modulo.user_id or self._user_id(),
                             categoria=dados.categoria,
+                            subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
                         ),
                     )
@@ -494,6 +546,7 @@ class BibliotecaModulosPage(QWidget):
                 ambito=modulo.ambito,
                 categoria=modulo.categoria,
                 imagem_path=modulo.imagem_path,
+                subcategoria=modulo.subcategoria,
             ),
             on_save=handle_save,
         )

@@ -56,7 +56,14 @@ def test_editar_modulo_dialog_imports() -> None:
     )
 
     fields = {f.name for f in dataclasses.fields(EditarModuloDialogData)}
-    assert fields == {"nome", "descricao", "ambito", "categoria", "imagem_path"}
+    assert fields == {
+        "nome",
+        "descricao",
+        "ambito",
+        "categoria",
+        "subcategoria",
+        "imagem_path",
+    }
 
     init = inspect.getsource(EditarModuloDialog.__init__)
     assert "on_save" in init

@@ -34,7 +34,10 @@ from app.domain.modulo_categorias import (
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
-from app.ui.helpers.modulo_categoria_opcoes import carregar_opcoes_categorias
+from app.ui.helpers.modulo_categoria_opcoes import (
+    carregar_arvore_categorias,
+    carregar_opcoes_categorias,
+)
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class EditarModuloDialogData:
     ambito: str
     categoria: str
     imagem_path: str | None
+    subcategoria: str | None = None
 
 
 class EditarModuloDialog(QDialog):
@@ -83,6 +87,9 @@ class EditarModuloDialog(QDialog):
         self.ambito_input.addItem("Global (todos)", AMBITO_GLOBAL)
         self._selecionar(self.ambito_input, normalize_modulo_ambito(dados.ambito))
 
+        # Subcategories available per top-level category.
+        self._arvore_subcategorias = carregar_arvore_categorias()
+
         self.categoria_input = QComboBox()
         for code, label in carregar_opcoes_categorias():
             self.categoria_input.addItem(label, code)
@@ -93,6 +100,25 @@ class EditarModuloDialog(QDialog):
                 get_modulo_categoria_label(categoria_atual), categoria_atual
             )
         self._selecionar(self.categoria_input, categoria_atual)
+
+        self.subcategoria_input = QComboBox()
+        self.subcategoria_input.setToolTip(
+            "Subcategoria (opcional) dentro da categoria escolhida. Geridas na "
+            "Biblioteca de Módulos › Gerir Categorias."
+        )
+        self._recarregar_subcategorias(
+            categoria_atual,
+            selecionar=(
+                normalize_modulo_categoria(dados.subcategoria)
+                if dados.subcategoria
+                else None
+            ),
+        )
+        self.categoria_input.currentIndexChanged.connect(
+            lambda _=0: self._recarregar_subcategorias(
+                self.categoria_input.currentData()
+            )
+        )
 
         self.imagem_input = QLineEdit(dados.imagem_path or "")
         self.imagem_input.setPlaceholderText("(opcional) caminho da imagem")
@@ -115,6 +141,7 @@ class EditarModuloDialog(QDialog):
         form.addRow("Descrição", self.descricao_input)
         form.addRow("Âmbito", self.ambito_input)
         form.addRow("Categoria", self.categoria_input)
+        form.addRow("Subcategoria", self.subcategoria_input)
         form.addRow("Imagem", imagem_row)
 
         self.button_box = QDialogButtonBox(
@@ -150,6 +177,21 @@ class EditarModuloDialog(QDialog):
         if index >= 0:
             combo.setCurrentIndex(index)
 
+    def _recarregar_subcategorias(
+        self, categoria_codigo: str | None, selecionar: str | None = None
+    ) -> None:
+        """Rebuild the subcategory picker for the chosen top-level category."""
+        if selecionar is None:
+            selecionar = self.subcategoria_input.currentData()
+        self.subcategoria_input.blockSignals(True)
+        self.subcategoria_input.clear()
+        self.subcategoria_input.addItem("— Nenhuma —", None)
+        for code, label in self._arvore_subcategorias.get(categoria_codigo or "", ()):
+            self.subcategoria_input.addItem(label, code)
+        indice = self.subcategoria_input.findData(selecionar)
+        self.subcategoria_input.setCurrentIndex(indice if indice >= 0 else 0)
+        self.subcategoria_input.blockSignals(False)
+
     def get_data(self) -> EditarModuloDialogData:
         """Return the edited header data."""
         descricao = self.descricao_input.toPlainText().strip()
@@ -160,6 +202,7 @@ class EditarModuloDialog(QDialog):
             ambito=self.ambito_input.currentData() or AMBITO_UTILIZADOR,
             categoria=self.categoria_input.currentData() or OUTROS,
             imagem_path=imagem or None,
+            subcategoria=self.subcategoria_input.currentData(),
         )
 
     def set_error(self, message: str) -> None:
