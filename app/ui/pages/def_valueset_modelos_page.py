@@ -44,9 +44,10 @@ class DefValuesetModelosPage(QWidget):
         "Ativo",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
 
+        self.on_back = on_back
         self._modelos_by_row: dict[int, DefValuesetModeloResumo] = {}
         self._detail_page: DefValuesetModeloDetailPage | None = None
 
@@ -72,6 +73,11 @@ class DefValuesetModelosPage(QWidget):
         self.mostrar_inativos_check.stateChanged.connect(
             lambda _=0: self.carregar_modelos()
         )
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
@@ -81,6 +87,7 @@ class DefValuesetModelosPage(QWidget):
         actions_layout.addWidget(self.mostrar_inativos_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModelosStatus")

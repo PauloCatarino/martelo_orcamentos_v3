@@ -233,10 +233,14 @@ class MainWindow(QMainWindow):
         self.imos_ligacao_page = ImosLigacaoPage()
         self.operacoes_maquinas_page = OperacoesMaquinasPage()
         self.valueset_chaves_page = DefValuesetChavesPage()
-        self.valueset_modelos_page = DefValuesetModelosPage()
+        self.valueset_modelos_page = DefValuesetModelosPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.margens_padrao_page = MargensPadraoPage()
         self.regras_quantidade_page = RegrasQuantidadePage()
-        self.biblioteca_modulos_page = BibliotecaModulosPage()
+        self.biblioteca_modulos_page = BibliotecaModulosPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.catalogo_auditoria_page = CatalogoAuditoriaPage(
             on_open_configuracao=self._open_catalogo_auditoria_item
         )

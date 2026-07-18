@@ -78,9 +78,10 @@ class BibliotecaModulosPage(QWidget):
     _LARGURAS = (60, 150, 220, 110, 90, 70, 130)
     _TAMANHO_MINIATURA = 36
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
 
+        self.on_back = on_back
         self._modulos_utilizador: list = []
         self._modulos_globais: list = []
         self._por_linha: dict[QTableWidget, dict[int, object]] = {}
@@ -152,6 +153,11 @@ class BibliotecaModulosPage(QWidget):
         self.atualizar_button = QPushButton("Atualizar")
         self.atualizar_button.setToolTip("Recarregar a biblioteca")
         self.atualizar_button.clicked.connect(self.carregar)
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.editar_button)
@@ -160,6 +166,7 @@ class BibliotecaModulosPage(QWidget):
         buttons_layout.addWidget(self.ver_linhas_button)
         buttons_layout.addWidget(self.atualizar_button)
         buttons_layout.addStretch()
+        buttons_layout.addWidget(self.voltar_button)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
