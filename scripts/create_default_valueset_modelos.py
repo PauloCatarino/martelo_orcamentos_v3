@@ -74,6 +74,7 @@ ROUPEIRO_STANDARD_LINHAS: tuple[ModeloLinhaSeed, ...] = (
     ModeloLinhaSeed("MATERIAL_PRATELEIRAS", _AGL[0], _AGL[1], True, 6),
     ModeloLinhaSeed("MATERIAL_FRENTES", _MDF[0], _MDF[1], True, 7),
     ModeloLinhaSeed("MATERIAL_GAVETAS", _AGL[0], _AGL[1], True, 8),
+    ModeloLinhaSeed("MATERIAL_PECAS_SIMPLIFICADAS", _AGL[0], _AGL[1], True, 9),
     ModeloLinhaSeed("FERRAGEM_DOBRADICA", "DOBRADICA_STANDARD", "Dobradiça standard", True, 10),
     ModeloLinhaSeed("FERRAGEM_CORREDICA", "CORREDICA_STANDARD", "Corrediça standard", True, 11),
     ModeloLinhaSeed("FERRAGEM_PUXADOR", "PUXADOR_STANDARD", "Puxador standard", True, 12),

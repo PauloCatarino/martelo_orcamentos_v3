@@ -126,7 +126,7 @@ class EditarDefPecaDialog(QDialog):
             "", "TETOS", "FUNDOS", "PRATELEIRAS FIXAS",
             "PRATELEIRAS AMOVIVEIS", "LATERAIS", "COSTAS", "PORTAS",
             "GAVETAS", "REMATES/GUARNICOES", "FERRAGENS", "ACESSORIOS",
-            "SERVICOS",
+            "SERVICOS", "PAINEIS SIMPLES",
         ):
             self.grupo_input.addItem(grupo)
         self.ativo_input = QCheckBox()

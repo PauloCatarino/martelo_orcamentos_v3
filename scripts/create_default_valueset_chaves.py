@@ -54,6 +54,12 @@ DEFAULT_VALUESET_CHAVES: tuple[ChaveSeed, ...] = (
     ChaveSeed("MATERIAL_PRATELEIRAS", "Material prateleiras", "MATERIAL", "MATERIAIS"),
     ChaveSeed("MATERIAL_GAVETAS", "Material gavetas", "MATERIAL", "MATERIAIS"),
     ChaveSeed("MATERIAL_OUTROS", "Material outros", "MATERIAL", "MATERIAIS"),
+    ChaveSeed(
+        "MATERIAL_PECAS_SIMPLIFICADAS",
+        "Material Peças Simplificadas",
+        "MATERIAL",
+        "MATERIAIS",
+    ),
     # Ferragens
     ChaveSeed("FERRAGEM_DOBRADICA", "Dobradiça", "FERRAGEM", "FERRAGENS"),
     ChaveSeed("FERRAGEM_CORREDICA", "Corrediça", "FERRAGEM", "FERRAGENS"),
