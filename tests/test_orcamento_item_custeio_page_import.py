@@ -1000,8 +1000,8 @@ def test_custeio_page_biblioteca_tooltip_nas_folhas() -> None:
 
     assert hasattr(OrcamentoItemCusteioPage, "_biblioteca_tooltip")
 
-    preencher = inspect.getsource(OrcamentoItemCusteioPage._preencher_biblioteca)
-    assert "setToolTip(0" in preencher
+    criar_folha = inspect.getsource(OrcamentoItemCusteioPage._criar_folha_biblioteca)
+    assert "setToolTip(0" in criar_folha
 
     tooltip = inspect.getsource(OrcamentoItemCusteioPage._biblioteca_tooltip)
     for campo in ("Código:", "Nome:", "Tipo:", "Grupo:", "Código de orlas:", "Chave ValueSet:"):

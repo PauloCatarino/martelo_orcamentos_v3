@@ -649,6 +649,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self._biblioteca_visivel = True
         self._biblioteca_sizes: list[int] | None = None
         self._biblioteca_pressed_states: dict[int, Qt.CheckState] = {}
+        # Leaves per piece id: a favorite piece has a twin leaf in the
+        # Favoritos group whose check state is kept in sync with the original.
+        self._biblioteca_folhas_por_peca: dict[int, list[QTreeWidgetItem]] = {}
         # The toggle_biblioteca_button now lives in the library header rather
         # than the old actions_layout.addWidget(self.toggle_biblioteca_button)
         # toolbar slot, keeping the costing bar focused on actions.
@@ -1711,7 +1714,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tree_biblioteca_pecas.blockSignals(True)
         self.tree_biblioteca_pecas.clear()
 
+        self._biblioteca_folhas_por_peca = {}
         grupos: dict[str, QTreeWidgetItem] = {}
+        favoritos_grupo: QTreeWidgetItem | None = None
         for peca in self._biblioteca_pecas:
             if not self._prefs_biblioteca.peca_visivel(peca.id):
                 continue
@@ -1723,6 +1728,16 @@ class OrcamentoItemCusteioPage(QWidget):
             if so_selecionados and peca.id not in self._selecionados:
                 continue
 
+            # Favorites shortcut: the same piece appears in the Favoritos
+            # group AND in its normal group (twin leaves kept in sync).
+            if peca.id in self._prefs_biblioteca.favoritas:
+                if favoritos_grupo is None:
+                    favoritos_grupo = QTreeWidgetItem(["⭐ FAVORITOS"])
+                    self.tree_biblioteca_pecas.addTopLevelItem(favoritos_grupo)
+                favoritos_grupo.addChild(
+                    self._criar_folha_biblioteca(peca, codigo_orlas)
+                )
+
             grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
             parent = grupos.get(grupo)
             if parent is None:
@@ -1730,28 +1745,35 @@ class OrcamentoItemCusteioPage(QWidget):
                 self.tree_biblioteca_pecas.addTopLevelItem(parent)
                 grupos[grupo] = parent
 
-            nome_exibido = peca.nome_biblioteca or peca.nome
-            texto = f"{nome_exibido} [{codigo_orlas}]"
-            if peca.tipo_peca == COMPOSTA:
-                texto += " (composta)"
-
-            leaf = QTreeWidgetItem([texto])
-            leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            leaf.setCheckState(
-                0,
-                Qt.CheckState.Checked
-                if peca.id in self._selecionados
-                else Qt.CheckState.Unchecked,
-            )
-            leaf.setData(
-                0, Qt.ItemDataRole.UserRole, self._peca_para_dados(peca, codigo_orlas)
-            )
-            leaf.setToolTip(0, self._biblioteca_tooltip(peca, codigo_orlas))
-            parent.addChild(leaf)
+            parent.addChild(self._criar_folha_biblioteca(peca, codigo_orlas))
 
         self.tree_biblioteca_pecas.expandAll()
         self.tree_biblioteca_pecas.blockSignals(False)
         self._atualizar_contador()
+
+    def _criar_folha_biblioteca(
+        self, peca: DefPecaResumo, codigo_orlas: str
+    ) -> QTreeWidgetItem:
+        """Build one checkable library leaf and register it for twin syncing."""
+        nome_exibido = peca.nome_biblioteca or peca.nome
+        texto = f"{nome_exibido} [{codigo_orlas}]"
+        if peca.tipo_peca == COMPOSTA:
+            texto += " (composta)"
+
+        leaf = QTreeWidgetItem([texto])
+        leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        leaf.setCheckState(
+            0,
+            Qt.CheckState.Checked
+            if peca.id in self._selecionados
+            else Qt.CheckState.Unchecked,
+        )
+        leaf.setData(
+            0, Qt.ItemDataRole.UserRole, self._peca_para_dados(peca, codigo_orlas)
+        )
+        leaf.setToolTip(0, self._biblioteca_tooltip(peca, codigo_orlas))
+        self._biblioteca_folhas_por_peca.setdefault(peca.id, []).append(leaf)
+        return leaf
 
     def _peca_para_dados(self, peca: DefPecaResumo, codigo_orlas: str) -> dict:
         """Build the data stored on a leaf tree item."""
@@ -1818,10 +1840,19 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         peca_id = dados["def_peca_id"]
-        if item.checkState(0) == Qt.CheckState.Checked:
+        estado = item.checkState(0)
+        if estado == Qt.CheckState.Checked:
             self._selecionados.add(peca_id)
         else:
             self._selecionados.discard(peca_id)
+
+        # A favorite piece has a twin leaf in the Favoritos group; keep every
+        # leaf of the same piece with one single check state.
+        self.tree_biblioteca_pecas.blockSignals(True)
+        for gemea in self._biblioteca_folhas_por_peca.get(peca_id, []):
+            if gemea is not item and gemea.checkState(0) != estado:
+                gemea.setCheckState(0, estado)
+        self.tree_biblioteca_pecas.blockSignals(False)
 
         self._atualizar_contador()
 
