@@ -30,6 +30,24 @@ from app.services.def_modulo_categoria_service import (
     DefModuloCategoriaService,
     ModuloCategoriaResumo,
 )
+from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+
+
+def _estilo_arvore() -> str:
+    """Same visual language as the app tables, applied to a tree."""
+    return (
+        f"QTreeWidget {{ background: #FFFFFF; alternate-background-color: {tema.BEGE_CLARO};"
+        f" border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 6px;"
+        " selection-background-color: #D6C2A5; selection-color: #2E2A26;"
+        " font-size: 11px; outline: 0; }\n"
+        "QTreeWidget::item { padding: 3px 7px; border-bottom: 1px solid #E8E1D7; }\n"
+        f"QTreeWidget::item:selected {{ background: #D6C2A5; color: {tema.TEXTO_NORMAL}; }}\n"
+        f"QHeaderView::section {{ background: {tema.CASTANHO_MEDIO}; color: #FFFFFF;"
+        " padding: 6px 7px; border: none; border-right: 1px solid #A99175;"
+        " font-weight: bold; }}\n"
+        f"QHeaderView::section:hover {{ background: {tema.CASTANHO_ESCURO}; }}"
+    )
 
 
 class GerirCategoriasModulosDialog(QDialog):
@@ -77,11 +95,14 @@ class GerirCategoriasModulosDialog(QDialog):
         self.tree.setAlternatingRowColors(True)
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.tree.setRootIsDecorated(True)
-        self.tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for coluna in range(1, len(self.TREE_HEADERS)):
-            self.tree.header().setSectionResizeMode(
-                coluna, QHeaderView.ResizeMode.ResizeToContents
-            )
+        self.tree.setStyleSheet(_estilo_arvore())
+        # Resizable columns with per-user persisted widths, like the app tables.
+        header = self.tree.header()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        for coluna, largura in enumerate((240, 200, 80, 90)):
+            self.tree.setColumnWidth(coluna, largura)
+        ligar_persistencia_larguras(self.tree, "dialog_gerir_categorias_arvore")
         self.tree.itemSelectionChanged.connect(self._atualizar_botoes)
 
         self.renomear_button = QPushButton("Renomear")
