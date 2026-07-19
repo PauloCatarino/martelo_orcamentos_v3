@@ -5,6 +5,7 @@ from __future__ import annotations
 CORTE = "CORTE"
 ORLAGEM = "ORLAGEM"
 CNC = "CNC"
+REVESTIMENTO = "REVESTIMENTO"
 FURACAO = "FURACAO"
 RASGO = "RASGO"
 COLAGEM = "COLAGEM"
@@ -19,6 +20,7 @@ OPERACAO_TYPE_LABELS = {
     CORTE: "Corte",
     ORLAGEM: "Orlagem",
     CNC: "CNC / Mecaniza\u00e7\u00e3o",
+    REVESTIMENTO: "Revestimento de pain\u00e9is",
     FURACAO: "Fura\u00e7\u00e3o",
     RASGO: "Rasgo",
     COLAGEM: "Colagem",

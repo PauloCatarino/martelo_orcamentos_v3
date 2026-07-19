@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.domain.metodo_calculo_types import normalize_metodo_calculo
 from app.domain.regra_operacao_types import normalize_regra_operacao
 from app.repositories.def_peca_operacao_repository import (
     DefPecaOperacaoRepository,
@@ -21,6 +22,7 @@ class CriarDefPecaOperacaoData:
     def_peca_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    metodo_calculo: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     rasgo_qt_comp: int = 0
@@ -40,6 +42,7 @@ class EditarDefPecaOperacaoData:
     def_peca_id: int | None
     def_operacao_id: int | None
     ordem: int = 1
+    metodo_calculo: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     rasgo_qt_comp: int = 0
@@ -77,12 +80,12 @@ class DefPecaOperacaoService:
         """Link an operation to a piece definition."""
         def_peca_id = self._validate_required_id(data.def_peca_id, "def_peca_id")
         def_operacao_id = self._validate_required_id(data.def_operacao_id, "def_operacao_id")
-        self._validate_nao_duplicada(def_peca_id, def_operacao_id, exclude_id=None)
 
         result = self.repository.create_peca_operacao(
             def_peca_id=def_peca_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            metodo_calculo=normalize_metodo_calculo(data.metodo_calculo),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             rasgo_qt_comp=self._normalize_rasgo_qt(data.rasgo_qt_comp),
@@ -104,13 +107,13 @@ class DefPecaOperacaoService:
         """Edit one piece operation link."""
         def_peca_id = self._validate_required_id(data.def_peca_id, "def_peca_id")
         def_operacao_id = self._validate_required_id(data.def_operacao_id, "def_operacao_id")
-        self._validate_nao_duplicada(def_peca_id, def_operacao_id, exclude_id=id)
 
         result = self.repository.update_peca_operacao(
             id=id,
             def_peca_id=def_peca_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
+            metodo_calculo=normalize_metodo_calculo(data.metodo_calculo),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             rasgo_qt_comp=self._normalize_rasgo_qt(data.rasgo_qt_comp),
@@ -172,10 +175,5 @@ class DefPecaOperacaoService:
 
         return unidade_tempo.strip().upper()
 
-    def _validate_nao_duplicada(
-        self, def_peca_id: int, def_operacao_id: int, exclude_id: int | None
-    ) -> None:
-        existentes = self.repository.list_by_def_peca(def_peca_id)
-        for existente in existentes:
-            if existente.def_operacao_id == def_operacao_id and existente.id != exclude_id:
-                raise ValueError("operacao ja associada a esta peca")
+# Note: the same operation MAY be linked several times to one piece — the new
+# CNC model uses one link per calculation method (e.g. drilling + groove).

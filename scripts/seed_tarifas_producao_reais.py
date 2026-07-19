@@ -38,6 +38,10 @@ TARIFA_FIELDS: tuple[str, ...] = (
     "limite_lado_mm",
     "custo_setup_peca_std",
     "custo_setup_peca_serie",
+    "preco_furo_std",
+    "preco_furo_serie",
+    "preco_m2_face_std",
+    "preco_m2_face_serie",
 )
 
 
@@ -57,6 +61,10 @@ class TarifaMaquinaReal:
     limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -93,21 +101,34 @@ TARIFAS_REAIS: tuple[TarifaMaquinaReal, ...] = (
         codigo="CNC_ABD",
         custo_hora=_D("30"),
         custo_hora_serie=_D("30"),
+        preco_furo_std=_D("0.10"),
+        preco_furo_serie=_D("0.07"),
     ),
     TarifaMaquinaReal(
         codigo="CNC_VERTICAL",
         custo_hora=_D("60"),
         custo_hora_serie=_D("60"),
+        preco_furo_std=_D("0.12"),
+        preco_furo_serie=_D("0.09"),
     ),
     TarifaMaquinaReal(
-        codigo="CNC_HORIZONTAL",
+        codigo="CNC_SANDWICH",
         custo_hora=_D("60"),
         custo_hora_serie=_D("60"),
+        preco_furo_std=_D("0.10"),
+        preco_furo_serie=_D("0.06"),
     ),
     TarifaMaquinaReal(
-        codigo="CNC_5_EIXOS_ORLAGEM",
+        codigo="CNC_5_EIXOS",
         custo_hora=_D("90"),
         custo_hora_serie=_D("90"),
+        preco_furo_std=_D("0.15"),
+        preco_furo_serie=_D("0.11"),
+    ),
+    TarifaMaquinaReal(
+        codigo="REVESTIMENTO_SANDWICH",
+        preco_m2_face_std=_D("3.25"),
+        preco_m2_face_serie=_D("3.25"),
     ),
     TarifaMaquinaReal(
         codigo="MANUAL",

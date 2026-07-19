@@ -32,6 +32,13 @@ class CriarDefMaquinaData:
     limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
+    permite_furacao: bool = False
+    permite_pocket: bool = False
+    permite_escaloes_area: bool = False
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
 
@@ -58,6 +65,13 @@ class EditarDefMaquinaData:
     limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
+    permite_furacao: bool = False
+    permite_pocket: bool = False
+    permite_escaloes_area: bool = False
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
 
@@ -114,6 +128,13 @@ class DefMaquinaService:
             limite_lado_mm=data.limite_lado_mm,
             custo_setup_peca_std=data.custo_setup_peca_std,
             custo_setup_peca_serie=data.custo_setup_peca_serie,
+            permite_furacao=data.permite_furacao,
+            permite_pocket=data.permite_pocket,
+            permite_escaloes_area=data.permite_escaloes_area,
+            preco_furo_std=data.preco_furo_std,
+            preco_furo_serie=data.preco_furo_serie,
+            preco_m2_face_std=data.preco_m2_face_std,
+            preco_m2_face_serie=data.preco_m2_face_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
         )
@@ -147,6 +168,13 @@ class DefMaquinaService:
             limite_lado_mm=data.limite_lado_mm,
             custo_setup_peca_std=data.custo_setup_peca_std,
             custo_setup_peca_serie=data.custo_setup_peca_serie,
+            permite_furacao=data.permite_furacao,
+            permite_pocket=data.permite_pocket,
+            permite_escaloes_area=data.permite_escaloes_area,
+            preco_furo_std=data.preco_furo_std,
+            preco_furo_serie=data.preco_furo_serie,
+            preco_m2_face_std=data.preco_m2_face_std,
+            preco_m2_face_serie=data.preco_m2_face_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
         )

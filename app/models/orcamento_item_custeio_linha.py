@@ -206,6 +206,8 @@ class OrcamentoItemCusteioLinha(Base):
     custo_corte: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_orlagem: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_cnc: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    # €/m² per coated face of the sandwich coating machine (REVESTIMENTO).
+    custo_revestimento: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     custo_montagem_manual: Mapped[Decimal | None] = mapped_column(
         Numeric(14, 4), nullable=True
     )

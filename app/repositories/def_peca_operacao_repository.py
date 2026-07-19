@@ -30,6 +30,7 @@ class DefPecaOperacaoResumo:
     tempo_setup_minutos: Decimal | None = None
     tempo_por_unidade_minutos: Decimal | None = None
     unidade_tempo: str | None = None
+    metodo_calculo: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -79,6 +80,7 @@ class DefPecaOperacaoRepository:
         def_peca_id: int,
         def_operacao_id: int,
         ordem: int = 1,
+        metodo_calculo: str | None = None,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
         rasgo_qt_comp: int = 0,
@@ -95,6 +97,7 @@ class DefPecaOperacaoRepository:
             def_peca_id=def_peca_id,
             def_operacao_id=def_operacao_id,
             ordem=ordem,
+            metodo_calculo=metodo_calculo,
             regra_calculo=regra_calculo,
             quantidade_base=quantidade_base,
             rasgo_qt_comp=rasgo_qt_comp,
@@ -118,6 +121,7 @@ class DefPecaOperacaoRepository:
         def_peca_id: int,
         def_operacao_id: int,
         ordem: int = 1,
+        metodo_calculo: str | None = None,
         regra_calculo: str | None = None,
         quantidade_base: Decimal | None = None,
         rasgo_qt_comp: int = 0,
@@ -137,6 +141,7 @@ class DefPecaOperacaoRepository:
         ligacao.def_peca_id = def_peca_id
         ligacao.def_operacao_id = def_operacao_id
         ligacao.ordem = ordem
+        ligacao.metodo_calculo = metodo_calculo
         ligacao.regra_calculo = regra_calculo
         ligacao.quantidade_base = quantidade_base
         ligacao.rasgo_qt_comp = rasgo_qt_comp
@@ -180,6 +185,7 @@ class DefPecaOperacaoRepository:
             def_peca_id=ligacao.def_peca_id,
             def_operacao_id=ligacao.def_operacao_id,
             ordem=ligacao.ordem,
+            metodo_calculo=ligacao.metodo_calculo,
             regra_calculo=ligacao.regra_calculo,
             quantidade_base=ligacao.quantidade_base,
             rasgo_qt_comp=ligacao.rasgo_qt_comp,

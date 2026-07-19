@@ -11,11 +11,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,12 +31,10 @@ class DefPecaOperacao(Base):
     """Operation associated with one piece definition."""
 
     __tablename__ = "def_peca_operacoes"
+    # Non-unique: the new CNC model allows several method lines of the SAME
+    # operation on one piece (e.g. drilling + groove on the same machine).
     __table_args__ = (
-        UniqueConstraint(
-            "def_peca_id",
-            "def_operacao_id",
-            name="uq_def_peca_operacoes_peca_operacao",
-        ),
+        Index("ix_def_peca_operacoes_peca_operacao", "def_peca_id", "def_operacao_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -53,6 +51,9 @@ class DefPecaOperacao(Base):
         index=True,
     )
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    # Calculation method of a CNC/coating link (metodo_calculo_types). NULL on
+    # non-CNC operations and on legacy rows (resolved by the legado heuristic).
+    metodo_calculo: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     rasgo_qt_comp: Mapped[int] = mapped_column(
