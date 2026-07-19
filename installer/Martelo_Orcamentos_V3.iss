@@ -38,8 +38,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 
-#if FileExists("..\icons\martelo.ico")
-SetupIconFile=..\icons\martelo.ico
+#if FileExists("..\icons\icon_le.ico")
+SetupIconFile=..\icons\icon_le.ico
 #endif
 UninstallDisplayIcon={app}\{#AppExeName}
 

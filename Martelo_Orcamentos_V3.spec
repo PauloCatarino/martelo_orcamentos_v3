@@ -16,7 +16,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(".").resolve()
-ICON = ROOT / "icons" / "martelo.ico"
+ICON = ROOT / "icons" / "icon_le.ico"
 BUILD_PROFILE = os.getenv("MARTELO_BUILD_PROFILE", "lean").strip().lower() or "lean"
 
 if BUILD_PROFILE not in {"full", "lean"}:
