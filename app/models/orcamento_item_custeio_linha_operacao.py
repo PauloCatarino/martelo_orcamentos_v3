@@ -36,6 +36,7 @@ class OrcamentoItemCusteioLinhaOperacao(Base):
     )
     origem: Mapped[str] = mapped_column(String(40), nullable=False, server_default="LOCAL")
     acao: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    metodo_calculo: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     rasgo_qt_comp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

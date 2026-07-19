@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador — Custeio de Operações CNC (novo modelo)</title>
+<style>
+  :root {
+    --castanho: #5d4037;
+    --castanho-claro: #efebe9;
+    --creme: #faf6f0;
+    --borda: #d7ccc8;
+    --verde: #2e7d32;
+    --vermelho: #b00020;
+    --laranja: #b36b00;
+    --azul: #1565c0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    margin: 0; padding: 16px 24px 60px;
+    background: var(--creme); color: #333;
+    font-size: 14px;
+  }
+  h1 { font-size: 20px; color: var(--castanho); margin: 0 0 4px; }
+  .subtitulo { color: #777; margin-bottom: 16px; }
+  h2 {
+    font-size: 15px; color: var(--castanho);
+    border-bottom: 2px solid var(--borda);
+    padding-bottom: 4px; margin: 26px 0 10px;
+  }
+  table { border-collapse: collapse; width: 100%; background: #fff; }
+  th, td { border: 1px solid var(--borda); padding: 4px 8px; text-align: left; }
+  th { background: var(--castanho-claro); color: var(--castanho); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  input[type=text], input[type=number], select {
+    padding: 3px 6px; border: 1px solid var(--borda); border-radius: 4px;
+    font-size: 13px; background: #fff;
+  }
+  input.tarifa { width: 70px; text-align: right; }
+  input.dim { width: 80px; text-align: right; }
+  button {
+    padding: 5px 12px; border: 1px solid var(--borda); border-radius: 5px;
+    background: #fff; cursor: pointer; font-size: 13px;
+  }
+  button:hover { background: var(--castanho-claro); }
+  button.primario { background: var(--castanho); color: #fff; border-color: var(--castanho); }
+  button.primario:hover { background: #4e342e; }
+  button.cenario { border-color: var(--azul); color: var(--azul); }
+  button.cenario:hover { background: #e3f2fd; }
+  .cartoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 12px; }
+  details.maquina {
+    background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 8px 12px;
+  }
+  details.maquina summary { cursor: pointer; font-weight: 600; color: var(--castanho); }
+  details.maquina summary .tipo { font-weight: 400; color: #999; font-size: 12px; }
+  .capacidades label { display: inline-block; margin-right: 10px; font-size: 12.5px; }
+  .linha-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+  .linha-form label { font-size: 13px; }
+  .painel {
+    background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 12px 14px;
+  }
+  .formula { font-family: Consolas, monospace; font-size: 12.5px; color: #555; }
+  .custo { font-weight: 600; }
+  .ativo-std .col-serie, .ativo-serie .col-std { opacity: 0.45; }
+  .aviso { color: var(--laranja); font-size: 12.5px; }
+  .erro { color: var(--vermelho); font-size: 12.5px; }
+  .totais {
+    margin-top: 10px; padding: 10px 14px; background: var(--castanho-claro);
+    border-radius: 8px; display: flex; gap: 30px; align-items: center; flex-wrap: wrap;
+  }
+  .totais .valor { font-size: 18px; font-weight: 700; color: var(--castanho); }
+  .totais .modo-ativo { outline: 2px solid var(--castanho); border-radius: 6px; padding: 2px 10px; background:#fff; }
+  .totais .modo-inativo { padding: 2px 10px; opacity: .65; }
+  .nota { font-size: 12.5px; color: #777; }
+  .escaloes-mini td input { width: 64px; text-align: right; }
+  .cenarios { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    background: var(--castanho-claro); color: var(--castanho); font-size: 11.5px; margin-right: 4px;
+  }
+  .metodo-badge { background: #e3f2fd; color: var(--azul); }
+  #descricao-cenario { margin-top: 8px; font-style: italic; color: var(--verde); }
+</style>
+</head>
+<body>
+
+<h1>Simulador — Custeio de Operações CNC (novo modelo)</h1>
+<div class="subtitulo">
+  Página de validação (Fase 0) — não toca na aplicação. Regra central do novo modelo:
+  <b>escolhes a máquina → escolhes o método de cálculo → só aparecem os campos desse método</b>.
+  Todas as tarifas são editáveis abaixo; os valores por defeito vêm das tarifas atuais da aplicação
+  (€/furo é proposta a validar).
+</div>
+
+<h2>1. Máquinas, capacidades e tarifas (editável)</h2>
+<div class="nota" style="margin-bottom:8px">
+  Cada máquina declara os métodos que permite. ABD só faz furação (sem rasgo, sem pocket);
+  SANDWICH não faz pocket. Alterações aqui recalculam tudo de imediato.
+</div>
+<div class="cartoes" id="cartoes-maquinas"></div>
+
+<h2>2. Peça em análise</h2>
+<div class="painel">
+  <div class="linha-form">
+    <label>Comprimento (mm) <input class="dim" id="peca-comp" value="600"></label>
+    <label>Largura (mm) <input class="dim" id="peca-larg" value="400"></label>
+    <label>Quantidade (QT) <input class="dim" id="peca-qt" value="1"></label>
+    <label>Fator série <input class="dim" id="peca-fator" value="1,00" title="Multiplicador manual aplicado ao total de produção da linha (como na app)"></label>
+    <label>Modo de produção:
+      <select id="peca-modo">
+        <option value="STD">STD (peça única)</option>
+        <option value="SERIE">SÉRIE (lote)</option>
+      </select>
+    </label>
+    <span class="nota">Fallback: se uma tarifa SÉRIE estiver vazia, usa-se a STD (regra atual da app).</span>
+  </div>
+  <div class="nota">Área da peça: <b id="peca-area">—</b> m² &nbsp;·&nbsp; a área é sempre COMP × LARG.</div>
+</div>
+
+<h2>3. Operações da peça</h2>
+<div class="painel">
+  <div class="linha-form">
+    <label>Máquina:
+      <select id="op-maquina"></select>
+    </label>
+    <label>Método de cálculo:
+      <select id="op-metodo"></select>
+    </label>
+    <span id="op-campos"></span>
+    <button class="primario" id="op-adicionar">Adicionar operação</button>
+  </div>
+  <div class="nota" id="op-metodo-ajuda"></div>
+</div>
+
+<table id="tabela-ops" style="margin-top:10px">
+  <thead>
+    <tr>
+      <th>Máquina</th><th>Método</th><th>Parâmetros</th>
+      <th>Fórmula (modo ativo)</th>
+      <th class="num col-std">Custo STD</th>
+      <th class="num col-serie">Custo SÉRIE</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody id="tabela-ops-corpo"></tbody>
+</table>
+
+<div class="totais" id="totais"></div>
+
+<h2>4. Cenários pré-carregados</h2>
+<div class="cenarios">
+  <button class="cenario" data-cenario="dobradica">Dobradiça (3 furos/un)</button>
+  <button class="cenario" data-cenario="calha">Calha LED (rasgo ao comprimento)</button>
+  <button class="cenario" data-cenario="pocket">Pocket 4 min</button>
+  <button class="cenario" data-cenario="escalao">Peça 600×400 por escalão de área</button>
+  <button class="cenario" data-cenario="sandwich1">Painel sandwich 1 face</button>
+  <button class="cenario" data-cenario="sandwich2">Painel sandwich 2 faces</button>
+  <button class="cenario" data-cenario="furacao_rasgo">Furação + rasgo somados</button>
+  <button class="cenario" data-cenario="std_serie">STD vs SÉRIE (lote de 20)</button>
+</div>
+<div id="descricao-cenario"></div>
+
+<script>
+"use strict";
+
+/* ---------- utilitários de números PT ---------- */
+function parseNum(txt) {
+  if (txt === null || txt === undefined) return null;
+  const s = String(txt).trim().replace(/€|\s/g, "").replace(",", ".");
+  if (s === "") return null;
+  const v = Number(s);
+  return Number.isFinite(v) ? v : null;
+}
+function fmt(v, dec) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "—";
+  return v.toLocaleString("pt-PT", { minimumFractionDigits: dec ?? 2, maximumFractionDigits: dec ?? 2 });
+}
+function eur(v) { return v === null ? "—" : fmt(v) + " €"; }
+
+/* ---------- regra STD/SÉRIE (espelha escolher_tarifa da app) ---------- */
+function escolherTarifa(std, serie, usarSerie) {
+  if (usarSerie) return (serie !== null && serie !== undefined) ? serie : std;
+  return std;
+}
+
+/* ---------- estado: máquinas (valores atuais da app; €/furo = proposta) ---------- */
+const METODOS = {
+  ESCALAO_AREA: "Escalões de área",
+  TEMPO: "Tempo (minutos × custo/hora)",
+  POCKET: "Pocket (predefinição de tempo)",
+  FURACAO: "Furação (nº furos × €/furo)",
+  RASGO: "Rasgo (ML × €/ML)",
+  REVESTIMENTO: "Revestimento (m² × faces × €/m²)"
+};
+const AJUDA_METODO = {
+  ESCALAO_AREA: "Preço por peça escolhido pelo escalão onde cai a área (COMP×LARG) da peça. Sem campos a preencher.",
+  TEMPO: "Custo = (setup + minutos/unidade × nº unidades × QT) ÷ 60 × custo/hora da máquina.",
+  POCKET: "Igual ao método TEMPO, com minutos pré-preenchidos — típico para pockets/fresagens de bolsa.",
+  FURACAO: "Custo = nº furos por unidade × QT × €/furo da máquina. Ex.: dobradiça com 3 furos.",
+  RASGO: "ML geométrico = (nº comprimentos × COMP + nº larguras × LARG) ÷ 1000. Custo = ML × QT × €/ML de rasgo.",
+  REVESTIMENTO: "Custo = área (m²) × nº de faces × QT × €/m² por face."
+};
+
+const escaloesDefault = () => ([
+  { areaMax: 0.25, std: 1.20, serie: 0.90 },
+  { areaMax: 0.50, std: 1.80, serie: 1.35 },
+  { areaMax: 1.00, std: 2.60, serie: 1.95 },
+  { areaMax: 2.00, std: 3.80, serie: 2.85 },
+  { areaMax: null, std: 5.50, serie: 4.10 },
+]);
+
+const maquinas = [
+  {
+    codigo: "CNC_ABD", nome: "CNC ABD", tipo: "CNC",
+    custoHoraStd: 30, custoHoraSerie: 30,
+    furoStd: 0.10, furoSerie: 0.07,
+    rasgoStd: null, rasgoSerie: null,
+    faceStd: null, faceSerie: null,
+    permiteEscaloes: true, permiteFuracao: true, permiteRasgos: false, permitePocket: false,
+    escaloes: escaloesDefault(),
+  },
+  {
+    codigo: "CNC_VERTICAL", nome: "CNC Vertical", tipo: "CNC",
+    custoHoraStd: 60, custoHoraSerie: 60,
+    furoStd: 0.12, furoSerie: 0.09,
+    rasgoStd: 0.40, rasgoSerie: 0.30,
+    faceStd: null, faceSerie: null,
+    permiteEscaloes: true, permiteFuracao: true, permiteRasgos: true, permitePocket: true,
+    escaloes: escaloesDefault(),
+  },
+  {
+    codigo: "CNC_SANDWICH", nome: "CNC Sandwich (ex-Horizontal)", tipo: "CNC",
+    custoHoraStd: 60, custoHoraSerie: 60,
+    furoStd: 0.10, furoSerie: 0.06,
+    rasgoStd: 0.15, rasgoSerie: 0.10,
+    faceStd: null, faceSerie: null,
+    permiteEscaloes: true, permiteFuracao: true, permiteRasgos: true, permitePocket: false,
+    escaloes: escaloesDefault(),
+  },
+  {
+    codigo: "CNC_5_EIXOS", nome: "CNC 5 Eixos / Orlagem", tipo: "CNC",
+    custoHoraStd: 90, custoHoraSerie: 90,
+    furoStd: 0.15, furoSerie: 0.11,
+    rasgoStd: 0.20, rasgoSerie: 0.15,
+    faceStd: null, faceSerie: null,
+    permiteEscaloes: true, permiteFuracao: true, permiteRasgos: true, permitePocket: true,
+    escaloes: escaloesDefault(),
+  },
+  {
+    codigo: "REVESTIMENTO_SANDWICH", nome: "Revestimento Sandwich", tipo: "REVESTIMENTO",
+    custoHoraStd: null, custoHoraSerie: null,
+    furoStd: null, furoSerie: null,
+    rasgoStd: null, rasgoSerie: null,
+    faceStd: 3.25, faceSerie: 3.25,
+    permiteEscaloes: false, permiteFuracao: false, permiteRasgos: false, permitePocket: false,
+    escaloes: [],
+  },
+];
+
+function metodosDaMaquina(m) {
+  if (m.tipo === "REVESTIMENTO") return ["REVESTIMENTO"];
+  const lista = [];
+  if (m.permiteEscaloes) lista.push("ESCALAO_AREA");
+  lista.push("TEMPO");
+  if (m.permitePocket) lista.push("POCKET");
+  if (m.permiteFuracao) lista.push("FURACAO");
+  if (m.permiteRasgos) lista.push("RASGO");
+  return lista;
+}
+
+/* ---------- estado: operações da peça ---------- */
+let operacoes = []; // {maquina, metodo, params:{...}}
+
+/* ---------- cálculo (espelha 1:1 as funções planeadas para o motor) ---------- */
+function selecionarEscalao(escaloes, areaM2) {
+  for (const e of escaloes) {
+    if (e.areaMax === null || areaM2 <= e.areaMax) return e;
+  }
+  return null;
+}
+
+function calcularOperacao(op, peca, usarSerie) {
+  const m = op.maquina;
+  const r = { custo: null, formula: "", aviso: null };
+  const qt = peca.qt;
+
+  if (op.metodo === "ESCALAO_AREA") {
+    const esc = selecionarEscalao(m.escaloes, peca.areaM2);
+    if (!esc) { r.aviso = "Sem escalões de área configurados na máquina."; return r; }
+    const preco = escolherTarifa(esc.std, esc.serie, usarSerie);
+    if (preco === null) { r.aviso = "Escalão sem preço."; return r; }
+    r.custo = preco * qt;
+    const lim = esc.areaMax === null ? "sem limite" : "até " + fmt(esc.areaMax) + " m²";
+    r.formula = `área ${fmt(peca.areaM2, 3)} m² → escalão ${lim}: ${fmt(preco)} €/peça × ${qt} un = ${fmt(r.custo)} €`;
+    return r;
+  }
+
+  if (op.metodo === "TEMPO" || op.metodo === "POCKET") {
+    const ch = escolherTarifa(m.custoHoraStd, m.custoHoraSerie, usarSerie);
+    if (ch === null) { r.aviso = "Máquina sem custo/hora."; return r; }
+    const setup = op.params.setupMin || 0;
+    const minUn = op.params.minPorUnidade || 0;
+    const unidades = op.params.unidades || 1;
+    const tempoTotal = setup + minUn * unidades * qt;
+    r.custo = tempoTotal / 60 * ch;
+    r.formula = `(${fmt(setup, 1)} min setup + ${fmt(minUn, 1)} min × ${unidades} un × ${qt} QT) = ${fmt(tempoTotal, 1)} min ÷ 60 × ${fmt(ch)} €/h = ${fmt(r.custo)} €`;
+    return r;
+  }
+
+  if (op.metodo === "FURACAO") {
+    const pf = escolherTarifa(m.furoStd, m.furoSerie, usarSerie);
+    if (pf === null) { r.aviso = "Máquina sem tarifa €/furo."; return r; }
+    const furos = op.params.furosPorUnidade || 0;
+    if (furos <= 0) { r.aviso = "Indica o nº de furos por unidade."; return r; }
+    r.custo = furos * qt * pf;
+    r.formula = `${furos} furos/un × ${qt} un × ${fmt(pf)} €/furo = ${fmt(r.custo)} €`;
+    return r;
+  }
+
+  if (op.metodo === "RASGO") {
+    const pr = escolherTarifa(m.rasgoStd, m.rasgoSerie, usarSerie);
+    if (pr === null) { r.aviso = "Máquina sem tarifa €/ML de rasgo."; return r; }
+    const nc = op.params.nComp || 0, nl = op.params.nLarg || 0;
+    if (nc + nl <= 0) { r.aviso = "Indica pelo menos 1 rasgo (comprimento ou largura)."; return r; }
+    const ml = (nc * peca.comp + nl * peca.larg) / 1000;
+    r.custo = ml * qt * pr;
+    r.formula = `(${nc} × ${fmt(peca.comp, 0)} + ${nl} × ${fmt(peca.larg, 0)}) ÷ 1000 = ${fmt(ml, 2)} ML × ${qt} un × ${fmt(pr)} €/ML = ${fmt(r.custo)} €`;
+    return r;
+  }
+
+  if (op.metodo === "REVESTIMENTO") {
+    const pm = escolherTarifa(m.faceStd, m.faceSerie, usarSerie);
+    if (pm === null) { r.aviso = "Máquina sem tarifa €/m² por face."; return r; }
+    const faces = op.params.faces || 1;
+    r.custo = peca.areaM2 * faces * qt * pm;
+    r.formula = `${fmt(peca.areaM2, 3)} m² × ${faces} face(s) × ${qt} un × ${fmt(pm)} €/m² = ${fmt(r.custo)} €`;
+    return r;
+  }
+
+  r.aviso = "Método desconhecido.";
+  return r;
+}
+
+/* ---------- leitura da peça ---------- */
+function lerPeca() {
+  const comp = parseNum(document.getElementById("peca-comp").value) || 0;
+  const larg = parseNum(document.getElementById("peca-larg").value) || 0;
+  const qt = Math.max(1, Math.round(parseNum(document.getElementById("peca-qt").value) || 1));
+  const fator = parseNum(document.getElementById("peca-fator").value) ?? 1;
+  return { comp, larg, qt, fator, areaM2: comp * larg / 1e6 };
+}
+
+/* ---------- render: máquinas ---------- */
+function tarifaInput(m, campo, sufixo) {
+  const v = m[campo];
+  return `<input class="tarifa" data-maquina="${m.codigo}" data-campo="${campo}" value="${v === null ? "" : fmt(v, 2)}" placeholder="—"> ${sufixo}`;
+}
+
+function renderMaquinas() {
+  const alvo = document.getElementById("cartoes-maquinas");
+  alvo.innerHTML = "";
+  for (const m of maquinas) {
+    const d = document.createElement("details");
+    d.className = "maquina";
+    d.open = true;
+    let html = `<summary>${m.nome} <span class="tipo">(${m.codigo} · ${m.tipo})</span></summary>`;
+
+    if (m.tipo === "CNC") {
+      html += `<div class="capacidades" style="margin:6px 0">
+        <label><input type="checkbox" data-maquina="${m.codigo}" data-flag="permiteEscaloes" ${m.permiteEscaloes ? "checked" : ""}> Escalões de área</label>
+        <label><input type="checkbox" data-maquina="${m.codigo}" data-flag="permiteFuracao" ${m.permiteFuracao ? "checked" : ""}> Furação</label>
+        <label><input type="checkbox" data-maquina="${m.codigo}" data-flag="permiteRasgos" ${m.permiteRasgos ? "checked" : ""}> Rasgos</label>
+        <label><input type="checkbox" data-maquina="${m.codigo}" data-flag="permitePocket" ${m.permitePocket ? "checked" : ""}> Pocket</label>
+      </div>
+      <table class="escaloes-mini"><tr>
+        <td>Custo/hora</td><td>${tarifaInput(m, "custoHoraStd", "€/h STD")}</td><td>${tarifaInput(m, "custoHoraSerie", "€/h SÉRIE")}</td></tr>
+        <tr><td>Furo</td><td>${tarifaInput(m, "furoStd", "€/furo STD")}</td><td>${tarifaInput(m, "furoSerie", "€/furo SÉRIE")}</td></tr>
+        <tr><td>Rasgo</td><td>${tarifaInput(m, "rasgoStd", "€/ML STD")}</td><td>${tarifaInput(m, "rasgoSerie", "€/ML SÉRIE")}</td></tr>
+      </table>`;
+      html += `<div style="margin-top:6px"><b style="font-size:12.5px">Escalões de área (€/peça):</b>
+        <table class="escaloes-mini"><tr><th>Área máx. (m²)</th><th>STD</th><th>SÉRIE</th></tr>`;
+      m.escaloes.forEach((e, i) => {
+        html += `<tr>
+          <td><input data-maquina="${m.codigo}" data-escalao="${i}" data-ecampo="areaMax" value="${e.areaMax === null ? "" : fmt(e.areaMax)}" placeholder="sem limite"></td>
+          <td><input data-maquina="${m.codigo}" data-escalao="${i}" data-ecampo="std" value="${fmt(e.std)}"></td>
+          <td><input data-maquina="${m.codigo}" data-escalao="${i}" data-ecampo="serie" value="${fmt(e.serie)}"></td>
+        </tr>`;
+      });
+      html += `</table></div>`;
+    } else {
+      html += `<table class="escaloes-mini" style="margin-top:6px"><tr>
+        <td>Tarifa por face</td><td>${tarifaInput(m, "faceStd", "€/m² STD")}</td><td>${tarifaInput(m, "faceSerie", "€/m² SÉRIE")}</td></tr>
+      </table>
+      <div class="nota" style="margin-top:4px">Reveste painéis em 1 ou 2 faces; a tarifa é por face revestida.</div>`;
+    }
+    d.innerHTML = html;
+    alvo.appendChild(d);
+  }
+}
+
+/* ---------- render: formulário de nova operação ---------- */
+function maquinaPorCodigo(c) { return maquinas.find(m => m.codigo === c); }
+
+function renderSelectMaquinas() {
+  const sel = document.getElementById("op-maquina");
+  sel.innerHTML = maquinas.map(m => `<option value="${m.codigo}">${m.nome}</option>`).join("");
+}
+
+function renderSelectMetodos() {
+  const m = maquinaPorCodigo(document.getElementById("op-maquina").value);
+  const sel = document.getElementById("op-metodo");
+  const atual = sel.value;
+  const lista = metodosDaMaquina(m);
+  sel.innerHTML = lista.map(k => `<option value="${k}">${METODOS[k]}</option>`).join("");
+  if (lista.includes(atual)) sel.value = atual;
+  renderCamposMetodo();
+}
+
+function renderCamposMetodo() {
+  const metodo = document.getElementById("op-metodo").value;
+  const span = document.getElementById("op-campos");
+  document.getElementById("op-metodo-ajuda").textContent = AJUDA_METODO[metodo] || "";
+  if (metodo === "ESCALAO_AREA") {
+    span.innerHTML = `<span class="nota">— sem campos: usa a área da peça —</span>`;
+  } else if (metodo === "TEMPO" || metodo === "POCKET") {
+    const minDefault = metodo === "POCKET" ? "4,0" : "1,0";
+    span.innerHTML = `
+      <label>Setup (min) <input class="dim" id="campo-setup" value="0,0"></label>
+      <label>Min/unidade <input class="dim" id="campo-min" value="${minDefault}"></label>
+      <label>Nº unidades <input class="dim" id="campo-unidades" value="1"></label>`;
+  } else if (metodo === "FURACAO") {
+    span.innerHTML = `<label>Furos por unidade <input class="dim" id="campo-furos" value="3"></label>`;
+  } else if (metodo === "RASGO") {
+    span.innerHTML = `
+      <label>Nº rasgos ao comprimento <input class="dim" id="campo-ncomp" value="1"></label>
+      <label>Nº rasgos à largura <input class="dim" id="campo-nlarg" value="0"></label>`;
+  } else if (metodo === "REVESTIMENTO") {
+    span.innerHTML = `<label>Nº de faces
+      <select id="campo-faces"><option value="1">1 face</option><option value="2" selected>2 faces</option></select></label>`;
+  }
+}
+
+function lerParamsFormulario(metodo) {
+  const g = id => { const el = document.getElementById(id); return el ? parseNum(el.value) : null; };
+  if (metodo === "TEMPO" || metodo === "POCKET")
+    return { setupMin: g("campo-setup") || 0, minPorUnidade: g("campo-min") || 0, unidades: Math.max(1, Math.round(g("campo-unidades") || 1)) };
+  if (metodo === "FURACAO") return { furosPorUnidade: Math.max(0, Math.round(g("campo-furos") || 0)) };
+  if (metodo === "RASGO") return { nComp: Math.max(0, Math.round(g("campo-ncomp") || 0)), nLarg: Math.max(0, Math.round(g("campo-nlarg") || 0)) };
+  if (metodo === "REVESTIMENTO") { const el = document.getElementById("campo-faces"); return { faces: el ? Number(el.value) : 2 }; }
+  return {};
+}
+
+function paramsTexto(op) {
+  const p = op.params;
+  switch (op.metodo) {
+    case "ESCALAO_AREA": return "área da peça";
+    case "TEMPO": case "POCKET": return `setup ${fmt(p.setupMin, 1)} min · ${fmt(p.minPorUnidade, 1)} min/un · ${p.unidades} un`;
+    case "FURACAO": return `${p.furosPorUnidade} furos/un`;
+    case "RASGO": return `${p.nComp}× comprimento, ${p.nLarg}× largura`;
+    case "REVESTIMENTO": return `${p.faces} face(s)`;
+  }
+  return "";
+}
+
+/* ---------- render: tabela de operações + totais ---------- */
+function renderOperacoes() {
+  const peca = lerPeca();
+  document.getElementById("peca-area").textContent = fmt(peca.areaM2, 3);
+  const usarSerieAtivo = document.getElementById("peca-modo").value === "SERIE";
+  const tabela = document.getElementById("tabela-ops");
+  tabela.className = usarSerieAtivo ? "ativo-serie" : "ativo-std";
+
+  const corpo = document.getElementById("tabela-ops-corpo");
+  corpo.innerHTML = "";
+  let totalStd = 0, totalSerie = 0, temCusto = false;
+
+  operacoes.forEach((op, i) => {
+    const rStd = calcularOperacao(op, peca, false);
+    const rSerie = calcularOperacao(op, peca, true);
+    const rAtivo = usarSerieAtivo ? rSerie : rStd;
+    if (rStd.custo !== null) { totalStd += rStd.custo; temCusto = true; }
+    if (rSerie.custo !== null) { totalSerie += rSerie.custo; temCusto = true; }
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${op.maquina.nome}</td>
+      <td><span class="badge metodo-badge">${METODOS[op.metodo]}</span></td>
+      <td>${paramsTexto(op)}</td>
+      <td class="formula">${rAtivo.aviso ? `<span class="erro">${rAtivo.aviso}</span>` : rAtivo.formula}</td>
+      <td class="num custo col-std">${eur(rStd.custo)}</td>
+      <td class="num custo col-serie">${eur(rSerie.custo)}</td>
+      <td><button data-remover="${i}" title="Remover operação">✕</button></td>`;
+    corpo.appendChild(tr);
+  });
+
+  if (operacoes.length === 0) {
+    corpo.innerHTML = `<tr><td colspan="7" class="nota">Sem operações — adiciona acima ou escolhe um cenário.</td></tr>`;
+  }
+
+  const fator = peca.fator ?? 1;
+  const tStd = temCusto ? totalStd * fator : null;
+  const tSerie = temCusto ? totalSerie * fator : null;
+  const fatorTxt = fator !== 1 ? ` <span class="nota">(× fator série ${fmt(fator)})</span>` : "";
+  document.getElementById("totais").innerHTML = `
+    <span class="${usarSerieAtivo ? "modo-inativo" : "modo-ativo"}">Total STD: <span class="valor">${eur(tStd)}</span></span>
+    <span class="${usarSerieAtivo ? "modo-ativo" : "modo-inativo"}">Total SÉRIE: <span class="valor">${eur(tSerie)}</span></span>
+    <span class="nota">QT = ${peca.qt} un${fatorTxt} · os dois totais são sempre visíveis para comparação.</span>`;
+}
+
+/* ---------- cenários ---------- */
+const CENARIOS = {
+  dobradica: {
+    descricao: "Porta com 4 dobradiças (QT=4 unidades de ferragem), cada dobradiça exige 3 furos na CNC ABD. Custo = 3 × 4 × €/furo. É o caso 'operação de CNC associada à ferragem dobradiça no ValueSet'.",
+    peca: { comp: 700, larg: 450, qt: 4, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "CNC_ABD", metodo: "FURACAO", params: { furosPorUnidade: 3 } }],
+  },
+  calha: {
+    descricao: "Calha LED embutida: 1 rasgo ao longo do comprimento da peça (1200 mm) na CNC Vertical. ML = 1 × 1200 ÷ 1000 = 1,20 ML × €/ML de rasgo.",
+    peca: { comp: 1200, larg: 80, qt: 1, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "CNC_VERTICAL", metodo: "RASGO", params: { nComp: 1, nLarg: 0 } }],
+  },
+  pocket: {
+    descricao: "Pocket de 4 minutos na CNC Vertical (predefinição de TEMPO): 4 min ÷ 60 × 60 €/h = 4,00 € por peça.",
+    peca: { comp: 500, larg: 300, qt: 1, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "CNC_VERTICAL", metodo: "POCKET", params: { setupMin: 0, minPorUnidade: 4, unidades: 1 } }],
+  },
+  escalao: {
+    descricao: "Peça 600×400 (0,240 m²) custeada por escalão de área na CNC Vertical: cai no escalão 'até 0,25 m²' → preço por peça do escalão × QT.",
+    peca: { comp: 600, larg: 400, qt: 10, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "CNC_VERTICAL", metodo: "ESCALAO_AREA", params: {} }],
+  },
+  sandwich1: {
+    descricao: "Painel sandwich 2000×1000 revestido numa só face (PAINEL_SANDWICH_1F): 2,000 m² × 1 face × 3,25 €/m² = 6,50 €. O material das faces/núcleo entra pelos componentes associados, não por aqui.",
+    peca: { comp: 2000, larg: 1000, qt: 1, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "REVESTIMENTO_SANDWICH", metodo: "REVESTIMENTO", params: { faces: 1 } }],
+  },
+  sandwich2: {
+    descricao: "Painel sandwich 2000×1000 revestido nas 2 faces (PAINEL_SANDWICH_2F): 2,000 m² × 2 faces × 3,25 €/m² = 13,00 €.",
+    peca: { comp: 2000, larg: 1000, qt: 1, fator: "1,00", modo: "STD" },
+    ops: [{ maquina: "REVESTIMENTO_SANDWICH", metodo: "REVESTIMENTO", params: { faces: 2 } }],
+  },
+  furacao_rasgo: {
+    descricao: "A mesma peça com DUAS operações CNC somadas (novo modelo permite várias linhas): furação 8 furos + 1 rasgo à largura, ambas na CNC Vertical.",
+    peca: { comp: 800, larg: 600, qt: 2, fator: "1,00", modo: "STD" },
+    ops: [
+      { maquina: "CNC_VERTICAL", metodo: "FURACAO", params: { furosPorUnidade: 8 } },
+      { maquina: "CNC_VERTICAL", metodo: "RASGO", params: { nComp: 0, nLarg: 1 } },
+    ],
+  },
+  std_serie: {
+    descricao: "Lote de 20 peças com escalão de área + furação na CNC Sandwich: compara os totais STD e SÉRIE lado a lado (modo ativo = SÉRIE; nota o fallback SÉRIE→STD quando a tarifa SÉRIE está vazia).",
+    peca: { comp: 600, larg: 400, qt: 20, fator: "1,00", modo: "SERIE" },
+    ops: [
+      { maquina: "CNC_SANDWICH", metodo: "ESCALAO_AREA", params: {} },
+      { maquina: "CNC_SANDWICH", metodo: "FURACAO", params: { furosPorUnidade: 6 } },
+    ],
+  },
+};
+
+function aplicarCenario(nome) {
+  const c = CENARIOS[nome];
+  if (!c) return;
+  document.getElementById("peca-comp").value = fmt(c.peca.comp, 0);
+  document.getElementById("peca-larg").value = fmt(c.peca.larg, 0);
+  document.getElementById("peca-qt").value = String(c.peca.qt);
+  document.getElementById("peca-fator").value = c.peca.fator;
+  document.getElementById("peca-modo").value = c.peca.modo;
+  operacoes = c.ops.map(o => ({ maquina: maquinaPorCodigo(o.maquina), metodo: o.metodo, params: { ...o.params } }));
+  document.getElementById("descricao-cenario").textContent = "Cenário carregado: " + c.descricao;
+  renderOperacoes();
+}
+
+/* ---------- eventos ---------- */
+document.addEventListener("input", ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.maquina) {
+    const m = maquinaPorCodigo(t.dataset.maquina);
+    if (t.dataset.campo) m[t.dataset.campo] = parseNum(t.value);
+    if (t.dataset.flag !== undefined && t.type === "checkbox") { m[t.dataset.flag] = t.checked; renderSelectMetodos(); }
+    if (t.dataset.escalao !== undefined && t.dataset.ecampo) {
+      const e = m.escaloes[Number(t.dataset.escalao)];
+      e[t.dataset.ecampo] = parseNum(t.value);
+    }
+    renderOperacoes();
+    return;
+  }
+  if (["peca-comp", "peca-larg", "peca-qt", "peca-fator"].includes(t.id)) renderOperacoes();
+});
+document.getElementById("peca-modo").addEventListener("change", renderOperacoes);
+document.getElementById("op-maquina").addEventListener("change", renderSelectMetodos);
+document.getElementById("op-metodo").addEventListener("change", renderCamposMetodo);
+document.getElementById("op-adicionar").addEventListener("click", () => {
+  const m = maquinaPorCodigo(document.getElementById("op-maquina").value);
+  const metodo = document.getElementById("op-metodo").value;
+  operacoes.push({ maquina: m, metodo, params: lerParamsFormulario(metodo) });
+  document.getElementById("descricao-cenario").textContent = "";
+  renderOperacoes();
+});
+document.getElementById("tabela-ops-corpo").addEventListener("click", ev => {
+  const b = ev.target.closest("button[data-remover]");
+  if (b) { operacoes.splice(Number(b.dataset.remover), 1); renderOperacoes(); }
+});
+document.querySelectorAll("button[data-cenario]").forEach(b =>
+  b.addEventListener("click", () => aplicarCenario(b.dataset.cenario)));
+
+/* ---------- arranque ---------- */
+renderMaquinas();
+renderSelectMaquinas();
+renderSelectMetodos();
+aplicarCenario("escalao");
+</script>
+</body>
+</html>

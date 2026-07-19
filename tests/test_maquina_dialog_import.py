@@ -42,7 +42,15 @@ def test_maquina_dialog_data_fields() -> None:
 def test_maquina_dialog_tipo_options() -> None:
     from app.ui.dialogs.maquina_dialog import TIPO_OPCOES
 
-    assert TIPO_OPCOES == ("CORTE", "ORLAGEM", "CNC", "MONTAGEM", "MANUAL", "OUTRO")
+    assert TIPO_OPCOES == (
+        "CORTE",
+        "ORLAGEM",
+        "CNC",
+        "REVESTIMENTO",
+        "MONTAGEM",
+        "MANUAL",
+        "OUTRO",
+    )
 
 
 def test_maquina_dialog_uses_combobox_for_tipo() -> None:
@@ -86,6 +94,26 @@ def test_maquina_dialog_tem_tarifas_std_serie() -> None:
     assert "QDoubleSpinBox" in MaquinaDialog._criar_spin.__code__.co_names
     for sufixo in ("€/H", "€/ML", "€/lado", "mm", "€/peça"):
         assert sufixo in init
+
+
+def test_maquina_dialog_tem_capacidades_e_tarifas_cnc_novas() -> None:
+    from app.ui.dialogs.maquina_dialog import MaquinaDialog, MaquinaDialogData
+
+    campos = {f.name for f in dataclasses.fields(MaquinaDialogData)}
+    assert {
+        "permite_furacao",
+        "permite_pocket",
+        "permite_escaloes_area",
+        "preco_furo_std",
+        "preco_furo_serie",
+        "preco_m2_face_std",
+        "preco_m2_face_serie",
+    } <= campos
+
+    init = inspect.getsource(MaquinaDialog.__init__)
+    visibilidade = inspect.getsource(MaquinaDialog._update_tarifas_visiveis)
+    assert "REVESTIMENTO" in visibilidade
+    assert "Furação (€/furo)" in init
 
 
 def test_maquina_dialog_adapta_campos_ao_tipo() -> None:

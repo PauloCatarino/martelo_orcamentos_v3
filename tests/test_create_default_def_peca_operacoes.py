@@ -56,11 +56,11 @@ def test_rules_are_valid() -> None:
 def test_porta_operacoes() -> None:
     porta = {seed.operacao_codigo: seed for seed in _by_codigo()["PORTA"]}
 
-    assert set(porta) == {"CORTE_PAINEL", "ORLAGEM_PECA", "CNC_MECANIZACAO"}
+    assert set(porta) == {"CORTE_PAINEL", "ORLAGEM_PECA", "CNC_VERTICAL"}
     assert porta["CORTE_PAINEL"].ordem == 1
     assert porta["CORTE_PAINEL"].regra_calculo == "POR_PECA"
     assert porta["ORLAGEM_PECA"].regra_calculo == "POR_ORLAS"
-    assert porta["CNC_MECANIZACAO"].regra_calculo == "POR_FURACAO"
+    assert porta["CNC_VERTICAL"].metodo_calculo == "ESCALAO_AREA"
 
 
 def test_costa_has_only_corte() -> None:

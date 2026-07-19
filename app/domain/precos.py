@@ -78,6 +78,7 @@ class BlocosCusto:
     parcela_corte: Decimal = _ZERO
     parcela_orlagem: Decimal = _ZERO
     parcela_cnc: Decimal = _ZERO
+    parcela_revestimento: Decimal = _ZERO
     parcela_montagem_manual: Decimal = _ZERO
 
     @property
@@ -110,6 +111,7 @@ def blocos_custo_da_linha(
     custo_corte=None,
     custo_orlagem=None,
     custo_cnc=None,
+    custo_revestimento=None,
     custo_montagem_manual=None,
     fator_serie=None,
     excluir_mp: bool = False,
@@ -151,6 +153,7 @@ def blocos_custo_da_linha(
         parcela_corte=parcela(excluir_producao, custo_corte) * fator,
         parcela_orlagem=parcela(excluir_producao, custo_orlagem) * fator,
         parcela_cnc=parcela(excluir_producao, custo_cnc) * fator,
+        parcela_revestimento=parcela(excluir_producao, custo_revestimento) * fator,
         parcela_montagem_manual=parcela(excluir_producao, custo_montagem_manual)
         * fator,
     )
@@ -168,6 +171,7 @@ def somar_blocos_custo(blocos) -> BlocosCusto:
         "parcela_corte": _ZERO,
         "parcela_orlagem": _ZERO,
         "parcela_cnc": _ZERO,
+        "parcela_revestimento": _ZERO,
         "parcela_montagem_manual": _ZERO,
     }
     for bloco in blocos:

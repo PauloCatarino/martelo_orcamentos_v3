@@ -55,11 +55,13 @@ def test_model_foreign_keys_unique_and_cascade() -> None:
     )
     assert linha_fk.ondelete == "CASCADE"
 
-    unique_columns: set[str] = set()
+    # New CNC model: no unique constraint (several method links allowed);
+    # a plain composite index replaces it.
     for constraint in table.constraints:
-        if constraint.__class__.__name__ == "UniqueConstraint":
-            unique_columns |= {column.name for column in constraint.columns}
-    assert {"orcamento_valueset_linha_id", "def_operacao_id"} <= unique_columns
+        assert constraint.__class__.__name__ != "UniqueConstraint"
+    indexed = {tuple(c.name for c in index.columns) for index in table.indexes}
+    assert ("orcamento_valueset_linha_id", "def_operacao_id") in indexed
+    assert ("metodo_calculo",) in indexed
 
 
 def test_linha_has_operacoes_relationship_with_delete_orphan() -> None:

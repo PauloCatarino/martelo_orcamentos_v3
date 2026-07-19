@@ -46,14 +46,19 @@ TARIFAS_PRODUCAO: dict[str, dict[str, Decimal]] = {
 }
 
 # CNC area tiers: (nivel, area_max_m2 [None = no limit], preco_std, preco_serie).
+_ESCALOES_EXEMPLO: list[tuple[int, Decimal | None, Decimal, Decimal]] = [
+    (1, _D("0.25"), _D("1.20"), _D("0.90")),
+    (2, _D("0.50"), _D("1.80"), _D("1.35")),
+    (3, _D("1.00"), _D("2.60"), _D("1.95")),
+    (4, _D("2.00"), _D("3.80"), _D("2.85")),
+    (5, None, _D("5.50"), _D("4.10")),
+]
+
 ESCALOES_CNC: dict[str, list[tuple[int, Decimal | None, Decimal, Decimal]]] = {
-    "CNC_VERTICAL": [
-        (1, _D("0.25"), _D("1.20"), _D("0.90")),
-        (2, _D("0.50"), _D("1.80"), _D("1.35")),
-        (3, _D("1.00"), _D("2.60"), _D("1.95")),
-        (4, _D("2.00"), _D("3.80"), _D("2.85")),
-        (5, None, _D("5.50"), _D("4.10")),
-    ],
+    "CNC_ABD": list(_ESCALOES_EXEMPLO),
+    "CNC_VERTICAL": list(_ESCALOES_EXEMPLO),
+    "CNC_SANDWICH": list(_ESCALOES_EXEMPLO),
+    "CNC_5_EIXOS": list(_ESCALOES_EXEMPLO),
 }
 
 # Machines whose SERIE hourly rate is seeded from STD * factor (only when empty).

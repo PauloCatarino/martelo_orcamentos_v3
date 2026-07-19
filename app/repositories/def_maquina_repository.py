@@ -37,6 +37,13 @@ class DefMaquinaResumo:
     limite_lado_mm: Decimal | None = None
     custo_setup_peca_std: Decimal | None = None
     custo_setup_peca_serie: Decimal | None = None
+    permite_furacao: bool = False
+    permite_pocket: bool = False
+    permite_escaloes_area: bool = False
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -103,6 +110,13 @@ class DefMaquinaRepository:
         limite_lado_mm: Decimal | None = None,
         custo_setup_peca_std: Decimal | None = None,
         custo_setup_peca_serie: Decimal | None = None,
+        permite_furacao: bool = False,
+        permite_pocket: bool = False,
+        permite_escaloes_area: bool = False,
+        preco_furo_std: Decimal | None = None,
+        preco_furo_serie: Decimal | None = None,
+        preco_m2_face_std: Decimal | None = None,
+        preco_m2_face_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
     ) -> DefMaquinaResumo:
@@ -126,6 +140,13 @@ class DefMaquinaRepository:
             limite_lado_mm=limite_lado_mm,
             custo_setup_peca_std=custo_setup_peca_std,
             custo_setup_peca_serie=custo_setup_peca_serie,
+            permite_furacao=permite_furacao,
+            permite_pocket=permite_pocket,
+            permite_escaloes_area=permite_escaloes_area,
+            preco_furo_std=preco_furo_std,
+            preco_furo_serie=preco_furo_serie,
+            preco_m2_face_std=preco_m2_face_std,
+            preco_m2_face_serie=preco_m2_face_serie,
             ativo=ativo,
             observacoes=observacoes,
         )
@@ -156,6 +177,13 @@ class DefMaquinaRepository:
         limite_lado_mm: Decimal | None = None,
         custo_setup_peca_std: Decimal | None = None,
         custo_setup_peca_serie: Decimal | None = None,
+        permite_furacao: bool = False,
+        permite_pocket: bool = False,
+        permite_escaloes_area: bool = False,
+        preco_furo_std: Decimal | None = None,
+        preco_furo_serie: Decimal | None = None,
+        preco_m2_face_std: Decimal | None = None,
+        preco_m2_face_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
     ) -> DefMaquinaResumo:
@@ -182,6 +210,13 @@ class DefMaquinaRepository:
         maquina.limite_lado_mm = limite_lado_mm
         maquina.custo_setup_peca_std = custo_setup_peca_std
         maquina.custo_setup_peca_serie = custo_setup_peca_serie
+        maquina.permite_furacao = permite_furacao
+        maquina.permite_pocket = permite_pocket
+        maquina.permite_escaloes_area = permite_escaloes_area
+        maquina.preco_furo_std = preco_furo_std
+        maquina.preco_furo_serie = preco_furo_serie
+        maquina.preco_m2_face_std = preco_m2_face_std
+        maquina.preco_m2_face_serie = preco_m2_face_serie
         maquina.ativo = ativo
         maquina.observacoes = observacoes
         self.session.flush()
@@ -232,6 +267,13 @@ class DefMaquinaRepository:
             limite_lado_mm=maquina.limite_lado_mm,
             custo_setup_peca_std=maquina.custo_setup_peca_std,
             custo_setup_peca_serie=maquina.custo_setup_peca_serie,
+            permite_furacao=maquina.permite_furacao,
+            permite_pocket=maquina.permite_pocket,
+            permite_escaloes_area=maquina.permite_escaloes_area,
+            preco_furo_std=maquina.preco_furo_std,
+            preco_furo_serie=maquina.preco_furo_serie,
+            preco_m2_face_std=maquina.preco_m2_face_std,
+            preco_m2_face_serie=maquina.preco_m2_face_serie,
             ativo=maquina.ativo,
             observacoes=maquina.observacoes,
             created_at=maquina.created_at,

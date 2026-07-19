@@ -20,6 +20,7 @@ from app.domain.custo_producao import (
     calcular_tempo_operacao,
 )
 from app.domain.medidas import normalizar_numero
+from app.domain import metodo_calculo_types as metodo_types
 from app.domain.peca_natureza_types import FERRAGEM
 from app.domain.regra_operacao_types import RASGO_CNC
 from app.domain.tempos_producao import classificar_operacao
@@ -34,6 +35,9 @@ CAMPO_UNIDADE_TEMPO = "unidade_tempo"
 MODO_TARIFA = "TARIFA"
 MODO_RASGO = "RASGO"
 MODO_TEMPO = "TEMPO"
+MODO_ESCALAO_AREA = "ESCALAO_AREA"
+MODO_FURACAO = "FURACAO"
+MODO_REVESTIMENTO = "REVESTIMENTO"
 MODO_SEM_CUSTEIO = "SEM_CUSTEIO"
 
 # Example values used only to make the mini-example concrete.
@@ -84,10 +88,39 @@ def construir_guia_operacao(
     custo_hora: Decimal | None = None,
     preco_rasgo_ml: Decimal | None = None,
     natureza_peca: str | None = None,
+    metodo_calculo: str | None = None,
+    preco_furo: Decimal | None = None,
+    preco_m2_face: Decimal | None = None,
 ) -> GuiaOperacao:
-    """Return the active formula + inactive fields for one operation link."""
-    if _eh_rasgo(codigo, regra_calculo):
+    """Return the active formula + inactive fields for one operation link.
+
+    When ``metodo_calculo`` is set (new CNC model) it drives the guide
+    directly; without it the legacy classification applies.
+    """
+    metodo = metodo_types.normalize_metodo_calculo(metodo_calculo)
+    if metodo == metodo_types.RASGO or (
+        metodo is None and _eh_rasgo(codigo, regra_calculo)
+    ):
         return _guia_rasgo(rasgo_qt_comp, rasgo_qt_larg, preco_rasgo_ml)
+    if metodo == metodo_types.FURACAO:
+        return _guia_furacao(quantidade_base, preco_furo)
+    if metodo == metodo_types.REVESTIMENTO:
+        return _guia_revestimento(quantidade_base, preco_m2_face)
+    if metodo == metodo_types.ESCALAO_AREA:
+        return _guia_escalao_area(
+            tempo_setup_minutos is not None
+            or tempo_por_unidade_minutos is not None
+        )
+    if metodo in (metodo_types.TEMPO, metodo_types.POCKET):
+        return _guia_tempo(
+            "cnc",
+            (natureza_peca or "").strip().upper() or None,
+            unidade_tempo,
+            quantidade_base,
+            tempo_setup_minutos,
+            tempo_por_unidade_minutos,
+            custo_hora,
+        )
 
     bucket = classificar_operacao(tipo_operacao, codigo)
     natureza = (natureza_peca or "").strip().upper() or None
@@ -209,6 +242,115 @@ def _guia_rasgo(
         linhas=tuple(linhas),
         campos_inativos={
             CAMPO_QUANTIDADE_BASE: motivo,
+            CAMPO_TEMPO_SETUP: motivo,
+            CAMPO_TEMPO_POR_UNIDADE: motivo,
+            CAMPO_UNIDADE_TEMPO: motivo,
+        },
+    )
+
+
+def _guia_escalao_area(tempos_preenchidos: bool) -> GuiaOperacao:
+    """Method-driven variant of the CNC tariff guide (area tiers)."""
+    motivo = (
+        "Não conta para o custo: o método 'Escalões de área' usa apenas a "
+        "área da peça e a tabela de escalões da máquina."
+    )
+    linhas = [
+        _FORMULAS_TARIFA["cnc"],
+        "As tarifas vêm dos escalões de área da máquina (STD/SÉRIE conforme "
+        "o item).",
+    ]
+    if tempos_preenchidos:
+        linhas.insert(
+            0,
+            "⚠️ ATENÇÃO: os tempos que preencheu NÃO entram no custo deste "
+            "método — para custear por minutos escolha o método 'Tempo'.",
+        )
+    return GuiaOperacao(
+        modo=MODO_ESCALAO_AREA,
+        titulo="Escalões de área: preço por peça pelo escalão da área",
+        linhas=tuple(linhas),
+        campos_inativos={
+            CAMPO_QUANTIDADE_BASE: motivo,
+            CAMPO_TEMPO_SETUP: motivo,
+            CAMPO_TEMPO_POR_UNIDADE: motivo,
+            CAMPO_UNIDADE_TEMPO: motivo,
+        },
+    )
+
+
+def _guia_furacao(
+    quantidade_base: Decimal | None, preco_furo: Decimal | None
+) -> GuiaOperacao:
+    """Guide for the FURACAO method: holes per unit × QT × €/furo."""
+    linhas = [
+        "Custo = n.º de furos por unidade × QT × €/furo da máquina.",
+        "A 'Quantidade base' é o n.º de furos por unidade (ex.: dobradiça "
+        "= 3 furos).",
+    ]
+    furos = normalizar_numero(quantidade_base)
+    preco = normalizar_numero(preco_furo)
+    if furos is not None and furos > 0:
+        exemplo = f"Ex. (QT {_fmt(_EXEMPLO_QT)}): {_fmt(furos)} furos/un × {_fmt(_EXEMPLO_QT)}"
+        if preco is not None:
+            custo = furos * _EXEMPLO_QT * preco
+            exemplo += f" × {_fmt(preco)} €/furo = {_fmt_euros(custo)}"
+        else:
+            exemplo += " (máquina sem €/furo definido → sem custo)"
+        linhas.append(exemplo)
+    else:
+        linhas.append(
+            "Indique o n.º de furos por unidade para a operação contar."
+        )
+    motivo = (
+        "Não conta para o custo: o método 'Furação' custeia por furo, não "
+        "por tempo."
+    )
+    return GuiaOperacao(
+        modo=MODO_FURACAO,
+        titulo="Furação: custo por furo da máquina",
+        linhas=tuple(linhas),
+        campos_inativos={
+            CAMPO_TEMPO_SETUP: motivo,
+            CAMPO_TEMPO_POR_UNIDADE: motivo,
+            CAMPO_UNIDADE_TEMPO: motivo,
+        },
+    )
+
+
+def _guia_revestimento(
+    quantidade_base: Decimal | None, preco_m2_face: Decimal | None
+) -> GuiaOperacao:
+    """Guide for the REVESTIMENTO method: m² × faces × €/m² per face."""
+    linhas = [
+        "Custo = área da peça (m²) × n.º de faces × QT × €/m² por face da "
+        "máquina.",
+        "A 'Quantidade base' é o n.º de faces revestidas (1 ou 2; vazio "
+        "conta 1).",
+    ]
+    faces = normalizar_numero(quantidade_base)
+    if faces is None or faces <= 0:
+        faces = Decimal("1")
+    preco = normalizar_numero(preco_m2_face)
+    exemplo = (
+        f"Ex. (área {_fmt(_EXEMPLO_AREA_M2)} m², QT {_fmt(_EXEMPLO_QT)}): "
+        f"{_fmt(_EXEMPLO_AREA_M2)} × {_fmt(faces)} face(s) × "
+        f"{_fmt(_EXEMPLO_QT)}"
+    )
+    if preco is not None:
+        custo = _EXEMPLO_AREA_M2 * faces * _EXEMPLO_QT * preco
+        exemplo += f" × {_fmt(preco)} €/m² = {_fmt_euros(custo)}"
+    else:
+        exemplo += " (máquina sem €/m² por face definido → sem custo)"
+    linhas.append(exemplo)
+    motivo = (
+        "Não conta para o custo: o revestimento custeia por m² e por face."
+    )
+    return GuiaOperacao(
+        modo=MODO_REVESTIMENTO,
+        titulo="Revestimento: custo por m² e por face",
+        linhas=tuple(linhas),
+        campos_inativos={
             CAMPO_TEMPO_SETUP: motivo,
             CAMPO_TEMPO_POR_UNIDADE: motivo,
             CAMPO_UNIDADE_TEMPO: motivo,

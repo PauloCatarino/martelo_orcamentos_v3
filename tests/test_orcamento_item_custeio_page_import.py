@@ -15,6 +15,22 @@ def test_orcamento_item_custeio_page_imports() -> None:
     assert OrcamentoItemCusteioPage is not None
 
 
+def test_medidas_superiores_placa_sao_identificadas_sem_bloquear_calculo() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    linha = SimpleNamespace(comp_mp=Decimal("2750"), larg_mp=Decimal("1830"))
+
+    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
+        linha, "2800", "1800"
+    ) == ["Comprimento da peça: 2800 mm > comprimento da placa: 2750 mm"]
+    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
+        linha, "2700", "1900"
+    ) == ["Largura da peça: 1900 mm > largura da placa: 1830 mm"]
+    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
+        linha, "2700", "1800"
+    ) == []
+
+
 def test_adicionar_peca_avisa_quando_falta_divisao() -> None:
     import inspect
 

@@ -213,20 +213,20 @@ def test_adicionar_valida_def_operacao_id(monkeypatch) -> None:
     assert session.committed is False
 
 
-def test_adicionar_recusa_duplicada(monkeypatch) -> None:
+def test_adicionar_permite_mesma_operacao_com_outro_metodo(monkeypatch) -> None:
+    # New CNC model: the same operation may be linked several times (one link
+    # per calculation method, e.g. drilling + groove on the same machine).
     service, session = _service(monkeypatch)
     _FakeRepository.existing_links = [_resumo(id=5, def_operacao_id=20)]
 
-    try:
-        service.adicionar_operacao_a_peca(
-            service_module.CriarDefPecaOperacaoData(def_peca_id=10, def_operacao_id=20)
+    result = service.adicionar_operacao_a_peca(
+        service_module.CriarDefPecaOperacaoData(
+            def_peca_id=10, def_operacao_id=20, metodo_calculo="RASGO"
         )
-    except ValueError as error:
-        assert "associada" in str(error)
-    else:
-        raise AssertionError("Expected ValueError")
+    )
 
-    assert session.committed is False
+    assert result.def_operacao_id == 20
+    assert session.committed is True
 
 
 def test_editar_permite_a_propria_ligacao(monkeypatch) -> None:
@@ -246,21 +246,18 @@ def test_editar_permite_a_propria_ligacao(monkeypatch) -> None:
     assert session.committed is True
 
 
-def test_editar_recusa_duplicada_de_outra_ligacao(monkeypatch) -> None:
+def test_editar_permite_operacao_ja_usada_noutra_ligacao(monkeypatch) -> None:
+    # Editing may point to an operation another link already uses.
     service, session = _service(monkeypatch)
     _FakeRepository.existing_links = [_resumo(id=5, def_operacao_id=20)]
 
-    try:
-        service.editar_operacao_da_peca(
-            7,
-            service_module.EditarDefPecaOperacaoData(def_peca_id=10, def_operacao_id=20),
-        )
-    except ValueError as error:
-        assert "associada" in str(error)
-    else:
-        raise AssertionError("Expected ValueError")
+    result = service.editar_operacao_da_peca(
+        7,
+        service_module.EditarDefPecaOperacaoData(def_peca_id=10, def_operacao_id=20),
+    )
 
-    assert session.committed is False
+    assert result.def_operacao_id == 20
+    assert session.committed is True
 
 
 def test_desativar_existente(monkeypatch) -> None:

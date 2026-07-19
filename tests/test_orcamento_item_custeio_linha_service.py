@@ -4068,6 +4068,59 @@ def test_recalcular_custos_producao_corte_e_orlagem(monkeypatch) -> None:
     assert payload["custo_producao"] == Decimal("9.60")
 
 
+def test_recalcular_custos_producao_revestimento_tem_bucket_proprio(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {1: _peca(id=1)}
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {
+        1: [
+            SimpleNamespace(
+                id=8,
+                def_operacao_id=8,
+                ativo=True,
+                acao="ADICIONAR",
+                metodo_calculo="REVESTIMENTO",
+                quantidade_base=Decimal("1"),
+                rasgo_qt_comp=0,
+                rasgo_qt_larg=0,
+                tempo_setup_minutos=None,
+                tempo_por_unidade_minutos=None,
+                unidade_tempo=None,
+            )
+        ]
+    }
+    _FakeOperacaoRepository.operacoes = {
+        8: _operacao(
+            "REVESTIMENTO_SANDWICH",
+            tipo_operacao="REVESTIMENTO",
+            maquina_id=14,
+        ),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        14: SimpleNamespace(
+            id=14,
+            codigo="REVESTIMENTO_SANDWICH",
+            preco_m2_face_std=Decimal("3.25"),
+            preco_m2_face_serie=Decimal("3.25"),
+        ),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            area_m2=Decimal("2"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_cnc"] is None
+    assert payload["custo_revestimento"] == Decimal("6.50")
+    assert payload["custo_producao"] == Decimal("6.50")
+
+
 def test_recalcular_custos_producao_sem_orla(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {1: _peca(id=1)}

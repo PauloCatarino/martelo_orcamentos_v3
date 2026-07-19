@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.domain.metodo_calculo_types import normalize_metodo_calculo
 from app.domain.regra_operacao_types import normalize_regra_operacao
 from app.domain.operacao_acao_types import normalize_operacao_acao
 from app.repositories.orcamento_valueset_linha_operacao_repository import (
@@ -24,6 +25,7 @@ class CriarOrcamentoValuesetLinhaOperacaoData:
     def_operacao_id: int | None
     ordem: int = 1
     acao: str | None = None
+    metodo_calculo: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     rasgo_qt_comp: int = 0
@@ -44,6 +46,7 @@ class EditarOrcamentoValuesetLinhaOperacaoData:
     def_operacao_id: int | None
     ordem: int = 1
     acao: str | None = None
+    metodo_calculo: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     rasgo_qt_comp: int = 0
@@ -87,13 +90,13 @@ class OrcamentoValuesetLinhaOperacaoService:
             data.orcamento_valueset_linha_id, "orcamento_valueset_linha_id"
         )
         def_operacao_id = self._validate_required_id(data.def_operacao_id, "def_operacao_id")
-        self._validate_nao_duplicada(linha_id, def_operacao_id, exclude_id=None)
 
         result = self.repository.create(
             orcamento_valueset_linha_id=linha_id,
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
             acao=normalize_operacao_acao(data.acao),
+            metodo_calculo=normalize_metodo_calculo(data.metodo_calculo),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             rasgo_qt_comp=data.rasgo_qt_comp,
@@ -117,7 +120,6 @@ class OrcamentoValuesetLinhaOperacaoService:
             data.orcamento_valueset_linha_id, "orcamento_valueset_linha_id"
         )
         def_operacao_id = self._validate_required_id(data.def_operacao_id, "def_operacao_id")
-        self._validate_nao_duplicada(linha_id, def_operacao_id, exclude_id=id)
 
         result = self.repository.update(
             id=id,
@@ -125,6 +127,7 @@ class OrcamentoValuesetLinhaOperacaoService:
             def_operacao_id=def_operacao_id,
             ordem=self._normalize_ordem(data.ordem),
             acao=normalize_operacao_acao(data.acao),
+            metodo_calculo=normalize_metodo_calculo(data.metodo_calculo),
             regra_calculo=self._normalize_regra_calculo(data.regra_calculo),
             quantidade_base=data.quantidade_base,
             rasgo_qt_comp=data.rasgo_qt_comp,
@@ -213,10 +216,3 @@ class OrcamentoValuesetLinhaOperacaoService:
 
         return unidade_tempo.strip().upper()
 
-    def _validate_nao_duplicada(
-        self, orcamento_valueset_linha_id: int, def_operacao_id: int, exclude_id: int | None
-    ) -> None:
-        existentes = self.repository.list_by_linha(orcamento_valueset_linha_id)
-        for existente in existentes:
-            if existente.def_operacao_id == def_operacao_id and existente.id != exclude_id:
-                raise ValueError("operacao ja associada a esta linha")

@@ -11,11 +11,11 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,11 +32,12 @@ class DefValuesetModeloLinhaOperacao(Base):
     """Operation associated with one reusable ValueSet model line."""
 
     __tablename__ = "def_valueset_modelo_linha_operacoes"
+    # Non-unique: several method lines of the same operation are allowed.
     __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "ix_def_valueset_modelo_linha_ops_linha_operacao",
             "def_valueset_modelo_linha_id",
             "def_operacao_id",
-            name="uq_def_valueset_modelo_linha_operacoes_linha_operacao",
         ),
     )
 
@@ -57,6 +58,7 @@ class DefValuesetModeloLinhaOperacao(Base):
     acao: Mapped[str] = mapped_column(
         String(30), nullable=False, default=ADICIONAR, server_default=ADICIONAR
     )
+    metodo_calculo: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     regra_calculo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     quantidade_base: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
     rasgo_qt_comp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

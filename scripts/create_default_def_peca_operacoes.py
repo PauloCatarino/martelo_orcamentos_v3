@@ -22,8 +22,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.config.settings import settings  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
+from app.domain.metodo_calculo_types import ESCALAO_AREA  # noqa: E402
 from app.domain.regra_operacao_types import (  # noqa: E402
-    POR_FURACAO,
+    POR_M2,
     POR_ORLAS,
     POR_PECA,
 )
@@ -40,6 +41,7 @@ class PecaOperacaoSeed:
     obrigatorio: bool = True
     ativo: bool = True
     quantidade_base: Decimal | None = None
+    metodo_calculo: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,11 +55,12 @@ class DefaultPecaOperacoesResult:
     ligacoes_inativas: int
 
 
-# Shared operation sets reused across several piece definitions.
+# Shared operation sets reused across several piece definitions. Panel pieces
+# keep the CNC default of pricing by the machine's area tiers (CNC Vertical).
 CORTE_ORLAGEM_CNC_OPERACOES: tuple[PecaOperacaoSeed, ...] = (
     PecaOperacaoSeed("CORTE_PAINEL", 1, POR_PECA),
     PecaOperacaoSeed("ORLAGEM_PECA", 2, POR_ORLAS),
-    PecaOperacaoSeed("CNC_MECANIZACAO", 3, POR_FURACAO),
+    PecaOperacaoSeed("CNC_VERTICAL", 3, POR_M2, metodo_calculo=ESCALAO_AREA),
 )
 
 CORTE_ORLAGEM_OPERACOES: tuple[PecaOperacaoSeed, ...] = (
@@ -165,6 +168,7 @@ def ensure_default_def_peca_operacoes(session: Session) -> DefaultPecaOperacoesR
                 def_peca_id=peca.id,
                 def_operacao_id=operacao.id,
                 ordem=seed.ordem,
+                metodo_calculo=seed.metodo_calculo,
                 regra_calculo=seed.regra_calculo,
                 quantidade_base=seed.quantidade_base,
                 obrigatorio=seed.obrigatorio,

@@ -179,23 +179,21 @@ def test_editar_permite_a_propria_ligacao(monkeypatch) -> None:
     assert session.committed is True
 
 
-def test_adicionar_recusa_duplicada(monkeypatch) -> None:
+def test_adicionar_permite_mesma_operacao_com_outro_metodo(monkeypatch) -> None:
+    # New CNC model: several method links of the same operation are allowed.
     service, session = _service(monkeypatch)
     _FakeRepository.existing_links = [_resumo(id=5, def_operacao_id=20)]
 
-    try:
-        service.adicionar_operacao_a_linha(
-            service_module.CriarOrcamentoValuesetLinhaOperacaoData(
-                orcamento_valueset_linha_id=10,
-                def_operacao_id=20,
-            )
+    result = service.adicionar_operacao_a_linha(
+        service_module.CriarOrcamentoValuesetLinhaOperacaoData(
+            orcamento_valueset_linha_id=10,
+            def_operacao_id=20,
+            metodo_calculo="RASGO",
         )
-    except ValueError as error:
-        assert "associada" in str(error)
-    else:
-        raise AssertionError("Expected ValueError")
+    )
 
-    assert session.committed is False
+    assert result.def_operacao_id == 20
+    assert session.committed is True
 
 
 def test_desativar_e_ativar(monkeypatch) -> None:

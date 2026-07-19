@@ -89,6 +89,7 @@ class LinhaConsumo:
     custo_corte: Decimal | None = None
     custo_orlagem: Decimal | None = None
     custo_cnc: Decimal | None = None
+    custo_revestimento: Decimal | None = None
     custo_montagem_manual: Decimal | None = None
     operacoes: str | None = None
     maquina: str | None = None
@@ -495,6 +496,7 @@ _CENTROS = (
     ("Seccionadora (Corte)", "custo_corte"),
     ("Orladora (Orlagem)", "custo_orlagem"),
     ("CNC (Mecanizações)", "custo_cnc"),
+    ("Revestimento Sandwich", "custo_revestimento"),
     ("Montagem / Manual", "custo_montagem_manual"),
 )
 

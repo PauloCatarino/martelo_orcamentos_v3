@@ -1247,6 +1247,7 @@ class OrcamentoItemCusteioPage(QWidget):
             return OperacaoLocalData(
                 def_operacao_id=int(data.def_operacao_id),
                 ordem=data.ordem,
+                metodo_calculo=data.metodo_calculo,
                 regra_calculo=data.regra_calculo,
                 quantidade_base=data.quantidade_base,
                 rasgo_qt_comp=data.rasgo_qt_comp,
@@ -1290,6 +1291,7 @@ class OrcamentoItemCusteioPage(QWidget):
                     tempo_setup_minutos=operacao.tempo_setup_minutos,
                     tempo_por_unidade_minutos=operacao.tempo_por_unidade_minutos,
                     unidade_tempo=operacao.unidade_tempo,
+                    metodo_calculo=getattr(operacao, "metodo_calculo", None),
                 )
 
             guardado = False
@@ -1307,6 +1309,7 @@ class OrcamentoItemCusteioPage(QWidget):
                                 linha_id,
                                 int(operacao.def_operacao_id),
                                 dados,
+                                local_id=getattr(operacao, "local_id", None),
                             )
                     guardado = True
                     return True
@@ -1339,7 +1342,9 @@ class OrcamentoItemCusteioPage(QWidget):
                     OrcamentoItemCusteioLinhaService(
                         session
                     ).remover_operacao_local(
-                        linha_id, int(operacao.def_operacao_id)
+                        linha_id,
+                        int(operacao.def_operacao_id),
+                        local_id=getattr(operacao, "local_id", None),
                     )
                 return True
             except (SQLAlchemyError, ValueError) as error:
@@ -2821,11 +2826,17 @@ class OrcamentoItemCusteioPage(QWidget):
             return self._tooltip_montagem_manual(linha, qt)
         if header == "Custo produção" and linha.custo_producao is not None:
             fator = self._fator_serie_aplicado(linha)
+            custo_revestimento = getattr(linha, "custo_revestimento", None)
             parciais = (
                 f"{format_currency(linha.custo_corte)} + "
                 f"{format_currency(linha.custo_orlagem)} + "
                 f"{format_currency(linha.custo_cnc)} + "
-                f"{format_currency(linha.custo_montagem_manual)}"
+                + (
+                    f"{format_currency(custo_revestimento)} + "
+                    if custo_revestimento is not None
+                    else ""
+                )
+                + f"{format_currency(linha.custo_montagem_manual)}"
             )
             if fator is not None:
                 substituicao = (
@@ -2835,9 +2846,11 @@ class OrcamentoItemCusteioPage(QWidget):
             else:
                 substituicao = f"= {parciais} = {format_currency(linha.custo_producao)}"
             return self._tooltip_3(
-                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC "
-                "e montagem/manual, multiplicada pelo fator série quando definido.",
-                "Custo produção = (corte + orlagem + CNC + mont./manual) × fator série",
+                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC, "
+                "revestimento e montagem/manual, multiplicada pelo fator série "
+                "quando definido.",
+                "Custo produção = (corte + orlagem + CNC + revestimento + "
+                "mont./manual) × fator série",
                 substituicao,
             )
         if header == "Tempo corte" and linha.tempo_corte is not None:
@@ -3483,6 +3496,12 @@ class OrcamentoItemCusteioPage(QWidget):
                 novo_valor = normalizar_variaveis_medida(novo_valor)
             valores[self.EDITABLE_COLUMNS[header]] = novo_valor
 
+        if header in ("Comp", "Larg") and not self._confirmar_medidas_placa(
+            linha, valores["comp"], valores["larg"]
+        ):
+            self._atualizar_linha_visivel(row, linha)
+            return
+
         try:
             with SessionLocal() as session:
                 # Fast inline edit: save only this line; the costs (full pipeline)
@@ -3588,6 +3607,53 @@ class OrcamentoItemCusteioPage(QWidget):
         box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         box.exec()
         return box.clickedButton() is sim
+
+    def _confirmar_medidas_placa(self, linha, comp, larg) -> bool:
+        """Warn, without blocking costing, when a piece exceeds its sheet.
+
+        The check deliberately applies only to plain numeric measures. Formula
+        measures are evaluated later in the costing pipeline, where their final
+        value can depend on the budget item context.
+        """
+        excedidas = self._medidas_excedem_placa(linha, comp, larg)
+        if not excedidas:
+            return True
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Peça superior à placa")
+        box.setText("A medida introduzida é superior à dimensão da placa selecionada.")
+        box.setInformativeText(
+            "\n".join(excedidas)
+            + "\n\nPode registar a medida: os cálculos de custeio mantêm-se. "
+            "Contudo, esta peça não poderá ser colocada numa placa no plano de corte."
+        )
+        registar = box.addButton(
+            "Registar mesmo assim", QMessageBox.ButtonRole.AcceptRole
+        )
+        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is registar
+
+    @staticmethod
+    def _medidas_excedem_placa(linha, comp, larg) -> list[str]:
+        """Describe numeric piece dimensions that exceed the selected sheet."""
+        comp_peca = normalizar_numero(comp)
+        larg_peca = normalizar_numero(larg)
+        comp_placa = normalizar_numero(linha.comp_mp)
+        larg_placa = normalizar_numero(linha.larg_mp)
+        excedidas: list[str] = []
+        if comp_peca is not None and comp_placa is not None and comp_peca > comp_placa:
+            excedidas.append(
+                f"Comprimento da peça: {format_mm(comp_peca)} > "
+                f"comprimento da placa: {format_mm(comp_placa)}"
+            )
+        if larg_peca is not None and larg_placa is not None and larg_peca > larg_placa:
+            excedidas.append(
+                f"Largura da peça: {format_mm(larg_peca)} > "
+                f"largura da placa: {format_mm(larg_placa)}"
+            )
+        return excedidas
 
     def _get_linha_selecionada(self) -> OrcamentoItemCusteioLinhaResumo | None:
         """Return the cost line of the selected table row."""
@@ -3760,6 +3826,19 @@ class OrcamentoItemCusteioPage(QWidget):
                 "Sem linhas de peça a partir da célula selecionada para colar as medidas."
             )
             return True
+
+        # Confirm every sheet overflow before writing anything, so cancelling
+        # leaves the Excel paste entirely untouched instead of only partly saved.
+        for linha, celulas in destinos:
+            valores = {"comp": linha.comp, "larg": linha.larg}
+            for indice, campo in enumerate(alvos):
+                if indice < len(celulas) and celulas[indice]:
+                    valores[campo.lower()] = celulas[indice]
+            if not self._confirmar_medidas_placa(
+                linha, valores["comp"], valores["larg"]
+            ):
+                self.status_label.setText("Colagem de medidas cancelada.")
+                return True
 
         atualizadas = 0
         try:

@@ -40,12 +40,16 @@ from app.domain.acabamentos import (
     calcular_areas_acabamento,
     tem_acabamento,
 )
+from app.domain.custo_cnc_metodo import (
+    TarifasCncMaquina,
+    calcular_custo_cnc_por_metodo,
+)
 from app.domain.custo_producao import (
     MOTIVO_SEM_DADOS,
+    MOTIVO_SEM_ESCALOES,
     MOTIVO_SEM_TARIFA,
     MOTIVO_MAQUINA_INCOMPATIVEL,
     aplicar_fator_serie,
-    calcular_custo_cnc,
     calcular_custo_rasgo_cnc,
     calcular_custo_corte,
     calcular_custo_orlagem_lados,
@@ -54,6 +58,7 @@ from app.domain.custo_producao import (
     escolher_tarifa,
     somar_custo_producao,
 )
+from app.domain import metodo_calculo_types as metodo_types
 from app.domain.producao_types import TIPO_PRODUCAO_SERIE, tipo_producao_efetivo
 from app.domain.custeio_simplificado import (
     MODALIDADE_CUSTEIO_SIMPLIFICADO,
@@ -320,6 +325,7 @@ class OperacaoEfetivaLinhaResumo:
     maquina: str
     origem: str
     acao: str | None
+    metodo_calculo: str | None
     regra_calculo: str | None
     quantidade_base: Decimal | None
     rasgo_qt_comp: int
@@ -336,6 +342,7 @@ class OperacaoEfetivaLinhaResumo:
 class OperacaoLocalData:
     def_operacao_id: int
     ordem: int = 1
+    metodo_calculo: str | None = None
     regra_calculo: str | None = None
     quantidade_base: Decimal | None = None
     rasgo_qt_comp: int = 0
@@ -2251,6 +2258,7 @@ class OrcamentoItemCusteioLinhaService:
                 ordem=row.ordem,
                 origem=row.origem,
                 acao=row.acao,
+                metodo_calculo=row.metodo_calculo,
                 regra_calculo=row.regra_calculo,
                 quantidade_base=row.quantidade_base,
                 rasgo_qt_comp=row.rasgo_qt_comp,
@@ -2550,6 +2558,7 @@ class OrcamentoItemCusteioLinhaService:
                         )
                     ),
                     acao=acao,
+                    metodo_calculo=getattr(ligacao, "metodo_calculo", None),
                     regra_calculo=getattr(ligacao, "regra_calculo", None),
                     quantidade_base=normalizar_numero(
                         getattr(ligacao, "quantidade_base", None)
@@ -2656,6 +2665,7 @@ class OrcamentoItemCusteioLinhaService:
                 maquina_id=getattr(operacao, "maquina_id", None),
                 origem="LOCAL",
                 acao="LOCAL",
+                metodo_calculo=getattr(ligacao, "metodo_calculo", None),
                 regra_calculo=getattr(ligacao, "regra_calculo", None),
                 quantidade_base=normalizar_numero(
                     getattr(ligacao, "quantidade_base", None)
@@ -2681,9 +2691,7 @@ class OrcamentoItemCusteioLinhaService:
         if linha is None:
             raise ValueError("Linha de custeio não encontrada.")
         self.materializar_operacoes_locais(linha_id)
-        existentes = self.linha_operacao_repository.list_active(linha_id)
-        if any(row.def_operacao_id == data.def_operacao_id for row in existentes):
-            raise ValueError("Esta operação já existe na linha.")
+        # Several links of the same operation are allowed (one per method).
         operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
         if operacao is None:
             raise ValueError("Operação do catálogo não encontrada.")
@@ -2703,14 +2711,6 @@ class OrcamentoItemCusteioLinhaService:
         operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
         if operacao is None:
             raise ValueError("Operação do catálogo não encontrada.")
-        duplicada = any(
-            other.id != row.id
-            and other.ativo
-            and other.def_operacao_id == data.def_operacao_id
-            for other in self.linha_operacao_repository.list_all(row.linha_id)
-        )
-        if duplicada:
-            raise ValueError("Esta operação já existe na linha.")
         self.linha_operacao_repository.update(
             local_id, **self._campos_operacao_local(operacao, data)
         )
@@ -2721,55 +2721,62 @@ class OrcamentoItemCusteioLinhaService:
         linha_id: int,
         def_operacao_id_original: int,
         data: OperacaoLocalData,
+        local_id: int | None = None,
     ) -> None:
         """Materialize and edit an effective operation only after Save.
 
         Keeping materialization inside this mutation means that merely opening
-        the editor and cancelling it never changes the quote.
+        the editor and cancelling it never changes the quote. ``local_id``
+        disambiguates when the same operation appears several times (one link
+        per calculation method).
         """
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
             raise ValueError("Linha de custeio não encontrada.")
         self.materializar_operacoes_locais(linha_id)
-        row = next(
-            (
-                item
-                for item in self.linha_operacao_repository.list_active(linha_id)
-                if item.def_operacao_id == def_operacao_id_original
-            ),
-            None,
-        )
+        ativos = self.linha_operacao_repository.list_active(linha_id)
+        row = None
+        if local_id is not None:
+            row = next((item for item in ativos if item.id == local_id), None)
+        if row is None:
+            row = next(
+                (
+                    item
+                    for item in ativos
+                    if item.def_operacao_id == def_operacao_id_original
+                ),
+                None,
+            )
         if row is None:
             raise ValueError("Operação efetiva não encontrada.")
         operacao = self.operacao_repository.get_by_id(data.def_operacao_id)
         if operacao is None:
             raise ValueError("Operação do catálogo não encontrada.")
-        duplicada = any(
-            other.id != row.id
-            and other.ativo
-            and other.def_operacao_id == data.def_operacao_id
-            for other in self.linha_operacao_repository.list_all(linha_id)
-        )
-        if duplicada:
-            raise ValueError("Esta operação já existe na linha.")
         self.linha_operacao_repository.update(
             row.id, **self._campos_operacao_local(operacao, data)
         )
         self._recalcular_apos_edicao_operacoes(linha)
 
-    def remover_operacao_local(self, linha_id: int, def_operacao_id: int) -> None:
+    def remover_operacao_local(
+        self, linha_id: int, def_operacao_id: int, local_id: int | None = None
+    ) -> None:
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
             raise ValueError("Linha de custeio não encontrada.")
         self.materializar_operacoes_locais(linha_id)
-        row = next(
-            (
-                item
-                for item in self.linha_operacao_repository.list_active(linha_id)
-                if item.def_operacao_id == def_operacao_id
-            ),
-            None,
-        )
+        ativos = self.linha_operacao_repository.list_active(linha_id)
+        row = None
+        if local_id is not None:
+            row = next((item for item in ativos if item.id == local_id), None)
+        if row is None:
+            row = next(
+                (
+                    item
+                    for item in ativos
+                    if item.def_operacao_id == def_operacao_id
+                ),
+                None,
+            )
         if row is None:
             raise ValueError("Operação efetiva não encontrada.")
         self.linha_operacao_repository.deactivate(row.id)
@@ -2794,6 +2801,9 @@ class OrcamentoItemCusteioLinhaService:
             "maquina_id": operacao.maquina_id,
             "origem": "LOCAL",
             "acao": "LOCAL",
+            "metodo_calculo": metodo_types.normalize_metodo_calculo(
+                data.metodo_calculo
+            ),
             "regra_calculo": data.regra_calculo,
             "quantidade_base": data.quantidade_base,
             "rasgo_qt_comp": max(int(data.rasgo_qt_comp or 0), 0),
@@ -2923,22 +2933,14 @@ class OrcamentoItemCusteioLinhaService:
             pares_operacoes = self._pares_operacao_ligacao_da_linha(linha, cache_variantes)
             op_corte = self._operacao_por_bucket(operacoes, "corte")
             op_orlagem = self._operacao_por_bucket(operacoes, "orlagem")
-            op_cnc = next(
-                (
-                    operacao for operacao, ligacao in pares_operacoes
-                    if classificar_operacao(
-                        getattr(operacao, "tipo_operacao", None),
-                        getattr(operacao, "codigo", None),
-                    ) == "cnc" and not self._eh_rasgo_cnc(operacao, ligacao)
-                ),
-                None,
-            )
 
             custo_corte = None
             custo_orlagem = None
             custo_cnc = None
+            custo_revestimento = None
             avisos_ml: list[str] = []
             aviso_cnc = None
+            aviso_revestimento = None
 
             if op_corte is not None:
                 maquina = self._maquina_de_operacao(op_corte)
@@ -2969,28 +2971,54 @@ class OrcamentoItemCusteioLinhaService:
                 if aviso:
                     avisos_ml.append(aviso)
 
-            if op_cnc is not None:
-                maquina = self._maquina_de_operacao(op_cnc)
-                escaloes = (
-                    self.escalao_area_repository.list_active_by_maquina(maquina.id)
-                    if maquina is not None
-                    else []
-                )
-                custo_cnc, motivo = calcular_custo_cnc(
-                    linha.area_m2, linha.quantidade, escaloes, usar_serie=usar_serie
-                )
-                aviso_cnc = self._aviso_producao(motivo, maquina, "cnc")
-
-            for operacao_rasgo, ligacao_rasgo in pares_operacoes:
-                if not self._eh_rasgo_cnc(operacao_rasgo, ligacao_rasgo):
+            # Every CNC link is priced by ITS calculation method and the costs
+            # add up (e.g. drilling + groove on the same piece). Coating links
+            # (REVESTIMENTO machine/operation) feed their own bucket.
+            for operacao_cnc, ligacao_cnc in pares_operacoes:
+                eh_revestimento = self._eh_revestimento(operacao_cnc)
+                if not eh_revestimento and classificar_operacao(
+                    getattr(operacao_cnc, "tipo_operacao", None),
+                    getattr(operacao_cnc, "codigo", None),
+                ) != "cnc":
                     continue
-                custo_rasgo, aviso_rasgo = self._custo_rasgo_da_linha(
-                    linha, operacao_rasgo, ligacao_rasgo, usar_serie
+                maquina = self._maquina_de_operacao(operacao_cnc)
+                metodo = (
+                    metodo_types.REVESTIMENTO
+                    if eh_revestimento
+                    else self._metodo_efetivo_da_ligacao(operacao_cnc, ligacao_cnc)
                 )
-                if custo_rasgo is not None:
-                    custo_cnc = (custo_cnc or Decimal("0")) + custo_rasgo
+                custo_op, _tempo_op, motivo = calcular_custo_cnc_por_metodo(
+                    metodo=metodo,
+                    area_m2=linha.area_m2,
+                    comp_real=linha.comp_real,
+                    larg_real=linha.larg_real,
+                    qt_total=linha.quantidade,
+                    quantidade_base=getattr(ligacao_cnc, "quantidade_base", None),
+                    rasgo_qt_comp=getattr(ligacao_cnc, "rasgo_qt_comp", 0),
+                    rasgo_qt_larg=getattr(ligacao_cnc, "rasgo_qt_larg", 0),
+                    tempo_setup_minutos=getattr(
+                        ligacao_cnc, "tempo_setup_minutos", None
+                    ),
+                    tempo_por_unidade_minutos=getattr(
+                        ligacao_cnc, "tempo_por_unidade_minutos", None
+                    ),
+                    unidade_tempo=getattr(ligacao_cnc, "unidade_tempo", None),
+                    tarifas=self._tarifas_cnc(maquina, usar_serie),
+                    usar_serie=usar_serie,
+                )
+                if eh_revestimento:
+                    if custo_op is not None:
+                        custo_revestimento = (
+                            custo_revestimento or Decimal("0")
+                        ) + custo_op
+                    elif aviso_revestimento is None:
+                        aviso_revestimento = self._aviso_cnc_metodo(
+                            motivo, maquina, metodo
+                        )
+                elif custo_op is not None:
+                    custo_cnc = (custo_cnc or Decimal("0")) + custo_op
                 elif aviso_cnc is None:
-                    aviso_cnc = aviso_rasgo
+                    aviso_cnc = self._aviso_cnc_metodo(motivo, maquina, metodo)
 
             custo_mm, tempos_mm, aviso_mm = self._custos_montagem_manual_da_peca(
                 linha, usar_serie, cache_variantes
@@ -3010,7 +3038,13 @@ class OrcamentoItemCusteioLinhaService:
                 avisos_ml = []
 
             custo_producao = aplicar_fator_serie(
-                somar_custo_producao(custo_corte, custo_orlagem, custo_cnc, custo_mm),
+                somar_custo_producao(
+                    custo_corte,
+                    custo_orlagem,
+                    custo_cnc,
+                    custo_revestimento,
+                    custo_mm,
+                ),
                 linha.fator_serie,
             )
 
@@ -3019,6 +3053,7 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_corte": custo_corte,
                 "custo_orlagem": custo_orlagem,
                 "custo_cnc": custo_cnc,
+                "custo_revestimento": custo_revestimento,
                 "custo_montagem_manual": custo_mm,
                 "custo_producao": custo_producao,
                 "tipo_producao": tipo_efetivo,
@@ -3032,6 +3067,9 @@ class OrcamentoItemCusteioLinhaService:
                 avisos_ml[0] if avisos_ml else None,
             )
             nova_obs = self._mesclar_aviso_cnc(nova_obs, aviso_cnc)
+            nova_obs = self._mesclar_observacao(
+                nova_obs, "Custo de revestimento", aviso_revestimento
+            )
             nova_obs = self._mesclar_observacao(
                 nova_obs, "Custo de montagem/manual", aviso_mm
             )
@@ -3119,10 +3157,153 @@ class OrcamentoItemCusteioLinhaService:
 
     @staticmethod
     def _eh_rasgo_cnc(operacao, ligacao=None) -> bool:
+        """True when the link is a CNC groove: explicit method, or legacy markers."""
+        metodo = metodo_types.normalize_metodo_calculo(
+            getattr(ligacao, "metodo_calculo", None)
+        )
+        if metodo is not None:
+            return metodo == metodo_types.RASGO
         return (
             (getattr(operacao, "codigo", "") or "").strip().upper() == "CNC_RASGO"
             or (getattr(ligacao, "regra_calculo", "") or "").strip().upper() == "RASGO_CNC"
         )
+
+    @staticmethod
+    def _eh_revestimento(operacao) -> bool:
+        """True when the operation belongs to a coating (REVESTIMENTO) stage."""
+        return (
+            (getattr(operacao, "tipo_operacao", "") or "").strip().upper()
+            == metodo_types.REVESTIMENTO
+        )
+
+    @staticmethod
+    def _metodo_efetivo_da_ligacao(
+        operacao, ligacao, assumir_tempo_legado: bool = False
+    ) -> str:
+        """Resolve the calculation method of one CNC link (legacy fallback).
+
+        ``assumir_tempo_legado`` mirrors the OLD engine semantics for rows
+        without a stored method: on a FERRAGEM the times were the cost (TEMPO
+        default); on a panel PECA the times were informative only, so the area
+        tiers stay the default even when times are filled.
+        """
+        metodo = metodo_types.normalize_metodo_calculo(
+            getattr(ligacao, "metodo_calculo", None)
+        )
+        if metodo is not None:
+            return metodo
+        return metodo_types.inferir_metodo_calculo_legado(
+            getattr(operacao, "codigo", None),
+            getattr(ligacao, "regra_calculo", None),
+            getattr(ligacao, "rasgo_qt_comp", 0),
+            getattr(ligacao, "rasgo_qt_larg", 0),
+            assumir_tempo_legado,
+        )
+
+    def _tarifas_cnc(self, maquina, usar_serie: bool) -> TarifasCncMaquina:
+        """Aggregate one machine's CNC/coating tariffs + capability flags.
+
+        Missing capability attributes (legacy read models) default to allowed —
+        the missing tariff then yields the proper SEM_TARIFA warning instead of
+        a misleading incompatibility.
+        """
+        if maquina is None:
+            return TarifasCncMaquina(
+                escaloes_ativos=(),
+                permite_escaloes_area=True,
+                permite_rasgos=False,
+                permite_furacao=True,
+            )
+        preco_furo, _ = escolher_tarifa(
+            getattr(maquina, "preco_furo_std", None),
+            getattr(maquina, "preco_furo_serie", None),
+            usar_serie,
+        )
+        preco_m2_face, _ = escolher_tarifa(
+            getattr(maquina, "preco_m2_face_std", None),
+            getattr(maquina, "preco_m2_face_serie", None),
+            usar_serie,
+        )
+        return TarifasCncMaquina(
+            escaloes_ativos=tuple(
+                self.escalao_area_repository.list_active_by_maquina(maquina.id)
+            ),
+            preco_rasgo_ml=self._tarifa_rasgo_ml(maquina, usar_serie),
+            preco_furo=preco_furo,
+            custo_hora=self._custo_hora_maquina(maquina, usar_serie),
+            preco_m2_face=preco_m2_face,
+            permite_escaloes_area=bool(
+                getattr(maquina, "permite_escaloes_area", True)
+            ),
+            permite_rasgos=bool(getattr(maquina, "permite_rasgos", False)),
+            permite_furacao=bool(getattr(maquina, "permite_furacao", True)),
+            permite_pocket=bool(getattr(maquina, "permite_pocket", False)),
+        )
+
+    def _aviso_cnc_metodo(self, motivo, maquina, metodo: str) -> str | None:
+        """Warning text for one failed CNC/coating method computation."""
+        if motivo is None:
+            return None
+        nome = getattr(maquina, "codigo", None) or "—"
+        rotulo = metodo_types.get_metodo_calculo_label(metodo) or metodo
+
+        if metodo == metodo_types.RASGO:
+            if motivo == MOTIVO_MAQUINA_INCOMPATIVEL:
+                return (
+                    f"Rasgo CNC não calculado: a máquina {nome} não permite "
+                    "fresagem."
+                )
+            if motivo == MOTIVO_SEM_TARIFA:
+                return (
+                    "Rasgo CNC não calculado: tarifa €/ML de rasgo em falta na "
+                    f"máquina {nome}."
+                )
+            return (
+                "Rasgo CNC não calculado: medidas ou construção do rasgo em falta."
+            )
+
+        if metodo == metodo_types.REVESTIMENTO:
+            if motivo == MOTIVO_SEM_TARIFA:
+                return (
+                    "Custo de revestimento não calculado: tarifa €/m² por face "
+                    f"em falta na máquina {nome}."
+                )
+            # Missing area: the dimensions warning already exists.
+            return None
+
+        if motivo == MOTIVO_MAQUINA_INCOMPATIVEL:
+            return (
+                f"Custo CNC não calculado: a máquina {nome} não permite o "
+                f"método '{rotulo}'."
+            )
+        if motivo == MOTIVO_SEM_ESCALOES:
+            return (
+                "Custo CNC não calculado: escalões de área em falta na "
+                f"máquina {nome}."
+            )
+        if motivo == MOTIVO_SEM_TARIFA:
+            if metodo == metodo_types.FURACAO:
+                return (
+                    "Custo CNC não calculado: tarifa €/furo em falta na "
+                    f"máquina {nome}."
+                )
+            return (
+                "Custo CNC não calculado: custo/hora em falta na "
+                f"máquina {nome}."
+            )
+        if motivo == MOTIVO_SEM_DADOS:
+            if metodo == metodo_types.FURACAO:
+                return (
+                    "Custo CNC não calculado: n.º de furos por unidade em falta."
+                )
+            if metodo in (metodo_types.TEMPO, metodo_types.POCKET):
+                return (
+                    "Custo CNC não calculado: tempos da operação em falta "
+                    f"(método {rotulo})."
+                )
+            # ESCALAO_AREA without area: the dimensions warning already exists.
+            return None
+        return f"Custo CNC não calculado: dados em falta ({rotulo})."
 
     def _custo_rasgo_da_linha(self, linha, operacao, ligacao, usar_serie: bool):
         maquina = self._maquina_de_operacao(operacao)
@@ -3254,6 +3435,41 @@ class OrcamentoItemCusteioLinhaService:
                 elif aviso is None:
                     aviso = aviso_rasgo
                 continue
+
+            # CNC links on a FERRAGEM price by their method too: drilling uses
+            # €/furo, area tiers use the line's area; only the TEMPO method
+            # keeps the classic time × custo/hora path below (so the minutes
+            # stay in the informative times).
+            if bucket == "cnc":
+                metodo = self._metodo_efetivo_da_ligacao(
+                    operacao, ligacao, assumir_tempo_legado=True
+                )
+                if metodo in (metodo_types.FURACAO, metodo_types.ESCALAO_AREA):
+                    maquina = self._maquina_de_operacao(operacao)
+                    custo_op, _tempo_op, motivo = calcular_custo_cnc_por_metodo(
+                        metodo=metodo,
+                        area_m2=linha.area_m2,
+                        comp_real=linha.comp_real,
+                        larg_real=linha.larg_real,
+                        qt_total=linha.quantidade,
+                        quantidade_base=getattr(ligacao, "quantidade_base", None),
+                        rasgo_qt_comp=getattr(ligacao, "rasgo_qt_comp", 0),
+                        rasgo_qt_larg=getattr(ligacao, "rasgo_qt_larg", 0),
+                        tempo_setup_minutos=getattr(
+                            ligacao, "tempo_setup_minutos", None
+                        ),
+                        tempo_por_unidade_minutos=getattr(
+                            ligacao, "tempo_por_unidade_minutos", None
+                        ),
+                        unidade_tempo=getattr(ligacao, "unidade_tempo", None),
+                        tarifas=self._tarifas_cnc(maquina, usar_serie),
+                        usar_serie=usar_serie,
+                    )
+                    if custo_op is not None:
+                        custos["cnc"] = (custos["cnc"] or Decimal("0")) + custo_op
+                    elif aviso is None:
+                        aviso = self._aviso_cnc_metodo(motivo, maquina, metodo)
+                    continue
 
             setup_min, variavel_min = calcular_tempo_operacao(
                 getattr(ligacao, "unidade_tempo", None),
@@ -5533,6 +5749,7 @@ class OrcamentoItemCusteioLinhaService:
                         "def_peca_id": getattr(ligacao, "def_peca_id", def_peca_id),
                         "def_operacao_id": ligacao.def_operacao_id,
                         "ordem": getattr(ligacao, "ordem", 1),
+                        "metodo_calculo": getattr(ligacao, "metodo_calculo", None),
                         "regra_calculo": getattr(ligacao, "regra_calculo", None),
                         "quantidade_base": self._json_numero(
                             getattr(ligacao, "quantidade_base", None)

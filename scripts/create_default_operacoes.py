@@ -27,6 +27,7 @@ from app.domain.operacao_types import (  # noqa: E402
     MONTAGEM,
     ORLAGEM,
     RASGO,
+    REVESTIMENTO,
     SETUP,
 )
 from app.models import DefMaquina, DefOperacao  # noqa: E402
@@ -44,6 +45,13 @@ class DefMaquinaSeed:
     permite_rasgos: bool = False
     preco_rasgo_ml_std: Decimal | None = None
     preco_rasgo_ml_serie: Decimal | None = None
+    permite_furacao: bool = False
+    permite_pocket: bool = False
+    permite_escaloes_area: bool = False
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -87,53 +95,95 @@ DEFAULT_MAQUINAS: tuple[DefMaquinaSeed, ...] = (
         codigo="CNC_ABD",
         nome="CNC ABD",
         tipo=CNC,
-        descricao="Pecas pequenas e trabalhos simples, por exemplo caixas de gavetas.",
+        descricao=(
+            "So faz furacao; usada em pecas mais simples, por exemplo caixas de "
+            "gavetas. Metodos: escaloes de area, tempo ou n.o de furos."
+        ),
+        permite_furacao=True,
+        permite_escaloes_area=True,
+        preco_furo_std=Decimal("0.10"),
+        preco_furo_serie=Decimal("0.07"),
     ),
     DefMaquinaSeed(
         codigo="CNC_VERTICAL",
         nome="CNC Vertical",
         tipo=CNC,
         descricao=(
-            "Versatil para mobiliario geral, roupeiros e cozinhas; boa para pequenas "
-            "quantidades e pecas sem grande complexidade; furacao, cavilhas, rasgos com "
-            "disco/fresa e algumas operacoes de milling."
+            "Pratica de operar; usada para mecanizar a maioria das pecas. "
+            "Metodos: escaloes de area, tempo, n.o de furos, rasgo e pocket."
         ),
         permite_rasgos=True,
         preco_rasgo_ml_std=Decimal("0.40"),
         preco_rasgo_ml_serie=Decimal("0.40"),
+        permite_furacao=True,
+        permite_pocket=True,
+        permite_escaloes_area=True,
+        preco_furo_std=Decimal("0.12"),
+        preco_furo_serie=Decimal("0.09"),
     ),
     DefMaquinaSeed(
-        codigo="CNC_HORIZONTAL",
-        nome="CNC Horizontal",
+        codigo="CNC_SANDWICH",
+        nome="CNC Sandwich",
         tipo=CNC,
         descricao=(
-            "Pecas em serie ou maior quantidade, sem grande complexidade; furacao, "
-            "cavilhas, rasgos com disco e fresagens limitadas."
+            "Muito eficiente para todo o tipo de furacoes e muito rapida em "
+            "quantidades de pecas. Metodos: escaloes de area, tempo, n.o de "
+            "furos e rasgo (sem pocket)."
         ),
         permite_rasgos=True,
         preco_rasgo_ml_std=Decimal("0.40"),
         preco_rasgo_ml_serie=Decimal("0.40"),
+        permite_furacao=True,
+        permite_escaloes_area=True,
+        preco_furo_std=Decimal("0.10"),
+        preco_furo_serie=Decimal("0.06"),
     ),
     DefMaquinaSeed(
-        codigo="CNC_5_EIXOS_ORLAGEM",
+        codigo="CNC_5_EIXOS",
         nome="CNC 5 Eixos / Orlagem",
         tipo=CNC,
         descricao=(
-            "Maquina complexa/multitarefas para pecas 2D/3D, formas especiais, tampos "
-            "redondos, recortes e orlagem de formas nao retangulares; custo mais elevado "
-            "e menos orientada para producao em serie."
+            "A maquina mais polivalente, faz 'tudo': pecas 2D/3D, formas "
+            "especiais, recortes e orlagem de formas nao retangulares. "
+            "Metodos: escaloes de area, tempo, n.o de furos, rasgo e pocket."
         ),
         permite_rasgos=True,
         preco_rasgo_ml_std=Decimal("0.40"),
         preco_rasgo_ml_serie=Decimal("0.40"),
+        permite_furacao=True,
+        permite_pocket=True,
+        permite_escaloes_area=True,
+        preco_furo_std=Decimal("0.15"),
+        preco_furo_serie=Decimal("0.11"),
+    ),
+    DefMaquinaSeed(
+        codigo="REVESTIMENTO_SANDWICH",
+        nome="Revestimento Sandwich",
+        tipo=REVESTIMENTO,
+        descricao=(
+            "Reveste paineis sandwich em 1 ou 2 faces; tarifa por m2 e por "
+            "face revestida."
+        ),
+        preco_m2_face_std=Decimal("3.25"),
+        preco_m2_face_serie=Decimal("3.25"),
     ),
     DefMaquinaSeed(codigo="MONTAGEM", nome="Montagem", tipo=MONTAGEM),
     DefMaquinaSeed(codigo="MANUAL", nome="Manual", tipo=MANUAL),
 )
 
 # Machine codes that existed in earlier seeds and are now replaced. They are
-# deactivated (not deleted) when the seed runs again.
-OBSOLETE_MAQUINA_CODIGOS: tuple[str, ...] = ("CNC",)
+# deactivated (not deleted) when the seed runs again. CNC_HORIZONTAL and
+# CNC_5_EIXOS_ORLAGEM are renamed by migration 20260805_75; the codes only
+# still exist on databases that never ran it.
+OBSOLETE_MAQUINA_CODIGOS: tuple[str, ...] = (
+    "CNC",
+    "CNC_HORIZONTAL",
+    "CNC_5_EIXOS_ORLAGEM",
+)
+
+# Operation codes replaced by the per-machine CNC operations (deactivated when
+# still present; migration 20260805_75 deletes them after repointing links).
+OBSOLETE_OPERACAO_CODIGOS: tuple[str, ...] = ("CNC_MECANIZACAO", "CNC_RASGO")
 
 DEFAULT_OPERACOES: tuple[DefOperacaoSeed, ...] = (
     DefOperacaoSeed(
@@ -150,19 +200,42 @@ DEFAULT_OPERACOES: tuple[DefOperacaoSeed, ...] = (
         unidade_calculo="ML",
         maquina_codigo="ORLAGEM",
     ),
+    # One CNC operation per machine: the user picks the MACHINE here and the
+    # calculation METHOD on the piece/ValueSet/costing link.
     DefOperacaoSeed(
-        codigo="CNC_MECANIZACAO",
-        nome="CNC / Mecanizacao",
+        codigo="CNC_ABD",
+        nome="CNC ABD",
+        tipo_operacao=CNC,
+        unidade_calculo="PECA",
+        maquina_codigo="CNC_ABD",
+    ),
+    DefOperacaoSeed(
+        codigo="CNC_VERTICAL",
+        nome="CNC Vertical",
         tipo_operacao=CNC,
         unidade_calculo="PECA",
         maquina_codigo="CNC_VERTICAL",
     ),
     DefOperacaoSeed(
-        codigo="CNC_RASGO",
-        nome="Rasgo CNC",
+        codigo="CNC_SANDWICH",
+        nome="CNC Sandwich",
         tipo_operacao=CNC,
-        unidade_calculo="ML",
-        maquina_codigo="CNC_VERTICAL",
+        unidade_calculo="PECA",
+        maquina_codigo="CNC_SANDWICH",
+    ),
+    DefOperacaoSeed(
+        codigo="CNC_5_EIXOS",
+        nome="CNC 5 Eixos",
+        tipo_operacao=CNC,
+        unidade_calculo="PECA",
+        maquina_codigo="CNC_5_EIXOS",
+    ),
+    DefOperacaoSeed(
+        codigo="REVESTIMENTO_SANDWICH",
+        nome="Revestimento Sandwich",
+        tipo_operacao=REVESTIMENTO,
+        unidade_calculo="M2",
+        maquina_codigo="REVESTIMENTO_SANDWICH",
     ),
     DefOperacaoSeed(
         codigo="FURACAO_MANUAL",
@@ -238,6 +311,13 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
         maquina.permite_rasgos = seed.permite_rasgos
         maquina.preco_rasgo_ml_std = seed.preco_rasgo_ml_std
         maquina.preco_rasgo_ml_serie = seed.preco_rasgo_ml_serie
+        maquina.permite_furacao = seed.permite_furacao
+        maquina.permite_pocket = seed.permite_pocket
+        maquina.permite_escaloes_area = seed.permite_escaloes_area
+        maquina.preco_furo_std = seed.preco_furo_std
+        maquina.preco_furo_serie = seed.preco_furo_serie
+        maquina.preco_m2_face_std = seed.preco_m2_face_std
+        maquina.preco_m2_face_serie = seed.preco_m2_face_serie
         maquina.ativo = True
         session.flush()
         return EntityResult(status="reutilizada", entity=maquina)
@@ -251,6 +331,13 @@ def get_or_create_maquina(session: Session, seed: DefMaquinaSeed) -> EntityResul
         permite_rasgos=seed.permite_rasgos,
         preco_rasgo_ml_std=seed.preco_rasgo_ml_std,
         preco_rasgo_ml_serie=seed.preco_rasgo_ml_serie,
+        permite_furacao=seed.permite_furacao,
+        permite_pocket=seed.permite_pocket,
+        permite_escaloes_area=seed.permite_escaloes_area,
+        preco_furo_std=seed.preco_furo_std,
+        preco_furo_serie=seed.preco_furo_serie,
+        preco_m2_face_std=seed.preco_m2_face_std,
+        preco_m2_face_serie=seed.preco_m2_face_serie,
         ativo=True,
     )
     session.add(maquina)
@@ -310,6 +397,21 @@ def deactivate_obsolete_maquinas(session: Session) -> int:
     return desativadas
 
 
+def deactivate_obsolete_operacoes(session: Session) -> int:
+    """Deactivate catalog operations replaced by the per-machine CNC set."""
+    desativadas = 0
+
+    for codigo in OBSOLETE_OPERACAO_CODIGOS:
+        operacao = get_operacao_by_codigo(session, codigo)
+        if operacao is not None and operacao.ativo:
+            operacao.ativo = False
+            session.flush()
+            desativadas += 1
+            print(f"Operacao {codigo} desativada (obsoleta)")
+
+    return desativadas
+
+
 def ensure_default_operacoes(session: Session) -> DefaultOperacoesResult:
     """Create or reuse default machines and operations."""
     maquinas_criadas = 0
@@ -334,6 +436,8 @@ def ensure_default_operacoes(session: Session) -> DefaultOperacoesResult:
             operacoes_criadas += 1
         else:
             operacoes_reutilizadas += 1
+
+    deactivate_obsolete_operacoes(session)
 
     session.commit()
 
