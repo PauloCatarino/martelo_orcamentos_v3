@@ -18,6 +18,7 @@ from app.domain.custo_producao import (
 from app.domain.metodo_calculo_types import (
     ESCALAO_AREA,
     FURACAO,
+    POCKET,
     RASGO,
     REVESTIMENTO,
     TEMPO,
@@ -100,6 +101,21 @@ def test_tempo_pocket_quatro_minutos() -> None:
     assert custo == Decimal("4.00")
     assert tempo == Decimal("4")
     assert motivo is None
+
+
+def test_pocket_usa_tempo_e_exige_capacidade_da_maquina() -> None:
+    params = dict(
+        quantidade_base=Decimal("1"),
+        tempo_por_unidade_minutos=Decimal("4"),
+        unidade_tempo="PECA",
+    )
+    custo, tempo, motivo = _calc(
+        POCKET, tarifas=_tarifas(permite_pocket=True), **params
+    )
+    assert (custo, tempo, motivo) == (Decimal("4.00"), Decimal("4"), None)
+
+    custo, tempo, motivo = _calc(POCKET, **params)
+    assert (custo, tempo, motivo) == (None, None, MOTIVO_MAQUINA_INCOMPATIVEL)
 
 
 def test_tempo_sem_tempos_configurados() -> None:

@@ -145,6 +145,25 @@ Resultado esperado: para a CNC Sandwich, escalão SÉRIE = `0,90 × 20 = 18,00 �
 e furação SÉRIE = `0,06 × 6 × 20 = 7,20 €`, total SÉRIE = **25,20 €**. O
 custeio simplificado continua a calcular apenas corte/orlagem como antes.
 
+## Validação adicional — correções de teste
+
+1. No separador `Simulador`, escolher `CNC Vertical` e depois `CNC 5 Eixos`.
+   Em ambos, confirmar que a lista de métodos inclui `Pocket (minutos ×
+   custo/hora da máquina)`. Introduzir `4` em `Min/unidade`, `1` pocket e QT
+   `1`: na CNC Vertical o custo deve ser **4,00 €**; na CNC 5 Eixos deve ser
+   **6,00 €**. CNC ABD e CNC Sandwich não devem mostrar Pocket.
+2. Confirmar a zona `Peça em análise`: os campos estão compactos à esquerda.
+   Escrever valores e usar Enter: Comprimento → Largura → Quantidade → Modo.
+3. Em `Configurações` → `Definições de Peças`, abrir uma peça composta e a aba
+   `Regras`. Selecionar uma linha em `Transformações dimensionais dos
+   associados`: o fundo passa a bege e o texto mantém-se escuro e legível.
+4. No `Custeio do Item`, selecionar uma peça com `Comp MP`/`Larg MP` preenchidos.
+   Introduzir, por exemplo, Comp `2800` para uma placa Comp MP `2750`.
+   Confirmar que surge o aviso; ao escolher `Registar mesmo assim`, a medida é
+   guardada e o custeio continua a funcionar. Ao escolher `Cancelar`, a medida
+   anterior mantém-se. Repetir para Larg. O aviso informa que a peça não entra
+   no plano de corte, mas não altera os cálculos.
+
 ## Registo da validação
 
 Para cada cenário, anotar `OK`, `NOK` ou `a decidir`, incluindo captura de

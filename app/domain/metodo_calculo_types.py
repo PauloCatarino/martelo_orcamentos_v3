@@ -14,6 +14,7 @@ from app.domain.regra_operacao_types import POR_FURACAO, RASGO_CNC
 
 ESCALAO_AREA = "ESCALAO_AREA"
 TEMPO = "TEMPO"
+POCKET = "POCKET"
 FURACAO = "FURACAO"
 RASGO = "RASGO"
 REVESTIMENTO = "REVESTIMENTO"
@@ -21,6 +22,7 @@ REVESTIMENTO = "REVESTIMENTO"
 METODO_CALCULO_LABELS = {
     ESCALAO_AREA: "Escalões de área (€/peça pelo escalão da área)",
     TEMPO: "Tempo (minutos × custo/hora da máquina)",
+    POCKET: "Pocket (minutos × custo/hora da máquina)",
     FURACAO: "Furação (n.º furos × €/furo da máquina)",
     RASGO: "Rasgo (ML geométrico × €/ML da máquina)",
     REVESTIMENTO: "Revestimento (m² × n.º faces × €/m² da máquina)",
@@ -57,8 +59,10 @@ def metodos_disponiveis_para_maquina(maquina) -> tuple[str, ...]:
 
     A coating machine (tipo REVESTIMENTO) only coats; a CNC machine always
     allows TEMPO (its custo/hora) and adds the methods enabled by its
-    capability flags. Other machine types (corte, orlagem, montagem, manual)
-    keep the legacy tariff/time costing and have no method to choose.
+    capability flags. POCKET is a time-based CNC method exposed only when the
+    machine enables ``permite_pocket``. Other machine types (corte, orlagem,
+    montagem, manual) keep the legacy tariff/time costing and have no method
+    to choose.
     """
     if maquina is None:
         return ()
@@ -73,6 +77,8 @@ def metodos_disponiveis_para_maquina(maquina) -> tuple[str, ...]:
     if getattr(maquina, "permite_escaloes_area", False):
         metodos.append(ESCALAO_AREA)
     metodos.append(TEMPO)
+    if getattr(maquina, "permite_pocket", False):
+        metodos.append(POCKET)
     if getattr(maquina, "permite_furacao", False):
         metodos.append(FURACAO)
     if getattr(maquina, "permite_rasgos", False):

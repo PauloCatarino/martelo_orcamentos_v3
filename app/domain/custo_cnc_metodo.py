@@ -45,6 +45,7 @@ class TarifasCncMaquina:
     permite_escaloes_area: bool = True
     permite_rasgos: bool = True
     permite_furacao: bool = True
+    permite_pocket: bool = False
 
 
 def calcular_custo_cnc_por_metodo(
@@ -84,7 +85,9 @@ def calcular_custo_cnc_por_metodo(
         )
         return custo, None, motivo
 
-    if normalizado == metodo_types.TEMPO:
+    if normalizado in (metodo_types.TEMPO, metodo_types.POCKET):
+        if normalizado == metodo_types.POCKET and not tarifas.permite_pocket:
+            return None, None, MOTIVO_MAQUINA_INCOMPATIVEL
         setup_min, variavel_min = calcular_tempo_operacao(
             unidade_tempo,
             quantidade_base,

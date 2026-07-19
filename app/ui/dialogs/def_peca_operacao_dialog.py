@@ -537,6 +537,7 @@ class DefPecaOperacaoDialog(QDialog):
             ),
             permite_furacao=getattr(operacao, "maquina_permite_furacao", False),
             permite_rasgos=getattr(operacao, "maquina_permite_rasgos", False),
+            permite_pocket=getattr(operacao, "maquina_permite_pocket", False),
         )
         return metodo_types.metodos_disponiveis_para_maquina(maquina)
 
@@ -614,7 +615,11 @@ class DefPecaOperacaoDialog(QDialog):
             self.quantidade_base_label.setText("N.º de faces (1 ou 2)")
         else:
             self.quantidade_base_label.setText("Quantidade base")
-        tempos_visiveis = metodo in (None, metodo_types.TEMPO)
+        tempos_visiveis = metodo in (
+            None,
+            metodo_types.TEMPO,
+            metodo_types.POCKET,
+        )
         for widget in (
             self.tempo_setup_input,
             self.tempo_por_unidade_input,
@@ -893,7 +898,7 @@ class DefPecaOperacaoDialog(QDialog):
                     "n_comp": self.rasgo_qt_comp_input.value(),
                     "n_larg": self.rasgo_qt_larg_input.value(),
                 }
-            elif metodo == metodo_types.TEMPO:
+            elif metodo in (metodo_types.TEMPO, metodo_types.POCKET):
                 params = {
                     "setup": self._parse_decimal_input_tolerante(
                         self.tempo_setup_input

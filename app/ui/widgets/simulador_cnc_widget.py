@@ -88,6 +88,7 @@ class MaquinaSimulacao:
             permite_escaloes_area=self.permite_escaloes_area,
             permite_rasgos=self.permite_rasgos,
             permite_furacao=self.permite_furacao,
+            permite_pocket=self.permite_pocket,
         )
 
 
@@ -200,6 +201,13 @@ class SimuladorCncWidget(QWidget):
         peca_layout.addWidget(self.modo_input, 1, 1)
         peca_layout.addWidget(QLabel("Área (m²)"), 1, 2)
         peca_layout.addWidget(self.area_label, 1, 3)
+        # These inputs are short, fixed values. Keeping them compact avoids
+        # wasting the whole page width and leaves the analysis area focused.
+        self.comp_input.setFixedWidth(145)
+        self.larg_input.setFixedWidth(145)
+        self.qt_input.setFixedWidth(90)
+        self.modo_input.setFixedWidth(190)
+        peca_layout.setColumnStretch(6, 1)
 
         # --- Add-operation form ---------------------------------------------
         op_box = QGroupBox("Adicionar operação")
@@ -231,12 +239,15 @@ class SimuladorCncWidget(QWidget):
         self.faces_input.addItem("2 faces", 2)
         self.faces_input.setCurrentIndex(1)
 
+        self._unidades_tempo_label = QLabel("N.º unidades")
+        campos_tempo = [
+            (QLabel("Setup (min)"), self.setup_min_input),
+            (QLabel("Min/unidade"), self.min_unidade_input),
+            (self._unidades_tempo_label, self.unidades_input),
+        ]
         self._campos_metodo: dict[str, list[tuple[QLabel, QWidget]]] = {
-            metodo_types.TEMPO: [
-                (QLabel("Setup (min)"), self.setup_min_input),
-                (QLabel("Min/unidade"), self.min_unidade_input),
-                (QLabel("N.º unidades"), self.unidades_input),
-            ],
+            metodo_types.TEMPO: campos_tempo,
+            metodo_types.POCKET: campos_tempo,
             metodo_types.FURACAO: [
                 (QLabel("Furos por unidade"), self.furos_input),
             ],
@@ -265,10 +276,14 @@ class SimuladorCncWidget(QWidget):
         op_layout.addWidget(self.limpar_button, 0, 5)
         # Dynamic method fields share one row; hidden ones take no space.
         campos_layout = QHBoxLayout()
+        campos_adicionados: set[int] = set()
         for widgets in self._campos_metodo.values():
             for label, widget in widgets:
+                if id(widget) in campos_adicionados:
+                    continue
                 campos_layout.addWidget(label)
                 campos_layout.addWidget(widget)
+                campos_adicionados.add(id(widget))
         campos_layout.addStretch()
         op_layout.addLayout(campos_layout, 1, 0, 1, 6)
         op_layout.addWidget(self.metodo_ajuda, 2, 0, 1, 6)
@@ -308,6 +323,9 @@ class SimuladorCncWidget(QWidget):
         self.qt_input.valueChanged.connect(self._recalcular)
         self.comp_input.textChanged.connect(self._recalcular)
         self.larg_input.textChanged.connect(self._recalcular)
+        self.comp_input.returnPressed.connect(self.larg_input.setFocus)
+        self.larg_input.returnPressed.connect(self.qt_input.setFocus)
+        self.qt_input.lineEdit().returnPressed.connect(self.modo_input.setFocus)
         self.ops_table.cellClicked.connect(self._remover_se_botao)
 
         self._preencher_maquinas()
@@ -490,7 +508,11 @@ class SimuladorCncWidget(QWidget):
         ),
         metodo_types.TEMPO: (
             "Custo = (setup + min/unidade × n.º unidades × QT) ÷ 60 × "
-            "custo/hora da máquina. Pocket usa este método."
+            "custo/hora da máquina."
+        ),
+        metodo_types.POCKET: (
+            "Custo = (setup + min/pocket × n.º pockets × QT) ÷ 60 × "
+            "custo/hora da máquina."
         ),
         metodo_types.FURACAO: (
             "Custo = furos por unidade × QT × €/furo da máquina."
@@ -506,11 +528,22 @@ class SimuladorCncWidget(QWidget):
 
     def _atualizar_campos_metodo(self) -> None:
         metodo = self.metodo_input.currentData()
-        for chave, widgets in self._campos_metodo.items():
-            visivel = chave == metodo
+        self._unidades_tempo_label.setText(
+            "N.º pockets" if metodo == metodo_types.POCKET else "N.º unidades"
+        )
+        campos_visiveis = {
+            id(widget)
+            for _label, widget in self._campos_metodo.get(metodo, [])
+        }
+        campos_processados: set[int] = set()
+        for widgets in self._campos_metodo.values():
             for label, widget in widgets:
+                if id(widget) in campos_processados:
+                    continue
+                visivel = id(widget) in campos_visiveis
                 label.setVisible(visivel)
                 widget.setVisible(visivel)
+                campos_processados.add(id(widget))
         self.metodo_ajuda.setText(self._AJUDA_METODO.get(metodo, ""))
 
     def _adicionar_do_formulario(self) -> None:
@@ -519,7 +552,7 @@ class SimuladorCncWidget(QWidget):
         if maquina is None or metodo is None:
             return
         params: dict = {}
-        if metodo == metodo_types.TEMPO:
+        if metodo in (metodo_types.TEMPO, metodo_types.POCKET):
             params = {
                 "setup": _D(str(self.setup_min_input.value())),
                 "min_unidade": _D(str(self.min_unidade_input.value())),
@@ -564,7 +597,7 @@ class SimuladorCncWidget(QWidget):
         rasgo_larg = 0
         setup = None
         min_unidade = None
-        if operacao.metodo == metodo_types.TEMPO:
+        if operacao.metodo in (metodo_types.TEMPO, metodo_types.POCKET):
             quantidade_base = _D(str(params.get("unidades", 1)))
             setup = normalizar_numero(params.get("setup"))
             min_unidade = normalizar_numero(params.get("min_unidade"))
@@ -633,7 +666,7 @@ class SimuladorCncWidget(QWidget):
                 f"{format_currency(preco)}/peça × {format_quantity(qt)} un = "
                 f"{format_currency(custo)}"
             )
-        if operacao.metodo == metodo_types.TEMPO:
+        if operacao.metodo in (metodo_types.TEMPO, metodo_types.POCKET):
             setup = normalizar_numero(params.get("setup")) or _D("0")
             minutos = normalizar_numero(params.get("min_unidade")) or _D("0")
             unidades = _D(str(params.get("unidades", 1)))
@@ -676,6 +709,11 @@ class SimuladorCncWidget(QWidget):
             f"setup {format_quantity(normalizar_numero(p.get('setup')) or _D('0'))} min · "
             f"{format_quantity(normalizar_numero(p.get('min_unidade')) or _D('0'))} min/un · "
             f"{p.get('unidades', 1)} un"
+        ),
+        metodo_types.POCKET: lambda p: (
+            f"setup {format_quantity(normalizar_numero(p.get('setup')) or _D('0'))} min · "
+            f"{format_quantity(normalizar_numero(p.get('min_unidade')) or _D('0'))} min/pocket · "
+            f"{p.get('unidades', 1)} pocket(s)"
         ),
         metodo_types.FURACAO: lambda p: f"{p.get('furos', 0)} furos/un",
         metodo_types.RASGO: lambda p: (

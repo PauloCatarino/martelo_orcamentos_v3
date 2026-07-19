@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from app.domain.metodo_calculo_types import FURACAO, RASGO, REVESTIMENTO
+from app.domain.metodo_calculo_types import FURACAO, POCKET, RASGO, REVESTIMENTO
 from app.ui.widgets.simulador_cnc_widget import (
     MaquinaSimulacao,
     SimuladorCncWidget,
@@ -27,6 +27,7 @@ def _maquina_cnc() -> MaquinaSimulacao:
         preco_rasgo_ml_std=Decimal("2"),
         permite_furacao=True,
         permite_rasgos=True,
+        permite_pocket=True,
     )
 
 
@@ -62,3 +63,13 @@ def test_widget_calcula_rasgo_geometrico() -> None:
 
     assert widget.adicionar_operacao("CNC_VERTICAL", RASGO, n_comp=1, n_larg=0)
     assert "2,40" in widget.totais_label.text()
+
+
+def test_widget_expoe_pocket_e_calcula_por_tempo_hora() -> None:
+    widget = SimuladorCncWidget([_maquina_cnc()], mostrar_cenarios=False)
+
+    assert widget.metodo_input.findData(POCKET) >= 0
+    assert widget.adicionar_operacao(
+        "CNC_VERTICAL", POCKET, setup=0, min_unidade=4, unidades=1
+    )
+    assert "4,00" in widget.totais_label.text()

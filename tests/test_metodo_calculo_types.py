@@ -8,6 +8,7 @@ from app.domain.metodo_calculo_types import (
     ESCALAO_AREA,
     FURACAO,
     METODO_CALCULO_LABELS,
+    POCKET,
     RASGO,
     REVESTIMENTO,
     TEMPO,
@@ -19,12 +20,13 @@ from app.domain.metodo_calculo_types import (
 )
 
 
-def _maquina(tipo="CNC", escaloes=True, furacao=True, rasgos=True):
+def _maquina(tipo="CNC", escaloes=True, furacao=True, rasgos=True, pocket=False):
     return SimpleNamespace(
         tipo=tipo,
         permite_escaloes_area=escaloes,
         permite_furacao=furacao,
         permite_rasgos=rasgos,
+        permite_pocket=pocket,
     )
 
 
@@ -40,7 +42,7 @@ def test_labels_e_opcoes() -> None:
     assert get_metodo_calculo_label(RASGO) == METODO_CALCULO_LABELS[RASGO]
     assert get_metodo_calculo_label(None) == ""
     codes = [code for code, _label in get_metodo_calculo_options()]
-    assert codes == [ESCALAO_AREA, TEMPO, FURACAO, RASGO, REVESTIMENTO]
+    assert codes == [ESCALAO_AREA, TEMPO, POCKET, FURACAO, RASGO, REVESTIMENTO]
 
 
 def test_metodos_maquina_cnc_completa() -> None:
@@ -58,6 +60,16 @@ def test_metodos_maquina_abd_sem_rasgo() -> None:
         ESCALAO_AREA,
         TEMPO,
         FURACAO,
+    )
+
+
+def test_metodos_maquina_com_pocket() -> None:
+    assert metodos_disponiveis_para_maquina(_maquina(pocket=True)) == (
+        ESCALAO_AREA,
+        TEMPO,
+        POCKET,
+        FURACAO,
+        RASGO,
     )
 
 

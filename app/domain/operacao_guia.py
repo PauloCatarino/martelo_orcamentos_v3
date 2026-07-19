@@ -111,7 +111,7 @@ def construir_guia_operacao(
             tempo_setup_minutos is not None
             or tempo_por_unidade_minutos is not None
         )
-    if metodo == metodo_types.TEMPO:
+    if metodo in (metodo_types.TEMPO, metodo_types.POCKET):
         return _guia_tempo(
             "cnc",
             (natureza_peca or "").strip().upper() or None,

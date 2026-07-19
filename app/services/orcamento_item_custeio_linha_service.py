@@ -3237,6 +3237,7 @@ class OrcamentoItemCusteioLinhaService:
             ),
             permite_rasgos=bool(getattr(maquina, "permite_rasgos", False)),
             permite_furacao=bool(getattr(maquina, "permite_furacao", True)),
+            permite_pocket=bool(getattr(maquina, "permite_pocket", False)),
         )
 
     def _aviso_cnc_metodo(self, motivo, maquina, metodo: str) -> str | None:
@@ -3295,10 +3296,10 @@ class OrcamentoItemCusteioLinhaService:
                 return (
                     "Custo CNC não calculado: n.º de furos por unidade em falta."
                 )
-            if metodo == metodo_types.TEMPO:
+            if metodo in (metodo_types.TEMPO, metodo_types.POCKET):
                 return (
                     "Custo CNC não calculado: tempos da operação em falta "
-                    "(método Tempo)."
+                    f"(método {rotulo})."
                 )
             # ESCALAO_AREA without area: the dimensions warning already exists.
             return None
