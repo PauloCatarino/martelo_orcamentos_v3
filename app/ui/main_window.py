@@ -226,23 +226,38 @@ class MainWindow(QMainWindow):
             on_open_orcamento=self._open_custeio_auditoria_item
         )
         self.arquivo_v2_page = ArquivoV2Page()
-        self.def_pecas_page = DefPecasPage()
+        self.def_pecas_page = DefPecasPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.materias_primas_page = MateriasPrimasPage()
         self.pesquisa_ia_page = PesquisaIAPage()
-        self.caminhos_sistema_page = CaminhosSistemaPage()
-        self.imos_ligacao_page = ImosLigacaoPage()
-        self.operacoes_maquinas_page = OperacoesMaquinasPage()
-        self.valueset_chaves_page = DefValuesetChavesPage()
+        self.caminhos_sistema_page = CaminhosSistemaPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
+        self.imos_ligacao_page = ImosLigacaoPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
+        self.operacoes_maquinas_page = OperacoesMaquinasPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
+        self.valueset_chaves_page = DefValuesetChavesPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.valueset_modelos_page = DefValuesetModelosPage(
             on_back=lambda: self.show_page("configuracoes")
         )
-        self.margens_padrao_page = MargensPadraoPage()
-        self.regras_quantidade_page = RegrasQuantidadePage()
+        self.margens_padrao_page = MargensPadraoPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
+        self.regras_quantidade_page = RegrasQuantidadePage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.biblioteca_modulos_page = BibliotecaModulosPage(
             on_back=lambda: self.show_page("configuracoes")
         )
         self.catalogo_auditoria_page = CatalogoAuditoriaPage(
-            on_open_configuracao=self._open_catalogo_auditoria_item
+            on_open_configuracao=self._open_catalogo_auditoria_item,
+            on_back=lambda: self.show_page("configuracoes"),
         )
         self.custeio_simplificado_tarifas_page = CusteioSimplificadoTarifasPage(
             on_back=lambda: self.show_page("configuracoes")
@@ -251,7 +266,11 @@ class MainWindow(QMainWindow):
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
         self.ponto_situacao_page = PontoSituacaoPage()
-        self.user_management_page = UserManagementPage() if is_admin(authenticated_user) else None
+        self.user_management_page = (
+            UserManagementPage(on_back=lambda: self.show_page("configuracoes"))
+            if is_admin(authenticated_user)
+            else None
+        )
         self.configuracoes_page = ConfiguracoesPage(
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),

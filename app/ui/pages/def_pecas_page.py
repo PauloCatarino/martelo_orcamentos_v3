@@ -49,9 +49,10 @@ class DefPecasPage(QWidget):
         "Ativo",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
 
+        self.on_back = on_back
         self._pecas_by_id: dict[int, DefPecaResumo] = {}
         self._tree_items_by_id: dict[int, QTreeWidgetItem] = {}
         self._detail_page: DefPecaDetailPage | None = None
@@ -77,6 +78,11 @@ class DefPecasPage(QWidget):
         self.mostrar_inativas_check.stateChanged.connect(
             lambda _state=0: self.carregar_pecas()
         )
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
@@ -85,6 +91,7 @@ class DefPecasPage(QWidget):
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("defPecasStatus")

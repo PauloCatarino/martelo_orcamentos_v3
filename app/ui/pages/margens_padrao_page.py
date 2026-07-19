@@ -53,8 +53,10 @@ class MargensPadraoPage(QWidget):
         "Ativo",
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
+
+        self.on_back = on_back
 
         self.cabecalho = BarraCabecalho(
             "Margens por Defeito",
@@ -80,10 +82,20 @@ class MargensPadraoPage(QWidget):
         tabs.addTab(self._criar_tab_cliente_final(), "Cliente Final")
         tabs.addTab(self._criar_tab_registos(AMBITO_CLIENTE), "Por Cliente")
 
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
+        actions_layout = QHBoxLayout()
+        actions_layout.addStretch()
+        actions_layout.addWidget(self.voltar_button)
+
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
+        layout.addLayout(actions_layout)
         # Linha de acompanhamento sempre visível no topo, como nos outros menus.
         layout.addWidget(self.status_label)
         layout.addWidget(tabs, stretch=1)
@@ -161,12 +173,16 @@ class MargensPadraoPage(QWidget):
             ("Custos Administrativos", self.cf_administrativos_spin),
         ):
             form.addRow(label, spin)
-        guardar = QPushButton("Guardar")
-        guardar.clicked.connect(self.guardar_cliente_final)
+        self.guardar_cliente_final_button = QPushButton("Guardar")
+        self.guardar_cliente_final_button.setToolTip(TOOLTIP_VALOR_INICIAL)
+        self.guardar_cliente_final_button.clicked.connect(self.guardar_cliente_final)
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(self.guardar_cliente_final_button)
+        buttons_layout.addStretch()
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Perfil único para orçamentos de Cliente Final."))
         layout.addLayout(form)
-        layout.addWidget(guardar)
+        layout.addLayout(buttons_layout)
         layout.addStretch()
         tab = QWidget(); tab.setLayout(layout)
         return tab

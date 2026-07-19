@@ -53,9 +53,11 @@ class CatalogoAuditoriaPage(QWidget):
     def __init__(
         self,
         on_open_configuracao: Callable[[CatalogoAuditoriaItem], None] | None = None,
+        on_back: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self.on_open_configuracao = on_open_configuracao
+        self.on_back = on_back
         self._itens: tuple[CatalogoAuditoriaItem, ...] = tuple()
         self._itens_por_linha: dict[int, CatalogoAuditoriaItem] = {}
 
@@ -82,6 +84,11 @@ class CatalogoAuditoriaPage(QWidget):
         self.resolver_button = QPushButton("Resolver com supervisão...")
         self.resolver_button.setEnabled(False)
         self.resolver_button.clicked.connect(self.resolver_selecionado)
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
 
         self.severidade_combo = QComboBox()
         self.severidade_combo.addItem("Todas as severidades", None)
@@ -98,12 +105,14 @@ class CatalogoAuditoriaPage(QWidget):
         self.pesquisa_input.textChanged.connect(self._aplicar_filtros)
 
         filtros = QHBoxLayout()
+        filtros.addWidget(self.pesquisa_input)
         filtros.addWidget(self.executar_button)
         filtros.addWidget(self.abrir_button)
         filtros.addWidget(self.resolver_button)
         filtros.addWidget(QLabel("Severidade:"))
         filtros.addWidget(self.severidade_combo)
-        filtros.addWidget(self.pesquisa_input, stretch=1)
+        filtros.addWidget(self.voltar_button)
+        filtros.addStretch()
 
         self.resumo_label = QLabel("Auditoria ainda não executada.")
         self.resumo_label.setObjectName("catalogoAuditoriaResumo")

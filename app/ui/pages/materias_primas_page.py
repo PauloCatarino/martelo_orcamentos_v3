@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -26,6 +27,7 @@ from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.colunas_visiveis import ligar_menu_colunas
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -65,14 +67,13 @@ class MateriasPrimasPage(QWidget):
 
         self.refresh_button = QPushButton("Atualizar Página")
         self.refresh_button.clicked.connect(self.carregar_materias_primas)
+        self.refresh_button.setToolTip("Recarregar as matérias-primas importadas")
 
         self.import_button = QPushButton("Importar/Atualizar Excel")
         self.import_button.clicked.connect(self.importar_do_excel)
-
-        actions_layout = QHBoxLayout()
-        actions_layout.addWidget(self.refresh_button)
-        actions_layout.addWidget(self.import_button)
-        actions_layout.addStretch()
+        self.import_button.setToolTip(
+            "Importar ou atualizar o catálogo a partir do Excel configurado"
+        )
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("materiasPrimasStatus")
@@ -82,6 +83,19 @@ class MateriasPrimasPage(QWidget):
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
         self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
+
+        self.open_excel_button = QPushButton("Abrir Excel")
+        self.open_excel_button.setToolTip(
+            "Abrir o ficheiro Excel de origem das matérias-primas"
+        )
+        self.open_excel_button.clicked.connect(self.abrir_excel)
+
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.campo_pesquisa)
+        toolbar.addWidget(self.import_button)
+        toolbar.addWidget(self.open_excel_button)
+        toolbar.addWidget(self.refresh_button)
+        toolbar.addStretch()
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -99,19 +113,40 @@ class MateriasPrimasPage(QWidget):
         self._larguras_restauradas = ligar_persistencia_larguras(
             self.table, "materias_primas"
         )
+        ligar_menu_colunas(self.table, "materias_primas")
         self._larguras_seed_feito = False
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
-        layout.addLayout(actions_layout)
+        layout.addLayout(toolbar)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.campo_pesquisa)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
         self.carregar_materias_primas()
+
+    def abrir_excel(self) -> None:
+        """Open the configured source workbook without modifying it."""
+        from scripts.import_materias_primas_excel import (
+            get_default_excel_path_resolution,
+            resolve_excel_path,
+        )
+
+        try:
+            with SessionLocal() as session:
+                resolucao = resolve_excel_path(session=session)
+                esperada = get_default_excel_path_resolution(session).path
+        except (SQLAlchemyError, OSError):
+            self.status_label.setText("Não foi possível localizar o Excel configurado.")
+            return
+
+        if resolucao is None:
+            self.status_label.setText(f"Ficheiro Excel não encontrado: {esperada}")
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolucao.path)))
 
     def carregar_materias_primas(self) -> None:
         """Load raw materials into the table."""

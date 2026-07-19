@@ -159,19 +159,16 @@ class PesquisaIAPage(QWidget):
 
         self.carregar_button = QPushButton("Carregar/Atualizar (PHC)")
         self.carregar_button.clicked.connect(self.carregar_phc)
+        self.carregar_button.setToolTip("Carregar ou atualizar artigos do PHC")
         self.catalogos_button = QPushButton("Pesquisar cat\u00e1logos (IA)")
         self.catalogos_button.clicked.connect(self.pesquisar_catalogos)
+        self.catalogos_button.setToolTip("Pesquisar catálogos externos com IA")
         self.referencias_button = QPushButton("Carregar refer\u00eancias (placas)")
         self.referencias_button.clicked.connect(self.carregar_referencias)
+        self.referencias_button.setToolTip("Carregar referências de placas do Excel")
         self.resposta_button = QPushButton("Gerar resposta IA")
         self.resposta_button.clicked.connect(self.gerar_resposta)
-        actions_layout = QHBoxLayout()
-        actions_layout.addWidget(self.carregar_button)
-        actions_layout.addWidget(self.catalogos_button)
-        actions_layout.addWidget(self.referencias_button)
-        actions_layout.addWidget(self.resposta_button)
-        actions_layout.addStretch()
-
+        self.resposta_button.setToolTip("Gerar uma resposta IA a partir dos resultados")
         self.campo_pesquisa = CampoPesquisa(
             placeholder=(
                 "Pesquisar refer\u00eancia, descri\u00e7\u00e3o, fornecedor... "
@@ -180,6 +177,14 @@ class PesquisaIAPage(QWidget):
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
         self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
+
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.campo_pesquisa)
+        toolbar.addWidget(self.carregar_button)
+        toolbar.addWidget(self.catalogos_button)
+        toolbar.addWidget(self.referencias_button)
+        toolbar.addWidget(self.resposta_button)
+        toolbar.addStretch()
 
         self.status_label = QLabel("")
 
@@ -252,8 +257,7 @@ class PesquisaIAPage(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(10)
         layout.addWidget(self.cabecalho)
-        layout.addLayout(actions_layout)
-        layout.addWidget(self.campo_pesquisa)
+        layout.addLayout(toolbar)
         layout.addWidget(self.status_label)
         layout.addWidget(self.tabelas_splitter, stretch=1)
         self.setLayout(layout)

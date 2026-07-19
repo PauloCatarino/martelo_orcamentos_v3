@@ -61,8 +61,9 @@ class UserManagementPage(QWidget):
 
     FIXED_COLUMNS = ("Utilizador", "Nome", "Email", "Função", "Ativo")
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
+        self.on_back = on_back
         self.cabecalho = BarraCabecalho(
             "Utilizadores e acessos",
             [
@@ -86,6 +87,12 @@ class UserManagementPage(QWidget):
         self.save_button.clicked.connect(self._save)
         self.reload_button = QPushButton("Recarregar")
         self.reload_button.clicked.connect(self.carregar)
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
+        self.voltar_button.setVisible(self.on_back is not None)
 
         buttons = QHBoxLayout()
         buttons.addWidget(self.new_button)
@@ -93,6 +100,7 @@ class UserManagementPage(QWidget):
         buttons.addStretch()
         buttons.addWidget(self.reload_button)
         buttons.addWidget(self.save_button)
+        buttons.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("userManagementStatus")

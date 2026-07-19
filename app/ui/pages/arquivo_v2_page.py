@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -15,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.session import SessionLocal
 from app.services.v2_arquivo_service import (
     OrcamentoV2Resumo,
     V2ArquivoConfigError,
@@ -24,6 +28,7 @@ from app.services.v2_arquivo_service import (
     criar_engine_v2,
     criar_engine_v2_readonly,
 )
+from app.services.v2_arquivo_pastas_service import resolver_pasta_orcamento_v2
 from app.ui.dialogs.editar_arquivo_v2_dialog import EditarArquivoV2Dialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
@@ -75,6 +80,10 @@ class ArquivoV2Page(QWidget):
         self.editar.setToolTip("Editar estado, Enc PHC e, quando permitido, preço manual")
         self.editar.clicked.connect(self.editar_selecionado)
 
+        self.abrir_pasta = QPushButton("Abrir pasta")
+        self.abrir_pasta.setToolTip("Abrir a pasta existente do orçamento V2 selecionado")
+        self.abrir_pasta.clicked.connect(self._abrir_pasta_selecionada)
+
         self.pesquisa = CampoPesquisa(
             placeholder="Pesquisar número, cliente, referência, obra ou descrição…"
         )
@@ -86,11 +95,13 @@ class ArquivoV2Page(QWidget):
         self.estado.currentTextChanged.connect(self._render)
 
         filtros = QHBoxLayout()
+        filtros.addWidget(self.pesquisa)
         filtros.addWidget(self.atualizar)
         filtros.addWidget(self.editar)
-        filtros.addWidget(self.pesquisa, stretch=1)
+        filtros.addWidget(self.abrir_pasta)
         filtros.addWidget(QLabel("Estado"))
         filtros.addWidget(self.estado)
+        filtros.addStretch()
 
         self.status = QLabel("Arquivo V2 ainda não consultado.")
         self.status.setWordWrap(True)
@@ -233,7 +244,11 @@ class ArquivoV2Page(QWidget):
             return
 
         item = self._visiveis[row]
-        dialog = EditarArquivoV2Dialog(item, self)
+        dialog = EditarArquivoV2Dialog(
+            item,
+            self,
+            on_open_folder=lambda: self._abrir_pasta_item(item),
+        )
         if not dialog.exec():
             return
         dados = dialog.get_data()
@@ -261,3 +276,31 @@ class ArquivoV2Page(QWidget):
             "Orçamento atualizado na base partilhada. O V2 já pode consultar os mesmos dados."
         )
         self.carregar()
+
+    def _abrir_pasta_selecionada(self) -> None:
+        """Open the selected legacy folder using the read-only V2 convention."""
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self._visiveis):
+            self.status.setText("Selecione um orçamento V2 para abrir a pasta.")
+            return
+        self._abrir_pasta_item(self._visiveis[row])
+
+    def _abrir_pasta_item(self, item: OrcamentoV2Resumo) -> None:
+        try:
+            with SessionLocal() as session:
+                pasta = resolver_pasta_orcamento_v2(session, item)
+        except SQLAlchemyError:
+            self.status.setText("Não foi possível localizar a pasta do orçamento V2.")
+            return
+
+        if pasta is None:
+            QMessageBox.information(
+                self,
+                "Abrir pasta",
+                "Não foi encontrada uma pasta existente para este orçamento V2. "
+                "Confirme a Pasta base dos Orçamentos em Configurações → Caminhos.",
+            )
+            return
+
+        self.status.setText(f"Pasta aberta: {pasta}")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))

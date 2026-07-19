@@ -338,6 +338,7 @@ class ProducaoPage(QWidget):
             combo.currentTextChanged.connect(self._render)
 
         filters_layout = QHBoxLayout()
+        filters_layout.setSpacing(10)
         filters_layout.addWidget(self.campo_pesquisa)
         filters_layout.addWidget(QLabel("Estado"))
         filters_layout.addWidget(self.estado_combo)
@@ -499,8 +500,8 @@ class ProducaoPage(QWidget):
             )
             self._add_grid_field(
                 dados_grid,
-                index // 3,
-                index % 3,
+                index // 2,
+                index % 2,
                 label_widget,
                 widget,
             )
@@ -510,8 +511,8 @@ class ProducaoPage(QWidget):
         topo_layout = QHBoxLayout()
         topo_layout.setContentsMargins(0, 0, 0, 0)
         topo_layout.setSpacing(12)
-        topo_layout.addWidget(dados_widget, stretch=1)
-        topo_layout.addWidget(self._criar_painel_imagem(), stretch=0)
+        topo_layout.addWidget(dados_widget, stretch=2)
+        topo_layout.addWidget(self._criar_painel_imagem(), stretch=1)
 
         self.descricao_artigos_text = self._text_edit()
         self.materias_usados_text = self._text_edit()
@@ -532,8 +533,8 @@ class ProducaoPage(QWidget):
             ("Notas 3", self.notas3_text),
         ]
         for index, (label, widget) in enumerate(textos):
-            row = (index // 3) * 2
-            col = index % 3
+            row = (index // 2) * 2
+            col = index % 2
             textos_grid.addWidget(QLabel(label), row, col)
             textos_grid.addWidget(widget, row + 1, col)
 
@@ -595,7 +596,7 @@ class ProducaoPage(QWidget):
     def _text_edit(self) -> QTextEdit:
         text_edit = QTextEdit()
         text_edit.setAcceptRichText(False)
-        text_edit.setMinimumHeight(70)
+        text_edit.setMinimumHeight(115)
         return text_edit
 
     def _criar_painel_imagem(self) -> QWidget:
@@ -607,7 +608,7 @@ class ProducaoPage(QWidget):
         self.imagem_preview = _ImagemPreviewLabel(self._abrir_imagem_pdf)
         self.imagem_preview.setText("Sem imagem")
         self.imagem_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagem_preview.setFixedSize(280, 210)
+        self.imagem_preview.setFixedSize(360, 300)
         self.imagem_preview.setStyleSheet(
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
@@ -617,7 +618,7 @@ class ProducaoPage(QWidget):
         self.fs_model = QFileSystemModel()
         self.arvore_pasta = QTreeView()
         self.arvore_pasta.setModel(self.fs_model)
-        self.arvore_pasta.setFixedSize(280, 210)
+        self.arvore_pasta.setFixedSize(360, 300)
         self.arvore_pasta.setHeaderHidden(True)
         self.arvore_pasta.setStyleSheet(
             f"QTreeView {{ background-color: {tema.BEGE_CLARO};"

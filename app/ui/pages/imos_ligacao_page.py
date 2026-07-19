@@ -29,8 +29,9 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 class ImosLigacaoPage(QWidget):
     """Página sem importação: configura e valida o acesso read-only."""
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
+        self.on_back = on_back
         self.cabecalho = BarraCabecalho(
             "Ligação iMos — somente leitura",
             [
@@ -64,10 +65,16 @@ class ImosLigacaoPage(QWidget):
         self.save_button.clicked.connect(self.guardar)
         self.test_button = QPushButton("Testar ligação e permissões")
         self.test_button.clicked.connect(self.testar)
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
         acoes = QHBoxLayout()
         acoes.addWidget(self.save_button)
         acoes.addWidget(self.test_button)
         acoes.addStretch()
+        acoes.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)

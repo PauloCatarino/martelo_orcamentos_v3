@@ -11,8 +11,10 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -31,8 +33,9 @@ class EditarArquivoV2Data:
 class EditarArquivoV2Dialog(QDialog):
     """Edit state and ENC PHC, with a guarded manual-price field."""
 
-    def __init__(self, item: OrcamentoV2Resumo, parent=None) -> None:
+    def __init__(self, item: OrcamentoV2Resumo, parent=None, on_open_folder=None) -> None:
         super().__init__(parent)
+        self._on_open_folder = on_open_folder
         self.setWindowTitle("Editar orçamento V2")
         self.setModal(True)
         self.setMinimumWidth(500)
@@ -89,12 +92,26 @@ class EditarArquivoV2Dialog(QDialog):
         self.botoes.accepted.connect(self._validar_e_aceitar)
         self.botoes.rejected.connect(self.reject)
 
+        self.abrir_pasta_button = QPushButton("Abrir pasta do orçamento")
+        self.abrir_pasta_button.setToolTip(
+            "Abrir a pasta existente deste orçamento V2 no explorador"
+        )
+        self.abrir_pasta_button.clicked.connect(self._abrir_pasta)
+        acoes = QHBoxLayout()
+        acoes.addWidget(self.abrir_pasta_button)
+        acoes.addStretch()
+        acoes.addWidget(self.botoes)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.contexto_label)
         layout.addLayout(form)
         layout.addWidget(self.aviso_label)
         layout.addWidget(self.erro_label)
-        layout.addWidget(self.botoes)
+        layout.addLayout(acoes)
+
+    def _abrir_pasta(self) -> None:
+        if self._on_open_folder is not None:
+            self._on_open_folder()
 
     def get_data(self) -> EditarArquivoV2Data:
         """Return normalized form values."""

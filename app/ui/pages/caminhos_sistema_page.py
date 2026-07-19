@@ -34,9 +34,10 @@ class CaminhosSistemaPage(QWidget):
     ]
     BROWSE_TYPES = {"pasta", "ficheiro"}
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
 
+        self.on_back = on_back
         self._settings_by_row: dict[int, SystemSettingResumo] = {}
 
         self.cabecalho = BarraCabecalho(
@@ -53,10 +54,17 @@ class CaminhosSistemaPage(QWidget):
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_configuracoes)
 
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
+
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("caminhosSistemaStatus")

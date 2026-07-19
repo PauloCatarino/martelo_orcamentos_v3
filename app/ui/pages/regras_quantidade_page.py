@@ -36,9 +36,10 @@ class RegrasQuantidadePage(QWidget):
 
     TABLE_HEADERS = ["Código", "Nome", "Expressão", "Descrição/Tooltip", "Ativo"]
 
-    def __init__(self) -> None:
+    def __init__(self, on_back=None) -> None:
         super().__init__()
 
+        self.on_back = on_back
         self.cabecalho = BarraCabecalho(
             "Regras de Quantidade",
             [
@@ -76,6 +77,11 @@ class RegrasQuantidadePage(QWidget):
         self.ativar_button.clicked.connect(self.alternar_ativo)
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
         self.mostrar_inativas_check.stateChanged.connect(lambda _=0: self.carregar())
+        self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setToolTip("Regressar ao menu Configurações.")
+        self.voltar_button.clicked.connect(
+            lambda: self.on_back() if self.on_back else None
+        )
 
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.nova_button)
@@ -83,6 +89,7 @@ class RegrasQuantidadePage(QWidget):
         buttons_layout.addWidget(self.ativar_button)
         buttons_layout.addWidget(self.mostrar_inativas_check)
         buttons_layout.addStretch()
+        buttons_layout.addWidget(self.voltar_button)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)

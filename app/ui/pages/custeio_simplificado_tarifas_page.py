@@ -75,7 +75,7 @@ class CusteioSimplificadoTarifasPage(QWidget):
         self.table = self._criar_tabela(4, self.HEADERS, self.TOOLTIPS)
         self.table_grossa = self._criar_tabela(1, self.HEADERS_GROSSA, self.TOOLTIPS_GROSSA)
         actions = QHBoxLayout()
-        back = QPushButton("Voltar")
+        back = QPushButton("Voltar às Configurações")
         back.setToolTip("Regressar às Configurações sem guardar alterações pendentes.")
         back.clicked.connect(lambda: self.on_back() if self.on_back else None)
         save = QPushButton("Guardar tarifas")

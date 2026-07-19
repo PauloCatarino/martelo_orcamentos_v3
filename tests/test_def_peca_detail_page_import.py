@@ -198,6 +198,17 @@ def test_def_peca_detail_page_has_operacao_actions() -> None:
         assert hasattr(DefPecaDetailPage, method)
 
 
+def test_def_peca_detail_page_operacoes_pode_mostrar_inativas() -> None:
+    from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
+
+    tab = inspect.getsource(DefPecaDetailPage._create_operacoes_tab)
+    preencher = inspect.getsource(DefPecaDetailPage._preencher_operacoes)
+
+    assert "Mostrar inativas" in tab
+    assert "mostrar_operacoes_inativas_check" in tab
+    assert "ligacao.ativo" in preencher
+
+
 def test_def_peca_detail_page_operacoes_use_service_and_dialog() -> None:
     from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
 

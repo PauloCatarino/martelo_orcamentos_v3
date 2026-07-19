@@ -147,7 +147,8 @@ class PontoSituacaoPage(QWidget):
         self.validar_precos_button.clicked.connect(self._validar_precos)
 
         toolbar = QHBoxLayout()
-        toolbar.addWidget(self.campo_pesquisa, stretch=1)
+        toolbar.setSpacing(10)
+        toolbar.addWidget(self.campo_pesquisa)
         toolbar.addWidget(QLabel("Estado"))
         toolbar.addWidget(self.estado_combo)
         toolbar.addWidget(QLabel("Cliente"))
@@ -158,6 +159,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(self.exportar_pdf_button)
         toolbar.addWidget(self.sincronizar_phc_button)
         toolbar.addWidget(self.validar_precos_button)
+        toolbar.addStretch()
 
         self.atualizado_label = QLabel("")
         self.atualizado_label.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")

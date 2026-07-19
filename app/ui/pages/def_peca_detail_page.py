@@ -7,6 +7,7 @@ from datetime import datetime
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -831,6 +832,13 @@ class DefPecaDetailPage(QWidget):
         self.editar_operacao_button.clicked.connect(self.abrir_editar_operacao)
         self.toggle_operacao_button = QPushButton("Ativar/Desativar")
         self.toggle_operacao_button.clicked.connect(self.alternar_operacao_ativa)
+        self.mostrar_operacoes_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_operacoes_inativas_check.setToolTip(
+            "Mostrar também as operações associadas marcadas como inativas"
+        )
+        self.mostrar_operacoes_inativas_check.stateChanged.connect(
+            lambda _=0: self._preencher_operacoes()
+        )
         self.atualizar_operacoes_button = QPushButton("Atualizar")
         self.atualizar_operacoes_button.clicked.connect(self.recarregar_operacoes)
 
@@ -838,6 +846,7 @@ class DefPecaDetailPage(QWidget):
         buttons_layout.addWidget(self.nova_operacao_button)
         buttons_layout.addWidget(self.editar_operacao_button)
         buttons_layout.addWidget(self.toggle_operacao_button)
+        buttons_layout.addWidget(self.mostrar_operacoes_inativas_check)
         buttons_layout.addWidget(self.atualizar_operacoes_button)
         buttons_layout.addStretch()
 
@@ -885,9 +894,14 @@ class DefPecaDetailPage(QWidget):
     def _preencher_operacoes(self) -> None:
         """Fill the operations table from the current read models."""
         self._operacoes_by_row = {}
-        self.operacoes_table.setRowCount(len(self.operacoes_peca))
+        operacoes_visiveis = self.operacoes_peca
+        if not self.mostrar_operacoes_inativas_check.isChecked():
+            operacoes_visiveis = [
+                ligacao for ligacao in self.operacoes_peca if ligacao.ativo
+            ]
+        self.operacoes_table.setRowCount(len(operacoes_visiveis))
 
-        for row_index, ligacao in enumerate(self.operacoes_peca):
+        for row_index, ligacao in enumerate(operacoes_visiveis):
             self._operacoes_by_row[row_index] = ligacao
             operacao = self._operacao_resumos.get(ligacao.def_operacao_id)
             values = [
@@ -921,12 +935,18 @@ class DefPecaDetailPage(QWidget):
             for column_index, value in enumerate(values):
                 self.operacoes_table.setItem(row_index, column_index, QTableWidgetItem(value))
 
-        self.operacoes_status_label.setText(self._operacoes_status_text())
+        self.operacoes_status_label.setText(
+            self._operacoes_status_text(operacoes_visiveis)
+        )
 
-    def _operacoes_status_text(self) -> str:
+    def _operacoes_status_text(
+        self, operacoes_visiveis: list[DefPecaOperacaoResumo] | None = None
+    ) -> str:
         """Return the status line for the operations table."""
         if not self.operacoes_peca:
             return "Sem operacoes. Use 'Nova Operacao' para adicionar."
+        if operacoes_visiveis is not None and not operacoes_visiveis:
+            return "Sem operações ativas. Marque 'Mostrar inativas' para as ver."
         return ""
 
     def _format_operacao_label(
