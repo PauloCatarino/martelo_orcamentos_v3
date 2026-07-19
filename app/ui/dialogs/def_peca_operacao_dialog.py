@@ -1,6 +1,7 @@
 """Dialog for linking an operation to a piece definition."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -333,7 +334,7 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("defPecaOperacaoDialogError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         form = QFormLayout()

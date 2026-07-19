@@ -1,6 +1,7 @@
 """Dialog to manage and pick user predefined descriptions (phase P6a)."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from dataclasses import dataclass
 
@@ -15,7 +16,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.services.descricao_predefinida_service import DescricaoPredefinidaService
 
-_VERDE = "#0a5c0a"
+_VERDE = tema.TEXTO_OK
 
 
 @dataclass(frozen=True)

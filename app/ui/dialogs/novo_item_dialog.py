@@ -1,6 +1,7 @@
 """Dialog for creating a simple budget item."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -81,7 +82,7 @@ class NovoItemDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("novoItemError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         form_layout = QFormLayout()

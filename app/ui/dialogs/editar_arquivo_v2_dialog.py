@@ -1,6 +1,7 @@
 """Controlled editor for one shared V2 budget header."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -67,11 +68,11 @@ class EditarArquivoV2Dialog(QDialog):
 
         self.aviso_label = QLabel(self._texto_aviso(item))
         self.aviso_label.setWordWrap(True)
-        self.aviso_label.setStyleSheet("color: #854F0B; padding: 6px 0;")
+        self.aviso_label.setStyleSheet(f"color: {tema.TEXTO_AVISO}; padding: 6px 0;")
 
         self.erro_label = QLabel("")
         self.erro_label.setWordWrap(True)
-        self.erro_label.setStyleSheet("color: #B00020;")
+        self.erro_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
 
         form = QFormLayout()
         form.addRow("Estado", self.estado_combo)

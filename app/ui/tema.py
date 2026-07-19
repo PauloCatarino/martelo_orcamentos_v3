@@ -40,6 +40,14 @@ CINZA_ESCURO = "#4A4641"      # neutral badge text
 VERMELHO_SUAVE = "#E8C7C1"    # negative badge background
 VERMELHO_ESCURO = "#7A231C"   # negative badge text
 
+# Cores de texto para feedback inline (labels de erro/aviso/sucesso nos
+# diálogos e páginas). Centralizadas aqui para manter a MESMA lógica de cores
+# em toda a app — antes cada diálogo tinha o seu próprio literal e os avisos
+# usavam três ocres diferentes.
+TEXTO_ERRO = "#B00020"        # mensagens de erro / campos obrigatórios em falta
+TEXTO_AVISO = "#8A5A00"       # avisos (âmbar) — unifica os ocres antes dispersos
+TEXTO_OK = "#0A5C0A"          # confirmação / sucesso
+
 # Role colours derived from the palette.
 DIVISAO_FUNDO = CASTANHO_MEDIO       # division block header background
 DIVISAO_TEXTO = "#FFFFFF"            # light text for contrast on the division

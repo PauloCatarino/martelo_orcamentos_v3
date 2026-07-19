@@ -1,6 +1,7 @@
 """Dialog for creating a new production process version."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIntValidator
@@ -107,7 +108,7 @@ class NovaVersaoProcessoDialog(QDialog):
         form.addRow("Versão CUT-RITE", self.ed_ver_plano)
 
         self.warning_label = QLabel("")
-        self.warning_label.setStyleSheet("color: #B00020; font-weight: bold;")
+        self.warning_label.setStyleSheet(f"color: {tema.TEXTO_ERRO}; font-weight: bold;")
         self.warning_label.setWordWrap(True)
 
         folder_group = QGroupBox("Pastas existentes (Servidor)")

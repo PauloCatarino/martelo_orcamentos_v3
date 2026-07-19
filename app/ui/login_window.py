@@ -1,6 +1,7 @@
 """Login dialog for Martelo Orcamentos V3."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -66,7 +67,7 @@ class LoginWindow(QDialog):
         self.error_label = QLabel("")
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.error_label.setWordWrap(True)
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
 
         self.login_button = QPushButton("Entrar")
         self.login_button.clicked.connect(self.handle_login)

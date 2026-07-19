@@ -1,6 +1,7 @@
 """Dialog for creating and editing a composite piece component."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -278,7 +279,7 @@ class DefPecaComponenteDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("defPecaComponenteError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         self.peca_componente_label = QLabel("Peça componente")

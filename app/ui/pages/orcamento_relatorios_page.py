@@ -714,6 +714,8 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_excel(self) -> None:
         """Export the budget Excel to the version folder (phase 8W.4.2)."""
+        if not self._confirmar_supervisor("gerar o Excel"):
+            return
         try:
             with SessionLocal() as session:
                 caminho = OrcamentoExportService(session).exportar_excel_orcamento(
@@ -733,6 +735,8 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_phc(self) -> None:
         """Exporta o Excel no formato PHC para a pasta da versão (C2b)."""
+        if not self._confirmar_supervisor("exportar para o PHC"):
+            return
         try:
             with SessionLocal() as session:
                 caminho = OrcamentoExportService(session).exportar_excel_phc(
@@ -781,6 +785,9 @@ class OrcamentoRelatoriosPage(QWidget):
                 "Plano de Corte",
                 "Este orçamento não tem peças de placa para gerar o plano de corte.",
             )
+            return
+
+        if not self._confirmar_supervisor("gerar o plano de corte"):
             return
 
         # A otimização pode demorar: cursor de espera durante a geração.

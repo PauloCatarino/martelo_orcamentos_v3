@@ -1,6 +1,7 @@
 """Dialog to insert/edit a manual-operation cost line (phase 8S.3)."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -84,12 +85,12 @@ class OperacaoManualDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("operacaoManualDialogError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         self.aviso_label = QLabel("")
         self.aviso_label.setObjectName("operacaoManualDialogAviso")
-        self.aviso_label.setStyleSheet("color: #b36b00;")
+        self.aviso_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
         self.aviso_label.setWordWrap(True)
 
         info = QLabel(

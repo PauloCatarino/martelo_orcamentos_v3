@@ -1,6 +1,7 @@
 """Dialog for editing one ValueSet line of a budget version."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -185,7 +186,7 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("orcamentoValuesetLinhaError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         form = QFormLayout()

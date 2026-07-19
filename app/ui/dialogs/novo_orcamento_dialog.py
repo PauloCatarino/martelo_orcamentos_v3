@@ -1,6 +1,7 @@
 """Dialog for creating a simple Orcamento."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from dataclasses import dataclass
 from datetime import date
@@ -148,7 +149,7 @@ class NovoOrcamentoDialog(QDialog):
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("novoOrcamentoError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         form_layout = QFormLayout()

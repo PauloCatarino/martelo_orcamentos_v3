@@ -1,6 +1,7 @@
 """Dialog for creating and editing a configurable ValueSet key."""
 
 from __future__ import annotations
+from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -101,12 +102,12 @@ class DefValuesetChaveDialog(QDialog):
 
         self.sistema_warning_label = QLabel("")
         self.sistema_warning_label.setObjectName("defValuesetChaveSystemWarning")
-        self.sistema_warning_label.setStyleSheet("color: #8a6d00;")
+        self.sistema_warning_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
         self.sistema_warning_label.setWordWrap(True)
 
         self.error_label = QLabel("")
         self.error_label.setObjectName("defValuesetChaveError")
-        self.error_label.setStyleSheet("color: #b00020;")
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
 
         form = QFormLayout()
