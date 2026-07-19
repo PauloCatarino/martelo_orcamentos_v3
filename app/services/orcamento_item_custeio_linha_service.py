@@ -110,6 +110,7 @@ from app.domain.materia_prima_snapshot import (
 from app.domain.numeros import normalize_percentagem_humana, validar_decimal
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
+from app.domain.peca_funcao_types import PORTA, PORTA_CORRER, normalize_peca_funcao
 from app.domain.peca_natureza_types import CONJUNTO
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import (
@@ -3943,6 +3944,10 @@ class OrcamentoItemCusteioLinhaService:
         if linha is None:
             return None
 
+        larg = self._atualizar_largura_padrao_porta_ao_mudar_quantidade(
+            linha, qt_und, larg
+        )
+
         # Free-text note (phase 8V.1): informative only, applies to every line
         # type (saved even for manual operations, which have no measures).
         descricao_livre_norm = (
@@ -5454,6 +5459,8 @@ class OrcamentoItemCusteioLinhaService:
             # pipeline can resolve its quantity rule (phase 8T.5.1).
             fields["origem_id"] = componente.id
             self._aplicar_formulas_componente(fields, componente)
+            if getattr(componente, "formula_larg", None) is None:
+                self._aplicar_largura_padrao_porta(fields, peca_filha, qt_und)
             fields.update(snapshot)
             return fields, aviso
 
@@ -5620,6 +5627,7 @@ class OrcamentoItemCusteioLinhaService:
             "ativo": True,
         }
         fields.update(self._formulas_peca(peca))
+        self._aplicar_largura_padrao_porta(fields, peca, qt_und)
 
         if fields["sem_material"]:
             # Service piece: no raw material / ValueSet. Leave the material and
@@ -5695,6 +5703,44 @@ class OrcamentoItemCusteioLinhaService:
                 fields["esp"] = esp_texto
 
         return fields, None
+
+    @staticmethod
+    def _aplicar_largura_padrao_porta(fields: dict, peca, qt_und) -> None:
+        """Offer the usual LM / LM/2 width when a door is first inserted.
+
+        This is only the initial text placed in the editable ``Larg`` column;
+        users remain free to replace it with any formula or numeric width.
+        """
+        largura = OrcamentoItemCusteioLinhaService._largura_padrao_porta(peca, qt_und)
+        if largura is not None:
+            fields["larg"] = largura
+
+    @staticmethod
+    def _largura_padrao_porta(peca, qt_und) -> str | None:
+        """Return LM/LM/2 for a door, or None for every other piece."""
+        funcao = normalize_peca_funcao(getattr(peca, "funcao", None))
+        codigo = (getattr(peca, "codigo", None) or "").upper()
+        if funcao not in (PORTA, PORTA_CORRER) and "PORTA" not in codigo:
+            return None
+        try:
+            quantidade = Decimal(str(qt_und))
+        except (ArithmeticError, ValueError):
+            quantidade = Decimal("1")
+        return "LM/2" if quantidade >= 2 else "LM"
+
+    def _atualizar_largura_padrao_porta_ao_mudar_quantidade(
+        self, linha, qt_und, larg
+    ):
+        """Keep the LM shortcut in sync, without replacing a user formula."""
+        atual = (linha.larg or "").replace(" ", "").upper()
+        recebido = (larg or "").replace(" ", "").upper()
+        if atual not in {"LM", "LM/2"} or recebido != atual:
+            return larg
+        if linha.def_peca_id is None:
+            return larg
+        peca = self.peca_repository.get_by_id(linha.def_peca_id)
+        nova = self._largura_padrao_porta(peca, qt_und)
+        return nova if nova is not None else larg
 
     @staticmethod
     def _valueset_tem_material(linha_vs) -> bool:

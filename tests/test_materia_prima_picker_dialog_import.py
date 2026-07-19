@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 
 def test_dialog_imports() -> None:
@@ -68,7 +69,7 @@ def test_dialog_aceita_filtros_tipo_familia() -> None:
     pesquisar = inspect.getsource(MateriaPrimaPickerDialog.pesquisar)
     assert "tipo_filter" in pesquisar
     assert "familia_filter" in pesquisar
-    assert "_corresponde" in pesquisar
+    assert "_aplicar_filtros" in pesquisar
 
 
 def test_dialog_corresponde_tolera_singular_plural() -> None:
@@ -78,6 +79,39 @@ def test_dialog_corresponde_tolera_singular_plural() -> None:
     # Case-insensitive + singular/plural tolerant (ACABAMENTO matches ACABAMENTOS).
     assert "startswith" in corresponde
     assert "upper" in corresponde
+
+
+def test_dialog_filtra_orlas_no_catalogo_completo() -> None:
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    materiais = [
+        SimpleNamespace(
+            ref_le="PL0001",
+            tipo_martelo="AGLOMERADO",
+            tipo_original_excel=None,
+            familia_martelo="PLACAS",
+            familia_original_excel=None,
+        ),
+        SimpleNamespace(
+            ref_le="ORL0002",
+            tipo_martelo=None,
+            tipo_original_excel="ORLA",
+            familia_martelo=None,
+            familia_original_excel="ORLA",
+        ),
+    ]
+
+    assert MateriaPrimaPickerDialog._aplicar_filtros(
+        materiais, None, "ORLA", True
+    ) == [materiais[1]]
+
+
+def test_dialog_limpar_filtros_usa_catalogo_ativo_completo() -> None:
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    source = inspect.getsource(MateriaPrimaPickerDialog.pesquisar)
+    assert "listar_materias_primas_ativas" in source
+    assert "_aplicar_filtros" in source
 
 
 def test_dialog_normaliza_percentagens() -> None:

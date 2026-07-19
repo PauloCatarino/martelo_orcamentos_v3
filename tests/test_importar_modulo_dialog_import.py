@@ -43,6 +43,10 @@ def test_importar_modulo_dialog_imports() -> None:
     preview_panel = inspect.getsource(ImportarModuloDialog._criar_painel_preview)
     assert "QSplitter" in preview_panel
 
+    tabela = inspect.getsource(ImportarModuloDialog._criar_tabela_lista)
+    assert "setDefaultSectionSize" in tabela
+    assert "item:selected" in tabela
+
 
 def test_custeio_page_importar_modulo_wiring() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage

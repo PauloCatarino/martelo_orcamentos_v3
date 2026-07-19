@@ -60,9 +60,9 @@ class ImportarModuloDialog(QDialog):
         "Larg",
         "Esp",
     )
-    _TAMANHO_MINIATURA = 48
+    _TAMANHO_MINIATURA = 72
     # Initial column widths (the user can drag the borders afterwards).
-    _LARGURAS_LISTA = (64, 150, 240, 80)
+    _LARGURAS_LISTA = (92, 165, 310, 80)
     _LARGURAS_PREVIEW = (130, 140, 200, 75, 50, 60, 60, 60)
 
     def __init__(
@@ -88,8 +88,8 @@ class ImportarModuloDialog(QDialog):
 
         self.setWindowTitle("Importar Módulo Guardado")
         self.setModal(True)
-        self.setMinimumSize(820, 520)
-        self.resize(1100, 680)
+        self.setMinimumSize(1080, 680)
+        self.resize(1320, 800)
         self.setSizeGripEnabled(True)
 
         # Left (modules list) vs right (preview): draggable horizontal split.
@@ -98,7 +98,7 @@ class ImportarModuloDialog(QDialog):
         self.split_principal.addWidget(self._criar_painel_preview())
         self.split_principal.setStretchFactor(0, 3)
         self.split_principal.setStretchFactor(1, 2)
-        self.split_principal.setSizes([620, 420])
+        self.split_principal.setSizes([720, 540])
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -173,11 +173,16 @@ class ImportarModuloDialog(QDialog):
         tabela.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         tabela.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tabela.verticalHeader().setVisible(False)
+        tabela.verticalHeader().setDefaultSectionSize(self._TAMANHO_MINIATURA + 16)
         tabela.setIconSize(QSize(self._TAMANHO_MINIATURA, self._TAMANHO_MINIATURA))
         self._configurar_colunas(tabela, self._LARGURAS_LISTA)
         tabela.cellClicked.connect(self._on_tabela_clicada)
         tabela.cellDoubleClicked.connect(self._on_tabela_duplo_clique)
         ligar_persistencia_larguras(tabela, "dialog_importar_modulo_lista")
+        tabela.setStyleSheet(
+            "QTableWidget::item:selected { background-color: #5A3B27; color: white; }"
+            "QTableWidget::item:selected:!active { background-color: #76523A; color: white; }"
+        )
         return tabela
 
     @staticmethod

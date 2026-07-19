@@ -28,9 +28,19 @@ def test_guardar_modulo_dialog_imports() -> None:
     assert "on_save" in init
     assert "modulos_utilizador" in init
     assert "modulos_globais" in init
+    assert "pasta_imagens_modulos" in init
     # Image: path field + browse button (QFileDialog).
     procurar = inspect.getsource(GuardarModuloDialog._procurar_imagem)
     assert "QFileDialog" in procurar
+    assert "_pasta_imagens_modulos" in procurar
+
+    preview = inspect.getsource(GuardarModuloDialog._ver_imagem)
+    assert "QDialog" in preview
+    assert "QScrollArea" in preview
+
+    lista = inspect.getsource(GuardarModuloDialog._preencher_tabela)
+    assert "QIcon" in lista
+    assert "imagem_path" in lista
 
     # Replace mode + "Novo" button + the saved-modules list panel.
     novo = inspect.getsource(GuardarModuloDialog._aplicar_modo_novo)
@@ -73,3 +83,4 @@ def test_custeio_page_guardar_como_modulo() -> None:
     assert "listar_modulos_para_dialogo" in handler
     assert "GuardarModuloDialog" in handler
     assert "app_session.current_user" in handler
+    assert "pasta_imagens_modulos" in handler

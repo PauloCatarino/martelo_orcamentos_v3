@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -23,6 +24,11 @@ from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_service import DefPecaService
 from app.services.def_peca_user_pref_service import DefPecaUserPrefService
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.ordem_grupos_biblioteca import (
+    guardar_ordens_grupos,
+    obter_ordens_grupos,
+    ordenar_grupos,
+)
 
 
 class PreferenciasBibliotecaPecasDialog(QDialog):
@@ -60,12 +66,15 @@ class PreferenciasBibliotecaPecasDialog(QDialog):
         self.pesquisa.pesquisa_mudou.connect(self._aplicar_filtro)
 
         self.tree = QTreeWidget()
-        self.tree.setColumnCount(2)
+        self.tree.setColumnCount(3)
         self.tree.setHeaderLabels(["Peça", "Favorito"])
         self.tree.setIndentation(10)
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
         self.tree.setColumnWidth(0, 400)
+        self.tree.setHeaderLabels(["Peça", "Favorito", "Ordem do grupo"])
+        self.tree.setColumnWidth(1, 90)
+        self.tree.setColumnWidth(2, 115)
         self.tree.itemChanged.connect(self._on_item_changed)
 
         self.marcar_visiveis_button = QPushButton("Marcar visíveis")
@@ -143,48 +152,57 @@ class PreferenciasBibliotecaPecasDialog(QDialog):
         self.tree.blockSignals(True)
         self.tree.clear()
 
-        grupos: dict[str, QTreeWidgetItem] = {}
+        pecas_por_grupo: dict[str, list[DefPecaResumo]] = {}
         for peca in self._pecas:
             grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
-            parent = grupos.get(grupo)
-            if parent is None:
-                parent = QTreeWidgetItem([grupo, ""])
-                parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
-                self.tree.addTopLevelItem(parent)
-                grupos[grupo] = parent
+            pecas_por_grupo.setdefault(grupo, []).append(peca)
 
-            codigo_orlas = f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
-            nome_exibido = peca.nome_biblioteca or peca.nome
-            texto = f"{nome_exibido} [{codigo_orlas}]"
-            if peca.tipo_peca == COMPOSTA:
-                texto += " (composta)"
+        self._ordens_grupos = obter_ordens_grupos(pecas_por_grupo)
+        self._inputs_ordem_grupos: dict[str, QSpinBox] = {}
+        for grupo in ordenar_grupos(pecas_por_grupo, self._ordens_grupos):
+            parent = QTreeWidgetItem([grupo, "", ""])
+            parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
+            self.tree.addTopLevelItem(parent)
+            ordem = QSpinBox()
+            ordem.setRange(1, 999)
+            ordem.setValue(self._ordens_grupos[grupo])
+            ordem.setToolTip("Posição deste grupo na biblioteca do custeio (1 aparece primeiro).")
+            self.tree.setItemWidget(parent, 2, ordem)
+            self._inputs_ordem_grupos[grupo] = ordem
 
-            leaf = QTreeWidgetItem([texto, ""])
-            leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            disponivel = prefs.peca_visivel(peca.id)
-            leaf.setCheckState(
-                0,
-                Qt.CheckState.Checked if disponivel else Qt.CheckState.Unchecked,
-            )
-            leaf.setCheckState(
-                1,
-                Qt.CheckState.Checked
-                if peca.id in prefs.favoritas
-                else Qt.CheckState.Unchecked,
-            )
-            leaf.setData(0, Qt.ItemDataRole.UserRole, peca.id)
-            leaf.setToolTip(
-                0,
-                "\n".join(
-                    [
-                        f"Código: {peca.codigo}",
-                        f"Nome: {peca.nome}",
-                        f"Grupo: {peca.grupo or '—'}",
-                    ]
-                ),
-            )
-            leaf.setToolTip(1, "Favorito: atalho no grupo Favoritos da biblioteca.")
-            parent.addChild(leaf)
+            for peca in pecas_por_grupo[grupo]:
+                codigo_orlas = f"{peca.orla_c1}{peca.orla_c2}{peca.orla_l1}{peca.orla_l2}"
+                nome_exibido = peca.nome_biblioteca or peca.nome
+                texto = f"{nome_exibido} [{codigo_orlas}]"
+                if peca.tipo_peca == COMPOSTA:
+                    texto += " (composta)"
+
+                leaf = QTreeWidgetItem([texto, ""])
+                leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                disponivel = prefs.peca_visivel(peca.id)
+                leaf.setCheckState(
+                    0,
+                    Qt.CheckState.Checked if disponivel else Qt.CheckState.Unchecked,
+                )
+                leaf.setCheckState(
+                    1,
+                    Qt.CheckState.Checked
+                    if peca.id in prefs.favoritas
+                    else Qt.CheckState.Unchecked,
+                )
+                leaf.setData(0, Qt.ItemDataRole.UserRole, peca.id)
+                leaf.setToolTip(
+                    0,
+                    "\n".join(
+                        [
+                            f"Código: {peca.codigo}",
+                            f"Nome: {peca.nome}",
+                            f"Grupo: {peca.grupo or '—'}",
+                        ]
+                    ),
+                )
+                leaf.setToolTip(1, "Favorito: atalho no grupo Favoritos da biblioteca.")
+                parent.addChild(leaf)
 
         self.tree.expandAll()
         self.tree.blockSignals(False)
@@ -299,6 +317,12 @@ class PreferenciasBibliotecaPecasDialog(QDialog):
         # default; store no rows so future pieces stay visible for this user.
         todas_sem_favoritas = (
             len(selecionadas) == len(self._pecas) and not favoritas
+        )
+        guardar_ordens_grupos(
+            {
+                grupo: input_ordem.value()
+                for grupo, input_ordem in self._inputs_ordem_grupos.items()
+            }
         )
         try:
             with SessionLocal() as session:

@@ -65,6 +65,33 @@ def descendentes_por_composta(
     return resultado
 
 
+def ferragens_associadas_por_peca(
+    linhas: list[_LinhaCusteio],
+) -> dict[int, list[int]]:
+    """Map simple pieces to their directly associated hardware rows.
+
+    A normal catalog piece can have associated hardware without being a
+    ``PECA_COMPOSTA`` (for example, a removable shelf with shelf supports).
+    Grouping only these direct hardware children keeps the costing table clean
+    while leaving the parent piece as the visible, editable line.
+    """
+    por_id = {linha.id: linha for linha in linhas}
+    resultado: dict[int, list[int]] = {}
+    for linha in linhas:
+        if normalize_custeio_linha_type(linha.tipo_linha) != FERRAGEM:
+            continue
+        pai_id = linha.linha_pai_id
+        pai = por_id.get(pai_id)
+        if (
+            pai is None
+            or pai.linha_pai_id is not None
+            or normalize_custeio_linha_type(pai.tipo_linha) != PECA
+        ):
+            continue
+        resultado.setdefault(pai_id, []).append(linha.id)
+    return resultado
+
+
 def resumo_composta(
     linhas: list[_LinhaCusteio], descendentes_ids: list[int]
 ) -> ResumoComposta:

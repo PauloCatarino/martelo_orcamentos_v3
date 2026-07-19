@@ -16,7 +16,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -83,6 +85,14 @@ class GuardarModuloDialog(QDialog):
 
     _COLUNAS = ("Código", "Nome", "Categoria", "Âmbito", "Nº linhas")
 
+    _COLUNAS = ("Imagem",) + _COLUNAS
+    _TAMANHO_MINIATURA = 54
+    _LARGURAS_COLUNAS = (72, 150, 230, 135, 100, 75)
+    _ESTILO_SELECAO_TABELA = """
+        QTableWidget::item:selected { background-color: #5A3B27; color: white; }
+        QTableWidget::item:selected:!active { background-color: #76523A; color: white; }
+    """
+
     def __init__(
         self,
         parent=None,
@@ -91,6 +101,7 @@ class GuardarModuloDialog(QDialog):
         num_linhas: int = 0,
         modulos_utilizador: Sequence | None = None,
         modulos_globais: Sequence | None = None,
+        pasta_imagens_modulos: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -108,11 +119,13 @@ class GuardarModuloDialog(QDialog):
         }
         # None = MODO NOVO; an id = MODO SUBSTITUIR.
         self._modulo_id: int | None = None
+        self._pasta_imagens_modulos = (pasta_imagens_modulos or "").strip()
 
         self.setWindowTitle("Guardar como Módulo")
         self.setModal(True)
-        self.setMinimumWidth(900)
-        self.setMinimumHeight(520)
+        self.setMinimumSize(1080, 680)
+        self.resize(1280, 780)
+        self.setSizeGripEnabled(True)
 
         info = QLabel(
             f"Vai guardar {num_linhas} linha(s) de topo como um módulo "
@@ -121,7 +134,7 @@ class GuardarModuloDialog(QDialog):
         info.setWordWrap(True)
 
         corpo = QHBoxLayout()
-        corpo.addWidget(self._criar_painel_lista(), stretch=3)
+        corpo.addWidget(self._criar_painel_lista(), stretch=5)
         corpo.addWidget(self._criar_painel_formulario(), stretch=2)
 
         self.error_label = QLabel("")
@@ -193,9 +206,14 @@ class GuardarModuloDialog(QDialog):
         tabela.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         tabela.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tabela.verticalHeader().setVisible(False)
+        tabela.verticalHeader().setDefaultSectionSize(self._TAMANHO_MINIATURA + 12)
+        tabela.setIconSize(QSize(self._TAMANHO_MINIATURA, self._TAMANHO_MINIATURA))
         header = tabela.horizontalHeader()
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        ligar_persistencia_larguras(tabela, "dialog_guardar_modulo")
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for indice, largura in enumerate(self._LARGURAS_COLUNAS):
+            tabela.setColumnWidth(indice, largura)
+        ligar_persistencia_larguras(tabela, "dialog_guardar_modulo_lista")
+        tabela.setStyleSheet(self._ESTILO_SELECAO_TABELA)
         tabela.cellClicked.connect(self._on_tabela_clicada)
         tabela.cellDoubleClicked.connect(self._on_tabela_clicada)
         return tabela
@@ -254,11 +272,18 @@ class GuardarModuloDialog(QDialog):
         self.imagem_input.setPlaceholderText("(opcional) caminho da imagem")
         self.procurar_button = QPushButton("Procurar...")
         self.procurar_button.clicked.connect(self._procurar_imagem)
+        self.ver_imagem_button = QPushButton("Ver imagem")
+        self.ver_imagem_button.setToolTip(
+            "Abrir uma janela com a imagem atualmente indicada para o mÃ³dulo."
+        )
+        self.ver_imagem_button.clicked.connect(self._ver_imagem)
+        self.imagem_input.textChanged.connect(self._atualizar_botao_ver_imagem)
         imagem_row = QWidget()
         imagem_layout = QHBoxLayout()
         imagem_layout.setContentsMargins(0, 0, 0, 0)
         imagem_layout.addWidget(self.imagem_input, stretch=1)
         imagem_layout.addWidget(self.procurar_button)
+        imagem_layout.addWidget(self.ver_imagem_button)
         imagem_row.setLayout(imagem_layout)
 
         form = QFormLayout()
@@ -278,6 +303,7 @@ class GuardarModuloDialog(QDialog):
         layout.addWidget(self.categorias_info)
         layout.addStretch(1)
         painel.setLayout(layout)
+        self._atualizar_botao_ver_imagem()
         return painel
 
     # ----- Listing / filtering -----
@@ -294,6 +320,24 @@ class GuardarModuloDialog(QDialog):
             modulo = item.modulo
             row = tabela.rowCount()
             tabela.insertRow(row)
+            imagem = QTableWidgetItem()
+            pixmap = QPixmap(modulo.imagem_path or "")
+            if not pixmap.isNull():
+                imagem.setIcon(
+                    QIcon(
+                        pixmap.scaled(
+                            self._TAMANHO_MINIATURA,
+                            self._TAMANHO_MINIATURA,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    )
+                )
+            else:
+                imagem.setText("—")
+            imagem.setData(Qt.ItemDataRole.UserRole, modulo.id)
+            tabela.setItem(row, 0, imagem)
+
             valores = (
                 modulo.codigo or "",
                 modulo.nome or "",
@@ -303,10 +347,8 @@ class GuardarModuloDialog(QDialog):
                 ),
                 str(item.num_linhas),
             )
-            for col, texto in enumerate(valores):
+            for col, texto in enumerate(valores, start=1):
                 celula = QTableWidgetItem(texto)
-                if col == 0:
-                    celula.setData(Qt.ItemDataRole.UserRole, modulo.id)
                 tabela.setItem(row, col, celula)
 
     def _filtrar(self, itens: Sequence) -> list:
@@ -386,11 +428,51 @@ class GuardarModuloDialog(QDialog):
         caminho, _filtro = QFileDialog.getOpenFileName(
             self,
             "Escolher imagem do módulo",
-            "",
+            self._pasta_imagens_modulos,
             "Imagens (*.png *.jpg *.jpeg *.bmp *.gif);;Todos os ficheiros (*)",
         )
         if caminho:
             self.imagem_input.setText(caminho)
+
+    def _atualizar_botao_ver_imagem(self) -> None:
+        """Enable the preview command only when an image path was provided."""
+        self.ver_imagem_button.setEnabled(bool(self.imagem_input.text().strip()))
+
+    def _ver_imagem(self) -> None:
+        """Show the selected module image in its own scalable preview window."""
+        caminho = self.imagem_input.text().strip()
+        pixmap = QPixmap(caminho)
+        if not caminho or pixmap.isNull():
+            QMessageBox.information(
+                self,
+                "Imagem do mÃ³dulo",
+                "NÃ£o foi possÃ­vel abrir a imagem indicada para este mÃ³dulo.",
+            )
+            return
+
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle("Imagem do MÃ³dulo")
+        dialogo.setMinimumSize(640, 480)
+        dialogo.resize(900, 650)
+        imagem = QLabel()
+        imagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        imagem.setPixmap(
+            pixmap.scaled(
+                QSize(1200, 900),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setWidget(imagem)
+        fechar = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        fechar.rejected.connect(dialogo.reject)
+        fechar.accepted.connect(dialogo.accept)
+        layout = QVBoxLayout(dialogo)
+        layout.addWidget(area)
+        layout.addWidget(fechar)
+        dialogo.exec()
 
     def _selecionar_categoria(self, code: str) -> None:
         index = self.categoria_input.findData(code)

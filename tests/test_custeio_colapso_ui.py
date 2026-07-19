@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
+from app.domain.custeio_colapso import ferragens_associadas_por_peca
 from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage as P
 
 
@@ -64,6 +65,7 @@ def _montar():
     fake._custeio_by_row = {row: linha for row, linha in enumerate(linhas)}
     fake._compostas_expandidas = set()
     fake._descendentes_composta = {}
+    fake._ferragens_associadas_por_peca = {}
     fake._carregando_tabela = False
     fake._x_ferragem_target_id = None
     fake._btn_x_ferragem = QPushButton("✕", table.viewport())
@@ -125,3 +127,13 @@ def test_x_ferragem_aparece_so_em_ferragem_visivel():
     assert fake._btn_x_ferragem.isHidden() is True
     table.deleteLater()
     app.processEvents()
+
+
+def test_peca_simples_com_ferragem_associada_tambem_e_colapsavel():
+    linhas = [
+        _Linha(10, None, "PECA"),
+        _Linha(11, 10, "FERRAGEM"),
+        _Linha(12, None, "PECA"),
+    ]
+
+    assert ferragens_associadas_por_peca(linhas) == {10: [11]}

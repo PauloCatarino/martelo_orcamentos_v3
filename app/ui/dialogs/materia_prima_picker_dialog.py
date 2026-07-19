@@ -68,10 +68,11 @@ class MateriaPrimaPickerDialog(QDialog):
         self._materias_by_row: dict[int, DefMateriaPrimaResumo] = {}
         self._aplicando_filtros = False
         self.apenas_orlas = apenas_orlas
-        if self.apenas_orlas:
-            self.setWindowTitle("Selecionar Orla (família ORLA / Ref LE ORL*)")
-
-        self.setWindowTitle("Selecionar Matéria-Prima")
+        self.setWindowTitle(
+            "Selecionar Orla (família ORLA / Ref LE ORL*)"
+            if self.apenas_orlas
+            else "Selecionar Matéria-Prima"
+        )
         self.setModal(True)
         self.setMinimumSize(900, 540)
 
@@ -225,36 +226,26 @@ class MateriaPrimaPickerDialog(QDialog):
         self.status_label.clear()
         termo = self.search_input.text()
 
+        tipo_filtro = self._filtro_atual(self.tipo_filter)
+        familia_filtro = self._filtro_atual(self.familia_filter)
         try:
             with SessionLocal() as session:
-                materias = DefMateriaPrimaService(session).pesquisar(termo)
+                service = DefMateriaPrimaService(session)
+                # The generic search is capped at 200 records.  An empty
+                # search must instead use the complete active catalog, so a
+                # family filter such as ORLA sees every matching reference.
+                materias = (
+                    service.pesquisar(termo)
+                    if termo.strip()
+                    else service.listar_materias_primas_ativas()
+                )
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel pesquisar as materias-primas.")
             return
 
-        tipo_filtro = self._filtro_atual(self.tipo_filter)
-        familia_filtro = self._filtro_atual(self.familia_filter)
-        if self.apenas_orlas:
-            materias = [
-                m
-                for m in materias
-                if (m.ref_le or "").strip().upper().startswith("ORL")
-                or self._corresponde(familia_materia_prima(m), "ORLA")
-                or self._corresponde(tipo_materia_prima(m), "ORLA")
-            ]
-        else:
-            if tipo_filtro:
-                materias = [
-                    m
-                    for m in materias
-                    if self._corresponde(tipo_materia_prima(m), tipo_filtro)
-                ]
-            if familia_filtro:
-                materias = [
-                    m
-                    for m in materias
-                    if self._corresponde(familia_materia_prima(m), familia_filtro)
-                ]
+        materias = self._aplicar_filtros(
+            materias, tipo_filtro, familia_filtro, self.apenas_orlas
+        )
 
         self._preencher(materias)
 
@@ -269,7 +260,40 @@ class MateriaPrimaPickerDialog(QDialog):
         valor = combo.currentData()
         return (valor or "").strip().upper() or None
 
-    def _corresponde(self, valor, filtro: str) -> bool:
+    @classmethod
+    def _aplicar_filtros(
+        cls,
+        materias: list[DefMateriaPrimaResumo],
+        tipo_filtro: str | None,
+        familia_filtro: str | None,
+        apenas_orlas: bool,
+    ) -> list[DefMateriaPrimaResumo]:
+        """Apply the dialog filters to the complete catalog result set."""
+        if apenas_orlas:
+            return [
+                materia
+                for materia in materias
+                if (materia.ref_le or "").strip().upper().startswith("ORL")
+                or cls._corresponde(familia_materia_prima(materia), "ORLA")
+                or cls._corresponde(tipo_materia_prima(materia), "ORLA")
+            ]
+
+        if tipo_filtro:
+            materias = [
+                materia
+                for materia in materias
+                if cls._corresponde(tipo_materia_prima(materia), tipo_filtro)
+            ]
+        if familia_filtro:
+            materias = [
+                materia
+                for materia in materias
+                if cls._corresponde(familia_materia_prima(materia), familia_filtro)
+            ]
+        return materias
+
+    @staticmethod
+    def _corresponde(valor, filtro: str) -> bool:
         """Match a material's type/family against a filter (case/plural tolerant)."""
         texto = (valor or "").strip().upper()
         if not texto:

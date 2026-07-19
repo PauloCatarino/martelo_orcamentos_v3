@@ -51,6 +51,7 @@ from app.domain.quantidades import (
 from app.domain.custeio_colapso import (
     descendentes_por_composta,
     eh_ferragem_auto,
+    ferragens_associadas_por_peca,
     resumo_composta,
 )
 from app.domain.custeio_linha_types import (
@@ -81,6 +82,7 @@ from app.domain.custeio_simplificado import (
     ORLAGEM_SIMPLIFICADA_PUR,
 )
 from app.domain.numeros import formatar_percentagem
+from app.domain.peca_funcao_types import PECA_FUNCAO_LABELS
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
@@ -143,6 +145,14 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.colunas_visiveis import ligar_menu_colunas
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.ordem_grupos_biblioteca import ordenar_grupos
+from app.ui.widgets.miniatura_estrutura import (
+    PUXADOR,
+    criar_miniatura_estrutura,
+    criar_miniatura_estrutura_componentes,
+    resolver_funcao_estrutural,
+    tem_previsao_estrutural,
+)
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import format_currency, format_mm, format_quantity
 
@@ -524,6 +534,7 @@ class OrcamentoItemCusteioPage(QWidget):
         # the user has expanded (kept across reloads so an edit doesn't re-hide).
         self._compostas_expandidas: set[int] = set()
         self._descendentes_composta: dict[int, list[int]] = {}
+        self._ferragens_associadas_por_peca: dict[int, list[int]] = {}
         # Line id under the floating "✕ delete" button (hover over a hardware row).
         self._x_ferragem_target_id: int | None = None
         self._erros_entrada: list[ErroEntradaCusteio] = []
@@ -808,6 +819,10 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
                 self._chave_tipos = custeio_service.tipos_das_chaves()
                 self._carregar_tarifas_maquinas(session)
+                self._funcoes_estruturais_por_peca = {
+                    peca.id: peca.funcao
+                    for peca in DefPecaService(session).listar_pecas()
+                }
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar o custeio do item.")
             return
@@ -1467,8 +1482,12 @@ class OrcamentoItemCusteioPage(QWidget):
                 modulos_utilizador, modulos_globais = DefModuloService(
                     session
                 ).listar_modulos_para_dialogo(user_id)
+                pasta_imagens_modulos = SystemSettingService(session).obter_valor(
+                    "pasta_imagens_modulos"
+                )
         except SQLAlchemyError:
             modulos_utilizador, modulos_globais = [], []
+            pasta_imagens_modulos = None
 
         guardado: dict = {}
 
@@ -1523,6 +1542,7 @@ class OrcamentoItemCusteioPage(QWidget):
             num_linhas=len(linha_ids),
             modulos_utilizador=modulos_utilizador,
             modulos_globais=modulos_globais,
+            pasta_imagens_modulos=pasta_imagens_modulos,
         )
         if dialog.exec() and guardado:
             resultado = guardado["resultado"]
@@ -1581,16 +1601,19 @@ class OrcamentoItemCusteioPage(QWidget):
         self.library_title = QLabel("Biblioteca de peças")
         self.library_title.setObjectName("orcamentoItemCusteioLibraryTitle")
 
-        self.preferencias_biblioteca_button = QPushButton("⚙")
+        self.preferencias_biblioteca_button = QPushButton()
         self.preferencias_biblioteca_button.setObjectName(
             "orcamentoItemCusteioPreferenciasBiblioteca"
         )
         self.preferencias_biblioteca_button.setFixedSize(30, 28)
+        self.preferencias_biblioteca_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirHomeIcon)
+        )
         self.preferencias_biblioteca_button.setAccessibleName(
-            "Preferências da biblioteca de peças"
+            "Abrir A Minha Biblioteca de Peças"
         )
         self.preferencias_biblioteca_button.setToolTip(
-            "A Minha Biblioteca de Peças: escolher as peças disponíveis e as "
+            "Abrir A Minha Biblioteca de Peças: escolher as peças disponíveis e "
             "favoritas deste utilizador (o mesmo menu existe em Configurações)."
         )
         self.preferencias_biblioteca_button.clicked.connect(
@@ -1720,7 +1743,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tree_biblioteca_pecas.clear()
 
         self._biblioteca_folhas_por_peca = {}
-        grupos: dict[str, QTreeWidgetItem] = {}
+        pecas_por_grupo: dict[str, list[tuple[DefPecaResumo, str]]] = {}
         favoritos_grupo: QTreeWidgetItem | None = None
         for peca in self._biblioteca_pecas:
             if not self._prefs_biblioteca.peca_visivel(peca.id):
@@ -1744,13 +1767,13 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
 
             grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
-            parent = grupos.get(grupo)
-            if parent is None:
-                parent = QTreeWidgetItem([grupo])
-                self.tree_biblioteca_pecas.addTopLevelItem(parent)
-                grupos[grupo] = parent
+            pecas_por_grupo.setdefault(grupo, []).append((peca, codigo_orlas))
 
-            parent.addChild(self._criar_folha_biblioteca(peca, codigo_orlas))
+        for grupo in ordenar_grupos(pecas_por_grupo):
+            parent = QTreeWidgetItem([grupo])
+            self.tree_biblioteca_pecas.addTopLevelItem(parent)
+            for peca, codigo_orlas in pecas_por_grupo[grupo]:
+                parent.addChild(self._criar_folha_biblioteca(peca, codigo_orlas))
 
         self.tree_biblioteca_pecas.expandAll()
         self.tree_biblioteca_pecas.blockSignals(False)
@@ -1937,6 +1960,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self._carregando_tabela = True
         try:
             self._custeio_by_row = {}
+            self._estruturas_visuais_por_linha = self._mapear_estruturas_visuais(
+                linhas
+            )
             self._quantidades_por_linha = self._calcular_quantidades_das_linhas(linhas)
             self.table.setRowCount(len(linhas))
 
@@ -1953,6 +1979,30 @@ class OrcamentoItemCusteioPage(QWidget):
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
 
+    def _mapear_estruturas_visuais(self, linhas) -> dict[int, list[tuple[str, object]]]:
+        """Map every line to its own, or its composite children's, cube parts."""
+        partes_por_linha: dict[int, list[tuple[str, object]]] = {}
+        for linha in linhas:
+            funcao_catalogo = getattr(self, "_funcoes_estruturais_por_peca", {}).get(
+                linha.def_peca_id
+            )
+            funcao = resolver_funcao_estrutural(
+                funcao_catalogo, linha.def_peca_codigo or linha.codigo
+            )
+            if tem_previsao_estrutural(funcao):
+                partes_por_linha[linha.id] = [(funcao, linha.quantidade)]
+
+        descendentes = descendentes_por_composta(linhas)
+        for composta_id, filhos_ids in descendentes.items():
+            partes = [
+                parte
+                for filho_id in filhos_ids
+                for parte in partes_por_linha.get(filho_id, [])
+            ]
+            if partes:
+                partes_por_linha[composta_id] = partes
+        return partes_por_linha
+
     # --- Peças compostas colapsáveis (variante A) -------------------------
     # A peça composta nasce colapsada: mostra só um resumo e esconde as suas
     # peças/ferragens filhas. É 100% visual — o cálculo usa sempre todas as
@@ -1967,6 +2017,7 @@ class OrcamentoItemCusteioPage(QWidget):
         :meth:`_preencher_tabela`), so the cell edits here never trigger a save.
         """
         self._descendentes_composta = descendentes_por_composta(linhas)
+        self._ferragens_associadas_por_peca = ferragens_associadas_por_peca(linhas)
         for row, linha in self._custeio_by_row.items():
             tipo = normalize_custeio_linha_type(linha.tipo_linha)
             if tipo == PECA_COMPOSTA:
@@ -1976,6 +2027,12 @@ class OrcamentoItemCusteioPage(QWidget):
                     linhas, self._descendentes_composta.get(linha.id, [])
                 )
                 self._anexar_resumo_composta(row, resumo)
+            elif linha.id in self._ferragens_associadas_por_peca:
+                self._definir_seta_composta(
+                    row,
+                    linha.id in self._compostas_expandidas,
+                    tipo_linha=linha.tipo_linha,
+                )
             elif eh_ferragem_auto(linha):
                 self._marcar_ferragem_auto(row)
         self._aplicar_visibilidade_compostas()
@@ -1985,14 +2042,20 @@ class OrcamentoItemCusteioPage(QWidget):
         id_por_row = {
             linha.id: row for row, linha in self._custeio_by_row.items()
         }
-        for comp_id, descendentes in self._descendentes_composta.items():
+        grupos_colapsaveis = {
+            **self._descendentes_composta,
+            **self._ferragens_associadas_por_peca,
+        }
+        for comp_id, descendentes in grupos_colapsaveis.items():
             esconder = comp_id not in self._compostas_expandidas
             for linha_id in descendentes:
                 row = id_por_row.get(linha_id)
                 if row is not None:
                     self.table.setRowHidden(row, esconder)
 
-    def _definir_seta_composta(self, row: int, expandida: bool) -> None:
+    def _definir_seta_composta(
+        self, row: int, expandida: bool, *, tipo_linha: str = PECA_COMPOSTA
+    ) -> None:
         """Set the ▶/▼ toggle on a composite row's 'Tipo linha' cell."""
         try:
             col = self.TABLE_HEADERS.index("Tipo linha")
@@ -2001,10 +2064,15 @@ class OrcamentoItemCusteioPage(QWidget):
         item = self.table.item(row, col)
         if item is None:
             return
-        seta = "▼" if expandida else "▶"  # ▼ aberta / ▶ fechada
-        item.setText(f"{seta}  {get_custeio_linha_type_label(PECA_COMPOSTA)}")
+        acao = "fechar" if expandida else "abrir"
+        seta = "▼" if expandida else "▶"
+        item.setText(f"{seta}  {get_custeio_linha_type_label(tipo_linha)}")
+        fonte = QFont(item.font())
+        fonte.setBold(True)
+        fonte.setPointSizeF(max(fonte.pointSizeF(), 11.0))
+        item.setFont(fonte)
         item.setToolTip(
-            "Clique para expandir/colapsar os componentes desta peça composta."
+            f"Clique para {acao} as ferragens ou componentes associados."
         )
 
     def _anexar_resumo_composta(self, row: int, resumo) -> None:
@@ -2037,7 +2105,7 @@ class OrcamentoItemCusteioPage(QWidget):
             return
         item.setText(f"{item.text()}   ·auto")
         item.setToolTip(
-            "Ferragem preenchida automaticamente por regra do componente composto."
+            "Ferragem preenchida automaticamente por associação à peça."
         )
 
     def _on_cell_clicked_composta(self, row: int, col: int) -> None:
@@ -2045,7 +2113,10 @@ class OrcamentoItemCusteioPage(QWidget):
         linha = self._custeio_by_row.get(row)
         if linha is None:
             return
-        if normalize_custeio_linha_type(linha.tipo_linha) != PECA_COMPOSTA:
+        if (
+            normalize_custeio_linha_type(linha.tipo_linha) != PECA_COMPOSTA
+            and linha.id not in self._ferragens_associadas_por_peca
+        ):
             return
         try:
             col_tipo = self.TABLE_HEADERS.index("Tipo linha")
@@ -2064,12 +2135,11 @@ class OrcamentoItemCusteioPage(QWidget):
         self._carregando_tabela = True
         try:
             for row, linha in self._custeio_by_row.items():
-                if (
-                    linha.id == comp_id
-                    and normalize_custeio_linha_type(linha.tipo_linha) == PECA_COMPOSTA
-                ):
+                if linha.id == comp_id:
                     self._definir_seta_composta(
-                        row, comp_id in self._compostas_expandidas
+                        row,
+                        comp_id in self._compostas_expandidas,
+                        tipo_linha=linha.tipo_linha,
                     )
             self._aplicar_visibilidade_compostas()
         finally:
@@ -2085,9 +2155,11 @@ class OrcamentoItemCusteioPage(QWidget):
         botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         botao.setFixedSize(20, 20)
         botao.setStyleSheet(
-            "QPushButton { border: none; border-radius: 10px; color: #7A6C5A;"
-            " background: rgba(247,242,234,0.9); font-weight: bold; }"
-            "QPushButton:hover { color: #FFFFFF; background: #9A2B22; }"
+            "QPushButton { border: 1px solid #B52C25; border-radius: 10px;"
+            " color: #B52C25; background: #FBE5E3; font-weight: bold;"
+            " font-size: 14px; }"
+            "QPushButton:hover { color: #FFFFFF; background: #9A2B22;"
+            " border-color: #7A231C; }"
         )
         botao.hide()
         botao.clicked.connect(self._eliminar_ferragem_hover)
@@ -2182,7 +2254,11 @@ class OrcamentoItemCusteioPage(QWidget):
         """Select and reveal one costing line referenced by an external audit."""
         # A linha alvo pode ser uma filha escondida de uma composta colapsada:
         # expande a composta que a contém para a tornar visível.
-        for comp_id, descendentes in self._descendentes_composta.items():
+        grupos_colapsaveis = {
+            **self._descendentes_composta,
+            **self._ferragens_associadas_por_peca,
+        }
+        for comp_id, descendentes in grupos_colapsaveis.items():
             if linha_id in descendentes and comp_id not in self._compostas_expandidas:
                 self._toggle_composta(comp_id)
                 break
@@ -2404,6 +2480,33 @@ class OrcamentoItemCusteioPage(QWidget):
         """
         item = criar_item_tabela("")
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+        partes_estruturais = getattr(self, "_estruturas_visuais_por_linha", {}).get(
+            linha.id, []
+        )
+        if partes_estruturais and any(
+            funcao != PUXADOR for funcao, _quantidade in partes_estruturais
+        ):
+            composta = len(partes_estruturais) > 1
+            item.setIcon(
+                QIcon(
+                    criar_miniatura_estrutura_componentes(partes_estruturais)
+                    if composta
+                    else criar_miniatura_estrutura(*partes_estruturais[0])
+                )
+            )
+            nomes = ", ".join(
+                PECA_FUNCAO_LABELS.get(funcao, funcao.replace("_", " ").title())
+                for funcao, _quantidade in partes_estruturais
+            )
+            item.setToolTip(
+                "Representação estrutural ilustrativa"
+                + (" da peça composta: " if composta else ": ")
+                + f"{nomes}. "
+                "O cubo tem sempre o mesmo volume; a quantidade só define "
+                "quando são mostrados um ou dois elementos."
+            )
+            return item
 
         caminho = getattr(linha, "modulo_imagem_path", None)
         if not caminho:
