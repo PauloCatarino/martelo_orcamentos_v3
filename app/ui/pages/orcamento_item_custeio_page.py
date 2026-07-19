@@ -1247,6 +1247,7 @@ class OrcamentoItemCusteioPage(QWidget):
             return OperacaoLocalData(
                 def_operacao_id=int(data.def_operacao_id),
                 ordem=data.ordem,
+                metodo_calculo=data.metodo_calculo,
                 regra_calculo=data.regra_calculo,
                 quantidade_base=data.quantidade_base,
                 rasgo_qt_comp=data.rasgo_qt_comp,
@@ -1290,6 +1291,7 @@ class OrcamentoItemCusteioPage(QWidget):
                     tempo_setup_minutos=operacao.tempo_setup_minutos,
                     tempo_por_unidade_minutos=operacao.tempo_por_unidade_minutos,
                     unidade_tempo=operacao.unidade_tempo,
+                    metodo_calculo=getattr(operacao, "metodo_calculo", None),
                 )
 
             guardado = False
@@ -1307,6 +1309,7 @@ class OrcamentoItemCusteioPage(QWidget):
                                 linha_id,
                                 int(operacao.def_operacao_id),
                                 dados,
+                                local_id=getattr(operacao, "local_id", None),
                             )
                     guardado = True
                     return True
@@ -1339,7 +1342,9 @@ class OrcamentoItemCusteioPage(QWidget):
                     OrcamentoItemCusteioLinhaService(
                         session
                     ).remover_operacao_local(
-                        linha_id, int(operacao.def_operacao_id)
+                        linha_id,
+                        int(operacao.def_operacao_id),
+                        local_id=getattr(operacao, "local_id", None),
                     )
                 return True
             except (SQLAlchemyError, ValueError) as error:
@@ -2821,11 +2826,17 @@ class OrcamentoItemCusteioPage(QWidget):
             return self._tooltip_montagem_manual(linha, qt)
         if header == "Custo produção" and linha.custo_producao is not None:
             fator = self._fator_serie_aplicado(linha)
+            custo_revestimento = getattr(linha, "custo_revestimento", None)
             parciais = (
                 f"{format_currency(linha.custo_corte)} + "
                 f"{format_currency(linha.custo_orlagem)} + "
                 f"{format_currency(linha.custo_cnc)} + "
-                f"{format_currency(linha.custo_montagem_manual)}"
+                + (
+                    f"{format_currency(custo_revestimento)} + "
+                    if custo_revestimento is not None
+                    else ""
+                )
+                + f"{format_currency(linha.custo_montagem_manual)}"
             )
             if fator is not None:
                 substituicao = (
@@ -2835,9 +2846,11 @@ class OrcamentoItemCusteioPage(QWidget):
             else:
                 substituicao = f"= {parciais} = {format_currency(linha.custo_producao)}"
             return self._tooltip_3(
-                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC "
-                "e montagem/manual, multiplicada pelo fator série quando definido.",
-                "Custo produção = (corte + orlagem + CNC + mont./manual) × fator série",
+                "Custo de produção da peça: soma dos custos de corte, orlagem, CNC, "
+                "revestimento e montagem/manual, multiplicada pelo fator série "
+                "quando definido.",
+                "Custo produção = (corte + orlagem + CNC + revestimento + "
+                "mont./manual) × fator série",
                 substituicao,
             )
         if header == "Tempo corte" and linha.tempo_corte is not None:

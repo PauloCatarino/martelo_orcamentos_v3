@@ -35,6 +35,10 @@ from app.ui.dialogs.maquina_dialog import MaquinaDialog
 from app.ui.dialogs.operacao_dialog import OperacaoDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.simulador_cnc_widget import (
+    SimuladorCncWidget,
+    carregar_maquinas_simulacao,
+)
 from app.utils.formatters import format_currency, format_quantity
 
 
@@ -58,13 +62,17 @@ class OperacoesMaquinasPage(QWidget):
         "Código",
         "Nome",
         "Tipo",
+        "Métodos",
         "Custo/hora STD",
         "Custo/hora SERIE",
         "€/ML STD",
         "€/ML SERIE",
-        "Permite rasgos",
         "€/ML rasgo STD",
         "€/ML rasgo SERIE",
+        "€/furo STD",
+        "€/furo SERIE",
+        "€/m² face STD",
+        "€/m² face SERIE",
         "€/lado STD",
         "€/lado SERIE",
         "Ativo",
@@ -74,11 +82,13 @@ class OperacoesMaquinasPage(QWidget):
         super().__init__()
 
         self.cabecalho = BarraCabecalho(
-            "Operações / Máquinas",
+            "Operações / Máquinas / Simulador",
             [
-                "Catálogo de operações e máquinas usado futuramente no custeio de "
-                "corte, orlagem, CNC, montagem, mão de obra e outras operações de "
-                "produção."
+                "Catálogo de operações e máquinas usado no custeio de corte, "
+                "orlagem, CNC, revestimento, montagem e mão de obra. Cada "
+                "máquina CNC declara os métodos de cálculo que permite; o "
+                "separador Simulador mostra o custo de cada método com as "
+                "tarifas reais."
             ],
         )
 
@@ -106,9 +116,12 @@ class OperacoesMaquinasPage(QWidget):
         ligar_persistencia_larguras(self.operacoes_table, "operacoes")
         ligar_persistencia_larguras(self.maquinas_table, "maquinas")
 
+        self.simulador_widget = SimuladorCncWidget()
+
         self.tabs = QTabWidget()
         self.tabs.addTab(self._create_operacoes_tab(), "Operações")
         self.tabs.addTab(self._create_maquinas_tab(), "Máquinas")
+        self.tabs.addTab(self.simulador_widget, "Simulador")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -140,6 +153,14 @@ class OperacoesMaquinasPage(QWidget):
         maquina_labels = {maquina.id: f"{maquina.codigo} - {maquina.nome}" for maquina in maquinas}
         self._preencher_operacoes(operacoes, maquina_labels)
         self._preencher_maquinas(maquinas)
+        self._atualizar_simulador()
+
+    def _atualizar_simulador(self) -> None:
+        """Refresh the simulator tab with the real machine tariffs."""
+        try:
+            self.simulador_widget.definir_maquinas(carregar_maquinas_simulacao())
+        except SQLAlchemyError:
+            pass  # the catalog tabs already reported the load problem
 
     def _preencher_operacoes(
         self,
@@ -179,13 +200,17 @@ class OperacoesMaquinasPage(QWidget):
                 maquina.codigo,
                 maquina.nome,
                 maquina.tipo or "",
+                self._format_metodos(maquina),
                 format_currency(maquina.custo_hora),
                 format_currency(maquina.custo_hora_serie),
                 format_currency(maquina.preco_ml_std),
                 format_currency(maquina.preco_ml_serie),
-                self._format_bool(maquina.permite_rasgos),
                 format_currency(maquina.preco_rasgo_ml_std),
                 format_currency(maquina.preco_rasgo_ml_serie),
+                format_currency(maquina.preco_furo_std),
+                format_currency(maquina.preco_furo_serie),
+                format_currency(maquina.preco_m2_face_std),
+                format_currency(maquina.preco_m2_face_serie),
                 self._format_lados(
                     maquina.preco_lado_curto_std, maquina.preco_lado_longo_std
                 ),
@@ -484,6 +509,13 @@ class OperacoesMaquinasPage(QWidget):
                             limite_lado_mm=form_data.limite_lado_mm,
                             custo_setup_peca_std=form_data.custo_setup_peca_std,
                             custo_setup_peca_serie=form_data.custo_setup_peca_serie,
+                            permite_furacao=form_data.permite_furacao,
+                            permite_pocket=form_data.permite_pocket,
+                            permite_escaloes_area=form_data.permite_escaloes_area,
+                            preco_furo_std=form_data.preco_furo_std,
+                            preco_furo_serie=form_data.preco_furo_serie,
+                            preco_m2_face_std=form_data.preco_m2_face_std,
+                            preco_m2_face_serie=form_data.preco_m2_face_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
                         )
@@ -541,6 +573,13 @@ class OperacoesMaquinasPage(QWidget):
                             limite_lado_mm=form_data.limite_lado_mm,
                             custo_setup_peca_std=form_data.custo_setup_peca_std,
                             custo_setup_peca_serie=form_data.custo_setup_peca_serie,
+                            permite_furacao=form_data.permite_furacao,
+                            permite_pocket=form_data.permite_pocket,
+                            permite_escaloes_area=form_data.permite_escaloes_area,
+                            preco_furo_std=form_data.preco_furo_std,
+                            preco_furo_serie=form_data.preco_furo_serie,
+                            preco_m2_face_std=form_data.preco_m2_face_std,
+                            preco_m2_face_serie=form_data.preco_m2_face_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
                         ),
@@ -644,6 +683,25 @@ class OperacoesMaquinasPage(QWidget):
     def _format_bool(self, value: bool) -> str:
         """Format a boolean for display."""
         return "Sim" if value else "Não"
+
+    def _format_metodos(self, maquina: DefMaquinaResumo) -> str:
+        """Summarize the calculation methods one machine allows."""
+        tipo = (maquina.tipo or "").strip().upper()
+        if tipo == "REVESTIMENTO":
+            return "Revestimento"
+        if tipo != "CNC":
+            return ""
+        partes: list[str] = []
+        if maquina.permite_escaloes_area:
+            partes.append("Área")
+        partes.append("Tempo")
+        if maquina.permite_furacao:
+            partes.append("Furos")
+        if maquina.permite_rasgos:
+            partes.append("Rasgo")
+        if maquina.permite_pocket:
+            partes.append("Pocket")
+        return " · ".join(partes)
 
     def _format_lados(self, curto, longo) -> str:
         """Format ORLAGEM short/long side tariffs."""

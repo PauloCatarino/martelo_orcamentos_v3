@@ -155,7 +155,7 @@ def test_def_peca_detail_page_operacoes_headers() -> None:
         "Operação",
         "Tipo",
         "Máquina",
-        "Regra cálculo",
+        "Método",
         "Quantidade base",
         "Construção rasgo",
         "Tempo setup",

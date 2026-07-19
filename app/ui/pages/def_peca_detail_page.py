@@ -36,6 +36,7 @@ from app.domain.associado_types import (
     ZONA_APLICACAO_LABELS,
 )
 from app.domain.configuracao_sugestoes import ORIGEM_PECA
+from app.domain.metodo_calculo_types import get_metodo_calculo_label
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.regra_quantidade_types import get_regra_quantidade_label
 from app.domain.valueset_types import VALUESET_KEY_LABELS
@@ -99,7 +100,7 @@ class DefPecaDetailPage(QWidget):
         "Operação",
         "Tipo",
         "Máquina",
-        "Regra cálculo",
+        "Método",
         "Quantidade base",
         "Construção rasgo",
         "Tempo setup",
@@ -885,7 +886,12 @@ class DefPecaDetailPage(QWidget):
                 self._format_operacao_label(ligacao.def_operacao_id, operacao),
                 (operacao.tipo_operacao or "") if operacao is not None else "",
                 self._format_operacao_maquina(operacao),
-                get_regra_operacao_label(ligacao.regra_calculo),
+                (
+                    get_metodo_calculo_label(
+                        getattr(ligacao, "metodo_calculo", None)
+                    )
+                    or get_regra_operacao_label(ligacao.regra_calculo)
+                ),
                 format_quantity(ligacao.quantidade_base),
                 (
                     f"{ligacao.rasgo_qt_comp} × COMP + {ligacao.rasgo_qt_larg} × LARG"
@@ -958,6 +964,7 @@ class DefPecaDetailPage(QWidget):
                             def_peca_id=self.peca.id,
                             def_operacao_id=form_data.def_operacao_id,
                             ordem=form_data.ordem,
+                            metodo_calculo=form_data.metodo_calculo,
                             regra_calculo=form_data.regra_calculo,
                             quantidade_base=form_data.quantidade_base,
                             rasgo_qt_comp=form_data.rasgo_qt_comp,
@@ -1012,6 +1019,7 @@ class DefPecaDetailPage(QWidget):
                             def_peca_id=self.peca.id,
                             def_operacao_id=form_data.def_operacao_id,
                             ordem=form_data.ordem,
+                            metodo_calculo=form_data.metodo_calculo,
                             regra_calculo=form_data.regra_calculo,
                             quantidade_base=form_data.quantidade_base,
                             rasgo_qt_comp=form_data.rasgo_qt_comp,

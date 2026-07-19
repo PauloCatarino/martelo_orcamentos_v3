@@ -102,12 +102,28 @@ class OperacaoDialog(QDialog):
         form.addRow("Tipo operação", self.tipo_operacao_input)
         form.addRow("Unidade cálculo", self.unidade_calculo_input)
         form.addRow("Máquina associada", self.maquina_input)
-        form.addRow("Tempo base", self.tempo_base_input)
-        form.addRow("Tempo setup", self.tempo_setup_input)
-        form.addRow("Custo/hora", self.custo_hora_input)
-        form.addRow("Custo mínimo", self.custo_minimo_input)
+        self.tempo_base_label = QLabel("Tempo base")
+        form.addRow(self.tempo_base_label, self.tempo_base_input)
+        self.tempo_setup_label = QLabel("Tempo setup")
+        form.addRow(self.tempo_setup_label, self.tempo_setup_input)
+        self.custo_hora_label = QLabel("Custo/hora")
+        form.addRow(self.custo_hora_label, self.custo_hora_input)
+        self.custo_minimo_label = QLabel("Custo mínimo")
+        form.addRow(self.custo_minimo_label, self.custo_minimo_input)
+        self.nota_cnc_label = QLabel(
+            "Operação CNC/Revestimento: os custos vêm todos da MÁQUINA "
+            "(capacidades, tarifas e escalões) e o método de cálculo "
+            "escolhe-se ao associar a operação à peça — por isso os campos "
+            "de tempo/custo desta ficha não se aplicam."
+        )
+        self.nota_cnc_label.setWordWrap(True)
+        self.nota_cnc_label.setStyleSheet("color: #666666; font-size: 11px;")
+        form.addRow("", self.nota_cnc_label)
         form.addRow("Observações", self.observacoes_input)
         form.addRow("Ativo", self.ativo_input)
+        self.tipo_operacao_input.currentIndexChanged.connect(
+            self._update_campos_tipo
+        )
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -125,6 +141,24 @@ class OperacaoDialog(QDialog):
 
         if operacao is not None:
             self._load_operacao(operacao)
+        self._update_campos_tipo()
+
+    def _update_campos_tipo(self) -> None:
+        """Hide the per-operation time/cost fields for CNC/coating types."""
+        tipo = (self.tipo_operacao_input.currentData() or "").strip().upper()
+        maquina_manda = tipo in ("CNC", "REVESTIMENTO")
+        for widget in (
+            self.tempo_base_label,
+            self.tempo_base_input,
+            self.tempo_setup_label,
+            self.tempo_setup_input,
+            self.custo_hora_label,
+            self.custo_hora_input,
+            self.custo_minimo_label,
+            self.custo_minimo_input,
+        ):
+            widget.setVisible(not maquina_manda)
+        self.nota_cnc_label.setVisible(maquina_manda)
 
     def _load_operacao(self, operacao: DefOperacaoResumo) -> None:
         """Populate the form with an existing operation and lock the code."""

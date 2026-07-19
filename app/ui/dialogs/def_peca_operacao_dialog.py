@@ -43,11 +43,14 @@ from app.domain.operacao_guia import (
 )
 # The recipe field keys for quantity/times/unit share the guide's values.
 from app.domain.operacao_receitas import (
+    CAMPO_METODO_CALCULO,
     CAMPO_RASGO_QT_COMP,
     CAMPO_RASGO_QT_LARG,
     CAMPO_REGRA_CALCULO,
     get_receitas_operacao,
 )
+from app.domain import metodo_calculo_types as metodo_types
+from types import SimpleNamespace
 from app.domain.configuracao_sugestoes import (
     ConfigOperacaoExistente,
     construir_sugestoes_operacao,
@@ -96,6 +99,7 @@ class DefPecaOperacaoDialogData:
     ativo: bool
     observacoes: str | None
     acao: str = ADICIONAR
+    metodo_calculo: str | None = None
 
 
 @dataclass(frozen=True)
@@ -190,8 +194,17 @@ class DefPecaOperacaoDialog(QDialog):
         for operacao in operacoes_disponiveis:
             self.operacao_input.addItem(f"{operacao.codigo} - {operacao.nome}", operacao.id)
         self.operacao_input.setToolTip(
-            "Operação do catálogo a ligar à peça. O tipo da operação e a "
-            "máquina associada decidem como o custo é calculado."
+            "Operação do catálogo a ligar à peça. Nas CNC a operação É a "
+            "máquina; o método de cálculo escolhe-se a seguir."
+        )
+
+        # New CNC model: the method combo appears for CNC/coating operations
+        # and only lists the methods the machine allows.
+        self.metodo_input = QComboBox()
+        self.metodo_input.setToolTip(
+            "Como esta operação é custeada: escalões de área, tempo, furação, "
+            "rasgo ou revestimento. A lista mostra apenas os métodos que a "
+            "máquina permite."
         )
 
         self.ordem_input = QSpinBox()
@@ -325,6 +338,8 @@ class DefPecaOperacaoDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("Operação", self.operacao_input)
+        self.metodo_label = QLabel("Método de cálculo")
+        form.addRow(self.metodo_label, self.metodo_input)
         self.acao_label = QLabel("Ação da variante")
         form.addRow(self.acao_label, self.acao_input)
         self.acao_label.setVisible(mostrar_acao)
@@ -336,8 +351,10 @@ class DefPecaOperacaoDialog(QDialog):
         if configuracoes_existentes is None:
             self.sugestao_label.setVisible(False)
             self.sugestao_input.setVisible(False)
-        form.addRow("Regra cálculo", self.regra_calculo_input)
-        form.addRow("Quantidade base", self.quantidade_base_input)
+        self.regra_label = QLabel("Regra cálculo")
+        form.addRow(self.regra_label, self.regra_calculo_input)
+        self.quantidade_base_label = QLabel("Quantidade base")
+        form.addRow(self.quantidade_base_label, self.quantidade_base_input)
         self.rasgo_comp_label = QLabel("N.º comprimentos do rasgo")
         self.rasgo_larg_label = QLabel("N.º larguras do rasgo")
         form.addRow(self.rasgo_comp_label, self.rasgo_qt_comp_input)
@@ -361,7 +378,8 @@ class DefPecaOperacaoDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         self.simular_button.clicked.connect(self._abrir_simulador)
         self.acao_input.currentIndexChanged.connect(self._update_acao_fields)
-        self.operacao_input.currentIndexChanged.connect(self._update_rasgo_fields)
+        self.operacao_input.currentIndexChanged.connect(self._on_operacao_changed)
+        self.metodo_input.currentIndexChanged.connect(self._update_metodo_fields)
         self.regra_calculo_input.currentIndexChanged.connect(self._atualizar_guia)
         self.unidade_tempo_input.currentIndexChanged.connect(self._atualizar_guia)
         for widget in (
@@ -382,11 +400,13 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.operacao_input.currentIndexChanged.connect(self._atualizar_sugestoes)
 
+        self._atualizar_metodos_disponiveis()
         if ligacao is not None:
             self._load_ligacao(ligacao)
         self._update_acao_fields()
-        self._update_rasgo_fields()
+        self._update_metodo_fields()
         self._atualizar_sugestoes()
+        self._atualizar_receitas()
 
     def _load_ligacao(self, ligacao: DefPecaOperacaoResumo) -> None:
         """Populate the form with an existing link."""
@@ -400,6 +420,8 @@ class DefPecaOperacaoDialog(QDialog):
         )
         if acao_index >= 0:
             self.acao_input.setCurrentIndex(acao_index)
+        self._atualizar_metodos_disponiveis()
+        self._select_metodo(self._metodo_da_ligacao(ligacao))
         self._select_regra(ligacao.regra_calculo)
         self.quantidade_base_input.setText(self._format_decimal(ligacao.quantidade_base))
         self.rasgo_qt_comp_input.setValue(getattr(ligacao, "rasgo_qt_comp", 0))
@@ -440,6 +462,7 @@ class DefPecaOperacaoDialog(QDialog):
             acao=(
                 self.acao_input.currentData() if self._mostrar_acao else ADICIONAR
             ),
+            metodo_calculo=self._metodo_atual(),
         )
 
     def _validate_and_accept(self) -> None:
@@ -458,13 +481,18 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.error_label.clear()
         operacao = self._operacao_selecionada()
-        if getattr(operacao, "codigo", "") == "CNC_RASGO":
+        if data.metodo_calculo == metodo_types.RASGO:
             if data.rasgo_qt_comp + data.rasgo_qt_larg <= 0:
                 self.set_error("Defina pelo menos um comprimento ou uma largura de rasgo.")
                 return
             if not getattr(operacao, "maquina_permite_rasgos", False):
                 self.set_error("A máquina associada não permite fresagem de rasgos.")
                 return
+        if data.metodo_calculo == metodo_types.FURACAO and (
+            data.quantidade_base is None or data.quantidade_base <= 0
+        ):
+            self.set_error("Indique o n.º de furos por unidade (ex.: dobradiça = 3).")
+            return
         if self.on_save is not None and not self.on_save(data):
             return
 
@@ -491,23 +519,147 @@ class DefPecaOperacaoDialog(QDialog):
         self.sugestao_input.setEnabled(not desativar and bool(self._sugestoes_atual))
         self._atualizar_guia()
 
-    def _update_rasgo_fields(self) -> None:
-        visivel = getattr(self._operacao_selecionada(), "codigo", "") == "CNC_RASGO"
+    # ---------------------------------------------------------- método (CNC)
+    def _metodos_da_operacao(self, operacao) -> tuple[str, ...]:
+        """Methods the selected operation's machine allows (empty = non-CNC)."""
+        if operacao is None:
+            return ()
+        tipo_operacao = (getattr(operacao, "tipo_operacao", "") or "").strip().upper()
+        maquina = SimpleNamespace(
+            tipo=(
+                metodo_types.REVESTIMENTO
+                if tipo_operacao == metodo_types.REVESTIMENTO
+                else getattr(operacao, "maquina_tipo", None)
+                or ("CNC" if tipo_operacao == "CNC" else None)
+            ),
+            permite_escaloes_area=getattr(
+                operacao, "maquina_permite_escaloes_area", False
+            ),
+            permite_furacao=getattr(operacao, "maquina_permite_furacao", False),
+            permite_rasgos=getattr(operacao, "maquina_permite_rasgos", False),
+        )
+        return metodo_types.metodos_disponiveis_para_maquina(maquina)
+
+    def _metodo_atual(self) -> str | None:
+        if not self.metodo_input.isVisible() and self.metodo_input.count() == 0:
+            return None
+        return self.metodo_input.currentData()
+
+    def _metodo_da_ligacao(self, ligacao) -> str | None:
+        """Stored method, or the legacy inference for old CNC links."""
+        metodo = metodo_types.normalize_metodo_calculo(
+            getattr(ligacao, "metodo_calculo", None)
+        )
+        if metodo is not None:
+            return metodo
+        operacao = self._operacao_selecionada()
+        if not self._metodos_da_operacao(operacao):
+            return None
+        tem_tempos = (
+            getattr(ligacao, "tempo_setup_minutos", None) is not None
+            or getattr(ligacao, "tempo_por_unidade_minutos", None) is not None
+        )
+        natureza = (self._natureza_peca or "").strip().upper()
+        return metodo_types.inferir_metodo_calculo_legado(
+            getattr(operacao, "codigo", None),
+            getattr(ligacao, "regra_calculo", None),
+            getattr(ligacao, "rasgo_qt_comp", 0),
+            getattr(ligacao, "rasgo_qt_larg", 0),
+            tem_tempos and natureza == FERRAGEM,
+        )
+
+    def _select_metodo(self, metodo: str | None) -> None:
+        if metodo is None:
+            return
+        index = self.metodo_input.findData(metodo)
+        if index >= 0:
+            self.metodo_input.setCurrentIndex(index)
+
+    def _atualizar_metodos_disponiveis(self) -> None:
+        """Rebuild the method combo for the selected operation's machine."""
+        metodos = self._metodos_da_operacao(self._operacao_selecionada())
+        atual = self.metodo_input.currentData()
+        self.metodo_input.blockSignals(True)
+        self.metodo_input.clear()
+        for metodo in metodos:
+            self.metodo_input.addItem(
+                metodo_types.METODO_CALCULO_LABELS[metodo], metodo
+            )
+        indice = self.metodo_input.findData(atual)
+        if indice >= 0:
+            self.metodo_input.setCurrentIndex(indice)
+        self.metodo_input.blockSignals(False)
+        visivel = bool(metodos)
+        self.metodo_label.setVisible(visivel)
+        self.metodo_input.setVisible(visivel)
+        # With a method the informative rule is redundant noise — hide it.
+        self.regra_label.setVisible(not visivel)
+        self.regra_calculo_input.setVisible(not visivel)
+
+    def _on_operacao_changed(self) -> None:
+        self._atualizar_metodos_disponiveis()
+        self._atualizar_receitas()
+        self._update_metodo_fields()
+
+    def _update_metodo_fields(self) -> None:
+        """Adapt the visible fields to the selected calculation method."""
+        metodo = self._metodo_atual()
+        rasgo_visivel = metodo == metodo_types.RASGO
         for widget in (self.rasgo_comp_label, self.rasgo_qt_comp_input,
                        self.rasgo_larg_label, self.rasgo_qt_larg_input):
-            widget.setVisible(visivel)
-        if visivel:
+            widget.setVisible(rasgo_visivel)
+        if metodo == metodo_types.FURACAO:
+            self.quantidade_base_label.setText("N.º de furos por unidade")
+        elif metodo == metodo_types.REVESTIMENTO:
+            self.quantidade_base_label.setText("N.º de faces (1 ou 2)")
+        else:
+            self.quantidade_base_label.setText("Quantidade base")
+        tempos_visiveis = metodo in (None, metodo_types.TEMPO)
+        for widget in (
+            self.tempo_setup_input,
+            self.tempo_por_unidade_input,
+            self.unidade_tempo_input,
+        ):
+            widget.setVisible(True)  # visibility keeps the layout stable
+            widget.setEnabled(tempos_visiveis)
+        if rasgo_visivel:
             self._select_regra(RASGO_CNC)
             self._regra_rasgo_automatica = True
         elif (
             self._regra_rasgo_automatica
             and self.regra_calculo_input.currentData() == RASGO_CNC
         ):
-            # Undo only the rule THIS dialog forced for CNC_RASGO; a RASGO_CNC
-            # rule stored deliberately on another operation is left untouched.
+            # Undo only the rule THIS dialog forced for the groove method; a
+            # RASGO_CNC rule stored deliberately elsewhere is left untouched.
             self._select_regra(FIXA)
             self._regra_rasgo_automatica = False
         self._atualizar_guia()
+
+    def _atualizar_receitas(self) -> None:
+        """Rebuild the recipes combo, filtered by the machine capabilities."""
+        operacao = self._operacao_selecionada()
+        metodos = self._metodos_da_operacao(operacao)
+        permite_pocket = bool(getattr(operacao, "maquina_permite_pocket", False))
+        self.receita_input.blockSignals(True)
+        self.receita_input.clear()
+        self.receita_input.addItem("— escolher receita —", None)
+        for receita in get_receitas_operacao():
+            metodo_receita = receita.valores.get(CAMPO_METODO_CALCULO)
+            if metodo_receita is not None:
+                if not metodos or metodo_receita not in metodos:
+                    continue
+                if receita.key == "POCKET_CNC_TEMPO" and not permite_pocket:
+                    continue
+            elif metodos:
+                # Method-less (manual/lote) recipes only make sense outside CNC.
+                continue
+            self.receita_input.addItem(receita.label, receita.key)
+            self.receita_input.setItemData(
+                self.receita_input.count() - 1,
+                receita.descricao,
+                Qt.ItemDataRole.ToolTipRole,
+            )
+        self.receita_input.blockSignals(False)
 
     def _acao_desativar(self) -> bool:
         return self._mostrar_acao and self.acao_input.currentData() == "DESATIVAR"
@@ -571,6 +723,8 @@ class DefPecaOperacaoDialog(QDialog):
 
     def _preencher_valores(self, valores: dict) -> None:
         """Fill the form fields present in a recipe/suggestion values dict."""
+        if CAMPO_METODO_CALCULO in valores:
+            self._select_metodo(valores[CAMPO_METODO_CALCULO])
         if CAMPO_REGRA_CALCULO in valores:
             self._select_regra(valores[CAMPO_REGRA_CALCULO])
         if CAMPO_UNIDADE_TEMPO in valores:
@@ -666,6 +820,9 @@ class DefPecaOperacaoDialog(QDialog):
             custo_hora=self._custo_hora_da_operacao(operacao),
             preco_rasgo_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
             natureza_peca=self._natureza_peca,
+            metodo_calculo=self._metodo_atual(),
+            preco_furo=getattr(operacao, "maquina_preco_furo_std", None),
+            preco_m2_face=getattr(operacao, "maquina_preco_m2_face_std", None),
         )
 
         linhas = "<br>".join(escape(linha) for linha in guia.linhas)
@@ -682,14 +839,11 @@ class DefPecaOperacaoDialog(QDialog):
     def _abrir_simulador(self) -> None:
         """Open the simulator matching how the operation is actually costed."""
         operacao = self._operacao_selecionada()
-        if getattr(operacao, "codigo", "") == "CNC_RASGO":
-            SimuladorRasgoCncDialog(
-                rasgo_qt_comp=self.rasgo_qt_comp_input.value(),
-                rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
-                preco_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
-                maquina_codigo=getattr(operacao, "maquina_codigo", None),
-                parent=self,
-            ).exec()
+        metodo = self._metodo_atual()
+        if metodo is not None:
+            # New CNC model: open the full simulator prefilled with this
+            # machine, method and the fields already typed in the form.
+            self._abrir_simulador_cnc(operacao, metodo)
             return
         bucket = classificar_operacao(
             getattr(operacao, "tipo_operacao", None), getattr(operacao, "codigo", None)
@@ -719,6 +873,42 @@ class DefPecaOperacaoDialog(QDialog):
             operacao_nome=getattr(operacao, "nome", None),
             parent=self,
         )
+        dialog.exec()
+
+    def _abrir_simulador_cnc(self, operacao, metodo: str) -> None:
+        """Open the CNC simulator dialog prefilled from this form."""
+        from app.ui.widgets.simulador_cnc_widget import SimuladorCncDialog
+
+        dialog = SimuladorCncDialog(parent=self)
+        maquina_codigo = getattr(operacao, "maquina_codigo", None)
+        if maquina_codigo:
+            params: dict = {}
+            quantidade = self._parse_decimal_input_tolerante(
+                self.quantidade_base_input
+            )
+            if metodo == metodo_types.FURACAO:
+                params = {"furos": int(quantidade or 3)}
+            elif metodo == metodo_types.RASGO:
+                params = {
+                    "n_comp": self.rasgo_qt_comp_input.value(),
+                    "n_larg": self.rasgo_qt_larg_input.value(),
+                }
+            elif metodo == metodo_types.TEMPO:
+                params = {
+                    "setup": self._parse_decimal_input_tolerante(
+                        self.tempo_setup_input
+                    )
+                    or Decimal("0"),
+                    "min_unidade": self._parse_decimal_input_tolerante(
+                        self.tempo_por_unidade_input
+                    )
+                    or Decimal("0"),
+                    "unidades": int(quantidade or 1),
+                }
+            elif metodo == metodo_types.REVESTIMENTO:
+                params = {"faces": int(quantidade or 1)}
+            dialog.widget.limpar_operacoes()
+            dialog.widget.adicionar_operacao(maquina_codigo, metodo, **params)
         dialog.exec()
 
     def _operacao_selecionada(self):

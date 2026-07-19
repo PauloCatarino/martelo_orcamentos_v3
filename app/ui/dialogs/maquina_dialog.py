@@ -24,7 +24,15 @@ from PySide6.QtWidgets import (
 
 from app.repositories.def_maquina_repository import DefMaquinaResumo
 
-TIPO_OPCOES = ("CORTE", "ORLAGEM", "CNC", "MONTAGEM", "MANUAL", "OUTRO")
+TIPO_OPCOES = (
+    "CORTE",
+    "ORLAGEM",
+    "CNC",
+    "REVESTIMENTO",
+    "MONTAGEM",
+    "MANUAL",
+    "OUTRO",
+)
 
 # Spin-box sentinel for "not set" (kept as None when saving).
 _SEM_VALOR = -1.0
@@ -54,6 +62,13 @@ class MaquinaDialogData:
     custo_setup_peca_serie: Decimal | None
     observacoes: str | None
     ativo: bool
+    permite_furacao: bool = False
+    permite_pocket: bool = False
+    permite_escaloes_area: bool = False
+    preco_furo_std: Decimal | None = None
+    preco_furo_serie: Decimal | None = None
+    preco_m2_face_std: Decimal | None = None
+    preco_m2_face_serie: Decimal | None = None
 
 
 class MaquinaDialog(QDialog):
@@ -97,9 +112,42 @@ class MaquinaDialog(QDialog):
         self.custo_hora_serie_input = self._criar_spin(" €/H")
         self.preco_ml_std_input = self._criar_spin(" €/ML")
         self.preco_ml_serie_input = self._criar_spin(" €/ML")
-        self.permite_rasgos_input = QCheckBox("Permite fresagem de rasgos")
+        self.permite_rasgos_input = QCheckBox("Rasgos (€/ML)")
+        self.permite_rasgos_input.setToolTip(
+            "Ativa o método 'Rasgo': ML geométrico × €/ML de rasgo."
+        )
+        self.permite_furacao_input = QCheckBox("Furação (€/furo)")
+        self.permite_furacao_input.setToolTip(
+            "Ativa o método 'Furação': n.º furos × QT × €/furo."
+        )
+        self.permite_pocket_input = QCheckBox("Pocket (predefinição de tempo)")
+        self.permite_pocket_input.setToolTip(
+            "Disponibiliza a receita 'Pocket' (método Tempo pré-preenchido)."
+        )
+        self.permite_escaloes_input = QCheckBox("Escalões de área (€/peça)")
+        self.permite_escaloes_input.setToolTip(
+            "Ativa o método 'Escalões de área': preço por peça pelo escalão "
+            "onde cai a área."
+        )
         self.preco_rasgo_ml_std_input = self._criar_spin(" €/ML de rasgo")
         self.preco_rasgo_ml_serie_input = self._criar_spin(" €/ML de rasgo")
+        self.preco_furo_std_input = self._criar_spin(" €/furo")
+        self.preco_furo_std_input.setToolTip(
+            "Preço por furo no modo STD (peça única)."
+        )
+        self.preco_furo_serie_input = self._criar_spin(" €/furo")
+        self.preco_furo_serie_input.setToolTip(
+            "Preço por furo no modo SÉRIE (lote); vazio recorre ao STD."
+        )
+        self.preco_m2_face_std_input = self._criar_spin(" €/m² por face")
+        self.preco_m2_face_std_input.setToolTip(
+            "Tarifa de revestimento por m² e por face revestida (STD)."
+        )
+        self.preco_m2_face_serie_input = self._criar_spin(" €/m² por face")
+        self.preco_m2_face_serie_input.setToolTip(
+            "Tarifa de revestimento por m² e por face (SÉRIE); vazio recorre "
+            "ao STD."
+        )
         self.preco_lado_curto_std_input = self._criar_spin(" €/lado")
         self.preco_lado_curto_serie_input = self._criar_spin(" €/lado")
         self.preco_lado_longo_std_input = self._criar_spin(" €/lado")
@@ -156,6 +204,12 @@ class MaquinaDialog(QDialog):
             ]
         )
         self.cnc_section = self._criar_cnc_section()
+        self.revestimento_section = self._criar_section(
+            [
+                ("€/m² por face STD", self.preco_m2_face_std_input),
+                ("€/m² por face SERIE", self.preco_m2_face_serie_input),
+            ]
+        )
 
         form_final = QFormLayout()
         form_final.addRow("Observações", self.observacoes_input)
@@ -177,6 +231,7 @@ class MaquinaDialog(QDialog):
         layout.addWidget(self.orlagem_section)
         layout.addWidget(self.setup_section)
         layout.addWidget(self.cnc_section)
+        layout.addWidget(self.revestimento_section)
         layout.addLayout(form_final)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
@@ -209,31 +264,46 @@ class MaquinaDialog(QDialog):
         return section
 
     def _criar_cnc_section(self) -> QWidget:
-        """Build the CNC note + area-tier button section."""
+        """Build the CNC capabilities + method tariffs section."""
         section = QWidget()
         vbox = QVBoxLayout()
         vbox.setContentsMargins(0, 0, 0, 0)
 
-        self.cnc_note = QLabel("O preço por peça do CNC é definido nos escalões de área.")
+        self.cnc_note = QLabel(
+            "Métodos de cálculo permitidos por esta CNC — a associação de "
+            "operações às peças só mostra os métodos aqui ativados. O método "
+            "'Tempo' está sempre disponível (usa o custo/hora)."
+        )
         self.cnc_note.setWordWrap(True)
         self.cnc_note.setStyleSheet("color: #666666; font-size: 11px;")
 
         self.escaloes_button = QPushButton("Escalões de área...")
+        self.escaloes_button.setToolTip(
+            "Tabela de preços por peça pelos escalões de área (método "
+            "'Escalões de área')."
+        )
         if self._is_edit and self.maquina is not None:
             self.escaloes_button.clicked.connect(self._abrir_escaloes)
         else:
             self.escaloes_button.setEnabled(False)
-            self.cnc_note.setText(
-                "O preço por peça do CNC é definido nos escalões de área. "
-                "Grave a máquina primeiro para os poder definir."
+            self.escaloes_button.setToolTip(
+                "Grave a máquina primeiro para poder definir os escalões."
             )
 
         vbox.addWidget(self.cnc_note)
-        groove_form = QFormLayout()
-        groove_form.addRow("Capacidade", self.permite_rasgos_input)
-        groove_form.addRow("Rasgo STD", self.preco_rasgo_ml_std_input)
-        groove_form.addRow("Rasgo SERIE", self.preco_rasgo_ml_serie_input)
-        vbox.addLayout(groove_form)
+        capacidades = QHBoxLayout()
+        capacidades.addWidget(self.permite_escaloes_input)
+        capacidades.addWidget(self.permite_furacao_input)
+        capacidades.addWidget(self.permite_rasgos_input)
+        capacidades.addWidget(self.permite_pocket_input)
+        capacidades.addStretch()
+        vbox.addLayout(capacidades)
+        tarifas_form = QFormLayout()
+        tarifas_form.addRow("Rasgo STD", self.preco_rasgo_ml_std_input)
+        tarifas_form.addRow("Rasgo SERIE", self.preco_rasgo_ml_serie_input)
+        tarifas_form.addRow("Furo STD", self.preco_furo_std_input)
+        tarifas_form.addRow("Furo SERIE", self.preco_furo_serie_input)
+        vbox.addLayout(tarifas_form)
         row = QHBoxLayout()
         row.addWidget(self.escaloes_button)
         row.addStretch()
@@ -251,6 +321,7 @@ class MaquinaDialog(QDialog):
     def _update_tarifas_visiveis(self) -> None:
         """Show only the tariff fields that apply to the selected machine type."""
         tipo = (self.tipo_input.currentData() or "").upper()
+        mostrar_revestimento = tipo == "REVESTIMENTO"
         if tipo == "CORTE":
             mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
                 False,
@@ -275,6 +346,14 @@ class MaquinaDialog(QDialog):
                 False,
                 True,
             )
+        elif tipo == "REVESTIMENTO":
+            mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
+                False,
+                False,
+                False,
+                False,
+                False,
+            )
         elif tipo in ("MANUAL", "MONTAGEM"):
             mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
                 True,
@@ -297,6 +376,7 @@ class MaquinaDialog(QDialog):
         self.orlagem_section.setVisible(mostrar_orlagem)
         self.setup_section.setVisible(mostrar_setup)
         self.cnc_section.setVisible(mostrar_cnc)
+        self.revestimento_section.setVisible(mostrar_revestimento)
 
     def _load_maquina(self, maquina: DefMaquinaResumo) -> None:
         """Populate the form with an existing machine and lock the code."""
@@ -310,9 +390,15 @@ class MaquinaDialog(QDialog):
         self._set_spin(self.preco_ml_std_input, maquina.preco_ml_std)
         self._set_spin(self.preco_ml_serie_input, maquina.preco_ml_serie)
         self.permite_rasgos_input.setChecked(maquina.permite_rasgos)
-        self.permite_rasgos_input.setEnabled(maquina.codigo != "CNC_ABD")
+        self.permite_furacao_input.setChecked(maquina.permite_furacao)
+        self.permite_pocket_input.setChecked(maquina.permite_pocket)
+        self.permite_escaloes_input.setChecked(maquina.permite_escaloes_area)
         self._set_spin(self.preco_rasgo_ml_std_input, maquina.preco_rasgo_ml_std)
         self._set_spin(self.preco_rasgo_ml_serie_input, maquina.preco_rasgo_ml_serie)
+        self._set_spin(self.preco_furo_std_input, maquina.preco_furo_std)
+        self._set_spin(self.preco_furo_serie_input, maquina.preco_furo_serie)
+        self._set_spin(self.preco_m2_face_std_input, maquina.preco_m2_face_std)
+        self._set_spin(self.preco_m2_face_serie_input, maquina.preco_m2_face_serie)
         self._set_spin(self.preco_lado_curto_std_input, maquina.preco_lado_curto_std)
         self._set_spin(
             self.preco_lado_curto_serie_input, maquina.preco_lado_curto_serie
@@ -349,12 +435,18 @@ class MaquinaDialog(QDialog):
             custo_hora_serie=self._spin_to_decimal(self.custo_hora_serie_input),
             preco_ml_std=self._spin_to_decimal(self.preco_ml_std_input),
             preco_ml_serie=self._spin_to_decimal(self.preco_ml_serie_input),
-            permite_rasgos=(
-                self.permite_rasgos_input.isChecked()
-                and self.codigo_input.text().strip().upper() != "CNC_ABD"
-            ),
+            permite_rasgos=self.permite_rasgos_input.isChecked(),
             preco_rasgo_ml_std=self._spin_to_decimal(self.preco_rasgo_ml_std_input),
             preco_rasgo_ml_serie=self._spin_to_decimal(self.preco_rasgo_ml_serie_input),
+            permite_furacao=self.permite_furacao_input.isChecked(),
+            permite_pocket=self.permite_pocket_input.isChecked(),
+            permite_escaloes_area=self.permite_escaloes_input.isChecked(),
+            preco_furo_std=self._spin_to_decimal(self.preco_furo_std_input),
+            preco_furo_serie=self._spin_to_decimal(self.preco_furo_serie_input),
+            preco_m2_face_std=self._spin_to_decimal(self.preco_m2_face_std_input),
+            preco_m2_face_serie=self._spin_to_decimal(
+                self.preco_m2_face_serie_input
+            ),
             preco_lado_curto_std=self._spin_to_decimal(
                 self.preco_lado_curto_std_input
             ),

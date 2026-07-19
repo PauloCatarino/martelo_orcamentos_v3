@@ -147,8 +147,8 @@ def test_def_peca_operacao_dialog_guia_recalcula_ao_mudar_campos() -> None:
 
     acao = inspect.getsource(DefPecaOperacaoDialog._update_acao_fields)
     assert "_atualizar_guia" in acao
-    rasgo = inspect.getsource(DefPecaOperacaoDialog._update_rasgo_fields)
-    assert "_atualizar_guia" in rasgo
+    metodo = inspect.getsource(DefPecaOperacaoDialog._update_metodo_fields)
+    assert "_atualizar_guia" in metodo
 
 
 def test_def_peca_operacao_dialog_tem_tooltips_nos_campos() -> None:

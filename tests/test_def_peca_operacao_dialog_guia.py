@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from app.domain.metodo_calculo_types import FURACAO, RASGO
 from app.domain.regra_operacao_types import FIXA, RASGO_CNC
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.ui.dialogs.def_peca_operacao_dialog import DefPecaOperacaoDialog
@@ -34,6 +35,10 @@ def _operacao(id: int, codigo: str, tipo: str, **kw) -> DefOperacaoResumo:
         maquina_codigo=kw.get("maquina_codigo"),
         maquina_permite_rasgos=kw.get("permite_rasgos", False),
         maquina_preco_rasgo_ml_std=kw.get("preco_rasgo"),
+        maquina_tipo=kw.get("maquina_tipo"),
+        maquina_permite_furacao=kw.get("permite_furacao", False),
+        maquina_permite_pocket=kw.get("permite_pocket", False),
+        maquina_preco_furo_std=kw.get("preco_furo"),
         maquina_preco_ml_std=kw.get("preco_ml"),
         maquina_preco_lado_curto_std=kw.get("preco_lado_curto"),
         maquina_preco_lado_longo_std=kw.get("preco_lado_longo"),
@@ -45,7 +50,17 @@ def _operacao(id: int, codigo: str, tipo: str, **kw) -> DefOperacaoResumo:
 def _operacoes() -> list[DefOperacaoResumo]:
     return [
         _operacao(1, "CORTE_SEC", "CORTE"),
-        _operacao(2, "CNC_RASGO", "CNC", permite_rasgos=True, preco_rasgo=Decimal("2")),
+        _operacao(
+            2,
+            "CNC_VERTICAL",
+            "CNC",
+            maquina_tipo="CNC",
+            permite_rasgos=True,
+            permite_furacao=True,
+            permite_pocket=True,
+            preco_rasgo=Decimal("2"),
+            preco_furo=Decimal("0.12"),
+        ),
         _operacao(3, "MONTAGEM_STD", "MONTAGEM", custo_hora=Decimal("45")),
     ]
 
@@ -67,6 +82,8 @@ def test_rasgo_desativa_tempos_e_volta_a_ativar_ao_trocar_operacao() -> None:
     dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="MATERIAL")
 
     _selecionar_operacao(dialog, 2)
+    dialog.metodo_input.setCurrentIndex(dialog.metodo_input.findData(RASGO))
+    assert dialog.metodo_input.currentData() == RASGO
     assert dialog.regra_calculo_input.currentData() == RASGO_CNC
     assert not dialog.quantidade_base_input.isEnabled()
     assert not dialog.tempo_setup_input.isEnabled()
@@ -205,39 +222,37 @@ def _aplicar_receita(dialog: DefPecaOperacaoDialog, key: str) -> None:
 
 def test_receita_furacao_preenche_os_campos_certos() -> None:
     dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="FERRAGEM")
-    _selecionar_operacao(dialog, 3)
+    _selecionar_operacao(dialog, 2)
 
     _aplicar_receita(dialog, "FERRAGEM_FURACAO_CNC")
 
-    assert dialog.unidade_tempo_input.currentData() == "FURO"
-    assert dialog.quantidade_base_input.text() == "4"
-    assert dialog.tempo_por_unidade_input.text() == "0.04"
+    assert dialog.metodo_input.currentData() == FURACAO
+    assert dialog.quantidade_base_input.text() == "3"
     assert dialog.regra_calculo_input.currentData() == "POR_FURACAO"
     # The combo returns to the placeholder so it can be re-applied later.
     assert dialog.receita_input.currentIndex() == 0
     # The live guide immediately shows the resulting formula.
-    assert "min" in dialog.guia_label.text()
+    assert not dialog.tempo_por_unidade_input.isEnabled()
 
 
-def test_receita_rasgo_muda_para_a_operacao_cnc_rasgo() -> None:
+def test_receita_rasgo_aplica_metodo_na_operacao_cnc_selecionada() -> None:
     dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="MATERIAL")
-    _selecionar_operacao(dialog, 1)
+    _selecionar_operacao(dialog, 2)
 
     _aplicar_receita(dialog, "RASGO_POR_COMPRIMENTO")
 
     operacao = dialog._operacao_selecionada()
-    assert operacao is not None and operacao.codigo == "CNC_RASGO"
+    assert operacao is not None and operacao.codigo == "CNC_VERTICAL"
+    assert dialog.metodo_input.currentData() == RASGO
     assert dialog.rasgo_qt_comp_input.value() == 1
     assert dialog.regra_calculo_input.currentData() == RASGO_CNC
 
 
-def test_receita_rasgo_sem_operacao_disponivel_avisa() -> None:
-    operacoes = [op for op in _operacoes() if op.codigo != "CNC_RASGO"]
+def test_receita_rasgo_sem_capacidade_nao_e_mostrada() -> None:
+    operacoes = [op for op in _operacoes() if op.codigo != "CNC_VERTICAL"]
     dialog = DefPecaOperacaoDialog(operacoes, natureza_peca="MATERIAL")
 
-    _aplicar_receita(dialog, "RASGO_POR_COMPRIMENTO")
-
-    assert "CNC_RASGO" in dialog.error_label.text()
+    assert dialog.receita_input.findData("RASGO_POR_COMPRIMENTO") == -1
 
 
 def test_regras_informativas_estao_marcadas_no_dropdown() -> None:

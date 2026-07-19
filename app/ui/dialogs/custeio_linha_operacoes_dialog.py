@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.custeio_linha_types import FERRAGEM
+from app.domain.metodo_calculo_types import get_metodo_calculo_label
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaResumo,
@@ -49,7 +50,7 @@ class CusteioLinhaOperacoesDialog(QDialog):
         "Máquina",
         "Origem",
         "Ação",
-        "Regra",
+        "Método",
         "Quantidade base",
         "Rasgo",
         "Setup (min)",
@@ -104,6 +105,7 @@ class CusteioLinhaOperacoesDialog(QDialog):
         self.custo_corte_label = QLabel()
         self.custo_orlagem_label = QLabel()
         self.custo_cnc_label = QLabel()
+        self.custo_revestimento_label = QLabel()
         self.custo_manual_label = QLabel()
         self.custo_producao_label = QLabel()
         resumo.addRow("Operações efetivas", self.operacoes_label)
@@ -112,6 +114,7 @@ class CusteioLinhaOperacoesDialog(QDialog):
         resumo.addRow("Custo corte", self.custo_corte_label)
         resumo.addRow("Custo orlagem", self.custo_orlagem_label)
         resumo.addRow("Custo CNC", self.custo_cnc_label)
+        resumo.addRow("Custo revestimento", self.custo_revestimento_label)
         resumo.addRow("Custo montagem/manual", self.custo_manual_label)
         resumo.addRow("Custo produção total", self.custo_producao_label)
 
@@ -210,6 +213,9 @@ class CusteioLinhaOperacoesDialog(QDialog):
         self.custo_corte_label.setText(format_currency(linha.custo_corte))
         self.custo_orlagem_label.setText(format_currency(linha.custo_orlagem))
         self.custo_cnc_label.setText(format_currency(linha.custo_cnc))
+        self.custo_revestimento_label.setText(
+            format_currency(getattr(linha, "custo_revestimento", None))
+        )
         self.custo_manual_label.setText(format_currency(linha.custo_montagem_manual))
         self.custo_producao_label.setText(format_currency(linha.custo_producao))
         local = tem_edicao_local or any(
@@ -254,7 +260,12 @@ class CusteioLinhaOperacoesDialog(QDialog):
                 operacao.maquina,
                 operacao.origem,
                 operacao.acao or "Base",
-                get_regra_operacao_label(operacao.regra_calculo),
+                (
+                    get_metodo_calculo_label(
+                        getattr(operacao, "metodo_calculo", None)
+                    )
+                    or get_regra_operacao_label(operacao.regra_calculo)
+                ),
                 format_quantity(operacao.quantidade_base),
                 rasgo,
                 format_quantity(operacao.tempo_setup_minutos),

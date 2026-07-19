@@ -24,7 +24,7 @@ def test_dialog_headers_and_callables() -> None:
         "Operação",
         "Tipo",
         "Máquina",
-        "Regra cálculo",
+        "Método",
         "Quantidade base",
         "Construção rasgo",
         "Tempo setup",

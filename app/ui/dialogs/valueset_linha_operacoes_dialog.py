@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.configuracao_sugestoes import ORIGEM_MODELO_LINHA
+from app.domain.metodo_calculo_types import get_metodo_calculo_label
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.operacao_acao_types import get_operacao_acao_label
 from app.repositories.configuracao_sugestoes_repository import (
@@ -77,7 +78,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         "Operação",
         "Tipo",
         "Máquina",
-        "Regra cálculo",
+        "Método",
         "Quantidade base",
         "Construção rasgo",
         "Tempo setup",
@@ -199,7 +200,12 @@ class ValuesetLinhaOperacoesDialog(QDialog):
                 self._format_operacao_label(ligacao.def_operacao_id, operacao),
                 (operacao.tipo_operacao or "") if operacao is not None else "",
                 self._format_operacao_maquina(operacao),
-                get_regra_operacao_label(ligacao.regra_calculo),
+                (
+                    get_metodo_calculo_label(
+                        getattr(ligacao, "metodo_calculo", None)
+                    )
+                    or get_regra_operacao_label(ligacao.regra_calculo)
+                ),
                 format_quantity(ligacao.quantidade_base),
                 (
                     f"{getattr(ligacao, 'rasgo_qt_comp', 0)} × COMP + "

@@ -32,6 +32,17 @@ class DefOperacaoResumo:
     maquina_codigo: str | None = None
     maquina_permite_rasgos: bool = False
     maquina_preco_rasgo_ml_std: Decimal | None = None
+    # Capabilities + method tariffs of the machine (new CNC model): the
+    # association dialogs filter the method combo and simulate with these.
+    maquina_tipo: str | None = None
+    maquina_permite_furacao: bool = False
+    maquina_permite_pocket: bool = False
+    maquina_permite_escaloes_area: bool = False
+    maquina_preco_rasgo_ml_serie: Decimal | None = None
+    maquina_preco_furo_std: Decimal | None = None
+    maquina_preco_furo_serie: Decimal | None = None
+    maquina_preco_m2_face_std: Decimal | None = None
+    maquina_preco_m2_face_serie: Decimal | None = None
     # Real machine tariffs (STD), so the dialogs can simulate with the same
     # numbers the costing uses (phase G2).
     maquina_custo_hora_std: Decimal | None = None
@@ -204,6 +215,29 @@ class DefOperacaoRepository:
             maquina_codigo=getattr(operacao.maquina, "codigo", None),
             maquina_permite_rasgos=bool(getattr(operacao.maquina, "permite_rasgos", False)),
             maquina_preco_rasgo_ml_std=getattr(operacao.maquina, "preco_rasgo_ml_std", None),
+            maquina_tipo=getattr(operacao.maquina, "tipo", None),
+            maquina_permite_furacao=bool(
+                getattr(operacao.maquina, "permite_furacao", False)
+            ),
+            maquina_permite_pocket=bool(
+                getattr(operacao.maquina, "permite_pocket", False)
+            ),
+            maquina_permite_escaloes_area=bool(
+                getattr(operacao.maquina, "permite_escaloes_area", False)
+            ),
+            maquina_preco_rasgo_ml_serie=getattr(
+                operacao.maquina, "preco_rasgo_ml_serie", None
+            ),
+            maquina_preco_furo_std=getattr(operacao.maquina, "preco_furo_std", None),
+            maquina_preco_furo_serie=getattr(
+                operacao.maquina, "preco_furo_serie", None
+            ),
+            maquina_preco_m2_face_std=getattr(
+                operacao.maquina, "preco_m2_face_std", None
+            ),
+            maquina_preco_m2_face_serie=getattr(
+                operacao.maquina, "preco_m2_face_serie", None
+            ),
             maquina_custo_hora_std=getattr(operacao.maquina, "custo_hora", None),
             maquina_custo_hora_serie=getattr(operacao.maquina, "custo_hora_serie", None),
             maquina_preco_ml_std=getattr(operacao.maquina, "preco_ml_std", None),
