@@ -106,8 +106,8 @@ def test_resumo_versao_sem_linhas(session) -> None:
     assert resumo.orlas == []
     assert resumo.ferragens == []
     assert resumo.distribuicao.custo_produzido == Decimal("0")
-    # The four machine centres always exist (with zero cost).
-    assert len(resumo.maquinas) == 4
+    # The five machine centres always exist (with zero cost).
+    assert len(resumo.maquinas) == 5
     assert resumo.operacoes == []
 
 

@@ -289,6 +289,7 @@ class RelatorioConsumosService:
             custo_corte=linha.custo_corte,
             custo_orlagem=linha.custo_orlagem,
             custo_cnc=linha.custo_cnc,
+            custo_revestimento=getattr(linha, "custo_revestimento", None),
             custo_montagem_manual=linha.custo_montagem_manual,
             operacoes=linha.operacoes,
             maquina=linha.maquina,

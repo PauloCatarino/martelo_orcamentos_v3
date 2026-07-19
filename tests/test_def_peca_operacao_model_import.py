@@ -57,15 +57,16 @@ def test_def_peca_operacao_unique_and_indexes() -> None:
 
     table = DefPecaOperacao.__table__
 
-    unique_columns: set[str] = set()
+    # New CNC model: no unique constraint — the same operation may be linked
+    # several times to one piece (one link per calculation method).
     for constraint in table.constraints:
-        if constraint.__class__.__name__ == "UniqueConstraint":
-            unique_columns |= {column.name for column in constraint.columns}
-    assert {"def_peca_id", "def_operacao_id"} <= unique_columns
+        assert constraint.__class__.__name__ != "UniqueConstraint"
 
     indexed_columns = {tuple(column.name for column in index.columns) for index in table.indexes}
+    assert ("def_peca_id", "def_operacao_id") in indexed_columns
     assert ("def_peca_id",) in indexed_columns
     assert ("def_operacao_id",) in indexed_columns
+    assert ("metodo_calculo",) in indexed_columns
     assert ("ativo",) in indexed_columns
 
 

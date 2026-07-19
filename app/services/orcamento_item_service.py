@@ -531,6 +531,7 @@ class OrcamentoItemService:
             custo_corte=linha.custo_corte,
             custo_orlagem=linha.custo_orlagem,
             custo_cnc=linha.custo_cnc,
+            custo_revestimento=getattr(linha, "custo_revestimento", None),
             custo_montagem_manual=linha.custo_montagem_manual,
             fator_serie=linha.fator_serie,
             excluir_mp=linha.excluir_mp,

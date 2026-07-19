@@ -65,6 +65,7 @@ class OrcamentoItemCusteioLinhaResumo:
     editado_localmente: bool
     ativo: bool
     observacoes: str | None
+    custo_revestimento: Decimal | None = None
     associado_regra_codigo: str | None = None
     associado_regra_expressao: str | None = None
     associado_modo_quantidade: str | None = None
@@ -353,6 +354,7 @@ class OrcamentoItemCusteioLinhaRepository:
             custo_corte=linha.custo_corte,
             custo_orlagem=linha.custo_orlagem,
             custo_cnc=linha.custo_cnc,
+            custo_revestimento=linha.custo_revestimento,
             custo_montagem_manual=linha.custo_montagem_manual,
             custo_producao=linha.custo_producao,
             consumo_ml_unitario=linha.consumo_ml_unitario,

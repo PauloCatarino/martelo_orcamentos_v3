@@ -20,10 +20,16 @@ from app.domain.associado_types import (
     TOPO_1,
     TOTAL,
 )
+from app.domain.metodo_calculo_types import (
+    FURACAO as METODO_FURACAO,
+    RASGO as METODO_RASGO,
+    TEMPO as METODO_TEMPO,
+)
 from app.domain.regra_operacao_types import FIXA, POR_FURACAO, POR_PECA, RASGO_CNC
 from app.domain.regra_quantidade_types import FIXA as QUANTIDADE_FIXA
 
 # Field keys of the operation dialog a recipe can fill.
+CAMPO_METODO_CALCULO = "metodo_calculo"
 CAMPO_REGRA_CALCULO = "regra_calculo"
 CAMPO_QUANTIDADE_BASE = "quantidade_base"
 CAMPO_TEMPO_SETUP = "tempo_setup"
@@ -61,15 +67,13 @@ RECEITAS_OPERACAO: tuple[Receita, ...] = (
         key="FERRAGEM_FURACAO_CNC",
         label="Ferragem com furação CNC (por furo)",
         descricao=(
-            "Custo por tempo: n.º de furos × tempo por furo × QT, setup 1×. "
-            "Ajuste o n.º de furos da ferragem (ex.: dobradiça = 4)."
+            "Custo por furo: n.º de furos × QT × €/furo da máquina CNC. "
+            "Ajuste o n.º de furos da ferragem (ex.: dobradiça = 3)."
         ),
         valores={
+            CAMPO_METODO_CALCULO: METODO_FURACAO,
             CAMPO_REGRA_CALCULO: POR_FURACAO,
-            CAMPO_UNIDADE_TEMPO: "FURO",
-            CAMPO_QUANTIDADE_BASE: "4",
-            CAMPO_TEMPO_SETUP: "0.5",
-            CAMPO_TEMPO_POR_UNIDADE: "0.04",
+            CAMPO_QUANTIDADE_BASE: "3",
         },
         foco=CAMPO_QUANTIDADE_BASE,
     ),
@@ -81,13 +85,29 @@ RECEITAS_OPERACAO: tuple[Receita, ...] = (
             "maquinação da cavidade."
         ),
         valores={
+            CAMPO_METODO_CALCULO: METODO_TEMPO,
             CAMPO_REGRA_CALCULO: FIXA,
             CAMPO_UNIDADE_TEMPO: "PECA",
             CAMPO_QUANTIDADE_BASE: "1",
             CAMPO_TEMPO_SETUP: "0.5",
-            CAMPO_TEMPO_POR_UNIDADE: "1",
+            CAMPO_TEMPO_POR_UNIDADE: "4",
         },
         foco=CAMPO_TEMPO_POR_UNIDADE,
+    ),
+    Receita(
+        key="CALHA_LED_RASGO",
+        label="Calha LED: rasgo ao comprimento",
+        descricao=(
+            "Custo pela geometria: 1 rasgo ao longo do COMPRIMENTO da peça × "
+            "€/ML de rasgo da máquina — típico para calhas LED embutidas."
+        ),
+        valores={
+            CAMPO_METODO_CALCULO: METODO_RASGO,
+            CAMPO_REGRA_CALCULO: RASGO_CNC,
+            CAMPO_RASGO_QT_COMP: 1,
+            CAMPO_RASGO_QT_LARG: 0,
+        },
+        foco=CAMPO_RASGO_QT_COMP,
     ),
     Receita(
         key="MANUAL_POR_PECA",
@@ -129,12 +149,12 @@ RECEITAS_OPERACAO: tuple[Receita, ...] = (
             "máquina. Ajuste o n.º de comprimentos/larguras."
         ),
         valores={
+            CAMPO_METODO_CALCULO: METODO_RASGO,
             CAMPO_REGRA_CALCULO: RASGO_CNC,
             CAMPO_RASGO_QT_COMP: 1,
             CAMPO_RASGO_QT_LARG: 0,
         },
         foco=CAMPO_RASGO_QT_COMP,
-        operacao_codigo="CNC_RASGO",
     ),
 )
 

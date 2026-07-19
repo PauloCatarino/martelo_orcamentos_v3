@@ -8,6 +8,10 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.domain.medidas import normalizar_numero
+from app.domain.metodo_calculo_types import (
+    REVESTIMENTO,
+    get_metodo_calculo_label,
+)
 from app.domain.regra_operacao_types import get_regra_operacao_label
 from app.domain.tempos_producao import classificar_operacao
 from app.repositories.orcamento_item_custeio_linha_repository import (
@@ -107,7 +111,12 @@ class RelatorioOperacoesService:
                         maquina=operacao.maquina or "—",
                         origem=operacao.origem,
                         acao=operacao.acao or "Base",
-                        regra=get_regra_operacao_label(operacao.regra_calculo),
+                        regra=(
+                            get_metodo_calculo_label(
+                                getattr(operacao, "metodo_calculo", None)
+                            )
+                            or get_regra_operacao_label(operacao.regra_calculo)
+                        ),
                         quantidade_total=quantidade_total,
                         quantidade_base=operacao.quantidade_base,
                         setup_configurado_min=operacao.tempo_setup_minutos,
@@ -130,6 +139,8 @@ class RelatorioOperacoesService:
 
     @staticmethod
     def _bucket(operacao) -> str | None:
+        if (operacao.tipo_operacao or "").strip().upper() == REVESTIMENTO:
+            return "revestimento"
         return classificar_operacao(
             operacao.tipo_operacao, operacao.codigo
         )
@@ -140,6 +151,9 @@ class RelatorioOperacoesService:
             "corte": normalizar_numero(linha.custo_corte),
             "orlagem": normalizar_numero(linha.custo_orlagem),
             "cnc": normalizar_numero(linha.custo_cnc),
+            "revestimento": normalizar_numero(
+                getattr(linha, "custo_revestimento", None)
+            ),
             "montagem": normalizar_numero(linha.custo_montagem_manual),
             "manual": normalizar_numero(linha.custo_montagem_manual),
         }

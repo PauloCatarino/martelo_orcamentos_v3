@@ -273,37 +273,80 @@ def _migrar_dados() -> None:
             novo=id_vertical,
         )
 
-    # 6. Backfill metodo_calculo on every CNC link (same heuristic as
-    # inferir_metodo_calculo_legado); coating links get REVESTIMENTO.
-    caso = (
+    # 6. Backfill metodo_calculo on every CNC link, mirroring the OLD engine
+    # semantics: filled times only meant TEMPO on FERRAGEM contexts — on a
+    # panel piece the times were informative and the area tiers ruled.
+    caso_ferragem = (
         "CASE WHEN UPPER(COALESCE({t}.regra_calculo, '')) = 'RASGO_CNC' "
         "OR {t}.rasgo_qt_comp > 0 OR {t}.rasgo_qt_larg > 0 THEN 'RASGO' "
         "WHEN UPPER(COALESCE({t}.regra_calculo, '')) = 'POR_FURACAO' "
         "THEN 'FURACAO' "
-        "WHEN {t}.tempo_por_unidade_minutos IS NOT NULL "
-        "OR {t}.tempo_setup_minutos IS NOT NULL THEN 'TEMPO' "
+        "ELSE 'TEMPO' END"
+    )
+    caso_painel = (
+        "CASE WHEN UPPER(COALESCE({t}.regra_calculo, '')) = 'RASGO_CNC' "
+        "OR {t}.rasgo_qt_comp > 0 OR {t}.rasgo_qt_larg > 0 THEN 'RASGO' "
+        "WHEN UPPER(COALESCE({t}.regra_calculo, '')) = 'POR_FURACAO' "
+        "THEN 'FURACAO' "
         "ELSE 'ESCALAO_AREA' END"
     )
-    for tabela in _ASSOC_TABLES:
+
+    # Piece catalog: split by the piece nature.
+    execute(
+        "UPDATE def_peca_operacoes t "
+        "JOIN def_operacoes o ON o.id = t.def_operacao_id "
+        "JOIN def_pecas p ON p.id = t.def_peca_id "
+        f"SET t.metodo_calculo = {caso_ferragem.format(t='t')} "
+        "WHERE t.metodo_calculo IS NULL "
+        "AND UPPER(COALESCE(o.tipo_operacao, '')) = 'CNC' "
+        "AND UPPER(COALESCE(p.natureza, '')) = 'FERRAGEM'"
+    )
+    execute(
+        "UPDATE def_peca_operacoes t "
+        "JOIN def_operacoes o ON o.id = t.def_operacao_id "
+        "JOIN def_pecas p ON p.id = t.def_peca_id "
+        f"SET t.metodo_calculo = {caso_painel.format(t='t')} "
+        "WHERE t.metodo_calculo IS NULL "
+        "AND UPPER(COALESCE(o.tipo_operacao, '')) = 'CNC' "
+        "AND UPPER(COALESCE(p.natureza, '')) <> 'FERRAGEM'"
+    )
+    # ValueSet lines (typically hardware variants): times meant TEMPO.
+    for tabela in (
+        "def_valueset_modelo_linha_operacoes",
+        "orcamento_valueset_linha_operacoes",
+        "orcamento_item_valueset_linha_operacoes",
+    ):
         execute(
             f"UPDATE {tabela} t JOIN def_operacoes o ON o.id = t.def_operacao_id "
-            f"SET t.metodo_calculo = {caso.format(t='t')} "
+            f"SET t.metodo_calculo = {caso_ferragem.format(t='t')} "
             "WHERE t.metodo_calculo IS NULL "
             "AND UPPER(COALESCE(o.tipo_operacao, '')) = 'CNC'"
         )
+    # Local costing rows: split by the line type (needs no def_operacao_id).
+    execute(
+        "UPDATE orcamento_item_custeio_linha_operacoes t "
+        "JOIN orcamento_item_custeio_linhas l ON l.id = t.linha_id "
+        f"SET t.metodo_calculo = {caso_ferragem.format(t='t')} "
+        "WHERE t.metodo_calculo IS NULL "
+        "AND UPPER(COALESCE(t.tipo_operacao, '')) = 'CNC' "
+        "AND UPPER(COALESCE(l.tipo_linha, '')) = 'FERRAGEM'"
+    )
+    execute(
+        "UPDATE orcamento_item_custeio_linha_operacoes t "
+        "JOIN orcamento_item_custeio_linhas l ON l.id = t.linha_id "
+        f"SET t.metodo_calculo = {caso_painel.format(t='t')} "
+        "WHERE t.metodo_calculo IS NULL "
+        "AND UPPER(COALESCE(t.tipo_operacao, '')) = 'CNC' "
+        "AND UPPER(COALESCE(l.tipo_linha, '')) <> 'FERRAGEM'"
+    )
+    # Coating links (none expected yet, kept for completeness).
+    for tabela in _ASSOC_TABLES:
         execute(
             f"UPDATE {tabela} t JOIN def_operacoes o ON o.id = t.def_operacao_id "
             "SET t.metodo_calculo = 'REVESTIMENTO' "
             "WHERE t.metodo_calculo IS NULL "
             "AND UPPER(COALESCE(o.tipo_operacao, '')) = 'REVESTIMENTO'"
         )
-    # Local rows may have no def_operacao_id: use their own snapshot type.
-    execute(
-        "UPDATE orcamento_item_custeio_linha_operacoes t "
-        f"SET t.metodo_calculo = {caso.format(t='t')} "
-        "WHERE t.metodo_calculo IS NULL AND t.def_operacao_id IS NULL "
-        "AND UPPER(COALESCE(t.tipo_operacao, '')) = 'CNC'"
-    )
 
     # 7. Delete the generic CNC operations (their links were repointed above).
     execute(
