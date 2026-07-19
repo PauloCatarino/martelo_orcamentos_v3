@@ -21,6 +21,9 @@ env/
 /dist/
 installer/Output/
 *.log
+
+# Backups da BD beta (dumps locais antes de migrar; nao versionar)
+deploy/backups/
 !.env.example
 
 # Test and coverage output
