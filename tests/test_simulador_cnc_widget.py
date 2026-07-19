@@ -73,3 +73,19 @@ def test_widget_expoe_pocket_e_calcula_por_tempo_hora() -> None:
         "CNC_VERTICAL", POCKET, setup=0, min_unidade=4, unidades=1
     )
     assert "4,00" in widget.totais_label.text()
+
+
+def test_cenario_pocket_usa_o_metodo_pocket() -> None:
+    widget = SimuladorCncWidget([_maquina_cnc()])
+
+    widget._cenario_pocket()
+
+    assert widget.ops_table.rowCount() == 1
+    assert widget._operacoes[0].metodo == POCKET
+
+
+def test_widget_sem_maquinas_explica_a_configuracao_em_falta() -> None:
+    widget = SimuladorCncWidget([])
+
+    assert widget.adicionar_button.isEnabled() is False
+    assert "Ainda não existem máquinas CNC" in widget.estado_configuracao_label.text()

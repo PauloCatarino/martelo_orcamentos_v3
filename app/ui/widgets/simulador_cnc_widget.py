@@ -223,21 +223,38 @@ class SimuladorCncWidget(QWidget):
 
         # Dynamic method fields (visibility switches with the method).
         self.setup_min_input = self._spin(" min", 0, 9999, 1)
+        self.setup_min_input.setToolTip(
+            "Minutos de preparação cobrados uma vez por operação."
+        )
         self.min_unidade_input = self._spin(" min", 0, 9999, 2)
+        self.min_unidade_input.setToolTip(
+            "Minutos necessários por unidade ou por pocket."
+        )
         self.unidades_input = QSpinBox()
         self.unidades_input.setRange(1, 9999)
+        self.unidades_input.setToolTip(
+            "Número de unidades ou pockets executados em cada peça."
+        )
         self.furos_input = QSpinBox()
         self.furos_input.setRange(1, 999)
         self.furos_input.setValue(3)
+        self.furos_input.setToolTip("Número de furos executados em cada peça.")
         self.rasgo_comp_input = QSpinBox()
         self.rasgo_comp_input.setRange(0, 99)
         self.rasgo_comp_input.setValue(1)
+        self.rasgo_comp_input.setToolTip(
+            "Número de rasgos que percorrem o comprimento da peça."
+        )
         self.rasgo_larg_input = QSpinBox()
         self.rasgo_larg_input.setRange(0, 99)
+        self.rasgo_larg_input.setToolTip(
+            "Número de rasgos que percorrem a largura da peça."
+        )
         self.faces_input = QComboBox()
         self.faces_input.addItem("1 face", 1)
         self.faces_input.addItem("2 faces", 2)
         self.faces_input.setCurrentIndex(1)
+        self.faces_input.setToolTip("Número de faces da peça a revestir.")
 
         self._unidades_tempo_label = QLabel("N.º unidades")
         campos_tempo = [
@@ -288,6 +305,11 @@ class SimuladorCncWidget(QWidget):
         op_layout.addLayout(campos_layout, 1, 0, 1, 6)
         op_layout.addWidget(self.metodo_ajuda, 2, 0, 1, 6)
 
+        self.estado_configuracao_label = QLabel("")
+        self.estado_configuracao_label.setObjectName("simuladorCncEstadoConfiguracao")
+        self.estado_configuracao_label.setWordWrap(True)
+        self.estado_configuracao_label.setStyleSheet("color: #6D4B16;")
+
         # --- Operations table + totals --------------------------------------
         self.ops_table = QTableWidget(0, len(self.OPS_HEADERS))
         self.ops_table.setHorizontalHeaderLabels(self.OPS_HEADERS)
@@ -310,6 +332,7 @@ class SimuladorCncWidget(QWidget):
         layout.addWidget(intro)
         layout.addWidget(peca_box)
         layout.addWidget(op_box)
+        layout.addWidget(self.estado_configuracao_label)
         if mostrar_cenarios:
             layout.addLayout(self._criar_cenarios())
         layout.addWidget(self.ops_table, stretch=1)
@@ -400,24 +423,55 @@ class SimuladorCncWidget(QWidget):
             ("Sandwich 2 faces", lambda: self._cenario_sandwich(2)),
             ("Furação + rasgo", self._cenario_furacao_rasgo),
         )
+        requisitos_por_cenario = {
+            "Dobradiça (3 furos)": (metodo_types.FURACAO,),
+            "Calha LED (rasgo)": (metodo_types.RASGO,),
+            "Pocket 4 min": (metodo_types.POCKET,),
+            "Escalão de área": (metodo_types.ESCALAO_AREA,),
+            "Sandwich 1 face": (metodo_types.REVESTIMENTO,),
+            "Sandwich 2 faces": (metodo_types.REVESTIMENTO,),
+            "Furação + rasgo": (metodo_types.FURACAO, metodo_types.RASGO),
+        }
         linha = QHBoxLayout()
         linha.addWidget(QLabel("Cenários:"))
+        self._botoes_cenarios: list[tuple[QPushButton, tuple[str, ...]]] = []
         for rotulo, handler in cenarios:
             botao = QPushButton(rotulo)
             botao.setToolTip("Carrega um exemplo pronto a explorar.")
             botao.clicked.connect(handler)
+            self._botoes_cenarios.append((botao, requisitos_por_cenario[rotulo]))
             linha.addWidget(botao)
         linha.addStretch()
         return linha
 
-    def _maquina_cenario(self, *codigos: str) -> str | None:
+    def _maquina_cenario(
+        self, *codigos: str, metodos: tuple[str, ...] = ()
+    ) -> str | None:
+        """Return a configured machine compatible with every scenario method."""
         for codigo in codigos:
-            if any(m.codigo == codigo for m in self._maquinas):
+            maquina = next((m for m in self._maquinas if m.codigo == codigo), None)
+            if maquina and all(
+                metodo in metodo_types.metodos_disponiveis_para_maquina(maquina)
+                for metodo in metodos
+            ):
                 return codigo
-        return self._maquinas[0].codigo if self._maquinas else None
+        maquina = next(
+            (
+                m
+                for m in self._maquinas
+                if all(
+                    metodo in metodo_types.metodos_disponiveis_para_maquina(m)
+                    for metodo in metodos
+                )
+            ),
+            None,
+        )
+        return maquina.codigo if maquina else None
 
     def _cenario_dobradica(self) -> None:
-        maquina = self._maquina_cenario("CNC_ABD", "CNC_VERTICAL")
+        maquina = self._maquina_cenario(
+            "CNC_ABD", "CNC_VERTICAL", metodos=(metodo_types.FURACAO,)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
@@ -425,7 +479,9 @@ class SimuladorCncWidget(QWidget):
         self.adicionar_operacao(maquina, metodo_types.FURACAO, furos=3)
 
     def _cenario_calha(self) -> None:
-        maquina = self._maquina_cenario("CNC_VERTICAL", "CNC_5_EIXOS")
+        maquina = self._maquina_cenario(
+            "CNC_VERTICAL", "CNC_5_EIXOS", metodos=(metodo_types.RASGO,)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
@@ -433,21 +489,25 @@ class SimuladorCncWidget(QWidget):
         self.adicionar_operacao(maquina, metodo_types.RASGO, n_comp=1, n_larg=0)
 
     def _cenario_pocket(self) -> None:
-        maquina = self._maquina_cenario("CNC_VERTICAL", "CNC_5_EIXOS")
+        maquina = self._maquina_cenario(
+            "CNC_VERTICAL", "CNC_5_EIXOS", metodos=(metodo_types.POCKET,)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
         self.definir_peca(_D("500"), _D("300"), 1, usar_serie=False)
         self.adicionar_operacao(
             maquina,
-            metodo_types.TEMPO,
+            metodo_types.POCKET,
             setup=_D("0"),
             min_unidade=_D("4"),
             unidades=1,
         )
 
     def _cenario_escalao(self) -> None:
-        maquina = self._maquina_cenario("CNC_VERTICAL")
+        maquina = self._maquina_cenario(
+            "CNC_VERTICAL", metodos=(metodo_types.ESCALAO_AREA,)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
@@ -455,7 +515,9 @@ class SimuladorCncWidget(QWidget):
         self.adicionar_operacao(maquina, metodo_types.ESCALAO_AREA)
 
     def _cenario_sandwich(self, faces: int) -> None:
-        maquina = self._maquina_cenario("REVESTIMENTO_SANDWICH")
+        maquina = self._maquina_cenario(
+            "REVESTIMENTO_SANDWICH", metodos=(metodo_types.REVESTIMENTO,)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
@@ -463,7 +525,9 @@ class SimuladorCncWidget(QWidget):
         self.adicionar_operacao(maquina, metodo_types.REVESTIMENTO, faces=faces)
 
     def _cenario_furacao_rasgo(self) -> None:
-        maquina = self._maquina_cenario("CNC_VERTICAL")
+        maquina = self._maquina_cenario(
+            "CNC_VERTICAL", metodos=(metodo_types.FURACAO, metodo_types.RASGO)
+        )
         if maquina is None:
             return
         self.limpar_operacoes()
@@ -480,6 +544,30 @@ class SimuladorCncWidget(QWidget):
             )
         self.maquina_input.blockSignals(False)
         self._atualizar_metodos()
+        self._atualizar_estado_configuracao()
+
+    def _atualizar_estado_configuracao(self) -> None:
+        """Explain unavailable controls instead of leaving an empty form."""
+        tem_maquinas = bool(self._maquinas)
+        self.maquina_input.setEnabled(tem_maquinas)
+        self.metodo_input.setEnabled(tem_maquinas)
+        self.adicionar_button.setEnabled(tem_maquinas)
+        if not tem_maquinas:
+            self.estado_configuracao_label.setText(
+                "Ainda não existem máquinas CNC ou de revestimento ativas. "
+                "Configure-as no separador Máquinas para simular custos."
+            )
+        else:
+            self.estado_configuracao_label.clear()
+
+        for botao, metodos in getattr(self, "_botoes_cenarios", []):
+            disponivel = self._maquina_cenario(metodos=metodos) is not None
+            botao.setEnabled(disponivel)
+            botao.setToolTip(
+                "Carrega um exemplo pronto a explorar."
+                if disponivel
+                else "Indisponível: falta uma máquina ativa com este método configurado."
+            )
 
     def _maquina_selecionada(self) -> MaquinaSimulacao | None:
         codigo = self.maquina_input.currentData()
