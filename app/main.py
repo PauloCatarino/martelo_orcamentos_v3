@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from app.config.logging_config import configure_logging
 from app.core.session import app_session
 from app.ui import tema
+from app.ui.icones import icone_ficheiro
 from app.ui.login_window import LoginWindow
 from app.ui.introducao_window import IntroducaoWindow
 from app.ui.main_window import MainWindow
@@ -55,7 +56,24 @@ def main() -> int:
     """Start the desktop application."""
     configure_logging()
 
+    # No Windows, associar um AppUserModelID próprio faz a barra de tarefas usar o
+    # nosso ícone (e agrupar as janelas sob a app) em vez do ícone genérico do host.
+    # Tem de correr antes de qualquer janela aparecer.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "LancaEncanto.Martelo.Orcamentos.V3"
+            )
+        except Exception:  # noqa: BLE001 -- cosmético; nunca deve impedir o arranque
+            pass
+
     qt_app = QApplication(sys.argv)
+    # Ícone da aplicação: passa a ser o ícone por omissão de TODAS as janelas e
+    # diálogos (barra de título e barra de tarefas). O .exe já tem o ícone do
+    # ficheiro; isto trata do ícone em tempo de execução.
+    qt_app.setWindowIcon(icone_ficheiro("icon_le.ico"))
     # Estilo que garante texto branco em qualquer célula selecionada (todas as tabelas).
     qt_app.setStyle(EstiloSelecaoLegivel())
     # Cor de seleção do tema via paleta, incluindo quando a tabela perde foco.
