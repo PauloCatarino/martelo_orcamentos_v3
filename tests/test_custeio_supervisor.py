@@ -128,6 +128,15 @@ def test_diagnostico_de_ocorrencia_sem_acao_usa_sugestao_generica() -> None:
     assert d.sugestao  # cai numa sugestão (genérica) em vez de vazio
 
 
+def test_orlagem_grave_aponta_a_materias_primas() -> None:
+    # O preço da orla vive no material/Matérias-Primas: a origem tem de lá apontar.
+    d = diagnostico_de_ocorrencia(
+        "Orlagem", CRITICO, "Custo de orla não calculado: preço da orla em falta.", None
+    )
+    chaves = {origem.chave for origem in d.origens}
+    assert chave_menu(PAGINA_MATERIAS_PRIMAS) in chaves
+
+
 # ----- Fase 2B: diagnóstico a partir do audit de operações -----
 
 

@@ -2540,6 +2540,60 @@ def test_recalcular_orlas_aviso_suave_quando_usa_preco_do_catalogo(monkeypatch) 
     assert _FakeRepository.updated_payload["custo_orla_grossa"] > 0
 
 
+def test_recalcular_orlas_sem_orla_nao_avisa_preco(monkeypatch) -> None:
+    # Código de orlas 0000 (sem orla): o preço da orla é irrelevante, sem aviso.
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("11.50"), unidade="M2")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="0000",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+            preco_orla_0_4_m2=None,
+            preco_orla_1_0_m2=None,
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    obs = _FakeRepository.updated_payload.get("observacoes") or ""
+    assert service_module.AVISO_PRECO_ORLA_CATALOGO not in obs
+    assert service_module.AVISO_PRECO_ORLA_EM_FALTA not in obs
+
+
+def test_recalcular_orlas_preco_zero_avisa_informativo(monkeypatch) -> None:
+    # Peça COM orla mas preço editado para 0 -> orla não custeada, aviso informativo.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_0_4="ORL0002",
+            coresp_orla_1_0="ORL0003",
+            preco_orla_0_4_m2=Decimal("0"),
+            preco_orla_1_0_m2=Decimal("0"),
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    obs = _FakeRepository.updated_payload.get("observacoes") or ""
+    assert service_module.AVISO_PRECO_ORLA_ZERO in obs
+
+
 def test_recalcular_orlas_aviso_grave_quando_sem_preco_em_lado_nenhum(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeMateriaPrimaRepository.materias_por_ref = {}  # catálogo também sem preço

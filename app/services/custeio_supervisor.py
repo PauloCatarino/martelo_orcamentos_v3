@@ -180,6 +180,15 @@ def _origens(categoria: str) -> tuple[Origem, ...]:
     A alternância que o utilizador pediu faz-se por vários botões de origem: cada
     categoria oferece o(s) sítio(s) provável(is) do problema.
     """
+    if categoria == "Orlagem":
+        # A orlagem pode falhar por PREÇO (o preço da orla vive no material /
+        # Matérias-Primas) ou por OPERAÇÃO (máquina/tarifa) — ofereço ambos.
+        return (
+            _origem_operacoes(),
+            _origem_maquinas_tarifas(),
+            _origem_materias_primas(),
+            _origem_linha(),
+        )
     if categoria in _CATEGORIAS_OPERACOES:
         return (_origem_operacoes(), _origem_maquinas_tarifas(), _origem_linha())
     if categoria == "Material":

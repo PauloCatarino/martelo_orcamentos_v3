@@ -155,6 +155,11 @@ AVISO_PRECO_ORLA_CATALOGO = (
 AVISO_PRECO_ORLA_EM_FALTA = (
     "Custo de orla não calculado: preço da orla em falta (na linha e no catálogo)."
 )
+# A orla é usada mas o preço está a 0 € (ex.: editado localmente para 0): a orla
+# não é custeada. Pode ser intencional -> apenas INFORMATIVO (sem botão).
+AVISO_PRECO_ORLA_ZERO = (
+    "Preço da orla a 0 € — a orla não é custeada (verifique se é intencional)."
+)
 
 
 @dataclass(frozen=True)
@@ -1471,21 +1476,29 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_orlas": resultado.custo_orlas,
             }
             avisos = [resultado.aviso] if resultado.aviso else []
-            # Distinguir os dois casos do fallback ao catálogo:
-            #  - preço em falta (nem linha nem catálogo têm) -> GRAVE, não calcula;
-            #  - catálogo tem preço -> calcula na mesma, aviso apenas informativo.
-            fina_em_falta = (
-                fallback_fina and preco_fina is None and bool(linha.coresp_orla_0_4)
+            # Só faz sentido falar de preço de orla quando a orla é EFETIVAMENTE
+            # usada (código de orlas != 0000 -> ml > 0). Sem orla, nenhum aviso.
+            fina_usada = (resultado.ml_orla_fina or 0) > 0
+            grossa_usada = (resultado.ml_orla_grossa or 0) > 0
+            # Preço em falta (nem linha nem catálogo) numa orla usada -> GRAVE.
+            fina_em_falta = fina_usada and fallback_fina and preco_fina is None
+            grossa_em_falta = grossa_usada and fallback_grossa and preco_grossa is None
+            # Catálogo tem preço numa orla usada -> calcula, aviso informativo.
+            fina_catalogo = fina_usada and fallback_fina and preco_fina is not None
+            grossa_catalogo = grossa_usada and fallback_grossa and preco_grossa is not None
+            # Preço a 0 (ex.: editado localmente) numa orla usada -> informativo.
+            fina_zero = (
+                fina_usada and not fallback_fina and preco_fina is not None and preco_fina == 0
             )
-            grossa_em_falta = (
-                fallback_grossa and preco_grossa is None and bool(linha.coresp_orla_1_0)
+            grossa_zero = (
+                grossa_usada and not fallback_grossa and preco_grossa is not None and preco_grossa == 0
             )
             if fina_em_falta or grossa_em_falta:
                 avisos.append(AVISO_PRECO_ORLA_EM_FALTA)
-            elif (fallback_fina and preco_fina is not None) or (
-                fallback_grossa and preco_grossa is not None
-            ):
+            elif fina_catalogo or grossa_catalogo:
                 avisos.append(AVISO_PRECO_ORLA_CATALOGO)
+            elif fina_zero or grossa_zero:
+                avisos.append(AVISO_PRECO_ORLA_ZERO)
             nova_obs = self._mesclar_observacao(
                 linha.observacoes,
                 "Custo de orla",
