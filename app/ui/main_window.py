@@ -224,7 +224,7 @@ class MainWindow(QMainWindow):
         )
         self.custeio_auditoria_page = CusteioAuditoriaPage(
             on_open_orcamento=self._open_custeio_auditoria_item,
-            on_navegar_menu=self.show_page,
+            on_navegar_menu=self.navegar_para_resolver,
         )
         self.arquivo_v2_page = ArquivoV2Page()
         self.def_pecas_page = DefPecasPage(
@@ -319,6 +319,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(self.pages, stretch=1)
 
         main_layout.addLayout(header_layout)
+        main_layout.addWidget(self._criar_banner_retorno())
         main_layout.addLayout(content_layout, stretch=1)
 
         central_widget.setLayout(main_layout)
@@ -458,6 +459,71 @@ class MainWindow(QMainWindow):
         self._page_containers[name] = container
         self._page_indexes[name] = self.pages.addWidget(container)
 
+    # Texto do banner de retorno, por página de origem.
+    _ROTULO_RETORNO = {
+        "orcamento_detail": "A resolver um problema do custeio — podes voltar quando terminares.",
+        "custeio_auditoria": "A resolver um problema da Auditoria de Custeio — podes voltar quando terminares.",
+    }
+
+    def _criar_banner_retorno(self) -> QWidget:
+        """Barra de "voltar" mostrada quando o assistente envia para outro menu.
+
+        Sem isto, ao saltar para Matérias-Primas/Máquinas o utilizador ficava
+        sem forma de regressar ao custeio onde estava.
+        """
+        self._retorno_resolver: str | None = None
+        self._retorno_banner = QFrame()
+        self._retorno_banner.setStyleSheet(
+            f"QFrame {{ background: {tema.OCRE_SUAVE};"
+            f" border: 1px solid {tema.CASTANHO_MEDIO}; border-radius: 6px; }}"
+        )
+        lay = QHBoxLayout(self._retorno_banner)
+        lay.setContentsMargins(12, 6, 12, 6)
+        self._retorno_label = QLabel("")
+        self._retorno_label.setStyleSheet(
+            f"color: {tema.OCRE_ESCURO}; font-weight: bold; background: transparent; border: none;"
+        )
+        voltar = QPushButton("← Voltar")
+        voltar.setToolTip("Voltar ao ecrã onde estavas antes de vir resolver o problema.")
+        voltar.clicked.connect(self._voltar_resolver)
+        lay.addWidget(self._retorno_label, stretch=1)
+        lay.addWidget(voltar)
+        self._retorno_banner.setVisible(False)
+        return self._retorno_banner
+
+    def _pagina_atual_nome(self) -> str | None:
+        indice = self.pages.currentIndex()
+        for nome, idx in self._page_indexes.items():
+            if idx == indice:
+                return nome
+        return None
+
+    def navegar_para_resolver(self, pagina_destino: str) -> None:
+        """Vai para um menu de resolução guardando de onde veio (para poder voltar)."""
+        origem = self._pagina_atual_nome()
+        if origem is not None and origem != pagina_destino:
+            self._retorno_resolver = origem
+            self._retorno_label.setText(
+                self._ROTULO_RETORNO.get(
+                    origem, "A resolver um problema do orçamento — podes voltar quando terminares."
+                )
+            )
+            self._retorno_banner.setVisible(True)
+        self.show_page(pagina_destino)
+
+    def _voltar_resolver(self) -> None:
+        destino = self._retorno_resolver
+        self._retorno_resolver = None
+        self._retorno_banner.setVisible(False)
+        if destino is not None:
+            self.show_page(destino)
+
+    def _esconder_banner_retorno(self) -> None:
+        """Esconde o banner quando o utilizador navega manualmente para outro lado."""
+        self._retorno_resolver = None
+        if getattr(self, "_retorno_banner", None) is not None:
+            self._retorno_banner.setVisible(False)
+
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""
         permission_key = self._PAGE_PERMISSION.get(name)
@@ -487,6 +553,8 @@ class MainWindow(QMainWindow):
     def _on_nav_item_clicked(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         page_name = item.data(0, Qt.ItemDataRole.UserRole)
         if page_name:
+            # Navegação manual pela sidebar cancela o "voltar" pendente.
+            self._esconder_banner_retorno()
             self.show_page(page_name)
 
     def open_orcamento_detail(self, orcamento: OrcamentoResumo) -> None:
@@ -495,7 +563,7 @@ class MainWindow(QMainWindow):
             orcamento,
             on_back=lambda: self.show_page("orcamentos"),
             on_open_custeio_auditoria=self._open_custeio_auditoria_contexto,
-            on_navegar_menu=self.show_page,
+            on_navegar_menu=self.navegar_para_resolver,
         )
         self._replace_page("orcamento_detail", detail_page)
         self.show_page("orcamento_detail")
