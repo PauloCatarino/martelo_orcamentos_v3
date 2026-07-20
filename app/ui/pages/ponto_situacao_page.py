@@ -14,7 +14,7 @@ from PySide6.QtCharts import (
     QPieSeries,
     QValueAxis,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPageLayout, QPageSize, QPainter, QPdfWriter
 from PySide6.QtWidgets import (
     QApplication,
@@ -93,6 +93,36 @@ class _ClickableFrame(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self._on_click()
         super().mousePressEvent(event)
+
+
+class _EstadoWorker(QObject):
+    """Consulta o Estado de Produção (Streamlit) fora da thread da UI.
+
+    Usado no pré-carregamento do arranque: a consulta é lenta e depende da
+    rede, por isso corre numa thread própria (com a sua própria sessão de BD)
+    e devolve os resultados — dataclasses ``EstadoProducaoObra`` imutáveis, já
+    desligadas da sessão — por sinal, para o desenho acontecer na thread da UI.
+    """
+
+    concluido = Signal(list)
+    falhou = Signal(str)
+
+    def __init__(self, filtros: dict) -> None:
+        super().__init__()
+        self._filtros = filtros
+
+    def run(self) -> None:
+        try:
+            resultados = PontoSituacaoPage._consultar_estado(
+                self._filtros["texto"],
+                self._filtros["estado"],
+                self._filtros["cliente"],
+                self._filtros["responsavel"],
+            )
+        except Exception as exc:  # noqa: BLE001 - o arranque nunca deve rebentar
+            self.falhou.emit(str(exc))
+            return
+        self.concluido.emit(resultados)
 
 
 class PontoSituacaoPage(QWidget):
@@ -424,6 +454,20 @@ class PontoSituacaoPage(QWidget):
         else:
             self._estado_carregado = False
 
+    @staticmethod
+    def _consultar_estado(texto, estado, cliente, responsavel):
+        """Consulta o estado de produção (thread-safe: abre a sua sessão de BD)."""
+        with SessionLocal() as session:
+            todos = ProducaoService(session).listar_processos()
+            filtrados = filtrar_processos(
+                todos,
+                texto=texto,
+                estado=estado,
+                cliente=cliente,
+                responsavel=responsavel,
+            )
+            return estado_producao_por_processo(session, processos=filtrados)
+
     def _carregar_estado(self, *_args) -> None:
         texto = self.campo_pesquisa.texto()
         utilizador = self._combo_valor(self.utilizador_combo)
@@ -434,18 +478,7 @@ class PontoSituacaoPage(QWidget):
         self.estado_info_label.setText("A consultar o estado no Streamlit...")
         QApplication.processEvents()
         try:
-            with SessionLocal() as session:
-                todos = ProducaoService(session).listar_processos()
-                filtrados = filtrar_processos(
-                    todos,
-                    texto=texto,
-                    estado=estado,
-                    cliente=cliente,
-                    responsavel=utilizador,
-                )
-                resultados = estado_producao_por_processo(
-                    session, processos=filtrados
-                )
+            resultados = self._consultar_estado(texto, estado, cliente, utilizador)
         except Exception as exc:  # ligacao/SQL/config Streamlit
             self.estado_info_label.setText(
                 "Não foi possível consultar o estado de produção."
@@ -462,6 +495,59 @@ class PontoSituacaoPage(QWidget):
         self._preencher_estado(resultados)
         self._estado_carregado = True
         self.estado_info_label.setText(self._texto_estado(resultados))
+
+    # ----- Pré-carregamento em segundo plano (arranque) -----
+
+    def iniciar_carregamento_estado_fundo(self, quando_terminar=None) -> None:
+        """Carrega o Estado de Produção numa thread, sem bloquear a UI.
+
+        Usado no arranque: a barra de progresso do ecrã inicial anda enquanto
+        consulta o Streamlit e ``quando_terminar`` é chamado exatamente uma vez
+        ao concluir (ou em erro). Nunca mostra pop-ups — a app abre na mesma.
+        """
+        self._preload_terminar = quando_terminar
+        self._preload_terminado = False
+
+        filtros = {
+            "texto": self.campo_pesquisa.texto(),
+            "estado": self._combo_valor(self.estado_combo),
+            "cliente": self._combo_valor(self.cliente_combo),
+            "responsavel": self._combo_valor(self.utilizador_combo),
+        }
+        self.estado_info_label.setText("A consultar o estado no Streamlit...")
+
+        self._estado_thread = QThread(self)
+        self._estado_worker = _EstadoWorker(filtros)
+        self._estado_worker.moveToThread(self._estado_thread)
+        self._estado_thread.started.connect(self._estado_worker.run)
+        self._estado_worker.concluido.connect(self._on_preload_estado_ok)
+        self._estado_worker.falhou.connect(self._on_preload_estado_erro)
+        self._estado_worker.concluido.connect(self._estado_thread.quit)
+        self._estado_worker.falhou.connect(self._estado_thread.quit)
+        self._estado_thread.finished.connect(self._estado_worker.deleteLater)
+        self._estado_thread.finished.connect(self._estado_thread.deleteLater)
+        self._estado_thread.start()
+
+    def _on_preload_estado_ok(self, resultados) -> None:
+        self._preencher_estado(resultados)
+        self._estado_carregado = True
+        self.estado_info_label.setText(self._texto_estado(resultados))
+        self._finalizar_preload()
+
+    def _on_preload_estado_erro(self, _mensagem) -> None:
+        # Sem pop-up: no arranque a app deve abrir na mesma. O separador fica
+        # com a mensagem normal, pronto para o botão "Atualizar estado".
+        self.estado_info_label.setText(
+            "Carregue 'Atualizar estado' para consultar o estado no Streamlit."
+        )
+        self._finalizar_preload()
+
+    def _finalizar_preload(self) -> None:
+        if self._preload_terminado:
+            return
+        self._preload_terminado = True
+        if self._preload_terminar is not None:
+            self._preload_terminar()
 
     def _preencher_estado(self, resultados) -> None:
         table = self.estado_table

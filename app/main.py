@@ -16,6 +16,7 @@ try:
 except Exception:
     pass
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,
@@ -124,7 +125,15 @@ def main() -> int:
         window.logout_requested.connect(handle_logout)
         if introducao is not None:
             introducao.concluida.connect(window.showMaximized)
-            introducao.marcar_aplicacao_pronta()
+            # Pré-carrega o Estado de Produção em segundo plano: a barra de
+            # progresso do ecrã inicial anda enquanto consulta o Streamlit e a
+            # app só abre quando terminar (já com o separador preenchido). O
+            # limite de tempo garante que a app abre na mesma se o Streamlit
+            # estiver lento ou indisponível — nunca fica presa.
+            window.ponto_situacao_page.iniciar_carregamento_estado_fundo(
+                quando_terminar=introducao.marcar_aplicacao_pronta
+            )
+            QTimer.singleShot(15000, introducao.marcar_aplicacao_pronta)
         else:
             window.showMaximized()
 
