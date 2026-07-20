@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -53,6 +54,14 @@ from app.ui.helpers.valueset_combo_helper import (
 )
 
 ORIGEM_DADOS_OPCOES = ("MATERIA_PRIMA", "LIVRE", "EDITADO_LOCALMENTE")
+
+# "Origem dados" é apenas a PROVENIÊNCIA — não é um seletor que re-preenche.
+ORIGEM_DADOS_INFO = (
+    "O campo “Origem dados” indica apenas a PROVENIÊNCIA dos dados "
+    "(de onde vieram) — não altera os dados.\n\n"
+    "Para atualizar os dados a partir do catálogo, use o botão "
+    "“Selecionar Matéria-Prima”."
+)
 
 PRIORIDADE_TOOLTIP = (
     "Prioridade dentro da chave: a linha ativa com o número mais baixo é a "
@@ -191,6 +200,9 @@ class DefValuesetModeloLinhaDialog(QDialog):
         for origem in ORIGEM_DADOS_OPCOES:
             self.origem_dados_input.addItem(origem)
         self.origem_dados_input.setCurrentText("LIVRE")
+        self.origem_dados_input.setToolTip(ORIGEM_DADOS_INFO)
+        self.origem_dados_input.activated.connect(self._avisar_origem_dados)
+        self._origem_dados_atual = "LIVRE"
         self.editado_localmente_input = QCheckBox()
 
         self.selecionar_mp_button = QPushButton("Selecionar Matéria-Prima")
@@ -468,6 +480,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.larg_mp_input.setText(self._format_decimal(linha.larg_mp))
         self.esp_mp_input.setText(self._format_decimal(linha.esp_mp))
         self.origem_dados_input.setCurrentText(linha.origem_dados or "")
+        self._origem_dados_atual = linha.origem_dados or ""
         self.editado_localmente_input.setChecked(linha.editado_localmente)
 
     def abrir_picker_materia_prima(self) -> None:
@@ -490,6 +503,11 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
         ref_input.setText(materia.ref_le or "")
         preco_input.setText(self._format_decimal(materia.preco_liquido))
+
+    def _avisar_origem_dados(self, _index: int) -> None:
+        """"Origem dados" é só proveniência: reverte a mudança e informa o utilizador."""
+        self.origem_dados_input.setCurrentText(self._origem_dados_atual or "")
+        QMessageBox.information(self, "Origem dados", ORIGEM_DADOS_INFO)
 
     def _preencher_de_materia_prima(self, materia) -> None:
         """Copy the raw material snapshot into the line fields (still editable)."""
@@ -529,6 +547,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
             self.larg_mp_input.setText(self._format_decimal(materia.largura))
             self.esp_mp_input.setText(self._format_decimal(materia.espessura))
             self.origem_dados_input.setCurrentText("MATERIA_PRIMA")
+            self._origem_dados_atual = "MATERIA_PRIMA"
             self.editado_localmente_input.setChecked(False)
 
             self.nome_opcao_input.setText(materia.descricao or materia.ref_le or "")

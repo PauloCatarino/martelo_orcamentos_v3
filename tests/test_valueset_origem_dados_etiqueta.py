@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication, QComboBox
 
+from app.ui.dialogs import def_valueset_modelo_linha_dialog as modelo_mod
 from app.ui.dialogs import orcamento_item_valueset_linha_dialog as item_mod
 from app.ui.dialogs import orcamento_valueset_linha_dialog as orc_mod
 
@@ -21,6 +22,7 @@ _app = QApplication.instance() or QApplication([])
     [
         (item_mod, "OrcamentoItemValuesetLinhaDialog"),
         (orc_mod, "OrcamentoValuesetLinhaDialog"),
+        (modelo_mod, "DefValuesetModeloLinhaDialog"),
     ],
 )
 def test_mudar_origem_dados_reverte_e_informa(mod, cls_name, monkeypatch) -> None:
