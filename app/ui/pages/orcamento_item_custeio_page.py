@@ -1117,11 +1117,17 @@ class OrcamentoItemCusteioPage(QWidget):
         service.recalcular_item_completo(self.item_id)
 
     def inserir_divisao(self) -> None:
-        """Insert an independent-division line (local HM/LM/PM measure context)."""
+        """Insert an independent-division line (local HM/LM/PM measure context).
+
+        The line lands right below the selected row (after the whole block when
+        the selection is a composite piece), or at the end when nothing is
+        selected.
+        """
+        linha = self._get_linha_selecionada()
         try:
             with SessionLocal() as session:
                 OrcamentoItemCusteioLinhaService(session).inserir_divisao_independente(
-                    self.item_id
+                    self.item_id, linha.id if linha is not None else None
                 )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível inserir a divisão.")

@@ -1919,6 +1919,7 @@ def test_atualizar_medidas_linha_nao_altera_valueset(monkeypatch) -> None:
 
 def test_inserir_divisao_independente(monkeypatch) -> None:
     service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = []
 
     service.inserir_divisao_independente(30)
 
@@ -1936,6 +1937,34 @@ def test_inserir_divisao_independente(monkeypatch) -> None:
     assert "chave_valueset" not in payload
     assert "ref_le" not in payload
     assert "preco_liquido" not in payload
+    assert session.committed is True
+
+
+def test_inserir_divisao_independente_abaixo_da_selecao(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=10, tipo_linha="PECA"),
+        _resumo(id=20, tipo_linha="PECA"),
+        _resumo(id=30, tipo_linha="PECA"),
+    ]
+
+    service.inserir_divisao_independente(30, linha_id=20)
+
+    # The new division (created id=1) is spliced right below the selected line.
+    assert _FakeRepository.reordenar_order == [10, 20, 1, 30]
+    assert session.committed is True
+
+
+def test_inserir_divisao_independente_sem_selecao_fica_no_fim(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=10, tipo_linha="PECA"),
+        _resumo(id=20, tipo_linha="PECA"),
+    ]
+
+    service.inserir_divisao_independente(30)
+
+    assert _FakeRepository.reordenar_order == [10, 20, 1]
     assert session.committed is True
 
 

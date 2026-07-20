@@ -4154,9 +4154,15 @@ class OrcamentoItemCusteioLinhaService:
         return self.repository.get_by_id(linha.id)
 
     def inserir_divisao_independente(
-        self, orcamento_item_id: int
+        self, orcamento_item_id: int, linha_id: int | None = None
     ) -> OrcamentoItemCusteioLinhaResumo:
-        """Insert an independent-division line that defines a local measure context."""
+        """Insert an independent-division line that defines a local measure context.
+
+        The line is spliced right below ``linha_id`` in display order (never
+        splitting a composite block: when the selection is a composite header or
+        child, it lands after the whole block). With no selection it goes to the
+        end of the item. Commits.
+        """
         item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
 
         result = self.repository.create_linha(
@@ -4175,9 +4181,26 @@ class OrcamentoItemCusteioLinhaService:
             editado_localmente=True,
             ativo=True,
         )
+
+        # Splice the division right after the anchor (which never falls inside a
+        # composite block) in display order.
+        linhas = self.repository.list_active_by_orcamento_item(item_id)
+        outras = [linha for linha in linhas if linha.id != result.id]
+        outras_ids = [linha.id for linha in outras]
+        ancora_id = self._ancora_insercao(linha_id, outras)
+
+        if ancora_id in outras_ids:
+            indice = outras_ids.index(ancora_id)
+            nova_ordem = (
+                outras_ids[: indice + 1] + [result.id] + outras_ids[indice + 1:]
+            )
+        else:
+            nova_ordem = outras_ids + [result.id]
+
+        self.repository.reordenar_linhas(nova_ordem)
         self.session.commit()
 
-        return result
+        return self.repository.get_by_id(result.id)
 
     def inserir_separador(
         self, orcamento_item_id: int, linha_id: int | None = None
