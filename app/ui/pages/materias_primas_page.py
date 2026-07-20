@@ -116,6 +116,11 @@ class MateriasPrimasPage(QWidget):
         )
         ligar_menu_colunas(self.table, "materias_primas")
         self._larguras_seed_feito = False
+        # Mapa linha->matéria-prima e "modo resolução" (assistente): duplo-clique
+        # aplica a matéria-prima à linha do custeio e volta.
+        self._materias_por_row: dict[int, DefMateriaPrimaResumo] = {}
+        self._resolucao_callback = None
+        self.table.cellDoubleClicked.connect(self._on_duplo_clique)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -261,11 +266,30 @@ class MateriasPrimasPage(QWidget):
 
         QTimer.singleShot(1500, repor)
 
+    def entrar_modo_resolucao(self, ao_escolher) -> None:
+        """Ativa o modo resolução: duplo-clique aplica a matéria-prima (assistente 3B)."""
+        self._resolucao_callback = ao_escolher
+        self.status_label.setText(
+            "A resolver: duplo-clique numa matéria-prima para a aplicar à linha e voltar."
+        )
+
+    def sair_modo_resolucao(self) -> None:
+        self._resolucao_callback = None
+
+    def _on_duplo_clique(self, row: int, _column: int) -> None:
+        callback = self._resolucao_callback
+        materia = self._materias_por_row.get(row)
+        if callback is not None and materia is not None:
+            self.sair_modo_resolucao()
+            callback(materia)
+
     def _preencher_tabela(self, materias_primas: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw material read models."""
         self.table.setRowCount(len(materias_primas))
+        self._materias_por_row = {}
 
         for row_index, materia in enumerate(materias_primas):
+            self._materias_por_row[row_index] = materia
             values = [
                 materia.ref_le or "",
                 materia.descricao,

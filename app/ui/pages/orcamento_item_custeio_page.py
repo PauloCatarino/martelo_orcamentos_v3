@@ -2497,14 +2497,22 @@ class OrcamentoItemCusteioPage(QWidget):
         pagina = pagina_de_chave(chave)
         if pagina is not None:
             if self._on_navegar_menu is not None:
-                # Fase 3B: no salto para Matérias-Primas, indicar a Ref LE da linha
-                # para o menu de destino destacar a matéria-prima exata.
+                # Fase 3B: no salto para Matérias-Primas, indicar a Ref LE (para
+                # destacar a matéria-prima exata) e ativar o "modo resolução"
+                # (duplo-clique aplica a matéria-prima à linha e volta).
                 alvo = None
+                ao_escolher = None
                 if pagina == PAGINA_MATERIAS_PRIMAS:
                     linha = self._linha_por_id(linha_id)
                     if linha is not None:
                         alvo = linha.ref_le or linha.mat_default
-                self._on_navegar_menu(pagina, alvo)
+                        if self._linha_aceita_material(linha):
+                            ao_escolher = (
+                                lambda materia, lid=linha_id: self._aplicar_materia_resolucao(
+                                    lid, materia
+                                )
+                            )
+                self._on_navegar_menu(pagina, alvo, ao_escolher)
             return
         if chave == ORIGEM_RESOLVER_MATERIAL:
             self.resolver_material_linha(linha_id)
@@ -2512,6 +2520,24 @@ class OrcamentoItemCusteioPage(QWidget):
         self.selecionar_linha_por_id(linha_id)
         if chave == ORIGEM_OPERACOES:
             self.abrir_operacoes_da_linha()
+
+    def _aplicar_materia_resolucao(self, linha_id: int, materia) -> None:
+        """Fase 3B: aplica à linha a matéria-prima escolhida em Matérias-Primas.
+
+        Chamado quando o utilizador faz duplo-clique numa matéria-prima (modo
+        resolução); a app volta ao custeio a seguir (tratado pela MainWindow).
+        """
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                service.aplicar_materia_prima_na_linha(linha_id, materia.id)
+                self._recalcular_item_completo(service)
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível aplicar a matéria-prima à linha.")
+            return
+        self.carregar()
+        self.selecionar_linha_por_id(linha_id)
+        self.status_label.setText("Matéria-prima aplicada e item recalculado.")
 
     def resolver_material_linha(self, linha_id: int) -> None:
         """Fase 3A: corrigir o material/preço da linha e recalcular, sem sair.

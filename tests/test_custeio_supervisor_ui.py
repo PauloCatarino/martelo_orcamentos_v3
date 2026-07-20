@@ -98,13 +98,17 @@ def test_dialogo_navega_para_origem_e_fecha() -> None:
 
 
 def test_navegar_supervisor_origem_externa_abre_menu() -> None:
-    """Origem 'menu:materias_primas' navega com a Ref LE da linha como alvo (3B)."""
+    """Origem 'menu:materias_primas': navega com a Ref LE (alvo) e ativa o modo
+    resolução (ao_escolher) quando a linha aceita material (3B)."""
     chamadas: list[tuple] = []
     selecionadas: list[int] = []
     operacoes: list[bool] = []
     fake = SimpleNamespace(
-        _on_navegar_menu=lambda pagina, alvo=None: chamadas.append((pagina, alvo)),
+        _on_navegar_menu=lambda pagina, alvo=None, ao_escolher=None: chamadas.append(
+            (pagina, alvo, ao_escolher is not None)
+        ),
         _linha_por_id=lambda lid: SimpleNamespace(ref_le="PLC0033", mat_default=None),
+        _linha_aceita_material=lambda linha: True,
         selecionar_linha_por_id=lambda lid: selecionadas.append(lid),
         abrir_operacoes_da_linha=lambda: operacoes.append(True),
     )
@@ -112,7 +116,7 @@ def test_navegar_supervisor_origem_externa_abre_menu() -> None:
     OrcamentoItemCusteioPage._navegar_supervisor(
         fake, 7, chave_menu(PAGINA_MATERIAS_PRIMAS)
     )
-    assert chamadas == [(PAGINA_MATERIAS_PRIMAS, "PLC0033")]
+    assert chamadas == [(PAGINA_MATERIAS_PRIMAS, "PLC0033", True)]
     # Origem externa não seleciona/abre a linha (vai para outro menu).
     assert selecionadas == [] and operacoes == []
 

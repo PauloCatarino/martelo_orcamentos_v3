@@ -36,6 +36,33 @@ def test_focar_materia_prima_seleciona_a_linha_certa() -> None:
     assert piscadas == [1]
 
 
+def test_duplo_clique_em_modo_resolucao_aplica_materia() -> None:
+    aplicadas: list = []
+    materia = SimpleNamespace(id=5, ref_le="PLC0033")
+    fake = SimpleNamespace(
+        _materias_por_row={0: materia},
+        _resolucao_callback=aplicadas.append,
+        sair_modo_resolucao=lambda: None,
+    )
+
+    MateriasPrimasPage._on_duplo_clique(fake, 0, 0)
+
+    assert aplicadas == [materia]
+
+
+def test_duplo_clique_fora_de_modo_resolucao_nao_faz_nada() -> None:
+    aplicadas: list = []
+    fake = SimpleNamespace(
+        _materias_por_row={0: SimpleNamespace(id=5)},
+        _resolucao_callback=None,  # não está em modo resolução
+        sair_modo_resolucao=lambda: None,
+    )
+
+    MateriasPrimasPage._on_duplo_clique(fake, 0, 0)
+
+    assert aplicadas == []
+
+
 def test_focar_materia_prima_ignora_ref_vazia() -> None:
     table = _tabela_com_refs(["PLC0001"])
     chamou_pesquisa: list[str] = []

@@ -498,11 +498,14 @@ class MainWindow(QMainWindow):
                 return nome
         return None
 
-    def navegar_para_resolver(self, pagina_destino: str, alvo: str | None = None) -> None:
+    def navegar_para_resolver(
+        self, pagina_destino: str, alvo: str | None = None, ao_escolher=None
+    ) -> None:
         """Vai para um menu de resolução guardando de onde veio (para poder voltar).
 
-        ``alvo`` (Fase 3B) permite destacar o campo/linha exato no destino — ex.:
-        a Ref LE da matéria-prima na página Matérias-Primas.
+        ``alvo`` (Fase 3B) destaca o campo/linha exato no destino (ex.: a Ref LE
+        na página Matérias-Primas). ``ao_escolher`` (Fase 3B) ativa o "modo
+        resolução": duplo-clique numa matéria-prima aplica-a à linha e volta.
         """
         origem = self._pagina_atual_nome()
         if origem is not None and origem != pagina_destino:
@@ -514,14 +517,25 @@ class MainWindow(QMainWindow):
             )
             self._retorno_banner.setVisible(True)
         self.show_page(pagina_destino)
-        # Destacar o alvo exato no menu de destino (quando suportado).
-        if alvo and pagina_destino == "materias_primas" and hasattr(self, "materias_primas_page"):
-            self.materias_primas_page.focar_materia_prima(alvo)
+        if pagina_destino == "materias_primas" and hasattr(self, "materias_primas_page"):
+            # Destacar a matéria-prima exata (3B).
+            if alvo:
+                self.materias_primas_page.focar_materia_prima(alvo)
+            # Modo resolução: duplo-clique aplica à linha e volta ao custeio.
+            if ao_escolher is not None:
+                def _resolver(materia) -> None:
+                    ao_escolher(materia)
+                    self._voltar_resolver()
+                self.materias_primas_page.entrar_modo_resolucao(_resolver)
+            else:
+                self.materias_primas_page.sair_modo_resolucao()
 
     def _voltar_resolver(self) -> None:
         destino = self._retorno_resolver
         self._retorno_resolver = None
         self._retorno_banner.setVisible(False)
+        if hasattr(self, "materias_primas_page"):
+            self.materias_primas_page.sair_modo_resolucao()
         if destino is not None:
             self.show_page(destino)
 
@@ -530,6 +544,8 @@ class MainWindow(QMainWindow):
         self._retorno_resolver = None
         if getattr(self, "_retorno_banner", None) is not None:
             self._retorno_banner.setVisible(False)
+        if hasattr(self, "materias_primas_page"):
+            self.materias_primas_page.sair_modo_resolucao()
 
     def show_page(self, name: str) -> None:
         """Show one central workspace page."""

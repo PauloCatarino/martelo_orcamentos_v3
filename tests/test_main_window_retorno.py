@@ -14,6 +14,21 @@ from app.ui.main_window import MainWindow
 _app = QApplication.instance() or QApplication([])
 
 
+class _FakeMateriasPage:
+    def __init__(self) -> None:
+        self.focadas: list[str] = []
+        self.resolver = None
+
+    def focar_materia_prima(self, ref_le: str) -> None:
+        self.focadas.append(ref_le)
+
+    def entrar_modo_resolucao(self, ao_escolher) -> None:
+        self.resolver = ao_escolher
+
+    def sair_modo_resolucao(self) -> None:
+        self.resolver = None
+
+
 class _FakeWin:
     """Reaproveita os métodos reais de navegação da MainWindow, sem DB/janela."""
 
@@ -32,10 +47,7 @@ class _FakeWin:
         self._retorno_label = QLabel()
         self._retorno_resolver = None
         self.mostradas: list[str] = []
-        self.focadas: list[str] = []
-        self.materias_primas_page = SimpleNamespace(
-            focar_materia_prima=self.focadas.append
-        )
+        self.materias_primas_page = _FakeMateriasPage()
 
     def show_page(self, name: str) -> None:
         self.mostradas.append(name)
@@ -74,7 +86,25 @@ def test_navegar_com_alvo_destaca_materia_prima() -> None:
     win.navegar_para_resolver("materias_primas", alvo="PLC0033")
 
     assert win.mostradas[-1] == "materias_primas"
-    assert win.focadas == ["PLC0033"]
+    assert win.materias_primas_page.focadas == ["PLC0033"]
+
+
+def test_navegar_com_ao_escolher_ativa_modo_resolucao() -> None:
+    # Fase 3B: duplo-clique numa matéria-prima aplica-a e volta ao custeio.
+    win = _FakeWin()
+    win.show_page("orcamento_detail")
+    escolhidas: list = []
+
+    win.navegar_para_resolver(
+        "materias_primas", alvo="PLC0033", ao_escolher=escolhidas.append
+    )
+    assert win.materias_primas_page.resolver is not None  # modo resolução armado
+
+    materia = object()
+    win.materias_primas_page.resolver(materia)  # simula o duplo-clique
+
+    assert escolhidas == [materia]  # aplicou a matéria-prima
+    assert win.mostradas[-1] == "orcamento_detail"  # e voltou ao custeio
 
 
 def test_navegacao_manual_esconde_banner() -> None:
