@@ -47,6 +47,18 @@ def test_observacao_neutra_nao_gera_diagnostico() -> None:
     assert tem_erro_grave("Peça standard, produção normal.") is False
 
 
+def test_orla_do_catalogo_e_informativo_mas_sem_preco_e_grave() -> None:
+    from app.services.orcamento_item_custeio_linha_service import (
+        AVISO_PRECO_ORLA_CATALOGO,
+        AVISO_PRECO_ORLA_EM_FALTA,
+    )
+
+    # Catálogo usado (há preço) -> só informativo, sem botão Resolver.
+    assert tem_erro_grave(AVISO_PRECO_ORLA_CATALOGO) is False
+    # Preço em falta (não calcula) -> grave, com botão Resolver.
+    assert tem_erro_grave(AVISO_PRECO_ORLA_EM_FALTA) is True
+
+
 def test_snapshot_de_orla_e_aviso_nao_grave() -> None:
     texto = (
         "Compatibilidade: esta linha ainda não tinha snapshot local da orla em "

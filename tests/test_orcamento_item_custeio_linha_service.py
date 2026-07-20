@@ -2512,6 +2512,57 @@ def test_recalcular_orlas_do_item_resolve_preco(monkeypatch) -> None:
     assert payload["custo_orlas"] == Decimal("1.6698")
 
 
+def test_recalcular_orlas_aviso_suave_quando_usa_preco_do_catalogo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("11.50"), unidade="M2")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_1_0="ORL0003",
+            preco_orla_1_0_m2=None,  # sem preço local -> usa catálogo
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    obs = _FakeRepository.updated_payload.get("observacoes", "")
+    assert service_module.AVISO_PRECO_ORLA_CATALOGO in obs
+    assert service_module.AVISO_PRECO_ORLA_EM_FALTA not in obs
+    # E calcula o custo (preferível a não calcular).
+    assert _FakeRepository.updated_payload["custo_orla_grossa"] > 0
+
+
+def test_recalcular_orlas_aviso_grave_quando_sem_preco_em_lado_nenhum(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {}  # catálogo também sem preço
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_1_0="ORL0003",
+            preco_orla_1_0_m2=None,
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    obs = _FakeRepository.updated_payload.get("observacoes", "")
+    assert service_module.AVISO_PRECO_ORLA_EM_FALTA in obs
+
+
 def test_recalcular_orlas_fallback_esp_mp_quando_esp_real_vazio(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeMateriaPrimaRepository.materias_por_ref = {
@@ -2542,7 +2593,8 @@ def test_recalcular_orlas_fallback_esp_mp_quando_esp_real_vazio(monkeypatch) -> 
     assert payload["custo_orla_fina"] == Decimal("0.6149")
     assert payload["custo_orla_grossa"] == Decimal("0.5313")
     assert payload["custo_orlas"] == Decimal("1.1462")
-    assert "Compatibilidade" in payload["observacoes"]
+    # Sem preço local mas o catálogo tem -> calcula com aviso informativo suave.
+    assert service_module.AVISO_PRECO_ORLA_CATALOGO in payload["observacoes"]
 
 
 def test_recalcular_orlas_prefere_snapshot_local_em_m2(monkeypatch) -> None:

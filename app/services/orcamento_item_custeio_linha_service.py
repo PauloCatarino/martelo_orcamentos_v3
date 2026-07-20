@@ -144,10 +144,16 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
 
-AVISO_PRECO_ORLA_LEGACY = (
-    "Compatibilidade: esta linha ainda não tinha snapshot local da orla em €/m²; "
-    "foi usado temporariamente o preço atual do catálogo. Edite/guarde a linha "
-    "para congelar o preço local."
+# A orla usa o preço do catálogo porque a linha ainda não tem preço próprio —
+# calcula na mesma (preferível a não calcular); aviso apenas INFORMATIVO.
+AVISO_PRECO_ORLA_CATALOGO = (
+    "Preço da orla obtido do catálogo (a linha ainda não tem preço próprio)."
+)
+# Não há preço da orla em lado nenhum (nem na linha nem no catálogo): o custo da
+# orla NÃO pôde ser calculado. GRAVE — a redação ("não calculado"/"em falta")
+# fá-lo aparecer como crítico no supervisor, com botão Resolver.
+AVISO_PRECO_ORLA_EM_FALTA = (
+    "Custo de orla não calculado: preço da orla em falta (na linha e no catálogo)."
 )
 
 
@@ -1465,8 +1471,21 @@ class OrcamentoItemCusteioLinhaService:
                 "custo_orlas": resultado.custo_orlas,
             }
             avisos = [resultado.aviso] if resultado.aviso else []
-            if fallback_fina or fallback_grossa:
-                avisos.append(AVISO_PRECO_ORLA_LEGACY)
+            # Distinguir os dois casos do fallback ao catálogo:
+            #  - preço em falta (nem linha nem catálogo têm) -> GRAVE, não calcula;
+            #  - catálogo tem preço -> calcula na mesma, aviso apenas informativo.
+            fina_em_falta = (
+                fallback_fina and preco_fina is None and bool(linha.coresp_orla_0_4)
+            )
+            grossa_em_falta = (
+                fallback_grossa and preco_grossa is None and bool(linha.coresp_orla_1_0)
+            )
+            if fina_em_falta or grossa_em_falta:
+                avisos.append(AVISO_PRECO_ORLA_EM_FALTA)
+            elif (fallback_fina and preco_fina is not None) or (
+                fallback_grossa and preco_grossa is not None
+            ):
+                avisos.append(AVISO_PRECO_ORLA_CATALOGO)
             nova_obs = self._mesclar_observacao(
                 linha.observacoes,
                 "Custo de orla",
