@@ -24,9 +24,29 @@ from app.services.custeio_auditoria_service import (
 
 # Chaves de origem reconhecidas pela UI (a página liga cada chave a uma ação de
 # navegação). Ficam aqui para o diálogo e a página falarem a mesma linguagem.
+# Origens INTERNAS (dentro do orçamento):
 ORIGEM_OPERACOES = "operacoes"
 ORIGEM_LINHA = "linha"
 ORIGEM_MATERIAL = "material"
+
+# Origens EXTERNAS (Fase 2): a chave "menu:<nome_da_pagina>" pede à app para
+# abrir esse menu de topo. Os nomes têm de coincidir com os de
+# ``MainWindow.show_page`` (materias_primas, operacoes_maquinas, …).
+PREFIXO_MENU = "menu:"
+PAGINA_MATERIAS_PRIMAS = "materias_primas"
+PAGINA_MAQUINAS_TARIFAS = "operacoes_maquinas"
+
+
+def chave_menu(nome_pagina: str) -> str:
+    """Devolve a chave de origem externa para um menu de topo."""
+    return f"{PREFIXO_MENU}{nome_pagina}"
+
+
+def pagina_de_chave(chave: str) -> str | None:
+    """Se ``chave`` for uma origem externa, devolve o nome da página; senão None."""
+    if chave.startswith(PREFIXO_MENU):
+        return chave[len(PREFIXO_MENU):]
+    return None
 
 
 @dataclass(frozen=True)
@@ -127,18 +147,32 @@ def _origem_linha() -> Origem:
     )
 
 
+def _origem_materias_primas() -> Origem:
+    return Origem(
+        chave_menu(PAGINA_MATERIAS_PRIMAS),
+        "Matérias-Primas",
+        "Abrir o menu Matérias-Primas para corrigir preço/área da matéria-prima.",
+    )
+
+
+def _origem_maquinas_tarifas() -> Origem:
+    return Origem(
+        chave_menu(PAGINA_MAQUINAS_TARIFAS),
+        "Máquinas e Tarifas",
+        "Abrir Máquinas/Operações para validar a máquina, o tempo e a tarifa.",
+    )
+
+
 def _origens(categoria: str) -> tuple[Origem, ...]:
+    """Origens onde o problema pode ser corrigido (internas primeiro, depois menus).
+
+    A alternância que o utilizador pediu faz-se por vários botões de origem: cada
+    categoria oferece o(s) sítio(s) provável(is) do problema.
+    """
     if categoria in _CATEGORIAS_OPERACOES:
-        return (_origem_operacoes(), _origem_linha())
+        return (_origem_operacoes(), _origem_maquinas_tarifas(), _origem_linha())
     if categoria == "Material":
-        return (
-            Origem(
-                ORIGEM_MATERIAL,
-                "Matéria-prima da linha",
-                "Escolher a matéria-prima correta ou corrigir o preço líquido nesta linha.",
-            ),
-            _origem_linha(),
-        )
+        return (_origem_materias_primas(), _origem_linha())
     return (_origem_linha(),)
 
 

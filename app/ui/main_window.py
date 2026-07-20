@@ -494,6 +494,7 @@ class MainWindow(QMainWindow):
             orcamento,
             on_back=lambda: self.show_page("orcamentos"),
             on_open_custeio_auditoria=self._open_custeio_auditoria_contexto,
+            on_navegar_menu=self.show_page,
         )
         self._replace_page("orcamento_detail", detail_page)
         self.show_page("orcamento_detail")

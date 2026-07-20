@@ -115,6 +115,7 @@ from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
     diagnosticar_observacoes,
+    pagina_de_chave,
     tem_erro_grave,
 )
 from app.core.session import app_session
@@ -526,6 +527,7 @@ class OrcamentoItemCusteioPage(QWidget):
         orcamento_codigo: str | None = None,
         orcamento_versao_id: int | None = None,
         on_back: Callable[[], None] | None = None,
+        on_navegar_menu: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -534,6 +536,9 @@ class OrcamentoItemCusteioPage(QWidget):
         self.orcamento_codigo = orcamento_codigo
         self.orcamento_versao_id = orcamento_versao_id
         self.on_back = on_back
+        # Assistente de resolução (Fase 2): leva o utilizador a um menu externo
+        # (Matérias-Primas, Máquinas/Tarifas, …). None => sem saltos externos.
+        self._on_navegar_menu = on_navegar_menu
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._prefs_biblioteca = SEM_PREFERENCIAS
         self._selecionados: set[int] = set()
@@ -2431,7 +2436,17 @@ class OrcamentoItemCusteioPage(QWidget):
         dialog.exec()
 
     def _navegar_supervisor(self, linha_id: int, chave: str) -> None:
-        """Fase 1: navegação dentro do orçamento (focar a linha / abrir operações)."""
+        """Navega para a origem do problema escolhida no assistente.
+
+        Origens internas: focar a linha e (opcional) abrir as suas operações.
+        Origens externas ("menu:<pagina>"): abrir o menu de topo correspondente
+        (Fase 2), quando a app forneceu o callback de navegação.
+        """
+        pagina = pagina_de_chave(chave)
+        if pagina is not None:
+            if self._on_navegar_menu is not None:
+                self._on_navegar_menu(pagina)
+            return
         self.selecionar_linha_por_id(linha_id)
         if chave == ORIGEM_OPERACOES:
             self.abrir_operacoes_da_linha()

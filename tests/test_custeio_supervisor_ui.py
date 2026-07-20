@@ -9,7 +9,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from app.services.custeio_supervisor import ORIGEM_OPERACOES, diagnosticar_observacoes
+from app.services.custeio_supervisor import (
+    ORIGEM_LINHA,
+    ORIGEM_OPERACOES,
+    PAGINA_MATERIAS_PRIMAS,
+    chave_menu,
+    diagnosticar_observacoes,
+)
 from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
 from app.ui.pages.orcamento_item_custeio_page import (
     CusteioLinhasTable,
@@ -65,3 +71,39 @@ def test_dialogo_navega_para_origem_e_fecha() -> None:
     assert navegados == [ORIGEM_OPERACOES]
     # _ir chama accept() antes de navegar -> diálogo já não está a correr.
     assert dialog.result() == CusteioSupervisorDialog.DialogCode.Accepted
+
+
+def test_navegar_supervisor_origem_externa_abre_menu() -> None:
+    """Uma origem 'menu:<pagina>' chama o callback de navegação com a página."""
+    menus: list[str] = []
+    selecionadas: list[int] = []
+    operacoes: list[bool] = []
+    fake = SimpleNamespace(
+        _on_navegar_menu=menus.append,
+        selecionar_linha_por_id=lambda lid: selecionadas.append(lid),
+        abrir_operacoes_da_linha=lambda: operacoes.append(True),
+    )
+
+    OrcamentoItemCusteioPage._navegar_supervisor(
+        fake, 7, chave_menu(PAGINA_MATERIAS_PRIMAS)
+    )
+    assert menus == [PAGINA_MATERIAS_PRIMAS]
+    # Origem externa não seleciona/abre a linha (vai para outro menu).
+    assert selecionadas == [] and operacoes == []
+
+
+def test_navegar_supervisor_origens_internas() -> None:
+    """Operações abre as operações da linha; 'linha' apenas foca a linha."""
+    selecionadas: list[int] = []
+    operacoes: list[bool] = []
+    fake = SimpleNamespace(
+        _on_navegar_menu=lambda _p: None,
+        selecionar_linha_por_id=lambda lid: selecionadas.append(lid),
+        abrir_operacoes_da_linha=lambda: operacoes.append(True),
+    )
+
+    OrcamentoItemCusteioPage._navegar_supervisor(fake, 3, ORIGEM_OPERACOES)
+    assert selecionadas == [3] and operacoes == [True]
+
+    OrcamentoItemCusteioPage._navegar_supervisor(fake, 5, ORIGEM_LINHA)
+    assert selecionadas == [3, 5] and operacoes == [True]

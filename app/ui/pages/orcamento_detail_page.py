@@ -46,11 +46,15 @@ class OrcamentoDetailPage(QWidget):
         orcamento: OrcamentoResumo,
         on_back=None,
         on_open_custeio_auditoria=None,
+        on_navegar_menu=None,
     ) -> None:
         super().__init__()
 
         self.orcamento = orcamento
         self.on_back = on_back
+        # Callback para o assistente de resolução saltar para menus de topo
+        # (Matérias-Primas, Máquinas/Tarifas, …) — passado à página de custeio.
+        self._on_navegar_menu = on_navegar_menu
         self._dados_gerais_labels: dict[str, QLabel] = {}
         self._item_custeio_page: OrcamentoItemCusteioPage | None = None
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
@@ -171,6 +175,7 @@ class OrcamentoDetailPage(QWidget):
             orcamento_codigo=self.orcamento.codigo_versao,
             orcamento_versao_id=self.orcamento.orcamento_versao_id,
             on_back=self._voltar_aos_items,
+            on_navegar_menu=self._on_navegar_menu,
         )
         self.items_stack.addWidget(self._item_custeio_page)
         self.items_stack.setCurrentWidget(self._item_custeio_page)

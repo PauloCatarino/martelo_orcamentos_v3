@@ -5,7 +5,11 @@ from __future__ import annotations
 from app.services.custeio_auditoria_service import AVISO, CRITICO
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
+    PAGINA_MAQUINAS_TARIFAS,
+    PAGINA_MATERIAS_PRIMAS,
+    chave_menu,
     diagnosticar_observacoes,
+    pagina_de_chave,
     tem_erro_grave,
 )
 
@@ -60,3 +64,29 @@ def test_graves_aparecem_primeiro() -> None:
     diagnosticos = diagnosticar_observacoes(texto)
     assert diagnosticos[0].severidade == CRITICO
     assert any(d.severidade == AVISO for d in diagnosticos)
+
+
+# ----- Fase 2: origens externas (menus) -----
+
+
+def test_material_oferece_menu_materias_primas() -> None:
+    diagnosticos = diagnosticar_observacoes(
+        "Custo MP não calculado: área ou preço em falta."
+    )
+    chaves = [origem.chave for origem in diagnosticos[0].origens]
+    assert chave_menu(PAGINA_MATERIAS_PRIMAS) in chaves
+
+
+def test_cnc_oferece_menu_maquinas_tarifas() -> None:
+    diagnosticos = diagnosticar_observacoes(
+        "Custo CNC não calculado: falta tempo/máquina."
+    )
+    chaves = {origem.chave for d in diagnosticos for origem in d.origens}
+    # Continua a oferecer as operações da linha E o menu externo de máquinas.
+    assert ORIGEM_OPERACOES in chaves
+    assert chave_menu(PAGINA_MAQUINAS_TARIFAS) in chaves
+
+
+def test_pagina_de_chave_distingue_interna_de_externa() -> None:
+    assert pagina_de_chave(chave_menu(PAGINA_MATERIAS_PRIMAS)) == PAGINA_MATERIAS_PRIMAS
+    assert pagina_de_chave(ORIGEM_OPERACOES) is None
