@@ -598,6 +598,13 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         self.auditar_operacoes_button.clicked.connect(self.auditar_operacoes_do_item)
 
+        self.congelar_orla_button = QPushButton("Congelar preços de orla")
+        self.congelar_orla_button.setToolTip(
+            "Fixa nas linhas o preço atual da orla (que está a ser usado do "
+            "catálogo) e remove o aviso de compatibilidade. Recalcula o item."
+        )
+        self.congelar_orla_button.clicked.connect(self.congelar_precos_orla)
+
         self.producao_label = QLabel("")
         self.producao_label.setObjectName("orcamentoItemCusteioProducao")
         self.producao_label.setToolTip(
@@ -659,6 +666,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.refresh_library_piece_button)
         actions_layout.addWidget(self.operacoes_peca_button)
         actions_layout.addWidget(self.auditar_operacoes_button)
+        actions_layout.addWidget(self.congelar_orla_button)
         actions_layout.addWidget(self.producao_label)
         actions_layout.addWidget(self.modalidade_label)
         actions_layout.addWidget(self.opcoes_simplificado_button)
@@ -1420,6 +1428,30 @@ class OrcamentoItemCusteioPage(QWidget):
             tem_edicao_local=tem_edicao_local,
         ).exec()
         self.carregar()
+
+    def congelar_precos_orla(self) -> None:
+        """Congela o preço local da orla nas linhas do item e recalcula.
+
+        Resolve a fricção do aviso "snapshot local da orla" em lote: fixa o preço
+        do catálogo em todas as linhas que ainda o usam e o aviso desaparece.
+        """
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                congeladas = service.congelar_precos_orla_do_item(self.item_id)
+                if congeladas:
+                    self._recalcular_item_completo(service)
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível congelar os preços de orla.")
+            return
+
+        if congeladas:
+            self.carregar()
+            self.status_label.setText(
+                f"Preços de orla congelados em {congeladas} linha(s); avisos removidos."
+            )
+        else:
+            self.status_label.setText("Não havia preços de orla por congelar.")
 
     def auditar_operacoes_do_item(self) -> None:
         """Show all operation coverage warnings for this item, read-only."""

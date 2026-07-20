@@ -2512,6 +2512,45 @@ def test_recalcular_orlas_do_item_resolve_preco(monkeypatch) -> None:
     assert payload["custo_orlas"] == Decimal("1.6698")
 
 
+def test_congelar_precos_orla_grava_preco_do_catalogo(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeMateriaPrimaRepository.materias_por_ref = {
+        "ORL0003": SimpleNamespace(preco_liquido=Decimal("11.50"), unidade="M2")
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            coresp_orla_1_0="ORL0003",
+            preco_orla_1_0_m2=None,
+        ),
+    ]
+
+    congeladas = service.congelar_precos_orla_do_item(30)
+
+    assert congeladas == 1
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 1
+    assert payload["preco_orla_1_0_m2"] == Decimal("11.50")
+
+
+def test_congelar_precos_orla_ignora_linha_ja_congelada(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            coresp_orla_1_0="ORL0003",
+            preco_orla_1_0_m2=Decimal("6.50"),  # já tem snapshot local
+        ),
+    ]
+
+    congeladas = service.congelar_precos_orla_do_item(30)
+
+    assert congeladas == 0
+    assert _FakeRepository.updated_payload is None
+
+
 def test_recalcular_orlas_fallback_esp_mp_quando_esp_real_vazio(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeMateriaPrimaRepository.materias_por_ref = {
