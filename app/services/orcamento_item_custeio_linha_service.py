@@ -144,10 +144,14 @@ from app.repositories.orcamento_item_valueset_linha_repository import (
     OrcamentoItemValuesetLinhaResumo,
 )
 
+# IMPORTANTE: todos os avisos de orla TÊM de começar por "Custo de orla" — é o
+# prefixo da secção usada por _mesclar_observacao; só assim o aviso antigo é
+# REMOVIDO quando deixa de se aplicar (ex.: passou a haver preço próprio).
+#
 # A orla usa o preço do catálogo porque a linha ainda não tem preço próprio —
 # calcula na mesma (preferível a não calcular); aviso apenas INFORMATIVO.
 AVISO_PRECO_ORLA_CATALOGO = (
-    "Preço da orla obtido do catálogo (a linha ainda não tem preço próprio)."
+    "Custo de orla calculado com o preço do catálogo (a linha ainda não tem preço próprio)."
 )
 # Não há preço da orla em lado nenhum (nem na linha nem no catálogo): o custo da
 # orla NÃO pôde ser calculado. GRAVE — a redação ("não calculado"/"em falta")
@@ -158,7 +162,7 @@ AVISO_PRECO_ORLA_EM_FALTA = (
 # A orla é usada mas o preço está a 0 € (ex.: editado localmente para 0): a orla
 # não é custeada. Pode ser intencional -> apenas INFORMATIVO (sem botão).
 AVISO_PRECO_ORLA_ZERO = (
-    "Preço da orla a 0 € — a orla não é custeada (verifique se é intencional)."
+    "Custo de orla a 0 € — a orla não é custeada (verifique se é intencional)."
 )
 
 

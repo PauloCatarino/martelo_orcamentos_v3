@@ -2540,6 +2540,32 @@ def test_recalcular_orlas_aviso_suave_quando_usa_preco_do_catalogo(monkeypatch) 
     assert _FakeRepository.updated_payload["custo_orla_grossa"] > 0
 
 
+def test_recalcular_orlas_remove_aviso_quando_passa_a_ter_preco(monkeypatch) -> None:
+    # Regressão: a linha tinha o aviso do catálogo; agora tem preço próprio -> o
+    # aviso TEM de ser removido (antes ficava preso por não começar por
+    # "Custo de orla", o prefixo que _mesclar_observacao remove).
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            codigo_orlas="2222",
+            comp_real=Decimal("2500"),
+            larg_real=Decimal("600"),
+            esp_real=Decimal("19"),
+            quantidade=Decimal("1"),
+            coresp_orla_1_0="ORL0003",
+            preco_orla_1_0_m2=Decimal("11.50"),  # agora tem preço próprio
+            observacoes=service_module.AVISO_PRECO_ORLA_CATALOGO,  # aviso antigo
+        ),
+    ]
+
+    service.recalcular_orlas_do_item(30)
+
+    obs = _FakeRepository.updated_payload.get("observacoes") or ""
+    assert service_module.AVISO_PRECO_ORLA_CATALOGO not in obs
+
+
 def test_recalcular_orlas_sem_orla_nao_avisa_preco(monkeypatch) -> None:
     # Código de orlas 0000 (sem orla): o preço da orla é irrelevante, sem aviso.
     service, _ = _service(monkeypatch)
