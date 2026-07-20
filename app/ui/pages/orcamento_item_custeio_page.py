@@ -1408,17 +1408,41 @@ class OrcamentoItemCusteioPage(QWidget):
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(str(error))
             return
+
+        operacoes_mudaram = {"v": False}
+
+        def _regista_mudanca(fn):
+            """Marca que houve edição (para recalcular só quando algo mudou)."""
+            def wrapper(*args, **kwargs):
+                ok = fn(*args, **kwargs)
+                if ok:
+                    operacoes_mudaram["v"] = True
+                return ok
+            return wrapper
+
         CusteioLinhaOperacoesDialog(
             linha_atual,
             operacoes,
             self,
             on_recarregar=carregar_detalhe,
-            on_adicionar=lambda: abrir_editor(),
-            on_editar=abrir_editor,
-            on_remover=remover,
-            on_repor=repor,
+            on_adicionar=_regista_mudanca(lambda: abrir_editor()),
+            on_editar=_regista_mudanca(abrir_editor),
+            on_remover=_regista_mudanca(remover),
+            on_repor=_regista_mudanca(repor),
             tem_edicao_local=tem_edicao_local,
         ).exec()
+        # Fase 3A: editar as operações muda tempos/custos de produção; recalcular
+        # para o custo (e os avisos "custo X não calculado") refletirem já, sem o
+        # utilizador ter de carregar em "Atualizar".
+        if operacoes_mudaram["v"]:
+            try:
+                with SessionLocal() as session:
+                    self._recalcular_item_completo(
+                        OrcamentoItemCusteioLinhaService(session)
+                    )
+                self.status_label.setText("Operações atualizadas e item recalculado.")
+            except SQLAlchemyError:
+                pass
         self.carregar()
 
     def auditar_operacoes_do_item(self) -> None:
