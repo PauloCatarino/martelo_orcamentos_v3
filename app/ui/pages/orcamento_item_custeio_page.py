@@ -113,6 +113,7 @@ from app.services.def_peca_user_pref_service import (
 )
 from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
     ORIGEM_RESOLVER_MATERIAL,
@@ -2526,17 +2527,38 @@ class OrcamentoItemCusteioPage(QWidget):
         if chave == ORIGEM_OPERACOES:
             self.abrir_operacoes_da_linha()
 
+    def _registar_resolucao(self, session, descricao: str) -> None:
+        """Fase 3C: regista a resolução no histórico da versão (Histórico tab)."""
+        if self.orcamento_versao_id is None:
+            return
+        OrcamentoHistoricoService(session).registar(
+            self.orcamento_versao_id, "RESOLUÇÃO", descricao
+        )
+        session.commit()
+
+    def _rotulo_linha(self, linha_id: int) -> str:
+        linha = self._linha_por_id(linha_id)
+        if linha is None:
+            return "?"
+        return linha.codigo or linha.descricao or "?"
+
     def _aplicar_materia_resolucao(self, linha_id: int, materia) -> None:
         """Fase 3B: aplica à linha a matéria-prima escolhida em Matérias-Primas.
 
         Chamado quando o utilizador faz duplo-clique numa matéria-prima (modo
         resolução); a app volta ao custeio a seguir (tratado pela MainWindow).
         """
+        rotulo = self._rotulo_linha(linha_id)
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
                 service.aplicar_materia_prima_na_linha(linha_id, materia.id)
                 self._recalcular_item_completo(service)
+                self._registar_resolucao(
+                    session,
+                    f"Resolução (Material) na linha {rotulo}: aplicada a matéria-prima "
+                    f"{materia.ref_le or materia.id} pelo assistente.",
+                )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível aplicar a matéria-prima à linha.")
             return
@@ -2563,6 +2585,12 @@ class OrcamentoItemCusteioPage(QWidget):
                     service = OrcamentoItemCusteioLinhaService(session)
                     service.atualizar_material_local_linha(linha_id, dados)
                     self._recalcular_item_completo(service)
+                    self._registar_resolucao(
+                        session,
+                        f"Resolução (Material) na linha "
+                        f"{linha.codigo or linha.descricao or '?'}: material/preço "
+                        "corrigido pelo assistente.",
+                    )
             except ValueError as error:
                 dialog.set_error(str(error))
                 return False
