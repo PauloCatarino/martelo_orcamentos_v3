@@ -1508,40 +1508,6 @@ class OrcamentoItemCusteioLinhaService:
         cache[ref_orla] = resultado
         return resultado[0], resultado[1], True
 
-    def congelar_precos_orla_do_item(self, orcamento_item_id: int) -> int:
-        """Congela o preço local €/m² da orla nas linhas que usam o catálogo.
-
-        Para cada linha que usa orla mas ainda não tem snapshot local
-        (``preco_orla_*_m2`` a None), grava o preço atual do catálogo na linha.
-        Ao recalcular o item a seguir, isto remove o aviso de compatibilidade
-        (:data:`AVISO_PRECO_ORLA_LEGACY`) e fixa o custo da orla. Não altera
-        medidas nem o catálogo. Devolve o número de linhas congeladas.
-        """
-        precos_cache: dict[str, tuple[Decimal | None, str | None]] = {}
-        congeladas = 0
-        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
-            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
-                continue
-            if self._linha_sem_material(linha):
-                continue
-            fields: dict = {}
-            if linha.preco_orla_0_4_m2 is None and linha.coresp_orla_0_4:
-                preco, _unidade, _fb = self._orla_preco_unidade(
-                    linha.coresp_orla_0_4, None, precos_cache
-                )
-                if preco is not None:
-                    fields["preco_orla_0_4_m2"] = preco
-            if linha.preco_orla_1_0_m2 is None and linha.coresp_orla_1_0:
-                preco, _unidade, _fb = self._orla_preco_unidade(
-                    linha.coresp_orla_1_0, None, precos_cache
-                )
-                if preco is not None:
-                    fields["preco_orla_1_0_m2"] = preco
-            if fields:
-                self.repository.update_linha(id=linha.id, **fields)
-                congeladas += 1
-        return congeladas
-
     def recalcular_custo_materia_prima_do_item(
         self, orcamento_item_id: int
     ) -> CustoMateriaPrimaResult:
