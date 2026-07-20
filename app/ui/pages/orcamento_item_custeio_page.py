@@ -2406,11 +2406,15 @@ class OrcamentoItemCusteioPage(QWidget):
         Só aparece quando a linha tem uma observação de produção CRÍTICA (que pode
         dar custo errado); as observações apenas informativas não mostram botão.
         """
-        if not tem_erro_grave(linha.observacoes):
-            return
         try:
             coluna = self.TABLE_HEADERS.index("Resolver")
         except ValueError:
+            return
+        # As linhas da tabela são reutilizadas por índice ao recarregar; sem isto
+        # ficava um botão "fantasma" numa linha que já não é grave (ou passou a
+        # ser outra linha) e clicá-lo não fazia nada. Limpar sempre antes.
+        self.table.removeCellWidget(row_index, coluna)
+        if not tem_erro_grave(linha.observacoes):
             return
         botao = QPushButton("\U0001F527 Resolver")
         botao.setToolTip(

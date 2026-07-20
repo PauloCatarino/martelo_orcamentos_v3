@@ -56,6 +56,29 @@ def test_botao_aparece_so_em_linha_grave() -> None:
     assert fake2.table.cellWidget(0, coluna) is None
 
 
+def test_botao_nao_fica_fantasma_ao_reutilizar_linha() -> None:
+    """Recarregar a mesma linha (índice) sem erro grave remove o botão anterior."""
+    coluna = OrcamentoItemCusteioPage.TABLE_HEADERS.index("Resolver")
+    fake = _fake_page()
+
+    grave = SimpleNamespace(
+        id=1, observacoes="Custo MP não calculado: área ou preço em falta."
+    )
+    OrcamentoItemCusteioPage._realcar_supervisor(fake, 0, grave)
+    assert fake.table.cellWidget(0, coluna) is not None
+
+    # A mesma posição passa a ter uma linha só com aviso informativo (orla):
+    informativa = SimpleNamespace(
+        id=1,
+        observacoes=(
+            "Compatibilidade: esta linha ainda não tinha snapshot local da orla "
+            "em €/m²; foi usado temporariamente o preço atual do catálogo."
+        ),
+    )
+    OrcamentoItemCusteioPage._realcar_supervisor(fake, 0, informativa)
+    assert fake.table.cellWidget(0, coluna) is None  # botão fantasma removido
+
+
 def test_dialogo_navega_para_origem_e_fecha() -> None:
     diagnosticos = diagnosticar_observacoes(
         "Custo CNC não calculado: falta tempo/máquina."
