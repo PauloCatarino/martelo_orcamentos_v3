@@ -1563,6 +1563,23 @@ class OrcamentoItemCusteioLinhaService:
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 ignoradas += 1
                 continue
+            # OPERACAO_MANUAL: trabalho por tempo (min × €/h da máquina), sem
+            # matéria-prima — não faz sentido o aviso de MP/material em falta.
+            # Limpa qualquer aviso antigo dessas secções e não custeia MP.
+            if linha.tipo_linha == OPERACAO_MANUAL:
+                nova_obs = self._mesclar_observacao(linha.observacoes, "Custo MP", None)
+                nova_obs = self._mesclar_observacao(
+                    nova_obs, "Custo não calculado:", None
+                )
+                campos: dict = {}
+                if linha.custo_mp is not None:
+                    campos["custo_mp"] = None
+                if nova_obs != linha.observacoes:
+                    campos["observacoes"] = nova_obs
+                if campos:
+                    self.repository.update_linha(id=linha.id, **campos)
+                ignoradas += 1
+                continue
             if self._linha_sem_material(linha):
                 ignoradas += 1  # service piece: no raw-material cost, no warning
                 continue

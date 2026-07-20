@@ -17,7 +17,11 @@ AVISO_MP_DADOS_INCOMPLETOS = "Custo MP não calculado: área ou preço em falta.
 AVISO_FERRAGEM_DADOS_INCOMPLETOS = (
     "Custo ferragem não calculado: quantidade ou preço em falta."
 )
-AVISO_ML_DADOS_INCOMPLETOS = "Custo ML não calculado: consumo ou preço em falta."
+# Contém "material" para o supervisor o classificar como problema de Material
+# (é um material vendido ao metro); começa por "Custo ML" (prefixo da secção).
+AVISO_ML_DADOS_INCOMPLETOS = (
+    "Custo ML não calculado: consumo ou preço do material em falta."
+)
 # Escritos uma vez (pelo recálculo do MP) quando o custo não pode ser calculado
 # por causa do material. Ambos começam por "Custo não calculado:" (prefixo da
 # secção, para serem removidos ao corrigir) e contêm "material" (para o

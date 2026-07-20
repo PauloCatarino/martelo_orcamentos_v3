@@ -2907,6 +2907,28 @@ def test_recalcular_custo_mp_limpa_observacao_obsoleta(monkeypatch) -> None:
     assert payload["observacoes"] is None  # obsolete note cleared
 
 
+def test_recalcular_custo_mp_operacao_manual_nao_avisa_material(monkeypatch) -> None:
+    # Operação manual: só tempo->€ (sem matéria-prima). Não deve ter aviso de
+    # material, e um aviso antigo dessa secção é LIMPO.
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="OPERACAO_MANUAL",
+            unidade=None,
+            preco_liquido=None,
+            observacoes=service_module.AVISO_MATERIA_PRIMA_EM_FALTA,  # aviso antigo
+        ),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    obs = (payload.get("observacoes") if payload else "") or ""
+    assert service_module.AVISO_MATERIA_PRIMA_EM_FALTA not in obs
+    assert service_module.AVISO_UNIDADE_INVALIDA not in obs
+
+
 def test_recalcular_custo_mp_unidade_desconhecida(monkeypatch) -> None:
     # Material COM unidade, mas que nenhuma regra sabe custear -> "unidade não validada".
     service, _ = _service(monkeypatch)
@@ -3184,9 +3206,11 @@ def test_recalcular_ml_sem_dados_preenche_observacao(monkeypatch) -> None:
 
     service.recalcular_custos_ml_do_item(30)
 
+    from app.domain.custos import AVISO_ML_DADOS_INCOMPLETOS
+
     payload = _FakeRepository.updated_payload
     assert payload["custo_ferragem"] is None
-    assert "consumo ou preço em falta" in payload["observacoes"]
+    assert AVISO_ML_DADOS_INCOMPLETOS in payload["observacoes"]
 
 
 def test_recalcular_ml_so_altera_campos_ml(monkeypatch) -> None:

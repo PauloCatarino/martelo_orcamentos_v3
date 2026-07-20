@@ -207,7 +207,9 @@ def _origens(categoria: str) -> tuple[Origem, ...]:
         )
     if categoria in _CATEGORIAS_OPERACOES:
         return (_origem_operacoes(), _origem_maquinas_tarifas(categoria), _origem_linha())
-    if categoria == "Material":
+    if categoria in ("Material", "Ferragem"):
+        # O preço/referência da matéria-prima e das ferragens vivem no catálogo
+        # de Matérias-Primas (que inclui as FER…).
         return (_origem_materias_primas(), _origem_linha())
     return (_origem_linha(),)
 
