@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config.logging_config import configure_logging
+from app.config.qt_message_handler import instalar_filtro_mensagens_qt
 from app.core.session import app_session
 from app.ui import tema
 from app.ui.icones import icone_ficheiro
@@ -55,6 +56,9 @@ class EstiloSelecaoLegivel(QProxyStyle):
 def main() -> int:
     """Start the desktop application."""
     configure_logging()
+    # Silencia o ruído benigno do Qt no terminal (falsos "Could not parse
+    # stylesheet" das tabelas/árvores). Tem de correr antes da QApplication.
+    instalar_filtro_mensagens_qt()
 
     # No Windows, associar um AppUserModelID próprio faz a barra de tarefas usar o
     # nosso ícone (e agrupar as janelas sob a app) em vez do ícone genérico do host.

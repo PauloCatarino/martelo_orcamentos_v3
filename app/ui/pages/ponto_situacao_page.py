@@ -1019,7 +1019,14 @@ class PontoSituacaoPage(QWidget):
         serie.attachAxis(eixo_x)
 
         eixo_y = QValueAxis()
-        eixo_y.applyNiceNumbers()
+        # Sem dados, applyNiceNumbers() calcula um intervalo [nan, nan] e o Qt
+        # avisa. Fixa-se um intervalo trivial nesse caso.
+        maximo = max((qt for _, qt in top), default=0)
+        if maximo > 0:
+            eixo_y.setRange(0, maximo)
+            eixo_y.applyNiceNumbers()
+        else:
+            eixo_y.setRange(0, 1)
         chart.addAxis(eixo_y, Qt.AlignmentFlag.AlignLeft)
         serie.attachAxis(eixo_y)
 
@@ -1049,7 +1056,12 @@ class PontoSituacaoPage(QWidget):
         serie.attachAxis(eixo_y)
 
         eixo_x = QValueAxis()
-        eixo_x.applyNiceNumbers()
+        maximo = max((qt for _, qt in top), default=0)
+        if maximo > 0:
+            eixo_x.setRange(0, maximo)
+            eixo_x.applyNiceNumbers()
+        else:
+            eixo_x.setRange(0, 1)
         chart.addAxis(eixo_x, Qt.AlignmentFlag.AlignBottom)
         serie.attachAxis(eixo_x)
 
