@@ -128,7 +128,7 @@ _SUGESTAO_GENERICA = (
 )
 
 # Categorias cujo problema se resolve tipicamente nas operações da peça.
-_CATEGORIAS_OPERACOES = {"Orlagem", "CNC", "Operação manual", "Tempos"}
+_CATEGORIAS_OPERACOES = {"Corte", "Orlagem", "CNC", "Operação manual", "Tempos"}
 
 
 def _origem_operacoes() -> Origem:
@@ -199,4 +199,23 @@ def tem_erro_grave(observacoes: str | None) -> bool:
     return any(
         severidade == CRITICO
         for _categoria, severidade, _mensagem in classificar_observacoes_producao(observacoes)
+    )
+
+
+def diagnostico_de_ocorrencia(
+    categoria: str, severidade: str, problema: str, acao: str | None
+) -> DiagnosticoLinha:
+    """Constrói um diagnóstico a partir de uma ocorrência da Auditoria de Custeio.
+
+    A auditoria já classificou (categoria/severidade) e traz o ``problema`` e a
+    ``acao`` recomendada; o supervisor acrescenta o *porquê* e as *origens* para
+    o mesmo assistente servir também a página de auditoria (Fase 2C).
+    """
+    return DiagnosticoLinha(
+        categoria=categoria,
+        severidade=severidade,
+        mensagem=problema,
+        porque=_PORQUE.get(categoria, _PORQUE_GENERICO),
+        sugestao=acao or _SUGESTAO.get(categoria, _SUGESTAO_GENERICA),
+        origens=_origens(categoria),
     )

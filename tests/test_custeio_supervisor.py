@@ -8,6 +8,7 @@ from app.services.custeio_supervisor import (
     PAGINA_MAQUINAS_TARIFAS,
     PAGINA_MATERIAS_PRIMAS,
     chave_menu,
+    diagnostico_de_ocorrencia,
     diagnosticar_observacoes,
     pagina_de_chave,
     tem_erro_grave,
@@ -90,3 +91,23 @@ def test_cnc_oferece_menu_maquinas_tarifas() -> None:
 def test_pagina_de_chave_distingue_interna_de_externa() -> None:
     assert pagina_de_chave(chave_menu(PAGINA_MATERIAS_PRIMAS)) == PAGINA_MATERIAS_PRIMAS
     assert pagina_de_chave(ORIGEM_OPERACOES) is None
+
+
+# ----- Fase 2C: diagnóstico a partir de uma ocorrência da auditoria -----
+
+
+def test_diagnostico_de_ocorrencia_usa_problema_e_acao() -> None:
+    d = diagnostico_de_ocorrencia(
+        "CNC", CRITICO, "CNC previsto mas sem custo.", "Validar máquina e tarifa CNC."
+    )
+    assert d.mensagem == "CNC previsto mas sem custo."
+    assert d.sugestao == "Validar máquina e tarifa CNC."
+    assert d.grave is True
+    chaves = {origem.chave for origem in d.origens}
+    assert ORIGEM_OPERACOES in chaves
+    assert chave_menu(PAGINA_MAQUINAS_TARIFAS) in chaves
+
+
+def test_diagnostico_de_ocorrencia_sem_acao_usa_sugestao_generica() -> None:
+    d = diagnostico_de_ocorrencia("Dimensões", CRITICO, "Sem medidas reais.", None)
+    assert d.sugestao  # cai numa sugestão (genérica) em vez de vazio

@@ -223,7 +223,8 @@ class MainWindow(QMainWindow):
             incluir_producao=False,
         )
         self.custeio_auditoria_page = CusteioAuditoriaPage(
-            on_open_orcamento=self._open_custeio_auditoria_item
+            on_open_orcamento=self._open_custeio_auditoria_item,
+            on_navegar_menu=self.show_page,
         )
         self.arquivo_v2_page = ArquivoV2Page()
         self.def_pecas_page = DefPecasPage(

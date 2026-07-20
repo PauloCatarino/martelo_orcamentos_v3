@@ -17,6 +17,11 @@ from app.core.session import app_session
 from app.services.custeio_auditoria_service import (
     AVISO, CRITICO, CusteioAuditoriaItem, CusteioAuditoriaService,
 )
+from app.services.custeio_supervisor import (
+    diagnostico_de_ocorrencia,
+    pagina_de_chave,
+)
+from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui import tema
@@ -26,15 +31,19 @@ from app.utils.formatters import format_currency
 class CusteioAuditoriaPage(QWidget):
     TABLE_HEADERS = [
         "Severidade", "Categoria", "Orçamento", "Cliente", "Utilizador", "Item", "Linha",
-        "Problema", "Impacto financeiro", "Ação recomendada", "Teste",
+        "Problema", "Impacto financeiro", "Ação recomendada", "Teste", "Resolver",
     ]
 
     def __init__(
         self,
         on_open_orcamento: Callable[[CusteioAuditoriaItem], None] | None = None,
+        on_navegar_menu: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self.on_open_orcamento = on_open_orcamento
+        # Assistente de resolução (Fase 2C): saltar para menus externos a partir
+        # das ocorrências da auditoria. None => sem saltos externos.
+        self._on_navegar_menu = on_navegar_menu
         self._itens: tuple[CusteioAuditoriaItem, ...] = ()
         self._por_linha: dict[int, CusteioAuditoriaItem] = {}
         self._resumos_por_linha = {}
@@ -243,8 +252,48 @@ class CusteioAuditoriaPage(QWidget):
                     cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     cell.setData(Qt.ItemDataRole.UserRole, item.linha_id)
                 self.table.setItem(row, col, cell)
+            self._colocar_botao_resolver(row, item)
         self.table.resizeRowsToContents()
         self._atualizar_abrir()
+
+    def _colocar_botao_resolver(self, row: int, item: CusteioAuditoriaItem) -> None:
+        """Botão "Resolver" por ocorrência: abre o assistente de resolução."""
+        try:
+            coluna = self.TABLE_HEADERS.index("Resolver")
+        except ValueError:
+            return
+        botao = QPushButton("\U0001F527 Resolver")
+        botao.setToolTip(
+            "Assistente de resolução: explica o erro e leva-te ao sítio onde corriges."
+        )
+        botao.setCursor(Qt.CursorShape.PointingHandCursor)
+        botao.clicked.connect(lambda _checked=False, it=item: self._abrir_resolver(it))
+        self.table.setCellWidget(row, coluna, botao)
+
+    def _abrir_resolver(self, item: CusteioAuditoriaItem) -> None:
+        diagnostico = diagnostico_de_ocorrencia(
+            item.categoria, item.severidade, item.problema, item.acao
+        )
+        descricao = " · ".join(
+            parte for parte in (item.codigo_orcamento, item.item, item.linha) if parte
+        ) or "Ocorrência de custeio"
+        dialog = CusteioSupervisorDialog(
+            descricao,
+            [diagnostico],
+            navegar=lambda chave, it=item: self._navegar_resolver(it, chave),
+            parent=self,
+        )
+        dialog.exec()
+
+    def _navegar_resolver(self, item: CusteioAuditoriaItem, chave: str) -> None:
+        """Origem externa -> abre o menu; origem interna -> abre a linha no orçamento."""
+        pagina = pagina_de_chave(chave)
+        if pagina is not None:
+            if self._on_navegar_menu is not None:
+                self._on_navegar_menu(pagina)
+            return
+        if self.on_open_orcamento is not None:
+            self.on_open_orcamento(item)
 
     def _atualizar_abrir(self) -> None:
         self.abrir_button.setEnabled(self.table.currentRow() >= 0 and self.on_open_orcamento is not None)
