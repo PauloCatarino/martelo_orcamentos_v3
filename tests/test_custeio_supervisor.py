@@ -8,6 +8,7 @@ from app.services.custeio_supervisor import (
     ORIGEM_RESOLVER_MATERIAL,
     PAGINA_MAQUINAS_TARIFAS,
     PAGINA_MATERIAS_PRIMAS,
+    alvo_de_chave,
     chave_menu,
     diagnostico_de_ocorrencia,
     diagnostico_de_operacao,
@@ -109,14 +110,33 @@ def test_cnc_oferece_menu_maquinas_tarifas() -> None:
         "Custo CNC não calculado: falta tempo/máquina."
     )
     chaves = {origem.chave for d in diagnosticos for origem in d.origens}
-    # Continua a oferecer as operações da linha E o menu externo de máquinas.
+    # Continua a oferecer as operações da linha E o menu externo de máquinas
+    # (a chave carrega o alvo "CNC", por isso comparo pela página).
     assert ORIGEM_OPERACOES in chaves
-    assert chave_menu(PAGINA_MAQUINAS_TARIFAS) in chaves
+    assert PAGINA_MAQUINAS_TARIFAS in {pagina_de_chave(c) for c in chaves}
 
 
 def test_pagina_de_chave_distingue_interna_de_externa() -> None:
     assert pagina_de_chave(chave_menu(PAGINA_MATERIAS_PRIMAS)) == PAGINA_MATERIAS_PRIMAS
     assert pagina_de_chave(ORIGEM_OPERACOES) is None
+
+
+def test_chave_menu_com_alvo_para_destacar() -> None:
+    chave = chave_menu(PAGINA_MAQUINAS_TARIFAS, "CNC")
+    assert pagina_de_chave(chave) == PAGINA_MAQUINAS_TARIFAS  # página sem o alvo
+    assert alvo_de_chave(chave) == "CNC"
+    assert alvo_de_chave(chave_menu(PAGINA_MAQUINAS_TARIFAS)) is None
+
+
+def test_maquinas_origem_leva_categoria_como_alvo() -> None:
+    # CNC/Corte/Orlagem -> a origem Máquinas destaca a máquina certa; Tempos não.
+    for categoria, esperado in [("CNC", "CNC"), ("Corte", "CORTE"), ("Orlagem", "ORLAGEM")]:
+        d = diagnostico_de_ocorrencia(categoria, CRITICO, f"{categoria} sem custo.", None)
+        maq = next(o for o in d.origens if o.titulo == "Máquinas e Tarifas")
+        assert alvo_de_chave(maq.chave) == esperado
+    d_tempos = diagnostico_de_ocorrencia("Tempos", CRITICO, "Sem tempos.", None)
+    maq_tempos = next(o for o in d_tempos.origens if o.titulo == "Máquinas e Tarifas")
+    assert alvo_de_chave(maq_tempos.chave) is None
 
 
 # ----- Fase 2C: diagnóstico a partir de uma ocorrência da auditoria -----
@@ -131,7 +151,7 @@ def test_diagnostico_de_ocorrencia_usa_problema_e_acao() -> None:
     assert d.grave is True
     chaves = {origem.chave for origem in d.origens}
     assert ORIGEM_OPERACOES in chaves
-    assert chave_menu(PAGINA_MAQUINAS_TARIFAS) in chaves
+    assert PAGINA_MAQUINAS_TARIFAS in {pagina_de_chave(c) for c in chaves}
 
 
 def test_diagnostico_de_ocorrencia_sem_acao_usa_sugestao_generica() -> None:

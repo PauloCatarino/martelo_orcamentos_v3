@@ -42,12 +42,21 @@ class _FakeWin:
         self.pages = QStackedWidget()
         self.pages.addWidget(QWidget())  # 0: orcamento_detail
         self.pages.addWidget(QWidget())  # 1: materias_primas
-        self._page_indexes = {"orcamento_detail": 0, "materias_primas": 1}
+        self.pages.addWidget(QWidget())  # 2: operacoes_maquinas
+        self._page_indexes = {
+            "orcamento_detail": 0,
+            "materias_primas": 1,
+            "operacoes_maquinas": 2,
+        }
         self._retorno_banner = QFrame()
         self._retorno_label = QLabel()
         self._retorno_resolver = None
         self.mostradas: list[str] = []
         self.materias_primas_page = _FakeMateriasPage()
+        self.maquinas_focadas: list[str] = []
+        self.operacoes_maquinas_page = SimpleNamespace(
+            focar_maquina=self.maquinas_focadas.append
+        )
 
     def show_page(self, name: str) -> None:
         self.mostradas.append(name)
@@ -105,6 +114,17 @@ def test_navegar_com_ao_escolher_ativa_modo_resolucao() -> None:
 
     assert escolhidas == [materia]  # aplicou a matéria-prima
     assert win.mostradas[-1] == "orcamento_detail"  # e voltou ao custeio
+
+
+def test_navegar_com_alvo_destaca_maquina() -> None:
+    # Fase 3B: alvo (categoria) faz Máquinas/Tarifas destacar a máquina certa.
+    win = _FakeWin()
+    win.show_page("orcamento_detail")
+
+    win.navegar_para_resolver("operacoes_maquinas", alvo="CNC")
+
+    assert win.mostradas[-1] == "operacoes_maquinas"
+    assert win.maquinas_focadas == ["CNC"]
 
 
 def test_navegacao_manual_esconde_banner() -> None:

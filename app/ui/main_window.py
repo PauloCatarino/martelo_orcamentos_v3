@@ -529,6 +529,13 @@ class MainWindow(QMainWindow):
                 self.materias_primas_page.entrar_modo_resolucao(_resolver)
             else:
                 self.materias_primas_page.sair_modo_resolucao()
+        elif (
+            pagina_destino == "operacoes_maquinas"
+            and alvo
+            and hasattr(self, "operacoes_maquinas_page")
+        ):
+            # Destacar a máquina relevante pela categoria do erro (3B).
+            self.operacoes_maquinas_page.focar_maquina(alvo)
 
     def _voltar_resolver(self) -> None:
         destino = self._retorno_resolver

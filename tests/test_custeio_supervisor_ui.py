@@ -13,6 +13,7 @@ from app.services.custeio_supervisor import (
     ORIGEM_LINHA,
     ORIGEM_OPERACOES,
     ORIGEM_RESOLVER_MATERIAL,
+    PAGINA_MAQUINAS_TARIFAS,
     PAGINA_MATERIAS_PRIMAS,
     chave_menu,
     diagnosticar_observacoes,
@@ -119,6 +120,25 @@ def test_navegar_supervisor_origem_externa_abre_menu() -> None:
     assert chamadas == [(PAGINA_MATERIAS_PRIMAS, "PLC0033", True)]
     # Origem externa não seleciona/abre a linha (vai para outro menu).
     assert selecionadas == [] and operacoes == []
+
+
+def test_navegar_supervisor_maquinas_passa_categoria_como_alvo() -> None:
+    """Origem 'menu:operacoes_maquinas#CNC' navega com "CNC" como alvo (3B)."""
+    chamadas: list[tuple] = []
+    fake = SimpleNamespace(
+        _on_navegar_menu=lambda pagina, alvo=None, ao_escolher=None: chamadas.append(
+            (pagina, alvo, ao_escolher)
+        ),
+        _linha_por_id=lambda lid: SimpleNamespace(ref_le=None, mat_default=None),
+        _linha_aceita_material=lambda linha: True,
+        selecionar_linha_por_id=lambda lid: None,
+        abrir_operacoes_da_linha=lambda: None,
+    )
+
+    OrcamentoItemCusteioPage._navegar_supervisor(
+        fake, 7, chave_menu(PAGINA_MAQUINAS_TARIFAS, "CNC")
+    )
+    assert chamadas == [(PAGINA_MAQUINAS_TARIFAS, "CNC", None)]  # alvo=CNC, sem apply
 
 
 def test_navegar_supervisor_origens_internas() -> None:

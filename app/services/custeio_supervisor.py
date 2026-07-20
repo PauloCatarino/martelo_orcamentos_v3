@@ -48,15 +48,27 @@ PAGINA_MATERIAS_PRIMAS = "materias_primas"
 PAGINA_MAQUINAS_TARIFAS = "operacoes_maquinas"
 
 
-def chave_menu(nome_pagina: str) -> str:
-    """Devolve a chave de origem externa para um menu de topo."""
-    return f"{PREFIXO_MENU}{nome_pagina}"
+def chave_menu(nome_pagina: str, alvo: str | None = None) -> str:
+    """Chave de origem externa para um menu de topo, com alvo opcional a destacar.
+
+    Formato: ``menu:<pagina>`` ou ``menu:<pagina>#<alvo>`` (ex.: o termo da
+    categoria para destacar a máquina certa em Máquinas/Tarifas).
+    """
+    base = f"{PREFIXO_MENU}{nome_pagina}"
+    return f"{base}#{alvo}" if alvo else base
 
 
 def pagina_de_chave(chave: str) -> str | None:
     """Se ``chave`` for uma origem externa, devolve o nome da página; senão None."""
     if chave.startswith(PREFIXO_MENU):
-        return chave[len(PREFIXO_MENU):]
+        return chave[len(PREFIXO_MENU):].split("#", 1)[0]
+    return None
+
+
+def alvo_de_chave(chave: str) -> str | None:
+    """Devolve o alvo a destacar (parte depois de ``#``), se existir."""
+    if chave.startswith(PREFIXO_MENU) and "#" in chave:
+        return chave.split("#", 1)[1] or None
     return None
 
 
@@ -166,9 +178,13 @@ def _origem_materias_primas() -> Origem:
     )
 
 
-def _origem_maquinas_tarifas() -> Origem:
+# Termo que identifica a máquina a destacar em Máquinas/Tarifas, por categoria.
+_TERMO_MAQUINA = {"CNC": "CNC", "Corte": "CORTE", "Orlagem": "ORLAGEM"}
+
+
+def _origem_maquinas_tarifas(categoria: str | None = None) -> Origem:
     return Origem(
-        chave_menu(PAGINA_MAQUINAS_TARIFAS),
+        chave_menu(PAGINA_MAQUINAS_TARIFAS, _TERMO_MAQUINA.get(categoria or "")),
         "Máquinas e Tarifas",
         "Abrir Máquinas/Operações para validar a máquina, o tempo e a tarifa.",
     )
@@ -185,12 +201,12 @@ def _origens(categoria: str) -> tuple[Origem, ...]:
         # Matérias-Primas) ou por OPERAÇÃO (máquina/tarifa) — ofereço ambos.
         return (
             _origem_operacoes(),
-            _origem_maquinas_tarifas(),
+            _origem_maquinas_tarifas(categoria),
             _origem_materias_primas(),
             _origem_linha(),
         )
     if categoria in _CATEGORIAS_OPERACOES:
-        return (_origem_operacoes(), _origem_maquinas_tarifas(), _origem_linha())
+        return (_origem_operacoes(), _origem_maquinas_tarifas(categoria), _origem_linha())
     if categoria == "Material":
         return (_origem_materias_primas(), _origem_linha())
     return (_origem_linha(),)

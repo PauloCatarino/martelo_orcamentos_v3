@@ -116,7 +116,9 @@ from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
     ORIGEM_RESOLVER_MATERIAL,
+    PAGINA_MAQUINAS_TARIFAS,
     PAGINA_MATERIAS_PRIMAS,
+    alvo_de_chave,
     diagnosticar_observacoes,
     origem_resolver_material,
     pagina_de_chave,
@@ -2512,6 +2514,9 @@ class OrcamentoItemCusteioPage(QWidget):
                                     lid, materia
                                 )
                             )
+                elif pagina == PAGINA_MAQUINAS_TARIFAS:
+                    # Destacar a máquina pela categoria (CNC/CORTE/ORLAGEM).
+                    alvo = alvo_de_chave(chave)
                 self._on_navegar_menu(pagina, alvo, ao_escolher)
             return
         if chave == ORIGEM_RESOLVER_MATERIAL:

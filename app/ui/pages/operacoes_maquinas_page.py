@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QHBoxLayout,
     QHeaderView,
@@ -196,6 +199,49 @@ class OperacoesMaquinasPage(QWidget):
 
             for column_index, value in enumerate(values):
                 self.operacoes_table.setItem(row_index, column_index, QTableWidgetItem(value))
+
+    def focar_maquina(self, termo: str | None) -> None:
+        """Vai ao separador Máquinas e destaca a máquina relevante (assistente 3B).
+
+        ``termo`` é o tipo/categoria do erro (CNC/CORTE/ORLAGEM); destaca a
+        primeira máquina cujo código/nome/tipo o contenha.
+        """
+        if not termo:
+            return
+        alvo = termo.strip().upper()
+        for indice in range(self.tabs.count()):
+            if self.tabs.tabText(indice) == "Máquinas":
+                self.tabs.setCurrentIndex(indice)
+                break
+        for row, maquina in self._maquinas_by_row.items():
+            texto = f"{maquina.codigo} {maquina.nome} {maquina.tipo or ''}".upper()
+            if alvo in texto:
+                self.maquinas_table.selectRow(row)
+                item = self.maquinas_table.item(row, 0)
+                if item is not None:
+                    self.maquinas_table.scrollToItem(
+                        item, QAbstractItemView.ScrollHint.PositionAtCenter
+                    )
+                self._piscar_linha_maquina(row)
+                return
+
+    def _piscar_linha_maquina(self, row: int) -> None:
+        """Pisca a linha da máquina (fundo ocre) ~1,5 s e repõe."""
+        itens = [
+            self.maquinas_table.item(row, col)
+            for col in range(self.maquinas_table.columnCount())
+        ]
+        itens = [item for item in itens if item is not None]
+        fundos = [item.background() for item in itens]
+        realce = QColor("#F2DEB3")  # ocre suave (tema.OCRE_SUAVE)
+        for item in itens:
+            item.setBackground(realce)
+
+        def repor() -> None:
+            for item, fundo in zip(itens, fundos):
+                item.setBackground(fundo)
+
+        QTimer.singleShot(1500, repor)
 
     def _preencher_maquinas(self, maquinas: list[DefMaquinaResumo]) -> None:
         """Fill the machines table."""
