@@ -2908,6 +2908,7 @@ def test_recalcular_custo_mp_limpa_observacao_obsoleta(monkeypatch) -> None:
 
 
 def test_recalcular_custo_mp_unidade_desconhecida(monkeypatch) -> None:
+    # Material COM unidade, mas que nenhuma regra sabe custear -> "unidade não validada".
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
         _resumo(id=1, tipo_linha="PECA", unidade="XPTO", preco_liquido=Decimal("6.50")),
@@ -2917,7 +2918,24 @@ def test_recalcular_custo_mp_unidade_desconhecida(monkeypatch) -> None:
 
     payload = _FakeRepository.updated_payload
     assert payload["custo_mp"] is None
-    assert "Custo não calculado: unidade não validada." in payload["observacoes"]
+    assert service_module.AVISO_UNIDADE_INVALIDA in payload["observacoes"]
+
+
+def test_recalcular_custo_mp_sem_material_avisa_materia_prima_em_falta(monkeypatch) -> None:
+    # Peça sem material (unidade vazia) -> mensagem clara de matéria-prima em falta,
+    # e NÃO o técnico "unidade não validada".
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA", unidade=None, preco_liquido=None),
+    ]
+
+    service.recalcular_custo_materia_prima_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_mp"] is None
+    obs = payload["observacoes"] or ""
+    assert service_module.AVISO_MATERIA_PRIMA_EM_FALTA in obs
+    assert service_module.AVISO_UNIDADE_INVALIDA not in obs
 
 
 def test_recalcular_custo_mp_so_altera_custo_mp(monkeypatch) -> None:

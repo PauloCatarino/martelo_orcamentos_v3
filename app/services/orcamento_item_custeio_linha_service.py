@@ -73,6 +73,7 @@ from app.domain.tempos_producao import (
     classificar_operacao,
 )
 from app.domain.custos import (
+    AVISO_MATERIA_PRIMA_EM_FALTA,
     AVISO_UNIDADE_INVALIDA,
     calcular_custo_acabamento_face,
     calcular_custo_ferragem,
@@ -1577,13 +1578,18 @@ class OrcamentoItemCusteioLinhaService:
 
             fields: dict = {"custo_mp": custo}
             nova_obs = self._mesclar_observacao(linha.observacoes, "Custo MP", aviso)
-            # Single unit-invalid diagnostic (units M2/UND/ML do not trigger it);
-            # cleaned automatically once the line gets a valid unit.
-            aviso_unidade = (
-                None if unidade_custo_valida(linha.unidade) else AVISO_UNIDADE_INVALIDA
-            )
+            # Diagnóstico quando o custo não pode ser calculado por causa do
+            # material: distingue "sem material" (unidade vazia) de "unidade
+            # inválida" (material com unidade que nenhuma regra sabe custear).
+            # Ambos limpam sozinhos quando a linha ganha uma unidade válida.
+            if unidade_custo_valida(linha.unidade):
+                aviso_unidade = None
+            elif not (linha.unidade or "").strip():
+                aviso_unidade = AVISO_MATERIA_PRIMA_EM_FALTA
+            else:
+                aviso_unidade = AVISO_UNIDADE_INVALIDA
             nova_obs = self._mesclar_observacao(
-                nova_obs, "Custo não calculado: unidade", aviso_unidade
+                nova_obs, "Custo não calculado:", aviso_unidade
             )
             if nova_obs != linha.observacoes:
                 fields["observacoes"] = nova_obs

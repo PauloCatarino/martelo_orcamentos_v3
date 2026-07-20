@@ -18,9 +18,16 @@ AVISO_FERRAGEM_DADOS_INCOMPLETOS = (
     "Custo ferragem não calculado: quantidade ou preço em falta."
 )
 AVISO_ML_DADOS_INCOMPLETOS = "Custo ML não calculado: consumo ou preço em falta."
-# Written once (by the MP recompute) only for lines whose unit none of the cost
-# rules (M2/ML/UND) can handle.
-AVISO_UNIDADE_INVALIDA = "Custo não calculado: unidade não validada."
+# Escritos uma vez (pelo recálculo do MP) quando o custo não pode ser calculado
+# por causa do material. Ambos começam por "Custo não calculado:" (prefixo da
+# secção, para serem removidos ao corrigir) e contêm "material" (para o
+# supervisor os classificar como problema de Material).
+#   - sem material selecionado (unidade vazia): matéria-prima em falta;
+#   - material com unidade que nenhuma regra (M2/ML/UND) sabe custear.
+AVISO_MATERIA_PRIMA_EM_FALTA = (
+    "Custo não calculado: material da peça em falta (selecione a matéria-prima)."
+)
+AVISO_UNIDADE_INVALIDA = "Custo não calculado: unidade do material não validada."
 
 _UNIDADES_M2 = ("M2", "M²", "M^2", "MTQ", "METRO2")
 _UNIDADES_ML = ("ML", "M", "MTL")

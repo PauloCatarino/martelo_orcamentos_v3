@@ -85,6 +85,17 @@ def test_graves_aparecem_primeiro() -> None:
 # ----- Fase 2: origens externas (menus) -----
 
 
+def test_material_em_falta_e_grave_e_classifica_como_material() -> None:
+    from app.domain.custos import AVISO_MATERIA_PRIMA_EM_FALTA
+
+    diagnosticos = diagnosticar_observacoes(AVISO_MATERIA_PRIMA_EM_FALTA)
+    assert len(diagnosticos) == 1
+    assert diagnosticos[0].categoria == "Material"
+    assert diagnosticos[0].grave is True
+    chaves = {origem.chave for origem in diagnosticos[0].origens}
+    assert chave_menu(PAGINA_MATERIAS_PRIMAS) in chaves
+
+
 def test_material_oferece_menu_materias_primas() -> None:
     diagnosticos = diagnosticar_observacoes(
         "Custo MP não calculado: área ou preço em falta."
