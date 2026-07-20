@@ -112,7 +112,13 @@ from app.services.def_peca_user_pref_service import (
 )
 from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.custeio_supervisor import (
+    ORIGEM_OPERACOES,
+    diagnosticar_observacoes,
+    tem_erro_grave,
+)
 from app.core.session import app_session
+from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
 from app.ui.dialogs.guardar_modulo_dialog import (
     GuardarModuloDialog,
@@ -412,6 +418,8 @@ class OrcamentoItemCusteioPage(QWidget):
         "Tipo produ\u00e7\u00e3o",
         "Fator s\u00e9rie",
         "Observa\u00e7\u00f5es produ\u00e7\u00e3o",
+        # Assistente de resolucao: botao dinamico so nas linhas com erro grave.
+        "Resolver",
         # Custos
         "Custo MP",
         "Custo ferragem",
@@ -2369,6 +2377,64 @@ class OrcamentoItemCusteioPage(QWidget):
 
         self._estilizar_linha(row_index, linha)
         self._realcar_desp_placa_inteira(row_index, linha)
+        self._realcar_supervisor(row_index, linha)
+
+    def _realcar_supervisor(
+        self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> None:
+        """Botão dinâmico "Resolver" nas linhas com erro grave (assistente).
+
+        Só aparece quando a linha tem uma observação de produção CRÍTICA (que pode
+        dar custo errado); as observações apenas informativas não mostram botão.
+        """
+        if not tem_erro_grave(linha.observacoes):
+            return
+        try:
+            coluna = self.TABLE_HEADERS.index("Resolver")
+        except ValueError:
+            return
+        botao = QPushButton("\U0001F527 Resolver")
+        botao.setToolTip(
+            "Assistente de resolução: explica o erro e leva-te ao sítio onde corriges."
+        )
+        botao.setCursor(Qt.CursorShape.PointingHandCursor)
+        linha_id = linha.id
+        botao.clicked.connect(
+            lambda _checked=False, lid=linha_id: self._abrir_supervisor(lid)
+        )
+        self.table.setCellWidget(row_index, coluna, botao)
+
+    def _linha_por_id(
+        self, linha_id: int
+    ) -> OrcamentoItemCusteioLinhaResumo | None:
+        return next(
+            (l for l in self._custeio_by_row.values() if l.id == linha_id), None
+        )
+
+    def _abrir_supervisor(self, linha_id: int) -> None:
+        """Abre o assistente de resolução para a linha (via botão "Resolver")."""
+        linha = self._linha_por_id(linha_id)
+        if linha is None:
+            return
+        diagnosticos = diagnosticar_observacoes(linha.observacoes)
+        if not diagnosticos:
+            return
+        descricao = " — ".join(
+            parte for parte in (linha.codigo, linha.descricao) if parte
+        ) or "Linha de custeio"
+        dialog = CusteioSupervisorDialog(
+            descricao,
+            diagnosticos,
+            navegar=lambda chave, lid=linha_id: self._navegar_supervisor(lid, chave),
+            parent=self,
+        )
+        dialog.exec()
+
+    def _navegar_supervisor(self, linha_id: int, chave: str) -> None:
+        """Fase 1: navegação dentro do orçamento (focar a linha / abrir operações)."""
+        self.selecionar_linha_por_id(linha_id)
+        if chave == ORIGEM_OPERACOES:
+            self.abrir_operacoes_da_linha()
 
     def _realcar_desp_placa_inteira(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
