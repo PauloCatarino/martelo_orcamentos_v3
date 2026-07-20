@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from app.services.custeio_supervisor import (
     ORIGEM_LINHA,
     ORIGEM_OPERACOES,
+    ORIGEM_RESOLVER_MATERIAL,
     PAGINA_MATERIAS_PRIMAS,
     chave_menu,
     diagnosticar_observacoes,
@@ -107,3 +108,21 @@ def test_navegar_supervisor_origens_internas() -> None:
 
     OrcamentoItemCusteioPage._navegar_supervisor(fake, 5, ORIGEM_LINHA)
     assert selecionadas == [3, 5] and operacoes == [True]
+
+
+def test_navegar_supervisor_resolver_material_inline() -> None:
+    """A chave de resolução inline chama resolver_material_linha (sem sair)."""
+    resolvidas: list[int] = []
+    selecionadas: list[int] = []
+    fake = SimpleNamespace(
+        _on_navegar_menu=lambda _p: None,
+        selecionar_linha_por_id=lambda lid: selecionadas.append(lid),
+        abrir_operacoes_da_linha=lambda: None,
+        resolver_material_linha=lambda lid: resolvidas.append(lid),
+    )
+
+    OrcamentoItemCusteioPage._navegar_supervisor(fake, 9, ORIGEM_RESOLVER_MATERIAL)
+
+    assert resolvidas == [9]
+    # Resolução inline não navega/foca a linha por outro caminho.
+    assert selecionadas == []

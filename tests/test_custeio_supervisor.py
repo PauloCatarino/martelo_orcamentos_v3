@@ -5,12 +5,14 @@ from __future__ import annotations
 from app.services.custeio_auditoria_service import AVISO, CRITICO
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
+    ORIGEM_RESOLVER_MATERIAL,
     PAGINA_MAQUINAS_TARIFAS,
     PAGINA_MATERIAS_PRIMAS,
     chave_menu,
     diagnostico_de_ocorrencia,
     diagnostico_de_operacao,
     diagnosticar_observacoes,
+    origem_resolver_material,
     pagina_de_chave,
     tem_erro_grave,
 )
@@ -129,3 +131,13 @@ def test_diagnostico_de_operacao_verificar_e_grave() -> None:
 def test_diagnostico_de_operacao_atencao_e_aviso() -> None:
     d = diagnostico_de_operacao("ATENÇÃO", "Ferragem sem operações.")
     assert d.grave is False  # pode ser intencional (ferragem comprada)
+
+
+# ----- Fase 3A: resolver + recalcular sem sair -----
+
+
+def test_origem_resolver_material_tem_chave_propria() -> None:
+    origem = origem_resolver_material()
+    assert origem.chave == ORIGEM_RESOLVER_MATERIAL
+    assert origem.titulo  # "Resolver aqui"
+    assert pagina_de_chave(origem.chave) is None  # não é um salto de menu

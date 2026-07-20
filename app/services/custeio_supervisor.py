@@ -28,6 +28,17 @@ from app.services.custeio_auditoria_service import (
 ORIGEM_OPERACOES = "operacoes"
 ORIGEM_LINHA = "linha"
 ORIGEM_MATERIAL = "material"
+# Fase 3A: resolver + recalcular SEM sair (a página de custeio trata da ação).
+ORIGEM_RESOLVER_MATERIAL = "resolver_material"
+
+
+def origem_resolver_material() -> "Origem":
+    """Origem de resolução inline do material (Fase 3A): corrigir + recalcular aqui."""
+    return Origem(
+        ORIGEM_RESOLVER_MATERIAL,
+        "Resolver aqui",
+        "Corrigir o material/preço desta linha e recalcular — sem sair do custeio.",
+    )
 
 # Origens EXTERNAS (Fase 2): a chave "menu:<nome_da_pagina>" pede à app para
 # abrir esse menu de topo. Os nomes têm de coincidir com os de

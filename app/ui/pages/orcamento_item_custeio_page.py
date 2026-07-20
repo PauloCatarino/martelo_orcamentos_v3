@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QTimer, QSize, QEvent
@@ -114,7 +115,9 @@ from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
+    ORIGEM_RESOLVER_MATERIAL,
     diagnosticar_observacoes,
+    origem_resolver_material,
     pagina_de_chave,
     tem_erro_grave,
 )
@@ -2435,6 +2438,15 @@ class OrcamentoItemCusteioPage(QWidget):
         diagnosticos = diagnosticar_observacoes(linha.observacoes)
         if not diagnosticos:
             return
+        # Fase 3A: nos problemas de Material, oferecer "Resolver aqui" (inline) à
+        # frente das restantes origens, quando a linha aceita material.
+        if self._linha_aceita_material(linha):
+            diagnosticos = [
+                replace(d, origens=(origem_resolver_material(),) + d.origens)
+                if d.categoria == "Material"
+                else d
+                for d in diagnosticos
+            ]
         descricao = " — ".join(
             parte for parte in (linha.codigo, linha.descricao) if parte
         ) or "Linha de custeio"
@@ -2458,9 +2470,46 @@ class OrcamentoItemCusteioPage(QWidget):
             if self._on_navegar_menu is not None:
                 self._on_navegar_menu(pagina)
             return
+        if chave == ORIGEM_RESOLVER_MATERIAL:
+            self.resolver_material_linha(linha_id)
+            return
         self.selecionar_linha_por_id(linha_id)
         if chave == ORIGEM_OPERACOES:
             self.abrir_operacoes_da_linha()
+
+    def resolver_material_linha(self, linha_id: int) -> None:
+        """Fase 3A: corrigir o material/preço da linha e recalcular, sem sair.
+
+        Reaproveita o diálogo de material da linha e o recálculo do item; ao
+        gravar, o Custo MP passa a estar calculado e o preço do item atualiza.
+        """
+        linha = self._linha_por_id(linha_id)
+        if linha is None or not self._linha_aceita_material(linha):
+            return
+
+        gravado = False
+
+        def handle_save(dados) -> bool:
+            nonlocal gravado
+            try:
+                with SessionLocal() as session:
+                    service = OrcamentoItemCusteioLinhaService(session)
+                    service.atualizar_material_local_linha(linha_id, dados)
+                    self._recalcular_item_completo(service)
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível atualizar o material da linha.")
+                return False
+            gravado = True
+            return True
+
+        dialog = CusteioLinhaMaterialDialog(linha, parent=self, on_save=handle_save)
+        if dialog.exec() and gravado:
+            self.carregar()
+            self.selecionar_linha_por_id(linha_id)
+            self.status_label.setText("Material corrigido e item recalculado.")
 
     def _realcar_desp_placa_inteira(
         self, row_index: int, linha: OrcamentoItemCusteioLinhaResumo
