@@ -1432,15 +1432,26 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         linha_alvo: dict[str, int] = {}
+        menu_alvo: dict[str, str] = {}
 
         def abrir(linha_id: int) -> None:
             linha_alvo["id"] = linha_id
+
+        def navegar_menu(pagina: str) -> None:
+            menu_alvo["pagina"] = pagina
 
         CusteioOperacoesAuditoriaDialog(
             linhas,
             self,
             on_abrir_linha=abrir,
+            on_navegar_menu=navegar_menu,
         ).exec()
+        # Navegação externa (assistente) só depois de o modal fechar.
+        pagina = menu_alvo.get("pagina")
+        if pagina is not None:
+            if self._on_navegar_menu is not None:
+                self._on_navegar_menu(pagina)
+            return
         linha_id = linha_alvo.get("id")
         if linha_id is None:
             return

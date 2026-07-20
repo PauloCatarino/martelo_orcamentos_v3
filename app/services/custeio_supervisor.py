@@ -202,6 +202,33 @@ def tem_erro_grave(observacoes: str | None) -> bool:
     )
 
 
+CATEGORIA_OPERACOES = "Operações"
+
+
+def diagnostico_de_operacao(estado: str, diagnostico: str) -> DiagnosticoLinha:
+    """Diagnóstico para uma linha do audit de operações ("Auditar operações", 2B).
+
+    ``estado`` é OK/ATENÇÃO/VERIFICAR; só faz sentido chamar para linhas não-OK.
+    VERIFICAR (tem operações mas custo a zero) é grave; ATENÇÃO (sem operações)
+    fica como aviso — pode ser intencional (ferragem comprada).
+    """
+    severidade = CRITICO if estado == "VERIFICAR" else AVISO
+    return DiagnosticoLinha(
+        categoria=CATEGORIA_OPERACOES,
+        severidade=severidade,
+        mensagem=diagnostico,
+        porque=(
+            "Uma peça/ferragem sem operações — ou com operações mas custo de "
+            "produção a zero — pode sair com o custo de produção incompleto."
+        ),
+        sugestao=(
+            "Abrir as operações desta linha e validar máquina, tempo e tarifa; "
+            "se for intencional (ex.: ferragem comprada), pode ignorar."
+        ),
+        origens=(_origem_operacoes(), _origem_maquinas_tarifas()),
+    )
+
+
 def diagnostico_de_ocorrencia(
     categoria: str, severidade: str, problema: str, acao: str | None
 ) -> DiagnosticoLinha:

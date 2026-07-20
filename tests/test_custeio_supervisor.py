@@ -9,6 +9,7 @@ from app.services.custeio_supervisor import (
     PAGINA_MATERIAS_PRIMAS,
     chave_menu,
     diagnostico_de_ocorrencia,
+    diagnostico_de_operacao,
     diagnosticar_observacoes,
     pagina_de_chave,
     tem_erro_grave,
@@ -111,3 +112,20 @@ def test_diagnostico_de_ocorrencia_usa_problema_e_acao() -> None:
 def test_diagnostico_de_ocorrencia_sem_acao_usa_sugestao_generica() -> None:
     d = diagnostico_de_ocorrencia("Dimensões", CRITICO, "Sem medidas reais.", None)
     assert d.sugestao  # cai numa sugestão (genérica) em vez de vazio
+
+
+# ----- Fase 2B: diagnóstico a partir do audit de operações -----
+
+
+def test_diagnostico_de_operacao_verificar_e_grave() -> None:
+    d = diagnostico_de_operacao("VERIFICAR", "Existem operações mas custo a zero.")
+    assert d.severidade == CRITICO
+    assert d.grave is True
+    chaves = {origem.chave for origem in d.origens}
+    assert ORIGEM_OPERACOES in chaves
+    assert chave_menu(PAGINA_MAQUINAS_TARIFAS) in chaves
+
+
+def test_diagnostico_de_operacao_atencao_e_aviso() -> None:
+    d = diagnostico_de_operacao("ATENÇÃO", "Ferragem sem operações.")
+    assert d.grave is False  # pode ser intencional (ferragem comprada)

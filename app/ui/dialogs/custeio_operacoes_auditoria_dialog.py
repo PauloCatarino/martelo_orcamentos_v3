@@ -19,9 +19,14 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.custeio_linha_types import get_custeio_linha_type_label
+from app.services.custeio_supervisor import (
+    diagnostico_de_operacao,
+    pagina_de_chave,
+)
 from app.services.orcamento_item_custeio_linha_service import (
     AuditoriaOperacaoLinhaResumo,
 )
+from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
 from app.utils.formatters import format_currency
 
 
@@ -36,6 +41,7 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
         "Máquinas",
         "Custo produção",
         "Diagnóstico",
+        "Resolver",
     )
 
     def __init__(
@@ -44,10 +50,14 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
         parent: QWidget | None = None,
         *,
         on_abrir_linha: Callable[[int], None] | None = None,
+        on_navegar_menu: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._linhas_by_row: dict[int, AuditoriaOperacaoLinhaResumo] = {}
         self._on_abrir_linha = on_abrir_linha
+        # Assistente de resolução (Fase 2B): saltar para menus externos a partir
+        # das linhas sinalizadas. None => sem saltos externos.
+        self._on_navegar_menu = on_navegar_menu
         self.setWindowTitle("Auditoria de operações do item")
         self.resize(1280, 650)
 
@@ -141,4 +151,49 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
                     item.setBackground(cores.get(linha.estado, QColor("white")))
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, column, item)
+            if linha.estado != "OK":
+                self._colocar_botao_resolver(row, linha)
         self.table.resizeRowsToContents()
+
+    def _colocar_botao_resolver(
+        self, row: int, linha: AuditoriaOperacaoLinhaResumo
+    ) -> None:
+        """Botão "Resolver" nas linhas sinalizadas (não-OK): abre o assistente."""
+        try:
+            coluna = self.HEADERS.index("Resolver")
+        except ValueError:
+            return
+        botao = QPushButton("\U0001F527 Resolver")
+        botao.setToolTip(
+            "Assistente de resolução: explica o alerta e leva-te às operações/máquinas."
+        )
+        botao.setCursor(Qt.CursorShape.PointingHandCursor)
+        botao.clicked.connect(lambda _checked=False, ln=linha: self._abrir_resolver(ln))
+        self.table.setCellWidget(row, coluna, botao)
+
+    def _abrir_resolver(self, linha: AuditoriaOperacaoLinhaResumo) -> None:
+        diagnostico = diagnostico_de_operacao(linha.estado, linha.diagnostico)
+        descricao = " · ".join(
+            parte for parte in (linha.codigo, linha.descricao) if parte
+        ) or "Linha de operações"
+        dialog = CusteioSupervisorDialog(
+            descricao,
+            [diagnostico],
+            navegar=lambda chave, ln=linha: self._navegar_resolver(ln, chave),
+            parent=self,
+        )
+        dialog.exec()
+
+    def _navegar_resolver(
+        self, linha: AuditoriaOperacaoLinhaResumo, chave: str
+    ) -> None:
+        """Regista o destino e fecha; o chamador navega depois do modal fechar."""
+        pagina = pagina_de_chave(chave)
+        if pagina is not None:
+            if self._on_navegar_menu is not None:
+                self._on_navegar_menu(pagina)
+            self.accept()
+            return
+        if self._on_abrir_linha is not None:
+            self._on_abrir_linha(linha.linha_id)
+        self.accept()
