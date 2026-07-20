@@ -53,6 +53,10 @@ class CampoPesquisa(QWidget):
         """Return the current search text."""
         return self._input.text()
 
+    def definir_texto(self, texto: str) -> None:
+        """Set the search text (emits pesquisa_mudou, filtering the list)."""
+        self._input.setText(texto or "")
+
     def limpar(self) -> None:
         """Clear the text without emitting limpar_clicado."""
         self._input.clear()

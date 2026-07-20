@@ -116,6 +116,7 @@ from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,
     ORIGEM_RESOLVER_MATERIAL,
+    PAGINA_MATERIAS_PRIMAS,
     diagnosticar_observacoes,
     origem_resolver_material,
     pagina_de_chave,
@@ -2496,7 +2497,14 @@ class OrcamentoItemCusteioPage(QWidget):
         pagina = pagina_de_chave(chave)
         if pagina is not None:
             if self._on_navegar_menu is not None:
-                self._on_navegar_menu(pagina)
+                # Fase 3B: no salto para Matérias-Primas, indicar a Ref LE da linha
+                # para o menu de destino destacar a matéria-prima exata.
+                alvo = None
+                if pagina == PAGINA_MATERIAS_PRIMAS:
+                    linha = self._linha_por_id(linha_id)
+                    if linha is not None:
+                        alvo = linha.ref_le or linha.mat_default
+                self._on_navegar_menu(pagina, alvo)
             return
         if chave == ORIGEM_RESOLVER_MATERIAL:
             self.resolver_material_linha(linha_id)

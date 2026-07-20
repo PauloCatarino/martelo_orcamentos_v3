@@ -498,8 +498,12 @@ class MainWindow(QMainWindow):
                 return nome
         return None
 
-    def navegar_para_resolver(self, pagina_destino: str) -> None:
-        """Vai para um menu de resolução guardando de onde veio (para poder voltar)."""
+    def navegar_para_resolver(self, pagina_destino: str, alvo: str | None = None) -> None:
+        """Vai para um menu de resolução guardando de onde veio (para poder voltar).
+
+        ``alvo`` (Fase 3B) permite destacar o campo/linha exato no destino — ex.:
+        a Ref LE da matéria-prima na página Matérias-Primas.
+        """
         origem = self._pagina_atual_nome()
         if origem is not None and origem != pagina_destino:
             self._retorno_resolver = origem
@@ -510,6 +514,9 @@ class MainWindow(QMainWindow):
             )
             self._retorno_banner.setVisible(True)
         self.show_page(pagina_destino)
+        # Destacar o alvo exato no menu de destino (quando suportado).
+        if alvo and pagina_destino == "materias_primas" and hasattr(self, "materias_primas_page"):
+            self.materias_primas_page.focar_materia_prima(alvo)
 
     def _voltar_resolver(self) -> None:
         destino = self._retorno_resolver

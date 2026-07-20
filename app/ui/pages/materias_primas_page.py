@@ -5,9 +5,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -225,6 +226,40 @@ class MateriasPrimasPage(QWidget):
             self.status_label.setText("Sem materias-primas para mostrar.")
         elif search_text.strip() and not filtered:
             self.status_label.setText("Sem resultados para a pesquisa.")
+
+    def focar_materia_prima(self, ref_le: str | None) -> None:
+        """Filtra pela Ref LE, seleciona e pisca a matéria-prima (assistente 3B)."""
+        if not ref_le:
+            return
+        alvo = ref_le.strip().upper()
+        # Filtrar pela Ref LE isola a matéria-prima na tabela (re-preenche já).
+        self.campo_pesquisa.definir_texto(ref_le)
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is not None and (item.text() or "").strip().upper() == alvo:
+                self.table.selectRow(row)
+                self.table.scrollToItem(
+                    item, QAbstractItemView.ScrollHint.PositionAtCenter
+                )
+                self._piscar_linha(row)
+                return
+
+    def _piscar_linha(self, row: int) -> None:
+        """Pisca a linha (fundo ocre) durante ~1,5 s e repõe o fundo original."""
+        itens = [
+            self.table.item(row, col) for col in range(self.table.columnCount())
+        ]
+        itens = [item for item in itens if item is not None]
+        fundos = [item.background() for item in itens]
+        realce = QColor(tema.OCRE_SUAVE)
+        for item in itens:
+            item.setBackground(realce)
+
+        def repor() -> None:
+            for item, fundo in zip(itens, fundos):
+                item.setBackground(fundo)
+
+        QTimer.singleShot(1500, repor)
 
     def _preencher_tabela(self, materias_primas: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw material read models."""
