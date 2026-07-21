@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
@@ -168,12 +168,73 @@ class OrcamentoItemRepository:
         return self._to_resumo(orcamento_item)
 
     def delete_item(self, item_id: int) -> bool:
-        """Delete one budget item."""
-        orcamento_item = self.session.get(OrcamentoItem, item_id)
-        if orcamento_item is None:
+        """Delete one budget item and everything it owns.
+
+        None of the item-owned foreign keys cascade at the database level, so
+        every child table is removed explicitly, deepest first: the operation
+        rows of the costing and ValueSet lines, then those lines (breaking the
+        costing lines' self/module references first), then the modules,
+        variables, and finally the item itself.
+        """
+        existe = self.session.execute(
+            select(OrcamentoItem.id).where(OrcamentoItem.id == item_id)
+        ).scalar_one_or_none()
+        if existe is None:
             return False
 
-        self.session.delete(orcamento_item)
+        linha_ids = self.session.execute(
+            select(OrcamentoItemCusteioLinha.id).where(
+                OrcamentoItemCusteioLinha.orcamento_item_id == item_id
+            )
+        ).scalars().all()
+        vsl_ids = self.session.execute(
+            select(OrcamentoItemValuesetLinha.id).where(
+                OrcamentoItemValuesetLinha.orcamento_item_id == item_id
+            )
+        ).scalars().all()
+
+        statements = []
+        if linha_ids:
+            statements.append(
+                delete(OrcamentoItemCusteioLinhaOperacao).where(
+                    OrcamentoItemCusteioLinhaOperacao.linha_id.in_(linha_ids)
+                )
+            )
+        if vsl_ids:
+            statements.append(
+                delete(OrcamentoItemValuesetLinhaOperacao).where(
+                    OrcamentoItemValuesetLinhaOperacao.orcamento_item_valueset_linha_id.in_(
+                        vsl_ids
+                    )
+                )
+            )
+        # Break the costing lines' self/module references before deleting them.
+        statements.append(
+            update(OrcamentoItemCusteioLinha)
+            .where(OrcamentoItemCusteioLinha.orcamento_item_id == item_id)
+            .values(linha_pai_id=None, orcamento_item_modulo_id=None)
+        )
+        statements.extend(
+            (
+                delete(OrcamentoItemCusteioLinha).where(
+                    OrcamentoItemCusteioLinha.orcamento_item_id == item_id
+                ),
+                delete(OrcamentoItemValuesetLinha).where(
+                    OrcamentoItemValuesetLinha.orcamento_item_id == item_id
+                ),
+                delete(OrcamentoItemModulo).where(
+                    OrcamentoItemModulo.orcamento_item_id == item_id
+                ),
+                delete(OrcamentoItemVariavel).where(
+                    OrcamentoItemVariavel.item_id == item_id
+                ),
+                delete(OrcamentoItem).where(OrcamentoItem.id == item_id),
+            )
+        )
+        for statement in statements:
+            self.session.execute(
+                statement, execution_options={"synchronize_session": False}
+            )
         self.session.flush()
 
         return True

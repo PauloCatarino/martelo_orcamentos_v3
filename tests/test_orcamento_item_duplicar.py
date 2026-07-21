@@ -169,6 +169,34 @@ def test_duplicar_item_inexistente_falha(session: Session) -> None:
         service.duplicar_item(999, _edicao())
 
 
+def test_remover_item_apaga_todas_as_relacoes(session: Session) -> None:
+    """Removing an item must clear every owned table (no FK left behind)."""
+    _, item = _criar_item_profundo(session)
+    service = OrcamentoItemService(session)
+    item_id = item.id
+    linha_ids = _ids(session, OrcamentoItemCusteioLinha, "orcamento_item_id", item_id)
+    vsl_ids = _ids(session, OrcamentoItemValuesetLinha, "orcamento_item_id", item_id)
+
+    assert service.remover_item(item_id) is True
+
+    assert session.get(OrcamentoItem, item_id) is None
+    assert _rows(session, OrcamentoItemVariavel, "item_id", item_id) == []
+    assert _rows(session, OrcamentoItemModulo, "orcamento_item_id", item_id) == []
+    assert _rows(session, OrcamentoItemCusteioLinha, "orcamento_item_id", item_id) == []
+    assert _rows(session, OrcamentoItemValuesetLinha, "orcamento_item_id", item_id) == []
+    # The operation child rows go with their parent lines.
+    assert session.execute(
+        select(OrcamentoItemCusteioLinhaOperacao).where(
+            OrcamentoItemCusteioLinhaOperacao.linha_id.in_(linha_ids)
+        )
+    ).scalars().all() == []
+    assert session.execute(
+        select(OrcamentoItemValuesetLinhaOperacao).where(
+            OrcamentoItemValuesetLinhaOperacao.orcamento_item_valueset_linha_id.in_(vsl_ids)
+        )
+    ).scalars().all() == []
+
+
 def _criar_item_profundo(session: Session) -> tuple[OrcamentoVersao, OrcamentoItem]:
     cliente = Cliente(nome="Cliente Copia", is_temporary=True)
     session.add(cliente)
