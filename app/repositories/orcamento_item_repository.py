@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.domain.precos import MargensOrcamento
-from app.models import OrcamentoItem, OrcamentoVersao
+from app.models import (
+    OrcamentoItem,
+    OrcamentoItemCusteioLinha,
+    OrcamentoItemModulo,
+    OrcamentoItemValuesetLinha,
+    OrcamentoItemVariavel,
+    OrcamentoVersao,
+)
 
 
 @dataclass(frozen=True)
@@ -313,6 +322,118 @@ class OrcamentoItemRepository:
         self.session.flush()
 
         return True
+
+    def duplicar_item_profundo(self, item_id: int) -> OrcamentoItemResumo | None:
+        """Clone one item (and all its owned children) inside the same version.
+
+        Copies the item scalars plus its variables, modules, ValueSet lines and
+        costing lines, remapping the internal foreign keys (module and
+        parent-line references) to the new rows. The version-level ValueSet
+        lines are shared by the version, so the item ValueSet lines keep their
+        ``origem_*`` references as-is. Returns the new item (with a fresh
+        ``ordem`` at the end of the version), or None when the source is gone.
+        """
+        origem = self.session.get(OrcamentoItem, item_id)
+        if origem is None:
+            return None
+
+        ordem = self.get_next_ordem(origem.orcamento_versao_id)
+        novo_item = OrcamentoItem(
+            **self._valores_para_copia(
+                origem, exclui={"orcamento_versao_id", "ordem"}
+            ),
+            orcamento_versao_id=origem.orcamento_versao_id,
+            ordem=ordem,
+        )
+        self.session.add(novo_item)
+        self.session.flush()
+
+        variaveis = self.session.execute(
+            select(OrcamentoItemVariavel)
+            .where(OrcamentoItemVariavel.item_id == item_id)
+            .order_by(OrcamentoItemVariavel.ordem.asc(), OrcamentoItemVariavel.id.asc())
+        ).scalars().all()
+        for variavel in variaveis:
+            dados = self._valores_para_copia(variavel, exclui={"item_id"})
+            self.session.add(OrcamentoItemVariavel(**dados, item_id=novo_item.id))
+
+        map_modulo: dict[int, int] = {}
+        modulos = self.session.execute(
+            select(OrcamentoItemModulo)
+            .where(OrcamentoItemModulo.orcamento_item_id == item_id)
+            .order_by(OrcamentoItemModulo.ordem.asc(), OrcamentoItemModulo.id.asc())
+        ).scalars().all()
+        for modulo in modulos:
+            dados = self._valores_para_copia(modulo, exclui={"orcamento_item_id"})
+            novo_modulo = OrcamentoItemModulo(
+                **dados, orcamento_item_id=novo_item.id
+            )
+            self.session.add(novo_modulo)
+            self.session.flush()
+            map_modulo[modulo.id] = novo_modulo.id
+
+        valuesets_item = self.session.execute(
+            select(OrcamentoItemValuesetLinha)
+            .where(OrcamentoItemValuesetLinha.orcamento_item_id == item_id)
+            .order_by(
+                OrcamentoItemValuesetLinha.ordem.asc(),
+                OrcamentoItemValuesetLinha.id.asc(),
+            )
+        ).scalars().all()
+        for linha in valuesets_item:
+            dados = self._valores_para_copia(linha, exclui={"orcamento_item_id"})
+            self.session.add(
+                OrcamentoItemValuesetLinha(**dados, orcamento_item_id=novo_item.id)
+            )
+
+        linhas_custeio = self.session.execute(
+            select(OrcamentoItemCusteioLinha)
+            .where(OrcamentoItemCusteioLinha.orcamento_item_id == item_id)
+            .order_by(OrcamentoItemCusteioLinha.id.asc())
+        ).scalars().all()
+        map_linha: dict[int, OrcamentoItemCusteioLinha] = {}
+        linha_pai_original: dict[int, int | None] = {}
+        for linha in linhas_custeio:
+            dados = self._valores_para_copia(
+                linha,
+                exclui={
+                    "orcamento_item_id",
+                    "orcamento_item_modulo_id",
+                    "linha_pai_id",
+                },
+            )
+            nova_linha = OrcamentoItemCusteioLinha(
+                **dados,
+                orcamento_item_id=novo_item.id,
+                orcamento_item_modulo_id=map_modulo.get(
+                    linha.orcamento_item_modulo_id
+                ),
+                linha_pai_id=None,
+            )
+            self.session.add(nova_linha)
+            self.session.flush()
+            map_linha[linha.id] = nova_linha
+            linha_pai_original[linha.id] = linha.linha_pai_id
+
+        for old_linha_id, old_linha_pai_id in linha_pai_original.items():
+            if old_linha_pai_id is None:
+                continue
+            novo_pai = map_linha.get(old_linha_pai_id)
+            if novo_pai is not None:
+                map_linha[old_linha_id].linha_pai_id = novo_pai.id
+        self.session.flush()
+
+        return self._to_resumo(novo_item)
+
+    def _valores_para_copia(self, origem, *, exclui: set[str]) -> dict[str, Any]:
+        """Return mapped column values for cloning an ORM object."""
+        excluidos = {"id", "created_at", "updated_at"} | exclui
+        mapper = sa_inspect(type(origem))
+        return {
+            attr.key: getattr(origem, attr.key)
+            for attr in mapper.column_attrs
+            if attr.key not in excluidos
+        }
 
     def _to_resumo(self, item: OrcamentoItem) -> OrcamentoItemResumo:
         """Convert an ORM item to the read model."""

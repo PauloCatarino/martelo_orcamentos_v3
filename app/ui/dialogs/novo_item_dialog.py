@@ -108,7 +108,19 @@ class NovoItemDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        # "Gravar como…": só faz sentido a editar um item existente; cria um item
+        # novo (duplicado) em vez de alterar o original.
+        self.save_as_requested = False
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Duplica este item como um item novo (mantendo materiais, ValueSet "
+            "e custeio), sem alterar o original."
+        )
+        self.save_as_button.setVisible(item_data is not None)
         self.button_box.accepted.connect(self._validate_and_accept)
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -137,20 +149,32 @@ class NovoItemDialog(QDialog):
         )
 
     def _validate_and_accept(self) -> None:
-        """Validate required fields before accepting."""
+        """Validate required fields before accepting (edit/create)."""
+        self.save_as_requested = False
+        if self._validate():
+            self.accept()
+
+    def _validate_and_save_as(self) -> None:
+        """Validate before accepting as a duplicated (new) item."""
+        if self._validate():
+            self.save_as_requested = True
+            self.accept()
+
+    def _validate(self) -> bool:
+        """Validate required fields; show the first error and return False."""
         try:
             data = self.get_data()
         except ValueError as error:
             self.error_label.setText(str(error))
-            return
+            return False
 
         if not data.item:
             self.error_label.setText("O item e obrigatorio.")
-            return
+            return False
 
         if data.quantidade <= 0:
             self.error_label.setText("A quantidade deve ser maior que 0.")
-            return
+            return False
 
         try:
             for valor, campo in (
@@ -169,9 +193,9 @@ class NovoItemDialog(QDialog):
             )
         except ValueError as error:
             self.error_label.setText(str(error))
-            return
+            return False
 
-        self.accept()
+        return True
 
     def _parse_optional_decimal(self, value: str) -> Decimal | None:
         """Parse an optional decimal text value."""

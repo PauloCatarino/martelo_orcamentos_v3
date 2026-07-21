@@ -35,7 +35,7 @@ def test_novo_item_dialog_data_tem_preco_manual_default_false() -> None:
 def test_novo_item_valida_dimensoes_e_preco_nao_negativo() -> None:
     from app.ui.dialogs.novo_item_dialog import NovoItemDialog
 
-    source = inspect.getsource(NovoItemDialog._validate_and_accept)
+    source = inspect.getsource(NovoItemDialog._validate)
     assert "validar_decimal" in source
     assert '"Altura"' in source
     assert '"Largura"' in source

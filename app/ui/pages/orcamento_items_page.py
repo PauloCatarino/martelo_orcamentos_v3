@@ -748,6 +748,7 @@ class OrcamentoItemsPage(QWidget):
             self.status_label.setText("Selecione um item para editar.")
             return
 
+        gravar_como = False
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemService(session)
@@ -761,28 +762,36 @@ class OrcamentoItemsPage(QWidget):
                     return
 
                 form_data = dialog.get_data()
-                service.editar_item_simples(
-                    item_id,
-                    EditarOrcamentoItemSimplesData(
-                        codigo=form_data.codigo,
-                        tipo_item=form_data.tipo_item,
-                        item=form_data.item,
-                        descricao=form_data.descricao,
-                        altura=form_data.altura,
-                        largura=form_data.largura,
-                        profundidade=form_data.profundidade,
-                        quantidade=form_data.quantidade,
-                        unidade=form_data.unidade,
-                        preco_unitario=form_data.preco_unitario,
-                        preco_manual=form_data.preco_manual,
-                    ),
+                gravar_como = dialog.save_as_requested
+                edicao = EditarOrcamentoItemSimplesData(
+                    codigo=form_data.codigo,
+                    tipo_item=form_data.tipo_item,
+                    item=form_data.item,
+                    descricao=form_data.descricao,
+                    altura=form_data.altura,
+                    largura=form_data.largura,
+                    profundidade=form_data.profundidade,
+                    quantidade=form_data.quantidade,
+                    unidade=form_data.unidade,
+                    preco_unitario=form_data.preco_unitario,
+                    preco_manual=form_data.preco_manual,
                 )
+                if gravar_como:
+                    service.duplicar_item(item_id, edicao)
+                else:
+                    service.editar_item_simples(item_id, edicao)
         except (SQLAlchemyError, ValueError):
-            self.status_label.setText("Nao foi possivel editar o item.")
+            self.status_label.setText(
+                "Nao foi possivel duplicar o item."
+                if gravar_como
+                else "Nao foi possivel editar o item."
+            )
             return
 
         self.carregar_items()
-        self.status_label.setText("Item atualizado.")
+        self.status_label.setText(
+            "Item duplicado (nova cópia editável)." if gravar_como else "Item atualizado."
+        )
         self._notify_items_changed()
 
     def remover_item_selecionado(self) -> None:

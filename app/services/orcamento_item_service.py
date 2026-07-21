@@ -235,6 +235,65 @@ class OrcamentoItemService:
         )
         return valores
 
+    def duplicar_item(
+        self,
+        item_id: int,
+        data: EditarOrcamentoItemSimplesData,
+    ) -> OrcamentoItemResumo:
+        """Duplicate one item into a new item, applying the edited form values.
+
+        The whole item is deep-copied first (materials, ValueSet, costing,
+        modules and variables), then the dialog's own scalar fields (código,
+        dimensões, quantidade, preço…) overwrite the copy — so the user gets a
+        ready-to-edit clone that keeps every relation of the original.
+        """
+        item_name = data.item.strip()
+        unidade = data.unidade.strip() or "un"
+        tipo_item = normalize_item_type(data.tipo_item)
+
+        if not item_name:
+            raise ValueError("item is required")
+
+        origem = self.repository.get_item_by_id(item_id)
+        if origem is None:
+            raise ValueError("item not found")
+
+        valores = self._validar_valores_item(data)
+        preco_total = valores["quantidade"] * valores["preco_unitario"]
+
+        novo = self.repository.duplicar_item_profundo(item_id)
+        if novo is None:
+            raise ValueError("item not found")
+
+        result = self.repository.update_item(
+            item_id=novo.id,
+            codigo=data.codigo,
+            tipo_item=tipo_item,
+            item=item_name,
+            descricao=data.descricao,
+            altura=valores["altura"],
+            largura=valores["largura"],
+            profundidade=valores["profundidade"],
+            quantidade=valores["quantidade"],
+            unidade=unidade,
+            preco_unitario=valores["preco_unitario"],
+            preco_total=preco_total,
+            preco_manual=data.preco_manual,
+        )
+        self.recalcular_total_versao(result.orcamento_versao_id)
+        label = f"{result.codigo} - {result.item}" if result.codigo else result.item
+        origem_label = (
+            f"{origem.codigo} - {origem.item}" if origem.codigo else origem.item
+        )
+        OrcamentoHistoricoService(self.session).registar(
+            result.orcamento_versao_id,
+            "item",
+            f"Item duplicado de «{origem_label}»: {label}",
+        )
+        self.session.commit()
+
+        return result
+
     def remover_item(self, item_id: int) -> bool:
         """Remove one budget item."""
         item = self.repository.get_item_by_id(item_id)
