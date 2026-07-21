@@ -261,6 +261,19 @@ class OrcamentoRepository:
             orcamento_id=orcamento.id,
         )
 
+    def proxima_versao_por_versao(self, orcamento_versao_id: int) -> int:
+        """Return the next version number for the budget of a given version."""
+        origem = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if origem is None:
+            return 1
+
+        maximo = self.session.execute(
+            select(func.coalesce(func.max(OrcamentoVersao.numero_versao), 0)).where(
+                OrcamentoVersao.orcamento_id == origem.orcamento_id
+            )
+        ).scalar_one()
+        return maximo + 1
+
     def criar_nova_versao(
         self,
         orcamento_versao_id: int,

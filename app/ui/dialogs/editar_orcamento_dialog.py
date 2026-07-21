@@ -57,6 +57,9 @@ class EditarOrcamentoContexto:
     numero_versao: int
     codigo_versao: str
     cliente: ClienteListaResumo | None = None
+    # Next version number for this budget: enables the "Duplicar para versão…"
+    # action (which saves the whole content into a brand new version).
+    proxima_versao: int | None = None
 
 
 class EditarOrcamentoDialog(QDialog):
@@ -76,6 +79,9 @@ class EditarOrcamentoDialog(QDialog):
         self.setMinimumWidth(460)
 
         self._cliente_id: int | None = None
+        self._proxima_versao: int | None = None
+        # Set when the user chose "Duplicar para versão…" instead of "Guardar".
+        self.duplicar_versao_requested = False
 
         self.header_label = QLabel("")
         self.header_label.setObjectName("editarOrcamentoHeader")
@@ -193,6 +199,7 @@ class EditarOrcamentoDialog(QDialog):
                 f"Vers\u00e3o {contexto.numero_versao:02d}"
             )
             self._cliente_id = contexto.cliente.id if contexto.cliente else None
+            self._proxima_versao = contexto.proxima_versao
             self._atualizar_painel_cliente(contexto.cliente)
         elif dados is not None:
             self._cliente_id = dados.cliente_id
@@ -218,6 +225,22 @@ class EditarOrcamentoDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        # "Duplicar para versão NN…": save the whole budget as a brand-new
+        # version of the same budget (the source stays untouched).
+        rotulo_duplicar = (
+            f"Duplicar para versão {self._proxima_versao:02d}…"
+            if self._proxima_versao is not None
+            else "Duplicar para nova versão…"
+        )
+        self.duplicar_versao_button = self.button_box.addButton(
+            rotulo_duplicar, QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.duplicar_versao_button.setToolTip(
+            "Cria uma nova versão deste orçamento com todo o conteúdo "
+            "(itens, custeio e ValueSet), sem alterar a versão atual."
+        )
+        self.duplicar_versao_button.setVisible(self._proxima_versao is not None)
+        self.duplicar_versao_button.clicked.connect(self._duplicar_versao)
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
 
@@ -377,6 +400,12 @@ class EditarOrcamentoDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Accept edits; all fields in this dialog are optional."""
+        self.duplicar_versao_requested = False
+        self.accept()
+
+    def _duplicar_versao(self) -> None:
+        """Accept the dialog signalling a duplicate-to-new-version request."""
+        self.duplicar_versao_requested = True
         self.accept()
 
     def _empty_to_none(self, value: str) -> str | None:

@@ -86,6 +86,9 @@ class _FakeRepository:
             codigo_versao="260001_02",
         )
 
+    def proxima_versao_por_versao(self, orcamento_versao_id: int) -> int:
+        return 5
+
     def update_orcamento(self, orcamento_id, **kwargs) -> bool:
         self.__class__.update_payload = kwargs
         return True
@@ -562,5 +565,50 @@ def test_duplicar_versao_delegada_ao_repositorio(monkeypatch) -> None:
     assert len(session.added) == 1
     evento = session.added[0]
     assert evento.orcamento_versao_id == result.orcamento_versao_id
+    assert evento.tipo == "versao"
+    assert evento.descricao == "Vers\u00e3o 260001_02 criada (duplicada)"
+
+
+def test_get_proxima_versao_delegada_ao_repositorio(monkeypatch) -> None:
+    service, _session = _make_service(monkeypatch)
+
+    assert service.get_proxima_versao(10) == 5
+
+
+def test_duplicar_versao_com_dados_aplica_edicoes_a_nova_versao(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    result = service.duplicar_versao_com_dados(
+        10,
+        service_module.EditarOrcamentoData(
+            obra="  Obra Nova  ",
+            descricao="Desc",
+            localizacao="Faro",
+            ref_cliente="REF-9",
+            estado="Adjudicado",  # ignored: a new version starts at the initial state
+            enc_phc="1234",  # ignored: a new version starts without PHC orders
+            info_1="I1",
+            info_2="I2",
+            utilizador_id=3,
+            cliente_id=8,
+        ),
+        created_by_id=7,
+    )
+
+    # Deep-copied from the source version into the next version.
+    assert _FakeRepository.nova_versao_payload == (10, 7)
+    assert result.codigo_versao == "260001_02"
+    # Version-level edits applied to the NEW version.
+    assert _FakeRepository.dados_versao_payload["obra"] == "Obra Nova"
+    assert _FakeRepository.dados_versao_payload["descricao"] == "Desc"
+    assert _FakeRepository.utilizador_payload == (result.orcamento_versao_id, 3)
+    # Shared (budget-level) fields.
+    assert _FakeRepository.update_payload["ref_cliente"] == "REF-9"
+    assert _FakeRepository.cliente_payload == (result.orcamento_id, 8)
+    # The new version's status is NOT taken from the dialog, and no PHC orders.
+    assert _FakeRepository.estado_payload is None
+    assert _FakeEncomendasService.substituir_payload is None
+    assert session.committed is True
+    evento = session.added[-1]
     assert evento.tipo == "versao"
     assert evento.descricao == "Vers\u00e3o 260001_02 criada (duplicada)"

@@ -228,6 +228,10 @@ class OrcamentoService:
             and cliente_result
         )
 
+    def get_proxima_versao(self, orcamento_versao_id: int) -> int:
+        """Return the next version number for this budget."""
+        return self.repository.proxima_versao_por_versao(orcamento_versao_id)
+
     def duplicar_versao(
         self, orcamento_versao_id: int, created_by_id: int | None = None
     ) -> OrcamentoVersaoCriada:
@@ -235,6 +239,52 @@ class OrcamentoService:
         result = self.repository.duplicar_versao_profunda(
             orcamento_versao_id, created_by_id=created_by_id
         )
+        OrcamentoHistoricoService(self.session).registar(
+            result.orcamento_versao_id,
+            "versao",
+            f"Vers\u00e3o {result.codigo_versao} criada (duplicada)",
+        )
+        self.session.commit()
+
+        return result
+
+    def duplicar_versao_com_dados(
+        self,
+        orcamento_versao_id: int,
+        data: EditarOrcamentoData,
+        created_by_id: int | None = None,
+    ) -> OrcamentoVersaoCriada:
+        """Duplicate the whole budget into the next version ("Gravar como\u2026").
+
+        Deep-copies every item, ValueSet and costing row into a new version of
+        the SAME budget, then applies the header fields shown/edited in the
+        dialog to the NEW version (obra/descri\u00e7\u00e3o/localiza\u00e7\u00e3o/info, user and
+        the shared ref./customer). The source version is left untouched; the
+        new version starts at the initial status and without PHC orders.
+        """
+        result = self.repository.duplicar_versao_profunda(
+            orcamento_versao_id, created_by_id=created_by_id
+        )
+        self.repository.update_versao_dados(
+            result.orcamento_versao_id,
+            obra=(data.obra or "").strip(),
+            descricao=data.descricao,
+            localizacao=data.localizacao,
+            info_1=data.info_1,
+            info_2=data.info_2,
+            updated_by_id=created_by_id,
+        )
+        if data.utilizador_id is not None:
+            self.repository.update_utilizador(
+                result.orcamento_versao_id, data.utilizador_id
+            )
+        self.repository.update_orcamento(
+            result.orcamento_id,
+            ref_cliente=data.ref_cliente,
+            updated_by_id=created_by_id,
+        )
+        if data.cliente_id is not None:
+            self.repository.update_cliente(result.orcamento_id, data.cliente_id)
         OrcamentoHistoricoService(self.session).registar(
             result.orcamento_versao_id,
             "versao",

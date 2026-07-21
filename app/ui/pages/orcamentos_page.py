@@ -122,13 +122,11 @@ class OrcamentosPage(QWidget):
         self.open_button.clicked.connect(self.abrir_orcamento_selecionado)
 
         self.edit_button = QPushButton("Editar Or\u00e7amento")
-        self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
-
-        self.duplicate_version_button = QPushButton("Duplicar para Vers\u00e3o")
-        self.duplicate_version_button.setToolTip(
-            "Criar uma nova vers\u00e3o deste or\u00e7amento copiando itens e custeio."
+        self.edit_button.setToolTip(
+            "Editar os dados gerais; inclui \"Duplicar para vers\u00e3o\u2026\" "
+            "(cria uma nova vers\u00e3o com todo o conte\u00fado)."
         )
-        self.duplicate_version_button.clicked.connect(self.duplicar_versao_selecionada)
+        self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
 
         self.delete_button = QPushButton("Eliminar Or\u00e7amento")
         self.delete_button.setToolTip(
@@ -149,7 +147,6 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
-        actions_layout.addWidget(self.duplicate_version_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
@@ -552,33 +549,32 @@ class OrcamentosPage(QWidget):
         if self.on_open_orcamento is not None:
             self.on_open_orcamento(orcamento)
 
-    def duplicar_versao_selecionada(self) -> None:
-        """Duplicate the selected budget version into a new full version."""
-        row = self.table.currentRow()
-        orcamento = self._orcamentos_by_row.get(row)
-
-        if row < 0 or orcamento is None:
-            self.status_label.setText("Selecione um or\u00e7amento para duplicar.")
-            return
-
-        resposta = QMessageBox.question(
-            self,
-            "Duplicar para Vers\u00e3o",
-            (
-                f"Criar uma nova vers\u00e3o a partir de {orcamento.codigo_versao}?\n"
-                "Copia todos os itens e o custeio."
-            ),
-        )
-        if resposta != QMessageBox.StandardButton.Yes:
-            return
-
+    def _duplicar_versao_com_dados(
+        self,
+        orcamento: OrcamentoResumo,
+        form_data: EditarOrcamentoDialogData,
+    ) -> None:
+        """Save the edited budget as a brand-new version (from Editar Or\u00e7amento)."""
         current_user = app_session.current_user
         created_by_id = current_user.id if current_user is not None else None
 
         try:
             with SessionLocal() as session:
-                resultado = OrcamentoService(session).duplicar_versao(
+                resultado = OrcamentoService(session).duplicar_versao_com_dados(
                     orcamento.orcamento_versao_id,
+                    EditarOrcamentoData(
+                        obra=form_data.obra,
+                        descricao=form_data.descricao,
+                        localizacao=form_data.localizacao,
+                        ref_cliente=form_data.ref_cliente,
+                        estado=form_data.estado,
+                        enc_phc=form_data.enc_phc,
+                        info_1=form_data.info_1,
+                        info_2=form_data.info_2,
+                        utilizador_id=form_data.utilizador_id,
+                        cliente_id=form_data.cliente_id,
+                        encomendas_phc=form_data.encomendas_phc,
+                    ),
                     created_by_id=created_by_id,
                 )
         except (SQLAlchemyError, ValueError):
@@ -889,7 +885,8 @@ class OrcamentosPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                cliente_id_atual = OrcamentoService(session).get_cliente_id_by_versao(
+                service = OrcamentoService(session)
+                cliente_id_atual = service.get_cliente_id_by_versao(
                     orcamento.orcamento_versao_id
                 )
                 cliente_atual = (
@@ -906,9 +903,13 @@ class OrcamentosPage(QWidget):
                         session
                     ).listar_encomendas(orcamento.orcamento_versao_id)
                 )
+                proxima_versao = service.get_proxima_versao(
+                    orcamento.orcamento_versao_id
+                )
         except SQLAlchemyError:
             cliente_id_atual, cliente_atual = None, None
             encomendas_atuais = ()
+            proxima_versao = None
 
         dialog = EditarOrcamentoDialog(
             self,
@@ -930,6 +931,7 @@ class OrcamentosPage(QWidget):
                 numero_versao=orcamento.numero_versao,
                 codigo_versao=orcamento.codigo_versao,
                 cliente=cliente_atual,
+                proxima_versao=proxima_versao,
             ),
         )
 
@@ -937,6 +939,13 @@ class OrcamentosPage(QWidget):
             return
 
         form_data = dialog.get_data()
+
+        # "Duplicar para versão…": save the whole content as a new version of
+        # the same budget, leaving the current version untouched.
+        if dialog.duplicar_versao_requested:
+            self._duplicar_versao_com_dados(orcamento, form_data)
+            return
+
         current_user = app_session.current_user
         updated_by_id = current_user.id if current_user is not None else None
         utilizador_id = form_data.utilizador_id
