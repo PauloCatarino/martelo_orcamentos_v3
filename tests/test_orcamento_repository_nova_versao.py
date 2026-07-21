@@ -20,8 +20,10 @@ from app.models import (
     Orcamento,
     OrcamentoItem,
     OrcamentoItemCusteioLinha,
+    OrcamentoItemCusteioLinhaOperacao,
     OrcamentoItemModulo,
     OrcamentoItemValuesetLinha,
+    OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
     OrcamentoValuesetLinha,
     OrcamentoVersao,
@@ -204,6 +206,29 @@ def test_duplicar_versao_profunda(session: Session) -> None:
     }
     assert {linha.origem_orcamento_versao_id for linha in novos_item_vsl} == {nova.id}
 
+    # Operations of the item ValueSet lines and of the costing lines must be
+    # copied too (2 items × 1 each), else a re-costing drops production costs.
+    origem_vsl_ids = _ids_by_ids(
+        session, OrcamentoItemValuesetLinha, "orcamento_item_id", origem_item_ids
+    )
+    nova_vsl_ids = _ids_by_ids(
+        session, OrcamentoItemValuesetLinha, "orcamento_item_id", nova_item_ids
+    )
+    assert _count_by_ids(
+        session, OrcamentoItemValuesetLinhaOperacao,
+        "orcamento_item_valueset_linha_id", list(origem_vsl_ids),
+    ) == 2
+    assert _count_by_ids(
+        session, OrcamentoItemValuesetLinhaOperacao,
+        "orcamento_item_valueset_linha_id", list(nova_vsl_ids),
+    ) == 2
+    assert _count_by_ids(
+        session, OrcamentoItemCusteioLinhaOperacao, "linha_id", list(origem_linha_ids)
+    ) == 2
+    assert _count_by_ids(
+        session, OrcamentoItemCusteioLinhaOperacao, "linha_id", list(nova_linha_ids)
+    ) == 2
+
 
 def _criar_orcamento_profundo(session: Session) -> OrcamentoVersao:
     cliente = Cliente(nome="Cliente Profundo", is_temporary=True)
@@ -308,17 +333,28 @@ def _criar_item_profundo(
     session.add(modulo)
     session.flush()
 
+    item_vsl = OrcamentoItemValuesetLinha(
+        orcamento_item_id=item.id,
+        chave="MATERIAL",
+        codigo_opcao="MDF",
+        nome_opcao="MDF Branco",
+        padrao=True,
+        ordem=1,
+        origem_orcamento_valueset_linha_id=valueset_versao_id,
+        origem_orcamento_versao_id=versao_id,
+        herdado_do_orcamento=True,
+        ativo=True,
+    )
+    session.add(item_vsl)
+    session.flush()
+
     session.add(
-        OrcamentoItemValuesetLinha(
-            orcamento_item_id=item.id,
-            chave="MATERIAL",
-            codigo_opcao="MDF",
-            nome_opcao="MDF Branco",
-            padrao=True,
+        OrcamentoItemValuesetLinhaOperacao(
+            orcamento_item_valueset_linha_id=item_vsl.id,
+            def_operacao_id=1,
             ordem=1,
-            origem_orcamento_valueset_linha_id=valueset_versao_id,
-            origem_orcamento_versao_id=versao_id,
-            herdado_do_orcamento=True,
+            acao="ADICIONAR",
+            tempo_por_unidade_minutos=Decimal("3"),
             ativo=True,
         )
     )
@@ -338,20 +374,32 @@ def _criar_item_profundo(
     session.add(cabecalho)
     session.flush()
 
+    filho = OrcamentoItemCusteioLinha(
+        orcamento_item_id=item.id,
+        linha_pai_id=cabecalho.id,
+        tipo_linha="PECA",
+        descricao=f"Filho {ordem}",
+        nivel=1,
+        ordem=2,
+        quantidade=Decimal("2"),
+        qt_mod=Decimal("1"),
+        qt_und=Decimal("2"),
+        custo_mp=Decimal("20"),
+        custo_total=Decimal("20"),
+        preco_total=Decimal("30"),
+        ativo=True,
+    )
+    session.add(filho)
+    session.flush()
+
     session.add(
-        OrcamentoItemCusteioLinha(
-            orcamento_item_id=item.id,
-            linha_pai_id=cabecalho.id,
-            tipo_linha="PECA",
-            descricao=f"Filho {ordem}",
-            nivel=1,
-            ordem=2,
-            quantidade=Decimal("2"),
-            qt_mod=Decimal("1"),
-            qt_und=Decimal("2"),
-            custo_mp=Decimal("20"),
-            custo_total=Decimal("20"),
-            preco_total=Decimal("30"),
+        OrcamentoItemCusteioLinhaOperacao(
+            linha_id=filho.id,
+            def_operacao_id=1,
+            ordem=1,
+            codigo="OP1",
+            nome="Operacao local",
+            origem="LOCAL",
             ativo=True,
         )
     )

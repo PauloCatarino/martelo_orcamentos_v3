@@ -19,8 +19,10 @@ from app.models import (
     Orcamento,
     OrcamentoItem,
     OrcamentoItemCusteioLinha,
+    OrcamentoItemCusteioLinhaOperacao,
     OrcamentoItemModulo,
     OrcamentoItemValuesetLinha,
+    OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
     OrcamentoValuesetLinha,
     OrcamentoVersao,
@@ -478,20 +480,21 @@ class OrcamentoRepository:
                         "origem_orcamento_versao_id",
                     },
                 )
-                self.session.add(
-                    OrcamentoItemValuesetLinha(
-                        **dados,
-                        orcamento_item_id=novo_item.id,
-                        origem_orcamento_valueset_linha_id=map_vsl_versao.get(
-                            origem_vsl_id
-                        ),
-                        origem_orcamento_versao_id=(
-                            nova_versao_id
-                            if origem_versao_id == origem.id
-                            else origem_versao_id
-                        ),
-                    )
+                nova_item_vsl = OrcamentoItemValuesetLinha(
+                    **dados,
+                    orcamento_item_id=novo_item.id,
+                    origem_orcamento_valueset_linha_id=map_vsl_versao.get(
+                        origem_vsl_id
+                    ),
+                    origem_orcamento_versao_id=(
+                        nova_versao_id
+                        if origem_versao_id == origem.id
+                        else origem_versao_id
+                    ),
                 )
+                self.session.add(nova_item_vsl)
+                self.session.flush()
+                self._copiar_operacoes_valueset_linha(linha.id, nova_item_vsl.id)
 
             linhas_custeio = self.session.execute(
                 select(OrcamentoItemCusteioLinha)
@@ -521,6 +524,7 @@ class OrcamentoRepository:
                 self.session.flush()
                 map_linha[linha.id] = nova_linha
                 linha_pai_original[linha.id] = linha.linha_pai_id
+                self._copiar_operacoes_custeio_linha(linha.id, nova_linha.id)
 
             for old_linha_id, old_linha_pai_id in linha_pai_original.items():
                 if old_linha_pai_id is None:
@@ -668,6 +672,53 @@ class OrcamentoRepository:
             telefone=cliente.telefone or cliente.telemovel,
             num_cliente=cliente.num_cliente_phc,
         )
+
+    def _copiar_operacoes_valueset_linha(
+        self, origem_linha_id: int, nova_linha_id: int
+    ) -> None:
+        """Clone the variant operations of one item ValueSet line.
+
+        These carry the ferragem mounting / CNC times of the variant; without
+        them a later re-costing drops those production costs.
+        """
+        operacoes = self.session.execute(
+            select(OrcamentoItemValuesetLinhaOperacao)
+            .where(
+                OrcamentoItemValuesetLinhaOperacao.orcamento_item_valueset_linha_id
+                == origem_linha_id
+            )
+            .order_by(
+                OrcamentoItemValuesetLinhaOperacao.ordem.asc(),
+                OrcamentoItemValuesetLinhaOperacao.id.asc(),
+            )
+        ).scalars().all()
+        for operacao in operacoes:
+            dados = self._valores_para_copia(
+                operacao, exclui={"orcamento_item_valueset_linha_id"}
+            )
+            self.session.add(
+                OrcamentoItemValuesetLinhaOperacao(
+                    **dados, orcamento_item_valueset_linha_id=nova_linha_id
+                )
+            )
+
+    def _copiar_operacoes_custeio_linha(
+        self, origem_linha_id: int, nova_linha_id: int
+    ) -> None:
+        """Clone the locally edited per-line operations of one costing line."""
+        operacoes = self.session.execute(
+            select(OrcamentoItemCusteioLinhaOperacao)
+            .where(OrcamentoItemCusteioLinhaOperacao.linha_id == origem_linha_id)
+            .order_by(
+                OrcamentoItemCusteioLinhaOperacao.ordem.asc(),
+                OrcamentoItemCusteioLinhaOperacao.id.asc(),
+            )
+        ).scalars().all()
+        for operacao in operacoes:
+            dados = self._valores_para_copia(operacao, exclui={"linha_id"})
+            self.session.add(
+                OrcamentoItemCusteioLinhaOperacao(**dados, linha_id=nova_linha_id)
+            )
 
     def _valores_para_copia(self, origem, *, exclui: set[str]) -> dict[str, Any]:
         """Return mapped column values for cloning an ORM object."""

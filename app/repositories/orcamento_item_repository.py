@@ -14,8 +14,10 @@ from app.domain.precos import MargensOrcamento
 from app.models import (
     OrcamentoItem,
     OrcamentoItemCusteioLinha,
+    OrcamentoItemCusteioLinhaOperacao,
     OrcamentoItemModulo,
     OrcamentoItemValuesetLinha,
+    OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
     OrcamentoVersao,
 )
@@ -382,9 +384,35 @@ class OrcamentoItemRepository:
         ).scalars().all()
         for linha in valuesets_item:
             dados = self._valores_para_copia(linha, exclui={"orcamento_item_id"})
-            self.session.add(
-                OrcamentoItemValuesetLinha(**dados, orcamento_item_id=novo_item.id)
+            nova_vsl = OrcamentoItemValuesetLinha(
+                **dados, orcamento_item_id=novo_item.id
             )
+            self.session.add(nova_vsl)
+            self.session.flush()
+            # The variant operations (mounting/CNC times of ferragens, etc.) live
+            # in a child table keyed to the ValueSet line — copy them too or a
+            # later recompute loses those production costs.
+            operacoes_vsl = self.session.execute(
+                select(OrcamentoItemValuesetLinhaOperacao)
+                .where(
+                    OrcamentoItemValuesetLinhaOperacao.orcamento_item_valueset_linha_id
+                    == linha.id
+                )
+                .order_by(
+                    OrcamentoItemValuesetLinhaOperacao.ordem.asc(),
+                    OrcamentoItemValuesetLinhaOperacao.id.asc(),
+                )
+            ).scalars().all()
+            for operacao in operacoes_vsl:
+                dados_op = self._valores_para_copia(
+                    operacao, exclui={"orcamento_item_valueset_linha_id"}
+                )
+                self.session.add(
+                    OrcamentoItemValuesetLinhaOperacao(
+                        **dados_op,
+                        orcamento_item_valueset_linha_id=nova_vsl.id,
+                    )
+                )
 
         linhas_custeio = self.session.execute(
             select(OrcamentoItemCusteioLinha)
@@ -414,6 +442,24 @@ class OrcamentoItemRepository:
             self.session.flush()
             map_linha[linha.id] = nova_linha
             linha_pai_original[linha.id] = linha.linha_pai_id
+
+            # Locally edited per-line operations (override the piece/variant
+            # snapshot) are keyed to the costing line — copy them to the new id.
+            operacoes_linha = self.session.execute(
+                select(OrcamentoItemCusteioLinhaOperacao)
+                .where(OrcamentoItemCusteioLinhaOperacao.linha_id == linha.id)
+                .order_by(
+                    OrcamentoItemCusteioLinhaOperacao.ordem.asc(),
+                    OrcamentoItemCusteioLinhaOperacao.id.asc(),
+                )
+            ).scalars().all()
+            for operacao in operacoes_linha:
+                dados_op = self._valores_para_copia(operacao, exclui={"linha_id"})
+                self.session.add(
+                    OrcamentoItemCusteioLinhaOperacao(
+                        **dados_op, linha_id=nova_linha.id
+                    )
+                )
 
         for old_linha_id, old_linha_pai_id in linha_pai_original.items():
             if old_linha_pai_id is None:

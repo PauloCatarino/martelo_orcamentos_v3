@@ -21,8 +21,10 @@ from app.models import (
     Orcamento,
     OrcamentoItem,
     OrcamentoItemCusteioLinha,
+    OrcamentoItemCusteioLinhaOperacao,
     OrcamentoItemModulo,
     OrcamentoItemValuesetLinha,
+    OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
     OrcamentoValuesetLinha,
     OrcamentoVersao,
@@ -107,6 +109,40 @@ def test_duplicar_item_remapeia_modulo_e_linha_pai(session: Session) -> None:
     com_pai = [l for l in novas_linhas if l.linha_pai_id is not None]
     assert com_pai
     assert all(l.linha_pai_id in novos_ids for l in com_pai)
+
+
+def test_duplicar_item_copia_operacoes_das_linhas(session: Session) -> None:
+    """The variant ops (ValueSet line) and per-line ops must travel with the copy.
+
+    Without them, a later re-costing would drop the hardware mounting/CNC
+    production costs — the exact regression reported on 260002_04.
+    """
+    _, item = _criar_item_profundo(session)
+    service = OrcamentoItemService(session)
+
+    novo = service.duplicar_item(item.id, _edicao())
+
+    # ValueSet-line variant operations.
+    novo_vsl_ids = _ids(session, OrcamentoItemValuesetLinha, "orcamento_item_id", novo.id)
+    novas_vsl_ops = session.execute(
+        select(OrcamentoItemValuesetLinhaOperacao).where(
+            OrcamentoItemValuesetLinhaOperacao.orcamento_item_valueset_linha_id.in_(
+                novo_vsl_ids
+            )
+        )
+    ).scalars().all()
+    assert len(novas_vsl_ops) == 1
+    assert novas_vsl_ops[0].tempo_por_unidade_minutos == Decimal("3")
+
+    # Per-line local operations.
+    novo_linha_ids = _ids(session, OrcamentoItemCusteioLinha, "orcamento_item_id", novo.id)
+    novas_linha_ops = session.execute(
+        select(OrcamentoItemCusteioLinhaOperacao).where(
+            OrcamentoItemCusteioLinhaOperacao.linha_id.in_(novo_linha_ids)
+        )
+    ).scalars().all()
+    assert len(novas_linha_ops) == 1
+    assert novas_linha_ops[0].codigo == "OP1"
 
 
 def test_duplicar_item_mantem_origem_valueset_versao(session: Session) -> None:
@@ -200,17 +236,29 @@ def _criar_item_profundo(session: Session) -> tuple[OrcamentoVersao, OrcamentoIt
     session.add(modulo)
     session.flush()
 
+    item_vsl = OrcamentoItemValuesetLinha(
+        orcamento_item_id=item.id,
+        chave="FERRAGEM_PUXADOR",
+        codigo_opcao="PUX-J",
+        nome_opcao="Puxador J",
+        padrao=True,
+        ordem=1,
+        origem_orcamento_valueset_linha_id=valueset_versao.id,
+        origem_orcamento_versao_id=versao.id,
+        herdado_do_orcamento=True,
+        ativo=True,
+    )
+    session.add(item_vsl)
+    session.flush()
+
+    # The variant operation that carries the hardware mounting cost.
     session.add(
-        OrcamentoItemValuesetLinha(
-            orcamento_item_id=item.id,
-            chave="MATERIAL",
-            codigo_opcao="MDF",
-            nome_opcao="MDF Branco",
-            padrao=True,
+        OrcamentoItemValuesetLinhaOperacao(
+            orcamento_item_valueset_linha_id=item_vsl.id,
+            def_operacao_id=1,
             ordem=1,
-            origem_orcamento_valueset_linha_id=valueset_versao.id,
-            origem_orcamento_versao_id=versao.id,
-            herdado_do_orcamento=True,
+            acao="ADICIONAR",
+            tempo_por_unidade_minutos=Decimal("3"),
             ativo=True,
         )
     )
@@ -230,18 +278,31 @@ def _criar_item_profundo(session: Session) -> tuple[OrcamentoVersao, OrcamentoIt
     session.add(cabecalho)
     session.flush()
 
+    filho = OrcamentoItemCusteioLinha(
+        orcamento_item_id=item.id,
+        linha_pai_id=cabecalho.id,
+        tipo_linha="PECA",
+        descricao="Filho 1",
+        nivel=1,
+        ordem=2,
+        quantidade=Decimal("2"),
+        custo_mp=Decimal("20"),
+        custo_total=Decimal("20"),
+        preco_total=Decimal("30"),
+        ativo=True,
+    )
+    session.add(filho)
+    session.flush()
+
+    # A locally edited per-line operation on the costing line.
     session.add(
-        OrcamentoItemCusteioLinha(
-            orcamento_item_id=item.id,
-            linha_pai_id=cabecalho.id,
-            tipo_linha="PECA",
-            descricao="Filho 1",
-            nivel=1,
-            ordem=2,
-            quantidade=Decimal("2"),
-            custo_mp=Decimal("20"),
-            custo_total=Decimal("20"),
-            preco_total=Decimal("30"),
+        OrcamentoItemCusteioLinhaOperacao(
+            linha_id=filho.id,
+            def_operacao_id=1,
+            ordem=1,
+            codigo="OP1",
+            nome="Operacao local",
+            origem="LOCAL",
             ativo=True,
         )
     )
@@ -253,3 +314,7 @@ def _criar_item_profundo(session: Session) -> tuple[OrcamentoVersao, OrcamentoIt
 def _rows(session: Session, model, field: str, value: int):
     coluna = getattr(model, field)
     return list(session.execute(select(model).where(coluna == value)).scalars())
+
+
+def _ids(session: Session, model, field: str, value: int) -> list[int]:
+    return [row.id for row in _rows(session, model, field, value)]
