@@ -87,7 +87,10 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "SelecionarClienteDialog" not in inspect.getsource(ProducaoPage)
     assert "QCalendarWidget" in inspect.getsource(ProducaoPage)
     assert "QSplitter" in init_source
-    assert 'ligar_persistencia_splitter(self.splitter, "producao")' in init_source
+    assert (
+        'ligar_persistencia_splitter(self.splitter, "producao_detalhe_amplo")'
+        in init_source
+    )
 
 
 def test_producao_page_detail_editing_hooks() -> None:
@@ -231,7 +234,8 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
 
     # Imagem maior e campo com a pasta da obra.
     imagem_source = inspect.getsource(ProducaoPage._criar_painel_imagem)
-    assert "setFixedSize(460, 330)" in imagem_source
+    assert "setMinimumSize(460, 340)" in imagem_source
+    assert "QSizePolicy.Policy.Expanding" in imagem_source
     assert hasattr(ProducaoPage, "_criar_campo_pasta_obra")
     assert hasattr(ProducaoPage, "_copiar_caminho_pasta")
     assert hasattr(ProducaoPage, "_atualizar_campo_pasta_obra")

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStyle,
     QTableWidget,
@@ -426,10 +427,12 @@ class ProducaoPage(QWidget):
         self.splitter.setChildrenCollapsible(False)
         self.splitter.addWidget(self.detail_panel)
         self.splitter.addWidget(table_panel)
-        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 1)
-        if not ligar_persistencia_splitter(self.splitter, "producao"):
-            self.splitter.setSizes([620, 300])
+        # Chave nova: o layout mudou, as alturas guardadas do layout antigo
+        # deixariam a tabela demasiado alta.
+        if not ligar_persistencia_splitter(self.splitter, "producao_detalhe_amplo"):
+            self.splitter.setSizes([700, 260])
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -540,18 +543,27 @@ class ProducaoPage(QWidget):
                 widget,
             )
 
-        for coluna_label in (0, 2):
-            dados_grid.setColumnStretch(coluna_label, 0)
-        for coluna_campo in (1, 3):
-            dados_grid.setColumnStretch(coluna_campo, 1)
+        # Tudo encostado à esquerda: o espaço a mais fica na coluna 4 (vazia).
+        for coluna in range(4):
+            dados_grid.setColumnStretch(coluna, 0)
+        dados_grid.setColumnStretch(4, 1)
+        self._compactar_campos_detalhe(campos)
 
         dados_widget = QWidget()
         dados_widget.setLayout(dados_grid)
+        # Os campos ficam com largura contida para sobrar espaço à imagem.
+        dados_widget.setMaximumWidth(920)
         topo_layout = QHBoxLayout()
         topo_layout.setContentsMargins(0, 0, 0, 0)
         topo_layout.setSpacing(14)
-        topo_layout.addWidget(dados_widget, stretch=2)
-        topo_layout.addWidget(self._criar_painel_imagem(), stretch=0)
+        painel_imagem = self._criar_painel_imagem()
+        painel_imagem.setMaximumWidth(1020)
+        topo_layout.addWidget(
+            dados_widget,
+            stretch=1,
+            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+        )
+        topo_layout.addWidget(painel_imagem, stretch=1)
 
         self.descricao_artigos_text = self._text_edit()
         self.materias_usados_text = self._text_edit()
@@ -628,6 +640,13 @@ class ProducaoPage(QWidget):
         scroll.setMinimumHeight(240)
         return scroll
 
+    def _compactar_campos_detalhe(self, campos: list) -> None:
+        """Keep the detail fields short so the whole form stays visible."""
+        for campo in campos:
+            widget = campo[1]
+            widget.setFixedHeight(22)
+            widget.setMaximumWidth(360)
+
     def _readonly_line(self) -> QLineEdit:
         line = QLineEdit()
         line.setReadOnly(True)
@@ -639,7 +658,7 @@ class ProducaoPage(QWidget):
     def _text_edit(self) -> QTextEdit:
         text_edit = QTextEdit()
         text_edit.setAcceptRichText(False)
-        text_edit.setMinimumHeight(78)
+        text_edit.setMinimumHeight(72)
         return text_edit
 
     def _criar_painel_imagem(self) -> QWidget:
@@ -651,7 +670,11 @@ class ProducaoPage(QWidget):
         self.imagem_preview = _ImagemPreviewLabel(self._abrir_imagem_pdf)
         self.imagem_preview.setText("Sem imagem")
         self.imagem_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagem_preview.setFixedSize(460, 330)
+        self.imagem_preview.setMinimumSize(460, 340)
+        self.imagem_preview.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self.imagem_preview.setStyleSheet(
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
@@ -661,7 +684,7 @@ class ProducaoPage(QWidget):
         self.fs_model = QFileSystemModel()
         self.arvore_pasta = QTreeView()
         self.arvore_pasta.setModel(self.fs_model)
-        self.arvore_pasta.setFixedSize(460, 330)
+        self.arvore_pasta.setMinimumSize(460, 340)
         self.arvore_pasta.setHeaderHidden(True)
         self.arvore_pasta.setStyleSheet(
             f"QTreeView {{ background-color: {tema.BEGE_CLARO};"
@@ -683,9 +706,8 @@ class ProducaoPage(QWidget):
         self.imagem_stack.addWidget(self.imagem_preview)
         self.imagem_stack.addWidget(self.arvore_pasta)
 
-        layout.addWidget(self.imagem_stack)
+        layout.addWidget(self.imagem_stack, stretch=1)
         layout.addWidget(self._criar_campo_pasta_obra())
-        layout.addStretch()
         return panel
 
     def _criar_campo_pasta_obra(self) -> QWidget:
