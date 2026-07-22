@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
-    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -87,7 +86,7 @@ from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
-from app.ui.icones import icone_ficheiro
+from app.ui.icones import icone, icone_ficheiro
 from app.ui.helpers.colunas_producao import (
     COLUNAS_PRODUCAO,
     LARGURAS_DEFAULT_PRODUCAO,
@@ -744,9 +743,7 @@ class ProducaoPage(QWidget):
         )
 
         self.abrir_pasta_campo_button = QPushButton("Abrir")
-        self.abrir_pasta_campo_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
-        )
+        self.abrir_pasta_campo_button.setIcon(icone("pasta_abrir"))
         self.abrir_pasta_campo_button.setToolTip(
             "Abrir esta pasta no explorador (o caminho pode ser copiado do campo)"
         )
@@ -769,11 +766,11 @@ class ProducaoPage(QWidget):
         pasta do orçamento existe mesmo no servidor.
         """
         self._pasta_orcamento: Path | None = None
-        icone = self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+        icone_pasta = icone("pasta_abrir")
 
         self._acoes_pasta_orcamento = []
         for campo in (self.num_orcamento_input, self.versao_orc_input):
-            acao = QAction(icone, "Abrir pasta do orçamento", campo)
+            acao = QAction(icone_pasta, "Abrir pasta do orçamento", campo)
             acao.setVisible(False)
             acao.triggered.connect(self._abrir_pasta_orcamento)
             campo.addAction(acao, QLineEdit.ActionPosition.TrailingPosition)
@@ -1326,6 +1323,7 @@ class ProducaoPage(QWidget):
         self._processos_by_row = {}
         estado_sinais = self.table.blockSignals(True)
         self.table.setRowCount(len(processos))
+        icone_pasta = icone("pasta_abrir")  # carregado uma vez para todas as linhas
 
         for row_index, processo in enumerate(processos):
             self._processos_by_row[row_index] = processo
@@ -1343,11 +1341,7 @@ class ProducaoPage(QWidget):
                         item.setBackground(QColor(fundo))
                         item.setForeground(QColor(texto))
                 if coluna.key == "processo":
-                    item.setIcon(
-                        self.style().standardIcon(
-                            QStyle.StandardPixmap.SP_DirOpenIcon
-                        )
-                    )
+                    item.setIcon(icone_pasta)
                     item.setToolTip("Ver pastas do processo")
                 if column_index == 0:
                     item.setData(Qt.ItemDataRole.UserRole, {"producao_id": processo.id})

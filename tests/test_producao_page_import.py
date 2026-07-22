@@ -191,7 +191,7 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "icone_ficheiro" in source
     assert '"icon_cut_rite.ico"' in source
     assert '"icon_imos_2025.ico"' in source
-    assert "QStyle.StandardPixmap.SP_DirOpenIcon" in source
+    assert 'icone("pasta_abrir")' in source  # icone castanho do tema
     assert "item.setIcon" in source
     assert "Ver pastas do processo" in source
     assert "normalizar_data" in source
@@ -253,7 +253,7 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
     assert not hasattr(ProducaoPage, "_copiar_caminho_pasta")
     pasta_source = inspect.getsource(ProducaoPage._criar_campo_pasta_obra)
     assert "copiar_pasta_button" not in pasta_source
-    assert "QStyle.StandardPixmap.SP_DirOpenIcon" in pasta_source
+    assert 'icone("pasta_abrir")' in pasta_source
 
     # Atalho para a pasta do orçamento nos campos Nº Orçamento / V. Orç.
     assert hasattr(ProducaoPage, "_preparar_link_pasta_orcamento")
