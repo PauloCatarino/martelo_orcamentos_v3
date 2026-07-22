@@ -40,9 +40,14 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "self.table" in init_source
     assert "Data em que a obra foi criada nesta lista" in init_source
     assert "COLUNAS_PRODUCAO" in inspect.getsource(ProducaoPage)
-    assert '"Colunas"' in init_source
-    assert "Escolher as colunas visíveis" in init_source
+    # O botão "Colunas" foi substituído pelo menu do botão direito no cabeçalho.
+    assert '"Colunas"' not in init_source
+    assert "customContextMenuRequested.connect(self._abrir_menu_colunas)" in init_source
+    assert "Clique com o botão direito para escolher as colunas visíveis" in init_source
     assert "sectionResized" in init_source
+    assert '"⟳ Atualizar dados V2"' in init_source
+    assert "self.atualizar_v2_button.clicked.connect(self._atualizar_dados_v2)" in init_source
+    assert "self.obras_ano_label" in init_source
     assert "ligar_persistencia_larguras" not in inspect.getsource(ProducaoPage)
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source
@@ -203,6 +208,46 @@ def test_producao_page_detail_editing_hooks() -> None:
         "Encomenda de Cliente",
         "Encomenda de Cliente Final",
     )
+
+
+def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
+    from app.ui.pages.producao_page import ProducaoPage
+
+    source = inspect.getsource(ProducaoPage)
+
+    # Colunas via menu do botão direito, guardadas por utilizador.
+    assert hasattr(ProducaoPage, "_abrir_menu_colunas")
+    assert hasattr(ProducaoPage, "_alternar_coluna")
+    assert hasattr(ProducaoPage, "_mostrar_todas_colunas")
+    assert hasattr(ProducaoPage, "_repor_colunas_default")
+    assert "ColunasProducaoDialog" not in source
+    assert "Mostrar todas" in source
+    assert "Repor colunas por defeito" in source
+
+    # Textos em 2 linhas x 3 colunas.
+    detalhe_source = inspect.getsource(ProducaoPage._criar_painel_detalhe)
+    assert "row = (index // 3) * 2" in detalhe_source
+    assert "col = index % 3" in detalhe_source
+
+    # Imagem maior e campo com a pasta da obra.
+    imagem_source = inspect.getsource(ProducaoPage._criar_painel_imagem)
+    assert "setFixedSize(460, 330)" in imagem_source
+    assert hasattr(ProducaoPage, "_criar_campo_pasta_obra")
+    assert hasattr(ProducaoPage, "_copiar_caminho_pasta")
+    assert hasattr(ProducaoPage, "_atualizar_campo_pasta_obra")
+    assert "QApplication.clipboard().setText(caminho)" in source
+    assert "caminho_versao_de_processo" in source
+
+    # Botão temporário de sincronização com o V2.
+    assert hasattr(ProducaoPage, "_atualizar_dados_v2")
+    assert "comparar_v2_com_v3" in source
+    assert "ProducaoV2SyncDialog" in source
+    assert "aplicar_selecao" in source
+
+    # Contador de obras do ano atual.
+    contador_source = inspect.getsource(ProducaoPage._atualizar_contador_obras_ano)
+    assert "QDate.currentDate().year()" in contador_source
+    assert "self._combo_valor(self.responsavel_combo)" in contador_source
 
 
 def test_producao_page_abre_pastas_no_duplo_clique_do_processo() -> None:

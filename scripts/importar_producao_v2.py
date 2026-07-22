@@ -27,45 +27,23 @@ from sqlalchemy import create_engine, select, text  # noqa: E402
 from sqlalchemy.engine import Engine, URL  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 
-from app.domain.datas import normalizar_data  # noqa: E402
+from app.services.producao_v2_sync_service import (  # noqa: E402
+    CAMPOS_DIRETOS_V2_V3,
+    mapear_estado,
+    mapear_linha,
+)
 
 
 V2_DEFAULT_HOST = "192.168.5.201"
 V2_DEFAULT_PORT = "3306"
 V2_DEFAULT_DB_NAME = "orcamentos_v2"
 
-CAMPOS_DIRETOS_V2_V3: tuple[str, ...] = (
-    "codigo_processo",
-    "ano",
-    "num_enc_phc",
-    "versao_obra",
-    "versao_plano",
-    "responsavel",
-    "nome_cliente",
-    "nome_cliente_simplex",
-    "num_cliente_phc",
-    "ref_cliente",
-    "num_orcamento",
-    "versao_orc",
-    "obra",
-    "localizacao",
-    "descricao_orcamento",
-    "data_inicio",
-    "data_entrega",
-    "preco_total",
-    "qt_artigos",
-    "descricao_artigos",
-    "materias_usados",
-    "descricao_producao",
-    "notas1",
-    "notas2",
-    "notas3",
-    "imagem_path",
-    "pasta_servidor",
-    "tipo_pasta",
-    "created_at",
-    "updated_at",
-)
+__all__ = [
+    "CAMPOS_DIRETOS_V2_V3",
+    "mapear_estado",
+    "mapear_linha",
+    "main",
+]
 
 
 class ConfigError(RuntimeError):
@@ -83,24 +61,6 @@ class ImportSummary:
     sem_orcamento_associado: int = 0
     erros: int = 0
     avisos: list[str] = field(default_factory=list)
-
-
-def mapear_estado(v2_estado: object) -> object:
-    """Map legacy V2 production states into V3 canonical states."""
-    if v2_estado is None:
-        return None
-    if str(v2_estado).strip() == "Planeamento":
-        return "Desenho"
-    return v2_estado
-
-
-def mapear_linha(v2_row: Mapping[str, Any]) -> dict[str, Any]:
-    """Map one V2 ``producao`` row into V3 production fields, excluding FKs."""
-    valores = {campo: v2_row.get(campo) for campo in CAMPOS_DIRETOS_V2_V3}
-    valores["estado"] = mapear_estado(v2_row.get("estado"))
-    valores["data_inicio"] = normalizar_data(valores.get("data_inicio"))
-    valores["data_entrega"] = normalizar_data(valores.get("data_entrega"))
-    return valores
 
 
 def criar_engine_v2() -> Engine:

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -67,18 +68,23 @@ from app.services.producao_service import (
     listar_processos_por_encomenda,
     preparar_nova_versao,
 )
+from app.services.producao_v2_sync_service import (
+    ProducaoV2ConfigError,
+    aplicar_selecao,
+    comparar_v2_com_v3,
+)
 from app.services.producao_pastas_service import (
     arvore_pastas_processo,
     caminho_versao_de_processo,
     preview_conteudo_pasta,
 )
 from app.ui import tema
-from app.ui.dialogs.colunas_producao_dialog import ColunasProducaoDialog
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
+from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import icone_ficheiro
 from app.ui.helpers.colunas_producao import (
     COLUNAS_PRODUCAO,
@@ -250,10 +256,6 @@ class ProducaoPage(QWidget):
             ["Obras em produção do Martelo V3"],
         )
 
-        self.columns_button = QPushButton("Colunas")
-        self.columns_button.setToolTip("Escolher as colunas visíveis")
-        self.columns_button.clicked.connect(self._abrir_dialog_colunas)
-
         self.convert_button = QPushButton("Converter Orçamento")
         self.convert_button.setToolTip("Converter um orçamento adjudicado numa obra de produção")
         self.convert_button.clicked.connect(self._converter_orcamento)
@@ -312,8 +314,18 @@ class ProducaoPage(QWidget):
         self.refresh_button.setToolTip("Recarregar a lista de obras")
         self.refresh_button.clicked.connect(self.carregar_processos)
 
+        self.atualizar_v2_button = QPushButton("⟳ Atualizar dados V2")
+        self.atualizar_v2_button.setToolTip(
+            "TEMPORÁRIO (fase de transição): comparar as obras do Martelo V2 com as "
+            "do V3 e escolher o que trazer. O V2 nunca é alterado."
+        )
+        self.atualizar_v2_button.setStyleSheet(
+            "QPushButton { border: 2px solid #1D6FA5; color: #1D6FA5; "
+            "font-weight: bold; }"
+        )
+        self.atualizar_v2_button.clicked.connect(self._atualizar_dados_v2)
+
         actions_layout = QHBoxLayout()
-        actions_layout.addWidget(self.columns_button)
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.novo_processo_button)
         actions_layout.addWidget(self.pastas_button)
@@ -325,6 +337,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.atualizar_v2_button)
         actions_layout.addStretch()
 
         self.campo_pesquisa = CampoPesquisa()
@@ -337,6 +350,19 @@ class ProducaoPage(QWidget):
         for combo in (self.estado_combo, self.cliente_combo, self.responsavel_combo):
             combo.currentTextChanged.connect(self._render)
 
+        self.obras_ano_label = QLabel("")
+        self.obras_ano_label.setObjectName("producaoObrasAno")
+        self.obras_ano_label.setStyleSheet(
+            f"QLabel#producaoObrasAno {{ background-color: {tema.BEGE_AREIA}; "
+            f"color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CASTANHO_MEDIO}; "
+            "border-radius: 4px; padding: 4px 12px; font-weight: bold; }"
+        )
+        self.obras_ano_label.setToolTip(
+            "Obras do ano atual. Com Responsável = Todos conta todas as obras do ano; "
+            "com um responsável escolhido conta só as obras desse responsável no ano. "
+            "O total de todos os anos está no rodapé da tabela."
+        )
+
         filters_layout = QHBoxLayout()
         filters_layout.setSpacing(10)
         filters_layout.addWidget(self.campo_pesquisa)
@@ -347,6 +373,7 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(QLabel("Responsável"))
         filters_layout.addWidget(self.responsavel_combo)
         filters_layout.addStretch()
+        filters_layout.addWidget(self.obras_ano_label)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("producaoStatus")
@@ -369,6 +396,12 @@ class ProducaoPage(QWidget):
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+        )
+        header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._abrir_menu_colunas)
+        header.setToolTip(
+            "Clique com o botão direito para escolher as colunas visíveis. "
+            "As larguras e as colunas escolhidas ficam guardadas por utilizador."
         )
         self._aplicar_larguras_colunas()
         header.sectionResized.connect(self._on_coluna_redimensionada)
@@ -396,7 +429,7 @@ class ProducaoPage(QWidget):
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         if not ligar_persistencia_splitter(self.splitter, "producao"):
-            self.splitter.setSizes([330, 520])
+            self.splitter.setSizes([620, 300])
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -457,8 +490,9 @@ class ProducaoPage(QWidget):
         self.tipo_pasta_combo.addItems(TIPOS_PASTA_PRODUCAO)
 
         dados_grid = QGridLayout()
-        dados_grid.setHorizontalSpacing(8)
-        dados_grid.setVerticalSpacing(6)
+        dados_grid.setContentsMargins(0, 0, 0, 0)
+        dados_grid.setHorizontalSpacing(6)
+        dados_grid.setVerticalSpacing(2)
         campos = [
             ("Processo", self.processo_input),
             (
@@ -506,13 +540,18 @@ class ProducaoPage(QWidget):
                 widget,
             )
 
+        for coluna_label in (0, 2):
+            dados_grid.setColumnStretch(coluna_label, 0)
+        for coluna_campo in (1, 3):
+            dados_grid.setColumnStretch(coluna_campo, 1)
+
         dados_widget = QWidget()
         dados_widget.setLayout(dados_grid)
         topo_layout = QHBoxLayout()
         topo_layout.setContentsMargins(0, 0, 0, 0)
-        topo_layout.setSpacing(12)
+        topo_layout.setSpacing(14)
         topo_layout.addWidget(dados_widget, stretch=2)
-        topo_layout.addWidget(self._criar_painel_imagem(), stretch=1)
+        topo_layout.addWidget(self._criar_painel_imagem(), stretch=0)
 
         self.descricao_artigos_text = self._text_edit()
         self.materias_usados_text = self._text_edit()
@@ -522,8 +561,9 @@ class ProducaoPage(QWidget):
         self.notas3_text = self._text_edit()
 
         textos_grid = QGridLayout()
-        textos_grid.setHorizontalSpacing(8)
-        textos_grid.setVerticalSpacing(6)
+        textos_grid.setContentsMargins(0, 0, 0, 0)
+        textos_grid.setHorizontalSpacing(10)
+        textos_grid.setVerticalSpacing(4)
         textos = [
             ("Descrição artigos", self.descricao_artigos_text),
             ("Matérias usados", self.materias_usados_text),
@@ -532,11 +572,14 @@ class ProducaoPage(QWidget):
             ("Notas 2", self.notas2_text),
             ("Notas 3", self.notas3_text),
         ]
+        # 2 linhas x 3 colunas: cada bloco ocupa uma linha de label e outra de campo.
         for index, (label, widget) in enumerate(textos):
-            row = (index // 2) * 2
-            col = index % 2
+            row = (index // 3) * 2
+            col = index % 3
             textos_grid.addWidget(QLabel(label), row, col)
             textos_grid.addWidget(widget, row + 1, col)
+        for col in range(3):
+            textos_grid.setColumnStretch(col, 1)
 
         layout = QVBoxLayout(grupo)
         layout.setContentsMargins(10, 14, 10, 10)
@@ -596,7 +639,7 @@ class ProducaoPage(QWidget):
     def _text_edit(self) -> QTextEdit:
         text_edit = QTextEdit()
         text_edit.setAcceptRichText(False)
-        text_edit.setMinimumHeight(115)
+        text_edit.setMinimumHeight(78)
         return text_edit
 
     def _criar_painel_imagem(self) -> QWidget:
@@ -608,7 +651,7 @@ class ProducaoPage(QWidget):
         self.imagem_preview = _ImagemPreviewLabel(self._abrir_imagem_pdf)
         self.imagem_preview.setText("Sem imagem")
         self.imagem_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagem_preview.setFixedSize(360, 300)
+        self.imagem_preview.setFixedSize(460, 330)
         self.imagem_preview.setStyleSheet(
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
@@ -618,7 +661,7 @@ class ProducaoPage(QWidget):
         self.fs_model = QFileSystemModel()
         self.arvore_pasta = QTreeView()
         self.arvore_pasta.setModel(self.fs_model)
-        self.arvore_pasta.setFixedSize(360, 300)
+        self.arvore_pasta.setFixedSize(460, 330)
         self.arvore_pasta.setHeaderHidden(True)
         self.arvore_pasta.setStyleSheet(
             f"QTreeView {{ background-color: {tema.BEGE_CLARO};"
@@ -641,8 +684,80 @@ class ProducaoPage(QWidget):
         self.imagem_stack.addWidget(self.arvore_pasta)
 
         layout.addWidget(self.imagem_stack)
+        layout.addWidget(self._criar_campo_pasta_obra())
         layout.addStretch()
         return panel
+
+    def _criar_campo_pasta_obra(self) -> QWidget:
+        """Read-only, selectable folder path with copy/open shortcuts."""
+        painel = QWidget()
+        layout = QVBoxLayout(painel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+
+        titulo = QLabel("Pasta da obra")
+        titulo.setStyleSheet(f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;")
+
+        self.pasta_obra_input = QLineEdit()
+        self.pasta_obra_input.setReadOnly(True)
+        self.pasta_obra_input.setCursorPosition(0)
+        self.pasta_obra_input.setStyleSheet(
+            f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO};"
+        )
+        self.pasta_obra_input.setToolTip(
+            "Caminho da pasta desta versão da obra — pode selecionar e copiar (Ctrl+C)"
+        )
+
+        self.copiar_pasta_button = QPushButton("Copiar")
+        self.copiar_pasta_button.setToolTip("Copiar o caminho para a área de transferência")
+        self.copiar_pasta_button.clicked.connect(self._copiar_caminho_pasta)
+
+        self.abrir_pasta_campo_button = QPushButton("Abrir")
+        self.abrir_pasta_campo_button.setToolTip("Abrir esta pasta no explorador")
+        self.abrir_pasta_campo_button.clicked.connect(self._abrir_pasta_versao_selecionada)
+
+        linha = QHBoxLayout()
+        linha.setContentsMargins(0, 0, 0, 0)
+        linha.setSpacing(4)
+        linha.addWidget(self.pasta_obra_input, stretch=1)
+        linha.addWidget(self.copiar_pasta_button)
+        linha.addWidget(self.abrir_pasta_campo_button)
+
+        layout.addWidget(titulo)
+        layout.addLayout(linha)
+        return painel
+
+    def _copiar_caminho_pasta(self) -> None:
+        caminho = self.pasta_obra_input.text().strip()
+        if not caminho:
+            self.status_label.setText("Sem pasta para copiar.")
+            return
+        QApplication.clipboard().setText(caminho)
+        self.status_label.setText("Caminho da pasta copiado.")
+
+    def _atualizar_campo_pasta_obra(self, proc: Producao | None) -> None:
+        """Show the server folder path for the selected process version."""
+        if not hasattr(self, "pasta_obra_input"):
+            return
+        if proc is None:
+            self.pasta_obra_input.clear()
+            self.pasta_obra_input.setToolTip("Sem obra selecionada")
+            return
+
+        caminho = ""
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, proc.id)
+                if processo_db is not None:
+                    caminho = str(caminho_versao_de_processo(session, processo_db))
+        except (SQLAlchemyError, ValueError, OSError):
+            caminho = str(getattr(proc, "pasta_servidor", "") or "")
+
+        self.pasta_obra_input.setText(caminho)
+        self.pasta_obra_input.setCursorPosition(0)
+        self.pasta_obra_input.setToolTip(
+            caminho or "Pasta ainda não definida para esta obra"
+        )
 
     def _label_com_icone(self, texto: str, nome_icone: str) -> QWidget:
         label_widget = QWidget()
@@ -778,7 +893,28 @@ class ProducaoPage(QWidget):
         )
         self._preencher_tabela(filtrados)
         self.footer_label.setText(f"{len(filtrados)} de {len(self._todos)}")
+        self._atualizar_contador_obras_ano()
         self._restaurar_selecao_apos_render(selected_id)
+
+    def _atualizar_contador_obras_ano(self) -> None:
+        """Count this year's works, narrowed by the Responsável filter."""
+        ano_atual = str(QDate.currentDate().year())
+        responsavel = self._combo_valor(self.responsavel_combo)
+
+        total = 0
+        for processo in self._todos:
+            if str(getattr(processo, "ano", "") or "").strip() != ano_atual:
+                continue
+            if responsavel is not None:
+                valor = str(getattr(processo, "responsavel", "") or "").strip()
+                if valor.lower() != responsavel.strip().lower():
+                    continue
+            total += 1
+
+        if responsavel is None:
+            self.obras_ano_label.setText(f"Obras {ano_atual}: {total}")
+        else:
+            self.obras_ano_label.setText(f"Obras {ano_atual} · {responsavel}: {total}")
 
     def _limpar_filtros(self) -> None:
         """Clear search and reset all filters to 'Todos'."""
@@ -891,16 +1027,151 @@ class ProducaoPage(QWidget):
         finally:
             self._aplicando_config_colunas = False
 
-    def _abrir_dialog_colunas(self) -> None:
-        dialog = ColunasProducaoDialog(
-            self,
-            COLUNAS_PRODUCAO,
-            self._colunas_visiveis,
-        )
-        if not dialog.exec() or dialog.selected_keys is None:
+    def _atualizar_dados_v2(self) -> None:
+        """Compare V2 with V3 and let the user pick what to bring over.
+
+        Temporary transition feature: V2 is read-only and nothing is written
+        into V3 without an explicit selection.
+        """
+        if self._dirty:
+            QMessageBox.warning(
+                self,
+                "Atualizar dados V2",
+                "Grave ou descarte primeiro as alterações da obra selecionada.",
+            )
             return
 
-        self._colunas_visiveis = dialog.selected_keys
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText("A comparar com o Martelo V2...")
+        try:
+            with SessionLocal() as session:
+                comparacao = comparar_v2_com_v3(session)
+        except ProducaoV2ConfigError as error:
+            QApplication.restoreOverrideCursor()
+            self.status_label.setText("Ligação ao V2 não configurada.")
+            QMessageBox.warning(self, "Atualizar dados V2", str(error))
+            return
+        except (SQLAlchemyError, OSError, PermissionError) as error:
+            QApplication.restoreOverrideCursor()
+            self.status_label.setText("Não foi possível ler o Martelo V2.")
+            QMessageBox.critical(
+                self,
+                "Atualizar dados V2",
+                f"Não foi possível ler o Martelo V2.\n\nDetalhe: {error}",
+            )
+            return
+        else:
+            QApplication.restoreOverrideCursor()
+
+        if comparacao.vazia:
+            self.status_label.setText(
+                f"V2 e V3 estão iguais ({comparacao.total_v2} obras verificadas)."
+            )
+            QMessageBox.information(
+                self,
+                "Atualizar dados V2",
+                f"Sem diferenças. Foram verificadas {comparacao.total_v2} obras do V2.",
+            )
+            return
+
+        dialog = ProducaoV2SyncDialog(comparacao, self)
+        if not dialog.exec():
+            self.status_label.setText("Atualização a partir do V2 cancelada.")
+            return
+
+        obras_novas = dialog.obras_novas_escolhidas
+        diferencas = dialog.diferencas_escolhidas
+        if not obras_novas and not diferencas:
+            self.status_label.setText("Nada selecionado — o V3 ficou como estava.")
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                resultado = aplicar_selecao(
+                    session,
+                    obras_novas=obras_novas,
+                    diferencas=diferencas,
+                )
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        resumo = (
+            f"Obras criadas: {resultado.criados}\n"
+            f"Obras atualizadas: {resultado.processos_atualizados}\n"
+            f"Campos atualizados: {resultado.campos_atualizados}"
+        )
+        if resultado.erros:
+            resumo += "\n\nErros:\n" + "\n".join(f"- {erro}" for erro in resultado.erros[:10])
+            if len(resultado.erros) > 10:
+                resumo += f"\n... e mais {len(resultado.erros) - 10}"
+            QMessageBox.warning(self, "Atualizar dados V2", resumo)
+        else:
+            QMessageBox.information(self, "Atualizar dados V2", resumo)
+
+        self.status_label.setText(
+            f"V2 → V3: {resultado.criados} criadas, "
+            f"{resultado.campos_atualizados} campos atualizados."
+        )
+        self.carregar_processos(selecionar_id=self._selected_processo_id)
+
+    def _abrir_menu_colunas(self, posicao) -> None:
+        """Right-click menu on the table header to toggle visible columns."""
+        header = self.table.horizontalHeader()
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+
+        titulo = menu.addAction("Colunas visíveis")
+        titulo.setEnabled(False)
+        menu.addSeparator()
+
+        visiveis = set(self._colunas_visiveis)
+        for coluna in COLUNAS_PRODUCAO:
+            acao = menu.addAction(coluna.titulo)
+            acao.setCheckable(True)
+            acao.setChecked(coluna.key in visiveis)
+            acao.setToolTip(f"Mostrar/esconder a coluna «{coluna.titulo}»")
+            acao.toggled.connect(
+                lambda marcado, key=coluna.key: self._alternar_coluna(key, marcado)
+            )
+
+        menu.addSeparator()
+        acao_todas = menu.addAction("Mostrar todas")
+        acao_todas.setToolTip("Mostrar todas as colunas disponíveis")
+        acao_todas.triggered.connect(self._mostrar_todas_colunas)
+
+        acao_repor = menu.addAction("Repor colunas por defeito")
+        acao_repor.setToolTip("Voltar às colunas e larguras iniciais")
+        acao_repor.triggered.connect(self._repor_colunas_default)
+
+        menu.exec(header.mapToGlobal(posicao))
+
+    def _alternar_coluna(self, key: str, marcado: bool) -> None:
+        visiveis = set(self._colunas_visiveis)
+        if marcado:
+            visiveis.add(key)
+        elif key in visiveis:
+            if len(visiveis) == 1:
+                self.status_label.setText("Tem de ficar pelo menos uma coluna visível.")
+                return
+            visiveis.discard(key)
+
+        self._colunas_visiveis = [
+            coluna.key for coluna in COLUNAS_PRODUCAO if coluna.key in visiveis
+        ]
+        self._aplicar_config_colunas()
+        self._guardar_config_colunas()
+
+    def _mostrar_todas_colunas(self) -> None:
+        self._colunas_visiveis = [coluna.key for coluna in COLUNAS_PRODUCAO]
+        self._aplicar_config_colunas()
+        self._guardar_config_colunas()
+
+    def _repor_colunas_default(self) -> None:
+        self._colunas_visiveis = [
+            coluna.key for coluna in COLUNAS_PRODUCAO if coluna.visivel_default
+        ]
+        self._larguras_colunas = dict(LARGURAS_DEFAULT_PRODUCAO)
         self._aplicar_config_colunas()
         self._guardar_config_colunas()
 
@@ -1661,6 +1932,7 @@ class ProducaoPage(QWidget):
             self._selected_processo_id = proc.id
             self._atualizar_campos_derivados()
             self._mostrar_imagem_obra(proc)
+            self._atualizar_campo_pasta_obra(proc)
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -1682,6 +1954,7 @@ class ProducaoPage(QWidget):
             self._imagem_path = None
             self.imagem_stack.setCurrentWidget(self.imagem_preview)
             self._atualizar_preview_imagem()
+            self._atualizar_campo_pasta_obra(None)
             self._selected_processo_id = None
         finally:
             self._restaurar_sinais_form(estados)
