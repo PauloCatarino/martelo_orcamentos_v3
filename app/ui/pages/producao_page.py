@@ -416,6 +416,9 @@ class ProducaoPage(QWidget):
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
         )
 
+        # Sem isto o mínimo natural da tabela rouba altura ao detalhe da obra.
+        self.table.setMinimumHeight(120)
+
         table_panel = QWidget()
         table_layout = QVBoxLayout(table_panel)
         table_layout.setContentsMargins(0, 0, 0, 0)
@@ -432,7 +435,7 @@ class ProducaoPage(QWidget):
         # Chave nova: o layout mudou, as alturas guardadas do layout antigo
         # deixariam a tabela demasiado alta.
         if not ligar_persistencia_splitter(self.splitter, "producao_detalhe_amplo"):
-            self.splitter.setSizes([700, 260])
+            self.splitter.setSizes([660, 210])
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -543,27 +546,35 @@ class ProducaoPage(QWidget):
                 widget,
             )
 
-        # Tudo encostado à esquerda: o espaço a mais fica na coluna 4 (vazia).
-        for coluna in range(4):
-            dados_grid.setColumnStretch(coluna, 0)
-        dados_grid.setColumnStretch(4, 1)
+        # Etiquetas encostadas, campos a esticar com a largura disponível.
+        for coluna_label in (0, 2):
+            dados_grid.setColumnStretch(coluna_label, 0)
+        for coluna_campo in (1, 3):
+            dados_grid.setColumnStretch(coluna_campo, 1)
         self._compactar_campos_detalhe(campos)
 
         dados_widget = QWidget()
         dados_widget.setLayout(dados_grid)
-        # Os campos ficam com largura contida para sobrar espaço à imagem.
-        dados_widget.setMaximumWidth(920)
-        topo_layout = QHBoxLayout()
-        topo_layout.setContentsMargins(0, 0, 0, 0)
-        topo_layout.setSpacing(14)
+        dados_widget.setMinimumWidth(520)
+
         painel_imagem = self._criar_painel_imagem()
-        painel_imagem.setMaximumWidth(1020)
-        topo_layout.addWidget(
-            dados_widget,
-            stretch=1,
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+
+        # Divisor arrastável: cada utilizador ajusta campos vs imagem e a
+        # posição fica guardada.
+        self.splitter_detalhe = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter_detalhe.setChildrenCollapsible(False)
+        self.splitter_detalhe.setHandleWidth(10)
+        self.splitter_detalhe.addWidget(dados_widget)
+        self.splitter_detalhe.addWidget(painel_imagem)
+        self.splitter_detalhe.setStretchFactor(0, 1)
+        self.splitter_detalhe.setStretchFactor(1, 1)
+        self.splitter_detalhe.setToolTip(
+            "Arraste para dar mais espaço aos campos ou à imagem — fica guardado"
         )
-        topo_layout.addWidget(painel_imagem, stretch=1)
+        if not ligar_persistencia_splitter(
+            self.splitter_detalhe, "producao_detalhe_topo"
+        ):
+            self.splitter_detalhe.setSizes([900, 900])
 
         self.descricao_artigos_text = self._text_edit()
         self.materias_usados_text = self._text_edit()
@@ -596,7 +607,7 @@ class ProducaoPage(QWidget):
         layout = QVBoxLayout(grupo)
         layout.setContentsMargins(10, 14, 10, 10)
         layout.setSpacing(10)
-        layout.addLayout(topo_layout)
+        layout.addWidget(self.splitter_detalhe)
         layout.addLayout(textos_grid)
 
         self._readonly_widgets = [
@@ -641,11 +652,12 @@ class ProducaoPage(QWidget):
         return scroll
 
     def _compactar_campos_detalhe(self, campos: list) -> None:
-        """Keep the detail fields short so the whole form stays visible."""
+        """Keep the detail fields short so the whole form stays visible.
+
+        Only the height is fixed: a largura acompanha o divisor arrastável.
+        """
         for campo in campos:
-            widget = campo[1]
-            widget.setFixedHeight(22)
-            widget.setMaximumWidth(360)
+            campo[1].setFixedHeight(22)
 
     def _readonly_line(self) -> QLineEdit:
         line = QLineEdit()
@@ -658,7 +670,7 @@ class ProducaoPage(QWidget):
     def _text_edit(self) -> QTextEdit:
         text_edit = QTextEdit()
         text_edit.setAcceptRichText(False)
-        text_edit.setMinimumHeight(72)
+        text_edit.setMinimumHeight(66)
         return text_edit
 
     def _criar_painel_imagem(self) -> QWidget:
@@ -670,7 +682,7 @@ class ProducaoPage(QWidget):
         self.imagem_preview = _ImagemPreviewLabel(self._abrir_imagem_pdf)
         self.imagem_preview.setText("Sem imagem")
         self.imagem_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagem_preview.setMinimumSize(460, 340)
+        self.imagem_preview.setMinimumSize(460, 300)
         self.imagem_preview.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
@@ -684,7 +696,7 @@ class ProducaoPage(QWidget):
         self.fs_model = QFileSystemModel()
         self.arvore_pasta = QTreeView()
         self.arvore_pasta.setModel(self.fs_model)
-        self.arvore_pasta.setMinimumSize(460, 340)
+        self.arvore_pasta.setMinimumSize(460, 300)
         self.arvore_pasta.setHeaderHidden(True)
         self.arvore_pasta.setStyleSheet(
             f"QTreeView {{ background-color: {tema.BEGE_CLARO};"

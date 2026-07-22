@@ -234,8 +234,12 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
 
     # Imagem maior e campo com a pasta da obra.
     imagem_source = inspect.getsource(ProducaoPage._criar_painel_imagem)
-    assert "setMinimumSize(460, 340)" in imagem_source
+    assert "setMinimumSize(460, 300)" in imagem_source
     assert "QSizePolicy.Policy.Expanding" in imagem_source
+
+    # Divisor arrastável (e guardado) entre os campos e a imagem.
+    assert "self.splitter_detalhe = QSplitter(Qt.Orientation.Horizontal)" in detalhe_source
+    assert 'ligar_persistencia_splitter(\n            self.splitter_detalhe, "producao_detalhe_topo"\n        )' in detalhe_source
     assert hasattr(ProducaoPage, "_criar_campo_pasta_obra")
     assert hasattr(ProducaoPage, "_copiar_caminho_pasta")
     assert hasattr(ProducaoPage, "_atualizar_campo_pasta_obra")
