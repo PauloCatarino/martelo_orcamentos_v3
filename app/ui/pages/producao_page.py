@@ -267,10 +267,6 @@ class ProducaoPage(QWidget):
         )
         self.novo_processo_button.clicked.connect(self._novo_processo)
 
-        self.pastas_button = QPushButton("Pastas")
-        self.pastas_button.setToolTip("Ver as pastas do processo selecionado no servidor")
-        self.pastas_button.clicked.connect(self._abrir_pastas_processo_selecionado)
-
         self.open_folder_button = QPushButton("Abrir pasta")
         self.open_folder_button.setToolTip("Abrir a pasta desta obra no explorador")
         self.open_folder_button.clicked.connect(self._abrir_pasta_versao_selecionada)
@@ -329,7 +325,6 @@ class ProducaoPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.novo_processo_button)
-        actions_layout.addWidget(self.pastas_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.lista_material_button)
@@ -348,8 +343,12 @@ class ProducaoPage(QWidget):
         self.estado_combo = QComboBox()
         self.cliente_combo = QComboBox()
         self.responsavel_combo = QComboBox()
-        for combo in (self.estado_combo, self.cliente_combo, self.responsavel_combo):
+        self.cliente_combo.setToolTip(
+            "Só mostra os clientes com obras do responsável escolhido"
+        )
+        for combo in (self.estado_combo, self.cliente_combo):
             combo.currentTextChanged.connect(self._render)
+        self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)
 
         self.obras_ano_label = QLabel("")
         self.obras_ano_label.setObjectName("producaoObrasAno")
@@ -965,6 +964,7 @@ class ProducaoPage(QWidget):
                 combo.setCurrentIndex(0)
         for widget, estado_anterior in estados_sinais:
             widget.blockSignals(estado_anterior)
+        self._atualizar_filtro_clientes()
         self._render()
 
     def _atualizar_filtros(self) -> None:
@@ -973,13 +973,36 @@ class ProducaoPage(QWidget):
             self.estado_combo,
             self._combinar_valores(list(ESTADOS_PRODUCAO), self._valores_distintos("estado")),
         )
-        self._popular_combo(
-            self.cliente_combo,
-            self._valores_distintos("nome_cliente"),
-        )
         responsaveis = self._valores_distintos("responsavel")
         self._popular_combo(self.responsavel_combo, responsaveis)
         self._popular_responsaveis_form(responsaveis)
+        self._atualizar_filtro_clientes()
+
+    def _on_responsavel_mudou(self, *_args) -> None:
+        """Narrow the client list to the chosen Responsável, then re-render."""
+        self._atualizar_filtro_clientes()
+        self._render()
+
+    def _atualizar_filtro_clientes(self) -> None:
+        """List only the clients that have works for the chosen Responsável."""
+        responsavel = self._combo_valor(self.responsavel_combo)
+        if responsavel is None:
+            clientes = self._valores_distintos("nome_cliente")
+        else:
+            alvo = responsavel.strip().lower()
+            clientes = sorted(
+                {
+                    str(processo.nome_cliente).strip()
+                    for processo in self._todos
+                    if processo.nome_cliente
+                    and str(processo.nome_cliente).strip()
+                    and str(getattr(processo, "responsavel", "") or "").strip().lower()
+                    == alvo
+                },
+                key=str.lower,
+            )
+
+        self._popular_combo(self.cliente_combo, clientes)
 
     def _popular_combo(self, combo: QComboBox, valores: list[str]) -> None:
         atual = combo.currentText() or "Todos"
@@ -1347,14 +1370,6 @@ class ProducaoPage(QWidget):
             return
 
         self.table.selectRow(row)
-        self._abrir_pastas_processo(processo)
-
-    def _abrir_pastas_processo_selecionado(self) -> None:
-        processo = self._processo_selecionado()
-        if processo is None:
-            self.status_label.setText("Selecione um processo para ver as pastas.")
-            return
-
         self._abrir_pastas_processo(processo)
 
     def _abrir_pastas_processo(self, processo: Producao) -> None:

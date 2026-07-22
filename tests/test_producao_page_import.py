@@ -51,9 +51,15 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "ligar_persistencia_larguras" not in inspect.getsource(ProducaoPage)
     assert '"Atualizar"' in init_source
     assert '"Salvar"' in init_source
-    assert '"Pastas"' in init_source
-    assert "Ver as pastas do processo selecionado no servidor" in init_source
+    # Botão "Pastas" removido: as pastas abrem no duplo-clique da coluna Processo.
+    assert '"Pastas"' not in init_source
+    assert "Ver as pastas do processo selecionado no servidor" not in init_source
     assert '"Abrir pasta"' in init_source
+    # Cliente em cascata com o filtro de Responsável.
+    assert (
+        "self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)"
+        in init_source
+    )
     assert "Abrir a pasta desta obra no explorador" in init_source
     assert '"Nova Versão"' in init_source
     assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
@@ -256,6 +262,46 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
     contador_source = inspect.getsource(ProducaoPage._atualizar_contador_obras_ano)
     assert "QDate.currentDate().year()" in contador_source
     assert "self._combo_valor(self.responsavel_combo)" in contador_source
+
+
+def test_filtro_clientes_segue_o_responsavel_escolhido() -> None:
+    """O combo de Cliente só lista clientes do responsável filtrado."""
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QApplication, QComboBox
+
+    from app.ui.pages.producao_page import ProducaoPage
+
+    QApplication.instance() or QApplication([])
+
+    page = SimpleNamespace()
+    page._todos = [
+        SimpleNamespace(nome_cliente="ALFA", responsavel="Paulo"),
+        SimpleNamespace(nome_cliente="BETA", responsavel="Ana"),
+        SimpleNamespace(nome_cliente="GAMA", responsavel="paulo"),
+        SimpleNamespace(nome_cliente="", responsavel="Paulo"),
+    ]
+    page.responsavel_combo = QComboBox()
+    page.responsavel_combo.addItems(["Todos", "Paulo", "Ana"])
+    page.cliente_combo = QComboBox()
+    page._combo_valor = ProducaoPage._combo_valor
+    page._valores_distintos = lambda atributo: ProducaoPage._valores_distintos(
+        page, atributo
+    )
+    page._popular_combo = lambda combo, valores: ProducaoPage._popular_combo(
+        page, combo, valores
+    )
+
+    ProducaoPage._atualizar_filtro_clientes(page)
+    todos = [page.cliente_combo.itemText(i) for i in range(page.cliente_combo.count())]
+    assert todos == ["Todos", "ALFA", "BETA", "GAMA"]
+
+    page.responsavel_combo.setCurrentText("Paulo")
+    ProducaoPage._atualizar_filtro_clientes(page)
+    so_paulo = [page.cliente_combo.itemText(i) for i in range(page.cliente_combo.count())]
+    assert so_paulo == ["Todos", "ALFA", "GAMA"]
+    # BETA já não existe na lista: volta a "Todos" em vez de dar 0 resultados.
+    assert page.cliente_combo.currentText() == "Todos"
 
 
 def test_producao_page_abre_pastas_no_duplo_clique_do_processo() -> None:
