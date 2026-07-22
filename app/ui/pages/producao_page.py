@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, Qt, QSize, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QPixmap
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QPixmap
 try:
     from PySide6.QtGui import QFileSystemModel
 except ImportError:  # PySide6 6.10 exposes QFileSystemModel from QtWidgets.
@@ -69,6 +69,7 @@ from app.services.producao_service import (
     listar_processos_por_encomenda,
     preparar_nova_versao,
 )
+from app.services.orcamento_pasta_lookup_service import resolver_pasta_orcamento
 from app.services.producao_v2_sync_service import (
     ProducaoV2ConfigError,
     aplicar_selecao,
@@ -643,6 +644,7 @@ class ProducaoPage(QWidget):
         ]
         self._aplicar_tooltips_editaveis()
         self._ligar_sinais_edicao()
+        self._preparar_link_pasta_orcamento()
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -741,32 +743,82 @@ class ProducaoPage(QWidget):
             "Caminho da pasta desta versão da obra — pode selecionar e copiar (Ctrl+C)"
         )
 
-        self.copiar_pasta_button = QPushButton("Copiar")
-        self.copiar_pasta_button.setToolTip("Copiar o caminho para a área de transferência")
-        self.copiar_pasta_button.clicked.connect(self._copiar_caminho_pasta)
-
         self.abrir_pasta_campo_button = QPushButton("Abrir")
-        self.abrir_pasta_campo_button.setToolTip("Abrir esta pasta no explorador")
+        self.abrir_pasta_campo_button.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+        )
+        self.abrir_pasta_campo_button.setToolTip(
+            "Abrir esta pasta no explorador (o caminho pode ser copiado do campo)"
+        )
         self.abrir_pasta_campo_button.clicked.connect(self._abrir_pasta_versao_selecionada)
 
         linha = QHBoxLayout()
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(4)
         linha.addWidget(self.pasta_obra_input, stretch=1)
-        linha.addWidget(self.copiar_pasta_button)
         linha.addWidget(self.abrir_pasta_campo_button)
 
         layout.addWidget(titulo)
         layout.addLayout(linha)
         return painel
 
-    def _copiar_caminho_pasta(self) -> None:
-        caminho = self.pasta_obra_input.text().strip()
-        if not caminho:
-            self.status_label.setText("Sem pasta para copiar.")
+    def _preparar_link_pasta_orcamento(self) -> None:
+        """Add an inline 'open budget folder' action to Nº Orçamento / V. Orç.
+
+        A ação só fica visível quando os dois campos estão preenchidos e a
+        pasta do orçamento existe mesmo no servidor.
+        """
+        self._pasta_orcamento: Path | None = None
+        icone = self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+
+        self._acoes_pasta_orcamento = []
+        for campo in (self.num_orcamento_input, self.versao_orc_input):
+            acao = QAction(icone, "Abrir pasta do orçamento", campo)
+            acao.setVisible(False)
+            acao.triggered.connect(self._abrir_pasta_orcamento)
+            campo.addAction(acao, QLineEdit.ActionPosition.TrailingPosition)
+            self._acoes_pasta_orcamento.append(acao)
+            campo.editingFinished.connect(self._atualizar_link_pasta_orcamento)
+
+    def _atualizar_link_pasta_orcamento(self) -> None:
+        """Resolve the budget folder for the current Nº Orçamento / V. Orç."""
+        if not hasattr(self, "_acoes_pasta_orcamento"):
             return
-        QApplication.clipboard().setText(caminho)
-        self.status_label.setText("Caminho da pasta copiado.")
+
+        numero = self.num_orcamento_input.text().strip()
+        versao = self.versao_orc_input.text().strip()
+        ano = self.ano_input.text().strip()
+
+        pasta = None
+        if numero and versao and ano:
+            try:
+                with SessionLocal() as session:
+                    pasta = resolver_pasta_orcamento(
+                        session,
+                        ano=ano,
+                        num_orcamento=numero,
+                        versao_orc=versao,
+                    )
+            except (SQLAlchemyError, OSError):
+                pasta = None
+
+        self._pasta_orcamento = pasta
+        dica = (
+            f"Abrir a pasta do orçamento:\n{pasta}"
+            if pasta is not None
+            else "Preencha Nº Orçamento e V. Orç para abrir a pasta do orçamento"
+        )
+        for acao in self._acoes_pasta_orcamento:
+            acao.setVisible(pasta is not None)
+            acao.setToolTip(dica)
+
+    def _abrir_pasta_orcamento(self) -> None:
+        pasta = getattr(self, "_pasta_orcamento", None)
+        if pasta is None:
+            self.status_label.setText("Pasta do orçamento não encontrada.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))
+        self.status_label.setText(f"Aberta a pasta do orçamento: {pasta}")
 
     def _atualizar_campo_pasta_obra(self, proc: Producao | None) -> None:
         """Show the server folder path for the selected process version."""
@@ -1982,6 +2034,7 @@ class ProducaoPage(QWidget):
             self._atualizar_campos_derivados()
             self._mostrar_imagem_obra(proc)
             self._atualizar_campo_pasta_obra(proc)
+            self._atualizar_link_pasta_orcamento()
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -2004,6 +2057,7 @@ class ProducaoPage(QWidget):
             self.imagem_stack.setCurrentWidget(self.imagem_preview)
             self._atualizar_preview_imagem()
             self._atualizar_campo_pasta_obra(None)
+            self._atualizar_link_pasta_orcamento()
             self._selected_processo_id = None
         finally:
             self._restaurar_sinais_form(estados)

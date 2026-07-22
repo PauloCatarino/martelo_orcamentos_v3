@@ -247,10 +247,20 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
     assert "self.splitter_detalhe = QSplitter(Qt.Orientation.Horizontal)" in detalhe_source
     assert 'ligar_persistencia_splitter(\n            self.splitter_detalhe, "producao_detalhe_topo"\n        )' in detalhe_source
     assert hasattr(ProducaoPage, "_criar_campo_pasta_obra")
-    assert hasattr(ProducaoPage, "_copiar_caminho_pasta")
     assert hasattr(ProducaoPage, "_atualizar_campo_pasta_obra")
-    assert "QApplication.clipboard().setText(caminho)" in source
     assert "caminho_versao_de_processo" in source
+    # Botão "Copiar" removido; o "Abrir" leva o ícone de pasta.
+    assert not hasattr(ProducaoPage, "_copiar_caminho_pasta")
+    pasta_source = inspect.getsource(ProducaoPage._criar_campo_pasta_obra)
+    assert "copiar_pasta_button" not in pasta_source
+    assert "QStyle.StandardPixmap.SP_DirOpenIcon" in pasta_source
+
+    # Atalho para a pasta do orçamento nos campos Nº Orçamento / V. Orç.
+    assert hasattr(ProducaoPage, "_preparar_link_pasta_orcamento")
+    assert hasattr(ProducaoPage, "_atualizar_link_pasta_orcamento")
+    assert hasattr(ProducaoPage, "_abrir_pasta_orcamento")
+    assert "resolver_pasta_orcamento" in source
+    assert "QLineEdit.ActionPosition.TrailingPosition" in source
 
     # Botão temporário de sincronização com o V2.
     assert hasattr(ProducaoPage, "_atualizar_dados_v2")
