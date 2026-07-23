@@ -31,6 +31,7 @@ class ConfiguracoesPage(QWidget):
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
         "A Minha Biblioteca de Peças",
+        "Assistente — o meu perfil",
     ]
 
     TOOLTIP_DESCRICOES = {
@@ -78,6 +79,11 @@ class ConfiguracoesPage(QWidget):
             "Escolher as pe\u00e7as que aparecem na sua biblioteca do custeio e "
             "marcar as favoritas. Cada utilizador tem a sua sele\u00e7\u00e3o."
         ),
+        "Assistente \u2014 o meu perfil": (
+            "Ensinar o assistente as suas palavras: tipos de m\u00f3vel, materiais, "
+            "estados, pessoas, clientes, urg\u00eancias e avisos. Cada utilizador "
+            "tem o seu perfil e ningu\u00e9m v\u00ea o dos outros."
+        ),
     }
 
     def __init__(
@@ -95,6 +101,7 @@ class ConfiguracoesPage(QWidget):
         on_open_catalogo_auditoria: Callable[[], None] | None = None,
         on_open_custeio_simplificado_tarifas: Callable[[], None] | None = None,
         on_open_user_management: Callable[[], None] | None = None,
+        on_open_ia_perfil: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -111,6 +118,7 @@ class ConfiguracoesPage(QWidget):
         self.on_open_catalogo_auditoria = on_open_catalogo_auditoria
         self.on_open_custeio_simplificado_tarifas = on_open_custeio_simplificado_tarifas
         self.on_open_user_management = on_open_user_management
+        self.on_open_ia_perfil = on_open_ia_perfil
 
         self.cabecalho = BarraCabecalho(
             "Configura\u00e7\u00f5es",
@@ -186,6 +194,12 @@ class ConfiguracoesPage(QWidget):
             self._open_minha_biblioteca_pecas
         )
 
+        self.ia_perfil_button = QPushButton("Assistente — o meu perfil")
+        self.ia_perfil_button.setToolTip(
+            "Ensinar o assistente as minhas palavras e as minhas preferências."
+        )
+        self.ia_perfil_button.clicked.connect(self._open_ia_perfil)
+
         self.user_management_button = QPushButton("Utilizadores e Acessos")
         self.user_management_button.setToolTip(
             "Criar utilizadores e personalizar os menus disponíveis em cada conta."
@@ -214,6 +228,7 @@ class ConfiguracoesPage(QWidget):
             self.catalogo_auditoria_button,
             self.custeio_simplificado_tarifas_button,
             self.minha_biblioteca_pecas_button,
+            self.ia_perfil_button,
         ]
         if self.on_open_user_management is not None:
             botoes.append(self.user_management_button)
@@ -287,6 +302,11 @@ class ConfiguracoesPage(QWidget):
         )
 
         PreferenciasBibliotecaPecasDialog(self).exec()
+
+    def _open_ia_perfil(self) -> None:
+        """Open the per-user AI profile page through the optional callback."""
+        if self.on_open_ia_perfil is not None:
+            self.on_open_ia_perfil()
 
     def _open_user_management(self) -> None:
         """Open account and access administration for the administrator."""

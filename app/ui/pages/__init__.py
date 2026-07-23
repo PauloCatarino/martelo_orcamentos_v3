@@ -6,6 +6,7 @@ from app.ui.pages.catalogo_auditoria_page import CatalogoAuditoriaPage
 from app.ui.pages.configuracoes_page import ConfiguracoesPage
 from app.ui.pages.custeio_simplificado_tarifas_page import CusteioSimplificadoTarifasPage
 from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
+from app.ui.pages.ia_perfil_page import IaPerfilPage
 from app.ui.pages.clientes_page import ClientesPage
 from app.ui.pages.custeio_auditoria_page import CusteioAuditoriaPage
 from app.ui.pages.def_peca_detail_page import DefPecaDetailPage
@@ -36,6 +37,7 @@ __all__ = [
     "ConfiguracoesPage",
     "CusteioSimplificadoTarifasPage",
     "CaminhosSistemaPage",
+    "IaPerfilPage",
     "ClientesPage",
     "CusteioAuditoriaPage",
     "DefPecaDetailPage",

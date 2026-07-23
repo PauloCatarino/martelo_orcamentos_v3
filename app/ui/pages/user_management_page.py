@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.session import SessionLocal
+from app.domain.departamentos import DEPARTAMENTOS
 from app.services.permission_service import MENU_PERMISSIONS
 from app.services.user_admin_service import (
     create_user,
@@ -30,6 +32,20 @@ from app.services.user_admin_service import (
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 
 
+def _combo_departamentos(valor: str = "") -> QComboBox:
+    """Combo editavel com as areas sugeridas — aceita areas novas."""
+    combo = QComboBox()
+    combo.setEditable(True)
+    combo.addItem("")
+    combo.addItems(DEPARTAMENTOS)
+    combo.setCurrentText(valor)
+    combo.setToolTip(
+        "Área de trabalho da pessoa. Se faltar alguma, escreva-a — a lista é "
+        "só uma sugestão."
+    )
+    return combo
+
+
 class NewUserDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -38,6 +54,7 @@ class NewUserDialog(QDialog):
         self.username = QLineEdit()
         self.nome = QLineEdit()
         self.email = QLineEdit()
+        self.departamento = _combo_departamentos()
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
         self.confirm = QLineEdit()
@@ -45,6 +62,7 @@ class NewUserDialog(QDialog):
         form.addRow("Username", self.username)
         form.addRow("Nome", self.nome)
         form.addRow("Email", self.email)
+        form.addRow("Departamento", self.departamento)
         form.addRow("Palavra-passe", self.password)
         form.addRow("Confirmar", self.confirm)
         buttons = QDialogButtonBox(
@@ -59,7 +77,7 @@ class NewUserDialog(QDialog):
 class UserManagementPage(QWidget):
     """Manage normal accounts and their visible V3 menu areas."""
 
-    FIXED_COLUMNS = ("Utilizador", "Nome", "Email", "Função", "Ativo")
+    FIXED_COLUMNS = ("Utilizador", "Nome", "Email", "Função", "Departamento", "Ativo")
 
     def __init__(self, on_back=None) -> None:
         super().__init__()
@@ -143,8 +161,10 @@ class UserManagementPage(QWidget):
                 item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 self.table.setItem(row_index, column, item)
             is_admin = user.role.casefold() == "admin"
-            self.table.setItem(row_index, 4, self._check_item(user.is_active, not is_admin))
-            for offset, key in enumerate(MENU_PERMISSIONS, start=5):
+            combo = _combo_departamentos(user.departamento)
+            self.table.setCellWidget(row_index, 4, combo)
+            self.table.setItem(row_index, 5, self._check_item(user.is_active, not is_admin))
+            for offset, key in enumerate(MENU_PERMISSIONS, start=6):
                 self.table.setItem(
                     row_index,
                     offset,
@@ -152,8 +172,8 @@ class UserManagementPage(QWidget):
                 )
         self.table.resizeColumnsToContents()
         self.status_label.setText(
-            f"{len(users)} utilizador(es). Marque os menus visíveis e clique "
-            "em Gravar acessos para aplicar."
+            f"{len(users)} utilizador(es). Escolha o departamento, marque os "
+            "menus visíveis e clique em Gravar acessos para aplicar."
         )
 
     def _new_user(self) -> None:
@@ -171,6 +191,7 @@ class UserManagementPage(QWidget):
                     nome=dialog.nome.text(),
                     email=dialog.email.text(),
                     password=dialog.password.text(),
+                    departamento=dialog.departamento.currentText(),
                 )
         except Exception as exc:
             QMessageBox.warning(self, "Novo utilizador", str(exc))
@@ -212,13 +233,15 @@ class UserManagementPage(QWidget):
                     user_id = int(self.table.item(row, 0).data(Qt.ItemDataRole.UserRole))
                     permissions = {
                         key: self.table.item(row, column).checkState() == Qt.CheckState.Checked
-                        for column, key in enumerate(MENU_PERMISSIONS, start=5)
+                        for column, key in enumerate(MENU_PERMISSIONS, start=6)
                     }
+                    combo = self.table.cellWidget(row, 4)
                     update_user_access(
                         session,
                         user_id=user_id,
-                        is_active=self.table.item(row, 4).checkState() == Qt.CheckState.Checked,
+                        is_active=self.table.item(row, 5).checkState() == Qt.CheckState.Checked,
                         permissions=permissions,
+                        departamento=combo.currentText() if combo is not None else None,
                     )
                 session.commit()
         except Exception as exc:

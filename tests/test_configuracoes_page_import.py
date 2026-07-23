@@ -37,6 +37,7 @@ def test_configuracoes_page_declares_technical_areas() -> None:
         "Biblioteca de Módulos",
         "Auditoria do Catálogo",
         "A Minha Biblioteca de Peças",
+        "Assistente — o meu perfil",
     ]
 
 

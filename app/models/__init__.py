@@ -1,6 +1,7 @@
 """SQLAlchemy models package."""
 
 from app.models.cliente import Cliente
+from app.models.ia_perfil import IaPerfilEntrada
 from app.models.def_maquina import DefMaquina
 from app.models.def_margem_padrao import DefMargemPadrao
 from app.models.def_maquina_escalao_area import DefMaquinaEscalaoArea
@@ -74,6 +75,7 @@ __all__ = [
     "OrcamentoVersaoPlacaNaoStock",
     "OrcamentoValuesetLinha",
     "OrcamentoValuesetLinhaOperacao",
+    "IaPerfilEntrada",
     "Producao",
     "SystemSetting",
     "User",

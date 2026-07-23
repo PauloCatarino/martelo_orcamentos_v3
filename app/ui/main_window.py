@@ -35,6 +35,7 @@ from app.ui.pages import (
     ArquivoV2Page,
     CatalogoAuditoriaPage,
     CaminhosSistemaPage,
+    IaPerfilPage,
     ClientesPage,
     CusteioAuditoriaPage,
     ConfiguracoesPage,
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
         "configuracoes": "menu.configuracoes",
         "pecas": "menu.configuracoes",
         "caminhos_sistema": "menu.configuracoes",
+        "ia_perfil": "menu.configuracoes",
         "imos_ligacao": "menu.configuracoes",
         "operacoes_maquinas": "menu.configuracoes",
         "valueset_chaves": "menu.configuracoes",
@@ -235,6 +237,9 @@ class MainWindow(QMainWindow):
         self.caminhos_sistema_page = CaminhosSistemaPage(
             on_back=lambda: self.show_page("configuracoes")
         )
+        self.ia_perfil_page = IaPerfilPage(
+            on_back=lambda: self.show_page("configuracoes")
+        )
         self.imos_ligacao_page = ImosLigacaoPage(
             on_back=lambda: self.show_page("configuracoes")
         )
@@ -276,6 +281,7 @@ class MainWindow(QMainWindow):
             on_open_def_pecas=lambda: self.show_page("pecas"),
             on_open_materias_primas=lambda: self.show_page("materias_primas"),
             on_open_caminhos_sistema=lambda: self.show_page("caminhos_sistema"),
+            on_open_ia_perfil=self._open_ia_perfil,
             on_open_imos_ligacao=lambda: self.show_page("imos_ligacao"),
             on_open_operacoes_maquinas=lambda: self.show_page("operacoes_maquinas"),
             on_open_valueset_chaves=lambda: self.show_page("valueset_chaves"),
@@ -298,6 +304,7 @@ class MainWindow(QMainWindow):
         self._add_page("materias_primas", self.materias_primas_page)
         self._add_page("pesquisa_ia", self.pesquisa_ia_page)
         self._add_page("caminhos_sistema", self.caminhos_sistema_page)
+        self._add_page("ia_perfil", self.ia_perfil_page)
         self._add_page("imos_ligacao", self.imos_ligacao_page)
         self._add_page("operacoes_maquinas", self.operacoes_maquinas_page)
         self._add_page("valueset_chaves", self.valueset_chaves_page)
@@ -394,6 +401,11 @@ class MainWindow(QMainWindow):
         self.toggle_sidebar_button.setToolTip(
             "Ocultar menu" if self._sidebar_visivel else "Mostrar menu"
         )
+
+    def _open_ia_perfil(self) -> None:
+        """Open the signed-in user's AI profile with fresh data."""
+        self.ia_perfil_page.carregar()
+        self.show_page("ia_perfil")
 
     def _open_margens_padrao(self) -> None:
         """Open the default margins page with fresh data."""
