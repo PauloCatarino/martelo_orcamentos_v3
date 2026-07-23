@@ -114,6 +114,9 @@ TIPOS_PASTA_PRODUCAO = (
     "Encomenda de Cliente Final",
 )
 
+#: Prefixo do aviso de pesquisa sem resultados (usado para o poder limpar).
+AVISO_SEM_RESULTADOS = "Sem resultados para"
+
 #: Nome da entrada que representa "sem vista" no combo de vistas.
 VISTA_SEM_FILTROS = "Todas as obras"
 
@@ -1356,15 +1359,18 @@ class ProducaoPage(QWidget):
         """Quando não há resultados, propor a palavra parecida que existe."""
         texto = self.campo_pesquisa.texto().strip()
         if self.proxy.rowCount() or not texto:
+            # Limpar o aviso da pesquisa anterior, senão fica preso no ecrã.
+            if self.status_label.text().startswith(AVISO_SEM_RESULTADOS):
+                self.status_label.clear()
             return
 
         sugestao = pesquisa_texto.sugerir_pesquisa(texto, self.modelo.vocabulario())
         if sugestao:
             self.status_label.setText(
-                f"Sem resultados para «{texto}». Quis dizer «{sugestao}»?"
+                f"{AVISO_SEM_RESULTADOS} «{texto}». Quis dizer «{sugestao}»?"
             )
         else:
-            self.status_label.setText(f"Sem resultados para «{texto}».")
+            self.status_label.setText(f"{AVISO_SEM_RESULTADOS} «{texto}».")
 
     # ---- vistas guardadas -------------------------------------------------
     def _carregar_vistas(self) -> None:

@@ -128,3 +128,44 @@ def test_filtro_so_atrasadas_ignora_arquivadas() -> None:
         "26.1000_01_01_X",
         "26.1002_01_01_Z",
     }
+
+
+def test_pesquisa_cobre_os_seis_campos_de_texto() -> None:
+    """O resumo da obra vive nestes seis campos — nenhum pode ficar de fora.
+
+    Regressao real: so «descricao_producao» estava indexado, e por isso
+    procurar «FRIGORIFICO» devolvia 1 obra em vez de 22.
+    """
+    for campo in (
+        "descricao_artigos",
+        "materias_usados",
+        "descricao_producao",
+        "notas1",
+        "notas2",
+        "notas3",
+    ):
+        obra = _processo(**{campo: "MODULO SUP FRIGORIFICO C/ PORTA"})
+        encontradas = filtrar_processos([obra], texto="frigorifico")
+        assert len(encontradas) == 1, f"nao procura em {campo}"
+
+
+def test_pesquisa_cobre_os_restantes_campos_do_menu() -> None:
+    exemplos = {
+        "codigo_processo": ("26.0723_01_01_ANDRE", "0723"),
+        "nome_cliente": ("ANDRÉ BAPTISTA", "baptista"),
+        "nome_cliente_simplex": ("ANDRE_BAPTISTA", "andre baptista"),
+        "num_cliente_phc": ("497", "497"),
+        "ref_cliente": ("ANDRÉ", "andre"),
+        "num_orcamento": ("260620", "260620"),
+        "obra": ("COZINHA ANDRE", "cozinha"),
+        "localizacao": ("VILA DA FEIRA", "feira"),
+        "responsavel": ("Marcia", "márcia"),
+        "estado": ("Arquivado", "arquivado"),
+        "tipo_pasta": ("Encomenda de Cliente Final", "final"),
+        "data_entrega": ("29-06-2026", "29-06-2026"),
+    }
+    for campo, (valor, pesquisa) in exemplos.items():
+        obra = _processo(**{campo: valor})
+        assert len(filtrar_processos([obra], texto=pesquisa)) == 1, (
+            f"nao procura em {campo}"
+        )

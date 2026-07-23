@@ -62,17 +62,43 @@ CAMPOS_EDITAVEIS_PRODUCAO = (
 #: Tudo o que não é letra sem acento nem dígito conta como separador.
 _PONTUACAO = re.compile(r"[^0-9a-z]+")
 
+#: Campos onde a pesquisa procura — TODOS os do menu Produção.
+#:
+#: Ficam de fora apenas ``imagem_path`` e ``pasta_servidor``: são caminhos do
+#: servidor que repetem «SERVER_LE», «Dep_Producao» e o ano em todas as obras,
+#: e cujo conteúdo útil (cliente e nº de encomenda) já está indexado à parte.
 _CAMPOS_PESQUISA = (
+    # identificação
     "codigo_processo",
+    "ano",
     "num_enc_phc",
+    "versao_obra",
+    "versao_plano",
+    # cliente e orçamento
     "nome_cliente",
     "nome_cliente_simplex",
+    "num_cliente_phc",
     "ref_cliente",
+    "num_orcamento",
+    "versao_orc",
+    "preco_total",
+    "qt_artigos",
+    # estado, datas e localização
+    "estado",
+    "responsavel",
     "obra",
     "localizacao",
-    "num_orcamento",
-    "responsavel",
+    "data_inicio",
+    "data_entrega",
+    "tipo_pasta",
+    # os seis campos de texto: é aqui que está o resumo da obra
+    "descricao_artigos",
+    "materias_usados",
     "descricao_producao",
+    "notas1",
+    "notas2",
+    "notas3",
+    "descricao_orcamento",
 )
 
 
