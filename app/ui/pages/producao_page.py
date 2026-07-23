@@ -41,6 +41,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
+from app.domain import pesquisa_texto
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.cutrite_service import (
@@ -65,6 +66,7 @@ from app.services.producao_service import (
     listar_processos_por_encomenda,
     preparar_nova_versao,
 )
+from app.services.sinonimos_service import carregar_sinonimos
 from app.services.producao_v2_sync_service import (
     ProducaoV2ConfigError,
     aplicar_selecao,
@@ -481,6 +483,7 @@ class ProducaoPage(QWidget):
 
         self.setLayout(layout)
         self._carregar_vistas()
+        self._carregar_sinonimos()
         self.carregar_processos()
 
     def _criar_painel_detalhe(self) -> QScrollArea:
@@ -1027,6 +1030,7 @@ class ProducaoPage(QWidget):
         self.footer_label.setText(
             f"{self.proxy.rowCount()} de {self.modelo.rowCount()}"
         )
+        self._sugerir_pesquisa_proxima()
         self._atualizar_contador_obras_ano()
         self._restaurar_selecao_apos_render(selected_id)
 
@@ -1333,6 +1337,34 @@ class ProducaoPage(QWidget):
         ]
         self._aplicar_config_colunas()
         self._guardar_config_colunas()
+
+    # ---- motor de pesquisa ------------------------------------------------
+    def _carregar_sinonimos(self) -> None:
+        """Load this user's synonyms from the AI profile into the proxy."""
+        try:
+            with SessionLocal() as session:
+                sinonimos = carregar_sinonimos(session, self._colunas_user_id_int())
+        except SQLAlchemyError:
+            sinonimos = {}
+        self.proxy.definir_sinonimos(sinonimos)
+
+    def _colunas_user_id_int(self) -> int | None:
+        valor = getattr(app_session.current_user, "id", None)
+        return int(valor) if valor else None
+
+    def _sugerir_pesquisa_proxima(self) -> None:
+        """Quando não há resultados, propor a palavra parecida que existe."""
+        texto = self.campo_pesquisa.texto().strip()
+        if self.proxy.rowCount() or not texto:
+            return
+
+        sugestao = pesquisa_texto.sugerir_pesquisa(texto, self.modelo.vocabulario())
+        if sugestao:
+            self.status_label.setText(
+                f"Sem resultados para «{texto}». Quis dizer «{sugestao}»?"
+            )
+        else:
+            self.status_label.setText(f"Sem resultados para «{texto}».")
 
     # ---- vistas guardadas -------------------------------------------------
     def _carregar_vistas(self) -> None:

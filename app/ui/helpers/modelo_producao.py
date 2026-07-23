@@ -14,7 +14,11 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyMod
 from PySide6.QtGui import QColor
 
 from app.domain.prazos_producao import estado_prazo
-from app.services.producao_service import processo_corresponde, termos_pesquisa
+from app.services.producao_service import (
+    indice_pesquisa,
+    processo_corresponde,
+    termos_pesquisa,
+)
 from app.ui import tema
 from app.ui.helpers.colunas_producao import COLUNAS_PRODUCAO
 from app.ui.icones import icone
@@ -54,14 +58,31 @@ class ProducaoTableModel(QAbstractTableModel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._processos: list = []
+        self._indices: list = []
         self._icone_pasta = icone("pasta_abrir")
 
     # ---- dados -----------------------------------------------------------
     def definir_processos(self, processos) -> None:
-        """Replace every row in one go."""
+        """Replace every row in one go, indexando o texto para a pesquisa."""
         self.beginResetModel()
         self._processos = list(processos or [])
+        # As raizes de cada obra sao calculadas uma vez por carregamento, e nao
+        # a cada tecla escrita na pesquisa.
+        self._indices = [indice_pesquisa(p) for p in self._processos]
         self.endResetModel()
+
+    def indice(self, row: int):
+        """Root index of one source row, or None."""
+        if 0 <= row < len(self._indices):
+            return self._indices[row]
+        return None
+
+    def vocabulario(self) -> set[str]:
+        """Every root present in the loaded list."""
+        vocabulario: set[str] = set()
+        for indice in self._indices:
+            vocabulario.update(indice)
+        return vocabulario
 
     def processo(self, row: int):
         """Return the process on one source row, or None."""
@@ -207,12 +228,17 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._termos: list[str] = []
+        self._termos: list = []
         self._estado: str | None = None
         self._cliente: str | None = None
         self._responsavel: str | None = None
         self._so_atrasadas = False
+        self._sinonimos: dict = {}
         self.setSortRole(ProducaoTableModel.ROLE_ORDENACAO)
+
+    def definir_sinonimos(self, sinonimos) -> None:
+        """Sinónimos do utilizador com sessão iniciada (do perfil da IA)."""
+        self._sinonimos = dict(sinonimos or {})
 
     def definir_filtros(
         self,
@@ -224,7 +250,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
         so_atrasadas: bool = False,
     ) -> None:
         """Set every filter at once and re-run the filtering."""
-        self._termos = termos_pesquisa(texto)
+        self._termos = termos_pesquisa(texto, self._sinonimos)
         self._estado = estado
         self._cliente = cliente
         self._responsavel = responsavel
@@ -251,6 +277,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
             cliente=self._cliente,
             responsavel=self._responsavel,
             so_atrasadas=self._so_atrasadas,
+            indice=modelo.indice(source_row),
         )
 
     def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:  # noqa: N802

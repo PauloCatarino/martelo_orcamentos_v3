@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
+from app.domain import pesquisa_texto
 from app.domain.prazos_producao import estado_prazo
 from app.models.cliente import Cliente
 from app.models.orcamento import Orcamento
@@ -855,9 +856,24 @@ def _as_positive_int(value) -> int:
         return 1
 
 
-def termos_pesquisa(texto) -> list[str]:
-    """Split the search text into normalised terms (no accents, no punctuation)."""
-    return [termo for termo in _texto(texto).split() if termo]
+def termos_pesquisa(texto, sinonimos=None) -> list[frozenset[str]]:
+    """Split the search text into the roots that satisfy each written word."""
+    return pesquisa_texto.expandir_termos(texto, sinonimos)
+
+
+def indice_pesquisa(processo) -> frozenset[str]:
+    """Root index of one process, used to compare quickly."""
+    return pesquisa_texto.indexar(
+        getattr(processo, campo, None) for campo in _CAMPOS_PESQUISA
+    )
+
+
+def vocabulario_pesquisa(processos) -> set[str]:
+    """Every root present in a list, for the «quis dizer…» suggestion."""
+    vocabulario: set[str] = set()
+    for processo in processos or []:
+        vocabulario.update(indice_pesquisa(processo))
+    return vocabulario
 
 
 def processo_corresponde(
@@ -868,11 +884,13 @@ def processo_corresponde(
     cliente=None,
     responsavel=None,
     so_atrasadas=False,
+    indice=None,
 ) -> bool:
     """Return True when one process matches the current search and filters.
 
     Shared by ``filtrar_processos`` and the production table proxy model, so
-    a lista e a tabela usam exatamente as mesmas regras.
+    a lista e a tabela usam exatamente as mesmas regras. ``indice`` permite
+    reaproveitar as raízes já calculadas para esta obra.
     """
     estado_norm = _normalizar_filtro(estado)
     cliente_norm = _normalizar_filtro(cliente)
@@ -899,10 +917,9 @@ def processo_corresponde(
     if not termos:
         return True
 
-    haystack = " ".join(
-        _texto(getattr(processo, campo, None)) for campo in _CAMPOS_PESQUISA
-    )
-    return all(termo in haystack for termo in termos)
+    if indice is None:
+        indice = indice_pesquisa(processo)
+    return pesquisa_texto.corresponde(indice, termos)
 
 
 def filtrar_processos(
@@ -913,9 +930,10 @@ def filtrar_processos(
     cliente=None,
     responsavel=None,
     so_atrasadas=False,
+    sinonimos=None,
 ) -> list[Producao]:
     """Filter production processes in memory, case-insensitively."""
-    termos = termos_pesquisa(texto)
+    termos = termos_pesquisa(texto, sinonimos)
     return [
         processo
         for processo in (todos or [])
@@ -938,18 +956,5 @@ def _normalizar_filtro(valor) -> str | None:
 
 
 def _texto(valor) -> str:
-    """Normalise text for searching: lowercase, no accents, no punctuation.
-
-    «Márcia» tem de encontrar «Marcia» e «26.1134_01» tem de encontrar
-    «26 1134 01» — a pontuação vira espaço dos dois lados da comparação.
-    """
-    if valor is None:
-        return ""
-
-    sem_acentos = unicodedata.normalize("NFKD", str(valor).strip().lower())
-    sem_acentos = "".join(
-        caractere
-        for caractere in sem_acentos
-        if not unicodedata.combining(caractere)
-    )
-    return _PONTUACAO.sub(" ", sem_acentos).strip()
+    """Normalise text for searching (delega no motor de pesquisa)."""
+    return pesquisa_texto.normalizar(valor)
