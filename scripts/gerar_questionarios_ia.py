@@ -136,11 +136,21 @@ def caixa(doc, titulo_caixa, linhas, *, cor_borda="5A3E2B", fundo=CREME, cor_tit
     return t
 
 
-# Nomes exatamente como estão gravados no Martelo (tabela producao/users).
-RESPONSAVEIS_REAIS = [
-    "Paulo", "Pedro", "Angela", "Bruno", "Dario", "Ana", "Marcia", "Andreia",
-    "Catia", "Elisabete",
+# Nomes exatamente como estão gravados no Martelo, e o departamento de cada um
+# (indicado pelo Paulo em 2026-07-23).
+EQUIPA = [
+    ("Paulo", "Orçamentos e Produção"),
+    ("Pedro", "Produção — desenho das obras"),
+    ("Angela", "Produção — desenho das obras"),
+    ("Bruno", "Produção — desenho das obras"),
+    ("Dario", "Produção — desenho das obras"),
+    ("Ana", "Produção — desenho das obras"),
+    ("Marcia", "Produção — desenho das obras"),
+    ("Andreia", "Orçamentos"),
+    ("Catia", "Orçamentos"),
+    ("Elisabete", "Orçamentos"),
 ]
+DEPARTAMENTOS = dict(EQUIPA)
 
 
 def gerar(destino: Path, nome_pessoa: str) -> None:
@@ -220,10 +230,17 @@ def gerar(destino: Path, nome_pessoa: str) -> None:
     titulo(doc, "Parte 0 · Quem está a preencher")
     tabela(
         doc,
-        ["Nome", "O que faz no dia a dia", "Data"],
-        [4.5, 9.5, 3.0],
-        fixos=[[nome_pessoa, "", ""]],
+        ["Nome", "Departamento", "O que faz no dia a dia", "Data"],
+        [3.2, 4.3, 6.5, 3.0],
+        fixos=[[nome_pessoa, DEPARTAMENTOS.get(nome_pessoa, ""), "", ""]],
         vazias=0,
+    )
+    paragrafo(
+        doc,
+        "O departamento já vem preenchido. Se estiver errado, corrige — serve para o "
+        "assistente saber que perguntas fazem sentido para ti.",
+        italic=True,
+        cor=CINZENTO,
     )
 
     # ---------------- parte 1 ----------------
@@ -321,16 +338,13 @@ def gerar(destino: Path, nome_pessoa: str) -> None:
     )
     caixa(
         doc,
-        "Uma pergunta a que precisamos mesmo de resposta",
+        "Uma regra que já ficou decidida",
         [
-            "Quando dizes que uma obra «já está fechada» ou «já está despachada» — isso é "
-            "Finalizado ou Arquivado? Escreve no quadro qual dos dois usas.",
-            "Isto é importante porque o Martelo deixa de dar alerta de atraso às obras "
-            "Finalizadas e Arquivadas.",
+            "«Obra fechada» é o estado Arquivado.",
+            "Por isso o Martelo deixa de dar alerta de atraso às obras Arquivadas. Uma obra "
+            "Finalizada continua a ter alerta, porque pode estar por levantar ou por faturar.",
+            "Se na tua área usarem estas palavras de outra maneira, escreve-o no quadro.",
         ],
-        cor_borda="8A5A00",
-        fundo=CREME_AVISO,
-        cor_titulo=AVISO,
     )
     tabela(
         doc,
@@ -346,22 +360,22 @@ def gerar(destino: Path, nome_pessoa: str) -> None:
     titulo(doc, "2.4 · Pessoas", nivel=2)
     paragrafo(
         doc,
-        "Os nomes da coluna da direita são os que estão escritos no Martelo — repara que são "
-        "sem acentos. Na coluna da esquerda escreve como é que tratas cada pessoa na "
-        "conversa: alcunhas, apelidos, nomes com acento, iniciais.",
+        "A coluna do meio tem os nomes como estão escritos no Martelo. Na coluna da esquerda "
+        "escreve como tratas cada pessoa na conversa: alcunhas, apelidos, iniciais.",
     )
     paragrafo(
         doc,
-        "Exemplo do que nos interessa: se disseres «a Elsa» e no Martelo estiver «Elisabete», "
-        "o assistente tem de saber que é a mesma pessoa.",
+        "Se tratares alguém por um nome que não é o que está no Martelo, o assistente tem de "
+        "saber que é a mesma pessoa. Os acentos já não são problema: o Martelo passou a "
+        "ignorá-los, «Márcia» encontra «Marcia».",
         italic=True,
         cor=CINZENTO,
     )
     tabela(
         doc,
-        ["Como lhe chamamos (escreve aqui)", "Nome que está no Martelo"],
-        [8.5, 8.5],
-        fixos=[["", nome] for nome in RESPONSAVEIS_REAIS],
+        ["Como lhe chamamos (escreve aqui)", "Nome no Martelo", "Departamento"],
+        [7.0, 4.0, 6.0],
+        fixos=[["", nome, departamento] for nome, departamento in EQUIPA],
         vazias=3,
     )
 
@@ -584,8 +598,11 @@ def gerar(destino: Path, nome_pessoa: str) -> None:
         "Quando acabares",
         [
             "Devolve o documento ao Paulo, por email ou em papel.",
-            "Se te lembrares de mais alguma coisa depois de entregares, diz na mesma. Este "
-            "perfil vai sendo melhorado à medida que formos usando o assistente.",
+            "Não é preciso ter tudo decidido hoje. O Martelo vai passar a ter uma área da IA "
+            "nas Configurações, onde cada um poderá ir acrescentando palavras e avisos ao seu "
+            "perfil à medida que se for lembrando.",
+            "Por isso, quadros em branco não são problema — são coisas para completar depois, "
+            "quando te ocorrerem.",
         ],
     )
 

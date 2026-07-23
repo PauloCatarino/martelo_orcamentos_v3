@@ -58,6 +58,9 @@ CAMPOS_EDITAVEIS_PRODUCAO = (
     "imagem_path",
 )
 
+#: Tudo o que não é letra sem acento nem dígito conta como separador.
+_PONTUACAO = re.compile(r"[^0-9a-z]+")
+
 _CAMPOS_PESQUISA = (
     "codigo_processo",
     "num_enc_phc",
@@ -853,12 +856,8 @@ def _as_positive_int(value) -> int:
 
 
 def termos_pesquisa(texto) -> list[str]:
-    """Split the search box text into lowercase terms (space or ``%``)."""
-    return [
-        termo
-        for termo in re.split(r"[\s%]+", (texto or "").strip().lower())
-        if termo
-    ]
+    """Split the search text into normalised terms (no accents, no punctuation)."""
+    return [termo for termo in _texto(texto).split() if termo]
 
 
 def processo_corresponde(
@@ -939,4 +938,18 @@ def _normalizar_filtro(valor) -> str | None:
 
 
 def _texto(valor) -> str:
-    return "" if valor is None else str(valor).strip().lower()
+    """Normalise text for searching: lowercase, no accents, no punctuation.
+
+    «Márcia» tem de encontrar «Marcia» e «26.1134_01» tem de encontrar
+    «26 1134 01» — a pontuação vira espaço dos dois lados da comparação.
+    """
+    if valor is None:
+        return ""
+
+    sem_acentos = unicodedata.normalize("NFKD", str(valor).strip().lower())
+    sem_acentos = "".join(
+        caractere
+        for caractere in sem_acentos
+        if not unicodedata.combining(caractere)
+    )
+    return _PONTUACAO.sub(" ", sem_acentos).strip()

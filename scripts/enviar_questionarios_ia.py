@@ -54,21 +54,21 @@ PESSOAS = {
     ),
     "Andreia": (
         "orcamentos@lancaencanto.pt",
-        "Como trabalhas nos orçamentos, os avisos da Parte 5 são a parte que "
-        "mais me interessa que preenchas — o que te dava jeito o Martelo "
-        "lembrar-te.",
+        "Estás nos orçamentos, por isso a parte que mais me interessa que "
+        "preenchas é a dos avisos (Parte 5): o que te dava jeito o Martelo "
+        "lembrar-te, sem teres de andar a verificar orçamento a orçamento.",
     ),
     "Catia": (
         "orcamentos2@lancaencanto.pt",
-        "Como trabalhas nos orçamentos, os avisos da Parte 5 são a parte que "
-        "mais me interessa que preenchas — o que te dava jeito o Martelo "
-        "lembrar-te.",
+        "Estás nos orçamentos, por isso a parte que mais me interessa que "
+        "preenchas é a dos avisos (Parte 5): o que te dava jeito o Martelo "
+        "lembrar-te, sem teres de andar a verificar orçamento a orçamento.",
     ),
     "Elisabete": (
         "orcamentos3@lancaencanto.pt",
-        "Como trabalhas nos orçamentos, os avisos da Parte 5 são a parte que "
-        "mais me interessa que preenchas — o que te dava jeito o Martelo "
-        "lembrar-te.",
+        "Estás nos orçamentos, por isso a parte que mais me interessa que "
+        "preenchas é a dos avisos (Parte 5): o que te dava jeito o Martelo "
+        "lembrar-te, sem teres de andar a verificar orçamento a orçamento.",
     ),
 }
 
@@ -90,6 +90,11 @@ não é preciso perceber nada de informática — escreve como falas.</p>
 
 <p>Vai também o meu, já preenchido, só para veres o género de respostas. Não
 copies o meu: o que interessa é como <i>tu</i> falas.</p>
+
+<p><b>Não é preciso ter tudo decidido de uma vez.</b> O Martelo vai passar a ter
+uma área da IA nas Configurações, onde cada um poderá ir acrescentando palavras e
+avisos ao seu perfil à medida que se for lembrando. Quadros em branco não são
+problema.</p>
 
 <p><b>Não é obrigatório.</b> Mas sou honesto contigo: o assistente aprende com o
 que estiver escrito, e quem não der exemplos vai ter respostas mais fracas às

@@ -60,8 +60,12 @@ def test_obra_arquivada_nunca_tem_alerta() -> None:
     assert situacao.tem_alerta is False
 
 
-def test_obra_finalizada_tambem_nao_tem_alerta() -> None:
-    assert estado_prazo("01-01-2020", "Finalizado", hoje=HOJE).situacao == FECHADO
+def test_obra_finalizada_ainda_tem_alerta() -> None:
+    """Decisão do Paulo: só Arquivado desliga o alerta.
+
+    Uma obra Finalizada pode continuar por levantar ou por faturar.
+    """
+    assert estado_prazo("01-01-2020", "Finalizado", hoje=HOJE).situacao == ATRASADO
 
 
 def test_estado_com_acentos_ou_maiusculas_e_reconhecido() -> None:

@@ -17,7 +17,10 @@ from app.domain.datas import normalizar_data
 DIAS_AVISO_ENTREGA = 7
 
 #: Estados em que a obra já está fechada — sem semáforo de prazo.
-ESTADOS_SEM_PRAZO: frozenset[str] = frozenset({"arquivado", "finalizado"})
+#: Decisão do Paulo (2026-07-23): «obra fechada» é Arquivado. Uma obra
+#: Finalizada ainda pode estar por levantar ou por faturar, por isso o alerta
+#: de prazo mantém-se.
+ESTADOS_SEM_PRAZO: frozenset[str] = frozenset({"arquivado"})
 
 SEM_DATA = "sem_data"
 FECHADO = "fechado"
