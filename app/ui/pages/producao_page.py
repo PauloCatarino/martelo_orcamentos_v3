@@ -42,8 +42,10 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
+from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
+from app.services.assistente_producao_service import AssistenteProducaoService
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
@@ -416,6 +418,27 @@ class ProducaoPage(QWidget):
         filters_layout.addStretch()
         filters_layout.addWidget(self.obras_ano_label)
 
+        # IA Martelo (Fase 1): a pergunta em linguagem natural conduz os filtros
+        # acima, para o utilizador ver o que o assistente percebeu.
+        self.ia_input = QLineEdit()
+        self.ia_input.setPlaceholderText(
+            "Pergunte ao Martelo… (ex.: as minhas obras atrasadas)"
+        )
+        self.ia_input.setClearButtonEnabled(True)
+        self.ia_input.setToolTip(
+            "Escreva a pergunta como a diria a um colega e prima Enter. "
+            "O martelo traduz a pergunta nos filtros; nunca altera dados."
+        )
+        self.ia_input.returnPressed.connect(self._perguntar_ia)
+        self.ia_button = QPushButton("Perguntar ao Martelo")
+        self.ia_button.clicked.connect(self._perguntar_ia)
+
+        ia_layout = QHBoxLayout()
+        ia_layout.setSpacing(8)
+        ia_layout.addWidget(QLabel("IA Martelo"))
+        ia_layout.addWidget(self.ia_input, stretch=1)
+        ia_layout.addWidget(self.ia_button)
+
         self.status_label = QLabel("")
         self.status_label.setObjectName("producaoStatus")
 
@@ -491,6 +514,7 @@ class ProducaoPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addLayout(filters_layout)
+        layout.addLayout(ia_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.splitter, stretch=1)
 
@@ -1350,6 +1374,71 @@ class ProducaoPage(QWidget):
         ]
         self._aplicar_config_colunas()
         self._guardar_config_colunas()
+
+    # ---- IA Martelo (Fase 1) ---------------------------------------------
+    def _perguntar_ia(self) -> None:
+        """Traduz a pergunta em filtros e conduz a lista (o assistente)."""
+        pergunta = self.ia_input.text().strip()
+        if not pergunta:
+            return
+
+        try:
+            with SessionLocal() as session:
+                intencao = AssistenteProducaoService(session).interpretar_pergunta(
+                    pergunta,
+                    user_id=self._colunas_user_id_int(),
+                    processos=self._todos,
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível interpretar a pergunta.")
+            return
+
+        if intencao.precisa_perguntar:
+            # O martelo pergunta em vez de adivinhar; não mexe nos filtros.
+            self.status_label.setText(" ".join(intencao.perguntas))
+            return
+
+        self._aplicar_intencao(intencao)
+        total = self.proxy.rowCount()
+        frase = frase_resposta(intencao, total)
+        sugestao = sugestao_recrutamento(intencao, total, self.modelo.vocabulario())
+        self.status_label.setText(f"{frase} {sugestao}".strip())
+
+    def _aplicar_intencao(self, intencao) -> None:
+        """Coloca a intenção nos filtros existentes e re-renderiza uma vez."""
+        widgets = (
+            self.campo_pesquisa,
+            self.estado_combo,
+            self.cliente_combo,
+            self.responsavel_combo,
+            self.atrasadas_check,
+        )
+        estados_sinais = [(w, w.blockSignals(True)) for w in widgets]
+
+        # Responsável primeiro, para o combo de clientes ser reposto de acordo.
+        self._selecionar_combo(self.responsavel_combo, intencao.responsavel)
+        self._atualizar_filtro_clientes()
+        self._selecionar_combo(self.estado_combo, intencao.estado)
+        self._selecionar_combo(self.cliente_combo, intencao.cliente)
+        self.atrasadas_check.setChecked(intencao.so_atrasadas)
+        self.campo_pesquisa.definir_texto(intencao.termos)
+
+        for widget, anterior in estados_sinais:
+            widget.blockSignals(anterior)
+        self._render()
+
+    @staticmethod
+    def _selecionar_combo(combo: QComboBox, valor: str | None) -> None:
+        """Seleciona o item que casa (sem distinguir maiúsculas), ou «Todos»."""
+        if not valor:
+            combo.setCurrentIndex(0)
+            return
+        alvo = valor.strip().lower()
+        for indice in range(combo.count()):
+            if combo.itemText(indice).strip().lower() == alvo:
+                combo.setCurrentIndex(indice)
+                return
+        combo.setCurrentIndex(0)
 
     # ---- motor de pesquisa ------------------------------------------------
     def _carregar_sinonimos(self) -> None:

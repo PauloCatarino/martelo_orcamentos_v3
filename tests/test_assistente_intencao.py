@@ -5,7 +5,9 @@ from __future__ import annotations
 from app.domain.assistente_intencao import (
     Intencao,
     PerfilVocabulario,
+    frase_resposta,
     interpretar,
+    sugestao_recrutamento,
 )
 
 
@@ -146,3 +148,36 @@ def test_nome_explicito_ganha_ao_possessivo() -> None:
     )
 
     assert intencao.responsavel == "Zé"
+
+
+def test_frase_resposta_descreve_o_que_percebeu() -> None:
+    intencao = Intencao(responsavel="Paulo", so_atrasadas=True)
+
+    assert frase_resposta(intencao, 4) == "Encontrei 4 obras de Paulo em atraso."
+    assert frase_resposta(intencao, 1) == "Encontrei 1 obra de Paulo em atraso."
+    assert frase_resposta(intencao, 0) == "Não encontrei obras para essa pergunta."
+
+
+def test_frase_resposta_combina_cliente_estado_e_texto() -> None:
+    intencao = Intencao(cliente="Moviflor", estado="Producao", termos="roupeiros")
+
+    assert (
+        frase_resposta(intencao, 2)
+        == "Encontrei 2 obras do cliente Moviflor em Producao com «roupeiros»."
+    )
+
+
+def test_recrutamento_so_quando_palavra_nao_existe() -> None:
+    intencao = Intencao(termos="xptoinventado", desconhecidas=("xptoinventado",))
+
+    # Sem resultados e palavra fora do vocabulário -> propõe ensinar.
+    sugestao = sugestao_recrutamento(intencao, 0, vocabulario={"roupeiro"})
+    assert "xptoinventado" in sugestao
+    assert "o meu perfil" in sugestao
+
+    # Palavra real (está no vocabulário) mas sem resultados -> não propõe.
+    intencao_real = Intencao(termos="roupeiro", desconhecidas=("roupeiro",))
+    assert sugestao_recrutamento(intencao_real, 0, vocabulario={"roupeiro"}) == ""
+
+    # Com resultados -> nunca propõe.
+    assert sugestao_recrutamento(intencao, 5, vocabulario=set()) == ""

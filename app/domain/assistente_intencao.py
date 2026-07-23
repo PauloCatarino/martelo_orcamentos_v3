@@ -304,6 +304,48 @@ def _extrair_possessivo(resto: str) -> tuple[bool, str]:
     return possessivo, f" {' '.join(restantes)} "
 
 
+def frase_resposta(intencao: Intencao, total: int) -> str:
+    """Frase curta a dizer o que o martelo percebeu (Parte 4 do questionário)."""
+    if total <= 0:
+        return "Não encontrei obras para essa pergunta."
+
+    obra = "obra" if total == 1 else "obras"
+    partes = [f"Encontrei {total} {obra}"]
+    if intencao.responsavel:
+        partes.append(f"de {intencao.responsavel}")
+    if intencao.cliente:
+        partes.append(f"do cliente {intencao.cliente}")
+    if intencao.estado:
+        partes.append(f"em {intencao.estado}")
+    if intencao.so_atrasadas:
+        partes.append("em atraso")
+    if intencao.termos:
+        partes.append(f"com «{intencao.termos}»")
+    return " ".join(partes) + "."
+
+
+def sugestao_recrutamento(
+    intencao: Intencao,
+    total: int,
+    vocabulario: Iterable[str] = (),
+) -> str:
+    """«Não conheço «X» — quer ensiná-la?» quando a palavra não existe mesmo.
+
+    Só quando a consulta não devolveu nada E a palavra não está no vocabulário
+    das obras (senão seria uma palavra real que apenas não teve resultados).
+    """
+    if total > 0:
+        return ""
+    conhecidas = set(vocabulario)
+    for palavra in intencao.desconhecidas:
+        if raiz(palavra) not in conhecidas:
+            return (
+                f"Não conheço «{palavra}». Quer acrescentá-la ao "
+                "«Assistente — o meu perfil»?"
+            )
+    return ""
+
+
 def _termos_e_desconhecidas(resto: str) -> tuple[str, tuple[str, ...]]:
     palavras = [p for p in resto.split() if p and p not in _VAZIAS]
     termos = " ".join(palavras)
