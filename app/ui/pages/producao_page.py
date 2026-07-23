@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, Qt, QSize, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QDate, QObject, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 try:
     from PySide6.QtGui import QFileSystemModel
@@ -53,7 +53,6 @@ from app.services.lista_material_imos_service import (
     execute_lista_material_imos,
     prepare_lista_material_imos,
 )
-from app.services.imos_imagem_service import resolver_imagem_imos
 from app.services.producao_service import (
     ProducaoService,
     codigo_processo_com_cliente,
@@ -66,7 +65,6 @@ from app.services.producao_service import (
     listar_processos_por_encomenda,
     preparar_nova_versao,
 )
-from app.services.orcamento_pasta_lookup_service import resolver_pasta_orcamento
 from app.services.producao_v2_sync_service import (
     ProducaoV2ConfigError,
     aplicar_selecao,
@@ -85,6 +83,10 @@ from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import icone, icone_ficheiro
+from app.ui.helpers.detalhe_obra_worker import (
+    DetalheObraResolvido,
+    DetalheObraWorker,
+)
 from app.ui.helpers.colunas_producao import (
     COLUNAS_PRODUCAO,
     LARGURAS_DEFAULT_PRODUCAO,
@@ -92,7 +94,6 @@ from app.ui.helpers.colunas_producao import (
     desserializar_config,
     guardar_config,
 )
-from app.ui.helpers.imagem import load_scaled_pixmap
 from app.ui.helpers.modelo_producao import ProducaoFilterProxy, ProducaoTableModel
 from app.ui.helpers.vistas_producao import (
     VistaProducao,
@@ -227,6 +228,9 @@ class ProducaoPage(QWidget):
     TABLE_HEADERS = [coluna.titulo for coluna in COLUNAS_PRODUCAO]
     COLUMN_WIDTHS = LARGURAS_DEFAULT_PRODUCAO
 
+    #: Pede ao worker (noutra thread) os dados da obra que vivem no servidor.
+    detalhe_pedido = Signal(int, int)
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -247,6 +251,9 @@ class ProducaoPage(QWidget):
         self._cutrite_dialog = None
         self._aplicando_config_colunas = False
         self._vistas: list[VistaProducao] = []
+        self._cache_detalhe: dict[int, DetalheObraResolvido] = {}
+        self._pedido_detalhe = 0
+        self._iniciar_thread_detalhe()
 
         self.cabecalho = BarraCabecalho(
             "Produção",
@@ -850,29 +857,12 @@ class ProducaoPage(QWidget):
             acao.triggered.connect(self._abrir_pasta_orcamento)
             campo.addAction(acao, QLineEdit.ActionPosition.TrailingPosition)
             self._acoes_pasta_orcamento.append(acao)
-            campo.editingFinished.connect(self._atualizar_link_pasta_orcamento)
+            campo.editingFinished.connect(self._reavaliar_pasta_orcamento)
 
-    def _atualizar_link_pasta_orcamento(self) -> None:
-        """Resolve the budget folder for the current Nº Orçamento / V. Orç."""
+    def _definir_link_pasta_orcamento(self, pasta) -> None:
+        """Show or hide the inline shortcut to the budget folder."""
         if not hasattr(self, "_acoes_pasta_orcamento"):
             return
-
-        numero = self.num_orcamento_input.text().strip()
-        versao = self.versao_orc_input.text().strip()
-        ano = self.ano_input.text().strip()
-
-        pasta = None
-        if numero and versao and ano:
-            try:
-                with SessionLocal() as session:
-                    pasta = resolver_pasta_orcamento(
-                        session,
-                        ano=ano,
-                        num_orcamento=numero,
-                        versao_orc=versao,
-                    )
-            except (SQLAlchemyError, OSError):
-                pasta = None
 
         self._pasta_orcamento = pasta
         dica = (
@@ -892,29 +882,12 @@ class ProducaoPage(QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta)))
         self.status_label.setText(f"Aberta a pasta do orçamento: {pasta}")
 
-    def _atualizar_campo_pasta_obra(self, proc: Producao | None) -> None:
-        """Show the server folder path for the selected process version."""
-        if not hasattr(self, "pasta_obra_input"):
+    def _reavaliar_pasta_orcamento(self) -> None:
+        """Re-read the server after the user edits Nº Orçamento / V. Orç."""
+        if self._a_preencher_form or self._selected_processo_id is None:
             return
-        if proc is None:
-            self.pasta_obra_input.clear()
-            self.pasta_obra_input.setToolTip("Sem obra selecionada")
-            return
-
-        caminho = ""
-        try:
-            with SessionLocal() as session:
-                processo_db = session.get(Producao, proc.id)
-                if processo_db is not None:
-                    caminho = str(caminho_versao_de_processo(session, processo_db))
-        except (SQLAlchemyError, ValueError, OSError):
-            caminho = str(getattr(proc, "pasta_servidor", "") or "")
-
-        self.pasta_obra_input.setText(caminho)
-        self.pasta_obra_input.setCursorPosition(0)
-        self.pasta_obra_input.setToolTip(
-            caminho or "Pasta ainda não definida para esta obra"
-        )
+        self._invalidar_cache_detalhe(self._selected_processo_id)
+        self._pedir_detalhe_obra(self._processo_visivel_por_id(self._selected_processo_id))
 
     def _label_com_icone(self, texto: str, nome_icone: str) -> QWidget:
         label_widget = QWidget()
@@ -1031,6 +1004,7 @@ class ProducaoPage(QWidget):
             return
 
         self._todos = list(processos)
+        self._invalidar_cache_detalhe()
         self.modelo.definir_processos(self._todos)
         if selecionar_id is not None:
             self._selected_processo_id = selecionar_id
@@ -2195,9 +2169,7 @@ class ProducaoPage(QWidget):
             self.notas3_text.setPlainText(self._format_value(proc.notas3))
             self._selected_processo_id = proc.id
             self._atualizar_campos_derivados()
-            self._mostrar_imagem_obra(proc)
-            self._atualizar_campo_pasta_obra(proc)
-            self._atualizar_link_pasta_orcamento()
+            self._pedir_detalhe_obra(proc)
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -2219,11 +2191,8 @@ class ProducaoPage(QWidget):
                     widget.setCurrentIndex(-1)
             self._cliente_id = None
             self._imagem_path = None
-            self.imagem_stack.setCurrentWidget(self.imagem_preview)
-            self._atualizar_preview_imagem()
-            self._atualizar_campo_pasta_obra(None)
-            self._atualizar_link_pasta_orcamento()
             self._selected_processo_id = None
+            self._mostrar_detalhe_vazio()
         finally:
             self._restaurar_sinais_form(estados)
         self._set_dirty(False)
@@ -2552,45 +2521,112 @@ class ProducaoPage(QWidget):
             )
         )
 
-    def _mostrar_imagem_obra(self, proc: Producao) -> None:
-        nome_enc = self.nome_enc_imos_ix_input.text().strip()
-        caminho_imos = None
-        if nome_enc:
-            try:
-                with SessionLocal() as session:
-                    caminho_imos = resolver_imagem_imos(
-                        session,
-                        nome_enc_imos=nome_enc,
-                    )
-            except (SQLAlchemyError, OSError):
-                caminho_imos = None
+    # ---- detalhe resolvido em background ---------------------------------
+    def _iniciar_thread_detalhe(self) -> None:
+        """Start the worker thread that reads the file server."""
+        self._detalhe_thread = QThread(self)
+        self._detalhe_worker = DetalheObraWorker()
+        self._detalhe_worker.moveToThread(self._detalhe_thread)
+        self.detalhe_pedido.connect(self._detalhe_worker.resolver)
+        self._detalhe_worker.resolvido.connect(self._on_detalhe_resolvido)
+        self._detalhe_thread.start()
 
-        if caminho_imos is not None:
-            self._imagem_path = str(caminho_imos)
-            self.imagem_stack.setCurrentWidget(self.imagem_preview)
-            self._atualizar_preview_imagem()
+        aplicacao = QApplication.instance()
+        if aplicacao is not None:
+            aplicacao.aboutToQuit.connect(self._parar_thread_detalhe)
+
+    def _pedir_detalhe_obra(self, proc: Producao | None) -> None:
+        """Ask the worker thread for everything that lives on the server."""
+        if proc is None:
+            self._mostrar_detalhe_vazio()
             return
 
+        cacheado = self._cache_detalhe.get(proc.id)
+        if cacheado is not None:
+            self._aplicar_detalhe(cacheado)
+            return
+
+        self._pedido_detalhe += 1
+        # Marca este como o pedido válido: o worker descarta os anteriores.
+        self._detalhe_worker.ultimo_pedido = self._pedido_detalhe
+        self._mostrar_detalhe_a_carregar()
+        self.detalhe_pedido.emit(self._pedido_detalhe, proc.id)
+
+    def _mostrar_detalhe_a_carregar(self) -> None:
         self._imagem_path = None
         self._imagem_preview_pixmap_original = None
         self.imagem_preview.setPixmap(QPixmap())
-        pasta_txt = str(getattr(proc, "pasta_servidor", "") or "").strip()
-        pasta_existe = False
-        if pasta_txt:
-            try:
-                pasta_existe = Path(pasta_txt).is_dir()
-            except OSError:
-                pasta_existe = False
+        self.imagem_preview.setText("A carregar do servidor…")
+        self.imagem_stack.setCurrentWidget(self.imagem_preview)
+        self.pasta_obra_input.setText("")
+        self.pasta_obra_input.setToolTip("A carregar do servidor…")
+        self._definir_link_pasta_orcamento(None)
 
-        if pasta_existe:
-            self.fs_model.setRootPath(pasta_txt)
-            self.arvore_pasta.setRootIndex(self.fs_model.index(pasta_txt))
-            self.arvore_pasta.setToolTip(pasta_txt)
-            self.imagem_stack.setCurrentWidget(self.arvore_pasta)
-        else:
-            self.imagem_preview.setText("Sem imagem IMOS (sem pasta da obra)")
-            self.imagem_preview.setToolTip(pasta_txt)
+    def _mostrar_detalhe_vazio(self) -> None:
+        self._imagem_path = None
+        self._imagem_preview_pixmap_original = None
+        self.imagem_preview.setPixmap(QPixmap())
+        self.imagem_preview.setText("Sem imagem")
+        self.imagem_preview.setToolTip("")
+        self.imagem_stack.setCurrentWidget(self.imagem_preview)
+        self.pasta_obra_input.clear()
+        self.pasta_obra_input.setToolTip("Sem obra selecionada")
+        self._definir_link_pasta_orcamento(None)
+
+    def _on_detalhe_resolvido(self, resultado) -> None:
+        """Apply a worker result, ignoring answers to older selections."""
+        if resultado.processo_id != self._selected_processo_id:
+            return
+        self._cache_detalhe[resultado.processo_id] = resultado
+        self._aplicar_detalhe(resultado)
+
+    def _aplicar_detalhe(self, resultado) -> None:
+        self.pasta_obra_input.setText(resultado.pasta_obra)
+        self.pasta_obra_input.setCursorPosition(0)
+        self.pasta_obra_input.setToolTip(
+            resultado.pasta_obra or "Pasta ainda não definida para esta obra"
+        )
+
+        self._definir_link_pasta_orcamento(
+            Path(resultado.pasta_orcamento) if resultado.pasta_orcamento else None
+        )
+
+        self._imagem_path = resultado.imagem_path or None
+        if resultado.tem_imagem:
+            self._imagem_preview_pixmap_original = QPixmap.fromImage(resultado.imagem)
+            self.imagem_preview.setToolTip(resultado.imagem_path)
             self.imagem_stack.setCurrentWidget(self.imagem_preview)
+            self._ajustar_imagem_preview()
+            return
+
+        self._imagem_preview_pixmap_original = None
+        self.imagem_preview.setPixmap(QPixmap())
+
+        if not resultado.imagem_path and resultado.pasta_servidor_existe:
+            pasta = resultado.pasta_servidor
+            self.fs_model.setRootPath(pasta)
+            self.arvore_pasta.setRootIndex(self.fs_model.index(pasta))
+            self.arvore_pasta.setToolTip(pasta)
+            self.imagem_stack.setCurrentWidget(self.arvore_pasta)
+            return
+
+        self.imagem_preview.setText(resultado.imagem_aviso or "Sem imagem")
+        self.imagem_preview.setToolTip(resultado.imagem_path or resultado.pasta_servidor)
+        self.imagem_stack.setCurrentWidget(self.imagem_preview)
+
+    def _invalidar_cache_detalhe(self, processo_id: int | None = None) -> None:
+        """Drop cached server data so the next selection reads it again."""
+        if processo_id is None:
+            self._cache_detalhe.clear()
+        else:
+            self._cache_detalhe.pop(processo_id, None)
+
+    def _parar_thread_detalhe(self) -> None:
+        thread = getattr(self, "_detalhe_thread", None)
+        if thread is None or not thread.isRunning():
+            return
+        thread.quit()
+        thread.wait(3000)
 
     def _abrir_item_arvore(self, index) -> None:
         caminho = self.fs_model.filePath(index)
@@ -2598,42 +2634,13 @@ class ProducaoPage(QWidget):
             QDesktopServices.openUrl(QUrl.fromLocalFile(caminho))
 
     def _atualizar_preview_imagem(self) -> None:
+        """Redraw the preview from the pixmap the worker already produced."""
         if not hasattr(self, "imagem_preview"):
             return
-
-        caminho = self._imagem_path
-        self._imagem_preview_pixmap_original = None
-        self.imagem_preview.setPixmap(QPixmap())
-        self.imagem_preview.setToolTip(caminho or "")
-
-        if not caminho:
-            self.imagem_preview.setText("Sem imagem")
-            return
-
-        path = Path(caminho)
-        if not path.is_file():
-            self.imagem_preview.setText("Imagem não encontrada")
-            return
-
-        if path.suffix.lower() == ".pdf":
-            self._imagem_preview_pixmap_original = self._carregar_pdf_pixmap(path)
-            if self._imagem_preview_pixmap_original is None:
-                self.imagem_preview.setText("PDF — duplo-clique para abrir")
-                return
-            self._ajustar_imagem_preview()
-            return
-
-        self._imagem_preview_pixmap_original = QPixmap(str(path))
         if self._imagem_preview_pixmap_original is None:
-            self.imagem_preview.setText("Imagem não encontrada")
-            return
-        if self._imagem_preview_pixmap_original.isNull():
-            self._imagem_preview_pixmap_original = load_scaled_pixmap(
-                str(path),
-                self.imagem_preview.size(),
-            )
-        if self._imagem_preview_pixmap_original is None:
-            self.imagem_preview.setText("Imagem não encontrada")
+            self.imagem_preview.setPixmap(QPixmap())
+            if not self.imagem_preview.text():
+                self.imagem_preview.setText("Sem imagem")
             return
         self._ajustar_imagem_preview()
 
@@ -2653,24 +2660,6 @@ class ProducaoPage(QWidget):
         )
         self.imagem_preview.setText("")
         self.imagem_preview.setPixmap(scaled)
-
-    def _carregar_pdf_pixmap(self, caminho: Path) -> QPixmap | None:
-        try:
-            from PySide6.QtPdf import QPdfDocument
-        except (ImportError, ModuleNotFoundError):
-            return None
-
-        try:
-            document = QPdfDocument(self)
-            document.load(str(caminho))
-            if document.pageCount() < 1:
-                return None
-            image = document.render(0, QSize(900, 1200))
-            if image.isNull():
-                return None
-            return QPixmap.fromImage(image)
-        except Exception:
-            return None
 
     def _abrir_imagem_pdf(self) -> None:
         if not self._imagem_path:

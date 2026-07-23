@@ -210,15 +210,25 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "Ver pastas do processo" in modelo_source
     assert "normalizar_data" in source
     assert "imagem_path" in source
-    assert "resolver_imagem_imos" in source
-    assert "_mostrar_imagem_obra" in source
+    # Acessos ao servidor passaram para o worker noutra thread.
+    assert "resolver_imagem_imos" not in source
+    assert "DetalheObraWorker" in source
+    assert "self.detalhe_pedido.emit" in source
+    assert hasattr(ProducaoPage, "_on_detalhe_resolvido")
+    assert hasattr(ProducaoPage, "_parar_thread_detalhe")
     assert "QStackedWidget" in source
     assert "QTreeView" in source
     assert "QFileSystemModel" in source
     assert "_abrir_item_arvore" in source
     assert "self.imagem_stack.setCurrentWidget(self.imagem_preview)" in source
     assert "self.imagem_stack.setCurrentWidget(self.arvore_pasta)" in source
-    assert "Sem imagem IMOS (sem pasta da obra)" in source
+    import app.ui.helpers.detalhe_obra_worker as detalhe_worker
+
+    worker_source = inspect.getsource(detalhe_worker)
+    assert "Sem imagem IMOS (sem pasta da obra)" in worker_source
+    assert "resolver_imagem_imos" in worker_source
+    assert "caminho_versao_de_processo" in worker_source
+    assert "resolver_pasta_orcamento" in worker_source
     assert "QFileDialog" not in source
     assert "Escolher Imagem/PDF..." not in source
     assert "Limpar Imagem" not in source
@@ -260,7 +270,7 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
     assert "self.splitter_detalhe = QSplitter(Qt.Orientation.Horizontal)" in detalhe_source
     assert 'ligar_persistencia_splitter(\n            self.splitter_detalhe, "producao_detalhe_topo"\n        )' in detalhe_source
     assert hasattr(ProducaoPage, "_criar_campo_pasta_obra")
-    assert hasattr(ProducaoPage, "_atualizar_campo_pasta_obra")
+    assert hasattr(ProducaoPage, "_aplicar_detalhe")
     assert "caminho_versao_de_processo" in source
     # Botão "Copiar" removido; o "Abrir" leva o ícone de pasta.
     assert not hasattr(ProducaoPage, "_copiar_caminho_pasta")
@@ -270,9 +280,8 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
 
     # Atalho para a pasta do orçamento nos campos Nº Orçamento / V. Orç.
     assert hasattr(ProducaoPage, "_preparar_link_pasta_orcamento")
-    assert hasattr(ProducaoPage, "_atualizar_link_pasta_orcamento")
+    assert hasattr(ProducaoPage, "_definir_link_pasta_orcamento")
     assert hasattr(ProducaoPage, "_abrir_pasta_orcamento")
-    assert "resolver_pasta_orcamento" in source
     assert "QLineEdit.ActionPosition.TrailingPosition" in source
 
     # Botão temporário de sincronização com o V2.
