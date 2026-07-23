@@ -66,6 +66,7 @@ from app.services.producao_service import (
     listar_processos_por_encomenda,
     preparar_nova_versao,
 )
+from app.services.producao_ocorrencias_service import contar_ocorrencias
 from app.services.sinonimos_service import carregar_sinonimos
 from app.services.producao_v2_sync_service import (
     ProducaoV2ConfigError,
@@ -82,6 +83,7 @@ from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
+from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import icone, icone_ficheiro
@@ -306,6 +308,13 @@ class ProducaoPage(QWidget):
         )
         self.exportar_resumo_pdf_button.clicked.connect(self._exportar_resumo_pdf)
 
+        self.ocorrencias_button = QPushButton("Ocorrências")
+        self.ocorrencias_button.setToolTip(
+            "Diário da obra: o que o cliente reportou, o que se combinou, o que "
+            "correu mal. Não altera os dados da obra."
+        )
+        self.ocorrencias_button.clicked.connect(self._abrir_ocorrencias)
+
         self.delete_button = QPushButton("Eliminar")
         self.delete_button.setToolTip("Eliminar obra: registo e/ou pasta no servidor")
         self.delete_button.clicked.connect(self._eliminar_processo)
@@ -338,6 +347,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.lista_material_button)
         actions_layout.addWidget(self.enviar_cutrite_button)
         actions_layout.addWidget(self.exportar_resumo_pdf_button)
+        actions_layout.addWidget(self.ocorrencias_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
@@ -1628,6 +1638,38 @@ class ProducaoPage(QWidget):
         self.table.selectRow(index.row())
         self._abrir_pastas_processo(processo)
 
+    def _abrir_ocorrencias(self) -> None:
+        """Open the diary of the selected obra."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para ver as ocorrências.")
+            return
+
+        dialog = OcorrenciasObraDialog(
+            producao_id=processo.id,
+            codigo_processo=self._format_value(processo.codigo_processo),
+            parent=self,
+        )
+        dialog.exec()
+        self._atualizar_botao_ocorrencias(processo)
+
+    def _atualizar_botao_ocorrencias(self, processo: Producao | None) -> None:
+        """Show on the button how many diary lines this obra already has."""
+        if not hasattr(self, "ocorrencias_button"):
+            return
+
+        total = 0
+        if processo is not None:
+            try:
+                with SessionLocal() as session:
+                    total = contar_ocorrencias(session, processo.id)
+            except SQLAlchemyError:
+                total = 0
+
+        self.ocorrencias_button.setText(
+            f"Ocorrências ({total})" if total else "Ocorrências"
+        )
+
     def _abrir_pastas_processo(self, processo: Producao) -> None:
         try:
             with SessionLocal() as session:
@@ -2208,6 +2250,7 @@ class ProducaoPage(QWidget):
             self._selected_processo_id = proc.id
             self._atualizar_campos_derivados()
             self._pedir_detalhe_obra(proc)
+            self._atualizar_botao_ocorrencias(proc)
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
@@ -2231,6 +2274,7 @@ class ProducaoPage(QWidget):
             self._imagem_path = None
             self._selected_processo_id = None
             self._mostrar_detalhe_vazio()
+            self._atualizar_botao_ocorrencias(None)
         finally:
             self._restaurar_sinais_form(estados)
         self._set_dirty(False)
