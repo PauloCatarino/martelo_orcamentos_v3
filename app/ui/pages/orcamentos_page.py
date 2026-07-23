@@ -24,8 +24,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain import pesquisa_texto
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO, deve_avisar_cliente_phc
-from app.domain.orcamentos_lista import filtrar_orcamentos, resumo_lista
+from app.domain.orcamentos_lista import (
+    filtrar_orcamentos,
+    ordenar_orcamentos,
+    resumo_lista,
+    vocabulario_orcamentos,
+)
 from app.repositories.cliente_repository import ClienteRepository
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import (
@@ -45,6 +51,7 @@ from app.services.orcamento_delete_service import (
 )
 from app.services.orcamento_export_service import OrcamentoExportService
 from app.services.producao_pastas_service import preview_conteudo_pasta
+from app.services.sinonimos_service import carregar_sinonimos
 from app.ui.dialogs.editar_orcamento_dialog import (
     EditarOrcamentoDialog,
     EditarOrcamentoContexto,
@@ -63,6 +70,10 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     grupos_versoes,
 )
 from app.utils.formatters import format_currency, format_version
+
+
+#: Prefixo do aviso mostrado quando a pesquisa não devolve nada.
+AVISO_SEM_RESULTADOS = "Sem resultados para"
 
 
 class OrcamentosPage(QWidget):
@@ -103,6 +114,26 @@ class OrcamentosPage(QWidget):
         "Info 2": 180,
     }
     CENTERED_HEADERS = {"Ano", "Vers\u00e3o", "Estado", "Enc PHC", "Data", "Utilizador"}
+    #: Chave de ordena\u00e7\u00e3o de cada coluna (ver ``orcamentos_lista``); a coluna
+    #: "Data" ordena por ordem de **entrada** (data de cria\u00e7\u00e3o e, em empate, o
+    #: id da vers\u00e3o).
+    ORDENACAO_COLUNAS = (
+        "ano",
+        "num_orcamento",
+        "numero_versao",
+        "estado",
+        "enc_phc",
+        "cliente_nome",
+        "ref_cliente",
+        "obra",
+        "localizacao",
+        "descricao",
+        "entrada",
+        "preco_total",
+        "utilizador",
+        "info_1",
+        "info_2",
+    )
 
     def __init__(self, on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None) -> None:
         super().__init__()
@@ -110,6 +141,11 @@ class OrcamentosPage(QWidget):
         self.on_open_orcamento = on_open_orcamento
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
         self._todos: list[OrcamentoResumo] = []
+        self._sinonimos: dict[str, frozenset[str]] = {}
+        # Ordenação por coluna: chave ativa (None = ordem de origem, com as
+        # versões agrupadas) e sentido.
+        self._ordenacao: str | None = None
+        self._ordenacao_asc: bool = True
 
         self.cabecalho = BarraCabecalho(
             "Orçamentos", ["Gestão de orçamentos do Martelo V3"]
@@ -189,6 +225,15 @@ class OrcamentosPage(QWidget):
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
         )
+        # Ordenação feita à mão (a tabela é preenchida linha a linha com cores
+        # de grupo): o clique no cabeçalho reordena a lista e volta a preencher.
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header.setToolTip(
+            "Clique num cabeçalho para ordenar. A coluna \"Data\" ordena por "
+            "ordem de entrada do orçamento."
+        )
+        header.sectionClicked.connect(self._on_header_clicked)
         self._aplicar_larguras_colunas()
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         ligar_persistencia_larguras(self.table, "orcamentos")
@@ -211,6 +256,7 @@ class OrcamentosPage(QWidget):
         layout.addWidget(self.footer_label)
 
         self.setLayout(layout)
+        self._carregar_sinonimos()
         self.carregar_orcamentos()
 
     def carregar_orcamentos(self) -> None:
@@ -234,15 +280,88 @@ class OrcamentosPage(QWidget):
 
     def _render(self, *_args) -> None:
         """Render the in-memory list using the current search and filters."""
+        versao_selecionada = self._versao_id_selecionada()
         filtrados = filtrar_orcamentos(
             self._todos,
             texto=self.campo_pesquisa.texto(),
             estado=self._combo_valor(self.estado_combo),
             cliente=self._combo_valor(self.cliente_combo),
             utilizador=self._combo_valor(self.utilizador_combo),
+            sinonimos=self._sinonimos,
+        )
+        filtrados = ordenar_orcamentos(
+            filtrados,
+            self._ordenacao,
+            self._ordenacao_asc,
         )
         self._preencher_tabela(filtrados)
         self._atualizar_rodape(filtrados)
+        self._sugerir_pesquisa_proxima(len(filtrados))
+        self._selecionar_versao(versao_selecionada)
+
+    def _on_header_clicked(self, coluna: int) -> None:
+        """Sort by the clicked column, toggling direction on repeated clicks."""
+        if not 0 <= coluna < len(self.ORDENACAO_COLUNAS):
+            return
+        chave = self.ORDENACAO_COLUNAS[coluna]
+        if self._ordenacao == chave:
+            self._ordenacao_asc = not self._ordenacao_asc
+        else:
+            self._ordenacao = chave
+            self._ordenacao_asc = True
+
+        ordem = (
+            Qt.SortOrder.AscendingOrder
+            if self._ordenacao_asc
+            else Qt.SortOrder.DescendingOrder
+        )
+        self.table.horizontalHeader().setSortIndicator(coluna, ordem)
+        self._render()
+
+    def _carregar_sinonimos(self) -> None:
+        """Load this user's synonyms from the AI profile into the search."""
+        user = app_session.current_user
+        user_id = int(user.id) if user is not None and user.id else None
+        try:
+            with SessionLocal() as session:
+                self._sinonimos = carregar_sinonimos(session, user_id)
+        except SQLAlchemyError:
+            self._sinonimos = {}
+
+    def _sugerir_pesquisa_proxima(self, total: int) -> None:
+        """Quando não há resultados, propor a palavra parecida que existe."""
+        texto = self.campo_pesquisa.texto().strip()
+        if total or not texto:
+            # Limpar o aviso da pesquisa anterior, senão fica preso no ecrã.
+            if self.status_label.text().startswith(AVISO_SEM_RESULTADOS):
+                self.status_label.clear()
+            return
+
+        sugestao = pesquisa_texto.sugerir_pesquisa(
+            texto, vocabulario_orcamentos(self._todos)
+        )
+        if sugestao:
+            self.status_label.setText(
+                f"{AVISO_SEM_RESULTADOS} «{texto}». "
+                f"Quis dizer «{sugestao}»?"
+            )
+        else:
+            self.status_label.setText(f"{AVISO_SEM_RESULTADOS} «{texto}».")
+
+    def _versao_id_selecionada(self) -> int | None:
+        """PK da versão na linha selecionada (para manter a seleção)."""
+        row = self.table.currentRow()
+        orcamento = self._orcamentos_by_row.get(row)
+        return None if orcamento is None else orcamento.orcamento_versao_id
+
+    def _selecionar_versao(self, versao_id: int | None) -> None:
+        """Re-select the row holding one version after re-filling the table."""
+        if versao_id is None:
+            return
+        for row, orcamento in self._orcamentos_by_row.items():
+            if orcamento.orcamento_versao_id == versao_id:
+                self.table.selectRow(row)
+                return
 
     def _limpar_filtros(self) -> None:
         """Clear search and reset all filters to 'Todos'."""
@@ -259,6 +378,10 @@ class OrcamentosPage(QWidget):
                 combo.setCurrentIndex(0)
         for widget, estado_anterior in estados_sinais:
             widget.blockSignals(estado_anterior)
+        # Voltar à ordem de origem (versões agrupadas) e apagar a seta.
+        self._ordenacao = None
+        self._ordenacao_asc = True
+        self.table.horizontalHeader().setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
         self._render()
 
     def _atualizar_filtros(self) -> None:
