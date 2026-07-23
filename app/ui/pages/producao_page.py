@@ -6,21 +6,21 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from PySide6.QtCore import QDate, QObject, Qt, QSize, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QPixmap
+from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 try:
     from PySide6.QtGui import QFileSystemModel
 except ImportError:  # PySide6 6.10 exposes QFileSystemModel from QtWidgets.
     from PySide6.QtWidgets import QFileSystemModel
 from PySide6.QtWidgets import (
     QApplication,
-    QCalendarWidget,
+    QCheckBox,
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
+    QDateEdit,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
@@ -29,8 +29,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QTextEdit,
     QStackedWidget,
     QTreeView,
@@ -62,7 +61,6 @@ from app.services.producao_service import (
     criar_nova_versao,
     criar_processo_externo,
     eliminar_processo_completo,
-    filtrar_processos,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
     listar_processos_por_encomenda,
@@ -95,6 +93,14 @@ from app.ui.helpers.colunas_producao import (
     guardar_config,
 )
 from app.ui.helpers.imagem import load_scaled_pixmap
+from app.ui.helpers.modelo_producao import ProducaoFilterProxy, ProducaoTableModel
+from app.ui.helpers.vistas_producao import (
+    VistaProducao,
+    carregar_vistas,
+    guardar_vistas,
+    remover_vista,
+    substituir_vista,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
@@ -103,6 +109,19 @@ from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
 TIPOS_PASTA_PRODUCAO = (
     "Encomenda de Cliente",
     "Encomenda de Cliente Final",
+)
+
+#: Nome da entrada que representa "sem vista" no combo de vistas.
+VISTA_SEM_FILTROS = "Todas as obras"
+
+#: Data sentinela dos campos ``QDateEdit`` — apresentada como vazia.
+DATA_VAZIA = QDate(1752, 9, 14)
+
+#: Coluna usada para "ordem de entrada" (mais recentes em cima).
+COLUNA_ORDEM_ENTRADA = next(
+    indice
+    for indice, coluna in enumerate(COLUNAS_PRODUCAO)
+    if coluna.key == "criada_em"
 )
 
 
@@ -115,18 +134,6 @@ class _ImagemPreviewLabel(QLabel):
 
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 (Qt override)
         self._on_double_click()
-        super().mouseDoubleClickEvent(event)
-
-
-class _DoubleClickLineEdit(QLineEdit):
-    """Line edit that delegates double-clicks to the page."""
-
-    def __init__(self, on_double_click, parent=None) -> None:
-        super().__init__(parent)
-        self._on_double_click = on_double_click
-
-    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        self._on_double_click(self)
         super().mouseDoubleClickEvent(event)
 
 
@@ -219,23 +226,11 @@ class ProducaoPage(QWidget):
 
     TABLE_HEADERS = [coluna.titulo for coluna in COLUNAS_PRODUCAO]
     COLUMN_WIDTHS = LARGURAS_DEFAULT_PRODUCAO
-    CENTERED_HEADERS = {
-        "Criada em",
-        "Ano",
-        "Estado",
-        "Nº Enc PHC",
-        "V. Obra",
-        "V. CutRite",
-        "Data Início",
-        "Data Entrega",
-        "Qt Artigos",
-    }
 
     def __init__(self) -> None:
         super().__init__()
 
         self._todos: list[Producao] = []
-        self._processos_by_row: dict[int, Producao] = {}
         self._selected_processo_id: int | None = None
         self._dirty = False
         self._a_preencher_form = False
@@ -251,6 +246,7 @@ class ProducaoPage(QWidget):
         self._cutrite_worker = None
         self._cutrite_dialog = None
         self._aplicando_config_colunas = False
+        self._vistas: list[VistaProducao] = []
 
         self.cabecalho = BarraCabecalho(
             "Produção",
@@ -350,6 +346,25 @@ class ProducaoPage(QWidget):
             combo.currentTextChanged.connect(self._render)
         self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)
 
+        self.vista_combo = QComboBox()
+        self.vista_combo.setMinimumWidth(150)
+        self.vista_combo.setToolTip(
+            "Vistas guardadas: combinações de pesquisa e filtros, suas e só suas"
+        )
+        self.vista_combo.currentIndexChanged.connect(self._aplicar_vista_escolhida)
+
+        self.vista_button = QPushButton("★")
+        self.vista_button.setToolTip("Guardar ou eliminar vistas")
+        self.vista_button.setFixedWidth(30)
+        self.vista_button.clicked.connect(self._abrir_menu_vistas)
+
+        self.atrasadas_check = QCheckBox("só atrasadas")
+        self.atrasadas_check.setToolTip(
+            "Mostrar apenas obras com a data de entrega já passada "
+            "(obras arquivadas ou finalizadas não contam)"
+        )
+        self.atrasadas_check.toggled.connect(self._render)
+
         self.obras_ano_label = QLabel("")
         self.obras_ano_label.setObjectName("producaoObrasAno")
         self.obras_ano_label.setStyleSheet(
@@ -365,6 +380,9 @@ class ProducaoPage(QWidget):
 
         filters_layout = QHBoxLayout()
         filters_layout.setSpacing(10)
+        filters_layout.addWidget(QLabel("Vista"))
+        filters_layout.addWidget(self.vista_combo)
+        filters_layout.addWidget(self.vista_button)
         filters_layout.addWidget(self.campo_pesquisa)
         filters_layout.addWidget(QLabel("Estado"))
         filters_layout.addWidget(self.estado_combo)
@@ -372,6 +390,7 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(self.cliente_combo)
         filters_layout.addWidget(QLabel("Responsável"))
         filters_layout.addWidget(self.responsavel_combo)
+        filters_layout.addWidget(self.atrasadas_check)
         filters_layout.addStretch()
         filters_layout.addWidget(self.obras_ano_label)
 
@@ -380,16 +399,24 @@ class ProducaoPage(QWidget):
 
         self.detail_panel = self._criar_painel_detalhe()
 
-        self.table = QTableWidget(0, len(self.TABLE_HEADERS))
-        self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        criada_em_item = self.table.horizontalHeaderItem(0)
-        if criada_em_item is not None:
-            criada_em_item.setToolTip("Data em que a obra foi criada nesta lista")
+        self.modelo = ProducaoTableModel(self)
+        self.proxy = ProducaoFilterProxy(self)
+        self.proxy.setSourceModel(self.modelo)
+
+        self.table = QTableView()
+        self.table.setModel(self.proxy)
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableView.SelectionMode.SingleSelection)
+        self.table.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        self.table.setSortingEnabled(True)
+        self.table.sortByColumn(
+            COLUNA_ORDEM_ENTRADA,
+            Qt.SortOrder.DescendingOrder,
+        )
         header = self.table.horizontalHeader()
+        header.setSortIndicatorShown(True)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionsMovable(False)
         header.setStretchLastSection(False)
@@ -406,8 +433,8 @@ class ProducaoPage(QWidget):
         self._aplicar_larguras_colunas()
         header.sectionResized.connect(self._on_coluna_redimensionada)
         self._carregar_config_colunas()
-        self.table.itemSelectionChanged.connect(self._on_select_row)
-        self.table.cellDoubleClicked.connect(self._handle_table_double_click)
+        self.table.selectionModel().selectionChanged.connect(self._on_select_row)
+        self.table.doubleClicked.connect(self._handle_table_double_click)
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("producaoFooter")
@@ -446,6 +473,7 @@ class ProducaoPage(QWidget):
         layout.addWidget(self.splitter, stretch=1)
 
         self.setLayout(layout)
+        self._carregar_vistas()
         self.carregar_processos()
 
     def _criar_painel_detalhe(self) -> QScrollArea:
@@ -486,10 +514,8 @@ class ProducaoPage(QWidget):
         self.ref_cliente_input = QLineEdit()
         self.obra_input = QLineEdit()
         self.localizacao_input = QLineEdit()
-        self.data_inicio_input = _DoubleClickLineEdit(self._abrir_calendario_data)
-        self.data_inicio_input.setPlaceholderText("dd-mm-aaaa")
-        self.data_entrega_input = _DoubleClickLineEdit(self._abrir_calendario_data)
-        self.data_entrega_input.setPlaceholderText("dd-mm-aaaa")
+        self.data_inicio_input = self._campo_data()
+        self.data_entrega_input = self._campo_data()
 
         self.tipo_pasta_combo = QComboBox()
         self.tipo_pasta_combo.addItems(TIPOS_PASTA_PRODUCAO)
@@ -658,6 +684,55 @@ class ProducaoPage(QWidget):
         """
         for campo in campos:
             campo[1].setFixedHeight(22)
+
+    @staticmethod
+    def _definir_data(campo: QDateEdit, valor: object) -> None:
+        """Show one stored date; anything invalid leaves the field empty."""
+        texto = normalizar_data(valor)
+        data = QDate.fromString(texto, "dd-MM-yyyy") if texto else QDate()
+        campo.setDate(data if data.isValid() else DATA_VAZIA)
+
+    @staticmethod
+    def _texto_data(campo: QDateEdit) -> str | None:
+        """Return the field's date as ``dd-mm-aaaa``, or None when empty."""
+        data = campo.date()
+        if not data.isValid() or data == DATA_VAZIA:
+            return None
+        return data.toString("dd-MM-yyyy")
+
+    def _formatar_preco_total(self) -> None:
+        """Normalise the price as the user leaves the field."""
+        texto = self.preco_total_input.text().strip()
+        if not texto:
+            self.preco_total_input.setStyleSheet("")
+            return
+
+        try:
+            valor = self._decimal_or_none(texto)
+        except ValueError:
+            self.preco_total_input.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
+            self.status_label.setText(
+                "Preço total inválido — use números, por exemplo 17300,00."
+            )
+            return
+
+        self.preco_total_input.setStyleSheet("")
+        if valor is not None:
+            self.preco_total_input.setText(f"{valor:.2f}")
+
+    def _campo_data(self) -> QDateEdit:
+        """Date field with calendar popup; empty is the minimum date."""
+        campo = QDateEdit()
+        campo.setDisplayFormat("dd-MM-yyyy")
+        campo.setCalendarPopup(True)
+        campo.setMinimumDate(DATA_VAZIA)
+        campo.setSpecialValueText(" ")  # data mínima é apresentada como vazio
+        campo.setDate(DATA_VAZIA)
+        campo.setToolTip(
+            "Escolha no calendário ou escreva dd-mm-aaaa. "
+            "Para limpar, recue até a data ficar vazia."
+        )
+        return campo
 
     def _readonly_line(self) -> QLineEdit:
         line = QLineEdit()
@@ -887,12 +962,13 @@ class ProducaoPage(QWidget):
             self.ref_cliente_input,
             self.obra_input,
             self.localizacao_input,
-            self.data_inicio_input,
-            self.data_entrega_input,
         ):
             if line_edit is self.ref_cliente_input:
                 continue
             line_edit.textChanged.connect(self._on_user_edit)
+        for campo_data in (self.data_inicio_input, self.data_entrega_input):
+            campo_data.dateChanged.connect(self._on_user_edit)
+        self.preco_total_input.editingFinished.connect(self._formatar_preco_total)
         for combo in (
             self.estado_form_combo,
             self.responsavel_form_combo,
@@ -929,10 +1005,10 @@ class ProducaoPage(QWidget):
         self.obra_input.setToolTip("Nome ou descrição curta da obra")
         self.localizacao_input.setToolTip("Localização da obra")
         self.data_inicio_input.setToolTip(
-            "Data no formato dd-mm-aaaa; duplo-clique para escolher no calendário"
+            "Data de início no formato dd-mm-aaaa; use o calendário para escolher"
         )
         self.data_entrega_input.setToolTip(
-            "Data no formato dd-mm-aaaa; duplo-clique para escolher no calendário"
+            "Data de entrega no formato dd-mm-aaaa; use o calendário para escolher"
         )
         self.tipo_pasta_combo.setToolTip("Pasta de destino no servidor")
         self.descricao_artigos_text.setToolTip("Descrição dos artigos da obra")
@@ -944,17 +1020,18 @@ class ProducaoPage(QWidget):
 
     def carregar_processos(self, selecionar_id: int | None = None) -> None:
         """Load production processes into the table."""
-        self.table.setRowCount(0)
         self.status_label.clear()
 
         try:
             with SessionLocal() as session:
                 processos = ProducaoService(session).listar_processos()
         except SQLAlchemyError:
+            self.modelo.definir_processos([])
             self.status_label.setText("Nao foi possivel carregar a producao.")
             return
 
         self._todos = list(processos)
+        self.modelo.definir_processos(self._todos)
         if selecionar_id is not None:
             self._selected_processo_id = selecionar_id
         self._atualizar_filtros()
@@ -964,17 +1041,18 @@ class ProducaoPage(QWidget):
             self.status_label.setText("Sem processos de produção para mostrar.")
 
     def _render(self, *_args) -> None:
-        """Render the in-memory list using the current search and filters."""
+        """Re-apply the search and filters on the proxy model."""
         selected_id = self._selected_processo_id
-        filtrados = filtrar_processos(
-            self._todos,
+        self.proxy.definir_filtros(
             texto=self.campo_pesquisa.texto(),
             estado=self._combo_valor(self.estado_combo),
             cliente=self._combo_valor(self.cliente_combo),
             responsavel=self._combo_valor(self.responsavel_combo),
+            so_atrasadas=self.atrasadas_check.isChecked(),
         )
-        self._preencher_tabela(filtrados)
-        self.footer_label.setText(f"{len(filtrados)} de {len(self._todos)}")
+        self.footer_label.setText(
+            f"{self.proxy.rowCount()} de {self.modelo.rowCount()}"
+        )
         self._atualizar_contador_obras_ano()
         self._restaurar_selecao_apos_render(selected_id)
 
@@ -998,19 +1076,26 @@ class ProducaoPage(QWidget):
         else:
             self.obras_ano_label.setText(f"Obras {ano_atual} · {responsavel}: {total}")
 
-    def _limpar_filtros(self) -> None:
+    def _limpar_filtros(self, manter_vista: bool = False) -> None:
         """Clear search and reset all filters to 'Todos'."""
-        widgets = (
+        widgets = [
             self.campo_pesquisa,
             self.estado_combo,
             self.cliente_combo,
             self.responsavel_combo,
-        )
+            self.atrasadas_check,
+        ]
+        if not manter_vista:
+            widgets.append(self.vista_combo)
+
         estados_sinais = [(widget, widget.blockSignals(True)) for widget in widgets]
         self.campo_pesquisa.limpar()
         for combo in (self.estado_combo, self.cliente_combo, self.responsavel_combo):
             if combo.count():
                 combo.setCurrentIndex(0)
+        self.atrasadas_check.setChecked(False)
+        if not manter_vista and self.vista_combo.count():
+            self.vista_combo.setCurrentIndex(0)
         for widget, estado_anterior in estados_sinais:
             widget.blockSignals(estado_anterior)
         self._atualizar_filtro_clientes()
@@ -1132,6 +1217,7 @@ class ProducaoPage(QWidget):
                 self.table.setColumnWidth(column_index, largura)
         finally:
             self._aplicando_config_colunas = False
+        self._vistas: list[VistaProducao] = []
 
     def _atualizar_dados_v2(self) -> None:
         """Compare V2 with V3 and let the user pick what to bring over.
@@ -1242,6 +1328,12 @@ class ProducaoPage(QWidget):
             )
 
         menu.addSeparator()
+        acao_entrada = menu.addAction("Repor ordem de entrada")
+        acao_entrada.setToolTip(
+            "Voltar a ordenar pelas obras mais recentes no topo (ordem de entrada)"
+        )
+        acao_entrada.triggered.connect(self._repor_ordem_entrada)
+
         acao_todas = menu.addAction("Mostrar todas")
         acao_todas.setToolTip("Mostrar todas as colunas disponíveis")
         acao_todas.triggered.connect(self._mostrar_todas_colunas)
@@ -1267,6 +1359,149 @@ class ProducaoPage(QWidget):
         ]
         self._aplicar_config_colunas()
         self._guardar_config_colunas()
+
+    # ---- vistas guardadas -------------------------------------------------
+    def _carregar_vistas(self) -> None:
+        """Load this user's saved views into the combo."""
+        try:
+            with SessionLocal() as session:
+                self._vistas = carregar_vistas(session, self._colunas_user_id())
+        except SQLAlchemyError:
+            self._vistas = []
+        self._popular_combo_vistas()
+
+    def _popular_combo_vistas(self, selecionar: str = "") -> None:
+        estado_anterior = self.vista_combo.blockSignals(True)
+        self.vista_combo.clear()
+        self.vista_combo.addItem(VISTA_SEM_FILTROS)
+        for vista in self._vistas:
+            self.vista_combo.addItem(vista.nome)
+        indice = self.vista_combo.findText(selecionar) if selecionar else 0
+        self.vista_combo.setCurrentIndex(max(indice, 0))
+        self.vista_combo.blockSignals(estado_anterior)
+
+    def _vista_atual(self) -> VistaProducao | None:
+        nome = self.vista_combo.currentText()
+        if nome == VISTA_SEM_FILTROS:
+            return None
+        return next((v for v in self._vistas if v.nome == nome), None)
+
+    def _aplicar_vista_escolhida(self, *_args) -> None:
+        vista = self._vista_atual()
+        if vista is None:
+            self._limpar_filtros(manter_vista=True)
+            return
+
+        widgets = (
+            self.campo_pesquisa,
+            self.estado_combo,
+            self.cliente_combo,
+            self.responsavel_combo,
+            self.atrasadas_check,
+        )
+        estados_sinais = [(w, w.blockSignals(True)) for w in widgets]
+        self.campo_pesquisa.definir_texto(vista.texto)
+        self.responsavel_combo.setCurrentText(vista.responsavel)
+        self._atualizar_filtro_clientes()
+        self.estado_combo.setCurrentText(vista.estado)
+        self.cliente_combo.setCurrentText(vista.cliente)
+        self.atrasadas_check.setChecked(vista.so_atrasadas)
+        for widget, estado_anterior in estados_sinais:
+            widget.blockSignals(estado_anterior)
+
+        self.status_label.setText(f"Vista «{vista.nome}» aplicada.")
+        self._render()
+
+    def _vista_dos_filtros_atuais(self, nome: str) -> VistaProducao:
+        return VistaProducao(
+            nome=nome,
+            texto=self.campo_pesquisa.texto(),
+            estado=self.estado_combo.currentText() or "Todos",
+            cliente=self.cliente_combo.currentText() or "Todos",
+            responsavel=self.responsavel_combo.currentText() or "Todos",
+            so_atrasadas=self.atrasadas_check.isChecked(),
+        )
+
+    def _abrir_menu_vistas(self) -> None:
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+
+        acao_guardar = menu.addAction("Guardar filtros atuais como vista…")
+        acao_guardar.setToolTip("Cria uma vista nova com a combinação de filtros atual")
+        acao_guardar.triggered.connect(self._guardar_vista_atual)
+
+        vista = self._vista_atual()
+        acao_eliminar = menu.addAction(
+            f"Eliminar a vista «{vista.nome}»" if vista else "Eliminar vista"
+        )
+        acao_eliminar.setEnabled(vista is not None)
+        acao_eliminar.triggered.connect(self._eliminar_vista_atual)
+
+        menu.exec(self.vista_button.mapToGlobal(self.vista_button.rect().bottomLeft()))
+
+    def _guardar_vista_atual(self) -> None:
+        sugestao = self.vista_combo.currentText()
+        if sugestao == VISTA_SEM_FILTROS:
+            sugestao = ""
+
+        nome, confirmou = QInputDialog.getText(
+            self,
+            "Guardar vista",
+            "Nome da vista:",
+            text=sugestao,
+        )
+        if not confirmou:
+            return
+
+        nome = nome.strip()
+        if not nome:
+            self.status_label.setText("A vista precisa de um nome.")
+            return
+        if nome == VISTA_SEM_FILTROS:
+            self.status_label.setText(f"«{VISTA_SEM_FILTROS}» é um nome reservado.")
+            return
+
+        self._vistas = substituir_vista(
+            self._vistas,
+            self._vista_dos_filtros_atuais(nome),
+        )
+        if self._gravar_vistas():
+            self._popular_combo_vistas(selecionar=nome)
+            self.status_label.setText(f"Vista «{nome}» guardada.")
+
+    def _eliminar_vista_atual(self) -> None:
+        vista = self._vista_atual()
+        if vista is None:
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Eliminar vista",
+            f"Eliminar a vista «{vista.nome}»?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+
+        self._vistas = remover_vista(self._vistas, vista.nome)
+        if self._gravar_vistas():
+            self._popular_combo_vistas()
+            self.status_label.setText(f"Vista «{vista.nome}» eliminada.")
+
+    def _gravar_vistas(self) -> bool:
+        try:
+            with SessionLocal() as session:
+                guardar_vistas(session, self._colunas_user_id(), self._vistas)
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível guardar as vistas.")
+            return False
+        return True
+
+    def _repor_ordem_entrada(self) -> None:
+        """Sort by entry order again: newest works on top."""
+        self.table.sortByColumn(COLUNA_ORDEM_ENTRADA, Qt.SortOrder.DescendingOrder)
+        self.status_label.setText("Ordenado por ordem de entrada (mais recentes em cima).")
 
     def _mostrar_todas_colunas(self) -> None:
         self._colunas_visiveis = [coluna.key for coluna in COLUNAS_PRODUCAO]
@@ -1318,49 +1553,12 @@ class ProducaoPage(QWidget):
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel guardar as colunas.")
 
-    def _preencher_tabela(self, processos: list[Producao]) -> None:
-        """Fill the table with production processes."""
-        self._processos_by_row = {}
-        estado_sinais = self.table.blockSignals(True)
-        self.table.setRowCount(len(processos))
-        icone_pasta = icone("pasta_abrir")  # carregado uma vez para todas as linhas
-
-        for row_index, processo in enumerate(processos):
-            self._processos_by_row[row_index] = processo
-            values = [coluna.valor(processo) for coluna in COLUNAS_PRODUCAO]
-
-            for column_index, value in enumerate(values):
-                coluna = COLUNAS_PRODUCAO[column_index]
-                header = coluna.titulo
-                display_value = self._format_value(value)
-                item = self._criar_item_tabela(display_value, header)
-                item.setBackground(QColor(tema.cor_zebra(row_index)))
-                if coluna.key == "estado":
-                    fundo, texto = tema.cor_estado_producao(value)
-                    if fundo and texto:
-                        item.setBackground(QColor(fundo))
-                        item.setForeground(QColor(texto))
-                if coluna.key == "processo":
-                    item.setIcon(icone_pasta)
-                    item.setToolTip("Ver pastas do processo")
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, {"producao_id": processo.id})
-                self.table.setItem(row_index, column_index, item)
-
-        self.table.blockSignals(estado_sinais)
-
-    def _criar_item_tabela(self, value: str, header: str) -> QTableWidgetItem:
-        """Create a table item with the list page alignment conventions."""
-        item = QTableWidgetItem(value)
-        if header in self.CENTERED_HEADERS:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        else:
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-        if value:
-            item.setToolTip(value)
-        return item
+    def _processo_na_linha_visivel(self, row: int) -> Producao | None:
+        """Return the process shown on one *visible* (proxy) row."""
+        if row < 0 or row >= self.proxy.rowCount():
+            return None
+        indice = self.proxy.index(row, 0)
+        return indice.data(ProducaoTableModel.ROLE_PROCESSO)
 
     def _restaurar_selecao_apos_render(self, selected_id: int | None) -> None:
         if selected_id is not None and self._selecionar_processo_id(selected_id):
@@ -1373,16 +1571,15 @@ class ProducaoPage(QWidget):
         if self._dirty:
             return
 
-        if self._processos_by_row:
-            processo = self._processos_by_row[min(self._processos_by_row)]
-            self._selecionar_processo_id(processo.id)
-            self._fill_form(processo)
+        primeiro = self._processo_na_linha_visivel(0)
+        if primeiro is not None:
+            self._selecionar_processo_id(primeiro.id)
+            self._fill_form(primeiro)
         else:
             self._clear_form()
 
-    def _on_select_row(self) -> None:
-        row = self.table.currentRow()
-        processo = self._processos_by_row.get(row)
+    def _on_select_row(self, *_args) -> None:
+        processo = self._processo_na_linha_visivel(self.table.currentIndex().row())
         if processo is None:
             return
 
@@ -1405,17 +1602,18 @@ class ProducaoPage(QWidget):
 
         self._fill_form(processo)
 
-    def _handle_table_double_click(self, row: int, column: int) -> None:
+    def _handle_table_double_click(self, index) -> None:
+        column = index.column() if index is not None and index.isValid() else -1
         if column < 0 or column >= len(COLUNAS_PRODUCAO):
             return
         if COLUNAS_PRODUCAO[column].key != "processo":
             return
 
-        processo = self._processos_by_row.get(row)
+        processo = index.data(ProducaoTableModel.ROLE_PROCESSO)
         if processo is None:
             return
 
-        self.table.selectRow(row)
+        self.table.selectRow(index.row())
         self._abrir_pastas_processo(processo)
 
     def _abrir_pastas_processo(self, processo: Producao) -> None:
@@ -1491,8 +1689,8 @@ class ProducaoPage(QWidget):
             "MATERIAIS": self.materias_usados_text.toPlainText().strip(),
             "QTD": self.qt_artigos_input.text().strip(),
             "PLANO_CORTE": self.nome_plano_corte_input.text().strip(),
-            "DATA_CONCLUSAO": self.data_entrega_input.text().strip(),
-            "DATA_INICIO": self.data_inicio_input.text().strip(),
+            "DATA_CONCLUSAO": self._texto_data(self.data_entrega_input) or "",
+            "DATA_INICIO": self._texto_data(self.data_inicio_input) or "",
             "ENC_PHC": self.num_enc_phc_input.text().strip(),
         }
 
@@ -1869,34 +2067,6 @@ class ProducaoPage(QWidget):
             return "Pasta eliminada. O registo foi mantido."
         return "Registo eliminado. A pasta foi mantida."
 
-    def _abrir_calendario_data(self, line_edit: QLineEdit) -> None:
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Escolher data")
-
-        calendar = QCalendarWidget(dialog)
-        normalizada = normalizar_data(line_edit.text())
-        if normalizada:
-            qdate = QDate.fromString(normalizada, "dd-MM-yyyy")
-            if qdate.isValid():
-                calendar.setSelectedDate(qdate)
-
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok
-            | QDialogButtonBox.StandardButton.Cancel
-        )
-        button_box.accepted.connect(dialog.accept)
-        button_box.rejected.connect(dialog.reject)
-        calendar.activated.connect(lambda _date: dialog.accept())
-
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(calendar)
-        layout.addWidget(button_box)
-
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        line_edit.setText(calendar.selectedDate().toString("dd-MM-yyyy"))
-
     def _nova_versao(self) -> None:
         processo = self._processo_selecionado()
         if processo is None:
@@ -1976,8 +2146,7 @@ class ProducaoPage(QWidget):
         self.status_label.setText(f"Versão {codigo} criada (+ pasta).")
 
     def _processo_selecionado(self) -> Producao | None:
-        row = self.table.currentRow()
-        processo = self._processos_by_row.get(row)
+        processo = self._processo_na_linha_visivel(self.table.currentIndex().row())
         if processo is not None:
             return processo
         if self._selected_processo_id is not None:
@@ -2009,8 +2178,8 @@ class ProducaoPage(QWidget):
             self.ref_cliente_input.setText(self._format_value(proc.ref_cliente))
             self.obra_input.setText(self._format_value(proc.obra))
             self.localizacao_input.setText(self._format_value(proc.localizacao))
-            self.data_inicio_input.setText(normalizar_data(proc.data_inicio))
-            self.data_entrega_input.setText(normalizar_data(proc.data_entrega))
+            self._definir_data(self.data_inicio_input, proc.data_inicio)
+            self._definir_data(self.data_entrega_input, proc.data_entrega)
             self._set_combo_text(self.tipo_pasta_combo, proc.tipo_pasta)
             self.descricao_artigos_text.setPlainText(
                 self._format_value(proc.descricao_artigos)
@@ -2044,6 +2213,8 @@ class ProducaoPage(QWidget):
                     widget.clear()
                 elif isinstance(widget, QTextEdit):
                     widget.clear()
+                elif isinstance(widget, QDateEdit):
+                    widget.setDate(DATA_VAZIA)
                 elif isinstance(widget, QComboBox):
                     widget.setCurrentIndex(-1)
             self._cliente_id = None
@@ -2082,8 +2253,8 @@ class ProducaoPage(QWidget):
             "ref_cliente": self._none_if_empty(self.ref_cliente_input.text()),
             "obra": self._none_if_empty(self.obra_input.text()),
             "localizacao": self._none_if_empty(self.localizacao_input.text()),
-            "data_inicio": normalizar_data(self.data_inicio_input.text()),
-            "data_entrega": normalizar_data(self.data_entrega_input.text()),
+            "data_inicio": self._texto_data(self.data_inicio_input),
+            "data_entrega": self._texto_data(self.data_entrega_input),
             "tipo_pasta": self.tipo_pasta_combo.currentText().strip(),
             "descricao_artigos": self._none_if_empty(
                 self.descricao_artigos_text.toPlainText()
@@ -2513,21 +2684,31 @@ class ProducaoPage(QWidget):
         self._dirty = dirty
         self.save_button.setEnabled(dirty and self._selected_processo_id is not None)
 
+    def _indice_visivel_do_processo(self, proc_id: int):
+        """Proxy index of one process id, or None when it is filtered out."""
+        linha_origem = self.modelo.linha_do_processo(proc_id)
+        if linha_origem < 0:
+            return None
+        indice = self.proxy.mapFromSource(self.modelo.index(linha_origem, 0))
+        return indice if indice.isValid() else None
+
     def _selecionar_processo_id(self, proc_id: int) -> bool:
-        for row, processo in self._processos_by_row.items():
-            if processo.id != proc_id:
-                continue
-            estado_sinais = self.table.blockSignals(True)
-            self.table.selectRow(row)
-            self.table.blockSignals(estado_sinais)
-            return True
-        return False
+        indice = self._indice_visivel_do_processo(proc_id)
+        if indice is None:
+            return False
+
+        selecao = self.table.selectionModel()
+        estado_sinais = selecao.blockSignals(True)
+        self.table.selectRow(indice.row())
+        self.table.setCurrentIndex(indice)
+        selecao.blockSignals(estado_sinais)
+        return True
 
     def _processo_visivel_por_id(self, proc_id: int) -> Producao | None:
-        for processo in self._processos_by_row.values():
-            if processo.id == proc_id:
-                return processo
-        return None
+        indice = self._indice_visivel_do_processo(proc_id)
+        if indice is None:
+            return None
+        return indice.data(ProducaoTableModel.ROLE_PROCESSO)
 
     def _bloquear_sinais_form(self) -> list[tuple[QWidget, bool]]:
         widgets = [*self._readonly_widgets, *self._editable_widgets]
@@ -2559,7 +2740,10 @@ class ProducaoPage(QWidget):
         text = "" if value is None else str(value).strip()
         if not text:
             return None
-        text = text.replace(" ", "").replace(",", ".")
+        text = text.replace(" ", "").replace(" ", "").replace("€", "")
+        if "," in text:
+            # Formato pt: o ponto é separador de milhares.
+            text = text.replace(".", "").replace(",", ".")
         try:
             return Decimal(text)
         except InvalidOperation as exc:

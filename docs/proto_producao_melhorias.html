@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Protótipo — melhorias do menu Produção</title>
+<style>
+  :root{
+    --castanho-escuro:#5A3E2B; --castanho-medio:#8B6F4E; --bege-areia:#EFE7DA;
+    --bege-claro:#F7F2EA; --cinza-castanho:#D9CFC2; --texto:#2E2A26;
+    --verde-suave:#DCEAD8; --verde-escuro:#315C35;
+    --ocre-suave:#F2DEB3; --ocre-escuro:#6D4B16;
+    --azul-suave:#D8E7F3; --azul-escuro:#244A63;
+    --cinza-suave:#E3E0DC; --cinza-escuro:#4A4641;
+    --vermelho-suave:#E8C7C1; --vermelho-escuro:#7A231C;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:#EAE3D8;font:13px/1.4 "Segoe UI",Arial,sans-serif;color:var(--texto)}
+  .wrap{max-width:1600px;margin:0 auto}
+  .app{background:#FDFBF7;border:1px solid var(--cinza-castanho);border-radius:6px;padding:14px;margin-bottom:18px}
+  h1{font-size:17px;margin:0 0 2px;color:var(--castanho-escuro)}
+  .lead{color:var(--castanho-medio);margin:0 0 16px;font-size:13px}
+  h2{font-size:14px;color:var(--castanho-escuro);margin:22px 0 6px}
+  .demo-tag{display:inline-block;background:#EAF3FA;border:1px solid #1D6FA5;color:#1D6FA5;
+            border-radius:3px;padding:0 6px;font-size:11px;font-weight:600;margin-left:6px;vertical-align:middle}
+
+  /* ---- barra de vistas ---- */
+  .vistas{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px}
+  .vista{border:1px solid var(--cinza-castanho);background:#F3EEE6;border-radius:14px;
+         padding:4px 12px;font-size:12px;cursor:pointer;color:var(--texto)}
+  .vista:hover{background:var(--bege-areia)}
+  .vista.on{background:var(--castanho-escuro);border-color:var(--castanho-escuro);color:#fff;font-weight:600}
+
+  /* ---- filtros ---- */
+  .filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;font-size:12px}
+  input,select{font:12px "Segoe UI",Arial;padding:5px 7px;border:1px solid var(--cinza-castanho);
+               border-radius:3px;background:#fff;color:var(--texto)}
+  input:focus,select:focus{outline:2px solid var(--castanho-medio);outline-offset:-1px}
+  button{font:12px "Segoe UI",Arial;padding:5px 11px;background:#F3EEE6;border:1px solid var(--cinza-castanho);
+         border-radius:4px;color:var(--texto);cursor:pointer}
+  button:hover{background:var(--bege-areia)}
+  .contador{margin-left:auto;background:var(--bege-areia);border:1px solid var(--castanho-medio);
+            border-radius:4px;padding:5px 12px;font-weight:700;color:var(--castanho-escuro)}
+
+  /* ---- tabela ---- */
+  .tab-wrap{overflow-x:auto;border:1px solid var(--cinza-castanho);border-radius:4px}
+  table{border-collapse:collapse;width:100%;font-size:12px;min-width:1100px}
+  th{background:var(--bege-areia);color:var(--castanho-escuro);font-weight:700;padding:6px 8px;
+     border:1px solid var(--cinza-castanho);text-align:left;white-space:nowrap;cursor:pointer;
+     position:sticky;top:0;user-select:none}
+  th:hover{background:#E5DACA}
+  th .seta{opacity:.35;font-size:10px;margin-left:4px}
+  th.ord .seta{opacity:1}
+  td{padding:4px 8px;border:1px solid #E8E2D8;white-space:nowrap}
+  tbody tr:nth-child(even) td{background:var(--bege-claro)}
+  tbody tr:hover td{background:#EDE4D6}
+  tbody tr.sel td{background:var(--castanho-escuro)!important;color:#fff}
+  .badge{border-radius:3px;padding:1px 7px;font-size:11px;display:inline-block}
+  .b-desenho{background:var(--azul-suave);color:var(--azul-escuro)}
+  .b-producao{background:var(--ocre-suave);color:var(--ocre-escuro)}
+  .b-arquivado{background:var(--cinza-suave);color:var(--cinza-escuro)}
+  .b-final{background:var(--verde-suave);color:var(--verde-escuro)}
+  .prazo{border-radius:3px;padding:1px 7px;font-size:11px;display:inline-block;min-width:88px;text-align:center}
+  .p-atraso{background:var(--vermelho-suave);color:var(--vermelho-escuro);font-weight:700}
+  .p-perto{background:var(--ocre-suave);color:var(--ocre-escuro);font-weight:600}
+  .p-ok{background:transparent}
+  .vazio{padding:22px;text-align:center;color:var(--castanho-medio)}
+  .rodape{padding:6px 2px;font-weight:700;color:var(--castanho-escuro);font-size:12px}
+
+  /* ---- campos demo ---- */
+  .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .campo label{display:block;font-size:11px;color:var(--castanho-medio);margin-bottom:3px}
+  .campo input,.campo select{width:100%}
+  .nota-campo{font-size:11px;color:var(--castanho-medio);margin-top:3px}
+  .erro{color:#B00020;font-weight:600}
+  .ok{color:#0A5C0A;font-weight:600}
+
+  /* ---- explicações ---- */
+  .box{background:#FDFBF7;border:1px solid var(--cinza-castanho);border-left:4px solid var(--castanho-medio);
+       border-radius:4px;padding:10px 14px;margin:10px 0;font-size:12.5px}
+  .box b{color:var(--castanho-escuro)}
+  ul{margin:6px 0 0 18px;padding:0}
+  li{margin:3px 0}
+  code{background:var(--bege-areia);padding:1px 5px;border-radius:3px;font-size:11.5px}
+  .aviso{border-left-color:#8A5A00}
+  .aviso b{color:#8A5A00}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="app">
+  <h1>Protótipo — melhorias do menu Produção</h1>
+  <p class="lead">
+    Dados de exemplo (18 obras), <b>nada disto está no V3</b>. Serve para experimentares o comportamento
+    e dizeres o que fica e o que sai. Hoje = <b>22-07-2026</b> para efeitos de prazos.
+  </p>
+
+  <h2 style="margin-top:0">Vistas guardadas <span class="demo-tag">novo</span></h2>
+  <div class="vistas" id="vistas"></div>
+
+  <div class="filtros">
+    <span>Pesquisar:</span>
+    <input id="pesquisa" placeholder="espaço ou % para vários termos…" style="width:250px">
+    <span>Estado</span>
+    <select id="f-estado"></select>
+    <span>Cliente</span>
+    <select id="f-cliente" style="max-width:230px"></select>
+    <span>Responsável</span>
+    <select id="f-responsavel"></select>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer">
+      <input type="checkbox" id="f-atraso" style="width:auto"> só atrasadas
+    </label>
+    <button id="limpar" title="Limpar pesquisa e filtros">🖌 Limpar</button>
+    <button id="excel" title="Exportar a lista filtrada">⤓ Excel</button>
+    <span class="contador" id="contador">Obras 2026: 0</span>
+  </div>
+
+  <div class="tab-wrap">
+    <table id="tabela">
+      <thead><tr id="cabecalho"></tr></thead>
+      <tbody id="corpo"></tbody>
+    </table>
+  </div>
+  <div class="rodape" id="rodape">0 de 0</div>
+</div>
+
+<div class="app">
+  <h2 style="margin-top:0">Campos do detalhe — data e preço <span class="demo-tag">novo</span></h2>
+  <div class="campos">
+    <div class="campo">
+      <label>Data Entrega — como está hoje no V3</label>
+      <input id="data-velha" placeholder="dd-mm-aaaa" value="10-08-2026">
+      <div class="nota-campo" id="msg-data-velha">Texto livre; duplo-clique abre calendário.</div>
+    </div>
+    <div class="campo">
+      <label>Data Entrega — proposta (campo de data)</label>
+      <input type="date" id="data-nova" value="2026-08-10">
+      <div class="nota-campo">Calendário nativo, impossível escrever data inválida.</div>
+    </div>
+    <div class="campo">
+      <label>Preço total — como está hoje no V3</label>
+      <input id="preco-velho" value="17300.00">
+      <div class="nota-campo" id="msg-preco-velho">Experimenta escrever <code>17.300,50</code> ou <code>abc</code>.</div>
+    </div>
+    <div class="campo">
+      <label>Preço total — proposta (formatado)</label>
+      <input id="preco-novo" value="17 300,00 €">
+      <div class="nota-campo">Aceita vírgula ou ponto e formata ao sair do campo.</div>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <h2 style="margin-top:0">O que cada demonstração mostra</h2>
+
+  <div class="box">
+    <b>1 · Ordenação por coluna</b> — clica em qualquer cabeçalho; volta a clicar para inverter.
+    Repara que <code>Data Entrega</code> e <code>Preço</code> ordenam por valor real, não por texto
+    (senão <code>03-08-2026</code> vinha antes de <code>10-07-2026</code>).
+    <br>É o que falta hoje: a tabela do V3 não tem ordenação nenhuma.
+  </div>
+
+  <div class="box">
+    <b>2 · Semáforo de prazo</b> — a coluna Data Entrega fica <span class="prazo p-atraso">vermelha</span>
+    quando a data já passou e <span class="prazo p-perto">âmbar</span> a 7 dias ou menos.
+    O visto <b>só atrasadas</b> filtra de uma vez. A informação já existe no Ponto Situação; aqui aparece
+    onde estás a trabalhar.
+  </div>
+
+  <div class="box">
+    <b>3 · Vistas guardadas</b> — cada botão em cima é uma combinação de filtros com nome.
+    No V3 seriam guardadas por utilizador, tal como as colunas. Experimenta "Atrasadas" e "Em produção".
+  </div>
+
+  <div class="box">
+    <b>4 · Campos de data e preço</b> — o painel do meio. Escreve <code>32-13-2026</code> no campo antigo
+    e vê que ele aceita; no campo novo não consegues. No preço, escreve <code>abc</code> no antigo
+    (hoje isso dá erro só quando gravas) e compara com o novo.
+  </div>
+
+  <div class="box aviso">
+    <b>O que este protótipo NÃO consegue mostrar</b>
+    <ul>
+      <li><b>Acessos ao servidor em background</b> — o problema é a UI congelar quando o
+          <code>\\SERVER_LE</code> está lento. Só se sente na aplicação real.</li>
+      <li><b>Modelo/proxy em vez de QTableWidget</b> — é uma refatoração interna; o que se nota é a
+          fluidez com milhares de linhas, não se simula com 18.</li>
+      <li><b>Histórico de alterações</b> — precisa de tabela nova na base de dados.</li>
+      <li><b>Pesquisa em linguagem natural</b> — deixei de fora de propósito: um simulador de teclas
+          daria uma ideia falsa do que o modelo real acerta ou falha.</li>
+    </ul>
+  </div>
+</div>
+
+</div>
+
+<script>
+const HOJE = new Date(2026, 6, 22); // 22-07-2026
+
+const COLUNAS = [
+  {key:'criada',   titulo:'Criada em',   tipo:'data'},
+  {key:'estado',   titulo:'Estado',      tipo:'estado'},
+  {key:'resp',     titulo:'Responsável', tipo:'texto'},
+  {key:'processo', titulo:'Processo',    tipo:'texto'},
+  {key:'enc',      titulo:'Nº Enc PHC',  tipo:'texto'},
+  {key:'cliente',  titulo:'Cliente',     tipo:'texto'},
+  {key:'ref',      titulo:'Ref Cliente', tipo:'texto'},
+  {key:'inicio',   titulo:'Data Início', tipo:'data'},
+  {key:'entrega',  titulo:'Data Entrega',tipo:'prazo'},
+  {key:'qt',       titulo:'Qt Artigos',  tipo:'num'},
+  {key:'preco',    titulo:'Preço',       tipo:'num'},
+  {key:'desc',     titulo:'Descrição Produção', tipo:'texto'},
+];
+
+const OBRAS = [
+  ['25-06-2026','Desenho','Paulo','26.1134_01_01_JF_VIVA','1134','MÓVEIS J.F. VIVA','2507018','25-06-2026','10-08-2026',null,null,'3 ROUPEIROS PORTAS ABRIR · CONTEM LACAGEM'],
+  ['23-06-2026','Arquivado','Angela','26.0800_01_03_LINHAS_DIREITAS','0800','LINHAS DIREITAS','260067','29-04-2026','29-05-2026',null,null,'1 ESTANTE C/ GAV VIDRO'],
+  ['23-06-2026','Desenho','Andreia','26.1121_01_01_IRMAOS_CASEIRO','1121','IRMÃOS CASEIRO','','23-06-2026','03-08-2026',null,null,''],
+  ['23-06-2026','Desenho','Angela','26.1051_01_01_ASTUTEDRAGON','1051','ASTUTEDRAGON, LDA','','15-06-2026','30-06-2026',null,null,''],
+  ['23-06-2026','Arquivado','Ana','26.0693_02_01_FMOC','0693','FMOC SOLUTIONS','','16-04-2026','08-05-2026',null,null,'AT COM 2 PAINEIS FIXOS E 3 PORTAS'],
+  ['23-06-2026','Desenho','Marcia','26.0911_01_01_TECNOLAME','0911','TECNOLAME','2026/336','21-05-2026','03-07-2026',null,null,'CLOSET · 9 MODULOS'],
+  ['23-06-2026','Desenho','Andreia','26.1119_01_01_FMOC','1119','FMOC SOLUTIONS','','23-06-2026','07-07-2026',null,7308.24,''],
+  ['23-06-2026','Desenho','Ana','26._167_01_01_CRW','_167','CRW','TÓ (MONTAGENS)','25-05-2026','24-07-2026',null,null,'MÓVEIS DE COZINHA + ILHA'],
+  ['23-06-2026','Desenho','Andreia','26.1115_01_01_SEIVA','1115','SEIVA - MOBILIÁRIO, LDA','','23-06-2026','15-07-2026',null,2855.45,''],
+  ['23-06-2026','Arquivado','Angela','26.0475_01_04_JORGE_OLIVEIRA','0475','JORGE DE OLIVEIRA','','16-03-2026','29-05-2026',null,null,'01- COZINHA · 1 GUARNIÇÃO'],
+  ['23-06-2026','Desenho','Pedro','26.1108_01_01_TEMPO_PLURAL','1108','TEMPO PLURAL, LDA','26049','22-06-2026','31-07-2026',1,null,'1 MOVEL ENTRADA'],
+  ['23-06-2026','Desenho','Pedro','26.1107_01_01_TEMPO_PLURAL','1107','TEMPO PLURAL, LDA','26047','22-06-2026','31-07-2026',3,null,'1 ESTANTE 4 GAVETAS · 2 RIPADOS'],
+  ['22-06-2026','Producao','Paulo','26.1029_01_01_JF_VIVA','1029','MÓVEIS J.F. VIVA','2603046','10-06-2026','10-07-2026',2,2859.78,'2+2 ROUPEIROS INCLINADOS PORTAS'],
+  ['22-06-2026','Producao','Paulo','26.1016_01_01_VITOR_PEREIRA','1016','VITOR JOSE PEREIRA','','03-06-2026','31-07-2026',6,9340.78,'6 ROUPEIROS PORTAS ABRIR'],
+  ['22-06-2026','Producao','Paulo','26.1010_01_01_JF_VIVA','1010','MÓVEIS J.F. VIVA','2604023','02-06-2026','05-07-2026',null,8749.73,'1 ARO Q.E. 2 PORTAS · 7 ROUPEIROS'],
+  ['16-06-2026','Desenho','Paulo','26.1069_01_01_JF_VIVA','1069','MÓVEIS J.F. VIVA','2508015','16-06-2026','15-07-2026',null,17300.00,'7 ROUPEIROS PORTAS ABRIR · 1 ESTANTE'],
+  ['15-06-2026','Desenho','Paulo','26.1058_01_01_JF_VIVA','1058','MÓVEIS J.F. VIVA','2410008','15-06-2026','15-07-2026',10,null,'2 CLOSET SEM PORTAS · 1 ROUPEIRO'],
+  ['01-06-2026','Producao','Paulo','26.0999_01_01_PAVICLAUDIO','0999','PAVICLÁUDIO, LDA','','01-06-2026','06-07-2026',1,885.65,'1 ROUPEIRO 4 PORTAS ABRIR'],
+].map(l => Object.fromEntries(COLUNAS.map((c,i)=>[c.key, l[i]])));
+
+const VISTAS = [
+  {nome:'Todas',        f:{}},
+  {nome:'Atrasadas',    f:{atraso:true}},
+  {nome:'Em produção',  f:{estado:'Producao'}},
+  {nome:'Minhas (Paulo)', f:{responsavel:'Paulo'}},
+  {nome:'Paulo · Desenho', f:{responsavel:'Paulo', estado:'Desenho'}},
+];
+
+let ordem = {key:'entrega', asc:true};
+let selecionada = null;
+
+const $ = id => document.getElementById(id);
+const dataObj = t => { if(!t) return null; const [d,m,a]=t.split('-').map(Number); return new Date(a,m-1,d); };
+const dias = t => { const d=dataObj(t); return d===null?null:Math.round((d-HOJE)/86400000); };
+
+function classeEstado(e){
+  return {'Desenho':'b-desenho','Producao':'b-producao','Arquivado':'b-arquivado'}[e] || 'b-final';
+}
+
+function valorOrdem(obra, col){
+  const v = obra[col.key];
+  if(col.tipo==='data' || col.tipo==='prazo') { const d=dataObj(v); return d? d.getTime() : Infinity; }
+  if(col.tipo==='num') return (v===null||v===undefined) ? Infinity : Number(v);
+  return String(v||'').toLowerCase();
+}
+
+function filtradas(){
+  const termos = $('pesquisa').value.toLowerCase().split(/[\s%]+/).filter(Boolean);
+  const est = $('f-estado').value, cli = $('f-cliente').value, resp = $('f-responsavel').value;
+  const soAtraso = $('f-atraso').checked;
+
+  let out = OBRAS.filter(o => {
+    if(est !== 'Todos' && o.estado !== est) return false;
+    if(cli !== 'Todos' && o.cliente !== cli) return false;
+    if(resp !== 'Todos' && o.resp !== resp) return false;
+    if(soAtraso && !(dias(o.entrega) < 0)) return false;
+    if(termos.length){
+      const alvo = Object.values(o).join(' ').toLowerCase();
+      if(!termos.every(t => alvo.includes(t))) return false;
+    }
+    return true;
+  });
+
+  const col = COLUNAS.find(c=>c.key===ordem.key);
+  out.sort((a,b)=>{
+    const va=valorOrdem(a,col), vb=valorOrdem(b,col);
+    if(va<vb) return ordem.asc?-1:1;
+    if(va>vb) return ordem.asc?1:-1;
+    return 0;
+  });
+  return out;
+}
+
+function pintarCabecalho(){
+  $('cabecalho').innerHTML = COLUNAS.map(c=>{
+    const on = ordem.key===c.key;
+    const seta = on ? (ordem.asc?'▲':'▼') : '▲';
+    return `<th data-key="${c.key}" class="${on?'ord':''}" title="Clicar para ordenar por ${c.titulo}">${c.titulo}<span class="seta">${seta}</span></th>`;
+  }).join('');
+  $('cabecalho').querySelectorAll('th').forEach(th=>{
+    th.onclick = () => {
+      const k = th.dataset.key;
+      ordem = (ordem.key===k) ? {key:k, asc:!ordem.asc} : {key:k, asc:true};
+      render();
+    };
+  });
+}
+
+function celulaPrazo(t){
+  const d = dias(t);
+  if(d===null) return '';
+  let cls = 'p-ok', dica = '';
+  if(d < 0){ cls='p-atraso'; dica = `${-d} dias de atraso`; }
+  else if(d <= 7){ cls='p-perto'; dica = `faltam ${d} dias`; }
+  else dica = `faltam ${d} dias`;
+  return `<span class="prazo ${cls}" title="${dica}">${t}</span>`;
+}
+
+function render(){
+  pintarCabecalho();
+  const linhas = filtradas();
+
+  $('corpo').innerHTML = linhas.length ? linhas.map((o,i)=>{
+    const tds = COLUNAS.map(c=>{
+      const v = o[c.key];
+      if(c.key==='estado') return `<td><span class="badge ${classeEstado(v)}">${v}</span></td>`;
+      if(c.key==='entrega') return `<td>${celulaPrazo(v)}</td>`;
+      if(c.key==='processo') return `<td>📁 ${v}</td>`;
+      if(c.tipo==='num') return `<td style="text-align:right">${v===null?'':(c.key==='preco'? Number(v).toLocaleString('pt-PT',{minimumFractionDigits:2})+' €' : v)}</td>`;
+      return `<td>${v||''}</td>`;
+    }).join('');
+    return `<tr data-i="${i}" class="${selecionada===o.processo?'sel':''}">${tds}</tr>`;
+  }).join('') : `<tr><td colspan="${COLUNAS.length}" class="vazio">Nenhuma obra com estes filtros.</td></tr>`;
+
+  $('corpo').querySelectorAll('tr[data-i]').forEach(tr=>{
+    tr.onclick = () => { selecionada = linhas[+tr.dataset.i].processo; render(); };
+  });
+
+  const resp = $('f-responsavel').value;
+  const doAno = OBRAS.filter(o => o.entrega && o.entrega.endsWith('2026'))
+                     .filter(o => resp==='Todos' || o.resp===resp);
+  $('contador').textContent = resp==='Todos'
+      ? `Obras 2026: ${doAno.length}`
+      : `Obras 2026 · ${resp}: ${doAno.length}`;
+  $('rodape').textContent = `${linhas.length} de ${OBRAS.length}`;
+}
+
+function encherCombo(el, valores, atual){
+  el.innerHTML = ['Todos', ...valores].map(v=>`<option${v===atual?' selected':''}>${v}</option>`).join('');
+  if(el.value !== atual) el.value = 'Todos';
+}
+
+function atualizarClientes(){
+  const resp = $('f-responsavel').value;
+  const base = resp==='Todos' ? OBRAS : OBRAS.filter(o=>o.resp===resp);
+  const atual = $('f-cliente').value;
+  encherCombo($('f-cliente'), [...new Set(base.map(o=>o.cliente))].sort(), atual);
+}
+
+function aplicarVista(v, botao){
+  $('pesquisa').value = '';
+  $('f-estado').value = v.f.estado || 'Todos';
+  $('f-responsavel').value = v.f.responsavel || 'Todos';
+  atualizarClientes();
+  $('f-cliente').value = v.f.cliente || 'Todos';
+  $('f-atraso').checked = !!v.f.atraso;
+  document.querySelectorAll('.vista').forEach(b=>b.classList.remove('on'));
+  botao.classList.add('on');
+  render();
+}
+
+// ---- arranque ----
+$('vistas').innerHTML = VISTAS.map((v,i)=>`<button class="vista${i===0?' on':''}" data-i="${i}">${v.nome}</button>`).join('')
+  + `<span style="font-size:11.5px;color:var(--castanho-medio);margin-left:6px">＋ guardar a combinação atual como vista</span>`;
+document.querySelectorAll('.vista').forEach(b=>{
+  b.onclick = () => aplicarVista(VISTAS[+b.dataset.i], b);
+});
+
+encherCombo($('f-estado'), [...new Set(OBRAS.map(o=>o.estado))].sort(), 'Todos');
+encherCombo($('f-responsavel'), [...new Set(OBRAS.map(o=>o.resp))].sort(), 'Todos');
+atualizarClientes();
+
+['pesquisa','f-estado','f-cliente','f-atraso'].forEach(id=>{
+  $(id).addEventListener('input', render);
+});
+$('f-responsavel').addEventListener('change', ()=>{ atualizarClientes(); render(); });
+$('limpar').onclick = () => {
+  $('pesquisa').value=''; $('f-estado').value='Todos'; $('f-responsavel').value='Todos';
+  atualizarClientes(); $('f-cliente').value='Todos'; $('f-atraso').checked=false;
+  document.querySelectorAll('.vista').forEach((b,i)=>b.classList.toggle('on', i===0));
+  render();
+};
+$('excel').onclick = () => {
+  alert(`Exportava ${filtradas().length} obras para Excel, com as colunas visíveis e a ordenação atual.\n\n(No protótipo é só uma mensagem.)`);
+};
+
+// ---- campos demo ----
+$('data-velha').addEventListener('blur', e=>{
+  const t = e.target.value.trim();
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(t);
+  const msg = $('msg-data-velha');
+  if(!m){ msg.innerHTML = '<span class="erro">Não é uma data — só descobres quando gravares.</span>'; return; }
+  const [_, d, mes] = m;
+  if(+d>31 || +mes>12){ msg.innerHTML = '<span class="erro">Data impossível e o campo aceitou.</span>'; return; }
+  msg.innerHTML = 'Texto livre; duplo-clique abre calendário.';
+});
+
+$('preco-velho').addEventListener('blur', e=>{
+  const t = e.target.value.trim();
+  const msg = $('msg-preco-velho');
+  if(t === ''){ msg.textContent = 'Vazio.'; return; }
+  if(isNaN(Number(t))){
+    msg.innerHTML = '<span class="erro">Decimal("' + t + '") → erro ao gravar.</span>';
+  } else {
+    msg.innerHTML = '<span class="ok">Aceite: ' + Number(t).toFixed(2) + '</span>';
+  }
+});
+
+$('preco-novo').addEventListener('blur', e=>{
+  const bruto = e.target.value.replace(/[^\d,.-]/g,'').replace(/\.(?=\d{3}\b)/g,'').replace(',', '.');
+  const n = Number(bruto);
+  e.target.value = isNaN(n) || bruto==='' ? '' : n.toLocaleString('pt-PT',{minimumFractionDigits:2}) + ' €';
+});
+
+render();
+</script>
+</body>
+</html>

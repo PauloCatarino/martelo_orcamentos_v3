@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
+from app.domain.prazos_producao import estado_prazo
 from app.models.cliente import Cliente
 from app.models.orcamento import Orcamento
 from app.models.orcamento_versao import OrcamentoVersao
@@ -851,6 +852,60 @@ def _as_positive_int(value) -> int:
         return 1
 
 
+def termos_pesquisa(texto) -> list[str]:
+    """Split the search box text into lowercase terms (space or ``%``)."""
+    return [
+        termo
+        for termo in re.split(r"[\s%]+", (texto or "").strip().lower())
+        if termo
+    ]
+
+
+def processo_corresponde(
+    processo,
+    *,
+    termos=(),
+    estado=None,
+    cliente=None,
+    responsavel=None,
+    so_atrasadas=False,
+) -> bool:
+    """Return True when one process matches the current search and filters.
+
+    Shared by ``filtrar_processos`` and the production table proxy model, so
+    a lista e a tabela usam exatamente as mesmas regras.
+    """
+    estado_norm = _normalizar_filtro(estado)
+    cliente_norm = _normalizar_filtro(cliente)
+    responsavel_norm = _normalizar_filtro(responsavel)
+
+    if estado_norm and _texto(getattr(processo, "estado", None)) != estado_norm:
+        return False
+    if (
+        cliente_norm
+        and _texto(getattr(processo, "nome_cliente", None)) != cliente_norm
+    ):
+        return False
+    if (
+        responsavel_norm
+        and _texto(getattr(processo, "responsavel", None)) != responsavel_norm
+    ):
+        return False
+    if so_atrasadas and not estado_prazo(
+        getattr(processo, "data_entrega", None),
+        getattr(processo, "estado", None),
+    ).atrasada:
+        return False
+
+    if not termos:
+        return True
+
+    haystack = " ".join(
+        _texto(getattr(processo, campo, None)) for campo in _CAMPOS_PESQUISA
+    )
+    return all(termo in haystack for termo in termos)
+
+
 def filtrar_processos(
     todos,
     *,
@@ -858,39 +913,22 @@ def filtrar_processos(
     estado=None,
     cliente=None,
     responsavel=None,
+    so_atrasadas=False,
 ) -> list[Producao]:
     """Filter production processes in memory, case-insensitively."""
-    termos = [
-        termo
-        for termo in re.split(r"[\s%]+", (texto or "").strip().lower())
-        if termo
-    ]
-    estado_norm = _normalizar_filtro(estado)
-    cliente_norm = _normalizar_filtro(cliente)
-    responsavel_norm = _normalizar_filtro(responsavel)
-
-    resultado = []
-    for processo in todos or []:
-        if estado_norm and _texto(getattr(processo, "estado", None)) != estado_norm:
-            continue
-        if (
-            cliente_norm
-            and _texto(getattr(processo, "nome_cliente", None)) != cliente_norm
-        ):
-            continue
-        if (
-            responsavel_norm
-            and _texto(getattr(processo, "responsavel", None)) != responsavel_norm
-        ):
-            continue
-
-        haystack = " ".join(
-            _texto(getattr(processo, campo, None)) for campo in _CAMPOS_PESQUISA
+    termos = termos_pesquisa(texto)
+    return [
+        processo
+        for processo in (todos or [])
+        if processo_corresponde(
+            processo,
+            termos=termos,
+            estado=estado,
+            cliente=cliente,
+            responsavel=responsavel,
+            so_atrasadas=so_atrasadas,
         )
-        if all(termo in haystack for termo in termos):
-            resultado.append(processo)
-
-    return resultado
+    ]
 
 
 def _normalizar_filtro(valor) -> str | None:

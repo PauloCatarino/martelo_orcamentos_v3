@@ -38,7 +38,6 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "BarraCabecalho" in init_source
     assert "CampoPesquisa" in init_source
     assert "self.table" in init_source
-    assert "Data em que a obra foi criada nesta lista" in init_source
     assert "COLUNAS_PRODUCAO" in inspect.getsource(ProducaoPage)
     # O botão "Colunas" foi substituído pelo menu do botão direito no cabeçalho.
     assert '"Colunas"' not in init_source
@@ -80,7 +79,15 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "Exportar para PDF o resumo do plano de corte" in init_source
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
-    assert "cellDoubleClicked.connect(self._handle_table_double_click)" in init_source
+    assert "doubleClicked.connect(self._handle_table_double_click)" in init_source
+    # Tabela com modelo + proxy: ordenação por cabeçalho e filtragem incremental.
+    assert "ProducaoTableModel" in init_source
+    assert "ProducaoFilterProxy" in init_source
+    assert "self.table.setSortingEnabled(True)" in init_source
+    assert "COLUNA_ORDEM_ENTRADA" in init_source
+    assert "QTableWidget" not in inspect.getsource(ProducaoPage)
+    assert "self.atrasadas_check" in init_source
+    assert "self.vista_combo" in init_source
     assert "setToolTip" in init_source
     assert "Gravar as alterações da obra selecionada" in init_source
     assert "Recarregar a lista de obras" in init_source
@@ -91,7 +98,6 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "self.novo_processo_button.clicked.connect(self._novo_processo)" in init_source
     assert "Criar uma obra a partir de uma encomenda do PHC" in init_source
     assert "SelecionarClienteDialog" not in inspect.getsource(ProducaoPage)
-    assert "QCalendarWidget" in inspect.getsource(ProducaoPage)
     assert "QSplitter" in init_source
     assert (
         'ligar_persistencia_splitter(self.splitter, "producao_detalhe_amplo")'
@@ -116,7 +122,7 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "carregar_config" in source
     assert "guardar_config" in source
     assert "SystemSettingService" in helper_source
-    assert "itemSelectionChanged" in source
+    assert "selectionChanged.connect(self._on_select_row)" in source
     assert "converter_orcamento" in source
     assert "criar_processo_externo" in source
     assert "NovoProcessoDialog" in source
@@ -185,15 +191,23 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "self.cliente_simplex_input = self._readonly_line()" in source
     assert "self.num_cliente_phc_input = self._readonly_line()" in source
     assert "Cliente original do processo (fixo)" in source
-    assert "_abrir_calendario_data" in source
-    assert "Data Início no formato dd-mm-aaaa" in source
+    # Datas passam a QDateEdit com calendário (sem o diálogo antigo).
+    assert "_abrir_calendario_data" not in source
+    assert "QDateEdit" in source
+    assert "setCalendarPopup(True)" in source
+    assert "Data de início no formato dd-mm-aaaa" in source
     assert "codigo_processo" in source
     assert "icone_ficheiro" in source
     assert '"icon_cut_rite.ico"' in source
     assert '"icon_imos_2025.ico"' in source
     assert 'icone("pasta_abrir")' in source  # icone castanho do tema
-    assert "item.setIcon" in source
-    assert "Ver pastas do processo" in source
+    # Ícone e dica da coluna Processo vivem agora no modelo da tabela.
+    import app.ui.helpers.modelo_producao as modelo_producao
+
+    modelo_source = inspect.getsource(modelo_producao)
+    assert "Data em que a obra foi criada nesta lista" in modelo_source
+    assert "DecorationRole" in modelo_source
+    assert "Ver pastas do processo" in modelo_source
     assert "normalizar_data" in source
     assert "imagem_path" in source
     assert "resolver_imagem_imos" in source
@@ -209,7 +223,6 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "Escolher Imagem/PDF..." not in source
     assert "Limpar Imagem" not in source
     assert "self._imagem_path" in source
-    assert "Data no formato dd-mm-aaaa" in source
     assert "Estado da obra em produção" in source
     assert "Pasta de destino no servidor" in source
     assert "Há alterações por gravar. Descartar?" in source
