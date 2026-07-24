@@ -45,12 +45,17 @@ class DossierObra:
     codigo: str = ""
     enc: str = ""
     cliente: str = ""
+    obra: str = ""
+    ref_cliente: str = ""
+    localizacao: str = ""
     responsavel: str = ""
     estado_local: str = ""
     data_inicio: str = ""
     data_entrega: str = ""
     descricao_producao: str = ""
     notas: str = ""
+    #: Pasta da obra no servidor, para guardar o PDF lá por defeito.
+    pasta: str = ""
     #: (nome do setor, percentagem, concluído) pela ordem de produção.
     fases: tuple[tuple[str, float, bool], ...] = ()
     estado_global: str = ""

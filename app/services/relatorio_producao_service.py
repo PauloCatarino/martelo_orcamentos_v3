@@ -206,15 +206,24 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
     if dossier.cliente:
         identidade += f"  —  {dossier.cliente}"
 
-    info = [
-        [Paragraph("Estado:", rot), Paragraph(escape(dossier.estado_local or "—"), cel)],
-        [Paragraph("Responsável:", rot), Paragraph(escape(dossier.responsavel or "—"), cel)],
-        [Paragraph("Início:", rot), Paragraph(escape(dossier.data_inicio or "—"), cel)],
-        [Paragraph("Entrega prevista:", rot),
-         Paragraph(escape(dossier.data_entrega or "—"), cel)],
+    def _linha(rotulo: str, valor: str):
+        return [Paragraph(rotulo, rot), Paragraph(escape(valor or "—"), cel)]
+
+    info = []
+    if dossier.obra:
+        info.append(_linha("Obra:", dossier.obra))
+    if dossier.ref_cliente:
+        info.append(_linha("Ref. cliente:", dossier.ref_cliente))
+    if dossier.localizacao:
+        info.append(_linha("Localização:", dossier.localizacao))
+    info += [
+        _linha("Estado:", dossier.estado_local),
+        _linha("Responsável:", dossier.responsavel),
+        _linha("Início:", dossier.data_inicio),
+        _linha("Entrega prevista:", dossier.data_entrega),
     ]
     if dossier.enc:
-        info.append([Paragraph("Nº encomenda:", rot), Paragraph(escape(dossier.enc), cel)])
+        info.append(_linha("Nº encomenda:", dossier.enc))
 
     tabela_info = Table(info, colWidths=[35 * mm, None])
     tabela_info.setStyle(

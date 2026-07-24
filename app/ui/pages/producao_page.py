@@ -1490,10 +1490,14 @@ class ProducaoPage(QWidget):
         )
 
     def _gerar_pdf_obra(self, dossier) -> None:
-        """Gera automaticamente o PDF do ponto de situação da obra e abre-o."""
+        """Gera automaticamente o PDF do ponto de situação da obra e abre-o.
+
+        Por defeito grava na pasta da obra no servidor; se não existir/estiver
+        inacessível, cai na pasta Downloads.
+        """
         base = dossier.enc or dossier.codigo or "obra"
         nome = re.sub(r"[^0-9A-Za-z._-]+", "_", f"ponto_situacao_{base}") + ".pdf"
-        destino = Path.home() / "Downloads" / nome
+        destino = self._pasta_destino_pdf(dossier) / nome
         try:
             caminho = gerar_dossier_obra_pdf(
                 dossier,
@@ -1506,6 +1510,18 @@ class ProducaoPage(QWidget):
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
         self.status_label.setText(f"Relatório PDF da obra gerado: {caminho}")
+
+    @staticmethod
+    def _pasta_destino_pdf(dossier) -> Path:
+        """Pasta da obra (servidor) se acessível; senão, Downloads."""
+        if dossier.pasta:
+            try:
+                pasta = Path(dossier.pasta)
+                if pasta.is_dir():
+                    return pasta
+            except OSError:
+                pass
+        return Path.home() / "Downloads"
 
     def _ia_falhou(self, _erro: str) -> None:
         self.status_label.setText("Não foi possível interpretar a pergunta.")
