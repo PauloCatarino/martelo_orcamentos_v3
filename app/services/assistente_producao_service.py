@@ -25,6 +25,12 @@ from app.domain.assistente_llm import (
     extrair_json,
     intencao_de_json,
 )
+from app.domain.assistente_obra import (
+    DossierObra,
+    identificar_pedido,
+    resumo_texto,
+)
+from app.domain.datas import normalizar_data
 from app.domain.pesquisa_texto import normalizar
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.user import User
@@ -41,6 +47,22 @@ _SEPARADORES = re.compile(r"[;,/|]")
 
 #: Estados canónicos por forma normalizada, para ler o quadro «estado».
 _ESTADO_POR_NORMA = {normalizar(estado): estado for estado in ESTADOS_PRODUCAO}
+
+
+@dataclass(frozen=True)
+class ResultadoIA:
+    """Resposta do orquestrador: ou é uma pesquisa, ou uma ação sobre uma obra."""
+
+    tipo: str  # "pesquisa" | "obra"
+    # tipo == "pesquisa"
+    intencao: Intencao | None = None
+    recusa: str = ""
+    # tipo == "obra"
+    obra_id: int | None = None
+    modo: str = ""       # "texto" | "pdf" | "email"
+    texto: str = ""
+    dossier: DossierObra | None = None
+    aviso: str = ""
 
 
 @dataclass(frozen=True)
@@ -166,6 +188,100 @@ class AssistenteProducaoService:
         if canonico != intencao.responsavel:
             intencao = replace(intencao, responsavel=canonico)
         return intencao
+
+    def responder_ia(
+        self,
+        pergunta: str,
+        *,
+        user_id: int | None,
+        processos,
+    ) -> ResultadoIA:
+        """Decide: ação sobre UMA obra («relatório da obra 1134») ou pesquisa.
+
+        Corre na thread de fundo da UI (pode tocar no Streamlit para as fases).
+        """
+        pedido = identificar_pedido(pergunta)
+        if pedido is not None:
+            processo = self._encontrar_obra(processos, pedido.numero)
+            if processo is None:
+                return ResultadoIA(
+                    tipo="obra",
+                    modo=pedido.modo,
+                    aviso=f"Não encontrei a obra {pedido.numero} na lista.",
+                )
+            dossier = self.montar_dossier(processo)
+            return ResultadoIA(
+                tipo="obra",
+                obra_id=getattr(processo, "id", None),
+                modo=pedido.modo,
+                texto=resumo_texto(dossier),
+                dossier=dossier,
+            )
+
+        intencao, recusa = self.interpretar_pergunta_llm(
+            pergunta, user_id=user_id, processos=processos
+        )
+        return ResultadoIA(tipo="pesquisa", intencao=intencao, recusa=recusa)
+
+    def montar_dossier(self, processo, *, carregar_estado=None) -> DossierObra:
+        """Junta os dados da obra com as fases de produção (Streamlit)."""
+        carregar = carregar_estado or self._estado_producao
+        fases, estado_global, encontrado = carregar(processo)
+        return DossierObra(
+            codigo=str(getattr(processo, "codigo_processo", "") or "").strip(),
+            enc=str(getattr(processo, "num_enc_phc", "") or "").strip(),
+            cliente=str(getattr(processo, "nome_cliente", "") or "").strip(),
+            responsavel=str(getattr(processo, "responsavel", "") or "").strip(),
+            estado_local=str(getattr(processo, "estado", "") or "").strip(),
+            data_inicio=normalizar_data(getattr(processo, "data_inicio", None)) or "",
+            data_entrega=normalizar_data(getattr(processo, "data_entrega", None)) or "",
+            descricao_producao=str(
+                getattr(processo, "descricao_producao", "") or ""
+            ).strip(),
+            notas=self._juntar_notas(processo),
+            fases=fases,
+            estado_global=estado_global,
+            encontrado_streamlit=encontrado,
+        )
+
+    def _estado_producao(self, processo):
+        """Fases de produção da obra (Streamlit); resiliente se estiver offline."""
+        try:
+            from app.services.estado_producao_service import (
+                estado_producao_por_processo,
+            )
+
+            resultados = estado_producao_por_processo(self.session, [processo])
+        except Exception:  # noqa: BLE001 - fonte externa pode falhar
+            return (), "", False
+        if not resultados:
+            return (), "", False
+        obra = resultados[0]
+        fases = tuple(
+            (setor.nome, setor.media_pct, setor.concluido)
+            for setor in obra.estado.setores
+        )
+        return fases, obra.estado.etiqueta, bool(obra.encontrado)
+
+    @staticmethod
+    def _encontrar_obra(processos, numero: str):
+        alvo = re.sub(r"\D", "", numero or "")
+        if not alvo:
+            return None
+        alvo_int = int(alvo)
+        for processo in processos or []:
+            bruto = re.sub(r"\D", "", str(getattr(processo, "num_enc_phc", "") or ""))
+            if bruto and (bruto == alvo or int(bruto) == alvo_int):
+                return processo
+        return None
+
+    @staticmethod
+    def _juntar_notas(processo) -> str:
+        partes = [
+            str(getattr(processo, campo, "") or "").strip()
+            for campo in ("notas1", "notas2", "notas3")
+        ]
+        return " · ".join(parte for parte in partes if parte)
 
     def interpretar_pergunta_llm(
         self,

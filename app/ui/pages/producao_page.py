@@ -140,7 +140,7 @@ COLUNA_ORDEM_ENTRADA = next(
 class _IAWorker(QThread):
     """Corre a interpretação do IA Martelo (LLM local) fora da thread da UI."""
 
-    concluido = Signal(object, str)  # (Intencao, recusa)
+    concluido = Signal(object)  # ResultadoIA
     falhou = Signal(str)
 
     def __init__(self, pergunta, user_id, processos, parent=None) -> None:
@@ -152,14 +152,12 @@ class _IAWorker(QThread):
     def run(self) -> None:  # noqa: D102 - QThread override
         try:
             with SessionLocal() as session:
-                intencao, recusa = AssistenteProducaoService(
-                    session
-                ).interpretar_pergunta_llm(
+                resultado = AssistenteProducaoService(session).responder_ia(
                     self._pergunta,
                     user_id=self._user_id,
                     processos=self._processos,
                 )
-            self.concluido.emit(intencao, recusa)
+            self.concluido.emit(resultado)
         except Exception as exc:  # noqa: BLE001 - reportado à UI
             self.falhou.emit(str(exc))
 
@@ -1437,8 +1435,14 @@ class ProducaoPage(QWidget):
         self._ia_worker = worker
         worker.start()
 
-    def _ia_concluido(self, intencao, recusa: str) -> None:
+    def _ia_concluido(self, resultado) -> None:
         """Aplica o resultado do martelo (na thread da UI)."""
+        if getattr(resultado, "tipo", "") == "obra":
+            self._ia_resposta_obra(resultado)
+            return
+
+        intencao = getattr(resultado, "intencao", None)
+        recusa = getattr(resultado, "recusa", "")
         if recusa:
             self.status_label.setText(recusa)
             return
@@ -1455,6 +1459,27 @@ class ProducaoPage(QWidget):
         frase = frase_resposta(intencao, total)
         sugestao = sugestao_recrutamento(intencao, total, self.modelo.vocabulario())
         self.status_label.setText(f"{frase} {sugestao}".strip())
+
+    def _ia_resposta_obra(self, resultado) -> None:
+        """Ação sobre uma obra: mostra o texto e copia-o (p/ WhatsApp/email)."""
+        if not resultado.texto:
+            self.status_label.setText(resultado.aviso or "Não encontrei a obra.")
+            return
+
+        if resultado.obra_id is not None:
+            self._selecionar_processo_id(resultado.obra_id)
+
+        QApplication.clipboard().setText(resultado.texto)
+        nota = ""
+        if resultado.modo in ("pdf", "email"):
+            nota = (
+                f"\n\n(O modo {resultado.modo.upper()} chega na próxima fase; "
+                "por agora, o texto — já está copiado.)"
+            )
+        QMessageBox.information(self, "IA Martelo — obra", resultado.texto + nota)
+        self.status_label.setText(
+            "Resumo da obra copiado para a área de transferência."
+        )
 
     def _ia_falhou(self, _erro: str) -> None:
         self.status_label.setText("Não foi possível interpretar a pergunta.")

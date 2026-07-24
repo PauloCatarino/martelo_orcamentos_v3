@@ -108,6 +108,61 @@ def test_llm_usa_filtros_validados_do_modelo() -> None:
     assert intencao.estado == "Producao"
 
 
+def test_responder_ia_pedido_de_obra_monta_dossier() -> None:
+    processos = [
+        _processo(id=7, num_enc_phc="1134", codigo_processo="26.1134_01_01_JF_VIVA"),
+        _processo(id=8, num_enc_phc="0800"),
+    ]
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "faz um relatório da obra 1134", user_id=None, processos=processos
+    )
+
+    assert resultado.tipo == "obra"
+    assert resultado.obra_id == 7
+    assert resultado.modo == "pdf"
+    assert "26.1134_01_01_JF_VIVA" in resultado.texto
+
+
+def test_responder_ia_obra_inexistente_avisa() -> None:
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "estado da obra 9999", user_id=None, processos=[_processo(num_enc_phc="1134")]
+    )
+
+    assert resultado.tipo == "obra"
+    assert "9999" in resultado.aviso
+
+
+def test_responder_ia_pergunta_normal_e_pesquisa() -> None:
+    processos = [_processo(id=1, estado="Producao"), _processo(id=2, estado="Desenho")]
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "obras atrasadas", user_id=None, processos=processos
+    )
+
+    assert resultado.tipo == "pesquisa"
+    assert resultado.intencao is not None
+    assert resultado.intencao.so_atrasadas is True
+
+
+def test_montar_dossier_usa_fases_injetadas() -> None:
+    servico = AssistenteProducaoService(None)
+    processo = _processo(num_enc_phc="1134", responsavel="Paulo")
+
+    def fases_fake(_processo):
+        return ((("Corte", 100.0, True), ("Orlagem", 60.0, False)), "🔄 50% (1/2)", True)
+
+    dossier = servico.montar_dossier(processo, carregar_estado=fases_fake)
+
+    assert dossier.encontrado_streamlit is True
+    assert dossier.estado_global == "🔄 50% (1/2)"
+    assert dossier.fases[0] == ("Corte", 100.0, True)
+
+
 def test_llm_nao_polui_estado_com_alucinacao() -> None:
     # O modelo alucina um estado que a pergunta não pede; as regras mandam.
     processos = [_processo(id=1, responsavel="Paulo", estado="Producao")]
