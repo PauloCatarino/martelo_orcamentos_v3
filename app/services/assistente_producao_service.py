@@ -38,6 +38,7 @@ from app.models.user import User
 from app.services.ia_perfil_service import listar_entradas
 from app.services.producao_service import (
     filtrar_processos,
+    gerar_nome_enc_imos_ix,
     vocabulario_pesquisa,
 )
 from app.services.sinonimos_service import carregar_sinonimos
@@ -287,11 +288,32 @@ class AssistenteProducaoService:
                 getattr(principal, "descricao_producao", "") or ""
             ).strip(),
             notas=self._juntar_notas(principal),
+            imagem_path=self._imagem_imos(principal),
             fases=fases,
             estado_global=estado_global,
             encontrado_streamlit=encontrado,
             versoes=tuple(versoes),
         )
+
+    def _imagem_imos(self, processo) -> str:
+        """Caminho da imagem IMOS da obra (mesma lógica do detalhe da Produção)."""
+        try:
+            nome_enc = gerar_nome_enc_imos_ix(
+                getattr(processo, "ano", None),
+                getattr(processo, "num_enc_phc", None),
+                getattr(processo, "versao_obra", None),
+                nome_cliente_simplex=getattr(processo, "nome_cliente_simplex", None),
+                nome_cliente=getattr(processo, "nome_cliente", None),
+                ref_cliente=getattr(processo, "ref_cliente", None),
+            )
+            if not nome_enc:
+                return ""
+            from app.services.imos_imagem_service import resolver_imagem_imos
+
+            caminho = resolver_imagem_imos(self.session, nome_enc_imos=nome_enc)
+            return str(caminho) if caminho else ""
+        except Exception:  # noqa: BLE001 - imagem é acessória
+            return ""
 
     def _estados_producao(self, processos) -> dict:
         """Fases por processo (Streamlit); id -> (fases, etiqueta, encontrado)."""

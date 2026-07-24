@@ -21,7 +21,9 @@ try:
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader
     from reportlab.platypus import (
+        Image,
         Paragraph,
         SimpleDocTemplate,
         Spacer,
@@ -32,8 +34,8 @@ try:
     REPORTLAB_DISPONIVEL = True
 except ImportError:  # pragma: no cover - depende da instalação do ambiente
     REPORTLAB_DISPONIVEL = False
-    colors = A4 = landscape = mm = None
-    ParagraphStyle = Paragraph = SimpleDocTemplate = Spacer = Table = TableStyle = None
+    colors = A4 = landscape = mm = ImageReader = None
+    Image = ParagraphStyle = Paragraph = SimpleDocTemplate = Spacer = Table = TableStyle = None
 
 # Tons do Martelo (castanho/bege), iguais ao tema da app (hardcoded aqui para o
 # PDF não depender de app.ui.tema).
@@ -248,6 +250,10 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
         story.append(Paragraph(f"Gerado em {escape(gerado_em)}", sub))
     story += [Spacer(1, 6 * mm), tabela_info]
 
+    imagem = _imagem_flowable(getattr(dossier, "imagem_path", ""), 150 * mm, 95 * mm)
+    if imagem is not None:
+        story += [Spacer(1, 5 * mm), imagem]
+
     if dossier.descricao_producao:
         story += [
             Paragraph("Descrição", h),
@@ -259,14 +265,10 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
         story.append(Paragraph("Versões da obra e planos de corte", h))
         story.append(_tabela_versoes(versoes))
 
-    versao_atual = versoes[-1] if versoes else None
-    rotulo_versao = ""
-    if versao_atual is not None and (versao_atual.versao_obra or versao_atual.versao_plano):
-        rotulo_versao = (
-            f" — versão de obra {versao_atual.versao_obra or '—'} · "
-            f"plano de corte {versao_atual.versao_plano or '—'}"
-        )
-    story.append(Paragraph(f"Produção{rotulo_versao}", h))
+    # A tabela de fases é intitulada com o PROCESSO (nem todas as versões de
+    # CUT-RITE têm o mesmo estado, por isso identifica-se qual é).
+    titulo_fases = dossier.codigo or "Produção"
+    story.append(Paragraph(f"Produção · {escape(titulo_fases)}", h))
     if dossier.encontrado_streamlit and dossier.fases:
         global_txt = _estado_global_limpo(dossier.estado_global)
         if global_txt:
@@ -340,6 +342,24 @@ def _tabela_versoes(versoes) -> Table:
             comandos.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(_BEGE)))
     tabela.setStyle(TableStyle(comandos))
     return tabela
+
+
+def _imagem_flowable(caminho: str, max_w: float, max_h: float):
+    """Imagem IMOS à escala (mantém proporção); None se não existir/falhar."""
+    if not caminho:
+        return None
+    try:
+        if not Path(caminho).is_file():
+            return None
+        largura, altura = ImageReader(caminho).getSize()
+        if largura <= 0 or altura <= 0:
+            return None
+        escala = min(max_w / largura, max_h / altura)
+        imagem = Image(caminho, width=largura * escala, height=altura * escala)
+        imagem.hAlign = "CENTER"
+        return imagem
+    except Exception:  # noqa: BLE001 - imagem é acessória
+        return None
 
 
 def _estado_global_limpo(etiqueta: str) -> str:

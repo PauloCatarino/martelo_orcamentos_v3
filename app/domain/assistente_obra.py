@@ -69,6 +69,8 @@ class DossierObra:
     notas: str = ""
     #: Pasta da obra no servidor, para guardar o PDF lá por defeito.
     pasta: str = ""
+    #: Caminho da imagem IMOS (*.png) da obra principal (num_phc_versao).
+    imagem_path: str = ""
     #: (nome do setor, percentagem, concluído) pela ordem de produção.
     fases: tuple[tuple[str, float, bool], ...] = ()
     estado_global: str = ""
