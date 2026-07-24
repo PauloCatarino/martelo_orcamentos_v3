@@ -54,3 +54,40 @@ def test_lista_vazia_ainda_gera_pdf(tmp_path) -> None:
 
     assert destino.exists()
     assert destino.stat().st_size > 200
+
+
+def test_dossier_obra_pdf_com_fases(tmp_path) -> None:
+    from app.domain.assistente_obra import DossierObra
+
+    dossier = DossierObra(
+        codigo="26.1134_01_01_JF_VIVA",
+        enc="1134",
+        cliente="MÓVEIS J.F. VIVA",
+        responsavel="Paulo",
+        estado_local="Producao",
+        data_inicio="25-06-2026",
+        data_entrega="10-08-2026",
+        descricao_producao="1 CLOSET 'U' COM TETOS SUTADOS",
+        notas="INTERNO: falta validar preço",  # não deve ir para o PDF do cliente
+        fases=(("Stock", 100.0, True), ("Corte", 0.0, False)),
+        estado_global="🔄 28.6% (2/7)",
+        encontrado_streamlit=True,
+    )
+    destino = tmp_path / "obra.pdf"
+
+    caminho = svc.gerar_dossier_obra_pdf(dossier, caminho=destino, gerado_em="24-07-2026")
+
+    assert caminho == destino
+    assert destino.exists()
+    assert destino.stat().st_size > 800
+
+
+def test_dossier_obra_pdf_sem_streamlit(tmp_path) -> None:
+    from app.domain.assistente_obra import DossierObra
+
+    dossier = DossierObra(codigo="26.0800_01", cliente="X", encontrado_streamlit=False)
+    destino = tmp_path / "obra2.pdf"
+
+    svc.gerar_dossier_obra_pdf(dossier, caminho=destino)
+
+    assert destino.exists()

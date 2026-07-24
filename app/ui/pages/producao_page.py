@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -47,7 +48,10 @@ from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
-from app.services.relatorio_producao_service import gerar_relatorio_obras_pdf
+from app.services.relatorio_producao_service import (
+    gerar_dossier_obra_pdf,
+    gerar_relatorio_obras_pdf,
+)
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
@@ -1461,7 +1465,7 @@ class ProducaoPage(QWidget):
         self.status_label.setText(f"{frase} {sugestao}".strip())
 
     def _ia_resposta_obra(self, resultado) -> None:
-        """Ação sobre uma obra: mostra o texto e copia-o (p/ WhatsApp/email)."""
+        """Ação sobre uma obra: texto (copia) ou PDF (gera e abre)."""
         if not resultado.texto:
             self.status_label.setText(resultado.aviso or "Não encontrei a obra.")
             return
@@ -1469,17 +1473,39 @@ class ProducaoPage(QWidget):
         if resultado.obra_id is not None:
             self._selecionar_processo_id(resultado.obra_id)
 
+        if resultado.modo == "pdf" and resultado.dossier is not None:
+            self._gerar_pdf_obra(resultado.dossier)
+            return
+
         QApplication.clipboard().setText(resultado.texto)
         nota = ""
-        if resultado.modo in ("pdf", "email"):
+        if resultado.modo == "email":
             nota = (
-                f"\n\n(O modo {resultado.modo.upper()} chega na próxima fase; "
-                "por agora, o texto — já está copiado.)"
+                "\n\n(O modo email chega na próxima fase; por agora, o texto "
+                "— já está copiado.)"
             )
         QMessageBox.information(self, "IA Martelo — obra", resultado.texto + nota)
         self.status_label.setText(
             "Resumo da obra copiado para a área de transferência."
         )
+
+    def _gerar_pdf_obra(self, dossier) -> None:
+        """Gera automaticamente o PDF do ponto de situação da obra e abre-o."""
+        base = dossier.enc or dossier.codigo or "obra"
+        nome = re.sub(r"[^0-9A-Za-z._-]+", "_", f"ponto_situacao_{base}") + ".pdf"
+        destino = Path.home() / "Downloads" / nome
+        try:
+            caminho = gerar_dossier_obra_pdf(
+                dossier,
+                caminho=destino,
+                gerado_em=QDate.currentDate().toString("dd-MM-yyyy"),
+            )
+        except (RuntimeError, OSError) as erro:
+            QMessageBox.warning(self, "Relatório da obra", str(erro))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+        self.status_label.setText(f"Relatório PDF da obra gerado: {caminho}")
 
     def _ia_falhou(self, _erro: str) -> None:
         self.status_label.setText("Não foi possível interpretar a pergunta.")

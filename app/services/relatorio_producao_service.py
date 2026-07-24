@@ -10,6 +10,7 @@ Segue o padrão de ``plano_corte_pdf_export.py``: import do reportlab protegido
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -167,3 +168,124 @@ def _preco(valor) -> str:
         return f"{float(str(valor).replace(',', '.')):.2f} €"
     except (TypeError, ValueError):
         return str(valor).strip()
+
+
+def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "") -> Path:
+    """PDF do ponto de situação de UMA obra (para o cliente).
+
+    Espelha o resumo aprovado: dados da obra + estado + fases de produção.
+    NÃO inclui notas internas nem preço (são internos, não vão para o cliente).
+    ``gerado_em`` (data) é passado por quem chama, para ser determinístico.
+    """
+    if not REPORTLAB_DISPONIVEL:
+        raise RuntimeError(
+            "O reportlab não está instalado; não é possível gerar o PDF."
+        )
+
+    destino = Path(caminho)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+
+    titulo = ParagraphStyle(
+        "t", fontName="Helvetica-Bold", fontSize=16,
+        textColor=colors.HexColor(_AZUL_ESCURO), spaceAfter=2,
+    )
+    sub = ParagraphStyle(
+        "s", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#555555")
+    )
+    h = ParagraphStyle(
+        "h", fontName="Helvetica-Bold", fontSize=11,
+        textColor=colors.HexColor(_AZUL_ESCURO), spaceBefore=8, spaceAfter=3,
+    )
+    cel = ParagraphStyle("c", fontName="Helvetica", fontSize=9.5, leading=13)
+    rot = ParagraphStyle(
+        "r", fontName="Helvetica-Bold", fontSize=9.5, leading=13,
+        textColor=colors.HexColor(_TEXTO),
+    )
+
+    identidade = dossier.codigo or (f"Obra {dossier.enc}" if dossier.enc else "Obra")
+    if dossier.cliente:
+        identidade += f"  —  {dossier.cliente}"
+
+    info = [
+        [Paragraph("Estado:", rot), Paragraph(escape(dossier.estado_local or "—"), cel)],
+        [Paragraph("Responsável:", rot), Paragraph(escape(dossier.responsavel or "—"), cel)],
+        [Paragraph("Início:", rot), Paragraph(escape(dossier.data_inicio or "—"), cel)],
+        [Paragraph("Entrega prevista:", rot),
+         Paragraph(escape(dossier.data_entrega or "—"), cel)],
+    ]
+    if dossier.enc:
+        info.append([Paragraph("Nº encomenda:", rot), Paragraph(escape(dossier.enc), cel)])
+
+    tabela_info = Table(info, colWidths=[35 * mm, None])
+    tabela_info.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    story = [
+        Paragraph("Ponto de Situação da Obra", titulo),
+        Paragraph(escape(identidade), sub),
+    ]
+    if gerado_em:
+        story.append(Paragraph(f"Gerado em {escape(gerado_em)}", sub))
+    story += [Spacer(1, 6 * mm), tabela_info]
+
+    if dossier.descricao_producao:
+        story += [
+            Paragraph("Descrição", h),
+            Paragraph(escape(dossier.descricao_producao), cel),
+        ]
+
+    story.append(Paragraph("Produção", h))
+    if dossier.encontrado_streamlit and dossier.fases:
+        global_txt = _estado_global_limpo(dossier.estado_global)
+        if global_txt:
+            story.append(Paragraph(f"Estado global: {escape(global_txt)}", cel))
+        story.append(Spacer(1, 2 * mm))
+        story.append(_tabela_fases(dossier.fases))
+    else:
+        story.append(
+            Paragraph("Estado detalhado de produção indisponível de momento.", cel)
+        )
+
+    doc = SimpleDocTemplate(
+        str(destino), pagesize=A4,
+        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
+        title="Ponto de Situação da Obra",
+    )
+    doc.build(story)
+    return destino
+
+
+def _tabela_fases(fases) -> Table:
+    cel = ParagraphStyle("fc", fontName="Helvetica", fontSize=9.5)
+    cab = ParagraphStyle("fh", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.white)
+    linhas = [[Paragraph("Setor", cab), Paragraph("Conclusão", cab)]]
+    for nome, pct, concluido in fases:
+        texto = f"{pct:.0f}%" + (" — concluído" if concluido else "")
+        linhas.append([Paragraph(escape(str(nome)), cel), Paragraph(texto, cel)])
+
+    tabela = Table(linhas, colWidths=[60 * mm, 50 * mm], repeatRows=1)
+    comandos = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_AZUL_ESCURO)),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA_GRELHA)),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for i in range(1, len(linhas)):
+        if i % 2 == 0:
+            comandos.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(_AZUL_REALCE)))
+    tabela.setStyle(TableStyle(comandos))
+    return tabela
+
+
+def _estado_global_limpo(etiqueta: str) -> str:
+    """Tira o emoji do início da etiqueta («🔄 28.6% (2/7)» -> «28.6% (2/7)»)."""
+    return re.sub(r"^[^0-9]*", "", etiqueta or "").strip()
