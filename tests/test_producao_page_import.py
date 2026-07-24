@@ -229,7 +229,9 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "resolver_imagem_imos" in worker_source
     assert "caminho_versao_de_processo" in worker_source
     assert "resolver_pasta_orcamento" in worker_source
-    assert "QFileDialog" not in source
+    # O seletor de imagem MANUAL foi removido (a imagem vem do IMOS). Isto é
+    # garantido pelas etiquetas abaixo; o QFileDialog voltou a ser usado, mas
+    # agora para o relatório PDF do IA Martelo, não para escolher imagens.
     assert "Escolher Imagem/PDF..." not in source
     assert "Limpar Imagem" not in source
     assert "self._imagem_path" in source

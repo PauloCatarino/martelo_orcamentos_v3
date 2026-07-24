@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -46,6 +47,7 @@ from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
+from app.services.relatorio_producao_service import gerar_relatorio_obras_pdf
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
@@ -273,6 +275,7 @@ class ProducaoPage(QWidget):
         self._todos: list[Producao] = []
         self._selected_processo_id: int | None = None
         self._ia_worker: _IAWorker | None = None
+        self._ia_ultima_pergunta = ""
         self._dirty = False
         self._a_preencher_form = False
         self._cliente_id: int | None = None
@@ -461,11 +464,19 @@ class ProducaoPage(QWidget):
         self.ia_button = QPushButton("Perguntar ao Martelo")
         self.ia_button.clicked.connect(self._perguntar_ia)
 
+        self.ia_relatorio_button = QPushButton("Relatório (PDF)")
+        self.ia_relatorio_button.setToolTip(
+            "Gera um PDF com as obras que estão agora na lista "
+            "(o que o Martelo encontrou). Não altera nem envia nada."
+        )
+        self.ia_relatorio_button.clicked.connect(self._relatorio_obras)
+
         ia_layout = QHBoxLayout()
         ia_layout.setSpacing(8)
         ia_layout.addWidget(QLabel("IA Martelo"))
         ia_layout.addWidget(self.ia_input, stretch=1)
         ia_layout.addWidget(self.ia_button)
+        ia_layout.addWidget(self.ia_relatorio_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("producaoStatus")
@@ -1412,6 +1423,7 @@ class ProducaoPage(QWidget):
         if self._ia_worker is not None and self._ia_worker.isRunning():
             return
 
+        self._ia_ultima_pergunta = pergunta
         self.ia_button.setEnabled(False)
         self.ia_button.setText("A pensar…")
         self.status_label.setText("O Martelo está a pensar…")
@@ -1446,6 +1458,43 @@ class ProducaoPage(QWidget):
 
     def _ia_falhou(self, _erro: str) -> None:
         self.status_label.setText("Não foi possível interpretar a pergunta.")
+
+    def _relatorio_obras(self) -> None:
+        """Gera um PDF das obras que estão agora na lista (ação segura)."""
+        obras = [
+            self._processo_na_linha_visivel(linha)
+            for linha in range(self.proxy.rowCount())
+        ]
+        obras = [obra for obra in obras if obra is not None]
+        if not obras:
+            self.status_label.setText("Não há obras na lista para o relatório.")
+            return
+
+        data = QDate.currentDate().toString("dd-MM-yyyy")
+        pergunta = self._ia_ultima_pergunta.strip()
+        subtitulo = (f"Pergunta: «{pergunta}» · " if pergunta else "") + (
+            f"{len(obras)} obras · {data}"
+        )
+        sugerido = f"relatorio_obras_{QDate.currentDate().toString('yyyyMMdd')}.pdf"
+        caminho, _ = QFileDialog.getSaveFileName(
+            self, "Guardar relatório", sugerido, "PDF (*.pdf)"
+        )
+        if not caminho:
+            return
+
+        try:
+            destino = gerar_relatorio_obras_pdf(
+                obras,
+                titulo="Relatório de obras — Produção",
+                subtitulo=subtitulo,
+                caminho=caminho,
+            )
+        except (RuntimeError, OSError) as erro:
+            QMessageBox.warning(self, "Relatório (PDF)", str(erro))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(destino)))
+        self.status_label.setText(f"Relatório gerado: {destino}")
 
     def _ia_terminou(self) -> None:
         self.ia_button.setEnabled(True)
