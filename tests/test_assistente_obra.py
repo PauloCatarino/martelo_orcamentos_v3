@@ -48,6 +48,22 @@ def test_sem_ano_fica_vazio_para_ano_atual() -> None:
     assert identificar_pedido("obra 1058").ano == ""
 
 
+def test_obra_por_ref_de_cliente() -> None:
+    pedido = identificar_pedido(
+        "faz um mail para enviar ao viva da ref de cliente 2410008"
+    )
+
+    assert pedido == PedidoObra(ref_cliente="2410008", modo="email")
+
+
+def test_ref_cliente_texto_por_defeito() -> None:
+    pedido = identificar_pedido("ponto de situação da ref cliente 260067")
+
+    assert pedido.ref_cliente == "260067"
+    assert pedido.modo == "texto"
+    assert pedido.numero == ""
+
+
 def test_ano_antes_do_numero_nao_troca() -> None:
     # «de 2026 ... obra 1058» -> obra=1058 (rótulo), ano=2026.
     pedido = identificar_pedido("dados de 2026 da obra 1058")

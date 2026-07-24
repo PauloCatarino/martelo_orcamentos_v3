@@ -142,8 +142,15 @@ class IaMarteloDialog(QDialog):
         self.input.returnPressed.connect(self._perguntar)
         self.botao = QPushButton("Perguntar")
         self.botao.clicked.connect(self._perguntar)
+        self.botao_ensinar = QPushButton("🎓 Ensinar o Martelo")
+        self.botao_ensinar.setToolTip(
+            "Abrir «Assistente — o meu perfil» para ensinar palavras, alcunhas e "
+            "instruções ao Martelo (é aqui que se alimenta o conhecimento)."
+        )
+        self.botao_ensinar.clicked.connect(self._abrir_perfil)
         entrada.addWidget(self.input, stretch=1)
         entrada.addWidget(self.botao)
+        entrada.addWidget(self.botao_ensinar)
         layout.addLayout(entrada)
 
         self.status = QLabel("")
@@ -236,6 +243,18 @@ class IaMarteloDialog(QDialog):
         processo_id = item.data(Qt.ItemDataRole.UserRole)
         if processo_id is not None:
             self._on_abrir_obra(int(processo_id))
+
+    def _abrir_perfil(self) -> None:
+        """Abre «Assistente — o meu perfil» para ensinar o Martelo."""
+        from app.ui.pages.ia_perfil_page import IaPerfilPage
+
+        dialogo = QDialog(self)
+        dialogo.setWindowTitle("Assistente — o meu perfil")
+        dialogo.resize(780, 560)
+        col = QVBoxLayout(dialogo)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.addWidget(IaPerfilPage(on_back=dialogo.accept))
+        dialogo.exec()
 
     def _falhou(self, _erro: str) -> None:
         self.status.setText("Não foi possível interpretar a pergunta.")

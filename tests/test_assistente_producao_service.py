@@ -166,6 +166,25 @@ def test_responder_ia_ano_escrito_ganha_ao_atual() -> None:
     assert resultado.obra_id == 1  # o ano escrito (2026) manda
 
 
+def test_responder_ia_por_ref_de_cliente() -> None:
+    processos = [
+        _processo(id=1, num_enc_phc="1058", ref_cliente="2410008",
+                  codigo_processo="26.1058_01_01", ano=2026),
+        _processo(id=2, num_enc_phc="1134", ref_cliente="2507018",
+                  codigo_processo="26.1134_01_01", ano=2026),
+    ]
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "faz um relatório da obra da ref de cliente 2410008",
+        user_id=None, processos=processos, ano_atual=2026,
+    )
+
+    assert resultado.tipo == "obra"
+    assert resultado.obra_id == 1
+    assert resultado.modo == "pdf"
+
+
 def test_responder_ia_obra_inexistente_avisa() -> None:
     servico = AssistenteProducaoService(None)
 

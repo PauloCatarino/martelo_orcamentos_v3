@@ -239,10 +239,17 @@ class AssistenteProducaoService:
         """
         pedido = identificar_pedido(pergunta)
         if pedido is not None:
-            ano = pedido.ano or (str(ano_atual) if ano_atual else "")
-            versoes = self._encontrar_obras(processos, pedido.numero, ano)
-            if not versoes:
+            if pedido.ref_cliente:
+                ano = str(ano_atual) if ano_atual else ""
+                versoes = self._encontrar_obras_por_ref(
+                    processos, pedido.ref_cliente, ano
+                )
+                alvo = f"da ref. cliente {pedido.ref_cliente}"
+            else:
+                ano = pedido.ano or (str(ano_atual) if ano_atual else "")
+                versoes = self._encontrar_obras(processos, pedido.numero, ano)
                 alvo = pedido.numero + (f" (ano {ano})" if ano else "")
+            if not versoes:
                 return ResultadoIA(
                     tipo="obra",
                     modo=pedido.modo,
@@ -479,6 +486,25 @@ class AssistenteProducaoService:
         for processo in processos or []:
             bruto = re.sub(r"\D", "", str(getattr(processo, "num_enc_phc", "") or ""))
             if not bruto or not (bruto == alvo or int(bruto) == alvo_int):
+                continue
+            if ano_alvo:
+                processo_ano = re.sub(r"\D", "", str(getattr(processo, "ano", "") or ""))
+                if processo_ano != ano_alvo:
+                    continue
+            encontradas.append(processo)
+        return sorted(encontradas, key=_chave_versao)
+
+    @staticmethod
+    def _encontrar_obras_por_ref(processos, ref: str, ano: str = "") -> list:
+        """Versões da obra pela Ref. do cliente (e ANO), da mais antiga à recente."""
+        alvo = normalizar(ref)
+        if not alvo:
+            return []
+        ano_alvo = re.sub(r"\D", "", str(ano or ""))
+        encontradas = []
+        for processo in processos or []:
+            ref_p = normalizar(getattr(processo, "ref_cliente", ""))
+            if not ref_p or (alvo != ref_p and alvo not in ref_p):
                 continue
             if ano_alvo:
                 processo_ano = re.sub(r"\D", "", str(getattr(processo, "ano", "") or ""))

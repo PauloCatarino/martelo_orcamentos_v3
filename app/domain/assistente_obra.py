@@ -36,14 +36,28 @@ _MODO_TEXTO = "texto"
 _ANO_MIN, _ANO_MAX = 2000, 2099
 
 
+#: Frases que indicam que o valor a seguir é a Referência do CLIENTE.
+_REF_FRASES = (
+    "referencia do cliente",
+    "referencia de cliente",
+    "ref do cliente",
+    "ref de cliente",
+    "referencia cliente",
+    "ref cliente",
+)
+
+
 @dataclass(frozen=True)
 class PedidoObra:
-    """Pedido de ação sobre uma obra: número, modo e (opcional) ano."""
+    """Pedido de ação sobre uma obra: identifica-a pelo nº de encomenda OU pela
+    Ref. do cliente; mais o modo e (opcional) o ano."""
 
-    numero: str
+    numero: str = ""
     modo: str = _MODO_TEXTO  # "texto" | "pdf" | "email"
     #: Ano escrito na pergunta; vazio = deixar o serviço usar o ano atual.
     ano: str = ""
+    #: Referência do cliente («ref de cliente XXXX»), em alternativa ao número.
+    ref_cliente: str = ""
 
 
 @dataclass(frozen=True)
@@ -101,6 +115,13 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
         return None
 
     palavras = texto.split()
+
+    # 1) Obra pela Ref. do cliente («ref de cliente 2410008»).
+    ref = _extrair_ref_cliente(texto)
+    if ref:
+        return PedidoObra(ref_cliente=ref, modo=_modo(palavras))
+
+    # 2) Obra pelo nº de encomenda.
     numero, ano = _extrair_numero_e_ano(palavras)
     if not numero:
         return None
@@ -111,6 +132,17 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
         return None
 
     return PedidoObra(numero=numero, modo=_modo(palavras), ano=ano)
+
+
+def _extrair_ref_cliente(texto: str) -> str:
+    """Valor logo a seguir a «ref (de) cliente» (o código de referência)."""
+    for frase in _REF_FRASES:
+        indice = texto.find(frase)
+        if indice >= 0:
+            resto = texto[indice + len(frase):].split()
+            if resto:
+                return resto[0]
+    return ""
 
 
 def resumo_texto(dossier: DossierObra) -> str:
