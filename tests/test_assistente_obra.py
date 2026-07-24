@@ -36,6 +36,24 @@ def test_rotulo_obra_chega_sem_gatilho() -> None:
     assert identificar_pedido("obra 1134") == PedidoObra(numero="1134", modo="texto")
 
 
+def test_ano_escrito_na_pergunta() -> None:
+    pedido = identificar_pedido("faz um relatório da obra 1058 de 2026")
+
+    assert pedido == PedidoObra(numero="1058", modo="pdf", ano="2026")
+
+
+def test_sem_ano_fica_vazio_para_ano_atual() -> None:
+    assert identificar_pedido("obra 1058").ano == ""
+
+
+def test_ano_antes_do_numero_nao_troca() -> None:
+    # «de 2026 ... obra 1058» -> obra=1058 (rótulo), ano=2026.
+    pedido = identificar_pedido("dados de 2026 da obra 1058")
+
+    assert pedido.numero == "1058"
+    assert pedido.ano == "2026"
+
+
 def test_pesquisa_normal_nao_e_pedido_de_obra() -> None:
     assert identificar_pedido("obras atrasadas") is None
     assert identificar_pedido("roupeiros de correr") is None

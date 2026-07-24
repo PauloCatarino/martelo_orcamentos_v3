@@ -32,12 +32,18 @@ _MODO_PDF = "pdf"
 _MODO_TEXTO = "texto"
 
 
+#: Intervalo plausível para um ANO escrito na pergunta (distingue-o do nº obra).
+_ANO_MIN, _ANO_MAX = 2000, 2099
+
+
 @dataclass(frozen=True)
 class PedidoObra:
-    """Pedido de ação sobre uma obra: o número e o modo de resposta."""
+    """Pedido de ação sobre uma obra: número, modo e (opcional) ano."""
 
     numero: str
     modo: str = _MODO_TEXTO  # "texto" | "pdf" | "email"
+    #: Ano escrito na pergunta; vazio = deixar o serviço usar o ano atual.
+    ano: str = ""
 
 
 @dataclass(frozen=True)
@@ -95,7 +101,7 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
         return None
 
     palavras = texto.split()
-    numero = _extrair_numero(palavras)
+    numero, ano = _extrair_numero_e_ano(palavras)
     if not numero:
         return None
 
@@ -104,7 +110,7 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
     if not (tem_gatilho or tem_rotulo):
         return None
 
-    return PedidoObra(numero=numero, modo=_modo(palavras))
+    return PedidoObra(numero=numero, modo=_modo(palavras), ano=ano)
 
 
 def resumo_texto(dossier: DossierObra) -> str:
@@ -224,13 +230,40 @@ def corpo_email_html(
     return "\n".join(linhas)
 
 
-def _extrair_numero(palavras: list[str]) -> str:
-    """Primeiro grupo de dígitos plausível como nº de encomenda (2-6 díg.)."""
-    for palavra in palavras:
+def _e_ano(digitos: str) -> bool:
+    return len(digitos) == 4 and _ANO_MIN <= int(digitos) <= _ANO_MAX
+
+
+def _extrair_numero_e_ano(palavras: list[str]) -> tuple[str, str]:
+    """Separa o nº de encomenda (2-6 díg.) de um eventual ANO (20xx).
+
+    O nº da obra prefere-se logo a seguir a «obra/encomenda/phc»; o ano é um
+    20xx diferente do número. «obra 2027» (só um 20xx) é o próprio número.
+    """
+    tokens: list[tuple[int, str]] = []
+    for indice, palavra in enumerate(palavras):
         digitos = re.sub(r"\D", "", palavra)
         if 2 <= len(digitos) <= 6:
-            return digitos
-    return ""
+            tokens.append((indice, digitos))
+    if not tokens:
+        return "", ""
+
+    numero = ""
+    for indice, digitos in tokens:
+        if indice > 0 and palavras[indice - 1] in _ROTULOS_OBRA:
+            numero = digitos
+            break
+
+    nao_anos = [d for _i, d in tokens if not _e_ano(d)]
+    if not numero:
+        numero = nao_anos[0] if nao_anos else tokens[0][1]
+
+    ano = ""
+    for _i, digitos in tokens:
+        if _e_ano(digitos) and digitos != numero:
+            ano = digitos
+            break
+    return numero, ano
 
 
 def _tem_rotulo_antes_do_numero(palavras: list[str], numero: str) -> bool:

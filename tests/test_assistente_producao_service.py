@@ -125,6 +125,38 @@ def test_responder_ia_pedido_de_obra_monta_dossier() -> None:
     assert "26.1134_01_01_JF_VIVA" in resultado.texto
 
 
+def test_responder_ia_filtra_por_ano_atual() -> None:
+    # Mesmo nº de encomenda em anos diferentes: por defeito, o ano atual.
+    processos = [
+        _processo(id=1, num_enc_phc="1058", ano=2026, codigo_processo="26.1058_01_01"),
+        _processo(id=2, num_enc_phc="1058", ano=2027, codigo_processo="27.1058_01_01"),
+    ]
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "faz um relatório da obra 1058", user_id=None, processos=processos,
+        ano_atual=2027,
+    )
+
+    assert resultado.tipo == "obra"
+    assert resultado.obra_id == 2  # só a obra de 2027
+
+
+def test_responder_ia_ano_escrito_ganha_ao_atual() -> None:
+    processos = [
+        _processo(id=1, num_enc_phc="1058", ano=2026, codigo_processo="26.1058_01_01"),
+        _processo(id=2, num_enc_phc="1058", ano=2027, codigo_processo="27.1058_01_01"),
+    ]
+    servico = AssistenteProducaoService(None)
+
+    resultado = servico.responder_ia(
+        "faz um relatório da obra 1058 de 2026", user_id=None, processos=processos,
+        ano_atual=2027,
+    )
+
+    assert resultado.obra_id == 1  # o ano escrito (2026) manda
+
+
 def test_responder_ia_obra_inexistente_avisa() -> None:
     servico = AssistenteProducaoService(None)
 

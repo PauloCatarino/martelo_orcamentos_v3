@@ -212,19 +212,24 @@ class AssistenteProducaoService:
         *,
         user_id: int | None,
         processos,
+        ano_atual: int | None = None,
     ) -> ResultadoIA:
         """Decide: ação sobre UMA obra («relatório da obra 1134») ou pesquisa.
 
         Corre na thread de fundo da UI (pode tocar no Streamlit para as fases).
+        O nº de encomenda reinicia a cada ano; por defeito procura-se no
+        ``ano_atual`` (a menos que a pergunta traga um ano).
         """
         pedido = identificar_pedido(pergunta)
         if pedido is not None:
-            versoes = self._encontrar_obras(processos, pedido.numero)
+            ano = pedido.ano or (str(ano_atual) if ano_atual else "")
+            versoes = self._encontrar_obras(processos, pedido.numero, ano)
             if not versoes:
+                alvo = pedido.numero + (f" (ano {ano})" if ano else "")
                 return ResultadoIA(
                     tipo="obra",
                     modo=pedido.modo,
-                    aviso=f"Não encontrei a obra {pedido.numero} na lista.",
+                    aviso=f"Não encontrei a obra {alvo} na lista.",
                 )
             dossier = self.montar_dossier(versoes)
             principal = versoes[-1]  # versão mais recente
@@ -353,17 +358,27 @@ class AssistenteProducaoService:
         return estados
 
     @staticmethod
-    def _encontrar_obras(processos, numero: str) -> list:
-        """Todas as versões da obra (mesmo nº encomenda), da mais antiga à recente."""
+    def _encontrar_obras(processos, numero: str, ano: str = "") -> list:
+        """Versões da obra (mesmo nº encomenda e ANO), da mais antiga à recente.
+
+        O nº de encomenda repete-se entre anos, por isso o ano faz parte da
+        identidade da obra; ``ano`` vazio não filtra por ano.
+        """
         alvo = re.sub(r"\D", "", numero or "")
         if not alvo:
             return []
         alvo_int = int(alvo)
+        ano_alvo = re.sub(r"\D", "", str(ano or ""))
         encontradas = []
         for processo in processos or []:
             bruto = re.sub(r"\D", "", str(getattr(processo, "num_enc_phc", "") or ""))
-            if bruto and (bruto == alvo or int(bruto) == alvo_int):
-                encontradas.append(processo)
+            if not bruto or not (bruto == alvo or int(bruto) == alvo_int):
+                continue
+            if ano_alvo:
+                processo_ano = re.sub(r"\D", "", str(getattr(processo, "ano", "") or ""))
+                if processo_ano != ano_alvo:
+                    continue
+            encontradas.append(processo)
         return sorted(encontradas, key=_chave_versao)
 
     @staticmethod

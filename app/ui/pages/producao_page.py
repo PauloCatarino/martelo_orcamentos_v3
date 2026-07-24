@@ -154,11 +154,12 @@ class _IAWorker(QThread):
     concluido = Signal(object)  # ResultadoIA
     falhou = Signal(str)
 
-    def __init__(self, pergunta, user_id, processos, parent=None) -> None:
+    def __init__(self, pergunta, user_id, processos, ano_atual, parent=None) -> None:
         super().__init__(parent)
         self._pergunta = pergunta
         self._user_id = user_id
         self._processos = processos
+        self._ano_atual = ano_atual
 
     def run(self) -> None:  # noqa: D102 - QThread override
         try:
@@ -167,6 +168,7 @@ class _IAWorker(QThread):
                     self._pergunta,
                     user_id=self._user_id,
                     processos=self._processos,
+                    ano_atual=self._ano_atual,
                 )
             self.concluido.emit(resultado)
         except Exception as exc:  # noqa: BLE001 - reportado à UI
@@ -1438,7 +1440,11 @@ class ProducaoPage(QWidget):
         self.status_label.setText("O Martelo está a pensar…")
 
         worker = _IAWorker(
-            pergunta, self._colunas_user_id_int(), self._todos, self
+            pergunta,
+            self._colunas_user_id_int(),
+            self._todos,
+            QDate.currentDate().year(),
+            self,
         )
         worker.concluido.connect(self._ia_concluido)
         worker.falhou.connect(self._ia_falhou)
