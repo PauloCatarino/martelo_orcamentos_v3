@@ -211,20 +211,19 @@ class AssistenteProducaoService:
 
     @staticmethod
     def _combinar(base: Intencao, llm: Intencao | None) -> Intencao:
-        """Preenche os filtros vazios das regras com o que o LLM propôs.
+        """Junta as regras (base fiável) com o LLM, sem o deixar poluir.
 
-        A ambiguidade das regras é de confiança (as «perguntas» do modelo
-        pequeno são ignoradas).
+        Teste real (llama3.2 e llama3.1): os modelos locais ALUCINAM o estado
+        e repetem nomes no texto livre. Por isso o LLM só contribui com
+        **cliente/responsável validados** (não pode inventar nomes que não
+        existam); estado, texto livre, atrasadas e ambiguidade vêm só das regras.
         """
         if llm is None:
             return base
         return replace(
             base,
-            termos=base.termos or llm.termos,
-            estado=base.estado or llm.estado,
             cliente=base.cliente or llm.cliente,
             responsavel=base.responsavel or llm.responsavel,
-            so_atrasadas=base.so_atrasadas or llm.so_atrasadas,
         )
 
     def _chamar_ollama(self, system: str, user: str) -> str:

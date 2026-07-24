@@ -108,6 +108,27 @@ def test_llm_usa_filtros_validados_do_modelo() -> None:
     assert intencao.estado == "Producao"
 
 
+def test_llm_nao_polui_estado_com_alucinacao() -> None:
+    # O modelo alucina um estado que a pergunta não pede; as regras mandam.
+    processos = [_processo(id=1, responsavel="Paulo", estado="Producao")]
+    servico = AssistenteProducaoService(None)
+
+    def fake_modelo(system, user):
+        return '{"estado": "Desenho", "so_atrasadas": true}'
+
+    intencao, _ = servico.interpretar_pergunta_llm(
+        "obras atrasadas do Paulo",
+        user_id=None,
+        processos=processos,
+        chamar_modelo=fake_modelo,
+    )
+
+    # Estado fica None (as regras não o pediram); atrasadas vem das regras.
+    assert intencao.estado is None
+    assert intencao.responsavel == "Paulo"
+    assert intencao.so_atrasadas is True
+
+
 def test_llm_recusa_propaga() -> None:
     servico = AssistenteProducaoService(None)
 
