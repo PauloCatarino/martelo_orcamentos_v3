@@ -69,6 +69,9 @@ class ResultadoIA:
     # tipo == "pesquisa"
     intencao: Intencao | None = None
     recusa: str = ""
+    obras: list = field(default_factory=list)
+    frase: str = ""
+    sugestao_perfil: str = ""
     # tipo == "obra"
     obra_id: int | None = None
     modo: str = ""       # "texto" | "pdf" | "email"
@@ -267,7 +270,28 @@ class AssistenteProducaoService:
         intencao, recusa = self.interpretar_pergunta_llm(
             pergunta, user_id=user_id, processos=processos
         )
-        return ResultadoIA(tipo="pesquisa", intencao=intencao, recusa=recusa)
+        if recusa or intencao.precisa_perguntar:
+            return ResultadoIA(tipo="pesquisa", intencao=intencao, recusa=recusa)
+
+        sinonimos = carregar_sinonimos(self.session, user_id)
+        obras = filtrar_processos(
+            processos,
+            texto=intencao.termos,
+            estado=intencao.estado,
+            cliente=intencao.cliente,
+            responsavel=intencao.responsavel,
+            so_atrasadas=intencao.so_atrasadas,
+            sinonimos=sinonimos,
+        )
+        return ResultadoIA(
+            tipo="pesquisa",
+            intencao=intencao,
+            obras=list(obras),
+            frase=frase_resposta(intencao, len(obras)),
+            sugestao_perfil=sugestao_recrutamento(
+                intencao, len(obras), vocabulario_pesquisa(processos)
+            ),
+        )
 
     def _compor_email(
         self,

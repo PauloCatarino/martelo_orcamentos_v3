@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
-    QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -44,17 +43,14 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
-from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
 from app.domain.assistente_obra import assunto_email, corpo_email_html
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
 from app.services.email_service import carregar_email_config, enviar_email
-from app.services.relatorio_producao_service import (
-    gerar_dossier_obra_pdf,
-    gerar_relatorio_obras_pdf,
-)
+from app.services.relatorio_producao_service import gerar_dossier_obra_pdf
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
+from app.ui.dialogs.ia_martelo_dialog import IaMarteloDialog
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
@@ -142,40 +138,6 @@ COLUNA_ORDEM_ENTRADA = next(
     for indice, coluna in enumerate(COLUNAS_PRODUCAO)
     if coluna.key == "criada_em"
 )
-
-
-class _IAWorker(QThread):
-    """Corre a interpretação do IA Martelo (LLM local) fora da thread da UI."""
-
-    concluido = Signal(object)  # ResultadoIA
-    falhou = Signal(str)
-
-    def __init__(
-        self, pergunta, user_id, processos, ano_atual, hora_atual,
-        utilizador_nome, parent=None,
-    ) -> None:
-        super().__init__(parent)
-        self._pergunta = pergunta
-        self._user_id = user_id
-        self._processos = processos
-        self._ano_atual = ano_atual
-        self._hora_atual = hora_atual
-        self._utilizador_nome = utilizador_nome
-
-    def run(self) -> None:  # noqa: D102 - QThread override
-        try:
-            with SessionLocal() as session:
-                resultado = AssistenteProducaoService(session).responder_ia(
-                    self._pergunta,
-                    user_id=self._user_id,
-                    processos=self._processos,
-                    ano_atual=self._ano_atual,
-                    hora_atual=self._hora_atual,
-                    utilizador_nome=self._utilizador_nome,
-                )
-            self.concluido.emit(resultado)
-        except Exception as exc:  # noqa: BLE001 - reportado à UI
-            self.falhou.emit(str(exc))
 
 
 class _ImagemPreviewLabel(QLabel):
@@ -288,8 +250,7 @@ class ProducaoPage(QWidget):
 
         self._todos: list[Producao] = []
         self._selected_processo_id: int | None = None
-        self._ia_worker: _IAWorker | None = None
-        self._ia_ultima_pergunta = ""
+        self._ia_dialog: IaMarteloDialog | None = None
         self._dirty = False
         self._a_preencher_form = False
         self._cliente_id: int | None = None
@@ -375,6 +336,13 @@ class ProducaoPage(QWidget):
         self.refresh_button.setToolTip("Recarregar a lista de obras")
         self.refresh_button.clicked.connect(self.carregar_processos)
 
+        self.ia_martelo_button = QPushButton("🔨 IA Martelo")
+        self.ia_martelo_button.setToolTip(
+            "Abrir o assistente IA Martelo: pesquisa e ponto de situação, "
+            "relatórios PDF, texto para WhatsApp e emails ao cliente."
+        )
+        self.ia_martelo_button.clicked.connect(self._abrir_ia_martelo)
+
         self.atualizar_v2_button = QPushButton("⟳ Atualizar dados V2")
         self.atualizar_v2_button.setToolTip(
             "TEMPORÁRIO (fase de transição): comparar as obras do Martelo V2 com as "
@@ -399,6 +367,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.atualizar_v2_button)
+        actions_layout.addWidget(self.ia_martelo_button)
         actions_layout.addStretch()
 
         self.campo_pesquisa = CampoPesquisa()
@@ -462,35 +431,6 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(self.atrasadas_check)
         filters_layout.addStretch()
         filters_layout.addWidget(self.obras_ano_label)
-
-        # IA Martelo (Fase 1): a pergunta em linguagem natural conduz os filtros
-        # acima, para o utilizador ver o que o assistente percebeu.
-        self.ia_input = QLineEdit()
-        self.ia_input.setPlaceholderText(
-            "Pergunte ao Martelo… (ex.: as minhas obras atrasadas)"
-        )
-        self.ia_input.setClearButtonEnabled(True)
-        self.ia_input.setToolTip(
-            "Escreva a pergunta como a diria a um colega e prima Enter. "
-            "O martelo traduz a pergunta nos filtros; nunca altera dados."
-        )
-        self.ia_input.returnPressed.connect(self._perguntar_ia)
-        self.ia_button = QPushButton("Perguntar ao Martelo")
-        self.ia_button.clicked.connect(self._perguntar_ia)
-
-        self.ia_relatorio_button = QPushButton("Relatório (PDF)")
-        self.ia_relatorio_button.setToolTip(
-            "Gera um PDF com as obras que estão agora na lista "
-            "(o que o Martelo encontrou). Não altera nem envia nada."
-        )
-        self.ia_relatorio_button.clicked.connect(self._relatorio_obras)
-
-        ia_layout = QHBoxLayout()
-        ia_layout.setSpacing(8)
-        ia_layout.addWidget(QLabel("IA Martelo"))
-        ia_layout.addWidget(self.ia_input, stretch=1)
-        ia_layout.addWidget(self.ia_button)
-        ia_layout.addWidget(self.ia_relatorio_button)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("producaoStatus")
@@ -567,7 +507,6 @@ class ProducaoPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(actions_layout)
         layout.addLayout(filters_layout)
-        layout.addLayout(ia_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.splitter, stretch=1)
 
@@ -1428,63 +1367,24 @@ class ProducaoPage(QWidget):
         self._aplicar_config_colunas()
         self._guardar_config_colunas()
 
-    # ---- IA Martelo (Fase 1) ---------------------------------------------
-    def _perguntar_ia(self) -> None:
-        """Pergunta ao IA Martelo (LLM local) numa thread; não bloqueia a UI."""
-        pergunta = self.ia_input.text().strip()
-        if not pergunta:
-            return
-        if self._ia_worker is not None and self._ia_worker.isRunning():
-            return
+    # ---- IA Martelo (menu dedicado com mascote) --------------------------
+    def _abrir_ia_martelo(self) -> None:
+        """Abre o menu do martelo animado (pesquisa + ações sobre uma obra)."""
+        if self._ia_dialog is None:
+            self._ia_dialog = IaMarteloDialog(
+                self,
+                obter_processos=lambda: self._todos,
+                obter_user_id=self._colunas_user_id_int,
+                on_abrir_obra=self._abrir_obra_por_id,
+                on_resultado_obra=self._ia_resposta_obra,
+            )
+        self._ia_dialog.show()
+        self._ia_dialog.raise_()
+        self._ia_dialog.activateWindow()
 
-        self._ia_ultima_pergunta = pergunta
-        self.ia_button.setEnabled(False)
-        self.ia_button.setText("A pensar…")
-        self.status_label.setText("O Martelo está a pensar…")
-
-        user = app_session.current_user
-        utilizador_nome = (
-            getattr(user, "nome", None) or getattr(user, "username", None) or ""
-        )
-        worker = _IAWorker(
-            pergunta,
-            self._colunas_user_id_int(),
-            self._todos,
-            QDate.currentDate().year(),
-            QTime.currentTime().hour(),
-            str(utilizador_nome),
-            self,
-        )
-        worker.concluido.connect(self._ia_concluido)
-        worker.falhou.connect(self._ia_falhou)
-        worker.finished.connect(self._ia_terminou)
-        self._ia_worker = worker
-        worker.start()
-
-    def _ia_concluido(self, resultado) -> None:
-        """Aplica o resultado do martelo (na thread da UI)."""
-        if getattr(resultado, "tipo", "") == "obra":
-            self._ia_resposta_obra(resultado)
-            return
-
-        intencao = getattr(resultado, "intencao", None)
-        recusa = getattr(resultado, "recusa", "")
-        if recusa:
-            self.status_label.setText(recusa)
-            return
-        if intencao is None:
-            self.status_label.setText("Não percebi a pergunta.")
-            return
-        if intencao.precisa_perguntar:
-            # O martelo pergunta em vez de adivinhar; não mexe nos filtros.
-            self.status_label.setText(" ".join(intencao.perguntas))
-            return
-
-        self._aplicar_intencao(intencao)
-        total = self.proxy.rowCount()
-        frase = frase_resposta(intencao, total)
-        sugestao = sugestao_recrutamento(intencao, total, self.modelo.vocabulario())
-        self.status_label.setText(f"{frase} {sugestao}".strip())
+    def _abrir_obra_por_id(self, processo_id: int) -> None:
+        """Seleciona a obra na Produção (a partir de um resultado do martelo)."""
+        self._selecionar_processo_id(processo_id)
 
     def _ia_resposta_obra(self, resultado) -> None:
         """Ação sobre uma obra: texto (copia), PDF (gera+abre) ou email (Outlook)."""
@@ -1610,89 +1510,6 @@ class ProducaoPage(QWidget):
             except OSError:
                 pass
         return Path.home() / "Downloads"
-
-    def _ia_falhou(self, _erro: str) -> None:
-        self.status_label.setText("Não foi possível interpretar a pergunta.")
-
-    def _relatorio_obras(self) -> None:
-        """Gera um PDF das obras que estão agora na lista (ação segura)."""
-        obras = [
-            self._processo_na_linha_visivel(linha)
-            for linha in range(self.proxy.rowCount())
-        ]
-        obras = [obra for obra in obras if obra is not None]
-        if not obras:
-            self.status_label.setText("Não há obras na lista para o relatório.")
-            return
-
-        data = QDate.currentDate().toString("dd-MM-yyyy")
-        pergunta = self._ia_ultima_pergunta.strip()
-        subtitulo = (f"Pergunta: «{pergunta}» · " if pergunta else "") + (
-            f"{len(obras)} obras · {data}"
-        )
-        sugerido = f"relatorio_obras_{QDate.currentDate().toString('yyyyMMdd')}.pdf"
-        caminho, _ = QFileDialog.getSaveFileName(
-            self, "Guardar relatório", sugerido, "PDF (*.pdf)"
-        )
-        if not caminho:
-            return
-
-        try:
-            destino = gerar_relatorio_obras_pdf(
-                obras,
-                titulo="Relatório de obras — Produção",
-                subtitulo=subtitulo,
-                caminho=caminho,
-            )
-        except (RuntimeError, OSError) as erro:
-            QMessageBox.warning(self, "Relatório (PDF)", str(erro))
-            return
-
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(destino)))
-        self.status_label.setText(f"Relatório gerado: {destino}")
-
-    def _ia_terminou(self) -> None:
-        self.ia_button.setEnabled(True)
-        self.ia_button.setText("Perguntar ao Martelo")
-        if self._ia_worker is not None:
-            self._ia_worker.deleteLater()
-            self._ia_worker = None
-
-    def _aplicar_intencao(self, intencao) -> None:
-        """Coloca a intenção nos filtros existentes e re-renderiza uma vez."""
-        widgets = (
-            self.campo_pesquisa,
-            self.estado_combo,
-            self.cliente_combo,
-            self.responsavel_combo,
-            self.atrasadas_check,
-        )
-        estados_sinais = [(w, w.blockSignals(True)) for w in widgets]
-
-        # Responsável primeiro, para o combo de clientes ser reposto de acordo.
-        self._selecionar_combo(self.responsavel_combo, intencao.responsavel)
-        self._atualizar_filtro_clientes()
-        self._selecionar_combo(self.estado_combo, intencao.estado)
-        self._selecionar_combo(self.cliente_combo, intencao.cliente)
-        self.atrasadas_check.setChecked(intencao.so_atrasadas)
-        self.campo_pesquisa.definir_texto(intencao.termos)
-
-        for widget, anterior in estados_sinais:
-            widget.blockSignals(anterior)
-        self._render()
-
-    @staticmethod
-    def _selecionar_combo(combo: QComboBox, valor: str | None) -> None:
-        """Seleciona o item que casa (sem distinguir maiúsculas), ou «Todos»."""
-        if not valor:
-            combo.setCurrentIndex(0)
-            return
-        alvo = valor.strip().lower()
-        for indice in range(combo.count()):
-            if combo.itemText(indice).strip().lower() == alvo:
-                combo.setCurrentIndex(indice)
-                return
-        combo.setCurrentIndex(0)
 
     # ---- motor de pesquisa ------------------------------------------------
     def _carregar_sinonimos(self) -> None:
