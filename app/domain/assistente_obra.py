@@ -140,27 +140,55 @@ def _identidade(dossier: DossierObra) -> str:
     return dossier.codigo or (f"obra {dossier.enc}" if dossier.enc else "obra")
 
 
+def saudacao_por_hora(hora: int) -> str:
+    """Saudação portuguesa consoante a hora do dia (0-23)."""
+    if 6 <= hora < 13:
+        return "Bom dia"
+    if 13 <= hora < 20:
+        return "Boa tarde"
+    return "Boa noite"
+
+
 def assunto_email(dossier: DossierObra) -> str:
-    """Assunto por defeito do email ao cliente (o utilizador pode alterá-lo)."""
+    """Assunto por defeito do email; junta Ref./Obra/Localização se existirem."""
     assunto = f"Ponto de situação — {_identidade(dossier)}"
     if dossier.cliente:
         assunto += f" ({dossier.cliente})"
+    extras = [
+        campo
+        for campo in (dossier.ref_cliente, dossier.obra, dossier.localizacao)
+        if campo
+    ]
+    if extras:
+        assunto += " | " + " | ".join(extras)
     return assunto
 
 
-def corpo_email_html(dossier: DossierObra) -> str:
+def corpo_email_html(
+    dossier: DossierObra,
+    *,
+    saudacao: str = "Boa tarde",
+    utilizador: str = "",
+) -> str:
     """Corpo HTML por defeito do email (sem notas internas nem preço).
 
-    Na fase seguinte, o LLM local reescreve isto guiado pelas «Instruções» do
-    perfil; por agora é um texto limpo e correto a partir dos dados reais.
+    ``saudacao`` vem do horário (o utilizador pode alterar tudo antes de enviar).
+    A Ref. do cliente fica em destaque — é a referência dele e o que lhe faz mais
+    sentido. Na fase seguinte, o LLM reescreve isto guiado pelas «Instruções».
     """
-    linhas = ["<p>Boa tarde,</p>"]
+    linhas = [f"<p>{escape(saudacao)},</p>"]
     intro = (
         f"Segue o ponto de situação da obra <b>{escape(_identidade(dossier))}</b>"
     )
     if dossier.cliente:
         intro += f" ({escape(dossier.cliente)})"
     linhas.append(f"<p>{intro}.</p>")
+
+    if dossier.ref_cliente:
+        linhas.append(
+            f'<p style="font-size:14pt"><b>Ref. Cliente: '
+            f"{escape(dossier.ref_cliente)}</b></p>"
+        )
 
     factos = []
     if dossier.estado_local:
@@ -179,7 +207,9 @@ def corpo_email_html(dossier: DossierObra) -> str:
     linhas.append(
         "<p>Em anexo segue o ponto de situação detalhado, em PDF.</p>"
     )
-    linhas.append("<p>Com os melhores cumprimentos,<br>{{assinatura}}</p>")
+    linhas.append(
+        f"<p>Com os melhores cumprimentos,<br>{escape(utilizador)}</p>"
+    )
     return "\n".join(linhas)
 
 

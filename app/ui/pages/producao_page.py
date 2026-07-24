@@ -6,7 +6,7 @@ import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from PySide6.QtCore import QDate, QObject, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QDate, QObject, Qt, QThread, QTime, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QPixmap
 try:
     from PySide6.QtGui import QFileSystemModel
@@ -45,7 +45,11 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
 from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
-from app.domain.assistente_obra import assunto_email, corpo_email_html
+from app.domain.assistente_obra import (
+    assunto_email,
+    corpo_email_html,
+    saudacao_por_hora,
+)
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
@@ -1532,12 +1536,15 @@ class ProducaoPage(QWidget):
             getattr(user, "nome", None) or getattr(user, "username", None)
         )
 
+        saudacao = saudacao_por_hora(QTime.currentTime().hour())
         dialog = EmailOrcamentoDialog(
             self,
             destinatario=dossier.email_cliente or "",
             cc=str(remetente_email or ""),
             assunto=assunto_email(dossier),
-            corpo=corpo_email_html(dossier),
+            corpo=corpo_email_html(
+                dossier, saudacao=saudacao, utilizador=str(remetente_nome or "")
+            ),
             anexos=anexos,
             pasta_inicial=dossier.pasta or "",
         )

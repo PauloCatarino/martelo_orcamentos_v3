@@ -9,6 +9,7 @@ from app.domain.assistente_obra import (
     corpo_email_html,
     identificar_pedido,
     resumo_texto,
+    saudacao_por_hora,
 )
 
 
@@ -78,28 +79,43 @@ def test_resumo_texto_sem_streamlit_avisa() -> None:
     assert "indisponível" in texto
 
 
-def test_assunto_email() -> None:
-    dossier = DossierObra(codigo="26.1134_01_01_JF_VIVA", cliente="MÓVEIS J.F. VIVA")
+def test_saudacao_por_hora() -> None:
+    assert saudacao_por_hora(9) == "Bom dia"
+    assert saudacao_por_hora(15) == "Boa tarde"
+    assert saudacao_por_hora(22) == "Boa noite"
+    assert saudacao_por_hora(3) == "Boa noite"
 
-    assert assunto_email(dossier) == (
-        "Ponto de situação — 26.1134_01_01_JF_VIVA (MÓVEIS J.F. VIVA)"
-    )
 
-
-def test_corpo_email_html_tem_factos_e_assinatura() -> None:
+def test_assunto_email_junta_ref_obra_localizacao() -> None:
     dossier = DossierObra(
         codigo="26.1134_01_01_JF_VIVA",
         cliente="MÓVEIS J.F. VIVA",
+        ref_cliente="2507018",
+        localizacao="Lisboa",
+    )
+
+    # Obra vazia não entra; Ref. e Localização entram.
+    assert assunto_email(dossier) == (
+        "Ponto de situação — 26.1134_01_01_JF_VIVA (MÓVEIS J.F. VIVA) "
+        "| 2507018 | Lisboa"
+    )
+
+
+def test_corpo_email_html_saudacao_ref_e_utilizador() -> None:
+    dossier = DossierObra(
+        codigo="26.1134_01_01_JF_VIVA",
+        cliente="MÓVEIS J.F. VIVA",
+        ref_cliente="2507018",
         estado_local="Producao",
         data_entrega="10-08-2026",
-        fases=(("Corte", 100.0, True), ("Orlagem", 60.0, False)),
+        fases=(("Corte", 100.0, True),),
         encontrado_streamlit=True,
     )
 
-    corpo = corpo_email_html(dossier)
+    corpo = corpo_email_html(dossier, saudacao="Bom dia", utilizador="Paulo")
 
+    assert corpo.startswith("<p>Bom dia,</p>")
+    assert "font-size:14pt" in corpo  # Ref. Cliente em destaque
+    assert "Ref. Cliente: 2507018" in corpo
     assert "Estado: Producao" in corpo
-    assert "Entrega prevista: 10-08-2026" in corpo
-    assert "Corte 100%" in corpo
-    assert "{{assinatura}}" in corpo  # substituído pelo email_service
-    assert "anexo" in corpo
+    assert "Com os melhores cumprimentos,<br>Paulo</p>" in corpo
