@@ -43,6 +43,8 @@ def test_cliente_por_nome_completo() -> None:
 
     assert intencao.cliente == "Moviflor"
     assert intencao.responsavel is None
+    # A palavra-pista "cliente" não deve poluir a pesquisa de texto.
+    assert intencao.termos == ""
 
 
 def test_cliente_por_alcunha_do_perfil() -> None:

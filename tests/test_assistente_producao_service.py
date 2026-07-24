@@ -84,3 +84,57 @@ def test_responder_recruta_quando_palavra_desconhecida() -> None:
 
     assert resposta.obras == []
     assert "bordaduplaxpto" in resposta.sugestao_perfil
+
+
+def test_llm_usa_filtros_validados_do_modelo() -> None:
+    processos = [
+        _processo(id=1, nome_cliente="Moviflor", estado="Producao"),
+        _processo(id=2, nome_cliente="Sonae", estado="Desenho"),
+    ]
+    servico = AssistenteProducaoService(None)
+
+    def fake_modelo(system, user):
+        return '{"cliente": "moviflor", "estado": "na máquina"}'
+
+    intencao, recusa = servico.interpretar_pergunta_llm(
+        "o que temos na Moviflor a produzir",
+        user_id=None,
+        processos=processos,
+        chamar_modelo=fake_modelo,
+    )
+
+    assert recusa == ""
+    assert intencao.cliente == "Moviflor"
+    assert intencao.estado == "Producao"
+
+
+def test_llm_recusa_propaga() -> None:
+    servico = AssistenteProducaoService(None)
+
+    def fake_modelo(system, user):
+        return '{"recusa": "Só ajudo nas obras."}'
+
+    intencao, recusa = servico.interpretar_pergunta_llm(
+        "conta-me uma piada", user_id=None, processos=[], chamar_modelo=fake_modelo
+    )
+
+    assert recusa == "Só ajudo nas obras."
+
+
+def test_llm_cai_no_deterministico_quando_modelo_falha() -> None:
+    processos = [_processo(id=1, estado="Producao"), _processo(id=2, estado="Desenho")]
+    servico = AssistenteProducaoService(None)
+
+    def modelo_partido(system, user):
+        raise RuntimeError("ollama offline")
+
+    intencao, recusa = servico.interpretar_pergunta_llm(
+        "obras em produção",
+        user_id=None,
+        processos=processos,
+        chamar_modelo=modelo_partido,
+    )
+
+    # Sem modelo, as regras determinísticas ainda percebem o estado.
+    assert intencao.estado == "Producao"
+    assert recusa == ""

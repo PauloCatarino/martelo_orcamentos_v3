@@ -20,6 +20,11 @@ from app.domain.assistente_intencao import (
     interpretar,
     sugestao_recrutamento,
 )
+from app.domain.assistente_llm import (
+    construir_mensagens,
+    extrair_json,
+    intencao_de_json,
+)
 from app.domain.pesquisa_texto import normalizar
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.user import User
@@ -29,6 +34,7 @@ from app.services.producao_service import (
     vocabulario_pesquisa,
 )
 from app.services.sinonimos_service import carregar_sinonimos
+from app.services.system_setting_service import SystemSettingService
 
 #: Separadores usados quando se escrevem várias formas na mesma célula.
 _SEPARADORES = re.compile(r"[;,/|]")
@@ -50,6 +56,21 @@ class RespostaAssistente:
     @property
     def precisa_perguntar(self) -> bool:
         return self.intencao.precisa_perguntar
+
+
+def _sem_filtros_estruturados(intencao: Intencao) -> bool:
+    """True quando só há (quando muito) texto livre, sem estado/cliente/etc.
+
+    Se o utilizador deu um filtro concreto, é uma pesquisa válida e uma recusa
+    do modelo pequeno é ignorada; se é só texto solto, confia-se no juízo do
+    modelo sobre se o tema é do trabalho.
+    """
+    return not (
+        intencao.estado
+        or intencao.cliente
+        or intencao.responsavel
+        or intencao.so_atrasadas
+    )
 
 
 def _formas(valor: str | None) -> list[str]:
@@ -145,6 +166,109 @@ class AssistenteProducaoService:
         if canonico != intencao.responsavel:
             intencao = replace(intencao, responsavel=canonico)
         return intencao
+
+    def interpretar_pergunta_llm(
+        self,
+        pergunta: str,
+        *,
+        user_id: int | None,
+        processos,
+        chamar_modelo=None,
+    ) -> tuple[Intencao, str]:
+        """Interpreta com o LLM local; cai no determinístico se falhar.
+
+        Devolve ``(Intencao, recusa)``. O modelo só propõe; os valores são
+        validados contra os que existem mesmo, por isso não pode inventar dados.
+        ``chamar_modelo`` é injetável (testes); por omissão fala com o Ollama.
+        """
+        # As regras são a base fiável; o modelo pequeno só ENRIQUECE o que
+        # elas não apanharam. Assim o resultado nunca fica pior que o
+        # determinístico, mesmo quando o LLM erra ou inventa perguntas.
+        base = self.interpretar_pergunta(
+            pergunta, user_id=user_id, processos=processos
+        )
+        clientes = self._distintos(processos, "nome_cliente")
+        responsaveis = self._distintos(processos, "responsavel")
+        chamar = chamar_modelo or self._chamar_ollama
+
+        try:
+            system, user = construir_mensagens(
+                pergunta, self._perfil_texto(self._perfil(user_id))
+            )
+            dados = extrair_json(chamar(system, user))
+            llm, recusa = intencao_de_json(
+                dados, clientes=clientes, responsaveis=responsaveis
+            )
+        except Exception:  # noqa: BLE001 - qualquer falha do modelo -> só regras
+            return base, ""
+
+        # Só se recusa quando não há filtros estruturados, para o modelo pequeno
+        # não bloquear pesquisas válidas com falsos positivos.
+        if recusa and _sem_filtros_estruturados(base):
+            return Intencao(), recusa
+
+        return self._combinar(base, llm), ""
+
+    @staticmethod
+    def _combinar(base: Intencao, llm: Intencao | None) -> Intencao:
+        """Preenche os filtros vazios das regras com o que o LLM propôs.
+
+        A ambiguidade das regras é de confiança (as «perguntas» do modelo
+        pequeno são ignoradas).
+        """
+        if llm is None:
+            return base
+        return replace(
+            base,
+            termos=base.termos or llm.termos,
+            estado=base.estado or llm.estado,
+            cliente=base.cliente or llm.cliente,
+            responsavel=base.responsavel or llm.responsavel,
+            so_atrasadas=base.so_atrasadas or llm.so_atrasadas,
+        )
+
+    def _chamar_ollama(self, system: str, user: str) -> str:
+        """Fala com o Ollama local (modelo de ``modelo_local_ia``)."""
+        modelo = (
+            SystemSettingService(self.session).obter_valor("modelo_local_ia", "")
+            or ""
+        ).strip()
+        if not modelo:
+            raise RuntimeError("Sem modelo local definido.")
+
+        import json
+        import urllib.request
+
+        payload = {
+            "model": modelo,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0},
+        }
+        req = urllib.request.Request(
+            "http://localhost:11434/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+            dados = json.loads(resp.read().decode("utf-8"))
+        return (dados.get("message", {}).get("content") or "").strip()
+
+    @staticmethod
+    def _perfil_texto(perfil: PerfilVocabulario) -> str:
+        """Rendering compacto do vocabulário para dar contexto ao modelo."""
+        linhas: list[str] = []
+        for forma, nome in perfil.clientes.items():
+            linhas.append(f"«{forma}» = cliente {nome}")
+        for forma, nome in perfil.pessoas.items():
+            linhas.append(f"«{forma}» = responsável {nome}")
+        for forma, questao in perfil.ambiguas.items():
+            linhas.append(f"«{forma}» é ambíguo — perguntar: {questao}")
+        return "\n".join(linhas)
 
     def responder(
         self,

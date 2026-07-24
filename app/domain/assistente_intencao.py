@@ -88,6 +88,9 @@ _VAZIAS: frozenset[str] = frozenset(
         "lista", "listar", "diz", "dizer", "quais", "quantas", "quantos",
         "ha", "tem", "temos", "estao", "esta", "sao", "todas", "todos",
         "esta", "este", "estes", "estas",
+        # Pistas de papel: úteis para desambiguar, mas não são termo de procura.
+        "cliente", "clientes", "responsavel", "responsaveis", "resp",
+        "colega", "colegas",
     }
 )
 
@@ -302,6 +305,16 @@ def _extrair_possessivo(resto: str) -> tuple[bool, str]:
     restantes = [p for p in palavras if raiz(p) not in _RAIZES_MINHAS]
     possessivo = len(restantes) != len(palavras)
     return possessivo, f" {' '.join(restantes)} "
+
+
+def resolver_estado(texto: object) -> str | None:
+    """Estado canónico para uma expressão livre («na máquina» -> Producao)."""
+    mapa = _mapa_estados(PerfilVocabulario())
+    alvo = f" {normalizar(texto)} "
+    for forma, estado in _ordenar_por_tamanho(mapa):
+        if f" {forma} " in alvo:
+            return estado
+    return None
 
 
 def frase_resposta(intencao: Intencao, total: int) -> str:

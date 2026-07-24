@@ -135,6 +135,33 @@ COLUNA_ORDEM_ENTRADA = next(
 )
 
 
+class _IAWorker(QThread):
+    """Corre a interpretação do IA Martelo (LLM local) fora da thread da UI."""
+
+    concluido = Signal(object, str)  # (Intencao, recusa)
+    falhou = Signal(str)
+
+    def __init__(self, pergunta, user_id, processos, parent=None) -> None:
+        super().__init__(parent)
+        self._pergunta = pergunta
+        self._user_id = user_id
+        self._processos = processos
+
+    def run(self) -> None:  # noqa: D102 - QThread override
+        try:
+            with SessionLocal() as session:
+                intencao, recusa = AssistenteProducaoService(
+                    session
+                ).interpretar_pergunta_llm(
+                    self._pergunta,
+                    user_id=self._user_id,
+                    processos=self._processos,
+                )
+            self.concluido.emit(intencao, recusa)
+        except Exception as exc:  # noqa: BLE001 - reportado à UI
+            self.falhou.emit(str(exc))
+
+
 class _ImagemPreviewLabel(QLabel):
     """Clickable preview label that delegates double-clicks to the page."""
 
@@ -245,6 +272,7 @@ class ProducaoPage(QWidget):
 
         self._todos: list[Producao] = []
         self._selected_processo_id: int | None = None
+        self._ia_worker: _IAWorker | None = None
         self._dirty = False
         self._a_preencher_form = False
         self._cliente_id: int | None = None
@@ -1377,22 +1405,34 @@ class ProducaoPage(QWidget):
 
     # ---- IA Martelo (Fase 1) ---------------------------------------------
     def _perguntar_ia(self) -> None:
-        """Traduz a pergunta em filtros e conduz a lista (o assistente)."""
+        """Pergunta ao IA Martelo (LLM local) numa thread; não bloqueia a UI."""
         pergunta = self.ia_input.text().strip()
         if not pergunta:
             return
-
-        try:
-            with SessionLocal() as session:
-                intencao = AssistenteProducaoService(session).interpretar_pergunta(
-                    pergunta,
-                    user_id=self._colunas_user_id_int(),
-                    processos=self._todos,
-                )
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível interpretar a pergunta.")
+        if self._ia_worker is not None and self._ia_worker.isRunning():
             return
 
+        self.ia_button.setEnabled(False)
+        self.ia_button.setText("A pensar…")
+        self.status_label.setText("O Martelo está a pensar…")
+
+        worker = _IAWorker(
+            pergunta, self._colunas_user_id_int(), self._todos, self
+        )
+        worker.concluido.connect(self._ia_concluido)
+        worker.falhou.connect(self._ia_falhou)
+        worker.finished.connect(self._ia_terminou)
+        self._ia_worker = worker
+        worker.start()
+
+    def _ia_concluido(self, intencao, recusa: str) -> None:
+        """Aplica o resultado do martelo (na thread da UI)."""
+        if recusa:
+            self.status_label.setText(recusa)
+            return
+        if intencao is None:
+            self.status_label.setText("Não percebi a pergunta.")
+            return
         if intencao.precisa_perguntar:
             # O martelo pergunta em vez de adivinhar; não mexe nos filtros.
             self.status_label.setText(" ".join(intencao.perguntas))
@@ -1403,6 +1443,16 @@ class ProducaoPage(QWidget):
         frase = frase_resposta(intencao, total)
         sugestao = sugestao_recrutamento(intencao, total, self.modelo.vocabulario())
         self.status_label.setText(f"{frase} {sugestao}".strip())
+
+    def _ia_falhou(self, _erro: str) -> None:
+        self.status_label.setText("Não foi possível interpretar a pergunta.")
+
+    def _ia_terminou(self) -> None:
+        self.ia_button.setEnabled(True)
+        self.ia_button.setText("Perguntar ao Martelo")
+        if self._ia_worker is not None:
+            self._ia_worker.deleteLater()
+            self._ia_worker = None
 
     def _aplicar_intencao(self, intencao) -> None:
         """Coloca a intenção nos filtros existentes e re-renderiza uma vez."""
