@@ -35,11 +35,14 @@ except ImportError:  # pragma: no cover - depende da instalação do ambiente
     colors = A4 = landscape = mm = None
     ParagraphStyle = Paragraph = SimpleDocTemplate = Spacer = Table = TableStyle = None
 
-# Paleta Lança Encanto (hardcoded, como no plano de corte).
-_AZUL_ESCURO = "#1F3864"
-_AZUL_REALCE = "#EAF1FB"
-_CINZA_GRELHA = "#9AA5B1"
-_TEXTO = "#222222"
+# Tons do Martelo (castanho/bege), iguais ao tema da app (hardcoded aqui para o
+# PDF não depender de app.ui.tema).
+_CASTANHO = "#5A3E2B"      # castanho escuro: cabeçalhos e títulos
+_CASTANHO_MEDIO = "#8B6F4E"
+_BEGE = "#F7F2EA"          # bege claro: linhas alternadas
+_BEGE_AREIA = "#EFE7DA"
+_CINZA = "#D9CFC2"         # cinza-castanho: grelha
+_TEXTO = "#2E2A26"
 
 #: (título, atributo, largura mm). A descrição fica com o resto do espaço.
 _COLUNAS: tuple[tuple[str, str, float], ...] = (
@@ -77,7 +80,7 @@ def gerar_relatorio_obras_pdf(
     destino.parent.mkdir(parents=True, exist_ok=True)
 
     estilo_titulo = ParagraphStyle(
-        "titulo", fontName="Helvetica-Bold", fontSize=15, textColor=colors.HexColor(_AZUL_ESCURO)
+        "titulo", fontName="Helvetica-Bold", fontSize=15, textColor=colors.HexColor(_CASTANHO)
     )
     estilo_sub = ParagraphStyle(
         "sub", fontName="Helvetica", fontSize=9, textColor=colors.HexColor(_TEXTO)
@@ -136,8 +139,8 @@ def _larguras_colunas(largura_util: float) -> list[float]:
 
 def _estilo_tabela(n_linhas: int) -> TableStyle:
     comandos = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_AZUL_ESCURO)),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA_GRELHA)),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CASTANHO)),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA)),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
@@ -147,7 +150,7 @@ def _estilo_tabela(n_linhas: int) -> TableStyle:
     for linha in range(1, n_linhas):
         if linha % 2 == 0:
             comandos.append(
-                ("BACKGROUND", (0, linha), (-1, linha), colors.HexColor(_AZUL_REALCE))
+                ("BACKGROUND", (0, linha), (-1, linha), colors.HexColor(_BEGE))
             )
     return TableStyle(comandos)
 
@@ -186,15 +189,16 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
     destino.parent.mkdir(parents=True, exist_ok=True)
 
     titulo = ParagraphStyle(
-        "t", fontName="Helvetica-Bold", fontSize=16,
-        textColor=colors.HexColor(_AZUL_ESCURO), spaceAfter=2,
+        "t", fontName="Helvetica-Bold", fontSize=16, leading=20,
+        textColor=colors.HexColor(_CASTANHO), spaceAfter=6,
     )
     sub = ParagraphStyle(
-        "s", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#555555")
+        "s", fontName="Helvetica", fontSize=9, leading=12,
+        textColor=colors.HexColor("#6B5A48"),
     )
     h = ParagraphStyle(
-        "h", fontName="Helvetica-Bold", fontSize=11,
-        textColor=colors.HexColor(_AZUL_ESCURO), spaceBefore=8, spaceAfter=3,
+        "h", fontName="Helvetica-Bold", fontSize=11, leading=14,
+        textColor=colors.HexColor(_CASTANHO), spaceBefore=10, spaceAfter=4,
     )
     cel = ParagraphStyle("c", fontName="Helvetica", fontSize=9.5, leading=13)
     rot = ParagraphStyle(
@@ -237,10 +241,9 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
         )
     )
 
-    story = [
-        Paragraph("Ponto de Situação da Obra", titulo),
-        Paragraph(escape(identidade), sub),
-    ]
+    story = [Paragraph("Ponto de Situação da Obra", titulo)]
+    story.append(Spacer(1, 1 * mm))
+    story.append(Paragraph(escape(identidade), sub))
     if gerado_em:
         story.append(Paragraph(f"Gerado em {escape(gerado_em)}", sub))
     story += [Spacer(1, 6 * mm), tabela_info]
@@ -251,7 +254,19 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
             Paragraph(escape(dossier.descricao_producao), cel),
         ]
 
-    story.append(Paragraph("Produção", h))
+    versoes = getattr(dossier, "versoes", ()) or ()
+    if versoes:
+        story.append(Paragraph("Versões da obra e planos de corte", h))
+        story.append(_tabela_versoes(versoes))
+
+    versao_atual = versoes[-1] if versoes else None
+    rotulo_versao = ""
+    if versao_atual is not None and (versao_atual.versao_obra or versao_atual.versao_plano):
+        rotulo_versao = (
+            f" — versão de obra {versao_atual.versao_obra or '—'} · "
+            f"plano de corte {versao_atual.versao_plano or '—'}"
+        )
+    story.append(Paragraph(f"Produção{rotulo_versao}", h))
     if dossier.encontrado_streamlit and dossier.fases:
         global_txt = _estado_global_limpo(dossier.estado_global)
         if global_txt:
@@ -282,15 +297,47 @@ def _tabela_fases(fases) -> Table:
 
     tabela = Table(linhas, colWidths=[60 * mm, 50 * mm], repeatRows=1)
     comandos = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_AZUL_ESCURO)),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA_GRELHA)),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CASTANHO)),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA)),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
     ]
     for i in range(1, len(linhas)):
         if i % 2 == 0:
-            comandos.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(_AZUL_REALCE)))
+            comandos.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(_BEGE)))
+    tabela.setStyle(TableStyle(comandos))
+    return tabela
+
+
+def _tabela_versoes(versoes) -> Table:
+    """Tabela das versões da obra: V. Obra | Plano de corte | Estado | Produção."""
+    cel = ParagraphStyle("vc", fontName="Helvetica", fontSize=9)
+    cab = ParagraphStyle("vh", fontName="Helvetica-Bold", fontSize=9, textColor=colors.white)
+    titulos = ["Versão de obra", "Plano de corte", "Estado", "Produção"]
+    linhas = [[Paragraph(t, cab) for t in titulos]]
+    for versao in versoes:
+        producao = _estado_global_limpo(versao.estado_global) or "—"
+        linhas.append(
+            [
+                Paragraph(escape(versao.versao_obra or "—"), cel),
+                Paragraph(escape(versao.versao_plano or "—"), cel),
+                Paragraph(escape(versao.estado_local or "—"), cel),
+                Paragraph(escape(producao), cel),
+            ]
+        )
+
+    tabela = Table(linhas, colWidths=[32 * mm, 32 * mm, 34 * mm, None], repeatRows=1)
+    comandos = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CASTANHO_MEDIO)),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor(_CINZA)),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for i in range(1, len(linhas)):
+        if i % 2 == 0:
+            comandos.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(_BEGE)))
     tabela.setStyle(TableStyle(comandos))
     return tabela
 

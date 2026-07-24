@@ -39,6 +39,19 @@ class PedidoObra:
 
 
 @dataclass(frozen=True)
+class VersaoObra:
+    """Uma versão da obra (V. Obra + V. CUT-RITE) com o seu estado de produção."""
+
+    versao_obra: str = ""
+    versao_plano: str = ""  # versão do plano de corte (CUT-RITE)
+    codigo: str = ""
+    estado_local: str = ""
+    fases: tuple[tuple[str, float, bool], ...] = ()
+    estado_global: str = ""
+    encontrado_streamlit: bool = False
+
+
+@dataclass(frozen=True)
 class DossierObra:
     """Tudo o que se sabe de uma obra para compor a resposta (já resolvido)."""
 
@@ -60,6 +73,8 @@ class DossierObra:
     fases: tuple[tuple[str, float, bool], ...] = ()
     estado_global: str = ""
     encontrado_streamlit: bool = False
+    #: Todas as versões da obra (V. Obra / V. CUT-RITE), da mais antiga à recente.
+    versoes: tuple[VersaoObra, ...] = ()
 
 
 def identificar_pedido(pergunta: object) -> PedidoObra | None:

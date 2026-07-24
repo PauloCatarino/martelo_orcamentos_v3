@@ -151,16 +151,39 @@ def test_responder_ia_pergunta_normal_e_pesquisa() -> None:
 
 def test_montar_dossier_usa_fases_injetadas() -> None:
     servico = AssistenteProducaoService(None)
-    processo = _processo(num_enc_phc="1134", responsavel="Paulo")
+    processo = _processo(
+        id=5, num_enc_phc="1134", responsavel="Paulo",
+        versao_obra="01", versao_plano="03",
+    )
 
-    def fases_fake(_processo):
-        return ((("Corte", 100.0, True), ("Orlagem", 60.0, False)), "🔄 50% (1/2)", True)
+    def estados_fake(_processos):
+        return {5: ((("Corte", 100.0, True), ("Orlagem", 60.0, False)), "🔄 50% (1/2)", True)}
 
-    dossier = servico.montar_dossier(processo, carregar_estado=fases_fake)
+    dossier = servico.montar_dossier([processo], carregar_estados=estados_fake)
 
     assert dossier.encontrado_streamlit is True
     assert dossier.estado_global == "🔄 50% (1/2)"
     assert dossier.fases[0] == ("Corte", 100.0, True)
+    assert len(dossier.versoes) == 1
+    assert dossier.versoes[0].versao_plano == "03"
+
+
+def test_montar_dossier_lista_varias_versoes_ordenadas() -> None:
+    servico = AssistenteProducaoService(None)
+    v1 = _processo(id=1, num_enc_phc="0800", versao_obra="01", versao_plano="01",
+                   estado="Arquivado")
+    v3 = _processo(id=3, num_enc_phc="0800", versao_obra="01", versao_plano="03",
+                   estado="Producao")
+    v2 = _processo(id=2, num_enc_phc="0800", versao_obra="01", versao_plano="02",
+                   estado="Arquivado")
+
+    # _encontrar_obras ordena; aqui simulamos a lista já ordenada.
+    versoes = servico._encontrar_obras([v1, v3, v2], "800")
+    dossier = servico.montar_dossier(versoes, carregar_estados=lambda _p: {})
+
+    assert [v.versao_plano for v in dossier.versoes] == ["01", "02", "03"]
+    # O cabeçalho usa a versão mais recente (plano 03, em Producao).
+    assert dossier.estado_local == "Producao"
 
 
 def test_llm_nao_polui_estado_com_alucinacao() -> None:

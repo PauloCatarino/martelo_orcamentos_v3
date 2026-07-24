@@ -27,6 +27,7 @@ from app.domain.assistente_llm import (
 )
 from app.domain.assistente_obra import (
     DossierObra,
+    VersaoObra,
     identificar_pedido,
     resumo_texto,
 )
@@ -78,6 +79,21 @@ class RespostaAssistente:
     @property
     def precisa_perguntar(self) -> bool:
         return self.intencao.precisa_perguntar
+
+
+def _chave_versao(processo):
+    """Ordena versões: por V. Obra, depois V. CUT-RITE, depois id."""
+    def _n(valor):
+        try:
+            return int(re.sub(r"\D", "", str(valor or "")) or 0)
+        except ValueError:
+            return 0
+
+    return (
+        _n(getattr(processo, "versao_obra", "")),
+        _n(getattr(processo, "versao_plano", "")),
+        getattr(processo, "id", 0) or 0,
+    )
 
 
 def _sem_filtros_estruturados(intencao: Intencao) -> bool:
@@ -202,17 +218,18 @@ class AssistenteProducaoService:
         """
         pedido = identificar_pedido(pergunta)
         if pedido is not None:
-            processo = self._encontrar_obra(processos, pedido.numero)
-            if processo is None:
+            versoes = self._encontrar_obras(processos, pedido.numero)
+            if not versoes:
                 return ResultadoIA(
                     tipo="obra",
                     modo=pedido.modo,
                     aviso=f"Não encontrei a obra {pedido.numero} na lista.",
                 )
-            dossier = self.montar_dossier(processo)
+            dossier = self.montar_dossier(versoes)
+            principal = versoes[-1]  # versão mais recente
             return ResultadoIA(
                 tipo="obra",
-                obra_id=getattr(processo, "id", None),
+                obra_id=getattr(principal, "id", None),
                 modo=pedido.modo,
                 texto=resumo_texto(dossier),
                 dossier=dossier,
@@ -223,61 +240,91 @@ class AssistenteProducaoService:
         )
         return ResultadoIA(tipo="pesquisa", intencao=intencao, recusa=recusa)
 
-    def montar_dossier(self, processo, *, carregar_estado=None) -> DossierObra:
-        """Junta os dados da obra com as fases de produção (Streamlit)."""
-        carregar = carregar_estado or self._estado_producao
-        fases, estado_global, encontrado = carregar(processo)
+    def montar_dossier(self, versoes_processo, *, carregar_estados=None) -> DossierObra:
+        """Junta os dados da obra + as versões (obra/CUT-RITE) e as suas fases.
+
+        ``versoes_processo`` são todos os processos da mesma obra (nº encomenda),
+        já ordenados da versão mais antiga para a mais recente. O cabeçalho usa
+        a versão mais recente (a que está a trabalhar-se).
+        """
+        versoes_processo = list(versoes_processo or [])
+        principal = versoes_processo[-1]
+        estados = (carregar_estados or self._estados_producao)(versoes_processo)
+
+        versoes: list[VersaoObra] = []
+        for processo in versoes_processo:
+            fases, etiqueta, encontrado = estados.get(
+                getattr(processo, "id", None), ((), "", False)
+            )
+            versoes.append(
+                VersaoObra(
+                    versao_obra=str(getattr(processo, "versao_obra", "") or "").strip(),
+                    versao_plano=str(getattr(processo, "versao_plano", "") or "").strip(),
+                    codigo=str(getattr(processo, "codigo_processo", "") or "").strip(),
+                    estado_local=str(getattr(processo, "estado", "") or "").strip(),
+                    fases=fases,
+                    estado_global=etiqueta,
+                    encontrado_streamlit=encontrado,
+                )
+            )
+
+        fases, estado_global, encontrado = estados.get(
+            getattr(principal, "id", None), ((), "", False)
+        )
         return DossierObra(
-            codigo=str(getattr(processo, "codigo_processo", "") or "").strip(),
-            enc=str(getattr(processo, "num_enc_phc", "") or "").strip(),
-            cliente=str(getattr(processo, "nome_cliente", "") or "").strip(),
-            obra=str(getattr(processo, "obra", "") or "").strip(),
-            ref_cliente=str(getattr(processo, "ref_cliente", "") or "").strip(),
-            localizacao=str(getattr(processo, "localizacao", "") or "").strip(),
-            pasta=str(getattr(processo, "pasta_servidor", "") or "").strip(),
-            responsavel=str(getattr(processo, "responsavel", "") or "").strip(),
-            estado_local=str(getattr(processo, "estado", "") or "").strip(),
-            data_inicio=normalizar_data(getattr(processo, "data_inicio", None)) or "",
-            data_entrega=normalizar_data(getattr(processo, "data_entrega", None)) or "",
+            codigo=str(getattr(principal, "codigo_processo", "") or "").strip(),
+            enc=str(getattr(principal, "num_enc_phc", "") or "").strip(),
+            cliente=str(getattr(principal, "nome_cliente", "") or "").strip(),
+            obra=str(getattr(principal, "obra", "") or "").strip(),
+            ref_cliente=str(getattr(principal, "ref_cliente", "") or "").strip(),
+            localizacao=str(getattr(principal, "localizacao", "") or "").strip(),
+            pasta=str(getattr(principal, "pasta_servidor", "") or "").strip(),
+            responsavel=str(getattr(principal, "responsavel", "") or "").strip(),
+            estado_local=str(getattr(principal, "estado", "") or "").strip(),
+            data_inicio=normalizar_data(getattr(principal, "data_inicio", None)) or "",
+            data_entrega=normalizar_data(getattr(principal, "data_entrega", None)) or "",
             descricao_producao=str(
-                getattr(processo, "descricao_producao", "") or ""
+                getattr(principal, "descricao_producao", "") or ""
             ).strip(),
-            notas=self._juntar_notas(processo),
+            notas=self._juntar_notas(principal),
             fases=fases,
             estado_global=estado_global,
             encontrado_streamlit=encontrado,
+            versoes=tuple(versoes),
         )
 
-    def _estado_producao(self, processo):
-        """Fases de produção da obra (Streamlit); resiliente se estiver offline."""
+    def _estados_producao(self, processos) -> dict:
+        """Fases por processo (Streamlit); id -> (fases, etiqueta, encontrado)."""
         try:
             from app.services.estado_producao_service import (
                 estado_producao_por_processo,
             )
 
-            resultados = estado_producao_por_processo(self.session, [processo])
+            resultados = estado_producao_por_processo(self.session, list(processos))
         except Exception:  # noqa: BLE001 - fonte externa pode falhar
-            return (), "", False
-        if not resultados:
-            return (), "", False
-        obra = resultados[0]
-        fases = tuple(
-            (setor.nome, setor.media_pct, setor.concluido)
-            for setor in obra.estado.setores
-        )
-        return fases, obra.estado.etiqueta, bool(obra.encontrado)
+            return {}
+        estados: dict = {}
+        for obra in resultados:
+            fases = tuple(
+                (setor.nome, setor.media_pct, setor.concluido)
+                for setor in obra.estado.setores
+            )
+            estados[obra.id] = (fases, obra.estado.etiqueta, bool(obra.encontrado))
+        return estados
 
     @staticmethod
-    def _encontrar_obra(processos, numero: str):
+    def _encontrar_obras(processos, numero: str) -> list:
+        """Todas as versões da obra (mesmo nº encomenda), da mais antiga à recente."""
         alvo = re.sub(r"\D", "", numero or "")
         if not alvo:
-            return None
+            return []
         alvo_int = int(alvo)
+        encontradas = []
         for processo in processos or []:
             bruto = re.sub(r"\D", "", str(getattr(processo, "num_enc_phc", "") or ""))
             if bruto and (bruto == alvo or int(bruto) == alvo_int):
-                return processo
-        return None
+                encontradas.append(processo)
+        return sorted(encontradas, key=_chave_versao)
 
     @staticmethod
     def _juntar_notas(processo) -> str:
