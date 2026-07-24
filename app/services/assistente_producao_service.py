@@ -55,6 +55,11 @@ _SEPARADORES = re.compile(r"[;,/|]")
 #: Estados canónicos por forma normalizada, para ler o quadro «estado».
 _ESTADO_POR_NORMA = {normalizar(estado): estado for estado in ESTADOS_PRODUCAO}
 
+#: Redação do corpo do email por LLM local. DESLIGADO (Paulo, 2026-07-24): no 3B
+#: é lento (~2min) e pouco fiável nos factos. Pôr a True quando houver um modelo
+#: local mais capaz (ou GPU) para o reativar.
+_EMAIL_LLM_ATIVO = False
+
 
 @dataclass(frozen=True)
 class ResultadoIA:
@@ -273,14 +278,21 @@ class AssistenteProducaoService:
         utilizador_nome: str = "",
         chamar_modelo=None,
     ) -> str:
-        """Corpo HTML do email: LLM (se houver instruções) ou determinístico."""
+        """Corpo HTML do email: por defeito determinístico (rápido e fiável).
+
+        A redação por LLM está DESLIGADA por decisão do Paulo (2026-07-24): no
+        3B local demora ~2min e chegou a interpretar mal factos. Fica pronta atrás
+        de :data:`_EMAIL_LLM_ATIVO` (ou de ``chamar_modelo`` injetado nos testes)
+        para reativar quando houver um modelo local mais capaz.
+        """
         saudacao = saudacao_por_hora(hora_atual if hora_atual is not None else 12)
         imagem = dossier.imagem_path or ""
         if imagem and not os.path.exists(imagem):
             imagem = ""
 
         instrucoes = self._instrucoes(user_id)
-        if instrucoes:
+        usar_llm = _EMAIL_LLM_ATIVO or chamar_modelo is not None
+        if usar_llm and instrucoes:
             chamar = chamar_modelo or (
                 lambda system, user: self._chamar_ollama(
                     system, user, formato_json=False
