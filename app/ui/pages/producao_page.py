@@ -45,13 +45,16 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
 from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
+from app.domain.assistente_obra import assunto_email, corpo_email_html
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
+from app.services.email_service import carregar_email_config, enviar_email
 from app.services.relatorio_producao_service import (
     gerar_dossier_obra_pdf,
     gerar_relatorio_obras_pdf,
 )
+from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
@@ -1465,7 +1468,7 @@ class ProducaoPage(QWidget):
         self.status_label.setText(f"{frase} {sugestao}".strip())
 
     def _ia_resposta_obra(self, resultado) -> None:
-        """Ação sobre uma obra: texto (copia) ou PDF (gera e abre)."""
+        """Ação sobre uma obra: texto (copia), PDF (gera+abre) ou email (Outlook)."""
         if not resultado.texto:
             self.status_label.setText(resultado.aviso or "Não encontrei a obra.")
             return
@@ -1476,40 +1479,91 @@ class ProducaoPage(QWidget):
         if resultado.modo == "pdf" and resultado.dossier is not None:
             self._gerar_pdf_obra(resultado.dossier)
             return
+        if resultado.modo == "email" and resultado.dossier is not None:
+            self._email_obra(resultado.dossier)
+            return
 
         QApplication.clipboard().setText(resultado.texto)
-        nota = ""
-        if resultado.modo == "email":
-            nota = (
-                "\n\n(O modo email chega na próxima fase; por agora, o texto "
-                "— já está copiado.)"
-            )
-        QMessageBox.information(self, "IA Martelo — obra", resultado.texto + nota)
+        QMessageBox.information(self, "IA Martelo — obra", resultado.texto)
         self.status_label.setText(
             "Resumo da obra copiado para a área de transferência."
         )
 
-    def _gerar_pdf_obra(self, dossier) -> None:
-        """Gera automaticamente o PDF do ponto de situação da obra e abre-o.
-
-        Por defeito grava na pasta da obra no servidor; se não existir/estiver
-        inacessível, cai na pasta Downloads.
-        """
+    def _criar_pdf_obra(self, dossier) -> Path | None:
+        """Gera o PDF do ponto de situação (pasta da obra, senão Downloads)."""
         base = dossier.enc or dossier.codigo or "obra"
         nome = re.sub(r"[^0-9A-Za-z._-]+", "_", f"ponto_situacao_{base}") + ".pdf"
         destino = self._pasta_destino_pdf(dossier) / nome
         try:
-            caminho = gerar_dossier_obra_pdf(
+            return gerar_dossier_obra_pdf(
                 dossier,
                 caminho=destino,
                 gerado_em=QDate.currentDate().toString("dd-MM-yyyy"),
             )
         except (RuntimeError, OSError) as erro:
             QMessageBox.warning(self, "Relatório da obra", str(erro))
-            return
+            return None
 
+    def _gerar_pdf_obra(self, dossier) -> None:
+        """Gera automaticamente o PDF e abre-o."""
+        caminho = self._criar_pdf_obra(dossier)
+        if caminho is None:
+            return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
         self.status_label.setText(f"Relatório PDF da obra gerado: {caminho}")
+
+    def _email_obra(self, dossier) -> None:
+        """Prepara o email ao cliente (o utilizador valida e o Outlook envia)."""
+        caminho_pdf = self._criar_pdf_obra(dossier)
+        anexos = [str(caminho_pdf)] if caminho_pdf is not None else []
+
+        try:
+            with SessionLocal() as session:
+                config = carregar_email_config(session)
+        except SQLAlchemyError as erro:
+            QMessageBox.warning(
+                self, "Email", f"Não foi possível carregar a configuração de email:\n{erro}"
+            )
+            return
+
+        user = app_session.current_user
+        remetente_email = getattr(user, "email", None)
+        remetente_nome = (
+            getattr(user, "nome", None) or getattr(user, "username", None)
+        )
+
+        dialog = EmailOrcamentoDialog(
+            self,
+            destinatario=dossier.email_cliente or "",
+            cc=str(remetente_email or ""),
+            assunto=assunto_email(dossier),
+            corpo=corpo_email_html(dossier),
+            anexos=anexos,
+            pasta_inicial=dossier.pasta or "",
+        )
+        dialog.setWindowTitle("Enviar Ponto de Situação por Email")
+        if not dialog.exec():
+            return
+        if not dialog.destinatario():
+            QMessageBox.warning(self, "Email", "Indique o destinatário antes de enviar.")
+            return
+
+        try:
+            enviar_email(
+                dialog.destinatario(),
+                dialog.assunto(),
+                dialog.corpo_html(),
+                dialog.anexos(),
+                config=config,
+                remetente_email=remetente_email,
+                remetente_nome=remetente_nome,
+                cc=dialog.cc(),
+            )
+        except Exception as erro:  # noqa: BLE001 - falha do Outlook reportada
+            QMessageBox.critical(self, "Email", f"Falha ao enviar o email:\n{erro}")
+            return
+
+        self.status_label.setText(f"Email enviado para {dialog.destinatario()}.")
 
     @staticmethod
     def _pasta_destino_pdf(dossier) -> Path:

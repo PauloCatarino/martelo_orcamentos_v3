@@ -5,6 +5,8 @@ from __future__ import annotations
 from app.domain.assistente_obra import (
     DossierObra,
     PedidoObra,
+    assunto_email,
+    corpo_email_html,
     identificar_pedido,
     resumo_texto,
 )
@@ -74,3 +76,30 @@ def test_resumo_texto_sem_streamlit_avisa() -> None:
     texto = resumo_texto(dossier)
 
     assert "indisponível" in texto
+
+
+def test_assunto_email() -> None:
+    dossier = DossierObra(codigo="26.1134_01_01_JF_VIVA", cliente="MÓVEIS J.F. VIVA")
+
+    assert assunto_email(dossier) == (
+        "Ponto de situação — 26.1134_01_01_JF_VIVA (MÓVEIS J.F. VIVA)"
+    )
+
+
+def test_corpo_email_html_tem_factos_e_assinatura() -> None:
+    dossier = DossierObra(
+        codigo="26.1134_01_01_JF_VIVA",
+        cliente="MÓVEIS J.F. VIVA",
+        estado_local="Producao",
+        data_entrega="10-08-2026",
+        fases=(("Corte", 100.0, True), ("Orlagem", 60.0, False)),
+        encontrado_streamlit=True,
+    )
+
+    corpo = corpo_email_html(dossier)
+
+    assert "Estado: Producao" in corpo
+    assert "Entrega prevista: 10-08-2026" in corpo
+    assert "Corte 100%" in corpo
+    assert "{{assinatura}}" in corpo  # substituído pelo email_service
+    assert "anexo" in corpo

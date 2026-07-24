@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from html import escape
 
 from app.domain.pesquisa_texto import normalizar
 
@@ -71,6 +72,8 @@ class DossierObra:
     pasta: str = ""
     #: Caminho da imagem IMOS (*.png) da obra principal (num_phc_versao).
     imagem_path: str = ""
+    #: Email do cliente (dos dados do cliente); o utilizador pode alterá-lo.
+    email_cliente: str = ""
     #: (nome do setor, percentagem, concluído) pela ordem de produção.
     fases: tuple[tuple[str, float, bool], ...] = ()
     estado_global: str = ""
@@ -130,6 +133,53 @@ def resumo_texto(dossier: DossierObra) -> str:
     else:
         linhas.append("Estado detalhado de produção indisponível de momento.")
 
+    return "\n".join(linhas)
+
+
+def _identidade(dossier: DossierObra) -> str:
+    return dossier.codigo or (f"obra {dossier.enc}" if dossier.enc else "obra")
+
+
+def assunto_email(dossier: DossierObra) -> str:
+    """Assunto por defeito do email ao cliente (o utilizador pode alterá-lo)."""
+    assunto = f"Ponto de situação — {_identidade(dossier)}"
+    if dossier.cliente:
+        assunto += f" ({dossier.cliente})"
+    return assunto
+
+
+def corpo_email_html(dossier: DossierObra) -> str:
+    """Corpo HTML por defeito do email (sem notas internas nem preço).
+
+    Na fase seguinte, o LLM local reescreve isto guiado pelas «Instruções» do
+    perfil; por agora é um texto limpo e correto a partir dos dados reais.
+    """
+    linhas = ["<p>Boa tarde,</p>"]
+    intro = (
+        f"Segue o ponto de situação da obra <b>{escape(_identidade(dossier))}</b>"
+    )
+    if dossier.cliente:
+        intro += f" ({escape(dossier.cliente)})"
+    linhas.append(f"<p>{intro}.</p>")
+
+    factos = []
+    if dossier.estado_local:
+        factos.append(f"Estado: {escape(dossier.estado_local)}")
+    if dossier.data_entrega:
+        factos.append(f"Entrega prevista: {escape(dossier.data_entrega)}")
+    if factos:
+        linhas.append("<p>" + " · ".join(factos) + ".</p>")
+
+    if dossier.encontrado_streamlit and dossier.fases:
+        fases = ", ".join(
+            f"{escape(str(nome))} {pct:.0f}%" for nome, pct, _c in dossier.fases
+        )
+        linhas.append(f"<p>Fases de produção: {fases}.</p>")
+
+    linhas.append(
+        "<p>Em anexo segue o ponto de situação detalhado, em PDF.</p>"
+    )
+    linhas.append("<p>Com os melhores cumprimentos,<br>{{assinatura}}</p>")
     return "\n".join(linhas)
 
 

@@ -289,11 +289,29 @@ class AssistenteProducaoService:
             ).strip(),
             notas=self._juntar_notas(principal),
             imagem_path=self._imagem_imos(principal),
+            email_cliente=self._email_cliente(principal),
             fases=fases,
             estado_global=estado_global,
             encontrado_streamlit=encontrado,
             versoes=tuple(versoes),
         )
+
+    def _email_cliente(self, processo) -> str:
+        """Email do cliente da obra, pelo nº de cliente PHC (dados do cliente)."""
+        num = str(getattr(processo, "num_cliente_phc", "") or "").strip()
+        if not num or self.session is None:
+            return ""
+        try:
+            from sqlalchemy import select
+
+            from app.models.cliente import Cliente
+
+            email = self.session.execute(
+                select(Cliente.email).where(Cliente.num_cliente_phc == num)
+            ).scalars().first()
+            return (email or "").strip()
+        except Exception:  # noqa: BLE001 - email é acessório
+            return ""
 
     def _imagem_imos(self, processo) -> str:
         """Caminho da imagem IMOS da obra (mesma lógica do detalhe da Produção)."""
