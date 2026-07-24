@@ -282,7 +282,7 @@ def gerar_dossier_obra_pdf(dossier, *, caminho: str | Path, gerado_em: str = "")
 
     doc = SimpleDocTemplate(
         str(destino), pagesize=A4,
-        leftMargin=18 * mm, rightMargin=18 * mm, topMargin=16 * mm, bottomMargin=16 * mm,
+        leftMargin=11 * mm, rightMargin=11 * mm, topMargin=10 * mm, bottomMargin=10 * mm,
         title="Ponto de Situação da Obra",
     )
     doc.build(story)
