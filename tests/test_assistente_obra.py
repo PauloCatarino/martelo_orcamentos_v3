@@ -119,3 +119,18 @@ def test_corpo_email_html_saudacao_ref_e_utilizador() -> None:
     assert "Ref. Cliente: 2507018" in corpo
     assert "Estado: Producao" in corpo
     assert "Com os melhores cumprimentos,<br>Paulo</p>" in corpo
+
+
+def test_corpo_email_html_inclui_imagem() -> None:
+    dossier = DossierObra(codigo="26.1134_01", cliente="X")
+
+    corpo = corpo_email_html(dossier, imagem_path="C:/img/obra.png")
+
+    assert "<img " in corpo
+    assert "file:///C:/img/obra.png" in corpo
+
+
+def test_corpo_email_html_sem_imagem_nao_poe_img() -> None:
+    dossier = DossierObra(codigo="26.1134_01", cliente="X")
+
+    assert "<img" not in corpo_email_html(dossier, imagem_path="")

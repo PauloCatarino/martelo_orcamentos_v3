@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from html import escape
+from pathlib import Path
 
 from app.domain.pesquisa_texto import normalizar
 
@@ -169,12 +170,15 @@ def corpo_email_html(
     *,
     saudacao: str = "Boa tarde",
     utilizador: str = "",
+    imagem_path: str = "",
 ) -> str:
     """Corpo HTML por defeito do email (sem notas internas nem preço).
 
     ``saudacao`` vem do horário (o utilizador pode alterar tudo antes de enviar).
     A Ref. do cliente fica em destaque — é a referência dele e o que lhe faz mais
-    sentido. Na fase seguinte, o LLM reescreve isto guiado pelas «Instruções».
+    sentido. ``imagem_path`` (validado por quem chama) mostra a imagem IMOS da
+    obra; ao enviar, o email_service passa-a a inline. Na fase seguinte, o LLM
+    reescreve isto guiado pelas «Instruções».
     """
     linhas = [f"<p>{escape(saudacao)},</p>"]
     intro = (
@@ -183,6 +187,13 @@ def corpo_email_html(
     if dossier.cliente:
         intro += f" ({escape(dossier.cliente)})"
     linhas.append(f"<p>{intro}.</p>")
+
+    if imagem_path:
+        try:
+            uri = Path(imagem_path).as_uri()
+            linhas.append(f'<p><img src="{uri}" width="480" /></p>')
+        except (ValueError, OSError):
+            pass
 
     if dossier.ref_cliente:
         linhas.append(

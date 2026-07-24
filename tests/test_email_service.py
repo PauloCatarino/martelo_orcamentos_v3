@@ -1,9 +1,33 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.services import email_service
+
+
+def test_extrair_imagens_inline_troca_file_por_cid(tmp_path) -> None:
+    imagem = tmp_path / "obra.png"
+    imagem.write_bytes(b"\x89PNG fake")
+    corpo = f'<p>Olá</p><p><img src="{imagem.as_uri()}" width="480" /></p>'
+
+    novo, inline = email_service._extrair_imagens_inline(corpo)
+
+    assert len(inline) == 1
+    cid, caminho = inline[0]
+    assert f"cid:{cid}" in novo
+    assert "file:" not in novo
+    assert Path(caminho) == imagem
+
+
+def test_extrair_imagens_inline_ignora_ficheiro_inexistente() -> None:
+    corpo = '<img src="file:///C:/nao/existe/x.png" />'
+
+    novo, inline = email_service._extrair_imagens_inline(corpo)
+
+    assert inline == []
+    assert novo == corpo  # fica como estava
 
 
 class _FakeSystemSettingService:

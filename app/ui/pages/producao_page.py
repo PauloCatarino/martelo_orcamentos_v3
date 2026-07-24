@@ -1537,13 +1537,23 @@ class ProducaoPage(QWidget):
         )
 
         saudacao = saudacao_por_hora(QTime.currentTime().hour())
+        imagem = dossier.imagem_path or ""
+        if imagem:
+            try:
+                if not Path(imagem).is_file():
+                    imagem = ""
+            except OSError:
+                imagem = ""
         dialog = EmailOrcamentoDialog(
             self,
             destinatario=dossier.email_cliente or "",
             cc=str(remetente_email or ""),
             assunto=assunto_email(dossier),
             corpo=corpo_email_html(
-                dossier, saudacao=saudacao, utilizador=str(remetente_nome or "")
+                dossier,
+                saudacao=saudacao,
+                utilizador=str(remetente_nome or ""),
+                imagem_path=imagem,
             ),
             anexos=anexos,
             pasta_inicial=dossier.pasta or "",

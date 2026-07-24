@@ -118,6 +118,9 @@ def enviar_email(
     corpo_html = (corpo_html or "").replace(
         "{{assinatura}}", _resolver_assinatura(config, remetente_nome)
     )
+    # Imagens locais no corpo (file:...) passam a inline (cid:), para o
+    # destinatário as ver — um caminho local só existiria no PC do remetente.
+    corpo_html, imagens_inline = _extrair_imagens_inline(corpo_html)
 
     try:
         if (config.metodo or "outlook").lower() == "outlook":
@@ -128,6 +131,7 @@ def enviar_email(
                 anexos,
                 remetente_email=remetente_email,
                 cc=cc_outlook,
+                imagens_inline=imagens_inline,
             )
         else:
             _enviar_smtp(
@@ -138,6 +142,7 @@ def enviar_email(
                 config=config,
                 from_email=from_email,
                 cc=cc_rfc,
+                imagens_inline=imagens_inline,
             )
     except Exception as exc:
         _safe_log_result(
@@ -248,6 +253,52 @@ def escrever_relatorio_email(
         return None
 
 
+#: <img src="file:...">, para trocar imagens locais por inline (cid:).
+_RE_IMG_FILE = re.compile(r'src\s*=\s*"(file:[^"]+)"', re.IGNORECASE)
+
+
+def _extrair_imagens_inline(corpo_html: str):
+    """Troca imagens locais (file:) por referências inline (cid:).
+
+    Devolve ``(corpo_html_novo, [(cid, caminho), ...])``. Só troca ficheiros que
+    existem mesmo; os outros ficam como estão.
+    """
+    inline: list[tuple[str, str]] = []
+
+    def _substituir(match: re.Match) -> str:
+        url = match.group(1)
+        caminho = _file_url_para_caminho(url)
+        if not caminho or not os.path.exists(caminho):
+            return match.group(0)
+        cid = f"imgobra{len(inline)}"
+        inline.append((cid, caminho))
+        return match.group(0).replace(url, f"cid:{cid}")
+
+    return _RE_IMG_FILE.sub(_substituir, corpo_html or ""), inline
+
+
+def _file_url_para_caminho(url: str) -> str:
+    """Converte uma URL file: no caminho local (trata drive e UNC)."""
+    from urllib.parse import unquote, urlparse
+    from urllib.request import url2pathname
+
+    try:
+        parsed = urlparse(url)
+        caminho = url2pathname(unquote(parsed.path))
+        if parsed.netloc:  # UNC: \\servidor\share\...
+            caminho = f"\\\\{parsed.netloc}{caminho}"
+        return caminho
+    except Exception:  # noqa: BLE001 - URL inválida -> ignora
+        return ""
+
+
+def _subtipo_imagem(caminho: str) -> str:
+    ext = os.path.splitext(caminho)[1].lower().lstrip(".")
+    if ext in {"jpg", "jpeg"}:
+        return "jpeg"
+    return ext or "png"
+
+
 def _enviar_outlook(
     destino: str,
     assunto: str,
@@ -256,6 +307,7 @@ def _enviar_outlook(
     *,
     remetente_email: str,
     cc: str,
+    imagens_inline: Sequence[tuple[str, str]] = (),
 ) -> None:
     win32_client = _require_win32com_client()
     try:
@@ -280,6 +332,19 @@ def _enviar_outlook(
             mail.CC = cc
         mail.Subject = assunto
         mail.HTMLBody = corpo_html
+        for cid, path in imagens_inline:
+            if os.path.exists(path):
+                anexo = mail.Attachments.Add(path)
+                try:
+                    # Content-ID + marcar como inline (referenciada por cid:).
+                    anexo.PropertyAccessor.SetProperty(
+                        "http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid
+                    )
+                    anexo.PropertyAccessor.SetProperty(
+                        "http://schemas.microsoft.com/mapi/proptag/0x37140003", 4
+                    )
+                except Exception:  # noqa: BLE001 - a imagem vai como anexo normal
+                    pass
         for path in anexos:
             if os.path.exists(path):
                 mail.Attachments.Add(path)
@@ -298,6 +363,7 @@ def _enviar_smtp(
     config: EmailConfig,
     from_email: str,
     cc: str,
+    imagens_inline: Sequence[tuple[str, str]] = (),
 ) -> None:
     msg = EmailMessage()
     msg["Subject"] = assunto
@@ -307,6 +373,21 @@ def _enviar_smtp(
         msg["Cc"] = cc
     msg.set_content("Este email requer visualizacao em HTML.")
     msg.add_alternative(corpo_html, subtype="html")
+
+    html_part = msg.get_payload()[-1]
+    for cid, path in imagens_inline:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "rb") as ficheiro:
+                html_part.add_related(
+                    ficheiro.read(),
+                    maintype="image",
+                    subtype=_subtipo_imagem(path),
+                    cid=f"<{cid}>",
+                )
+        except Exception:  # noqa: BLE001 - inline é acessório no SMTP
+            pass
 
     for path in anexos:
         if os.path.exists(path):
