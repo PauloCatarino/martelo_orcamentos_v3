@@ -8,6 +8,7 @@ responsáveis existentes na lista, corre o filtro da Produção que já existe
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field, replace
 
@@ -28,8 +29,12 @@ from app.domain.assistente_llm import (
 from app.domain.assistente_obra import (
     DossierObra,
     VersaoObra,
+    corpo_email_html,
     identificar_pedido,
+    prompt_corpo_email,
     resumo_texto,
+    saudacao_por_hora,
+    texto_para_html_email,
 )
 from app.domain.datas import normalizar_data
 from app.domain.pesquisa_texto import normalizar
@@ -65,6 +70,8 @@ class ResultadoIA:
     texto: str = ""
     dossier: DossierObra | None = None
     aviso: str = ""
+    #: Corpo HTML do email já composto (modo email), determinístico ou por LLM.
+    corpo_email: str = ""
 
 
 @dataclass(frozen=True)
@@ -213,12 +220,14 @@ class AssistenteProducaoService:
         user_id: int | None,
         processos,
         ano_atual: int | None = None,
+        hora_atual: int | None = None,
+        utilizador_nome: str = "",
     ) -> ResultadoIA:
         """Decide: ação sobre UMA obra («relatório da obra 1134») ou pesquisa.
 
-        Corre na thread de fundo da UI (pode tocar no Streamlit para as fases).
-        O nº de encomenda reinicia a cada ano; por defeito procura-se no
-        ``ano_atual`` (a menos que a pergunta traga um ano).
+        Corre na thread de fundo da UI (pode tocar no Streamlit para as fases e,
+        no modo email, no LLM local para redigir o corpo). O nº de encomenda
+        reinicia a cada ano; por defeito procura-se no ``ano_atual``.
         """
         pedido = identificar_pedido(pergunta)
         if pedido is not None:
@@ -233,18 +242,79 @@ class AssistenteProducaoService:
                 )
             dossier = self.montar_dossier(versoes)
             principal = versoes[-1]  # versão mais recente
+            corpo_email = ""
+            if pedido.modo == "email":
+                corpo_email = self._compor_email(
+                    dossier,
+                    user_id=user_id,
+                    hora_atual=hora_atual,
+                    utilizador_nome=utilizador_nome,
+                )
             return ResultadoIA(
                 tipo="obra",
                 obra_id=getattr(principal, "id", None),
                 modo=pedido.modo,
                 texto=resumo_texto(dossier),
                 dossier=dossier,
+                corpo_email=corpo_email,
             )
 
         intencao, recusa = self.interpretar_pergunta_llm(
             pergunta, user_id=user_id, processos=processos
         )
         return ResultadoIA(tipo="pesquisa", intencao=intencao, recusa=recusa)
+
+    def _compor_email(
+        self,
+        dossier: DossierObra,
+        *,
+        user_id: int | None,
+        hora_atual: int | None,
+        utilizador_nome: str = "",
+        chamar_modelo=None,
+    ) -> str:
+        """Corpo HTML do email: LLM (se houver instruções) ou determinístico."""
+        saudacao = saudacao_por_hora(hora_atual if hora_atual is not None else 12)
+        imagem = dossier.imagem_path or ""
+        if imagem and not os.path.exists(imagem):
+            imagem = ""
+
+        instrucoes = self._instrucoes(user_id)
+        if instrucoes:
+            chamar = chamar_modelo or (
+                lambda system, user: self._chamar_ollama(
+                    system, user, formato_json=False
+                )
+            )
+            try:
+                system, user = prompt_corpo_email(
+                    dossier, instrucoes, saudacao, utilizador_nome
+                )
+                texto = chamar(system, user)
+                if texto and texto.strip():
+                    return texto_para_html_email(texto, imagem)
+            except Exception:  # noqa: BLE001 - LLM falha -> determinístico
+                pass
+
+        return corpo_email_html(
+            dossier, saudacao=saudacao, utilizador=utilizador_nome, imagem_path=imagem
+        )
+
+    def _instrucoes(self, user_id: int | None) -> list[str]:
+        """Instruções de escrita do perfil do utilizador (quadro «instrucao»)."""
+        if not user_id:
+            return []
+        try:
+            entradas = listar_entradas(self.session, user_id, tipo="instrucao")
+        except Exception:  # noqa: BLE001 - perfil é acessório
+            return []
+        instrucoes = []
+        for entrada in entradas:
+            texto = (getattr(entrada, "expressao", "") or "").strip()
+            detalhe = (getattr(entrada, "significado", "") or "").strip()
+            if texto:
+                instrucoes.append(f"{texto} — {detalhe}" if detalhe else texto)
+        return instrucoes
 
     def montar_dossier(self, versoes_processo, *, carregar_estados=None) -> DossierObra:
         """Junta os dados da obra + as versões (obra/CUT-RITE) e as suas fases.
@@ -448,8 +518,12 @@ class AssistenteProducaoService:
             responsavel=base.responsavel or llm.responsavel,
         )
 
-    def _chamar_ollama(self, system: str, user: str) -> str:
-        """Fala com o Ollama local (modelo de ``modelo_local_ia``)."""
+    def _chamar_ollama(self, system: str, user: str, *, formato_json: bool = True) -> str:
+        """Fala com o Ollama local (modelo de ``modelo_local_ia``).
+
+        ``formato_json`` força JSON (extração de filtros); a redação de texto
+        livre (corpo do email) usa ``False``.
+        """
         modelo = (
             SystemSettingService(self.session).obter_valor("modelo_local_ia", "")
             or ""
@@ -467,15 +541,19 @@ class AssistenteProducaoService:
                 {"role": "user", "content": user},
             ],
             "stream": False,
-            "format": "json",
             "options": {"temperature": 0},
         }
+        if formato_json:
+            payload["format"] = "json"
+        # A redação de texto (email) gera muito mais tokens que a extração de
+        # filtros; dá-se mais tempo (mas cai no determinístico se exceder).
+        tempo_limite = 60 if formato_json else 150
         req = urllib.request.Request(
             "http://localhost:11434/api/chat",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=tempo_limite) as resp:  # noqa: S310
             dados = json.loads(resp.read().decode("utf-8"))
         return (dados.get("message", {}).get("content") or "").strip()
 

@@ -110,6 +110,16 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "O que te irritaria ou te daria a sensação de estares a ser vigiado. "
         "O que escreveres aqui passa a ser regra.",
     ),
+    TipoEntrada(
+        "instrucao",
+        "Instruções para emails e textos",
+        "Instrução",
+        "Detalhe (opcional)",
+        False,
+        "Como queres que o Martelo escreva os emails/textos ao cliente: tom, o "
+        "que realçar, saudação, assinatura. Ex.: «Tom formal; explicar o estado "
+        "em linguagem simples; assinar 'Lança Encanto'.»",
+    ),
 )
 
 TIPOS_POR_CHAVE = {tipo.chave: tipo for tipo in TIPOS_ENTRADA}

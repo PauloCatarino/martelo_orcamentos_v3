@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from app.domain.assistente_obra import DossierObra
 from app.services.assistente_producao_service import (
     AssistenteProducaoService,
     perfil_de_entradas,
+)
+
+_DOSSIER_EMAIL = DossierObra(
+    codigo="26.1134_01_01_JF_VIVA",
+    cliente="MÓVEIS J.F. VIVA",
+    ref_cliente="2507018",
+    estado_local="Producao",
+    data_entrega="10-08-2026",
 )
 
 
@@ -237,6 +246,50 @@ def test_llm_nao_polui_estado_com_alucinacao() -> None:
     assert intencao.estado is None
     assert intencao.responsavel == "Paulo"
     assert intencao.so_atrasadas is True
+
+
+def test_compor_email_deterministico_sem_instrucoes() -> None:
+    # Sem instruções no perfil (user_id None), usa o corpo determinístico.
+    servico = AssistenteProducaoService(None)
+    dossier = _DOSSIER_EMAIL
+
+    corpo = servico._compor_email(
+        dossier, user_id=None, hora_atual=15, utilizador_nome="Paulo"
+    )
+
+    assert "Com os melhores cumprimentos,<br>Paulo" in corpo
+    assert "Boa tarde" in corpo
+
+
+def test_compor_email_usa_llm_quando_ha_instrucoes(monkeypatch) -> None:
+    servico = AssistenteProducaoService(None)
+    monkeypatch.setattr(servico, "_instrucoes", lambda _uid: ["Tom formal"])
+
+    def fake_modelo(system, user):
+        return "Bom dia,\n\nA obra segue em produção.\n\nCumprimentos, Paulo"
+
+    corpo = servico._compor_email(
+        _DOSSIER_EMAIL, user_id=1, hora_atual=9, utilizador_nome="Paulo",
+        chamar_modelo=fake_modelo,
+    )
+
+    assert "<p>" in corpo
+    assert "produção" in corpo
+
+
+def test_compor_email_cai_no_deterministico_se_llm_falha(monkeypatch) -> None:
+    servico = AssistenteProducaoService(None)
+    monkeypatch.setattr(servico, "_instrucoes", lambda _uid: ["Tom formal"])
+
+    def modelo_partido(system, user):
+        raise RuntimeError("ollama offline")
+
+    corpo = servico._compor_email(
+        _DOSSIER_EMAIL, user_id=1, hora_atual=9, utilizador_nome="Ana",
+        chamar_modelo=modelo_partido,
+    )
+
+    assert "Com os melhores cumprimentos,<br>Ana" in corpo
 
 
 def test_llm_recusa_propaga() -> None:

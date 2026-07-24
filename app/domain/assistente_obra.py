@@ -234,6 +234,71 @@ def _e_ano(digitos: str) -> bool:
     return len(digitos) == 4 and _ANO_MIN <= int(digitos) <= _ANO_MAX
 
 
+def _fases_str(dossier: DossierObra) -> str:
+    if not (dossier.encontrado_streamlit and dossier.fases):
+        return "(sem detalhe de produção)"
+    return ", ".join(f"{nome} {pct:.0f}%" for nome, pct, _c in dossier.fases)
+
+
+def prompt_corpo_email(
+    dossier: DossierObra,
+    instrucoes: list[str],
+    saudacao: str,
+    utilizador: str,
+) -> tuple[str, str]:
+    """(system, user) para o LLM redigir o corpo do email guiado pelo perfil."""
+    system = (
+        "És o «IA Martelo», assistente interno de uma empresa de mobiliário "
+        "(Lança Encanto). Escreves, em português de Portugal, um email "
+        "profissional e simpático ao CLIENTE com o ponto de situação da obra "
+        "dele. NUNCA inventes dados nem números — usa exatamente os factos "
+        "indicados. Começa pela saudação dada e assina com o nome indicado. "
+        "Segue as instruções do utilizador. Devolve APENAS o texto do email "
+        "(sem linha de Assunto), em parágrafos."
+    )
+    linhas_instr = "\n".join(f"- {i}" for i in instrucoes) or "- (sem instruções)"
+    user = (
+        f"Saudação: {saudacao}\n"
+        f"Assinar como: {utilizador or '(o teu nome)'}\n\n"
+        f"Instruções do utilizador:\n{linhas_instr}\n\n"
+        "Factos da obra (usa-os, não inventes):\n"
+        f"- Obra: {_identidade(dossier)}\n"
+        f"- Cliente: {dossier.cliente or '—'}\n"
+        f"- Ref. do cliente: {dossier.ref_cliente or '—'}\n"
+        f"- Estado: {dossier.estado_local or '—'}\n"
+        f"- Entrega prevista: {dossier.data_entrega or '—'}\n"
+        f"- Fases de produção: {_fases_str(dossier)}\n\n"
+        "Nota: uma imagem da obra e um PDF detalhado seguem no email; podes "
+        "referir o anexo, não precisas de repetir todas as percentagens.\n"
+        "Escreve o email."
+    )
+    return system, user
+
+
+def texto_para_html_email(texto: str, imagem_path: str = "") -> str:
+    """Converte o texto do LLM em HTML e insere a imagem após o 1.º parágrafo."""
+    paragrafos = [p.strip() for p in re.split(r"\n\s*\n", texto or "") if p.strip()]
+    if not paragrafos:
+        paragrafos = [linha.strip() for linha in (texto or "").splitlines() if linha.strip()]
+
+    img_html = ""
+    if imagem_path:
+        try:
+            uri = Path(imagem_path).as_uri()
+            img_html = f'<p><img src="{uri}" width="480" /></p>'
+        except (ValueError, OSError):
+            img_html = ""
+
+    linhas = []
+    for indice, paragrafo in enumerate(paragrafos):
+        linhas.append(f"<p>{escape(paragrafo).replace(chr(10), '<br>')}</p>")
+        if indice == 0 and img_html:
+            linhas.append(img_html)
+    if img_html and not linhas:
+        linhas.append(img_html)
+    return "\n".join(linhas)
+
+
 def _extrair_numero_e_ano(palavras: list[str]) -> tuple[str, str]:
     """Separa o nº de encomenda (2-6 díg.) de um eventual ANO (20xx).
 

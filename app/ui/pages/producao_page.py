@@ -45,11 +45,7 @@ from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
 from app.domain.assistente_intencao import frase_resposta, sugestao_recrutamento
-from app.domain.assistente_obra import (
-    assunto_email,
-    corpo_email_html,
-    saudacao_por_hora,
-)
+from app.domain.assistente_obra import assunto_email, corpo_email_html
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
@@ -154,12 +150,17 @@ class _IAWorker(QThread):
     concluido = Signal(object)  # ResultadoIA
     falhou = Signal(str)
 
-    def __init__(self, pergunta, user_id, processos, ano_atual, parent=None) -> None:
+    def __init__(
+        self, pergunta, user_id, processos, ano_atual, hora_atual,
+        utilizador_nome, parent=None,
+    ) -> None:
         super().__init__(parent)
         self._pergunta = pergunta
         self._user_id = user_id
         self._processos = processos
         self._ano_atual = ano_atual
+        self._hora_atual = hora_atual
+        self._utilizador_nome = utilizador_nome
 
     def run(self) -> None:  # noqa: D102 - QThread override
         try:
@@ -169,6 +170,8 @@ class _IAWorker(QThread):
                     user_id=self._user_id,
                     processos=self._processos,
                     ano_atual=self._ano_atual,
+                    hora_atual=self._hora_atual,
+                    utilizador_nome=self._utilizador_nome,
                 )
             self.concluido.emit(resultado)
         except Exception as exc:  # noqa: BLE001 - reportado à UI
@@ -1439,11 +1442,17 @@ class ProducaoPage(QWidget):
         self.ia_button.setText("A pensar…")
         self.status_label.setText("O Martelo está a pensar…")
 
+        user = app_session.current_user
+        utilizador_nome = (
+            getattr(user, "nome", None) or getattr(user, "username", None) or ""
+        )
         worker = _IAWorker(
             pergunta,
             self._colunas_user_id_int(),
             self._todos,
             QDate.currentDate().year(),
+            QTime.currentTime().hour(),
+            str(utilizador_nome),
             self,
         )
         worker.concluido.connect(self._ia_concluido)
@@ -1490,7 +1499,7 @@ class ProducaoPage(QWidget):
             self._gerar_pdf_obra(resultado.dossier)
             return
         if resultado.modo == "email" and resultado.dossier is not None:
-            self._email_obra(resultado.dossier)
+            self._email_obra(resultado)
             return
 
         QApplication.clipboard().setText(resultado.texto)
@@ -1522,8 +1531,13 @@ class ProducaoPage(QWidget):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
         self.status_label.setText(f"Relatório PDF da obra gerado: {caminho}")
 
-    def _email_obra(self, dossier) -> None:
-        """Prepara o email ao cliente (o utilizador valida e o Outlook envia)."""
+    def _email_obra(self, resultado) -> None:
+        """Prepara o email ao cliente (o utilizador valida e o Outlook envia).
+
+        O corpo já vem composto pelo serviço (LLM guiado pelas «Instruções» do
+        perfil, ou determinístico), calculado na thread de fundo.
+        """
+        dossier = resultado.dossier
         caminho_pdf = self._criar_pdf_obra(dossier)
         anexos = [str(caminho_pdf)] if caminho_pdf is not None else []
 
@@ -1542,25 +1556,13 @@ class ProducaoPage(QWidget):
             getattr(user, "nome", None) or getattr(user, "username", None)
         )
 
-        saudacao = saudacao_por_hora(QTime.currentTime().hour())
-        imagem = dossier.imagem_path or ""
-        if imagem:
-            try:
-                if not Path(imagem).is_file():
-                    imagem = ""
-            except OSError:
-                imagem = ""
+        corpo = resultado.corpo_email or corpo_email_html(dossier)
         dialog = EmailOrcamentoDialog(
             self,
             destinatario=dossier.email_cliente or "",
             cc=str(remetente_email or ""),
             assunto=assunto_email(dossier),
-            corpo=corpo_email_html(
-                dossier,
-                saudacao=saudacao,
-                utilizador=str(remetente_nome or ""),
-                imagem_path=imagem,
-            ),
+            corpo=corpo,
             anexos=anexos,
             pasta_inicial=dossier.pasta or "",
         )

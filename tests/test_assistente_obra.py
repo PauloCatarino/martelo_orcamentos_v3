@@ -8,8 +8,10 @@ from app.domain.assistente_obra import (
     assunto_email,
     corpo_email_html,
     identificar_pedido,
+    prompt_corpo_email,
     resumo_texto,
     saudacao_por_hora,
+    texto_para_html_email,
 )
 
 
@@ -152,3 +154,32 @@ def test_corpo_email_html_sem_imagem_nao_poe_img() -> None:
     dossier = DossierObra(codigo="26.1134_01", cliente="X")
 
     assert "<img" not in corpo_email_html(dossier, imagem_path="")
+
+
+def test_prompt_corpo_email_inclui_factos_e_instrucoes() -> None:
+    dossier = DossierObra(
+        codigo="26.1134_01", cliente="Viva", ref_cliente="2507018",
+        estado_local="Producao", data_entrega="10-08-2026",
+    )
+
+    system, user = prompt_corpo_email(
+        dossier, ["Tom formal", "Assinar Lança Encanto"], "Bom dia", "Paulo"
+    )
+
+    assert "NUNCA inventes" in system
+    assert "Bom dia" in user
+    assert "Tom formal" in user
+    assert "2507018" in user
+    assert "Producao" in user
+
+
+def test_texto_para_html_email_paragrafos_e_imagem() -> None:
+    texto = "Bom dia,\n\nA sua obra está em produção.\n\nCumprimentos, Paulo"
+
+    html = texto_para_html_email(texto, imagem_path="C:/img/obra.png")
+
+    assert "<p>Bom dia,</p>" in html
+    assert "A sua obra está em produção." in html
+    assert "file:///C:/img/obra.png" in html
+    # a imagem entra logo após o primeiro parágrafo
+    assert html.index("<img") < html.index("produção")
