@@ -263,7 +263,7 @@ def test_compor_email_deterministico_sem_instrucoes() -> None:
 
 def test_compor_email_usa_llm_quando_ha_instrucoes(monkeypatch) -> None:
     servico = AssistenteProducaoService(None)
-    monkeypatch.setattr(servico, "_instrucoes", lambda _uid: ["Tom formal"])
+    monkeypatch.setattr(servico, "_instrucoes", lambda _uid, _tipo: ["Tom formal"])
 
     def fake_modelo(system, user):
         return "Bom dia,\n\nA obra segue em produção.\n\nCumprimentos, Paulo"
@@ -279,7 +279,7 @@ def test_compor_email_usa_llm_quando_ha_instrucoes(monkeypatch) -> None:
 
 def test_compor_email_cai_no_deterministico_se_llm_falha(monkeypatch) -> None:
     servico = AssistenteProducaoService(None)
-    monkeypatch.setattr(servico, "_instrucoes", lambda _uid: ["Tom formal"])
+    monkeypatch.setattr(servico, "_instrucoes", lambda _uid, _tipo: ["Tom formal"])
 
     def modelo_partido(system, user):
         raise RuntimeError("ollama offline")

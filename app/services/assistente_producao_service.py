@@ -290,7 +290,7 @@ class AssistenteProducaoService:
         if imagem and not os.path.exists(imagem):
             imagem = ""
 
-        instrucoes = self._instrucoes(user_id)
+        instrucoes = self._instrucoes(user_id, "instrucao_email")
         usar_llm = _EMAIL_LLM_ATIVO or chamar_modelo is not None
         if usar_llm and instrucoes:
             chamar = chamar_modelo or (
@@ -312,12 +312,12 @@ class AssistenteProducaoService:
             dossier, saudacao=saudacao, utilizador=utilizador_nome, imagem_path=imagem
         )
 
-    def _instrucoes(self, user_id: int | None) -> list[str]:
-        """Instruções de escrita do perfil do utilizador (quadro «instrucao»)."""
+    def _instrucoes(self, user_id: int | None, tipo: str) -> list[str]:
+        """Instruções de escrita do perfil (quadro «instrucao_email/pdf/texto»)."""
         if not user_id:
             return []
         try:
-            entradas = listar_entradas(self.session, user_id, tipo="instrucao")
+            entradas = listar_entradas(self.session, user_id, tipo=tipo)
         except Exception:  # noqa: BLE001 - perfil é acessório
             return []
         instrucoes = []

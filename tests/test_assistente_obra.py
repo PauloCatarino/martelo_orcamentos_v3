@@ -71,6 +71,9 @@ def test_resumo_texto_com_fases() -> None:
         codigo="26.1134_01_01_JF_VIVA",
         enc="1134",
         cliente="MÓVEIS J.F. VIVA",
+        obra="Cozinha",
+        ref_cliente="2507018",
+        localizacao="Lisboa",
         responsavel="Paulo",
         estado_local="Producao",
         data_inicio="25-06-2026",
@@ -84,10 +87,15 @@ def test_resumo_texto_com_fases() -> None:
     texto = resumo_texto(dossier)
 
     assert "26.1134_01_01_JF_VIVA" in texto
-    assert "MÓVEIS J.F. VIVA" in texto
+    assert "Ref. Cliente: 2507018" in texto
+    assert "Obra: Cozinha" in texto
+    assert "Localização: Lisboa" in texto
     assert "Entrega prevista: 10-08-2026" in texto
-    assert "Corte 100%" in texto
-    assert "Orlagem 60%" in texto
+    # Descrição de produção NÃO entra no texto de WhatsApp.
+    assert "CLOSET" not in texto
+    # Fases uma por linha (vertical).
+    assert "• Corte: 100%" in texto
+    assert "• Orlagem: 60%" in texto
     assert "🔄 33.3% (1/3)" in texto
 
 

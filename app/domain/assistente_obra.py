@@ -114,29 +114,39 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
 
 
 def resumo_texto(dossier: DossierObra) -> str:
-    """Resumo natural do estado da obra (para copiar p/ WhatsApp/email)."""
+    """Resumo curto e prático para colar no WhatsApp (só texto).
+
+    Sem imagem e sem a descrição de produção; inclui Ref./Obra/Localização
+    quando existem, e as fases de produção uma por linha (na vertical).
+    """
     identidade = dossier.codigo or (f"obra {dossier.enc}" if dossier.enc else "obra")
     cliente = f" ({dossier.cliente})" if dossier.cliente else ""
     linhas = [f"{identidade}{cliente}"]
 
-    estado = dossier.estado_local or "—"
-    linhas.append(f"Estado: {estado}.")
+    if dossier.ref_cliente:
+        linhas.append(f"Ref. Cliente: {dossier.ref_cliente}")
+    if dossier.obra:
+        linhas.append(f"Obra: {dossier.obra}")
+    if dossier.localizacao:
+        linhas.append(f"Localização: {dossier.localizacao}")
+
+    estado = f"Estado: {dossier.estado_local or '—'}"
     if dossier.responsavel:
-        linhas[-1] += f" Responsável: {dossier.responsavel}."
+        estado += f" · Responsável: {dossier.responsavel}"
+    linhas.append(estado)
     if dossier.data_inicio or dossier.data_entrega:
         linhas.append(
             f"Início: {dossier.data_inicio or '—'} · "
-            f"Entrega prevista: {dossier.data_entrega or '—'}."
+            f"Entrega prevista: {dossier.data_entrega or '—'}"
         )
-    if dossier.descricao_producao:
-        linhas.append(dossier.descricao_producao.strip())
 
     if dossier.encontrado_streamlit and dossier.fases:
-        fases = ", ".join(
-            f"{nome} {pct:.0f}%" for nome, pct, _concluido in dossier.fases
-        )
-        cabeca = f"Produção: {dossier.estado_global}" if dossier.estado_global else "Produção"
-        linhas.append(f"{cabeca} — {fases}.")
+        cabeca = "Produção"
+        if dossier.estado_global:
+            cabeca += f": {dossier.estado_global}"
+        linhas.append(cabeca)
+        for nome, pct, _concluido in dossier.fases:
+            linhas.append(f"• {nome}: {pct:.0f}%")
     else:
         linhas.append("Estado detalhado de produção indisponível de momento.")
 

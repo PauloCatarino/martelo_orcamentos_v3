@@ -1503,7 +1503,16 @@ class ProducaoPage(QWidget):
             return
 
         QApplication.clipboard().setText(resultado.texto)
-        QMessageBox.information(self, "IA Martelo — obra", resultado.texto)
+        caixa = QMessageBox(self)
+        caixa.setIcon(QMessageBox.Icon.Information)
+        caixa.setWindowTitle("IA Martelo — obra (texto para WhatsApp)")
+        caixa.setText(resultado.texto)
+        # Selecionável, para copiar/colar no WhatsApp (já vai copiado também).
+        caixa.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        caixa.exec()
         self.status_label.setText(
             "Resumo da obra copiado para a área de transferência."
         )

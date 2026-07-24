@@ -111,14 +111,35 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "O que escreveres aqui passa a ser regra.",
     ),
     TipoEntrada(
-        "instrucao",
-        "Instruções para emails e textos",
+        "instrucao_email",
+        "Instruções para emails",
         "Instrução",
         "Detalhe (opcional)",
         False,
-        "Como queres que o Martelo escreva os emails/textos ao cliente: tom, o "
-        "que realçar, saudação, assinatura. Ex.: «Tom formal; explicar o estado "
-        "em linguagem simples; assinar 'Lança Encanto'.»",
+        "Como queres que o Martelo escreva os EMAILS ao cliente. Ex.: «Tom formal "
+        "e simpático»; «Saudação conforme a hora (Bom dia/Boa tarde)»; «Explicar o "
+        "estado em linguagem simples»; «Realçar a Ref. do cliente»; «Assinar 'Lança "
+        "Encanto'»; «Nunca falar de preços».",
+    ),
+    TipoEntrada(
+        "instrucao_pdf",
+        "Instruções para o relatório PDF",
+        "Instrução",
+        "Detalhe (opcional)",
+        False,
+        "Como queres o RELATÓRIO PDF do ponto de situação. Ex.: «Não incluir preços "
+        "nem notas internas»; «Mostrar a imagem da obra»; «Realçar a Ref. do "
+        "cliente»; «Listar as fases de produção»; «Incluir as versões de CUT-RITE».",
+    ),
+    TipoEntrada(
+        "instrucao_texto",
+        "Instruções para texto (WhatsApp)",
+        "Instrução",
+        "Detalhe (opcional)",
+        False,
+        "Como queres o TEXTO para colar no WhatsApp. Ex.: «Curto e prático»; «Sem "
+        "imagem, só texto»; «Estado e entrega no topo»; «Fases uma por linha»; «Sem "
+        "a descrição de produção».",
     ),
 )
 
