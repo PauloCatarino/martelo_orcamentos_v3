@@ -23,13 +23,16 @@ teclas) são fáceis de afinar sem mexer na lógica.
 
 from __future__ import annotations
 
-import tempfile
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 # --- Configuração (afinável sem mexer na lógica) ---------------------------
 
-# Título da janela do PHC a controlar (regex parcial, insensível a maiúsculas).
+# A "Dossiers Internos" é uma janela-filha (MDI) DENTRO da janela principal do
+# PHC. Por isso ligamo-nos à janela principal ("PHC CS Corporate") e enviamos
+# as teclas para o dossier ativo (a proposta que o utilizador tem aberta).
+PHC_MAIN_WINDOW_TITLE_RE = r".*PHC CS Corporate.*"
 PHC_WINDOW_TITLE_RE = r".*Dossiers Internos.*"
 
 # Nº de TABs entre campos, contados a partir dos passos manuais do Paulo.
@@ -186,13 +189,14 @@ class PhcAutomationService:
     def __init__(
         self,
         *,
-        window_title_re: str = PHC_WINDOW_TITLE_RE,
+        main_window_title_re: str = PHC_MAIN_WINDOW_TITLE_RE,
+        child_window_title_re: str = PHC_WINDOW_TITLE_RE,
         log_path: str | Path | None = None,
     ) -> None:
-        self.window_title_re = window_title_re
+        self.main_window_title_re = main_window_title_re
+        self.child_window_title_re = child_window_title_re
         self.log_path = Path(
-            log_path
-            or Path(tempfile.gettempdir()) / "martelo_phc_diagnostico.txt"
+            log_path or Path.home() / "martelo_phc_diagnostico.txt"
         )
 
     # -- API pública -------------------------------------------------------
@@ -252,25 +256,55 @@ class PhcAutomationService:
     # -- Passos internos ---------------------------------------------------
 
     def _conectar_janela(self):
-        """Ligar-se à janela 'Dossiers Internos' já aberta do PHC."""
+        """Ligar-se à janela principal do PHC (com a proposta aberta).
+
+        A "Dossiers Internos" é uma janela-filha MDI, por isso controlamos a
+        janela principal do PHC e as teclas vão para o dossier ativo.
+        """
         try:
-            from pywinauto import Application
+            from pywinauto import Application, Desktop
         except ImportError as exc:  # pragma: no cover - dependência instalada
             raise PhcAutomationError(
                 "A biblioteca de automação (pywinauto) não está instalada."
             ) from exc
 
+        # 1) Ligar pela janela principal do PHC (caso normal).
         try:
             app = Application(backend="win32").connect(
-                title_re=self.window_title_re, timeout=5
+                title_re=self.main_window_title_re, timeout=5
             )
-            return app.window(title_re=self.window_title_re)
-        except Exception as exc:
-            raise PhcAutomationError(
-                "Não encontrei a janela 'Dossiers Internos' do PHC aberta.\n\n"
-                "Abre o PHC → Dossiers → escolhe 'Proposta' no seletor e "
-                "deixa essa janela aberta, depois tenta de novo."
-            ) from exc
+            return app.window(title_re=self.main_window_title_re)
+        except Exception:
+            pass
+
+        # 2) Alguns setups expõem a "Dossiers Internos" como janela de topo.
+        try:
+            app = Application(backend="win32").connect(
+                title_re=self.child_window_title_re, timeout=2
+            )
+            return app.window(title_re=self.child_window_title_re)
+        except Exception:
+            pass
+
+        # 3) Último recurso: varrer as janelas de topo do ambiente de trabalho.
+        try:
+            for janela in Desktop(backend="win32").windows():
+                try:
+                    titulo = janela.window_text()
+                except Exception:
+                    continue
+                if re.search(self.main_window_title_re, titulo) or re.search(
+                    self.child_window_title_re, titulo
+                ):
+                    return janela
+        except Exception:
+            pass
+
+        raise PhcAutomationError(
+            "Não encontrei a janela do PHC aberta.\n\n"
+            "Confirma que o PHC (PHC CS Corporate) está aberto, com a janela "
+            "Dossiers Internos → 'Proposta' ativa, e tenta de novo."
+        )
 
     def _focar(self, janela) -> None:
         try:
