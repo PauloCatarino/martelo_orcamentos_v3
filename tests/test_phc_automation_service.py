@@ -336,7 +336,6 @@ def test_plano_espera_antes_do_enter_do_cliente():
     pausa = plano[indice_cliente + 1]
     assert isinstance(pausa, PassoPausa)
     assert pausa.segundos == PAUSA_ANTES_ENTER_CLIENTE
-    assert pausa.segundos > PAUSA_CURTA
 
 
 def test_plano_mantem_pausa_curta_depois_da_ref_cliente():

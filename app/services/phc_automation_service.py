@@ -48,18 +48,18 @@ LARGURA_MIN_NUM_CLIENTE = 4
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
 # Deliberadamente lentas: o PHC valida cliente/ref e move o cursor entre
 # colunas da grelha, e é preciso dar-lhe tempo para acompanhar.
-PAUSA_CURTA = 1.5
+PAUSA_CURTA = 2.0
 PAUSA_APOS_NOVA_PROPOSTA = 2.5
-PAUSA_APOS_TABS = 1.5
-PAUSA_ANTES_GRAVAR = 1.0
+PAUSA_APOS_TABS = 2.0
+PAUSA_ANTES_GRAVAR = 2.0
 PAUSA_APOS_GRAVAR = 2.5
 
 # O nº de cliente é o campo mais delicado. Precisa de tempo duas vezes:
 # antes do ENTER (o PHC valida os dígitos à medida que entram) e depois dele
 # (vai à base de dados traduzir o nº no nome). Se avançarmos cedo, os TABs
 # seguintes perdem-se e os campos ficam trocados.
-PAUSA_ANTES_ENTER_CLIENTE = 3.0
-PAUSA_APOS_CLIENTE = 3.0
+PAUSA_ANTES_ENTER_CLIENTE = 2.0
+PAUSA_APOS_CLIENTE = 4.0
 
 # Espera ativa: aguardar que o processo do PHC acalme (uso de CPU abaixo deste
 # valor) antes de continuar. É o mais próximo de "confirmar que já acabou" que
