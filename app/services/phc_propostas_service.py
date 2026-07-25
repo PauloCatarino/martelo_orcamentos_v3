@@ -101,6 +101,61 @@ def build_query_propostas_do_ano(
     )
 
 
+def build_query_dossiers_recentes(*, ano: int, obrano_minimo: int) -> str:
+    """Consulta dos dossiers do ano acima de um número — de QUALQUER tipo.
+
+    Serve para detetar que o seletor do PHC estava noutro tipo (ex.: "Encomenda
+    de Cliente") e foi criado o documento errado. O tipo não é legível no ecrã
+    (é desenhado dentro do OLE), por isso só se deteta depois de gravar.
+    """
+    return (
+        "SELECT TOP (20) BO.OBRANO AS Numero, BO.NDOS AS Ndos, "
+        "LTRIM(RTRIM(BO.NMDOS)) AS Tipo, BO.NO AS Num_Cliente, "
+        "LTRIM(RTRIM(BO.U_ORCC)) AS Ref_Cliente "
+        "FROM BO WITH (NOLOCK) "
+        f"WHERE YEAR(BO.DATAOBRA) = {int(ano)} "
+        f"AND BO.OBRANO > {int(obrano_minimo)} "
+        "ORDER BY BO.OBRANO DESC"
+    )
+
+
+def detetar_tipo_errado(
+    linhas,
+    *,
+    num_cliente: str | None = None,
+    ref_cliente: str | None = None,
+) -> str | None:
+    """Detetar um dossier criado com o tipo errado (não "Proposta").
+
+    Devolve a descrição do dossier indevido, ou ``None`` se não houver sinal
+    disso. Só considera dossiers do cliente/ref em questão — para não acusar
+    documentos que outra pessoa criou legitimamente ao mesmo tempo.
+    """
+    esperado_cliente = _inteiro(num_cliente)
+    ref = (ref_cliente or "").strip().casefold()
+
+    for linha in linhas or []:
+        ndos = _inteiro(linha.get("Ndos"))
+        if ndos is None or ndos == NDOS_PROPOSTA:
+            continue
+
+        do_cliente = (
+            esperado_cliente is not None
+            and _inteiro(linha.get("Num_Cliente")) == esperado_cliente
+        )
+        mesma_ref = bool(
+            ref and (_texto(linha.get("Ref_Cliente")) or "").casefold() == ref
+        )
+        if not (do_cliente or mesma_ref):
+            continue
+
+        tipo = _texto(linha.get("Tipo")) or f"NDOS {ndos}"
+        numero = _inteiro(linha.get("Numero"))
+        return f"{tipo} nº {numero}"
+
+    return None
+
+
 def build_query_linhas_proposta(*, ano: int, numero: int) -> str:
     """Consulta das linhas (artigos) de uma proposta — tabela ``BI``."""
     return (
@@ -250,6 +305,38 @@ def listar_propostas_do_ano(
     assert_select_only(query)
     conn_str = build_connection_string(load_phc_config(session))
     return _linhas_para_propostas(run_select(conn_str, query))
+
+
+def ler_max_obrano_qualquer_tipo(session: Session, *, ano: int) -> int:
+    """Maior nº de dossier do ano, de qualquer tipo (marca de água ampla)."""
+    query = (
+        "SELECT MAX(BO.OBRANO) AS Maximo FROM BO WITH (NOLOCK) "
+        f"WHERE YEAR(BO.DATAOBRA) = {int(ano)}"
+    )
+    assert_select_only(query)
+    conn_str = build_connection_string(load_phc_config(session))
+    linhas = run_select(conn_str, query)
+    if not linhas:
+        return 0
+    return _inteiro(linhas[0].get("Maximo")) or 0
+
+
+def procurar_dossier_tipo_errado(
+    session: Session,
+    *,
+    ano: int,
+    obrano_base: int,
+    num_cliente: str | None = None,
+    ref_cliente: str | None = None,
+) -> str | None:
+    """Procurar um dossier criado com o tipo errado (SÓ-LEITURA)."""
+    query = build_query_dossiers_recentes(ano=ano, obrano_minimo=obrano_base)
+    assert_select_only(query)
+    conn_str = build_connection_string(load_phc_config(session))
+    linhas = run_select(conn_str, query)
+    return detetar_tipo_errado(
+        linhas, num_cliente=num_cliente, ref_cliente=ref_cliente
+    )
 
 
 def ler_designacoes_proposta(session: Session, *, ano: int, numero: int) -> list[str]:

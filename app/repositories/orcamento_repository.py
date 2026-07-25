@@ -198,6 +198,7 @@ class OrcamentoRepository:
         info_1: str | None = None,
         info_2: str | None = None,
         pasta_manual: str | None = None,
+        proposta_phc: str | None = None,
         margens: MargensOrcamento | None = None,
         perfil_margens: str = "STANDARD",
     ) -> OrcamentoCriado:
@@ -205,6 +206,9 @@ class OrcamentoRepository:
 
         ``margens`` are the initial margin values copied into the version;
         None keeps the column defaults (zeros).
+
+        ``proposta_phc`` is the PHC proposal number when the budget was
+        registered in PHC first.
         """
         cliente = self.session.get(Cliente, cliente_id)
         if cliente is None:
@@ -221,6 +225,7 @@ class OrcamentoRepository:
             info_1=info_1,
             info_2=info_2,
             pasta_manual=pasta_manual,
+            proposta_phc=proposta_phc,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
         )

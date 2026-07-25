@@ -51,6 +51,8 @@ class CriarOrcamentoSimplesData:
     # pasta de servidor já existente; None mantém a numeração sequencial.
     num_orcamento: str | None = None
     pasta_manual: str | None = None
+    # Nº da proposta no PHC, quando o orçamento foi registado primeiro no PHC.
+    proposta_phc: str | None = None
     # Initial-margins choice: 'STANDARD' / 'CLIENTE' / 'UTILIZADOR' (phase 8T.1).
     margens_escolha: str = AMBITO_STANDARD
 
@@ -135,6 +137,7 @@ class OrcamentoService:
             info_1=data.info_1,
             info_2=data.info_2,
             pasta_manual=pasta_manual,
+            proposta_phc=(data.proposta_phc or "").strip() or None,
             margens=self._resolver_margens_iniciais(data),
             perfil_margens=normalizar_perfil_margens(data.margens_escolha),
         )

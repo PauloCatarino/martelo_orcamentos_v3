@@ -176,13 +176,6 @@ class OrcamentosPage(QWidget):
         self.open_folder_button = QPushButton("Abrir Pasta do Or\u00e7amento")
         self.open_folder_button.clicked.connect(self._abrir_pasta_orcamento)
 
-        self.criar_phc_button = QPushButton("Criar Proposta PHC")
-        self.criar_phc_button.setToolTip(
-            "Cria a proposta base no PHC (nº + cliente + ref. cliente + linha "
-            "'Obra:') conduzindo a janela do PHC. Fase de teste."
-        )
-        self.criar_phc_button.clicked.connect(self._criar_proposta_phc)
-
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
@@ -193,7 +186,6 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
-        actions_layout.addWidget(self.criar_phc_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
 
@@ -436,12 +428,6 @@ class OrcamentosPage(QWidget):
             return None
         return valor
 
-    def _criar_proposta_phc(self) -> None:
-        """Open the PHC proposal-creation test dialog (Fatia 1)."""
-        from app.ui.dialogs.criar_proposta_phc_dialog import CriarPropostaPhcDialog
-
-        CriarPropostaPhcDialog(self).exec()
-
     def abrir_novo_orcamento(self) -> None:
         """Open the simple new budget dialog."""
         dialog = NovoOrcamentoDialog(self)
@@ -502,6 +488,7 @@ class OrcamentosPage(QWidget):
                         ano=form_data.ano,
                         num_orcamento=form_data.num_orcamento,
                         pasta_manual=form_data.pasta_manual,
+                        proposta_phc=form_data.proposta_phc,
                         margens_escolha=form_data.margens_escolha,
                     )
                 )

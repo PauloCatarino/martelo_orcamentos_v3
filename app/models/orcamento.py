@@ -42,6 +42,10 @@ class Orcamento(Base):
     # Pasta escolhida manualmente (orçamentos antigos); quando preenchida, as
     # exportações gravam diretamente aqui em vez da convenção base/ano/num.
     pasta_manual: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Nº da proposta no PHC (BO.OBRANO). Quando preenchido, este orçamento já
+    # está registado no PHC e não deve ser registado outra vez. O ano é o do
+    # orçamento — no PHC o OBRANO reinicia a cada ano.
+    proposta_phc: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_by_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("users.id"),

@@ -59,6 +59,9 @@ class NovoOrcamentoDialogData:
     ano: int | None = None
     num_orcamento: str | None = None
     pasta_manual: str | None = None
+    # Proposta criada no PHC antes de gravar o orçamento: o PHC atribui o
+    # número e o V3 mapeia-o (num_orcamento = <ano2><nº4>).
+    proposta_phc: str | None = None
 
 
 class NovoOrcamentoDialog(QDialog):
@@ -79,6 +82,7 @@ class NovoOrcamentoDialog(QDialog):
         self.setMinimumWidth(460)
 
         self._cliente_id: int | None = None
+        self._num_cliente_phc: str | None = None
         self.cliente_label = QLabel("\u2014 nenhum cliente escolhido \u2014")
         self.escolher_cliente_button = QPushButton("Escolher cliente\u2026")
         self.escolher_cliente_button.clicked.connect(self._escolher_cliente)
@@ -131,7 +135,50 @@ class NovoOrcamentoDialog(QDialog):
         self.descricao_input.setFixedHeight(90)
         self.localizacao_input = QLineEdit()
         self.ref_cliente_input = QLineEdit()
+        self.ref_cliente_input.setToolTip(
+            "Referência do cliente para esta obra (ex.: 2510008). É também a "
+            "'Ref. Cliente' da proposta no PHC."
+        )
+        self.ref_cliente_input.textChanged.connect(self._ref_cliente_mudou)
         self.enc_phc_input = QLineEdit()
+
+        # --- Registo no PHC (o PHC atribui o número; o V3 mapeia-o) --------
+        self._proposta_phc: str | None = None
+        self._proposta_ano: int | None = None
+        # A designação acompanha a ref. cliente até o utilizador a editar.
+        self._designacao_phc_manual = False
+
+        self.designacao_phc_input = QLineEdit()
+        self.designacao_phc_input.setPlaceholderText(
+            "linha a escrever na Designação da proposta (ex.: Obra: 2510008)"
+        )
+        self.designacao_phc_input.setToolTip(
+            "Texto da primeira linha da proposta no PHC. Com Ref. cliente "
+            "preenchida sugere 'Obra: <ref>'; sem ela fica vazio para "
+            "escreveres o que precisares."
+        )
+        self.designacao_phc_input.textEdited.connect(
+            self._marcar_designacao_phc_manual
+        )
+
+        self.criar_phc_button = QPushButton("Criar proposta no PHC…")
+        self.criar_phc_button.setToolTip(
+            "Cria a proposta no PHC (cliente + ref. cliente + linha de "
+            "designação) e usa o número que o PHC atribuir como número deste "
+            "orçamento. Requer o PHC aberto em Dossiers Internos → Proposta."
+        )
+        self.criar_phc_button.clicked.connect(self._criar_proposta_phc)
+
+        self.proposta_phc_label = QLabel("— sem proposta no PHC —")
+        self.proposta_phc_label.setWordWrap(True)
+        self.proposta_phc_label.setToolTip(
+            "Número da proposta no PHC, depois de criada."
+        )
+        phc_widget = QWidget()
+        phc_layout = QHBoxLayout(phc_widget)
+        phc_layout.setContentsMargins(0, 0, 0, 0)
+        phc_layout.addWidget(self.proposta_phc_label, stretch=1)
+        phc_layout.addWidget(self.criar_phc_button)
         self.info_1_input = QTextEdit()
         self.info_1_input.setFixedHeight(60)
         self.info_2_input = QTextEdit()
@@ -162,6 +209,8 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
         form_layout.addRow("Ref. cliente", self.ref_cliente_input)
+        form_layout.addRow("Designação (PHC)", self.designacao_phc_input)
+        form_layout.addRow("Proposta PHC", phc_widget)
         form_layout.addRow("Enc. PHC", self.enc_phc_input)
         form_layout.addRow("Info 1", self.info_1_input)
         form_layout.addRow("Info 2", self.info_2_input)
@@ -184,10 +233,25 @@ class NovoOrcamentoDialog(QDialog):
 
         self._form_layout = form_layout
         self._toggle_modo_antigo(False)
+        self._atualizar_criar_phc_disponivel()
 
     def get_data(self) -> NovoOrcamentoDialogData:
         """Return normalized dialog data."""
         manual = self.antigo_checkbox.isChecked()
+        # Proposta criada no PHC: o número do orçamento passa a ser o código
+        # <ano2><nº4> derivado dela, e o ano é o da proposta.
+        num_do_phc: str | None = None
+        ano_do_phc: int | None = None
+        if self._proposta_phc and self._proposta_ano and not manual:
+            from app.services.registar_proposta_phc_service import (
+                formatar_codigo_v3,
+            )
+
+            num_do_phc = formatar_codigo_v3(
+                self._proposta_ano, int(self._proposta_phc)
+            )
+            ano_do_phc = self._proposta_ano
+
         return NovoOrcamentoDialogData(
             cliente_id=self._cliente_id,
             obra=self.obra_input.text().strip(),
@@ -200,13 +264,154 @@ class NovoOrcamentoDialog(QDialog):
             margens_escolha=self.margens_combo.currentData() or AMBITO_STANDARD,
             utilizador_id=self.utilizador_combo.currentData(),
             manual=manual,
-            ano=self.ano_input.value() if manual else None,
+            ano=self.ano_input.value() if manual else ano_do_phc,
             num_orcamento=(
                 self._empty_to_none(self.num_orcamento_input.text())
                 if manual
-                else None
+                else num_do_phc
             ),
             pasta_manual=self._pasta_manual if manual else None,
+            proposta_phc=self._proposta_phc if not manual else None,
+        )
+
+    # -- Proposta no PHC ---------------------------------------------------
+
+    def _ref_cliente_mudou(self, texto: str) -> None:
+        """Sugerir a designação do PHC a partir da ref. cliente."""
+        if self._designacao_phc_manual:
+            return
+        from app.services.registar_proposta_phc_service import designacao_sugerida
+
+        self.designacao_phc_input.setText(designacao_sugerida(texto))
+
+    def _marcar_designacao_phc_manual(self, _texto: str) -> None:
+        """O utilizador editou a designação: deixar de a sobrepor."""
+        self._designacao_phc_manual = True
+
+    def _criar_proposta_phc(self) -> None:
+        """Criar a proposta no PHC e adotar o número que ele atribuir."""
+        from datetime import date as _date
+
+        from PySide6.QtCore import Qt as _Qt
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        from app.services.phc_automation_service import (
+            PhcAutomationError,
+            construir_designacao,
+            formatar_num_cliente_phc,
+        )
+        from app.services.registar_proposta_phc_service import (
+            descrever_resultado,
+            registar_proposta_no_phc,
+        )
+
+        if self._proposta_phc:
+            QMessageBox.information(
+                self,
+                "Proposta já criada",
+                f"Este orçamento já tem a proposta PHC nº {self._proposta_phc}.\n\n"
+                "Para não duplicar propostas no PHC, cancela e começa de novo "
+                "se precisares de outra.",
+            )
+            return
+
+        if self._cliente_id is None:
+            self.error_label.setText("Escolha um cliente antes de criar no PHC.")
+            return
+
+        num_cliente = self._num_cliente_phc
+        if not num_cliente:
+            self.error_label.setText(
+                "O cliente escolhido não tem número de cliente PHC — não é "
+                "possível criar a proposta no PHC."
+            )
+            return
+
+        ref_cliente = self._empty_to_none(self.ref_cliente_input.text())
+        designacao = self._empty_to_none(self.designacao_phc_input.text())
+        if not designacao:
+            designacao = construir_designacao(ref_cliente)
+
+        confirmar = QMessageBox.question(
+            self,
+            "Confirmar criação no PHC",
+            (
+                "Vou conduzir a janela do PHC e criar esta proposta:\n\n"
+                f"  Nº cliente PHC: {formatar_num_cliente_phc(num_cliente)}\n"
+                f"  Ref. cliente:   {ref_cliente or '(vazio)'}\n"
+                f"  Designação:     {designacao}\n\n"
+                "O PHC tem de estar aberto em Dossiers Internos com "
+                "'Proposta' escolhido no seletor.\n"
+                "Durante o processo NÃO mexas no rato nem no teclado.\n\n"
+                "Continuar?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmar != QMessageBox.StandardButton.Yes:
+            return
+
+        self.error_label.setText("")
+        ano = _date.today().year
+        QGuiApplication.setOverrideCursor(_Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                resultado = registar_proposta_no_phc(
+                    session,
+                    ano=ano,
+                    num_cliente_phc=num_cliente,
+                    ref_cliente=ref_cliente,
+                    designacao=designacao,
+                )
+        except PhcAutomationError as exc:
+            QMessageBox.critical(self, "Erro na automação do PHC", str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - mostrar erro inesperado
+            QMessageBox.critical(self, "Erro inesperado", str(exc))
+            return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        texto = descrever_resultado(resultado, num_cliente_phc=num_cliente)
+
+        if resultado.tipo_errado:
+            QMessageBox.critical(self, "Documento errado no PHC", texto)
+            return
+
+        numero = resultado.numero_confirmado
+        if numero is None:
+            escrito, ok = QInputDialog.getText(
+                self,
+                "Número da proposta",
+                f"{texto}\n\nEscreve o número que vês no PHC:",
+            )
+            if not ok or not escrito.strip().isdigit():
+                return
+            numero = int(escrito.strip())
+
+        self._adotar_proposta(numero, ano)
+
+        if resultado.avisos:
+            QMessageBox.warning(self, "Proposta criada — com diferenças", texto)
+        else:
+            QMessageBox.information(self, "Proposta criada no PHC", texto)
+
+    def _adotar_proposta(self, numero: int, ano: int) -> None:
+        """Fixar a proposta e mostrar o nº do orçamento que dela resulta."""
+        from app.services.registar_proposta_phc_service import formatar_codigo_v3
+
+        self._proposta_phc = str(numero)
+        self._proposta_ano = ano
+        codigo = formatar_codigo_v3(ano, numero)
+        self.proposta_phc_label.setText(
+            f"Proposta {numero} ({ano}) → orçamento {codigo}"
+        )
+        # Impedir uma segunda proposta para o mesmo orçamento.
+        self.criar_phc_button.setEnabled(False)
+        self.antigo_checkbox.setEnabled(False)
+        self.antigo_checkbox.setToolTip(
+            "Indisponível: este orçamento já tem uma proposta criada no PHC."
         )
 
     def _toggle_modo_antigo(self, checked: bool) -> None:
@@ -275,9 +480,24 @@ class NovoOrcamentoDialog(QDialog):
 
         cliente = dialog.selected_cliente
         self._cliente_id = cliente.id
+        self._num_cliente_phc = (cliente.num_cliente_phc or "").strip() or None
         tipo = "Tempor\u00e1rio" if cliente.is_temporary else "PHC"
         self.cliente_label.setText(f"{cliente.nome} ({tipo})")
+        self._atualizar_criar_phc_disponivel()
         self._atualizar_opcao_margens_cliente()
+
+    def _atualizar_criar_phc_disponivel(self) -> None:
+        """S\u00f3 d\u00e1 para criar no PHC se o cliente tiver n\u00famero de cliente PHC."""
+        if self._proposta_phc:
+            return
+        tem_numero = bool(self._num_cliente_phc)
+        self.criar_phc_button.setEnabled(tem_numero)
+        if tem_numero:
+            self.proposta_phc_label.setText("\u2014 sem proposta no PHC \u2014")
+        else:
+            self.proposta_phc_label.setText(
+                "\u2014 cliente sem n\u00ba PHC: n\u00e3o d\u00e1 para criar proposta \u2014"
+            )
 
     def _carregar_disponibilidade_margens(self) -> None:
         """Enable the margin options that have an applicable record."""
