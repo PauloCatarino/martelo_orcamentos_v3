@@ -287,3 +287,34 @@ def test_sem_avisos_pywinauto_nao_engole_outros_avisos():
         with _sem_avisos_pywinauto():
             _w.warn("aviso da nossa aplicação", UserWarning)
     assert len(capturados) == 1
+
+
+def test_plano_espera_antes_do_enter_do_cliente():
+    """O nº de cliente precisa de tempo antes do ENTER, não só depois."""
+    from app.services.phc_automation_service import PAUSA_ANTES_ENTER_CLIENTE
+
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    indice_cliente = next(
+        i for i, p in enumerate(plano) if isinstance(p, PassoTexto)
+    )
+    pausa = plano[indice_cliente + 1]
+    assert isinstance(pausa, PassoPausa)
+    assert pausa.segundos == PAUSA_ANTES_ENTER_CLIENTE
+    assert pausa.segundos > PAUSA_CURTA
+
+
+def test_plano_mantem_pausa_curta_depois_da_ref_cliente():
+    """Só o campo do cliente é lento; a ref. cliente não precisa de mais."""
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    indice_ref = next(
+        i
+        for i, p in enumerate(plano)
+        if isinstance(p, PassoTexto) and p.texto == "2510008"
+    )
+    pausa = plano[indice_ref + 1]
+    assert isinstance(pausa, PassoPausa)
+    assert pausa.segundos == PAUSA_CURTA

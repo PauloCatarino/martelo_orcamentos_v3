@@ -54,9 +54,11 @@ PAUSA_APOS_TABS = 0.8
 PAUSA_ANTES_GRAVAR = 1.0
 PAUSA_APOS_GRAVAR = 2.5
 
-# O passo mais lento de todos: depois do ENTER, o PHC vai à base de dados
-# traduzir o nº de cliente no nome. Se avançarmos antes de ele acabar, os TABs
+# O nº de cliente é o campo mais delicado. Precisa de tempo duas vezes:
+# antes do ENTER (o PHC valida os dígitos à medida que entram) e depois dele
+# (vai à base de dados traduzir o nº no nome). Se avançarmos cedo, os TABs
 # seguintes perdem-se e os campos ficam trocados.
+PAUSA_ANTES_ENTER_CLIENTE = 3.0
 PAUSA_APOS_CLIENTE = 3.0
 
 # Espera ativa: aguardar que o processo do PHC acalme (uso de CPU abaixo deste
@@ -197,7 +199,7 @@ def construir_plano(
         PassoPausa(PAUSA_APOS_NOVA_PROPOSTA, "Esperar abertura da proposta"),
         PassoEsperarPronto("Esperar que a proposta esteja pronta"),
         PassoTexto(num_cliente, "Nº de cliente PHC"),
-        PassoPausa(PAUSA_CURTA, "Deixar o PHC ver o nº de cliente"),
+        PassoPausa(PAUSA_ANTES_ENTER_CLIENTE, "Deixar o PHC ver o nº de cliente"),
         PassoTeclas("{ENTER}", "Confirmar cliente"),
         # O PHC vai à base de dados traduzir o nº no nome do cliente. É o
         # passo mais lento: pausa longa E espera até o processo acalmar, senão
