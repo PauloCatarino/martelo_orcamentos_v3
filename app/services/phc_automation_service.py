@@ -54,6 +54,17 @@ PAUSA_APOS_TABS = 0.8
 PAUSA_ANTES_GRAVAR = 1.0
 PAUSA_APOS_GRAVAR = 2.5
 
+# O passo mais lento de todos: depois do ENTER, o PHC vai à base de dados
+# traduzir o nº de cliente no nome. Se avançarmos antes de ele acabar, os TABs
+# seguintes perdem-se e os campos ficam trocados.
+PAUSA_APOS_CLIENTE = 3.0
+
+# Espera ativa: aguardar que o processo do PHC acalme (uso de CPU abaixo deste
+# valor) antes de continuar. É o mais próximo de "confirmar que já acabou" que
+# se consegue, visto que os campos não são legíveis.
+CPU_OCIOSO_PERCENTAGEM = 5.0
+CPU_ESPERA_MAXIMA = 15.0
+
 # Ritmo de escrita: pausa entre teclas (segundos).
 RITMO_TECLAS = 0.12
 RITMO_TEXTO = 0.08
@@ -118,7 +129,19 @@ class PassoPausa:
     descricao: str = ""
 
 
-Passo = PassoTeclas | PassoTexto | PassoPausa
+@dataclass(frozen=True)
+class PassoEsperarPronto:
+    """Esperar que o PHC acabe de processar (uso de CPU a descer).
+
+    Usado depois de confirmar o nº de cliente, quando o PHC vai à base de
+    dados buscar o nome. Não dá para ler o campo e confirmar — os controlos
+    são cegos ao Windows — mas dá para esperar que o processo acalme.
+    """
+
+    descricao: str = ""
+
+
+Passo = PassoTeclas | PassoTexto | PassoPausa | PassoEsperarPronto
 
 
 @dataclass(frozen=True)
@@ -172,10 +195,15 @@ def construir_plano(
     plano: list[Passo] = [
         PassoTeclas(TECLA_NOVA_PROPOSTA, "Nova proposta (ALT+N)"),
         PassoPausa(PAUSA_APOS_NOVA_PROPOSTA, "Esperar abertura da proposta"),
+        PassoEsperarPronto("Esperar que a proposta esteja pronta"),
         PassoTexto(num_cliente, "Nº de cliente PHC"),
-        PassoPausa(PAUSA_CURTA, "Deixar o PHC validar o nº de cliente"),
+        PassoPausa(PAUSA_CURTA, "Deixar o PHC ver o nº de cliente"),
         PassoTeclas("{ENTER}", "Confirmar cliente"),
-        PassoPausa(PAUSA_CURTA, "Esperar o preenchimento do nome do cliente"),
+        # O PHC vai à base de dados traduzir o nº no nome do cliente. É o
+        # passo mais lento: pausa longa E espera até o processo acalmar, senão
+        # os TABs seguintes perdem-se e os campos ficam trocados.
+        PassoPausa(PAUSA_APOS_CLIENTE, "Esperar o nome do cliente"),
+        PassoEsperarPronto("Confirmar que o PHC acabou de buscar o cliente"),
         _tabs(TABS_CLIENTE_ATE_REF, "Ir até Ref. Cliente"),
         PassoPausa(PAUSA_APOS_TABS),
     ]
@@ -188,6 +216,7 @@ def construir_plano(
     plano.append(PassoPausa(PAUSA_APOS_TABS, "Esperar a coluna Designação"))
     plano.append(PassoTexto(designacao, "Linha de designação"))
     plano.append(PassoPausa(PAUSA_ANTES_GRAVAR, "Estabilizar antes de gravar"))
+    plano.append(PassoEsperarPronto("Confirmar que o PHC está pronto a gravar"))
 
     return plano
 
@@ -207,6 +236,8 @@ def descrever_plano(plano: list[Passo]) -> str:
             linhas.append(f"  escrever: {passo.texto!r}  ({passo.descricao})")
         elif isinstance(passo, PassoTeclas):
             linhas.append(f"  teclas:   {passo.keys}  ({passo.descricao})")
+        elif isinstance(passo, PassoEsperarPronto):
+            linhas.append(f"  esperar:  PHC pronto  ({passo.descricao})")
         else:
             linhas.append(f"  pausa:    {passo.segundos}s")
     return "\n".join(linhas)
@@ -236,6 +267,9 @@ class PhcAutomationService:
         self.log_path = Path(
             log_path or Path.home() / "martelo_phc_diagnostico.txt"
         )
+        # Guardada em _conectar_janela para se poder esperar que o processo do
+        # PHC acalme (PassoEsperarPronto).
+        self._app = None
 
     # -- API pública -------------------------------------------------------
 
@@ -378,6 +412,7 @@ class PhcAutomationService:
             app = Application(backend="win32").connect(
                 title_re=self.main_window_title_re, timeout=5
             )
+            self._app = app
             return app.window(title_re=self.main_window_title_re)
         except Exception:
             pass
@@ -387,6 +422,7 @@ class PhcAutomationService:
             app = Application(backend="win32").connect(
                 title_re=self.child_window_title_re, timeout=2
             )
+            self._app = app
             return app.window(title_re=self.child_window_title_re)
         except Exception:
             pass
@@ -427,6 +463,8 @@ class PhcAutomationService:
         for passo in plano:
             if isinstance(passo, PassoPausa):
                 time.sleep(passo.segundos)
+            elif isinstance(passo, PassoEsperarPronto):
+                self._esperar_phc_pronto()
             elif isinstance(passo, PassoTeclas):
                 keyboard.send_keys(passo.keys, pause=RITMO_TECLAS)
             elif isinstance(passo, PassoTexto):
@@ -435,6 +473,24 @@ class PhcAutomationService:
                     with_spaces=True,
                     pause=RITMO_TEXTO,
                 )
+
+    def _esperar_phc_pronto(self) -> None:
+        """Esperar que o processo do PHC acalme antes de continuar.
+
+        Os campos do PHC não são legíveis (controlos OLE), por isso não se
+        consegue confirmar que o nome do cliente já apareceu. O que se pode
+        fazer é esperar que o processo pare de trabalhar — é isso que evita
+        que os TABs seguintes se perdam. Se a medição não estiver disponível,
+        segue em frente (as pausas fixas já dão margem).
+        """
+        if self._app is None:
+            return
+        try:
+            self._app.wait_cpu_usage_lower(
+                threshold=CPU_OCIOSO_PERCENTAGEM, timeout=CPU_ESPERA_MAXIMA
+            )
+        except Exception:  # pragma: no cover - depende do SO/processo
+            pass
 
     def _gravar(self, janela) -> None:
         """Gravar a proposta com ALT+G (atalho de gravar do PHC)."""

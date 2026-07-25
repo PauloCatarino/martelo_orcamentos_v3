@@ -9,9 +9,12 @@ from __future__ import annotations
 import pytest
 
 from app.services.phc_automation_service import (
+    PAUSA_APOS_CLIENTE,
+    PAUSA_CURTA,
     TABS_CLIENTE_ATE_REF,
     TABS_REF_ATE_DESIGNACAO,
     TECLA_NOVA_PROPOSTA,
+    PassoEsperarPronto,
     PassoPausa,
     PassoTeclas,
     PassoTexto,
@@ -140,11 +143,93 @@ def test_plano_pausa_depois_de_cada_escrita_e_tabs():
             )
 
 
-def test_plano_pausa_antes_de_gravar_no_fim():
+def test_plano_espera_pelo_phc_antes_de_gravar():
     plano = construir_plano(
         num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
     )
-    assert isinstance(plano[-1], PassoPausa)
+    assert isinstance(plano[-1], PassoEsperarPronto)
+    assert isinstance(plano[-2], PassoPausa)
+
+
+# -- Espera pela tradução do nº de cliente em nome -------------------------
+
+
+def test_plano_espera_mais_depois_de_confirmar_o_cliente():
+    """O PHC vai à BD buscar o nome; avançar cedo perde os TABs seguintes."""
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    indice_enter = next(
+        i
+        for i, p in enumerate(plano)
+        if isinstance(p, PassoTeclas) and p.keys == "{ENTER}"
+    )
+    seguinte = plano[indice_enter + 1]
+    assert isinstance(seguinte, PassoPausa)
+    assert seguinte.segundos == PAUSA_APOS_CLIENTE
+    # A pausa do cliente é a mais longa das pausas entre campos.
+    assert seguinte.segundos > PAUSA_CURTA
+    # E é seguida de espera ativa até o PHC acalmar.
+    assert isinstance(plano[indice_enter + 2], PassoEsperarPronto)
+
+
+def test_plano_espera_ativa_nos_momentos_criticos():
+    """Abertura da proposta, tradução do cliente e antes de gravar."""
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    esperas = [p for p in plano if isinstance(p, PassoEsperarPronto)]
+    assert len(esperas) == 3
+
+
+def test_esperar_phc_pronto_sem_ligacao_nao_rebenta():
+    """Sem app ligada (ou sem medição de CPU), segue em frente."""
+    from app.services.phc_automation_service import PhcAutomationService
+
+    servico = PhcAutomationService()
+    assert servico._app is None
+    servico._esperar_phc_pronto()  # não deve levantar
+
+
+def test_esperar_phc_pronto_usa_o_limiar_configurado():
+    from app.services.phc_automation_service import (
+        CPU_ESPERA_MAXIMA,
+        CPU_OCIOSO_PERCENTAGEM,
+        PhcAutomationService,
+    )
+
+    recebido: dict[str, float] = {}
+
+    class _AppFalsa:
+        def wait_cpu_usage_lower(self, *, threshold, timeout):
+            recebido["threshold"] = threshold
+            recebido["timeout"] = timeout
+
+    servico = PhcAutomationService()
+    servico._app = _AppFalsa()
+    servico._esperar_phc_pronto()
+
+    assert recebido["threshold"] == CPU_OCIOSO_PERCENTAGEM
+    assert recebido["timeout"] == CPU_ESPERA_MAXIMA
+
+
+def test_esperar_phc_pronto_tolera_falha_da_medicao():
+    from app.services.phc_automation_service import PhcAutomationService
+
+    class _AppQueFalha:
+        def wait_cpu_usage_lower(self, **_kwargs):
+            raise RuntimeError("sem contadores de CPU")
+
+    servico = PhcAutomationService()
+    servico._app = _AppQueFalha()
+    servico._esperar_phc_pronto()  # não deve levantar
+
+
+def test_descrever_plano_mostra_as_esperas():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    assert "PHC pronto" in descrever_plano(plano)
 
 
 def test_gravar_usa_alt_g():
