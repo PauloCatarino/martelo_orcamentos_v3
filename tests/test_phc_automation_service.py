@@ -1,0 +1,107 @@
+"""Tests for the pure parts of the PHC proposal-automation service.
+
+The pywinauto execution can only run with the real PHC window open, so these
+tests cover the deterministic keystroke *plan* and the designation helper.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from app.services.phc_automation_service import (
+    TABS_CLIENTE_ATE_REF,
+    TABS_REF_ATE_DESIGNACAO,
+    TECLA_NOVA_PROPOSTA,
+    PassoPausa,
+    PassoTeclas,
+    PassoTexto,
+    _escape_literal,
+    construir_designacao,
+    construir_plano,
+    descrever_plano,
+)
+
+
+def test_construir_designacao_com_ref():
+    assert construir_designacao("2510008") == "Obra: 2510008"
+
+
+def test_construir_designacao_sem_ref():
+    assert construir_designacao("") == "Obra:"
+    assert construir_designacao(None) == "Obra:"
+    assert construir_designacao("  ") == "Obra:"
+
+
+def _textos(plano):
+    return [p.texto for p in plano if isinstance(p, PassoTexto)]
+
+
+def _teclas(plano):
+    return [p.keys for p in plano if isinstance(p, PassoTeclas)]
+
+
+def test_plano_comeca_com_nova_proposta():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    assert isinstance(plano[0], PassoTeclas)
+    assert plano[0].keys == TECLA_NOVA_PROPOSTA
+
+
+def test_plano_escreve_cliente_ref_e_designacao_por_ordem():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    assert _textos(plano) == ["035", "2510008", "Obra: 2510008"]
+
+
+def test_plano_confirma_cliente_com_enter():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    assert "{ENTER}" in _teclas(plano)
+
+
+def test_plano_usa_contagem_de_tabs_configurada():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    teclas = _teclas(plano)
+    assert f"{{TAB {TABS_CLIENTE_ATE_REF}}}" in teclas
+    assert f"{{TAB {TABS_REF_ATE_DESIGNACAO}}}" in teclas
+
+
+def test_plano_sem_ref_nao_escreve_ref_mas_mantem_tabs():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="", designacao="Obra:"
+    )
+    assert _textos(plano) == ["035", "Obra:"]
+    teclas = _teclas(plano)
+    assert f"{{TAB {TABS_REF_ATE_DESIGNACAO}}}" in teclas
+
+
+def test_plano_exige_numero_cliente():
+    with pytest.raises(ValueError):
+        construir_plano(num_cliente_phc="  ", ref_cliente="x", designacao="Obra:")
+
+
+def test_plano_tem_pausa_apos_nova_proposta():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    # O passo logo a seguir ao ALT+N é uma pausa.
+    assert isinstance(plano[1], PassoPausa)
+
+
+def test_escape_literal_protege_caracteres_especiais():
+    assert _escape_literal("a+b(c)") == "a{+}b{(}c{)}"
+    assert _escape_literal("Obra: 2510008") == "Obra: 2510008"
+
+
+def test_descrever_plano_menciona_textos():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    descricao = descrever_plano(plano)
+    assert "035" in descricao
+    assert "Obra: 2510008" in descricao
