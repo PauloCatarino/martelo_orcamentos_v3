@@ -101,6 +101,64 @@ def build_query_propostas_do_ano(
     )
 
 
+def build_query_linhas_proposta(*, ano: int, numero: int) -> str:
+    """Consulta das linhas (artigos) de uma proposta — tabela ``BI``."""
+    return (
+        "SELECT BI.LORDEM AS Ordem, LTRIM(RTRIM(BI.DESIGN)) AS Designacao "
+        "FROM BI WITH (NOLOCK) "
+        "INNER JOIN BO WITH (NOLOCK) ON BO.BOSTAMP = BI.BOSTAMP "
+        f"WHERE BO.NDOS = {NDOS_PROPOSTA} AND BO.OBRANO = {int(numero)} "
+        f"AND YEAR(BO.DATAOBRA) = {int(ano)} "
+        "ORDER BY BI.LORDEM"
+    )
+
+
+def verificar_proposta_gravada(
+    proposta: PropostaPhc,
+    designacoes: list[str],
+    *,
+    ref_cliente: str | None,
+    designacao: str | None,
+) -> list[str]:
+    """Confirmar que a proposta ficou no PHC como era pretendido.
+
+    Rede de segurança para PCs com a grelha configurada de outra forma: o
+    número de TABs pode cair num campo diferente e escrever no lugar errado
+    sem dar erro. Como os campos do PHC são cegos ao Windows, esta é a única
+    forma de detetar isso — comparando o que ficou gravado.
+
+    Devolve a lista de avisos (vazia = tudo conforme).
+    """
+    avisos: list[str] = []
+
+    esperado_ref = (ref_cliente or "").strip()
+    if esperado_ref:
+        gravado_ref = (proposta.ref_cliente or "").strip()
+        if gravado_ref.casefold() != esperado_ref.casefold():
+            avisos.append(
+                f"A Ref. Cliente no PHC ficou {gravado_ref or '(vazia)'!r} "
+                f"em vez de {esperado_ref!r}."
+            )
+
+    esperada_designacao = (designacao or "").strip()
+    if esperada_designacao:
+        encontradas = [(d or "").strip() for d in designacoes if (d or "").strip()]
+        if not encontradas:
+            avisos.append(
+                f"A proposta não tem nenhuma linha com a designação "
+                f"{esperada_designacao!r}."
+            )
+        elif not any(
+            d.casefold() == esperada_designacao.casefold() for d in encontradas
+        ):
+            avisos.append(
+                f"A designação no PHC ficou {encontradas[0]!r} em vez de "
+                f"{esperada_designacao!r}."
+            )
+
+    return avisos
+
+
 def _linhas_para_propostas(linhas) -> list[PropostaPhc]:
     """Converter as linhas cruas do SELECT em ``PropostaPhc``."""
     propostas: list[PropostaPhc] = []
@@ -192,6 +250,19 @@ def listar_propostas_do_ano(
     assert_select_only(query)
     conn_str = build_connection_string(load_phc_config(session))
     return _linhas_para_propostas(run_select(conn_str, query))
+
+
+def ler_designacoes_proposta(session: Session, *, ano: int, numero: int) -> list[str]:
+    """Designações das linhas de uma proposta (SÓ-LEITURA)."""
+    query = build_query_linhas_proposta(ano=ano, numero=numero)
+    assert_select_only(query)
+    conn_str = build_connection_string(load_phc_config(session))
+    linhas = run_select(conn_str, query)
+    return [
+        texto
+        for texto in ((_texto(linha.get("Designacao")) or "") for linha in linhas or [])
+        if texto
+    ]
 
 
 def localizar_proposta_criada(

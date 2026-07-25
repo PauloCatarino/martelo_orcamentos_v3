@@ -34,8 +34,10 @@ from app.services.phc_automation_service import (
     formatar_num_cliente_phc,
 )
 from app.services.phc_propostas_service import (
+    ler_designacoes_proposta,
     ler_max_obrano,
     localizar_proposta_criada,
+    verificar_proposta_gravada,
 )
 
 
@@ -249,7 +251,10 @@ class CriarPropostaPhcDialog(QDialog):
             )
 
         if proposta is not None:
-            self._mostrar_proposta_encontrada(proposta, num_cliente_fmt)
+            avisos = self._verificar_no_phc(
+                proposta, ref_cliente=ref_cliente, designacao=designacao
+            )
+            self._mostrar_proposta_encontrada(proposta, num_cliente_fmt, avisos)
             return
 
         # Sem leitura automática: confirmar à mão (não inventar o número).
@@ -297,21 +302,60 @@ class CriarPropostaPhcDialog(QDialog):
         except Exception:  # noqa: BLE001 - cai no modo manual
             return None
 
-    def _mostrar_proposta_encontrada(self, proposta, num_cliente_fmt: str) -> None:
+    def _verificar_no_phc(
+        self, proposta, *, ref_cliente: str | None, designacao: str | None
+    ) -> list[str] | None:
+        """Confirmar o que ficou gravado. ``None`` = não deu para verificar."""
+        try:
+            with SessionLocal() as session:
+                designacoes = ler_designacoes_proposta(
+                    session, ano=proposta.ano, numero=proposta.numero
+                )
+        except Exception:  # noqa: BLE001 - a verificação é uma rede de segurança
+            return None
+
+        return verificar_proposta_gravada(
+            proposta,
+            designacoes,
+            ref_cliente=ref_cliente,
+            designacao=designacao,
+        )
+
+    def _mostrar_proposta_encontrada(
+        self, proposta, num_cliente_fmt: str, avisos: list[str] | None
+    ) -> None:
         """Mostrar o número lido do PHC e o código que ficaria no V3."""
         codigo_v3 = f"{proposta.ano % 100:02d}{proposta.numero:04d}"
-        QMessageBox.information(
-            self,
-            "Proposta criada no PHC",
-            (
-                f"Proposta PHC nº {proposta.numero} ({proposta.ano}) criada "
-                f"para o cliente {num_cliente_fmt}.\n\n"
-                f"  Ref. cliente no PHC: {proposta.ref_cliente or '(vazio)'}\n"
-                f"  Data:                {proposta.data or '—'}\n\n"
-                f"No V3 este orçamento ficaria com o nº {codigo_v3}.\n\n"
-                "Nesta fase de teste o número ainda não é gravado no V3."
-            ),
+        corpo = (
+            f"Proposta PHC nº {proposta.numero} ({proposta.ano}) criada "
+            f"para o cliente {num_cliente_fmt}.\n\n"
+            f"  Ref. cliente no PHC: {proposta.ref_cliente or '(vazio)'}\n"
+            f"  Data:                {proposta.data or '—'}\n\n"
+            f"No V3 este orçamento ficaria com o nº {codigo_v3}.\n\n"
+            "Nesta fase de teste o número ainda não é gravado no V3."
         )
+
+        if avisos:
+            QMessageBox.warning(
+                self,
+                "Proposta criada — mas com diferenças",
+                (
+                    "A proposta foi criada, mas o que ficou gravado no PHC não "
+                    "é exatamente o esperado:\n\n"
+                    + "\n".join(f"  • {aviso}" for aviso in avisos)
+                    + "\n\nIsto costuma significar que a grelha do PHC neste "
+                    "computador tem as colunas noutra ordem, e os TABs caíram "
+                    "no campo errado. Confirma a proposta no PHC.\n\n" + corpo
+                ),
+            )
+            return
+
+        if avisos is None:
+            corpo += "\n\n(Não foi possível verificar os campos por SQL.)"
+        else:
+            corpo += "\n\n✅ Ref. cliente e designação verificadas no PHC."
+
+        QMessageBox.information(self, "Proposta criada no PHC", corpo)
 
     def _diagnostico(self) -> None:
         try:
