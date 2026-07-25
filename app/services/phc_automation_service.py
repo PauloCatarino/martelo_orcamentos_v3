@@ -58,7 +58,7 @@ RITMO_TEXTO = 0.08
 
 # Teclas (sintaxe do pywinauto.keyboard.send_keys).
 TECLA_NOVA_PROPOSTA = "%n"  # ALT+N
-TECLA_GRAVAR = "^g"  # CTRL+G — atalho normal de gravar no PHC
+TECLA_GRAVAR = "%g"  # ALT+G — atalho de gravar no PHC
 GRAVAR_BOTAO_TITULO = "Gravar"
 
 # Caracteres que o send_keys interpreta como comandos e têm de ser "escapados"
@@ -405,7 +405,7 @@ class PhcAutomationService:
                 )
 
     def _gravar(self, janela) -> None:
-        """Gravar a proposta com CTRL+G (atalho normal do PHC)."""
+        """Gravar a proposta com ALT+G (atalho de gravar do PHC)."""
         import time
 
         from pywinauto import keyboard

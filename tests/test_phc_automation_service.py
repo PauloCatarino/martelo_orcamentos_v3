@@ -141,10 +141,10 @@ def test_plano_pausa_antes_de_gravar_no_fim():
     assert isinstance(plano[-1], PassoPausa)
 
 
-def test_gravar_usa_ctrl_g():
+def test_gravar_usa_alt_g():
     from app.services.phc_automation_service import TECLA_GRAVAR
 
-    assert TECLA_GRAVAR == "^g"
+    assert TECLA_GRAVAR == "%g"
 
 
 def test_descrever_plano_menciona_textos():
