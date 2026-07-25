@@ -19,7 +19,30 @@ from app.services.phc_automation_service import (
     construir_designacao,
     construir_plano,
     descrever_plano,
+    formatar_num_cliente_phc,
 )
+
+
+def test_formatar_num_cliente_phc_preenche_ate_3_digitos():
+    assert formatar_num_cliente_phc("35") == "035"
+    assert formatar_num_cliente_phc("7") == "007"
+    assert formatar_num_cliente_phc("035") == "035"
+    assert formatar_num_cliente_phc("1234") == "1234"
+
+
+def test_formatar_num_cliente_phc_ignora_nao_numericos_e_vazios():
+    assert formatar_num_cliente_phc("") == ""
+    assert formatar_num_cliente_phc(None) == ""
+    assert formatar_num_cliente_phc(" 35 ") == "035"
+    assert formatar_num_cliente_phc("AB12") == "AB12"
+
+
+def test_plano_escreve_num_cliente_com_3_digitos():
+    plano = construir_plano(
+        num_cliente_phc="35", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    textos = [p.texto for p in plano if isinstance(p, PassoTexto)]
+    assert textos[0] == "035"
 
 
 def test_construir_designacao_com_ref():

@@ -36,6 +36,10 @@ PHC_WINDOW_TITLE_RE = r".*Dossiers Internos.*"
 TABS_CLIENTE_ATE_REF = 2
 TABS_REF_ATE_DESIGNACAO = 8
 
+# O PHC usa o número de cliente com no mínimo 3 dígitos (ex.: 35 -> 035).
+# Números maiores mantêm-se (ex.: 1234 -> 1234).
+LARGURA_MIN_NUM_CLIENTE = 3
+
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
 PAUSA_CURTA = 0.4
 PAUSA_APOS_NOVA_PROPOSTA = 1.2
@@ -100,6 +104,17 @@ def construir_designacao(ref_cliente: str | None) -> str:
     return f"Obra: {ref}" if ref else "Obra:"
 
 
+def formatar_num_cliente_phc(num_cliente_phc: str | None) -> str:
+    """Formatar o nº de cliente para o PHC (mínimo 3 dígitos: 35 -> 035).
+
+    Números não puramente numéricos são devolvidos tal como estão.
+    """
+    valor = (num_cliente_phc or "").strip()
+    if valor.isdigit():
+        return valor.zfill(LARGURA_MIN_NUM_CLIENTE)
+    return valor
+
+
 def _tabs(quantidade: int, descricao: str) -> PassoTeclas:
     """Passo com N TABs (usa a sintaxe ``{TAB N}`` do send_keys)."""
     return PassoTeclas("{TAB " + str(quantidade) + "}", descricao)
@@ -116,7 +131,7 @@ def construir_plano(
     Reproduz os passos manuais: ALT+N, nº cliente + ENTER, TAB x2, ref.
     cliente, TAB x8, designação. O ``Gravar`` é tratado à parte pelo executor.
     """
-    num_cliente = (num_cliente_phc or "").strip()
+    num_cliente = formatar_num_cliente_phc(num_cliente_phc)
     if not num_cliente:
         raise ValueError("Falta o número de cliente PHC.")
 

@@ -26,6 +26,7 @@ from app.services.phc_automation_service import (
     construir_designacao,
     construir_plano,
     descrever_plano,
+    formatar_num_cliente_phc,
 )
 
 
@@ -126,7 +127,11 @@ class CriarPropostaPhcDialog(QDialog):
         cliente = dialog.selected_cliente
         self._cliente_id = cliente.id
         self._num_cliente_phc = (cliente.num_cliente_phc or "").strip() or None
-        num = self._num_cliente_phc or "sem nº PHC"
+        num = (
+            formatar_num_cliente_phc(self._num_cliente_phc)
+            if self._num_cliente_phc
+            else "sem nº PHC"
+        )
         self.cliente_label.setText(f"{cliente.nome}  (PHC {num})")
         self.error_label.setText("")
 
@@ -154,6 +159,7 @@ class CriarPropostaPhcDialog(QDialog):
         designacao = self.designacao_input.text().strip() or construir_designacao(
             ref_cliente
         )
+        num_cliente_fmt = formatar_num_cliente_phc(self._num_cliente_phc)
 
         try:
             plano = construir_plano(
@@ -170,7 +176,7 @@ class CriarPropostaPhcDialog(QDialog):
             "Confirmar criação no PHC",
             (
                 "Vou conduzir a janela do PHC e criar esta proposta:\n\n"
-                f"  Nº cliente PHC: {self._num_cliente_phc}\n"
+                f"  Nº cliente PHC: {num_cliente_fmt}\n"
                 f"  Ref. cliente:   {ref_cliente or '(vazio)'}\n"
                 f"  Designação:     {designacao}\n\n"
                 "Durante o processo NÃO mexas no rato nem no teclado.\n\n"
@@ -218,7 +224,7 @@ class CriarPropostaPhcDialog(QDialog):
             "Proposta criada",
             (
                 f"Proposta PHC nº {numero.strip() or '(por confirmar)'} criada "
-                f"para o cliente {self._num_cliente_phc}.\n\n"
+                f"para o cliente {num_cliente_fmt}.\n\n"
                 "Nesta fase de teste o número ainda não é gravado no V3.\n\n"
                 f"Diagnóstico gravado em:\n{resultado.log_path}"
             ),
