@@ -23,7 +23,9 @@ teclas) são fáceis de afinar sem mexer na lógica.
 
 from __future__ import annotations
 
+import contextlib
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -68,6 +70,25 @@ _CARACTERES_ESPECIAIS = set("^+%~(){}[]")
 
 class PhcAutomationError(RuntimeError):
     """Erro de automação do PHC com mensagem já pronta para o utilizador."""
+
+
+@contextlib.contextmanager
+def _sem_avisos_pywinauto():
+    """Silenciar os avisos do pywinauto durante a automação.
+
+    O pywinauto emite dois avisos que enchem o terminal e não são acionáveis:
+
+    * "Revert to STA COM threading mode" — ajuste interno de COM, inofensivo;
+    * "32-bit application should be automated using 32-bit Python" — o PHC é
+      uma aplicação de 32 bits (Visual FoxPro) e o Martelo corre em Python de
+      64 bits. Não é acionável (o resto da aplicação precisa de 64 bits) e na
+      prática a automação por teclado funciona. O que poderia sofrer é a
+      LEITURA de controlos da janela — e essa não é usada para nada
+      importante: o número da proposta vem do SQL e é verificado lá.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="pywinauto.*")
+        yield
 
 
 # --- Passos do plano (puros) ----------------------------------------------
@@ -203,9 +224,15 @@ class PhcAutomationService:
         main_window_title_re: str = PHC_MAIN_WINDOW_TITLE_RE,
         child_window_title_re: str = PHC_WINDOW_TITLE_RE,
         log_path: str | Path | None = None,
+        diagnostico: bool = False,
     ) -> None:
         self.main_window_title_re = main_window_title_re
         self.child_window_title_re = child_window_title_re
+        # Recolher a árvore de controlos em cada criação só serve para
+        # depurar: o número da proposta vem do SQL, não do ecrã. É trabalho
+        # caro e é a parte mais afetada por controlar uma aplicação de 32 bits
+        # a partir de Python de 64 bits, por isso está desligado por omissão.
+        self.diagnostico = diagnostico
         self.log_path = Path(
             log_path or Path.home() / "martelo_phc_diagnostico.txt"
         )
@@ -226,17 +253,21 @@ class PhcAutomationService:
             designacao=designacao,
         )
 
-        janela = self._conectar_janela()
-        self._focar(janela)
-        self._executar_plano(plano)
+        with _sem_avisos_pywinauto():
+            janela = self._conectar_janela()
+            self._focar(janela)
+            self._executar_plano(plano)
 
-        # O número da proposta já está visível ANTES de gravar — é o melhor
-        # momento para o diagnóstico (a seguir a gravar o ecrã pode limpar).
-        antes = self._recolher_diagnostico_seguro(janela, "ANTES DE GRAVAR")
+            if not self.diagnostico:
+                self._gravar(janela)
+                return PhcPropostaResultado(numero=None, plano=plano)
 
-        self._gravar(janela)
+            # Modo diagnóstico: recolher a árvore de controlos antes e depois
+            # de gravar (o ecrã pode limpar a seguir a gravar).
+            antes = self._recolher_diagnostico_seguro(janela, "ANTES DE GRAVAR")
+            self._gravar(janela)
+            depois = self._recolher_diagnostico_seguro(janela, "DEPOIS DE GRAVAR")
 
-        depois = self._recolher_diagnostico_seguro(janela, "DEPOIS DE GRAVAR")
         try:
             self.log_path.write_text(f"{antes}\n\n{depois}\n", encoding="utf-8")
         except OSError:  # pragma: no cover - log é auxiliar
@@ -262,8 +293,9 @@ class PhcAutomationService:
         Ajuda a identificar o campo do número da proposta para automatizar a
         leitura. Só lê, não escreve nada no PHC. Devolve o caminho do log.
         """
-        janela = self._conectar_janela()
-        texto = self._recolher_diagnostico(janela)
+        with _sem_avisos_pywinauto():
+            janela = self._conectar_janela()
+            texto = self._recolher_diagnostico(janela)
         self.log_path.write_text(texto, encoding="utf-8")
         return str(self.log_path)
 

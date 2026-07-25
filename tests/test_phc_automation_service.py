@@ -154,3 +154,45 @@ def test_descrever_plano_menciona_textos():
     descricao = descrever_plano(plano)
     assert "035" in descricao
     assert "Obra: 2510008" in descricao
+
+
+# -- Diagnóstico e avisos do pywinauto -------------------------------------
+
+
+def test_diagnostico_desligado_por_omissao():
+    """Ler a árvore de controlos só serve para depurar — o nº vem do SQL."""
+    from app.services.phc_automation_service import PhcAutomationService
+
+    assert PhcAutomationService().diagnostico is False
+    assert PhcAutomationService(diagnostico=True).diagnostico is True
+
+
+def test_sem_avisos_pywinauto_silencia_userwarning():
+    import warnings as _w
+
+    from app.services.phc_automation_service import _sem_avisos_pywinauto
+
+    with _w.catch_warnings(record=True) as capturados:
+        _w.simplefilter("always")
+        with _sem_avisos_pywinauto():
+            _w.warn_explicit(
+                "32-bit application should be automated using 32-bit Python",
+                UserWarning,
+                "pywinauto/application.py",
+                1085,
+                module="pywinauto.application",
+            )
+    assert capturados == []
+
+
+def test_sem_avisos_pywinauto_nao_engole_outros_avisos():
+    """Só os do pywinauto são silenciados; o resto continua visível."""
+    import warnings as _w
+
+    from app.services.phc_automation_service import _sem_avisos_pywinauto
+
+    with _w.catch_warnings(record=True) as capturados:
+        _w.simplefilter("always")
+        with _sem_avisos_pywinauto():
+            _w.warn("aviso da nossa aplicação", UserWarning)
+    assert len(capturados) == 1
