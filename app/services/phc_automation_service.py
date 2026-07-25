@@ -48,9 +48,9 @@ LARGURA_MIN_NUM_CLIENTE = 4
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
 # Deliberadamente lentas: o PHC valida cliente/ref e move o cursor entre
 # colunas da grelha, e é preciso dar-lhe tempo para acompanhar.
-PAUSA_CURTA = 1.0
+PAUSA_CURTA = 1.5
 PAUSA_APOS_NOVA_PROPOSTA = 2.5
-PAUSA_APOS_TABS = 0.8
+PAUSA_APOS_TABS = 1.5
 PAUSA_ANTES_GRAVAR = 1.0
 PAUSA_APOS_GRAVAR = 2.5
 
@@ -212,6 +212,14 @@ def construir_plano(
 
     if ref:
         plano.append(PassoTexto(ref, "Ref. cliente"))
+        plano.append(PassoPausa(PAUSA_CURTA))
+    else:
+        # Sem ref. cliente, saltar o campo desalinhava os TABs seguintes.
+        # Escrever um dígito e apagá-lo "toca" no campo — fica vazio na mesma
+        # e a navegação comporta-se exatamente como no caso com ref.
+        plano.append(PassoTexto("0", "Tocar no campo Ref. cliente (fica vazio)"))
+        plano.append(PassoPausa(PAUSA_CURTA))
+        plano.append(PassoTeclas("{BACKSPACE}", "Apagar o dígito"))
         plano.append(PassoPausa(PAUSA_CURTA))
 
     plano.append(_tabs(TABS_REF_ATE_DESIGNACAO, "Ir até Designação"))

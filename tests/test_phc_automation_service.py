@@ -103,13 +103,47 @@ def test_plano_usa_contagem_de_tabs_configurada():
     assert f"{{TAB {TABS_REF_ATE_DESIGNACAO}}}" in teclas
 
 
-def test_plano_sem_ref_nao_escreve_ref_mas_mantem_tabs():
+def test_plano_sem_ref_toca_no_campo_e_apaga():
+    """Saltar o campo desalinhava os TABs: escreve 0 e apaga-o."""
     plano = construir_plano(
         num_cliente_phc="035", ref_cliente="", designacao="Obra:"
     )
-    assert _textos(plano) == ["0035", "Obra:"]
+    assert _textos(plano) == ["0035", "0", "Obra:"]
     teclas = _teclas(plano)
+    assert "{BACKSPACE}" in teclas
     assert f"{{TAB {TABS_REF_ATE_DESIGNACAO}}}" in teclas
+
+
+def test_plano_sem_ref_tem_a_mesma_navegacao_do_plano_com_ref():
+    """A sequência de teclas de navegação tem de ser idêntica nos dois casos."""
+    com_ref = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    sem_ref = construir_plano(
+        num_cliente_phc="035", ref_cliente="", designacao="Obra:"
+    )
+    navegacao = lambda plano: [  # noqa: E731
+        p.keys for p in plano if isinstance(p, PassoTeclas) and "TAB" in p.keys
+    ]
+    assert navegacao(com_ref) == navegacao(sem_ref)
+
+
+def test_plano_sem_ref_apaga_depois_de_escrever():
+    """O BACKSPACE vem a seguir ao 0 — o campo tem de ficar vazio."""
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente=None, designacao="Obra:"
+    )
+    indice_zero = next(
+        i
+        for i, p in enumerate(plano)
+        if isinstance(p, PassoTexto) and p.texto == "0"
+    )
+    seguintes = [
+        p.keys
+        for p in plano[indice_zero:]
+        if isinstance(p, PassoTeclas)
+    ]
+    assert seguintes[0] == "{BACKSPACE}"
 
 
 def test_plano_exige_numero_cliente():
