@@ -98,8 +98,8 @@ def test_descrever_sucesso_mostra_numero_codigo_e_verificacao():
     assert "806" in texto
     assert "260806" in texto
     assert "verificadas" in texto
-    # O nº de cliente aparece no formato do PHC (3 dígitos).
-    assert "035" in texto
+    # O nº de cliente aparece no formato do PHC (4 dígitos).
+    assert "0035" in texto
 
 
 def test_descrever_com_avisos_nao_diz_que_esta_verificado():

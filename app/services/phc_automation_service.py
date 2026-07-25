@@ -41,9 +41,9 @@ PHC_WINDOW_TITLE_RE = r".*Dossiers Internos.*"
 TABS_CLIENTE_ATE_REF = 2
 TABS_REF_ATE_DESIGNACAO = 8
 
-# O PHC usa o número de cliente com no mínimo 3 dígitos (ex.: 35 -> 035).
-# Números maiores mantêm-se (ex.: 1234 -> 1234).
-LARGURA_MIN_NUM_CLIENTE = 3
+# O PHC usa o número de cliente com 4 dígitos (ex.: 35 -> 0035, 3 -> 0003).
+# Números com 4 ou mais dígitos mantêm-se (ex.: 1234 -> 1234).
+LARGURA_MIN_NUM_CLIENTE = 4
 
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
 # Deliberadamente lentas: o PHC valida cliente/ref e move o cursor entre
@@ -137,7 +137,7 @@ def construir_designacao(ref_cliente: str | None) -> str:
 
 
 def formatar_num_cliente_phc(num_cliente_phc: str | None) -> str:
-    """Formatar o nº de cliente para o PHC (mínimo 3 dígitos: 35 -> 035).
+    """Formatar o nº de cliente para o PHC (4 dígitos: 35 -> 0035, 3 -> 0003).
 
     Números não puramente numéricos são devolvidos tal como estão.
     """

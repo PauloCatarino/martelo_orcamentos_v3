@@ -52,10 +52,10 @@ def test_query_propostas_filtra_sempre_por_ano():
 
 def test_query_propostas_com_obrano_minimo_e_cliente():
     query = build_query_propostas_do_ano(
-        ano=2026, obrano_minimo=805, num_cliente="035"
+        ano=2026, obrano_minimo=805, num_cliente="0035"
     )
     assert "BO.OBRANO > 805" in query
-    # O nº de cliente entra como inteiro (035 -> 35), como está no PHC.
+    # O nº de cliente entra como inteiro (0035 -> 35), como está no PHC.
     assert "BO.NO = 35" in query
 
 
@@ -160,9 +160,9 @@ def test_escolher_ignora_maiusculas_na_ref():
 
 
 def test_escolher_aceita_cliente_com_zeros_a_esquerda():
-    """O V3 formata 035; o PHC guarda 35 — têm de casar."""
+    """O V3 formata 0035; o PHC guarda 35 — têm de casar."""
     candidatas = [_proposta(807, num_cliente="63"), _proposta(806, num_cliente="35")]
-    escolhida = escolher_proposta_criada(candidatas, num_cliente="035")
+    escolhida = escolher_proposta_criada(candidatas, num_cliente="0035")
     assert escolhida.numero == 806
 
 
@@ -278,7 +278,7 @@ def _linha(numero, ndos, tipo, num_cliente="35", ref=""):
 
 def test_detetar_tipo_errado_encontra_encomenda_do_mesmo_cliente():
     linhas = [_linha(1330, 1, "Encomenda de Cliente", num_cliente="35")]
-    achado = detetar_tipo_errado(linhas, num_cliente="035")
+    achado = detetar_tipo_errado(linhas, num_cliente="0035")
     assert achado == "Encomenda de Cliente nº 1330"
 
 

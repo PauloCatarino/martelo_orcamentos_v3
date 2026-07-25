@@ -23,26 +23,32 @@ from app.services.phc_automation_service import (
 )
 
 
-def test_formatar_num_cliente_phc_preenche_ate_3_digitos():
-    assert formatar_num_cliente_phc("35") == "035"
-    assert formatar_num_cliente_phc("7") == "007"
-    assert formatar_num_cliente_phc("035") == "035"
+def test_formatar_num_cliente_phc_preenche_ate_4_digitos():
+    assert formatar_num_cliente_phc("35") == "0035"
+    assert formatar_num_cliente_phc("3") == "0003"
+    assert formatar_num_cliente_phc("7") == "0007"
+    assert formatar_num_cliente_phc("035") == "0035"
+    assert formatar_num_cliente_phc("0035") == "0035"
+
+
+def test_formatar_num_cliente_phc_nao_corta_numeros_grandes():
     assert formatar_num_cliente_phc("1234") == "1234"
+    assert formatar_num_cliente_phc("12345") == "12345"
 
 
 def test_formatar_num_cliente_phc_ignora_nao_numericos_e_vazios():
     assert formatar_num_cliente_phc("") == ""
     assert formatar_num_cliente_phc(None) == ""
-    assert formatar_num_cliente_phc(" 35 ") == "035"
+    assert formatar_num_cliente_phc(" 35 ") == "0035"
     assert formatar_num_cliente_phc("AB12") == "AB12"
 
 
-def test_plano_escreve_num_cliente_com_3_digitos():
+def test_plano_escreve_num_cliente_com_4_digitos():
     plano = construir_plano(
         num_cliente_phc="35", ref_cliente="2510008", designacao="Obra: 2510008"
     )
     textos = [p.texto for p in plano if isinstance(p, PassoTexto)]
-    assert textos[0] == "035"
+    assert textos[0] == "0035"
 
 
 def test_construir_designacao_com_ref():
@@ -75,7 +81,7 @@ def test_plano_escreve_cliente_ref_e_designacao_por_ordem():
     plano = construir_plano(
         num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
     )
-    assert _textos(plano) == ["035", "2510008", "Obra: 2510008"]
+    assert _textos(plano) == ["0035", "2510008", "Obra: 2510008"]
 
 
 def test_plano_confirma_cliente_com_enter():
@@ -98,7 +104,7 @@ def test_plano_sem_ref_nao_escreve_ref_mas_mantem_tabs():
     plano = construir_plano(
         num_cliente_phc="035", ref_cliente="", designacao="Obra:"
     )
-    assert _textos(plano) == ["035", "Obra:"]
+    assert _textos(plano) == ["0035", "Obra:"]
     teclas = _teclas(plano)
     assert f"{{TAB {TABS_REF_ATE_DESIGNACAO}}}" in teclas
 
@@ -152,7 +158,7 @@ def test_descrever_plano_menciona_textos():
         num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
     )
     descricao = descrever_plano(plano)
-    assert "035" in descricao
+    assert "0035" in descricao
     assert "Obra: 2510008" in descricao
 
 
