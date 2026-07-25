@@ -121,6 +121,32 @@ def test_escape_literal_protege_caracteres_especiais():
     assert _escape_literal("Obra: 2510008") == "Obra: 2510008"
 
 
+def test_plano_pausa_depois_de_cada_escrita_e_tabs():
+    """Cada escrita/TAB é seguida de pausa — o PHC precisa de acompanhar."""
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    for indice, passo in enumerate(plano[:-1]):
+        if isinstance(passo, (PassoTexto, PassoTeclas)):
+            seguinte = plano[indice + 1]
+            assert isinstance(seguinte, PassoPausa), (
+                f"passo {indice} ({passo}) não é seguido de pausa"
+            )
+
+
+def test_plano_pausa_antes_de_gravar_no_fim():
+    plano = construir_plano(
+        num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"
+    )
+    assert isinstance(plano[-1], PassoPausa)
+
+
+def test_gravar_usa_ctrl_g():
+    from app.services.phc_automation_service import TECLA_GRAVAR
+
+    assert TECLA_GRAVAR == "^g"
+
+
 def test_descrever_plano_menciona_textos():
     plano = construir_plano(
         num_cliente_phc="035", ref_cliente="2510008", designacao="Obra: 2510008"

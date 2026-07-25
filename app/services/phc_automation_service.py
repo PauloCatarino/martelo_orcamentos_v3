@@ -44,13 +44,21 @@ TABS_REF_ATE_DESIGNACAO = 8
 LARGURA_MIN_NUM_CLIENTE = 3
 
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
-PAUSA_CURTA = 0.4
-PAUSA_APOS_NOVA_PROPOSTA = 1.2
-PAUSA_APOS_GRAVAR = 1.5
+# Deliberadamente lentas: o PHC valida cliente/ref e move o cursor entre
+# colunas da grelha, e é preciso dar-lhe tempo para acompanhar.
+PAUSA_CURTA = 1.0
+PAUSA_APOS_NOVA_PROPOSTA = 2.5
+PAUSA_APOS_TABS = 0.8
+PAUSA_ANTES_GRAVAR = 1.0
+PAUSA_APOS_GRAVAR = 2.5
+
+# Ritmo de escrita: pausa entre teclas (segundos).
+RITMO_TECLAS = 0.12
+RITMO_TEXTO = 0.08
 
 # Teclas (sintaxe do pywinauto.keyboard.send_keys).
 TECLA_NOVA_PROPOSTA = "%n"  # ALT+N
-TECLA_GRAVAR_FALLBACK = "%g"  # ALT+G, usado só se não encontrar o botão "Gravar"
+TECLA_GRAVAR = "^g"  # CTRL+G — atalho normal de gravar no PHC
 GRAVAR_BOTAO_TITULO = "Gravar"
 
 # Caracteres que o send_keys interpreta como comandos e têm de ser "escapados"
@@ -144,9 +152,11 @@ def construir_plano(
         PassoTeclas(TECLA_NOVA_PROPOSTA, "Nova proposta (ALT+N)"),
         PassoPausa(PAUSA_APOS_NOVA_PROPOSTA, "Esperar abertura da proposta"),
         PassoTexto(num_cliente, "Nº de cliente PHC"),
+        PassoPausa(PAUSA_CURTA, "Deixar o PHC validar o nº de cliente"),
         PassoTeclas("{ENTER}", "Confirmar cliente"),
-        PassoPausa(PAUSA_CURTA),
+        PassoPausa(PAUSA_CURTA, "Esperar o preenchimento do nome do cliente"),
         _tabs(TABS_CLIENTE_ATE_REF, "Ir até Ref. Cliente"),
+        PassoPausa(PAUSA_APOS_TABS),
     ]
 
     if ref:
@@ -154,8 +164,9 @@ def construir_plano(
         plano.append(PassoPausa(PAUSA_CURTA))
 
     plano.append(_tabs(TABS_REF_ATE_DESIGNACAO, "Ir até Designação"))
+    plano.append(PassoPausa(PAUSA_APOS_TABS, "Esperar a coluna Designação"))
     plano.append(PassoTexto(designacao, "Linha de designação"))
-    plano.append(PassoPausa(PAUSA_CURTA))
+    plano.append(PassoPausa(PAUSA_ANTES_GRAVAR, "Estabilizar antes de gravar"))
 
     return plano
 
@@ -218,40 +229,102 @@ class PhcAutomationService:
         janela = self._conectar_janela()
         self._focar(janela)
         self._executar_plano(plano)
+
+        # O número da proposta já está visível ANTES de gravar — é o melhor
+        # momento para o diagnóstico (a seguir a gravar o ecrã pode limpar).
+        antes = self._recolher_diagnostico_seguro(janela, "ANTES DE GRAVAR")
+
         self._gravar(janela)
-        numero = self._ler_numero_proposta(janela)
+
+        depois = self._recolher_diagnostico_seguro(janela, "DEPOIS DE GRAVAR")
+        try:
+            self.log_path.write_text(f"{antes}\n\n{depois}\n", encoding="utf-8")
+        except OSError:  # pragma: no cover - log é auxiliar
+            pass
 
         return PhcPropostaResultado(
-            numero=numero,
+            numero=None,
             plano=plano,
             log_path=str(self.log_path),
         )
 
-    def diagnosticar(self) -> str:
-        """Despejar a árvore de controlos da janela do PHC para o log.
+    def _recolher_diagnostico_seguro(self, janela, etiqueta: str) -> str:
+        """Recolher diagnóstico sem nunca deixar rebentar a automação."""
+        cabecalho = f"########## {etiqueta} ##########"
+        try:
+            return f"{cabecalho}\n{self._recolher_diagnostico(janela)}"
+        except Exception as exc:  # pragma: no cover - diagnóstico é auxiliar
+            return f"{cabecalho}\n(falhou: {exc})"
 
-        Substitui o script de diagnóstico: ajuda a identificar o campo do
-        número da proposta para melhorar a leitura automática. Só lê, não
-        escreve nada no PHC. Devolve o caminho do ficheiro de log.
+    def diagnosticar(self) -> str:
+        """Escrever para o log tudo o que se consegue ler da janela do PHC.
+
+        Ajuda a identificar o campo do número da proposta para automatizar a
+        leitura. Só lê, não escreve nada no PHC. Devolve o caminho do log.
         """
         janela = self._conectar_janela()
-        with open(self.log_path, "w", encoding="utf-8") as ficheiro:
-            try:
-                arvore = janela.dump_tree()  # type: ignore[attr-defined]
-                ficheiro.write(str(arvore or ""))
-            except Exception:  # pragma: no cover - depende do backend/janela
-                # Fallback: identificadores de controlos.
-                import io
-                import contextlib
-
-                buffer = io.StringIO()
-                with contextlib.redirect_stdout(buffer):
-                    try:
-                        janela.print_control_identifiers()
-                    except Exception as exc:  # pragma: no cover
-                        buffer.write(f"(sem identificadores: {exc})")
-                ficheiro.write(buffer.getvalue())
+        texto = self._recolher_diagnostico(janela)
+        self.log_path.write_text(texto, encoding="utf-8")
         return str(self.log_path)
+
+    def _recolher_diagnostico(self, janela) -> str:
+        """Texto de diagnóstico: janelas de topo + controlos e respetivos valores."""
+        import contextlib
+        import io
+
+        linhas: list[str] = ["=== JANELA LIGADA ==="]
+        try:
+            linhas.append(f"titulo: {janela.window_text()!r}")
+            linhas.append(f"class:  {janela.class_name()!r}")
+        except Exception as exc:  # pragma: no cover
+            linhas.append(f"(erro a ler a janela: {exc})")
+
+        # Identificadores de controlos: print_control_identifiers escreve para
+        # stdout e devolve None, por isso é preciso capturar o stdout.
+        linhas.append("\n=== IDENTIFICADORES DE CONTROLOS ===")
+        buffer = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffer):
+                janela.print_control_identifiers(depth=None)
+        except Exception as exc:  # pragma: no cover
+            buffer.write(f"(sem identificadores: {exc})\n")
+        linhas.append(buffer.getvalue() or "(vazio)")
+
+        # Texto de cada descendente — é aqui que deve aparecer o número (806).
+        linhas.append("\n=== TEXTO DOS CONTROLOS (procurar o nº da proposta) ===")
+        try:
+            for indice, filho in enumerate(janela.descendants()):
+                try:
+                    valor = (filho.window_text() or "").strip()
+                    classe = filho.class_name()
+                    auto_id = getattr(filho.element_info, "automation_id", "")
+                    ctrl_id = getattr(filho.element_info, "control_id", "")
+                except Exception:
+                    continue
+                if valor:
+                    linhas.append(
+                        f"[{indice}] class={classe!r} id={ctrl_id!r} "
+                        f"auto_id={auto_id!r} texto={valor!r}"
+                    )
+        except Exception as exc:  # pragma: no cover
+            linhas.append(f"(erro a percorrer controlos: {exc})")
+
+        # Janelas de topo, para ajustar os filtros de título se necessário.
+        linhas.append("\n=== JANELAS DE TOPO VISÍVEIS ===")
+        try:
+            from pywinauto import Desktop
+
+            for topo in Desktop(backend="win32").windows():
+                try:
+                    titulo = topo.window_text()
+                except Exception:
+                    continue
+                if titulo:
+                    linhas.append(f"- {titulo!r} ({topo.class_name()!r})")
+        except Exception as exc:  # pragma: no cover
+            linhas.append(f"(erro a listar janelas: {exc})")
+
+        return "\n".join(linhas)
 
     # -- Passos internos ---------------------------------------------------
 
@@ -323,41 +396,19 @@ class PhcAutomationService:
             if isinstance(passo, PassoPausa):
                 time.sleep(passo.segundos)
             elif isinstance(passo, PassoTeclas):
-                keyboard.send_keys(passo.keys, pause=0.05)
+                keyboard.send_keys(passo.keys, pause=RITMO_TECLAS)
             elif isinstance(passo, PassoTexto):
                 keyboard.send_keys(
                     _escape_literal(passo.texto),
                     with_spaces=True,
-                    pause=0.03,
+                    pause=RITMO_TEXTO,
                 )
 
     def _gravar(self, janela) -> None:
+        """Gravar a proposta com CTRL+G (atalho normal do PHC)."""
         import time
 
-        gravou = False
-        try:
-            botao = janela.child_window(title=GRAVAR_BOTAO_TITULO)
-            botao.click()
-            gravou = True
-        except Exception:
-            gravou = False
+        from pywinauto import keyboard
 
-        if not gravou:
-            from pywinauto import keyboard
-
-            keyboard.send_keys(TECLA_GRAVAR_FALLBACK, pause=0.05)
-
+        keyboard.send_keys(TECLA_GRAVAR, pause=RITMO_TECLAS)
         time.sleep(PAUSA_APOS_GRAVAR)
-
-    def _ler_numero_proposta(self, janela) -> str | None:
-        """Tentar ler o número da proposta atribuído pelo PHC.
-
-        Best-effort: despeja os controlos para o log (para afinarmos depois) e
-        devolve ``None`` se não conseguir identificar o número com confiança.
-        Nesta fase o número é confirmado pelo utilizador no diálogo.
-        """
-        try:
-            self.diagnosticar()
-        except Exception:  # pragma: no cover - diagnóstico é auxiliar
-            pass
-        return None
