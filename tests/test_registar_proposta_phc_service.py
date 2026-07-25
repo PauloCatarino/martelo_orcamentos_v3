@@ -138,7 +138,7 @@ def test_registar_adota_o_numero_lido_do_phc(monkeypatch):
     from app.services import registar_proposta_phc_service as servico
 
     monkeypatch.setattr(
-        servico, "ler_max_obrano_qualquer_tipo", lambda *a, **k: 805
+        servico, "ler_max_obrano", lambda *a, **k: 805
     )
     monkeypatch.setattr(
         servico, "localizar_proposta_criada", lambda *a, **k: _proposta()
@@ -165,12 +165,85 @@ def test_registar_adota_o_numero_lido_do_phc(monkeypatch):
     assert automacao.chamadas[0]["ref_cliente"] == "25100010"
 
 
+def test_marca_de_agua_e_so_de_propostas(monkeypatch):
+    """Regressão: cada tipo de dossier tem a sua própria série de OBRANO.
+
+    As Encomendas de Cliente vão em 1329 enquanto as Propostas vão em 805.
+    Se a marca de água fosse "de qualquer tipo", ficaria em 1329 e a proposta
+    806 nunca apareceria — foi exactamente este o bug.
+    """
+    from app.services import registar_proposta_phc_service as servico
+
+    vistos: dict[str, int] = {}
+
+    def _max_propostas(_session, *, ano):
+        vistos["ano"] = ano
+        return 805  # só propostas; NÃO 1329 (que é das encomendas)
+
+    monkeypatch.setattr(servico, "ler_max_obrano", _max_propostas)
+
+    bases: list[int] = []
+
+    def _localizar(_session, *, ano, obrano_base, num_cliente, ref_cliente):
+        bases.append(obrano_base)
+        return _proposta() if obrano_base < 806 else None
+
+    monkeypatch.setattr(servico, "localizar_proposta_criada", _localizar)
+    monkeypatch.setattr(
+        servico, "ler_designacoes_proposta", lambda *a, **k: ["Obra: 25100010"]
+    )
+
+    resultado = servico.registar_proposta_no_phc(
+        None,
+        ano=2026,
+        num_cliente_phc="35",
+        ref_cliente="25100010",
+        designacao="Obra: 25100010",
+        automation=_AutomacaoFalsa(),
+    )
+
+    assert bases == [805], "a marca de água tem de vir só das propostas"
+    assert resultado.numero_confirmado == 806
+    assert vistos["ano"] == 2026
+
+
+def test_deteta_tipo_errado_procura_por_data_nao_por_numero(monkeypatch):
+    """A busca do documento indevido é por data: séries são por tipo."""
+    from app.services import registar_proposta_phc_service as servico
+
+    monkeypatch.setattr(servico, "ler_max_obrano", lambda *a, **k: 805)
+    monkeypatch.setattr(servico, "localizar_proposta_criada", lambda *a, **k: None)
+
+    recebido: dict[str, object] = {}
+
+    def _procurar(_session, *, data_iso, num_cliente, ref_cliente):
+        recebido["data_iso"] = data_iso
+        recebido["ref"] = ref_cliente
+        return "Encomenda de Cliente nº 1330"
+
+    monkeypatch.setattr(servico, "procurar_dossier_tipo_errado", _procurar)
+
+    resultado = servico.registar_proposta_no_phc(
+        None,
+        ano=2026,
+        num_cliente_phc="35",
+        ref_cliente="25100010",
+        designacao="Obra: 25100010",
+        data_iso="20260725",
+        automation=_AutomacaoFalsa(),
+    )
+
+    assert recebido["data_iso"] == "20260725"
+    assert recebido["ref"] == "25100010"
+    assert resultado.tipo_errado == "Encomenda de Cliente nº 1330"
+
+
 def test_registar_deteta_documento_do_tipo_errado(monkeypatch):
     """Seletor do PHC noutro tipo: nenhuma proposta nova aparece."""
     from app.services import registar_proposta_phc_service as servico
 
     monkeypatch.setattr(
-        servico, "ler_max_obrano_qualquer_tipo", lambda *a, **k: 805
+        servico, "ler_max_obrano", lambda *a, **k: 805
     )
     monkeypatch.setattr(servico, "localizar_proposta_criada", lambda *a, **k: None)
     monkeypatch.setattr(
@@ -178,6 +251,7 @@ def test_registar_deteta_documento_do_tipo_errado(monkeypatch):
         "procurar_dossier_tipo_errado",
         lambda *a, **k: "Encomenda de Cliente nº 1330",
     )
+    monkeypatch.setattr(servico, "_hoje_iso", lambda: "20260725")
 
     resultado = servico.registar_proposta_no_phc(
         None,
@@ -199,7 +273,7 @@ def test_registar_sem_sql_nao_inventa_numero(monkeypatch):
     def _falha(*_a, **_k):
         raise RuntimeError("sem ligação")
 
-    monkeypatch.setattr(servico, "ler_max_obrano_qualquer_tipo", _falha)
+    monkeypatch.setattr(servico, "ler_max_obrano", _falha)
 
     automacao = _AutomacaoFalsa()
     resultado = servico.registar_proposta_no_phc(
@@ -222,7 +296,7 @@ def test_registar_propaga_avisos_de_campos_trocados(monkeypatch):
     from app.services import registar_proposta_phc_service as servico
 
     monkeypatch.setattr(
-        servico, "ler_max_obrano_qualquer_tipo", lambda *a, **k: 805
+        servico, "ler_max_obrano", lambda *a, **k: 805
     )
     monkeypatch.setattr(
         servico,

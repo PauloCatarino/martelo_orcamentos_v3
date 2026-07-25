@@ -6,13 +6,17 @@ itself needs the real PHC server, so it is not exercised here.
 
 from __future__ import annotations
 
+import pytest
+
 from app.services.phc_propostas_service import (
     NDOS_PROPOSTA,
     PropostaPhc,
     _linhas_para_propostas,
+    build_query_dossiers_do_dia,
     build_query_linhas_proposta,
     build_query_max_obrano,
     build_query_propostas_do_ano,
+    detetar_tipo_errado,
     escolher_proposta_criada,
     verificar_proposta_gravada,
 )
@@ -243,3 +247,59 @@ def test_verificar_sem_ref_esperada_nao_avisa_da_ref():
         proposta, ["Obra:"], ref_cliente=None, designacao="Obra:"
     )
     assert avisos == []
+
+
+# -- Deteção de documento com o tipo errado --------------------------------
+
+
+def test_query_dossiers_do_dia_filtra_por_data_nao_por_numero():
+    """As séries de OBRANO são por tipo — comparar números entre tipos erra."""
+    query = build_query_dossiers_do_dia(data_iso="20260725")
+    assert "BO.DATAOBRA >= '20260725'" in query
+    assert "BO.OBRANO >" not in query
+    # Sem filtro de NDOS: queremos ver dossiers de QUALQUER tipo.
+    assert "BO.NDOS =" not in query
+
+
+def test_query_dossiers_do_dia_recusa_data_invalida():
+    with pytest.raises(ValueError):
+        build_query_dossiers_do_dia(data_iso="2026")
+
+
+def _linha(numero, ndos, tipo, num_cliente="35", ref=""):
+    return {
+        "Numero": numero,
+        "Ndos": ndos,
+        "Tipo": tipo,
+        "Num_Cliente": num_cliente,
+        "Ref_Cliente": ref,
+    }
+
+
+def test_detetar_tipo_errado_encontra_encomenda_do_mesmo_cliente():
+    linhas = [_linha(1330, 1, "Encomenda de Cliente", num_cliente="35")]
+    achado = detetar_tipo_errado(linhas, num_cliente="035")
+    assert achado == "Encomenda de Cliente nº 1330"
+
+
+def test_detetar_tipo_errado_ignora_propostas():
+    """Uma proposta não é um erro — é o que se queria criar."""
+    linhas = [_linha(806, NDOS_PROPOSTA, "Proposta", num_cliente="35")]
+    assert detetar_tipo_errado(linhas, num_cliente="35") is None
+
+
+def test_detetar_tipo_errado_ignora_documentos_de_outros_clientes():
+    """Não acusar documentos que outra pessoa criou legitimamente."""
+    linhas = [_linha(1330, 1, "Encomenda de Cliente", num_cliente="99")]
+    assert detetar_tipo_errado(linhas, num_cliente="35") is None
+
+
+def test_detetar_tipo_errado_usa_a_ref_quando_o_cliente_difere():
+    linhas = [_linha(1330, 1, "Encomenda de Cliente", num_cliente="99", ref="R1")]
+    achado = detetar_tipo_errado(linhas, num_cliente="35", ref_cliente="R1")
+    assert achado == "Encomenda de Cliente nº 1330"
+
+
+def test_detetar_tipo_errado_sem_linhas():
+    assert detetar_tipo_errado([], num_cliente="35") is None
+    assert detetar_tipo_errado(None, num_cliente="35") is None

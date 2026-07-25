@@ -25,7 +25,7 @@ from app.services.phc_automation_service import (
 from app.services.phc_propostas_service import (
     PropostaPhc,
     ler_designacoes_proposta,
-    ler_max_obrano_qualquer_tipo,
+    ler_max_obrano,
     localizar_proposta_criada,
     procurar_dossier_tipo_errado,
     verificar_proposta_gravada,
@@ -59,6 +59,13 @@ class RegistoPropostaResultado:
         return self.proposta is None
 
 
+def _hoje_iso() -> str:
+    """Data de hoje em ``YYYYMMDD`` (formato aceite pelo SQL Server)."""
+    from datetime import date
+
+    return date.today().strftime("%Y%m%d")
+
+
 def formatar_codigo_v3(ano: int, numero: int) -> str:
     """Código do orçamento no V3 a partir do ano e do nº da proposta PHC.
 
@@ -87,6 +94,7 @@ def registar_proposta_no_phc(
     num_cliente_phc: str,
     ref_cliente: str | None,
     designacao: str,
+    data_iso: str | None = None,
     automation: PhcAutomationService | None = None,
 ) -> RegistoPropostaResultado:
     """Criar a proposta no PHC e confirmar o número atribuído.
@@ -96,12 +104,14 @@ def registar_proposta_no_phc(
     resultado com ``erro_leitura`` — a proposta existe e o número tem de ser
     confirmado por uma pessoa.
     """
-    # Marca de água ANTES: o maior nº de dossier do ano, de qualquer tipo, para
-    # também detetar um documento criado com o tipo errado.
+    # Marca de água ANTES: o maior nº de PROPOSTA do ano. Tem de ser só de
+    # propostas — cada tipo de dossier tem a sua própria série de OBRANO (as
+    # Encomendas de Cliente já vão em 1329 enquanto as Propostas vão em 805),
+    # por isso uma marca "de qualquer tipo" tornaria a proposta invisível.
     obrano_base: int | None = None
     erro_leitura: str | None = None
     try:
-        obrano_base = ler_max_obrano_qualquer_tipo(session, ano=ano)
+        obrano_base = ler_max_obrano(session, ano=ano)
     except Exception as exc:  # noqa: BLE001 - SQL/PowerShell/config do PHC
         erro_leitura = str(exc)
 
@@ -128,11 +138,11 @@ def registar_proposta_no_phc(
 
     if proposta is None:
         # Nenhuma proposta nova: o seletor do PHC podia estar noutro tipo.
+        # A busca é por DATA, não por número — as séries são por tipo.
         try:
             tipo_errado = procurar_dossier_tipo_errado(
                 session,
-                ano=ano,
-                obrano_base=obrano_base,
+                data_iso=data_iso or _hoje_iso(),
                 num_cliente=num_cliente_phc,
                 ref_cliente=ref_cliente,
             )

@@ -101,21 +101,31 @@ def build_query_propostas_do_ano(
     )
 
 
-def build_query_dossiers_recentes(*, ano: int, obrano_minimo: int) -> str:
-    """Consulta dos dossiers do ano acima de um número — de QUALQUER tipo.
+def build_query_dossiers_do_dia(*, data_iso: str) -> str:
+    """Consulta dos dossiers criados a partir de uma data — QUALQUER tipo.
 
     Serve para detetar que o seletor do PHC estava noutro tipo (ex.: "Encomenda
     de Cliente") e foi criado o documento errado. O tipo não é legível no ecrã
     (é desenhado dentro do OLE), por isso só se deteta depois de gravar.
+
+    Filtra por **data**, não por número: cada tipo de dossier tem a sua própria
+    série de ``OBRANO`` (as Encomendas de Cliente já vão em 1329 enquanto as
+    Propostas vão em 805), por isso comparar números entre tipos não faz
+    sentido nenhum.
+
+    ``data_iso`` no formato ``YYYYMMDD``.
     """
+    dia = "".join(c for c in str(data_iso) if c.isdigit())[:8]
+    if len(dia) != 8:
+        raise ValueError("data_iso tem de ser YYYYMMDD")
+
     return (
-        "SELECT TOP (20) BO.OBRANO AS Numero, BO.NDOS AS Ndos, "
+        "SELECT TOP (50) BO.OBRANO AS Numero, BO.NDOS AS Ndos, "
         "LTRIM(RTRIM(BO.NMDOS)) AS Tipo, BO.NO AS Num_Cliente, "
         "LTRIM(RTRIM(BO.U_ORCC)) AS Ref_Cliente "
         "FROM BO WITH (NOLOCK) "
-        f"WHERE YEAR(BO.DATAOBRA) = {int(ano)} "
-        f"AND BO.OBRANO > {int(obrano_minimo)} "
-        "ORDER BY BO.OBRANO DESC"
+        f"WHERE BO.DATAOBRA >= '{dia}' "
+        "ORDER BY BO.NDOS, BO.OBRANO DESC"
     )
 
 
@@ -307,30 +317,15 @@ def listar_propostas_do_ano(
     return _linhas_para_propostas(run_select(conn_str, query))
 
 
-def ler_max_obrano_qualquer_tipo(session: Session, *, ano: int) -> int:
-    """Maior nº de dossier do ano, de qualquer tipo (marca de água ampla)."""
-    query = (
-        "SELECT MAX(BO.OBRANO) AS Maximo FROM BO WITH (NOLOCK) "
-        f"WHERE YEAR(BO.DATAOBRA) = {int(ano)}"
-    )
-    assert_select_only(query)
-    conn_str = build_connection_string(load_phc_config(session))
-    linhas = run_select(conn_str, query)
-    if not linhas:
-        return 0
-    return _inteiro(linhas[0].get("Maximo")) or 0
-
-
 def procurar_dossier_tipo_errado(
     session: Session,
     *,
-    ano: int,
-    obrano_base: int,
+    data_iso: str,
     num_cliente: str | None = None,
     ref_cliente: str | None = None,
 ) -> str | None:
-    """Procurar um dossier criado com o tipo errado (SÓ-LEITURA)."""
-    query = build_query_dossiers_recentes(ano=ano, obrano_minimo=obrano_base)
+    """Procurar um dossier criado hoje com o tipo errado (SÓ-LEITURA)."""
+    query = build_query_dossiers_do_dia(data_iso=data_iso)
     assert_select_only(query)
     conn_str = build_connection_string(load_phc_config(session))
     linhas = run_select(conn_str, query)
