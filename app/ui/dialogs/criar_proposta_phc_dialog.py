@@ -7,6 +7,10 @@ dados do V3 — serve para validar a automação da janela do PHC.
 
 from __future__ import annotations
 
+from datetime import date
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -20,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.db.session import SessionLocal
 from app.services.phc_automation_service import (
     PhcAutomationError,
     PhcAutomationService,
@@ -27,6 +32,10 @@ from app.services.phc_automation_service import (
     construir_plano,
     descrever_plano,
     formatar_num_cliente_phc,
+)
+from app.services.phc_propostas_service import (
+    ler_max_obrano,
+    localizar_proposta_criada,
 )
 
 
@@ -189,6 +198,28 @@ class CriarPropostaPhcDialog(QDialog):
             return
 
         self.error_label.setText("")
+        ano = date.today().year
+
+        # Marca de água: maior nº de proposta do ano ANTES de criar. É o que
+        # permite identificar a nova proposta sem depender do ecrã.
+        obrano_base, erro_sql = self._ler_marca_de_agua(ano)
+        if erro_sql:
+            continuar = QMessageBox.question(
+                self,
+                "Sem leitura automática do número",
+                (
+                    "Não consegui ler o último número de proposta do PHC:\n\n"
+                    f"{erro_sql}\n\n"
+                    "Posso criar a proposta e pedir-te o número no fim. "
+                    "Continuar?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if continuar != QMessageBox.StandardButton.Yes:
+                return
+
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             resultado = PhcAutomationService().criar_proposta(
                 num_cliente_phc=self._num_cliente_phc,
@@ -206,15 +237,27 @@ class CriarPropostaPhcDialog(QDialog):
                 f"{descrever_plano(plano)}",
             )
             return
+        finally:
+            QGuiApplication.restoreOverrideCursor()
 
-        # Nesta fase o número é confirmado pelo utilizador (leitura automática
-        # ainda por afinar com o diagnóstico).
+        proposta = None
+        if obrano_base is not None:
+            proposta = self._localizar_no_phc(
+                ano=ano,
+                obrano_base=obrano_base,
+                ref_cliente=ref_cliente,
+            )
+
+        if proposta is not None:
+            self._mostrar_proposta_encontrada(proposta, num_cliente_fmt)
+            return
+
+        # Sem leitura automática: confirmar à mão (não inventar o número).
         numero, ok = QInputDialog.getText(
             self,
             "Número da proposta",
-            "A proposta foi gravada no PHC.\n"
-            "Confirma o número que o PHC atribuiu:",
-            text=resultado.numero or "",
+            "A proposta foi gravada no PHC, mas não consegui confirmar o "
+            "número na base de dados.\nEscreve o número que vês no PHC:",
         )
         if not ok:
             return
@@ -227,6 +270,46 @@ class CriarPropostaPhcDialog(QDialog):
                 f"para o cliente {num_cliente_fmt}.\n\n"
                 "Nesta fase de teste o número ainda não é gravado no V3.\n\n"
                 f"Diagnóstico gravado em:\n{resultado.log_path}"
+            ),
+        )
+
+    def _ler_marca_de_agua(self, ano: int) -> tuple[int | None, str | None]:
+        """Maior nº de proposta do ano antes de criar. (valor, erro)."""
+        try:
+            with SessionLocal() as session:
+                return ler_max_obrano(session, ano=ano), None
+        except Exception as exc:  # noqa: BLE001 - SQL/PowerShell/config
+            return None, str(exc)
+
+    def _localizar_no_phc(
+        self, *, ano: int, obrano_base: int, ref_cliente: str | None
+    ):
+        """Procurar a proposta criada; ``None`` se não der para confirmar."""
+        try:
+            with SessionLocal() as session:
+                return localizar_proposta_criada(
+                    session,
+                    ano=ano,
+                    obrano_base=obrano_base,
+                    num_cliente=self._num_cliente_phc,
+                    ref_cliente=ref_cliente,
+                )
+        except Exception:  # noqa: BLE001 - cai no modo manual
+            return None
+
+    def _mostrar_proposta_encontrada(self, proposta, num_cliente_fmt: str) -> None:
+        """Mostrar o número lido do PHC e o código que ficaria no V3."""
+        codigo_v3 = f"{proposta.ano % 100:02d}{proposta.numero:04d}"
+        QMessageBox.information(
+            self,
+            "Proposta criada no PHC",
+            (
+                f"Proposta PHC nº {proposta.numero} ({proposta.ano}) criada "
+                f"para o cliente {num_cliente_fmt}.\n\n"
+                f"  Ref. cliente no PHC: {proposta.ref_cliente or '(vazio)'}\n"
+                f"  Data:                {proposta.data or '—'}\n\n"
+                f"No V3 este orçamento ficaria com o nº {codigo_v3}.\n\n"
+                "Nesta fase de teste o número ainda não é gravado no V3."
             ),
         )
 
