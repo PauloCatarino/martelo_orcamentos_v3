@@ -205,12 +205,26 @@ def extrair_versoes(pergunta: object, numero: str) -> tuple[str, str]:
     return "", ""
 
 
+def formatar_numero_encomenda(numero: object, prefixo: str = "") -> str:
+    """Escreve o nº de encomenda na forma da casa: «_111» ou «0111».
+
+    As do PHC têm sempre **4 algarismos** (por isso o 111 do PHC escreve-se
+    «0111»); as do Streamlit são o underscore seguido do número.
+    """
+    digitos = re.sub(r"\D", "", str(numero or ""))
+    if not digitos:
+        return ""
+    if (prefixo or "").strip() == "_" or str(numero or "").strip().startswith("_"):
+        return f"_{digitos.lstrip('0') or digitos}"
+    return digitos.zfill(4)
+
+
 def aviso_tipo_encomenda(escrito: str, encontrado: str) -> str:
     """Reparo quando o underscore da encomenda não bate certo com o escrito.
 
-    As encomendas do PHC têm 4 algarismos («1134»); as que começam por «_» vêm
-    do Streamlit e são encomendas de cliente final. São obras diferentes, por
-    isso quem escreveu uma e recebeu a outra tem de saber.
+    O que distingue os dois tipos é **o underscore**: «_111» vem do Streamlit e
+    é uma encomenda de cliente final; «0111» vem do PHC e é de cliente. São
+    obras diferentes, por isso quem escreveu uma e recebeu a outra tem de saber.
     """
     a_escrita = (escrito or "").strip()
     a_encontrada = (encontrado or "").strip()
@@ -222,10 +236,10 @@ def aviso_tipo_encomenda(escrito: str, encontrado: str) -> str:
     if a_encontrada.startswith("_"):
         natureza = "as que começam por «_» vêm do Streamlit (cliente final)"
     else:
-        natureza = "as do PHC não levam «_» (cliente)"
+        natureza = "as do PHC não levam «_» e escrevem-se com 4 algarismos"
     return (
-        f"Escreveu «{a_escrita}», mas a encomenda que existe é «{a_encontrada}» — "
-        f"{natureza}."
+        f"Escreveu «{formatar_numero_encomenda(a_escrita)}», mas a encomenda que "
+        f"existe é «{formatar_numero_encomenda(a_encontrada)}» — {natureza}."
     )
 
 
@@ -262,7 +276,7 @@ def _referencia_versao(enc: str, versao: VersaoObra) -> str:
     A encomenda vai tal e qual como está: o underscore inicial de «_111» faz
     parte do número, e é assim que a pessoa o escreve.
     """
-    referencia = (enc or "").strip()
+    referencia = formatar_numero_encomenda(enc) or (enc or "").strip()
     for parte in (versao.versao_obra, versao.versao_plano):
         limpa = (parte or "").strip().strip("_")
         if limpa:

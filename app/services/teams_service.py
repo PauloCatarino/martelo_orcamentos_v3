@@ -18,6 +18,7 @@ from urllib.parse import quote
 
 from app.domain import ocorrencia_tipos as tipos
 from app.domain.ocorrencia_anexos import existe as anexo_existe
+from app.domain.texto_endereco import limpar_endereco
 
 
 #: Deep link de conversa do Teams de trabalho (Microsoft 365).
@@ -120,7 +121,10 @@ def normalizar_destinos(emails) -> list[str]:
 
     destinos: list[str] = []
     for candidato in candidatos:
-        endereco = str(candidato or "").strip()
+        # Limpa também aqui: os endereços gravados antes desta limpeza podem
+        # trazer um espaço invisível do copiar-e-colar, e o Teams desiste de
+        # reconhecer o endereço sem dizer porquê.
+        endereco = limpar_endereco(candidato)
         if endereco and endereco not in destinos:
             destinos.append(endereco)
     return destinos

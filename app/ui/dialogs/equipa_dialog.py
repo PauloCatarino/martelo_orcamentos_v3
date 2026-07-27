@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.texto_endereco import endereco_suspeito
 from app.services import teams_service
 from app.services.system_setting_service import SystemSettingService
 from app.services.equipa_service import (
@@ -299,6 +300,7 @@ class EquipaDialog(QDialog):
     def _gravar(self) -> None:
         """Write the whole table back — novas linhas incluídas."""
         erros: list[str] = []
+        limpos: list[str] = []
         try:
             with SessionLocal() as session:
                 for indice in range(self.table.rowCount()):
@@ -315,6 +317,10 @@ class EquipaDialog(QDialog):
 
                     if not nome:
                         continue
+                    if endereco_suspeito(email):
+                        # Um espaço invisível colado do chat faz o Teams
+                        # desistir do endereço sem dizer porquê.
+                        limpos.append(nome)
                     try:
                         if identificador is None:
                             criar_membro(session, nome=nome, email=email)
@@ -334,6 +340,11 @@ class EquipaDialog(QDialog):
             return
 
         self.carregar()
-        self.status_label.setText(
-            " ".join(["Equipa gravada.", *erros]) if erros else "Equipa gravada."
-        )
+        partes = ["Equipa gravada."]
+        if limpos:
+            partes.append(
+                f"Tirei espaços invisíveis do endereço de {', '.join(limpos)} — "
+                "eram eles que impediam o Teams de reconhecer a pessoa."
+            )
+        partes.extend(erros)
+        self.status_label.setText(" ".join(partes))

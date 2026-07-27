@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.pesquisa_texto import normalizar
+from app.domain.texto_endereco import limpar_endereco
 from app.models.equipa_membro import EquipaMembro
 from app.models.producao import Producao
 from app.models.user import User
@@ -47,7 +48,7 @@ def criar_membro(
 
     membro = EquipaMembro(
         nome=nome[:120],
-        email=(email or "").strip()[:255] or None,
+        email=limpar_endereco(email)[:255] or None,
         ativo=True,
         ordem=ordem,
     )
@@ -78,7 +79,7 @@ def atualizar_membro(
             raise ValueError(f"'{novo}' já está na equipa.")
         membro.nome = novo[:120]
     if email is not None:
-        membro.email = email.strip()[:255] or None
+        membro.email = limpar_endereco(email)[:255] or None
     if ativo is not None:
         membro.ativo = bool(ativo)
 

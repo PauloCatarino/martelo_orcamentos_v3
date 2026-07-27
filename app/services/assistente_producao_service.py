@@ -33,6 +33,7 @@ from app.domain.assistente_obra import (
     aviso_outras_versoes,
     aviso_tipo_encomenda,
     corpo_email_html,
+    formatar_numero_encomenda,
     identificar_pedido,
     prompt_corpo_email,
     resumo_texto,
@@ -293,7 +294,7 @@ class AssistenteProducaoService:
                         versao_plano=pedido.versao_plano,
                         prefixo=None,
                     )
-                alvo = pedido.prefixo + pedido.numero
+                alvo = formatar_numero_encomenda(pedido.numero, pedido.prefixo)
                 if pedido.versao_obra:
                     alvo += f"_{pedido.versao_obra}"
                 if pedido.versao_plano:
@@ -333,7 +334,9 @@ class AssistenteProducaoService:
                     parte
                     for parte in (
                         aviso_tipo_encomenda(
-                            pedido.prefixo + pedido.numero,
+                            formatar_numero_encomenda(
+                                pedido.numero, pedido.prefixo
+                            ),
                             str(getattr(principal, "num_enc_phc", "") or ""),
                         ),
                         aviso_outras_versoes(

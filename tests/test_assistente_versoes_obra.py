@@ -13,6 +13,7 @@ from app.domain.assistente_obra import (
     aviso_tipo_encomenda,
     extrair_prefixo,
     extrair_versoes,
+    formatar_numero_encomenda,
     identificar_pedido,
 )
 from app.services.assistente_producao_service import AssistenteProducaoService
@@ -214,10 +215,30 @@ def test_sem_distincao_apanha_as_duas() -> None:
 
 def test_o_reparo_explica_a_diferenca_entre_os_dois_tipos() -> None:
     do_streamlit = aviso_tipo_encomenda("111", "_111")
-    do_phc = aviso_tipo_encomenda("_111", "111")
+    do_phc = aviso_tipo_encomenda("_111", "0111")
 
     assert "«_111»" in do_streamlit and "Streamlit" in do_streamlit
-    assert "«111»" in do_phc and "PHC" in do_phc
+    assert "«0111»" in do_phc and "PHC" in do_phc
+
+
+@pytest.mark.parametrize(
+    ("numero", "prefixo", "esperado"),
+    [
+        ("111", "", "0111"),    # do PHC escreve-se sempre com 4 algarismos
+        ("111", "_", "_111"),   # do Streamlit leva o underscore
+        ("_111", "", "_111"),   # o underscore no próprio número chega
+        ("1134", "", "1134"),
+        ("0111", "", "0111"),
+        ("", "", ""),
+    ],
+)
+def test_o_numero_escreve_se_na_forma_da_casa(numero, prefixo, esperado) -> None:
+    assert formatar_numero_encomenda(numero, prefixo) == esperado
+
+
+def test_o_reparo_mostra_o_phc_com_quatro_algarismos() -> None:
+    """Quem escreve «111» a pensar no PHC deve ver «0111» de volta."""
+    assert "«0111»" in aviso_tipo_encomenda("111", "_111")
 
 
 def test_sem_diferenca_nao_ha_reparo() -> None:
