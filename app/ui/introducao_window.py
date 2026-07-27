@@ -81,20 +81,46 @@ class IntroducaoWindow(QWidget):
         self.move(screen.center() - self.rect().center())
 
     def marcar_aplicacao_pronta(self) -> None:
+        """Show the last step; ignored once the window is already gone.
+
+        Quem carrega em "Ignorar" fecha esta janela, e o ``WA_DeleteOnClose``
+        destrói-a. As páginas que ainda estão a carregar em fundo (o Ponto
+        Situação, por exemplo) só avisam que acabaram depois disso — e escrever
+        num ecrã que já não existe rebentava o arranque.
+        """
+        if self._terminou:
+            return
+
         self._pronta = True
         self._indice = len(self.ETAPAS) - 1
-        self.etapa_label.setText(self.ETAPAS[-1]); self.progresso.setValue(100)
+        try:
+            self.etapa_label.setText(self.ETAPAS[-1]); self.progresso.setValue(100)
+        except RuntimeError:
+            self._terminou = True
+            return
         restante = max(0, 3000 - self._relogio.elapsed())
         QTimer.singleShot(restante, self.terminar)
 
     def _avancar(self) -> None:
-        if self._pronta:
+        if self._pronta or self._terminou:
             return
         self._indice = min(self._indice + 1, len(self.ETAPAS) - 2)
-        self.etapa_label.setText(self.ETAPAS[self._indice])
-        self.progresso.setValue(min(85, 15 + self._indice * 28))
+        try:
+            self.etapa_label.setText(self.ETAPAS[self._indice])
+            self.progresso.setValue(min(85, 15 + self._indice * 28))
+        except RuntimeError:
+            self._terminou = True
 
     def terminar(self) -> None:
         if self._terminou:
             return
-        self._terminou = True; self._timer.stop(); self.concluida.emit(); self.close()
+        self._terminou = True
+        try:
+            self._timer.stop()
+        except RuntimeError:
+            pass
+        self.concluida.emit()
+        try:
+            self.close()
+        except RuntimeError:
+            pass
