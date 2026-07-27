@@ -1,6 +1,7 @@
 """SQLAlchemy models package."""
 
 from app.models.cliente import Cliente
+from app.models.equipa_membro import EquipaMembro
 from app.models.ia_perfil import IaPerfilEntrada
 from app.models.def_maquina import DefMaquina
 from app.models.def_margem_padrao import DefMargemPadrao
@@ -38,12 +39,14 @@ from app.models.orcamento_valueset_linha import OrcamentoValuesetLinha
 from app.models.orcamento_valueset_linha_operacao import OrcamentoValuesetLinhaOperacao
 from app.models.producao import Producao
 from app.models.producao_ocorrencia import ProducaoOcorrencia
+from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.models.user_permission import UserPermission
 
 __all__ = [
     "Cliente",
+    "EquipaMembro",
     "DefMaquina",
     "DefMargemPadrao",
     "DefMaquinaEscalaoArea",
@@ -79,6 +82,7 @@ __all__ = [
     "IaPerfilEntrada",
     "Producao",
     "ProducaoOcorrencia",
+    "ProducaoOcorrenciaAnexo",
     "SystemSetting",
     "User",
     "UserPermission",

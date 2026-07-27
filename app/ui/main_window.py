@@ -50,6 +50,7 @@ from app.ui.pages import (
     MateriasPrimasPage,
     OperacoesMaquinasPage,
     OrcamentoDetailPage,
+    OcorrenciasPage,
     OrcamentosPage,
     PesquisaIAPage,
     PontoSituacaoPage,
@@ -75,6 +76,7 @@ class MainWindow(QMainWindow):
         "producao": "producao",
         "encomendas_phc": "producao",
         "ponto_situacao": "producao",
+        "ocorrencias": "producao",
     }
 
     _PAGE_PERMISSION = {
@@ -89,6 +91,8 @@ class MainWindow(QMainWindow):
         "producao": "menu.producao",
         "encomendas_phc": "menu.encomendas_phc",
         "ponto_situacao": "menu.ponto_situacao",
+        # As ocorrências vivem dentro da Produção: quem vê obras vê os tickets.
+        "ocorrencias": "menu.producao",
         "configuracoes": "menu.configuracoes",
         "pecas": "menu.configuracoes",
         "caminhos_sistema": "menu.configuracoes",
@@ -195,6 +199,7 @@ class MainWindow(QMainWindow):
         item_producao = _criar_item("Produção", "producao")
         _criar_item("Encomendas PHC", "encomendas_phc", parent=item_producao)
         _criar_item("Ponto Situa\u00e7\u00e3o", "ponto_situacao", parent=item_producao)
+        _criar_item("Ocorr\u00eancias", "ocorrencias", parent=item_producao)
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
         item_producao.setExpanded(True)
@@ -272,6 +277,7 @@ class MainWindow(QMainWindow):
         self.producao_page = ProducaoPage()
         self.encomendas_page = EncomendasPage()
         self.ponto_situacao_page = PontoSituacaoPage()
+        self.ocorrencias_page = OcorrenciasPage()
         self.user_management_page = (
             UserManagementPage(on_back=lambda: self.show_page("configuracoes"))
             if is_admin(authenticated_user)
@@ -318,6 +324,7 @@ class MainWindow(QMainWindow):
         self._add_page("producao", self.producao_page)
         self._add_page("encomendas_phc", self.encomendas_page)
         self._add_page("ponto_situacao", self.ponto_situacao_page)
+        self._add_page("ocorrencias", self.ocorrencias_page)
         self._add_page("configuracoes", self.configuracoes_page)
         if self.user_management_page is not None:
             self._add_page("user_management", self.user_management_page)
@@ -365,6 +372,7 @@ class MainWindow(QMainWindow):
             "producao": "menu.producao",
             "encomendas_phc": "menu.encomendas_phc",
             "ponto_situacao": "menu.ponto_situacao",
+            "ocorrencias": "menu.producao",
             "configuracoes": "menu.configuracoes",
         }
         for page_name, permission_key in nav_permissions.items():
