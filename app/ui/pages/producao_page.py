@@ -567,66 +567,95 @@ class ProducaoPage(QWidget):
         self.tipo_pasta_combo = QComboBox()
         self.tipo_pasta_combo.addItems(TIPOS_PASTA_PRODUCAO)
 
-        dados_grid = QGridLayout()
-        dados_grid.setContentsMargins(0, 0, 0, 0)
-        dados_grid.setHorizontalSpacing(6)
-        dados_grid.setVerticalSpacing(2)
-        campos = [
-            ("Processo", self.processo_input),
-            (
-                "Nome Plano CUT-RITE",
-                self.nome_plano_corte_input,
-                "icon_cut_rite.ico",
-            ),
-            (
-                "Nome Enc IMOS IX",
-                self.nome_enc_imos_ix_input,
-                "icon_imos_2025.ico",
-            ),
-            ("Ano", self.ano_input),
-            ("Nº Enc PHC", self.num_enc_phc_input),
-            ("V. Obra", self.versao_obra_input),
-            ("V. CutRite", self.versao_plano_input),
-            ("Cliente", self.cliente_input),
-            ("Cliente simplex", self.cliente_simplex_input),
-            ("Nº Cliente PHC", self.num_cliente_phc_input),
-            ("Nº Orçamento", self.num_orcamento_input),
-            ("V. Orç", self.versao_orc_input),
-            ("Preço total", self.preco_total_input),
-            ("Qt artigos", self.qt_artigos_input),
-            ("Estado", self.estado_form_combo),
-            ("Responsável", self.responsavel_form_combo),
-            ("Ref Cliente", self.ref_cliente_input),
-            ("Obra", self.obra_input),
-            ("Localização", self.localizacao_input),
-            ("Data Início", self.data_inicio_input),
-            ("Data Entrega", self.data_entrega_input),
-            ("Tipo Pasta", self.tipo_pasta_combo),
+        # Cada linha agrupa campos que se leem em conjunto (nomes do processo,
+        # cliente, números da encomenda, orçamento, datas...). O número no fim
+        # de cada campo é o peso da largura dentro da linha: com 2 e 1 o
+        # primeiro campo fica com o dobro da largura do segundo.
+        linhas_campos = [
+            [
+                ("Processo", self.processo_input, 2),
+                (
+                    "Nome Plano CUT-RITE",
+                    self.nome_plano_corte_input,
+                    2,
+                    "icon_cut_rite.ico",
+                ),
+                (
+                    "Nome Enc IMOS IX",
+                    self.nome_enc_imos_ix_input,
+                    2,
+                    "icon_imos_2025.ico",
+                ),
+            ],
+            [
+                ("Cliente", self.cliente_input, 3),
+                ("Cliente simplex", self.cliente_simplex_input, 3),
+                ("Nº Cliente PHC", self.num_cliente_phc_input, 1),
+            ],
+            [
+                ("Nº Enc PHC", self.num_enc_phc_input, 1),
+                ("V. Obra", self.versao_obra_input, 1),
+                ("V. CutRite", self.versao_plano_input, 1),
+                ("Ano", self.ano_input, 1),
+            ],
+            [
+                ("Nº Orçamento", self.num_orcamento_input, 1),
+                ("V. Orç", self.versao_orc_input, 1),
+                ("Qt artigos", self.qt_artigos_input, 1),
+                ("Preço total", self.preco_total_input, 1),
+            ],
+            [
+                ("Estado", self.estado_form_combo, 2),
+                ("Responsável", self.responsavel_form_combo, 3),
+            ],
+            [
+                ("Ref Cliente", self.ref_cliente_input, 1),
+                ("Obra", self.obra_input, 1),
+                ("Localização", self.localizacao_input, 1),
+            ],
+            [
+                ("Data Início", self.data_inicio_input, 1),
+                ("Data Entrega", self.data_entrega_input, 1),
+                ("Tipo Pasta", self.tipo_pasta_combo, 1),
+            ],
         ]
-        for index, campo in enumerate(campos):
-            label, widget, *icone = campo
-            label_widget = (
-                self._label_com_icone(label, icone[0])
-                if icone
-                else label
-            )
-            self._add_grid_field(
-                dados_grid,
-                index // 2,
-                index % 2,
-                label_widget,
-                widget,
-            )
+        dados_layout = QVBoxLayout()
+        dados_layout.setContentsMargins(0, 0, 0, 0)
+        dados_layout.setSpacing(4)
+        campos = []
+        primeiras_etiquetas = []
+        for linha in linhas_campos:
+            linha_layout = QHBoxLayout()
+            linha_layout.setContentsMargins(0, 0, 0, 0)
+            linha_layout.setSpacing(6)
+            for indice, campo in enumerate(linha):
+                label, widget, peso, *icone = campo
+                label_widget = (
+                    self._label_com_icone(label, icone[0])
+                    if icone
+                    else QLabel(label)
+                )
+                if indice == 0:
+                    primeiras_etiquetas.append(label_widget)
+                linha_layout.addWidget(label_widget)
+                linha_layout.addWidget(widget, peso)
+                campos.append(widget)
+            # Peso igual em todas as linhas: os campos espalham-se pela altura
+            # do painel em vez de ficarem colados ao topo, ao lado da imagem.
+            dados_layout.addLayout(linha_layout, 1)
 
-        # Etiquetas encostadas, campos a esticar com a largura disponível.
-        for coluna_label in (0, 2):
-            dados_grid.setColumnStretch(coluna_label, 0)
-        for coluna_campo in (1, 3):
-            dados_grid.setColumnStretch(coluna_campo, 1)
+        # A primeira etiqueta de cada linha fica com a mesma largura para que
+        # todos os primeiros campos comecem alinhados.
+        largura_etiqueta = max(
+            etiqueta.sizeHint().width() for etiqueta in primeiras_etiquetas
+        )
+        for etiqueta in primeiras_etiquetas:
+            etiqueta.setMinimumWidth(largura_etiqueta)
+
         self._compactar_campos_detalhe(campos)
 
         dados_widget = QWidget()
-        dados_widget.setLayout(dados_grid)
+        dados_widget.setLayout(dados_layout)
         dados_widget.setMinimumWidth(520)
 
         painel_imagem = self._criar_painel_imagem()
@@ -724,13 +753,20 @@ class ProducaoPage(QWidget):
         scroll.setMinimumHeight(240)
         return scroll
 
-    def _compactar_campos_detalhe(self, campos: list) -> None:
+    def _compactar_campos_detalhe(self, campos: list[QWidget]) -> None:
         """Keep the detail fields short so the whole form stays visible.
 
-        Only the height is fixed: a largura acompanha o divisor arrastável.
+        A altura é fixa e a largura fica entregue aos pesos de cada linha
+        (``QSizePolicy.Ignored``), senão a largura natural dos campos mandava
+        mais do que os pesos e as linhas ficavam todas iguais.
         """
         for campo in campos:
-            campo[1].setFixedHeight(22)
+            campo.setFixedHeight(22)
+            campo.setSizePolicy(
+                QSizePolicy.Policy.Ignored,
+                QSizePolicy.Policy.Fixed,
+            )
+            campo.setMinimumWidth(50)
 
     @staticmethod
     def _definir_data(campo: QDateEdit, valor: object) -> None:
@@ -943,19 +979,6 @@ class ProducaoPage(QWidget):
         layout.addWidget(text_label)
         layout.addStretch()
         return label_widget
-
-    def _add_grid_field(
-        self,
-        grid: QGridLayout,
-        row: int,
-        pair_col: int,
-        label: str | QWidget,
-        widget: QWidget,
-    ) -> None:
-        col = pair_col * 2
-        label_widget = label if isinstance(label, QWidget) else QLabel(label)
-        grid.addWidget(label_widget, row, col)
-        grid.addWidget(widget, row, col + 1)
 
     def _ligar_sinais_edicao(self) -> None:
         for line_edit in (

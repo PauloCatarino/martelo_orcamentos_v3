@@ -298,6 +298,32 @@ def test_producao_page_layout_detalhe_e_menu_colunas() -> None:
     assert "self._combo_valor(self.responsavel_combo)" in contador_source
 
 
+def test_detalhe_obra_segue_a_ordem_do_mockup() -> None:
+    """Os campos do detalhe ficam agrupados por assunto, linha a linha."""
+    from app.ui.pages.producao_page import ProducaoPage
+
+    detalhe_source = inspect.getsource(ProducaoPage._criar_painel_detalhe)
+    linhas_esperadas = [
+        ["Processo", "Nome Plano CUT-RITE", "Nome Enc IMOS IX"],
+        ["Cliente", "Cliente simplex", "Nº Cliente PHC"],
+        ["Nº Enc PHC", "V. Obra", "V. CutRite", "Ano"],
+        ["Nº Orçamento", "V. Orç", "Qt artigos", "Preço total"],
+        ["Estado", "Responsável"],
+        ["Ref Cliente", "Obra", "Localização"],
+        ["Data Início", "Data Entrega", "Tipo Pasta"],
+    ]
+    etiquetas = [etiqueta for linha in linhas_esperadas for etiqueta in linha]
+    posicoes = [detalhe_source.index(f'"{etiqueta}"') for etiqueta in etiquetas]
+    assert posicoes == sorted(posicoes), "ordem dos campos do detalhe mudou"
+
+    # Larguras dadas por pesos por linha (e não pela largura natural do campo).
+    compactar_source = inspect.getsource(ProducaoPage._compactar_campos_detalhe)
+    assert "QSizePolicy.Policy.Ignored" in compactar_source
+    # Primeira etiqueta de cada linha alinhada, campos espalhados na altura.
+    assert "primeiras_etiquetas" in detalhe_source
+    assert "dados_layout.addLayout(linha_layout, 1)" in detalhe_source
+
+
 def test_filtro_clientes_segue_o_responsavel_escolhido() -> None:
     """O combo de Cliente só lista clientes do responsável filtrado."""
     from types import SimpleNamespace
