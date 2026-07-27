@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350">
+  <rect width="900" height="350" fill="#f7f2ea"/><rect x="90" y="22" width="720" height="306" rx="10" fill="#fff" stroke="#d9cfc2" stroke-width="2"/>
+  <text x="122" y="68" font-family="Segoe UI" font-size="27" font-weight="bold" fill="#5a3e2b">Novo Orçamento</text><text x="122" y="116" font-family="Segoe UI" font-size="19" fill="#2e2a26">Cliente</text>
+  <rect x="235" y="86" width="350" height="54" rx="5" fill="#f7f2ea" stroke="#8b6f4e" stroke-width="2"/><text x="254" y="120" font-family="Segoe UI" font-size="18" fill="#4a4641">Atelier Demo, Lda.</text>
+  <rect x="603" y="86" width="160" height="54" rx="5" fill="#fff" stroke="#8b6f4e" stroke-width="2"/><text x="620" y="120" font-family="Segoe UI" font-size="17" fill="#5a3e2b">Escolher cliente…</text>
+  <path d="M682 150 L682 215" stroke="#8b6f4e" stroke-width="4"/><polygon points="672,210 682,230 692,210" fill="#8b6f4e"/><text x="483" y="270" font-family="Segoe UI" font-size="19" font-weight="bold" fill="#5a3e2b">Confirme o cliente antes de avançar</text>
+</svg>

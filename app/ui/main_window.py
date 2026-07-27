@@ -31,6 +31,7 @@ from app.services.permission_service import (
 )
 from app.ui import tema
 from app.ui.pages import (
+    AjudaPage,
     BibliotecaModulosPage,
     ArquivoV2Page,
     CatalogoAuditoriaPage,
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
     # Mapeia o nome da página ao botão da sidebar a destacar.
     _NAV_POR_PAGINA = {
         "inicio": "inicio",
+        "ajuda": "ajuda",
         "orcamentos": "orcamentos",
         "orcamentos_dashboard": "orcamentos",
         "custeio_auditoria": "orcamentos",
@@ -80,6 +82,7 @@ class MainWindow(QMainWindow):
     }
 
     _PAGE_PERMISSION = {
+        "ajuda": "menu.ajuda",
         "orcamentos": "menu.orcamentos",
         "orcamentos_dashboard": "menu.orcamentos",
         "custeio_auditoria": "menu.orcamentos",
@@ -189,6 +192,7 @@ class MainWindow(QMainWindow):
             return item
 
         _criar_item("In\u00edcio", "inicio")
+        _criar_item("Ajuda", "ajuda")
         item_orcamentos = _criar_item("Or\u00e7amentos", "orcamentos")
         _criar_item("Dashboard", "orcamentos_dashboard", parent=item_orcamentos)
         _criar_item("Auditoria de Custeio", "custeio_auditoria", parent=item_orcamentos)
@@ -215,7 +219,11 @@ class MainWindow(QMainWindow):
         # orçamento) ganham scrollbar em vez de forçarem a janela maximizada a
         # crescer para fora do ecrã.
         self._page_containers: dict[str, QScrollArea] = {}
-        self.orcamentos_page = OrcamentosPage(on_open_orcamento=self.open_orcamento_detail)
+        self.orcamentos_page = OrcamentosPage(
+            on_open_orcamento=self.open_orcamento_detail,
+            on_open_ajuda_criar_orcamento=lambda: self.abrir_guia_ajuda("criar_orcamento"),
+        )
+        self.ajuda_page = AjudaPage()
         self.inicio_page = InicioPage(
             on_open_orcamentos=lambda: self.show_page("orcamentos"),
             on_open_producao=lambda: self.show_page("producao"),
@@ -302,6 +310,7 @@ class MainWindow(QMainWindow):
             ),
         )
         self._add_page("inicio", self.inicio_page)
+        self._add_page("ajuda", self.ajuda_page)
         self._add_page("orcamentos", self.orcamentos_page)
         self._add_page("orcamentos_dashboard", self.orcamentos_dashboard_page)
         self._add_page("custeio_auditoria", self.custeio_auditoria_page)
@@ -365,6 +374,7 @@ class MainWindow(QMainWindow):
     def _apply_navigation_permissions(self) -> None:
         """Hide menu entries that the current account cannot access."""
         nav_permissions = {
+            "ajuda": "menu.ajuda",
             "orcamentos": "menu.orcamentos",
             "materias_primas": "menu.materias_primas",
             "pesquisa_ia": "menu.pesquisa_ia",
@@ -383,6 +393,11 @@ class MainWindow(QMainWindow):
     def request_logout(self) -> None:
         """Emit a logout request."""
         self.logout_requested.emit()
+
+    def abrir_guia_ajuda(self, guia_id: str) -> None:
+        """Abre um guia do Centro de Ajuda a partir de qualquer ecrã."""
+        if self.ajuda_page.abrir_guia(guia_id):
+            self.show_page("ajuda")
 
     def toggle_sidebar(self) -> None:
         """Hide/show the left navigation menu (phase 8V.2).

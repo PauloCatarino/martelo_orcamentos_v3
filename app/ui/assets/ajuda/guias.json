@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "guias": [
+    {
+      "id": "criar_orcamento",
+      "titulo": "Criar um orçamento",
+      "resumo": "Crie um orçamento V3 normal com um exemplo fictício, desde a lista até à pasta opcional.",
+      "versao": 1,
+      "passos": [
+        {
+          "titulo": "Abrir Orçamentos",
+          "explicacao": "No menu lateral, escolha Orçamentos. A lista mostra os orçamentos e versões já registados.",
+          "imagem": "slides/criar_orcamento_01.svg",
+          "falas": [
+            {"narrador": "Marta", "texto": "Vamos criar um orçamento novo sem mexer nos exemplos que já existem."},
+            {"narrador": "João", "texto": "Começamos no menu Orçamentos, na coluna do lado esquerdo."}
+          ]
+        },
+        {
+          "titulo": "Escolher Novo Orçamento",
+          "explicacao": "No topo da lista, selecione Novo Orçamento. Este guia aborda apenas o orçamento V3 normal, não o registo manual antigo.",
+          "imagem": "slides/criar_orcamento_02.svg",
+          "falas": [
+            {"narrador": "João", "texto": "O botão Novo Orçamento abre o formulário de criação."},
+            {"narrador": "Marta", "texto": "Não marque Orçamento antigo: esse é um processo diferente, com guia próprio."}
+          ]
+        },
+        {
+          "titulo": "Escolher o cliente",
+          "explicacao": "Selecione Escolher cliente e procure o cliente correto. No piloto usamos o exemplo fictício Atelier Demo, apenas para praticar o percurso.",
+          "imagem": "slides/criar_orcamento_03.svg",
+          "falas": [
+            {"narrador": "Marta", "texto": "O cliente é escolhido antes de guardar. Confirme sempre o nome apresentado."},
+            {"narrador": "João", "texto": "Para o teste, use um cliente de demonstração; não introduza dados de uma obra real."}
+          ]
+        },
+        {
+          "titulo": "Preencher os dados da obra",
+          "explicacao": "Indique a Obra e, quando aplicável, Descrição, Localização e Referência do cliente. Os campos Informação 1 e Informação 2 podem ficar vazios neste primeiro teste.",
+          "imagem": "slides/criar_orcamento_04.svg",
+          "falas": [
+            {"narrador": "João", "texto": "A Obra identifica o trabalho na lista. Escreva um nome fácil de reconhecer."},
+            {"narrador": "Marta", "texto": "A descrição ajuda a equipa a perceber o pedido sem abrir logo o orçamento."}
+          ]
+        },
+        {
+          "titulo": "Confirmar margens iniciais",
+          "explicacao": "Em Margens iniciais, mantenha Standard no piloto. É o conjunto de partida; dentro do orçamento as margens podem ser ajustadas mais tarde.",
+          "imagem": "slides/criar_orcamento_05.svg",
+          "falas": [
+            {"narrador": "Marta", "texto": "As margens iniciais são uma base, não uma decisão definitiva."},
+            {"narrador": "João", "texto": "Para testar este guia, deixe selecionado Standard."}
+          ]
+        },
+        {
+          "titulo": "Guardar o orçamento",
+          "explicacao": "Verifique os dados essenciais e selecione Guardar. Se houver um campo obrigatório em falta, corrija a indicação mostrada no formulário antes de continuar.",
+          "imagem": "slides/criar_orcamento_06.svg",
+          "falas": [
+            {"narrador": "João", "texto": "Agora guardamos. O Martelo cria o orçamento e atribui-lhe o respetivo código."},
+            {"narrador": "Marta", "texto": "Se aparecer um aviso, leia-o com calma: ele indica exatamente o que falta preencher."}
+          ]
+        },
+        {
+          "titulo": "Confirmar a pasta opcional",
+          "explicacao": "Depois de criar o orçamento, o Martelo pergunta se quer criar a pasta do orçamento. Escolha Sim apenas se a pasta base estiver corretamente configurada; caso contrário pode criar a pasta mais tarde.",
+          "imagem": "slides/criar_orcamento_07.svg",
+          "falas": [
+            {"narrador": "Marta", "texto": "O orçamento já foi criado antes desta pergunta. A pasta é uma opção adicional."},
+            {"narrador": "João", "texto": "E terminou: confirme que o orçamento aparece na lista e registe o feedback do piloto."}
+          ]
+        }
+      ]
+    }
+  ]
+}

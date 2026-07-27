@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350">
+  <rect width="900" height="350" fill="#f7f2ea"/><rect x="105" y="42" width="690" height="266" rx="10" fill="#fff" stroke="#d9cfc2" stroke-width="2"/>
+  <text x="145" y="94" font-family="Segoe UI" font-size="26" font-weight="bold" fill="#5a3e2b">Margens iniciais</text><text x="145" y="142" font-family="Segoe UI" font-size="19" fill="#2e2a26">Conjunto de partida para este orçamento</text>
+  <rect x="145" y="168" width="430" height="55" rx="5" fill="#fff" stroke="#8b6f4e" stroke-width="2"/><text x="170" y="203" font-family="Segoe UI" font-size="20" fill="#2e2a26">Standard</text><polygon points="540,190 558,190 549,204" fill="#5a3e2b"/>
+  <circle cx="645" cy="195" r="32" fill="#dcead8"/><text x="634" y="204" font-family="Segoe UI" font-size="23" font-weight="bold" fill="#315c35">✓</text><text x="145" y="271" font-family="Segoe UI" font-size="17" fill="#4a4641">No piloto, mantenha a opção Standard.</text>
+</svg>

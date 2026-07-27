@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350">
+  <rect width="900" height="350" fill="#f7f2ea"/><rect x="110" y="38" width="680" height="275" rx="10" fill="#fff" stroke="#d9cfc2" stroke-width="2"/>
+  <text x="148" y="87" font-family="Segoe UI" font-size="26" font-weight="bold" fill="#5a3e2b">Reveja e guarde</text>
+  <rect x="150" y="116" width="600" height="1" fill="#d9cfc2"/><text x="150" y="155" font-family="Segoe UI" font-size="18" fill="#2e2a26">Cliente: Atelier Demo, Lda.</text><text x="150" y="188" font-family="Segoe UI" font-size="18" fill="#2e2a26">Obra: Cozinha de demonstração</text><text x="150" y="221" font-family="Segoe UI" font-size="18" fill="#2e2a26">Margens iniciais: Standard</text>
+  <rect x="600" y="246" width="150" height="46" rx="6" fill="#5a3e2b"/><text x="642" y="276" font-family="Segoe UI" font-size="19" font-weight="bold" fill="white">Guardar</text>
+</svg>

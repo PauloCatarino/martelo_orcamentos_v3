@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350">
+  <rect width="900" height="350" fill="#f7f2ea"/><rect x="150" y="43" width="600" height="264" rx="10" fill="#fff" stroke="#8b6f4e" stroke-width="2"/>
+  <circle cx="205" cy="99" r="27" fill="#dcead8"/><text x="194" y="108" font-family="Segoe UI" font-size="22" font-weight="bold" fill="#315c35">✓</text><text x="248" y="106" font-family="Segoe UI" font-size="23" font-weight="bold" fill="#5a3e2b">Orçamento criado.</text>
+  <text x="185" y="157" font-family="Segoe UI" font-size="19" fill="#2e2a26">Criar a pasta do orçamento agora?</text><text x="185" y="188" font-family="Segoe UI" font-size="15" fill="#4a4641">Pode criar a pasta mais tarde, se necessário.</text>
+  <rect x="478" y="231" width="102" height="45" rx="5" fill="#fff" stroke="#8b6f4e" stroke-width="2"/><text x="510" y="260" font-family="Segoe UI" font-size="18" fill="#5a3e2b">Não</text><rect x="600" y="231" width="102" height="45" rx="5" fill="#5a3e2b"/><text x="638" y="260" font-family="Segoe UI" font-size="18" fill="white">Sim</text>
+</svg>

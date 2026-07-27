@@ -135,10 +135,15 @@ class OrcamentosPage(QWidget):
         "info_2",
     )
 
-    def __init__(self, on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None) -> None:
+    def __init__(
+        self,
+        on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None,
+        on_open_ajuda_criar_orcamento: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__()
 
         self.on_open_orcamento = on_open_orcamento
+        self.on_open_ajuda_criar_orcamento = on_open_ajuda_criar_orcamento
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
         self._todos: list[OrcamentoResumo] = []
         self._sinonimos: dict[str, frozenset[str]] = {}
@@ -153,6 +158,13 @@ class OrcamentosPage(QWidget):
 
         self.new_button = QPushButton("Novo Or\u00e7amento")
         self.new_button.clicked.connect(self.abrir_novo_orcamento)
+
+        self.help_create_button = QPushButton("? Como criar")
+        self.help_create_button.setToolTip(
+            "Abrir o guia passo a passo para criar um orçamento V3 normal."
+        )
+        self.help_create_button.setEnabled(on_open_ajuda_criar_orcamento is not None)
+        self.help_create_button.clicked.connect(self._abrir_ajuda_criar_orcamento)
 
         self.open_button = QPushButton("Abrir Or\u00e7amento")
         self.open_button.clicked.connect(self.abrir_orcamento_selecionado)
@@ -181,6 +193,7 @@ class OrcamentosPage(QWidget):
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
+        actions_layout.addWidget(self.help_create_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.delete_button)
@@ -258,6 +271,11 @@ class OrcamentosPage(QWidget):
         self.setLayout(layout)
         self._carregar_sinonimos()
         self.carregar_orcamentos()
+
+    def _abrir_ajuda_criar_orcamento(self) -> None:
+        """Abre o guia contextual sem alterar a lista de orçamentos."""
+        if self.on_open_ajuda_criar_orcamento is not None:
+            self.on_open_ajuda_criar_orcamento()
 
     def carregar_orcamentos(self) -> None:
         """Load budget versions into the table."""

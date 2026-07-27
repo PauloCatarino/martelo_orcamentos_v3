@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="350" viewBox="0 0 900 350">
+  <rect width="900" height="350" fill="#f7f2ea"/><rect x="28" y="24" width="844" height="302" rx="10" fill="#fff" stroke="#d9cfc2" stroke-width="2"/>
+  <text x="56" y="70" font-family="Segoe UI" font-size="28" font-weight="bold" fill="#5a3e2b">Orçamentos</text><rect x="55" y="94" width="205" height="48" rx="6" fill="#5a3e2b"/>
+  <text x="79" y="126" font-family="Segoe UI" font-size="19" font-weight="bold" fill="white">Novo Orçamento</text><circle cx="285" cy="117" r="25" fill="#f2deb3" stroke="#8b6f4e" stroke-width="3"/><text x="276" y="126" font-family="Segoe UI" font-size="22" font-weight="bold" fill="#6d4b16">1</text>
+  <line x1="56" y1="175" x2="843" y2="175" stroke="#d9cfc2" stroke-width="2"/><text x="68" y="220" font-family="Segoe UI" font-size="20" fill="#2e2a26">Use este botão para iniciar um orçamento V3 normal.</text>
+  <text x="68" y="264" font-family="Segoe UI" font-size="17" fill="#8a5a00">Não selecione “Orçamento antigo” neste guia.</text>
+</svg>

@@ -2,6 +2,7 @@
 
 from app.ui.pages.biblioteca_modulos_page import BibliotecaModulosPage
 from app.ui.pages.arquivo_v2_page import ArquivoV2Page
+from app.ui.pages.ajuda_page import AjudaPage
 from app.ui.pages.catalogo_auditoria_page import CatalogoAuditoriaPage
 from app.ui.pages.configuracoes_page import ConfiguracoesPage
 from app.ui.pages.custeio_simplificado_tarifas_page import CusteioSimplificadoTarifasPage
@@ -32,6 +33,7 @@ from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
 from app.ui.pages.user_management_page import UserManagementPage
 
 __all__ = [
+    "AjudaPage",
     "BibliotecaModulosPage",
     "ArquivoV2Page",
     "CatalogoAuditoriaPage",

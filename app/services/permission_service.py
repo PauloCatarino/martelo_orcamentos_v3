@@ -12,6 +12,7 @@ from app.models import User, UserPermission
 
 MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
     (
+        ("menu.ajuda", "Ajuda"),
         ("menu.orcamentos", "Orçamentos"),
         ("menu.materias_primas", "Matérias-Primas"),
         ("menu.pesquisa_ia", "Pesquisa IA"),

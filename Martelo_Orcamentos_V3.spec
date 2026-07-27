@@ -53,6 +53,7 @@ hiddenimports = [
     "pywinauto.controls.win32_controls",
     "comtypes",
     "PySide6.QtPdf",
+    "PySide6.QtTextToSpeech",
     "PySide6.QtUiTools",
     "pypdf",
 ]
