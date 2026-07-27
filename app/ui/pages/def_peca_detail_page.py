@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -62,7 +62,11 @@ from app.services.def_peca_operacao_service import (
     DefPecaOperacaoService,
     EditarDefPecaOperacaoData,
 )
-from app.services.def_peca_service import DefPecaService, EditarDefPecaData
+from app.services.def_peca_service import (
+    CriarDefPecaData,
+    DefPecaService,
+    EditarDefPecaData,
+)
 from app.services.def_peca_revisao_service import DefPecaRevisaoService
 from app.services.def_regra_quantidade_service import DefRegraQuantidadeService
 from app.ui.dialogs.criar_revisao_peca_dialog import CriarRevisaoPecaDialog
@@ -120,6 +124,7 @@ class DefPecaDetailPage(QWidget):
         component_labels: dict[int, str] | None = None,
         on_back: Callable[[], None] | None = None,
         on_revision_created: Callable[[int], None] | None = None,
+        on_peca_duplicada: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -128,6 +133,7 @@ class DefPecaDetailPage(QWidget):
         self.component_labels = component_labels or {}
         self.on_back = on_back
         self.on_revision_created = on_revision_created
+        self.on_peca_duplicada = on_peca_duplicada
         self._componentes_by_row: dict[int, DefPecaComponenteResumo] = {}
         self.operacoes_peca: list[DefPecaOperacaoResumo] = []
         self._operacoes_by_row: dict[int, DefPecaOperacaoResumo] = {}
@@ -236,7 +242,9 @@ class DefPecaDetailPage(QWidget):
 
         ajuda = QLabel(
             "Edite aqui os dados gerais da peça. Associados, regras, operações "
-            "e revisões permanecem nos separadores seguintes."
+            "e revisões permanecem nos separadores seguintes. \"Gravar como…\" "
+            "cria uma peça nova com estes dados (e com os associados e operações "
+            "desta), sem alterar a original."
         )
         ajuda.setWordWrap(True)
         layout.addWidget(ajuda)
@@ -245,6 +253,7 @@ class DefPecaDetailPage(QWidget):
             self.peca,
             tab,
             on_save=self._guardar_dados_gerais,
+            on_save_as=self._gravar_dados_gerais_como,
             embedded=True,
         )
         # Keep the editor readable on wide monitors instead of stretching each
@@ -305,6 +314,70 @@ class DefPecaDetailPage(QWidget):
         )
         self.dados_gerais_editor.peca = self.peca
         self.dados_gerais_editor.set_error("")
+        return True
+
+    def _gravar_dados_gerais_como(self, form_data) -> bool:
+        """Criar uma peça nova com estes dados, copiando associados e operações.
+
+        É o equivalente ao copiar/colar: a peça original fica intacta e a nova
+        nasce com os mesmos associados e operações.
+        """
+        if form_data.codigo == self.peca.codigo:
+            self.dados_gerais_editor.set_error(
+                "Mude o código antes de gravar como nova peça."
+            )
+            return False
+
+        try:
+            with SessionLocal() as session:
+                nova_peca = DefPecaService(session).gravar_peca_como(
+                    self.peca.id,
+                    CriarDefPecaData(
+                        codigo=form_data.codigo,
+                        nome=form_data.nome,
+                        nome_biblioteca=form_data.nome_biblioteca,
+                        descricao=form_data.descricao,
+                        grupo=form_data.grupo,
+                        tipo_peca=form_data.tipo_peca,
+                        natureza=form_data.natureza,
+                        orientacao=form_data.orientacao,
+                        funcao=form_data.funcao,
+                        # As fórmulas vivem no separador Regras: a peça nova
+                        # herda as da original.
+                        formula_comp=self.peca.formula_comp,
+                        formula_larg=self.peca.formula_larg,
+                        formula_esp=self.peca.formula_esp,
+                        orla_c1=form_data.orla_c1,
+                        orla_c2=form_data.orla_c2,
+                        orla_l1=form_data.orla_l1,
+                        orla_l2=form_data.orla_l2,
+                        chave_valueset_material=form_data.chave_valueset_material,
+                        permite_acabamento=form_data.permite_acabamento,
+                        chave_valueset_acabamento_sup=form_data.chave_valueset_acabamento_sup,
+                        chave_valueset_acabamento_inf=form_data.chave_valueset_acabamento_inf,
+                        sem_material=form_data.sem_material,
+                        ativo=form_data.ativo,
+                    ),
+                )
+        except IntegrityError:
+            self.dados_gerais_editor.set_error("Já existe uma peça com esse código.")
+            return False
+        except (SQLAlchemyError, ValueError):
+            self.dados_gerais_editor.set_error("Não foi possível gravar a peça como nova.")
+            return False
+
+        self.dados_gerais_editor.set_error("")
+        QMessageBox.information(
+            self,
+            "Gravar como",
+            f"Peça {nova_peca.codigo} criada a partir de {self.peca.codigo}, "
+            "com os mesmos associados e operações.\n"
+            "A peça original não foi alterada.",
+        )
+        if self.on_peca_duplicada is not None:
+            # A página desta peça vai ser substituída pela da peça nova: só
+            # depois de o formulário terminar o clique é seguro trocá-la.
+            QTimer.singleShot(0, lambda: self.on_peca_duplicada(nova_peca.id))
         return True
 
     def _create_revisoes_tab(self) -> QWidget:

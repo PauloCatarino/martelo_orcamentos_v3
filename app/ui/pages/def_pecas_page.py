@@ -408,6 +408,7 @@ class DefPecasPage(QWidget):
             component_labels=component_labels,
             on_back=self._voltar_a_lista,
             on_revision_created=self.abrir_peca_por_id,
+            on_peca_duplicada=self.abrir_peca_por_id,
         )
         self.stack.addWidget(self._detail_page)
         self.stack.setCurrentWidget(self._detail_page)

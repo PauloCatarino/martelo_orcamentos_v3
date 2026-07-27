@@ -217,7 +217,9 @@ class EditarDefPecaDialog(QDialog):
         )
         self.save_as_button.setVisible(self._is_edit)
         if self.embedded:
-            self.save_as_button.setVisible(False)
+            # Dentro da página da peça só há "Gravar como…" quando quem a
+            # hospeda sabe criar o registo novo; cancelar não faz sentido.
+            self.save_as_button.setVisible(self.on_save_as is not None)
             self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setVisible(False)
         self.button_box.accepted.connect(self._validate_and_accept)
         self.save_as_button.clicked.connect(self._validate_and_save_as)
