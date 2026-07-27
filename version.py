@@ -4,7 +4,7 @@ Usada pelo executavel/instalador para identificar que versao cada colega
 tem instalada quando reportar problemas na fase de testes.
 """
 
-APP_VERSION = "0.9.1"
+APP_VERSION = "0.9.2"
 APP_STAGE = "beta"
 
 
