@@ -6,7 +6,10 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from app.services.teams_service import (
+    BASE_CHAT,
+    FORMATOS_LINK,
     MAX_MENSAGEM,
+    base_do_formato,
     caminhos_de_anexos,
     encurtar,
     link_chat_teams,
@@ -140,6 +143,27 @@ def test_mensagem_enorme_e_cortada_para_o_link_aguentar() -> None:
 
 def test_mensagem_curta_fica_intacta() -> None:
     assert encurtar("curta") == "curta"
+
+
+def test_cada_formato_de_link_tem_o_seu_prefixo() -> None:
+    trabalho = link_chat_teams("a@x.pt", formato="trabalho")
+    pessoal = link_chat_teams("a@x.pt", formato="pessoal")
+    aplicacao = link_chat_teams("a@x.pt", formato="aplicacao")
+
+    assert trabalho.startswith("https://teams.microsoft.com/l/chat/0/0?")
+    assert pessoal.startswith("https://teams.live.com/l/chat/0/0?")
+    assert aplicacao.startswith("msteams:/l/chat/0/0?")
+
+
+def test_formato_desconhecido_usa_o_de_trabalho() -> None:
+    assert link_chat_teams("a@x.pt", formato="inventado").startswith(BASE_CHAT)
+    assert link_chat_teams("a@x.pt", formato=None).startswith(BASE_CHAT)
+
+
+def test_todos_os_formatos_declarados_sao_utilizaveis() -> None:
+    for chave, rotulo, base in FORMATOS_LINK:
+        assert chave and rotulo
+        assert base_do_formato(chave) == base
 
 
 def test_so_vao_as_fotos_que_ainda_estao_no_disco(tmp_path) -> None:

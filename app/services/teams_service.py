@@ -20,11 +20,45 @@ from app.domain import ocorrencia_tipos as tipos
 from app.domain.ocorrencia_anexos import existe as anexo_existe
 
 
-#: Deep link oficial de conversa 1:1 do Teams.
+#: Deep link de conversa do Teams de trabalho (Microsoft 365).
 BASE_CHAT = "https://teams.microsoft.com/l/chat/0/0"
+
+#: Formatos possíveis do link. Qual deles preenche o "Para:" depende do tipo de
+#: conta (trabalho ou pessoal) e da versão do Teams instalada — por isso é uma
+#: definição, e não uma escolha fechada no código.
+FORMATOS_LINK: tuple[tuple[str, str, str], ...] = (
+    (
+        "trabalho",
+        "Teams de trabalho (Microsoft 365)",
+        "https://teams.microsoft.com/l/chat/0/0",
+    ),
+    (
+        "pessoal",
+        "Teams pessoal (conta Microsoft)",
+        "https://teams.live.com/l/chat/0/0",
+    ),
+    (
+        "aplicacao",
+        "Aplicação instalada (msteams:)",
+        "msteams:/l/chat/0/0",
+    ),
+)
+FORMATO_PADRAO = "trabalho"
+
+#: Chave em system_settings onde fica o formato escolhido.
+CHAVE_FORMATO_LINK = "teams_formato_link"
 
 #: Acima disto o Windows corta o URL. O texto completo fica sempre no ticket.
 MAX_MENSAGEM = 1500
+
+
+def base_do_formato(formato: str | None) -> str:
+    """Return the link prefix for a format key (unknown keys fall back)."""
+    chave = (formato or "").strip().lower()
+    for candidato, _rotulo, base in FORMATOS_LINK:
+        if candidato == chave:
+            return base
+    return BASE_CHAT
 
 
 def montar_texto_ticket(processo, ocorrencia, anexos=()) -> str:
@@ -92,7 +126,7 @@ def normalizar_destinos(emails) -> list[str]:
     return destinos
 
 
-def link_chat_teams(emails, mensagem: str = "") -> str:
+def link_chat_teams(emails, mensagem: str = "", *, formato: str | None = None) -> str:
     """Return the deep link that opens the chat with the text ready.
 
     Com mais do que um endereço o Teams abre uma **conversa de grupo** com
@@ -105,11 +139,21 @@ def link_chat_teams(emails, mensagem: str = "") -> str:
     if not destinos:
         return ""
 
-    url = f"{BASE_CHAT}?users={quote(','.join(destinos), safe='@,')}"
+    url = f"{base_do_formato(formato)}?users={quote(','.join(destinos), safe='@,')}"
     texto = (mensagem or "").strip()
     if texto:
         url += f"&message={quote(encurtar(texto), safe='')}"
     return url
+
+
+def formato_configurado(session) -> str:
+    """Read the chosen link format from the system settings."""
+    from app.services.system_setting_service import SystemSettingService
+
+    valor = SystemSettingService(session).obter_valor(
+        CHAVE_FORMATO_LINK, FORMATO_PADRAO
+    )
+    return (valor or FORMATO_PADRAO).strip().lower()
 
 
 def encurtar(mensagem: str, limite: int = MAX_MENSAGEM) -> str:
@@ -130,9 +174,9 @@ def caminhos_de_anexos(anexos) -> list[str]:
     return caminhos
 
 
-def abrir_chat_teams(emails, mensagem: str = "") -> bool:
+def abrir_chat_teams(emails, mensagem: str = "", *, formato: str | None = None) -> bool:
     """Open the Teams chat with the message ready; False if there is no address."""
-    url = link_chat_teams(emails, mensagem)
+    url = link_chat_teams(emails, mensagem, formato=formato)
     if not url:
         return False
 

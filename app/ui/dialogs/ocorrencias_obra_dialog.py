@@ -76,6 +76,7 @@ class OcorrenciasObraDialog(QDialog):
         self._pasta_obra: str | None = None
         self._linhas: list[dict] = []
         self._membros: list = []
+        self._formato_teams = teams_service.FORMATO_PADRAO
 
         self.setWindowTitle(f"Ocorrências — {codigo_processo}")
         self.setModal(True)
@@ -232,6 +233,7 @@ class OcorrenciasObraDialog(QDialog):
                 self._membros = [
                     _Membro(int(m.id), m.nome, m.email) for m in listar_membros(session)
                 ]
+                self._formato_teams = teams_service.formato_configurado(session)
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível ler os dados da obra.")
 
@@ -583,7 +585,9 @@ class OcorrenciasObraDialog(QDialog):
 
         enderecos = [membro.email for membro in destinatarios]
         nomes = ", ".join(membro.nome for membro in destinatarios)
-        if not teams_service.abrir_chat_teams(enderecos, mensagem):
+        if not teams_service.abrir_chat_teams(
+            enderecos, mensagem, formato=self._formato_teams
+        ):
             self.status_label.setText(
                 "Não foi possível abrir o Teams. O ticket ficou copiado — cole "
                 "com Ctrl+V."

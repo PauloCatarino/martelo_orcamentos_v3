@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -17,6 +18,8 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.services import teams_service
+from app.services.system_setting_service import SystemSettingService
 from app.services.equipa_service import (
     atualizar_membro,
     criar_membro,
@@ -50,6 +53,21 @@ class EquipaDialog(QDialog):
         )
         cabecalho.setWordWrap(True)
         cabecalho.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
+
+        self.formato_combo = QComboBox()
+        self.formato_combo.setToolTip(
+            "Se o Teams abrir sem o destinatário preenchido no 'Para:', "
+            "experimente outro formato. Depende de a conta ser de trabalho ou "
+            "pessoal e da versão do Teams instalada."
+        )
+        for chave, rotulo, _base in teams_service.FORMATOS_LINK:
+            self.formato_combo.addItem(rotulo, chave)
+        self.formato_combo.currentIndexChanged.connect(self._gravar_formato)
+
+        linha_formato = QHBoxLayout()
+        linha_formato.addWidget(QLabel("Formato do link do Teams:"))
+        linha_formato.addWidget(self.formato_combo, stretch=1)
+        linha_formato.addStretch()
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Nome", "Endereço de Teams", "Ativo"])
@@ -114,10 +132,12 @@ class EquipaDialog(QDialog):
         layout.setSpacing(8)
         layout.addWidget(cabecalho)
         layout.addWidget(self.table, stretch=1)
+        layout.addLayout(linha_formato)
         layout.addLayout(botoes)
         layout.addWidget(self.status_label)
 
         self.carregar()
+        self._carregar_formato()
 
     # ---- dados -----------------------------------------------------------
     def carregar(self) -> None:
@@ -159,6 +179,36 @@ class EquipaDialog(QDialog):
         )
         item_ativo.setToolTip("Desligue quem já não recebe tickets")
         self.table.setItem(indice, 2, item_ativo)
+
+    def _carregar_formato(self) -> None:
+        """Show which link format is in use."""
+        try:
+            with SessionLocal() as session:
+                formato = teams_service.formato_configurado(session)
+        except SQLAlchemyError:
+            formato = teams_service.FORMATO_PADRAO
+
+        indice = self.formato_combo.findData(formato)
+        self.formato_combo.blockSignals(True)
+        self.formato_combo.setCurrentIndex(max(indice, 0))
+        self.formato_combo.blockSignals(False)
+
+    def _gravar_formato(self) -> None:
+        """Save the chosen link format (takes effect on the next send)."""
+        try:
+            with SessionLocal() as session:
+                SystemSettingService(session).guardar_valor(
+                    teams_service.CHAVE_FORMATO_LINK,
+                    self.formato_combo.currentData(),
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível gravar o formato do link.")
+            return
+
+        self.status_label.setText(
+            "Formato do link gravado. Experimente enviar um ticket para ver se "
+            "o 'Para:' fica preenchido."
+        )
 
     # ---- ações -----------------------------------------------------------
     def _acrescentar(self) -> None:

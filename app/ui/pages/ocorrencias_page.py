@@ -169,10 +169,11 @@ class OcorrenciasPage(QWidget):
         ano_atual = datetime.now().year
         self.ano_filtro.blockSignals(True)
         self.ano_filtro.clear()
+        # Todos os filtros abrem em "todos": o que não se vê não se resolve.
         self.ano_filtro.addItem("Ano: todos", None)
         for ano in range(ano_atual, ano_atual - 6, -1):
             self.ano_filtro.addItem(str(ano), ano)
-        self.ano_filtro.setCurrentIndex(1)
+        self.ano_filtro.setCurrentIndex(0)
         self.ano_filtro.blockSignals(False)
 
         try:
@@ -190,6 +191,7 @@ class OcorrenciasPage(QWidget):
 
     def _limpar_filtros(self) -> None:
         for combo in (
+            self.ano_filtro,
             self.tipo_filtro,
             self.estado_filtro,
             self.responsavel_filtro,
