@@ -31,6 +31,7 @@ from app.domain.assistente_obra import (
     DossierObra,
     VersaoObra,
     aviso_outras_versoes,
+    aviso_tipo_encomenda,
     corpo_email_html,
     identificar_pedido,
     prompt_corpo_email,
@@ -279,8 +280,20 @@ class AssistenteProducaoService:
                     ano,
                     versao_obra=pedido.versao_obra,
                     versao_plano=pedido.versao_plano,
+                    prefixo=pedido.prefixo,
                 )
-                alvo = pedido.numero
+                if not versoes:
+                    # Rede de segurança: quem escreveu «111» e só existe «_111»
+                    # (ou o contrário) recebe a obra na mesma, com o reparo.
+                    versoes = self._encontrar_obras(
+                        processos,
+                        pedido.numero,
+                        ano,
+                        versao_obra=pedido.versao_obra,
+                        versao_plano=pedido.versao_plano,
+                        prefixo=None,
+                    )
+                alvo = pedido.prefixo + pedido.numero
                 if pedido.versao_obra:
                     alvo += f"_{pedido.versao_obra}"
                 if pedido.versao_plano:
@@ -316,9 +329,21 @@ class AssistenteProducaoService:
                 # Sem isto, quem pergunta pela encomenda toda nunca fica a saber
                 # que há mais versões — e são obras a sério, com estados
                 # de produção diferentes.
-                aviso=aviso_outras_versoes(
-                    dossier,
-                    pediu_versao=bool(pedido.versao_obra or pedido.versao_plano),
+                aviso=" ".join(
+                    parte
+                    for parte in (
+                        aviso_tipo_encomenda(
+                            pedido.prefixo + pedido.numero,
+                            str(getattr(principal, "num_enc_phc", "") or ""),
+                        ),
+                        aviso_outras_versoes(
+                            dossier,
+                            pediu_versao=bool(
+                                pedido.versao_obra or pedido.versao_plano
+                            ),
+                        ),
+                    )
+                    if parte
                 ),
             )
 
@@ -595,12 +620,18 @@ class AssistenteProducaoService:
         ano: str = "",
         versao_obra: str = "",
         versao_plano: str = "",
+        prefixo: str | None = None,
     ) -> list:
         """Versões da obra (mesmo nº encomenda e ANO), da mais antiga à recente.
 
         O nº de encomenda repete-se entre anos, por isso o ano faz parte da
         identidade da obra; ``ano`` vazio não filtra por ano. Escrevendo
         «_111_03_01» filtra-se também a versão da obra e a do plano de corte.
+
+        ``prefixo`` distingue «_111» (Streamlit, encomenda de cliente final) de
+        «111» (PHC, encomenda de cliente): são obras diferentes e não podem ser
+        misturadas. ``None`` não distingue — é a rede de segurança de quem não
+        escreveu o underscore.
         """
         alvo = re.sub(r"\D", "", numero or "")
         if not alvo:
@@ -609,8 +640,11 @@ class AssistenteProducaoService:
         ano_alvo = re.sub(r"\D", "", str(ano or ""))
         encontradas = []
         for processo in processos or []:
-            bruto = re.sub(r"\D", "", str(getattr(processo, "num_enc_phc", "") or ""))
+            enc = str(getattr(processo, "num_enc_phc", "") or "").strip()
+            bruto = re.sub(r"\D", "", enc)
             if not bruto or not (bruto == alvo or int(bruto) == alvo_int):
+                continue
+            if prefixo is not None and enc.startswith("_") != bool(prefixo):
                 continue
             if ano_alvo:
                 processo_ano = re.sub(r"\D", "", str(getattr(processo, "ano", "") or ""))

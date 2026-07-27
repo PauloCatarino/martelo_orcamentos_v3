@@ -10,6 +10,8 @@ from app.domain.assistente_obra import (
     DossierObra,
     VersaoObra,
     aviso_outras_versoes,
+    aviso_tipo_encomenda,
+    extrair_prefixo,
     extrair_versoes,
     identificar_pedido,
 )
@@ -158,3 +160,67 @@ def test_quem_ja_pediu_uma_versao_nao_leva_o_aviso() -> None:
     dossier = _dossier(("01", "01"), ("02", "01"))
 
     assert aviso_outras_versoes(dossier, pediu_versao=True) == ""
+
+
+# ---- «_111» e «111» são obras diferentes ---------------------------------
+@pytest.mark.parametrize(
+    ("pergunta", "prefixo"),
+    [
+        ("ponto situacao da enc phc _111", "_"),
+        ("ponto situacao da enc phc 111", ""),
+        ("estado da obra _111_03_01", "_"),
+        ("estado da obra 111_03_01", ""),
+    ],
+)
+def test_o_underscore_do_numero_e_lido_da_pergunta(pergunta, prefixo) -> None:
+    assert identificar_pedido(pergunta).prefixo == prefixo
+
+
+def test_underscore_seguido_de_mais_algarismos_e_outro_numero() -> None:
+    """«_1112» é a encomenda 1112, não a 111."""
+    pedido = identificar_pedido("estado da obra _1112")
+
+    assert (pedido.numero, pedido.prefixo) == ("1112", "_")
+
+
+def test_extrair_prefixo_sem_pistas() -> None:
+    assert extrair_prefixo("", "111") == ""
+    assert extrair_prefixo("obra _111", "") == ""
+
+
+def test_a_encomenda_do_streamlit_nao_se_mistura_com_a_do_phc() -> None:
+    """«_111» (cliente final) e «111» (PHC) são obras diferentes."""
+    processos = [*_TRES_VERSOES, _processo("01", "01", enc="111")]
+
+    do_streamlit = AssistenteProducaoService._encontrar_obras(
+        processos, "111", prefixo="_"
+    )
+    do_phc = AssistenteProducaoService._encontrar_obras(processos, "111", prefixo="")
+
+    assert [p.num_enc_phc for p in do_streamlit] == ["_111", "_111", "_111"]
+    assert [p.num_enc_phc for p in do_phc] == ["111"]
+
+
+def test_sem_distincao_apanha_as_duas() -> None:
+    """É a rede de segurança de quem não escreveu o underscore."""
+    processos = [*_TRES_VERSOES, _processo("01", "01", enc="111")]
+
+    encontradas = AssistenteProducaoService._encontrar_obras(
+        processos, "111", prefixo=None
+    )
+
+    assert len(encontradas) == 4
+
+
+def test_o_reparo_explica_a_diferenca_entre_os_dois_tipos() -> None:
+    do_streamlit = aviso_tipo_encomenda("111", "_111")
+    do_phc = aviso_tipo_encomenda("_111", "111")
+
+    assert "«_111»" in do_streamlit and "Streamlit" in do_streamlit
+    assert "«111»" in do_phc and "PHC" in do_phc
+
+
+def test_sem_diferenca_nao_ha_reparo() -> None:
+    assert aviso_tipo_encomenda("_111", "_111") == ""
+    assert aviso_tipo_encomenda("1134", "1134") == ""
+    assert aviso_tipo_encomenda("", "_111") == ""

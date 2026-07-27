@@ -75,6 +75,10 @@ class PedidoObra:
     versao_obra: str = ""
     #: Versão do plano de corte pedida («_111_03_01»); vazio = a mais recente.
     versao_plano: str = ""
+    #: "_" quando o número foi escrito com underscore («_111»). O underscore
+    #: faz parte da identidade: as encomendas do PHC têm 4 algarismos e as que
+    #: começam por "_" vêm do Streamlit — «_111» e «111» são obras diferentes.
+    prefixo: str = ""
 
 
 @dataclass(frozen=True)
@@ -155,7 +159,23 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
         ano=ano,
         versao_obra=versao_obra,
         versao_plano=versao_plano,
+        prefixo=extrair_prefixo(pergunta, numero),
     )
+
+
+def extrair_prefixo(pergunta: object, numero: str) -> str:
+    """"_" se o número foi escrito com underscore («_111»), senão "".
+
+    Tem de ler o texto **em bruto**: o ``normalizar`` come o underscore, e é
+    ele que distingue uma encomenda do Streamlit («_111») de uma do PHC.
+    """
+    texto = str(pergunta or "")
+    alvo = re.sub(r"\D", "", numero or "")
+    if not texto or not alvo:
+        return ""
+    # ``(?!\d)`` e não ``\b``: em «_111_03_01» o que vem a seguir ao número é um
+    # underscore, que conta como letra e faria o ``\b`` falhar.
+    return "_" if re.search(rf"_0*{int(alvo)}(?!\d)", texto) else ""
 
 
 #: «_111_03_01» / «111/03/01»: o número, a versão da obra e a do plano de corte.
@@ -183,6 +203,30 @@ def extrair_versoes(pergunta: object, numero: str) -> tuple[str, str]:
         plano = encontrado.group(3) or ""
         return f"{int(obra):02d}", f"{int(plano):02d}" if plano else ""
     return "", ""
+
+
+def aviso_tipo_encomenda(escrito: str, encontrado: str) -> str:
+    """Reparo quando o underscore da encomenda não bate certo com o escrito.
+
+    As encomendas do PHC têm 4 algarismos («1134»); as que começam por «_» vêm
+    do Streamlit e são encomendas de cliente final. São obras diferentes, por
+    isso quem escreveu uma e recebeu a outra tem de saber.
+    """
+    a_escrita = (escrito or "").strip()
+    a_encontrada = (encontrado or "").strip()
+    if not a_escrita or not a_encontrada:
+        return ""
+    if a_escrita.startswith("_") == a_encontrada.startswith("_"):
+        return ""
+
+    if a_encontrada.startswith("_"):
+        natureza = "as que começam por «_» vêm do Streamlit (cliente final)"
+    else:
+        natureza = "as do PHC não levam «_» (cliente)"
+    return (
+        f"Escreveu «{a_escrita}», mas a encomenda que existe é «{a_encontrada}» — "
+        f"{natureza}."
+    )
 
 
 def aviso_outras_versoes(dossier: DossierObra, *, pediu_versao: bool = False) -> str:
