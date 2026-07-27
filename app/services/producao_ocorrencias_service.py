@@ -17,6 +17,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain import ocorrencia_tipos as tipos
+from app.domain.ocorrencia_anexos import existe as anexo_existe
+from app.domain.ocorrencia_relatorio import ObraRelatorio, TicketRelatorio
 from app.models.producao import Producao
 from app.models.producao_ocorrencia import ProducaoOcorrencia
 from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
@@ -433,6 +435,121 @@ def _resumo(session: Session, coluna, *, ano: int | None) -> dict[str, int]:
         (chave or "—"): int(total)
         for chave, total in session.execute(statement).all()
     }
+
+
+# ---- relatório -----------------------------------------------------------
+def dados_para_relatorio(
+    session: Session,
+    *,
+    producao_id: int | None = None,
+    ano: int | str | None = None,
+    tipo: str | None = None,
+    estado: str | None = None,
+    responsavel: str | None = None,
+    apenas_abertos: bool = False,
+    incluir_fotos: bool = True,
+) -> list[ObraRelatorio]:
+    """Build the report rows: one entry per obra, tickets inside, oldest first.
+
+    Aqui a ordem inverte-se face à tabela do ecrã: num relatório lê-se a
+    história da obra do princípio para o fim, e não do fim para o princípio.
+    """
+    if producao_id is not None:
+        obra = session.get(Producao, producao_id)
+        if obra is None:
+            return []
+        pares = [
+            (obra, ticket)
+            for ticket in listar_ocorrencias(
+                session,
+                producao_id,
+                tipo=tipo,
+                estado=estado,
+                responsavel=responsavel,
+                apenas_abertos=apenas_abertos,
+            )
+        ]
+    else:
+        pares = listar_todas(
+            session,
+            ano=ano,
+            tipo=tipo,
+            estado=estado,
+            responsavel=responsavel,
+            apenas_abertos=apenas_abertos,
+        )
+
+    agrupado: dict[int, list] = {}
+    obras: dict[int, Producao] = {}
+    for obra, ticket in pares:
+        obras.setdefault(int(obra.id), obra)
+        agrupado.setdefault(int(obra.id), []).append(ticket)
+
+    relatorio: list[ObraRelatorio] = []
+    for obra_id, tickets in agrupado.items():
+        obra = obras[obra_id]
+        tickets.sort(key=lambda t: (t.numero or 0, t.id))
+        relatorio.append(
+            ObraRelatorio(
+                codigo=str(obra.codigo_processo or ""),
+                cliente=str(obra.nome_cliente or ""),
+                ref_cliente=str(obra.ref_cliente or ""),
+                tickets=tuple(
+                    _ticket_para_relatorio(ticket, incluir_fotos=incluir_fotos)
+                    for ticket in tickets
+                ),
+            )
+        )
+
+    relatorio.sort(key=lambda obra: obra.codigo)
+    return relatorio
+
+
+def _ticket_para_relatorio(ticket, *, incluir_fotos: bool) -> TicketRelatorio:
+    """Turn one ticket into the plain text the report needs."""
+    envio = ""
+    if ticket.enviado_em:
+        via = (ticket.enviado_via or "chat").capitalize()
+        envio = (
+            f"enviado a {ticket.enviado_para or '—'} no {via} em "
+            f"{formatar_data(ticket.enviado_em)}"
+        )
+
+    resolucao = ""
+    if ticket.resolvido_em:
+        resolucao = (
+            f"resolvido por {ticket.resolvido_por or '—'} em "
+            f"{formatar_data(ticket.resolvido_em)}"
+        )
+
+    fotos: tuple[str, ...] = ()
+    if incluir_fotos:
+        fotos = tuple(
+            str(anexo.caminho)
+            for anexo in (ticket.anexos or [])
+            if anexo.caminho and anexo_existe(anexo.caminho)
+        )
+
+    return TicketRelatorio(
+        numero=ticket.numero,
+        data=formatar_data(ticket.created_at),
+        tipo=tipos.normalizar_tipo(ticket.tipo),
+        gravidade=tipos.normalizar_gravidade(ticket.gravidade),
+        origem=tipos.normalizar_origem(ticket.origem),
+        estado=tipos.normalizar_estado(ticket.estado),
+        assunto=str(ticket.assunto or ""),
+        texto=str(ticket.texto or ""),
+        responsavel=str(ticket.responsavel or ""),
+        autor=str(ticket.autor or ""),
+        envio=envio,
+        resolucao=resolucao,
+        custo=(
+            f"{ticket.custo_estimado:.2f} €"
+            if ticket.custo_estimado is not None
+            else ""
+        ),
+        fotos=fotos,
+    )
 
 
 # ---- apoio ---------------------------------------------------------------

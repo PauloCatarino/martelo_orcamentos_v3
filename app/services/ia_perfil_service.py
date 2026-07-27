@@ -132,6 +132,16 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "cliente»; «Listar as fases de produção»; «Incluir as versões de CUT-RITE».",
     ),
     TipoEntrada(
+        "instrucao_ocorrencias",
+        "Instruções para o relatório de ocorrências",
+        "Instrução",
+        "Detalhe (opcional)",
+        False,
+        "Como queres o RELATÓRIO DAS OCORRÊNCIAS (os tickets da obra). Ex.: "
+        "«Incluir sempre as fotos»; «Separar os erros nossos dos pedidos do "
+        "cliente»; «Mostrar quem ficou responsável»; «Não incluir os custos».",
+    ),
+    TipoEntrada(
         "instrucao_texto",
         "Instruções para texto (WhatsApp)",
         "Instrução",

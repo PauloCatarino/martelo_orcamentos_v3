@@ -9,14 +9,17 @@ responsável.
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -28,11 +31,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain import ocorrencia_tipos as tipos
 from app.services.equipa_service import listar_membros
+from app.domain.ocorrencia_relatorio import subtitulo_relatorio, titulo_relatorio
 from app.services.producao_ocorrencias_service import (
+    dados_para_relatorio,
     formatar_data,
     listar_todas,
     resumo_por_tipo,
 )
+from app.services.relatorio_producao_service import gerar_ocorrencias_pdf
 from app.ui import tema
 from app.ui.dialogs.ocorrencias_obra_dialog import CORES_FAMILIA, OcorrenciasObraDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
@@ -143,8 +149,16 @@ class OcorrenciasPage(QWidget):
         self.abrir_button.setToolTip("Abrir a janela dos tickets da obra selecionada")
         self.abrir_button.clicked.connect(self._abrir_obra)
 
+        self.pdf_button = QPushButton("Exportar PDF")
+        self.pdf_button.setToolTip(
+            "Gerar o relatório com as ocorrências que estão na lista, com as "
+            "fotos e o resumo por tipo"
+        )
+        self.pdf_button.clicked.connect(self._exportar_pdf)
+
         botoes = QHBoxLayout()
         botoes.addWidget(self.abrir_button)
+        botoes.addWidget(self.pdf_button)
         botoes.addStretch()
 
         self.status_label = QLabel("")
@@ -320,6 +334,53 @@ class OcorrenciasPage(QWidget):
         return item
 
     # ---- ações -----------------------------------------------------------
+    def _exportar_pdf(self) -> None:
+        """Write the report with exactly what the filters are showing."""
+        ano = self.ano_filtro.currentData()
+        estado = self.estado_filtro.currentData()
+        try:
+            with SessionLocal() as session:
+                obras = dados_para_relatorio(
+                    session,
+                    ano=ano,
+                    tipo=self.tipo_filtro.currentData(),
+                    estado=None if estado == "__abertos__" else estado,
+                    apenas_abertos=estado == "__abertos__",
+                    responsavel=self.responsavel_filtro.currentData(),
+                )
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível ler as ocorrências para o PDF.")
+            return
+
+        if not obras:
+            self.status_label.setText("Não há ocorrências para pôr no relatório.")
+            return
+
+        sufixo = f"_{ano}" if ano else ""
+        destino, _filtro = QFileDialog.getSaveFileName(
+            self,
+            "Guardar o relatório de ocorrências",
+            str(Path.home() / "Downloads" / f"ocorrencias{sufixo}.pdf"),
+            "PDF (*.pdf)",
+        )
+        if not destino:
+            return
+
+        gerado_em = datetime.now().strftime("%d-%m-%Y")
+        try:
+            caminho = gerar_ocorrencias_pdf(
+                obras,
+                caminho=destino,
+                titulo=titulo_relatorio(obras, uma_obra=False),
+                subtitulo=subtitulo_relatorio(obras, ano=ano, gerado_em=gerado_em),
+            )
+        except (RuntimeError, OSError) as erro:
+            QMessageBox.warning(self, "Relatório de ocorrências", str(erro))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+        self.status_label.setText(f"Relatório gerado: {caminho}")
+
     def _abrir_obra(self) -> None:
         indice = self.table.currentRow()
         if indice < 0:

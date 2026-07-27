@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
+from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -29,8 +31,11 @@ from app.domain import ocorrencia_tipos as tipos
 from app.models.producao import Producao
 from app.services import teams_service
 from app.services.equipa_service import identificar_membro, listar_membros
+from app.domain.ocorrencia_relatorio import subtitulo_relatorio, titulo_relatorio
+from app.services.relatorio_producao_service import gerar_ocorrencias_pdf
 from app.services.producao_ocorrencias_service import (
     atualizar_ocorrencia,
+    dados_para_relatorio,
     eliminar_ocorrencia,
     formatar_data,
     listar_anexos,
@@ -180,6 +185,12 @@ class OcorrenciasObraDialog(QDialog):
         )
         self.teams_button.clicked.connect(self._enviar_teams)
 
+        self.pdf_button = QPushButton("PDF desta obra")
+        self.pdf_button.setToolTip(
+            "Gerar o relatório das ocorrências desta obra, com as fotos"
+        )
+        self.pdf_button.clicked.connect(self._gerar_pdf)
+
         self.eliminar_button = QPushButton("Eliminar")
         self.eliminar_button.setToolTip("Eliminar o ticket selecionado — só quem o escreveu")
         self.eliminar_button.clicked.connect(self._eliminar)
@@ -197,6 +208,7 @@ class OcorrenciasObraDialog(QDialog):
             self.editar_button,
             self.estado_button,
             self.teams_button,
+            self.pdf_button,
             self.eliminar_button,
         ):
             botoes.addWidget(botao)
@@ -702,6 +714,39 @@ class OcorrenciasObraDialog(QDialog):
 
         self.carregar()
         self.status_label.setText(f"Ticket {referencia} eliminado.")
+
+    def _gerar_pdf(self) -> None:
+        """Write and open the PDF with this obra's tickets and photos."""
+        try:
+            with SessionLocal() as session:
+                obras = dados_para_relatorio(session, producao_id=self._producao_id)
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível ler os tickets para o PDF.")
+            return
+
+        if not obras:
+            self.status_label.setText("Não há tickets para pôr no relatório.")
+            return
+
+        pasta = Path(self._pasta_obra) if self._pasta_obra else None
+        if pasta is None or not pasta.is_dir():
+            pasta = Path.home() / "Downloads"
+
+        base = re.sub(r"[^0-9A-Za-z._-]+", "_", self._codigo_processo or "obra")
+        gerado_em = datetime.now().strftime("%d-%m-%Y")
+        try:
+            caminho = gerar_ocorrencias_pdf(
+                obras,
+                caminho=pasta / f"ocorrencias_{base}.pdf",
+                titulo=titulo_relatorio(obras, uma_obra=True),
+                subtitulo=subtitulo_relatorio(obras, gerado_em=gerado_em),
+            )
+        except (RuntimeError, OSError) as erro:
+            QMessageBox.warning(self, "Relatório de ocorrências", str(erro))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+        self.status_label.setText(f"Relatório gerado: {caminho}")
 
     def _abrir_equipa(self) -> None:
         EquipaDialog(self).exec()

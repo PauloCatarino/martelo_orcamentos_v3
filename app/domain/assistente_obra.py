@@ -15,6 +15,15 @@ from pathlib import Path
 
 from app.domain.pesquisa_texto import normalizar
 
+#: Palavras que pedem a lista de tickets em vez do ponto de situação.
+_PALAVRAS_OCORRENCIAS = frozenset(
+    {
+        "ocorrencia", "ocorrencias", "ticket", "tickets", "assistencia",
+        "assistencias", "problema", "problemas", "reclamacao", "reclamacoes",
+        "diario",
+    }
+)
+
 #: Palavras que indicam uma AÇÃO/estado sobre uma obra (não uma pesquisa).
 _GATILHOS = frozenset(
     {
@@ -22,7 +31,7 @@ _GATILHOS = frozenset(
         "resumo", "email", "mail", "estado", "situacao", "ponto", "fase", "fases",
         "como", "andamento", "andar", "producao",
     }
-)
+) | _PALAVRAS_OCORRENCIAS
 
 #: Palavra «obra»/«encomenda»/«phc» imediatamente antes do número reforça-o.
 _ROTULOS_OBRA = frozenset({"obra", "encomenda", "enc", "phc", "processo"})
@@ -30,6 +39,10 @@ _ROTULOS_OBRA = frozenset({"obra", "encomenda", "enc", "phc", "processo"})
 _MODO_EMAIL = "email"
 _MODO_PDF = "pdf"
 _MODO_TEXTO = "texto"
+#: PDF com os tickets da obra, em vez do ponto de situação.
+_MODO_OCORRENCIAS = "ocorrencias"
+#: PDF com os tickets de TODAS as obras (não aponta a nenhuma).
+MODO_OCORRENCIAS_TODAS = "ocorrencias_todas"
 
 
 #: Intervalo plausível para um ANO escrito na pergunta (distingue-o do nº obra).
@@ -276,6 +289,42 @@ def _e_ano(digitos: str) -> bool:
     return len(digitos) == 4 and _ANO_MIN <= int(digitos) <= _ANO_MAX
 
 
+#: Palavras que alargam o pedido a toda a casa em vez de a uma obra.
+_PALAVRAS_TODAS = frozenset(
+    {"todas", "todos", "toda", "todo", "geral", "lista", "listagem", "resumo"}
+)
+
+
+def pedido_ocorrencias_todas(pergunta: object) -> str | None:
+    """Deteta «lista de todas as ocorrências (de 2026)»; devolve o ano ou "".
+
+    Devolve ``None`` quando não é este pedido. Exige a palavra das ocorrências
+    **e** uma palavra que alargue a toda a casa (ou «pdf»/«relatório»), para
+    «ocorrências da obra 1134» continuar a ser tratado como pedido de UMA obra
+    e uma pesquisa normal não ser desviada para aqui.
+    """
+    palavras = normalizar(pergunta).split()
+    if not palavras:
+        return None
+
+    conjunto = set(palavras)
+    if not conjunto & _PALAVRAS_OCORRENCIAS:
+        return None
+    if not conjunto & (_PALAVRAS_TODAS | {"pdf", "relatorio"}):
+        return None
+    if conjunto & _ROTULOS_OBRA:
+        return None
+
+    numeros = [re.sub(r"\D", "", palavra) for palavra in palavras]
+    numeros = [digitos for digitos in numeros if digitos]
+    anos = [digitos for digitos in numeros if _e_ano(digitos)]
+    if len(numeros) != len(anos):
+        # Há um número que não é ano — é o nº de uma obra, não é este pedido.
+        return None
+
+    return anos[0] if anos else ""
+
+
 def _fases_str(dossier: DossierObra) -> str:
     if not (dossier.encontrado_streamlit and dossier.fases):
         return "(sem detalhe de produção)"
@@ -383,6 +432,10 @@ def _tem_rotulo_antes_do_numero(palavras: list[str], numero: str) -> bool:
 
 def _modo(palavras: list[str]) -> str:
     conjunto = set(palavras)
+    # As ocorrências vêm primeiro: «relatório das ocorrências da obra 1134» tem
+    # as duas palavras, e o que se quer é a lista de tickets.
+    if conjunto & _PALAVRAS_OCORRENCIAS:
+        return _MODO_OCORRENCIAS
     if conjunto & {"email", "mail"}:
         return _MODO_EMAIL
     if conjunto & {"pdf", "relatorio"}:

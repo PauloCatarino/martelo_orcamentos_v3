@@ -43,12 +43,20 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
-from app.domain.assistente_obra import assunto_email, corpo_email_html
+from app.domain.assistente_obra import (
+    MODO_OCORRENCIAS_TODAS,
+    assunto_email,
+    corpo_email_html,
+)
+from app.domain.ocorrencia_relatorio import subtitulo_relatorio, titulo_relatorio
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
 from app.services.email_service import carregar_email_config, enviar_email
-from app.services.relatorio_producao_service import gerar_dossier_obra_pdf
+from app.services.relatorio_producao_service import (
+    gerar_dossier_obra_pdf,
+    gerar_ocorrencias_pdf,
+)
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.ui.dialogs.ia_martelo_dialog import IaMarteloDialog
 from app.services.cutrite_service import (
@@ -1395,6 +1403,9 @@ class ProducaoPage(QWidget):
         if resultado.obra_id is not None:
             self._selecionar_processo_id(resultado.obra_id)
 
+        if resultado.modo in ("ocorrencias", MODO_OCORRENCIAS_TODAS):
+            self._gerar_pdf_ocorrencias(resultado)
+            return
         if resultado.modo == "pdf" and resultado.dossier is not None:
             self._gerar_pdf_obra(resultado.dossier)
             return
@@ -1416,6 +1427,37 @@ class ProducaoPage(QWidget):
         self.status_label.setText(
             "Resumo da obra copiado para a área de transferência."
         )
+
+    def _gerar_pdf_ocorrencias(self, resultado) -> None:
+        """Gera e abre o PDF das ocorrências (de uma obra ou de todas)."""
+        uma_obra = resultado.modo == "ocorrencias"
+        dossier = resultado.dossier
+        if uma_obra and dossier is not None:
+            base = dossier.enc or dossier.codigo or "obra"
+            pasta = self._pasta_destino_pdf(dossier)
+        else:
+            base = f"todas_{resultado.ano_ocorrencias}" if resultado.ano_ocorrencias else "todas"
+            pasta = Path.home() / "Downloads"
+
+        nome = re.sub(r"[^0-9A-Za-z._-]+", "_", f"ocorrencias_{base}") + ".pdf"
+        gerado_em = QDate.currentDate().toString("dd-MM-yyyy")
+        try:
+            caminho = gerar_ocorrencias_pdf(
+                resultado.ocorrencias,
+                caminho=pasta / nome,
+                titulo=titulo_relatorio(resultado.ocorrencias, uma_obra=uma_obra),
+                subtitulo=subtitulo_relatorio(
+                    resultado.ocorrencias,
+                    ano=resultado.ano_ocorrencias,
+                    gerado_em=gerado_em,
+                ),
+            )
+        except (RuntimeError, OSError) as erro:
+            QMessageBox.warning(self, "Relatório de ocorrências", str(erro))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+        self.status_label.setText(f"Relatório de ocorrências gerado: {caminho}")
 
     def _criar_pdf_obra(self, dossier) -> Path | None:
         """Gera o PDF do ponto de situação (pasta da obra, senão Downloads)."""

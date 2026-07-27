@@ -36,11 +36,17 @@ from app.domain.assistente_obra import (
     saudacao_por_hora,
     texto_para_html_email,
 )
+from app.domain.assistente_obra import (
+    MODO_OCORRENCIAS_TODAS,
+    pedido_ocorrencias_todas,
+)
 from app.domain.datas import normalizar_data
+from app.domain.ocorrencia_relatorio import contar_tickets
 from app.domain.pesquisa_texto import normalizar
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.user import User
 from app.services.ia_perfil_service import listar_entradas
+from app.services.producao_ocorrencias_service import dados_para_relatorio
 from app.services.producao_service import (
     filtrar_processos,
     gerar_nome_enc_imos_ix,
@@ -80,6 +86,10 @@ class ResultadoIA:
     aviso: str = ""
     #: Corpo HTML do email já composto (modo email), determinístico ou por LLM.
     corpo_email: str = ""
+    #: Tickets já em forma de relatório (modos "ocorrencias"/"ocorrencias_todas").
+    ocorrencias: list = field(default_factory=list)
+    #: Ano pedido na pergunta das ocorrências de toda a casa ("" = todos).
+    ano_ocorrencias: str = ""
 
 
 @dataclass(frozen=True)
@@ -257,6 +267,10 @@ class AssistenteProducaoService:
                 )
             dossier = self.montar_dossier(versoes)
             principal = versoes[-1]  # versão mais recente
+
+            if pedido.modo == "ocorrencias":
+                return self._resposta_ocorrencias_obra(principal, dossier)
+
             corpo_email = ""
             if pedido.modo == "email":
                 corpo_email = self._compor_email(
@@ -273,6 +287,10 @@ class AssistenteProducaoService:
                 dossier=dossier,
                 corpo_email=corpo_email,
             )
+
+        ano_todas = pedido_ocorrencias_todas(pergunta)
+        if ano_todas is not None:
+            return self._resposta_ocorrencias_todas(ano_todas)
 
         intencao, recusa = self.interpretar_pergunta_llm(
             pergunta, user_id=user_id, processos=processos
@@ -299,6 +317,72 @@ class AssistenteProducaoService:
                 intencao, len(obras), vocabulario_pesquisa(processos)
             ),
         )
+
+    def _resposta_ocorrencias_obra(self, processo, dossier: DossierObra) -> ResultadoIA:
+        """PDF dos tickets de UMA obra.
+
+        Junta as versões todas da obra: um problema reportado na versão 01 é da
+        mesma obra que a versão 02, e quem pede o relatório quer a história
+        completa, não só a da versão que calhou estar selecionada.
+        """
+        ids = self._ids_das_versoes(dossier, processo)
+        obras: list = []
+        for producao_id in ids:
+            obras.extend(dados_para_relatorio(self.session, producao_id=producao_id))
+
+        if not obras:
+            return ResultadoIA(
+                tipo="obra",
+                obra_id=getattr(processo, "id", None),
+                modo="ocorrencias",
+                dossier=dossier,
+                aviso=f"A obra {dossier.codigo or dossier.enc} não tem ocorrências registadas.",
+            )
+
+        total = contar_tickets(obras)
+        return ResultadoIA(
+            tipo="obra",
+            obra_id=getattr(processo, "id", None),
+            modo="ocorrencias",
+            texto=f"{total} ocorrência(s) em {dossier.codigo or dossier.enc}.",
+            dossier=dossier,
+            ocorrencias=obras,
+        )
+
+    def _resposta_ocorrencias_todas(self, ano: str) -> ResultadoIA:
+        """PDF dos tickets de todas as obras, opcionalmente de um ano."""
+        obras = dados_para_relatorio(self.session, ano=ano or None)
+        if not obras:
+            alvo = f" de {ano}" if ano else ""
+            return ResultadoIA(
+                tipo="obra",
+                modo=MODO_OCORRENCIAS_TODAS,
+                aviso=f"Não há ocorrências registadas{alvo}.",
+                ano_ocorrencias=ano,
+            )
+
+        total = contar_tickets(obras)
+        alvo = f" de {ano}" if ano else ""
+        return ResultadoIA(
+            tipo="obra",
+            modo=MODO_OCORRENCIAS_TODAS,
+            texto=f"{total} ocorrência(s) em {len(obras)} obra(s){alvo}.",
+            ocorrencias=obras,
+            ano_ocorrencias=ano,
+        )
+
+    @staticmethod
+    def _ids_das_versoes(dossier: DossierObra, processo) -> list[int]:
+        """Ids of every version of this obra, sem repetir e sem perder o atual."""
+        ids: list[int] = []
+        for versao in getattr(dossier, "versoes", ()) or ():
+            identificador = getattr(versao, "id", None)
+            if identificador is not None and int(identificador) not in ids:
+                ids.append(int(identificador))
+        atual = getattr(processo, "id", None)
+        if atual is not None and int(atual) not in ids:
+            ids.append(int(atual))
+        return ids
 
     def _compor_email(
         self,
