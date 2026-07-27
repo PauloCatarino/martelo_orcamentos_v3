@@ -76,6 +76,11 @@ REGRA_SUPORTE_TERMINAL_VARAO = "SUPORTE_TERMINAL_VARAO"
 
 METODO_ESCALAO_AREA = "ESCALAO_AREA"
 
+# Formulas das peças horizontais (tetos, fundos, prateleiras): o comprimento e
+# a largura do modulo e a largura e a profundidade.
+FORMULA_COMP_HORIZONTAL = "LM"
+FORMULA_LARG_HORIZONTAL = "PM"
+
 
 @dataclass(frozen=True)
 class OperacaoSeed:
@@ -190,9 +195,10 @@ TETOS: tuple[PecaSimplesSeed, ...] = tuple(
         codigo_orlas=orlas,
         grupo=GRUPO_TETOS,
         funcao=TETO,
-        # O TETO_2000 usa HM/LM; as variantes seguem a mesma regra.
-        formula_comp="HM",
-        formula_larg="LM",
+        # Peca horizontal: comprimento = largura do modulo e largura =
+        # profundidade, como nos fundos e nas prateleiras.
+        formula_comp=FORMULA_COMP_HORIZONTAL,
+        formula_larg=FORMULA_LARG_HORIZONTAL,
         chave_valueset_material=CHAVE_MATERIAL_TETOS,
         operacoes=OPERACOES_TETO,
     )
@@ -206,8 +212,8 @@ PRATELEIRAS_FIXAS: tuple[PecaSimplesSeed, ...] = tuple(
         codigo_orlas=orlas,
         grupo=GRUPO_PRATELEIRAS_FIXAS,
         funcao=PRATELEIRA_FIXA,
-        formula_comp="LM",
-        formula_larg="PM",
+        formula_comp=FORMULA_COMP_HORIZONTAL,
+        formula_larg=FORMULA_LARG_HORIZONTAL,
         chave_valueset_material=CHAVE_MATERIAL_PRATELEIRAS_FIXAS,
         operacoes=OPERACOES_PRATELEIRA_FIXA,
     )
@@ -258,6 +264,7 @@ class TetosPrateleirasResult:
     operacoes_criadas: int
     componentes_criados: int
     prefs_criadas: int
+    formulas_corrigidas: int
 
 
 def get_peca(session: Session, codigo: str) -> DefPeca | None:
@@ -478,6 +485,41 @@ def adicionar_as_bibliotecas(session: Session) -> int:
     return criadas
 
 
+def corrigir_formulas_horizontais(session: Session) -> int:
+    """Por os tetos com as formulas das peças horizontais (LM x PM).
+
+    O ``TETO_2000`` tinha ficado com ``HM`` no comprimento, herdado do tempo em
+    que a dimensao principal era tratada como altura. Devolve quantas peças
+    mudaram.
+    """
+    pecas = session.execute(
+        select(DefPeca).where(
+            DefPeca.grupo == GRUPO_TETOS,
+            DefPeca.tipo_peca == SIMPLES,
+        )
+    ).scalars().all()
+
+    corrigidas = 0
+    for peca in pecas:
+        if (peca.formula_comp, peca.formula_larg) == (
+            FORMULA_COMP_HORIZONTAL,
+            FORMULA_LARG_HORIZONTAL,
+        ):
+            continue
+
+        anterior = f"{peca.formula_comp or '-'} x {peca.formula_larg or '-'}"
+        peca.formula_comp = FORMULA_COMP_HORIZONTAL
+        peca.formula_larg = FORMULA_LARG_HORIZONTAL
+        corrigidas += 1
+        print(
+            f"Peca {peca.codigo}: formulas {anterior} -> "
+            f"{FORMULA_COMP_HORIZONTAL} x {FORMULA_LARG_HORIZONTAL}"
+        )
+
+    session.flush()
+    return corrigidas
+
+
 def seed_tetos_prateleiras_fixas(session: Session) -> TetosPrateleirasResult:
     """Criar tetos, prateleiras fixas e o conjunto do varao (idempotente)."""
     criadas = reutilizadas = operacoes = componentes = 0
@@ -493,6 +535,7 @@ def seed_tetos_prateleiras_fixas(session: Session) -> TetosPrateleirasResult:
         session
     )
     prefs = adicionar_as_bibliotecas(session)
+    formulas_corrigidas = corrigir_formulas_horizontais(session)
 
     session.commit()
 
@@ -502,6 +545,7 @@ def seed_tetos_prateleiras_fixas(session: Session) -> TetosPrateleirasResult:
         operacoes_criadas=operacoes,
         componentes_criados=componentes + conjuntos_componentes,
         prefs_criadas=prefs,
+        formulas_corrigidas=formulas_corrigidas,
     )
 
 
@@ -513,6 +557,7 @@ def print_summary(result: TetosPrateleirasResult) -> None:
     print(f"Operacoes associadas criadas: {result.operacoes_criadas}")
     print(f"Componentes/associados criados: {result.componentes_criados}")
     print(f"Linhas de biblioteca de utilizador criadas: {result.prefs_criadas}")
+    print(f"Tetos com formulas corrigidas para LM x PM: {result.formulas_corrigidas}")
 
 
 def main() -> int:
