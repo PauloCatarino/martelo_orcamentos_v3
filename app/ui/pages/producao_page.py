@@ -99,6 +99,8 @@ from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
+from app.ui.dialogs.producao_impressao_dialog import ProducaoImpressaoDialog
+from app.ui.dialogs.producao_preparacao_dialog import ProducaoPreparacaoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import icone, icone_ficheiro
@@ -293,10 +295,6 @@ class ProducaoPage(QWidget):
         )
         self.novo_processo_button.clicked.connect(self._novo_processo)
 
-        self.open_folder_button = QPushButton("Abrir pasta")
-        self.open_folder_button.setToolTip("Abrir a pasta desta obra no explorador")
-        self.open_folder_button.clicked.connect(self._abrir_pasta_versao_selecionada)
-
         self.nova_versao_button = QPushButton("Nova Versão")
         self.nova_versao_button.setToolTip(
             "Criar nova versão de obra/CUT-RITE do processo selecionado"
@@ -310,19 +308,50 @@ class ProducaoPage(QWidget):
         )
         self.lista_material_button.clicked.connect(self._lista_material_imos)
 
-        self.enviar_cutrite_button = QPushButton("Enviar CUT-RITE")
-        self.enviar_cutrite_button.setIcon(icone_ficheiro("icon_cut_rite.ico"))
-        self.enviar_cutrite_button.setToolTip(
+        # Um só botão CUT-RITE que abre as duas ações; cada ação leva a sua dica.
+        self.enviar_cutrite_action = QAction(
+            icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
+        )
+        self.enviar_cutrite_action.setToolTip(
             "Criar o plano de corte no CUT-RITE a partir da Lista Material"
         )
-        self.enviar_cutrite_button.clicked.connect(self._enviar_cutrite)
+        self.enviar_cutrite_action.triggered.connect(self._enviar_cutrite)
 
-        self.exportar_resumo_pdf_button = QPushButton("Exportar Resumo (PDF)")
-        self.exportar_resumo_pdf_button.setIcon(icone_ficheiro("icon_pdf_cut_rite.ico"))
-        self.exportar_resumo_pdf_button.setToolTip(
-            "Exportar para PDF o resumo do plano de corte (CUT-RITE) para a pasta da obra"
+        self.exportar_pdf_cutrite_action = QAction(
+            icone_ficheiro("icon_pdf_cut_rite.ico"), "Exportar PDF CUT-RITE", self
         )
-        self.exportar_resumo_pdf_button.clicked.connect(self._exportar_resumo_pdf)
+        self.exportar_pdf_cutrite_action.setToolTip(
+            "Exportar o plano de corte em PDF e gravar diretamente na pasta da obra"
+        )
+        self.exportar_pdf_cutrite_action.triggered.connect(self._exportar_resumo_pdf)
+
+        self.cutrite_menu = QMenu(self)
+        self.cutrite_menu.setToolTipsVisible(True)
+        self.cutrite_menu.addAction(self.enviar_cutrite_action)
+        self.cutrite_menu.addAction(self.exportar_pdf_cutrite_action)
+
+        self.cutrite_button = QPushButton("CUT-RITE")
+        self.cutrite_button.setIcon(icone_ficheiro("icon_cut_rite.ico"))
+        self.cutrite_button.setToolTip(
+            "Ações do CUT-RITE: criar o plano de corte ou exportar o plano em "
+            "PDF para a pasta da obra"
+        )
+        self.cutrite_button.setMenu(self.cutrite_menu)
+
+        self.preparacao_button = QPushButton("Preparação")
+        self.preparacao_button.setToolTip(
+            "Validar o que já está feito na pasta da obra (PDFs, Caderno de "
+            "Encargos, programas CNC) e executar os passos que faltam até a "
+            "obra ficar pronta para produção"
+        )
+        self.preparacao_button.clicked.connect(self._abrir_preparacao)
+
+        self.imprimir_button = QPushButton("Imprimir")
+        self.imprimir_button.setToolTip(
+            "Ver os documentos da pasta da obra e imprimir os selecionados pela "
+            "sua ordem de prioridade (a ordem fica guardada para si)"
+        )
+        self.imprimir_button.clicked.connect(self._abrir_impressao)
 
         self.ocorrencias_button = QPushButton("Ocorrências")
         self.ocorrencias_button.setToolTip(
@@ -365,11 +394,11 @@ class ProducaoPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.convert_button)
         actions_layout.addWidget(self.novo_processo_button)
-        actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.lista_material_button)
-        actions_layout.addWidget(self.enviar_cutrite_button)
-        actions_layout.addWidget(self.exportar_resumo_pdf_button)
+        actions_layout.addWidget(self.cutrite_button)
+        actions_layout.addWidget(self.preparacao_button)
+        actions_layout.addWidget(self.imprimir_button)
         actions_layout.addWidget(self.ocorrencias_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)
@@ -1872,6 +1901,60 @@ class ProducaoPage(QWidget):
         self.table.selectRow(index.row())
         self._abrir_pastas_processo(processo)
 
+    def _abrir_preparacao(self) -> None:
+        """Open the preparation panel for the selected obra."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para preparar a produção.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    raise ValueError("Processo de produção não encontrado.")
+                caminho = caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Preparação de Produção", str(error))
+            return
+
+        dialog = ProducaoPreparacaoDialog(
+            codigo_processo=self._format_value(processo.codigo_processo),
+            pasta_obra=str(caminho),
+            nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+            nome_plano_cut_rite=self.nome_plano_corte_input.text().strip(),
+            user_id=self._colunas_user_id_int(),
+            parent=self,
+        )
+        dialog.exec()
+
+    def _abrir_impressao(self) -> None:
+        """Open the print manager for the selected obra folder."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para imprimir documentos.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    raise ValueError("Processo de produção não encontrado.")
+                caminho = caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Imprimir Documentos", str(error))
+            return
+
+        dialog = ProducaoImpressaoDialog(
+            codigo_processo=self._format_value(processo.codigo_processo),
+            pasta_obra=str(caminho),
+            nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+            nome_plano_cut_rite=self.nome_plano_corte_input.text().strip(),
+            user_id=self._colunas_user_id_int(),
+            parent=self,
+        )
+        dialog.exec()
+
     def _abrir_ocorrencias(self) -> None:
         """Open the diary of the selected obra."""
         processo = self._processo_selecionado()
@@ -2055,7 +2138,7 @@ class ProducaoPage(QWidget):
         self._cutrite_dialog = CutRiteProgressDialog(self)
         self._cutrite_dialog.add_step("A iniciar o envio para o CUT-RITE.")
         self._cutrite_dialog.show()
-        self.enviar_cutrite_button.setEnabled(False)
+        self.cutrite_button.setEnabled(False)
 
         self._cutrite_thread = QThread(self)
         self._cutrite_worker = _CutRiteWorker(
@@ -2097,7 +2180,7 @@ class ProducaoPage(QWidget):
         )
 
     def _finalizar_cutrite(self) -> None:
-        self.enviar_cutrite_button.setEnabled(True)
+        self.cutrite_button.setEnabled(True)
         self._cutrite_thread = None
         self._cutrite_worker = None
 
@@ -2109,23 +2192,23 @@ class ProducaoPage(QWidget):
 
         nome_plano = self.nome_plano_corte_input.text().strip()
         if not nome_plano:
-            QMessageBox.warning(self, "Exportar Resumo (PDF)", "Nome Plano CUT-RITE em falta.")
+            QMessageBox.warning(self, "Exportar PDF CUT-RITE", "Nome Plano CUT-RITE em falta.")
             return
 
         pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
         if not pasta_servidor:
             QMessageBox.warning(
                 self,
-                "Exportar Resumo (PDF)",
+                "Exportar PDF CUT-RITE",
                 "Pasta do processo em falta. Crie a pasta antes de exportar o resumo.",
             )
             return
 
         self._cutrite_dialog = CutRiteProgressDialog(self)
-        self._cutrite_dialog.setWindowTitle("Exportar Resumo (PDF)")
+        self._cutrite_dialog.setWindowTitle("Exportar PDF CUT-RITE")
         self._cutrite_dialog.add_step("A iniciar a exportacao do resumo em PDF.")
         self._cutrite_dialog.show()
-        self.exportar_resumo_pdf_button.setEnabled(False)
+        self.cutrite_button.setEnabled(False)
 
         self._cutrite_thread = QThread(self)
         self._cutrite_worker = _CutRitePdfWorker(
@@ -2152,7 +2235,7 @@ class ProducaoPage(QWidget):
         mensagem = "Resumo do plano exportado para PDF."
         if caminho:
             mensagem += f"\n\nFicheiro:\n{caminho}"
-        QMessageBox.information(self, "Exportar Resumo (PDF)", mensagem)
+        QMessageBox.information(self, "Exportar PDF CUT-RITE", mensagem)
 
     def _resumo_pdf_falhou(self, erro: str) -> None:
         if self._cutrite_dialog is not None:
@@ -2161,12 +2244,12 @@ class ProducaoPage(QWidget):
         self.status_label.setText("Falha ao exportar o resumo PDF.")
         QMessageBox.critical(
             self,
-            "Exportar Resumo (PDF)",
+            "Exportar PDF CUT-RITE",
             f"Nao foi possivel exportar o resumo em PDF.\n\n{erro}",
         )
 
     def _finalizar_resumo_pdf(self) -> None:
-        self.exportar_resumo_pdf_button.setEnabled(True)
+        self.cutrite_button.setEnabled(True)
         self._cutrite_thread = None
         self._cutrite_worker = None
 

@@ -53,13 +53,16 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     # Botão "Pastas" removido: as pastas abrem no duplo-clique da coluna Processo.
     assert '"Pastas"' not in init_source
     assert "Ver as pastas do processo selecionado no servidor" not in init_source
-    assert '"Abrir pasta"' in init_source
+    # Botão "Abrir pasta" removido: a pasta abre pelo campo "Pasta da obra" e
+    # pelo duplo-clique na coluna Processo.
+    assert '"Abrir pasta"' not in init_source
+    assert "self.open_folder_button" not in init_source
+    assert hasattr(ProducaoPage, "_abrir_pasta_versao_selecionada")
     # Cliente em cascata com o filtro de Responsável.
     assert (
         "self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)"
         in init_source
     )
-    assert "Abrir a pasta desta obra no explorador" in init_source
     assert '"Nova Versão"' in init_source
     assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
     assert '"Lista Material_IMOS"' in init_source
@@ -67,16 +70,24 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
     assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init_source
     assert "Gerar o Excel 'Lista Material_IMOS' na pasta do processo" in init_source
-    assert '"Enviar CUT-RITE"' in init_source
-    assert "self.enviar_cutrite_button" in init_source
-    assert 'self.enviar_cutrite_button.setIcon(icone_ficheiro("icon_cut_rite.ico"))' in init_source
-    assert "self.enviar_cutrite_button.clicked.connect(self._enviar_cutrite)" in init_source
+    # Um só botão "CUT-RITE" com as duas ações no menu.
+    assert '"CUT-RITE"' in init_source
+    assert "self.cutrite_button.setMenu(self.cutrite_menu)" in init_source
+    assert "self.cutrite_menu.setToolTipsVisible(True)" in init_source
+    assert "self.enviar_cutrite_button" not in init_source
+    assert "self.exportar_resumo_pdf_button" not in init_source
+    assert '"Enviar CUT-RITE", self' in init_source
+    assert "self.enviar_cutrite_action.triggered.connect(self._enviar_cutrite)" in init_source
     assert "Criar o plano de corte no CUT-RITE a partir da Lista Material" in init_source
-    assert '"Exportar Resumo (PDF)"' in init_source
-    assert "self.exportar_resumo_pdf_button" in init_source
-    assert 'self.exportar_resumo_pdf_button.setIcon(icone_ficheiro("icon_pdf_cut_rite.ico"))' in init_source
-    assert "self.exportar_resumo_pdf_button.clicked.connect(self._exportar_resumo_pdf)" in init_source
-    assert "Exportar para PDF o resumo do plano de corte" in init_source
+    assert '"Exportar PDF CUT-RITE", self' in init_source
+    assert (
+        "self.exportar_pdf_cutrite_action.triggered.connect(self._exportar_resumo_pdf)"
+        in init_source
+    )
+    assert (
+        "Exportar o plano de corte em PDF e gravar diretamente na pasta da obra"
+        in init_source
+    )
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "doubleClicked.connect(self._handle_table_double_click)" in init_source

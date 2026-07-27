@@ -84,6 +84,11 @@ PRODUCAO_BASE_PATH_DEFAULT_HOST_ANTIGO = (
     r"\\SERVER_LE_Lanca_Encanto\LancaEncanto\Dep_Producao"
 )
 PRODUCAO_BASE_PATH_CHAVE_LEGACY = "pasta_base_producao"
+# Programas CNC: origem no IMOS e destino nas maquinas (painel de Preparacao).
+PASTA_ORIGEM_PROGRAMAS_CNC_DEFAULT = r"\\SERVER_LE\Homag_iX\_ProgramasCNC"
+PASTA_DESTINO_PROGRAMAS_CNC_DEFAULT = (
+    r"\\SERVER_LE\_Lanca_Encanto\Operador\FICHEIROS_MPR"
+)
 STREAMLIT_SQL_USER_CHAVE = "streamlit_sql_user"
 STREAMLIT_SQL_PASSWORD_CHAVE = "streamlit_sql_password"
 STREAMLIT_SQL_USER_DEFAULT = "Lanca_Encanto_ReadOnly"
@@ -210,8 +215,26 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
     SystemSettingSeed("executavel_cut_rite", "Executavel CUT-RITE", "ficheiro", "CUT-RITE"),
     SystemSettingSeed("pasta_trabalho_cut_rite", "Pasta Trabalho CUT-RITE", "pasta", "CUT-RITE"),
     SystemSettingSeed("pasta_dados_cut_rite", "Pasta Dados CUT-RITE", "pasta", "CUT-RITE"),
-    SystemSettingSeed("pasta_origem_programas_cnc", "Pasta Origem Programas CNC", "pasta", "CNC"),
-    SystemSettingSeed("pasta_destino_programas_cnc", "Pasta Destino Programas CNC", "pasta", "CNC"),
+    SystemSettingSeed(
+        "pasta_origem_programas_cnc",
+        "Pasta Origem Programas CNC (IMOS)",
+        "pasta",
+        "CNC",
+        PASTA_ORIGEM_PROGRAMAS_CNC_DEFAULT,
+    ),
+    SystemSettingSeed(
+        "pasta_destino_programas_cnc",
+        "Pasta Destino Programas CNC (maquinas)",
+        "pasta",
+        "CNC",
+        PASTA_DESTINO_PROGRAMAS_CNC_DEFAULT,
+    ),
+    SystemSettingSeed(
+        "executavel_sumatra_pdf",
+        "Executavel SumatraPDF (impressao silenciosa dos documentos da obra)",
+        "ficheiro",
+        "Producao",
+    ),
     SystemSettingSeed(
         "pasta_auditoria_lista_material",
         "Pasta Auditoria Lista Material",
