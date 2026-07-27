@@ -19,6 +19,7 @@ from app.domain.assistente_intencao import (
     PerfilVocabulario,
     frase_resposta,
     interpretar,
+    palavra_a_ensinar,
     sugestao_recrutamento,
 )
 from app.domain.assistente_llm import (
@@ -90,6 +91,8 @@ class ResultadoIA:
     ocorrencias: list = field(default_factory=list)
     #: Ano pedido na pergunta das ocorrências de toda a casa ("" = todos).
     ano_ocorrencias: str = ""
+    #: Palavra que o assistente não conhece, para o perfil a levar já escrita.
+    palavra_a_ensinar: str = ""
 
 
 @dataclass(frozen=True)
@@ -308,14 +311,14 @@ class AssistenteProducaoService:
             so_atrasadas=intencao.so_atrasadas,
             sinonimos=sinonimos,
         )
+        vocabulario = vocabulario_pesquisa(processos)
         return ResultadoIA(
             tipo="pesquisa",
             intencao=intencao,
             obras=list(obras),
             frase=frase_resposta(intencao, len(obras)),
-            sugestao_perfil=sugestao_recrutamento(
-                intencao, len(obras), vocabulario_pesquisa(processos)
-            ),
+            sugestao_perfil=sugestao_recrutamento(intencao, len(obras), vocabulario),
+            palavra_a_ensinar=palavra_a_ensinar(intencao, len(obras), vocabulario),
         )
 
     def _resposta_ocorrencias_obra(self, processo, dossier: DossierObra) -> ResultadoIA:

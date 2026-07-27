@@ -23,11 +23,13 @@ from app.db.session import SessionLocal
 from app.services.ia_perfil_service import (
     TIPOS_ENTRADA,
     TIPOS_POR_CHAVE,
+    acrescentar_sugestoes,
     atualizar_entrada,
     contar_por_tipo,
     criar_entrada,
     eliminar_entrada,
     listar_entradas,
+    sugestoes_em_falta,
 )
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
@@ -54,7 +56,13 @@ CAMPOS_SUGERIDOS = (
 class IaPerfilPage(QWidget):
     """Let the signed-in user write the vocabulary the assistant should learn."""
 
-    def __init__(self, on_back=None) -> None:
+    def __init__(
+        self,
+        on_back=None,
+        *,
+        tipo_inicial: str | None = None,
+        expressao_inicial: str = "",
+    ) -> None:
         super().__init__()
 
         self.on_back = on_back
@@ -78,6 +86,23 @@ class IaPerfilPage(QWidget):
         self.ajuda_label = QLabel("")
         self.ajuda_label.setWordWrap(True)
         self.ajuda_label.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
+
+        # Uma folha em branco é o que mais trava quem nunca ensinou o
+        # assistente: o quadro chega com linhas prontas a escolher.
+        self.sugestoes_combo = QComboBox()
+        self.sugestoes_combo.setMinimumWidth(340)
+        self.sugestoes_combo.setToolTip(
+            "Linhas já escritas para este quadro. Escolha uma para a pôr nos "
+            "campos — pode alterá-la antes de gravar."
+        )
+        self.sugestoes_combo.currentIndexChanged.connect(self._usar_sugestao)
+
+        self.adicionar_sugestoes_button = QPushButton("Acrescentar todas")
+        self.adicionar_sugestoes_button.setToolTip(
+            "Acrescentar de uma vez todas as sugestões que ainda não tem neste "
+            "quadro. Pode editar ou eliminar as que não servirem."
+        )
+        self.adicionar_sugestoes_button.clicked.connect(self._acrescentar_sugestoes)
 
         self.expressao_label = QLabel("Expressão")
         self.expressao_input = QLineEdit()
@@ -166,15 +191,37 @@ class IaPerfilPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(10)
+        linha_sugestoes = QHBoxLayout()
+        linha_sugestoes.addWidget(QLabel("Sugestões"))
+        linha_sugestoes.addWidget(self.sugestoes_combo, stretch=1)
+        linha_sugestoes.addWidget(self.adicionar_sugestoes_button)
+        linha_sugestoes.addStretch()
+
         layout.addWidget(self.cabecalho)
         layout.addLayout(linha_tipo)
         layout.addWidget(self.ajuda_label)
+        layout.addLayout(linha_sugestoes)
         layout.addLayout(formulario)
         layout.addLayout(acoes)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
 
+        if tipo_inicial:
+            indice = self.tipo_combo.findData(tipo_inicial)
+            if indice >= 0:
+                self.tipo_combo.setCurrentIndex(indice)
+
         self._on_tipo_mudou()
+
+        if expressao_inicial:
+            # Veio de uma pesquisa que não encontrou nada: a palavra já fica
+            # escrita, para a pessoa só ter de dizer o que ela significa.
+            self.expressao_input.setText(expressao_inicial)
+            self.significado_input.setFocus()
+            self.status_label.setText(
+                f"«{expressao_inicial}» já está escrita. Diga o que significa e "
+                "carregue em Adicionar."
+            )
 
     # ---- estado --------------------------------------------------------
     def _user_id(self) -> int | None:
@@ -196,6 +243,77 @@ class IaPerfilPage(QWidget):
         self.table.setColumnHidden(2, not tipo.usa_campos)
         self._cancelar_edicao()
         self.carregar()
+        self._carregar_sugestoes()
+
+    # ---- sugestões -----------------------------------------------------
+    def _carregar_sugestoes(self) -> None:
+        """Show the ready-made lines this user has not written yet."""
+        user_id = self._user_id()
+        pendentes: list[tuple[str, str]] = []
+        if user_id is not None:
+            try:
+                with SessionLocal() as session:
+                    pendentes = sugestoes_em_falta(
+                        session, user_id, self._tipo_atual().chave
+                    )
+            except SQLAlchemyError:
+                pendentes = []
+
+        self.sugestoes_combo.blockSignals(True)
+        self.sugestoes_combo.clear()
+        if pendentes:
+            self.sugestoes_combo.addItem(
+                f"Escolha uma sugestão… ({len(pendentes)} por acrescentar)", None
+            )
+            for expressao, significado in pendentes:
+                rotulo = f"{expressao} — {significado}" if significado else expressao
+                self.sugestoes_combo.addItem(rotulo, (expressao, significado))
+        else:
+            self.sugestoes_combo.addItem("Já tem todas as sugestões deste quadro", None)
+        self.sugestoes_combo.blockSignals(False)
+
+        tem_pendentes = bool(pendentes)
+        self.sugestoes_combo.setEnabled(tem_pendentes)
+        self.adicionar_sugestoes_button.setEnabled(tem_pendentes)
+
+    def _usar_sugestao(self) -> None:
+        """Put the chosen suggestion in the fields, ready to adjust and save."""
+        dados = self.sugestoes_combo.currentData()
+        if not dados:
+            return
+        expressao, significado = dados
+        self._cancelar_edicao()
+        self.expressao_input.setText(expressao)
+        self.significado_input.setText(significado)
+        self.status_label.setText(
+            "Sugestão posta nos campos. Altere o que quiser e carregue em Adicionar."
+        )
+
+    def _acrescentar_sugestoes(self) -> None:
+        """Write every missing suggestion of this quadro at once."""
+        user_id = self._user_id()
+        if user_id is None:
+            self.status_label.setText("Inicie sessão para editar o seu perfil.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                criadas = acrescentar_sugestoes(
+                    session, user_id, self._tipo_atual().chave
+                )
+                session.commit()
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível acrescentar as sugestões.")
+            return
+
+        self.carregar()
+        self._carregar_sugestoes()
+        self.status_label.setText(
+            f"{criadas} sugestão(ões) acrescentadas. Edite ou elimine as que não "
+            "servirem — o perfil é seu."
+            if criadas
+            else "Não havia sugestões novas para acrescentar."
+        )
 
     # ---- dados ---------------------------------------------------------
     def carregar(self) -> None:
@@ -274,6 +392,7 @@ class IaPerfilPage(QWidget):
         self._cancelar_edicao()
         self.status_label.setText(mensagem)
         self.carregar()
+        self._carregar_sugestoes()
 
     def _linha_selecionada(self) -> int | None:
         linha = self.table.currentRow()
@@ -343,3 +462,4 @@ class IaPerfilPage(QWidget):
         self._cancelar_edicao()
         self.status_label.setText("Linha eliminada.")
         self.carregar()
+        self._carregar_sugestoes()

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.domain.pesquisa_texto import normalizar
 from app.models.ia_perfil import IaPerfilEntrada
 
 
@@ -24,6 +25,9 @@ class TipoEntrada:
     rotulo_significado: str
     usa_campos: bool
     ajuda: str
+    #: Linhas prontas a acrescentar, para não se começar de uma folha em branco.
+    #: Cada uma é (expressão, significado). Ver ``sugestoes_em_falta``.
+    sugestoes: tuple[tuple[str, str], ...] = ()
 
 
 #: Os quadros do questionário, pela ordem em que fazem sentido preencher.
@@ -36,6 +40,13 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         False,
         "As perguntas que farias a um colega. É a parte que mais ensina o "
         "assistente.",
+        sugestoes=(
+            ("Que obras estão atrasadas?", "As que já passaram da data de entrega"),
+            ("O que tenho para entregar esta semana", "Obras com entrega nos próximos 7 dias"),
+            ("Em que pé está a obra do Viva?", "Estado e fases de produção dessa obra"),
+            ("Quais são as minhas obras?", "As obras de que sou responsável"),
+            ("O que está em desenho?", "Obras no estado Desenho"),
+        ),
     ),
     TipoEntrada(
         "movel",
@@ -44,6 +55,12 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Outras formas de dizer o mesmo",
         True,
         "Roupeiro, closet, canto cego… e onde é que essa palavra aparece na obra.",
+        sugestoes=(
+            ("roupeiro", "closet, armário de quarto"),
+            ("cozinha", "móveis de cozinha, bancada"),
+            ("canto cego", "módulo de canto com ferragem especial"),
+            ("painel ripado", "painel de réguas, ripado decorativo"),
+        ),
     ),
     TipoEntrada(
         "material",
@@ -52,6 +69,12 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "O que significa exatamente",
         True,
         "Lacado, sandwich, HPL, verniz… e o que quero dizer com isso.",
+        sugestoes=(
+            ("lacado", "peça para pintar, material sem acabamento de fábrica"),
+            ("sandwich", "duas faces coladas a um núcleo"),
+            ("HPL", "laminado de alta pressão"),
+            ("termolaminado", "folha termolaminada sobre MDF"),
+        ),
     ),
     TipoEntrada(
         "estado",
@@ -60,6 +83,12 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "A que estado corresponde",
         False,
         "«Está na máquina» = Produção. Lembrete: «obra fechada» = Arquivado.",
+        sugestoes=(
+            ("está na máquina", "Produção"),
+            ("obra fechada", "Arquivado"),
+            ("está a ser desenhada", "Desenho"),
+            ("já foi", "Entregue"),
+        ),
     ),
     TipoEntrada(
         "pessoa",
@@ -68,6 +97,11 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Nome que está no Martelo",
         False,
         "Alcunhas, apelidos e iniciais. Os acentos já não são problema.",
+        sugestoes=(
+            ("Elsa", "Elsa Belo"),
+            ("Dulce", "Dulce Faria"),
+            ("Pedro", "Pedro Reis"),
+        ),
     ),
     TipoEntrada(
         "cliente",
@@ -76,6 +110,10 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Nome completo do cliente",
         False,
         "Abreviaturas e nomes curtos dos clientes com que mais trabalho.",
+        sugestoes=(
+            ("Viva", "MÓVEIS J.F. VIVA"),
+            ("Sá Machado", "Sá Machado & Filhos"),
+        ),
     ),
     TipoEntrada(
         "tempo",
@@ -84,6 +122,11 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "O que significa em dias",
         True,
         "«Urgente» são quantos dias? A partir de que data conta?",
+        sugestoes=(
+            ("urgente", "entrega nos próximos 3 dias"),
+            ("esta semana", "até sexta-feira desta semana"),
+            ("para o mês que vem", "entrega no mês seguinte ao atual"),
+        ),
     ),
     TipoEntrada(
         "ambigua",
@@ -92,6 +135,11 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "O que ele deve perguntar",
         False,
         "Palavras com dois sentidos. O assistente deve perguntar, não adivinhar.",
+        sugestoes=(
+            ("porta", "Perguntar se é porta de roupeiro ou porta de entrada"),
+            ("branco", "Perguntar se é a cor ou o material lacado branco"),
+            ("Viva", "Perguntar se é o cliente J.F. Viva ou a obra da Viva"),
+        ),
     ),
     TipoEntrada(
         "aviso",
@@ -100,6 +148,11 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "De quanto em quanto tempo",
         False,
         "O que gostavas que o Martelo te lembrasse, e com que frequência.",
+        sugestoes=(
+            ("Obras que entram em atraso", "Todas as manhãs"),
+            ("Obras sem data de entrega definida", "Uma vez por semana"),
+            ("Tickets abertos há mais de 15 dias", "Uma vez por semana"),
+        ),
     ),
     TipoEntrada(
         "nao_quero",
@@ -109,6 +162,11 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         False,
         "O que te irritaria ou te daria a sensação de estares a ser vigiado. "
         "O que escreveres aqui passa a ser regra.",
+        sugestoes=(
+            ("Comparar o meu trabalho com o dos colegas", "Não é para isso que serve"),
+            ("Mostrar preços a quem não os deve ver", "Informação reservada"),
+            ("Inventar uma resposta quando não sabe", "Prefiro que diga que não sabe"),
+        ),
     ),
     TipoEntrada(
         "instrucao_email",
@@ -120,6 +178,14 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "e simpático»; «Saudação conforme a hora (Bom dia/Boa tarde)»; «Explicar o "
         "estado em linguagem simples»; «Realçar a Ref. do cliente»; «Assinar 'Lança "
         "Encanto'»; «Nunca falar de preços».",
+        sugestoes=(
+            ("Tom formal e simpático", ""),
+            ("Saudação conforme a hora (Bom dia / Boa tarde)", ""),
+            ("Explicar o estado em linguagem simples", "Sem termos técnicos"),
+            ("Realçar a Ref. do cliente", "É por ela que o cliente se orienta"),
+            ("Nunca falar de preços", "Preços só por proposta formal"),
+            ("Assinar 'Lança Encanto'", ""),
+        ),
     ),
     TipoEntrada(
         "instrucao_pdf",
@@ -130,6 +196,13 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Como queres o RELATÓRIO PDF do ponto de situação. Ex.: «Não incluir preços "
         "nem notas internas»; «Mostrar a imagem da obra»; «Realçar a Ref. do "
         "cliente»; «Listar as fases de produção»; «Incluir as versões de CUT-RITE».",
+        sugestoes=(
+            ("Não incluir preços nem notas internas", "O PDF vai para o cliente"),
+            ("Mostrar a imagem da obra", "A imagem do IMOS"),
+            ("Realçar a Ref. do cliente", ""),
+            ("Listar as fases de produção", ""),
+            ("Incluir as versões de CUT-RITE", ""),
+        ),
     ),
     TipoEntrada(
         "instrucao_ocorrencias",
@@ -140,6 +213,13 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Como queres o RELATÓRIO DAS OCORRÊNCIAS (os tickets da obra). Ex.: "
         "«Incluir sempre as fotos»; «Separar os erros nossos dos pedidos do "
         "cliente»; «Mostrar quem ficou responsável»; «Não incluir os custos».",
+        sugestoes=(
+            ("Incluir sempre as fotos", "Uma imagem vale mais que um bom texto"),
+            ("Separar os erros nossos dos pedidos do cliente", "É o que interessa no fim do ano"),
+            ("Mostrar quem ficou responsável por cada ticket", ""),
+            ("Não incluir os custos", "Quando o relatório sai para fora"),
+            ("Pôr primeiro os tickets por resolver", ""),
+        ),
     ),
     TipoEntrada(
         "instrucao_texto",
@@ -150,10 +230,78 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
         "Como queres o TEXTO para colar no WhatsApp. Ex.: «Curto e prático»; «Sem "
         "imagem, só texto»; «Estado e entrega no topo»; «Fases uma por linha»; «Sem "
         "a descrição de produção».",
+        sugestoes=(
+            ("Curto e prático", "Poucas linhas, para ler no telemóvel"),
+            ("Estado e entrega logo no topo", ""),
+            ("Fases uma por linha", ""),
+            ("Sem a descrição de produção", "É demasiado comprida para o chat"),
+        ),
     ),
 )
 
 TIPOS_POR_CHAVE = {tipo.chave: tipo for tipo in TIPOS_ENTRADA}
+
+
+def sugestoes_do_tipo(tipo: str) -> tuple[tuple[str, str], ...]:
+    """Ready-made lines for one quadro (empty tuple for unknown keys)."""
+    entrada = TIPOS_POR_CHAVE.get((tipo or "").strip())
+    return entrada.sugestoes if entrada is not None else ()
+
+
+def sugestoes_em_falta(
+    session: Session, user_id: int, tipo: str
+) -> list[tuple[str, str]]:
+    """Suggestions this user has not written yet.
+
+    Uma folha em branco é o que mais trava quem nunca ensinou o assistente: o
+    quadro passa a chegar com linhas prontas, e as que já foram acrescentadas
+    desaparecem da lista para não se repetirem.
+    """
+    sugestoes = sugestoes_do_tipo(tipo)
+    if not sugestoes:
+        return []
+
+    ja_escritas = {
+        _chave_comparacao(entrada.expressao)
+        for entrada in listar_entradas(session, user_id, tipo)
+    }
+    return [
+        (expressao, significado)
+        for expressao, significado in sugestoes
+        if _chave_comparacao(expressao) not in ja_escritas
+    ]
+
+
+def acrescentar_sugestoes(
+    session: Session, user_id: int, tipo: str, sugestoes=None
+) -> int:
+    """Add the missing suggestions at once; return how many were written."""
+    pendentes = (
+        list(sugestoes)
+        if sugestoes is not None
+        else sugestoes_em_falta(session, user_id, tipo)
+    )
+
+    criadas = 0
+    for expressao, significado in pendentes:
+        try:
+            criar_entrada(
+                session,
+                user_id=user_id,
+                tipo=tipo,
+                expressao=expressao,
+                significado=significado,
+            )
+        except ValueError:
+            # Uma sugestão repetida não deve travar as restantes.
+            continue
+        criadas += 1
+    return criadas
+
+
+def _chave_comparacao(texto: str | None) -> str:
+    """Compare suggestions by their normalized expression."""
+    return normalizar(texto)
 
 
 def listar_entradas(

@@ -148,6 +148,8 @@ class IaMarteloDialog(QDialog):
             "instruções ao Martelo (é aqui que se alimenta o conhecimento)."
         )
         self.botao_ensinar.clicked.connect(self._abrir_perfil)
+        #: Palavra que a última pesquisa não conheceu (vai já escrita no perfil).
+        self._palavra_a_ensinar = ""
         entrada.addWidget(self.input, stretch=1)
         entrada.addWidget(self.botao)
         entrada.addWidget(self.botao_ensinar)
@@ -227,6 +229,20 @@ class IaMarteloDialog(QDialog):
         frase = resultado.frase or ""
         sugestao = resultado.sugestao_perfil or ""
         self.status.setText(f"{frase} {sugestao}".strip())
+        self._definir_palavra_a_ensinar(getattr(resultado, "palavra_a_ensinar", ""))
+
+    def _definir_palavra_a_ensinar(self, palavra: str) -> None:
+        """Guarda a palavra desconhecida e põe-na no botão de ensinar.
+
+        Assim quem carrega no botão já encontra a palavra escrita no perfil —
+        voltar a escrevê-la à mão é onde a maioria desiste de ensinar.
+        """
+        self._palavra_a_ensinar = (palavra or "").strip()
+        self.botao_ensinar.setText(
+            f"🎓 Ensinar «{self._palavra_a_ensinar}»"
+            if self._palavra_a_ensinar
+            else "🎓 Ensinar o Martelo"
+        )
 
     @staticmethod
     def _descricao_obra(processo) -> str:
@@ -245,15 +261,26 @@ class IaMarteloDialog(QDialog):
             self._on_abrir_obra(int(processo_id))
 
     def _abrir_perfil(self) -> None:
-        """Abre «Assistente — o meu perfil» para ensinar o Martelo."""
+        """Abre «Assistente — o meu perfil» para ensinar o Martelo.
+
+        Se a última pesquisa esbarrou numa palavra desconhecida, ela vai já
+        escrita e no quadro certo — só falta dizer o que significa.
+        """
         from app.ui.pages.ia_perfil_page import IaPerfilPage
 
+        palavra = getattr(self, "_palavra_a_ensinar", "")
         dialogo = QDialog(self)
         dialogo.setWindowTitle("Assistente — o meu perfil")
-        dialogo.resize(780, 560)
+        dialogo.resize(880, 600)
         col = QVBoxLayout(dialogo)
         col.setContentsMargins(0, 0, 0, 0)
-        col.addWidget(IaPerfilPage(on_back=dialogo.accept))
+        col.addWidget(
+            IaPerfilPage(
+                on_back=dialogo.accept,
+                tipo_inicial="movel" if palavra else None,
+                expressao_inicial=palavra,
+            )
+        )
         dialogo.exec()
 
     def _falhou(self, _erro: str) -> None:

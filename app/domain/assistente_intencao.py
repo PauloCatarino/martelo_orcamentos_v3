@@ -347,15 +347,32 @@ def sugestao_recrutamento(
     Só quando a consulta não devolveu nada E a palavra não está no vocabulário
     das obras (senão seria uma palavra real que apenas não teve resultados).
     """
+    palavra = palavra_a_ensinar(intencao, total, vocabulario)
+    if not palavra:
+        return ""
+    return (
+        f"Não conheço «{palavra}». Quer acrescentá-la ao "
+        "«Assistente — o meu perfil»?"
+    )
+
+
+def palavra_a_ensinar(
+    intencao: Intencao,
+    total: int,
+    vocabulario: Iterable[str] = (),
+) -> str:
+    """A palavra que o assistente não conhece, ou "" se não houver nenhuma.
+
+    Devolvida à parte da frase para quem mostra a sugestão a poder levar já
+    escrita para o perfil: escrever a palavra outra vez à mão é o passo em que
+    a maior parte das pessoas desiste de ensinar o Martelo.
+    """
     if total > 0:
         return ""
     conhecidas = set(vocabulario)
     for palavra in intencao.desconhecidas:
         if raiz(palavra) not in conhecidas:
-            return (
-                f"Não conheço «{palavra}». Quer acrescentá-la ao "
-                "«Assistente — o meu perfil»?"
-            )
+            return palavra
     return ""
 
 
