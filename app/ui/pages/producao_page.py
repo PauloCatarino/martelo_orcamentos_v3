@@ -1407,7 +1407,7 @@ class ProducaoPage(QWidget):
             self._gerar_pdf_ocorrencias(resultado)
             return
         if resultado.modo == "pdf" and resultado.dossier is not None:
-            self._gerar_pdf_obra(resultado.dossier)
+            self._gerar_pdf_obra(resultado.dossier, resultado.aviso)
             return
         if resultado.modo == "email" and resultado.dossier is not None:
             self._email_obra(resultado)
@@ -1418,6 +1418,10 @@ class ProducaoPage(QWidget):
         caixa.setIcon(QMessageBox.Icon.Information)
         caixa.setWindowTitle("IA Martelo — obra (texto para WhatsApp)")
         caixa.setText(resultado.texto)
+        if resultado.aviso:
+            # O aviso das outras versões fica fora do texto copiado: no WhatsApp
+            # só deve ir o resumo da obra.
+            caixa.setInformativeText(resultado.aviso)
         # Selecionável, para copiar/colar no WhatsApp (já vai copiado também).
         caixa.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -1425,7 +1429,8 @@ class ProducaoPage(QWidget):
         )
         caixa.exec()
         self.status_label.setText(
-            "Resumo da obra copiado para a área de transferência."
+            resultado.aviso
+            or "Resumo da obra copiado para a área de transferência."
         )
 
     def _gerar_pdf_ocorrencias(self, resultado) -> None:
@@ -1474,13 +1479,17 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Relatório da obra", str(erro))
             return None
 
-    def _gerar_pdf_obra(self, dossier) -> None:
+    def _gerar_pdf_obra(self, dossier, aviso: str = "") -> None:
         """Gera automaticamente o PDF e abre-o."""
         caminho = self._criar_pdf_obra(dossier)
         if caminho is None:
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
-        self.status_label.setText(f"Relatório PDF da obra gerado: {caminho}")
+        self.status_label.setText(
+            f"{aviso} Relatório PDF da obra gerado: {caminho}".strip()
+            if aviso
+            else f"Relatório PDF da obra gerado: {caminho}"
+        )
 
     def _email_obra(self, resultado) -> None:
         """Prepara o email ao cliente (o utilizador valida e o Outlook envia).

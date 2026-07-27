@@ -30,6 +30,7 @@ from app.domain.assistente_llm import (
 from app.domain.assistente_obra import (
     DossierObra,
     VersaoObra,
+    aviso_outras_versoes,
     corpo_email_html,
     identificar_pedido,
     prompt_corpo_email,
@@ -108,6 +109,18 @@ class RespostaAssistente:
     @property
     def precisa_perguntar(self) -> bool:
         return self.intencao.precisa_perguntar
+
+
+def _versao_bate(processo, atributo: str, pedida: str) -> bool:
+    """True quando a versão do processo é a pedida (ou não foi pedida nenhuma).
+
+    Compara por número: «03», «3» e «_03» são a mesma versão.
+    """
+    alvo = re.sub(r"\D", "", str(pedida or ""))
+    if not alvo:
+        return True
+    tem = re.sub(r"\D", "", str(getattr(processo, atributo, "") or ""))
+    return bool(tem) and int(tem) == int(alvo)
 
 
 def _chave_versao(processo):
@@ -260,8 +273,19 @@ class AssistenteProducaoService:
                 alvo = f"da ref. cliente {pedido.ref_cliente}"
             else:
                 ano = pedido.ano or (str(ano_atual) if ano_atual else "")
-                versoes = self._encontrar_obras(processos, pedido.numero, ano)
-                alvo = pedido.numero + (f" (ano {ano})" if ano else "")
+                versoes = self._encontrar_obras(
+                    processos,
+                    pedido.numero,
+                    ano,
+                    versao_obra=pedido.versao_obra,
+                    versao_plano=pedido.versao_plano,
+                )
+                alvo = pedido.numero
+                if pedido.versao_obra:
+                    alvo += f"_{pedido.versao_obra}"
+                if pedido.versao_plano:
+                    alvo += f"_{pedido.versao_plano}"
+                alvo += f" (ano {ano})" if ano else ""
             if not versoes:
                 return ResultadoIA(
                     tipo="obra",
@@ -289,6 +313,13 @@ class AssistenteProducaoService:
                 texto=resumo_texto(dossier),
                 dossier=dossier,
                 corpo_email=corpo_email,
+                # Sem isto, quem pergunta pela encomenda toda nunca fica a saber
+                # que há mais versões — e são obras a sério, com estados
+                # de produção diferentes.
+                aviso=aviso_outras_versoes(
+                    dossier,
+                    pediu_versao=bool(pedido.versao_obra or pedido.versao_plano),
+                ),
             )
 
         ano_todas = pedido_ocorrencias_todas(pergunta)
@@ -558,11 +589,18 @@ class AssistenteProducaoService:
         return estados
 
     @staticmethod
-    def _encontrar_obras(processos, numero: str, ano: str = "") -> list:
+    def _encontrar_obras(
+        processos,
+        numero: str,
+        ano: str = "",
+        versao_obra: str = "",
+        versao_plano: str = "",
+    ) -> list:
         """Versões da obra (mesmo nº encomenda e ANO), da mais antiga à recente.
 
         O nº de encomenda repete-se entre anos, por isso o ano faz parte da
-        identidade da obra; ``ano`` vazio não filtra por ano.
+        identidade da obra; ``ano`` vazio não filtra por ano. Escrevendo
+        «_111_03_01» filtra-se também a versão da obra e a do plano de corte.
         """
         alvo = re.sub(r"\D", "", numero or "")
         if not alvo:
@@ -578,6 +616,10 @@ class AssistenteProducaoService:
                 processo_ano = re.sub(r"\D", "", str(getattr(processo, "ano", "") or ""))
                 if processo_ano != ano_alvo:
                     continue
+            if not _versao_bate(processo, "versao_obra", versao_obra):
+                continue
+            if not _versao_bate(processo, "versao_plano", versao_plano):
+                continue
             encontradas.append(processo)
         return sorted(encontradas, key=_chave_versao)
 

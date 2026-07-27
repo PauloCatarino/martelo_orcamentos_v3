@@ -71,6 +71,10 @@ class PedidoObra:
     ano: str = ""
     #: Referência do cliente («ref de cliente XXXX»), em alternativa ao número.
     ref_cliente: str = ""
+    #: Versão da obra pedida («_111_03»); vazio = a mais recente.
+    versao_obra: str = ""
+    #: Versão do plano de corte pedida («_111_03_01»); vazio = a mais recente.
+    versao_plano: str = ""
 
 
 @dataclass(frozen=True)
@@ -144,7 +148,82 @@ def identificar_pedido(pergunta: object) -> PedidoObra | None:
     if not (tem_gatilho or tem_rotulo):
         return None
 
-    return PedidoObra(numero=numero, modo=_modo(palavras), ano=ano)
+    versao_obra, versao_plano = extrair_versoes(pergunta, numero)
+    return PedidoObra(
+        numero=numero,
+        modo=_modo(palavras),
+        ano=ano,
+        versao_obra=versao_obra,
+        versao_plano=versao_plano,
+    )
+
+
+#: «_111_03_01» / «111/03/01»: o número, a versão da obra e a do plano de corte.
+#: Só separadores explícitos (nunca o espaço), senão «obra 111 03» seria lido
+#: como uma versão que o utilizador não escreveu.
+_PADRAO_VERSOES = re.compile(r"(\d{2,6})[_/\-]0*(\d{1,2})(?:[_/\-]0*(\d{1,2}))?")
+
+
+def extrair_versoes(pergunta: object, numero: str) -> tuple[str, str]:
+    """Lê «_111_03_01» e devolve ('03', '01') — ('', '') se não vier versão.
+
+    Trabalha no texto **em bruto**: o ``normalizar`` transforma os underscores
+    em espaços, e aí «_111_03_01» ficaria indistinguível de três números
+    escritos ao lado uns dos outros.
+    """
+    texto = str(pergunta or "")
+    alvo = re.sub(r"\D", "", numero or "")
+    if not texto or not alvo:
+        return "", ""
+
+    for encontrado in _PADRAO_VERSOES.finditer(texto):
+        if encontrado.group(1).lstrip("0") != alvo.lstrip("0"):
+            continue
+        obra = encontrado.group(2)
+        plano = encontrado.group(3) or ""
+        return f"{int(obra):02d}", f"{int(plano):02d}" if plano else ""
+    return "", ""
+
+
+def aviso_outras_versoes(dossier: DossierObra, *, pediu_versao: bool = False) -> str:
+    """«Esta encomenda tem 3 versões» + como pedir uma delas.
+
+    O resumo mostra sempre a versão mais recente. Sem isto, quem pergunta pela
+    encomenda toda não fica a saber que as outras versões existem — e são obras
+    a sério, com estados de produção diferentes.
+    """
+    versoes = tuple(getattr(dossier, "versoes", ()) or ())
+    if pediu_versao or len(versoes) < 2:
+        return ""
+
+    enc = (dossier.enc or "").strip()
+    mostrada = versoes[-1]
+    outras = [
+        _referencia_versao(enc, versao)
+        for versao in versoes[:-1]
+    ]
+    exemplo = outras[0] if outras else ""
+
+    return (
+        f"A encomenda {enc or '—'} tem {len(versoes)} versões; mostrei a mais "
+        f"recente ({_referencia_versao(enc, mostrada)}). "
+        f"Outras: {', '.join(outras)}. "
+        f"Para ver uma delas, escreva o número completo — ex.: «{exemplo}»."
+    )
+
+
+def _referencia_versao(enc: str, versao: VersaoObra) -> str:
+    """«_111_03_01» a partir da encomenda e da versão.
+
+    A encomenda vai tal e qual como está: o underscore inicial de «_111» faz
+    parte do número, e é assim que a pessoa o escreve.
+    """
+    referencia = (enc or "").strip()
+    for parte in (versao.versao_obra, versao.versao_plano):
+        limpa = (parte or "").strip().strip("_")
+        if limpa:
+            referencia += f"_{limpa}"
+    return referencia
 
 
 def _extrair_ref_cliente(texto: str) -> str:
