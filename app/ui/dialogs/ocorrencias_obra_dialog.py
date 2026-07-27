@@ -45,6 +45,7 @@ from app.ui.dialogs.equipa_dialog import EquipaDialog
 from app.ui.helpers.anexos_ocorrencia import guardar_anexos, resolver_pasta_obra
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.faixa_anexos import FaixaAnexos
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 #: Fundo e texto de cada família de classificação (ver ocorrencia_tipos).
@@ -95,9 +96,14 @@ class OcorrenciasObraDialog(QDialog):
 
         self.tipo_filtro = self._combo_filtro("Tipo: todos", tipos.TIPOS, "Filtrar por tipo de ticket")
         self.estado_filtro = QComboBox()
-        self.estado_filtro.setToolTip("Filtrar por estado")
-        self.estado_filtro.addItem("Estado: por resolver", "__abertos__")
+        self.estado_filtro.setToolTip(
+            "Filtrar por estado. Por omissão mostra tudo — os resolvidos ficam "
+            "à vista, com a cor da coluna Estado a distingui-los."
+        )
+        # "Todos" à cabeça: um ticket que desaparece da tabela ao ser resolvido
+        # deixa de se saber que existiu.
         self.estado_filtro.addItem("Estado: todos", None)
+        self.estado_filtro.addItem("Estado: por resolver", "__abertos__")
         for estado in tipos.ESTADOS:
             self.estado_filtro.addItem(estado.rotulo, estado.chave)
         self.estado_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
@@ -130,6 +136,11 @@ class OcorrenciasObraDialog(QDialog):
         cabecalho_tabela.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         for coluna, largura in ((0, 48), (1, 120), (2, 160), (4, 110), (5, 100), (6, 60)):
             self.table.setColumnWidth(coluna, largura)
+        # Larguras que o utilizador ajustar ficam guardadas (a coluna Assunto
+        # continua a esticar sozinha, por isso não se força tudo a interativa).
+        ligar_persistencia_larguras(
+            self.table, "ocorrencias_obra", forcar_interativas=False
+        )
 
         self.detalhe_titulo = QLabel("")
         self.detalhe_titulo.setStyleSheet(f"color: {tema.CASTANHO_ESCURO}; font-weight: bold;")

@@ -37,6 +37,7 @@ from app.ui import tema
 from app.ui.dialogs.ocorrencias_obra_dialog import CORES_FAMILIA, OcorrenciasObraDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 COLUNAS = ("Obra", "Cliente", "Nº", "Data", "Tipo", "Assunto", "Resp.", "Estado", "Fotos")
@@ -77,9 +78,12 @@ class OcorrenciasPage(QWidget):
         self.tipo_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
         self.estado_filtro = QComboBox()
-        self.estado_filtro.setToolTip("Filtrar por estado")
-        self.estado_filtro.addItem("Estado: por resolver", "__abertos__")
+        self.estado_filtro.setToolTip(
+            "Filtrar por estado. Por omissão mostra tudo — os resolvidos ficam "
+            "à vista, com a cor da coluna Estado a distingui-los."
+        )
         self.estado_filtro.addItem("Estado: todos", None)
+        self.estado_filtro.addItem("Estado: por resolver", "__abertos__")
         for estado in tipos.ESTADOS:
             self.estado_filtro.addItem(estado.rotulo, estado.chave)
         self.estado_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
@@ -127,6 +131,9 @@ class OcorrenciasPage(QWidget):
             (8, 60),
         ):
             self.table.setColumnWidth(coluna, largura)
+        ligar_persistencia_larguras(
+            self.table, "ocorrencias_todas", forcar_interativas=False
+        )
 
         self.resumo_label = QLabel("")
         self.resumo_label.setWordWrap(True)

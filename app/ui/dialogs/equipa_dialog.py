@@ -25,6 +25,7 @@ from app.services.equipa_service import (
     semear_de_producao,
 )
 from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 class EquipaDialog(QDialog):
@@ -62,6 +63,7 @@ class EquipaDialog(QDialog):
         cabecalho_tabela.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setColumnWidth(0, 200)
         self.table.setColumnWidth(2, 70)
+        ligar_persistencia_larguras(self.table, "equipa", forcar_interativas=False)
 
         self.acrescentar_button = QPushButton("Acrescentar pessoa")
         self.acrescentar_button.setToolTip("Juntar uma linha nova à equipa")
