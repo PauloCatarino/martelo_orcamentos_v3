@@ -11,6 +11,7 @@ from app.services.teams_service import (
     encurtar,
     link_chat_teams,
     montar_texto_ticket,
+    normalizar_destinos,
 )
 
 
@@ -94,6 +95,32 @@ def test_o_link_abre_a_conversa_com_a_mensagem_escrita() -> None:
 def test_sem_endereco_nao_ha_link() -> None:
     assert link_chat_teams(None, "texto") == ""
     assert link_chat_teams("  ", "texto") == ""
+    assert link_chat_teams([], "texto") == ""
+    assert link_chat_teams(["", "  "], "texto") == ""
+
+
+def test_varias_pessoas_abrem_uma_conversa_de_grupo() -> None:
+    url = link_chat_teams(["elsa@lancaencanto.pt", "dulce@lancaencanto.pt"], "Oi")
+
+    consulta = parse_qs(urlparse(url).query)
+
+    assert consulta["users"] == ["elsa@lancaencanto.pt,dulce@lancaencanto.pt"]
+
+
+def test_enderecos_repetidos_entram_uma_vez_so() -> None:
+    destinos = normalizar_destinos(
+        ["elsa@x.pt", " elsa@x.pt ", "dulce@x.pt", "", None]
+    )
+
+    assert destinos == ["elsa@x.pt", "dulce@x.pt"]
+
+
+def test_uma_lista_escrita_a_mao_tambem_serve() -> None:
+    assert normalizar_destinos("a@x.pt, b@x.pt; c@x.pt") == [
+        "a@x.pt",
+        "b@x.pt",
+        "c@x.pt",
+    ]
 
 
 def test_mensagem_com_acentos_e_quebras_sobrevive_ao_link() -> None:

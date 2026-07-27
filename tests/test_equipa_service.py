@@ -4,15 +4,29 @@ from __future__ import annotations
 
 import pytest
 
-from app.models import Producao
+from app.models import Producao, User
 from app.services.equipa_service import (
     atualizar_membro,
     criar_membro,
     eliminar_membro,
     listar_membros,
     obter_por_nome,
+    preencher_emails_de_users,
     semear_de_producao,
 )
+
+
+def _conta(session, *, username: str, nome: str, email: str) -> User:
+    utilizador = User(
+        username=username,
+        nome=nome,
+        email=email,
+        password_hash="x",
+        role="user",
+    )
+    session.add(utilizador)
+    session.commit()
+    return utilizador
 
 
 def test_criar_e_listar_por_ordem(session) -> None:
@@ -122,3 +136,48 @@ def test_importar_duas_vezes_nao_duplica(session) -> None:
 
     assert semear_de_producao(session) == 1
     assert semear_de_producao(session) == 0
+
+
+def test_endereco_vem_do_primeiro_nome_da_conta_do_martelo(session) -> None:
+    """Os nomes das obras são o primeiro nome; as contas têm o nome completo."""
+    _conta(session, username="elsa", nome="Elsa Belo", email="producao@lancaencanto.pt")
+    criar_membro(session, nome="Elsa")
+
+    assert preencher_emails_de_users(session) == 1
+    assert obter_por_nome(session, "Elsa").email == "producao@lancaencanto.pt"
+
+
+def test_endereco_tambem_vem_do_nome_completo_e_do_username(session) -> None:
+    _conta(session, username="dfaria", nome="Dulce Faria", email="comprar@x.pt")
+    _conta(session, username="paulo", nome="Paulo Catarino", email="projetos@x.pt")
+    criar_membro(session, nome="Dulce Faria")
+    criar_membro(session, nome="dfaria")
+
+    assert preencher_emails_de_users(session) == 2
+    assert obter_por_nome(session, "Dulce Faria").email == "comprar@x.pt"
+
+
+def test_nao_escreve_por_cima_do_endereco_preenchido_a_mao(session) -> None:
+    _conta(session, username="elsa", nome="Elsa Belo", email="conta@x.pt")
+    criar_membro(session, nome="Elsa Belo", email="escrito.a.mao@x.pt")
+
+    assert preencher_emails_de_users(session) == 0
+    assert obter_por_nome(session, "Elsa Belo").email == "escrito.a.mao@x.pt"
+
+
+def test_primeiro_nome_ambiguo_fica_por_preencher(session) -> None:
+    """Mandar o ticket à pessoa errada é pior do que não o mandar."""
+    _conta(session, username="ana.s", nome="Ana Silva", email="ana.silva@x.pt")
+    _conta(session, username="ana.p", nome="Ana Pereira", email="ana.pereira@x.pt")
+    criar_membro(session, nome="Ana")
+
+    assert preencher_emails_de_users(session) == 0
+    assert obter_por_nome(session, "Ana").email is None
+
+
+def test_nome_sem_conta_no_martelo_fica_por_preencher(session) -> None:
+    _conta(session, username="elsa", nome="Elsa Belo", email="producao@x.pt")
+    criar_membro(session, nome="Rogério Prino")
+
+    assert preencher_emails_de_users(session) == 0
+    assert obter_por_nome(session, "Rogério Prino").email is None

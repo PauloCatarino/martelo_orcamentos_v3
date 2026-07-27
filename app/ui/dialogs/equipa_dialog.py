@@ -22,6 +22,7 @@ from app.services.equipa_service import (
     criar_membro,
     eliminar_membro,
     listar_membros,
+    preencher_emails_de_users,
     semear_de_producao,
 )
 from app.ui import tema
@@ -69,11 +70,20 @@ class EquipaDialog(QDialog):
         self.acrescentar_button.setToolTip("Juntar uma linha nova à equipa")
         self.acrescentar_button.clicked.connect(self._acrescentar)
 
-        self.importar_button = QPushButton("Importar das obras")
+        self.importar_button = QPushButton("Trazer nomes das obras")
         self.importar_button.setToolTip(
-            "Trazer os nomes que já são responsáveis por obras na Produção"
+            "Acrescenta à equipa os nomes que já aparecem como Responsável das "
+            "obras na Produção, para não os ter de escrever de novo. Quem já cá "
+            "estiver não é duplicado."
         )
         self.importar_button.clicked.connect(self._importar)
+
+        self.emails_button = QPushButton("Preencher endereços")
+        self.emails_button.setToolTip(
+            "Preencher os endereços em falta com o email da conta do Martelo da "
+            "mesma pessoa. Nunca escreve por cima do que já preencheu."
+        )
+        self.emails_button.clicked.connect(self._preencher_emails)
 
         self.eliminar_button = QPushButton("Eliminar")
         self.eliminar_button.setToolTip("Tirar esta pessoa da equipa")
@@ -90,6 +100,7 @@ class EquipaDialog(QDialog):
         botoes = QHBoxLayout()
         botoes.addWidget(self.acrescentar_button)
         botoes.addWidget(self.importar_button)
+        botoes.addWidget(self.emails_button)
         botoes.addWidget(self.eliminar_button)
         botoes.addStretch()
         botoes.addWidget(self.gravar_button)
@@ -171,8 +182,31 @@ class EquipaDialog(QDialog):
         self.status_label.setText(
             f"{criados} nome(s) trazidos das obras — falta preencher os endereços."
             if criados
-            else "Não havia nomes novos para trazer."
+            else "Já cá estavam todos os responsáveis das obras — nada a trazer."
         )
+
+    def _preencher_emails(self) -> None:
+        """Fill the missing addresses from the matching Martelo accounts."""
+        try:
+            with SessionLocal() as session:
+                preenchidos = preencher_emails_de_users(session)
+                session.commit()
+        except SQLAlchemyError:
+            self.status_label.setText("Não foi possível preencher os endereços.")
+            return
+
+        self.carregar()
+        if preenchidos:
+            self.status_label.setText(
+                f"{preenchidos} endereço(s) preenchidos a partir das contas do "
+                "Martelo. Confirme antes de enviar — o endereço do Teams pode "
+                "não ser o mesmo do login."
+            )
+        else:
+            self.status_label.setText(
+                "Não encontrei contas do Martelo para os nomes em falta. "
+                "Escreva os endereços à mão."
+            )
 
     def _eliminar(self) -> None:
         indice = self.table.currentRow()

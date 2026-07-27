@@ -42,6 +42,7 @@ from app.services.producao_ocorrencias_service import (
 from app.ui import tema
 from app.ui.dialogs.editar_ocorrencia_dialog import EditarOcorrenciaDialog
 from app.ui.dialogs.equipa_dialog import EquipaDialog
+from app.ui.dialogs.escolher_pessoas_teams_dialog import EscolherPessoasTeamsDialog
 from app.ui.helpers.anexos_ocorrencia import guardar_anexos, resolver_pasta_obra
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.faixa_anexos import FaixaAnexos
@@ -545,41 +546,59 @@ class OcorrenciasObraDialog(QDialog):
             self.status_label.setText("Selecione um ticket para enviar.")
             return
 
-        membro = self._membro_do_ticket(linha)
-        mensagem = teams_service.montar_texto_ticket(
-            self._processo, _Ticket(linha), [_Anexo(**a) for a in linha["anexos"]]
-        )
-        fotos = teams_service.caminhos_de_anexos(
-            [_Anexo(**anexo) for anexo in linha["anexos"]]
-        )
-        self._copiar_para_area_transferencia(mensagem, fotos)
-
-        if membro is None or not membro.email:
-            nome = (membro.nome if membro else linha["responsavel"]) or "—"
+        if not self._membros:
             QMessageBox.information(
                 self,
                 "Enviar para Teams",
-                f"'{nome}' ainda não tem endereço de Teams em Equipa…\n\n"
-                "O ticket ficou copiado para a área de transferência: cole-o no "
-                "chat com Ctrl+V.",
-            )
-            self.status_label.setText(
-                "Ticket copiado. Preencha o endereço de Teams em Equipa… para "
-                "abrir a conversa automaticamente."
+                "A equipa está vazia. Abra 'Equipa…' e acrescente as pessoas "
+                "com o respetivo endereço de Teams.",
             )
             return
 
-        if not teams_service.abrir_chat_teams(membro.email, mensagem):
+        responsavel = self._membro_do_ticket(linha)
+        escolha = EscolherPessoasTeamsDialog(
+            self,
+            membros=self._membros,
+            pre_selecionados=[responsavel.id] if responsavel is not None else [],
+        )
+        if escolha.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        anexos = [_Anexo(**anexo) for anexo in linha["anexos"]]
+        mensagem = teams_service.montar_texto_ticket(
+            self._processo, _Ticket(linha), anexos
+        )
+        fotos = teams_service.caminhos_de_anexos(anexos)
+        self._copiar_para_area_transferencia(mensagem, fotos)
+        recado = " As fotos ficaram copiadas: no Teams, Ctrl+V." if fotos else ""
+
+        if escolha.apenas_copiar():
+            self.status_label.setText(f"Ticket copiado.{recado}")
+            return
+
+        destinatarios = escolha.escolhidos()
+        if not destinatarios:
+            self.status_label.setText(f"Ticket copiado.{recado}")
+            return
+
+        enderecos = [membro.email for membro in destinatarios]
+        nomes = ", ".join(membro.nome for membro in destinatarios)
+        if not teams_service.abrir_chat_teams(enderecos, mensagem):
             self.status_label.setText(
                 "Não foi possível abrir o Teams. O ticket ficou copiado — cole "
                 "com Ctrl+V."
             )
             return
 
-        quando = datetime.now()
         try:
             with SessionLocal() as session:
-                registar_envio(session, linha["id"], para=membro.nome, via="teams", quando=quando)
+                registar_envio(
+                    session,
+                    linha["id"],
+                    para=nomes,
+                    via="teams",
+                    quando=datetime.now(),
+                )
                 session.commit()
         except (ValueError, SQLAlchemyError):
             self.status_label.setText(
@@ -588,9 +607,8 @@ class OcorrenciasObraDialog(QDialog):
             return
 
         self.carregar()
-        recado = " As fotos ficaram copiadas: no Teams, Ctrl+V." if fotos else ""
         self.status_label.setText(
-            f"Teams aberto na conversa de {membro.nome} com o ticket escrito.{recado}"
+            f"Teams aberto na conversa de {nomes} com o ticket escrito.{recado}"
         )
 
     def _copiar_para_area_transferencia(self, mensagem: str, fotos) -> None:

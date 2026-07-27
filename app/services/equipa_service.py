@@ -10,8 +10,10 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.domain.pesquisa_texto import normalizar
 from app.models.equipa_membro import EquipaMembro
 from app.models.producao import Producao
+from app.models.user import User
 
 
 def listar_membros(session: Session, *, incluir_inativos: bool = False) -> list[EquipaMembro]:
@@ -121,3 +123,57 @@ def semear_de_producao(session: Session) -> int:
     if criados:
         session.flush()
     return criados
+
+
+def preencher_emails_de_users(session: Session) -> int:
+    """Fill the empty addresses with the email of the matching V3 account.
+
+    Os nomes vindos das obras são quase sempre o primeiro nome ("Elsa"), e as
+    contas do V3 têm o nome completo ("Elsa Belo") — daí procurar-se também
+    pelo primeiro nome e pelo username. Um primeiro nome que sirva a duas
+    contas é deixado em branco de propósito: mandar o ticket à pessoa errada é
+    pior do que não o mandar.
+
+    Nunca escreve por cima de um endereço já preenchido à mão.
+    """
+    indice = _indice_de_contas(session)
+    if not indice:
+        return 0
+
+    preenchidos = 0
+    for membro in listar_membros(session, incluir_inativos=True):
+        if (membro.email or "").strip():
+            continue
+        email = indice.get(normalizar(membro.nome))
+        if email:
+            membro.email = email[:255]
+            preenchidos += 1
+
+    if preenchidos:
+        session.flush()
+    return preenchidos
+
+
+def _indice_de_contas(session: Session) -> dict[str, str]:
+    """Map name/username to the account email, dropping ambiguous keys."""
+    candidatos: dict[str, set[str]] = {}
+    for utilizador in session.scalars(select(User)).all():
+        email = (utilizador.email or "").strip()
+        if not email:
+            continue
+        for chave in _chaves_da_conta(utilizador):
+            if chave:
+                candidatos.setdefault(chave, set()).add(email)
+
+    return {
+        chave: next(iter(emails))
+        for chave, emails in candidatos.items()
+        if len(emails) == 1
+    }
+
+
+def _chaves_da_conta(utilizador: User) -> tuple[str, ...]:
+    """Ways of naming one account: full name, first name and username."""
+    nome = normalizar(utilizador.nome)
+    primeiro = nome.split(" ")[0] if nome else ""
+    return (nome, primeiro, normalizar(utilizador.username))

@@ -75,17 +75,37 @@ def montar_texto_ticket(processo, ocorrencia, anexos=()) -> str:
     return "\n".join(linhas).strip()
 
 
-def link_chat_teams(email: str | None, mensagem: str = "") -> str:
-    """Return the deep link that opens the 1:1 chat with the text ready.
+def normalizar_destinos(emails) -> list[str]:
+    """Accept one address or many; drop the empty ones and the repeated ones."""
+    if emails is None:
+        return []
+    if isinstance(emails, str):
+        candidatos = emails.replace(";", ",").split(",")
+    else:
+        candidatos = list(emails)
 
-    Sem email não há conversa para abrir — devolve string vazia para quem chama
-    decidir o que dizer ao utilizador.
+    destinos: list[str] = []
+    for candidato in candidatos:
+        endereco = str(candidato or "").strip()
+        if endereco and endereco not in destinos:
+            destinos.append(endereco)
+    return destinos
+
+
+def link_chat_teams(emails, mensagem: str = "") -> str:
+    """Return the deep link that opens the chat with the text ready.
+
+    Com mais do que um endereço o Teams abre uma **conversa de grupo** com
+    todos — é o que serve quando o mesmo problema é de duas pessoas.
+
+    Sem endereço não há conversa para abrir: devolve string vazia para quem
+    chama decidir o que dizer ao utilizador.
     """
-    destino = (email or "").strip()
-    if not destino:
+    destinos = normalizar_destinos(emails)
+    if not destinos:
         return ""
 
-    url = f"{BASE_CHAT}?users={quote(destino, safe='@')}"
+    url = f"{BASE_CHAT}?users={quote(','.join(destinos), safe='@,')}"
     texto = (mensagem or "").strip()
     if texto:
         url += f"&message={quote(encurtar(texto), safe='')}"
@@ -110,9 +130,9 @@ def caminhos_de_anexos(anexos) -> list[str]:
     return caminhos
 
 
-def abrir_chat_teams(email: str | None, mensagem: str = "") -> bool:
-    """Open the Teams chat with the message ready; False if there is no email."""
-    url = link_chat_teams(email, mensagem)
+def abrir_chat_teams(emails, mensagem: str = "") -> bool:
+    """Open the Teams chat with the message ready; False if there is no address."""
+    url = link_chat_teams(emails, mensagem)
     if not url:
         return False
 
