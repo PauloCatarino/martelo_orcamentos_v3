@@ -28,7 +28,7 @@ from app.db.session import SessionLocal
 from app.domain import ocorrencia_tipos as tipos
 from app.models.producao import Producao
 from app.services import teams_service
-from app.services.equipa_service import listar_membros
+from app.services.equipa_service import identificar_membro, listar_membros
 from app.services.producao_ocorrencias_service import (
     atualizar_ocorrencia,
     eliminar_ocorrencia,
@@ -76,6 +76,7 @@ class OcorrenciasObraDialog(QDialog):
         self._pasta_obra: str | None = None
         self._linhas: list[dict] = []
         self._membros: list = []
+        self._membro_utilizador: int | None = None
         self._formato_teams = teams_service.FORMATO_PADRAO
 
         self.setWindowTitle(f"Ocorrências — {codigo_processo}")
@@ -236,6 +237,14 @@ class OcorrenciasObraDialog(QDialog):
                 self._formato_teams = teams_service.formato_configurado(session)
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível ler os dados da obra.")
+
+        utilizador = app_session.current_user
+        self._membro_utilizador = identificar_membro(
+            self._membros,
+            nome=getattr(utilizador, "nome", None),
+            username=getattr(utilizador, "username", None),
+            email=getattr(utilizador, "email", None),
+        )
 
         self.responsavel_filtro.blockSignals(True)
         self.responsavel_filtro.clear()
@@ -557,11 +566,18 @@ class OcorrenciasObraDialog(QDialog):
             )
             return
 
+        # O responsável vem marcado, exceto quando é a própria pessoa que está a
+        # enviar: ninguém manda o ticket a si mesmo.
         responsavel = self._membro_do_ticket(linha)
+        pre_selecionados = []
+        if responsavel is not None and responsavel.id != self._membro_utilizador:
+            pre_selecionados.append(responsavel.id)
+
         escolha = EscolherPessoasTeamsDialog(
             self,
             membros=self._membros,
-            pre_selecionados=[responsavel.id] if responsavel is not None else [],
+            pre_selecionados=pre_selecionados,
+            id_utilizador=self._membro_utilizador,
         )
         if escolha.exec() != QDialog.DialogCode.Accepted:
             return

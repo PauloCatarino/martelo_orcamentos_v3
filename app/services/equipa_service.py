@@ -154,6 +154,45 @@ def preencher_emails_de_users(session: Session) -> int:
     return preenchidos
 
 
+def identificar_membro(
+    membros,
+    *,
+    nome: str | None = None,
+    username: str | None = None,
+    email: str | None = None,
+) -> int | None:
+    """Which team member is this person? None when there is no safe match.
+
+    Função pura (recebe a lista já lida) para o diálogo poder saber quem está a
+    enviar sem voltar à base de dados. O endereço manda, porque é único; o nome
+    só serve de recurso, e um primeiro nome que sirva a duas pessoas não conta —
+    mais vale não identificar ninguém do que identificar a pessoa errada.
+    """
+    lista = list(membros or ())
+
+    endereco = (email or "").strip().lower()
+    if endereco:
+        for membro in lista:
+            if (getattr(membro, "email", "") or "").strip().lower() == endereco:
+                return int(membro.id)
+
+    procurados = {normalizar(valor) for valor in (nome, username) if valor}
+    nome_normalizado = normalizar(nome)
+    if nome_normalizado:
+        procurados.add(nome_normalizado.split(" ")[0])
+    procurados.discard("")
+    if not procurados:
+        return None
+
+    encontrados = [
+        int(membro.id)
+        for membro in lista
+        if normalizar(getattr(membro, "nome", "")) in procurados
+        or normalizar(getattr(membro, "nome", "")).split(" ")[0] in procurados
+    ]
+    return encontrados[0] if len(encontrados) == 1 else None
+
+
 def _indice_de_contas(session: Session) -> dict[str, str]:
     """Map name/username to the account email, dropping ambiguous keys."""
     candidatos: dict[str, set[str]] = {}

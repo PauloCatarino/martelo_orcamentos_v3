@@ -23,7 +23,14 @@ class EscolherPessoasTeamsDialog(QDialog):
     é o que serve quando o mesmo problema é de duas.
     """
 
-    def __init__(self, parent=None, *, membros=(), pre_selecionados=()) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        membros=(),
+        pre_selecionados=(),
+        id_utilizador: int | None = None,
+    ) -> None:
         super().__init__(parent)
 
         self._membros = list(membros or ())
@@ -46,12 +53,13 @@ class EscolherPessoasTeamsDialog(QDialog):
 
         for membro in self._membros:
             tem_endereco = bool((membro.email or "").strip())
-            item = QListWidgetItem(self._rotulo(membro, tem_endereco))
+            sou_eu = id_utilizador is not None and int(membro.id) == int(id_utilizador)
+            item = QListWidgetItem(self._rotulo(membro, tem_endereco, sou_eu))
             item.setData(Qt.ItemDataRole.UserRole, int(membro.id))
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
                 Qt.CheckState.Checked
-                if (tem_endereco and int(membro.id) in pre)
+                if (tem_endereco and not sou_eu and int(membro.id) in pre)
                 else Qt.CheckState.Unchecked
             )
             if not tem_endereco:
@@ -111,10 +119,12 @@ class EscolherPessoasTeamsDialog(QDialog):
 
     # ---- apoio -----------------------------------------------------------
     @staticmethod
-    def _rotulo(membro, tem_endereco: bool) -> str:
+    def _rotulo(membro, tem_endereco: bool, sou_eu: bool = False) -> str:
+        """Label of one person; quem está a enviar fica marcado como '(você)'."""
+        nome = f"{membro.nome} (você)" if sou_eu else membro.nome
         if tem_endereco:
-            return f"{membro.nome}  —  {membro.email}"
-        return f"{membro.nome}  —  (sem endereço de Teams)"
+            return f"{nome}  —  {membro.email}"
+        return f"{nome}  —  (sem endereço de Teams)"
 
     def _atualizar_estado(self) -> None:
         total = len(self.escolhidos())

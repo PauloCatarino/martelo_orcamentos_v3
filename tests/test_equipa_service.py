@@ -9,6 +9,7 @@ from app.services.equipa_service import (
     atualizar_membro,
     criar_membro,
     eliminar_membro,
+    identificar_membro,
     listar_membros,
     obter_por_nome,
     preencher_emails_de_users,
@@ -136,6 +137,39 @@ def test_importar_duas_vezes_nao_duplica(session) -> None:
 
     assert semear_de_producao(session) == 1
     assert semear_de_producao(session) == 0
+
+
+def test_identificar_quem_esta_a_enviar_pelo_endereco(session) -> None:
+    criar_membro(session, nome="Paulo Catarino", email="projetos@lancaencanto.pt")
+    outro = criar_membro(session, nome="Pedro Reis", email="desenhos2@lancaencanto.pt")
+    membros = listar_membros(session)
+
+    encontrado = identificar_membro(
+        membros, nome="Outro Nome Qualquer", email="desenhos2@lancaencanto.pt"
+    )
+
+    assert encontrado == outro.id
+
+
+def test_identificar_pelo_primeiro_nome_quando_nao_ha_endereco(session) -> None:
+    paulo = criar_membro(session, nome="Paulo")
+    criar_membro(session, nome="Pedro Reis")
+
+    assert identificar_membro(listar_membros(session), nome="Paulo Catarino") == paulo.id
+
+
+def test_nao_identifica_ninguem_quando_o_nome_serve_a_dois(session) -> None:
+    criar_membro(session, nome="Ana Silva")
+    criar_membro(session, nome="Ana Pereira")
+
+    assert identificar_membro(listar_membros(session), nome="Ana") is None
+
+
+def test_nao_identifica_ninguem_sem_pistas(session) -> None:
+    criar_membro(session, nome="Paulo Catarino")
+
+    assert identificar_membro(listar_membros(session)) is None
+    assert identificar_membro([], nome="Paulo") is None
 
 
 def test_endereco_vem_do_primeiro_nome_da_conta_do_martelo(session) -> None:
