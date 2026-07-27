@@ -17,6 +17,11 @@ from app.domain.margens_padrao_types import (
 )
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.domain.precos import MargensOrcamento
+from app.domain.ref_cliente_semelhanca import (
+    Semelhanca,
+    chave_ref,
+    comparar as comparar_ref_cliente,
+)
 from app.models.orcamento_versao import OrcamentoVersao
 from app.repositories.def_margem_padrao_repository import DefMargemPadraoRepository
 from app.repositories.orcamento_repository import (
@@ -76,6 +81,14 @@ class EditarOrcamentoData:
     encomendas_phc: tuple[EncomendaPhcInput, ...] | None = None
 
 
+@dataclass(frozen=True)
+class CorrespondenciaRefCliente:
+    """Um orcamento existente que pode ser o mesmo que se esta a criar."""
+
+    orcamento: OrcamentoResumo
+    semelhanca: Semelhanca
+
+
 class OrcamentoService:
     """Application service for Orcamento workflows."""
 
@@ -97,6 +110,45 @@ class OrcamentoService:
     ) -> list[OrcamentoResumo]:
         """Find budget versions with the same customer reference."""
         return self.repository.find_by_ref_cliente(ref_cliente)
+
+    def find_orcamentos_ref_cliente_semelhante(
+        self,
+        ref_cliente: str,
+        cliente_id: int | None = None,
+    ) -> list[CorrespondenciaRefCliente]:
+        """Orcamentos com a Ref. Cliente igual ou parecida com ``ref_cliente``.
+
+        A referencia IGUAL (depois de ignorar maiusculas, acentos, pontuacao e
+        plurais) conta em qualquer cliente, como sempre contou. A referencia
+        apenas PARECIDA so conta dentro do mesmo cliente: e ai que o mesmo
+        orcamento e criado duas vezes com a referencia escrita de outra
+        maneira, e comparar com os outros clientes so traria ruido.
+        """
+        if not chave_ref(ref_cliente):
+            return []
+
+        correspondencias: list[CorrespondenciaRefCliente] = []
+        for orcamento in self.repository.list_com_ref_cliente():
+            semelhanca = comparar_ref_cliente(ref_cliente, orcamento.ref_cliente)
+            if semelhanca is None:
+                continue
+            if not semelhanca.e_igual and (
+                cliente_id is None or orcamento.cliente_id != cliente_id
+            ):
+                continue
+            correspondencias.append(
+                CorrespondenciaRefCliente(orcamento=orcamento, semelhanca=semelhanca)
+            )
+
+        # Iguais primeiro e, dentro de cada grau, as mais parecidas no topo;
+        # a ordenacao do repositorio (ano/numero desc) desempata.
+        correspondencias.sort(
+            key=lambda item: (
+                0 if item.semelhanca.e_igual else 1,
+                -item.semelhanca.pontuacao,
+            )
+        )
+        return correspondencias
 
     def get_cliente_da_versao(
         self, orcamento_versao_id: int

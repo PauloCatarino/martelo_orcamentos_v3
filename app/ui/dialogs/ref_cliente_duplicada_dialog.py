@@ -18,15 +18,23 @@ from PySide6.QtWidgets import (
 )
 
 from app.repositories.orcamento_repository import OrcamentoResumo
+from app.services.orcamento_service import CorrespondenciaRefCliente
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_version
 
 
 class RefClienteDuplicadaDialog(QDialog):
-    """Ask how to proceed when the customer reference already exists."""
+    """Ask how to proceed when the customer reference already exists.
+
+    Mostra tanto as refer\u00eancias iguais como as apenas parecidas (mal
+    escritas, com plural, com outra pontua\u00e7\u00e3o), com o grau de semelhan\u00e7a
+    na primeira coluna, para o utilizador decidir.
+    """
 
     TABLE_HEADERS = [
+        "Semelhan\u00e7a",
+        "Ref. Cliente",
         "Ano",
         "N\u00ba Or\u00e7amento",
         "Vers\u00e3o",
@@ -35,12 +43,19 @@ class RefClienteDuplicadaDialog(QDialog):
         "Estado",
         "Data",
     ]
-    CENTERED_HEADERS = {"Ano", "N\u00ba Or\u00e7amento", "Vers\u00e3o", "Estado", "Data"}
+    CENTERED_HEADERS = {
+        "Semelhan\u00e7a",
+        "Ano",
+        "N\u00ba Or\u00e7amento",
+        "Vers\u00e3o",
+        "Estado",
+        "Data",
+    }
 
     def __init__(
         self,
         ref_cliente: str,
-        correspondencias: list[OrcamentoResumo],
+        correspondencias: list[CorrespondenciaRefCliente],
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -50,16 +65,12 @@ class RefClienteDuplicadaDialog(QDialog):
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
 
         ref = (ref_cliente or "").strip()
-        total = len(correspondencias)
 
-        self.setWindowTitle("Ref. Cliente j\u00e1 existe")
+        self.setWindowTitle("Ref. Cliente igual ou parecida")
         self.setModal(True)
-        self.setMinimumSize(860, 360)
+        self.setMinimumSize(980, 360)
 
-        intro_label = QLabel(
-            f"J\u00e1 existe(m) {total} or\u00e7amento(s) com a Ref. Cliente "
-            f"\u00ab{ref}\u00bb.\nO que pretende fazer?"
-        )
+        intro_label = QLabel(self._texto_intro(ref, correspondencias))
         intro_label.setWordWrap(True)
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
@@ -72,7 +83,10 @@ class RefClienteDuplicadaDialog(QDialog):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
-        ligar_persistencia_larguras(self.table, "dialog_ref_cliente_duplicada")
+        # "_v2": a tabela ganhou colunas, as larguras antigas ficariam trocadas.
+        self._larguras_restauradas = ligar_persistencia_larguras(
+            self.table, "dialog_ref_cliente_duplicada_v2"
+        )
         header.setStyleSheet(
             f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
@@ -107,13 +121,39 @@ class RefClienteDuplicadaDialog(QDialog):
         self._preencher_tabela(correspondencias)
         self._atualizar_reabrir()
 
-    def _preencher_tabela(self, correspondencias: list[OrcamentoResumo]) -> None:
+    @staticmethod
+    def _texto_intro(
+        ref: str, correspondencias: list[CorrespondenciaRefCliente]
+    ) -> str:
+        """Frase de abertura, a dizer quantas são iguais e quantas parecidas."""
+        iguais = sum(1 for item in correspondencias if item.semelhanca.e_igual)
+        parecidas = len(correspondencias) - iguais
+
+        detalhe = []
+        if iguais:
+            detalhe.append(f"{iguais} igual(ais)")
+        if parecidas:
+            detalhe.append(f"{parecidas} parecida(s)")
+
+        return (
+            f"Já existe(m) {len(correspondencias)} orçamento(s) com a Ref. "
+            f"Cliente «{ref}» ou parecida ({' e '.join(detalhe)}).\n"
+            "O que pretende fazer?"
+        )
+
+    def _preencher_tabela(
+        self, correspondencias: list[CorrespondenciaRefCliente]
+    ) -> None:
         self._orcamentos_by_row = {}
         self.table.setRowCount(len(correspondencias))
 
-        for row_index, orcamento in enumerate(correspondencias):
+        for row_index, correspondencia in enumerate(correspondencias):
+            orcamento = correspondencia.orcamento
+            semelhanca = correspondencia.semelhanca
             self._orcamentos_by_row[row_index] = orcamento
             values = [
+                semelhanca.etiqueta,
+                orcamento.ref_cliente or "",
                 str(orcamento.ano),
                 orcamento.num_orcamento,
                 format_version(orcamento.numero_versao),
@@ -127,6 +167,8 @@ class RefClienteDuplicadaDialog(QDialog):
                 header = self.TABLE_HEADERS[column_index]
                 item = self._criar_item_tabela(value, header)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
+                if column_index == 0:
+                    item.setToolTip(semelhanca.explicacao)
                 self.table.setItem(row_index, column_index, item)
 
         self._aplicar_larguras_colunas()
@@ -146,7 +188,11 @@ class RefClienteDuplicadaDialog(QDialog):
         return item
 
     def _aplicar_larguras_colunas(self) -> None:
-        for column_index, largura in enumerate((60, 110, 70, 210, 230, 125, 95)):
+        if self._larguras_restauradas:
+            return
+
+        larguras = (110, 130, 60, 110, 70, 190, 200, 125, 95)
+        for column_index, largura in enumerate(larguras):
             self.table.setColumnWidth(column_index, largura)
 
     def _orcamento_selecionado(self) -> OrcamentoResumo | None:

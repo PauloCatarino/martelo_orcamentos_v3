@@ -440,8 +440,11 @@ class OrcamentosPage(QWidget):
             try:
                 with SessionLocal() as session:
                     correspondencias = (
-                        OrcamentoService(session).find_orcamentos_por_ref_cliente(
-                            form_data.ref_cliente
+                        OrcamentoService(
+                            session
+                        ).find_orcamentos_ref_cliente_semelhante(
+                            form_data.ref_cliente,
+                            form_data.cliente_id,
                         )
                     )
             except SQLAlchemyError:

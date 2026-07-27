@@ -15,6 +15,8 @@ def test_ref_cliente_duplicada_dialog_tem_acoes_e_colunas() -> None:
     from app.ui.dialogs.ref_cliente_duplicada_dialog import RefClienteDuplicadaDialog
 
     assert RefClienteDuplicadaDialog.TABLE_HEADERS == [
+        "Semelhan\u00e7a",
+        "Ref. Cliente",
         "Ano",
         "N\u00ba Or\u00e7amento",
         "Vers\u00e3o",

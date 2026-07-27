@@ -58,6 +58,7 @@ class OrcamentoResumo:
     info_2: str | None = None
     utilizador: str | None = None
     utilizador_id: int | None = None
+    cliente_id: int | None = None
     tem_preco_manual: bool = False
     # Phase 5: how many PHC orders the version has (enc_phc holds the
     # principal one; legacy versions without child rows count as 1).
@@ -132,6 +133,30 @@ class OrcamentoRepository:
         statement = (
             self._select_orcamento_resumo()
             .where(func.lower(func.trim(Orcamento.ref_cliente)) == ref.lower())
+            .order_by(
+                Orcamento.ano.desc(),
+                Orcamento.num_orcamento.desc(),
+                OrcamentoVersao.numero_versao.desc(),
+            )
+        )
+
+        rows = self.session.execute(statement).mappings().all()
+
+        return [self._row_to_orcamento_resumo(row) for row in rows]
+
+    def list_com_ref_cliente(self) -> list[OrcamentoResumo]:
+        """List budget versions that have a customer reference filled in.
+
+        Used by the "reference already exists" check, which compares the new
+        reference in Python (accents, punctuation, plurals and typos) instead
+        of relying on SQL equality.
+        """
+        statement = (
+            self._select_orcamento_resumo()
+            .where(
+                Orcamento.ref_cliente.is_not(None),
+                func.trim(Orcamento.ref_cliente) != "",
+            )
             .order_by(
                 Orcamento.ano.desc(),
                 Orcamento.num_orcamento.desc(),
@@ -773,6 +798,7 @@ class OrcamentoRepository:
                 Orcamento.num_orcamento.label("num_orcamento"),
                 OrcamentoVersao.numero_versao.label("numero_versao"),
                 OrcamentoVersao.codigo_versao.label("codigo_versao"),
+                Orcamento.cliente_id.label("cliente_id"),
                 Cliente.nome.label("cliente_nome"),
                 OrcamentoVersao.obra.label("obra"),
                 OrcamentoVersao.descricao.label("descricao"),
@@ -828,6 +854,7 @@ class OrcamentoRepository:
             num_orcamento=row["num_orcamento"],
             numero_versao=row["numero_versao"],
             codigo_versao=row["codigo_versao"],
+            cliente_id=row["cliente_id"],
             cliente_nome=row["cliente_nome"],
             obra=row["obra"],
             descricao=row["descricao"],
