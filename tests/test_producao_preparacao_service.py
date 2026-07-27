@@ -189,6 +189,9 @@ def test_pagina_producao_abre_a_preparacao() -> None:
 
     fonte = inspect.getsource(ProducaoPage)
 
-    assert "self.preparacao_button" in fonte
+    # A Preparação vive dentro do botão "Funções", como as ações do CUT-RITE.
+    assert "self.funcoes_button.setMenu(self.funcoes_menu)" in fonte
+    assert "self.preparacao_action.triggered.connect(self._abrir_preparacao)" in fonte
+    assert "self.funcoes_menu.setToolTipsVisible(True)" in fonte
     assert "ProducaoPreparacaoDialog" in fonte
     assert hasattr(ProducaoPage, "_abrir_preparacao")

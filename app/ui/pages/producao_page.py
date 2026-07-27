@@ -338,20 +338,33 @@ class ProducaoPage(QWidget):
         )
         self.cutrite_button.setMenu(self.cutrite_menu)
 
-        self.preparacao_button = QPushButton("Preparação")
-        self.preparacao_button.setToolTip(
+        # Botão "Funções" com as ações da pasta da obra, como no CUT-RITE.
+        self.preparacao_action = QAction("Preparação", self)
+        self.preparacao_action.setToolTip(
             "Validar o que já está feito na pasta da obra (PDFs, Caderno de "
             "Encargos, programas CNC) e executar os passos que faltam até a "
             "obra ficar pronta para produção"
         )
-        self.preparacao_button.clicked.connect(self._abrir_preparacao)
+        self.preparacao_action.triggered.connect(self._abrir_preparacao)
 
-        self.imprimir_button = QPushButton("Imprimir")
-        self.imprimir_button.setToolTip(
+        self.imprimir_action = QAction("Imprimir", self)
+        self.imprimir_action.setToolTip(
             "Ver os documentos da pasta da obra e imprimir os selecionados pela "
             "sua ordem de prioridade (a ordem fica guardada para si)"
         )
-        self.imprimir_button.clicked.connect(self._abrir_impressao)
+        self.imprimir_action.triggered.connect(self._abrir_impressao)
+
+        self.funcoes_menu = QMenu(self)
+        self.funcoes_menu.setToolTipsVisible(True)
+        self.funcoes_menu.addAction(self.preparacao_action)
+        self.funcoes_menu.addAction(self.imprimir_action)
+
+        self.funcoes_button = QPushButton("Funções")
+        self.funcoes_button.setToolTip(
+            "Funções sobre a pasta da obra: preparar a obra para produção e "
+            "imprimir os documentos"
+        )
+        self.funcoes_button.setMenu(self.funcoes_menu)
 
         self.ocorrencias_button = QPushButton("Ocorrências")
         self.ocorrencias_button.setToolTip(
@@ -397,8 +410,7 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.nova_versao_button)
         actions_layout.addWidget(self.lista_material_button)
         actions_layout.addWidget(self.cutrite_button)
-        actions_layout.addWidget(self.preparacao_button)
-        actions_layout.addWidget(self.imprimir_button)
+        actions_layout.addWidget(self.funcoes_button)
         actions_layout.addWidget(self.ocorrencias_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.save_button)

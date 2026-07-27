@@ -206,6 +206,8 @@ def test_pagina_producao_abre_a_impressao() -> None:
 
     fonte = inspect.getsource(ProducaoPage)
 
-    assert "self.imprimir_button" in fonte
+    # Imprimir vive dentro do botão "Funções", como as ações do CUT-RITE.
+    assert "self.funcoes_menu.addAction(self.imprimir_action)" in fonte
+    assert "self.imprimir_action.triggered.connect(self._abrir_impressao)" in fonte
     assert "ProducaoImpressaoDialog" in fonte
     assert hasattr(ProducaoPage, "_abrir_impressao")
