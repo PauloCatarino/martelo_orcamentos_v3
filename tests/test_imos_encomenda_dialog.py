@@ -66,6 +66,12 @@ def _plano(
         ),
         avisos=avisos,
         bloqueios=bloqueios,
+        contacto=(
+            CampoImos(
+                "FIRMA", "Cliente", "Cliente", "LINHAS DIREITAS, LDA", "LINHAS DIREITAS, LDA", 150
+            ),
+            CampoImos("MOBILE", "Telefone", "Ficha do cliente", "", "", 50),
+        ),
     )
 
 
@@ -99,7 +105,8 @@ def test_dialogo_constroi_e_preenche_as_tabelas(dialogo) -> None:
     assert "já existe (DIR_ID 180)" in dlg.caminho_table.item(0, 2).text()
     assert dlg.caminho_table.item(3, 2).text() == "vai ser criada agora"
 
-    assert dlg.campos_table.rowCount() == 3
+    # 3 campos da encomenda + 2 dos dados do cliente
+    assert dlg.campos_table.rowCount() == 5
     assert dlg.nome_input.text() == "1260_01_26_LINHAS_DIREITAS"
     assert dlg.contador_label.text() == "26/30"
     assert dlg.criar_button.isEnabled() is True
@@ -117,6 +124,17 @@ def test_dialogo_mostra_o_campo_cortado_e_o_valor_original_na_dica(dialogo) -> N
     assert dlg.campos_table.item(1, 3).text() == "cortado de 400 para 255"
     assert dlg.campos_table.item(1, 2).toolTip() == "A" * 400
     assert dlg.campos_table.item(2, 3).text() == "vazio na obra"
+
+
+def test_dialogo_distingue_os_dados_do_cliente_dos_da_encomenda(dialogo) -> None:
+    dlg = dialogo(_plano())
+
+    # As 3 primeiras linhas sao da encomenda; as 2 ultimas do cliente.
+    assert dlg.campos_table.item(0, 1).text() == "COMM"
+    assert dlg.campos_table.item(3, 1).text() == "FIRMA (dados do cliente)"
+    assert dlg.campos_table.item(3, 2).text() == "LINHAS DIREITAS, LDA"
+    assert dlg.campos_table.item(4, 1).text() == "MOBILE (dados do cliente)"
+    assert dlg.campos_table.item(4, 3).text() == "vazio na obra"
 
 
 def test_dialogo_bloqueado_desativa_o_botao_criar(dialogo) -> None:

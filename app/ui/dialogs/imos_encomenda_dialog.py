@@ -279,15 +279,25 @@ class ImosEncomendaDialog(QDialog):
                 self.caminho_table.setItem(linha, coluna, item)
 
     def _render_campos(self, plano: PlanoCriacaoImos) -> None:
-        self.campos_table.setRowCount(len(plano.campos))
-        for linha, campo in enumerate(plano.campos):
+        # A encomenda e os dados do cliente vão para tabelas diferentes do
+        # iMos, mas o utilizador só quer ver uma lista do que fica gravado.
+        linhas = [(campo, "PROADMIN") for campo in plano.campos]
+        linhas += [(campo, "CMSINCIDENTADRESS") for campo in plano.contacto]
+
+        self.campos_table.setRowCount(len(linhas))
+        for linha, (campo, tabela) in enumerate(linhas):
             if campo.truncado:
                 aviso = f"cortado de {len(campo.valor_original)} para {campo.limite}"
             elif campo.vazio:
                 aviso = "vazio na obra"
             else:
                 aviso = ""
-            valores = [campo.etiqueta, campo.coluna, campo.valor, aviso]
+            coluna_texto = (
+                campo.coluna
+                if tabela == "PROADMIN"
+                else f"{campo.coluna} (dados do cliente)"
+            )
+            valores = [campo.etiqueta, coluna_texto, campo.valor, aviso]
             for coluna, valor in enumerate(valores):
                 item = QTableWidgetItem(valor)
                 item.setToolTip(campo.valor_original if coluna == 2 else valor)

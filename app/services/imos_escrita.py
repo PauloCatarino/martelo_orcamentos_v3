@@ -96,6 +96,64 @@ COLUNAS_RESERVADAS = frozenset(
     {"ID", "PRODUCTIONID", "NAME", "TYPE", "DATECREATE", "LCHANGE"}
 )
 
+# --------------------------------------------------------------------------
+# Dados do cliente da encomenda (dbo.CMSINCIDENTADRESS — sim, um só D)
+# --------------------------------------------------------------------------
+#
+# O iX Organizer, ao gravar o separador "Dados do cliente", faz DELETE por
+# ORDERNAME e depois INSERT. Aqui só se cria: a encomenda acabou de nascer e o
+# serviço de domínio recusa mexer numa encomenda que já exista, por isso nunca
+# há nada para apagar — e o motor mantém-se exclusivamente de INSERT.
+#
+# ATENÇÃO: ORDERNAME tem collation diferente de PROADMIN.NAME
+# (Latin1_General_CS_AS vs CI_AS). Só importa se algum dia se comparar as duas
+# colunas entre si; aqui grava-se o mesmo texto do nome da encomenda.
+COLUNAS_CONTACTO: dict[str, tuple[str, int]] = {
+    "NAME": ("nvarchar", 100),
+    "ANREDE": ("nvarchar", 150),
+    "VORNAME1": ("nvarchar", 150),
+    "VORNAME2": ("nvarchar", 150),
+    "NACHNAME": ("nvarchar", 150),
+    "ZUSATZ": ("nvarchar", 50),
+    "FIRMA": ("nvarchar", 150),
+    "NAMESAVEAS": ("nvarchar", 150),
+    "PHONE1": ("nvarchar", 50),
+    "PHONE2": ("nvarchar", 50),
+    "FAX": ("nvarchar", 50),
+    "MOBILE": ("nvarchar", 50),
+    "EMAIL1": ("nvarchar", 150),
+    "EMAIL2": ("nvarchar", 150),
+    "KATEGORIE": ("nvarchar", 150),
+    "STR": ("nvarchar", 150),
+    "PLZ": ("nvarchar", 50),
+    "ORT": ("nvarchar", 150),
+    "LAND": ("nvarchar", 100),
+    "REGION": ("nvarchar", 100),
+    "WEBSITE": ("nvarchar", 150),
+    "KDNR": ("nvarchar", 100),
+    "ORDERCONDITION": ("nvarchar", 50),
+    "PAYMENTCONDITION": ("nvarchar", 50),
+    "CALCSHEMEDEF": ("nvarchar", 50),
+    "PRODUCER": ("nvarchar", 80),
+}
+
+# Geridas pelo motor: ID/PARENT_ID por NEWID(), ORDERNAME/ORDERID a partir do
+# nó, DATE_LASTCHANGE por GETDATE(), e SOURCE/SYS/MWST com os valores fixos
+# que o iX Organizer usa.
+COLUNAS_CONTACTO_RESERVADAS = frozenset(
+    {"ID", "PARENT_ID", "ORDERNAME", "ORDERID", "DATE_LASTCHANGE", "SOURCE", "SYS", "MWST"}
+)
+
+# De onde vem o ORDERID da linha de contacto.
+#
+# O trace do iX Organizer gravou ORDERID=7490 numa encomenda cujos IDs no
+# export da mesma tarde eram DIR_ID=7505 e PROADMIN.ID=7482 — ou seja, a
+# encomenda foi recriada entretanto. Para uma linha nova, o PROADMIN.ID seria
+# >= 7487 (7490 encaixa) e o DIR_ID >= 7510 (7490 é impossível), o que aponta
+# para PROADMIN.ID. Trocar para "dir" se a verificação no SQL disser o
+# contrário: é a única coisa a mudar.
+CONTACTO_ORDERID_DE = "proadmin"
+
 
 @dataclass(frozen=True)
 class NoParaCriar:
@@ -111,6 +169,9 @@ class NoParaCriar:
     parent_dir_id: int | None = None
     parent_indice: int | None = None
     campos: Mapping[str, Any] = field(default_factory=dict)
+    # Dados do cliente da encomenda; só se aplica a nós do tipo encomenda.
+    # Vazio ou ausente = não se cria linha nenhuma em CMSINCIDENTADRESS.
+    contacto: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -122,6 +183,8 @@ class NoCriado:
     dir_id: int
     proadmin_id: int
     parent_dir_id: int
+    # GUID da linha de dados do cliente, quando foi criada.
+    contacto_id: str = ""
 
 
 def carregar_escrita_ativa(session: Session) -> bool:
@@ -196,19 +259,28 @@ def _valor_texto(coluna: str, tamanho: int, valor: Any) -> str:
     return texto
 
 
-def _campos_normalizados(campos: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _campos_normalizados(
+    campos: Mapping[str, Any],
+    *,
+    permitidas: dict[str, tuple[str, int]] | None = None,
+    reservadas: frozenset[str] | None = None,
+    tabela: str = "dbo.PROADMIN",
+) -> list[dict[str, Any]]:
     """Valida as colunas pedidas e devolve-as prontas a parametrizar."""
+    permitidas = permitidas if permitidas is not None else COLUNAS_PROADMIN
+    reservadas = reservadas if reservadas is not None else COLUNAS_RESERVADAS
+
     resultado: list[dict[str, Any]] = []
     for coluna_bruta, valor in (campos or {}).items():
         coluna = str(coluna_bruta or "").strip().upper()
-        if coluna in COLUNAS_RESERVADAS:
+        if coluna in reservadas:
             raise ValueError(
                 f"A coluna {coluna} é gerida pelo motor e não pode ser indicada."
             )
-        if coluna not in COLUNAS_PROADMIN:
-            raise ValueError(f"Coluna desconhecida em dbo.PROADMIN: {coluna}.")
+        if coluna not in permitidas:
+            raise ValueError(f"Coluna desconhecida em {tabela}: {coluna}.")
 
-        tipo_sql, tamanho = COLUNAS_PROADMIN[coluna]
+        tipo_sql, tamanho = permitidas[coluna]
         if tipo_sql == "int":
             item = {"coluna": coluna, "tipo": "int", "tamanho": 0, "valor": int(valor or 0)}
         elif tipo_sql == "real":
@@ -267,6 +339,21 @@ def construir_payload(cfg: ImosConfig, nos: list[NoParaCriar]) -> dict[str, Any]
         if tem_dir and int(no.parent_dir_id) <= 0:
             raise ValueError(f"O nó {no.nome!r} tem um parent_dir_id inválido.")
 
+        if no.contacto and no.tipo != IMOS_TIPO_ENCOMENDA:
+            raise ValueError(
+                f"O nó {no.nome!r} é uma pasta: só uma encomenda pode ter dados "
+                "de cliente."
+            )
+        contacto = _campos_normalizados(
+            no.contacto or {},
+            permitidas=COLUNAS_CONTACTO,
+            reservadas=COLUNAS_CONTACTO_RESERVADAS,
+            tabela="dbo.CMSINCIDENTADRESS",
+        )
+        # Sem um único valor preenchido não se cria linha de contacto nenhuma.
+        if not any(str(campo["valor"]).strip() for campo in contacto):
+            contacto = []
+
         itens.append(
             {
                 "nome": no.nome,
@@ -274,10 +361,15 @@ def construir_payload(cfg: ImosConfig, nos: list[NoParaCriar]) -> dict[str, Any]
                 "parent_dir_id": int(no.parent_dir_id) if tem_dir else None,
                 "parent_indice": int(no.parent_indice) if tem_indice else None,
                 "campos": _campos_normalizados(no.campos),
+                "contacto": contacto,
             }
         )
 
-    return {"conn": build_connection_string(cfg), "nos": itens}
+    return {
+        "conn": build_connection_string(cfg),
+        "nos": itens,
+        "orderid_de": CONTACTO_ORDERID_DE,
+    }
 
 
 _PS_SCRIPT = r"""
@@ -293,6 +385,7 @@ $connStr = [string]$p.conn
 # Segunda barreira, do lado do PowerShell: os nomes de coluna sao a unica
 # parte do payload que entra no texto SQL, por isso sao validados aqui outra vez.
 $colunasOk = @(COLUNAS_PERMITIDAS)
+$contactoOk = @(COLUNAS_CONTACTO_PERMITIDAS)
 $tiposOk = @(TIPOS_PERMITIDOS)
 
 Add-Type -AssemblyName System.Data
@@ -364,6 +457,43 @@ try {
     $cmd2.CommandText = 'INSERT INTO dbo.PROADMIN (' + ($colunas -join ', ') + ') VALUES (' + ($valores -join ', ') + '); SELECT CAST(SCOPE_IDENTITY() AS int);'
     $proadminId = [int]$cmd2.ExecuteScalar()
 
+    # 3) dados do cliente da encomenda, quando existem
+    $contactoId = ''
+    if ($no.contacto -and @($no.contacto).Count -gt 0) {
+      if ([string]$p.orderid_de -eq 'dir') { $orderId = $dir } else { $orderId = $proadminId }
+
+      $colunas3 = @('ID','PARENT_ID','ORDERNAME','ORDERID','DATE_LASTCHANGE','SOURCE','SYS','MWST')
+      $valores3 = @('@newid','@parentid','@ordername','@orderid','GETDATE()','@source','0','0')
+      $cmd3 = $conn.CreateCommand()
+      $cmd3.Transaction = $tx
+      $novoId = [guid]::NewGuid()
+      $par = $cmd3.Parameters.Add('@newid', [System.Data.SqlDbType]::UniqueIdentifier)
+      $par.Value = $novoId
+      $par = $cmd3.Parameters.Add('@parentid', [System.Data.SqlDbType]::UniqueIdentifier)
+      $par.Value = [guid]::NewGuid()
+      $par = $cmd3.Parameters.Add('@ordername', [System.Data.SqlDbType]::NVarChar, 30)
+      $par.Value = [string]$no.nome
+      $par = $cmd3.Parameters.Add('@orderid', [System.Data.SqlDbType]::Int)
+      $par.Value = $orderId
+      $par = $cmd3.Parameters.Add('@source', [System.Data.SqlDbType]::NVarChar, 80)
+      $par.Value = 'IMOSADMIN'
+
+      $j = 0
+      foreach ($campo in $no.contacto) {
+        $coluna = [string]$campo.coluna
+        if ($contactoOk -notcontains $coluna) { throw ('Coluna de contacto nao permitida: ' + $coluna) }
+        $nomeParam = '@k' + $j
+        $colunas3 += $coluna
+        $valores3 += $nomeParam
+        $par = $cmd3.Parameters.Add($nomeParam, [System.Data.SqlDbType]::NVarChar, [int]$campo.tamanho)
+        $par.Value = [string]$campo.valor
+        $j = $j + 1
+      }
+      $cmd3.CommandText = 'INSERT INTO dbo.CMSINCIDENTADRESS (' + ($colunas3 -join ', ') + ') VALUES (' + ($valores3 -join ', ') + ');'
+      [void]$cmd3.ExecuteNonQuery()
+      $contactoId = $novoId.ToString()
+    }
+
     $dirIds += $dir
     $criados += [pscustomobject]@{
       nome = [string]$no.nome
@@ -371,6 +501,7 @@ try {
       dir_id = $dir
       proadmin_id = $proadminId
       parent_dir_id = $parent
+      contacto_id = $contactoId
     }
   }
 
@@ -389,9 +520,12 @@ try {
 def _powershell_script() -> str:
     """Injeta as listas brancas no script, entre aspas simples do PowerShell."""
     colunas = ",".join(f"'{coluna}'" for coluna in sorted(COLUNAS_PROADMIN))
+    contacto = ",".join(f"'{coluna}'" for coluna in sorted(COLUNAS_CONTACTO))
     tipos = ",".join(str(tipo) for tipo in TIPOS_PERMITIDOS)
-    return _PS_SCRIPT.replace("COLUNAS_PERMITIDAS", colunas).replace(
-        "TIPOS_PERMITIDOS", tipos
+    return (
+        _PS_SCRIPT.replace("COLUNAS_CONTACTO_PERMITIDAS", contacto)
+        .replace("COLUNAS_PERMITIDAS", colunas)
+        .replace("TIPOS_PERMITIDOS", tipos)
     )
 
 
@@ -451,6 +585,7 @@ def executar_payload(payload: dict[str, Any]) -> list[NoCriado]:
                 dir_id=int(item.get("dir_id") or 0),
                 proadmin_id=int(item.get("proadmin_id") or 0),
                 parent_dir_id=int(item.get("parent_dir_id") or 0),
+                contacto_id=str(item.get("contacto_id") or ""),
             )
             for item in dados
         ]

@@ -244,17 +244,100 @@ def test_lista_branca_cobre_as_colunas_do_mapeamento_acordado() -> None:
 
 
 # --------------------------------------------------------------------------
+# Dados do cliente (dbo.CMSINCIDENTADRESS)
+# --------------------------------------------------------------------------
+
+
+def _encomenda(**kwargs) -> NoParaCriar:
+    kwargs.setdefault("parent_dir_id", 6641)
+    return NoParaCriar(nome="1260_01_26_LD", tipo=IMOS_TIPO_ENCOMENDA, **kwargs)
+
+
+def test_contacto_normalizado_com_os_limites_da_sua_tabela() -> None:
+    payload = imos_escrita.construir_payload(
+        _cfg(),
+        [_encomenda(contacto={"FIRMA": "LINHAS DIREITAS, LDA", "KDNR": "28"})],
+    )
+
+    campos = {c["coluna"]: c for c in payload["nos"][0]["contacto"]}
+    assert campos["FIRMA"]["tamanho"] == 150
+    assert campos["KDNR"]["tamanho"] == 100
+    assert payload["orderid_de"] == imos_escrita.CONTACTO_ORDERID_DE
+
+
+def test_contacto_todo_vazio_nao_gera_linha() -> None:
+    payload = imos_escrita.construir_payload(
+        _cfg(), [_encomenda(contacto={"FIRMA": "", "KDNR": "   "})]
+    )
+
+    assert payload["nos"][0]["contacto"] == []
+
+
+def test_pasta_nao_pode_ter_dados_de_cliente() -> None:
+    with pytest.raises(ValueError, match="só uma encomenda"):
+        imos_escrita.construir_payload(
+            _cfg(), [_pasta("ANO_2026", contacto={"FIRMA": "X"})]
+        )
+
+
+@pytest.mark.parametrize(
+    "coluna", ["ID", "PARENT_ID", "ORDERNAME", "ORDERID", "SOURCE", "SYS", "MWST"]
+)
+def test_colunas_de_contacto_do_motor_sao_recusadas(coluna: str) -> None:
+    with pytest.raises(ValueError, match="gerida pelo motor"):
+        imos_escrita.construir_payload(_cfg(), [_encomenda(contacto={coluna: "1"})])
+
+
+def test_coluna_de_contacto_desconhecida_nomeia_a_tabela_certa() -> None:
+    with pytest.raises(ValueError, match="dbo.CMSINCIDENTADRESS"):
+        imos_escrita.construir_payload(_cfg(), [_encomenda(contacto={"TELEMOVEL": "1"})])
+
+
+def test_valor_de_contacto_grande_demais_e_recusado() -> None:
+    with pytest.raises(ValueError, match="MOBILE tem 51 caracteres.*50"):
+        imos_escrita.construir_payload(
+            _cfg(), [_encomenda(contacto={"MOBILE": "9" * 51})]
+        )
+
+
+def test_no_sem_contacto_continua_a_funcionar() -> None:
+    payload = imos_escrita.construir_payload(_cfg(), [_encomenda()])
+
+    assert payload["nos"][0]["contacto"] == []
+
+
+# --------------------------------------------------------------------------
 # Script PowerShell
 # --------------------------------------------------------------------------
 
 
-def test_script_so_conhece_insert_nas_duas_tabelas_da_arvore() -> None:
+def test_script_so_conhece_insert_nas_tres_tabelas_permitidas() -> None:
     script = imos_escrita._powershell_script()
 
     assert script.count("INSERT INTO dbo.IMORDFOLDER") == 1
     assert script.count("INSERT INTO dbo.PROADMIN") == 1
+    assert script.count("INSERT INTO dbo.CMSINCIDENTADRESS") == 1
+    assert script.count("INSERT INTO dbo.") == 3
+    limpo = (
+        script.upper().replace("EXECUTESCALAR", "").replace("EXECUTENONQUERY", "")
+    )
     for proibido in ("UPDATE ", "DELETE ", "DROP ", "ALTER ", "TRUNCATE", "EXEC "):
-        assert proibido not in script.upper().replace("EXECUTESCALAR", "")
+        assert proibido not in limpo
+
+
+def test_script_gera_os_guids_do_contacto_e_liga_ao_nome_da_encomenda() -> None:
+    script = imos_escrita._powershell_script()
+
+    assert script.count("[guid]::NewGuid()") == 2  # ID e PARENT_ID
+    assert "$par.Value = [string]$no.nome" in script
+    assert "if ([string]$p.orderid_de -eq 'dir') { $orderId = $dir } else" in script
+
+
+def test_script_leva_a_lista_branca_das_colunas_de_contacto() -> None:
+    script = imos_escrita._powershell_script()
+
+    assert "'MOBILE'" in script and "'KDNR'" in script and "'FIRMA'" in script
+    assert "COLUNAS_CONTACTO_PERMITIDAS" not in script
 
 
 def test_script_reverte_a_transacao_em_erro() -> None:

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.models.cliente import Cliente
 from app.services import imos_encomenda_service as servico
 from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
@@ -35,6 +36,8 @@ def _obra(**overrides) -> SimpleNamespace:
         "versao_plano": "01",
         "nome_cliente_simplex": "LINHAS_DIREITAS",
         "nome_cliente": "LINHAS DIREITAS - SOLUÇÕES INTERIORES, LDA",
+        "num_cliente_phc": "28",
+        "cliente_id": None,
         "ref_cliente": "260082",
         "responsavel": "Pedro",
         "descricao_producao": "",
@@ -44,6 +47,23 @@ def _obra(**overrides) -> SimpleNamespace:
     }
     dados.update(overrides)
     return SimpleNamespace(**dados)
+
+
+def _cliente(session, **overrides) -> Cliente:
+    """Cria a ficha do cliente e devolve-a já com id."""
+    dados = {
+        "nome": "LINHAS DIREITAS - SOLUÇÕES INTERIORES, LDA",
+        "nome_simplex": "LINHAS_DIREITAS",
+        "email": "geral@linhasdireitas.pt",
+        "telefone": "244741215",
+        "telemovel": "919613398",
+        "num_cliente_phc": "28",
+    }
+    dados.update(overrides)
+    cliente = Cliente(**dados)
+    session.add(cliente)
+    session.flush()
+    return cliente
 
 
 def _caminho(
@@ -169,8 +189,9 @@ def test_todas_as_colunas_mapeadas_existem_em_proadmin() -> None:
 
 def test_plano_com_tudo_ja_existente_so_cria_a_encomenda(session, monkeypatch) -> None:
     _com_caminho(monkeypatch, _caminho())
+    cliente = _cliente(session)
 
-    plano = servico.preparar(session, _cfg(), _obra())
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
 
     assert plano.pode_criar is True
     assert plano.avisos == ()
@@ -406,6 +427,101 @@ def test_sem_ensaio_a_pasta_do_ano_nao_e_forcada(session, monkeypatch) -> None:
 
     assert recebido["pasta_ano"] is None
     assert not any(aviso.startswith("ENSAIO:") for aviso in plano.avisos)
+
+
+# --------------------------------------------------------------------------
+# Dados do cliente (dbo.CMSINCIDENTADRESS)
+# --------------------------------------------------------------------------
+
+
+def test_mapeamento_dos_dados_do_cliente(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+    cliente = _cliente(session)
+
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
+    contacto = {campo.coluna: campo.valor for campo in plano.contacto}
+
+    assert contacto["FIRMA"] == "LINHAS DIREITAS - SOLUÇÕES INTERIORES, LDA"
+    assert contacto["KDNR"] == "28"
+    assert contacto["MOBILE"] == "244741215"
+    assert contacto["EMAIL1"] == "geral@linhasdireitas.pt"
+    assert plano.tem_contacto is True
+
+
+def test_sem_ficha_de_cliente_avisa_e_deixa_telefone_e_email_vazios(
+    session, monkeypatch
+) -> None:
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=None))
+    contacto = {campo.coluna: campo.valor for campo in plano.contacto}
+
+    assert contacto["MOBILE"] == ""
+    assert contacto["EMAIL1"] == ""
+    # FIRMA e KDNR saem da propria obra, por isso continuam preenchidos.
+    assert contacto["KDNR"] == "28"
+    assert any("não está ligada a uma ficha de cliente" in a for a in plano.avisos)
+    assert plano.pode_criar is True
+
+
+def test_nome_de_cliente_grande_e_cortado_no_limite_do_firma(
+    session, monkeypatch
+) -> None:
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(
+        session, _cfg(), _obra(nome_cliente="X" * 200, cliente_id=None)
+    )
+    firma = next(c for c in plano.contacto if c.coluna == "FIRMA")
+
+    assert len(firma.valor) == 150
+    assert firma.truncado is True
+    assert any("Cliente: 200 caracteres cortados para 150" in a for a in plano.avisos)
+
+
+def test_contacto_vai_no_no_da_encomenda(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho(cliente=None))
+    cliente = _cliente(session)
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
+
+    pasta, encomenda = servico.nos_para_criar(plano)
+
+    assert pasta.contacto is None
+    assert encomenda.contacto["FIRMA"].startswith("LINHAS DIREITAS")
+    assert encomenda.contacto["MOBILE"] == "244741215"
+
+
+def test_contacto_passa_na_validacao_do_motor(session, monkeypatch) -> None:
+    from app.services import imos_escrita
+
+    _com_caminho(monkeypatch, _caminho())
+    cliente = _cliente(session)
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
+
+    payload = imos_escrita.construir_payload(_cfg(), servico.nos_para_criar(plano))
+    contacto = {c["coluna"]: c["valor"] for c in payload["nos"][0]["contacto"]}
+
+    assert contacto["EMAIL1"] == "geral@linhasdireitas.pt"
+    assert set(contacto) == {"FIRMA", "KDNR", "MOBILE", "EMAIL1"}
+
+
+def test_obra_sem_cliente_nenhum_nao_cria_linha_de_contacto(
+    session, monkeypatch
+) -> None:
+    """Sem um único valor preenchido, o motor não cria a linha de contacto."""
+    from app.services import imos_escrita
+
+    _com_caminho(monkeypatch, _caminho())
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        _obra(nome_cliente="", num_cliente_phc="", cliente_id=None),
+    )
+
+    payload = imos_escrita.construir_payload(_cfg(), servico.nos_para_criar(plano))
+
+    assert payload["nos"][0]["contacto"] == []
+    assert plano.tem_contacto is False
 
 
 def test_executar_usa_o_motor_de_escrita(session, monkeypatch) -> None:
