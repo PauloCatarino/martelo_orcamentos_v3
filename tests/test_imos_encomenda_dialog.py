@@ -75,6 +75,38 @@ def _plano(
     )
 
 
+def _plano_com_textos() -> PlanoCriacaoImos:
+    """Plano com as duas colunas editáveis: uma preenchida, outra vazia."""
+    return PlanoCriacaoImos(
+        caminho=CaminhoImos(
+            niveis=(
+                NivelCaminho("LANCA_ENCANTO", IMOS_TIPO_PASTA, 180),
+                NivelCaminho("ANO_2026", IMOS_TIPO_PASTA, 6624),
+                NivelCaminho("LINHAS_DIREITAS", IMOS_TIPO_PASTA, 6641),
+                NivelCaminho("1260_01_26_LD", IMOS_TIPO_ENCOMENDA, None),
+            )
+        ),
+        nome_encomenda="1260_01_26_LD",
+        nome_sugerido="1260_01_26_LD",
+        campos=(
+            CampoImos("COMM", "Nº Enc PHC", "Nº Enc PHC", "1260", "1260", 80),
+            CampoImos(
+                "TEXT_SHORT",
+                "Descrição produção",
+                "Descrição produção",
+                "roupeiro 4 portas",
+                "roupeiro 4 portas",
+                255,
+            ),
+            CampoImos(
+                "TEXT_LONG", "Matérias usados", "Matérias usados", "", "", 255
+            ),
+        ),
+        avisos=(),
+        bloqueios=(),
+    )
+
+
 @pytest.fixture()
 def dialogo(monkeypatch):
     """Constrói o diálogo real, com o iMos e a base substituídos."""
@@ -122,7 +154,10 @@ def test_dialogo_mostra_o_campo_cortado_e_o_valor_original_na_dica(dialogo) -> N
     dlg = dialogo(_plano())
 
     assert dlg.campos_table.item(1, 3).text() == "cortado de 400 para 255"
-    assert dlg.campos_table.item(1, 2).toolTip() == "A" * 400
+    # TEXT_SHORT é editável: a dica junta o valor original e o convite a corrigir.
+    dica = dlg.campos_table.item(1, 2).toolTip()
+    assert dica.startswith("A" * 400)
+    assert "Duplo clique para corrigir" in dica
     assert dlg.campos_table.item(2, 3).text() == "vazio na obra"
 
 
@@ -186,32 +221,80 @@ def test_dialogo_comeca_sem_nada_criado(dialogo) -> None:
     assert dialogo(_plano()).criada is False
 
 
-def test_ensaio_comeca_desligado(dialogo) -> None:
+def test_ensaio_ano_teste_foi_removido(dialogo) -> None:
     dlg = dialogo(_plano())
 
-    assert dlg.ensaio_check.isChecked() is False
-    assert "ANO_TESTE" in dlg.ensaio_check.text()
+    assert not hasattr(dlg, "ensaio_check")
+    assert "ANO_TESTE" not in inspect.getsource(ImosEncomendaDialog)
 
 
-def test_ensaio_pede_a_pasta_descartavel_ao_servico(monkeypatch) -> None:
-    from app.services.imos_encomenda_service import PASTA_ANO_ENSAIO
+def test_aviso_ao_atingir_o_limite_de_30_caracteres(dialogo) -> None:
+    dlg = dialogo(_plano())
 
-    recebido: list = []
+    dlg.nome_input.setText("X" * 30)
+    assert "máximo de 30 caracteres" in dlg.nome_limite_label.text()
 
-    def _preparar(*_a, **kwargs):
-        recebido.append(kwargs.get("pasta_ano"))
-        return _plano()
+    dlg.nome_input.setText("X" * 20)
+    assert dlg.nome_limite_label.text() == ""
 
-    monkeypatch.setattr(imos_encomenda_dialog, "SessionLocal", lambda: _SessaoFalsa())
-    monkeypatch.setattr(imos_encomenda_dialog, "load_imos_config", lambda _s: {})
-    monkeypatch.setattr(imos_encomenda_dialog, "carregar_escrita_ativa", lambda _s: True)
-    monkeypatch.setattr(imos_encomenda_dialog, "preparar", _preparar)
 
-    dlg = ImosEncomendaDialog(processo_id=1)
-    assert recebido == [None]
+def test_larguras_das_colunas_ficam_guardadas_por_utilizador() -> None:
+    source = inspect.getsource(ImosEncomendaDialog)
 
-    dlg.ensaio_check.setChecked(True)
-    assert recebido[-1] == PASTA_ANO_ENSAIO
+    assert source.count("ligar_persistencia_larguras(") == 2
+    assert "dialog_imos_encomenda_caminho" in source
+    assert "dialog_imos_encomenda_campos" in source
+
+
+def test_so_a_descricao_e_as_materias_sao_editaveis(dialogo) -> None:
+    from PySide6.QtCore import Qt
+
+    dlg = dialogo(_plano_com_textos())
+
+    editaveis = [
+        dlg.campos_table.item(linha, 2).data(Qt.ItemDataRole.UserRole)
+        for linha in range(dlg.campos_table.rowCount())
+    ]
+    assert editaveis == [None, "TEXT_SHORT", "TEXT_LONG"]
+
+    def _e_editavel(linha: int) -> bool:
+        flags = dlg.campos_table.item(linha, 2).flags()
+        return bool(flags & Qt.ItemFlag.ItemIsEditable)
+
+    assert _e_editavel(0) is False
+    assert _e_editavel(1) is True
+    assert _e_editavel(2) is True
+
+
+def test_editar_a_descricao_guarda_a_correcao_sem_tocar_na_obra(dialogo) -> None:
+    dlg = dialogo(_plano_com_textos())
+
+    dlg.campos_table.item(1, 2).setText("ROUPEIRO CORRIGIDO")
+
+    assert dlg._textos == {"TEXT_SHORT": "ROUPEIRO CORRIGIDO"}
+
+
+def test_texto_editado_grande_demais_avisa_e_corta(dialogo, monkeypatch) -> None:
+    avisos: list = []
+    monkeypatch.setattr(
+        imos_encomenda_dialog.QMessageBox,
+        "warning",
+        lambda *args, **_k: avisos.append(args[2]),
+    )
+    dlg = dialogo(_plano_com_textos())
+
+    dlg.campos_table.item(1, 2).setText("Z" * 300)
+
+    assert len(dlg._textos["TEXT_SHORT"]) == 255
+    assert avisos and "só aceita 255 caracteres" in avisos[0]
+
+
+def test_linhas_editaveis_dizem_que_o_sao(dialogo) -> None:
+    dlg = dialogo(_plano_com_textos())
+
+    assert dlg.campos_table.item(1, 3).text() == "editável"
+    assert dlg.campos_table.item(2, 3).text() == "vazio na obra — pode escrever"
+    assert "não é alterada" in dlg.campos_table.item(1, 2).toolTip()
 
 
 def test_ligacao_imos_tem_interruptor_de_escrita() -> None:

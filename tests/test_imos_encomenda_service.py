@@ -389,7 +389,7 @@ def test_nos_gerados_passam_na_validacao_do_motor_de_escrita(
     assert {"COMM", "CLIENT", "PROGRAM", "INFO1", "STARTDATE"} <= colunas
 
 
-def test_ensaio_desvia_para_a_pasta_descartavel_e_avisa(session, monkeypatch) -> None:
+def test_pasta_ano_alternativa_desvia_a_criacao_e_avisa(session, monkeypatch) -> None:
     recebido: dict = {}
 
     def _resolver(*_a, **kwargs):
@@ -397,7 +397,7 @@ def test_ensaio_desvia_para_a_pasta_descartavel_e_avisa(session, monkeypatch) ->
         return CaminhoImos(
             niveis=(
                 NivelCaminho("LANCA_ENCANTO", IMOS_TIPO_PASTA, 180),
-                NivelCaminho(servico.PASTA_ANO_ENSAIO, IMOS_TIPO_PASTA, None),
+                NivelCaminho("ANO_TESTE", IMOS_TIPO_PASTA, None),
                 NivelCaminho("LINHAS_DIREITAS", IMOS_TIPO_PASTA, None),
                 NivelCaminho("1260_01_26_LINHAS_DIREITAS", IMOS_TIPO_ENCOMENDA, None),
             )
@@ -405,12 +405,10 @@ def test_ensaio_desvia_para_a_pasta_descartavel_e_avisa(session, monkeypatch) ->
 
     monkeypatch.setattr(servico, "resolver_caminho_encomenda", _resolver)
 
-    plano = servico.preparar(
-        session, _cfg(), _obra(), pasta_ano=servico.PASTA_ANO_ENSAIO
-    )
+    plano = servico.preparar(session, _cfg(), _obra(), pasta_ano="ANO_TESTE")
 
     assert recebido["pasta_ano"] == "ANO_TESTE"
-    assert plano.avisos[0].startswith("ENSAIO:")
+    assert "não para a pasta do ano da obra" in plano.avisos[0]
     assert plano.pastas_a_criar == ("ANO_TESTE", "LINHAS_DIREITAS")
     assert plano.pode_criar is True
 
@@ -426,7 +424,77 @@ def test_sem_ensaio_a_pasta_do_ano_nao_e_forcada(session, monkeypatch) -> None:
     plano = servico.preparar(session, _cfg(), _obra())
 
     assert recebido["pasta_ano"] is None
-    assert not any(aviso.startswith("ENSAIO:") for aviso in plano.avisos)
+    assert not any("não para a pasta do ano" in aviso for aviso in plano.avisos)
+
+
+# --------------------------------------------------------------------------
+# Correções locais de TEXT_SHORT / TEXT_LONG
+# --------------------------------------------------------------------------
+
+
+def test_texto_editado_substitui_o_da_obra(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+    obra = _obra(descricao_producao="roupeiro 4 portas", materias_usados="AGL 19MM")
+
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        obra,
+        textos={"TEXT_SHORT": "ROUPEIRO 4 PORTAS DE ABRIR C/ GAVETAS"},
+    )
+    campos = {c.coluna: c for c in plano.campos}
+
+    assert campos["TEXT_SHORT"].valor == "ROUPEIRO 4 PORTAS DE ABRIR C/ GAVETAS"
+    assert campos["TEXT_SHORT"].origem == "Editado aqui"
+    # O que não foi editado continua a vir da obra.
+    assert campos["TEXT_LONG"].valor == "AGL 19MM"
+    assert campos["TEXT_LONG"].origem == "Matérias usados"
+
+
+def test_texto_editado_nao_altera_a_obra_no_martelo(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+    obra = _obra(descricao_producao="original")
+
+    servico.preparar(session, _cfg(), obra, textos={"TEXT_SHORT": "corrigido"})
+
+    assert obra.descricao_producao == "original"
+
+
+def test_texto_editado_grande_demais_e_cortado_com_aviso(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(
+        session, _cfg(), _obra(), textos={"TEXT_LONG": "B" * 300}
+    )
+    campo = next(c for c in plano.campos if c.coluna == "TEXT_LONG")
+
+    assert len(campo.valor) == 255
+    assert campo.truncado is True
+    assert any("cortados para 255" in aviso for aviso in plano.avisos)
+
+
+def test_so_as_colunas_editaveis_aceitam_correcao(session, monkeypatch) -> None:
+    """Uma correção a uma coluna não editável é simplesmente ignorada."""
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(
+        session, _cfg(), _obra(), textos={"COMM": "9999", "CLIENT": "OUTRO"}
+    )
+    campos = {c.coluna: c.valor for c in plano.campos}
+
+    assert campos["COMM"] == "1260"
+    assert campos["CLIENT"] == "LINHAS_DIREITAS"
+
+
+def test_texto_editado_vai_para_o_no_da_encomenda(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(
+        session, _cfg(), _obra(), textos={"TEXT_SHORT": "corrigido no dialogo"}
+    )
+    (encomenda,) = servico.nos_para_criar(plano)
+
+    assert encomenda.campos["TEXT_SHORT"] == "corrigido no dialogo"
 
 
 # --------------------------------------------------------------------------

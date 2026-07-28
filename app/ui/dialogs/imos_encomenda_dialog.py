@@ -10,7 +10,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QGroupBox,
     QHBoxLayout,
@@ -28,7 +27,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.models.producao import Producao
 from app.services.imos_encomenda_service import (
-    PASTA_ANO_ENSAIO,
+    COLUNAS_EDITAVEIS,
     PlanoCriacaoImos,
     executar,
     preparar,
@@ -43,6 +42,7 @@ from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
     load_imos_config,
 )
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 COR_EM_FALTA = QColor("#8a5000")
 COR_AVISO = QColor("#b00020")
@@ -61,10 +61,14 @@ class ImosEncomendaDialog(QDialog):
         self._plano: PlanoCriacaoImos | None = None
         self._escrita_ativa = False
         self._criada = False
+        # Correções locais de TEXT_SHORT/TEXT_LONG: valem só para esta criação
+        # e nunca são gravadas de volta na obra do Martelo.
+        self._textos: dict[str, str] = {}
+        self._a_render = False
 
         self.setWindowTitle("Criar Encomenda IMOS")
         self.setModal(True)
-        self.setMinimumSize(920, 640)
+        self.setMinimumSize(960, 900)
 
         self.cabecalho = QLabel(
             "O Martelo vai criar a encomenda no iMos a partir dos dados desta obra. "
@@ -84,26 +88,14 @@ class ImosEncomendaDialog(QDialog):
             "Caminho dentro do iMos, de cima para baixo. As pastas marcadas como "
             "'vai ser criada' ainda não existem e serão criadas agora."
         )
-        self.caminho_table.setMaximumHeight(150)
-        cabecalho_caminho = self.caminho_table.horizontalHeader()
-        cabecalho_caminho.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        cabecalho_caminho.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        cabecalho_caminho.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-
-        self.ensaio_check = QCheckBox(
-            f"Ensaio: criar em {PASTA_ANO_ENSAIO} em vez da pasta do ano"
-        )
-        self.ensaio_check.setToolTip(
-            "Desvia a criação para uma pasta descartável ao lado dos ANO_XXXX, "
-            "para validar o processo sem mexer no ano real. Depois de "
-            f"confirmar, apague a pasta {PASTA_ANO_ENSAIO} no iX Organizer."
-        )
-        self.ensaio_check.toggled.connect(self._recarregar)
+        self.caminho_table.setMaximumHeight(170)
+        # Larguras redimensionáveis e guardadas por utilizador, como nos
+        # restantes menus.
+        ligar_persistencia_larguras(self.caminho_table, "dialog_imos_encomenda_caminho")
 
         grupo_caminho = QGroupBox("Onde vai ser criada")
         layout_caminho = QVBoxLayout(grupo_caminho)
         layout_caminho.addWidget(self.caminho_table)
-        layout_caminho.addWidget(self.ensaio_check)
 
         # --- nome ----------------------------------------------------------
         self.nome_input = QLineEdit()
@@ -124,6 +116,11 @@ class ImosEncomendaDialog(QDialog):
         self.nome_original_label = QLabel("")
         self.nome_original_label.setWordWrap(True)
 
+        # Aviso vivo do limite: o campo não deixa passar dos 30, mas o
+        # utilizador tem de perceber porque é que parou de escrever.
+        self.nome_limite_label = QLabel("")
+        self.nome_limite_label.setWordWrap(True)
+
         linha_nome = QHBoxLayout()
         linha_nome.addWidget(self.nome_input, stretch=1)
         linha_nome.addWidget(self.contador_label)
@@ -131,6 +128,7 @@ class ImosEncomendaDialog(QDialog):
         grupo_nome = QGroupBox("Nome da encomenda")
         layout_nome = QVBoxLayout(grupo_nome)
         layout_nome.addLayout(linha_nome)
+        layout_nome.addWidget(self.nome_limite_label)
         layout_nome.addWidget(self.nome_original_label)
 
         # --- campos --------------------------------------------------------
@@ -138,21 +136,33 @@ class ImosEncomendaDialog(QDialog):
         self.campos_table.setHorizontalHeaderLabels(self.COLUNAS_CAMPOS)
         self.campos_table.verticalHeader().setVisible(False)
         self.campos_table.setAlternatingRowColors(True)
-        self.campos_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.campos_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.campos_table.setToolTip(
-            "Valores da obra já traduzidos para as colunas de dbo.PROADMIN. "
-            "A coluna Aviso indica o que teve de ser cortado para caber."
+        self.campos_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
         )
-        cabecalho_campos = self.campos_table.horizontalHeader()
-        cabecalho_campos.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        cabecalho_campos.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        cabecalho_campos.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        cabecalho_campos.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.campos_table.setToolTip(
+            "Valores da obra já traduzidos para as colunas do iMos. A coluna "
+            "Aviso indica o que teve de ser cortado para caber. As linhas da "
+            "Descrição produção e das Matérias usados podem ser corrigidas "
+            "aqui com duplo clique — a obra no Martelo não é alterada."
+        )
+        # A edição é permitida linha a linha; ver _render_campos.
+        self.campos_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.SelectedClicked
+        )
+        self.campos_table.itemChanged.connect(self._campo_editado)
+        ligar_persistencia_larguras(self.campos_table, "dialog_imos_encomenda_campos")
+
+        self.editaveis_label = QLabel(
+            "Duplo clique na Descrição produção ou nas Matérias usados para as "
+            "corrigir só para esta encomenda. A obra no Martelo fica na mesma."
+        )
+        self.editaveis_label.setWordWrap(True)
 
         grupo_campos = QGroupBox("O que vai ser gravado na encomenda")
         layout_campos = QVBoxLayout(grupo_campos)
         layout_campos.addWidget(self.campos_table)
+        layout_campos.addWidget(self.editaveis_label)
 
         # --- avisos e botões ------------------------------------------------
         self.avisos_label = QLabel("")
@@ -229,9 +239,7 @@ class ImosEncomendaDialog(QDialog):
                     cfg,
                     processo,
                     nome_encomenda=nome,
-                    pasta_ano=(
-                        PASTA_ANO_ENSAIO if self.ensaio_check.isChecked() else None
-                    ),
+                    textos=self._textos,
                 )
         except (SQLAlchemyError, ValueError, RuntimeError, OSError) as error:
             self._plano = None
@@ -284,26 +292,53 @@ class ImosEncomendaDialog(QDialog):
         linhas = [(campo, "PROADMIN") for campo in plano.campos]
         linhas += [(campo, "CMSINCIDENTADRESS") for campo in plano.contacto]
 
-        self.campos_table.setRowCount(len(linhas))
-        for linha, (campo, tabela) in enumerate(linhas):
-            if campo.truncado:
-                aviso = f"cortado de {len(campo.valor_original)} para {campo.limite}"
-            elif campo.vazio:
-                aviso = "vazio na obra"
-            else:
-                aviso = ""
-            coluna_texto = (
-                campo.coluna
-                if tabela == "PROADMIN"
-                else f"{campo.coluna} (dados do cliente)"
-            )
-            valores = [campo.etiqueta, coluna_texto, campo.valor, aviso]
-            for coluna, valor in enumerate(valores):
-                item = QTableWidgetItem(valor)
-                item.setToolTip(campo.valor_original if coluna == 2 else valor)
+        # A re-escrita da tabela dispara itemChanged; o _a_render impede que
+        # isso seja confundido com uma edição do utilizador.
+        self._a_render = True
+        try:
+            self.campos_table.setRowCount(len(linhas))
+            for linha, (campo, tabela) in enumerate(linhas):
+                editavel = campo.coluna in COLUNAS_EDITAVEIS
                 if campo.truncado:
-                    item.setForeground(COR_AVISO)
-                self.campos_table.setItem(linha, coluna, item)
+                    aviso = f"cortado de {len(campo.valor_original)} para {campo.limite}"
+                elif campo.origem == "Editado aqui":
+                    aviso = "editado aqui"
+                elif campo.vazio:
+                    aviso = "vazio na obra — pode escrever" if editavel else "vazio na obra"
+                elif editavel:
+                    aviso = "editável"
+                else:
+                    aviso = ""
+                coluna_texto = (
+                    campo.coluna
+                    if tabela == "PROADMIN"
+                    else f"{campo.coluna} (dados do cliente)"
+                )
+                valores = [campo.etiqueta, coluna_texto, campo.valor, aviso]
+                for coluna, valor in enumerate(valores):
+                    item = QTableWidgetItem(valor)
+                    item.setToolTip(campo.valor_original if coluna == 2 else valor)
+                    if campo.truncado:
+                        item.setForeground(COR_AVISO)
+                    if coluna == 2 and editavel:
+                        # O handler precisa de saber que coluna do iMos é esta
+                        # e qual o limite dela.
+                        item.setData(Qt.ItemDataRole.UserRole, campo.coluna)
+                        item.setData(Qt.ItemDataRole.UserRole + 1, campo.limite)
+                        dica = (
+                            f"Duplo clique para corrigir (máximo {campo.limite} "
+                            "caracteres). A obra no Martelo não é alterada."
+                        )
+                        # Num campo cortado, o valor original é a informação
+                        # mais útil da dica: fica primeiro.
+                        if campo.valor_original:
+                            dica = f"{campo.valor_original}\n\n{dica}"
+                        item.setToolTip(dica)
+                    else:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.campos_table.setItem(linha, coluna, item)
+        finally:
+            self._a_render = False
 
     def _render_nome(self, plano: PlanoCriacaoImos) -> None:
         if plano.nome_truncado:
@@ -357,10 +392,42 @@ class ImosEncomendaDialog(QDialog):
     def _atualizar_contador(self) -> None:
         usados = len(self.nome_input.text().strip())
         self.contador_label.setText(f"{usados}/{IMOS_NOME_MAX}")
-        excedeu = usados >= IMOS_NOME_MAX
+        no_limite = usados >= IMOS_NOME_MAX
         self.contador_label.setStyleSheet(
-            f"color: {COR_AVISO.name()};" if excedeu else ""
+            f"color: {COR_AVISO.name()};" if no_limite else ""
         )
+        if no_limite:
+            self.nome_limite_label.setText(
+                f"Atingiu o máximo de {IMOS_NOME_MAX} caracteres que o iMos "
+                "aceita no nome da encomenda — não é possível escrever mais."
+            )
+            self.nome_limite_label.setStyleSheet(f"color: {COR_AVISO.name()};")
+        else:
+            self.nome_limite_label.setText("")
+            self.nome_limite_label.setStyleSheet("")
+
+    def _campo_editado(self, item: QTableWidgetItem) -> None:
+        """Guarda a correção local da Descrição produção / Matérias usados."""
+        if self._a_render or item.column() != 2:
+            return
+
+        coluna = item.data(Qt.ItemDataRole.UserRole)
+        if coluna not in COLUNAS_EDITAVEIS:
+            return
+
+        limite = int(item.data(Qt.ItemDataRole.UserRole + 1) or 0)
+        texto = " ".join(str(item.text() or "").split())
+        if len(texto) > limite:
+            QMessageBox.warning(
+                self,
+                "Criar Encomenda IMOS",
+                f"O iMos só aceita {limite} caracteres nesta coluna e escreveu "
+                f"{len(texto)}. O texto foi cortado.",
+            )
+            texto = texto[:limite]
+
+        self._textos[coluna] = texto
+        self._recarregar()
 
     # ------------------------------------------------------------------
     # Criação

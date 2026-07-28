@@ -18,6 +18,7 @@ para o iMos sem passar por ali.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -53,9 +54,10 @@ from app.services.producao_service import (
 # especificação. Confirmado em 459 das 465 encomendas de 2026.
 MD5_SEM_ESPECIFICACAO = "D41D8CD98F00B204E9800998ECF8427E"
 
-# Pasta descartável para o primeiro ensaio, em vez da pasta do ano real. Fica
-# ao lado dos ANO_XXXX dentro da raiz e apaga-se à mão no iX Organizer.
-PASTA_ANO_ENSAIO = "ANO_TESTE"
+# Colunas que o utilizador pode corrigir no diálogo antes de gravar. São as
+# duas de texto livre: vêm da obra, mas muitas vezes estão vazias ou passam do
+# que o iMos aceita. Editá-las aqui NÃO altera a obra no Martelo.
+COLUNAS_EDITAVEIS = ("TEXT_SHORT", "TEXT_LONG")
 
 # Valores constantes observados nas encomendas reais de 2026 do LANCA_ENCANTO.
 CAMPOS_FIXOS_ENCOMENDA: dict[str, Any] = {
@@ -198,8 +200,29 @@ def nome_encomenda_sugerido(processo) -> str:
     )
 
 
-def mapear_campos(processo, *, nome_encomenda: str) -> tuple[CampoImos, ...]:
-    """Mapeamento acordado com o utilizador entre a obra e dbo.PROADMIN."""
+def mapear_campos(
+    processo,
+    *,
+    nome_encomenda: str,
+    textos: Mapping[str, str] | None = None,
+) -> tuple[CampoImos, ...]:
+    """Mapeamento acordado com o utilizador entre a obra e dbo.PROADMIN.
+
+    ``textos`` substitui as colunas de :data:`COLUNAS_EDITAVEIS` pelo que o
+    utilizador escreveu no diálogo. A obra no Martelo fica intacta: a correção
+    vale só para esta criação.
+    """
+    editados = {
+        str(coluna).upper(): valor
+        for coluna, valor in (textos or {}).items()
+        if str(coluna).upper() in COLUNAS_EDITAVEIS
+    }
+
+    def _texto_livre(coluna: str, etiqueta: str, origem: str, valor) -> CampoImos:
+        if coluna in editados:
+            return _campo(coluna, etiqueta, "Editado aqui", editados[coluna])
+        return _campo(coluna, etiqueta, origem, valor)
+
     nome_plano = gerar_nome_plano_cut_rite(
         getattr(processo, "ano", ""),
         getattr(processo, "num_enc_phc", ""),
@@ -224,13 +247,13 @@ def mapear_campos(processo, *, nome_encomenda: str) -> tuple[CampoImos, ...]:
         _campo(
             "EMPLOYEE", "Responsável", "Responsável", getattr(processo, "responsavel", "")
         ),
-        _campo(
+        _texto_livre(
             "TEXT_SHORT",
             "Descrição produção",
             "Descrição produção",
             getattr(processo, "descricao_producao", ""),
         ),
-        _campo(
+        _texto_livre(
             "TEXT_LONG",
             "Matérias usados",
             "Matérias usados",
@@ -303,12 +326,14 @@ def preparar(
     *,
     nome_encomenda: str | None = None,
     pasta_ano: str | None = None,
+    textos: Mapping[str, str] | None = None,
 ) -> PlanoCriacaoImos:
     """Monta o plano de criação sem escrever nada no iMos.
 
-    ``nome_encomenda`` permite refazer o plano com o nome que o utilizador
-    corrigiu no diálogo, mantendo tudo o resto igual. ``pasta_ano`` desvia a
-    criação para uma pasta descartável, para o primeiro ensaio.
+    ``nome_encomenda`` e ``textos`` permitem refazer o plano com o que o
+    utilizador corrigiu no diálogo, mantendo tudo o resto igual e sem alterar a
+    obra no Martelo. ``pasta_ano`` desvia a criação para outra pasta que não a
+    do ano da obra (usado em testes controlados).
     """
     pasta_raiz = carregar_pasta_raiz(session)
     sugerido = nome_encomenda_sugerido(processo)
@@ -356,8 +381,7 @@ def preparar(
 
     if pasta_ano:
         avisos.append(
-            f"ENSAIO: a encomenda vai para '{pasta_ano}' e não para a pasta do "
-            "ano da obra. Apague essa pasta no iX Organizer quando terminar."
+            f"A encomenda vai para '{pasta_ano}' e não para a pasta do ano da obra."
         )
 
     if not caminho.niveis[0].existe:
@@ -371,7 +395,7 @@ def preparar(
             "O Martelo não duplica nem substitui encomendas."
         )
 
-    campos = mapear_campos(processo, nome_encomenda=nome)
+    campos = mapear_campos(processo, nome_encomenda=nome, textos=textos)
     cliente = _cliente_da_obra(session, processo)
     contacto = mapear_contacto(processo, cliente)
 
