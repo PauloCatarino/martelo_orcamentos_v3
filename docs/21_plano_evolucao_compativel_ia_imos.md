@@ -406,21 +406,45 @@ Feito:
   sempre. O diálogo desativa o botão e explica a quem não a tenha, e volta a
   verificar no momento de gravar.
 
-### Ronda seguinte, ainda por fazer
+- **Ver de relance.** A grelha da Produção tem a coluna `Enc. iMos` com um
+  visto e a data; a dica mostra o nome da encomenda, a hora e quem criou. Uma
+  coluna vazia significa apenas que o Martelo não criou nada — a encomenda pode
+  ter sido feita à mão no iX Organizer, e a dica di-lo.
 
-O utilizador pediu, em 28 de julho de 2026, para acrescentar **proteções
-adicionais** antes de a funcionalidade ficar em uso corrente. A definir com
-ele; candidatos naturais a partir do que já se sabe:
+### Encerramento da fase E1 — 28 de julho de 2026
 
-- restringir quem pode criar encomendas (permissão de utilizador, à imagem das
-  áreas já protegidas do V3);
-- registar no V3 as encomendas criadas, para haver rasto de quem criou o quê e
-  quando;
-- confirmar se o iMos cria sozinho a pasta física em `pasta_base_imorder` ao
-  abrir a encomenda pela primeira vez, ou se o V3 a deve criar;
-- reforçar o comportamento quando o mesmo número de obra é criado a partir de
-  dois postos ao mesmo tempo (as tabelas não têm qualquer restrição UNIQUE);
-- verificar se o iX Organizer limpa a `CMSINCIDENTADRESS` ao eliminar uma
-  encomenda. Como o Martelo não faz o `DELETE` por `ORDERNAME`, se o iMos
-  também não o fizer, recriar a encomenda pelo V3 deixaria duas linhas de
-  contacto para o mesmo `ORDERNAME`.
+Ciclo concluído e validado pelo utilizador na aplicação real: criação da
+encomenda, dados do cliente, bloqueio de nome repetido, rasto com autor e
+permissão por utilizador.
+
+Nota do utilizador ao fechar, que vale a pena guardar como princípio para o que
+vier a seguir: **escrever na base de dados SQL de outro programa exige um
+cuidado que não se aplica à base do próprio Martelo.** O que este ciclo mostrou
+na prática:
+
+- O modelo do iMos não é o que parece de fora. `PROADMIN.PRODUCTIONID` aponta
+  para o `DIR_ID` e não para o `ID`; o `CMSINCIDENTADRESS.ORDERID` aponta para o
+  `PROADMIN.ID` e não para o `DIR_ID`. Nenhuma das duas se adivinha — foram
+  confirmadas contra a base real antes de se escrever código a sério.
+- A base não protege nada: nem `PRIMARY KEY`, nem `UNIQUE`, nem `FOREIGN KEY`,
+  nem índices. Toda a integridade é responsabilidade de quem escreve.
+- Regras invisíveis mordem: `NAME` são 30 caracteres, as colunas de texto são
+  `NOT NULL` com `DEFAULT ''`, as datas são texto em `dd/mm/aaaa`, e o
+  `ORDERNAME` tem uma collation diferente do `PROADMIN.NAME`.
+- Por isso o motor de escrita só sabe fazer uma coisa (criar nós), corre em
+  transação, usa parâmetros tipados com o comprimento real de cada coluna, e
+  fica atrás de um interruptor e de uma permissão.
+
+O que não foi feito também conta: o Martelo **não elimina, não renomeia e não
+substitui** nada no iMos. Só acrescenta.
+
+### O que fica em aberto
+
+Todas as proteções levantadas nesta fase ficaram resolvidas ou fechadas com
+observação na base real. Fica apenas, para quando houver necessidade:
+
+- **Criação simultânea a partir de dois postos.** As tabelas não têm qualquer
+  restrição `UNIQUE`, por isso a verificação do Martelo acontece antes da
+  escrita e não durante. Despriorizado por decisão do utilizador: cada pessoa
+  cria as suas encomendas e a coincidência é improvável. Se um dia deixar de
+  ser, a defesa passa por reverificar dentro da transação.
