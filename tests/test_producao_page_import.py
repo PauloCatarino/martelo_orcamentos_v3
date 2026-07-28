@@ -25,6 +25,7 @@ def test_producao_page_imports_and_headers() -> None:
         "Qt Artigos",
         "Preço",
         "Descrição Produção",
+        "Enc. iMos",
         "Localização",
         "Tipo Pasta",
     ]

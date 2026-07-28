@@ -12,8 +12,11 @@ from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.session import SessionLocal
 from app.domain.prazos_producao import estado_prazo
+from app.models.user import User
 from app.services.producao_service import (
     indice_pesquisa,
     processo_corresponde,
@@ -60,12 +63,16 @@ class ProducaoTableModel(QAbstractTableModel):
         self._processos: list = []
         self._indices: list = []
         self._icone_pasta = icone("pasta_abrir")
+        # Nome de quem criou cada encomenda no iMos, por id: a dica é pedida
+        # linha a linha e não vale a pena repetir a consulta.
+        self._autores: dict = {}
 
     # ---- dados -----------------------------------------------------------
     def definir_processos(self, processos) -> None:
         """Replace every row in one go, indexando o texto para a pesquisa."""
         self.beginResetModel()
         self._processos = list(processos or [])
+        self._autores.clear()
         # As raizes de cada obra sao calculadas uma vez por carregamento, e nao
         # a cada tecla escrita na pesquisa.
         self._indices = [indice_pesquisa(p) for p in self._processos]
@@ -195,7 +202,56 @@ class ProducaoTableModel(QAbstractTableModel):
             descricao = self._prazo(processo).descricao()
             if descricao:
                 return descricao
+        if coluna.key == "imos":
+            return self._dica_imos(processo)
         return coluna.valor(processo)
+
+    def _dica_imos(self, processo) -> str:
+        """Detalhe da encomenda iMos: a coluna só tem espaço para um visto."""
+        criado_em = getattr(processo, "imos_criado_em", None)
+        if criado_em is None:
+            return (
+                "Sem encomenda criada no iMos pelo Martelo. Pode ter sido "
+                "criada à mão no iX Organizer — o Martelo não sabe."
+            )
+
+        nome = getattr(processo, "imos_nome_encomenda", "") or ""
+        autor = self._nome_autor(getattr(processo, "imos_criado_por_id", None))
+        try:
+            quando = criado_em.strftime("%d-%m-%Y %H:%M")
+        except AttributeError:
+            quando = ""
+
+        partes = [f"Encomenda '{nome}' criada no iMos" if nome else "Criada no iMos"]
+        if quando:
+            partes.append(f"em {quando}")
+        if autor:
+            partes.append(f"por {autor}")
+        return " ".join(partes) + "."
+
+    def _nome_autor(self, user_id) -> str:
+        """Nome do utilizador, em cache: a grelha pede a dica linha a linha."""
+        if not user_id:
+            return ""
+        if user_id in self._autores:
+            return self._autores[user_id]
+
+        nome = ""
+        try:
+            with SessionLocal() as session:
+                utilizador = session.get(User, int(user_id))
+                nome = (
+                    getattr(utilizador, "nome", "")
+                    or getattr(utilizador, "username", "")
+                    or ""
+                )
+        except Exception:
+            # Isto é só o nome numa dica: nada aqui pode partir a grelha da
+            # Produção. Sem nome, a dica mostra na mesma o resto do rasto.
+            nome = ""
+
+        self._autores[user_id] = nome
+        return nome
 
     @staticmethod
     def _prazo(processo):
