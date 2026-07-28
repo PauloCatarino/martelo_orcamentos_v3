@@ -128,13 +128,17 @@ def _arvore_falsa(monkeypatch, nos: list[dict]) -> list[str]:
         # Toda a consulta da árvore passa pela mesma barreira de leitura.
         imos_sql.assert_select_only(query)
 
-        parent = int(re.search(r"PARENT_ID = (\d+)", query).group(1))
+        # Cada filtro só se aplica quando aparece na query: assim o mesmo duplo
+        # serve para procurar por pai, por nome em toda a árvore ou por DIR_ID.
+        parent_match = re.search(r"PARENT_ID = (\d+)", query)
+        dir_match = re.search(r"DIR_ID = (\d+)", query)
         tipo_match = re.search(r"TYPE = (\d+)", query)
         nome_match = re.search(r"NAME = N'(.*?)'", query)
         resultado = [
             no
             for no in nos
-            if no["PARENT_ID"] == parent
+            if (parent_match is None or no["PARENT_ID"] == int(parent_match.group(1)))
+            and (dir_match is None or no["DIR_ID"] == int(dir_match.group(1)))
             and (tipo_match is None or no["TYPE"] == int(tipo_match.group(1)))
             and (nome_match is None or no["NAME"] == nome_match.group(1))
         ]
@@ -269,6 +273,54 @@ def test_resolver_caminho_para_de_procurar_abaixo_do_nivel_em_falta(monkeypatch)
     assert len(caminho.em_falta) == 3
     # Só a raiz e o ano foram consultados.
     assert len(queries) == 2
+
+
+def test_procurar_encomendas_por_nome_varre_toda_a_arvore(monkeypatch) -> None:
+    """O mesmo nome pode viver em pastas diferentes; tem de aparecer tudo."""
+    queries = _arvore_falsa(
+        monkeypatch,
+        _ARVORE
+        + [
+            {
+                "DIR_ID": 4321,
+                "NAME": "0159_01_26_LINHAS_DIREITAS",
+                "TYPE": 173,
+                "PARENT_ID": 999,
+            }
+        ],
+    )
+
+    achados = imos_sql.procurar_encomendas_por_nome(
+        _cfg(), "0159_01_26_LINHAS_DIREITAS"
+    )
+
+    assert sorted(no.dir_id for no in achados) == [4321, 6765]
+    # Nao filtra por pai nenhum: e essa a diferenca para o resolver_no.
+    assert "PARENT_ID =" not in queries[0]
+    assert "TYPE = 173" in queries[0]
+
+
+def test_caminho_do_no_sobe_pelos_pais_ate_a_raiz(monkeypatch) -> None:
+    _arvore_falsa(monkeypatch, _ARVORE)
+
+    caminho = imos_sql.caminho_do_no(_cfg(), 6765)
+
+    assert caminho == "LANCA_ENCANTO / ANO_2026 / LINHAS_DIREITAS / 0159_01_26_LINHAS_DIREITAS"
+
+
+def test_caminho_do_no_nao_entra_em_ciclo_infinito(monkeypatch) -> None:
+    """Uma árvore corrompida não pode pendurar o Martelo."""
+    _arvore_falsa(
+        monkeypatch,
+        [
+            {"DIR_ID": 10, "NAME": "A", "TYPE": 1000001, "PARENT_ID": 11},
+            {"DIR_ID": 11, "NAME": "B", "TYPE": 1000001, "PARENT_ID": 10},
+        ],
+    )
+
+    caminho = imos_sql.caminho_do_no(_cfg(), 10, limite=5)
+
+    assert caminho.count("/") == 4
 
 
 def test_pasta_ano_substitui_a_pasta_do_ano_civil(monkeypatch) -> None:

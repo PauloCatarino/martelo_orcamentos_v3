@@ -375,6 +375,30 @@ encomenda acaba de nascer e o serviço recusa mexer numa que já exista.
   `IMORDFOLDER`, na mesma transação, produz uma encomenda que o iX Organizer
   abre normalmente.
 
+### Proteções — estado em 28 de julho de 2026
+
+Confirmado na base real, sem ser preciso código:
+
+- **A pasta física** é criada pelo próprio iMos quando se começa a desenhar, e
+  eliminada com a encomenda. O V3 não tem de lá mexer.
+- **A linha de contacto** também é eliminada pelo iX Organizer junto com a
+  encomenda: não ficam linhas órfãs em `CMSINCIDENTADRESS`.
+- **Criação simultânea** deixa de ser prioridade: cada utilizador cria as suas
+  encomendas e raramente coincidem.
+
+Feito:
+
+- **Nome único em toda a árvore.** A árvore admite nomes repetidos em pastas
+  diferentes (49 casos na base), mas `CMSINCIDENTADRESS.ORDERNAME` não tem
+  pasta: os dados do cliente são guardados só pelo nome. Criar uma encomenda
+  com um nome que já exista noutra pasta misturaria os dados dos dois clientes,
+  por isso é bloqueado, indicando o caminho onde está a outra.
+- **Rasto no V3** (migração `20260810_80`). `producao.imos_nome_encomenda`,
+  `imos_dir_id`, `imos_criado_em` e `imos_criado_por_id` guardam o que foi
+  criado, quando e por quem. Se a obra já criou encomenda, o diálogo avisa com
+  a data e o autor — é um aviso, não um bloqueio, porque pode ser uma segunda
+  versão legítima. O rasto é gravado só depois de o iMos confirmar.
+
 ### Ronda seguinte, ainda por fazer
 
 O utilizador pediu, em 28 de julho de 2026, para acrescentar **proteções
