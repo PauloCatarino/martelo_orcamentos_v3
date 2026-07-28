@@ -335,6 +335,32 @@ Mapeamento acordado: `COMM`=Nº Enc PHC, `ARTICLENO`=Ref. Cliente,
 
 - O Martelo cria a encomenda; **não cria o desenho**. A encomenda nasce vazia,
   como uma criada à mão no iX Organizer.
-- Fica por confirmar se o iMos cria sozinho a pasta física em
-  `pasta_base_imorder` ao abrir a encomenda pela primeira vez.
 - Eliminar ou renomear encomendas continua a ser exclusivo do iX Organizer.
+
+### Validação local E1 recebida em 28 de julho de 2026
+
+- Leitura da árvore confirmada contra a base real: `LANCA_ENCANTO` em
+  `DIR_ID 180`, `ANO_2026` em `DIR_ID 6624`, 11 pastas de ano e 90 pastas de
+  cliente em 2026.
+- Criação de uma encomenda nova a partir do V3 confirmada pelo utilizador na
+  aplicação real: *"criei nova encomenda a partir do V3 para o iMos e
+  funcionou na perfeição"*.
+- Fica assim confirmado o ponto crítico do modelo: preencher
+  `PROADMIN.PRODUCTIONID` com o `DIR_ID` gerado pelo `IDENTITY` da
+  `IMORDFOLDER`, na mesma transação, produz uma encomenda que o iX Organizer
+  abre normalmente.
+
+### Ronda seguinte, ainda por fazer
+
+O utilizador pediu, em 28 de julho de 2026, para acrescentar **proteções
+adicionais** antes de a funcionalidade ficar em uso corrente. A definir com
+ele; candidatos naturais a partir do que já se sabe:
+
+- restringir quem pode criar encomendas (permissão de utilizador, à imagem das
+  áreas já protegidas do V3);
+- registar no V3 as encomendas criadas, para haver rasto de quem criou o quê e
+  quando;
+- confirmar se o iMos cria sozinho a pasta física em `pasta_base_imorder` ao
+  abrir a encomenda pela primeira vez, ou se o V3 a deve criar;
+- reforçar o comportamento quando o mesmo número de obra é criado a partir de
+  dois postos ao mesmo tempo (as tabelas não têm qualquer restrição UNIQUE).
