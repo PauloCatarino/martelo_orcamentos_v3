@@ -168,6 +168,45 @@ def test_dialogo_comeca_sem_nada_criado(dialogo) -> None:
     assert dialogo(_plano()).criada is False
 
 
+def test_ensaio_comeca_desligado(dialogo) -> None:
+    dlg = dialogo(_plano())
+
+    assert dlg.ensaio_check.isChecked() is False
+    assert "ANO_TESTE" in dlg.ensaio_check.text()
+
+
+def test_ensaio_pede_a_pasta_descartavel_ao_servico(monkeypatch) -> None:
+    from app.services.imos_encomenda_service import PASTA_ANO_ENSAIO
+
+    recebido: list = []
+
+    def _preparar(*_a, **kwargs):
+        recebido.append(kwargs.get("pasta_ano"))
+        return _plano()
+
+    monkeypatch.setattr(imos_encomenda_dialog, "SessionLocal", lambda: _SessaoFalsa())
+    monkeypatch.setattr(imos_encomenda_dialog, "load_imos_config", lambda _s: {})
+    monkeypatch.setattr(imos_encomenda_dialog, "carregar_escrita_ativa", lambda _s: True)
+    monkeypatch.setattr(imos_encomenda_dialog, "preparar", _preparar)
+
+    dlg = ImosEncomendaDialog(processo_id=1)
+    assert recebido == [None]
+
+    dlg.ensaio_check.setChecked(True)
+    assert recebido[-1] == PASTA_ANO_ENSAIO
+
+
+def test_ligacao_imos_tem_interruptor_de_escrita() -> None:
+    from app.ui.pages.imos_ligacao_page import ImosLigacaoPage
+
+    source = inspect.getsource(ImosLigacaoPage)
+    assert "Permitir que o Martelo crie encomendas no iMos" in source
+    assert "KEY_IMOS_ESCRITA_ATIVA" in source
+    # Gravar o interruptor é o que cria a definição numa base já existente.
+    assert "guardar_valor(" in source
+    assert "O iMos não tem desfazer" in source
+
+
 def test_dialogo_mostra_caminho_nome_e_campos() -> None:
     source = inspect.getsource(ImosEncomendaDialog)
 

@@ -51,6 +51,10 @@ from app.services.producao_service import (
 # especificação. Confirmado em 459 das 465 encomendas de 2026.
 MD5_SEM_ESPECIFICACAO = "D41D8CD98F00B204E9800998ECF8427E"
 
+# Pasta descartável para o primeiro ensaio, em vez da pasta do ano real. Fica
+# ao lado dos ANO_XXXX dentro da raiz e apaga-se à mão no iX Organizer.
+PASTA_ANO_ENSAIO = "ANO_TESTE"
+
 # Valores constantes observados nas encomendas reais de 2026 do LANCA_ENCANTO.
 CAMPOS_FIXOS_ENCOMENDA: dict[str, Any] = {
     "CNT": 1,
@@ -239,11 +243,13 @@ def preparar(
     processo,
     *,
     nome_encomenda: str | None = None,
+    pasta_ano: str | None = None,
 ) -> PlanoCriacaoImos:
     """Monta o plano de criação sem escrever nada no iMos.
 
     ``nome_encomenda`` permite refazer o plano com o nome que o utilizador
-    corrigiu no diálogo, mantendo tudo o resto igual.
+    corrigiu no diálogo, mantendo tudo o resto igual. ``pasta_ano`` desvia a
+    criação para uma pasta descartável, para o primeiro ensaio.
     """
     pasta_raiz = carregar_pasta_raiz(session)
     sugerido = nome_encomenda_sugerido(processo)
@@ -286,7 +292,14 @@ def preparar(
         cliente_simplex=cliente,
         nome_encomenda=nome,
         pasta_raiz=pasta_raiz,
+        pasta_ano=pasta_ano,
     )
+
+    if pasta_ano:
+        avisos.append(
+            f"ENSAIO: a encomenda vai para '{pasta_ano}' e não para a pasta do "
+            "ano da obra. Apague essa pasta no iX Organizer quando terminar."
+        )
 
     if not caminho.niveis[0].existe:
         bloqueios.append(

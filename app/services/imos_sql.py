@@ -375,15 +375,19 @@ def resolver_caminho_encomenda(
     cliente_simplex: str,
     nome_encomenda: str,
     pasta_raiz: str = DEFAULT_IMOS_PASTA_RAIZ,
+    pasta_ano: str | None = None,
 ) -> CaminhoImos:
     """Resolve `Order / raiz / ANO_XXXX / cliente / encomenda` sem escrever nada.
 
     Cada nível só é procurado quando o anterior existe: assim que um nível falta,
     todos os seguintes ficam marcados como em falta (ainda não têm pai).
+
+    ``pasta_ano`` substitui a pasta do ano civil por outra (é o que permite
+    ensaiar numa pasta descartável em vez do ano real).
     """
     pedidos = (
         (str(pasta_raiz or DEFAULT_IMOS_PASTA_RAIZ).strip(), IMOS_TIPO_PASTA),
-        (nome_pasta_ano(ano), IMOS_TIPO_PASTA),
+        (str(pasta_ano).strip() if pasta_ano else nome_pasta_ano(ano), IMOS_TIPO_PASTA),
         (str(cliente_simplex or "").strip(), IMOS_TIPO_PASTA),
         (str(nome_encomenda or "").strip(), IMOS_TIPO_ENCOMENDA),
     )

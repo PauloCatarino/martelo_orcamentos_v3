@@ -368,6 +368,46 @@ def test_nos_gerados_passam_na_validacao_do_motor_de_escrita(
     assert {"COMM", "CLIENT", "PROGRAM", "INFO1", "STARTDATE"} <= colunas
 
 
+def test_ensaio_desvia_para_a_pasta_descartavel_e_avisa(session, monkeypatch) -> None:
+    recebido: dict = {}
+
+    def _resolver(*_a, **kwargs):
+        recebido.update(kwargs)
+        return CaminhoImos(
+            niveis=(
+                NivelCaminho("LANCA_ENCANTO", IMOS_TIPO_PASTA, 180),
+                NivelCaminho(servico.PASTA_ANO_ENSAIO, IMOS_TIPO_PASTA, None),
+                NivelCaminho("LINHAS_DIREITAS", IMOS_TIPO_PASTA, None),
+                NivelCaminho("1260_01_26_LINHAS_DIREITAS", IMOS_TIPO_ENCOMENDA, None),
+            )
+        )
+
+    monkeypatch.setattr(servico, "resolver_caminho_encomenda", _resolver)
+
+    plano = servico.preparar(
+        session, _cfg(), _obra(), pasta_ano=servico.PASTA_ANO_ENSAIO
+    )
+
+    assert recebido["pasta_ano"] == "ANO_TESTE"
+    assert plano.avisos[0].startswith("ENSAIO:")
+    assert plano.pastas_a_criar == ("ANO_TESTE", "LINHAS_DIREITAS")
+    assert plano.pode_criar is True
+
+
+def test_sem_ensaio_a_pasta_do_ano_nao_e_forcada(session, monkeypatch) -> None:
+    recebido: dict = {}
+
+    def _resolver(*_a, **kwargs):
+        recebido.update(kwargs)
+        return _caminho()
+
+    monkeypatch.setattr(servico, "resolver_caminho_encomenda", _resolver)
+    plano = servico.preparar(session, _cfg(), _obra())
+
+    assert recebido["pasta_ano"] is None
+    assert not any(aviso.startswith("ENSAIO:") for aviso in plano.avisos)
+
+
 def test_executar_usa_o_motor_de_escrita(session, monkeypatch) -> None:
     _com_caminho(monkeypatch, _caminho())
     plano = servico.preparar(session, _cfg(), _obra())

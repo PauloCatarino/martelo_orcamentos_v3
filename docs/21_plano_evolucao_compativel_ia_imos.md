@@ -18,6 +18,9 @@ Data da decisão: 13 de julho de 2026.
   os orçamentos em que já foi usada.
 - O SQL do iMos é sempre consultado em modo de leitura. O V3 nunca executa
   escrita na base do iMos.
+  (Revisto em 28 de julho de 2026 — ver a fase E1 no fim deste documento: a
+  regra mantém-se para todas as **consultas**, mas passou a existir um canal
+  de escrita único e isolado, apenas para criar encomendas.)
 - A IA acompanha o operador como supervisor: analisa, sugere, explica e alerta;
   não cria silenciosamente um orçamento final.
 - Na primeira fase visual, a IA analisa PDF/imagem, reconhece padrões e sugere
@@ -271,3 +274,67 @@ Decisão do utilizador em 13 de julho de 2026:
   correções e melhoramentos encontrados durante os testes.
 - Cada alteração futura deve continuar a terminar com um roteiro de validação
   manual, indicando menus, passos e resultados esperados.
+
+## Fase E1 — criar encomendas no iMos a partir da Produção
+
+Decisão do utilizador em 28 de julho de 2026: o Martelo passa a criar as
+encomendas diretamente na base do iMos, em vez de alguém as repetir à mão no
+iX Organizer.
+
+### O modelo de dados
+
+A árvore de encomendas vive em duas tabelas de `imos_LE`:
+
+- `dbo.IMORDFOLDER` — a árvore. `DIR_ID`, `NAME`, `TYPE`, `PARENT_ID`.
+  `TYPE`: `1000032` = raiz `Order` (`DIR_ID=120`, única), `1000001` = pasta,
+  `173` = encomenda.
+- `dbo.PROADMIN` — os dados de cada nó, pasta ou encomenda.
+
+**A ligação entre as duas é `PROADMIN.PRODUCTIONID = IMORDFOLDER.DIR_ID`.**
+`PROADMIN.ID` e `IMORDFOLDER.DIR_ID` são `IDENTITY(1,1)` independentes: o V3
+nunca os calcula. Cria-se primeiro a linha da árvore e usa-se o
+`SCOPE_IDENTITY()` como `PRODUCTIONID` da linha de dados, na mesma transação.
+
+Caminho criado: `Order / LANCA_ENCANTO / ANO_XXXX / <cliente simplex> /
+<Nome Enc IMOS IX>`. A chave prática é `(PARENT_ID, NAME)` — a base não tem
+qualquer PK, UNIQUE, FK ou índice, portanto toda a integridade é do V3.
+
+Limites que condicionam o desenho: `NAME` é `nvarchar(30)` nas duas tabelas
+(sobram 19 caracteres para o cliente), todas as colunas `nvarchar` são
+`NOT NULL` com `DEFAULT ''`, e `DELIVERY_DATE`/`STARTDATE` são texto em
+`dd/mm/aaaa`.
+
+### Como a regra de leitura foi preservada
+
+`app/services/imos_sql.py` continua exclusivamente `SELECT`, com
+`ApplicationIntent=ReadOnly` e a barreira de um único `SELECT`. A escrita vive
+noutro módulo, `app/services/imos_escrita.py`, fechada em três barreiras:
+
+1. Interruptor `imos_escrita_ativa`, desligado por defeito, em
+   `Configurações > Ligação iMos`.
+2. Só existe uma operação: criar nós na árvore. Não há nenhum caminho de
+   código que produza `UPDATE`, `DELETE` ou `DROP`, nem que toque numa tabela
+   que não seja `IMORDFOLDER` ou `PROADMIN`.
+3. Valores como `SqlParameter` tipados com o comprimento real da coluna; os
+   nomes de coluna passam por lista branca em Python e outra vez no PowerShell.
+
+### O que o utilizador vê
+
+`Produção > Funções > Criar Encomenda IMOS…` mostra o caminho nível a nível
+(com o `DIR_ID` do que existe), o nome editável com contador `xx/30`, e todos
+os campos já traduzidos para as colunas do iMos com aviso do que foi cortado.
+O plano é sempre recalculado antes de gravar. O Martelo nunca duplica nem
+substitui uma encomenda existente, e nunca cria a pasta raiz.
+
+Mapeamento acordado: `COMM`=Nº Enc PHC, `ARTICLENO`=Ref. Cliente,
+`CLIENT`=Cliente simplex, `PROGRAM`=Nome Enc IMOS IX, `EMPLOYEE`=Responsável,
+`TEXT_SHORT`=Descrição produção, `TEXT_LONG`=Matérias usados,
+`DELIVERY_DATE`/`STARTDATE`=datas da obra, `INFO1`=Nome do plano CUT-RITE.
+
+### Limites conhecidos
+
+- O Martelo cria a encomenda; **não cria o desenho**. A encomenda nasce vazia,
+  como uma criada à mão no iX Organizer.
+- Fica por confirmar se o iMos cria sozinho a pasta física em
+  `pasta_base_imorder` ao abrir a encomenda pela primeira vez.
+- Eliminar ou renomear encomendas continua a ser exclusivo do iX Organizer.

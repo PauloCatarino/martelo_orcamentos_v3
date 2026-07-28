@@ -271,6 +271,30 @@ def test_resolver_caminho_para_de_procurar_abaixo_do_nivel_em_falta(monkeypatch)
     assert len(queries) == 2
 
 
+def test_pasta_ano_substitui_a_pasta_do_ano_civil(monkeypatch) -> None:
+    """O ensaio cria numa pasta descartável sem tocar no ANO_XXXX real."""
+    _arvore_falsa(
+        monkeypatch,
+        _ARVORE + [{"DIR_ID": 7600, "NAME": "ANO_TESTE", "TYPE": 1000001, "PARENT_ID": 180}],
+    )
+
+    caminho = imos_sql.resolver_caminho_encomenda(
+        _cfg(),
+        ano=2026,
+        cliente_simplex="LINHAS_DIREITAS",
+        nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+        pasta_ano="ANO_TESTE",
+    )
+
+    assert [nivel.nome for nivel in caminho.niveis][:2] == [
+        "LANCA_ENCANTO",
+        "ANO_TESTE",
+    ]
+    assert caminho.niveis[1].dir_id == 7600
+    # A pasta do cliente vive dentro do ANO_2026, não do ANO_TESTE.
+    assert caminho.niveis[2].existe is False
+
+
 def test_run_imos_select_bloqueia_escrita_antes_da_ligacao(monkeypatch) -> None:
     chamado = False
 

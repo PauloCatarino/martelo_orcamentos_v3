@@ -31,6 +31,11 @@ from app.services.imos_sql import (
     resolver_no,
     save_imos_config,
 )
+from app.services.imos_escrita import (
+    KEY_IMOS_ESCRITA_ATIVA,
+    carregar_escrita_ativa,
+)
+from app.services.system_setting_service import SystemSettingService
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 
 
@@ -69,6 +74,31 @@ class ImosLigacaoPage(QWidget):
         grupo = QGroupBox("Dados de ligação")
         grupo.setLayout(formulario)
 
+        # A criação de encomendas é o único caso em que o Martelo escreve no
+        # iMos. Fica aqui, longe do uso diário, e desligada por defeito.
+        self.escrita_check = QCheckBox(
+            "Permitir que o Martelo crie encomendas no iMos"
+        )
+        self.escrita_check.setToolTip(
+            "Liga a criação de pastas e encomendas em dbo.IMORDFOLDER e "
+            "dbo.PROADMIN a partir da Produção. Todas as outras consultas iMos "
+            "continuam apenas de leitura. Deixe desligado quando não estiver a "
+            "criar encomendas."
+        )
+        self.escrita_check.toggled.connect(self._guardar_escrita)
+        self.escrita_aviso = QLabel(
+            "Com esta opção ligada, a ação 'Funções > Criar Encomenda IMOS…' da "
+            "Produção passa a poder gravar no iMos. O iMos não tem desfazer: o "
+            "Martelo mostra sempre o que vai criar e pede confirmação, mas o que "
+            "for criado só se apaga no iX Organizer."
+        )
+        self.escrita_aviso.setWordWrap(True)
+
+        grupo_escrita = QGroupBox("Criação de encomendas (escrita)")
+        layout_escrita = QVBoxLayout(grupo_escrita)
+        layout_escrita.addWidget(self.escrita_check)
+        layout_escrita.addWidget(self.escrita_aviso)
+
         self.save_button = QPushButton("Guardar configuração")
         self.save_button.clicked.connect(self.guardar)
         self.test_button = QPushButton("Testar ligação e permissões")
@@ -102,6 +132,7 @@ class ImosLigacaoPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addWidget(grupo)
         layout.addLayout(acoes)
+        layout.addWidget(grupo_escrita)
         layout.addWidget(self.status_label)
         layout.addStretch()
         self.carregar()
@@ -116,9 +147,25 @@ class ImosLigacaoPage(QWidget):
             "trust_server_certificate": self.trust_cert_check.isChecked(),
         }
 
+    def _guardar_escrita(self, ligado: bool) -> None:
+        """Grava o interruptor; é isto que cria a definição numa base antiga."""
+        with SessionLocal() as session:
+            SystemSettingService(session).guardar_valor(
+                KEY_IMOS_ESCRITA_ATIVA, "ON" if ligado else "OFF"
+            )
+        self.status_label.setText(
+            "Criação de encomendas no iMos LIGADA. Desligue quando terminar."
+            if ligado
+            else "Criação de encomendas no iMos desligada. Só são feitas consultas."
+        )
+
     def carregar(self) -> None:
         with SessionLocal() as session:
             cfg = load_imos_config(session)
+            escrita = carregar_escrita_ativa(session)
+        self.escrita_check.blockSignals(True)
+        self.escrita_check.setChecked(escrita)
+        self.escrita_check.blockSignals(False)
         self.server_edit.setText(cfg["server"])
         self.database_edit.setText(cfg["database"])
         self.user_edit.setText(cfg["user"])

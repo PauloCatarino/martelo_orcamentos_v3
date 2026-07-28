@@ -10,6 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QGroupBox,
     QHBoxLayout,
@@ -26,7 +27,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.models.producao import Producao
-from app.services.imos_encomenda_service import PlanoCriacaoImos, executar, preparar
+from app.services.imos_encomenda_service import (
+    PASTA_ANO_ENSAIO,
+    PlanoCriacaoImos,
+    executar,
+    preparar,
+)
 from app.services.imos_escrita import (
     KEY_IMOS_ESCRITA_ATIVA,
     carregar_escrita_ativa,
@@ -84,9 +90,20 @@ class ImosEncomendaDialog(QDialog):
         cabecalho_caminho.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         cabecalho_caminho.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
+        self.ensaio_check = QCheckBox(
+            f"Ensaio: criar em {PASTA_ANO_ENSAIO} em vez da pasta do ano"
+        )
+        self.ensaio_check.setToolTip(
+            "Desvia a criação para uma pasta descartável ao lado dos ANO_XXXX, "
+            "para validar o processo sem mexer no ano real. Depois de "
+            f"confirmar, apague a pasta {PASTA_ANO_ENSAIO} no iX Organizer."
+        )
+        self.ensaio_check.toggled.connect(self._recarregar)
+
         grupo_caminho = QGroupBox("Onde vai ser criada")
         layout_caminho = QVBoxLayout(grupo_caminho)
         layout_caminho.addWidget(self.caminho_table)
+        layout_caminho.addWidget(self.ensaio_check)
 
         # --- nome ----------------------------------------------------------
         self.nome_input = QLineEdit()
@@ -207,7 +224,15 @@ class ImosEncomendaDialog(QDialog):
                     raise ValueError("Obra não encontrada.")
                 cfg = load_imos_config(session)
                 self._escrita_ativa = carregar_escrita_ativa(session)
-                plano = preparar(session, cfg, processo, nome_encomenda=nome)
+                plano = preparar(
+                    session,
+                    cfg,
+                    processo,
+                    nome_encomenda=nome,
+                    pasta_ano=(
+                        PASTA_ANO_ENSAIO if self.ensaio_check.isChecked() else None
+                    ),
+                )
         except (SQLAlchemyError, ValueError, RuntimeError, OSError) as error:
             self._plano = None
             self.criar_button.setEnabled(False)
