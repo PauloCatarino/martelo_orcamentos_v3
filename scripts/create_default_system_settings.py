@@ -217,6 +217,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "IMOS",
         "LANCA_ENCANTO",
     ),
+    SystemSettingSeed(
+        "imos_escrita_ativa",
+        "iMos - Permitir criar encomendas na base do iMos (ON/OFF)",
+        "opcao",
+        "IMOS",
+        "OFF",
+    ),
     SystemSettingSeed("ficheiro_imos_msg", "Ficheiro imos.msg", "ficheiro", "IMOS"),
     SystemSettingSeed("excel_traducoes_imos", "Excel traducoes IMOS", "ficheiro", "IMOS"),
     SystemSettingSeed("executavel_cut_rite", "Executavel CUT-RITE", "ficheiro", "CUT-RITE"),
