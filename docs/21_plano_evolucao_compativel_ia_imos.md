@@ -337,6 +337,31 @@ Mapeamento acordado: `COMM`=Nº Enc PHC, `ARTICLENO`=Ref. Cliente,
   como uma criada à mão no iX Organizer.
 - Eliminar ou renomear encomendas continua a ser exclusivo do iX Organizer.
 
+### Dados do cliente na encomenda (dbo.CMSINCIDENTADRESS)
+
+Além das duas tabelas da árvore, a encomenda leva os dados do cliente numa
+terceira tabela — `dbo.CMSINCIDENTADRESS` (um só `D` em `ADRESS`). São dados
+**locais da encomenda**: não se ligam à lista de clientes do iMos, tal como
+acontece quando o utilizador os escreve à mão em vez de escolher um contacto.
+
+Mapeamento: `FIRMA`=nome do cliente, `KDNR`=Nº Cliente PHC (ambos da obra),
+`MOBILE`=telefone e `EMAIL1`=email (da ficha do cliente do V3). O que o V3 não
+souber vai vazio; sem um único valor preenchido não se cria linha nenhuma.
+
+Confirmado contra a base real em 28 de julho de 2026:
+
+- **`ORDERID` = `PROADMIN.ID`**, não o `DIR_ID` (encomenda `1259_01_26_...`:
+  `ORDERID` 7492 = `PROADMIN.ID` 7492, com `DIR_ID` 7515).
+- `ID` e `PARENT_ID` são GUIDs gerados na hora, como o iX Organizer faz.
+- `ORDERNAME` tem collation `Latin1_General_CS_AS`, diferente do `CI_AS` de
+  `PROADMIN.NAME`: um `JOIN` direto entre as duas colunas dá erro de collation.
+- No ecrã do iX Organizer, `MOBILE` aparece na linha **Telemóvel**; a linha
+  **Telefone** é a coluna `PHONE1`, que fica vazia.
+
+O iX Organizer faz `DELETE` por `ORDERNAME` antes de gravar; o Martelo não
+replica esse `DELETE` (mantém-se exclusivamente de `INSERT`), porque a
+encomenda acaba de nascer e o serviço recusa mexer numa que já exista.
+
 ### Validação local E1 recebida em 28 de julho de 2026
 
 - Leitura da árvore confirmada contra a base real: `LANCA_ENCANTO` em
@@ -363,4 +388,8 @@ ele; candidatos naturais a partir do que já se sabe:
 - confirmar se o iMos cria sozinho a pasta física em `pasta_base_imorder` ao
   abrir a encomenda pela primeira vez, ou se o V3 a deve criar;
 - reforçar o comportamento quando o mesmo número de obra é criado a partir de
-  dois postos ao mesmo tempo (as tabelas não têm qualquer restrição UNIQUE).
+  dois postos ao mesmo tempo (as tabelas não têm qualquer restrição UNIQUE);
+- verificar se o iX Organizer limpa a `CMSINCIDENTADRESS` ao eliminar uma
+  encomenda. Como o Martelo não faz o `DELETE` por `ORDERNAME`, se o iMos
+  também não o fizer, recriar a encomenda pelo V3 deixaria duas linhas de
+  contacto para o mesmo `ORDERNAME`.
