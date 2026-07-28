@@ -96,6 +96,7 @@ from app.services.producao_pastas_service import (
 from app.ui import tema
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
+from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
@@ -354,15 +355,26 @@ class ProducaoPage(QWidget):
         )
         self.imprimir_action.triggered.connect(self._abrir_impressao)
 
+        self.criar_encomenda_imos_action = QAction("Criar Encomenda IMOS…", self)
+        self.criar_encomenda_imos_action.setToolTip(
+            "Criar no iMos a pasta do cliente (se faltar) e a encomenda desta "
+            "obra. Mostra primeiro tudo o que vai ser criado; nada é gravado "
+            "sem confirmação."
+        )
+        self.criar_encomenda_imos_action.triggered.connect(
+            self._abrir_criar_encomenda_imos
+        )
+
         self.funcoes_menu = QMenu(self)
         self.funcoes_menu.setToolTipsVisible(True)
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
+        self.funcoes_menu.addAction(self.criar_encomenda_imos_action)
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
-            "Funções sobre a pasta da obra: preparar a obra para produção e "
-            "imprimir os documentos"
+            "Funções sobre a pasta da obra: preparar a obra para produção, "
+            "imprimir os documentos e criar a encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -1939,6 +1951,22 @@ class ProducaoPage(QWidget):
             parent=self,
         )
         dialog.exec()
+
+    def _abrir_criar_encomenda_imos(self) -> None:
+        """Open the iMos order dialog for the selected obra."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText(
+                "Selecione uma obra para criar a encomenda no iMos."
+            )
+            return
+
+        dialog = ImosEncomendaDialog(processo_id=processo.id, parent=self)
+        dialog.exec()
+        if dialog.criada:
+            self.status_label.setText(
+                f"Encomenda criada no iMos para {processo.codigo_processo}."
+            )
 
     def _abrir_impressao(self) -> None:
         """Open the print manager for the selected obra folder."""
