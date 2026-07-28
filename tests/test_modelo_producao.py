@@ -156,3 +156,84 @@ def test_proxy_ordena_por_coluna(modelo) -> None:
     topo = proxy.index(0, _coluna("processo")).data()
 
     assert topo == "26.1002_01_01_B"  # 2000,00 €
+
+
+# --------------------------------------------------------------------------
+# Coluna "Enc. iMos" — rasto da encomenda criada no iMos
+# --------------------------------------------------------------------------
+
+
+def _modelo_com(processo) -> ProducaoTableModel:
+    modelo = ProducaoTableModel()
+    modelo.definir_processos([processo])
+    return modelo
+
+
+def test_coluna_imos_vazia_quando_a_obra_nao_criou_encomenda() -> None:
+    modelo = _modelo_com(Producao(codigo_processo="26.1", ano="2026", num_enc_phc="1"))
+    indice = modelo.index(0, _coluna("imos"))
+
+    assert modelo.data(indice, Qt.ItemDataRole.DisplayRole) == ""
+    dica = modelo.data(indice, Qt.ItemDataRole.ToolTipRole)
+    assert "Sem encomenda criada no iMos" in dica
+    # A obra pode ter encomenda feita à mão: a dica não pode afirmar o contrário.
+    assert "à mão no iX Organizer" in dica
+
+
+def test_coluna_imos_mostra_visto_com_a_data() -> None:
+    modelo = _modelo_com(
+        Producao(
+            codigo_processo="26.1",
+            ano="2026",
+            num_enc_phc="1",
+            imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+            imos_criado_em=datetime(2026, 7, 28, 19, 59),
+        )
+    )
+    indice = modelo.index(0, _coluna("imos"))
+
+    assert modelo.data(indice, Qt.ItemDataRole.DisplayRole) == "✓ 28-07-2026"
+
+
+def test_dica_da_coluna_imos_tem_o_nome_e_a_hora() -> None:
+    modelo = _modelo_com(
+        Producao(
+            codigo_processo="26.1",
+            ano="2026",
+            num_enc_phc="1",
+            imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+            imos_criado_em=datetime(2026, 7, 28, 19, 59),
+        )
+    )
+
+    dica = modelo.data(modelo.index(0, _coluna("imos")), Qt.ItemDataRole.ToolTipRole)
+
+    assert "1260_01_26_LINHAS_DIREITAS" in dica
+    assert "28-07-2026 19:59" in dica
+
+
+def test_dica_da_coluna_imos_nao_rebenta_sem_base_de_dados(monkeypatch) -> None:
+    """A grelha pede a dica linha a linha: uma falha de BD não pode partir tudo."""
+    from app.ui.helpers import modelo_producao
+
+    def _explode():
+        raise RuntimeError("sem base de dados")
+
+    monkeypatch.setattr(modelo_producao, "SessionLocal", _explode)
+    modelo = _modelo_com(
+        Producao(
+            codigo_processo="26.1",
+            ano="2026",
+            num_enc_phc="1",
+            imos_nome_encomenda="1260_01_26_LD",
+            imos_criado_em=datetime(2026, 7, 28, 19, 59),
+            imos_criado_por_id=7,
+        )
+    )
+
+    dica = modelo.data(modelo.index(0, _coluna("imos")), Qt.ItemDataRole.ToolTipRole)
+
+    # Sem nome do autor, mas o resto do rasto continua lá.
+    assert "1260_01_26_LD" in dica
+    assert "28-07-2026 19:59" in dica
+    assert "por " not in dica

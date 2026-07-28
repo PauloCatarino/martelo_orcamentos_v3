@@ -41,6 +41,21 @@ def _descricao_uma_linha(processo: Any) -> str:
     return _texto(getattr(processo, "descricao_producao", "")).replace("\n", " · ")
 
 
+def _encomenda_imos(processo: Any) -> str:
+    """Diz de relance se a obra já tem encomenda criada no iMos.
+
+    Vazio quando não tem — inclui as obras cuja encomenda foi criada à mão no
+    iX Organizer antes de o Martelo passar a criá-las, que o V3 não conhece.
+    """
+    criado_em = getattr(processo, "imos_criado_em", None)
+    if criado_em is None:
+        return ""
+    try:
+        return f"✓ {criado_em.strftime('%d-%m-%Y')}"
+    except AttributeError:
+        return "✓"
+
+
 COLUNAS_PRODUCAO: list[ColunaProducao] = [
     ColunaProducao("criada_em", "Criada em", True, _data_criacao),
     ColunaProducao("ano", "Ano", True, lambda p: _texto(getattr(p, "ano", ""))),
@@ -118,6 +133,7 @@ COLUNAS_PRODUCAO: list[ColunaProducao] = [
         True,
         _descricao_uma_linha,
     ),
+    ColunaProducao("imos", "Enc. iMos", True, _encomenda_imos),
     ColunaProducao(
         "localizacao",
         "Localização",
@@ -151,6 +167,7 @@ LARGURAS_DEFAULT_PRODUCAO: dict[str, int] = {
     "qt_artigos": 85,
     "preco": 100,
     "descricao_producao": 220,
+    "imos": 110,
     "localizacao": 150,
     "tipo_pasta": 170,
 }
