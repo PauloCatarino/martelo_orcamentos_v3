@@ -82,3 +82,100 @@ def test_import_rejects_email_owned_by_another_v3_user() -> None:
             [_source("new-user", "same@example.test")],
             permission_count=0,
         )
+
+
+# --------------------------------------------------------------------------
+# Permissões de ação (criar encomendas no iMos)
+# --------------------------------------------------------------------------
+
+
+def test_criar_encomenda_imos_nasce_desligada() -> None:
+    """As ações são opt-in: dá-se a quem precisa, não se tira a quem não deve."""
+    from app.services.permission_service import (
+        DEFAULT_USER_PERMISSIONS,
+        PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+    )
+
+    assert DEFAULT_USER_PERMISSIONS[PERMISSAO_CRIAR_ENCOMENDA_IMOS] is False
+    # Ao contrário dos menus, que nascem ligados (menos as Configurações).
+    assert DEFAULT_USER_PERMISSIONS["menu.producao"] is True
+
+
+def test_grelha_de_acessos_lista_menus_e_accoes() -> None:
+    from app.services.permission_service import (
+        ACAO_PERMISSIONS,
+        MENU_PERMISSIONS,
+        PERMISSOES_EDITAVEIS,
+    )
+
+    assert set(PERMISSOES_EDITAVEIS) == set(MENU_PERMISSIONS) | set(ACAO_PERMISSIONS)
+    # Os menus vêm primeiro, para a grelha não mudar de ordem.
+    assert list(PERMISSOES_EDITAVEIS)[: len(MENU_PERMISSIONS)] == list(MENU_PERMISSIONS)
+    assert PERMISSOES_EDITAVEIS["acao.criar_encomenda_imos"] == "Criar encomendas no iMos"
+
+
+def test_utilizador_normal_nao_cria_encomendas_por_defeito(session) -> None:
+    from app.services.permission_service import (
+        PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+        permissions_for_user,
+        pode,
+    )
+
+    utilizador = _user("pedro", "pedro@le.pt")
+    session.add(utilizador)
+    session.flush()
+
+    permissoes = permissions_for_user(session, utilizador)
+
+    assert pode(permissoes, PERMISSAO_CRIAR_ENCOMENDA_IMOS) is False
+
+
+def test_permissao_atribuida_passa_a_valer(session) -> None:
+    from app.services.permission_service import (
+        PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+        permissions_for_user,
+        pode,
+        set_user_permissions,
+    )
+
+    utilizador = _user("pedro", "pedro@le.pt")
+    session.add(utilizador)
+    session.flush()
+
+    set_user_permissions(
+        session, utilizador.id, {PERMISSAO_CRIAR_ENCOMENDA_IMOS: True}
+    )
+    session.flush()
+
+    assert pode(
+        permissions_for_user(session, utilizador), PERMISSAO_CRIAR_ENCOMENDA_IMOS
+    )
+
+
+def test_admin_pode_criar_sempre(session) -> None:
+    from app.services.permission_service import (
+        PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+        permissions_for_user,
+        pode,
+    )
+
+    admin = _user("admin", "admin@le.pt", role="admin")
+
+    assert pode(permissions_for_user(session, admin), PERMISSAO_CRIAR_ENCOMENDA_IMOS)
+
+
+def test_sem_sessao_nao_se_pode_nada(session) -> None:
+    from app.services.permission_service import (
+        PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+        permissions_for_user,
+        pode,
+    )
+
+    assert not pode(permissions_for_user(session, None), PERMISSAO_CRIAR_ENCOMENDA_IMOS)
+
+
+def test_pode_e_defensivo_perante_permissoes_em_falta() -> None:
+    from app.services.permission_service import pode
+
+    assert pode(None, "acao.qualquer") is False
+    assert pode({}, "acao.criar_encomenda_imos") is False

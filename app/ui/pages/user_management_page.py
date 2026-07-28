@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from app.db.session import SessionLocal
 from app.domain.departamentos import DEPARTAMENTOS
-from app.services.permission_service import MENU_PERMISSIONS
+from app.services.permission_service import PERMISSOES_EDITAVEIS
 from app.services.user_admin_service import (
     create_user,
     list_managed_users,
@@ -92,9 +92,9 @@ class UserManagementPage(QWidget):
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setColumnCount(len(self.FIXED_COLUMNS) + len(MENU_PERMISSIONS))
+        self.table.setColumnCount(len(self.FIXED_COLUMNS) + len(PERMISSOES_EDITAVEIS))
         self.table.setHorizontalHeaderLabels(
-            [*self.FIXED_COLUMNS, *MENU_PERMISSIONS.values()]
+            [*self.FIXED_COLUMNS, *PERMISSOES_EDITAVEIS.values()]
         )
 
         self.new_button = QPushButton("Novo utilizador")
@@ -164,7 +164,7 @@ class UserManagementPage(QWidget):
             combo = _combo_departamentos(user.departamento)
             self.table.setCellWidget(row_index, 4, combo)
             self.table.setItem(row_index, 5, self._check_item(user.is_active, not is_admin))
-            for offset, key in enumerate(MENU_PERMISSIONS, start=6):
+            for offset, key in enumerate(PERMISSOES_EDITAVEIS, start=6):
                 self.table.setItem(
                     row_index,
                     offset,
@@ -233,7 +233,7 @@ class UserManagementPage(QWidget):
                     user_id = int(self.table.item(row, 0).data(Qt.ItemDataRole.UserRole))
                     permissions = {
                         key: self.table.item(row, column).checkState() == Qt.CheckState.Checked
-                        for column, key in enumerate(MENU_PERMISSIONS, start=6)
+                        for column, key in enumerate(PERMISSOES_EDITAVEIS, start=6)
                     }
                     combo = self.table.cellWidget(row, 4)
                     update_user_access(

@@ -24,6 +24,20 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
     )
 )
 
+# Permissões de AÇÃO, ao contrário das de menu: não escondem um menu, travam
+# uma operação concreta. Nascem desligadas — dá-se a quem precisa, em vez de
+# tirar a quem não deve.
+PERMISSAO_CRIAR_ENCOMENDA_IMOS = "acao.criar_encomenda_imos"
+
+ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
+    ((PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),)
+)
+
+#: Tudo o que o administrador pode marcar na grelha de acessos.
+PERMISSOES_EDITAVEIS: OrderedDict[str, str] = OrderedDict(
+    list(MENU_PERMISSIONS.items()) + list(ACAO_PERMISSIONS.items())
+)
+
 LEGACY_FEATURE_KEYS = (
     "feature_pdf_manager",
     "feature_producao_preparacao",
@@ -31,7 +45,8 @@ LEGACY_FEATURE_KEYS = (
 )
 
 DEFAULT_USER_PERMISSIONS = {
-    key: key != "menu.configuracoes" for key in MENU_PERMISSIONS
+    **{key: key != "menu.configuracoes" for key in MENU_PERMISSIONS},
+    **{key: False for key in ACAO_PERMISSIONS},
 }
 
 
@@ -43,18 +58,23 @@ def is_admin(user: User | None) -> bool:
 def permissions_for_user(session: Session, user: User | None) -> dict[str, bool]:
     """Resolve defaults and explicit overrides for one user."""
     if user is None:
-        return {key: False for key in MENU_PERMISSIONS}
+        return {key: False for key in PERMISSOES_EDITAVEIS}
     if is_admin(user):
-        return {key: True for key in MENU_PERMISSIONS}
+        return {key: True for key in PERMISSOES_EDITAVEIS}
 
     resolved = dict(DEFAULT_USER_PERMISSIONS)
     rows = session.execute(
         select(UserPermission).where(UserPermission.user_id == user.id)
     ).scalars()
     for row in rows:
-        if row.permission_key in MENU_PERMISSIONS:
+        if row.permission_key in PERMISSOES_EDITAVEIS:
             resolved[row.permission_key] = bool(row.enabled)
     return resolved
+
+
+def pode(permissoes: dict[str, bool] | None, chave: str) -> bool:
+    """Leitura defensiva de uma permissão: o que não é dado, não se pode."""
+    return bool((permissoes or {}).get(chave, False))
 
 
 def set_user_permissions(
@@ -70,7 +90,7 @@ def set_user_permissions(
         ).scalars()
     }
     for key, enabled in permissions.items():
-        if key not in MENU_PERMISSIONS and key not in LEGACY_FEATURE_KEYS:
+        if key not in PERMISSOES_EDITAVEIS and key not in LEGACY_FEATURE_KEYS:
             continue
         row = existing.get(key)
         if row is None:
