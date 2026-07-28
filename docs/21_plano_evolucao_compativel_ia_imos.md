@@ -399,6 +399,13 @@ Feito:
   a data e o autor — é um aviso, não um bloqueio, porque pode ser uma segunda
   versão legítima. O rasto é gravado só depois de o iMos confirmar.
 
+- **Quem pode criar.** Nova permissão de **ação** `acao.criar_encomenda_imos`,
+  atribuída em `Configurações > Utilizadores e acessos`. Ao contrário das
+  permissões de menu, que nascem ligadas, as de ação nascem **desligadas**:
+  dá-se a quem precisa em vez de tirar a quem não deve. O administrador tem-na
+  sempre. O diálogo desativa o botão e explica a quem não a tenha, e volta a
+  verificar no momento de gravar.
+
 ### Ronda seguinte, ainda por fazer
 
 O utilizador pediu, em 28 de julho de 2026, para acrescentar **proteções

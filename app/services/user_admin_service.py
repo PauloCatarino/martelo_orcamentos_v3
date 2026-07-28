@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.domain.departamentos import normalizar_departamento
 from app.models import User
-from app.services.permission_service import MENU_PERMISSIONS, permissions_for_user, set_user_permissions
+from app.services.permission_service import (
+    DEFAULT_USER_PERMISSIONS,
+    PERMISSOES_EDITAVEIS,
+    permissions_for_user,
+    set_user_permissions,
+)
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -86,7 +91,7 @@ def create_user(
     set_user_permissions(
         session,
         user.id,
-        {key: key != "menu.configuracoes" for key in MENU_PERMISSIONS},
+        dict(DEFAULT_USER_PERMISSIONS),
     )
     session.commit()
     return user
@@ -109,7 +114,7 @@ def update_user_access(
     if user.username.casefold() == "admin":
         user.role = "admin"
         user.is_active = True
-        permissions = {key: True for key in MENU_PERMISSIONS}
+        permissions = {key: True for key in PERMISSOES_EDITAVEIS}
     else:
         user.role = "user"
         user.is_active = bool(is_active)

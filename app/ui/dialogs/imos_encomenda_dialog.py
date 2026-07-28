@@ -43,6 +43,11 @@ from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
     load_imos_config,
 )
+from app.services.permission_service import (
+    PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+    permissions_for_user,
+    pode,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 COR_EM_FALTA = QColor("#8a5000")
@@ -61,6 +66,7 @@ class ImosEncomendaDialog(QDialog):
         self._processo_id = processo_id
         self._plano: PlanoCriacaoImos | None = None
         self._escrita_ativa = False
+        self._pode_criar = False
         self._criada = False
         # Correções locais de TEXT_SHORT/TEXT_LONG: valem só para esta criação
         # e nunca são gravadas de volta na obra do Martelo.
@@ -235,6 +241,10 @@ class ImosEncomendaDialog(QDialog):
                     raise ValueError("Obra não encontrada.")
                 cfg = load_imos_config(session)
                 self._escrita_ativa = carregar_escrita_ativa(session)
+                self._pode_criar = pode(
+                    permissions_for_user(session, app_session.current_user),
+                    PERMISSAO_CRIAR_ENCOMENDA_IMOS,
+                )
                 plano = preparar(
                     session,
                     cfg,
@@ -364,21 +374,34 @@ class ImosEncomendaDialog(QDialog):
             partes.append(
                 "A confirmar:\n" + "\n".join(f"• {texto}" for texto in plano.avisos)
             )
+        if not self._pode_criar:
+            partes.append(
+                "Não tem permissão para criar encomendas no iMos. Peça ao "
+                "administrador para a atribuir em Configurações > Utilizadores "
+                "e acessos."
+            )
         if not self._escrita_ativa:
             partes.append(
                 "A escrita no iMos está desligada. Ligue a definição "
-                f"'{KEY_IMOS_ESCRITA_ATIVA}' em Configurações > Definições do "
-                "sistema para poder criar."
+                f"'{KEY_IMOS_ESCRITA_ATIVA}' em Configurações > Ligação iMos "
+                "para poder criar."
             )
 
         self.avisos_label.setText("\n\n".join(partes))
         self.avisos_label.setStyleSheet(
-            f"color: {COR_AVISO.name()};" if plano.bloqueios else ""
+            f"color: {COR_AVISO.name()};"
+            if plano.bloqueios or not self._pode_criar
+            else ""
         )
 
-        pode = plano.pode_criar and self._escrita_ativa
-        self.criar_button.setEnabled(pode)
-        if not self._escrita_ativa:
+        self.criar_button.setEnabled(
+            plano.pode_criar and self._escrita_ativa and self._pode_criar
+        )
+        if not self._pode_criar:
+            self.status_label.setText(
+                "Leitura concluída. Não tem permissão para criar no iMos."
+            )
+        elif not self._escrita_ativa:
             self.status_label.setText("Leitura concluída. A escrita no iMos está desligada.")
         elif plano.bloqueios:
             self.status_label.setText("Leitura concluída. Resolva os pontos a vermelho.")
@@ -440,6 +463,14 @@ class ImosEncomendaDialog(QDialog):
         plano = self._plano
         if plano is None:
             return
+        # Última barreira: o botão pode estar ativo e a permissão ter mudado.
+        if not self._pode_criar:
+            QMessageBox.warning(
+                self,
+                "Criar Encomenda IMOS",
+                "Não tem permissão para criar encomendas no iMos.",
+            )
+            return
         if not plano.pode_criar or not self._escrita_ativa:
             QMessageBox.warning(
                 self,
@@ -495,13 +526,20 @@ class ImosEncomendaDialog(QDialog):
             f"• {no.nome} — DIR_ID {no.dir_id}, PROADMIN {no.proadmin_id}"
             for no in criados
         )
-        self.status_label.setText("Encomenda criada no iMos.")
+        autor = getattr(app_session.current_user, "nome", "") or getattr(
+            app_session.current_user, "username", ""
+        )
+        por_quem = f" por {autor}" if autor else ""
+        self.status_label.setText(f"Encomenda criada no iMos{por_quem}.")
         QMessageBox.information(
             self,
             "Criar Encomenda IMOS",
-            "Criado no iMos:\n\n"
+            f"Criado no iMos{por_quem}:\n\n"
             + detalhe
-            + "\n\nNo iX Organizer prima ↻ para a árvore refrescar.",
+            + "\n\nFicou registado na base de dados do Martelo quem criou e "
+            "quando: se alguém tentar criar esta encomenda outra vez, o "
+            "Martelo avisa."
+            "\n\nNo iX Organizer prima ↻ para a árvore refrescar.",
         )
         self._recarregar()
 

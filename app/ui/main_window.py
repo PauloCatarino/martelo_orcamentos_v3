@@ -25,7 +25,7 @@ from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
 from app.services.permission_service import (
     DEFAULT_USER_PERMISSIONS,
-    MENU_PERMISSIONS,
+    PERMISSOES_EDITAVEIS,
     is_admin,
     permissions_for_user,
 )
@@ -362,7 +362,7 @@ class MainWindow(QMainWindow):
     def _load_permissions(self) -> dict[str, bool]:
         """Load the authenticated account's menu visibility rules."""
         if is_admin(self.authenticated_user):
-            return {key: True for key in MENU_PERMISSIONS}
+            return {key: True for key in PERMISSOES_EDITAVEIS}
         try:
             with SessionLocal() as session:
                 return permissions_for_user(session, self.authenticated_user)

@@ -111,7 +111,12 @@ def _plano_com_textos() -> PlanoCriacaoImos:
 def dialogo(monkeypatch):
     """Constrói o diálogo real, com o iMos e a base substituídos."""
 
-    def _montar(plano: PlanoCriacaoImos, *, escrita_ativa: bool = True):
+    def _montar(
+        plano: PlanoCriacaoImos,
+        *,
+        escrita_ativa: bool = True,
+        com_permissao: bool = True,
+    ):
         monkeypatch.setattr(
             imos_encomenda_dialog, "SessionLocal", lambda: _SessaoFalsa()
         )
@@ -120,6 +125,13 @@ def dialogo(monkeypatch):
         )
         monkeypatch.setattr(
             imos_encomenda_dialog, "carregar_escrita_ativa", lambda _s: escrita_ativa
+        )
+        monkeypatch.setattr(
+            imos_encomenda_dialog,
+            "permissions_for_user",
+            lambda *_a, **_k: {
+                imos_encomenda_dialog.PERMISSAO_CRIAR_ENCOMENDA_IMOS: com_permissao
+            },
         )
         monkeypatch.setattr(
             imos_encomenda_dialog, "preparar", lambda *_a, **_k: plano
@@ -345,7 +357,47 @@ def test_dialogo_respeita_o_interruptor_de_escrita() -> None:
 
     assert "carregar_escrita_ativa" in source
     assert "KEY_IMOS_ESCRITA_ATIVA" in source
-    assert "pode = plano.pode_criar and self._escrita_ativa" in source
+    assert (
+        "plano.pode_criar and self._escrita_ativa and self._pode_criar" in source
+    )
+
+
+def test_sem_permissao_nao_deixa_criar(dialogo) -> None:
+    dlg = dialogo(_plano(), com_permissao=False)
+
+    assert dlg.criar_button.isEnabled() is False
+    assert "Não tem permissão" in dlg.avisos_label.text()
+    assert "Utilizadores e acessos" in dlg.avisos_label.text()
+    assert "Não tem permissão" in dlg.status_label.text()
+
+
+def test_com_permissao_e_escrita_ligada_deixa_criar(dialogo) -> None:
+    dlg = dialogo(_plano(), com_permissao=True, escrita_ativa=True)
+
+    assert dlg.criar_button.isEnabled() is True
+
+
+def test_criar_verifica_a_permissao_mesmo_com_o_botao_ativo(dialogo, monkeypatch) -> None:
+    """A permissão pode ter mudado desde que o diálogo abriu."""
+    avisos: list = []
+    monkeypatch.setattr(
+        imos_encomenda_dialog.QMessageBox,
+        "warning",
+        lambda *args, **_k: avisos.append(args[2]),
+    )
+    dlg = dialogo(_plano(), com_permissao=False)
+
+    dlg._criar()
+
+    assert avisos and "Não tem permissão" in avisos[0]
+    assert dlg.criada is False
+
+
+def test_mensagem_final_diz_quem_criou_e_que_ficou_registado() -> None:
+    source = inspect.getsource(ImosEncomendaDialog._criar)
+
+    assert "por_quem" in source
+    assert "Ficou registado na base de dados do Martelo quem criou e " in source
 
 
 def test_contador_do_nome_usa_o_limite_do_imos() -> None:
