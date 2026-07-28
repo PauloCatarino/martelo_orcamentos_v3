@@ -24,7 +24,9 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
+from app.models.cliente import Cliente
 from app.services.imos_escrita import (
+    COLUNAS_CONTACTO,
     COLUNAS_PROADMIN,
     NoCriado,
     NoParaCriar,
@@ -118,6 +120,12 @@ class PlanoCriacaoImos:
     campos: tuple[CampoImos, ...]
     avisos: tuple[str, ...]
     bloqueios: tuple[str, ...]
+    # Dados do cliente (dbo.CMSINCIDENTADRESS); vazio quando não há nada a gravar.
+    contacto: tuple[CampoImos, ...] = ()
+
+    @property
+    def tem_contacto(self) -> bool:
+        return any(not campo.vazio for campo in self.contacto)
 
     @property
     def pode_criar(self) -> bool:
@@ -148,9 +156,16 @@ def _data_imos(valor) -> str:
     return normalizada.replace("-", "/") if normalizada else ""
 
 
-def _campo(coluna: str, etiqueta: str, origem: str, valor) -> CampoImos:
+def _campo(
+    coluna: str,
+    etiqueta: str,
+    origem: str,
+    valor,
+    *,
+    colunas: dict[str, tuple[str, int]] | None = None,
+) -> CampoImos:
     """Trunca o valor no limite real da coluna, guardando o original."""
-    _, limite = COLUNAS_PROADMIN[coluna]
+    _, limite = (colunas or COLUNAS_PROADMIN)[coluna]
     original = _texto(valor).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
     original = " ".join(original.split())
     return CampoImos(
@@ -237,6 +252,50 @@ def mapear_campos(processo, *, nome_encomenda: str) -> tuple[CampoImos, ...]:
     )
 
 
+def mapear_contacto(processo, cliente: Cliente | None) -> tuple[CampoImos, ...]:
+    """Dados do cliente da encomenda (dbo.CMSINCIDENTADRESS).
+
+    ``FIRMA`` e ``KDNR`` saem da própria obra; o telefone e o email só existem
+    na ficha do cliente, por isso ficam vazios quando a obra não tem cliente
+    associado.
+    """
+
+    def _contacto(coluna: str, etiqueta: str, origem: str, valor) -> CampoImos:
+        return _campo(coluna, etiqueta, origem, valor, colunas=COLUNAS_CONTACTO)
+
+    return (
+        _contacto(
+            "FIRMA", "Cliente", "Cliente", getattr(processo, "nome_cliente", "")
+        ),
+        _contacto(
+            "KDNR",
+            "Nº Cliente PHC",
+            "Nº Cliente PHC",
+            getattr(processo, "num_cliente_phc", ""),
+        ),
+        _contacto(
+            "MOBILE",
+            "Telefone",
+            "Ficha do cliente",
+            getattr(cliente, "telefone", "") if cliente else "",
+        ),
+        _contacto(
+            "EMAIL1",
+            "Email",
+            "Ficha do cliente",
+            getattr(cliente, "email", "") if cliente else "",
+        ),
+    )
+
+
+def _cliente_da_obra(session: Session, processo) -> Cliente | None:
+    """Ficha do cliente da obra, quando existe ligação."""
+    cliente_id = getattr(processo, "cliente_id", None)
+    if not cliente_id:
+        return None
+    return session.get(Cliente, cliente_id)
+
+
 def preparar(
     session: Session,
     cfg: ImosConfig,
@@ -313,13 +372,21 @@ def preparar(
         )
 
     campos = mapear_campos(processo, nome_encomenda=nome)
+    cliente = _cliente_da_obra(session, processo)
+    contacto = mapear_contacto(processo, cliente)
+
+    if cliente is None:
+        avisos.append(
+            "A obra não está ligada a uma ficha de cliente, por isso o telefone "
+            "e o email não vão para o iMos."
+        )
 
     if len(sugerido) > IMOS_NOME_MAX:
         avisos.append(
             f"O nome sugerido tem {len(sugerido)} caracteres e o iMos só aceita "
             f"{IMOS_NOME_MAX}. Foi cortado — reveja-o antes de criar."
         )
-    for campo in campos:
+    for campo in campos + contacto:
         if campo.truncado:
             avisos.append(
                 f"{campo.etiqueta}: {len(campo.valor_original)} caracteres cortados "
@@ -336,6 +403,7 @@ def preparar(
         campos=campos,
         avisos=tuple(avisos),
         bloqueios=tuple(bloqueios),
+        contacto=contacto,
     )
 
 
@@ -383,6 +451,7 @@ def nos_para_criar(plano: PlanoCriacaoImos) -> list[NoParaCriar]:
             parent_dir_id=ultimo_dir_id if ultimo_indice is None else None,
             parent_indice=ultimo_indice,
             campos=campos_encomenda,
+            contacto={campo.coluna: campo.valor for campo in plano.contacto},
         )
     )
     return nos
