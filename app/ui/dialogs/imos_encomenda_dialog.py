@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.models.producao import Producao
 from app.services.imos_encomenda_service import (
@@ -470,7 +471,14 @@ class ImosEncomendaDialog(QDialog):
         try:
             with SessionLocal() as session:
                 cfg = load_imos_config(session)
-                criados = executar(session, cfg, plano)
+                processo = session.get(Producao, self._processo_id)
+                criados = executar(
+                    session,
+                    cfg,
+                    plano,
+                    processo=processo,
+                    user_id=getattr(app_session.current_user, "id", None),
+                )
         except (SQLAlchemyError, ValueError, RuntimeError, OSError) as error:
             texto = explicar_erro_escrita(error)
             self.status_label.setText(f"Falhou: {texto}")

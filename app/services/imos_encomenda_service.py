@@ -20,11 +20,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
+from app.models.user import User
 from app.models.cliente import Cliente
 from app.services.imos_escrita import (
     COLUNAS_CONTACTO,
@@ -40,8 +42,10 @@ from app.services.imos_sql import (
     IMOS_TIPO_PASTA,
     CaminhoImos,
     ImosConfig,
+    caminho_do_no,
     carregar_pasta_raiz,
     nome_imos_valido,
+    procurar_encomendas_por_nome,
     resolver_caminho_encomenda,
 )
 from app.services.producao_service import (
@@ -122,6 +126,9 @@ class PlanoCriacaoImos:
     campos: tuple[CampoImos, ...]
     avisos: tuple[str, ...]
     bloqueios: tuple[str, ...]
+    # Rasto de uma criação anterior desta obra, quando existe.
+    ja_criada_em: datetime | None = None
+    ja_criada_por: str = ""
     # Dados do cliente (dbo.CMSINCIDENTADRESS); vazio quando não há nada a gravar.
     contacto: tuple[CampoImos, ...] = ()
 
@@ -394,6 +401,33 @@ def preparar(
             f"Já existe uma encomenda '{nome}' nesta pasta do iMos. "
             "O Martelo não duplica nem substitui encomendas."
         )
+    else:
+        # O nome tem de ser único em TODA a árvore, não só nesta pasta: os
+        # dados do cliente são guardados por nome de encomenda, sem pasta.
+        for outro in procurar_encomendas_por_nome(cfg, nome):
+            onde = caminho_do_no(cfg, outro.dir_id) or "outra pasta"
+            bloqueios.append(
+                f"Já existe uma encomenda com o nome '{nome}' noutro sítio do "
+                f"iMos: {onde}. Como os dados do cliente são guardados só pelo "
+                "nome da encomenda, dois nomes iguais misturavam-nos. "
+                "Altere o nome antes de criar."
+            )
+
+    # Rasto de uma criação anterior: é o que evita criar duas vezes por
+    # engano, sem obrigar ninguém a ir ao iX Organizer confirmar.
+    criada_em = getattr(processo, "imos_criado_em", None)
+    criada_por = ""
+    if criada_em:
+        autor_id = getattr(processo, "imos_criado_por_id", None)
+        autor = session.get(User, autor_id) if autor_id else None
+        criada_por = getattr(autor, "nome", "") or getattr(autor, "username", "") or ""
+        anterior = getattr(processo, "imos_nome_encomenda", "") or nome
+        quem = f" por {criada_por}" if criada_por else ""
+        avisos.append(
+            f"Esta obra já criou a encomenda '{anterior}' no iMos em "
+            f"{criada_em.strftime('%d-%m-%Y %H:%M')}{quem}. Confirme que não "
+            "está a criar a mesma coisa outra vez."
+        )
 
     campos = mapear_campos(processo, nome_encomenda=nome, textos=textos)
     cliente = _cliente_da_obra(session, processo)
@@ -428,6 +462,8 @@ def preparar(
         avisos=tuple(avisos),
         bloqueios=tuple(bloqueios),
         contacto=contacto,
+        ja_criada_em=criada_em,
+        ja_criada_por=criada_por,
     )
 
 
@@ -482,7 +518,31 @@ def nos_para_criar(plano: PlanoCriacaoImos) -> list[NoParaCriar]:
 
 
 def executar(
-    session: Session, cfg: ImosConfig, plano: PlanoCriacaoImos
+    session: Session,
+    cfg: ImosConfig,
+    plano: PlanoCriacaoImos,
+    *,
+    processo=None,
+    user_id: int | None = None,
 ) -> list[NoCriado]:
-    """Cria no iMos as pastas em falta e a encomenda, na mesma transação."""
-    return criar_nos(session, cfg, nos_para_criar(plano))
+    """Cria no iMos as pastas em falta e a encomenda, na mesma transação.
+
+    Com ``processo``, guarda na obra o rasto do que foi criado. O rasto é
+    gravado **depois** de o iMos confirmar: se a criação falhar, a obra fica
+    como estava.
+    """
+    criados = criar_nos(session, cfg, nos_para_criar(plano))
+    if processo is None:
+        return criados
+
+    encomenda = next(
+        (no for no in criados if no.tipo == IMOS_TIPO_ENCOMENDA), None
+    )
+    if encomenda is not None:
+        processo.imos_nome_encomenda = encomenda.nome
+        processo.imos_dir_id = encomenda.dir_id
+        processo.imos_criado_em = datetime.now()
+        processo.imos_criado_por_id = user_id
+        session.commit()
+
+    return criados

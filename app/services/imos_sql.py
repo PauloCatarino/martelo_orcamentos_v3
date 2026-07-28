@@ -350,6 +350,48 @@ def resolver_no(
     return _no_de_linha(rows[0]) if rows else None
 
 
+def procurar_encomendas_por_nome(cfg: ImosConfig, nome: str) -> list[NoImos]:
+    """Todas as encomendas com este nome, em qualquer pasta da árvore.
+
+    A árvore admite nomes repetidos em pastas diferentes (há 49 casos na base),
+    mas ``CMSINCIDENTADRESS.ORDERNAME`` não tem pasta nenhuma: os dados do
+    cliente são guardados só pelo nome. Dois nomes iguais misturariam esses
+    dados, por isso é preciso procurar em toda a árvore e não só no pai.
+    """
+    query = (
+        "SELECT DIR_ID, NAME, TYPE, PARENT_ID FROM dbo.IMORDFOLDER WITH (NOLOCK) "
+        f"WHERE NAME = {_literal_nome(nome)} AND TYPE = {IMOS_TIPO_ENCOMENDA} "
+        "ORDER BY DIR_ID"
+    )
+    return [_no_de_linha(row) for row in run_imos_select(cfg, query)]
+
+
+def caminho_do_no(cfg: ImosConfig, dir_id: int, *, limite: int = 12) -> str:
+    """Caminho legível de um nó, subindo pelos pais até à raiz `Order`.
+
+    Sobe um nível por consulta em vez de usar um CTE recursivo, porque a
+    barreira de leitura só aceita queries que comecem por `SELECT`. A árvore
+    real tem 9 níveis no máximo, por isso são poucas consultas.
+    """
+    nomes: list[str] = []
+    atual: int | None = int(dir_id)
+    for _ in range(limite):
+        if not atual or atual == IMOS_DIR_ID_ORDER:
+            break
+        rows = run_imos_select(
+            cfg,
+            "SELECT TOP 1 DIR_ID, NAME, TYPE, PARENT_ID FROM dbo.IMORDFOLDER "
+            f"WITH (NOLOCK) WHERE DIR_ID = {int(atual)}",
+        )
+        if not rows:
+            break
+        no = _no_de_linha(rows[0])
+        nomes.append(no.nome)
+        atual = no.parent_id
+
+    return " / ".join(reversed(nomes))
+
+
 def nome_pasta_ano(ano) -> str:
     """Nome da pasta do ano civil na árvore do iMos (ex.: `ANO_2026`)."""
     digitos = re.sub(r"\D+", "", str(ano or ""))

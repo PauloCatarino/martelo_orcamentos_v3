@@ -73,6 +73,18 @@ class Producao(Base):
     notas1: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas2: Mapped[str | None] = mapped_column(Text, nullable=True)
     notas3: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Rasto da encomenda criada no iMos a partir desta obra. A NULL enquanto
+    # não for criada (ou quando foi criada à mão no iX Organizer).
+    imos_nome_encomenda: Mapped[str | None] = mapped_column(
+        String(30), nullable=True, index=True
+    )
+    imos_dir_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    imos_criado_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    imos_criado_por_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
     imagem_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     pasta_servidor: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     tipo_pasta: Mapped[str | None] = mapped_column(String(64), nullable=True)

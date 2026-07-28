@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
 from app.models.cliente import Cliente
+from app.models.producao import Producao
 from app.services import imos_encomenda_service as servico
 from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
@@ -44,6 +46,9 @@ def _obra(**overrides) -> SimpleNamespace:
         "materias_usados": "",
         "data_inicio": "14-07-2026",
         "data_entrega": "04-09-2026",
+        "imos_criado_em": None,
+        "imos_criado_por_id": None,
+        "imos_nome_encomenda": None,
     }
     dados.update(overrides)
     return SimpleNamespace(**dados)
@@ -84,9 +89,15 @@ def _caminho(
     )
 
 
-def _com_caminho(monkeypatch, caminho: CaminhoImos) -> None:
+def _com_caminho(monkeypatch, caminho: CaminhoImos, *, repetidos=()) -> None:
     monkeypatch.setattr(
         servico, "resolver_caminho_encomenda", lambda *_a, **_k: caminho
+    )
+    monkeypatch.setattr(
+        servico, "procurar_encomendas_por_nome", lambda *_a, **_k: list(repetidos)
+    )
+    monkeypatch.setattr(
+        servico, "caminho_do_no", lambda *_a, **_k: "LANCA_ENCANTO / ANO_2025 / CRW"
     )
 
 
@@ -216,6 +227,59 @@ def test_plano_bloqueia_quando_a_encomenda_ja_existe(session, monkeypatch) -> No
 
     assert plano.pode_criar is False
     assert any("Já existe uma encomenda" in bloqueio for bloqueio in plano.bloqueios)
+
+
+def test_plano_bloqueia_nome_repetido_noutra_pasta_da_arvore(
+    session, monkeypatch
+) -> None:
+    """CMSINCIDENTADRESS.ORDERNAME nao tem pasta: dois nomes iguais colidem."""
+    from app.services.imos_sql import NoImos
+
+    _com_caminho(
+        monkeypatch,
+        _caminho(),
+        repetidos=[
+            NoImos(
+                dir_id=4321,
+                nome="1260_01_26_LINHAS_DIREITAS",
+                tipo=IMOS_TIPO_ENCOMENDA,
+                parent_id=999,
+            )
+        ],
+    )
+
+    plano = servico.preparar(session, _cfg(), _obra())
+
+    assert plano.pode_criar is False
+    bloqueio = plano.bloqueios[0]
+    assert "noutro sítio do iMos" in bloqueio
+    assert "LANCA_ENCANTO / ANO_2025 / CRW" in bloqueio
+
+
+def test_nome_livre_em_toda_a_arvore_deixa_criar(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho(), repetidos=[])
+    cliente = _cliente(session)
+
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
+
+    assert plano.pode_criar is True
+
+
+def test_encomenda_ja_existente_nao_procura_repetidos(session, monkeypatch) -> None:
+    """Se ja existe nesta pasta, o bloqueio e esse: nao vale a pena varrer."""
+
+    def _explode(*_a, **_k):
+        raise AssertionError("não devia procurar repetidos")
+
+    monkeypatch.setattr(
+        servico, "resolver_caminho_encomenda", lambda *_a, **_k: _caminho(encomenda=6765)
+    )
+    monkeypatch.setattr(servico, "procurar_encomendas_por_nome", _explode)
+
+    plano = servico.preparar(session, _cfg(), _obra())
+
+    assert plano.pode_criar is False
+    assert "nesta pasta" in plano.bloqueios[0]
 
 
 def test_plano_bloqueia_quando_a_pasta_raiz_nao_existe(session, monkeypatch) -> None:
@@ -404,6 +468,7 @@ def test_pasta_ano_alternativa_desvia_a_criacao_e_avisa(session, monkeypatch) ->
         )
 
     monkeypatch.setattr(servico, "resolver_caminho_encomenda", _resolver)
+    monkeypatch.setattr(servico, "procurar_encomendas_por_nome", lambda *_a, **_k: [])
 
     plano = servico.preparar(session, _cfg(), _obra(), pasta_ano="ANO_TESTE")
 
@@ -421,6 +486,7 @@ def test_sem_ensaio_a_pasta_do_ano_nao_e_forcada(session, monkeypatch) -> None:
         return _caminho()
 
     monkeypatch.setattr(servico, "resolver_caminho_encomenda", _resolver)
+    monkeypatch.setattr(servico, "procurar_encomendas_por_nome", lambda *_a, **_k: [])
     plano = servico.preparar(session, _cfg(), _obra())
 
     assert recebido["pasta_ano"] is None
@@ -590,6 +656,139 @@ def test_obra_sem_cliente_nenhum_nao_cria_linha_de_contacto(
 
     assert payload["nos"][0]["contacto"] == []
     assert plano.tem_contacto is False
+
+
+# --------------------------------------------------------------------------
+# Rasto da criação (producao.imos_*)
+# --------------------------------------------------------------------------
+
+
+def test_obra_ainda_sem_encomenda_nao_avisa_nada(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+    cliente = _cliente(session)
+
+    plano = servico.preparar(session, _cfg(), _obra(cliente_id=cliente.id))
+
+    assert plano.ja_criada_em is None
+    assert plano.avisos == ()
+
+
+def test_obra_que_ja_criou_encomenda_avisa_com_data_e_autor(
+    session, monkeypatch
+) -> None:
+    from app.models.user import User
+
+    _com_caminho(monkeypatch, _caminho())
+    autor = User(
+        username="paulo",
+        nome="Paulo Catarino",
+        email="p@le.pt",
+        password_hash="x",
+        role="user",
+    )
+    session.add(autor)
+    session.flush()
+
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        _obra(
+            imos_criado_em=datetime(2026, 7, 28, 17, 56),
+            imos_criado_por_id=autor.id,
+            imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+        ),
+    )
+
+    aviso = next(a for a in plano.avisos if "já criou a encomenda" in a)
+    assert "1260_01_26_LINHAS_DIREITAS" in aviso
+    assert "28-07-2026 17:56" in aviso
+    assert "por Paulo Catarino" in aviso
+    # É um aviso, não um bloqueio: pode ser uma segunda versão legítima.
+    assert plano.pode_criar is True
+    assert plano.ja_criada_por == "Paulo Catarino"
+
+
+def test_aviso_de_ja_criada_funciona_sem_autor_conhecido(
+    session, monkeypatch
+) -> None:
+    _com_caminho(monkeypatch, _caminho())
+
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        _obra(imos_criado_em=datetime(2026, 7, 28, 9, 5), imos_criado_por_id=None),
+    )
+
+    assert any("já criou a encomenda" in a for a in plano.avisos)
+    assert plano.ja_criada_por == ""
+
+
+def test_executar_guarda_o_rasto_na_obra(session, monkeypatch) -> None:
+    from app.services.imos_escrita import NoCriado
+
+    _com_caminho(monkeypatch, _caminho())
+    plano = servico.preparar(session, _cfg(), _obra())
+    obra = Producao(
+        codigo_processo="26.1260_01_01",
+        ano="2026",
+        num_enc_phc="1260",
+        versao_obra="01",
+        versao_plano="01",
+    )
+    session.add(obra)
+    session.flush()
+
+    monkeypatch.setattr(
+        servico,
+        "criar_nos",
+        lambda *_a, **_k: [
+            NoCriado(
+                nome="1260_01_26_LINHAS_DIREITAS",
+                tipo=IMOS_TIPO_ENCOMENDA,
+                dir_id=7515,
+                proadmin_id=7492,
+                parent_dir_id=6641,
+            )
+        ],
+    )
+    servico.executar(session, _cfg(), plano, processo=obra, user_id=None)
+
+    assert obra.imos_nome_encomenda == "1260_01_26_LINHAS_DIREITAS"
+    assert obra.imos_dir_id == 7515
+    assert obra.imos_criado_em is not None
+
+
+def test_falha_na_criacao_nao_deixa_rasto(session, monkeypatch) -> None:
+    """Se o iMos recusar, a obra tem de ficar exatamente como estava."""
+    _com_caminho(monkeypatch, _caminho())
+    plano = servico.preparar(session, _cfg(), _obra())
+    obra = Producao(
+        codigo_processo="26.1261_01_01",
+        ano="2026",
+        num_enc_phc="1261",
+        versao_obra="01",
+        versao_plano="01",
+    )
+    session.add(obra)
+    session.flush()
+
+    def _explode(*_a, **_k):
+        raise RuntimeError("o iMos recusou")
+
+    monkeypatch.setattr(servico, "criar_nos", _explode)
+    with pytest.raises(RuntimeError):
+        servico.executar(session, _cfg(), plano, processo=obra)
+
+    assert obra.imos_nome_encomenda is None
+    assert obra.imos_criado_em is None
+
+
+def test_executar_sem_processo_continua_a_funcionar(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho())
+    plano = servico.preparar(session, _cfg(), _obra())
+    monkeypatch.setattr(servico, "criar_nos", lambda *_a, **_k: [])
+
+    assert servico.executar(session, _cfg(), plano) == []
 
 
 def test_executar_usa_o_motor_de_escrita(session, monkeypatch) -> None:
