@@ -284,29 +284,28 @@ class ProducaoImpressaoDialog(QDialog):
             self.tabela.setCellWidget(linha, _COL_QT, quantidade)
 
             papel = QComboBox()
-            papel.addItems(["A4", "A3"])
+            papel.addItems(list(svc.PAPEIS))
             papel.setCurrentText(documento.papel)
-            papel.setToolTip(
-                "Papel em que este documento é impresso"
-                + (
-                    f" (o PDF está em {documento.papel_ficheiro})"
-                    if documento.papel_ficheiro
-                    else ""
-                )
-            )
-            papel.currentTextChanged.connect(
-                lambda valor, doc=documento: setattr(doc, "papel", valor)
-            )
+            papel.setToolTip(self._dica_formato(documento))
             self.tabela.setCellWidget(linha, _COL_PAPEL, papel)
 
             orientacao = QComboBox()
-            orientacao.addItems([svc.ORIENTACAO_HORIZONTAL, svc.ORIENTACAO_VERTICAL])
+            orientacao.addItems(list(svc.ORIENTACOES))
             orientacao.setCurrentText(documento.orientacao)
-            orientacao.setToolTip("Orientação do papel")
+            orientacao.setToolTip(self._dica_formato(documento))
+            self.tabela.setCellWidget(linha, _COL_ORIENTACAO, orientacao)
+
+            papel.currentTextChanged.connect(
+                lambda valor, doc=documento, combo=orientacao: self._mudar_papel(
+                    doc, combo, valor
+                )
+            )
             orientacao.currentTextChanged.connect(
                 lambda valor, doc=documento: setattr(doc, "orientacao", valor)
             )
-            self.tabela.setCellWidget(linha, _COL_ORIENTACAO, orientacao)
+            # Com "Do PDF" cada página sai como está gravada: forçar a
+            # orientação por cima disso não faria sentido.
+            orientacao.setEnabled(not documento.segue_o_pdf)
 
             duplex = QTableWidgetItem()
             duplex.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
@@ -324,6 +323,31 @@ class ProducaoImpressaoDialog(QDialog):
                 lambda valor, doc=documento: setattr(doc, "cor", valor)
             )
             self.tabela.setCellWidget(linha, _COL_COR, cor)
+
+    def _dica_formato(self, documento: svc.DocumentoImpressao) -> str:
+        """Explain what the PDF holds and what "Do PDF" does."""
+        linhas = [
+            '"Do PDF" imprime cada página no papel e na orientação com que '
+            "foi gravada; A4/A3 força o formato e ajusta o desenho à folha."
+        ]
+        if documento.resumo_paginas:
+            linhas.append(f"Este PDF tem: {documento.resumo_paginas}.")
+        return "\n".join(linhas)
+
+    def _mudar_papel(
+        self, documento: svc.DocumentoImpressao, combo_orientacao, valor: str
+    ) -> None:
+        """Keep paper and orientation coherent when the user changes paper."""
+        documento.papel = valor
+        segue_o_pdf = valor == svc.DO_PDF
+        combo_orientacao.setEnabled(not segue_o_pdf)
+        if segue_o_pdf:
+            combo_orientacao.setCurrentText(svc.DO_PDF)
+        elif combo_orientacao.currentText() == svc.DO_PDF:
+            # Ao forçar o papel, arranca-se da orientação que o PDF já tem.
+            combo_orientacao.setCurrentText(
+                documento.orientacao_ficheiro or svc.ORIENTACAO_HORIZONTAL
+            )
 
     def _linha_selecionada(self) -> int:
         linhas = self.tabela.selectionModel().selectedRows()

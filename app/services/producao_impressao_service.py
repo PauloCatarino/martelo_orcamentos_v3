@@ -8,7 +8,7 @@ pela ordem que quer, e essa ordem serve para as obras seguintes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 import json
 import logging
 import os
@@ -44,6 +44,12 @@ CATEGORIA_OUTROS = "OUTROS"
 ORIENTACAO_HORIZONTAL = "Horizontal"
 ORIENTACAO_VERTICAL = "Vertical"
 
+#: Valor que diz "imprime como o PDF foi gravado" (papel e orientação).
+DO_PDF = "Do PDF"
+
+PAPEIS = (DO_PDF, "A4", "A3")
+ORIENTACOES = (DO_PDF, ORIENTACAO_HORIZONTAL, ORIENTACAO_VERTICAL)
+
 
 @dataclass(frozen=True)
 class CategoriaImpressao:
@@ -57,13 +63,15 @@ class CategoriaImpressao:
     padrao: Optional[re.Pattern[str]] = None
 
 
+# Por defeito imprime-se no formato em que o PDF foi gravado (DO_PDF). Só as
+# categorias que o Paulo quer sempre num formato fixo é que o forçam.
 CATEGORIAS: tuple[CategoriaImpressao, ...] = (
-    CategoriaImpressao(CATEGORIA_CUT_RITE, 0, "A3", ORIENTACAO_HORIZONTAL, 1),
+    CategoriaImpressao(CATEGORIA_CUT_RITE, 0, DO_PDF, DO_PDF, 1),
     CategoriaImpressao(
         CATEGORIA_FERRAGENS,
         1,
-        "A4",
-        ORIENTACAO_VERTICAL,
+        DO_PDF,
+        DO_PDF,
         3,
         re.compile(r"^1_list_ferr", re.IGNORECASE),
     ),
@@ -78,8 +86,8 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
     CategoriaImpressao(
         CATEGORIA_RESUMO_GERAL,
         3,
-        "A4",
-        ORIENTACAO_VERTICAL,
+        DO_PDF,
+        DO_PDF,
         1,
         re.compile(r"^3_resumo_geral", re.IGNORECASE),
     ),
@@ -87,21 +95,21 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
     CategoriaImpressao(
         CATEGORIA_ETIQUETA,
         5,
-        "A4",
-        ORIENTACAO_VERTICAL,
+        DO_PDF,
+        DO_PDF,
         3,
         re.compile(r"^5_etiqueta", re.IGNORECASE),
     ),
     CategoriaImpressao(
         CATEGORIA_RESUMO_ML,
         6,
-        "A4",
-        ORIENTACAO_HORIZONTAL,
+        DO_PDF,
+        DO_PDF,
         1,
         re.compile(r"^6_resumo_ml", re.IGNORECASE),
     ),
-    CategoriaImpressao(CATEGORIA_AUTOCAD, 7, "A3", ORIENTACAO_HORIZONTAL, 1),
-    CategoriaImpressao(CATEGORIA_OUTROS, 8, "A4", ORIENTACAO_VERTICAL, 1),
+    CategoriaImpressao(CATEGORIA_AUTOCAD, 7, DO_PDF, DO_PDF, 1),
+    CategoriaImpressao(CATEGORIA_OUTROS, 8, DO_PDF, DO_PDF, 1),
 )
 
 CATEGORIAS_POR_NOME = {categoria.nome: categoria for categoria in CATEGORIAS}
@@ -109,6 +117,28 @@ NOMES_CATEGORIAS = tuple(categoria.nome for categoria in CATEGORIAS)
 
 #: Subpastas que nunca entram na lista de impressão.
 PASTAS_IGNORADAS = {"mails", "imagens", "excels"}
+
+#: Números standard do Windows para os formatos (DMPAPER_A4 / DMPAPER_A3).
+#: Manda-se o número e não o nome: cada driver chama-lhe o que quer — a EPSON
+#: ET-16650, por exemplo, chama "A3 297 x 420 mm" ao A3, e aí o SumatraPDF não
+#: encontrava o formato pelo nome e imprimia no papel por defeito.
+IDS_PAPEL_WINDOWS = {"A4": 9, "A3": 8}
+
+#: Windows: DC_PAPERNAMES e DC_PAPERS nas capacidades do driver.
+_DC_PAPERS = 2
+_DC_PAPERNAMES = 16
+
+
+@dataclass(frozen=True)
+class GeometriaPagina:
+    """Paper size and orientation of one PDF page, rotation included."""
+
+    papel: str
+    orientacao: str
+
+    def __str__(self) -> str:
+        papel = self.papel or "tamanho próprio"
+        return f"{papel} {self.orientacao.casefold()}"
 
 
 @dataclass
@@ -121,6 +151,8 @@ class DocumentoImpressao:
     prioridade: int
     origem: str
     papel_ficheiro: str
+    orientacao_ficheiro: str
+    resumo_paginas: str
     papel: str
     orientacao: str
     quantidade: int
@@ -129,11 +161,17 @@ class DocumentoImpressao:
     paginas: str = "todas"
     selecionado: bool = True
     tamanho: int = 0
+    geometria_paginas: list[GeometriaPagina] = dataclass_field(default_factory=list)
+
+    @property
+    def segue_o_pdf(self) -> bool:
+        """True when the document prints exactly as it was saved."""
+        return self.papel == DO_PDF
 
     @property
     def papel_diferente(self) -> bool:
-        """True when the PDF page size is not the paper it will print on."""
-        if not self.papel_ficheiro or not self.papel:
+        """True when the forced paper is not the paper inside the PDF."""
+        if self.segue_o_pdf or not self.papel_ficheiro:
             return False
         return self.papel_ficheiro.upper() != self.papel.upper()
 
@@ -295,21 +333,53 @@ def imprimir_documentos(
     imprimir em A4 sem o SumatraPDF instalado).
     """
     sumatra = resolver_sumatra(session)
-    avisos: list[str] = []
+    formatos = formatos_da_impressora() if sumatra else {}
+    documentos = list(documentos)
+    enviados = 0
     for documento in documentos:
-        caminho = str(documento.caminho)
-        if not caminho:
+        if not str(documento.caminho):
             continue
         if sumatra:
-            _imprimir_com_sumatra(sumatra, documento)
-            continue
-        if documento.papel_diferente:
-            avisos.append(
-                f"{documento.nome}: está em {documento.papel_ficheiro} e vai "
-                f"para {documento.papel} sem ajuste (SumatraPDF não encontrado)."
+            _imprimir_com_sumatra(sumatra, documento, formatos)
+        else:
+            _imprimir_com_aplicacao_default(documento)
+        enviados += 1
+
+    if not enviados:
+        return []
+    if not sumatra:
+        return [
+            "SumatraPDF não encontrado: o papel e a orientação ficaram por "
+            "conta do leitor de PDF do Windows. Instale o SumatraPDF (ou "
+            "indique o caminho em Caminhos do Sistema) para o A3/A4 e a "
+            "orientação serem respeitados."
+        ]
+    return _avisos_de_papel(documentos, formatos)
+
+
+def _avisos_de_papel(
+    documentos: Sequence[DocumentoImpressao], formatos: dict[str, int]
+) -> list[str]:
+    """Warn when the printer does not list a paper the documents need."""
+    if not formatos:
+        return []
+
+    precisos = set()
+    for documento in documentos:
+        if documento.segue_o_pdf:
+            precisos.update(
+                pagina.papel for pagina in documento.geometria_paginas if pagina.papel
             )
-        _imprimir_com_aplicacao_default(documento)
-    return avisos
+        elif documento.papel != DO_PDF:
+            precisos.add(documento.papel)
+
+    em_falta = sorted(papel for papel in precisos if papel.upper() not in formatos)
+    if not em_falta:
+        return []
+    return [
+        f"A impressora predefinida não tem {' nem '.join(em_falta)} na lista "
+        "de formatos: esses documentos saem no papel que ela tiver."
+    ]
 
 
 def resolver_sumatra(session: Optional[Session]) -> Optional[str]:
@@ -341,17 +411,22 @@ def _documento(
         origem=origem,
     )
     categoria = CATEGORIAS_POR_NOME[categoria_nome]
+    paginas = analisar_paginas(caminho)
+    dominante = geometria_dominante(paginas)
     return DocumentoImpressao(
         caminho=caminho,
         nome=caminho.name,
         categoria=categoria_nome,
         prioridade=int(prioridades.get(categoria_nome, categoria.prioridade)),
         origem=origem,
-        papel_ficheiro=detetar_papel(caminho) or "",
+        papel_ficheiro=dominante.papel if dominante else "",
+        orientacao_ficheiro=dominante.orientacao if dominante else "",
+        resumo_paginas=resumo_paginas(paginas),
         papel=categoria.papel,
         orientacao=categoria.orientacao,
         quantidade=categoria.quantidade,
         tamanho=_tamanho(caminho),
+        geometria_paginas=paginas,
     )
 
 
@@ -376,26 +451,102 @@ def detetar_origem(caminho: Path) -> str:
     return "desconhecida"
 
 
+def analisar_paginas(caminho: Path) -> list[GeometriaPagina]:
+    """Return the paper and orientation of every page, rotation included.
+
+    O plano CUT-RITE traz normalmente várias folhas A3 horizontais e uma A4
+    horizontal — por isso interessa a geometria de cada página, não só da
+    primeira.
+    """
+    try:
+        from io import BytesIO
+
+        from pypdf import PdfReader
+
+        # Ler de uma vez só: na rede, muitos acessos pequenos são lentos.
+        leitor = PdfReader(BytesIO(Path(caminho).read_bytes()))
+        geometrias = []
+        for pagina in leitor.pages:
+            caixa = pagina.mediabox
+            largura = float(caixa.width)
+            altura = float(caixa.height)
+            rodada = int(getattr(pagina, "rotation", 0) or 0) % 360
+            if rodada in (90, 270):
+                largura, altura = altura, largura
+            geometrias.append(_geometria(largura, altura))
+        if geometrias:
+            return geometrias
+    except Exception as exc:  # PDFs estranhos não podem parar a lista
+        logger.debug("pypdf não leu %s (%s); uso o /MediaQBox em bruto", caminho, exc)
+
+    return _paginas_por_regex(caminho)
+
+
+def geometria_dominante(
+    paginas: Sequence[GeometriaPagina],
+) -> Optional[GeometriaPagina]:
+    """Return the geometry most pages share (what the row shows by default)."""
+    if not paginas:
+        return None
+    contagem: dict[GeometriaPagina, int] = {}
+    for pagina in paginas:
+        contagem[pagina] = contagem.get(pagina, 0) + 1
+    return max(contagem, key=lambda geometria: contagem[geometria])
+
+
+def resumo_paginas(paginas: Sequence[GeometriaPagina]) -> str:
+    """Describe the pages of one PDF, for the tooltip in the print list."""
+    if not paginas:
+        return ""
+    contagem: dict[GeometriaPagina, int] = {}
+    for pagina in paginas:
+        contagem[pagina] = contagem.get(pagina, 0) + 1
+    partes = [
+        f"{total} página{'s' if total > 1 else ''} {geometria}"
+        for geometria, total in sorted(
+            contagem.items(), key=lambda item: item[1], reverse=True
+        )
+    ]
+    return " + ".join(partes)
+
+
 def detetar_papel(caminho: Path) -> Optional[str]:
-    """Return A4/A3 read from the PDF page box, when recognisable."""
+    """Return the dominant paper (A4/A3) of one PDF, when recognisable."""
+    dominante = geometria_dominante(analisar_paginas(caminho))
+    if dominante is None or not dominante.papel:
+        return None
+    return dominante.papel
+
+
+def _geometria(largura: float, altura: float) -> GeometriaPagina:
+    orientacao = (
+        ORIENTACAO_HORIZONTAL if largura > altura else ORIENTACAO_VERTICAL
+    )
+    curto = min(largura, altura)
+    longo = max(largura, altura)
+    if _perto(curto, 595) and _perto(longo, 842):
+        return GeometriaPagina("A4", orientacao)
+    if _perto(curto, 842) and _perto(longo, 1191):
+        return GeometriaPagina("A3", orientacao)
+    return GeometriaPagina("", orientacao)
+
+
+def _paginas_por_regex(caminho: Path) -> list[GeometriaPagina]:
+    """Fallback: read the /MediaBox entries straight from the PDF bytes."""
     texto = _cabecalho_pdf(caminho)
     if not texto:
-        return None
-    encontrado = _RE_MEDIA_BOX.search(texto)
-    if not encontrado:
-        return None
-    try:
-        x1, y1, x2, y2 = (float(encontrado.group(indice)) for indice in range(1, 5))
-    except (TypeError, ValueError):
-        return None
+        return []
 
-    curto = min(abs(x2 - x1), abs(y2 - y1))
-    longo = max(abs(x2 - x1), abs(y2 - y1))
-    if _perto(curto, 595) and _perto(longo, 842):
-        return "A4"
-    if _perto(curto, 842) and _perto(longo, 1191):
-        return "A3"
-    return None
+    geometrias = []
+    for encontrado in _RE_MEDIA_BOX.finditer(texto):
+        try:
+            x1, y1, x2, y2 = (
+                float(encontrado.group(indice)) for indice in range(1, 5)
+            )
+        except (TypeError, ValueError):
+            continue
+        geometrias.append(_geometria(abs(x2 - x1), abs(y2 - y1)))
+    return geometrias
 
 
 def _perto(valor: float, alvo: float, tolerancia: float = 12.0) -> bool:
@@ -417,33 +568,173 @@ def _tamanho(caminho: Path) -> int:
         return 0
 
 
-def _imprimir_com_sumatra(sumatra: str, documento: DocumentoImpressao) -> None:
-    definicoes = [f"paper={documento.papel}"]
-    definicoes.append(
-        "landscape"
-        if documento.orientacao.casefold().startswith("h")
-        else "portrait"
-    )
-    if documento.papel_diferente:
+def definicoes_sumatra(
+    documento: DocumentoImpressao, formatos: Optional[dict[str, int]] = None
+) -> list[str]:
+    """Build the -print-settings strings SumatraPDF receives for one document.
+
+    Com "Do PDF" cada bloco de páginas com a mesma geometria é impresso à
+    parte, no papel e na orientação com que foi gravado — é assim que o plano
+    CUT-RITE sai certo, com as folhas A3 em A3 e a folha A4 em A4. Quando se
+    força um formato, vai um só comando com o papel, a orientação e ``fit``,
+    para o desenho caber na folha escolhida.
+
+    Vai sempre ``disable-auto-rotation``: por defeito o SumatraPDF roda a
+    página para "encaixar" melhor no papel e essa rotação passa por cima da
+    orientação pedida — era o que punha a folha A4 do plano na vertical.
+    """
+    extras = _extras_sumatra(documento)
+
+    if not documento.segue_o_pdf:
+        definicoes = []
+        identificador = id_papel(documento.papel, formatos)
+        if identificador is not None:
+            definicoes.append(f"paperkind={identificador}")
+        if documento.orientacao != DO_PDF:
+            definicoes.append(_orientacao_sumatra(documento.orientacao))
         definicoes.append("fit")
+        definicoes.append("disable-auto-rotation")
+        return [",".join(definicoes + extras)]
+
+    grupos = _grupos_de_paginas(documento.geometria_paginas)
+    if not grupos:
+        # Sem conseguir ler as páginas, deixa-se a rotação automática fazer o
+        # seu trabalho: é melhor do que impor uma orientação às cegas.
+        return [",".join(["shrink"] + extras)]
+
+    comandos = []
+    for intervalo, geometria in grupos:
+        definicoes = [intervalo] if intervalo else []
+        identificador = id_papel(geometria.papel, formatos)
+        if identificador is not None:
+            definicoes.append(f"paperkind={identificador}")
+        definicoes.append(_orientacao_sumatra(geometria.orientacao))
+        # "shrink" e não "noscale": mantém o tamanho original, mas encolhe o
+        # necessário se o desenho bater nas margens que a impressora não pinta.
+        definicoes.append("shrink")
+        definicoes.append("disable-auto-rotation")
+        comandos.append(",".join(definicoes + extras))
+    return comandos
+
+
+def formatos_da_impressora(impressora: Optional[str] = None) -> dict[str, int]:
+    """Return {"A4": id, "A3": id} as the default printer really names them."""
+    try:
+        import win32print
+    except ImportError:  # pragma: no cover - só existe no Windows
+        return {}
+
+    try:
+        nome_impressora = impressora or win32print.GetDefaultPrinter()
+        nomes = win32print.DeviceCapabilities(
+            nome_impressora, "", _DC_PAPERNAMES
+        ) or []
+        ids = win32print.DeviceCapabilities(nome_impressora, "", _DC_PAPERS) or []
+    except Exception as exc:  # pragma: no cover - depende da impressora
+        logger.debug("Não li os formatos da impressora: %s", exc)
+        return {}
+
+    formatos = [
+        (str(nome).strip(), int(identificador))
+        for nome, identificador in zip(nomes, ids)
+    ]
+    encontrados = {}
+    for papel, id_standard in IDS_PAPEL_WINDOWS.items():
+        identificador = _id_do_formato(formatos, papel, id_standard)
+        if identificador is not None:
+            encontrados[papel] = identificador
+    return encontrados
+
+
+def _id_do_formato(
+    formatos: Sequence[tuple[str, int]], papel: str, id_standard: int
+) -> Optional[int]:
+    """Find the printer form for A4/A3 ("A3 297 x 420 mm" also counts)."""
+    procurado = papel.casefold()
+    for nome, identificador in formatos:
+        if nome.casefold() == procurado:
+            return identificador
+
+    # Sem nome exato, aceita-se "A3 297 x 420 mm" mas nunca "A3+ 329 x 483 mm".
+    candidatos = [
+        identificador
+        for nome, identificador in formatos
+        if nome.split(" ")[0].casefold() == procurado
+    ]
+    if id_standard in candidatos:
+        return id_standard
+    return min(candidatos) if candidatos else None
+
+
+def id_papel(papel: str, formatos: Optional[dict[str, int]] = None) -> Optional[int]:
+    """Return the Windows paper number to send in ``paperkind=``."""
+    if not papel:
+        return None
+    chave = papel.upper()
+    if formatos and chave in formatos:
+        return formatos[chave]
+    return IDS_PAPEL_WINDOWS.get(chave)
+
+
+def _orientacao_sumatra(orientacao: str) -> str:
+    return "landscape" if orientacao.casefold().startswith("h") else "portrait"
+
+
+def _extras_sumatra(documento: DocumentoImpressao) -> list[str]:
+    extras = []
     if documento.duplex:
-        definicoes.append("duplex")
+        extras.append("duplex")
     if documento.cor.casefold() in {"pb", "monocromatico", "monochrome"}:
-        definicoes.append("monochrome")
+        extras.append("monochrome")
+    return extras
+
+
+def _grupos_de_paginas(
+    paginas: Sequence[GeometriaPagina],
+) -> list[tuple[str, GeometriaPagina]]:
+    """Group consecutive pages that share paper and orientation.
+
+    Devolve pares (intervalo, geometria) — o intervalo vem vazio quando o PDF
+    inteiro tem a mesma geometria, para não limitar as páginas sem necessidade.
+    """
+    if not paginas:
+        return []
+    if len(set(paginas)) == 1:
+        return [("", paginas[0])]
+
+    grupos: list[tuple[str, GeometriaPagina]] = []
+    inicio = 0
+    for indice in range(1, len(paginas) + 1):
+        if indice < len(paginas) and paginas[indice] == paginas[inicio]:
+            continue
+        primeira, ultima = inicio + 1, indice
+        intervalo = f"{primeira}" if primeira == ultima else f"{primeira}-{ultima}"
+        grupos.append((intervalo, paginas[inicio]))
+        inicio = indice
+    return grupos
+
+
+def _imprimir_com_sumatra(
+    sumatra: str,
+    documento: DocumentoImpressao,
+    formatos: Optional[dict[str, int]] = None,
+) -> None:
+    comandos = definicoes_sumatra(documento, formatos)
 
     for _ in range(max(1, int(documento.quantidade or 1))):
-        subprocess.run(
-            [
-                sumatra,
-                "-print-to-default",
-                "-silent",
-                "-exit-when-done",
-                "-print-settings",
-                ",".join(definicoes),
-                str(documento.caminho),
-            ],
-            check=False,
-        )
+        for definicoes in comandos:
+            subprocess.run(
+                [
+                    sumatra,
+                    "-print-to-default",
+                    "-silent",
+                    "-exit-when-done",
+                    "-print-settings",
+                    definicoes,
+                    str(documento.caminho),
+                ],
+                check=False,
+            )
 
 
 def _imprimir_com_aplicacao_default(documento: DocumentoImpressao) -> None:
