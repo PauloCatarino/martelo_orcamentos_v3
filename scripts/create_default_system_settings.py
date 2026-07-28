@@ -210,6 +210,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         PRODUCAO_BASE_PATH_DEFAULT,
     ),
     SystemSettingSeed("pasta_base_imorder", "Pasta Base Imorder / imos iX", "pasta", "IMOS"),
+    SystemSettingSeed(
+        "imos_pasta_raiz",
+        "iMos - Pasta raiz das encomendas (dentro de Order)",
+        "texto",
+        "IMOS",
+        "LANCA_ENCANTO",
+    ),
     SystemSettingSeed("ficheiro_imos_msg", "Ficheiro imos.msg", "ficheiro", "IMOS"),
     SystemSettingSeed("excel_traducoes_imos", "Excel traducoes IMOS", "ficheiro", "IMOS"),
     SystemSettingSeed("executavel_cut_rite", "Executavel CUT-RITE", "ficheiro", "CUT-RITE"),

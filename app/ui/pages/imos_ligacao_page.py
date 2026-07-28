@@ -15,12 +15,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from datetime import date
+
 from app.db.session import SessionLocal
 from app.services.imos_sql import (
+    IMOS_DIR_ID_ORDER,
+    IMOS_TIPO_PASTA,
     ImosConfig,
+    carregar_pasta_raiz,
     diagnosticar_ligacao,
     explicar_erro_ligacao,
+    listar_filhos,
     load_imos_config,
+    nome_pasta_ano,
+    resolver_no,
     save_imos_config,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
@@ -65,6 +73,13 @@ class ImosLigacaoPage(QWidget):
         self.save_button.clicked.connect(self.guardar)
         self.test_button = QPushButton("Testar ligação e permissões")
         self.test_button.clicked.connect(self.testar)
+        self.arvore_button = QPushButton("Ver árvore de encomendas")
+        self.arvore_button.setToolTip(
+            "Consulta apenas de leitura: mostra a pasta raiz das encomendas, a "
+            "pasta do ano atual e quantas pastas de cliente já existem lá dentro. "
+            "Nada é criado nem alterado no iMos."
+        )
+        self.arvore_button.clicked.connect(self.ver_arvore)
         self.voltar_button = QPushButton("Voltar às Configurações")
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
@@ -73,6 +88,7 @@ class ImosLigacaoPage(QWidget):
         acoes = QHBoxLayout()
         acoes.addWidget(self.save_button)
         acoes.addWidget(self.test_button)
+        acoes.addWidget(self.arvore_button)
         acoes.addStretch()
         acoes.addWidget(self.voltar_button)
 
@@ -156,6 +172,65 @@ class ImosLigacaoPage(QWidget):
             QMessageBox.information(self, "Diagnóstico iMos", texto)
         finally:
             self.test_button.setEnabled(True)
+
+    def ver_arvore(self) -> None:
+        """Mostra a raiz das encomendas e o ano atual; nunca escreve no iMos."""
+        self.arvore_button.setEnabled(False)
+        self.status_label.setText("A ler a árvore de encomendas do iMos…")
+        try:
+            cfg = self._config_formulario()
+            with SessionLocal() as session:
+                pasta_raiz = carregar_pasta_raiz(session)
+
+            raiz = resolver_no(
+                cfg,
+                parent_dir_id=IMOS_DIR_ID_ORDER,
+                nome=pasta_raiz,
+                tipo=IMOS_TIPO_PASTA,
+            )
+            if raiz is None:
+                texto = (
+                    f"A pasta raiz '{pasta_raiz}' não foi encontrada dentro de "
+                    f"'Order' (DIR_ID {IMOS_DIR_ID_ORDER}). Confirme o nome em "
+                    "Configurações > Definições do sistema (chave imos_pasta_raiz)."
+                )
+                self.status_label.setText(texto)
+                QMessageBox.warning(self, "Árvore de encomendas iMos", texto)
+                return
+
+            anos = listar_filhos(cfg, raiz.dir_id, tipo=IMOS_TIPO_PASTA)
+            nome_ano = nome_pasta_ano(date.today().year)
+            pasta_ano = next((no for no in anos if no.nome == nome_ano), None)
+
+            linhas = [
+                f"Pasta raiz: {raiz.nome} (DIR_ID {raiz.dir_id})",
+                f"Pastas de ano encontradas: {len(anos)} — "
+                + ", ".join(no.nome for no in anos),
+            ]
+            if pasta_ano is None:
+                linhas.append(
+                    f"A pasta {nome_ano} ainda não existe. Seria criada ao criar a "
+                    "primeira encomenda deste ano."
+                )
+            else:
+                clientes = listar_filhos(cfg, pasta_ano.dir_id, tipo=IMOS_TIPO_PASTA)
+                encomendas = listar_filhos(cfg, pasta_ano.dir_id, tipo=173)
+                linhas.append(
+                    f"{pasta_ano.nome} (DIR_ID {pasta_ano.dir_id}): "
+                    f"{len(clientes)} pastas de cliente e {len(encomendas)} "
+                    "encomendas soltas."
+                )
+            linhas.append("Consulta apenas de leitura. Nada foi criado nem alterado.")
+        except (ValueError, RuntimeError, OSError) as exc:
+            texto = explicar_erro_ligacao(exc)
+            self.status_label.setText(f"Leitura falhou: {texto}")
+            QMessageBox.warning(self, "Árvore de encomendas iMos", texto)
+        else:
+            texto = "\n".join(linhas)
+            self.status_label.setText(texto)
+            QMessageBox.information(self, "Árvore de encomendas iMos", texto)
+        finally:
+            self.arvore_button.setEnabled(True)
 
     def _atualizar_credenciais(self) -> None:
         enabled = not self.trusted_check.isChecked()

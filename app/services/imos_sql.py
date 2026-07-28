@@ -7,6 +7,7 @@ consiga alterar a base de dados ou qualquer tabela visível.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TypedDict
 
@@ -21,6 +22,19 @@ KEY_IMOS_USER = "imos_sql_user"
 KEY_IMOS_PASSWORD = "imos_sql_password"
 KEY_IMOS_TRUSTED = "imos_sql_trusted"
 KEY_IMOS_TRUST_CERT = "imos_sql_trust_server_certificate"
+KEY_IMOS_PASTA_RAIZ = "imos_pasta_raiz"
+
+# Árvore de encomendas do iMos (dbo.IMORDFOLDER).
+# O nó `Order` é a raiz absoluta e é único em toda a base.
+IMOS_DIR_ID_ORDER = 120
+IMOS_TIPO_RAIZ = 1000032
+IMOS_TIPO_PASTA = 1000001
+IMOS_TIPO_ENCOMENDA = 173
+
+# `IMORDFOLDER.NAME` e `PROADMIN.NAME` são ambos nvarchar(30).
+IMOS_NOME_MAX = 30
+
+DEFAULT_IMOS_PASTA_RAIZ = "LANCA_ENCANTO"
 
 
 class ImosConfig(TypedDict):
@@ -205,3 +219,184 @@ def run_imos_select(cfg: ImosConfig, query: str) -> list[dict]:
     """Executa um único SELECT; destinado às futuras consultas mapeadas iMos."""
     assert_select_only(query)
     return run_select(build_connection_string(cfg), query)
+
+
+# --------------------------------------------------------------------------
+# Leitura da árvore de encomendas (dbo.IMORDFOLDER) — exclusivamente SELECT.
+# --------------------------------------------------------------------------
+
+# Os nomes que o Martelo procura já vêm normalizados para [A-Z0-9_-], mas a
+# árvore do iMos tem nomes antigos com espaços, parênteses e pontos.
+_NOME_IMOS_RE = re.compile(r"^[A-Za-z0-9 _().\-]{1,%d}$" % IMOS_NOME_MAX)
+
+
+@dataclass(frozen=True)
+class NoImos:
+    """Um nó da árvore do iMos: pasta/projeto ou encomenda."""
+
+    dir_id: int
+    nome: str
+    tipo: int
+    parent_id: int
+
+    @property
+    def e_encomenda(self) -> bool:
+        return self.tipo == IMOS_TIPO_ENCOMENDA
+
+    @property
+    def e_pasta(self) -> bool:
+        return self.tipo == IMOS_TIPO_PASTA
+
+
+@dataclass(frozen=True)
+class NivelCaminho:
+    """Um nível do caminho pretendido; `dir_id` a None significa em falta."""
+
+    nome: str
+    tipo: int
+    dir_id: int | None = None
+
+    @property
+    def existe(self) -> bool:
+        return self.dir_id is not None
+
+
+@dataclass(frozen=True)
+class CaminhoImos:
+    """Caminho `raiz / ano / cliente / encomenda` resolvido contra o iMos."""
+
+    niveis: tuple[NivelCaminho, ...]
+
+    @property
+    def encomenda(self) -> NivelCaminho:
+        return self.niveis[-1]
+
+    @property
+    def pastas(self) -> tuple[NivelCaminho, ...]:
+        return self.niveis[:-1]
+
+    @property
+    def em_falta(self) -> tuple[NivelCaminho, ...]:
+        return tuple(nivel for nivel in self.niveis if not nivel.existe)
+
+    @property
+    def encomenda_ja_existe(self) -> bool:
+        return self.encomenda.existe
+
+    @property
+    def dir_id_pai_encomenda(self) -> int | None:
+        """DIR_ID da pasta do cliente, quando já existe."""
+        return self.niveis[-2].dir_id
+
+    def texto(self) -> str:
+        """Caminho legível para mostrar ao utilizador."""
+        return " / ".join(nivel.nome for nivel in self.niveis)
+
+
+def nome_imos_valido(nome) -> bool:
+    """Indica se o nome cabe e é aceite pela árvore do iMos."""
+    return bool(_NOME_IMOS_RE.fullmatch(str(nome or "")))
+
+
+def _literal_nome(nome) -> str:
+    """Devolve o nome como literal nvarchar, recusando o que não é válido."""
+    texto = str(nome or "")
+    if not nome_imos_valido(texto):
+        raise ValueError(
+            f"Nome inválido para o iMos: {texto!r}. São permitidos até "
+            f"{IMOS_NOME_MAX} caracteres em letras, algarismos, espaço e _ ( ) . -"
+        )
+    return "N'" + texto.replace("'", "''") + "'"
+
+
+def _no_de_linha(row: dict) -> NoImos:
+    return NoImos(
+        dir_id=int(row.get("DIR_ID") or 0),
+        nome=str(row.get("NAME") or ""),
+        tipo=int(row.get("TYPE") or 0),
+        parent_id=int(row.get("PARENT_ID") or 0),
+    )
+
+
+def listar_filhos(cfg: ImosConfig, parent_dir_id: int, *, tipo: int | None = None) -> list[NoImos]:
+    """Lista os nós diretamente abaixo de uma pasta, por ordem de nome."""
+    filtro_tipo = f" AND TYPE = {int(tipo)}" if tipo is not None else ""
+    query = (
+        "SELECT DIR_ID, NAME, TYPE, PARENT_ID FROM dbo.IMORDFOLDER WITH (NOLOCK) "
+        f"WHERE PARENT_ID = {int(parent_dir_id)}{filtro_tipo} ORDER BY NAME"
+    )
+    return [_no_de_linha(row) for row in run_imos_select(cfg, query)]
+
+
+def resolver_no(
+    cfg: ImosConfig,
+    *,
+    parent_dir_id: int,
+    nome: str,
+    tipo: int | None = None,
+) -> NoImos | None:
+    """Devolve o nó com este nome dentro do pai indicado, ou None.
+
+    A chave prática da árvore é `(PARENT_ID, NAME)`: a base não tem qualquer
+    restrição UNIQUE, mas não existe um único nome repetido dentro do mesmo pai.
+    """
+    filtro_tipo = f" AND TYPE = {int(tipo)}" if tipo is not None else ""
+    query = (
+        "SELECT TOP 1 DIR_ID, NAME, TYPE, PARENT_ID FROM dbo.IMORDFOLDER WITH (NOLOCK) "
+        f"WHERE PARENT_ID = {int(parent_dir_id)} AND NAME = {_literal_nome(nome)}"
+        f"{filtro_tipo} ORDER BY DIR_ID"
+    )
+    rows = run_imos_select(cfg, query)
+    return _no_de_linha(rows[0]) if rows else None
+
+
+def nome_pasta_ano(ano) -> str:
+    """Nome da pasta do ano civil na árvore do iMos (ex.: `ANO_2026`)."""
+    digitos = re.sub(r"\D+", "", str(ano or ""))
+    if len(digitos) == 2:
+        digitos = f"20{digitos}"
+    if len(digitos) != 4:
+        raise ValueError(f"Ano inválido para a pasta do iMos: {ano!r}.")
+    return f"ANO_{digitos}"
+
+
+def carregar_pasta_raiz(session: Session) -> str:
+    """Nome da pasta raiz da empresa dentro de `Order` (por defeito LANCA_ENCANTO)."""
+    valor = (
+        SystemSettingService(session).obter_valor(KEY_IMOS_PASTA_RAIZ, "") or ""
+    ).strip()
+    return valor or DEFAULT_IMOS_PASTA_RAIZ
+
+
+def resolver_caminho_encomenda(
+    cfg: ImosConfig,
+    *,
+    ano,
+    cliente_simplex: str,
+    nome_encomenda: str,
+    pasta_raiz: str = DEFAULT_IMOS_PASTA_RAIZ,
+) -> CaminhoImos:
+    """Resolve `Order / raiz / ANO_XXXX / cliente / encomenda` sem escrever nada.
+
+    Cada nível só é procurado quando o anterior existe: assim que um nível falta,
+    todos os seguintes ficam marcados como em falta (ainda não têm pai).
+    """
+    pedidos = (
+        (str(pasta_raiz or DEFAULT_IMOS_PASTA_RAIZ).strip(), IMOS_TIPO_PASTA),
+        (nome_pasta_ano(ano), IMOS_TIPO_PASTA),
+        (str(cliente_simplex or "").strip(), IMOS_TIPO_PASTA),
+        (str(nome_encomenda or "").strip(), IMOS_TIPO_ENCOMENDA),
+    )
+
+    niveis: list[NivelCaminho] = []
+    parent_dir_id: int | None = IMOS_DIR_ID_ORDER
+    for nome, tipo in pedidos:
+        no = (
+            resolver_no(cfg, parent_dir_id=parent_dir_id, nome=nome, tipo=tipo)
+            if parent_dir_id is not None
+            else None
+        )
+        niveis.append(NivelCaminho(nome=nome, tipo=tipo, dir_id=no.dir_id if no else None))
+        parent_dir_id = no.dir_id if no else None
+
+    return CaminhoImos(niveis=tuple(niveis))
