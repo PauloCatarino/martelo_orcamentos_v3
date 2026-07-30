@@ -2845,8 +2845,16 @@ class ProducaoPage(QWidget):
                     }
                     for p in existentes
                 ]
-        except SQLAlchemyError:
-            existentes_info = []
+        except SQLAlchemyError as error:
+            # Sem esta lista não dá para saber se a encomenda já tem obra;
+            # criar às cegas podia duplicar o processo.
+            QMessageBox.warning(
+                self,
+                "Novo Processo",
+                "Não foi possível verificar se esta encomenda já tem obra.\n\n"
+                f"{error}\n\nO processo não foi criado; tente novamente.",
+            )
+            return
 
         if existentes_info:
             self._tratar_encomenda_existente(dados, existentes_info)
@@ -2877,8 +2885,13 @@ class ProducaoPage(QWidget):
                 f"Processo não criado (falha ao criar a pasta no servidor):\n\n{error}",
             )
             return
-        except SQLAlchemyError:
+        except SQLAlchemyError as error:
             self.status_label.setText("Não foi possível criar o processo.")
+            QMessageBox.warning(
+                self,
+                "Novo Processo",
+                f"Não foi possível criar o processo:\n\n{error}",
+            )
             return
 
         self.carregar_processos(selecionar_id=processo_id)

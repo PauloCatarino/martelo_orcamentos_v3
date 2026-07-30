@@ -8,6 +8,7 @@ import unicodedata
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.domain.clientes_simplex import validar_simplex
 from app.domain.datas import normalizar_data
 from app.domain import pesquisa_texto
 from app.domain.prazos_producao import estado_prazo
@@ -462,7 +463,16 @@ def criar_processo_externo(
         else "Encomenda de Cliente"
     )
     versao_obra, versao_plano = "01", "01"
-    nome_simplex = str(dados.get("nome_cliente_simplex") or "").strip() or nome_cliente
+    # O nome abreviado vem do PHC/Streamlit e nunca do nome completo: é ele que
+    # dá o nome à pasta, ao plano CUT-RITE e à encomenda iMos.
+    nome_simplex = str(dados.get("nome_cliente_simplex") or "").strip()
+    erro_simplex = validar_simplex(
+        nome_simplex,
+        nome_cliente=nome_cliente,
+        origem="Streamlit" if source == "streamlit" else "PHC",
+    )
+    if erro_simplex:
+        raise ValueError(erro_simplex)
     ref_cliente = str(dados.get("ref_cliente") or "").strip() or None
 
     codigo_processo = codigo_processo_com_cliente(

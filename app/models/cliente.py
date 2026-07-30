@@ -23,6 +23,10 @@ class Cliente(Base):
     nome: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     nome_simplex: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    #: Destinos escolhidos no Martelo (o ``email`` acima vem do PHC e serve
+    #: para tudo). Vários endereços separados por ";".
+    email_orcamentos: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_projeto_producao: Mapped[str | None] = mapped_column(Text, nullable=True)
     telefone: Mapped[str | None] = mapped_column(String(255), nullable=True)
     telemovel: Mapped[str | None] = mapped_column(String(255), nullable=True)
     morada: Mapped[str | None] = mapped_column(Text, nullable=True)

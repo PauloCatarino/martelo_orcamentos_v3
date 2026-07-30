@@ -24,9 +24,11 @@ def test_normaliza_linha_completa() -> None:
     assert d.telemovel == "910000000"
 
 
-def test_simplex_vazio_deriva_do_nome() -> None:
-    d = normalizar_linha_phc(_linha(Simplex=None))
-    assert d.nome_simplex == "MOVEIS_SILVA"
+def test_simplex_vazio_fica_vazio_e_nao_deriva_do_nome() -> None:
+    """Sem NOME2 no PHC o Martelo não inventa: era assim que nasciam nomes
+    de pasta como ``WERNAGEN__IMOB`` (nome completo cortado)."""
+    assert normalizar_linha_phc(_linha(Simplex=None)).nome_simplex is None
+    assert normalizar_linha_phc(_linha(Simplex="   ")).nome_simplex is None
 
 
 def test_ignora_sem_num_ou_sem_nome() -> None:

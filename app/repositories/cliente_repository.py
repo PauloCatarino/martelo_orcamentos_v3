@@ -21,6 +21,8 @@ class ClienteListaResumo:
     nome_simplex: str | None
     morada: str | None
     email: str | None
+    email_orcamentos: str | None
+    email_projeto_producao: str | None
     pagina_web: str | None
     telefone: str | None
     telemovel: str | None
@@ -97,6 +99,8 @@ class ClienteRepository:
             nome_simplex=nome_simplex,
             morada=morada,
             email=email,
+            email_orcamentos=email,
+            email_projeto_producao=email,
             pagina_web=pagina_web,
             telefone=telefone,
             telemovel=telemovel,
@@ -141,6 +145,28 @@ class ClienteRepository:
         cliente.num_cliente_phc = num_cliente_phc
         cliente.info_1 = info_1
         cliente.info_2 = info_2
+        self.session.flush()
+
+        return self._to_resumo(cliente)
+
+    def atualizar_emails_envio(
+        self,
+        *,
+        id: int,
+        email_orcamentos: str | None,
+        email_projeto_producao: str | None,
+    ) -> ClienteListaResumo:
+        """Update the two Martelo-owned mailing lists (also for PHC customers).
+
+        São os únicos campos do cliente PHC que o Martelo escreve — o resto
+        continua só-leitura, vindo da sincronização.
+        """
+        cliente = self.session.get(Cliente, id)
+        if cliente is None:
+            raise ValueError("Cliente não encontrado.")
+
+        cliente.email_orcamentos = email_orcamentos
+        cliente.email_projeto_producao = email_projeto_producao
         self.session.flush()
 
         return self._to_resumo(cliente)
@@ -199,6 +225,12 @@ class ClienteRepository:
             cliente.info_1 = dados.info_1
             cliente.is_temporary = False
             cliente.source_system = "phc"
+            # Os emails de envio são escolha do Martelo: a sincronização nunca
+            # os apaga. Só semeia com o email do PHC quando ainda estão vazios.
+            if not (cliente.email_orcamentos or "").strip():
+                cliente.email_orcamentos = dados.email
+            if not (cliente.email_projeto_producao or "").strip():
+                cliente.email_projeto_producao = dados.email
 
         self.session.flush()
         return criados, atualizados
@@ -219,6 +251,8 @@ class ClienteRepository:
             nome_simplex=cliente.nome_simplex,
             morada=cliente.morada,
             email=cliente.email,
+            email_orcamentos=cliente.email_orcamentos,
+            email_projeto_producao=cliente.email_projeto_producao,
             pagina_web=cliente.pagina_web,
             telefone=cliente.telefone,
             telemovel=cliente.telemovel,

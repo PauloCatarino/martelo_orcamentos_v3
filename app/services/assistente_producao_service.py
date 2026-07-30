@@ -561,19 +561,25 @@ class AssistenteProducaoService:
         )
 
     def _email_cliente(self, processo) -> str:
-        """Email do cliente da obra, pelo nº de cliente PHC (dados do cliente)."""
+        """Email do cliente da obra, pelo nº de cliente PHC (dados do cliente).
+
+        Tudo o que sai da Produção para o cliente usa a coluna «Email envio
+        projeto produção» dos Clientes; só quando essa está vazia é que vale o
+        email geral que vem do PHC.
+        """
         num = str(getattr(processo, "num_cliente_phc", "") or "").strip()
         if not num or self.session is None:
             return ""
         try:
             from sqlalchemy import select
 
+            from app.domain.clientes_emails import emails_envio_projeto_producao
             from app.models.cliente import Cliente
 
-            email = self.session.execute(
-                select(Cliente.email).where(Cliente.num_cliente_phc == num)
+            cliente = self.session.execute(
+                select(Cliente).where(Cliente.num_cliente_phc == num)
             ).scalars().first()
-            return (email or "").strip()
+            return emails_envio_projeto_producao(cliente) if cliente else ""
         except Exception:  # noqa: BLE001 - email é acessório
             return ""
 

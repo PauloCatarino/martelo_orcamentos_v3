@@ -22,6 +22,8 @@ def _resumo(cliente_id: int, payload: dict) -> ClienteListaResumo:
         nome_simplex=payload["nome_simplex"],
         morada=payload["morada"],
         email=payload["email"],
+        email_orcamentos=payload.get("email_orcamentos"),
+        email_projeto_producao=payload.get("email_projeto_producao"),
         pagina_web=payload["pagina_web"],
         telefone=payload["telefone"],
         telemovel=payload["telemovel"],

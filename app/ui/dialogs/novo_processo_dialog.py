@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.db.session import SessionLocal
+from app.domain.clientes_simplex import normalizar_simplex, validar_simplex
 from app.services.encomendas_phc_service import query_phc_encomenda_itens
 from app.services.streamlit_sql_service import query_streamlit_encomenda_itens
 from app.ui import tema
@@ -86,6 +87,10 @@ class _OrigemTab(QWidget):
         self.pesquisar_button = QPushButton("Pesquisar")
         self.pesquisar_button.setToolTip("Pesquisar a encomenda (só leitura) e mostrar os itens")
         self.pesquisar_button.clicked.connect(self._carregar)
+        # Sem autoDefault: o Enter no campo do número só pesquisa; criar o
+        # processo tem de ser sempre um clique deliberado em "Criar Processo".
+        self.pesquisar_button.setAutoDefault(False)
+        self.pesquisar_button.setDefault(False)
 
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.setToolTip("Filtrar a lista já carregada (vários termos: espaço ou %)")
@@ -250,7 +255,10 @@ class _OrigemTab(QWidget):
             "ano": self._ano_resultado(base),
             "num_enc_phc": num_enc,
             "nome_cliente": self._valor(base, "Cliente"),
-            "nome_cliente_simplex": self._valor(base, "Cliente_Abreviado"),
+            "nome_cliente_simplex": normalizar_simplex(
+                self._valor(base, "Cliente_Abreviado")
+            )
+            or "",
             "num_cliente_phc": self._valor(base, "Num_PHC"),
             "ref_cliente": self._valor(base, "Ref_Cliente"),
             "descricao_artigos": self._descricoes("Descricao_Artigo"),
@@ -267,7 +275,10 @@ class _OrigemTab(QWidget):
             "ano": self._ano_resultado(base),
             "num_enc_phc": num_enc,
             "nome_cliente": nome_cliente,
-            "nome_cliente_simplex": self._valor(base, "Cliente_Abreviado") or nome_cliente,
+            "nome_cliente_simplex": normalizar_simplex(
+                self._valor(base, "Cliente_Abreviado")
+            )
+            or "",
             "num_cliente_phc": "",
             "ref_cliente": self._valor(base, "RefCliente"),
             "descricao_artigos": self._descricoes("Designacao"),
@@ -324,6 +335,18 @@ class NovoProcessoDialog(QDialog):
         self.tab_streamlit.dados_carregados.connect(self._refresh_ok)
         self._refresh_ok()
 
+    def keyPressEvent(self, event):  # noqa: N802 - API do Qt
+        """O Enter nunca cria o processo — só pesquisa.
+
+        O Qt propaga o Enter do campo de texto para o botão por omissão do
+        diálogo; como a pesquisa corre primeiro, o "Criar Processo" já estava
+        ativo e a obra nascia sem ninguém confirmar a lista.
+        """
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def result_data(self) -> dict | None:
         return self._result
 
@@ -346,5 +369,15 @@ class NovoProcessoDialog(QDialog):
         if not resultado.get("nome_cliente"):
             QMessageBox.warning(self, "Novo Processo", "A encomenda não tem nome de cliente.")
             return
+
+        erro_simplex = validar_simplex(
+            resultado.get("nome_cliente_simplex"),
+            nome_cliente=resultado.get("nome_cliente"),
+            origem="Streamlit" if resultado.get("source") == "streamlit" else "PHC",
+        )
+        if erro_simplex:
+            QMessageBox.warning(self, "Novo Processo", erro_simplex)
+            return
+
         self._result = resultado
         self.accept()

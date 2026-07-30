@@ -38,6 +38,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.clientes_emails import emails_envio_orcamentos
 from app.domain.export_paths import subpasta_versao
 from app.domain.custeio_linha_types import get_custeio_linha_type_label
 from app.domain.relatorio_totais import (
@@ -897,7 +898,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
         dialog = EmailOrcamentoDialog(
             self,
-            destinatario=getattr(cliente, "email", "") or "",
+            destinatario=emails_envio_orcamentos(cliente),
             cc=str(remetente_email or ""),
             assunto=construir_assunto_email(orcamento),
             corpo=construir_corpo_email(

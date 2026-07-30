@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.domain.clientes_simplex import MAX_SIMPLEX, simplex_demasiado_longo
 from app.domain.export_paths import simplificar_cliente
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
 
@@ -72,9 +73,20 @@ class ClienteTemporarioService:
         if not nome:
             raise ValueError("Indique o nome do cliente.")
 
+        # O simplex dá o nome à pasta da obra e à encomenda iMos (máx. 30
+        # caracteres com o prefixo NNNN_VV_AA_), por isso não pode ser longo.
+        nome_simplex = simplificar_cliente(data.nome_simplex, nome)
+        if simplex_demasiado_longo(nome_simplex):
+            raise ValueError(
+                f"O Simplex tem {len(nome_simplex)} caracteres (máximo "
+                f"{MAX_SIMPLEX}):\n\n{nome_simplex}\n\n"
+                "Escreva um nome abreviado mais curto — é ele que dá o nome à "
+                "pasta da obra, ao plano CUT-RITE e à encomenda iMos."
+            )
+
         return {
             "nome": nome,
-            "nome_simplex": simplificar_cliente(data.nome_simplex, nome),
+            "nome_simplex": nome_simplex,
             "morada": _limpo(data.morada),
             "email": _limpo(data.email),
             "pagina_web": _limpo(data.pagina_web),

@@ -9,6 +9,8 @@ _CAMPOS_PESQUISA = (
     "nome_simplex",
     "morada",
     "email",
+    "email_orcamentos",
+    "email_projeto_producao",
     "pagina_web",
     "telefone",
     "telemovel",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QGridLayout,
@@ -24,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.clientes_lista import filtrar_clientes
+from app.domain.clientes_simplex import validar_simplex
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
 from app.services.cliente_phc_sync_service import ClientePhcSyncService
 from app.services.cliente_temporario_service import (
@@ -44,6 +46,8 @@ class ClientesPage(QWidget):
     TABLE_HEADERS = [
         "Nome",
         "Simplex",
+        "Email envio or\u00e7amentos",
+        "Email envio projeto produ\u00e7\u00e3o",
         "Morada",
         "Email",
         "WEB",
@@ -56,6 +60,8 @@ class ClientesPage(QWidget):
     COLUMN_WIDTHS = {
         "Nome": 220,
         "Simplex": 160,
+        "Email envio or\u00e7amentos": 220,
+        "Email envio projeto produ\u00e7\u00e3o": 220,
         "Morada": 260,
         "Email": 220,
         "WEB": 220,
@@ -65,6 +71,9 @@ class ClientesPage(QWidget):
         "Info 1": 180,
         "Info 2": 180,
     }
+    #: Colunas que o Martelo escreve (as \u00fanicas edit\u00e1veis num cliente PHC).
+    COL_EMAIL_ORCAMENTOS = 2
+    COL_EMAIL_PROJETO = 3
 
     def __init__(self) -> None:
         super().__init__()
@@ -72,6 +81,7 @@ class ClientesPage(QWidget):
         self._todos: list[ClienteListaResumo] = []
         self._linhas: list[ClienteListaResumo] = []
         self._phc_todos: list[ClienteListaResumo] = []
+        self._phc_linhas: list[ClienteListaResumo] = []
         self._cliente_id: int | None = None
 
         self.cabecalho = BarraCabecalho("Clientes")
@@ -128,7 +138,11 @@ class ClientesPage(QWidget):
         form_layout = QGridLayout()
         self.ed_nome = QLineEdit()
         self.ed_simplex = QLineEdit()
-        self.ed_simplex.setPlaceholderText("Gerado do nome se vazio")
+        self.ed_simplex.setPlaceholderText("Gerado do nome se vazio (máx. 19 caracteres)")
+        self.ed_simplex.setToolTip(
+            "Nome abreviado do cliente — dá o nome à pasta da obra, ao plano "
+            "CUT-RITE e à encomenda iMos. Máximo 19 caracteres."
+        )
         self.ed_num_phc = QLineEdit()
         self.ed_telefone = QLineEdit()
         self.ed_telemovel = QLineEdit()
@@ -193,7 +207,10 @@ class ClientesPage(QWidget):
         info = QLabel(
             "Clientes PHC (oficiais). S\u00e3o criados no PHC e aqui apenas "
             "consultados (s\u00f3 leitura). Use \u00abAtualizar PHC\u00bb para "
-            "sincronizar a partir do PHC."
+            "sincronizar a partir do PHC.\n"
+            "Exce\u00e7\u00e3o: as colunas \u00abEmail envio or\u00e7amentos\u00bb e \u00abEmail envio "
+            "projeto produ\u00e7\u00e3o\u00bb s\u00e3o do Martelo \u2014 duplo-clique para editar "
+            "(v\u00e1rios endere\u00e7os separados por ;). A sincroniza\u00e7\u00e3o n\u00e3o as apaga."
         )
         info.setObjectName("pageSubtitle")
         info.setWordWrap(True)
@@ -225,6 +242,11 @@ class ClientesPage(QWidget):
         self.phc_status_label.setObjectName("clientesStatus")
 
         self.phc_table = self._nova_tabela_clientes()
+        self.phc_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
+        )
+        self.phc_table.itemChanged.connect(self._on_email_envio_alterado)
         ligar_persistencia_larguras(self.phc_table, "clientes_phc")
 
         self.phc_footer_label = QLabel("")
@@ -268,36 +290,77 @@ class ClientesPage(QWidget):
             if largura is not None:
                 table.setColumnWidth(column_index, largura)
 
-    @staticmethod
     def _povoar_tabela(
-        table: QTableWidget, clientes: list[ClienteListaResumo]
+        self,
+        table: QTableWidget,
+        clientes: list[ClienteListaResumo],
+        *,
+        emails_editaveis: bool = False,
     ) -> None:
-        table.setRowCount(len(clientes))
+        colunas_email = {self.COL_EMAIL_ORCAMENTOS, self.COL_EMAIL_PROJETO}
 
-        for row_index, cliente in enumerate(clientes):
-            values = [
-                cliente.nome,
-                cliente.nome_simplex or "",
-                cliente.morada or "",
-                cliente.email or "",
-                cliente.pagina_web or "",
-                cliente.telefone or "",
-                cliente.telemovel or "",
-                cliente.num_cliente_phc or "",
-                cliente.info_1 or "",
-                cliente.info_2 or "",
-            ]
+        table.blockSignals(True)
+        try:
+            table.setRowCount(len(clientes))
 
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                )
-                if value:
-                    item.setToolTip(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, cliente.id)
-                table.setItem(row_index, column_index, item)
+            for row_index, cliente in enumerate(clientes):
+                values = [
+                    cliente.nome,
+                    cliente.nome_simplex or "",
+                    cliente.email_orcamentos or "",
+                    cliente.email_projeto_producao or "",
+                    cliente.morada or "",
+                    cliente.email or "",
+                    cliente.pagina_web or "",
+                    cliente.telefone or "",
+                    cliente.telemovel or "",
+                    cliente.num_cliente_phc or "",
+                    cliente.info_1 or "",
+                    cliente.info_2 or "",
+                ]
+
+                for column_index, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    if value:
+                        item.setToolTip(value)
+                    if column_index == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, cliente.id)
+                    if column_index == 1:
+                        self._marcar_simplex(item, cliente)
+                    if emails_editaveis and column_index in colunas_email:
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                        item.setData(Qt.ItemDataRole.UserRole, cliente.id)
+                        if not value:
+                            item.setToolTip(
+                                "Vazio — é usado o email do cliente. "
+                                "Duplo-clique para escrever os destinos "
+                                "(vários separados por ;)."
+                            )
+                    else:
+                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    table.setItem(row_index, column_index, item)
+        finally:
+            table.blockSignals(False)
+
+    @staticmethod
+    def _marcar_simplex(item: QTableWidgetItem, cliente: ClienteListaResumo) -> None:
+        """Assinala o nome abreviado em falta ou grande demais para o iMos.
+
+        É este nome que dá origem à pasta da obra e à encomenda iMos, por isso
+        vale a pena vê-lo mal na lista antes de dar erro ao criar o processo.
+        """
+        erro = validar_simplex(cliente.nome_simplex, nome_cliente=cliente.nome)
+        if erro is None:
+            return
+
+        item.setBackground(QColor(tema.OCRE_SUAVE))
+        item.setForeground(QColor(tema.OCRE_ESCURO))
+        if not cliente.nome_simplex:
+            item.setText("(vazio no PHC)")
+        item.setToolTip(erro)
 
     def carregar(self) -> None:
         """Load temporary customers from the database."""
@@ -346,8 +409,55 @@ class ClientesPage(QWidget):
         filtrados = filtrar_clientes(
             self._phc_todos, texto=self.phc_campo_pesquisa.texto()
         )
-        self._povoar_tabela(self.phc_table, filtrados)
+        self._phc_linhas = list(filtrados)
+        self._povoar_tabela(self.phc_table, filtrados, emails_editaveis=True)
         self.phc_footer_label.setText(f"{len(filtrados)} clientes")
+
+    def _on_email_envio_alterado(self, item: QTableWidgetItem) -> None:
+        """Grava a coluna de email editada na linha do cliente PHC."""
+        coluna = item.column()
+        if coluna not in {self.COL_EMAIL_ORCAMENTOS, self.COL_EMAIL_PROJETO}:
+            return
+
+        linha = item.row()
+        if linha < 0 or linha >= len(self._phc_linhas):
+            return
+
+        resumo = self._phc_linhas[linha]
+        novo = item.text().strip() or None
+        orcamentos = resumo.email_orcamentos
+        producao = resumo.email_projeto_producao
+        if coluna == self.COL_EMAIL_ORCAMENTOS:
+            orcamentos = novo
+        else:
+            producao = novo
+
+        try:
+            with SessionLocal() as session:
+                repositorio = ClienteRepository(session)
+                atualizado = repositorio.atualizar_emails_envio(
+                    id=resumo.id,
+                    email_orcamentos=orcamentos,
+                    email_projeto_producao=producao,
+                )
+                session.commit()
+        except (SQLAlchemyError, ValueError) as erro:
+            self.phc_status_label.setText(f"Não foi possível gravar o email: {erro}")
+            self._povoar_tabela(self.phc_table, self._phc_linhas, emails_editaveis=True)
+            return
+
+        self._phc_linhas[linha] = atualizado
+        self._substituir_em_cache(atualizado)
+        self.phc_status_label.setText(
+            f"Emails de envio de {atualizado.nome} guardados."
+        )
+
+    def _substituir_em_cache(self, cliente: ClienteListaResumo) -> None:
+        """Mantém a lista completa em memória a par do que foi gravado."""
+        for indice, existente in enumerate(self._phc_todos):
+            if existente.id == cliente.id:
+                self._phc_todos[indice] = cliente
+                return
 
     def _testar_ligacao_phc(self) -> None:
         """Test the read-only PHC connection and show the dbo.CL row count."""

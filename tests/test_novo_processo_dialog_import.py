@@ -61,6 +61,73 @@ def test_novo_processo_dialog_uses_expected_services_and_controls() -> None:
     assert "setToolTip" in source
 
 
+def test_enter_nunca_cria_o_processo(monkeypatch) -> None:
+    """Enter no campo do número só pesquisa — criar exige clicar no botão."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    assert app is not None
+
+    dialog = NovoProcessoDialog()
+    dialog.tab_phc._linhas = [
+        {
+            "Ano": 2026,
+            "Cliente": "Cliente PHC",
+            "Cliente_Abreviado": "CLIENTE_PHC",
+            "Enc_No": 402,
+        }
+    ]
+    dialog.tab_phc._render()
+
+    dialog.keyPressEvent(
+        QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier)
+    )
+
+    assert dialog.result_data() is None
+    assert dialog.result() != NovoProcessoDialog.DialogCode.Accepted
+
+
+def test_criar_processo_recusa_encomenda_sem_nome_abreviado(monkeypatch) -> None:
+    """A encomenda sem nome abreviado no PHC não passa do diálogo."""
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtWidgets import QApplication
+
+    import app.ui.dialogs.novo_processo_dialog as dialog_module
+    from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    assert app is not None
+
+    avisos = []
+    monkeypatch.setattr(
+        dialog_module.QMessageBox,
+        "warning",
+        lambda *args, **_kwargs: avisos.append(args[-1]),
+    )
+
+    dialog = NovoProcessoDialog()
+    dialog.tab_phc._linhas = [
+        {
+            "Ano": 2026,
+            "Cliente": "WERNAGEN - IMOBILIARIA LDA",
+            "Cliente_Abreviado": "",
+            "Enc_No": 621,
+        }
+    ]
+    dialog.tab_phc._render()
+    dialog._on_accept()
+
+    assert dialog.result_data() is None
+    assert avisos and "nome abreviado" in avisos[-1]
+
+
 def test_origem_tab_constroi_resultado_phc_e_streamlit(monkeypatch) -> None:
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
 
@@ -140,7 +207,9 @@ def test_origem_tab_constroi_resultado_phc_e_streamlit(monkeypatch) -> None:
         "ano": "2026",
         "num_enc_phc": "_007",
         "nome_cliente": "Cliente Final",
-        "nome_cliente_simplex": "Cliente Final",
+        # Sem nome abreviado no Streamlit fica vazio (não deriva do nome
+        # completo); quem cria o processo é avisado para o preencher lá.
+        "nome_cliente_simplex": "",
         "num_cliente_phc": "",
         "ref_cliente": "REF-F",
         "descricao_artigos": "Cadeira\nArmario",

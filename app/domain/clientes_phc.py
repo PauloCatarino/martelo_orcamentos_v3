@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.domain.export_paths import simplificar_cliente
+from app.domain.clientes_simplex import normalizar_simplex
 
 
 @dataclass(frozen=True)
@@ -14,7 +14,9 @@ class DadosClientePHC:
 
     num_cliente_phc: str
     nome: str
-    nome_simplex: str
+    #: Nome abreviado (NOME2) do PHC. None quando lá está vazio — o Martelo
+    #: nunca o inventa a partir do nome completo.
+    nome_simplex: str | None
     morada: str | None
     email: str | None
     pagina_web: str | None
@@ -33,7 +35,7 @@ def normalizar_linha_phc(row: dict[str, Any]) -> DadosClientePHC | None:
     return DadosClientePHC(
         num_cliente_phc=num,
         nome=nome,
-        nome_simplex=simplificar_cliente(_ou_none(row.get("Simplex")), nome),
+        nome_simplex=normalizar_simplex(row.get("Simplex")),
         morada=_ou_none(row.get("Morada")),
         email=_ou_none(row.get("Email")),
         pagina_web=_ou_none(row.get("WEB")),

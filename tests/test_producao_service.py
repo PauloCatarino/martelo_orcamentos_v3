@@ -462,7 +462,7 @@ def test_criar_processo_externo_phc_usa_tipo_pasta_phc(session) -> None:
             "ano": 2026,
             "num_enc_phc": 402,
             "nome_cliente": "Cliente PHC",
-            "nome_cliente_simplex": "",
+            "nome_cliente_simplex": "CLIENTE_PHC",
             "data_inicio": "",
             "data_entrega": None,
         },
@@ -472,9 +472,47 @@ def test_criar_processo_externo_phc_usa_tipo_pasta_phc(session) -> None:
 
     assert processo.tipo_pasta == "Encomenda de Cliente"
     assert processo.num_enc_phc == "402"
-    assert processo.nome_cliente_simplex == "Cliente PHC"
+    assert processo.nome_cliente_simplex == "CLIENTE_PHC"
     assert processo.data_inicio is None
     assert processo.data_entrega is None
+
+
+def test_criar_processo_externo_exige_nome_abreviado(session) -> None:
+    """Sem nome abreviado não há pasta nem encomenda iMos com nome válido."""
+    from app.services.producao_service import criar_processo_externo
+
+    with pytest.raises(ValueError, match="nome abreviado"):
+        criar_processo_externo(
+            session,
+            dados={
+                "source": "phc",
+                "ano": 2026,
+                "num_enc_phc": 402,
+                "nome_cliente": "Cliente PHC",
+                "nome_cliente_simplex": "",
+            },
+            criar_pasta=False,
+            created_by_id=None,
+        )
+
+
+def test_criar_processo_externo_recusa_nome_abreviado_longo(session) -> None:
+    """Máximo 19: NNNN_VV_AA_<simplex> não pode passar dos 30 do iMos."""
+    from app.services.producao_service import criar_processo_externo
+
+    with pytest.raises(ValueError, match="caracteres"):
+        criar_processo_externo(
+            session,
+            dados={
+                "source": "phc",
+                "ano": 2026,
+                "num_enc_phc": 403,
+                "nome_cliente": "Cliente PHC",
+                "nome_cliente_simplex": "CLIENTE_COM_NOME_MUITO_GRANDE",
+            },
+            criar_pasta=False,
+            created_by_id=None,
+        )
 
 
 def test_criar_processo_externo_recusa_duplicado(session) -> None:
