@@ -8,6 +8,7 @@ essas, são escolha do Martelo e é o que este diálogo deixa mexer.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -23,6 +24,11 @@ from PySide6.QtWidgets import (
 from app.domain.clientes_simplex import validar_simplex
 from app.ui import tema
 
+LARGURA = 780
+ALTURA_MINIMA = 620
+#: Teto para a zona dos dados do cliente, para a ficha não crescer sem fim.
+ALTURA_MAX_DADOS = 640
+
 
 class ClienteDetalheDialog(QDialog):
     """Show one customer and edit only the two Martelo mailing lists."""
@@ -33,7 +39,6 @@ class ClienteDetalheDialog(QDialog):
         self.cliente = cliente
         self.setWindowTitle(f"Cliente — {cliente.nome}")
         self.setModal(True)
-        self.resize(720, 620)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -42,9 +47,13 @@ class ClienteDetalheDialog(QDialog):
         layout.addWidget(self._cabecalho())
         layout.addWidget(self._grupo_envio())
 
+        dados = self._grupo_dados()
         area = QScrollArea()
         area.setWidgetResizable(True)
-        area.setWidget(self._grupo_dados())
+        area.setWidget(dados)
+        # Abrir já com os campos todos à vista; o scroll fica só como recurso
+        # para ecrãs pequenos.
+        area.setMinimumHeight(min(dados.sizeHint().height() + 8, ALTURA_MAX_DADOS))
         layout.addWidget(area, stretch=1)
 
         self.status_label = QLabel("")
@@ -66,6 +75,16 @@ class ClienteDetalheDialog(QDialog):
 
         layout.addWidget(self.buttons)
         layout.addWidget(self.status_label)
+
+        self.resize(LARGURA, self._altura_para_mostrar_tudo())
+
+    def _altura_para_mostrar_tudo(self) -> int:
+        """Altura que mostra a ficha inteira sem passar do ecrã disponível."""
+        ecra = QGuiApplication.primaryScreen()
+        limite = (
+            int(ecra.availableGeometry().height() * 0.92) if ecra is not None else 900
+        )
+        return min(max(ALTURA_MINIMA, self.sizeHint().height()), limite)
 
     # ---- valores editados -------------------------------------------------
     def email_orcamentos(self) -> str | None:

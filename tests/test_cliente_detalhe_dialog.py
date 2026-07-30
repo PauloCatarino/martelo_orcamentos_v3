@@ -84,6 +84,19 @@ def test_houve_alteracoes_so_quando_muda(_app) -> None:
     assert dialog.houve_alteracoes() is False
 
 
+def test_ficha_abre_com_os_campos_todos_a_vista(_app) -> None:
+    """A zona dos dados abre com a altura do conteúdo (scroll só como recurso)."""
+    from PySide6.QtWidgets import QScrollArea
+
+    from app.ui.dialogs.cliente_detalhe_dialog import ALTURA_MINIMA, ClienteDetalheDialog
+
+    dialog = ClienteDetalheDialog(_cliente())
+    area = dialog.findChild(QScrollArea)
+
+    assert area.minimumHeight() >= area.widget().sizeHint().height()
+    assert dialog.height() >= ALTURA_MINIMA
+
+
 def test_ficha_avisa_quando_o_nome_abreviado_esta_mal(_app) -> None:
     from app.ui.dialogs.cliente_detalhe_dialog import ClienteDetalheDialog
 
