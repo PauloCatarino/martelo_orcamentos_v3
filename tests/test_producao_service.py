@@ -572,7 +572,9 @@ def test_criar_processo_externo_cria_pasta_e_guarda_caminho(
     def _fake_criar_pasta_versao(caminho):
         chamadas["caminho"] = caminho
 
-    monkeypatch.setattr(service_module, "caminho_versao", _fake_caminho_versao)
+    monkeypatch.setattr(
+        service_module, "caminho_versao_para_criar", _fake_caminho_versao
+    )
     monkeypatch.setattr(
         service_module,
         "criar_pasta_versao",

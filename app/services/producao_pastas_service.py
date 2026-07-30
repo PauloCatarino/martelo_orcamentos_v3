@@ -636,6 +636,71 @@ def encontrar_caminho_versao(
     return None
 
 
+def _pasta_para_criar(
+    pai: Path,
+    prefixo: str,
+    nome_calculado: str,
+    *,
+    excluir_nivel_seguinte: bool = False,
+) -> Path:
+    """Subpasta a usar: a que já existe com este prefixo, senão a calculada."""
+    candidatos = _subpastas_candidatas(
+        pai,
+        prefixo,
+        nome_calculado,
+        excluir_nivel_seguinte=excluir_nivel_seguinte,
+    )
+    return candidatos[0] if candidatos else pai / nome_calculado
+
+
+def caminho_versao_para_criar(
+    session: Session,
+    *,
+    ano: str | int,
+    tipo_pasta: Optional[str],
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    versao_plano: str | int,
+    nome_simplex: Optional[str] = None,
+    nome_cliente: Optional[str] = None,
+    ref_cliente: Optional[str] = None,
+) -> Path:
+    """Onde criar a pasta desta versão, aproveitando as pastas-pai existentes.
+
+    Sem isto, uma versão nova de uma obra cujas pastas tenham outro nome de
+    cliente (``0621_WERNAGEN__IMOB``) nascia numa árvore paralela
+    (``0621_WERNAGEN``) e a mesma encomenda ficava dividida em dois sítios.
+    A identificação é sempre pelo prefixo numérico.
+    """
+    enc = _num_enc_norm(num_enc_phc)
+    ver_obra = _two_digit(versao_obra)
+    ver_plano = _two_digit(versao_plano)
+    nome_seg1, nome_seg2, nome_seg3 = segmentos_pasta(
+        num_enc_phc,
+        versao_obra,
+        versao_plano,
+        nome_simplex=nome_simplex,
+        nome_cliente=nome_cliente,
+        ref_cliente=ref_cliente,
+    )
+
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta)
+    if not _e_pasta(root):
+        # Servidor inacessível ou ano ainda sem pastas: nome calculado.
+        return Path(
+            _normalizar_path_windows(
+                f"{_normalizar_path_windows(root)}\\{nome_seg1}\\{nome_seg2}\\{nome_seg3}"
+            )
+        )
+
+    seg1 = _pasta_para_criar(root, enc, nome_seg1, excluir_nivel_seguinte=True)
+    seg2 = _pasta_para_criar(
+        seg1, f"{enc}_{ver_obra}", nome_seg2, excluir_nivel_seguinte=True
+    )
+    seg3 = _pasta_para_criar(seg2, f"{enc}_{ver_obra}_{ver_plano}", nome_seg3)
+    return Path(_normalizar_path_windows(str(seg3)))
+
+
 def caminho_versao_de_processo_existente(
     session: Session, processo: Producao
 ) -> Optional[Path]:

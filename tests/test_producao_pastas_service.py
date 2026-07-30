@@ -17,6 +17,7 @@ from app.services.producao_pastas_service import (
     _num_enc_norm,
     _tipo_dir,
     caminho_versao_de_processo_existente,
+    caminho_versao_para_criar,
     encontrar_caminho_versao,
     listar_pastas_enc_arvore,
     segmentos_pasta,
@@ -309,6 +310,114 @@ def test_caminho_versao_de_processo_existente_devolve_none_sem_pasta(
     )
 
     assert caminho_versao_de_processo_existente(object(), processo) is None
+
+
+def test_caminho_para_criar_entra_na_arvore_que_ja_existe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Nova versão da 0621 vai para dentro de 0621_WERNAGEN__IMOB."""
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    (root / "0621_WERNAGEN__IMOB" / "0621_04_WERNAGEN" / "0621_04_01_WERNAGEN").mkdir(
+        parents=True
+    )
+
+    caminho = caminho_versao_para_criar(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="0621",
+        versao_obra="05",
+        versao_plano="01",
+        nome_simplex="WERNAGEN",
+    )
+
+    assert caminho == (
+        root / "0621_WERNAGEN__IMOB" / "0621_05_WERNAGEN" / "0621_05_01_WERNAGEN"
+    )
+
+
+def test_caminho_para_criar_reaproveita_a_versao_de_obra_existente(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Novo plano CUT-RITE fica ao lado dos outros da mesma versão de obra."""
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    (root / "1259_LINHAS_DIREITA" / "1259_01_LINHAS_DIREITA" / "1259_01_01_LINHAS_DIREITA").mkdir(
+        parents=True
+    )
+
+    caminho = caminho_versao_para_criar(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="1259",
+        versao_obra="01",
+        versao_plano="02",
+        nome_simplex="LINHAS_DIREITAS",
+    )
+
+    assert caminho == (
+        root
+        / "1259_LINHAS_DIREITA"
+        / "1259_01_LINHAS_DIREITA"
+        / "1259_01_02_LINHAS_DIREITAS"
+    )
+
+
+def test_caminho_para_criar_usa_o_nome_calculado_quando_nao_ha_nada(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    root.mkdir(parents=True)
+    # Outra encomenda parecida não pode servir de casa.
+    (root / "12599_OUTRA").mkdir()
+
+    caminho = caminho_versao_para_criar(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="1259",
+        versao_obra="01",
+        versao_plano="01",
+        nome_simplex="LINHAS_DIREITAS",
+    )
+
+    assert caminho == (
+        root
+        / "1259_LINHAS_DIREITAS"
+        / "1259_01_LINHAS_DIREITAS"
+        / "1259_01_01_LINHAS_DIREITAS"
+    )
+
+
+def test_caminho_para_criar_reaproveita_a_propria_pasta_da_versao(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Se a pasta da versão já lá está com outro nome, não se cria uma gémea."""
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    existente = (
+        root / "0621_WERNAGEN__IMOB" / "0621_01_WERNAGEN__IMOB" / "0621_01_01_WERNAGEN__IMOB"
+    )
+    existente.mkdir(parents=True)
+
+    caminho = caminho_versao_para_criar(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="0621",
+        versao_obra="01",
+        versao_plano="01",
+        nome_simplex="WERNAGEN",
+    )
+
+    assert caminho == existente
 
 
 def test_eliminar_pasta_versao_recusa_nome_inesperado_sem_rmtree(

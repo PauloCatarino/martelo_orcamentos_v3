@@ -20,8 +20,8 @@ from app.services.orcamento_encomenda_phc_service import (
     OrcamentoEncomendaPhcService,
 )
 from app.services.producao_pastas_service import (
-    caminho_versao,
     caminho_versao_de_processo,
+    caminho_versao_para_criar,
     criar_pasta_versao,
     eliminar_pasta_versao,
     listar_pastas_enc_arvore,
@@ -518,7 +518,9 @@ def criar_processo_externo(
     )
 
     if criar_pasta:
-        caminho = caminho_versao(
+        # Se a encomenda já tem pastas no servidor (criadas por outro sistema
+        # ou à mão), a obra entra nelas em vez de abrir uma árvore paralela.
+        caminho = caminho_versao_para_criar(
             session,
             ano=processo.ano,
             tipo_pasta=processo.tipo_pasta,
@@ -714,7 +716,9 @@ def criar_nova_versao(
     )
 
     if criar_pasta:
-        caminho = caminho_versao(
+        # Entra na árvore que já existe para esta encomenda (o nome do cliente
+        # nas pastas antigas nem sempre é o que está na base de dados).
+        caminho = caminho_versao_para_criar(
             session,
             ano=novo.ano,
             tipo_pasta=novo.tipo_pasta,
