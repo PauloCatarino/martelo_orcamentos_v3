@@ -74,6 +74,9 @@ def test_resolve_pastas_e_imagem(monkeypatch, worker_com_sessao, obra, tmp_path)
         worker_mod, "caminho_versao_de_processo", lambda _s, _p: pasta_obra
     )
     monkeypatch.setattr(
+        worker_mod, "caminho_versao_de_processo_existente", lambda _s, _p: pasta_obra
+    )
+    monkeypatch.setattr(
         worker_mod, "resolver_pasta_orcamento", lambda _s, **_k: pasta_orc
     )
     monkeypatch.setattr(
@@ -94,6 +97,9 @@ def test_sem_imagem_e_sem_pasta_devolve_aviso(monkeypatch, worker_com_sessao, ob
     monkeypatch.setattr(
         worker_mod, "caminho_versao_de_processo", lambda _s, _p: Path("Z:/nao/existe")
     )
+    monkeypatch.setattr(
+        worker_mod, "caminho_versao_de_processo_existente", lambda _s, _p: None
+    )
     monkeypatch.setattr(worker_mod, "resolver_pasta_orcamento", lambda _s, **_k: None)
     monkeypatch.setattr(worker_mod, "resolver_imagem_imos", lambda _s, **_k: None)
 
@@ -101,12 +107,42 @@ def test_sem_imagem_e_sem_pasta_devolve_aviso(monkeypatch, worker_com_sessao, ob
 
     assert resultado.tem_imagem is False
     assert resultado.imagem_aviso == "Sem imagem IMOS (sem pasta da obra)"
+    assert resultado.pasta_obra_existe is False
     assert resultado.pasta_orcamento == ""
+
+
+def test_pasta_da_obra_usa_a_que_existe_no_servidor(
+    monkeypatch, worker_com_sessao, obra, tmp_path
+):
+    """Obras antigas: a pasta real tem outro nome do que o calculado."""
+    real = tmp_path / "1134_01_01_JF_VIVA__ANTIGA"
+    real.mkdir()
+
+    monkeypatch.setattr(
+        worker_mod,
+        "caminho_versao_de_processo",
+        lambda _s, _p: tmp_path / "1134_01_01_JF_VIVA",
+    )
+    monkeypatch.setattr(
+        worker_mod, "caminho_versao_de_processo_existente", lambda _s, _p: real
+    )
+    monkeypatch.setattr(worker_mod, "resolver_pasta_orcamento", lambda _s, **_k: None)
+    monkeypatch.setattr(worker_mod, "resolver_imagem_imos", lambda _s, **_k: None)
+
+    resultado = _resolver(worker_com_sessao)
+
+    assert resultado.pasta_obra == str(real)
+    assert resultado.pasta_obra_existe is True
+    # Ha pasta: a pagina mostra a arvore de ficheiros em vez do aviso.
+    assert resultado.imagem_aviso == ""
 
 
 def test_imagem_apontada_mas_inexistente(monkeypatch, worker_com_sessao, obra, tmp_path):
     monkeypatch.setattr(
         worker_mod, "caminho_versao_de_processo", lambda _s, _p: tmp_path
+    )
+    monkeypatch.setattr(
+        worker_mod, "caminho_versao_de_processo_existente", lambda _s, _p: tmp_path
     )
     monkeypatch.setattr(worker_mod, "resolver_pasta_orcamento", lambda _s, **_k: None)
     monkeypatch.setattr(
@@ -126,6 +162,7 @@ def test_erro_no_servidor_nao_rebenta_e_e_reportado(
         raise OSError("servidor inacessível")
 
     monkeypatch.setattr(worker_mod, "caminho_versao_de_processo", explode)
+    monkeypatch.setattr(worker_mod, "caminho_versao_de_processo_existente", explode)
     monkeypatch.setattr(worker_mod, "resolver_pasta_orcamento", lambda _s, **_k: None)
     monkeypatch.setattr(worker_mod, "resolver_imagem_imos", explode)
 

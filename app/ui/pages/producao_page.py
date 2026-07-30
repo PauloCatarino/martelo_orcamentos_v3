@@ -91,6 +91,7 @@ from app.services.producao_v2_sync_service import (
 from app.services.producao_pastas_service import (
     arvore_pastas_processo,
     caminho_versao_de_processo,
+    caminho_versao_de_processo_existente,
     preview_conteudo_pasta,
 )
 from app.ui import tema
@@ -1937,8 +1938,10 @@ class ProducaoPage(QWidget):
                 processo_db = session.get(Producao, processo.id)
                 if processo_db is None:
                     raise ValueError("Processo de produção não encontrado.")
-                caminho = caminho_versao_de_processo(session, processo_db)
-        except (SQLAlchemyError, ValueError) as error:
+                caminho = caminho_versao_de_processo_existente(
+                    session, processo_db
+                ) or caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, OSError, ValueError) as error:
             QMessageBox.warning(self, "Preparação de Produção", str(error))
             return
 
@@ -1980,8 +1983,10 @@ class ProducaoPage(QWidget):
                 processo_db = session.get(Producao, processo.id)
                 if processo_db is None:
                     raise ValueError("Processo de produção não encontrado.")
-                caminho = caminho_versao_de_processo(session, processo_db)
-        except (SQLAlchemyError, ValueError) as error:
+                caminho = caminho_versao_de_processo_existente(
+                    session, processo_db
+                ) or caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, OSError, ValueError) as error:
             QMessageBox.warning(self, "Imprimir Documentos", str(error))
             return
 
@@ -2059,19 +2064,22 @@ class ProducaoPage(QWidget):
                 processo_db = session.get(Producao, processo.id)
                 if processo_db is None:
                     raise ValueError("Processo de producao nao encontrado.")
-                caminho = caminho_versao_de_processo(session, processo_db)
-        except (SQLAlchemyError, ValueError) as error:
+                caminho = caminho_versao_de_processo_existente(session, processo_db)
+        except (SQLAlchemyError, OSError, ValueError) as error:
             QMessageBox.warning(self, "Abrir pasta", str(error))
             return
 
-        try:
-            pasta_existe = caminho.is_dir()
-        except OSError:
-            pasta_existe = False
-        if not pasta_existe:
+        if caminho is None:
             self.status_label.setText("Pasta ainda não criada.")
             QMessageBox.warning(self, "Abrir pasta", "Pasta ainda não criada.")
             return
+
+        # A pasta encontrada no servidor pode ter outro nome (pastas antigas):
+        # mostrar no campo o caminho que foi mesmo aberto.
+        if self.pasta_obra_input.text().strip() != str(caminho):
+            self.pasta_obra_input.setText(str(caminho))
+            self.pasta_obra_input.setCursorPosition(0)
+            self.pasta_obra_input.setToolTip(str(caminho))
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
 
@@ -3041,8 +3049,16 @@ class ProducaoPage(QWidget):
         self._imagem_preview_pixmap_original = None
         self.imagem_preview.setPixmap(QPixmap())
 
-        if not resultado.imagem_path and resultado.pasta_servidor_existe:
-            pasta = resultado.pasta_servidor
+        pasta_arvore = ""
+        if resultado.pasta_servidor_existe:
+            pasta_arvore = resultado.pasta_servidor
+        elif getattr(resultado, "pasta_obra_existe", False):
+            # Obras antigas não têm pasta_servidor gravada: usar a que foi
+            # mesmo encontrada no servidor.
+            pasta_arvore = resultado.pasta_obra
+
+        if not resultado.imagem_path and pasta_arvore:
+            pasta = pasta_arvore
             self.fs_model.setRootPath(pasta)
             self.arvore_pasta.setRootIndex(self.fs_model.index(pasta))
             self.arvore_pasta.setToolTip(pasta)

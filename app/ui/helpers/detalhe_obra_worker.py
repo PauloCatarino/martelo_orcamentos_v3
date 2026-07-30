@@ -18,7 +18,10 @@ from app.db.session import SessionLocal
 from app.models.producao import Producao
 from app.services.imos_imagem_service import resolver_imagem_imos
 from app.services.orcamento_pasta_lookup_service import resolver_pasta_orcamento
-from app.services.producao_pastas_service import caminho_versao_de_processo
+from app.services.producao_pastas_service import (
+    caminho_versao_de_processo,
+    caminho_versao_de_processo_existente,
+)
 from app.services.producao_service import gerar_nome_enc_imos_ix
 
 
@@ -40,6 +43,7 @@ class DetalheObraResolvido:
     pasta_orcamento: str = ""
     pasta_servidor: str = ""
     pasta_servidor_existe: bool = False
+    pasta_obra_existe: bool = False
     erros: list[str] = field(default_factory=list)
 
     @property
@@ -84,7 +88,9 @@ class DetalheObraWorker(QObject):
                 return
 
             resultado.pasta_servidor = str(processo.pasta_servidor or "").strip()
-            resultado.pasta_obra = self._pasta_da_obra(session, processo, resultado)
+            resultado.pasta_obra, resultado.pasta_obra_existe = self._pasta_da_obra(
+                session, processo, resultado
+            )
             resultado.pasta_orcamento = self._pasta_do_orcamento(session, processo)
             caminho_imagem = self._caminho_imagem(session, processo, resultado)
 
@@ -95,19 +101,28 @@ class DetalheObraWorker(QObject):
             resultado.imagem, resultado.imagem_aviso = self._carregar_imagem(
                 Path(caminho_imagem)
             )
-        elif resultado.pasta_servidor_existe:
+        elif resultado.pasta_servidor_existe or resultado.pasta_obra_existe:
             # Sem imagem, mas há pasta: a página mostra a árvore de ficheiros.
             resultado.imagem_aviso = ""
         else:
             resultado.imagem_aviso = "Sem imagem IMOS (sem pasta da obra)"
 
     @staticmethod
-    def _pasta_da_obra(session, processo, resultado) -> str:
+    def _pasta_da_obra(session, processo, resultado) -> tuple[str, bool]:
+        """(caminho, existe) — prefere a pasta que existe mesmo no servidor.
+
+        Em obras antigas o nome do cliente na pasta difere do que está na base
+        de dados (truncado ou com sufixo), por isso o caminho calculado pode não
+        existir; nesse caso mostramos a pasta encontrada no servidor.
+        """
         try:
-            return str(caminho_versao_de_processo(session, processo))
+            encontrada = caminho_versao_de_processo_existente(session, processo)
+            if encontrada is not None:
+                return str(encontrada), True
+            return str(caminho_versao_de_processo(session, processo)), False
         except Exception as erro:  # noqa: BLE001 - caminho é informativo
             resultado.erros.append(f"pasta da obra: {erro}")
-            return str(processo.pasta_servidor or "")
+            return str(processo.pasta_servidor or ""), False
 
     @staticmethod
     def _pasta_do_orcamento(session, processo) -> str:

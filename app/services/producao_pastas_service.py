@@ -526,6 +526,147 @@ def caminho_versao_de_processo(session: Session, processo: Producao) -> Path:
     )
 
 
+def _e_pasta(caminho: Path) -> bool:
+    try:
+        return caminho.is_dir()
+    except OSError:
+        return False
+
+
+def _nome_ja_e_do_nivel_seguinte(nome: str, prefixo: str) -> bool:
+    """True quando o nome ja traz a versao do nivel seguinte.
+
+    Ex.: ao procurar a pasta da versao de obra ``1259_01`` o nome
+    ``1259_01_01_LINHAS_DIREITA`` (que e a versao de plano) tambem comeca pelo
+    prefixo; este teste deixa-o de fora.
+    """
+    padrao = rf"^{re.escape(prefixo)}{_SEP_PATTERN}\d{{2}}(?:{_SEP_PATTERN}|$)"
+    return re.match(padrao, str(nome or ""), re.IGNORECASE) is not None
+
+
+def _subpastas_candidatas(
+    pasta: Path,
+    prefixo: str,
+    nome_esperado: str,
+    *,
+    excluir_nivel_seguinte: bool = False,
+) -> list[Path]:
+    """Subpastas cujo nome comeca pelo prefixo numerico da obra.
+
+    O nome do cliente gravado na pasta nem sempre coincide com o da base de
+    dados (pastas criadas pelo V2, nomes truncados ou com sufixo, como
+    ``0621_WERNAGEN__IMOB``). O que identifica a obra com seguranca e o prefixo
+    numerico; a pasta com o nome exatamente igual ao calculado vem primeiro.
+    """
+    try:
+        filhos = [p for p in pasta.iterdir() if p.is_dir()]
+    except OSError:
+        return []
+
+    candidatos = [p for p in filhos if _folder_name_matches_prefix(p.name, prefixo)]
+    if excluir_nivel_seguinte:
+        candidatos = [
+            p for p in candidatos if not _nome_ja_e_do_nivel_seguinte(p.name, prefixo)
+        ]
+
+    esperado = str(nome_esperado or "").casefold()
+    return sorted(
+        candidatos,
+        key=lambda p: (0 if p.name.casefold() == esperado else 1, p.name.casefold()),
+    )
+
+
+def encontrar_caminho_versao(
+    session: Session,
+    *,
+    ano: str | int,
+    tipo_pasta: Optional[str],
+    num_enc_phc: str | int,
+    versao_obra: str | int,
+    versao_plano: str | int,
+    nome_simplex: Optional[str] = None,
+    nome_cliente: Optional[str] = None,
+    ref_cliente: Optional[str] = None,
+) -> Optional[Path]:
+    """Devolve a pasta REAL desta versao no servidor, ou None se nao existir.
+
+    Tenta primeiro o caminho calculado a partir da base de dados e, se esse nao
+    existir, procura no servidor pelo prefixo numerico (encomenda / versao de
+    obra / versao de plano). Assim tambem encontra as pastas antigas onde o
+    nome do cliente difere do que esta guardado.
+    """
+    esperado = caminho_versao(
+        session,
+        ano=ano,
+        tipo_pasta=tipo_pasta,
+        num_enc_phc=num_enc_phc,
+        versao_obra=versao_obra,
+        versao_plano=versao_plano,
+        nome_simplex=nome_simplex,
+        nome_cliente=nome_cliente,
+        ref_cliente=ref_cliente,
+    )
+    if _e_pasta(esperado):
+        return esperado
+
+    enc = _num_enc_norm(num_enc_phc)
+    ver_obra = _two_digit(versao_obra)
+    ver_plano = _two_digit(versao_plano)
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta)
+    if not _e_pasta(root):
+        return None
+
+    nome_seg1, nome_seg2, nome_seg3 = segmentos_pasta(
+        num_enc_phc,
+        versao_obra,
+        versao_plano,
+        nome_simplex=nome_simplex,
+        nome_cliente=nome_cliente,
+        ref_cliente=ref_cliente,
+    )
+
+    for seg1 in _subpastas_candidatas(root, enc, nome_seg1, excluir_nivel_seguinte=True):
+        prefixo_seg2 = f"{enc}_{ver_obra}"
+        for seg2 in _subpastas_candidatas(
+            seg1, prefixo_seg2, nome_seg2, excluir_nivel_seguinte=True
+        ):
+            prefixo_seg3 = f"{enc}_{ver_obra}_{ver_plano}"
+            for seg3 in _subpastas_candidatas(seg2, prefixo_seg3, nome_seg3):
+                return seg3
+    return None
+
+
+def caminho_versao_de_processo_existente(
+    session: Session, processo: Producao
+) -> Optional[Path]:
+    """Pasta desta obra tal como existe no servidor (None quando nao existe).
+
+    Ordem: caminho calculado -> ``pasta_servidor`` gravada -> procura pelo
+    prefixo numerico. So a ultima toca no servidor a listar pastas.
+    """
+    esperado = caminho_versao_de_processo(session, processo)
+    if _e_pasta(esperado):
+        return esperado
+
+    guardada = str(getattr(processo, "pasta_servidor", "") or "").strip()
+    if guardada:
+        caminho_guardado = Path(_normalizar_path_windows(guardada))
+        if _e_pasta(caminho_guardado):
+            return caminho_guardado
+
+    return encontrar_caminho_versao(
+        session,
+        ano=processo.ano,
+        tipo_pasta=processo.tipo_pasta,
+        num_enc_phc=processo.num_enc_phc,
+        versao_obra=processo.versao_obra,
+        versao_plano=processo.versao_plano,
+        nome_simplex=processo.nome_cliente_simplex,
+        nome_cliente=processo.nome_cliente,
+        ref_cliente=processo.ref_cliente,
+    )
+
+
 def criar_pasta_versao(caminho: Path) -> Path:
     try:
         caminho.mkdir(parents=True, exist_ok=True)

@@ -20,15 +20,26 @@ from app.domain.ocorrencia_anexos import (
 )
 from app.models.producao import Producao
 from app.services.producao_ocorrencias_service import eliminar_anexo, registar_anexo
-from app.services.producao_pastas_service import caminho_versao_de_processo
+from app.services.producao_pastas_service import (
+    caminho_versao_de_processo,
+    caminho_versao_de_processo_existente,
+)
 
 
 def resolver_pasta_obra(session: Session, processo: Producao) -> str | None:
     """Folder of this obra on the server — None when it cannot be resolved.
 
-    Usa o caminho já gravado em ``pasta_servidor`` quando existe (é o que o
-    utilizador vê no menu Produção) e só recalcula quando falta.
+    Prefere a pasta que existe mesmo no servidor (em obras antigas o nome do
+    cliente na pasta difere do que está na base de dados) e só depois cai no
+    caminho gravado em ``pasta_servidor`` ou no calculado.
     """
+    try:
+        encontrada = caminho_versao_de_processo_existente(session, processo)
+    except (SQLAlchemyError, OSError, ValueError):
+        encontrada = None
+    if encontrada is not None:
+        return str(encontrada)
+
     guardada = str(getattr(processo, "pasta_servidor", "") or "").strip()
     if guardada:
         return guardada

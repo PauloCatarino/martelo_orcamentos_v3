@@ -11,13 +11,27 @@ from app.services.producao_service import (
 from app.services.producao_pastas_service import (
     PRODUCAO_BASE_PATH_DEFAULT,
     _folder_name_matches_prefix,
+    _nome_ja_e_do_nivel_seguinte,
     _norm_enc,
     _normalizar_path_windows,
     _num_enc_norm,
     _tipo_dir,
+    caminho_versao_de_processo_existente,
+    encontrar_caminho_versao,
     listar_pastas_enc_arvore,
     segmentos_pasta,
 )
+
+
+def _usar_base(monkeypatch, base) -> None:
+    """Faz o servico ler as pastas de teste em vez do servidor real."""
+    import app.services.producao_pastas_service as pastas_module
+
+    monkeypatch.setattr(
+        pastas_module,
+        "_resolve_base_dir",
+        lambda _session, _base=None: str(base),
+    )
 
 
 def test_norm_enc_formata_phc_e_cliente_final() -> None:
@@ -124,6 +138,177 @@ def test_listar_pastas_enc_arvore_lista_niveis_do_servidor(tmp_path) -> None:
             ]
         }
     }
+
+
+def test_nome_ja_e_do_nivel_seguinte_separa_versao_de_obra_e_de_plano() -> None:
+    assert _nome_ja_e_do_nivel_seguinte("1259_01_01_LINHAS", "1259_01") is True
+    assert _nome_ja_e_do_nivel_seguinte("1259_01_LINHAS", "1259_01") is False
+    assert _nome_ja_e_do_nivel_seguinte("0621_04_WERNAGEN", "0621_04") is False
+
+
+def test_encontrar_caminho_versao_usa_o_caminho_calculado_quando_existe(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _usar_base(monkeypatch, tmp_path)
+    esperado = (
+        tmp_path
+        / "2026"
+        / "Encomenda de Cliente"
+        / "1058_JF_VIVA"
+        / "1058_01_JF_VIVA"
+        / "1058_01_01_JF_VIVA"
+    )
+    esperado.mkdir(parents=True)
+
+    encontrado = encontrar_caminho_versao(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="1058",
+        versao_obra="01",
+        versao_plano="01",
+        nome_simplex="JF_VIVA",
+    )
+
+    assert encontrado == esperado
+
+
+def test_encontrar_caminho_versao_aceita_sufixo_no_nome_do_cliente(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Pastas antigas: seg1 tem sufixo (0621_WERNAGEN__IMOB) e seg2/seg3 nao."""
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    real = (
+        root
+        / "0621_WERNAGEN__IMOB"
+        / "0621_04_WERNAGEN"
+        / "0621_04_01_WERNAGEN"
+    )
+    real.mkdir(parents=True)
+    # Pasta com o nome exato calculado, mas vazia: nao pode "ganhar".
+    (root / "0621_WERNAGEN").mkdir()
+
+    encontrado = encontrar_caminho_versao(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="0621",
+        versao_obra="04",
+        versao_plano="01",
+        nome_simplex="WERNAGEN",
+    )
+
+    assert encontrado == real
+
+
+def test_encontrar_caminho_versao_aceita_nome_de_cliente_truncado(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _usar_base(monkeypatch, tmp_path)
+    real = (
+        tmp_path
+        / "2026"
+        / "Encomenda de Cliente"
+        / "1259_LINHAS_DIREITA"
+        / "1259_01_LINHAS_DIREITA"
+        / "1259_01_01_LINHAS_DIREITA"
+    )
+    real.mkdir(parents=True)
+
+    encontrado = encontrar_caminho_versao(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="1259",
+        versao_obra="01",
+        versao_plano="01",
+        nome_simplex="LINHAS_DIREITAS",
+    )
+
+    assert encontrado == real
+
+
+def test_encontrar_caminho_versao_nao_confunde_versoes_nem_outras_obras(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _usar_base(monkeypatch, tmp_path)
+    root = tmp_path / "2026" / "Encomenda de Cliente"
+    # Outra versao de obra e outra encomenda parecida.
+    (root / "1259_LINHAS" / "1259_02_LINHAS" / "1259_02_01_LINHAS").mkdir(parents=True)
+    (root / "12599_OUTRA" / "12599_01_OUTRA" / "12599_01_01_OUTRA").mkdir(parents=True)
+
+    encontrado = encontrar_caminho_versao(
+        object(),
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="1259",
+        versao_obra="01",
+        versao_plano="01",
+        nome_simplex="LINHAS",
+    )
+
+    assert encontrado is None
+
+
+def test_caminho_versao_de_processo_existente_encontra_pasta_com_outro_nome(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    _usar_base(monkeypatch, tmp_path)
+    real = (
+        tmp_path
+        / "2026"
+        / "Encomenda de Cliente"
+        / "0621_WERNAGEN__IMOB"
+        / "0621_04_WERNAGEN"
+        / "0621_04_01_WERNAGEN"
+    )
+    real.mkdir(parents=True)
+
+    processo = SimpleNamespace(
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="0621",
+        versao_obra="04",
+        versao_plano="01",
+        nome_cliente_simplex="WERNAGEN",
+        nome_cliente="WERNAGEN - IMOBILIARIA LDA",
+        ref_cliente="",
+        pasta_servidor=None,
+    )
+
+    assert caminho_versao_de_processo_existente(object(), processo) == real
+
+
+def test_caminho_versao_de_processo_existente_devolve_none_sem_pasta(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from types import SimpleNamespace
+
+    _usar_base(monkeypatch, tmp_path)
+    (tmp_path / "2026" / "Encomenda de Cliente").mkdir(parents=True)
+
+    processo = SimpleNamespace(
+        ano="2026",
+        tipo_pasta="Encomenda de Cliente",
+        num_enc_phc="0621",
+        versao_obra="09",
+        versao_plano="01",
+        nome_cliente_simplex="WERNAGEN",
+        nome_cliente="WERNAGEN - IMOBILIARIA LDA",
+        ref_cliente="",
+        pasta_servidor="",
+    )
+
+    assert caminho_versao_de_processo_existente(object(), processo) is None
 
 
 def test_eliminar_pasta_versao_recusa_nome_inesperado_sem_rmtree(
