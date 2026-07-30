@@ -25,7 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.clientes_lista import filtrar_clientes
-from app.domain.clientes_simplex import validar_simplex
+from app.domain.clientes_simplex import simplex_demasiado_longo, validar_simplex
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
 from app.services.cliente_phc_sync_service import ClientePhcSyncService
 from app.services.cliente_temporario_service import (
@@ -35,9 +35,11 @@ from app.services.cliente_temporario_service import (
 )
 from app.services import phc_sql
 from app.ui import tema
+from app.ui.dialogs.cliente_detalhe_dialog import ClienteDetalheDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.realce_rato_delegate import RealceRatoDelegate
 
 
 class ClientesPage(QWidget):
@@ -181,6 +183,7 @@ class ClientesPage(QWidget):
 
         self.table = self._nova_tabela_clientes()
         self.table.itemSelectionChanged.connect(self._on_selecao)
+        self.table.itemDoubleClicked.connect(self._abrir_ficha_temporario)
         ligar_persistencia_larguras(self.table, "clientes_temporarios")
 
         self.footer_label = QLabel("")
@@ -208,9 +211,9 @@ class ClientesPage(QWidget):
             "Clientes PHC (oficiais). S\u00e3o criados no PHC e aqui apenas "
             "consultados (s\u00f3 leitura). Use \u00abAtualizar PHC\u00bb para "
             "sincronizar a partir do PHC.\n"
-            "Exce\u00e7\u00e3o: as colunas \u00abEmail envio or\u00e7amentos\u00bb e \u00abEmail envio "
-            "projeto produ\u00e7\u00e3o\u00bb s\u00e3o do Martelo \u2014 duplo-clique para editar "
-            "(v\u00e1rios endere\u00e7os separados por ;). A sincroniza\u00e7\u00e3o n\u00e3o as apaga."
+            "Duplo-clique numa linha abre a ficha do cliente, onde se editam "
+            "os \u00abEmail envio or\u00e7amentos\u00bb e \u00abEmail envio projeto produ\u00e7\u00e3o\u00bb \u2014 "
+            "s\u00e3o do Martelo e a sincroniza\u00e7\u00e3o n\u00e3o os apaga."
         )
         info.setObjectName("pageSubtitle")
         info.setWordWrap(True)
@@ -242,11 +245,7 @@ class ClientesPage(QWidget):
         self.phc_status_label.setObjectName("clientesStatus")
 
         self.phc_table = self._nova_tabela_clientes()
-        self.phc_table.setEditTriggers(
-            QTableWidget.EditTrigger.DoubleClicked
-            | QTableWidget.EditTrigger.EditKeyPressed
-        )
-        self.phc_table.itemChanged.connect(self._on_email_envio_alterado)
+        self.phc_table.itemDoubleClicked.connect(self._abrir_ficha_phc)
         ligar_persistencia_larguras(self.phc_table, "clientes_phc")
 
         self.phc_footer_label = QLabel("")
@@ -274,6 +273,12 @@ class ClientesPage(QWidget):
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Realce da célula sob o rato: castanho escuro com texto branco, para
+        # não se perder a linha de vista numa lista com 12 colunas.
+        table.setMouseTracking(True)
+        table.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        table.setItemDelegate(RealceRatoDelegate(table))
+        table.setToolTip("Duplo-clique numa linha para abrir a ficha do cliente")
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
@@ -294,8 +299,6 @@ class ClientesPage(QWidget):
         self,
         table: QTableWidget,
         clientes: list[ClienteListaResumo],
-        *,
-        emails_editaveis: bool = False,
     ) -> None:
         colunas_email = {self.COL_EMAIL_ORCAMENTOS, self.COL_EMAIL_PROJETO}
 
@@ -330,17 +333,13 @@ class ClientesPage(QWidget):
                         item.setData(Qt.ItemDataRole.UserRole, cliente.id)
                     if column_index == 1:
                         self._marcar_simplex(item, cliente)
-                    if emails_editaveis and column_index in colunas_email:
-                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                        item.setData(Qt.ItemDataRole.UserRole, cliente.id)
-                        if not value:
-                            item.setToolTip(
-                                "Vazio — é usado o email do cliente. "
-                                "Duplo-clique para escrever os destinos "
-                                "(vários separados por ;)."
-                            )
-                    else:
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    if column_index in colunas_email and not value:
+                        item.setToolTip(
+                            "Vazio — é usado o email do cliente.\n"
+                            "Duplo-clique na linha para escrever os destinos "
+                            "(vários separados por ;)."
+                        )
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     table.setItem(row_index, column_index, item)
         finally:
             table.blockSignals(False)
@@ -351,14 +350,18 @@ class ClientesPage(QWidget):
 
         É este nome que dá origem à pasta da obra e à encomenda iMos, por isso
         vale a pena vê-lo mal na lista antes de dar erro ao criar o processo.
+        Vermelho = passa dos 19 caracteres (o iMos recusa); ocre = falta no PHC.
         """
         erro = validar_simplex(cliente.nome_simplex, nome_cliente=cliente.nome)
         if erro is None:
             return
 
-        item.setBackground(QColor(tema.OCRE_SUAVE))
-        item.setForeground(QColor(tema.OCRE_ESCURO))
-        if not cliente.nome_simplex:
+        if simplex_demasiado_longo(cliente.nome_simplex):
+            item.setBackground(QColor(tema.VERMELHO_SUAVE))
+            item.setForeground(QColor(tema.VERMELHO_ESCURO))
+        else:
+            item.setBackground(QColor(tema.OCRE_SUAVE))
+            item.setForeground(QColor(tema.OCRE_ESCURO))
             item.setText("(vazio no PHC)")
         item.setToolTip(erro)
 
@@ -410,54 +413,57 @@ class ClientesPage(QWidget):
             self._phc_todos, texto=self.phc_campo_pesquisa.texto()
         )
         self._phc_linhas = list(filtrados)
-        self._povoar_tabela(self.phc_table, filtrados, emails_editaveis=True)
+        self._povoar_tabela(self.phc_table, filtrados)
         self.phc_footer_label.setText(f"{len(filtrados)} clientes")
 
-    def _on_email_envio_alterado(self, item: QTableWidgetItem) -> None:
-        """Grava a coluna de email editada na linha do cliente PHC."""
-        coluna = item.column()
-        if coluna not in {self.COL_EMAIL_ORCAMENTOS, self.COL_EMAIL_PROJETO}:
-            return
-
+    def _abrir_ficha_phc(self, item: QTableWidgetItem) -> None:
+        """Abre a ficha do cliente PHC da linha em que se fez duplo-clique."""
         linha = item.row()
-        if linha < 0 or linha >= len(self._phc_linhas):
-            return
+        if 0 <= linha < len(self._phc_linhas):
+            self._abrir_ficha(self._phc_linhas[linha], self.phc_status_label)
 
-        resumo = self._phc_linhas[linha]
-        novo = item.text().strip() or None
-        orcamentos = resumo.email_orcamentos
-        producao = resumo.email_projeto_producao
-        if coluna == self.COL_EMAIL_ORCAMENTOS:
-            orcamentos = novo
-        else:
-            producao = novo
+    def _abrir_ficha_temporario(self, item: QTableWidgetItem) -> None:
+        """Abre a ficha do cliente temporário (os dados editam-se no form)."""
+        linha = item.row()
+        if 0 <= linha < len(self._linhas):
+            self._abrir_ficha(self._linhas[linha], self.status_label)
+
+    def _abrir_ficha(self, resumo: ClienteListaResumo, status: QLabel) -> None:
+        dialog = ClienteDetalheDialog(resumo, self)
+        if not dialog.exec():
+            return
+        if not dialog.houve_alteracoes():
+            return
 
         try:
             with SessionLocal() as session:
-                repositorio = ClienteRepository(session)
-                atualizado = repositorio.atualizar_emails_envio(
+                atualizado = ClienteRepository(session).atualizar_emails_envio(
                     id=resumo.id,
-                    email_orcamentos=orcamentos,
-                    email_projeto_producao=producao,
+                    email_orcamentos=dialog.email_orcamentos(),
+                    email_projeto_producao=dialog.email_projeto_producao(),
                 )
                 session.commit()
         except (SQLAlchemyError, ValueError) as erro:
-            self.phc_status_label.setText(f"Não foi possível gravar o email: {erro}")
-            self._povoar_tabela(self.phc_table, self._phc_linhas, emails_editaveis=True)
+            QMessageBox.warning(
+                self,
+                "Cliente",
+                f"Não foi possível guardar os emails de envio:\n\n{erro}",
+            )
             return
 
-        self._phc_linhas[linha] = atualizado
         self._substituir_em_cache(atualizado)
-        self.phc_status_label.setText(
-            f"Emails de envio de {atualizado.nome} guardados."
-        )
+        status.setText(f"Emails de envio de {atualizado.nome} guardados.")
 
     def _substituir_em_cache(self, cliente: ClienteListaResumo) -> None:
-        """Mantém a lista completa em memória a par do que foi gravado."""
-        for indice, existente in enumerate(self._phc_todos):
-            if existente.id == cliente.id:
-                self._phc_todos[indice] = cliente
-                return
+        """Atualiza as listas em memória e volta a desenhar o que está visível."""
+        for cache in (self._phc_todos, self._todos):
+            for indice, existente in enumerate(cache):
+                if existente.id == cliente.id:
+                    cache[indice] = cliente
+                    break
+
+        self._render()
+        self._render_phc()
 
     def _testar_ligacao_phc(self) -> None:
         """Test the read-only PHC connection and show the dbo.CL row count."""

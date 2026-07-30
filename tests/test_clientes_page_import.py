@@ -18,7 +18,30 @@ def test_separador_phc_sem_texto_desatualizado() -> None:
     assert "Atualizar PHC" in fonte
 
 
-def test_colunas_de_email_de_envio_existem_e_sao_as_editaveis() -> None:
+def test_duplo_clique_abre_a_ficha_do_cliente() -> None:
+    import inspect
+
+    from app.ui.pages.clientes_page import ClientesPage
+
+    fonte = inspect.getsource(ClientesPage)
+    assert "ClienteDetalheDialog" in fonte
+    assert "itemDoubleClicked.connect(self._abrir_ficha_phc)" in fonte
+    assert "itemDoubleClicked.connect(self._abrir_ficha_temporario)" in fonte
+    # A edição direta na célula foi substituída pela ficha.
+    assert "EditTrigger.DoubleClicked" not in fonte
+
+
+def test_realce_do_rato_ligado_nas_listas() -> None:
+    import inspect
+
+    from app.ui.pages.clientes_page import ClientesPage
+
+    fonte = inspect.getsource(ClientesPage._nova_tabela_clientes)
+    assert "RealceRatoDelegate" in fonte
+    assert "setMouseTracking(True)" in fonte
+
+
+def test_colunas_de_email_de_envio_existem() -> None:
     from app.ui.pages.clientes_page import ClientesPage
 
     cabecalhos = ClientesPage.TABLE_HEADERS
