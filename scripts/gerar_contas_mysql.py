@@ -61,6 +61,58 @@ class ContaGerada:
     admin: bool
 
 
+def settings_base() -> str:
+    from app.config.settings import settings
+
+    return settings.DB_NAME
+
+
+def aplicar_na_base(contas: list[ContaGerada], *, base: str, repor: bool) -> int:
+    """Chama os procedimentos direto, sem as passwords passarem pelo Workbench.
+
+    Pede as credenciais de um administrador na hora -- nao ficam em ficheiro
+    nenhum. E' o unico caminho em que as passwords nao aparecem no ecra: o
+    painel Output do Workbench escreve o comando completo de cada CALL.
+    """
+    import getpass
+
+    from sqlalchemy import create_engine, text
+
+    from app.config.settings import settings
+
+    print("")
+    print(f"Para aplicar em {base} sao precisas credenciais de administrador")
+    print("(a conta 'admin' do Martelo, ou o root).")
+    utilizador = input("  utilizador: ").strip()
+    if not utilizador:
+        raise SystemExit("[ERRO] sem utilizador nao ha' como aplicar.")
+    password = getpass.getpass("  password: ")
+
+    url = settings.database_url_para(utilizador, password)
+    url = url.replace(f"/{settings.DB_NAME}?", f"/{base}?")
+    engine = create_engine(url)
+
+    procedimento = "martelo_repor_password" if repor else "martelo_criar_utilizador"
+    feitas = 0
+    with engine.begin() as ligacao:
+        for conta in contas:
+            if repor:
+                sql = text(f"CALL {procedimento}(:nome, :password)")
+                parametros = {"nome": conta.username, "password": conta.password}
+            else:
+                sql = text(f"CALL {procedimento}(:nome, :password, :admin)")
+                parametros = {
+                    "nome": conta.username,
+                    "password": conta.password,
+                    "admin": conta.admin,
+                }
+            ligacao.execute(sql, parametros)
+            feitas += 1
+            print(f"  {conta.username}: ok")
+    engine.dispose()
+    return feitas
+
+
 def criar_engine_para_base(nome_base: str):
     """Engine para outra base, com as credenciais do ``.env``.
 
@@ -200,6 +252,15 @@ def main() -> int:
         default="",
         help="nomes a deixar de fora, separados por virgula (ex.: paulo,admin)",
     )
+    parser.add_argument(
+        "--aplicar",
+        action="store_true",
+        # Sem isto, o caminho e' passar pelo Workbench -- e o Workbench escreve
+        # no painel Output o comando completo de cada conta, password incluida.
+        # Basta um print para as expor todas. Aplicadas daqui, as passwords so'
+        # existem no ficheiro .txt.
+        help="aplicar direto na base (pede credenciais de admin) em vez de gerar SQL",
+    )
     args = parser.parse_args()
 
     if args.base:
@@ -230,9 +291,22 @@ def main() -> int:
 
     pasta = Path(args.pasta)
     pasta.mkdir(parents=True, exist_ok=True)
-    caminho_sql = pasta / "contas_martelo.sql"
     caminho_txt = pasta / "contas_martelo.txt"
 
+    if args.aplicar:
+        base = args.base or settings_base()
+        aplicadas = aplicar_na_base(contas, base=base, repor=args.repor)
+        caminho_txt.write_text(montar_lista(contas), encoding="utf-8")
+        print("")
+        print(f"{aplicadas} conta(s) aplicadas direto em {base}.")
+        print(f"  passwords -> {caminho_txt}")
+        print("")
+        print("As passwords nao passaram por lado nenhum a nao ser este")
+        print("ficheiro: distribua e apague.")
+        _avisar_se_o_git_os_ve(caminho_txt)
+        return 0
+
+    caminho_sql = pasta / "contas_martelo.sql"
     caminho_sql.write_text(montar_sql(contas, repor=args.repor), encoding="utf-8")
     caminho_txt.write_text(montar_lista(contas), encoding="utf-8")
 
