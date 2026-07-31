@@ -320,6 +320,10 @@ class ImosEncomendaDialog(QDialog):
                     aviso = "editável"
                 else:
                     aviso = ""
+                # Os caracteres trocados/invulgares são o aviso mais importante:
+                # vêm primeiro, sem esconder o que já estava a ser dito.
+                if campo.aviso_caracteres:
+                    aviso = f"{campo.aviso_caracteres}{f' · {aviso}' if aviso else ''}"
                 coluna_texto = (
                     campo.coluna
                     if tabela == "PROADMIN"
@@ -329,7 +333,7 @@ class ImosEncomendaDialog(QDialog):
                 for coluna, valor in enumerate(valores):
                     item = QTableWidgetItem(valor)
                     item.setToolTip(campo.valor_original if coluna == 2 else valor)
-                    if campo.truncado:
+                    if campo.truncado or campo.substituidos or campo.suspeitos:
                         item.setForeground(COR_AVISO)
                     if coluna == 2 and editavel:
                         # O handler precisa de saber que coluna do iMos é esta

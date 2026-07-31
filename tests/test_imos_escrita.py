@@ -204,6 +204,15 @@ def test_texto_multilinha_fica_numa_linha_e_sem_nulos() -> None:
     assert payload["nos"][0]["campos"][0]["valor"] == "AGL 19MM MDF 8MM"
 
 
+def test_plica_nao_passa_nem_por_aqui() -> None:
+    """Última barreira: mesmo que o diálogo falhasse, a plica não chega ao iMos."""
+    payload = imos_escrita.construir_payload(
+        _cfg(), [_pasta("X", campos={"TEXT_SHORT": "PUXADOR 'J' H1030"})]
+    )
+
+    assert payload["nos"][0]["campos"][0]["valor"] == 'PUXADOR "J" H1030'
+
+
 def test_valores_nulos_viram_string_vazia_porque_as_colunas_sao_not_null() -> None:
     payload = imos_escrita.construir_payload(
         _cfg(), [_pasta("X", campos={"ARTICLENO": None})]

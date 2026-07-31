@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
+from app.domain.imos_texto import limpar_texto_imos
 from app.models.user import User
 from app.models.cliente import Cliente
 from app.services.imos_escrita import (
@@ -106,6 +107,10 @@ class CampoImos:
     valor: str
     valor_original: str
     limite: int
+    #: Caracteres que o iMos não aceita e foram trocados (ex.: a plica).
+    substituidos: tuple[str, ...] = ()
+    #: Caracteres invulgares que ficaram — o utilizador confirma antes de gravar.
+    suspeitos: tuple[str, ...] = ()
 
     @property
     def truncado(self) -> bool:
@@ -114,6 +119,16 @@ class CampoImos:
     @property
     def vazio(self) -> bool:
         return not self.valor
+
+    @property
+    def aviso_caracteres(self) -> str:
+        """O que dizer sobre os caracteres deste campo (vazio quando está bem)."""
+        partes = []
+        if self.substituidos:
+            partes.append(f"{' '.join(self.substituidos)} → aspas/traço")
+        if self.suspeitos:
+            partes.append(f"invulgar: {' '.join(self.suspeitos)}")
+        return "; ".join(partes)
 
 
 @dataclass(frozen=True)
@@ -173,17 +188,24 @@ def _campo(
     *,
     colunas: dict[str, tuple[str, int]] | None = None,
 ) -> CampoImos:
-    """Trunca o valor no limite real da coluna, guardando o original."""
+    """Trunca o valor no limite real da coluna, guardando o original.
+
+    Pelo caminho trocam-se os caracteres que o iMos não aceita (a plica é o
+    caso conhecido) e assinalam-se os invulgares — ver `app/domain/imos_texto`.
+    """
     _, limite = (colunas or COLUNAS_PROADMIN)[coluna]
     original = _texto(valor).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
     original = " ".join(original.split())
+    limpo = limpar_texto_imos(original)
     return CampoImos(
         coluna=coluna,
         etiqueta=etiqueta,
         origem=origem,
-        valor=original[:limite],
-        valor_original=original,
+        valor=limpo.valor[:limite],
+        valor_original=limpo.valor,
         limite=limite,
+        substituidos=limpo.substituidos,
+        suspeitos=limpo.suspeitos,
     )
 
 
@@ -449,6 +471,17 @@ def preparar(
             avisos.append(
                 f"{campo.etiqueta}: {len(campo.valor_original)} caracteres cortados "
                 f"para {campo.limite} (coluna {campo.coluna} do iMos)."
+            )
+        if campo.substituidos:
+            avisos.append(
+                f"{campo.etiqueta}: {' '.join(campo.substituidos)} não é aceite pelo "
+                'iMos e foi trocado por aspas/traço. A obra no Martelo fica na mesma.'
+            )
+        if campo.suspeitos:
+            avisos.append(
+                f"{campo.etiqueta}: tem caracteres invulgares "
+                f"({' '.join(campo.suspeitos)}). Não sabemos se o iMos os aceita — "
+                "corrija-os aqui se puder."
             )
     pastas_novas = [nivel.nome for nivel in caminho.pastas if not nivel.existe]
     if pastas_novas:

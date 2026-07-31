@@ -186,6 +186,48 @@ def test_texto_multilinha_fica_numa_linha_so() -> None:
     assert campos["TEXT_LONG"] == "AGL 19MM MDF 8MM ORLA 2MM"
 
 
+def test_plica_da_descricao_nao_chega_ao_imos() -> None:
+    """PUXADOR 'J' H1030: a plica não é aceite e passa a aspas."""
+    obra = _obra(descricao_producao="4 ROUPEIROS PUXADOR 'J' H1030")
+
+    campos = {
+        campo.coluna: campo
+        for campo in servico.mapear_campos(obra, nome_encomenda="X")
+    }
+
+    assert campos["TEXT_SHORT"].valor == '4 ROUPEIROS PUXADOR "J" H1030'
+    assert campos["TEXT_SHORT"].substituidos == ("'",)
+    assert "aspas" in campos["TEXT_SHORT"].aviso_caracteres
+
+
+def test_texto_corrigido_no_dialogo_tambem_e_limpo() -> None:
+    """Não vale a pena limpar a obra e deixar passar o que se escreve aqui."""
+    campos = {
+        campo.coluna: campo
+        for campo in servico.mapear_campos(
+            _obra(),
+            nome_encomenda="X",
+            textos={"TEXT_SHORT": "PUXADOR 'J'"},
+        )
+    }
+
+    assert campos["TEXT_SHORT"].valor == 'PUXADOR "J"'
+
+
+def test_caracteres_invulgares_so_avisam() -> None:
+    obra = _obra(descricao_producao="PORTAS <ABRIR> ~ 2 GAVETAS")
+
+    campos = {
+        campo.coluna: campo
+        for campo in servico.mapear_campos(obra, nome_encomenda="X")
+    }
+
+    # O texto segue como o utilizador o escreveu — só fica assinalado.
+    assert campos["TEXT_SHORT"].valor == "PORTAS <ABRIR> ~ 2 GAVETAS"
+    assert set(campos["TEXT_SHORT"].suspeitos) == {"<", ">", "~"}
+    assert "invulgar" in campos["TEXT_SHORT"].aviso_caracteres
+
+
 def test_todas_as_colunas_mapeadas_existem_em_proadmin() -> None:
     from app.services.imos_escrita import COLUNAS_PROADMIN
 

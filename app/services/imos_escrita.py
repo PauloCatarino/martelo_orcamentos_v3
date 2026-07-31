@@ -31,6 +31,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.domain.imos_texto import limpar_texto_imos
 from app.services.imos_sql import (
     IMOS_TIPO_ENCOMENDA,
     IMOS_TIPO_PASTA,
@@ -246,10 +247,16 @@ def build_connection_string(cfg: ImosConfig) -> str:
 
 
 def _valor_texto(coluna: str, tamanho: int, valor: Any) -> str:
-    """Normaliza um valor de texto e garante que cabe na coluna do iMos."""
+    """Normaliza um valor de texto e garante que cabe na coluna do iMos.
+
+    Última barreira antes da base do iMos: os caracteres que ele não aceita
+    (a plica, as aspas do Word) são trocados aqui também, mesmo que já tenham
+    sido tratados no diálogo. É o único sítio por onde tudo passa.
+    """
     if valor is None:
         return ""
     texto = str(valor).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    texto = limpar_texto_imos(texto).valor
     texto = texto.replace("\x00", "").strip()
     if len(texto) > tamanho:
         raise ValueError(
