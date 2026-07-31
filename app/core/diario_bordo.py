@@ -17,7 +17,9 @@ import logging
 import os
 import platform
 import sys
+import tempfile
 import threading
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -195,6 +197,55 @@ def instalar_apanhador_de_erros() -> None:
         )
 
     threading.excepthook = _thread_excepthook
+
+
+# ---- limpeza automática -----------------------------------------------------
+#: Guardamos um mês de história: chega para investigar e não deixa lixo no PC.
+DIAS_A_GUARDAR = 30
+
+#: Relatórios de problema que ficam na pasta temporária ao enviar por email.
+PADRAO_RELATORIOS = "problema_martelo_*.txt"
+
+
+def limpar_registos_antigos(
+    dias: int = DIAS_A_GUARDAR, *, agora: float | None = None
+) -> list[Path]:
+    """Delete diary copies and problem reports older than ``dias``.
+
+    Corre sozinho no arranque do Martelo, para o registo não ir engordando o PC
+    sem ninguém dar por isso. Mexe **apenas** em ficheiros criados por nós: as
+    cópias rodadas do diário e os relatórios que ficaram na pasta temporária.
+    O ficheiro em uso nunca é apagado — é o que tem o que se passou hoje.
+    """
+    limite = (agora if agora is not None else time.time()) - dias * 86400
+    apagados: list[Path] = []
+
+    atual = caminho_diario()
+    candidatos = [
+        atual.with_name(f"{atual.name}.{indice}") for indice in range(1, COPIAS + 1)
+    ]
+    try:
+        candidatos.extend(Path(tempfile.gettempdir()).glob(PADRAO_RELATORIOS))
+    except OSError:
+        pass
+
+    for ficheiro in candidatos:
+        try:
+            if not ficheiro.is_file() or ficheiro.stat().st_mtime >= limite:
+                continue
+            ficheiro.unlink()
+            apagados.append(ficheiro)
+        except OSError:
+            # Ficheiro aberto noutro lado ou sem permissões: fica para a próxima.
+            continue
+
+    if apagados:
+        _LOGGER.info(
+            "Limpeza automática: %s ficheiro(s) de registo com mais de %s dias apagados.",
+            len(apagados),
+            dias,
+        )
+    return apagados
 
 
 # ---- ler de volta -----------------------------------------------------------

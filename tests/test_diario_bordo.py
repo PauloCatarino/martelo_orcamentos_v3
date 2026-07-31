@@ -111,6 +111,52 @@ def test_diario_fica_local_e_nunca_no_servidor(monkeypatch, tmp_path: Path) -> N
     assert str(caminho).startswith(str(tmp_path))
 
 
+def test_limpeza_apaga_copias_antigas_e_guarda_o_mes(diario: Path, monkeypatch) -> None:
+    """A cada arranque, o que tem mais de um mês desaparece sozinho."""
+    import os
+    import time
+
+    diario_bordo.registar_acao("hoje")
+    antiga = diario.with_name(f"{diario.name}.1")
+    antiga.write_text("linhas do mês passado", encoding="utf-8")
+    recente = diario.with_name(f"{diario.name}.2")
+    recente.write_text("linhas de ontem", encoding="utf-8")
+
+    agora = time.time()
+    ha_60_dias = agora - 60 * 86400
+    os.utime(antiga, (ha_60_dias, ha_60_dias))
+
+    apagados = diario_bordo.limpar_registos_antigos(30, agora=agora)
+
+    assert antiga in apagados
+    assert not antiga.exists()
+    # O que está dentro do mês e o ficheiro em uso ficam intocados.
+    assert recente.exists()
+    assert diario.exists() and "hoje" in diario.read_text(encoding="utf-8")
+
+
+def test_limpeza_apaga_relatorios_esquecidos_no_temp(diario: Path, tmp_path: Path, monkeypatch) -> None:
+    import os
+    import time
+
+    monkeypatch.setattr(diario_bordo.tempfile, "gettempdir", lambda: str(tmp_path))
+    relatorio = tmp_path / "problema_martelo_paulo_20260101_090000.txt"
+    relatorio.write_text("relatório velho", encoding="utf-8")
+    outro = tmp_path / "orcamento_importante.txt"
+    outro.write_text("nada a ver com o registo", encoding="utf-8")
+
+    agora = time.time()
+    velho = agora - 90 * 86400
+    for ficheiro in (relatorio, outro):
+        os.utime(ficheiro, (velho, velho))
+
+    diario_bordo.limpar_registos_antigos(30, agora=agora)
+
+    assert not relatorio.exists()
+    # Só mexe no que é nosso: ficheiros de outros programas ficam quietos.
+    assert outro.exists()
+
+
 def test_contexto_nunca_parte_a_linha_do_ficheiro(diario: Path) -> None:
     diario_bordo.definir_obra("1349 | com barra\ne mudança de linha")
 

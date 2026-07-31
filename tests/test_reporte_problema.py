@@ -109,6 +109,8 @@ def test_arranque_instala_a_caixa_negra() -> None:
 
     assert "diario_bordo.instalar_apanhador_de_erros()" in fonte
     assert "diario_bordo.registar_arranque(VERSAO_APLICACAO)" in fonte
+    # A limpeza corre sozinha a cada arranque — ninguém tem de se lembrar dela.
+    assert "diario_bordo.limpar_registos_antigos()" in fonte
     assert "instalar_registo_de_avisos(qt_app)" in fonte
     assert "diario_bordo.definir_utilizador(" in fonte
 

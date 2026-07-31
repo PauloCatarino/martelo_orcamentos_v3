@@ -64,6 +64,8 @@ def main() -> int:
     # ninguém tratou — sem isto, um erro no PC de um utilizador não deixa rasto.
     diario_bordo.instalar_apanhador_de_erros()
     diario_bordo.registar_arranque(VERSAO_APLICACAO)
+    # Arrumar a casa sozinho: o registo guarda um mês e o resto é apagado.
+    diario_bordo.limpar_registos_antigos()
     # Silencia o ruído benigno do Qt no terminal (falsos "Could not parse
     # stylesheet" das tabelas/árvores). Tem de correr antes da QApplication.
     instalar_filtro_mensagens_qt()
