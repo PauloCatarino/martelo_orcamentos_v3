@@ -184,11 +184,37 @@ Ainda **sem** distribuir nada aos colegas:
 
 ## Passo 6 — Distribuir
 
+> ⚠️ **A ordem não se troca.** O instalador é o **último** passo. Se o entregar
+> antes de as contas existirem no servidor, **ninguém entra**: o `.env` novo não
+> leva credenciais e ainda não há conta nenhuma para as substituir. Primeiro o
+> SQL e as contas (passos 1 a 3), depois o teste (4 e 5), e só no fim o build.
+
 1. Entregar a cada pessoa **só a linha dela** do `contas_martelo.txt`
 2. **Apagar o `contas_martelo.txt`**
 3. Reconstruir o instalador: `.venv\Scripts\python.exe build_beta.py --installer`
    (o `.env` novo já não leva credenciais; o build recusa-se a empacotar um que
    as tenha)
+
+### O Arquivo V2 é a exceção
+
+O `.env` continua a levar as credenciais do `orc_user`, porque a consulta aos
+orçamentos antigos precisa delas. O que as torna inofensivas é o passo 1: a
+secção 8 do `mysql_contas_beta.sql` tira a escrita a essa conta e deixa-lhe só
+`SELECT`. Confirme com:
+
+```sql
+SHOW GRANTS FOR 'orc_user'@'%';
+```
+
+Deve mostrar `GRANT SELECT ON orcamentos_v2.*` — e não `ALL PRIVILEGES`.
+
+### Contas criadas pelos scripts de seed
+
+Os `scripts/create_initial_users.py`, `create_admin_user.py` e
+`import_users_from_v2.py` gravam o perfil na tabela `users` mas **não criam a
+conta MySQL**. Quem for criado por aí fica sem porta de entrada. Depois de os
+correr, gere as contas em falta com o `gerar_contas_mysql.py` (eles próprios
+avisam disso no fim).
 
 ---
 
