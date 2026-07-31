@@ -44,13 +44,29 @@ def _patch(monkeypatch, capturado) -> None:
 def test_build_connection_string_inclui_encrypt_e_trust() -> None:
     conn = build_connection_string(_cfg())
 
-    assert "Server=DESKTOP-PTJ4TE6,1433" in conn
-    assert "Database=Lanca_Encanto2026" in conn
+    assert 'Server="DESKTOP-PTJ4TE6,1433"' in conn
+    assert 'Database="Lanca_Encanto2026"' in conn
     assert "Encrypt=False" in conn
     assert "Connection Timeout=60" in conn
-    assert "User ID=Lanca_Encanto_ReadOnly" in conn
-    assert "Password=segredo" in conn
+    assert 'User ID="Lanca_Encanto_ReadOnly"' in conn
+    assert 'Password="segredo"' in conn
     assert "TrustServerCertificate=True" in conn
+
+
+def test_build_connection_string_escapa_ponto_e_virgula() -> None:
+    """Uma password com ``;`` nao pode partir a ligacao em dois."""
+    conn = build_connection_string(_cfg(password="segredo;com;ponto"))
+
+    assert 'Password="segredo;com;ponto"' in conn
+    # Os ';' ficam DENTRO das aspas: a ligacao continua com os mesmos
+    # atributos, apenas com os dois ';' extra da propria password.
+    assert conn.count(";") == build_connection_string(_cfg()).count(";") + 2
+
+
+@pytest.mark.parametrize("mau", ["quebra\nlinha", "retorno\rcarro", "nulo\x00byte"])
+def test_build_connection_string_recusa_caracteres_impossiveis(mau: str) -> None:
+    with pytest.raises(ValueError, match="Streamlit"):
+        build_connection_string(_cfg(password=mau))
 
 
 def test_build_connection_string_trusted_sem_user() -> None:

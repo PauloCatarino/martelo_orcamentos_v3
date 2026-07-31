@@ -50,11 +50,43 @@ def test_assert_select_only_rejeita_nao_select(query: str) -> None:
 def test_build_connection_string_sql_auth() -> None:
     conn = build_connection_string(_cfg())
 
-    assert r"Server=Server_le\phc" in conn
-    assert "Database=lancaencanto" in conn
-    assert "User ID=adriano.silva" in conn
-    assert "Password=segredo" in conn
+    assert r'Server="Server_le\phc"' in conn
+    assert 'Database="lancaencanto"' in conn
+    assert 'User ID="adriano.silva"' in conn
+    assert 'Password="segredo"' in conn
     assert "TrustServerCertificate=True" in conn
+
+
+def test_build_connection_string_escapa_ponto_e_virgula() -> None:
+    """Uma password com ``;`` nao pode partir a ligacao em dois."""
+    conn = build_connection_string(_cfg(password="segredo;com;ponto"))
+
+    assert 'Password="segredo;com;ponto"' in conn
+    # Os ';' ficam DENTRO das aspas: a ligacao continua com os mesmos
+    # atributos, apenas com os dois ';' extra da propria password.
+    assert conn.count(";") == build_connection_string(_cfg()).count(";") + 2
+
+
+def test_build_connection_string_escapa_aspas() -> None:
+    conn = build_connection_string(_cfg(password='as"pas'))
+
+    assert 'Password="as""pas"' in conn
+
+
+def test_build_connection_string_nao_deixa_injetar_atributos() -> None:
+    """Uma password nao pode acrescentar atributos a` ligacao."""
+    conn = build_connection_string(
+        _cfg(password="x;TrustServerCertificate=False;Initial Catalog=outra")
+    )
+
+    assert 'Password="x;TrustServerCertificate=False;Initial Catalog=outra"' in conn
+    assert "TrustServerCertificate=True;" in conn
+
+
+@pytest.mark.parametrize("mau", ["quebra\nlinha", "retorno\rcarro", "nulo\x00byte"])
+def test_build_connection_string_recusa_caracteres_impossiveis(mau: str) -> None:
+    with pytest.raises(ValueError, match="PHC"):
+        build_connection_string(_cfg(password=mau))
 
 
 def test_build_connection_string_trusted_sem_user() -> None:

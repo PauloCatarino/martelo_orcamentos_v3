@@ -13,7 +13,12 @@ from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
-from app.services.phc_sql import _parse_bool, assert_select_only, run_select
+from app.services.phc_sql import (
+    _parse_bool,
+    assert_select_only,
+    connection_value,
+    run_select,
+)
 from app.services.system_setting_service import SystemSettingService
 
 KEY_IMOS_SERVER = "imos_sql_server"
@@ -93,10 +98,8 @@ def save_imos_config(session: Session, cfg: ImosConfig) -> None:
 
 
 def _connection_value(value: str, field_name: str) -> str:
-    value = str(value or "")
-    if "\x00" in value or "\r" in value or "\n" in value:
-        raise ValueError(f"Configuração iMos inválida no campo {field_name}.")
-    return '"' + value.replace('"', '""') + '"'
+    """Escapa um valor da ligação iMos (a regra vive em ``phc_sql``)."""
+    return connection_value(value, field_name, origem="iMos")
 
 
 def build_connection_string(cfg: ImosConfig) -> str:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import ssl
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from app.services import email_service
 
@@ -56,6 +59,15 @@ def test_carregar_email_config_defaults_outlook(monkeypatch) -> None:
     assert config.smtp_port == 25
     assert config.smtp_ssl is False
     assert config.smtp_tls is False
+    assert config.smtp_verificar_certificado is True
+
+
+def test_carregar_email_config_permite_desligar_verificacao(monkeypatch) -> None:
+    _patch_settings(monkeypatch, {"smtp_verificar_certificado": "nao"})
+
+    config = email_service.carregar_email_config(object())
+
+    assert config.smtp_verificar_certificado is False
 
 
 def test_carregar_email_config_le_e_converte(monkeypatch) -> None:
@@ -197,3 +209,135 @@ def test_safe_log_result_nao_rebenta_e_escreve_linha(tmp_path, monkeypatch) -> N
     text = log_path.read_text(encoding="utf-8")
     assert "rem@example.test -> dest@example.test" in text
     assert "Assunto | OK | ['a.pdf']" in text
+
+
+# ---- TLS do SMTP ------------------------------------------------------------
+def test_contexto_ssl_verifica_certificado_e_nome_por_defeito() -> None:
+    contexto = email_service._contexto_ssl()
+
+    assert contexto.check_hostname is True
+    assert contexto.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_contexto_ssl_desligado_deixa_de_verificar() -> None:
+    contexto = email_service._contexto_ssl(False)
+
+    assert contexto.check_hostname is False
+    assert contexto.verify_mode == ssl.CERT_NONE
+
+
+class _FakeSMTP:
+    """SMTP de mentira: regista o que lhe foi pedido, sem tocar na rede."""
+
+    def __init__(self, host, port, context=None) -> None:
+        self.host = host
+        self.port = port
+        self.context = context
+        self.starttls_context = "nunca chamado"
+        self.login_args = None
+        self.enviou = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        return False
+
+    def starttls(self, context=None) -> None:
+        self.starttls_context = context
+
+    def login(self, user, password) -> None:
+        self.login_args = (user, password)
+
+    def send_message(self, _msg) -> None:
+        self.enviou = True
+
+
+def _cfg_smtp(**overrides) -> email_service.EmailConfig:
+    base = {
+        "metodo": "smtp",
+        "smtp_host": "smtp.example.test",
+        "smtp_port": 587,
+        "smtp_user": "user@example.test",
+        "smtp_password": "secret",
+        "smtp_tls": True,
+    }
+    base.update(overrides)
+    return email_service.EmailConfig(**base)
+
+
+def _capturar_smtp(monkeypatch, atributo: str) -> list[_FakeSMTP]:
+    criados: list[_FakeSMTP] = []
+
+    def _fabrica(*args, **kwargs):
+        fake = _FakeSMTP(*args, **kwargs)
+        criados.append(fake)
+        return fake
+
+    monkeypatch.setattr(email_service.smtplib, atributo, _fabrica)
+    return criados
+
+
+def _enviar(config) -> None:
+    email_service._enviar_smtp(
+        "dest@example.test",
+        "Assunto",
+        "<p>corpo</p>",
+        [],
+        config=config,
+        from_email="rem@example.test",
+        cc="",
+    )
+
+
+def test_enviar_smtp_starttls_recebe_contexto_que_verifica(monkeypatch) -> None:
+    criados = _capturar_smtp(monkeypatch, "SMTP")
+
+    _enviar(_cfg_smtp())
+
+    contexto = criados[0].starttls_context
+    assert isinstance(contexto, ssl.SSLContext)
+    assert contexto.check_hostname is True
+    assert contexto.verify_mode == ssl.CERT_REQUIRED
+    assert criados[0].login_args == ("user@example.test", "secret")
+    assert criados[0].enviou is True
+
+
+def test_enviar_smtp_ssl_recebe_contexto_que_verifica(monkeypatch) -> None:
+    criados = _capturar_smtp(monkeypatch, "SMTP_SSL")
+
+    _enviar(_cfg_smtp(smtp_tls=False, smtp_ssl=True, smtp_port=465))
+
+    contexto = criados[0].context
+    assert isinstance(contexto, ssl.SSLContext)
+    assert contexto.check_hostname is True
+    assert contexto.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_enviar_smtp_respeita_verificacao_desligada(monkeypatch) -> None:
+    criados = _capturar_smtp(monkeypatch, "SMTP")
+
+    _enviar(_cfg_smtp(smtp_verificar_certificado=False))
+
+    assert criados[0].starttls_context.verify_mode == ssl.CERT_NONE
+
+
+def test_enviar_smtp_recusa_password_em_claro(monkeypatch) -> None:
+    """Com utilizador mas sem TLS nem SSL, a password iria a descoberto."""
+    criados = _capturar_smtp(monkeypatch, "SMTP")
+
+    with pytest.raises(RuntimeError, match="em claro"):
+        _enviar(_cfg_smtp(smtp_tls=False, smtp_ssl=False))
+
+    assert criados[0].login_args is None
+    assert criados[0].enviou is False
+
+
+def test_enviar_smtp_sem_credenciais_continua_a_funcionar_sem_cifra(monkeypatch) -> None:
+    """Relay interno anonimo (o caso do 'localhost:25') nao e' bloqueado."""
+    criados = _capturar_smtp(monkeypatch, "SMTP")
+
+    _enviar(_cfg_smtp(smtp_tls=False, smtp_ssl=False, smtp_user="", smtp_password=""))
+
+    assert criados[0].login_args is None
+    assert criados[0].enviou is True

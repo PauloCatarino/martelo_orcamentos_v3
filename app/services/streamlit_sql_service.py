@@ -12,7 +12,7 @@ from typing import Any, TypedDict
 
 from sqlalchemy.orm import Session
 
-from app.services.phc_sql import assert_select_only, run_select
+from app.services.phc_sql import assert_select_only, connection_value, run_select
 from app.services.system_setting_service import SystemSettingService
 
 KEY_STREAMLIT_SERVER = "streamlit_sql_server"
@@ -91,9 +91,12 @@ def build_connection_string(cfg: StreamlitConfig) -> str:
             "Configuracao Streamlit incompleta: Servidor e Base de Dados sao obrigatorios."
         )
 
+    def _valor(valor: str, campo: str) -> str:
+        return connection_value(valor, campo, origem="Streamlit")
+
     parts = [
-        f"Server={server}",
-        f"Database={database}",
+        f"Server={_valor(server, 'Servidor')}",
+        f"Database={_valor(database, 'Base de Dados')}",
         "Encrypt=False",
         "Connection Timeout=60",
     ]
@@ -106,8 +109,8 @@ def build_connection_string(cfg: StreamlitConfig) -> str:
             )
         if not str(password).strip():
             raise ValueError("Configuracao Streamlit incompleta: Password em falta.")
-        parts.append(f"User ID={user}")
-        parts.append(f"Password={password}")
+        parts.append(f"User ID={_valor(user, 'Utilizador')}")
+        parts.append(f"Password={_valor(password, 'Password')}")
 
     if trust_cert:
         parts.append("TrustServerCertificate=True")

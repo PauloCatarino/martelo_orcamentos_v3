@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import smtplib
+import ssl
 from typing import Any, Sequence
 
 from app.domain.export_paths import subpasta_versao
@@ -29,6 +30,9 @@ class EmailConfig:
     smtp_password: str = ""
     smtp_ssl: bool = False
     smtp_tls: bool = False
+    #: Verificar o certificado do servidor de email. Desligar so' se o servidor
+    #: interno tiver certificado proprio — ver ``_contexto_ssl``.
+    smtp_verificar_certificado: bool = True
 
 
 def carregar_email_config(session) -> EmailConfig:
@@ -48,6 +52,9 @@ def carregar_email_config(session) -> EmailConfig:
         smtp_password=valor("smtp_password"),
         smtp_ssl=_to_bool(valor("smtp_ssl", "false"), False),
         smtp_tls=_to_bool(valor("smtp_tls", "false"), False),
+        smtp_verificar_certificado=_to_bool(
+            valor("smtp_verificar_certificado", "true"), True
+        ),
     )
 
 
@@ -354,6 +361,28 @@ def _enviar_outlook(
         pythoncom.CoUninitialize()
 
 
+def _contexto_ssl(verificar: bool = True) -> ssl.SSLContext:
+    """Contexto TLS para o SMTP — com o certificado do servidor verificado.
+
+    Sem ``context``, o ``smtplib`` usa um contexto interno do Python que **nao**
+    valida o certificado nem o nome do servidor: a ligacao fica cifrada mas
+    qualquer maquina no meio se pode fazer passar pelo servidor de email e ficar
+    com a password. ``create_default_context`` e o oposto disso.
+
+    ``verificar=False`` (definicao ``smtp_verificar_certificado``) existe para o
+    caso de o servidor interno ter um certificado proprio, nao reconhecido pelo
+    Windows. Nesse caso o melhor e instalar o certificado no PC; desligar a
+    verificacao e a saida de recurso, e volta a deixar a ligacao a descoberto.
+    """
+    if verificar:
+        return ssl.create_default_context()
+
+    contexto = ssl.create_default_context()
+    contexto.check_hostname = False
+    contexto.verify_mode = ssl.CERT_NONE
+    return contexto
+
+
 def _enviar_smtp(
     destino: str,
     assunto: str,
@@ -399,15 +428,26 @@ def _enviar_smtp(
                     filename=os.path.basename(path),
                 )
 
+    contexto = _contexto_ssl(config.smtp_verificar_certificado)
+
     if config.smtp_ssl:
-        with smtplib.SMTP_SSL(config.smtp_host, config.smtp_port) as smtp:
+        with smtplib.SMTP_SSL(
+            config.smtp_host, config.smtp_port, context=contexto
+        ) as smtp:
             if config.smtp_user:
                 smtp.login(config.smtp_user, config.smtp_password)
             smtp.send_message(msg)
     else:
         with smtplib.SMTP(config.smtp_host, config.smtp_port) as smtp:
             if config.smtp_tls:
-                smtp.starttls()
+                smtp.starttls(context=contexto)
+            elif config.smtp_user:
+                raise RuntimeError(
+                    "O envio por SMTP tem utilizador e password mas nao tem "
+                    "cifra ligada: a password iria em claro pela rede. Ligue o "
+                    "'smtp_tls' (porta 587) ou o 'smtp_ssl' (porta 465) em "
+                    "Configuracoes > Definicoes do sistema."
+                )
             if config.smtp_user:
                 smtp.login(config.smtp_user, config.smtp_password)
             smtp.send_message(msg)
