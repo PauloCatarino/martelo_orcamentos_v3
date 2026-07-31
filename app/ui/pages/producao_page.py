@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.datas import normalizar_data
@@ -1947,6 +1948,7 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Preparação de Produção", str(error))
             return
 
+        diario_bordo.registar_acao("Abriu a Preparação de Produção")
         dialog = ProducaoPreparacaoDialog(
             codigo_processo=self._format_value(processo.codigo_processo),
             pasta_obra=str(caminho),
@@ -1992,6 +1994,7 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Imprimir Documentos", str(error))
             return
 
+        diario_bordo.registar_acao("Abriu o Imprimir Documentos")
         dialog = ProducaoImpressaoDialog(
             codigo_processo=self._format_value(processo.codigo_processo),
             pasta_obra=str(caminho),
@@ -2254,6 +2257,7 @@ class ProducaoPage(QWidget):
             )
             return
 
+        diario_bordo.registar_acao("Exportar PDF CUT-RITE", nome_plano)
         self._cutrite_dialog = CutRiteProgressDialog(self)
         self._cutrite_dialog.setWindowTitle("Exportar PDF CUT-RITE")
         self._cutrite_dialog.add_step("A iniciar a exportacao do resumo em PDF.")
@@ -2615,6 +2619,8 @@ class ProducaoPage(QWidget):
             self.notas2_text.setPlainText(self._format_value(proc.notas2))
             self.notas3_text.setPlainText(self._format_value(proc.notas3))
             self._selected_processo_id = proc.id
+            # Diário: a partir daqui, as linhas ficam com a obra em que se mexeu.
+            diario_bordo.definir_obra(proc.codigo_processo)
             self._atualizar_campos_derivados()
             self._pedir_detalhe_obra(proc)
             self._atualizar_botao_ocorrencias(proc)
@@ -2768,6 +2774,11 @@ class ProducaoPage(QWidget):
             self.status_label.setText(
                 "Supervisor: obra passada a Produção com pendências por resolver."
             )
+            diario_bordo.registar_aviso(
+                "Supervisor de Produção",
+                f"obra passada a Produção com {len(supervisao.pendencias)} pendência(s): "
+                + ", ".join(p.label for p in supervisao.pendencias),
+            )
             return True
 
         self._set_combo_text(self.estado_form_combo, processo.estado)
@@ -2838,6 +2849,7 @@ class ProducaoPage(QWidget):
         self._set_dirty(False)
         self.carregar_processos(selecionar_id=proc_id)
         self.status_label.setText("Produção guardada.")
+        diario_bordo.registar_acao("Gravou a obra", f"estado={data['estado']}")
 
     def _converter_orcamento(self) -> None:
         """Open the conversion dialog and create the selected production process."""

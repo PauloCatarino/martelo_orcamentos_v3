@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.db.session import SessionLocal
 from app.models import User
 from app.repositories.orcamento_repository import OrcamentoResumo
@@ -150,6 +151,14 @@ class MainWindow(QMainWindow):
         user_label.setObjectName("authenticatedUserInfo")
         user_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+        self.reportar_button = QPushButton("Reportar problema")
+        self.reportar_button.setObjectName("reportarProblemaButton")
+        self.reportar_button.setToolTip(
+            "Enviar o que estava a fazer e o registo das últimas ações, para "
+            "ser mais fácil perceber o que correu mal"
+        )
+        self.reportar_button.clicked.connect(self.abrir_reportar_problema)
+
         logout_button = QPushButton("Sair")
         logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.request_logout)
@@ -157,6 +166,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.toggle_sidebar_button)
         header_layout.addWidget(title, stretch=1)
         header_layout.addWidget(user_label, stretch=1)
+        header_layout.addWidget(self.reportar_button)
         header_layout.addWidget(logout_button)
 
         content_layout = QHBoxLayout()
@@ -390,6 +400,12 @@ class MainWindow(QMainWindow):
             if item is not None:
                 item.setHidden(not self._permissions.get(permission_key, False))
 
+    def abrir_reportar_problema(self) -> None:
+        """Open the problem report with the diary already packed."""
+        from app.ui.dialogs.reportar_problema_dialog import ReportarProblemaDialog
+
+        ReportarProblemaDialog(self).exec()
+
     def request_logout(self) -> None:
         """Emit a logout request."""
         self.logout_requested.emit()
@@ -605,6 +621,9 @@ class MainWindow(QMainWindow):
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
         self._destacar_nav(name)
+        # Diário: saber em que menu a pessoa estava explica metade dos erros.
+        diario_bordo.definir_menu(name)
+        diario_bordo.registar_acao("Abriu o menu", name)
 
     def _destacar_nav(self, name: str) -> None:
         """Realça o botão da sidebar correspondente à página atual."""

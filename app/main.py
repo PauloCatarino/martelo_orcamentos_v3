@@ -28,8 +28,11 @@ from PySide6.QtWidgets import (
 
 from app.config.logging_config import configure_logging
 from app.config.qt_message_handler import instalar_filtro_mensagens_qt
+from app.config.versao import VERSAO_APLICACAO
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.ui import tema
+from app.ui.registo_avisos import instalar_registo_de_avisos
 from app.ui.icones import icone_ficheiro
 from app.ui.login_window import LoginWindow
 from app.ui.introducao_window import IntroducaoWindow
@@ -57,6 +60,10 @@ class EstiloSelecaoLegivel(QProxyStyle):
 def main() -> int:
     """Start the desktop application."""
     configure_logging()
+    # Caixa negra: guarda o rasto do que foi feito e apanha os erros que
+    # ninguém tratou — sem isto, um erro no PC de um utilizador não deixa rasto.
+    diario_bordo.instalar_apanhador_de_erros()
+    diario_bordo.registar_arranque(VERSAO_APLICACAO)
     # Silencia o ruído benigno do Qt no terminal (falsos "Could not parse
     # stylesheet" das tabelas/árvores). Tem de correr antes da QApplication.
     instalar_filtro_mensagens_qt()
@@ -75,6 +82,8 @@ def main() -> int:
             pass
 
     qt_app = QApplication(sys.argv)
+    # Tudo o que o Martelo mostrar ao utilizador passa a ficar no diário.
+    instalar_registo_de_avisos(qt_app)
     # Ícone da aplicação: passa a ser o ícone por omissão de TODAS as janelas e
     # diálogos (barra de título e barra de tarefas). O .exe já tem o ícone do
     # ficheiro; isto trata do ícone em tempo de execução.
@@ -104,6 +113,11 @@ def main() -> int:
             return 0
 
         app_session.set_current_user(login_window.authenticated_user)
+        diario_bordo.definir_utilizador(
+            getattr(login_window.authenticated_user, "username", None)
+            or getattr(login_window.authenticated_user, "nome", None)
+        )
+        diario_bordo.registar_acao("Sessão iniciada")
 
         logout_requested = False
 
@@ -140,9 +154,11 @@ def main() -> int:
         qt_app.exec()
 
         if logout_requested:
+            diario_bordo.registar_acao("Sessão terminada (mudança de utilizador)")
             continue
 
         app_session.clear_current_user()
+        diario_bordo.registar_acao("Martelo fechado")
         return 0
 
 

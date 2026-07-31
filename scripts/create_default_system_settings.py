@@ -307,6 +307,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "Geral",
         "ON",
     ),
+    SystemSettingSeed(
+        "email_suporte_v3",
+        "Email para onde vai o 'Reportar problema'",
+        "texto",
+        "Geral",
+        "",
+    ),
 )
 
 
