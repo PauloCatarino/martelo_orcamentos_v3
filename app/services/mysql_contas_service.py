@@ -32,20 +32,43 @@ class ContaMySQLError(Exception):
     """O servidor recusou a operacao sobre a conta."""
 
 
+#: Perfis criados pelo ``deploy/mysql_contas_beta.sql``.
+PERFIS = ("martelo_normal", "martelo_admin")
+
+
 def contas_geridas(session: Session) -> bool:
-    """Indica se esta base ja' tem os procedimentos das contas instalados."""
+    """Indica se quem esta' ligado entrou com uma conta por utilizador.
+
+    Pergunta-se pelo **perfil ativo** e nao pelos procedimentos: um
+    ``GRANT EXECUTE`` numa rotina deixa chama-la, mas nao a mostra no
+    ``information_schema.routines`` -- para isso era preciso privilegio ao
+    nivel da base, que ninguem tem. Perguntar por ai' dava sempre "nao", mesmo
+    com tudo bem instalado, e a app ficava a mexer no hash antigo em silencio.
+
+    ``CURRENT_ROLE()`` toda a gente pode correr, e responde a` pergunta certa:
+    esta ligacao e' de uma pessoa, com perfil, ou e' a conta partilhada antiga?
+    """
     try:
-        existe = session.execute(
-            text(
-                "SELECT COUNT(*) FROM information_schema.routines "
-                "WHERE routine_schema = DATABASE() AND routine_name = :nome"
-            ),
-            {"nome": PROC_CRIAR},
-        ).scalar()
+        perfil = session.execute(text("SELECT CURRENT_ROLE()")).scalar()
     except SQLAlchemyError:
-        # SQLite nos testes, ou sem permissao para ler o information_schema.
+        # SQLite nos testes, ou MySQL sem roles: comporta-se como antes.
         return False
-    return bool(existe)
+
+    texto = str(perfil or "")
+    return any(nome in texto for nome in PERFIS)
+
+
+def sou_admin_na_base(session: Session) -> bool:
+    """Indica se o perfil ativo e' o de administrador da base de dados.
+
+    Serve para a UI so' oferecer o que a base deixa mesmo fazer, em vez de
+    mostrar um botao que rebenta com erro de permissao.
+    """
+    try:
+        perfil = session.execute(text("SELECT CURRENT_ROLE()")).scalar()
+    except SQLAlchemyError:
+        return False
+    return "martelo_admin" in str(perfil or "")
 
 
 def criar_conta(session: Session, *, username: str, password: str, admin: bool) -> None:

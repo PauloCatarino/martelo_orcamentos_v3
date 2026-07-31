@@ -159,6 +159,16 @@ class MainWindow(QMainWindow):
         )
         self.reportar_button.clicked.connect(self.abrir_reportar_problema)
 
+        # Fica aqui em cima, ao lado do "Sair", e não dentro das Configurações:
+        # a palavra-passe é de cada um, e as Configurações só o administrador
+        # as vê. Escondido lá dentro, ninguém conseguiria mudar a sua.
+        self.password_button = QPushButton("Palavra-passe")
+        self.password_button.setObjectName("mudarPasswordButton")
+        self.password_button.setToolTip(
+            "Mudar a SUA palavra-passe de acesso ao Martelo."
+        )
+        self.password_button.clicked.connect(self.abrir_mudar_password)
+
         logout_button = QPushButton("Sair")
         logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.request_logout)
@@ -166,6 +176,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.toggle_sidebar_button)
         header_layout.addWidget(title, stretch=1)
         header_layout.addWidget(user_label, stretch=1)
+        header_layout.addWidget(self.password_button)
         header_layout.addWidget(self.reportar_button)
         header_layout.addWidget(logout_button)
 
@@ -405,6 +416,48 @@ class MainWindow(QMainWindow):
         from app.ui.dialogs.reportar_problema_dialog import ReportarProblemaDialog
 
         ReportarProblemaDialog(self).exec()
+
+    def abrir_mudar_password(self) -> None:
+        """Cada pessoa muda a sua palavra-passe, sem passar pelo administrador."""
+        from PySide6.QtWidgets import QInputDialog, QLineEdit, QMessageBox
+
+        from app.services.user_admin_service import mudar_a_minha_password
+
+        nova, aceite = QInputDialog.getText(
+            self,
+            "Mudar a minha palavra-passe",
+            "Nova palavra-passe (mínimo 12 caracteres):",
+            QLineEdit.EchoMode.Password,
+        )
+        if not aceite:
+            return
+
+        repetida, aceite = QInputDialog.getText(
+            self,
+            "Mudar a minha palavra-passe",
+            "Repita a nova palavra-passe:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not aceite:
+            return
+        if nova != repetida:
+            QMessageBox.warning(
+                self, "Palavra-passe", "As palavras-passe não coincidem."
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                mudar_a_minha_password(session, nova)
+        except Exception as exc:  # noqa: BLE001 - a mensagem já vem escrita
+            QMessageBox.warning(self, "Palavra-passe", str(exc))
+            return
+
+        QMessageBox.information(
+            self,
+            "Palavra-passe",
+            "Palavra-passe alterada. É esta que vai usar da próxima vez que entrar.",
+        )
 
     def request_logout(self) -> None:
         """Emit a logout request."""
