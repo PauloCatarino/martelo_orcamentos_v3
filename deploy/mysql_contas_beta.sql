@@ -18,6 +18,22 @@
 -- contas das pessoas que ja' existem na tabela `users`.
 -- ===========================================================================
 
+-- ###########################################################################
+-- A BASE ONDE ISTO VAI SER APLICADO -- confirme antes de executar.
+--
+-- No Workbench o schema activo e' da LIGACAO, nao do separador: abrir este
+-- ficheiro num separador novo herda o que estava escolhido antes, e o script
+-- acaba aplicado na base errada sem ninguem dar por isso (ja' aconteceu duas
+-- vezes). Por isso o USE esta' aqui dentro, e nao a` mao.
+--
+-- Trocar a linha se for para outra base.
+-- ###########################################################################
+USE martelo_v3_beta;
+
+-- Diz alto e bom som onde e' que vai mexer: se esta primeira grelha nao
+-- mostrar a base que quer, pare aqui.
+SELECT CONCAT('>>> Vai aplicar em: ', DATABASE(), ' <<<') AS confirme_a_base;
+
 -- ---------------------------------------------------------------------------
 -- 1. Os dois perfis
 -- ---------------------------------------------------------------------------

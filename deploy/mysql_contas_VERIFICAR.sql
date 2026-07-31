@@ -14,6 +14,15 @@
 -- So' interessa uma coisa: que NAO haja nenhuma linha a dizer PROBLEMA.
 -- ===========================================================================
 
+-- ###########################################################################
+-- A BASE A VERIFICAR -- troque a linha se for outra.
+-- (No Workbench o schema activo e' da ligacao e nao do separador; com o USE
+--  aqui dentro nao ha' enganos.)
+-- ###########################################################################
+USE martelo_v3_beta;
+
+SELECT CONCAT('>>> A verificar: ', DATABASE(), ' <<<') AS base;
+
 -- ---------------------------------------------------------------------------
 -- 1. Privilegios tabela a tabela
 -- ---------------------------------------------------------------------------
