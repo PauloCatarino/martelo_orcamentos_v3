@@ -147,9 +147,24 @@ class MainWindow(QMainWindow):
         title.setObjectName("mainTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
-        user_label = QLabel(self._format_user_info())
-        user_label.setObjectName("authenticatedUserInfo")
-        user_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # O nome de quem está a trabalhar é também o sítio onde se mexe na
+        # própria conta — como na maioria das aplicações. Assim não é preciso
+        # um botão à parte sempre à vista para uma coisa que se faz uma vez, e
+        # continua ao alcance de toda a gente (as Configurações só o
+        # administrador as vê).
+        self.user_button = QPushButton(f"{self._format_user_info()}  ▾")
+        self.user_button.setObjectName("authenticatedUserInfo")
+        self.user_button.setFlat(True)
+        self.user_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.user_button.setToolTip("A sua conta — mudar a palavra-passe.")
+        # Sem moldura, para continuar a ler-se como o rótulo que era; o ▾ e a
+        # mão do rato é que dizem que ali se carrega.
+        self.user_button.setStyleSheet(
+            "QPushButton#authenticatedUserInfo {"
+            " border: none; background: transparent; padding: 2px 6px; }"
+            "QPushButton#authenticatedUserInfo:hover { text-decoration: underline; }"
+        )
+        self.user_button.clicked.connect(self._abrir_menu_conta)
 
         self.reportar_button = QPushButton("Reportar problema")
         self.reportar_button.setObjectName("reportarProblemaButton")
@@ -159,24 +174,15 @@ class MainWindow(QMainWindow):
         )
         self.reportar_button.clicked.connect(self.abrir_reportar_problema)
 
-        # Fica aqui em cima, ao lado do "Sair", e não dentro das Configurações:
-        # a palavra-passe é de cada um, e as Configurações só o administrador
-        # as vê. Escondido lá dentro, ninguém conseguiria mudar a sua.
-        self.password_button = QPushButton("Palavra-passe")
-        self.password_button.setObjectName("mudarPasswordButton")
-        self.password_button.setToolTip(
-            "Mudar a SUA palavra-passe de acesso ao Martelo."
-        )
-        self.password_button.clicked.connect(self.abrir_mudar_password)
-
         logout_button = QPushButton("Sair")
         logout_button.setObjectName("logoutButton")
         logout_button.clicked.connect(self.request_logout)
 
         header_layout.addWidget(self.toggle_sidebar_button)
         header_layout.addWidget(title, stretch=1)
-        header_layout.addWidget(user_label, stretch=1)
-        header_layout.addWidget(self.password_button)
+        # Sem stretch: fica do tamanho do nome, encostado aos outros botões,
+        # como o rótulo alinhado à direita que era antes.
+        header_layout.addWidget(self.user_button)
         header_layout.addWidget(self.reportar_button)
         header_layout.addWidget(logout_button)
 
@@ -416,6 +422,16 @@ class MainWindow(QMainWindow):
         from app.ui.dialogs.reportar_problema_dialog import ReportarProblemaDialog
 
         ReportarProblemaDialog(self).exec()
+
+    def _abrir_menu_conta(self) -> None:
+        """Menu da própria conta, ao clicar no nome lá em cima."""
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        menu.addAction(
+            "Mudar a minha palavra-passe…", self.abrir_mudar_password
+        )
+        menu.exec(self.user_button.mapToGlobal(self.user_button.rect().bottomLeft()))
 
     def abrir_mudar_password(self) -> None:
         """Cada pessoa muda a sua palavra-passe, sem passar pelo administrador."""
