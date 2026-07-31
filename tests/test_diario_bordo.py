@@ -16,6 +16,7 @@ def diario(tmp_path: Path, monkeypatch) -> Path:
     caminho = tmp_path / "diario_martelo.log"
     monkeypatch.setenv("MARTELO_DIARIO_PATH", str(caminho))
     monkeypatch.setattr(diario_bordo, "_handler", None)
+    monkeypatch.setattr(diario_bordo, "_caminho_em_uso", None)
     monkeypatch.setattr(diario_bordo, "_CONTEXTO", {"utilizador": "-", "menu": "-", "obra": "-"})
 
     raiz = logging.getLogger()
@@ -155,6 +156,39 @@ def test_limpeza_apaga_relatorios_esquecidos_no_temp(diario: Path, tmp_path: Pat
     assert not relatorio.exists()
     # Só mexe no que é nosso: ficheiros de outros programas ficam quietos.
     assert outro.exists()
+
+
+def test_ficheiro_log_configurado_manda_o_registo_para_la(tmp_path: Path, monkeypatch) -> None:
+    """O campo "Ficheiro de log" dos Caminhos do Sistema é respeitado."""
+    monkeypatch.delenv("MARTELO_DIARIO_PATH", raising=False)
+    monkeypatch.setattr(diario_bordo, "_caminho_em_uso", None)
+    escolhido = tmp_path / "registos" / "martelo.log"
+
+    assert diario_bordo.caminho_diario(escolhido) == escolhido
+
+
+def test_caminho_de_rede_e_ignorado(tmp_path: Path, monkeypatch) -> None:
+    """Escrever o registo no servidor seria lento e prendia o ficheiro."""
+    monkeypatch.delenv("MARTELO_DIARIO_PATH", raising=False)
+    monkeypatch.setattr(diario_bordo, "_caminho_em_uso", None)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    caminho = diario_bordo.caminho_diario(r"\\SERVER_LE\_Lanca_Encanto\logs\martelo.log")
+
+    assert str(caminho).startswith(str(tmp_path))
+
+
+def test_arranque_le_o_ficheiro_log_dos_caminhos_do_sistema() -> None:
+    import inspect
+
+    from app.config import logging_config
+
+    fonte = inspect.getsource(logging_config)
+
+    assert 'KEY_FICHEIRO_LOG = "ficheiro_log"' in fonte
+    assert "configurar_diario(level, preferido=_ficheiro_log_configurado())" in fonte
+    # Sem base de dados, o Martelo tem de arrancar na mesma.
+    assert "except Exception" in fonte
 
 
 def test_contexto_nunca_parte_a_linha_do_ficheiro(diario: Path) -> None:

@@ -125,6 +125,7 @@ from app.services.custeio_supervisor import (
     pagina_de_chave,
     tem_erro_grave,
 )
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
@@ -1172,6 +1173,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def importar_modulo(self) -> None:
         """Open the import dialog and append the chosen module to the costing."""
+        diario_bordo.registar_acao("Importar módulo para o custeio")
         if self._valueset_vazio_redireciona():
             return
 
@@ -1530,6 +1532,7 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def guardar_como_modulo(self) -> None:
         """Save the selected costing lines as a reusable module."""
+        diario_bordo.registar_acao("Guardar linhas como módulo")
         linha_ids = self._ids_linhas_selecionadas()
         if not linha_ids:
             self.status_label.setText("Selecione pelo menos uma linha para guardar.")

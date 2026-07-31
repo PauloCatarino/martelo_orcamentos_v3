@@ -39,13 +39,27 @@ _LOGGER = logging.getLogger("martelo.diario")
 _CONTEXTO = {"utilizador": "-", "menu": "-", "obra": "-"}
 
 _handler: RotatingFileHandler | None = None
+_caminho_em_uso: Path | None = None
 
 
 # ---- onde vive o ficheiro ---------------------------------------------------
-def caminho_diario() -> Path:
-    """Return a writable local path for the diary (never on the server)."""
-    explicito = (os.getenv("MARTELO_DIARIO_PATH") or "").strip()
+def caminho_diario(preferido: str | Path | None = None) -> Path:
+    """Return a writable local path for the diary (never on the server).
+
+    ``preferido`` é o que estiver em Configurações → Caminhos do Sistema
+    ("Ficheiro de log"): serve para quem quiser o registo noutro sítio. Um
+    caminho de rede é ignorado de propósito — escrever o registo no servidor
+    seria lento e o ficheiro ficaria preso a cada arranque.
+    """
+    if preferido is None and _caminho_em_uso is not None:
+        return _caminho_em_uso
+
     candidatos: list[Path] = []
+    escolhido = str(preferido or "").strip()
+    if escolhido and not _e_caminho_de_rede(escolhido):
+        candidatos.append(Path(escolhido).expanduser())
+
+    explicito = (os.getenv("MARTELO_DIARIO_PATH") or "").strip()
     if explicito:
         candidatos.append(Path(explicito).expanduser())
 
@@ -63,6 +77,10 @@ def caminho_diario() -> Path:
         except OSError:
             continue
     return Path(NOME_FICHEIRO).resolve()
+
+
+def _e_caminho_de_rede(caminho: str) -> bool:
+    return caminho.startswith("\\\\") or caminho.startswith("//")
 
 
 def ficheiros_do_diario() -> list[Path]:
@@ -85,13 +103,17 @@ class _ContextoFilter(logging.Filter):
         return True
 
 
-def configurar_diario(nivel: int = logging.INFO) -> Path:
+def configurar_diario(
+    nivel: int = logging.INFO, *, preferido: str | Path | None = None
+) -> Path:
     """Install the rotating file handler on the root logger (idempotent)."""
-    global _handler
+    global _handler, _caminho_em_uso
 
-    caminho = caminho_diario()
     if _handler is not None:
-        return caminho
+        return caminho_diario()
+
+    caminho = caminho_diario(preferido)
+    _caminho_em_uso = caminho
 
     handler = RotatingFileHandler(
         caminho,
@@ -109,6 +131,17 @@ def configurar_diario(nivel: int = logging.INFO) -> Path:
     if raiz.level > nivel:
         raiz.setLevel(nivel)
     _handler = handler
+
+    escolhido = str(preferido or "").strip()
+    if escolhido and caminho != Path(escolhido).expanduser():
+        # Fica escrito no próprio diário: assim, quem configurou o caminho
+        # percebe porque é que o ficheiro não apareceu lá.
+        _LOGGER.warning(
+            "O 'Ficheiro de log' configurado (%s) não foi usado — o registo é "
+            "sempre local: %s",
+            escolhido,
+            caminho,
+        )
     return caminho
 
 

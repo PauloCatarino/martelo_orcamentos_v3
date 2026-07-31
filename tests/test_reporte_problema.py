@@ -124,3 +124,35 @@ def test_menu_e_obra_ficam_no_contexto() -> None:
         ProducaoPage._fill_form
     )
     assert "self.reportar_button" in inspect.getsource(MainWindow.__init__)
+
+
+def test_rasto_tambem_nos_orcamentos() -> None:
+    """Os Orçamentos deixam rasto como a Produção — senão o diário fica cego lá."""
+    from app.ui.pages.orcamento_detail_page import OrcamentoDetailPage
+    from app.ui.pages.orcamento_items_page import OrcamentoItemsPage
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+    from app.ui.pages.orcamentos_page import OrcamentosPage
+
+    abrir = inspect.getsource(OrcamentoDetailPage.__init__)
+    assert 'diario_bordo.definir_obra(f"ORC {orcamento.codigo_versao}")' in abrir
+    assert "diario_bordo.registar_acao(\"Abriu o orçamento\"" in abrir
+
+    assert "diario_bordo.registar_acao" in inspect.getsource(
+        OrcamentosPage.abrir_novo_orcamento
+    )
+    assert "diario_bordo.registar_acao" in inspect.getsource(
+        OrcamentosPage.eliminar_orcamento_selecionado
+    )
+    assert "diario_bordo.registar_acao" in inspect.getsource(
+        OrcamentoItemsPage.atualizar_custos
+    )
+    # As exportações e o email são o que mais dá problemas: têm de ficar todas.
+    for metodo in (
+        OrcamentoRelatoriosPage._exportar_pdf,
+        OrcamentoRelatoriosPage._exportar_excel,
+        OrcamentoRelatoriosPage._exportar_phc,
+        OrcamentoRelatoriosPage._exportar_plano_corte,
+        OrcamentoRelatoriosPage._exportar_resumo_custos,
+        OrcamentoRelatoriosPage._enviar_email,
+    ):
+        assert "diario_bordo.registar_acao" in inspect.getsource(metodo)

@@ -270,7 +270,12 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         PASTA_EMBEDDINGS_IA_DEFAULT,
     ),
     SystemSettingSeed("pasta_modelo_ia_texto", "Pasta Modelo IA texto", "pasta", "IA"),
-    SystemSettingSeed("ficheiro_log", "Ficheiro de log", "ficheiro", "Geral"),
+    SystemSettingSeed(
+        "ficheiro_log",
+        "Ficheiro de log (vazio = automático em %LOCALAPPDATA%; a rede é ignorada)",
+        "ficheiro",
+        "Geral",
+    ),
     SystemSettingSeed(
         "provedor_resposta_ia",
         "Provedor resposta IA (local / openai / claude)",

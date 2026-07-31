@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.clientes_emails import emails_envio_orcamentos
@@ -684,6 +685,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_pdf(self) -> None:
         """Export the budget PDF to the version folder (phase 8W.4.1)."""
+        diario_bordo.registar_acao("Exportar PDF do orçamento")
         if not REPORTLAB_DISPONIVEL:
             QMessageBox.warning(
                 self,
@@ -715,6 +717,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_excel(self) -> None:
         """Export the budget Excel to the version folder (phase 8W.4.2)."""
+        diario_bordo.registar_acao("Exportar Excel do orçamento")
         if not self._confirmar_supervisor("gerar o Excel"):
             return
         try:
@@ -736,6 +739,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_phc(self) -> None:
         """Exporta o Excel no formato PHC para a pasta da versão (C2b)."""
+        diario_bordo.registar_acao("Exportar Excel PHC")
         if not self._confirmar_supervisor("exportar para o PHC"):
             return
         try:
@@ -757,6 +761,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_plano_corte(self) -> None:
         """Gera o PDF do plano de corte (otimizado) na pasta da versão (C3.4)."""
+        diario_bordo.registar_acao("Exportar plano de corte")
         if not REPORTLAB_DISPONIVEL:
             QMessageBox.warning(
                 self,
@@ -814,6 +819,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _exportar_resumo_custos(self) -> None:
         """Exporta o Resumo de Custos (modelo) para a pasta da versao."""
+        diario_bordo.registar_acao("Exportar resumo de custos")
         try:
             with SessionLocal() as session:
                 caminho = OrcamentoExportService(session).exportar_resumo_custos(
@@ -833,6 +839,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
     def _enviar_email(self) -> None:
         """Send the budget PDF by email and register the send in history."""
+        diario_bordo.registar_acao("Enviar orçamento por email")
         if not self._confirmar_supervisor("preparar o email"):
             return
         orcamento = None

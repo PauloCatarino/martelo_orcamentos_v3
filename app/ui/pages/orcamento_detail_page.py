@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.db.session import SessionLocal
 from app.repositories.orcamento_item_repository import OrcamentoItemResumo
 from app.repositories.orcamento_repository import OrcamentoResumo
@@ -52,6 +53,9 @@ class OrcamentoDetailPage(QWidget):
 
         self.orcamento = orcamento
         self.on_back = on_back
+        # Diário: a partir daqui as linhas ficam com o orçamento em que se mexe.
+        diario_bordo.definir_obra(f"ORC {orcamento.codigo_versao}")
+        diario_bordo.registar_acao("Abriu o orçamento", orcamento.codigo_versao)
         # Callback para o assistente de resolução saltar para menus de topo
         # (Matérias-Primas, Máquinas/Tarifas, …) — passado à página de custeio.
         self._on_navegar_menu = on_navegar_menu

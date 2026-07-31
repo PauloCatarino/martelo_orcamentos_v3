@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain import pesquisa_texto
@@ -448,6 +449,7 @@ class OrcamentosPage(QWidget):
 
     def abrir_novo_orcamento(self) -> None:
         """Open the simple new budget dialog."""
+        diario_bordo.registar_acao("Abriu o Novo Orçamento")
         dialog = NovoOrcamentoDialog(self)
 
         if not dialog.exec():
@@ -755,6 +757,10 @@ class OrcamentosPage(QWidget):
         if escolha is None:
             return
         apagar_registo, apagar_pasta = escolha
+        diario_bordo.registar_acao(
+            "Eliminar orçamento",
+            f"{orcamento.codigo_versao} (registo={apagar_registo}, pasta={apagar_pasta})",
+        )
 
         if apagar_registo and remove_orcamento and tem_producao:
             QMessageBox.warning(self, "Eliminar Or\u00e7amento", PRODUCAO_LIGADA_MSG)

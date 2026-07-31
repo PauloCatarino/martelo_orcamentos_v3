@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.item_types import get_item_type_label
@@ -520,6 +521,7 @@ class OrcamentoItemsPage(QWidget):
 
     def atualizar_custos(self) -> None:
         """Recompute every item's costing pipeline and apply the margins."""
+        diario_bordo.registar_acao("Atualizar custos do orçamento")
         try:
             with SessionLocal() as session:
                 item_service = OrcamentoItemService(session)
@@ -796,6 +798,7 @@ class OrcamentoItemsPage(QWidget):
 
     def remover_item_selecionado(self) -> None:
         """Remove the currently selected item after confirmation."""
+        diario_bordo.registar_acao("Remover item do orçamento")
         item_id = self._get_selected_item_id()
         if item_id is None:
             self.status_label.setText("Selecione um item para remover.")
