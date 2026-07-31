@@ -112,11 +112,20 @@ def _sql_escape(valor: str) -> str:
     return valor.replace("\\", "\\\\").replace("'", "''")
 
 
-def montar_sql(contas: list[ContaGerada]) -> str:
-    """SQL das chamadas ao procedimento, uma por pessoa."""
+def montar_sql(contas: list[ContaGerada], *, repor: bool = False) -> str:
+    """SQL das chamadas ao procedimento, uma por pessoa.
+
+    ``repor=True`` troca as passwords de contas que ja' existem, em vez de as
+    criar -- as contas do MySQL sao globais e criam-se uma vez so'.
+    """
+    procedimento = "martelo_repor_password" if repor else "martelo_criar_utilizador"
     linhas = [
         "-- Contas do Martelo, geradas por scripts/gerar_contas_mysql.py",
-        "-- Correr DEPOIS de deploy/mysql_contas_beta.sql.",
+        (
+            "-- REPOSICAO de passwords (as contas ja' existem)."
+            if repor
+            else "-- Correr DEPOIS de deploy/mysql_contas_beta.sql."
+        ),
         "--",
         "-- As passwords estao em contas_martelo.txt: distribua-as e apague o",
         "-- ficheiro. Cada pessoa muda a sua na app, em Utilizadores.",
@@ -125,12 +134,19 @@ def montar_sql(contas: list[ContaGerada]) -> str:
     for conta in contas:
         perfil = "administrador" if conta.admin else "normal"
         linhas.append(f"-- {conta.nome or conta.username} ({perfil})")
-        linhas.append(
-            "CALL martelo_criar_utilizador("
-            f"'{_sql_escape(conta.username)}', "
-            f"'{_sql_escape(conta.password)}', "
-            f"{'TRUE' if conta.admin else 'FALSE'});"
-        )
+        if repor:
+            linhas.append(
+                f"CALL {procedimento}("
+                f"'{_sql_escape(conta.username)}', "
+                f"'{_sql_escape(conta.password)}');"
+            )
+        else:
+            linhas.append(
+                f"CALL {procedimento}("
+                f"'{_sql_escape(conta.username)}', "
+                f"'{_sql_escape(conta.password)}', "
+                f"{'TRUE' if conta.admin else 'FALSE'});"
+            )
         linhas.append("")
     return "\n".join(linhas)
 
@@ -171,6 +187,19 @@ def main() -> int:
         # BETA sem lhe andar a mexer, indica-se aqui o nome da base.
         help="base de dados a ler (por omissao, a do .env)",
     )
+    parser.add_argument(
+        "--repor",
+        action="store_true",
+        # As contas do MySQL sao globais: uma vez criadas servem todas as bases.
+        # O que se precisa a seguir nao e' cria-las outra vez -- e' dar-lhes
+        # passwords novas, por exemplo quando as antigas andaram a` vista.
+        help="gerar reposicoes de password em vez de contas novas",
+    )
+    parser.add_argument(
+        "--excepto",
+        default="",
+        help="nomes a deixar de fora, separados por virgula (ex.: paulo,admin)",
+    )
     args = parser.parse_args()
 
     if args.base:
@@ -189,6 +218,12 @@ def main() -> int:
 
     print(f"{len(utilizadores)} utilizador(es) na tabela `users`.")
     contas = contas_para(utilizadores)
+
+    fora = {n.strip().casefold() for n in args.excepto.split(",") if n.strip()}
+    if fora:
+        antes = len(contas)
+        contas = [c for c in contas if c.username.casefold() not in fora]
+        print(f"  deixados de fora: {antes - len(contas)} ({args.excepto})")
     if not contas:
         print("Nenhum username servia como conta MySQL. Nada gerado.")
         return 1
@@ -198,7 +233,7 @@ def main() -> int:
     caminho_sql = pasta / "contas_martelo.sql"
     caminho_txt = pasta / "contas_martelo.txt"
 
-    caminho_sql.write_text(montar_sql(contas), encoding="utf-8")
+    caminho_sql.write_text(montar_sql(contas, repor=args.repor), encoding="utf-8")
     caminho_txt.write_text(montar_lista(contas), encoding="utf-8")
 
     admins = sum(1 for c in contas if c.admin)

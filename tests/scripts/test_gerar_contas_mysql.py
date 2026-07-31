@@ -89,3 +89,22 @@ def test_lista_mostra_cada_pessoa_e_marca_os_admins() -> None:
     assert "Paulo Catarino" in lista
     assert "(administrador)" in lista
     assert lista.count("(administrador)") == 1
+
+
+def test_sql_de_reposicao_usa_o_outro_procedimento() -> None:
+    """As contas do MySQL sao globais: uma vez criadas, o que se faz e' repor."""
+    sql = montar_sql(
+        [ContaGerada("ana", "Ana", "password-nova", admin=False)], repor=True
+    )
+
+    assert "CALL martelo_repor_password('ana', 'password-nova');" in sql
+    assert "martelo_criar_utilizador" not in sql
+    # O procedimento de repor nao leva o terceiro parametro (admin).
+    assert "FALSE" not in sql and "TRUE" not in sql
+
+
+def test_sql_normal_continua_a_criar() -> None:
+    sql = montar_sql([ContaGerada("ana", "Ana", "password-nova", admin=True)])
+
+    assert "CALL martelo_criar_utilizador('ana', 'password-nova', TRUE);" in sql
+    assert "martelo_repor_password" not in sql
