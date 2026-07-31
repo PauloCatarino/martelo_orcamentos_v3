@@ -16,6 +16,14 @@ env/
 # ... mas o modelo (sem password) fica versionado:
 !deploy/.env.beta.exemplo
 
+# Contas MySQL geradas pelo scripts/gerar_contas_mysql.py.
+# LEVAM AS PASSWORDS DE TODA A GENTE em texto simples: nunca podem ir para o
+# repositorio. Usam-se uma vez (correr o .sql, distribuir o .txt) e apagam-se.
+contas_martelo.sql
+contas_martelo.txt
+contas_martelo*.sql
+contas_martelo*.txt
+
 # Build do executavel / instalador
 /build/
 /dist/

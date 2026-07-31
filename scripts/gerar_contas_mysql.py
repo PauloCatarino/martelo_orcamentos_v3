@@ -178,11 +178,40 @@ def main() -> int:
     print(f"  SQL       -> {caminho_sql}")
     print(f"  passwords -> {caminho_txt}")
     print()
+    print("ATENCAO: estes dois ficheiros levam as passwords de toda a gente em")
+    print("texto simples. O .gitignore ja' os travava, mas confirme que nao vao")
+    print("para o repositorio e apague-os assim que distribuir.")
+    _avisar_se_o_git_os_ve(caminho_sql, caminho_txt)
+    print()
     print("A seguir:")
-    print("  1. mysql -u root -p <base> < deploy/mysql_contas_beta.sql")
-    print(f"  2. mysql -u root -p <base> < {caminho_sql.name}")
-    print(f"  3. distribua as passwords e APAGUE o {caminho_txt.name}")
+    print("  1. correr deploy/mysql_contas_beta.sql   (uma vez, por base)")
+    print(f"  2. correr {caminho_sql.name}")
+    print(f"  3. distribuir as passwords e APAGAR o {caminho_txt.name}")
     return 0
+
+
+def _avisar_se_o_git_os_ve(*caminhos: Path) -> None:
+    """Grita se algum dos ficheiros nao estiver a ser ignorado pelo git.
+
+    Um `git add -A` distraido mandava as passwords todas para o repositorio, e
+    dali nao saem mais -- ficam no historico. Mais vale um aviso a mais.
+    """
+    import subprocess
+
+    for caminho in caminhos:
+        try:
+            resultado = subprocess.run(
+                ["git", "check-ignore", "-q", str(caminho)],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                check=False,
+            )
+        except (OSError, ValueError):
+            return  # sem git a` mao: nada a dizer
+        if resultado.returncode != 0:
+            print()
+            print(f"  !!! {caminho.name} NAO esta a ser ignorado pelo git !!!")
+            print("      Acrescente-o ao .gitignore ANTES de fazer commit.")
 
 
 if __name__ == "__main__":
