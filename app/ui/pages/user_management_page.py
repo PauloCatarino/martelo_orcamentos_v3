@@ -26,6 +26,7 @@ from app.services.permission_service import PERMISSOES_EDITAVEIS
 from app.services.user_admin_service import (
     create_user,
     list_managed_users,
+    mudar_a_minha_password,
     reset_password,
     update_user_access,
 )
@@ -100,7 +101,16 @@ class UserManagementPage(QWidget):
         self.new_button = QPushButton("Novo utilizador")
         self.new_button.clicked.connect(self._new_user)
         self.password_button = QPushButton("Redefinir palavra-passe")
+        self.password_button.setToolTip(
+            "Repor a palavra-passe do utilizador selecionado (administrador)."
+        )
         self.password_button.clicked.connect(self._reset_password)
+        self.minha_password_button = QPushButton("Mudar a minha palavra-passe")
+        self.minha_password_button.setToolTip(
+            "Muda a SUA palavra-passe de acesso ao Martelo — não precisa do "
+            "administrador."
+        )
+        self.minha_password_button.clicked.connect(self._mudar_a_minha_password)
         self.save_button = QPushButton("Gravar acessos")
         self.save_button.clicked.connect(self._save)
         self.reload_button = QPushButton("Recarregar")
@@ -115,6 +125,7 @@ class UserManagementPage(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(self.new_button)
         buttons.addWidget(self.password_button)
+        buttons.addWidget(self.minha_password_button)
         buttons.addStretch()
         buttons.addWidget(self.reload_button)
         buttons.addWidget(self.save_button)
@@ -213,7 +224,7 @@ class UserManagementPage(QWidget):
         password, accepted = QInputDialog.getText(
             self,
             "Redefinir palavra-passe",
-            "Nova palavra-passe (mínimo 8 caracteres):",
+            "Nova palavra-passe (mínimo 12 caracteres):",
             QLineEdit.EchoMode.Password,
         )
         if not accepted:
@@ -225,6 +236,43 @@ class UserManagementPage(QWidget):
             QMessageBox.warning(self, "Palavra-passe", str(exc))
             return
         QMessageBox.information(self, "Palavra-passe", "Palavra-passe atualizada.")
+
+    def _mudar_a_minha_password(self) -> None:
+        """Cada um muda a sua, sem passar pelo administrador."""
+        password, accepted = QInputDialog.getText(
+            self,
+            "Mudar a minha palavra-passe",
+            "Nova palavra-passe (mínimo 12 caracteres):",
+            QLineEdit.EchoMode.Password,
+        )
+        if not accepted:
+            return
+
+        confirmacao, accepted = QInputDialog.getText(
+            self,
+            "Mudar a minha palavra-passe",
+            "Repita a nova palavra-passe:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not accepted:
+            return
+        if password != confirmacao:
+            QMessageBox.warning(
+                self, "Palavra-passe", "As palavras-passe não coincidem."
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                mudar_a_minha_password(session, password)
+        except Exception as exc:
+            QMessageBox.warning(self, "Palavra-passe", str(exc))
+            return
+        QMessageBox.information(
+            self,
+            "Palavra-passe",
+            "Palavra-passe alterada. Vai precisar dela da próxima vez que entrar.",
+        )
 
     def _save(self) -> None:
         try:

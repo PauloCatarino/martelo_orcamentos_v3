@@ -16,9 +16,18 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.db.session import SessionLocal
+from app.db.session import (
+    BaseIndisponivel,
+    CredenciaisInvalidas,
+    SessionLocal,
+    ligar,
+)
 from app.models import User
-from app.services.auth_service import AuthenticationError, InactiveUserError, authenticate_user
+from app.services.auth_service import (
+    AuthenticationError,
+    InactiveUserError,
+    carregar_perfil,
+)
 from app.services.permission_service import is_admin
 from app.services.user_admin_service import create_user
 from app.ui.pages.user_management_page import NewUserDialog, UserManagementPage
@@ -92,19 +101,32 @@ class LoginWindow(QDialog):
         self.setLayout(layout)
 
     def _authenticate_admin(self) -> bool:
-        """Validate an administrator without changing the login dialog state."""
+        """Abre a ligação com uma conta de administrador.
+
+        A partir daqui a app trabalha com essa ligação — é ela que dá os
+        privilégios para criar utilizadores e mexer nos acessos. Se depois
+        alguém entrar normalmente, o ``ligar`` do login substitui-a.
+        """
         credentials = AdminCredentialsDialog(self)
         if credentials.exec() != QDialog.DialogCode.Accepted:
             return False
+
+        username = credentials.username.text().strip()
+        try:
+            ligar(username, credentials.password.text())
+        except CredenciaisInvalidas:
+            QMessageBox.warning(self, "Autorização", "Utilizador ou password inválidos.")
+            return False
+        except BaseIndisponivel as exc:
+            QMessageBox.critical(self, "Autorização", str(exc))
+            return False
+
         try:
             with SessionLocal() as session:
-                user = authenticate_user(
-                    session,
-                    credentials.username.text().strip(),
-                    credentials.password.text(),
-                )
-                if not is_admin(user):
-                    raise AuthenticationError("Apenas um administrador pode executar esta operação.")
+                if not is_admin(carregar_perfil(session, username)):
+                    raise AuthenticationError(
+                        "Apenas um administrador pode executar esta operação."
+                    )
         except (AuthenticationError, InactiveUserError) as exc:
             QMessageBox.warning(self, "Autorização", str(exc))
             return False
@@ -152,7 +174,11 @@ class LoginWindow(QDialog):
         dialog.exec()
 
     def handle_login(self) -> None:
-        """Authenticate the user with the provided credentials."""
+        """Entra na app abrindo a ligação à base com as credenciais da pessoa.
+
+        Quem valida o utilizador e a password é o próprio MySQL: cada um tem a
+        sua conta. Se a ligação abre, entrou — só falta ir buscar o perfil.
+        """
         username = self.username_input.text().strip()
         password = self.password_input.text()
 
@@ -163,15 +189,26 @@ class LoginWindow(QDialog):
             return
 
         try:
+            ligar(username, password)
+        except CredenciaisInvalidas:
+            self.password_input.clear()
+            self.error_label.setText("Username ou password invalidos.")
+            return
+        except BaseIndisponivel as exc:
+            self.password_input.clear()
+            self.error_label.setText(str(exc))
+            return
+
+        try:
             with SessionLocal() as session:
-                self.authenticated_user = authenticate_user(session, username, password)
+                self.authenticated_user = carregar_perfil(session, username)
         except InactiveUserError:
             self.password_input.clear()
             self.error_label.setText("Utilizador inativo. Contacte o administrador.")
             return
-        except AuthenticationError:
+        except AuthenticationError as exc:
             self.password_input.clear()
-            self.error_label.setText("Username ou password invalidos.")
+            self.error_label.setText(str(exc))
             return
         except SQLAlchemyError:
             self.password_input.clear()
