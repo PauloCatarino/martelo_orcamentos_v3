@@ -65,6 +65,24 @@ BEGIN
 
     SET v_base = DATABASE();
 
+    -- Rede de seguranca: sem base escolhida, os GRANTs iriam parar ao sitio
+    -- errado (ou a lado nenhum). Mais vale parar aqui e dizer porque.
+    IF v_base IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
+            'Nenhuma base escolhida. Corra primeiro: USE martelo_v3_beta;';
+    END IF;
+
+    -- Segunda rede: so' aplica onde o Martelo vive mesmo. Se a base estiver
+    -- vazia ou for outra qualquer, para -- em vez de encher um sitio errado
+    -- de privilegios.
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+         WHERE table_schema = v_base AND table_name = 'orcamentos'
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT =
+            'Esta base nao parece ser a do Martelo (falta a tabela orcamentos).';
+    END IF;
+
     -- 2a. Tabelas de trabalho: leitura e escrita para os dois perfis.
     OPEN cur;
     percorre: LOOP
