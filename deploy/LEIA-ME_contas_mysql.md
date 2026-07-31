@@ -109,8 +109,22 @@ avançar.
 
 De volta ao **Workbench**, na mesma ligação e com a mesma base escolhida:
 
-1. **File → Open SQL Script…** → `contas_martelo.sql`
+1. **File → Open SQL Script…** → `deploy\contas_martelo.sql`
 2. Executar tudo (⚡)
+
+> ⚠️ **Depois de executar, não tire print do painel Output.**
+> O Workbench escreve lá o comando completo de cada conta — **com a password
+> à vista**:
+>
+> ```
+> CALL martelo_criar_utilizador('Ana', 'edUsj=PxijhP9c66', FALSE)
+> ```
+>
+> É o único sítio onde as passwords de toda a gente aparecem juntas no ecrã.
+> Para mostrar a alguém que correu bem, use a grelha da verificação (a do
+> `role_edges`), que só tem nomes e perfis.
+>
+> Feche o separador quando acabar; o Output limpa-se ao fechar o Workbench.
 
 **Confirmar:**
 
