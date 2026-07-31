@@ -85,6 +85,19 @@ class Producao(Base):
         ForeignKey("users.id"),
         nullable=True,
     )
+    # Rasto do email que avisou o cliente de que a obra entrou em produção.
+    # A NULL enquanto ninguém o enviar; reenviar mais tarde atualiza estas três.
+    projeto_cliente_enviado_em: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    projeto_cliente_email: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
+    projeto_cliente_enviado_por_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
     imagem_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     pasta_servidor: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     tipo_pasta: Mapped[str | None] = mapped_column(String(64), nullable=True)

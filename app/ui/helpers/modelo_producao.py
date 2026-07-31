@@ -204,7 +204,36 @@ class ProducaoTableModel(QAbstractTableModel):
                 return descricao
         if coluna.key == "imos":
             return self._dica_imos(processo)
+        if coluna.key == "projeto_cliente":
+            return self._dica_projeto_cliente(processo)
         return coluna.valor(processo)
+
+    def _dica_projeto_cliente(self, processo) -> str:
+        """Detalhe do aviso ao cliente: a coluna só tem espaço para o envelope."""
+        enviado_em = getattr(processo, "projeto_cliente_enviado_em", None)
+        if enviado_em is None:
+            return (
+                "O cliente ainda não foi informado de que a obra entrou em "
+                "produção."
+            )
+
+        destino = getattr(processo, "projeto_cliente_email", "") or ""
+        autor = self._nome_autor(
+            getattr(processo, "projeto_cliente_enviado_por_id", None)
+        )
+        try:
+            quando = enviado_em.strftime("%d-%m-%Y %H:%M")
+        except AttributeError:
+            quando = ""
+
+        partes = ["Projeto enviado ao cliente"]
+        if destino:
+            partes.append(f"para {destino}")
+        if quando:
+            partes.append(f"em {quando}")
+        if autor:
+            partes.append(f"por {autor}")
+        return " ".join(partes) + "."
 
     def _dica_imos(self, processo) -> str:
         """Detalhe da encomenda iMos: a coluna só tem espaço para um visto."""

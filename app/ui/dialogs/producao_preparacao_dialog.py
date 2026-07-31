@@ -7,6 +7,7 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QDialog,
     QFormLayout,
     QGroupBox,
@@ -65,6 +66,16 @@ class PreparacaoPreferenciasDialog(QDialog):
         )
         self._carregar_opcoes()
 
+        # Escolha pessoal, à parte das validações: nem todos falam com o cliente.
+        self.email_projeto_check = QCheckBox(
+            "Ao passar a obra para Produção, preparar o email do projeto para o cliente"
+        )
+        self.email_projeto_check.setToolTip(
+            "O Martelo prepara o email (destinatário, assunto, corpo, imagem e o "
+            "2_Projeto_Producao.pdf em anexo). Quem envia é você, depois de o rever."
+        )
+        self._carregar_email_projeto()
+
         self.tudo_button = QPushButton("Selecionar tudo")
         self.tudo_button.setToolTip("Marcar todas as validações")
         self.tudo_button.clicked.connect(
@@ -98,6 +109,7 @@ class PreparacaoPreferenciasDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(info)
         layout.addWidget(self.lista, stretch=1)
+        layout.addWidget(self.email_projeto_check)
         layout.addLayout(botoes)
         layout.addWidget(self.status_label)
 
@@ -116,6 +128,11 @@ class PreparacaoPreferenciasDialog(QDialog):
             )
             self.lista.addItem(item)
 
+    def _carregar_email_projeto(self) -> None:
+        with SessionLocal() as session:
+            ativo = svc.obter_email_projeto_ativo(session, self._user_id)
+        self.email_projeto_check.setChecked(ativo)
+
     def _marcar_todas(self, estado: Qt.CheckState) -> None:
         for linha in range(self.lista.count()):
             self.lista.item(linha).setCheckState(estado)
@@ -133,6 +150,9 @@ class PreparacaoPreferenciasDialog(QDialog):
             with SessionLocal() as session:
                 svc.guardar_validacoes_utilizador(
                     session, self._user_id, self._keys_marcadas()
+                )
+                svc.guardar_email_projeto_ativo(
+                    session, self._user_id, self.email_projeto_check.isChecked()
                 )
         except Exception as exc:  # pragma: no cover - depende da base de dados
             QMessageBox.critical(

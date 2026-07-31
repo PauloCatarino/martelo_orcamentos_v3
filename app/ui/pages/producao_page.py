@@ -95,7 +95,11 @@ from app.services.producao_pastas_service import (
     caminho_versao_de_processo_existente,
     preview_conteudo_pasta,
 )
-from app.services.producao_preparacao_service import supervisionar_para_producao
+from app.services.producao_preparacao_service import (
+    obter_email_projeto_ativo,
+    supervisionar_para_producao,
+)
+from app.services.projeto_cliente_service import preparar_envio, registar_envio
 from app.ui import tema
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
@@ -2803,6 +2807,109 @@ class ProducaoPage(QWidget):
             return self._format_value(getattr(processo, "pasta_servidor", ""))
         return str(caminho)
 
+    def _avisar_cliente_do_projeto(self, processo_id: int) -> None:
+        """Preparar o email que diz ao cliente que a obra entrou em produção.
+
+        Só corre para quem ligou a opção nas Preferências da Preparação. O
+        Martelo prepara tudo; quem envia é o utilizador — e só quando o envio
+        corre bem é que fica o registo na coluna "Projeto Cliente".
+        """
+        user_id = self._colunas_user_id_int()
+        try:
+            with SessionLocal() as session:
+                if not obter_email_projeto_ativo(session, user_id):
+                    return
+                envio = preparar_envio(
+                    session,
+                    processo_id,
+                    utilizador=self._nome_do_utilizador(),
+                )
+        except (SQLAlchemyError, OSError, ValueError) as erro:
+            QMessageBox.warning(
+                self,
+                "Projeto para o cliente",
+                f"Não foi possível preparar o email para o cliente.\n\n{erro}",
+            )
+            return
+
+        diario_bordo.registar_acao("Preparou o email do projeto para o cliente")
+        if envio.avisos:
+            QMessageBox.information(
+                self,
+                "Projeto para o cliente",
+                "Antes de enviar, confirme:\n\n"
+                + "\n".join(f"• {aviso}" for aviso in envio.avisos),
+            )
+
+        dialogo = EmailOrcamentoDialog(
+            self,
+            destinatario=envio.destino,
+            assunto=envio.assunto,
+            corpo=envio.corpo_html,
+            anexos=list(envio.anexos),
+            pasta_inicial=envio.pasta_obra,
+        )
+        dialogo.setWindowTitle("Projeto para o cliente — rever antes de enviar")
+        if not dialogo.exec():
+            self.status_label.setText("Email do projeto não foi enviado.")
+            return
+
+        destino = dialogo.destinatario()
+        if not destino:
+            QMessageBox.warning(
+                self,
+                "Projeto para o cliente",
+                "Falta o destinatário — o email não foi enviado.",
+            )
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                config = carregar_email_config(session)
+            enviar_email(
+                destino,
+                dialogo.assunto(),
+                dialogo.corpo_html(),
+                dialogo.anexos(),
+                config=config,
+                cc=dialogo.cc(),
+            )
+        except Exception as erro:  # noqa: BLE001 - email falha por muitas razões
+            QApplication.restoreOverrideCursor()
+            diario_bordo.registar_erro("Projeto para o cliente", str(erro))
+            QMessageBox.critical(
+                self,
+                "Projeto para o cliente",
+                f"Não foi possível enviar o email.\n\n{erro}",
+            )
+            return
+        QApplication.restoreOverrideCursor()
+
+        try:
+            with SessionLocal() as session:
+                registar_envio(
+                    session, processo_id, destino=destino, user_id=user_id
+                )
+        except (SQLAlchemyError, ValueError) as erro:
+            # O email saiu: o registo falhado não pode parecer um envio falhado.
+            QMessageBox.warning(
+                self,
+                "Projeto para o cliente",
+                f"O email foi enviado, mas não consegui registá-lo na obra.\n\n{erro}",
+            )
+            return
+
+        diario_bordo.registar_acao("Enviou o projeto ao cliente", destino)
+        self.status_label.setText(f"Projeto enviado ao cliente ({destino}).")
+        self.carregar_processos(selecionar_id=processo_id)
+
+    def _nome_do_utilizador(self) -> str:
+        utilizador = app_session.current_user
+        if utilizador is None:
+            return ""
+        return getattr(utilizador, "nome", "") or getattr(utilizador, "username", "")
+
     def _save(self) -> None:
         """Persist the selected production process edits."""
         if self._selected_processo_id is None:
@@ -2824,6 +2931,12 @@ class ProducaoPage(QWidget):
             return
         if not self._supervisionar_mudanca_para_producao(data["estado"]):
             return
+        # Guardado ANTES de gravar: depois de gravar, a obra já está em
+        # Produção e deixaria de se saber que foi agora que ela lá entrou.
+        processo_atual = self._processo_selecionado()
+        entrou_em_producao = processo_atual is not None and entra_em_producao(
+            processo_atual.estado, data["estado"]
+        )
 
         updated_by_id = (
             app_session.current_user.id
@@ -2850,6 +2963,8 @@ class ProducaoPage(QWidget):
         self.carregar_processos(selecionar_id=proc_id)
         self.status_label.setText("Produção guardada.")
         diario_bordo.registar_acao("Gravou a obra", f"estado={data['estado']}")
+        if entrou_em_producao:
+            self._avisar_cliente_do_projeto(proc_id)
 
     def _converter_orcamento(self) -> None:
         """Open the conversion dialog and create the selected production process."""

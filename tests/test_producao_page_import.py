@@ -26,6 +26,7 @@ def test_producao_page_imports_and_headers() -> None:
         "Preço",
         "Descrição Produção",
         "Enc. iMos",
+        "Projeto Cliente",
         "Localização",
         "Tipo Pasta",
     ]

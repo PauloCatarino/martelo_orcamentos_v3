@@ -56,6 +56,17 @@ def _encomenda_imos(processo: Any) -> str:
         return "✓"
 
 
+def _projeto_cliente(processo: Any) -> str:
+    """Diz de relance se o cliente já foi avisado de que a obra entrou em produção."""
+    enviado_em = getattr(processo, "projeto_cliente_enviado_em", None)
+    if enviado_em is None:
+        return ""
+    try:
+        return f"✉ {enviado_em.strftime('%d-%m-%Y')}"
+    except AttributeError:
+        return "✉"
+
+
 COLUNAS_PRODUCAO: list[ColunaProducao] = [
     ColunaProducao("criada_em", "Criada em", True, _data_criacao),
     ColunaProducao("ano", "Ano", True, lambda p: _texto(getattr(p, "ano", ""))),
@@ -134,6 +145,7 @@ COLUNAS_PRODUCAO: list[ColunaProducao] = [
         _descricao_uma_linha,
     ),
     ColunaProducao("imos", "Enc. iMos", True, _encomenda_imos),
+    ColunaProducao("projeto_cliente", "Projeto Cliente", True, _projeto_cliente),
     ColunaProducao(
         "localizacao",
         "Localização",
@@ -168,6 +180,7 @@ LARGURAS_DEFAULT_PRODUCAO: dict[str, int] = {
     "preco": 100,
     "descricao_producao": 220,
     "imos": 110,
+    "projeto_cliente": 120,
     "localizacao": 150,
     "tipo_pasta": 170,
 }

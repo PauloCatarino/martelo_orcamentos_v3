@@ -281,6 +281,32 @@ def guardar_validacoes_utilizador(
     )
 
 
+def chave_email_projeto_utilizador(user_id: object) -> str:
+    """Chave do 'avisar o cliente' de cada utilizador (é escolha pessoal)."""
+    return f"producao_email_projeto:{user_id or 'default'}"
+
+
+def obter_email_projeto_ativo(session: Session, user_id: object) -> bool:
+    """True quando este utilizador quer preparar o email ao passar a Produção.
+
+    Desligado por defeito: nem todos falam com o cliente, e ninguém deve ser
+    surpreendido por uma janela de email que não pediu.
+    """
+    valor = SystemSettingService(session).obter_valor(
+        chave_email_projeto_utilizador(user_id), ""
+    )
+    return str(valor or "").strip().upper() in {"ON", "1", "TRUE", "SIM"}
+
+
+def guardar_email_projeto_ativo(
+    session: Session, user_id: object, ativo: bool
+) -> None:
+    """Guardar a escolha deste utilizador."""
+    SystemSettingService(session).guardar_valor(
+        chave_email_projeto_utilizador(user_id), "ON" if ativo else "OFF"
+    )
+
+
 def obter_keys_obrigatorias(session: Session, user_id: object) -> set[str]:
     """Return every validation key required for this user."""
     keys = set(obter_validacoes_utilizador(session, user_id))

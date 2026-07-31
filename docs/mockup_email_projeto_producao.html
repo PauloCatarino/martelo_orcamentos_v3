@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Mockup — Email "Projeto vai entrar em produção"</title>
+<style>
+  :root{
+    --castanho-escuro:#5A3E2B; --castanho-medio:#8B6F4E; --bege-areia:#EFE7DA;
+    --bege-claro:#F7F2EA; --cinza-castanho:#D9CFC2; --texto:#2E2A26;
+    --ok:#0A5C0A; --aviso:#8A5A00; --erro:#B00020; --novo:#1d6fa5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:#EAE3D8;font:13px/1.4 "Segoe UI",Arial,sans-serif;color:var(--texto)}
+  .app{max-width:1180px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 4px;color:var(--castanho-escuro)}
+  h2{font-size:14px;margin:0 0 10px;color:var(--castanho-escuro)}
+  .sub{color:var(--castanho-medio);font-size:12px;margin-bottom:18px}
+  section{background:#FDFBF7;border:1px solid var(--cinza-castanho);border-radius:6px;padding:16px;margin-bottom:18px}
+  .etiqueta{display:inline-block;background:var(--bege-areia);border:1px solid var(--castanho-medio);
+            border-radius:10px;padding:1px 9px;font-size:11px;color:var(--castanho-escuro);margin-left:6px}
+  .novo{border-color:var(--novo);color:var(--novo);background:#EAF3FA}
+
+  /* --- janela de email --- */
+  .janela{border:1px solid var(--cinza-castanho);border-radius:5px;overflow:hidden;background:#fff}
+  .janela .titulo{background:var(--castanho-escuro);color:#fff;padding:6px 12px;font-size:12px}
+  .cabecalho{padding:10px 14px;border-bottom:1px solid var(--cinza-castanho);background:var(--bege-claro);font-size:12px}
+  .cabecalho div{margin:3px 0}
+  .cabecalho b{color:var(--castanho-escuro);display:inline-block;min-width:74px}
+  .corpo{padding:16px 18px;font:13px/1.5 Calibri,"Segoe UI",Arial,sans-serif}
+  .corpo p{margin:0 0 10px}
+  .ref{font-size:15px;font-weight:700;color:var(--castanho-escuro)}
+  .imagem{width:100%;max-width:460px;height:170px;border:1px dashed var(--cinza-castanho);
+          background:repeating-linear-gradient(45deg,#F7F2EA,#F7F2EA 10px,#EFE7DA 10px,#EFE7DA 20px);
+          display:flex;align-items:center;justify-content:center;color:var(--castanho-medio);font-size:12px}
+  .bloco{background:var(--bege-claro);border-left:3px solid var(--castanho-medio);padding:8px 12px;margin:0 0 10px}
+  .bloco b{color:var(--castanho-escuro)}
+  .rodape{color:var(--castanho-medio)}
+  .barra-envio{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--cinza-castanho);background:var(--bege-claro)}
+  button{font:12px "Segoe UI",Arial;padding:5px 12px;background:#F3EEE6;border:1px solid var(--cinza-castanho);
+         border-radius:4px;color:var(--texto);cursor:default}
+  button.principal{background:var(--castanho-escuro);color:#fff;border-color:var(--castanho-escuro);font-weight:600}
+
+  /* --- tabela --- */
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th{background:var(--bege-areia);color:var(--castanho-escuro);text-align:left;padding:5px 8px;
+     border-bottom:1px solid var(--cinza-castanho);font-weight:700}
+  td{padding:5px 8px;border-bottom:1px solid var(--bege-areia)}
+  tr:nth-child(even) td{background:var(--bege-claro)}
+  .col-nova{background:#EAF3FA !important;outline:2px solid var(--novo);outline-offset:-2px}
+  .dica{position:relative;display:inline-block;border-bottom:1px dotted var(--castanho-medio)}
+  .dica .balao{position:absolute;left:0;top:22px;width:330px;background:#FFFDF6;border:1px solid var(--castanho-medio);
+               border-radius:4px;padding:7px 9px;font-size:11px;color:var(--texto);box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:5}
+
+  /* --- preferências --- */
+  ul.opcoes{list-style:none;margin:0;padding:0;font-size:12px}
+  ul.opcoes li{padding:4px 6px;border-bottom:1px solid var(--bege-areia)}
+  ul.opcoes li.destaque{background:#EAF3FA;outline:2px solid var(--novo);outline-offset:-2px;font-weight:600}
+  .duas{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  ol.perguntas{font-size:12.5px;margin:0;padding-left:18px}
+  ol.perguntas li{margin-bottom:9px}
+  .escolha{color:var(--novo);font-weight:600}
+  code{background:var(--bege-areia);padding:1px 4px;border-radius:3px;font-size:11.5px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <h1>Email "o seu projeto vai entrar em produção" <span class="etiqueta novo">proposta</span></h1>
+  <div class="sub">
+    Mockup para aprovação, antes de mexer no código. Dados de exemplo da obra
+    <b>26.1357_01_01_JF_VIVA</b>. O email é preparado pelo Martelo ao passar a obra para Produção;
+    quem o envia é o utilizador, depois de o rever.
+  </div>
+
+  <!-- ============ 1. O EMAIL ============ -->
+  <section>
+    <h2>1 · O email como o cliente o recebe</h2>
+    <div class="janela">
+      <div class="titulo">Projeto para produção — rever antes de enviar</div>
+      <div class="cabecalho">
+        <div><b>Para:</b> projetos@jfviva.pt <span class="etiqueta">coluna "Email envio projeto produção" da ficha do cliente</span></div>
+        <div><b>Assunto:</b> Processo: 26.1357_01_01_JF_VIVA | Ref.Cliente: 2512001 | Obra: REMODELAÇÃO T3</div>
+        <div><b>Anexos:</b> <i>(nenhum por defeito — ver pergunta 2)</i></div>
+      </div>
+      <div class="corpo">
+        <p>Boa tarde,</p>
+        <p>Sr. Cliente: <b>MÓVEIS J.F. VIVA</b></p>
+
+        <div class="imagem">imagem da obra (a que vem do iMos, inline)</div>
+        <p></p>
+
+        <p class="ref">Ref. Cliente: 2512001 &nbsp;|&nbsp; Obra: REMODELAÇÃO T3 &nbsp;|&nbsp; Localização: LISBOA</p>
+
+        <p>
+          A sua obra vai entrar para produção no dia <b>31-07-2026</b>, com previsão de
+          conclusão a <b>16-09-2026</b>.<br>
+          Processo: <b>26.1357_01_01_JF_VIVA</b>
+        </p>
+
+        <p><b>Detalhes da sua obra</b></p>
+        <div class="bloco">
+          <b>Matérias-primas usadas:</b><br>
+          AGL MLM LINHO CANCUN 10/16/19MM · MDF HIDRÓFUGO BRANCO B3002/MA 19MM
+        </div>
+        <div class="bloco">
+          <b>Descrição dos produtos:</b><br>
+          4 ROUPEIROS PORTAS ABRIR<br>
+          CLOSET U SEM PORTAS<br>
+          CONTÉM LEDS ESSANI VERSALINE MALEIROS<br>
+          CONTÉM LACAGEM<br>
+          PUXADOR "J" H1030
+        </div>
+        <div class="bloco"><b>Estado atual:</b> Em produção</div>
+
+        <p class="rodape">Com os melhores cumprimentos,<br>Paulo Catarino</p>
+      </div>
+      <div class="barra-envio">
+        <button>Adicionar anexo...</button>
+        <button>Alterar imagem...</button>
+        <span style="flex:1"></span>
+        <button class="principal">Enviar ao cliente</button>
+        <button>Cancelar</button>
+      </div>
+    </div>
+    <p class="sub" style="margin:10px 0 0">
+      <b>Saudação automática pela hora</b> (Bom dia / Boa tarde / Boa noite), como já acontece nos emails da IA Martelo.
+      Tudo é editável antes de enviar.
+    </p>
+  </section>
+
+  <!-- ============ 2. CAMPOS QUE PODEM NÃO EXISTIR ============ -->
+  <section>
+    <h2>2 · Quando faltam campos na obra</h2>
+    <div class="duas">
+      <div>
+        <div class="sub" style="margin:0 0 6px"><b>Obra completa</b> (o exemplo de cima)</div>
+        <div class="janela"><div class="corpo" style="font-size:12.5px">
+          <p><b>Assunto:</b> Processo: 26.1357_01_01_JF_VIVA | Ref.Cliente: 2512001 | Obra: REMODELAÇÃO T3</p>
+          <p class="ref">Ref. Cliente: 2512001 | Obra: REMODELAÇÃO T3 | Localização: LISBOA</p>
+        </div></div>
+      </div>
+      <div>
+        <div class="sub" style="margin:0 0 6px"><b>Obra sem "Obra" nem "Localização"</b> — as etiquetas desaparecem, não ficam vazias</div>
+        <div class="janela"><div class="corpo" style="font-size:12.5px">
+          <p><b>Assunto:</b> Processo: 26.1349_01_01_NEXT_LEVEL | Ref.Cliente: 2026/097</p>
+          <p class="ref">Ref. Cliente: 2026/097</p>
+        </div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 3. COLUNA NOVA ============ -->
+  <section>
+    <h2>3 · Registo na tabela das obras <span class="etiqueta novo">coluna nova: "Projeto Cliente"</span></h2>
+    <table>
+      <tr>
+        <th>Estado</th><th>Processo</th><th>Cliente</th><th>Data Entrega</th>
+        <th>Enc. iMos</th><th class="col-nova">Projeto Cliente</th>
+      </tr>
+      <tr>
+        <td>Producao</td><td>26.1357_01_01_JF_VIVA</td><td>MÓVEIS J.F. VIVA</td><td>16-09-2026</td>
+        <td>✓ 31-07-2026</td>
+        <td class="col-nova">
+          <span class="dica">✉ 31-07-2026
+            <span class="balao">Projeto enviado ao cliente para <b>projetos@jfviva.pt</b><br>
+              em 31-07-2026 15:42 por Paulo Catarino.</span>
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td>Producao</td><td>26.1349_01_01_NEXT_LEVEL</td><td>TRILOGIA PUBLICIDADE</td><td>14-08-2026</td>
+        <td>✓ 31-07-2026</td>
+        <td class="col-nova">
+          <span class="dica">&nbsp;
+            <span class="balao">O cliente ainda não foi informado de que a obra entrou em produção.</span>
+          </span>
+        </td>
+      </tr>
+    </table>
+    <p class="sub" style="margin:10px 0 0">
+      Mesmo formato da coluna <b>Enc. iMos</b>: símbolo + data, e o detalhe (para quem, quando, por quem) na dica do rato.
+    </p>
+  </section>
+
+  <!-- ============ 4. PREFERÊNCIA ============ -->
+  <section>
+    <h2>4 · Preferências do utilizador <span class="etiqueta">Preparação → Preferências...</span></h2>
+    <ul class="opcoes">
+      <li>☑ Caderno de Encargos (*.xlsm)</li>
+      <li>☑ Lista_Material_*.pdf</li>
+      <li>☑ 2_Projeto_Producao.pdf</li>
+      <li>☑ Plano CUT-RITE (*.pdf)</li>
+      <li>☑ CONJ.pdf</li>
+      <li class="destaque">☑ Ao passar a obra para Produção, preparar o email do projeto para o cliente</li>
+    </ul>
+    <p class="sub" style="margin:10px 0 0">
+      Cada utilizador escolhe: quem não quiser, desliga e nada muda para ele. Ligada, a janela do email abre
+      logo a seguir ao aviso do supervisor, já preenchida.
+    </p>
+  </section>
+
+  <!-- ============ 5. DECISÕES ============ -->
+  <section>
+    <h2>5 · O que preciso que confirme antes de codificar</h2>
+    <ol class="perguntas">
+      <li>
+        <b>Quando é que a data fica registada?</b>
+        <span class="escolha">Proposta: só quando o email é mesmo enviado</span> (se cancelar, a coluna fica vazia
+        e pode voltar a tentar). A alternativa era marcar logo ao preparar, mas aí ficava o registo de emails que
+        nunca saíram.
+      </li>
+      <li>
+        <b>Anexos.</b> <span class="escolha">Proposta: nenhum por defeito</span>, com botão "Adicionar anexo..."
+        para juntar o que quiser na altura. Se preferir, posso anexar sempre um ficheiro fixo da pasta da obra
+        (ex.: <code>2_Projeto_Producao.pdf</code>) — diga qual.
+      </li>
+      <li>
+        <b>Cliente sem email preenchido</b> na coluna "envio projeto produção".
+        <span class="escolha">Proposta: abrir na mesma</span>, com o campo "Para" vazio e um aviso a dizer que
+        a ficha do cliente não tem email de projeto — o utilizador escreve à mão. (Não bloquear.)
+      </li>
+      <li>
+        <b>Imagem.</b> <span class="escolha">Proposta: a imagem do iMos</span>, como nos emails da IA Martelo.
+        Se a obra não tiver imagem, o email vai sem ela (sem erro).
+      </li>
+      <li>
+        <b>"Estado atual"</b> — no momento do envio a obra acabou de passar a <code>Producao</code>.
+        <span class="escolha">Proposta: escrever "Em produção"</span> em vez do valor cru da base de dados.
+      </li>
+      <li>
+        <b>Reenviar.</b> Se a obra já tem envelope e o utilizador voltar a passá-la a Produção,
+        <span class="escolha">proposta: avisar</span> ("o cliente já foi informado em 31-07-2026") e deixar
+        enviar outra vez, atualizando a data — como no aviso da encomenda iMos.
+      </li>
+    </ol>
+  </section>
+
+</div>
+</body>
+</html>
