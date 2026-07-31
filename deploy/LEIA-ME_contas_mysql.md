@@ -21,6 +21,23 @@ que não funcionam. Nada se perde.
 
 ---
 
+## Passo 0a — Ensaiar primeiro na `martelo_v3_dev` (recomendado)
+
+Se for a primeira vez, faça tudo isto **na base de desenvolvimento** antes de
+tocar na beta. A `martelo_v3_dev` é local, ninguém depende dela, e o guião é
+exatamente o mesmo — basta trocar `martelo_v3_beta` por `martelo_v3_dev` em
+todos os sítios.
+
+Assim vê o script correr do princípio ao fim, confirma o resultado e testa até o
+desfazer, sem que nada de importante esteja em jogo. Depois repete na beta a
+saber já o que vai acontecer.
+
+**Atenção ao schema ativo:** no Workbench, a base a **negrito** no painel da
+esquerda é a que está a ser usada. Duplo-clique na que quer antes de executar
+seja o que for — ou corra `USE <base>;` no editor.
+
+---
+
 ## Passo 0 — Uma cópia de segurança (5 minutos, e dorme melhor)
 
 Não é preciso para este trabalho, mas é bom hábito antes de mexer no servidor.

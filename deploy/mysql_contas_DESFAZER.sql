@@ -11,15 +11,27 @@
 --
 -- COMO CORRER (no Workbench, ligado como root):
 --   1. Abrir este ficheiro
---   2. Escolher a base:  USE martelo_v3_beta;
---   3. Executar tudo (o raio ⚡)
+--   2. ESCOLHER A BASE PRIMEIRO -- a mesma onde correu o mysql_contas_beta.sql:
+--        USE martelo_v3_beta;    (ou martelo_v3_dev, se foi um ensaio)
+--      Selecione a linha certa aqui em baixo e corra-a com Ctrl+Enter.
+--   3. Executar o resto (o raio ⚡)
 --
 -- DEPOIS de correr isto, para o Martelo voltar a funcionar como antes:
 --   - Repor DB_USER=martelo_v3 e DB_PASSWORD=... no .env de cada PC
 --   - Voltar a` versao anterior da app (git checkout do commit anterior)
 -- ===========================================================================
 
-USE martelo_v3_beta;
+-- Escolha UMA (selecione a linha e Ctrl+Enter):
+-- USE martelo_v3_dev;
+-- USE martelo_v3_beta;
+
+-- Trava se se esqueceu do passo de cima: sem base escolhida, os DROP PROCEDURE
+-- nao sabiam onde ir.
+SELECT IF(
+    DATABASE() IS NULL,
+    'PARE: escolha a base primeiro (a linha USE ... aqui em cima).',
+    CONCAT('Base escolhida: ', DATABASE(), ' -- pode continuar.')
+) AS verificacao;
 
 -- 1. Os procedimentos
 DROP PROCEDURE IF EXISTS martelo_criar_utilizador;
