@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.services import producao_impressao_service as svc
+from app.services.pdf_imagem_service import documento_pdf
 from app.ui import tema
 
 
@@ -491,32 +492,31 @@ class ProducaoImpressaoDialog(QDialog):
         self.imagem_label.setText("")
 
     def _primeira_pagina(self, caminho: Path) -> QPixmap | None:
-        try:
-            from PySide6.QtPdf import QPdfDocument
-        except ImportError:  # pragma: no cover - depende do PySide6 instalado
-            return None
-
         if not caminho.is_file():
             return None
 
-        documento = QPdfDocument(self)
-        documento.load(str(caminho))
-        if documento.pageCount() <= 0:
-            return None
+        # O PDF é lido para memória: ver um documento aqui não pode deixá-lo
+        # preso (senão não se conseguia apagar na pasta da obra).
+        try:
+            with documento_pdf(caminho) as documento:
+                if documento.pageCount() <= 0:
+                    return None
 
-        tamanho = documento.pagePointSize(0)
-        if tamanho.width() <= 0 or tamanho.height() <= 0:
-            return None
+                tamanho = documento.pagePointSize(0)
+                if tamanho.width() <= 0 or tamanho.height() <= 0:
+                    return None
 
-        alvo = self.imagem_label.size()
-        escala = min(
-            max(alvo.width(), 200) / tamanho.width(),
-            max(alvo.height(), 200) / tamanho.height(),
-        )
-        imagem = documento.render(
-            0,
-            QSize(int(tamanho.width() * escala), int(tamanho.height() * escala)),
-        )
-        if imagem.isNull():
+                alvo = self.imagem_label.size()
+                escala = min(
+                    max(alvo.width(), 200) / tamanho.width(),
+                    max(alvo.height(), 200) / tamanho.height(),
+                )
+                imagem = documento.render(
+                    0,
+                    QSize(int(tamanho.width() * escala), int(tamanho.height() * escala)),
+                )
+                if imagem.isNull():
+                    return None
+                return QPixmap.fromImage(imagem)
+        except Exception:  # noqa: BLE001 - sem pré-visualização não é erro
             return None
-        return QPixmap.fromImage(imagem)

@@ -18,6 +18,7 @@ from app.db.session import SessionLocal
 from app.models.producao import Producao
 from app.services.imos_imagem_service import resolver_imagem_imos
 from app.services.orcamento_pasta_lookup_service import resolver_pasta_orcamento
+from app.services.pdf_imagem_service import documento_pdf
 from app.services.producao_pastas_service import (
     caminho_versao_de_processo,
     caminho_versao_de_processo_existente,
@@ -178,18 +179,14 @@ class DetalheObraWorker(QObject):
 
 
 def _render_pdf(caminho: Path) -> QImage | None:
+    # Lido de memória: assim o PDF não fica preso e continua a poder apagar-se
+    # na pasta da obra (ver app/services/pdf_imagem_service.py).
     try:
-        from PySide6.QtPdf import QPdfDocument
-    except (ImportError, ModuleNotFoundError):
-        return None
-
-    try:
-        documento = QPdfDocument()
-        documento.load(str(caminho))
-        if documento.pageCount() < 1:
-            return None
-        imagem = documento.render(0, TAMANHO_RENDER_PDF)
-        return None if imagem.isNull() else imagem
+        with documento_pdf(caminho) as documento:
+            if documento.pageCount() < 1:
+                return None
+            imagem = documento.render(0, TAMANHO_RENDER_PDF)
+            return None if imagem.isNull() else imagem
     except Exception:  # noqa: BLE001 - PDF ilegível não é erro fatal
         return None
 

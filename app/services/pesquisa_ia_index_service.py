@@ -66,9 +66,13 @@ def _chunks_excel(caminho: Path) -> Iterator[tuple[str, dict]]:
 
 
 def _chunks_pdf(caminho: Path) -> Iterator[tuple[str, dict]]:
+    from io import BytesIO
+
     from pypdf import PdfReader
 
-    reader = PdfReader(str(caminho))
+    # Ler para memória: um PdfReader por caminho ficava com o ficheiro aberto
+    # enquanto o gerador estivesse vivo, e o PDF ficava preso pelo Windows.
+    reader = PdfReader(BytesIO(caminho.read_bytes()))
     for i, page in enumerate(reader.pages, start=1):
         texto = (page.extract_text() or "").strip()
         if texto:

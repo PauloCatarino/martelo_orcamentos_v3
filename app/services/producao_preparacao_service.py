@@ -20,6 +20,7 @@ from typing import Iterable, Optional, Sequence
 
 from sqlalchemy.orm import Session
 
+from app.services.pdf_imagem_service import documento_pdf
 from app.services.system_setting_service import SystemSettingService
 
 
@@ -713,12 +714,16 @@ def _substituir_pasta(origem: Path, destino: Path) -> None:
 def _gerar_projeto_pdf_vetorial(
     origem_pdf: Path, destino_pdf: Path, *, max_paginas: int
 ) -> None:
+    from io import BytesIO
+
     from pypdf import PdfReader, PdfWriter, Transformation
     from reportlab.lib.pagesizes import A4, landscape
 
     largura_a4, altura_a4 = landscape(A4)
     local = _pdf_local(origem_pdf)
-    leitor = PdfReader(str(local))
+    # Ler para memória: assim o PDF de origem não fica aberto (preso) enquanto
+    # geramos o destino.
+    leitor = PdfReader(BytesIO(local.read_bytes()))
     escritor = PdfWriter()
 
     total = min(max_paginas, len(leitor.pages))
@@ -752,33 +757,33 @@ def _gerar_projeto_pdf_vetorial(
 
 
 def _imagens_do_conj(origem_pdf: Path, max_paginas: int) -> list:
-    from PySide6 import QtPdf
     from PySide6.QtCore import QSize
 
     local = _pdf_local(origem_pdf)
-    documento = QtPdf.QPdfDocument()
-    estado = documento.load(str(local))
-    if not _pdf_abriu(estado):
-        raise RuntimeError(f"Não foi possível abrir o PDF de origem: {origem_pdf}")
+    # Lido de memória para o PDF de origem não ficar preso (ver
+    # app/services/pdf_imagem_service.py).
+    with documento_pdf(local) as documento:
+        if not _pdf_abriu(documento.error()):
+            raise RuntimeError(f"Não foi possível abrir o PDF de origem: {origem_pdf}")
 
-    paginas = min(max_paginas, documento.pageCount())
-    if paginas <= 0:
-        raise RuntimeError(f"PDF sem páginas disponíveis: {origem_pdf}")
+        paginas = min(max_paginas, documento.pageCount())
+        if paginas <= 0:
+            raise RuntimeError(f"PDF sem páginas disponíveis: {origem_pdf}")
 
-    imagens = []
-    for indice in range(paginas):
-        tamanho = documento.pagePointSize(indice)
-        alvo = QSize(
-            max(1, int(tamanho.width() * 1.5)),
-            max(1, int(tamanho.height() * 1.5)),
-        )
-        imagem = documento.render(indice, alvo)
-        if imagem.isNull():
-            raise RuntimeError(
-                f"Falha a desenhar a página {indice + 1} de {origem_pdf}"
+        imagens = []
+        for indice in range(paginas):
+            tamanho = documento.pagePointSize(indice)
+            alvo = QSize(
+                max(1, int(tamanho.width() * 1.5)),
+                max(1, int(tamanho.height() * 1.5)),
             )
-        imagens.append(imagem)
-    return imagens
+            imagem = documento.render(indice, alvo)
+            if imagem.isNull():
+                raise RuntimeError(
+                    f"Falha a desenhar a página {indice + 1} de {origem_pdf}"
+                )
+            imagens.append(imagem)
+        return imagens
 
 
 def _pdf_abriu(estado) -> bool:
