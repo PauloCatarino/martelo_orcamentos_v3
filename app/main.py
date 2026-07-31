@@ -31,6 +31,7 @@ from app.config.qt_message_handler import instalar_filtro_mensagens_qt
 from app.config.versao import VERSAO_APLICACAO
 from app.core import diario_bordo
 from app.core.session import app_session
+from app.db.session import desligar
 from app.ui import tema
 from app.ui.registo_avisos import instalar_registo_de_avisos
 from app.ui.icones import icone_ficheiro
@@ -107,11 +108,17 @@ def main() -> int:
     # Realce transversal do separador selecionado (R2.11).
     qt_app.setStyleSheet(tema.ESTILO_GLOBAL)
 
+    # A app nunca trabalha com uma conta vinda de ficheiro: se o .env desta
+    # máquina tiver credenciais (a de manutenção, para os scripts de seed), são
+    # largadas aqui. A ligação passa a ser a de quem entrar no login.
+    desligar()
+
     introducao_mostrada = False
     while True:
         login_window = LoginWindow()
         if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
             app_session.clear_current_user()
+            desligar()
             return 0
 
         app_session.set_current_user(login_window.authenticated_user)
@@ -156,10 +163,14 @@ def main() -> int:
         qt_app.exec()
 
         if logout_requested:
+            # A ligação à base é a da pessoa que sai: fecha-se aqui para quem
+            # entrar a seguir abrir a sua, com os seus privilégios.
+            desligar()
             diario_bordo.registar_acao("Sessão terminada (mudança de utilizador)")
             continue
 
         app_session.clear_current_user()
+        desligar()
         diario_bordo.registar_acao("Martelo fechado")
         return 0
 

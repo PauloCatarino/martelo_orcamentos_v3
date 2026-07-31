@@ -72,16 +72,29 @@ class Settings:
 
     @property
     def database_url(self) -> str:
-        """Return the SQLAlchemy database URL."""
+        """URL da base com as credenciais do ``.env``.
+
+        Serve os scripts de seed e o alembic, que correm na maquina de quem faz
+        a manutencao. A **aplicacao** ja nao passa por aqui: as credenciais dela
+        sao as que a pessoa escreve no login (ver ``database_url_para``).
+        """
         if self.DATABASE_URL:
             return self.DATABASE_URL
 
-        user = quote_plus(self.DB_USER)
-        password = f":{quote_plus(self.DB_PASSWORD)}" if self.DB_PASSWORD else ""
+        return self.database_url_para(self.DB_USER, self.DB_PASSWORD)
+
+    def database_url_para(self, user: str, password: str) -> str:
+        """URL da base para umas credenciais concretas.
+
+        O host, a porta e o nome da base continuam a vir do ``.env`` (nao sao
+        segredo); so' o utilizador e a password e' que vem do login.
+        """
+        utilizador = quote_plus(str(user or ""))
+        segredo = f":{quote_plus(str(password or ''))}" if password else ""
         database = quote_plus(self.DB_NAME)
 
         return (
-            f"mysql+{self.DB_DRIVER}://{user}{password}"
+            f"mysql+{self.DB_DRIVER}://{utilizador}{segredo}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{database}?charset={self.DB_CHARSET}"
         )
 

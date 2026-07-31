@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.departamentos import normalizar_departamento
 from app.models import User
+from app.services import mysql_contas_service
 from app.services.permission_service import (
     DEFAULT_USER_PERMISSIONS,
     PERMISSOES_EDITAVEIS,
@@ -77,6 +78,15 @@ def create_user(
     if duplicate is not None:
         raise ValueError("Já existe um utilizador com esse username ou email.")
 
+    # A conta na base de dados vem primeiro: e' ela que deixa a pessoa entrar.
+    # Se falhar (nome ja' existe, password curta), nao se cria perfil nenhum —
+    # um perfil sem conta nao serviria para nada.
+    gerida = mysql_contas_service.contas_geridas(session)
+    if gerida:
+        mysql_contas_service.criar_conta(
+            session, username=username, password=password, admin=False
+        )
+
     user = User(
         username=username,
         nome=nome,
@@ -86,14 +96,24 @@ def create_user(
         departamento=normalizar_departamento(departamento) or None,
         is_active=True,
     )
-    session.add(user)
-    session.flush()
-    set_user_permissions(
-        session,
-        user.id,
-        dict(DEFAULT_USER_PERMISSIONS),
-    )
-    session.commit()
+    try:
+        session.add(user)
+        session.flush()
+        set_user_permissions(
+            session,
+            user.id,
+            dict(DEFAULT_USER_PERMISSIONS),
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        # Sem isto ficava uma conta a entrar na base sem perfil no Martelo.
+        if gerida:
+            try:
+                mysql_contas_service.apagar_conta(session, username=username)
+            except Exception:  # noqa: BLE001 - o erro que interessa e' o de cima
+                pass
+        raise
     return user
 
 
@@ -122,10 +142,30 @@ def update_user_access(
 
 
 def reset_password(session: Session, user_id: int, password: str) -> None:
-    if len(password) < 8:
-        raise ValueError("A palavra-passe deve ter pelo menos 8 caracteres.")
+    """Repõe a palavra-passe de outra pessoa (operação de administrador)."""
     user = session.get(User, user_id)
     if user is None:
         raise ValueError("Utilizador não encontrado.")
+
+    if mysql_contas_service.contas_geridas(session):
+        # Quem manda na password é a base de dados; o hash aqui já não entra
+        # em lado nenhum e fica só até se apagar a coluna.
+        mysql_contas_service.repor_password(
+            session, username=user.username, password=password
+        )
+        return
+
+    if len(password) < 8:
+        raise ValueError("A palavra-passe deve ter pelo menos 8 caracteres.")
     user.password_hash = pwd_context.hash(password)
     session.commit()
+
+
+def mudar_a_minha_password(session: Session, password: str) -> None:
+    """Cada pessoa muda a sua — o servidor só deixa mexer em quem está ligado."""
+    if not mysql_contas_service.contas_geridas(session):
+        raise ValueError(
+            "Esta base de dados ainda não gere as contas por utilizador. "
+            "Peça ao administrador para repor a palavra-passe."
+        )
+    mysql_contas_service.mudar_a_minha_password(session, password=password)

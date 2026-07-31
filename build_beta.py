@@ -2,7 +2,7 @@
 
 Passos:
   1. PyInstaller empacota a app  ->  dist\\Martelo_Orcamentos_V3\\
-  2. Copia deploy\\.env.beta (com a password do servidor) para junto do .exe
+  2. Copia deploy\\.env.beta (servidor e base, SEM credenciais) para junto do .exe
   3. (--installer) Inno Setup gera  installer\\Output\\Setup_Martelo_V3_<versao>.exe
 
 Uso:
@@ -12,13 +12,15 @@ Uso:
 
 Pre-requisitos:
   - PyInstaller instalado no .venv
-  - deploy\\.env.beta preenchido (copiar de deploy\\.env.beta.exemplo)
+  - deploy\\.env.beta criado (copiar de deploy\\.env.beta.exemplo; nao leva
+    credenciais nenhumas -- cada pessoa entra com a sua conta)
   - Para --installer: Inno Setup 6 (ISCC.exe)
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
 import shutil
 import subprocess
@@ -54,43 +56,62 @@ def _ler_env(caminho: Path) -> dict[str, str]:
 
 
 def _verificar_env() -> None:
-    """Confirma que deploy/.env.beta liga mesmo a` base de dados ANTES de construir.
+    """Confirma que deploy/.env.beta chega mesmo ao servidor ANTES de construir.
 
     Fail-fast: evita gastar minutos a gerar um instalador que nao conecta.
+
+    O ficheiro ja' nao leva credenciais -- cada pessoa entra com a sua conta --
+    por isso a prova de ligacao pede-as aqui, a quem esta' a fazer o build. Se
+    for para saltar (build sem servidor a` mao), responda em branco.
     """
     print("[0/3] verificar deploy/.env.beta")
     if not ENV_ORIGEM.exists():
         raise SystemExit(
             f"[ERRO] falta {ENV_ORIGEM}.\n"
-            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta e "
-            "preencha a DB_PASSWORD."
+            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta."
         )
+
     env = _ler_env(ENV_ORIGEM)
-    if env.get("DB_PASSWORD", "") in ("", "POR_DEFINIR"):
-        raise SystemExit(
-            f"[ERRO] a DB_PASSWORD em {ENV_ORIGEM} ainda esta por preencher "
-            "(POR_DEFINIR).\n"
-            "       Abra o ficheiro no VS Code, ponha a password do utilizador "
-            "martelo_v3 e GRAVE (Ctrl+S)."
-        )
+    for chave in ("DB_USER", "DB_PASSWORD"):
+        if env.get(chave):
+            raise SystemExit(
+                f"[ERRO] o {ENV_ORIGEM} tem {chave} preenchido.\n"
+                "       Este ficheiro vai para o PC de toda a gente e NAO pode\n"
+                "       levar credenciais: cada pessoa entra com a sua conta.\n"
+                "       Apague a linha e volte a correr o build."
+            )
+
+    for chave in ("DB_HOST", "DB_NAME"):
+        if not env.get(chave):
+            raise SystemExit(f"[ERRO] falta {chave} em {ENV_ORIGEM}.")
+
+    base = f"{env.get('DB_NAME')} @ {env.get('DB_HOST')}"
+    print(f"      sem credenciais no ficheiro (bem) -> {base}")
+
+    utilizador = input("      utilizador para testar a ligacao (ENTER salta): ").strip()
+    if not utilizador:
+        print("      AVISO: ligacao nao testada.")
+        return
+
+    password = getpass.getpass("      password: ")
     try:
         import pymysql
         con = pymysql.connect(
             host=env.get("DB_HOST", "127.0.0.1"),
             port=int(env.get("DB_PORT", "3306")),
-            user=env.get("DB_USER", ""),
-            password=env.get("DB_PASSWORD", ""),
+            user=utilizador,
+            password=password,
             database=env.get("DB_NAME", ""),
             connect_timeout=6,
         )
         con.close()
     except Exception as e:  # noqa: BLE001
         raise SystemExit(
-            f"[ERRO] o .env.beta nao liga a` base de dados: {e}\n"
+            f"[ERRO] nao liga a` base de dados: {e}\n"
             f"       Confirme DB_HOST={env.get('DB_HOST')}, "
-            f"DB_NAME={env.get('DB_NAME')}, DB_USER={env.get('DB_USER')} e a password."
+            f"DB_NAME={env.get('DB_NAME')} e as credenciais que escreveu."
         )
-    print(f"      OK -> liga a {env.get('DB_NAME')} @ {env.get('DB_HOST')}")
+    print(f"      OK -> {utilizador} liga a {base}")
 
 
 LOG = ROOT / "build_last.log"
@@ -139,11 +160,21 @@ def _copiar_env() -> None:
     if not ENV_ORIGEM.exists():
         raise SystemExit(
             f"[ERRO] falta {ENV_ORIGEM}.\n"
-            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta e "
-            "preencha a DB_PASSWORD."
+            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta."
         )
+
+    # Ultima barreira antes de o ficheiro ir para o PC de toda a gente: mesmo
+    # que alguem tenha acrescentado credenciais depois da verificacao inicial,
+    # nao passam daqui.
+    env = _ler_env(ENV_ORIGEM)
+    if env.get("DB_USER") or env.get("DB_PASSWORD"):
+        raise SystemExit(
+            f"[ERRO] o {ENV_ORIGEM} tem credenciais e ia para todos os PCs.\n"
+            "       Apague DB_USER/DB_PASSWORD antes de construir."
+        )
+
     shutil.copy2(ENV_ORIGEM, DIST / ".env")
-    print(f"      OK -> {DIST / '.env'}")
+    print(f"      OK (sem credenciais) -> {DIST / '.env'}")
 
 
 def _instalador(versao: str) -> None:

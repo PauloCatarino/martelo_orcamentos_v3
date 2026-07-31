@@ -100,7 +100,13 @@ class UserManagementPage(QWidget):
         self.new_button = QPushButton("Novo utilizador")
         self.new_button.clicked.connect(self._new_user)
         self.password_button = QPushButton("Redefinir palavra-passe")
+        self.password_button.setToolTip(
+            "Repor a palavra-passe do utilizador selecionado (administrador)."
+        )
         self.password_button.clicked.connect(self._reset_password)
+        # A própria palavra-passe muda-se no nome do utilizador, lá em cima:
+        # esta página é só do administrador, e cada um tem de conseguir mudar
+        # a sua sem depender dele.
         self.save_button = QPushButton("Gravar acessos")
         self.save_button.clicked.connect(self._save)
         self.reload_button = QPushButton("Recarregar")
@@ -213,7 +219,7 @@ class UserManagementPage(QWidget):
         password, accepted = QInputDialog.getText(
             self,
             "Redefinir palavra-passe",
-            "Nova palavra-passe (mínimo 8 caracteres):",
+            "Nova palavra-passe (mínimo 6 caracteres):",
             QLineEdit.EchoMode.Password,
         )
         if not accepted:
