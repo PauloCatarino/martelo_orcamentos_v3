@@ -61,6 +61,20 @@ class ContaGerada:
     admin: bool
 
 
+def criar_engine_para_base(nome_base: str):
+    """Engine para outra base, com as credenciais do ``.env``.
+
+    O servidor e as credenciais sao os mesmos (a conta de manutencao chega a`
+    dev e a` beta); so' muda o nome da base.
+    """
+    from sqlalchemy import create_engine
+
+    from app.config.settings import settings
+
+    url = settings.database_url_para(settings.DB_USER, settings.DB_PASSWORD)
+    return create_engine(url.replace(f"/{settings.DB_NAME}?", f"/{nome_base}?"))
+
+
 def gerar_password(tamanho: int = TAMANHO_PASSWORD) -> str:
     """Password aleatoria — uma por pessoa, nunca repetida."""
     return "".join(secrets.choice(ALFABETO) for _ in range(tamanho))
@@ -150,7 +164,19 @@ def main() -> int:
         # quando se abre o ficheiro no Workbench.
         help="onde gravar os dois ficheiros (por omissao, a pasta deploy)",
     )
+    parser.add_argument(
+        "--base",
+        default="",
+        # O .env aponta para a base de desenvolvimento; para gerar as contas da
+        # BETA sem lhe andar a mexer, indica-se aqui o nome da base.
+        help="base de dados a ler (por omissao, a do .env)",
+    )
     args = parser.parse_args()
+
+    if args.base:
+        engine = criar_engine_para_base(args.base)
+        SessionLocal.configure(bind=engine)
+        print(f"a ler a base: {args.base}")
 
     with SessionLocal() as session:  # type: Session
         utilizadores = list(
@@ -201,6 +227,12 @@ def _avisar_se_o_git_os_ve(*caminhos: Path) -> None:
     import subprocess
 
     for caminho in caminhos:
+        # Fora do repositorio o git nao tem opiniao nenhuma -- e nao ha' risco
+        # de um "git add" distraido os apanhar.
+        try:
+            caminho.resolve().relative_to(PROJECT_ROOT.resolve())
+        except ValueError:
+            continue
         try:
             resultado = subprocess.run(
                 ["git", "check-ignore", "-q", str(caminho)],
