@@ -86,7 +86,20 @@ def _verificar_env() -> None:
             raise SystemExit(f"[ERRO] falta {chave} em {ENV_ORIGEM}.")
 
     base = f"{env.get('DB_NAME')} @ {env.get('DB_HOST')}"
-    print(f"      sem credenciais no ficheiro (bem) -> {base}")
+    print(f"      sem credenciais do Martelo (bem) -> {base}")
+
+    # O Arquivo V2 e' o unico sitio onde ainda ha' uma conta partilhada: a
+    # consulta aos orcamentos antigos precisa dela e nao ha' como a tirar sem
+    # reescrever o v2_arquivo_service. Fica -- mas avisa-se, porque o que a
+    # torna inofensiva e' o orc_user estar limitado a SELECT no servidor
+    # (seccao 8 do deploy/mysql_contas_beta.sql). Sem isso, quem abrisse este
+    # ficheiro podia apagar o arquivo do V2 por fora da app.
+    if env.get("V2_DB_PASSWORD"):
+        print(
+            f"      AVISO: leva as credenciais do Arquivo V2 ({env.get('V2_DB_USER')}).\n"
+            "             Confirme que essa conta so' tem SELECT:\n"
+            "               SHOW GRANTS FOR 'orc_user'@'%';"
+        )
 
     utilizador = input("      utilizador para testar a ligacao (ENTER salta): ").strip()
     if not utilizador:

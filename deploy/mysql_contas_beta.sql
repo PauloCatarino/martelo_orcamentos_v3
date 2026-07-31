@@ -319,7 +319,30 @@ FLUSH PRIVILEGES;
 
 
 -- ---------------------------------------------------------------------------
--- 8. Depois de tudo testado: apagar a conta partilhada
+-- 8. O arquivo do V2 (orcamentos_v2)
+-- ---------------------------------------------------------------------------
+-- A consulta ao Arquivo V2 continua a usar uma conta propria (orc_user), cujas
+-- credenciais vao no .env de cada PC -- a app precisa delas para ler os
+-- orcamentos antigos.
+--
+-- O problema e' que essa conta tinha ALL PRIVILEGES. A app poe uma guarda
+-- read-only do lado do Python, mas quem abrisse o .env ligava-se por fora, sem
+-- guarda nenhuma, e podia apagar o arquivo inteiro. Aqui troca-se por SELECT:
+-- as credenciais continuam la', mas o pior que se faz com elas e' LER os
+-- orcamentos antigos -- que e' o que a app ja' mostra a toda a gente.
+--
+-- Nao depende da base escolhida (a conta e' global), mas so' faz sentido correr
+-- uma vez no servidor.
+REVOKE ALL PRIVILEGES ON `orcamentos_v2`.* FROM 'orc_user'@'%';
+GRANT SELECT ON `orcamentos_v2`.* TO 'orc_user'@'%';
+FLUSH PRIVILEGES;
+
+-- Confirmar (deve passar a mostrar apenas GRANT SELECT):
+--   SHOW GRANTS FOR 'orc_user'@'%';
+
+
+-- ---------------------------------------------------------------------------
+-- 9. Depois de tudo testado: apagar a conta partilhada
 -- ---------------------------------------------------------------------------
 -- NAO corra esta linha ja'. So' quando as contas por pessoa estiverem a
 -- funcionar e o instalador novo estiver distribuido -- enquanto houver um PC

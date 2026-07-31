@@ -37,6 +37,19 @@ DEFAULT_PAULO_PASSWORD = "paulo"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+#: Nota que estes scripts imprimem no fim -- ver o porque no aviso.
+AVISO_CONTA_MYSQL = r"""
+ATENCAO: isto criou o PERFIL na tabela `users`, mas NAO a conta na base de
+dados. Desde que o Martelo passou a ter um login por pessoa, sem conta MySQL
+ninguem entra -- o perfil sozinho nao abre a porta.
+
+Para criar as contas em falta:
+    .venv\Scripts\python.exe scripts\gerar_contas_mysql.py
+e correr o deploy/contas_martelo.sql no servidor (ver
+deploy/LEIA-ME_contas_mysql.md).
+"""
+
+
 
 @dataclass(frozen=True)
 class InitialUsersResult:
@@ -156,6 +169,7 @@ def main() -> int:
         result = ensure_initial_users(session)
 
     print_result(result)
+    print(AVISO_CONTA_MYSQL)
 
     return 0
 

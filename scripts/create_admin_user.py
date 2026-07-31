@@ -28,6 +28,18 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+AVISO_CONTA_MYSQL = r"""
+ATENCAO: isto criou o PERFIL na tabela `users`, mas NAO a conta na base de
+dados. Desde que o Martelo passou a ter um login por pessoa, sem conta MySQL
+ninguem entra -- o perfil sozinho nao abre a porta.
+
+Para criar as contas em falta:
+    .venv\Scripts\python.exe scripts\gerar_contas_mysql.py
+e correr o deploy/contas_martelo.sql no servidor (ver
+deploy/LEIA-ME_contas_mysql.md).
+"""
+
+
 
 def get_admin_password() -> str:
     """Return the initial admin password from the environment."""
@@ -80,6 +92,7 @@ def main() -> int:
     else:
         print("Utilizador admin j\u00e1 existe")
 
+    print(AVISO_CONTA_MYSQL)
     return 0
 
 

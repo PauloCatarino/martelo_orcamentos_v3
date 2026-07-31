@@ -6,6 +6,19 @@ kept so references from budgets and history remain valid.
 
 from __future__ import annotations
 
+AVISO_CONTA_MYSQL = r"""
+ATENCAO: isto criou o PERFIL na tabela `users`, mas NAO a conta na base de
+dados. Desde que o Martelo passou a ter um login por pessoa, sem conta MySQL
+ninguem entra -- o perfil sozinho nao abre a porta.
+
+Para criar as contas em falta:
+    .venv\Scripts\python.exe scripts\gerar_contas_mysql.py
+e correr o deploy/contas_martelo.sql no servidor (ver
+deploy/LEIA-ME_contas_mysql.md).
+"""
+
+
+
 import argparse
 from dataclasses import dataclass
 from datetime import datetime
@@ -283,6 +296,7 @@ def main() -> int:
                 sum(len(flags) for flags in source_flags.values()),
             )
             _print_report(report, applied=False)
+    print(AVISO_CONTA_MYSQL)
     return 0
 
 
