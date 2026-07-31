@@ -145,8 +145,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--pasta",
-        default=str(PROJECT_ROOT),
-        help="onde gravar os dois ficheiros (por omissao, a raiz do projeto)",
+        default=str(PROJECT_ROOT / "deploy"),
+        # Ao lado do mysql_contas_beta.sql e companhia: e' onde se vai procurar
+        # quando se abre o ficheiro no Workbench.
+        help="onde gravar os dois ficheiros (por omissao, a pasta deploy)",
     )
     args = parser.parse_args()
 
