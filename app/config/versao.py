@@ -6,4 +6,4 @@ que já tem a correção. Subir aqui a cada entrega para os utilizadores.
 
 from __future__ import annotations
 
-VERSAO_APLICACAO = "3.0.0"
+VERSAO_APLICACAO = "3.1.0"
