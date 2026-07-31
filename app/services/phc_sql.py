@@ -91,6 +91,23 @@ def load_phc_config(session: Session) -> PHCConfig:
     }
 
 
+def connection_value(value: str, field_name: str, *, origem: str = "") -> str:
+    """Devolve um valor pronto a entrar numa connection string do SqlClient.
+
+    Sem isto, uma password com ``;`` partia a ligacao ao meio e o resto passava
+    a ser lido como atributos da ligacao -- o mesmo que deixar quem edita a
+    configuracao mandar no ``TrustServerCertificate`` ou no ``Initial Catalog``.
+    O SqlClient aceita o valor entre aspas; as aspas que existam dentro dele
+    duplicam-se, e os caracteres que nao ha maneira de escapar (``\\0``, ``\\r``,
+    ``\\n``) sao recusados.
+    """
+    value = str(value or "")
+    if "\x00" in value or "\r" in value or "\n" in value:
+        alvo = f" {origem}" if origem else ""
+        raise ValueError(f"Configuracao{alvo} invalida no campo {field_name}.")
+    return '"' + value.replace('"', '""') + '"'
+
+
 def build_connection_string(cfg: PHCConfig) -> str:
     server = (cfg.get("server") or "").strip()
     database = (cfg.get("database") or "").strip()
@@ -104,7 +121,13 @@ def build_connection_string(cfg: PHCConfig) -> str:
             "Configuracao PHC incompleta: Servidor e Base de Dados sao obrigatorios."
         )
 
-    parts = [f"Server={server}", f"Database={database}"]
+    def _valor(valor: str, campo: str) -> str:
+        return connection_value(valor, campo, origem="PHC")
+
+    parts = [
+        f"Server={_valor(server, 'Servidor')}",
+        f"Database={_valor(database, 'Base de Dados')}",
+    ]
     if trusted:
         parts.append("Integrated Security=True")
     else:
@@ -114,8 +137,8 @@ def build_connection_string(cfg: PHCConfig) -> str:
             )
         if not str(password).strip():
             raise ValueError("Configuracao PHC incompleta: Password em falta.")
-        parts.append(f"User ID={user}")
-        parts.append(f"Password={password}")
+        parts.append(f"User ID={_valor(user, 'Utilizador')}")
+        parts.append(f"Password={_valor(password, 'Password')}")
 
     if trust_cert:
         parts.append("TrustServerCertificate=True")
