@@ -49,7 +49,7 @@ from app.domain.assistente_obra import (
     corpo_email_html,
 )
 from app.domain.ocorrencia_relatorio import subtitulo_relatorio, titulo_relatorio
-from app.domain.producao_estados import ESTADOS_PRODUCAO
+from app.domain.producao_estados import ESTADOS_PRODUCAO, entra_em_producao
 from app.models.producao import Producao
 from app.services.assistente_producao_service import AssistenteProducaoService
 from app.services.email_service import carregar_email_config, enviar_email
@@ -94,6 +94,7 @@ from app.services.producao_pastas_service import (
     caminho_versao_de_processo_existente,
     preview_conteudo_pasta,
 )
+from app.services.producao_preparacao_service import supervisionar_para_producao
 from app.ui import tema
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
@@ -103,6 +104,7 @@ from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
 from app.ui.dialogs.producao_impressao_dialog import ProducaoImpressaoDialog
 from app.ui.dialogs.producao_preparacao_dialog import ProducaoPreparacaoDialog
+from app.ui.dialogs.producao_supervisao_dialog import SupervisaoProducaoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import icone, icone_ficheiro
@@ -2714,6 +2716,82 @@ class ProducaoPage(QWidget):
             return False
         return True
 
+    def _supervisionar_mudanca_para_producao(self, estado_novo: str) -> bool:
+        """Confirmar a preparação da obra antes de ela passar a Produção.
+
+        É um **alerta**, não uma proibição: o supervisor mostra o que ainda
+        falta (só as validações que este utilizador escolheu na Preparação) e
+        quem decide é o utilizador. Devolve False quando a gravação deve parar.
+        Só corre quando a obra *entra* em produção — voltar a gravar uma obra
+        que já lá está não incomoda ninguém.
+        """
+        processo = self._processo_selecionado()
+        if processo is None or not entra_em_producao(processo.estado, estado_novo):
+            return True
+
+        estado_anterior = self._format_value(processo.estado) or "-"
+        pasta = self._pasta_da_obra_para_supervisao(processo)
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                supervisao = supervisionar_para_producao(
+                    session,
+                    codigo_processo=self._format_value(processo.codigo_processo),
+                    pasta_obra=pasta,
+                    nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+                    nome_plano_cut_rite=self.nome_plano_corte_input.text().strip(),
+                    user_id=self._colunas_user_id_int(),
+                )
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if supervisao.pronta:
+            # Tudo OK: não vale a pena interromper quem fez o trabalho todo.
+            self.status_label.setText(
+                "Supervisor: tudo validado — a obra entra em Produção."
+            )
+            return True
+
+        dialogo = SupervisaoProducaoDialog(
+            codigo_processo=self._format_value(processo.codigo_processo),
+            pasta_obra=pasta,
+            nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+            nome_plano_cut_rite=self.nome_plano_corte_input.text().strip(),
+            user_id=self._colunas_user_id_int(),
+            estado_anterior=estado_anterior,
+            parent=self,
+        )
+        dialogo.mostrar(supervisao)
+        dialogo.exec()
+        if dialogo.continuar:
+            self.status_label.setText(
+                "Supervisor: obra passada a Produção com pendências por resolver."
+            )
+            return True
+
+        self._set_combo_text(self.estado_form_combo, processo.estado)
+        self.status_label.setText(
+            f"Mudança para Produção cancelada — a obra fica em {estado_anterior}."
+        )
+        return False
+
+    def _pasta_da_obra_para_supervisao(self, processo: Producao) -> str:
+        """Pasta real da obra no servidor (ou a calculada, se ainda não existir)."""
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    raise ValueError("Processo de produção não encontrado.")
+                caminho = caminho_versao_de_processo_existente(
+                    session, processo_db
+                ) or caminho_versao_de_processo(session, processo_db)
+        except (SQLAlchemyError, OSError, ValueError):
+            # Sem caminho calculado, vale o que está gravado na obra: o
+            # supervisor avisa se nem isso der.
+            return self._format_value(getattr(processo, "pasta_servidor", ""))
+        return str(caminho)
+
     def _save(self) -> None:
         """Persist the selected production process edits."""
         if self._selected_processo_id is None:
@@ -2732,6 +2810,8 @@ class ProducaoPage(QWidget):
             return
         if data["tipo_pasta"] not in TIPOS_PASTA_PRODUCAO:
             self.status_label.setText("Tipo de pasta inválido.")
+            return
+        if not self._supervisionar_mudanca_para_producao(data["estado"]):
             return
 
         updated_by_id = (

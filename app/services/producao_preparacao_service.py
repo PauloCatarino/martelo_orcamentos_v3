@@ -18,6 +18,7 @@ import shutil
 import tempfile
 from typing import Iterable, Optional, Sequence
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.services.pdf_imagem_service import documento_pdf
@@ -209,6 +210,21 @@ class PreparacaoEstado:
 
 
 @dataclass(frozen=True)
+class SupervisaoProducao:
+    """What the supervisor found when the obra was moving into production."""
+
+    validou: bool
+    motivo: str = ""
+    estados: tuple[PreparacaoEstado, ...] = ()
+    pendencias: tuple[PreparacaoEstado, ...] = ()
+
+    @property
+    def pronta(self) -> bool:
+        """True when everything this user requires is already OK."""
+        return self.validou and not self.pendencias
+
+
+@dataclass(frozen=True)
 class _Instantaneo:
     """Snapshot (file count + newest change) of one folder tree."""
 
@@ -334,13 +350,58 @@ def recolher_estados(
     return estados
 
 
-def pendencias_obrigatorias(estados: Sequence[PreparacaoEstado]) -> list[str]:
-    """Return the labels of the required validations still not OK."""
+def pendencias_estados(
+    estados: Sequence[PreparacaoEstado],
+) -> list[PreparacaoEstado]:
+    """Return the required validations still not OK (the resumo line apart)."""
     return [
-        estado.label
+        estado
         for estado in estados
         if estado.key != "obra_pronta" and estado.obrigatorio and not estado.ok
     ]
+
+
+def pendencias_obrigatorias(estados: Sequence[PreparacaoEstado]) -> list[str]:
+    """Return the labels of the required validations still not OK."""
+    return [estado.label for estado in pendencias_estados(estados)]
+
+
+def supervisionar_para_producao(
+    session: Session,
+    *,
+    codigo_processo: str,
+    pasta_obra: str | Path,
+    nome_enc_imos: str,
+    nome_plano_cut_rite: str = "",
+    user_id: object,
+) -> SupervisaoProducao:
+    """Check one obra against this user's preparation rules, before Produção.
+
+    É o que o supervisor faz por trás do aviso de mudança de estado: usa
+    exatamente as validações que **este** utilizador escolheu nas Preferências
+    da Preparação (mais as do CNC, sempre obrigatórias). Nunca rebenta — quando
+    não consegue validar (falta a pasta da obra ou o Nome Enc IMOS), devolve o
+    motivo para o utilizador decidir com conhecimento de causa.
+    """
+    try:
+        obrigatorias = obter_keys_obrigatorias(session, user_id)
+        contexto = resolver_contexto(
+            session,
+            codigo_processo=codigo_processo,
+            pasta_obra=pasta_obra,
+            nome_enc_imos=nome_enc_imos,
+            nome_plano_cut_rite=nome_plano_cut_rite,
+        )
+        estados = recolher_estados(contexto, keys_obrigatorias=obrigatorias)
+    except (ValueError, OSError, SQLAlchemyError) as erro:
+        logger.info("Supervisão da mudança para Produção não validou: %s", erro)
+        return SupervisaoProducao(validou=False, motivo=str(erro))
+
+    return SupervisaoProducao(
+        validou=True,
+        estados=tuple(estados),
+        pendencias=tuple(pendencias_estados(estados)),
+    )
 
 
 def gerar_projeto_producao_pdf(contexto: PreparacaoContexto) -> Path:

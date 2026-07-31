@@ -31,6 +31,29 @@ def test_producao_page_imports_and_headers() -> None:
     ]
 
 
+def test_gravar_supervisiona_a_passagem_a_producao() -> None:
+    """Mudar o estado para Produção passa primeiro pelo supervisor."""
+    from app.ui.pages.producao_page import ProducaoPage
+
+    save_source = inspect.getsource(ProducaoPage._save)
+    supervisao_source = inspect.getsource(
+        ProducaoPage._supervisionar_mudanca_para_producao
+    )
+
+    assert "self._supervisionar_mudanca_para_producao(data[\"estado\"])" in save_source
+    # O supervisor corre antes de gravar seja o que for.
+    assert save_source.index("_supervisionar_mudanca_para_producao") < save_source.index(
+        "atualizar_processo"
+    )
+    assert "entra_em_producao(processo.estado, estado_novo)" in supervisao_source
+    assert "supervisionar_para_producao" in supervisao_source
+    # Tudo OK não interrompe o trabalho; só há diálogo quando falta alguma coisa.
+    assert "if supervisao.pronta:" in supervisao_source
+    assert "SupervisaoProducaoDialog" in supervisao_source
+    # Cancelar devolve o estado anterior ao formulário e não grava nada.
+    assert "self._set_combo_text(self.estado_form_combo, processo.estado)" in supervisao_source
+
+
 def test_producao_page_init_uses_expected_widgets() -> None:
     from app.ui.pages.producao_page import ProducaoPage
 
