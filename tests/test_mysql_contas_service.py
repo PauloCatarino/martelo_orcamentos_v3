@@ -143,7 +143,7 @@ def test_mudar_a_minha_password_nao_aceita_nome_de_ninguem() -> None:
 def test_password_curta_nem_chega_ao_servidor(chamada) -> None:
     sessao = _SessaoFalsa()
 
-    with pytest.raises(ContaMySQLError, match="12 caracteres"):
+    with pytest.raises(ContaMySQLError, match="6 caracteres"):
         chamada(sessao)
 
     assert sessao.executados == []

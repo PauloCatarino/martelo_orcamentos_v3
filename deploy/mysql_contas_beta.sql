@@ -155,9 +155,9 @@ BEGIN
             SET MESSAGE_TEXT = 'Nome de utilizador invalido: use 3 a 32 letras, algarismos, _ . -';
     END IF;
 
-    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 12 THEN
+    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 6 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 12 caracteres.';
+            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 6 caracteres.';
     END IF;
 
     IF p_admin THEN
@@ -200,9 +200,9 @@ BEGIN
             SET MESSAGE_TEXT = 'Nome de utilizador invalido.';
     END IF;
 
-    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 12 THEN
+    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 6 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 12 caracteres.';
+            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 6 caracteres.';
     END IF;
 
     -- So' mexe em contas que ja' tenham perfil do Martelo. Assim este
@@ -236,14 +236,37 @@ CREATE PROCEDURE martelo_mudar_a_minha_password(IN p_password VARCHAR(255))
     SQL SECURITY DEFINER
     COMMENT 'Muda a palavra-passe de quem esta ligado'
 BEGIN
-    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 12 THEN
+    DECLARE v_nome VARCHAR(64);
+
+    IF p_password IS NULL OR CHAR_LENGTH(p_password) < 6 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 12 caracteres.';
+            SET MESSAGE_TEXT = 'A palavra-passe tem de ter pelo menos 6 caracteres.';
     END IF;
 
-    -- USER() e' a conta que esta' mesmo ligada: ninguem consegue usar isto
-    -- para mexer na password de outra pessoa.
-    SET @sql = CONCAT('ALTER USER USER() IDENTIFIED BY ', QUOTE(p_password));
+    -- CUIDADO AQUI. "ALTER USER USER()" parece a forma obvia de dizer "muda a
+    -- minha", e e' mesmo -- fora de um procedimento. Aqui dentro, com
+    -- SQL SECURITY DEFINER, acaba por apanhar o DONO do procedimento (o root)
+    -- em vez de quem o chamou: uma pessoa carregava em "mudar a minha
+    -- palavra-passe" e mudava a do root, sem erro nenhum e sem dar por isso.
+    --
+    -- USER() sozinho, esse sim, devolve sempre quem LIGOU ('Pedro@localhost'),
+    -- porque a ligacao nao muda por o codigo correr como outro. Tira-se dai' o
+    -- nome e nomeia-se a conta a` mao.
+    SET v_nome = SUBSTRING_INDEX(USER(), '@', 1);
+
+    -- Rede de seguranca: mesmo que a linha de cima alguma vez devolva algo
+    -- inesperado, so' se mexe em contas que tenham perfil do Martelo. O root
+    -- nao tem nenhum, por isso nunca mais pode ser o alvo.
+    IF NOT EXISTS (
+        SELECT 1 FROM mysql.role_edges
+         WHERE to_user = v_nome
+           AND from_user IN ('martelo_normal', 'martelo_admin')
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'A conta ligada nao e do Martelo: nada foi alterado.';
+    END IF;
+
+    SET @sql = CONCAT('ALTER USER ', QUOTE(v_nome), '@''%'' IDENTIFIED BY ', QUOTE(p_password));
     PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 END$$
 DELIMITER ;

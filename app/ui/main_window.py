@@ -426,7 +426,7 @@ class MainWindow(QMainWindow):
         nova, aceite = QInputDialog.getText(
             self,
             "Mudar a minha palavra-passe",
-            "Nova palavra-passe (mínimo 12 caracteres):",
+            "Nova palavra-passe (mínimo 6 caracteres):",
             QLineEdit.EchoMode.Password,
         )
         if not aceite:

@@ -35,8 +35,10 @@ def test_passwords_sao_todas_diferentes() -> None:
     assert len({c.password for c in contas}) == 20
 
 
-def test_password_e_longa_o_suficiente_para_o_procedimento() -> None:
-    """O procedimento do MySQL recusa passwords com menos de 12 caracteres."""
+def test_password_gerada_e_bem_mais_longa_que_o_minimo() -> None:
+    """O minimo e' 6 (o habito da casa), mas as GERADAS nao precisam de ser
+    decoradas: escrevem-se uma vez e mudam-se logo a seguir, por isso vao
+    longas."""
     assert len(gerar_password()) >= 12
 
 

@@ -24,8 +24,10 @@ PROC_APAGAR = "martelo_apagar_utilizador"
 PROC_MUDAR_A_MINHA = "martelo_mudar_a_minha_password"
 
 #: O mesmo minimo que os procedimentos impoem, para o aviso sair antes da
-#: viagem ao servidor.
-MINIMO_PASSWORD = 12
+#: viagem ao servidor. Seis e' pouco para uma password na Internet, mas isto e'
+#: uma rede fechada e as pessoas ja' tinham este habito do V2 -- obrigar a doze
+#: so' faria com que as apontassem num papel colado ao monitor.
+MINIMO_PASSWORD = 6
 
 
 class ContaMySQLError(Exception):
