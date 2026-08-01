@@ -109,7 +109,8 @@ def test_page_edit_line_has_save_as_create_flow() -> None:
     source = inspect.getsource(DefValuesetModeloDetailPage.abrir_editar_linha)
 
     assert "on_save_as=handle_save_as" in source
-    assert "_criar_linha_from_form_data(form_data)" in source
+    # A opção nova leva as operações da linha de onde foi copiada.
+    assert "copiar_operacoes_de=linha.id" in source
     assert "Linha gravada como nova op" in source
 
 

@@ -111,6 +111,39 @@ class DefValuesetModeloLinhaOperacaoService:
 
         return result
 
+    def copiar_operacoes_entre_linhas(self, origem_id: int, destino_id: int) -> int:
+        """Copy every operation of one line onto another. Returns how many.
+
+        Used by "Gravar como…": a variant copied from another one has to bring
+        its operations, senão a linha nova custeia diferente da original sem o
+        utilizador dar por isso. Inactive links are copied as they are.
+        """
+        copiadas = 0
+        for ligacao in self.repository.list_by_linha(origem_id):
+            self.repository.create(
+                def_valueset_modelo_linha_id=destino_id,
+                def_operacao_id=ligacao.def_operacao_id,
+                ordem=ligacao.ordem,
+                acao=ligacao.acao,
+                metodo_calculo=ligacao.metodo_calculo,
+                regra_calculo=ligacao.regra_calculo,
+                quantidade_base=ligacao.quantidade_base,
+                rasgo_qt_comp=ligacao.rasgo_qt_comp,
+                rasgo_qt_larg=ligacao.rasgo_qt_larg,
+                tempo_setup_minutos=ligacao.tempo_setup_minutos,
+                tempo_por_unidade_minutos=ligacao.tempo_por_unidade_minutos,
+                unidade_tempo=ligacao.unidade_tempo,
+                obrigatorio=ligacao.obrigatorio,
+                ativo=ligacao.ativo,
+                observacoes=ligacao.observacoes,
+            )
+            copiadas += 1
+
+        if copiadas:
+            self.session.commit()
+
+        return copiadas
+
     def editar_operacao_da_linha(
         self, id: int, data: EditarDefValuesetModeloLinhaOperacaoData
     ) -> DefValuesetModeloLinhaOperacaoResumo:

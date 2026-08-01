@@ -508,8 +508,13 @@ class DefValuesetModeloDetailPage(QWidget):
             self.carregar_linhas()
             self.status_label.setText(success_message)
 
-    def _criar_linha_from_form_data(self, form_data):
-        """Create one model line from dialog data."""
+    def _criar_linha_from_form_data(self, form_data, *, copiar_operacoes_de=None):
+        """Create one model line from dialog data.
+
+        ``copiar_operacoes_de`` is the line the new one is being copied from
+        ("Gravar como…"): the operations of the variant travel with it, senão a
+        opção nova custeava diferente da original sem se dar por isso.
+        """
         with SessionLocal() as session:
             service = DefValuesetModeloLinhaService(session)
             result = service.criar_linha(
@@ -546,6 +551,11 @@ class DefValuesetModeloDetailPage(QWidget):
                     editado_localmente=form_data.editado_localmente,
                 )
             )
+
+            if copiar_operacoes_de is not None:
+                DefValuesetModeloLinhaOperacaoService(
+                    session
+                ).copiar_operacoes_entre_linhas(copiar_operacoes_de, result.id)
 
             return result
 
@@ -630,7 +640,9 @@ class DefValuesetModeloDetailPage(QWidget):
             nonlocal saved_as
 
             try:
-                self._criar_linha_from_form_data(form_data)
+                self._criar_linha_from_form_data(
+                    form_data, copiar_operacoes_de=linha.id
+                )
             except (IntegrityError, ValueError) as error:
                 dialog.set_error(self._linha_error_message(error))
                 return False
@@ -654,7 +666,9 @@ class DefValuesetModeloDetailPage(QWidget):
             self.status_label.setText("Linha atualizada.")
         elif saved_as:
             self.carregar_linhas()
-            self.status_label.setText("Linha gravada como nova opção.")
+            self.status_label.setText(
+                "Linha gravada como nova opção, com as operações da original."
+            )
         elif dialog.operacoes_alteradas:
             self.carregar_linhas()
             self.status_label.setText("Operações da linha atualizadas.")
