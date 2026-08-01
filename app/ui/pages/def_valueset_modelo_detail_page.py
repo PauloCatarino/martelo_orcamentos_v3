@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -119,10 +120,16 @@ class DefValuesetModeloDetailPage(QWidget):
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.subir_button = QPushButton("↑")
-        self.subir_button.setToolTip("Mover a linha selecionada uma posição para cima")
+        self.subir_button.setToolTip(
+            "Mover as linhas selecionadas uma posição para cima "
+            "(Ctrl/Shift para escolher várias)"
+        )
         self.subir_button.clicked.connect(lambda: self.mover_linha(para_cima=True))
         self.descer_button = QPushButton("↓")
-        self.descer_button.setToolTip("Mover a linha selecionada uma posição para baixo")
+        self.descer_button.setToolTip(
+            "Mover as linhas selecionadas uma posição para baixo "
+            "(Ctrl/Shift para escolher várias)"
+        )
         self.descer_button.clicked.connect(lambda: self.mover_linha(para_cima=False))
         self.agrupar_button = QPushButton("Agrupar por chave")
         self.agrupar_button.setToolTip(
@@ -162,6 +169,8 @@ class DefValuesetModeloDetailPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # Várias linhas de cada vez (Ctrl/Shift), para as mover em bloco.
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setStretchLastSection(False)
@@ -225,16 +234,21 @@ class DefValuesetModeloDetailPage(QWidget):
             self._avisar_prioridades_repetidas(linhas)
 
     def mover_linha(self, *, para_cima: bool) -> None:
-        """Move the selected line one position up or down."""
-        linha = self._get_selected_linha()
-        if linha is None:
+        """Move the selected line(s) one position up or down."""
+        ids_selecionados = self._ids_selecionados()
+        if not ids_selecionados:
             self.status_label.setText("Selecione uma linha para mover.")
             return
 
         try:
             with SessionLocal() as session:
-                movida = DefValuesetModeloLinhaService(session).mover_linha(
-                    self.modelo.id, linha.id, para_cima=para_cima
+                movida = DefValuesetModeloLinhaService(session).mover_linhas(
+                    self.modelo.id,
+                    ids_selecionados,
+                    para_cima=para_cima,
+                    # Só se movem entre as linhas à vista: com as inativas
+                    # escondidas, trocar com uma delas não se veria.
+                    ids_visiveis=self._ids_visiveis(),
                 )
         except SQLAlchemyError as error:
             self.status_label.setText(
@@ -244,12 +258,52 @@ class DefValuesetModeloDetailPage(QWidget):
 
         if not movida:
             extremo = "primeira" if para_cima else "última"
-            self.status_label.setText(f"A linha já é a {extremo} da lista.")
+            self.status_label.setText(f"A seleção já está na {extremo} posição.")
             return
 
         self.carregar_linhas()
-        self._selecionar_linha(linha.id)
-        self.status_label.setText("Linha movida.")
+        self._selecionar_linhas(ids_selecionados)
+        total = len(ids_selecionados)
+        self.status_label.setText(
+            "Linha movida." if total == 1 else f"{total} linhas movidas."
+        )
+
+    def _ids_visiveis(self) -> list[int]:
+        """Ids of the lines currently in the table, in display order."""
+        return [
+            linha.id
+            for _row, linha in sorted(self._linhas_by_row.items())
+        ]
+
+    def _ids_selecionados(self) -> list[int]:
+        """Ids of the selected lines, in display order."""
+        modelo_selecao = self.table.selectionModel()
+        if modelo_selecao is None:
+            return []
+
+        linhas = sorted(indice.row() for indice in modelo_selecao.selectedRows())
+        if not linhas and self.table.currentRow() >= 0:
+            linhas = [self.table.currentRow()]
+
+        return [
+            self._linhas_by_row[row].id for row in linhas if row in self._linhas_by_row
+        ]
+
+    def _selecionar_linhas(self, linha_ids: list[int]) -> None:
+        """Keep the moved lines selected after the table is rebuilt."""
+        alvos = set(linha_ids)
+        modelo_selecao = self.table.selectionModel()
+        if modelo_selecao is None:
+            return
+
+        modelo_selecao.clearSelection()
+        flags = (
+            QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows
+        )
+        for row, linha in self._linhas_by_row.items():
+            if linha.id in alvos:
+                modelo_selecao.select(self.table.model().index(row, 0), flags)
 
     def agrupar_por_chave(self) -> None:
         """Rearrange every line by key, undoing the manual ordering."""
@@ -276,13 +330,6 @@ class DefValuesetModeloDetailPage(QWidget):
 
         self.carregar_linhas()
         self.status_label.setText(f"{total} linhas arrumadas por chave.")
-
-    def _selecionar_linha(self, linha_id: int) -> None:
-        """Keep the moved line selected after the table is rebuilt."""
-        for row, linha in self._linhas_by_row.items():
-            if linha.id == linha_id:
-                self.table.selectRow(row)
-                return
 
     def verificar_precos(self) -> None:
         """Explicitly check model line prices against the material catalog."""
@@ -384,7 +431,9 @@ class DefValuesetModeloDetailPage(QWidget):
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
         self._linhas_by_row = {}
-        estados = preparar_linhas_valueset(linhas)
+        # As linhas já vêm na ordem que o utilizador arrumou (coluna Ordem);
+        # re-ordenar aqui por chave desfazia o trabalho das setas.
+        estados = preparar_linhas_valueset(linhas, ordenar=False)
         self.table.setRowCount(len(estados))
 
         for row_index, estado in enumerate(estados):

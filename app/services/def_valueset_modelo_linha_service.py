@@ -183,23 +183,59 @@ class DefValuesetModeloLinhaService:
 
         return result
 
-    def mover_linha(self, modelo_id: int, linha_id: int, *, para_cima: bool) -> bool:
-        """Swap one line with the neighbour above/below it. True if it moved.
+    def mover_linhas(
+        self,
+        modelo_id: int,
+        linha_ids: Iterable[int],
+        *,
+        para_cima: bool,
+        ids_visiveis: Iterable[int] | None = None,
+    ) -> bool:
+        """Move the given lines one position up/down. True if anything moved.
 
-        The whole list is renumbered 1..N afterwards, so the positions stay
-        clean whatever numbers the lines had before (repeated, with gaps, ...).
+        The selected lines travel together, keeping their relative order, and
+        stop when they reach the end of the list. ``ids_visiveis`` restricts the
+        movement to the lines the user is actually seeing (inactive ones may be
+        hidden), so a line never swaps with a neighbour that is off screen. The
+        whole list is renumbered 1..N afterwards, so the positions stay clean
+        whatever numbers the lines had before (repeated, with gaps, ...).
         """
         linhas = self.repository.list_by_modelo(modelo_id)
         ids = [linha.id for linha in linhas]
-        if linha_id not in ids:
+        selecionados = {linha_id for linha_id in linha_ids if linha_id in ids}
+        if not selecionados:
             return False
 
-        indice = ids.index(linha_id)
-        destino = indice - 1 if para_cima else indice + 1
-        if destino < 0 or destino >= len(ids):
+        visiveis = set(ids_visiveis) if ids_visiveis is not None else set(ids)
+        # Posições, na lista completa, das linhas que estão à vista: é entre
+        # elas que a troca acontece.
+        posicoes = [indice for indice, id_ in enumerate(ids) if id_ in visiveis]
+        sequencia = [ids[indice] for indice in posicoes]
+
+        indices = [
+            indice for indice, id_ in enumerate(sequencia) if id_ in selecionados
+        ]
+        if not para_cima:
+            indices.reverse()
+
+        movido = False
+        for indice in indices:
+            destino = indice - 1 if para_cima else indice + 1
+            if destino < 0 or destino >= len(sequencia):
+                continue
+            if sequencia[destino] in selecionados:
+                continue  # bloco encostado a outra linha selecionada
+            sequencia[indice], sequencia[destino] = (
+                sequencia[destino],
+                sequencia[indice],
+            )
+            movido = True
+
+        if not movido:
             return False
 
-        ids[indice], ids[destino] = ids[destino], ids[indice]
+        for posicao, id_ in zip(posicoes, sequencia, strict=True):
+            ids[posicao] = id_
         self.repository.reordenar_linhas(ids)
         self.session.commit()
 

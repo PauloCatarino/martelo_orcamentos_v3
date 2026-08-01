@@ -42,9 +42,16 @@ class EstadoLinhaValueset:
     ativo: bool
 
 
-def preparar_linhas_valueset(linhas: list[Any]) -> list[EstadoLinhaValueset]:
-    """Return sorted ValueSet lines with grouping and visual flags."""
-    linhas_ordenadas = sorted(linhas, key=_sort_key)
+def preparar_linhas_valueset(
+    linhas: list[Any], *, ordenar: bool = True
+) -> list[EstadoLinhaValueset]:
+    """Return ValueSet lines with grouping and visual flags.
+
+    By default the lines are sorted by key (the grouped reading). Pass
+    ``ordenar=False`` when the caller already has them in the order the user
+    arranged: the grouping colours then follow the blocks as they appear.
+    """
+    linhas_ordenadas = sorted(linhas, key=_sort_key) if ordenar else list(linhas)
     estados: list[EstadoLinhaValueset] = []
     chave_anterior: str | None = None
     indice_grupo = -1

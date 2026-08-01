@@ -57,21 +57,53 @@ def _ordem_atual(service) -> list[int]:
 
 
 def test_mover_para_cima_troca_com_a_linha_de_cima(service) -> None:
-    assert service.mover_linha(10, 3, para_cima=True) is True
+    assert service.mover_linhas(10, [3], para_cima=True) is True
 
     assert _ordem_atual(service) == [1, 3, 2, 4]
 
 
 def test_mover_para_baixo_troca_com_a_linha_de_baixo(service) -> None:
-    assert service.mover_linha(10, 1, para_cima=False) is True
+    assert service.mover_linhas(10, [1], para_cima=False) is True
 
     assert _ordem_atual(service) == [2, 1, 3, 4]
 
 
 def test_nos_extremos_nao_ha_movimento(service) -> None:
-    assert service.mover_linha(10, 1, para_cima=True) is False
-    assert service.mover_linha(10, 4, para_cima=False) is False
+    assert service.mover_linhas(10, [1], para_cima=True) is False
+    assert service.mover_linhas(10, [4], para_cima=False) is False
     assert _ordem_atual(service) == [1, 2, 3, 4]
+
+
+def test_varias_linhas_movem_se_em_bloco(service) -> None:
+    # As duas do meio sobem juntas e mantêm a ordem relativa entre si.
+    assert service.mover_linhas(10, [2, 3], para_cima=True) is True
+
+    assert _ordem_atual(service) == [2, 3, 1, 4]
+
+
+def test_bloco_encostado_ao_topo_nao_se_desfaz(service) -> None:
+    service.mover_linhas(10, [2, 3], para_cima=True)  # [2, 3, 1, 4]
+
+    assert service.mover_linhas(10, [2, 3], para_cima=True) is False
+    assert _ordem_atual(service) == [2, 3, 1, 4]
+
+
+def test_selecao_descontinua_move_cada_linha(service) -> None:
+    # 1.ª e 3.ª selecionadas: a primeira já está no topo, a outra sobe.
+    assert service.mover_linhas(10, [1, 3], para_cima=True) is True
+
+    assert _ordem_atual(service) == [1, 3, 2, 4]
+
+
+def test_nao_troca_com_uma_linha_escondida(service) -> None:
+    # A linha 2 está escondida (inativa): a 3 sobe para o lugar visível
+    # seguinte, a 1, em vez de trocar com algo que não se vê.
+    assert (
+        service.mover_linhas(10, [3], para_cima=True, ids_visiveis=[1, 3, 4]) is True
+    )
+
+    # A escondida fica onde estava (2.ª posição da lista completa).
+    assert _ordem_atual(service) == [3, 2, 1, 4]
 
 
 def test_mover_renumera_de_um_a_n(service) -> None:
@@ -79,18 +111,18 @@ def test_mover_renumera_de_um_a_n(service) -> None:
     for linha, ordem in zip(_FakeRepository.linhas, (5, 5, 9, 9)):
         linha.ordem = ordem
 
-    service.mover_linha(10, 2, para_cima=False)
+    service.mover_linhas(10, [2], para_cima=False)
 
     assert sorted(linha.ordem for linha in _FakeRepository.linhas) == [1, 2, 3, 4]
 
 
 def test_linha_desconhecida_nao_move(service) -> None:
-    assert service.mover_linha(10, 999, para_cima=True) is False
+    assert service.mover_linhas(10, [999], para_cima=True) is False
     assert _FakeRepository.reordenacoes == []
 
 
 def test_agrupar_por_chave_arruma_tudo(service) -> None:
-    service.mover_linha(10, 4, para_cima=True)  # desarrumar primeiro
+    service.mover_linhas(10, [4], para_cima=True)  # desarrumar primeiro
 
     total = service.agrupar_linhas_por_chave(10)
 
@@ -124,3 +156,14 @@ def test_linha_nova_vai_para_o_fim(service, monkeypatch) -> None:
     )
 
     assert criados[-1]["ordem"] == 5  # a seguir à última (4)
+
+
+def test_tabela_do_modelo_mostra_a_ordem_do_utilizador() -> None:
+    import inspect
+
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    fonte = inspect.getsource(DefValuesetModeloDetailPage._preencher)
+
+    # Sem isto, a camada visual reagrupava por chave e as setas não se viam.
+    assert "ordenar=False" in fonte
