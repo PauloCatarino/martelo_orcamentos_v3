@@ -70,8 +70,9 @@ PRIORIDADE_TOOLTIP = (
     "Não confundir com Ordem, que é apenas a posição na lista."
 )
 ORDEM_TOOLTIP = (
-    "Ordem: apenas a posição de exibição na lista. "
-    "Não decide a escolha automática no custeio — isso é a Prioridade."
+    "Ordem: a posição da linha na lista, a mesma que as setas ↑/↓ escrevem. "
+    "Vazio numa linha nova = vai para o fim. Não decide a escolha automática "
+    "no custeio — isso é a Prioridade."
 )
 PRECO_LIQUIDO_TOOLTIP = (
     "Calculado automaticamente (campo protegido, não editável):\n"
@@ -90,7 +91,7 @@ class DefValuesetModeloLinhaDialogData:
     descricao_materia_prima: str | None
     valor_texto: str | None
     prioridade: int | None
-    ordem: int
+    ordem: int | None
     observacoes: str | None
     ativo: bool
     ref_le: str | None
@@ -166,7 +167,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.prioridade_input.setPlaceholderText("Ex.: 1 (vazio = nunca escolhida)")
         self.prioridade_input.setToolTip(PRIORIDADE_TOOLTIP)
         self.ordem_input = QLineEdit()
-        self.ordem_input.setText("1")
+        self.ordem_input.setPlaceholderText("Vazio = fim da lista")
         self.ordem_input.setToolTip(ORDEM_TOOLTIP)
         self.observacoes_input = QLineEdit()
         self.ativo_input = QCheckBox()
@@ -656,10 +657,10 @@ class DefValuesetModeloLinhaDialog(QDialog):
         """Show a user-facing error while keeping the dialog open."""
         self.error_label.setText(message)
 
-    def _parse_ordem(self) -> int:
+    def _parse_ordem(self) -> int | None:
         text = self.ordem_input.text().strip()
         if not text:
-            return 1
+            return None  # sem posição escolhida: o serviço põe no fim
 
         try:
             return int(text)

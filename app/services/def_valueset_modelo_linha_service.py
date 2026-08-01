@@ -141,7 +141,7 @@ class DefValuesetModeloLinhaService:
     def criar_linha(
         self, data: CriarDefValuesetModeloLinhaData
     ) -> DefValuesetModeloLinhaResumo:
-        """Create one reusable ValueSet model line."""
+        """Create one reusable ValueSet model line, at the end of the list."""
         fields = self._build_fields(data)
         self._validate_opcao_unica(
             modelo_id=fields["def_valueset_modelo_id"],
@@ -149,6 +149,12 @@ class DefValuesetModeloLinhaService:
             codigo_opcao=fields["codigo_opcao"],
             exclude_id=None,
         )
+        if data.ordem is None:
+            # A linha nova vai para o fim: nunca desarruma o que ja foi
+            # organizado com as setas.
+            fields["ordem"] = self.repository.proxima_ordem(
+                fields["def_valueset_modelo_id"]
+            )
 
         result = self.repository.create(**fields)
         self.session.commit()
@@ -176,6 +182,51 @@ class DefValuesetModeloLinhaService:
         self.session.commit()
 
         return result
+
+    def mover_linha(self, modelo_id: int, linha_id: int, *, para_cima: bool) -> bool:
+        """Swap one line with the neighbour above/below it. True if it moved.
+
+        The whole list is renumbered 1..N afterwards, so the positions stay
+        clean whatever numbers the lines had before (repeated, with gaps, ...).
+        """
+        linhas = self.repository.list_by_modelo(modelo_id)
+        ids = [linha.id for linha in linhas]
+        if linha_id not in ids:
+            return False
+
+        indice = ids.index(linha_id)
+        destino = indice - 1 if para_cima else indice + 1
+        if destino < 0 or destino >= len(ids):
+            return False
+
+        ids[indice], ids[destino] = ids[destino], ids[indice]
+        self.repository.reordenar_linhas(ids)
+        self.session.commit()
+
+        return True
+
+    def agrupar_linhas_por_chave(self, modelo_id: int) -> int:
+        """Rearrange every line of one model by key. Returns lines renumbered.
+
+        The safety net for the arrows: it puts the list back into the
+        alphabetical arrangement by key, best priority first inside each key.
+        """
+        linhas = sorted(
+            self.repository.list_by_modelo(modelo_id),
+            key=lambda linha: (
+                linha.chave,
+                linha.prioridade is None,
+                linha.prioridade or 0,
+                linha.id,
+            ),
+        )
+        if not linhas:
+            return 0
+
+        self.repository.reordenar_linhas([linha.id for linha in linhas])
+        self.session.commit()
+
+        return len(linhas)
 
     def desativar_linha(self, id: int) -> bool:
         """Deactivate one reusable ValueSet model line."""

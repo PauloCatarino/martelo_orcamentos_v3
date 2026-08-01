@@ -118,6 +118,18 @@ class DefValuesetModeloDetailPage(QWidget):
         self.edit_button.clicked.connect(self.abrir_editar_linha)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
+        self.subir_button = QPushButton("↑")
+        self.subir_button.setToolTip("Mover a linha selecionada uma posição para cima")
+        self.subir_button.clicked.connect(lambda: self.mover_linha(para_cima=True))
+        self.descer_button = QPushButton("↓")
+        self.descer_button.setToolTip("Mover a linha selecionada uma posição para baixo")
+        self.descer_button.clicked.connect(lambda: self.mover_linha(para_cima=False))
+        self.agrupar_button = QPushButton("Agrupar por chave")
+        self.agrupar_button.setToolTip(
+            "Voltar a arrumar todas as linhas por chave (e por prioridade dentro "
+            "de cada chave), desfazendo a ordenação feita com as setas."
+        )
+        self.agrupar_button.clicked.connect(self.agrupar_por_chave)
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
         self.mostrar_inativas_check.stateChanged.connect(
             lambda _=0: self.carregar_linhas()
@@ -133,6 +145,9 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.toggle_button)
+        actions_layout.addWidget(self.subir_button)
+        actions_layout.addWidget(self.descer_button)
+        actions_layout.addWidget(self.agrupar_button)
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.check_prices_button)
@@ -208,6 +223,66 @@ class DefValuesetModeloDetailPage(QWidget):
             self.status_label.setText("Sem linhas neste modelo.")
         else:
             self._avisar_prioridades_repetidas(linhas)
+
+    def mover_linha(self, *, para_cima: bool) -> None:
+        """Move the selected line one position up or down."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha para mover.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                movida = DefValuesetModeloLinhaService(session).mover_linha(
+                    self.modelo.id, linha.id, para_cima=para_cima
+                )
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível mover a linha.", error)
+            )
+            return
+
+        if not movida:
+            extremo = "primeira" if para_cima else "última"
+            self.status_label.setText(f"A linha já é a {extremo} da lista.")
+            return
+
+        self.carregar_linhas()
+        self._selecionar_linha(linha.id)
+        self.status_label.setText("Linha movida.")
+
+    def agrupar_por_chave(self) -> None:
+        """Rearrange every line by key, undoing the manual ordering."""
+        confirm = QMessageBox.question(
+            self,
+            "Confirmar",
+            "Voltar a arrumar todas as linhas por chave? A ordenação que fez "
+            "com as setas é substituída.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            with SessionLocal() as session:
+                total = DefValuesetModeloLinhaService(session).agrupar_linhas_por_chave(
+                    self.modelo.id
+                )
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível arrumar as linhas.", error)
+            )
+            return
+
+        self.carregar_linhas()
+        self.status_label.setText(f"{total} linhas arrumadas por chave.")
+
+    def _selecionar_linha(self, linha_id: int) -> None:
+        """Keep the moved line selected after the table is rebuilt."""
+        for row, linha in self._linhas_by_row.items():
+            if linha.id == linha_id:
+                self.table.selectRow(row)
+                return
 
     def verificar_precos(self) -> None:
         """Explicitly check model line prices against the material catalog."""

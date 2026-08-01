@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import DefValuesetModeloLinha
@@ -80,19 +80,42 @@ class DefValuesetModeloLinhaRepository:
         return [self._to_resumo(linha) for linha in linhas]
 
     def list_by_modelo(self, modelo_id: int) -> list[DefValuesetModeloLinhaResumo]:
-        """List lines of one reusable ValueSet model."""
+        """List lines of one reusable ValueSet model, in the user's own order.
+
+        ``ordem`` is what the up/down arrows write, so it comes first: the list
+        shows the arrangement the user made. Lines sharing a number fall back to
+        the key and to the id, so the order is always stable.
+        """
         statement = (
             select(DefValuesetModeloLinha)
             .where(DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id)
             .order_by(
-                DefValuesetModeloLinha.chave.asc(),
                 DefValuesetModeloLinha.ordem.asc(),
+                DefValuesetModeloLinha.chave.asc(),
                 DefValuesetModeloLinha.id.asc(),
             )
         )
         linhas = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(linha) for linha in linhas]
+
+    def reordenar_linhas(self, ordered_ids: list[int]) -> None:
+        """Set ``ordem`` = 1..N for the given ids, in the provided order."""
+        for posicao, linha_id in enumerate(ordered_ids, start=1):
+            linha = self.session.get(DefValuesetModeloLinha, linha_id)
+            if linha is not None:
+                linha.ordem = posicao
+        self.session.flush()
+
+    def proxima_ordem(self, modelo_id: int) -> int:
+        """Next free position at the end of one model's list."""
+        maximo = self.session.execute(
+            select(func.max(DefValuesetModeloLinha.ordem)).where(
+                DefValuesetModeloLinha.def_valueset_modelo_id == modelo_id
+            )
+        ).scalar_one()
+
+        return int(maximo or 0) + 1
 
     def list_by_modelo_chave(
         self, modelo_id: int, chave: str
