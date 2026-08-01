@@ -26,6 +26,11 @@ from app.domain.orla_types import (
     normalize_orla_type,
 )
 from app.domain.peca_funcao_types import get_peca_funcao_options
+from app.domain.peca_subgrupo_types import (
+    GRUPO_FERRAGENS,
+    get_subgrupo_options,
+    normalize_subgrupo,
+)
 from app.domain.peca_types import SIMPLES, get_peca_type_options, normalize_peca_type
 from app.domain.peca_natureza_types import (
     CONJUNTO,
@@ -57,6 +62,7 @@ class EditarDefPecaDialogData:
     orientacao: str
     funcao: str | None
     grupo: str | None
+    subgrupo: str | None
     orla_c1: int
     orla_c2: int
     orla_l1: int
@@ -137,6 +143,17 @@ class EditarDefPecaDialog(QDialog):
             "SERVICOS", "PAINEIS SIMPLES", "PAINEIS ACABAMENTO",
         ):
             self.grupo_input.addItem(grupo)
+        self.subgrupo_input = QComboBox()
+        self.subgrupo_input.setEditable(True)
+        self.subgrupo_input.addItem("")
+        for subgrupo in get_subgrupo_options(GRUPO_FERRAGENS):
+            self.subgrupo_input.addItem(subgrupo)
+        self.subgrupo_input.setCurrentText("")
+        self.subgrupo_input.setToolTip(
+            "Sub-familia dentro do grupo (ex.: FERRAGENS > DOBRADICAS). So' serve "
+            "para arrumar as arvores; deixe vazio para a peça ficar direto no "
+            "grupo. Pode escrever uma sub-familia nova."
+        )
         self.ativo_input = QCheckBox()
         self.chave_valueset_material_input = QComboBox()
         self.sem_material_input = QCheckBox("Peça de serviço (sem material)")
@@ -202,6 +219,7 @@ class EditarDefPecaDialog(QDialog):
         form_layout.addRow("Orientação", self.orientacao_input)
         form_layout.addRow("Origem estrutural", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
+        form_layout.addRow("Sub-família", self.subgrupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
         self.button_box = QDialogButtonBox(
@@ -276,6 +294,7 @@ class EditarDefPecaDialog(QDialog):
         )
         self._select_editable_combo(self.funcao_input, self.peca.funcao)
         self.grupo_input.setCurrentText(self.peca.grupo or "")
+        self.subgrupo_input.setCurrentText(self.peca.subgrupo or "")
         self.ativo_input.setChecked(self.peca.ativo)
         self._select_combo_data(self.orla_c1_input, normalize_orla_type(self.peca.orla_c1))
         self._select_combo_data(self.orla_c2_input, normalize_orla_type(self.peca.orla_c2))
@@ -317,6 +336,7 @@ class EditarDefPecaDialog(QDialog):
                 or self._empty_to_none(self.funcao_input.currentText())
             ),
             grupo=self._empty_to_none(self.grupo_input.currentText()),
+            subgrupo=normalize_subgrupo(self.subgrupo_input.currentText()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),

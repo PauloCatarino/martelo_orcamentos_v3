@@ -27,6 +27,7 @@ class DefPeca(Base):
         UniqueConstraint("codigo", name="uq_def_pecas_codigo"),
         Index("ix_def_pecas_nome", "nome"),
         Index("ix_def_pecas_grupo", "grupo"),
+        Index("ix_def_pecas_subgrupo", "subgrupo"),
         Index("ix_def_pecas_tipo_peca", "tipo_peca"),
         Index("ix_def_pecas_ativo", "ativo"),
         UniqueConstraint(
@@ -55,6 +56,9 @@ class DefPeca(Base):
     nome_biblioteca: Mapped[str | None] = mapped_column(String(150), nullable=True)
     descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
     grupo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Optional sub-family inside the group (e.g. FERRAGENS > DOBRADICAS). Only
+    # tidies up the trees; empty means the piece hangs directly from the group.
+    subgrupo: Mapped[str | None] = mapped_column(String(100), nullable=True)
     tipo_peca: Mapped[str] = mapped_column(String(50), nullable=False, default=SIMPLES, server_default=SIMPLES)
     natureza: Mapped[str] = mapped_column(
         String(30), nullable=False, default=MATERIAL, server_default=MATERIAL, index=True

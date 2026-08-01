@@ -1836,8 +1836,18 @@ class OrcamentoItemCusteioPage(QWidget):
         for grupo in ordenar_grupos(pecas_por_grupo):
             parent = QTreeWidgetItem([grupo])
             self.tree_biblioteca_pecas.addTopLevelItem(parent)
+            subgrupos: dict[str, QTreeWidgetItem] = {}
             for peca, codigo_orlas in pecas_por_grupo[grupo]:
-                parent.addChild(self._criar_folha_biblioteca(peca, codigo_orlas))
+                destino = parent
+                subgrupo = (peca.subgrupo or "").strip().upper()
+                if subgrupo:
+                    # Sub-family level: só as peças que a têm ganham este nível.
+                    destino = subgrupos.get(subgrupo)
+                    if destino is None:
+                        destino = QTreeWidgetItem([subgrupo])
+                        parent.addChild(destino)
+                        subgrupos[subgrupo] = destino
+                destino.addChild(self._criar_folha_biblioteca(peca, codigo_orlas))
 
         self.tree_biblioteca_pecas.expandAll()
         self.tree_biblioteca_pecas.blockSignals(False)
@@ -1904,6 +1914,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"Nome na biblioteca: {peca.nome_biblioteca or '—'}",
                 f"Tipo: {tipo}",
                 f"Grupo: {peca.grupo or '—'}",
+                f"Sub-família: {peca.subgrupo or '—'}",
                 f"Código de orlas: [{codigo_orlas}]",
                 f"Chave ValueSet: {peca.chave_valueset_material or '—'}",
             ]
@@ -1916,6 +1927,7 @@ class OrcamentoItemCusteioPage(QWidget):
             peca.nome,
             peca.nome_biblioteca or "",
             peca.grupo or "",
+            peca.subgrupo or "",
             peca.tipo_peca,
             codigo_orlas,
         ]

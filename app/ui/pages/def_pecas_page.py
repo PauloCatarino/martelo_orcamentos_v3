@@ -207,6 +207,7 @@ class DefPecasPage(QWidget):
                             nome_biblioteca=form_data.nome_biblioteca,
                             descricao=form_data.descricao,
                             grupo=form_data.grupo,
+                            subgrupo=form_data.subgrupo,
                             tipo_peca=form_data.tipo_peca,
                             natureza=form_data.natureza,
                             orientacao=form_data.orientacao,
@@ -310,19 +311,30 @@ class DefPecasPage(QWidget):
         self.status_label.setText(f"Pe\u00e7a {peca.codigo} {estado}.")
 
     def _preencher_arvore(self, pecas: list[DefPecaResumo]) -> None:
-        """Fill the permanent tree-table, grouped by piece group."""
+        """Fill the permanent tree-table, grouped by group and sub-family."""
         self._tree_items_by_id = {}
         self.tree.clear()
 
         grupos: dict[str, QTreeWidgetItem] = {}
+        subgrupos: dict[tuple[str, str], QTreeWidgetItem] = {}
         for peca in pecas:
             grupo = (peca.grupo or "").strip().upper() or "SEM GRUPO"
             parent = grupos.get(grupo)
             if parent is None:
-                parent = QTreeWidgetItem([grupo, *("" for _ in self.TABLE_HEADERS[1:])])
-                parent.setFirstColumnSpanned(True)
+                parent = self._criar_no_arvore(grupo)
                 self.tree.addTopLevelItem(parent)
                 grupos[grupo] = parent
+
+            subgrupo = (peca.subgrupo or "").strip().upper()
+            if subgrupo:
+                # Sub-family level: only the pieces that have one get it.
+                chave = (grupo, subgrupo)
+                no_subgrupo = subgrupos.get(chave)
+                if no_subgrupo is None:
+                    no_subgrupo = self._criar_no_arvore(subgrupo)
+                    parent.addChild(no_subgrupo)
+                    subgrupos[chave] = no_subgrupo
+                parent = no_subgrupo
 
             codigo_orlas = format_orla_code(
                 peca.orla_c1,
@@ -345,6 +357,12 @@ class DefPecasPage(QWidget):
             self._tree_items_by_id[peca.id] = leaf
 
         self.tree.expandAll()
+
+    def _criar_no_arvore(self, texto: str) -> QTreeWidgetItem:
+        """Create one grouping node (group or sub-family) for the tree."""
+        no = QTreeWidgetItem([texto, *("" for _ in self.TABLE_HEADERS[1:])])
+        no.setFirstColumnSpanned(True)
+        return no
 
     def abrir_peca_selecionada(self) -> None:
         """Open the currently selected piece definition detail."""
@@ -439,6 +457,7 @@ class DefPecasPage(QWidget):
             nome_biblioteca=form_data.nome_biblioteca,
             descricao=form_data.descricao,
             grupo=form_data.grupo,
+            subgrupo=form_data.subgrupo,
             tipo_peca=form_data.tipo_peca,
             natureza=form_data.natureza,
             orientacao=form_data.orientacao,

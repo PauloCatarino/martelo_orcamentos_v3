@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
 
 from app.domain.orla_types import format_orla_code, get_orla_type_options
 from app.domain.peca_funcao_types import get_peca_funcao_options
+from app.domain.peca_subgrupo_types import (
+    GRUPO_FERRAGENS,
+    get_subgrupo_options,
+    normalize_subgrupo,
+)
 from app.domain.peca_types import SIMPLES, get_peca_type_options
 from app.domain.peca_natureza_types import (
     CONJUNTO,
@@ -49,6 +54,7 @@ class NovaDefPecaDialogData:
     orientacao: str
     funcao: str | None
     grupo: str | None
+    subgrupo: str | None
     orla_c1: int
     orla_c2: int
     orla_l1: int
@@ -115,6 +121,17 @@ class NovaDefPecaDialog(QDialog):
             "SERVICOS", "PAINEIS SIMPLES", "PAINEIS ACABAMENTO",
         ):
             self.grupo_input.addItem(grupo)
+        self.subgrupo_input = QComboBox()
+        self.subgrupo_input.setEditable(True)
+        self.subgrupo_input.addItem("")
+        for subgrupo in get_subgrupo_options(GRUPO_FERRAGENS):
+            self.subgrupo_input.addItem(subgrupo)
+        self.subgrupo_input.setCurrentText("")
+        self.subgrupo_input.setToolTip(
+            "Sub-familia dentro do grupo (ex.: FERRAGENS > DOBRADICAS). So' serve "
+            "para arrumar as arvores; deixe vazio para a peça ficar direto no "
+            "grupo. Pode escrever uma sub-familia nova."
+        )
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
         self.chave_valueset_material_input = QComboBox()
@@ -178,6 +195,7 @@ class NovaDefPecaDialog(QDialog):
         form_layout.addRow("Orienta\u00e7\u00e3o", self.orientacao_input)
         form_layout.addRow("Origem estrutural", self.funcao_input)
         form_layout.addRow("Grupo", self.grupo_input)
+        form_layout.addRow("Sub-família", self.subgrupo_input)
         form_layout.addRow("Ativo", self.ativo_input)
 
         self.button_box = QDialogButtonBox(
@@ -236,6 +254,7 @@ class NovaDefPecaDialog(QDialog):
                 or self._empty_to_none(self.funcao_input.currentText())
             ),
             grupo=self._empty_to_none(self.grupo_input.currentText()),
+            subgrupo=normalize_subgrupo(self.subgrupo_input.currentText()),
             orla_c1=self.orla_c1_input.currentData(),
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),

@@ -45,6 +45,7 @@ class DefPecaRevisaoService:
         "nome_biblioteca",
         "descricao",
         "grupo",
+        "subgrupo",
         "tipo_peca",
         "natureza",
         "orientacao",

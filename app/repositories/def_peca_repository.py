@@ -22,6 +22,8 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    # Sub-family inside the group (FERRAGENS > DOBRADICAS); empty = no level.
+    subgrupo: str | None = None
     nome_biblioteca: str | None = None
     revisao_serie: str | None = None
     revisao_numero: int = 1
@@ -104,6 +106,7 @@ class DefPecaRepository:
         nome: str,
         descricao: str | None,
         grupo: str | None,
+        subgrupo: str | None = None,
         tipo_peca: str,
         natureza: str = "MATERIAL",
         orientacao: str = "NEUTRA",
@@ -130,6 +133,7 @@ class DefPecaRepository:
             nome_biblioteca=nome_biblioteca,
             descricao=descricao,
             grupo=grupo,
+            subgrupo=subgrupo,
             tipo_peca=tipo_peca,
             natureza=natureza,
             orientacao=orientacao,
@@ -161,6 +165,7 @@ class DefPecaRepository:
         nome: str,
         descricao: str | None,
         grupo: str | None,
+        subgrupo: str | None = None,
         tipo_peca: str,
         natureza: str = "MATERIAL",
         orientacao: str = "NEUTRA",
@@ -190,6 +195,7 @@ class DefPecaRepository:
         peca.nome_biblioteca = nome_biblioteca
         peca.descricao = descricao
         peca.grupo = grupo
+        peca.subgrupo = subgrupo
         peca.tipo_peca = tipo_peca
         peca.natureza = natureza
         peca.orientacao = orientacao
@@ -259,6 +265,7 @@ class DefPecaRepository:
             nome_biblioteca=peca.nome_biblioteca,
             descricao=peca.descricao,
             grupo=peca.grupo,
+            subgrupo=peca.subgrupo,
             tipo_peca=peca.tipo_peca,
             revisao_serie=peca.revisao_serie,
             revisao_numero=peca.revisao_numero,

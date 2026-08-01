@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.domain.orla_types import normalize_orla_type
+from app.domain.peca_subgrupo_types import normalize_subgrupo
 from app.domain.peca_types import COMPOSTA, SIMPLES, normalize_peca_type
 from app.domain.peca_natureza_types import (
     CONJUNTO,
@@ -36,6 +37,7 @@ class CriarDefPecaData:
     nome: str
     descricao: str | None = None
     grupo: str | None = None
+    subgrupo: str | None = None
     tipo_peca: str | None = None
     natureza: str | None = None
     orientacao: str | None = None
@@ -64,6 +66,7 @@ class EditarDefPecaData:
     nome: str
     descricao: str | None = None
     grupo: str | None = None
+    subgrupo: str | None = None
     tipo_peca: str | None = None
     natureza: str | None = None
     orientacao: str | None = None
@@ -136,6 +139,7 @@ class DefPecaService:
             nome_biblioteca=self._normalize_optional_text(data.nome_biblioteca),
             descricao=data.descricao,
             grupo=data.grupo,
+            subgrupo=normalize_subgrupo(data.subgrupo),
             tipo_peca=tipo_peca,
             natureza=natureza,
             orientacao=orientacao,
@@ -194,6 +198,7 @@ class DefPecaService:
             nome_biblioteca=self._normalize_optional_text(data.nome_biblioteca),
             descricao=data.descricao,
             grupo=data.grupo,
+            subgrupo=normalize_subgrupo(data.subgrupo),
             tipo_peca=tipo_peca,
             natureza=natureza,
             orientacao=orientacao,
@@ -230,6 +235,7 @@ class DefPecaService:
                 nome_biblioteca=original.nome_biblioteca,
                 descricao=original.descricao,
                 grupo=original.grupo,
+                subgrupo=original.subgrupo,
                 tipo_peca=original.tipo_peca,
                 natureza=original.natureza,
                 orientacao=original.orientacao,
