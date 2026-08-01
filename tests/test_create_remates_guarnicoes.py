@@ -68,6 +68,7 @@ def test_seed_cria_chaves_e_pecas(session) -> None:
     result = seed_remates_guarnicoes(session)
 
     assert result.chaves_criadas == TOTAL_CHAVES
+    assert result.chaves_renomeadas == 0
     assert result.pecas_criadas == TOTAL_PECAS
     assert result.pecas_reutilizadas == 0
     # Todas levam corte + orlagem menos a guarnicao comprada.
@@ -171,6 +172,35 @@ def test_tiras_levam_corte_e_orlagem(session) -> None:
     assert all(operacao.ativo is True for operacao in operacoes)
 
 
+def test_seed_corrige_o_nome_de_uma_chave_que_ja_existia(session) -> None:
+    _criar_operacoes_base(session)
+    session.add(
+        DefValuesetChave(
+            codigo="MATERIAL_ENCHIMENTOS",
+            nome="Enchimentos",
+            descricao=None,
+            tipo="MATERIAL",
+            grupo="MATERIAIS",
+            sistema=True,
+            ativo=True,
+            ordem=1,
+        )
+    )
+    session.flush()
+
+    result = seed_remates_guarnicoes(session)
+
+    assert result.chaves_renomeadas == 1
+    assert result.chaves_criadas == TOTAL_CHAVES - 1
+
+    chave = session.execute(
+        select(DefValuesetChave).where(
+            DefValuesetChave.codigo == "MATERIAL_ENCHIMENTOS"
+        )
+    ).scalar_one()
+    assert chave.nome == "Material Enchimentos"
+
+
 def test_seed_e_idempotente(session) -> None:
     _criar_operacoes_base(session)
 
@@ -178,6 +208,7 @@ def test_seed_e_idempotente(session) -> None:
     result = seed_remates_guarnicoes(session)
 
     assert result.chaves_criadas == 0
+    assert result.chaves_renomeadas == 0
     assert result.pecas_criadas == 0
     assert result.pecas_reutilizadas == TOTAL_PECAS
     assert result.operacoes_criadas == 0

@@ -96,13 +96,17 @@ CHAVES: tuple[ChaveSeed, ...] = (
         "Material dos remates verticais.",
     ),
     ChaveSeed(CHAVE_RODATETOS, "Rodatetos", "Material dos rodatetos."),
-    ChaveSeed(CHAVE_RODAPES, "Rodapés", "Material dos rodapés."),
+    ChaveSeed(CHAVE_RODAPES, "Material Rodapés", "Material dos rodapés."),
     ChaveSeed(
         CHAVE_ENCHIMENTOS,
-        "Enchimentos",
+        "Material Enchimentos",
         "Material dos enchimentos de guarnição.",
     ),
-    ChaveSeed(CHAVE_GUARNICOES, "Guarnições", "Material das guarnições produzidas."),
+    ChaveSeed(
+        CHAVE_GUARNICOES,
+        "Material Guarnições",
+        "Material das guarnições produzidas.",
+    ),
     ChaveSeed(
         CHAVE_GUARNICOES_COMPRA_L,
         "Guarnições Compra L",
@@ -205,6 +209,7 @@ class RematesGuarnicoesResult:
     """Resumo do seed dos remates e guarnicoes."""
 
     chaves_criadas: int
+    chaves_renomeadas: int
     pecas_criadas: int
     pecas_reutilizadas: int
     operacoes_criadas: int
@@ -218,15 +223,30 @@ def get_peca(session: Session, codigo: str) -> DefPeca | None:
     ).scalar_one_or_none()
 
 
-def criar_chaves(session: Session) -> int:
-    """Criar as chaves de material em falta. Devolve quantas criou."""
+def criar_chaves(session: Session) -> tuple[int, int]:
+    """Criar as chaves em falta e alinhar o nome das que ja existem.
+
+    Devolve ``(criadas, renomeadas)``. O nome e so o texto que aparece nos
+    menus: as linhas dos ValueSets referem a chave pelo codigo, por isso
+    corrigi-lo nao mexe em nada que ja esteja orçamentado.
+    """
     criadas = 0
+    renomeadas = 0
     for seed in CHAVES:
         existente = session.execute(
             select(DefValuesetChave).where(DefValuesetChave.codigo == seed.codigo)
         ).scalar_one_or_none()
         if existente is not None:
-            print(f"Chave {seed.codigo} ja existe, mantida")
+            if existente.nome != seed.nome:
+                print(
+                    f"Chave {seed.codigo} renomeada: "
+                    f"{existente.nome!r} -> {seed.nome!r}"
+                )
+                existente.nome = seed.nome
+                session.flush()
+                renomeadas += 1
+            else:
+                print(f"Chave {seed.codigo} ja existe, mantida")
             continue
 
         ordem_maxima = session.execute(
@@ -250,7 +270,7 @@ def criar_chaves(session: Session) -> int:
         criadas += 1
         print(f"Chave {seed.codigo} criada")
 
-    return criadas
+    return criadas, renomeadas
 
 
 def get_operacao_id(session: Session, codigo: str) -> int:
@@ -371,7 +391,7 @@ def adicionar_as_bibliotecas(session: Session) -> int:
 
 def seed_remates_guarnicoes(session: Session) -> RematesGuarnicoesResult:
     """Criar chaves e peças de remates/guarnicoes em falta (idempotente)."""
-    chaves_criadas = criar_chaves(session)
+    chaves_criadas, chaves_renomeadas = criar_chaves(session)
     criadas, reutilizadas, operacoes = criar_pecas(session)
     prefs = adicionar_as_bibliotecas(session)
 
@@ -379,6 +399,7 @@ def seed_remates_guarnicoes(session: Session) -> RematesGuarnicoesResult:
 
     return RematesGuarnicoesResult(
         chaves_criadas=chaves_criadas,
+        chaves_renomeadas=chaves_renomeadas,
         pecas_criadas=criadas,
         pecas_reutilizadas=reutilizadas,
         operacoes_criadas=operacoes,
@@ -390,15 +411,16 @@ def print_summary(result: RematesGuarnicoesResult) -> None:
     """Escrever o resumo final para o utilizador."""
     print("Resumo final")
     print(f"Chaves de material criadas: {result.chaves_criadas}")
+    print(f"Chaves renomeadas: {result.chaves_renomeadas}")
     print(f"Pecas criadas: {result.pecas_criadas}")
     print(f"Pecas mantidas (ja existiam): {result.pecas_reutilizadas}")
     print(f"Operacoes associadas criadas: {result.operacoes_criadas}")
     print(f"Linhas de biblioteca de utilizador criadas: {result.prefs_criadas}")
     print(
         "Nota: nos modelos ValueSet em uso, acrescente uma linha por cada chave "
-        "nova (Remates Verticais, Rodatetos, Rodapés, Enchimentos, Guarnições e "
-        "Guarnições Compra L) com o material/artigo pretendido, senao as peças "
-        "ficam sem material no custeio."
+        "nova (Remates Verticais, Rodatetos, Material Rodapés, Material "
+        "Enchimentos, Material Guarnições e Guarnições Compra L) com o "
+        "material/artigo pretendido, senao as peças ficam sem material no custeio."
     )
 
 
