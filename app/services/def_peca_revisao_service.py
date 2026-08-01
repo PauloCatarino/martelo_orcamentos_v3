@@ -57,6 +57,7 @@ class DefPecaRevisaoService:
         "orla_c2",
         "orla_l1",
         "orla_l2",
+        "usa_orlas",
         "chave_valueset_material",
         "permite_acabamento",
         "chave_valueset_acabamento_sup",

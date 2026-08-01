@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.domain.orla_types import normalize_orla_type
+from app.domain.orla_types import SEM_ORLA, normalize_orla_type
 from app.domain.peca_subgrupo_types import normalize_subgrupo
 from app.domain.peca_types import COMPOSTA, SIMPLES, normalize_peca_type
 from app.domain.peca_natureza_types import (
@@ -49,6 +49,7 @@ class CriarDefPecaData:
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
     orla_l2: int | str | None = None
+    usa_orlas: bool = True
     chave_valueset_material: str | None = None
     permite_acabamento: bool = False
     chave_valueset_acabamento_sup: str | None = None
@@ -78,6 +79,7 @@ class EditarDefPecaData:
     orla_c2: int | str | None = None
     orla_l1: int | str | None = None
     orla_l2: int | str | None = None
+    usa_orlas: bool = True
     chave_valueset_material: str | None = None
     permite_acabamento: bool = False
     chave_valueset_acabamento_sup: str | None = None
@@ -117,6 +119,11 @@ class DefPecaService:
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
         orla_l2 = normalize_orla_type(data.orla_l2)
+        usa_orlas = bool(data.usa_orlas)
+        if not usa_orlas:
+            # A peça não trabalha com orlas (ferragens, perfis comprados): sem
+            # orlas não há orlagem, e o código deixa de aparecer no nome.
+            orla_c1 = orla_c2 = orla_l1 = orla_l2 = SEM_ORLA
         chave_valueset_material = self._normalize_optional_valueset_key(
             data.chave_valueset_material
         )
@@ -149,6 +156,7 @@ class DefPecaService:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            usa_orlas=usa_orlas,
             chave_valueset_material=chave_valueset_material,
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
@@ -175,6 +183,11 @@ class DefPecaService:
         orla_c2 = normalize_orla_type(data.orla_c2)
         orla_l1 = normalize_orla_type(data.orla_l1)
         orla_l2 = normalize_orla_type(data.orla_l2)
+        usa_orlas = bool(data.usa_orlas)
+        if not usa_orlas:
+            # A peça não trabalha com orlas (ferragens, perfis comprados): sem
+            # orlas não há orlagem, e o código deixa de aparecer no nome.
+            orla_c1 = orla_c2 = orla_l1 = orla_l2 = SEM_ORLA
         chave_valueset_material = self._normalize_optional_valueset_key(
             data.chave_valueset_material
         )
@@ -208,6 +221,7 @@ class DefPecaService:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            usa_orlas=usa_orlas,
             chave_valueset_material=chave_valueset_material,
             permite_acabamento=data.permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
@@ -247,6 +261,7 @@ class DefPecaService:
                 orla_c2=original.orla_c2,
                 orla_l1=original.orla_l1,
                 orla_l2=original.orla_l2,
+                usa_orlas=original.usa_orlas,
                 chave_valueset_material=original.chave_valueset_material,
                 permite_acabamento=original.permite_acabamento,
                 chave_valueset_acabamento_sup=original.chave_valueset_acabamento_sup,

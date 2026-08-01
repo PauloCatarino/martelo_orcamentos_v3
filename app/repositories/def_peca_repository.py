@@ -22,6 +22,7 @@ class DefPecaResumo:
     grupo: str | None
     tipo_peca: str
     ativo: bool
+    usa_orlas: bool = True
     # Sub-family inside the group (FERRAGENS > DOBRADICAS); empty = no level.
     subgrupo: str | None = None
     nome_biblioteca: str | None = None
@@ -118,6 +119,7 @@ class DefPecaRepository:
         orla_c2: int = 0,
         orla_l1: int = 0,
         orla_l2: int = 0,
+        usa_orlas: bool = True,
         chave_valueset_material: str | None = None,
         permite_acabamento: bool = False,
         chave_valueset_acabamento_sup: str | None = None,
@@ -145,6 +147,7 @@ class DefPecaRepository:
             orla_c2=orla_c2,
             orla_l1=orla_l1,
             orla_l2=orla_l2,
+            usa_orlas=usa_orlas,
             chave_valueset_material=chave_valueset_material,
             permite_acabamento=permite_acabamento,
             chave_valueset_acabamento_sup=chave_valueset_acabamento_sup,
@@ -177,6 +180,7 @@ class DefPecaRepository:
         orla_c2: int = 0,
         orla_l1: int = 0,
         orla_l2: int = 0,
+        usa_orlas: bool = True,
         chave_valueset_material: str | None = None,
         permite_acabamento: bool = False,
         chave_valueset_acabamento_sup: str | None = None,
@@ -207,6 +211,7 @@ class DefPecaRepository:
         peca.orla_c2 = orla_c2
         peca.orla_l1 = orla_l1
         peca.orla_l2 = orla_l2
+        peca.usa_orlas = usa_orlas
         peca.chave_valueset_material = chave_valueset_material
         peca.permite_acabamento = permite_acabamento
         peca.chave_valueset_acabamento_sup = chave_valueset_acabamento_sup
@@ -281,6 +286,7 @@ class DefPecaRepository:
             orla_c2=peca.orla_c2,
             orla_l1=peca.orla_l1,
             orla_l2=peca.orla_l2,
+            usa_orlas=peca.usa_orlas,
             chave_valueset_material=peca.chave_valueset_material,
             permite_acabamento=peca.permite_acabamento,
             chave_valueset_acabamento_sup=peca.chave_valueset_acabamento_sup,

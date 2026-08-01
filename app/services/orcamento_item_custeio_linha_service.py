@@ -3145,6 +3145,11 @@ class OrcamentoItemCusteioLinhaService:
                 "Custo de produção",
                 avisos_ml[0] if avisos_ml else None,
             )
+            nova_obs = self._mesclar_observacao(
+                nova_obs,
+                "Orlagem",
+                self._aviso_orlagem_sem_orlas(linha, op_orlagem),
+            )
             nova_obs = self._mesclar_aviso_cnc(nova_obs, aviso_cnc)
             nova_obs = self._mesclar_observacao(
                 nova_obs, "Custo de revestimento", aviso_revestimento
@@ -3173,6 +3178,25 @@ class OrcamentoItemCusteioLinhaService:
 
         return CustoProducaoResult(
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
+        )
+
+    def _aviso_orlagem_sem_orlas(self, linha, op_orlagem) -> str | None:
+        """Warn when an edging operation sits on a piece that has no edging.
+
+        The cost is already zero there (no edged side to charge), so this only
+        tells the user the operation will never produce anything: either the
+        piece should work with edging, or the operation does not belong to it.
+        """
+        if op_orlagem is None or linha.def_peca_id is None:
+            return None
+
+        peca = self.peca_repository.get_by_id(linha.def_peca_id)
+        if peca is None or getattr(peca, "usa_orlas", True):
+            return None
+
+        return (
+            f"Orlagem ignorada: a peça {peca.codigo} está definida sem orlas, "
+            "mas tem a operação de orlagem associada."
         )
 
     def _operacao_por_bucket(self, operacoes, bucket: str):

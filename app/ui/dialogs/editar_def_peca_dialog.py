@@ -67,6 +67,7 @@ class EditarDefPecaDialogData:
     orla_c2: int
     orla_l1: int
     orla_l2: int
+    usa_orlas: bool
     chave_valueset_material: str | None
     permite_acabamento: bool
     chave_valueset_acabamento_sup: str | None
@@ -199,6 +200,14 @@ class EditarDefPecaDialog(QDialog):
             for code, label in get_orla_type_options():
                 combo.addItem(label, code)
 
+        self.usa_orlas_input = QCheckBox("A peça leva orlas")
+        self.usa_orlas_input.setChecked(True)
+        self.usa_orlas_input.setToolTip(
+            "Desligue nas peças que não levam orla nenhuma (ferragens, perfis "
+            "comprados): o código de orlas deixa de aparecer no nome da "
+            "biblioteca do custeio e a peça não deve levar operação de orlagem."
+        )
+        self.usa_orlas_input.toggled.connect(self._update_orlas_enabled)
         self.orla_preview_label = QLabel()
         self.orla_preview_label.setObjectName("editarDefPecaOrlaPreview")
 
@@ -245,6 +254,7 @@ class EditarDefPecaDialog(QDialog):
 
         orla_group = QGroupBox("Orlas")
         orla_form = QFormLayout()
+        orla_form.addRow("Usa orlas", self.usa_orlas_input)
         orla_form.addRow("C1 - Comprimento lado 1", self.orla_c1_input)
         orla_form.addRow("C2 - Comprimento lado 2", self.orla_c2_input)
         orla_form.addRow("L1 - Largura lado 1", self.orla_l1_input)
@@ -300,12 +310,14 @@ class EditarDefPecaDialog(QDialog):
         self._select_combo_data(self.orla_c2_input, normalize_orla_type(self.peca.orla_c2))
         self._select_combo_data(self.orla_l1_input, normalize_orla_type(self.peca.orla_l1))
         self._select_combo_data(self.orla_l2_input, normalize_orla_type(self.peca.orla_l2))
+        self.usa_orlas_input.setChecked(bool(self.peca.usa_orlas))
         self.permite_acabamento_input.setChecked(self.peca.permite_acabamento)
         self.sem_material_input.setChecked(getattr(self.peca, "sem_material", False))
         self._update_natureza()
         self._update_acabamento_enabled()
         self._update_sem_material_enabled()
         self._update_orla_preview()
+        self._update_orlas_enabled()
 
     def _select_combo_data(self, combo: QComboBox, value: object) -> None:
         """Select the combo entry matching value, falling back to the first."""
@@ -341,6 +353,7 @@ class EditarDefPecaDialog(QDialog):
             orla_c2=self.orla_c2_input.currentData(),
             orla_l1=self.orla_l1_input.currentData(),
             orla_l2=self.orla_l2_input.currentData(),
+            usa_orlas=self.usa_orlas_input.isChecked(),
             chave_valueset_material=(
                 None
                 if self.sem_material_input.isChecked()
@@ -388,6 +401,18 @@ class EditarDefPecaDialog(QDialog):
             self.saved.emit()
         else:
             self.accept()
+
+    def _update_orlas_enabled(self) -> None:
+        """Enable the four edge combos only when the piece works with edging."""
+        usa_orlas = self.usa_orlas_input.isChecked()
+        for combo in (
+            self.orla_c1_input,
+            self.orla_c2_input,
+            self.orla_l1_input,
+            self.orla_l2_input,
+        ):
+            combo.setEnabled(usa_orlas)
+        self.orla_preview_label.setVisible(usa_orlas)
 
     def _update_orla_preview(self) -> None:
         """Refresh the edge banding code preview from the combo boxes."""

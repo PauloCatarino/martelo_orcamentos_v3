@@ -74,6 +74,11 @@ class DefPeca(Base):
     orla_c2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l1: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
     orla_l2: Mapped[int] = mapped_column(Integer, nullable=False, default=SEM_ORLA, server_default="0")
+    # A peça trabalha com orlas? Desligado nas ferragens e noutras peças sem
+    # orlagem: o codigo de orlas deixa de aparecer no nome da biblioteca.
+    usa_orlas: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     chave_valueset_material: Mapped[str | None] = mapped_column(String(100), nullable=True)
     permite_acabamento: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"

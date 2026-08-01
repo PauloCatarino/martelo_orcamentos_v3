@@ -27,6 +27,7 @@ def _peca(**kwargs):
         "orla_l1": 0,
         "orla_l2": 0,
         "chave_valueset_material": "MATERIAL_COSTAS",
+        "usa_orlas": True,
         "permite_acabamento": False,
         "chave_valueset_acabamento_sup": None,
         "chave_valueset_acabamento_inf": None,
@@ -5797,6 +5798,71 @@ def test_custos_producao_montagem_serie_fallback_custo_hora(monkeypatch) -> None
     # Fallback ao custo/hora STD, sem aviso (a máquina continua a funcionar).
     assert payload["custo_montagem_manual"] == Decimal("10")  # 30/60 × 20
     assert "observacoes" not in payload
+
+
+def _orlagem_setup(*, usa_orlas: bool) -> None:
+    """Uma linha PECA com operação de ORLAGEM numa peça sem orlas."""
+    _FakePecaRepository.pecas = {
+        1: _peca(
+            id=1,
+            codigo="DOBRADICA",
+            orla_c1=0,
+            orla_c2=0,
+            orla_l1=0,
+            orla_l2=0,
+            usa_orlas=usa_orlas,
+        )
+    }
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(3)]}
+    _FakeOperacaoRepository.operacoes = {
+        3: _operacao("ORLAGEM_PECA", tipo_operacao="ORLAGEM", maquina_id=11),
+    }
+    _FakeMaquinaRepository.maquinas = {
+        11: _maquina_tarifa(
+            "ORLAGEM",
+            id=11,
+            preco_lado_curto_std=Decimal("0.30"),
+            preco_lado_longo_std=Decimal("0.50"),
+        ),
+    }
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            def_peca_id=1,
+            codigo_orlas="0000",
+            comp_real=Decimal("800"),
+            larg_real=Decimal("400"),
+            quantidade=Decimal("1"),
+        ),
+    ]
+
+
+def test_orlagem_numa_peca_sem_orlas_avisa(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _orlagem_setup(usa_orlas=False)
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_orlagem"] == Decimal("0")
+    assert "Orlagem ignorada" in payload["observacoes"]
+    assert "DOBRADICA" in payload["observacoes"]
+
+
+def test_orlagem_sem_orlas_nesta_variante_nao_avisa(monkeypatch) -> None:
+    # A peça trabalha com orlas; esta variante e' que nao leva nenhuma (0000).
+    # Isso e' normal e nao deve encher o supervisor de avisos.
+    service, _ = _service(monkeypatch)
+    _orlagem_setup(usa_orlas=True)
+
+    service.recalcular_custos_producao_do_item(30)
+
+    payload = _FakeRepository.updated_payload
+    assert payload["custo_orlagem"] == Decimal("0")
+    assert "observacoes" not in payload or "Orlagem ignorada" not in (
+        payload.get("observacoes") or ""
+    )
 
 
 def test_custos_producao_fator_serie_so_no_custo_producao(monkeypatch) -> None:

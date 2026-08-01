@@ -1858,7 +1858,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self, peca: DefPecaResumo, codigo_orlas: str
     ) -> QTreeWidgetItem:
         """Build one checkable library leaf and register it for twin syncing."""
-        leaf = QTreeWidgetItem([texto_biblioteca_peca(peca, codigo_orlas)])
+        leaf = QTreeWidgetItem([texto_biblioteca_peca(peca)])
         leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         leaf.setCheckState(
             0,
