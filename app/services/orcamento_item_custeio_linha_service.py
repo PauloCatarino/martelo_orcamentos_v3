@@ -1393,6 +1393,12 @@ class OrcamentoItemCusteioLinhaService:
         already has comp_real and larg_real evaluated. When several qualify, the
         one with the lowest ordem (then id) wins, so the rule reads the real
         dimensions of the block's structural piece (e.g. the FUNDO for the PES).
+
+        Hardware-only blocks (VARAO+SUPORTES: a varão plus its supports) have no
+        PECA sibling at all, so as a fallback the reference is the hardware line
+        that does carry a length (the varão) — otherwise no rule in the block
+        could ever be computed. Width may be missing there, and a rule that needs
+        it fails with its own note.
         """
         por_id = {outra.id: outra for outra in linhas}
         pai = por_id.get(linha.linha_pai_id)
@@ -1404,16 +1410,9 @@ class OrcamentoItemCusteioLinhaService:
         ):
             return pai
 
-        candidatas = [
-            outra
-            for outra in linhas
-            if outra.id != linha.id
-            and outra.linha_pai_id is not None
-            and outra.linha_pai_id == linha.linha_pai_id
-            and outra.tipo_linha == PECA
-            and outra.comp_real is not None
-            and outra.larg_real is not None
-        ]
+        candidatas = self._irmas_com_medidas(linha, linhas, apenas_pecas=True)
+        if not candidatas:
+            candidatas = self._irmas_com_medidas(linha, linhas, apenas_pecas=False)
         if not candidatas:
             return None
 
@@ -1424,6 +1423,26 @@ class OrcamentoItemCusteioLinhaService:
                 outra.id,
             ),
         )
+
+    @staticmethod
+    def _irmas_com_medidas(linha, linhas, *, apenas_pecas: bool) -> list:
+        """Sibling lines of the same block that carry usable measures.
+
+        With ``apenas_pecas`` the sibling must be a real piece with both length
+        and width (the normal case); without it, a hardware line with a length is
+        enough (hardware-only blocks).
+        """
+        tipos = (PECA,) if apenas_pecas else (PECA, FERRAGEM)
+        return [
+            outra
+            for outra in linhas
+            if outra.id != linha.id
+            and outra.linha_pai_id is not None
+            and outra.linha_pai_id == linha.linha_pai_id
+            and outra.tipo_linha in tipos
+            and outra.comp_real is not None
+            and (outra.larg_real is not None or not apenas_pecas)
+        ]
 
     def recalcular_orlas_do_item(self, orcamento_item_id: int) -> int:
         """Recompute edge banding (ML and, when priced, cost) for an item.

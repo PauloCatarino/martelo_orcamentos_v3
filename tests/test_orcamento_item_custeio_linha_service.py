@@ -1709,6 +1709,88 @@ def test_aplicar_regras_sem_dimensoes_nao_calcula_e_avisa(monkeypatch) -> None:
     assert "dimensões da peça principal em falta" in payload["observacoes"]
 
 
+def _bloco_so_de_ferragens(comp_varao, larg_varao=None) -> None:
+    """VARAO+SUPORTES: header + varão (com medida) + suportes com regra.
+
+    O bloco não tem nenhuma peça física: a referência dimensional das regras
+    tem de ser o próprio varão.
+    """
+    _FakeRepository.updated_payload = None
+    _FakeRepository.updated_payloads = []
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA"),  # cabeçalho sem medidas
+        _resumo(
+            id=2,
+            tipo_linha="FERRAGEM",
+            linha_pai_id=1,
+            ordem=1,
+            comp_real=comp_varao,
+            larg_real=larg_varao,
+            qt_und=Decimal("1"),
+        ),  # varão: COMP = LM
+        _resumo(
+            id=3,
+            tipo_linha="FERRAGEM",
+            linha_pai_id=1,
+            ordem=2,
+            origem_id=10,
+            qt_und=Decimal("1"),
+        ),  # suporte central: regra
+    ]
+    _FakeComponenteRepository.componentes_por_id = {10: _componente_com_regra(10, 100)}
+    _FakeRegraQuantidadeRepository.regras_por_id = {
+        100: _regra_q("SUPORTE_VARAO_CENTRAL", _VARAO_CENTRAL_EXPR)
+    }
+
+
+def test_regras_num_bloco_so_de_ferragens_usam_o_varao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+
+    # Varão de 1200 mm -> leva suporte central.
+    _bloco_so_de_ferragens(Decimal("1200"))
+    service.aplicar_regras_quantidade_do_item(30)
+    payload = _FakeRepository.updated_payload
+    assert payload["id"] == 3
+    assert payload["qt_und"] == Decimal("1")
+
+    # Varão de 1000 mm -> não leva.
+    _bloco_so_de_ferragens(Decimal("1000"))
+    service.aplicar_regras_quantidade_do_item(30)
+    assert _FakeRepository.updated_payload["qt_und"] == Decimal("0")
+
+
+def test_peca_fisica_do_bloco_ganha_a_ferragem_com_medida(monkeypatch) -> None:
+    # Com peça física no bloco, a referência continua a ser ela (e não a
+    # ferragem que também tenha medidas).
+    service, _ = _service(monkeypatch)
+    _FakeRepository.updated_payload = None
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="PECA_COMPOSTA"),
+        _resumo(
+            id=2, tipo_linha="FERRAGEM", linha_pai_id=1, ordem=1,
+            comp_real=Decimal("1200"), qt_und=Decimal("1"),
+        ),  # ferragem com medida, mas primeira na ordem
+        _resumo(
+            id=3, tipo_linha="PECA", linha_pai_id=1, ordem=2,
+            comp_real=Decimal("1000"), larg_real=Decimal("600"),
+            qt_und=Decimal("1"),
+        ),  # peça física: é esta que manda
+        _resumo(
+            id=4, tipo_linha="FERRAGEM", linha_pai_id=1, ordem=3,
+            origem_id=10, qt_und=Decimal("1"),
+        ),
+    ]
+    _FakeComponenteRepository.componentes_por_id = {10: _componente_com_regra(10, 100)}
+    _FakeRegraQuantidadeRepository.regras_por_id = {
+        100: _regra_q("SUPORTE_VARAO_CENTRAL", _VARAO_CENTRAL_EXPR)
+    }
+
+    service.aplicar_regras_quantidade_do_item(30)
+
+    # Peça física com 1000 mm -> 0 (a ferragem de 1200 daria 1).
+    assert _FakeRepository.updated_payload["qt_und"] == Decimal("0")
+
+
 def test_aplicar_regras_componente_sem_regra_mantem_qt_und(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
