@@ -21,6 +21,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_service import DefValuesetModeloService
+from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
 from app.ui.helpers.valueset_modelos_tabela import (
     COLUNAS_COM_DICA,
     COLUNAS_MODELO_VALUESET,
@@ -90,16 +91,19 @@ class ImportarValuesetModeloDialog(QDialog):
 
         table = QTableWidget(0, len(self.TABLE_HEADERS))
         table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
-        table.verticalHeader().setVisible(False)
-        table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # A mesma linguagem visual da página Modelos ValueSet.
+        configurar_tabela_orcamentos(table, compacta=True)
         table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
         table.horizontalHeader().setStretchLastSection(False)
         # Chave nova: as larguras guardadas eram de uma tabela com 4 colunas.
-        ligar_persistencia_larguras(table, f"dialog_importar_valueset_{key}_v2")
+        restaurou = ligar_persistencia_larguras(
+            table, f"dialog_importar_valueset_{key}_v2"
+        )
         table.cellDoubleClicked.connect(
             lambda row, _column, aba_key=key: self._selecionar_da_aba(aba_key, row)
         )
@@ -110,7 +114,15 @@ class ImportarValuesetModeloDialog(QDialog):
         container_layout.addWidget(table, stretch=1)
         container.setLayout(container_layout)
 
-        self._abas[key] = {"search": search, "table": table, "modelos": [], "by_row": {}}
+        self._abas[key] = {
+            "search": search,
+            "table": table,
+            "modelos": [],
+            "by_row": {},
+            # Larguras por conteúdo só quando não há nada guardado: senão
+            # apagavam as que o utilizador ajustou.
+            "larguras_por_conteudo": not restaurou,
+        }
         return container
 
     def _carregar(self) -> None:
@@ -162,7 +174,9 @@ class ImportarValuesetModeloDialog(QDialog):
                     item.setToolTip(value)
                 table.setItem(row_index, column_index, item)
 
-        table.resizeColumnsToContents()
+        if aba["larguras_por_conteudo"] and modelos:
+            table.resizeColumnsToContents()
+            aba["larguras_por_conteudo"] = False
 
     def _aba_ativa(self) -> str:
         """Return the key of the currently selected tab."""

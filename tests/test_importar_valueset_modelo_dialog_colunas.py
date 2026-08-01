@@ -116,3 +116,19 @@ def test_pesquisa_tambem_apanha_a_descricao(dialog) -> None:
 def test_dialogo_abre_largo(dialog) -> None:
     # Oito colunas não cabem numa janela estreita.
     assert dialog.minimumWidth() >= 1000
+
+
+def test_tabela_usa_o_estilo_das_tabelas_da_app(dialog) -> None:
+    import inspect
+
+    from app.ui.dialogs.importar_valueset_modelo_dialog import (
+        ImportarValuesetModeloDialog,
+    )
+
+    fonte = inspect.getsource(ImportarValuesetModeloDialog._build_aba)
+    assert "configurar_tabela_orcamentos" in fonte
+
+    table = dialog._abas["user"]["table"]
+    # O cabeçalho castanho e as linhas alternadas vêm da folha de estilo comum.
+    assert table.alternatingRowColors() is True
+    assert "QHeaderView::section" in table.styleSheet()
