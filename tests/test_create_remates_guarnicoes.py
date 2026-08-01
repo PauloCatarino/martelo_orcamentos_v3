@@ -79,8 +79,14 @@ def test_seed_cria_chaves_e_pecas(session) -> None:
             DefValuesetChave.codigo == CHAVE_REMATES_VERTICAIS
         )
     ).scalar_one()
-    assert chave.nome == "Remates Verticais"
+    assert chave.nome == "Material Remates Verticais"
     assert (chave.tipo, chave.grupo) == ("MATERIAL", "MATERIAIS")
+    # Todas as chaves de placa deste grupo seguem o mesmo criterio de nome.
+    assert all(
+        seed.nome.startswith("Material ")
+        for seed in CHAVES
+        if seed.grupo == "MATERIAIS"
+    )
 
     chave_compra = session.execute(
         select(DefValuesetChave).where(

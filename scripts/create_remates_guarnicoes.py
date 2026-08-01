@@ -92,10 +92,10 @@ class PecaSeed:
 CHAVES: tuple[ChaveSeed, ...] = (
     ChaveSeed(
         CHAVE_REMATES_VERTICAIS,
-        "Remates Verticais",
+        "Material Remates Verticais",
         "Material dos remates verticais.",
     ),
-    ChaveSeed(CHAVE_RODATETOS, "Rodatetos", "Material dos rodatetos."),
+    ChaveSeed(CHAVE_RODATETOS, "Material RodaTetos", "Material dos rodatetos."),
     ChaveSeed(CHAVE_RODAPES, "Material Rodapés", "Material dos rodapés."),
     ChaveSeed(
         CHAVE_ENCHIMENTOS,
@@ -418,9 +418,10 @@ def print_summary(result: RematesGuarnicoesResult) -> None:
     print(f"Linhas de biblioteca de utilizador criadas: {result.prefs_criadas}")
     print(
         "Nota: nos modelos ValueSet em uso, acrescente uma linha por cada chave "
-        "nova (Remates Verticais, Rodatetos, Material Rodapés, Material "
-        "Enchimentos, Material Guarnições e Guarnições Compra L) com o "
-        "material/artigo pretendido, senao as peças ficam sem material no custeio."
+        "nova (Material Remates Verticais, Material RodaTetos, Material "
+        "Rodapés, Material Enchimentos, Material Guarnições e Guarnições "
+        "Compra L) com o material/artigo pretendido, senao as peças ficam sem "
+        "material no custeio."
     )
 
 
