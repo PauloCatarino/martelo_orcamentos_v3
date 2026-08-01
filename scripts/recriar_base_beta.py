@@ -129,6 +129,8 @@ def main() -> None:
         con.execute(sa.text("SET FOREIGN_KEY_CHECKS = 1"))
     print(f"copiado: {copiado} linhas")
 
+    _desligar_o_que_nao_pode_vir_do_dev(eng)
+
     # Verificacao final.
     dif = 0
     with eng.connect() as con:
@@ -141,6 +143,40 @@ def main() -> None:
     print("VERIFICACAO:", "todas as tabelas batem certo. OK." if not dif
           else f"{dif} tabelas diferentes -- verificar!")
     print("\nConcluido. A beta reflete agora o V3 (dev).")
+
+
+#: Definicoes que NAO podem vir do dev para a beta, com o valor seguro.
+#:
+#: A copia leva a `system_settings` inteira, e ha' definicoes em que o valor do
+#: dev e' perigoso na beta -- desde logo o interruptor da escrita no iMos. Se
+#: viesse ligado, um colega a experimentar a beta criava encomendas A SERIO no
+#: iMos, a pensar que estava a brincar.
+DEFINICOES_A_DESLIGAR = {
+    "imos_escrita_ativa": "OFF",
+}
+
+
+def _desligar_o_que_nao_pode_vir_do_dev(eng) -> None:
+    """Poe as definicoes perigosas no valor seguro, depois da copia."""
+    with eng.begin() as con:
+        for chave, seguro in DEFINICOES_A_DESLIGAR.items():
+            atual = con.execute(
+                sa.text(
+                    f"SELECT valor FROM `{BASE_BETA}`.system_settings "
+                    "WHERE chave = :chave"
+                ),
+                {"chave": chave},
+            ).scalar()
+            if atual is None or str(atual).strip().upper() == seguro:
+                continue
+            con.execute(
+                sa.text(
+                    f"UPDATE `{BASE_BETA}`.system_settings SET valor = :seguro "
+                    "WHERE chave = :chave"
+                ),
+                {"seguro": seguro, "chave": chave},
+            )
+            print(f"  seguranca: {chave} = {seguro} (no dev estava {atual!r})")
 
 
 if __name__ == "__main__":
