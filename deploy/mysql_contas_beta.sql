@@ -335,26 +335,30 @@ FLUSH PRIVILEGES;
 
 
 -- ---------------------------------------------------------------------------
--- 8. O arquivo do V2 (orcamentos_v2)
+-- 8. O arquivo do V2 (orcamentos_v2) -- NAO MEXER AQUI
 -- ---------------------------------------------------------------------------
--- A consulta ao Arquivo V2 continua a usar uma conta propria (orc_user), cujas
--- credenciais vao no .env de cada PC -- a app precisa delas para ler os
--- orcamentos antigos.
+-- Esteve aqui um REVOKE que tirava a escrita ao `orc_user`, na ideia de que
+-- essa conta so' servia para o V3 CONSULTAR os orcamentos antigos.
 --
--- O problema e' que essa conta tinha ALL PRIVILEGES. A app poe uma guarda
--- read-only do lado do Python, mas quem abrisse o .env ligava-se por fora, sem
--- guarda nenhuma, e podia apagar o arquivo inteiro. Aqui troca-se por SELECT:
--- as credenciais continuam la', mas o pior que se faz com elas e' LER os
--- orcamentos antigos -- que e' o que a app ja' mostra a toda a gente.
+-- Nao serve. O `orc_user` e' a conta com que o MARTELO V2 TRABALHA -- escreve
+-- incluida. Tirar-lhe a escrita parou o V2 em todos os PCs (o estado das obras
+-- deixou de gravar, a sincronizacao com o PHC tambem). Reposto com:
 --
--- Nao depende da base escolhida (a conta e' global), mas so' faz sentido correr
--- uma vez no servidor.
-REVOKE ALL PRIVILEGES ON `orcamentos_v2`.* FROM 'orc_user'@'%';
-GRANT SELECT ON `orcamentos_v2`.* TO 'orc_user'@'%';
-FLUSH PRIVILEGES;
-
--- Confirmar (deve passar a mostrar apenas GRANT SELECT):
---   SHOW GRANTS FOR 'orc_user'@'%';
+--   GRANT ALL PRIVILEGES ON `orcamentos_v2`.* TO 'orc_user'@'%';
+--
+-- Fica a licao: antes de mexer nos privilegios de uma conta, ver QUEM a usa.
+-- Esta e' partilhada por dois programas.
+--
+-- O problema de fundo continua de pe' e resolve-se de outra maneira: as
+-- credenciais do orc_user vao no .env de todos os PCs com acesso total a`
+-- base do V2. A solucao certa e' dar ao V3 uma conta PROPRIA e so'-leitura
+-- para consultar o arquivo, deixando o orc_user em paz para o V2:
+--
+--   CREATE USER 'martelo_v3_arquivo'@'%' IDENTIFIED BY '<password>';
+--   GRANT SELECT ON `orcamentos_v2`.* TO 'martelo_v3_arquivo'@'%';
+--
+-- ...e trocar V2_DB_USER/V2_DB_PASSWORD no .env para essa conta nova. Fica
+-- para um proximo capitulo, com o V2 testado a seguir.
 
 
 -- ---------------------------------------------------------------------------
