@@ -37,7 +37,12 @@ def test_dialog_has_save_as_button_only_for_edit_mode() -> None:
     assert '"Gravar como…"' in init_source
     assert "self.save_as_button.setVisible(self._is_edit)" in init_source
     assert "self.save_as_button.clicked.connect(self._validate_and_save_as)" in init_source
-    assert "self._validate_and_run(self.on_save_as)" in validate_source
+    # Gravar como… cria uma opção nova na mesma chave: não pode levar o código
+    # da opção de onde partiu.
+    assert (
+        "self._validate_and_run(self.on_save_as, codigo_opcao_novo=True)"
+        in validate_source
+    )
 
 
 def test_dialog_has_operacoes_button_only_for_existing_line() -> None:

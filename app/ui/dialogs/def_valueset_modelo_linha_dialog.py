@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.ui import tema
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from PySide6.QtGui import QGuiApplication
@@ -612,13 +612,21 @@ class DefValuesetModeloLinhaDialog(QDialog):
 
     def _validate_and_save_as(self) -> None:
         """Validate required fields and save as a new record before accepting."""
-        self._validate_and_run(self.on_save_as)
+        self._validate_and_run(self.on_save_as, codigo_opcao_novo=True)
 
     def _validate_and_run(
         self,
         callback: Callable[[DefValuesetModeloLinhaDialogData], bool] | None,
+        *,
+        codigo_opcao_novo: bool = False,
     ) -> None:
-        """Run validation, then delegate to the requested save callback."""
+        """Run validation, then delegate to the requested save callback.
+
+        With ``codigo_opcao_novo`` the technical code of the option is left
+        empty: "Gravar como…" is creating a SECOND option in the same key (uma
+        segunda dobradiça, um segundo varão), and reusing the code of the
+        original would collide with it.
+        """
         if obter_valor_chave_combo(self.chave_input) is None:
             self.set_error("Selecione uma chave ValueSet.")
             return
@@ -634,6 +642,9 @@ class DefValuesetModeloLinhaDialog(QDialog):
         except ValueError as error:
             self.set_error(str(error))
             return
+
+        if codigo_opcao_novo:
+            data = replace(data, codigo_opcao="")
 
         self.error_label.clear()
         if callback is not None and not callback(data):
