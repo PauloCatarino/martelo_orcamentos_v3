@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import inspect
 
 
@@ -37,10 +39,37 @@ def test_tabela_mostra_descricao_e_observacoes() -> None:
 
     from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
 
-    fonte = inspect.getsource(DefValuesetModelosPage._preencher_tabela)
+    from app.ui.helpers.valueset_modelos_tabela import (
+        COLUNAS_MODELO_VALUESET,
+        valores_modelo_valueset,
+    )
 
-    assert "modelo.descricao" in fonte
-    assert "modelo.observacoes" in fonte
+    assert "Descrição" in COLUNAS_MODELO_VALUESET
+    assert "Observações" in COLUNAS_MODELO_VALUESET
+
+    modelo = SimpleNamespace(
+        codigo="ROUP_STD",
+        nome="Roupeiro",
+        descricao="Interiores MLM Linho",
+        observacoes="Ferragens standard",
+        tipo="ROUPEIRO",
+        ambito="UTILIZADOR",
+        visivel_para_todos=False,
+        owner_username="paulo",
+        ativo=True,
+    )
+    assert valores_modelo_valueset(modelo) == [
+        "ROUP_STD",
+        "Roupeiro",
+        "Interiores MLM Linho",
+        "Ferragens standard",
+        "ROUPEIRO",
+        "UTILIZADOR",
+        "paulo",
+        "Sim",
+    ]
+
+    fonte = inspect.getsource(DefValuesetModelosPage._preencher_tabela)
     # Textos livres podem não caber na coluna: a dica mostra-os por inteiro.
     assert "setToolTip" in fonte
 

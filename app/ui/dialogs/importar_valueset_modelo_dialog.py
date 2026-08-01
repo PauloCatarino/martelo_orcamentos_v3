@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -20,6 +21,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_service import DefValuesetModeloService
+from app.ui.helpers.valueset_modelos_tabela import (
+    COLUNAS_COM_DICA,
+    COLUNAS_MODELO_VALUESET,
+    valores_modelo_valueset,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -29,7 +35,9 @@ class ImportarValuesetModeloDialog(QDialog):
     Models are split into two tabs: user models and global/shared models.
     """
 
-    TABLE_HEADERS = ["Código", "Nome", "Tipo", "Ativo"]
+    # As mesmas colunas da página Modelos ValueSet: quem escolhe aqui vê o
+    # mesmo que viu lá.
+    TABLE_HEADERS = list(COLUNAS_MODELO_VALUESET)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -39,7 +47,15 @@ class ImportarValuesetModeloDialog(QDialog):
 
         self.setWindowTitle("Importar Modelo ValueSet")
         self.setModal(True)
-        self.setMinimumSize(660, 460)
+        # Largo: são oito colunas, entre elas descrição e observações.
+        self.setMinimumSize(1100, 520)
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is not None:
+            disponivel = ecra.availableGeometry()
+            self.resize(
+                min(1500, max(1100, disponivel.width() - 200)),
+                min(700, max(520, disponivel.height() - 200)),
+            )
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("importarValuesetModeloStatus")
@@ -78,8 +94,12 @@ class ImportarValuesetModeloDialog(QDialog):
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        ligar_persistencia_larguras(table, f"dialog_importar_valueset_{key}")
+        table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        table.horizontalHeader().setStretchLastSection(False)
+        # Chave nova: as larguras guardadas eram de uma tabela com 4 colunas.
+        ligar_persistencia_larguras(table, f"dialog_importar_valueset_{key}_v2")
         table.cellDoubleClicked.connect(
             lambda row, _column, aba_key=key: self._selecionar_da_aba(aba_key, row)
         )
@@ -120,6 +140,7 @@ class ImportarValuesetModeloDialog(QDialog):
                 if termo in (modelo.codigo or "").lower()
                 or termo in (modelo.nome or "").lower()
                 or termo in (modelo.tipo or "").lower()
+                or termo in (modelo.descricao or "").lower()
             ]
         else:
             modelos = list(aba["modelos"])
@@ -135,14 +156,13 @@ class ImportarValuesetModeloDialog(QDialog):
 
         for row_index, modelo in enumerate(modelos):
             aba["by_row"][row_index] = modelo
-            values = [
-                modelo.codigo,
-                modelo.nome,
-                modelo.tipo or "",
-                "Sim" if modelo.ativo else "Não",
-            ]
-            for column_index, value in enumerate(values):
-                table.setItem(row_index, column_index, QTableWidgetItem(value))
+            for column_index, value in enumerate(valores_modelo_valueset(modelo)):
+                item = QTableWidgetItem(value)
+                if value and self.TABLE_HEADERS[column_index] in COLUNAS_COM_DICA:
+                    item.setToolTip(value)
+                table.setItem(row_index, column_index, item)
+
+        table.resizeColumnsToContents()
 
     def _aba_ativa(self) -> str:
         """Return the key of the currently selected tab."""

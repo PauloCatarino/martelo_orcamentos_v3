@@ -29,6 +29,13 @@ from app.services.def_valueset_modelo_service import (
 from app.services.permission_service import is_admin
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_modelos_tabela import (
+    COLUNAS_COM_DICA,
+    COLUNAS_MODELO_VALUESET,
+    dono_modelo_valueset,
+    modelo_e_global,
+    valores_modelo_valueset,
+)
 from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
@@ -38,16 +45,7 @@ from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 class DefValuesetModelosPage(QWidget):
     """Admin page for managing ValueSet models (library)."""
 
-    TABLE_HEADERS = [
-        "Código",
-        "Nome",
-        "Descrição",
-        "Observações",
-        "Tipo",
-        "Âmbito",
-        "Dono/Utilizador",
-        "Ativo",
-    ]
+    TABLE_HEADERS = list(COLUNAS_MODELO_VALUESET)
 
     def __init__(self, on_back=None) -> None:
         super().__init__()
@@ -184,24 +182,9 @@ class DefValuesetModelosPage(QWidget):
 
         for row_index, modelo in enumerate(modelos):
             por_linha[row_index] = modelo
-            values = [
-                modelo.codigo,
-                modelo.nome,
-                modelo.descricao or "",
-                modelo.observacoes or "",
-                modelo.tipo or "",
-                modelo.ambito,
-                self._dono_display(modelo),
-                self._format_bool(modelo.ativo),
-            ]
-            for column_index, value in enumerate(values):
+            for column_index, value in enumerate(valores_modelo_valueset(modelo)):
                 item = QTableWidgetItem(value)
-                # Descrição e observações são textos livres e podem não caber
-                # na coluna: a dica mostra o texto inteiro.
-                if value and self.TABLE_HEADERS[column_index] in (
-                    "Descrição",
-                    "Observações",
-                ):
+                if value and self.TABLE_HEADERS[column_index] in COLUNAS_COM_DICA:
                     item.setToolTip(value)
                 tabela.setItem(row_index, column_index, item)
 
@@ -209,14 +192,11 @@ class DefValuesetModelosPage(QWidget):
 
     def _dono_display(self, modelo: DefValuesetModeloResumo) -> str:
         """Owner label: GLOBAL for shared models, else the owner username."""
-        if self._e_global(modelo):
-            return "GLOBAL"
-        return modelo.owner_username or ""
+        return dono_modelo_valueset(modelo)
 
     @staticmethod
     def _e_global(modelo: DefValuesetModeloResumo) -> bool:
-        ambito = (modelo.ambito or "").strip().upper()
-        return ambito == "GLOBAL" or bool(modelo.visivel_para_todos)
+        return modelo_e_global(modelo)
 
     def abrir_novo_modelo(self) -> None:
         """Open the dialog to create a new ValueSet model."""

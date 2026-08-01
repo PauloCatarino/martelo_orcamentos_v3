@@ -14,12 +14,12 @@ def test_dialog_imports() -> None:
 def test_dialog_headers() -> None:
     from app.ui.dialogs.importar_valueset_modelo_dialog import ImportarValuesetModeloDialog
 
-    assert ImportarValuesetModeloDialog.TABLE_HEADERS == [
-        "Código",
-        "Nome",
-        "Tipo",
-        "Ativo",
-    ]
+    from app.ui.helpers.valueset_modelos_tabela import COLUNAS_MODELO_VALUESET
+
+    # As mesmas colunas da página Modelos ValueSet.
+    assert ImportarValuesetModeloDialog.TABLE_HEADERS == list(
+        COLUNAS_MODELO_VALUESET
+    )
 
 
 def test_dialog_has_actions() -> None:
