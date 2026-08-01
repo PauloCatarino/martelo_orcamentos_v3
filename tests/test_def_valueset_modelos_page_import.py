@@ -23,11 +23,26 @@ def test_page_headers() -> None:
     assert DefValuesetModelosPage.TABLE_HEADERS == [
         "Código",
         "Nome",
+        "Descrição",
+        "Observações",
         "Tipo",
         "Âmbito",
         "Dono/Utilizador",
         "Ativo",
     ]
+
+
+def test_tabela_mostra_descricao_e_observacoes() -> None:
+    import inspect
+
+    from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
+
+    fonte = inspect.getsource(DefValuesetModelosPage._preencher_tabela)
+
+    assert "modelo.descricao" in fonte
+    assert "modelo.observacoes" in fonte
+    # Textos livres podem não caber na coluna: a dica mostra-os por inteiro.
+    assert "setToolTip" in fonte
 
 
 def test_page_has_actions() -> None:

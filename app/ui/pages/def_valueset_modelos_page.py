@@ -41,6 +41,8 @@ class DefValuesetModelosPage(QWidget):
     TABLE_HEADERS = [
         "Código",
         "Nome",
+        "Descrição",
+        "Observações",
         "Tipo",
         "Âmbito",
         "Dono/Utilizador",
@@ -96,8 +98,10 @@ class DefValuesetModelosPage(QWidget):
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModelosStatus")
 
-        self.tabela_utilizador = self._criar_tabela("valueset_modelos_utilizador")
-        self.tabela_globais = self._criar_tabela("valueset_modelos_globais")
+        # Chaves novas: as larguras guardadas eram de uma tabela com menos
+        # duas colunas e ficariam desalinhadas.
+        self.tabela_utilizador = self._criar_tabela("valueset_modelos_utilizador_v2")
+        self.tabela_globais = self._criar_tabela("valueset_modelos_globais_v2")
         self.tabs = QTabWidget()
         self.tabs.addTab(self.tabela_utilizador, "Utilizador")
         self.tabs.addTab(self.tabela_globais, "Global")
@@ -183,13 +187,23 @@ class DefValuesetModelosPage(QWidget):
             values = [
                 modelo.codigo,
                 modelo.nome,
+                modelo.descricao or "",
+                modelo.observacoes or "",
                 modelo.tipo or "",
                 modelo.ambito,
                 self._dono_display(modelo),
                 self._format_bool(modelo.ativo),
             ]
             for column_index, value in enumerate(values):
-                tabela.setItem(row_index, column_index, QTableWidgetItem(value))
+                item = QTableWidgetItem(value)
+                # Descrição e observações são textos livres e podem não caber
+                # na coluna: a dica mostra o texto inteiro.
+                if value and self.TABLE_HEADERS[column_index] in (
+                    "Descrição",
+                    "Observações",
+                ):
+                    item.setToolTip(value)
+                tabela.setItem(row_index, column_index, item)
 
         self._por_linha[tabela] = por_linha
 
