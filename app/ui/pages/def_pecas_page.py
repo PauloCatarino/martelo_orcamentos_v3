@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.orla_types import format_orla_code
+from app.domain.peca_biblioteca import texto_biblioteca_peca
 from app.domain.peca_natureza_types import get_peca_natureza_label
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.services.def_peca_componente_service import DefPecaComponenteService
@@ -41,6 +42,7 @@ class DefPecasPage(QWidget):
     TABLE_HEADERS = [
         "C\u00f3digo",
         "Nome",
+        "Na biblioteca do custeio",
         "Natureza",
         "Função",
         "Grupo",
@@ -106,7 +108,9 @@ class DefPecasPage(QWidget):
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.tree.header().setStretchLastSection(False)
         self.tree.itemDoubleClicked.connect(self._handle_tree_item_double_click)
-        ligar_persistencia_larguras(self.tree, "def_pecas_arvore")
+        # Chave nova: as larguras guardadas eram de uma tabela com menos uma
+        # coluna e ficariam desalinhadas.
+        ligar_persistencia_larguras(self.tree, "def_pecas_arvore_v2")
 
         self.list_widget = QWidget()
         list_layout = QVBoxLayout()
@@ -345,6 +349,8 @@ class DefPecasPage(QWidget):
             leaf = QTreeWidgetItem([
                 peca.codigo,
                 peca.nome,
+                # Exatamente o texto que a peça vai ter na biblioteca do custeio.
+                texto_biblioteca_peca(peca, codigo_orlas),
                 get_peca_natureza_label(peca.natureza),
                 peca.funcao or "",
                 peca.grupo or "",

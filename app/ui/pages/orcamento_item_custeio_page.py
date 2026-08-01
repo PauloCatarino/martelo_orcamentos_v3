@@ -84,6 +84,7 @@ from app.domain.custeio_simplificado import (
 )
 from app.domain.numeros import formatar_percentagem
 from app.domain.peca_funcao_types import PECA_FUNCAO_LABELS
+from app.domain.peca_biblioteca import texto_biblioteca_peca
 from app.domain.peca_types import COMPOSTA
 from app.repositories.def_peca_repository import DefPecaResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
@@ -1857,12 +1858,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self, peca: DefPecaResumo, codigo_orlas: str
     ) -> QTreeWidgetItem:
         """Build one checkable library leaf and register it for twin syncing."""
-        nome_exibido = peca.nome_biblioteca or peca.nome
-        texto = f"{nome_exibido} [{codigo_orlas}]"
-        if peca.tipo_peca == COMPOSTA:
-            texto += " (composta)"
-
-        leaf = QTreeWidgetItem([texto])
+        leaf = QTreeWidgetItem([texto_biblioteca_peca(peca, codigo_orlas)])
         leaf.setFlags(leaf.flags() | Qt.ItemFlag.ItemIsUserCheckable)
         leaf.setCheckState(
             0,

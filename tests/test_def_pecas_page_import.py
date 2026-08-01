@@ -26,6 +26,7 @@ def test_def_pecas_page_table_headers() -> None:
     assert DefPecasPage.TABLE_HEADERS == [
         "C\u00f3digo",
         "Nome",
+        "Na biblioteca do custeio",
         "Natureza",
         "Função",
         "Grupo",
