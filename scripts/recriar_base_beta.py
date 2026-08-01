@@ -89,6 +89,31 @@ def main() -> None:
     args = ap.parse_args()
 
     src = settings.db_name  # base de origem (dev)
+
+    # ------------------------------------------------------------------
+    # A barreira que faltava, e que custou uma beta apagada.
+    #
+    # O `db_name` vem do .env -- MAS uma variavel de ambiente
+    # (`$env:DB_NAME="martelo_v3_beta"`, escrita numa sessao anterior do
+    # PowerShell para abrir a app contra a beta) manda mais que o .env e fica
+    # ali colada ate' se fechar o terminal.
+    #
+    # Com origem == destino, o que este script faz e': apagar tudo, e depois
+    # "copiar" de uma base que ele proprio acabou de esvaziar. Zero linhas
+    # copiadas -- e a verificacao final ainda diz OK, porque compara zero com
+    # zero. E' o pior tipo de falha: destroi e diz que correu bem.
+    # ------------------------------------------------------------------
+    if src == BASE_BETA:
+        raise SystemExit(
+            "[ABORTADO] a origem e o destino sao a mesma base "
+            f"({BASE_BETA}).\n"
+            "       Isto apagaria a beta e nao copiaria nada.\n\n"
+            "       Quase de certeza tem DB_NAME definido no terminal:\n"
+            "           $env:DB_NAME     (para ver)\n"
+            "           Remove-Item Env:DB_NAME   (para limpar)\n"
+            "       ...ou abra um terminal novo e volte a correr."
+        )
+
     print(f"Origem : {src} @ {settings.db_host}")
     print(f"Destino: {BASE_BETA} @ {settings.db_host}  (dados vao ser SUBSTITUIDOS)")
     print()
@@ -128,6 +153,18 @@ def main() -> None:
             copiado += n
         con.execute(sa.text("SET FOREIGN_KEY_CHECKS = 1"))
     print(f"copiado: {copiado} linhas")
+
+    # Copiar zero linhas de uma base com dados nao e' "nada a fazer" -- e' sinal
+    # de que se apagou o destino e se leu de um sitio vazio. A verificacao la'
+    # em baixo nao apanha isto, porque comparar zero com zero da' certo.
+    if copiado == 0:
+        raise SystemExit(
+            "[ATENCAO] nao foi copiada uma unica linha, mas os dados da beta "
+            "ja' foram apagados.\n"
+            "       Restaure o backup ANTES de fazer mais alguma coisa:\n"
+            '         & "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe" '
+            "-h 127.0.0.1 -u martelo_v3 -p -e \"source <backup>.sql\""
+        )
 
     _desligar_o_que_nao_pode_vir_do_dev(eng)
 

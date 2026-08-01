@@ -30,8 +30,14 @@ contas_martelo*.txt
 installer/Output/
 *.log
 
-# Backups da BD beta (dumps locais antes de migrar; nao versionar)
+# Backups da BD (dumps locais antes de migrar; NUNCA versionar).
+# Levam dados de clientes, hashes das contas e as passwords das ligacoes
+# externas em claro -- e este repositorio e' PUBLICO.
 deploy/backups/
+backup_*.sql
+*_backup.sql
+*.sql.gz
+dump_*.sql
 !.env.example
 
 # Test and coverage output
