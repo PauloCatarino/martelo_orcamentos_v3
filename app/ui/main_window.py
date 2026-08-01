@@ -62,6 +62,31 @@ from app.ui.pages import (
 )
 
 
+#: Ambiente "normal", em que o titulo nao precisa de dizer nada.
+AMBIENTE_NORMAL = "production"
+
+
+def _ambiente_e_base() -> str:
+    """Descreve o ambiente e a base, ou "" quando e' a de producao.
+
+    A beta e a de desenvolvimento tem os mesmos dados e o mesmo aspeto -- so'
+    muda a base de dados. Sem isto escrito na janela nao ha' maneira de saber
+    em qual se esta' a trabalhar, e passar uma tarde a mexer na base errada e'
+    fácil demais.
+    """
+    from app.config.settings import settings
+
+    ambiente = (settings.APP_ENV or "").strip()
+    if not ambiente or ambiente.lower() == AMBIENTE_NORMAL:
+        return ""
+    return f"{ambiente.upper()} · {settings.DB_NAME}"
+
+
+def _titulo_da_janela() -> str:
+    sufixo = _ambiente_e_base()
+    return f"Martelo Orçamentos V3 — {sufixo}" if sufixo else "Martelo Orçamentos V3"
+
+
 class MainWindow(QMainWindow):
     """Application shell window."""
 
@@ -121,7 +146,7 @@ class MainWindow(QMainWindow):
         self.authenticated_user = authenticated_user
         self._permissions = self._load_permissions()
 
-        self.setWindowTitle("Martelo Or\u00e7amentos V3")
+        self.setWindowTitle(_titulo_da_janela())
         self.resize(1100, 720)
 
         central_widget = QWidget()
@@ -146,6 +171,20 @@ class MainWindow(QMainWindow):
         title = QLabel("Martelo Or\u00e7amentos V3")
         title.setObjectName("mainTitle")
         title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        # Etiqueta bem vis\u00edvel quando n\u00e3o se est\u00e1 na base de produ\u00e7\u00e3o: \u00e9 o que
+        # evita passar a tarde a mexer na beta a pensar que \u00e9 o V3 do dia a dia.
+        self.ambiente_label = QLabel(_ambiente_e_base())
+        self.ambiente_label.setObjectName("ambienteLabel")
+        self.ambiente_label.setVisible(bool(self.ambiente_label.text()))
+        self.ambiente_label.setToolTip(
+            "Base de dados a que este Martelo est\u00e1 ligado."
+        )
+        self.ambiente_label.setStyleSheet(
+            "QLabel#ambienteLabel {"
+            f" background: {tema.CASTANHO_ESCURO}; color: white;"
+            " border-radius: 4px; padding: 3px 10px; font-weight: bold; }"
+        )
 
         # O nome de quem está a trabalhar é também o sítio onde se mexe na
         # própria conta — como na maioria das aplicações. Assim não é preciso
@@ -179,7 +218,9 @@ class MainWindow(QMainWindow):
         logout_button.clicked.connect(self.request_logout)
 
         header_layout.addWidget(self.toggle_sidebar_button)
-        header_layout.addWidget(title, stretch=1)
+        header_layout.addWidget(title)
+        header_layout.addWidget(self.ambiente_label)
+        header_layout.addStretch(1)
         # Sem stretch: fica do tamanho do nome, encostado aos outros botões,
         # como o rótulo alinhado à direita que era antes.
         header_layout.addWidget(self.user_button)
