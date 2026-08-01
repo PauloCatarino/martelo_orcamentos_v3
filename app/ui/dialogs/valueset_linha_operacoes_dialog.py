@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -131,6 +132,13 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         self.editar_operacao_button.clicked.connect(self.abrir_editar_operacao)
         self.toggle_operacao_button = QPushButton("Ativar/Desativar")
         self.toggle_operacao_button.clicked.connect(self.alternar_operacao_ativa)
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.setToolTip(
+            "Mostrar também as operações desta variante marcadas como inativas"
+        )
+        self.mostrar_inativas_check.stateChanged.connect(
+            lambda _=0: self._preencher_operacoes()
+        )
         self.fechar_button = QPushButton("Fechar")
         self.fechar_button.clicked.connect(self.accept)
 
@@ -138,6 +146,7 @@ class ValuesetLinhaOperacoesDialog(QDialog):
         buttons_layout.addWidget(self.nova_operacao_button)
         buttons_layout.addWidget(self.editar_operacao_button)
         buttons_layout.addWidget(self.toggle_operacao_button)
+        buttons_layout.addWidget(self.mostrar_inativas_check)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.fechar_button)
 
@@ -189,9 +198,10 @@ class ValuesetLinhaOperacoesDialog(QDialog):
     def _preencher_operacoes(self) -> None:
         """Fill the operations table from current read models."""
         self._operacoes_by_row = {}
-        self.operacoes_table.setRowCount(len(self.operacoes_linha))
+        operacoes_visiveis = self._operacoes_visiveis()
+        self.operacoes_table.setRowCount(len(operacoes_visiveis))
 
-        for row_index, ligacao in enumerate(self.operacoes_linha):
+        for row_index, ligacao in enumerate(operacoes_visiveis):
             self._operacoes_by_row[row_index] = ligacao
             operacao = self._operacao_resumos.get(ligacao.def_operacao_id)
             values = [
@@ -231,9 +241,18 @@ class ValuesetLinhaOperacoesDialog(QDialog):
 
         self.status_label.setText(self._operacoes_status_text())
 
+    def _operacoes_visiveis(self) -> list:
+        """Operations shown in the table: active only, unless asked otherwise."""
+        if self.mostrar_inativas_check.isChecked():
+            return list(self.operacoes_linha)
+
+        return [ligacao for ligacao in self.operacoes_linha if ligacao.ativo]
+
     def _operacoes_status_text(self) -> str:
         if not self.operacoes_linha:
             return "Sem operações. Use 'Nova Operação' para adicionar."
+        if not self._operacoes_visiveis():
+            return "Sem operações ativas. Marque 'Mostrar inativas' para as ver."
         return ""
 
     def abrir_nova_operacao(self) -> None:
