@@ -60,6 +60,78 @@ def test_coluna_modulo_prioriza_a_miniatura_estrutural_da_peca() -> None:
     assert "Representação estrutural ilustrativa" in item.toolTip()
 
 
+def test_a_ferragem_nao_leva_cubo_mesmo_com_nome_de_peca() -> None:
+    # RODAS_PORTA_CORRER_SUP lia-se como "porta" e ganhava o cubo da porta.
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._estruturas_visuais_por_linha = {1: [(PORTA, 1)]}
+    linha = SimpleNamespace(
+        id=1,
+        tipo_linha="FERRAGEM",
+        quantidade=1,
+        modulo_imagem_path=None,
+    )
+
+    item = page._criar_item_modulo(linha)
+
+    assert page._partes_estruturais_a_desenhar(linha) == []
+    assert item.icon().isNull() is True
+    assert item.toolTip() == ""
+
+
+def test_a_peca_continua_a_levar_o_cubo() -> None:
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._estruturas_visuais_por_linha = {1: [(LATERAL, 1)]}
+    linha = SimpleNamespace(
+        id=1, tipo_linha="PECA", quantidade=1, modulo_imagem_path=None
+    )
+
+    assert page._partes_estruturais_a_desenhar(linha) == [(LATERAL, 1)]
+    assert page._criar_item_modulo(linha).icon().isNull() is False
+
+
+def test_a_ferragem_ainda_conta_para_o_desenho_da_composta() -> None:
+    # Na linha da ferragem nao se desenha nada, mas ela continua a somar ao
+    # cubo da peça composta onde entra (por exemplo o puxador da porta).
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    page._funcoes_estruturais_por_peca = {10: PORTA}
+    composta = SimpleNamespace(
+        id=1,
+        linha_pai_id=None,
+        tipo_linha="PECA_COMPOSTA",
+        def_peca_id=None,
+        def_peca_codigo="PORTA+PUXADOR",
+        codigo=None,
+        quantidade=1,
+        modulo_imagem_path=None,
+    )
+    porta = SimpleNamespace(
+        id=2,
+        linha_pai_id=1,
+        tipo_linha="PECA",
+        def_peca_id=10,
+        def_peca_codigo="PORTA_SIMPLES",
+        codigo=None,
+        quantidade=1,
+    )
+    puxador = SimpleNamespace(
+        id=3,
+        linha_pai_id=1,
+        tipo_linha="FERRAGEM",
+        def_peca_id=None,
+        def_peca_codigo="PUXADOR_TIC_TAC",
+        codigo=None,
+        quantidade=1,
+    )
+
+    page._estruturas_visuais_por_linha = page._mapear_estruturas_visuais(
+        [composta, porta, puxador]
+    )
+
+    assert page._estruturas_visuais_por_linha[1] == [(PORTA, 1), (PUXADOR, 1)]
+    assert page._partes_estruturais_a_desenhar(composta) == [(PORTA, 1), (PUXADOR, 1)]
+    assert page._partes_estruturais_a_desenhar(puxador) == []
+
+
 def test_composta_mostra_a_porta_dupla_dos_componentes() -> None:
     page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
     page._funcoes_estruturais_por_peca = {10: PORTA}

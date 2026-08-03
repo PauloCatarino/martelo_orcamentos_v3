@@ -2742,6 +2742,22 @@ class OrcamentoItemCusteioPage(QWidget):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row_index, column_index, item)
 
+    def _partes_estruturais_a_desenhar(
+        self, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> list[tuple[str, object]]:
+        """As partes do cubo a desenhar na coluna "Módulo" desta linha.
+
+        O cubo mostra o lugar da peça no móvel — laterais, tetos, costas,
+        fundos, prateleiras, divisórias, gavetas. Numa ferragem não diz nada:
+        aparecia por o nome ter uma palavra conhecida (RODAS_PORTA_CORRER lia-se
+        como "porta"). As ferragens continuam a contar para o desenho da peça
+        composta onde entram; é só na linha delas que não se desenha nada.
+        """
+        if normalize_custeio_linha_type(getattr(linha, "tipo_linha", None)) == FERRAGEM:
+            return []
+
+        return getattr(self, "_estruturas_visuais_por_linha", {}).get(linha.id, [])
+
     def _criar_item_modulo(
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> QTableWidgetItem:
@@ -2753,9 +2769,7 @@ class OrcamentoItemCusteioPage(QWidget):
         item = criar_item_tabela("")
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
-        partes_estruturais = getattr(self, "_estruturas_visuais_por_linha", {}).get(
-            linha.id, []
-        )
+        partes_estruturais = self._partes_estruturais_a_desenhar(linha)
         if partes_estruturais and any(
             funcao != PUXADOR for funcao, _quantidade in partes_estruturais
         ):
