@@ -18,7 +18,9 @@ Duas coisas, so':
 Por omissao trabalha na base do ``.env``; para a beta, ``--base martelo_v3_beta``.
 
 O ``--verificar`` precisa de uma conta que possa ler as tabelas ``mysql.*`` (o
-``root``). O ``--mudar`` chega-lhe a conta ``admin`` do Martelo.
+``root``). Ao ``--mudar`` chega-lhe a conta ``admin`` do Martelo — ou a conta de
+manutencao do ``.env``, que tambem tem EXECUTE sobre os procedimentos. Sem root
+nenhum servico fica por fazer: so' o relatorio e' que nao sai.
 """
 
 from __future__ import annotations
@@ -237,7 +239,9 @@ def mudar_password(base: str, nomes: list[str]) -> int:
         print("Nada a fazer.")
         return 1
 
-    utilizador, password = pedir_credenciais("a conta 'admin' do Martelo, ou o root")
+    utilizador, password = pedir_credenciais(
+        "a conta 'admin' do Martelo, a de manutencao do .env, ou o root"
+    )
     engine = ligar_como(utilizador, password, base)
     feitas = 0
     try:
