@@ -3,11 +3,15 @@
 Segue exatamente o que ja estava criado a mao no catalogo:
 
 * as peças simples copiam a configuracao do ``FUNDO_2000`` (material, formulas
-  LM/PM, acabamentos, corte + orlagem + furacao CNC desativada), mudando apenas
+  LM/PM, acabamentos, corte + orlagem + furacao CNC desativada, unioes nos dois
+  topos com cavilha em prioridade 1 e parafuso em prioridade 2), mudando apenas
   o codigo de orlas;
 * os conjuntos ``+PES`` copiam o ``FUNDO+PES`` (fundo + pes com regra por
-  dimensao + unioes por topo, cavilha em prioridade 1 e parafuso em prioridade
-  2), trocando so o fundo que entra como componente.
+  dimensao), trocando so o fundo que entra como componente.
+
+As unioes ficam na peça simples e **nao** no conjunto: quem e' unido nos topos e'
+o painel. Como o custeio expande tambem os associados da peça filha, o conjunto
+continua a trazer as unioes — sem as ter duplicadas no catalogo.
 
 O seed e idempotente: cria apenas o que falta, reutiliza o que ja existe e
 nunca apaga nem altera registos existentes.
@@ -69,6 +73,12 @@ REGRA_PES = "PES_NIVELADORES"
 REGRA_UNIOES = "UNIAO_TOPOS_128"
 
 METODO_ESCALAO_AREA = "ESCALAO_AREA"
+
+#: As duas unioes nos topos de um fundo: descricao e prioridade ValueSet.
+UNIOES_NOS_TOPOS: tuple[tuple[str, int], ...] = (
+    ("Unioes para Modulos Cavilha", 1),
+    ("Unioes para Modulos Parafusos", 2),
+)
 
 
 @dataclass(frozen=True)
@@ -254,11 +264,54 @@ def criar_operacoes(
     return criadas
 
 
-def criar_fundos_simples(session: Session) -> tuple[int, int, int]:
-    """Criar as peças simples em falta. Devolve (criadas, reutilizadas, operacoes)."""
+def criar_unioes_nos_topos(session: Session, peca: DefPeca) -> int:
+    """Criar as unioes nos dois topos de um fundo. Devolve quantas criou.
+
+    Sao as unioes do painel, por isso vivem na peça simples: os conjuntos que a
+    usam recebem-nas por arrasto, quando o custeio expande a peça filha.
+    """
+    peca_unioes = get_peca(session, CODIGO_PECA_UNIOES)
+    if peca_unioes is None:
+        print(f"Aviso: peca {CODIGO_PECA_UNIOES} nao existe; {peca.codigo} fica sem unioes")
+        return 0
+
+    regra_unioes_id = get_regra_quantidade_id(session, REGRA_UNIOES)
+    criados = 0
+    for ordem, (descricao, prioridade) in enumerate(UNIOES_NOS_TOPOS, start=1):
+        session.add(
+            DefPecaComponente(
+                def_peca_pai_id=peca.id,
+                tipo_componente=PECA,
+                def_peca_componente_id=peca_unioes.id,
+                descricao=descricao,
+                ordem=ordem,
+                quantidade=Decimal("1.000"),
+                regra_quantidade=QUANTIDADE_FIXA,
+                def_regra_quantidade_id=regra_unioes_id,
+                obrigatorio=True,
+                ativo=True,
+                zona_aplicacao=DOIS_TOPOS,
+                dimensao_referencia=MEDIDA_TOPO,
+                numero_topos=2,
+                modo_quantidade=POR_TOPO,
+                prioridade_valueset=prioridade,
+            )
+        )
+        criados += 1
+
+    session.flush()
+    return criados
+
+
+def criar_fundos_simples(session: Session) -> tuple[int, int, int, int]:
+    """Criar as peças simples em falta.
+
+    Devolve ``(criadas, reutilizadas, operacoes, componentes)``.
+    """
     criadas = 0
     reutilizadas = 0
     operacoes = 0
+    componentes = 0
 
     for seed in FUNDOS_SIMPLES:
         existente = get_peca(session, seed.codigo)
@@ -294,19 +347,22 @@ def criar_fundos_simples(session: Session) -> tuple[int, int, int]:
         session.add(peca)
         session.flush()
         operacoes += criar_operacoes(session, peca, OPERACOES_FUNDO_SIMPLES)
+        componentes += criar_unioes_nos_topos(session, peca)
         criadas += 1
         print(f"Peca {seed.codigo} criada ({seed.nome})")
 
-    return criadas, reutilizadas, operacoes
+    return criadas, reutilizadas, operacoes, componentes
 
 
 def criar_componentes_com_pes(
     session: Session, conjunto: DefPeca, seed: FundoComPesSeed, fundo: DefPeca
 ) -> int:
-    """Criar os componentes de um conjunto FUNDO+PES. Devolve quantos criou."""
-    peca_unioes = get_peca(session, CODIGO_PECA_UNIOES)
+    """Criar os componentes de um conjunto FUNDO+PES. Devolve quantos criou.
+
+    Sem unioes: elas estao no fundo que entra como componente (ver docstring do
+    modulo) e chegam ca' quando o custeio expande a peça filha.
+    """
     regra_pes_id = get_regra_quantidade_id(session, REGRA_PES)
-    regra_unioes_id = get_regra_quantidade_id(session, REGRA_UNIOES)
 
     componentes = [
         DefPecaComponente(
@@ -345,35 +401,6 @@ def criar_componentes_com_pes(
             prioridade_valueset=1,
         ),
     ]
-
-    if peca_unioes is None:
-        print(
-            f"Aviso: peca {CODIGO_PECA_UNIOES} nao existe; {seed.codigo} fica sem unioes"
-        )
-    else:
-        for ordem, (descricao, prioridade) in enumerate(
-            (("Unioes para Modulos Cavilha", 1), ("Unioes para Modulos Parafusos", 2)),
-            start=3,
-        ):
-            componentes.append(
-                DefPecaComponente(
-                    def_peca_pai_id=conjunto.id,
-                    tipo_componente=PECA,
-                    def_peca_componente_id=peca_unioes.id,
-                    descricao=descricao,
-                    ordem=ordem,
-                    quantidade=Decimal("1.000"),
-                    regra_quantidade=QUANTIDADE_FIXA,
-                    def_regra_quantidade_id=regra_unioes_id,
-                    obrigatorio=True,
-                    ativo=True,
-                    zona_aplicacao=DOIS_TOPOS,
-                    dimensao_referencia=MEDIDA_TOPO,
-                    numero_topos=2,
-                    modo_quantidade=POR_TOPO,
-                    prioridade_valueset=prioridade,
-                )
-            )
 
     for componente in componentes:
         session.add(componente)
@@ -474,12 +501,17 @@ def adicionar_as_bibliotecas(session: Session) -> int:
 
 def seed_fundos_variantes(session: Session) -> FundosVariantesResult:
     """Criar as peças e conjuntos de fundos em falta (idempotente)."""
-    simples_criadas, simples_reutilizadas, operacoes_simples = criar_fundos_simples(session)
+    (
+        simples_criadas,
+        simples_reutilizadas,
+        operacoes_simples,
+        componentes_simples,
+    ) = criar_fundos_simples(session)
     (
         conjuntos_criados,
         conjuntos_reutilizados,
         operacoes_conjuntos,
-        componentes,
+        componentes_conjuntos,
     ) = criar_fundos_com_pes(session)
     prefs = adicionar_as_bibliotecas(session)
 
@@ -489,7 +521,7 @@ def seed_fundos_variantes(session: Session) -> FundosVariantesResult:
         pecas_criadas=simples_criadas + conjuntos_criados,
         pecas_reutilizadas=simples_reutilizadas + conjuntos_reutilizados,
         operacoes_criadas=operacoes_simples + operacoes_conjuntos,
-        componentes_criados=componentes,
+        componentes_criados=componentes_simples + componentes_conjuntos,
         prefs_criadas=prefs,
     )
 
