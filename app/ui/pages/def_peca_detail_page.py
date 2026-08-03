@@ -484,6 +484,13 @@ class DefPecaDetailPage(QWidget):
         self.editar_componente_button.clicked.connect(self.abrir_editar_componente)
         self.remover_componente_button = QPushButton("Remover Associado")
         self.remover_componente_button.clicked.connect(self.remover_componente)
+        self.mostrar_componentes_inativos_check = QCheckBox("Mostrar inativos")
+        self.mostrar_componentes_inativos_check.setToolTip(
+            "Mostrar também os associados marcados como inativos"
+        )
+        self.mostrar_componentes_inativos_check.stateChanged.connect(
+            lambda _=0: self._preencher_componentes()
+        )
         self.atualizar_componentes_button = QPushButton("Atualizar")
         self.atualizar_componentes_button.clicked.connect(self.recarregar_componentes)
 
@@ -491,6 +498,7 @@ class DefPecaDetailPage(QWidget):
         buttons_layout.addWidget(self.novo_componente_button)
         buttons_layout.addWidget(self.editar_componente_button)
         buttons_layout.addWidget(self.remover_componente_button)
+        buttons_layout.addWidget(self.mostrar_componentes_inativos_check)
         buttons_layout.addWidget(self.atualizar_componentes_button)
         buttons_layout.addStretch()
 
@@ -602,11 +610,25 @@ class DefPecaDetailPage(QWidget):
             return
         self.formulas_status_label.setText("Fórmulas do cabeçalho guardadas.")
 
+    def _componentes_visiveis(self) -> list[DefPecaComponenteResumo]:
+        """Os associados a mostrar: só os ativos, salvo pedido em contrário.
+
+        A mesma lista serve as duas tabelas (Associados e Regras) para que a
+        linha `n` seja o mesmo associado nas duas — é por índice que o duplo
+        clique nas Regras encontra o associado a editar.
+        """
+        if getattr(self, "mostrar_componentes_inativos_check", None) is not None:
+            if self.mostrar_componentes_inativos_check.isChecked():
+                return list(self.componentes)
+
+        return [componente for componente in self.componentes if componente.ativo]
+
     def _preencher_regras_componentes(self) -> None:
         if not hasattr(self, "regras_componentes_table"):
             return
-        self.regras_componentes_table.setRowCount(len(self.componentes))
-        for row, componente in enumerate(self.componentes):
+        visiveis = self._componentes_visiveis()
+        self.regras_componentes_table.setRowCount(len(visiveis))
+        for row, componente in enumerate(visiveis):
             valores = (
                 str(componente.ordem),
                 self._format_componente_ref(componente),
@@ -624,9 +646,10 @@ class DefPecaDetailPage(QWidget):
     def _preencher_componentes(self) -> None:
         """Fill the components table from the current read models."""
         self._componentes_by_row = {}
-        self.componentes_table.setRowCount(len(self.componentes))
+        visiveis = self._componentes_visiveis()
+        self.componentes_table.setRowCount(len(visiveis))
 
-        for row_index, componente in enumerate(self.componentes):
+        for row_index, componente in enumerate(visiveis):
             self._componentes_by_row[row_index] = componente
             values = [
                 str(componente.ordem),
@@ -657,13 +680,17 @@ class DefPecaDetailPage(QWidget):
                     item.setData(Qt.ItemDataRole.UserRole, componente.id)
                 self.componentes_table.setItem(row_index, column_index, item)
 
-        self.componentes_status_label.setText(self._componentes_status_text())
+        self.componentes_status_label.setText(self._componentes_status_text(visiveis))
         self._preencher_regras_componentes()
 
-    def _componentes_status_text(self) -> str:
+    def _componentes_status_text(
+        self, componentes_visiveis: list[DefPecaComponenteResumo] | None = None
+    ) -> str:
         """Return the status line for the components table."""
         if not self.componentes:
             return "Sem associados. Use 'Novo Associado' para adicionar."
+        if componentes_visiveis is not None and not componentes_visiveis:
+            return "Sem associados ativos. Marque 'Mostrar inativos' para os ver."
         return ""
 
     def recarregar_componentes(self) -> None:
