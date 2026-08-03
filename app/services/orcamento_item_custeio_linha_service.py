@@ -112,7 +112,11 @@ from app.domain.numeros import normalize_percentagem_humana, validar_decimal
 from app.domain.orlas import calcular_orlas_detalhe
 from app.domain.peca_types import COMPOSTA
 from app.domain.peca_funcao_types import PORTA, PORTA_CORRER, normalize_peca_funcao
-from app.domain.peca_natureza_types import CONJUNTO
+from app.domain.peca_natureza_types import (
+    CONJUNTO,
+    FERRAGEM as FERRAGEM_NATUREZA,
+    normalize_peca_natureza,
+)
 from app.domain.valueset_types import normalize_valueset_key
 from app.models import (
     OrcamentoItem,
@@ -5842,7 +5846,17 @@ class OrcamentoItemCusteioLinhaService:
 
     @staticmethod
     def _largura_padrao_porta(peca, qt_und) -> str | None:
-        """Return LM/LM/2 for a door, or None for every other piece."""
+        """Return LM/LM/2 for a door, or None for every other piece.
+
+        A largura da divisão só faz sentido no painel da porta. As ferragens do
+        sistema de correr chamam-se PUXADOR_PORTA_CORRER, RODAS_PORTA_CORRER e
+        afins: pelo nome cairiam aqui e apareciam no custeio com um LM que
+        ninguém lhes pôs nas definições de peças.
+        """
+        natureza = normalize_peca_natureza(getattr(peca, "natureza", None))
+        if natureza == FERRAGEM_NATUREZA:
+            return None
+
         funcao = normalize_peca_funcao(getattr(peca, "funcao", None))
         codigo = (getattr(peca, "codigo", None) or "").upper()
         if funcao not in (PORTA, PORTA_CORRER) and "PORTA" not in codigo:
