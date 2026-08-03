@@ -160,6 +160,11 @@ from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.colunas_visiveis import ligar_menu_colunas
+from app.ui.widgets.icone_eliminar import (
+    COR_X_NORMAL,
+    COR_X_REALCE,
+    icone_x_eliminar,
+)
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.ordem_grupos_biblioteca import ordenar_grupos
 from app.ui.widgets.miniatura_estrutura import (
@@ -2221,20 +2226,28 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _instalar_botao_apagar_ferragem(self) -> None:
         """Create the floating ✕ pinned to the right of the hovered hardware row."""
-        botao = QPushButton("✕", self.table.viewport())
+        botao = QPushButton(self.table.viewport())
+        # X desenhado, nao escrito: o caracter podia nao existir na fonte e
+        # deixava so' o contorno vermelho a` vista.
+        self._icone_x_normal = icone_x_eliminar(COR_X_NORMAL)
+        self._icone_x_realce = icone_x_eliminar(COR_X_REALCE)
+        botao.setIcon(self._icone_x_normal)
+        botao.setIconSize(QSize(12, 12))
         botao.setCursor(Qt.CursorShape.PointingHandCursor)
         botao.setToolTip("Eliminar esta ferragem")
         botao.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         botao.setFixedSize(20, 20)
+        # O "padding" e o "min-height" do estilo global esmagavam o conteudo e
+        # faziam do botao uma elipse; aqui zeram-se os dois.
         botao.setStyleSheet(
-            "QPushButton { border: 1px solid #B52C25; border-radius: 10px;"
-            " color: #B52C25; background: #FBE5E3; font-weight: bold;"
-            " font-size: 14px; }"
-            "QPushButton:hover { color: #FFFFFF; background: #9A2B22;"
-            " border-color: #7A231C; }"
+            "QPushButton { border: 1px solid #B52C25; border-radius: 4px;"
+            " background: #FBE5E3; padding: 0px; margin: 0px;"
+            " min-width: 0px; min-height: 0px; }"
+            "QPushButton:hover { background: #9A2B22; border-color: #7A231C; }"
         )
         botao.hide()
         botao.clicked.connect(self._eliminar_ferragem_hover)
+        botao.installEventFilter(self)
         self._btn_x_ferragem = botao
 
         self.table.setMouseTracking(True)
@@ -2248,6 +2261,12 @@ class OrcamentoItemCusteioPage(QWidget):
         """Hide the ✕ when the cursor leaves the table (but not for the ✕ itself)."""
         if obj is self.table.viewport() and event.type() == QEvent.Type.Leave:
             QTimer.singleShot(0, self._esconder_x_ferragem_se_fora)
+        # Com o rato em cima o fundo fica vermelho cheio: o X passa a branco.
+        if obj is getattr(self, "_btn_x_ferragem", None):
+            if event.type() == QEvent.Type.Enter:
+                obj.setIcon(self._icone_x_realce)
+            elif event.type() == QEvent.Type.Leave:
+                obj.setIcon(self._icone_x_normal)
         return super().eventFilter(obj, event)
 
     def _esconder_x_ferragem_se_fora(self) -> None:
