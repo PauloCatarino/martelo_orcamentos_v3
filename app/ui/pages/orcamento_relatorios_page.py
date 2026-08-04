@@ -916,6 +916,7 @@ class OrcamentoRelatoriosPage(QWidget):
             ),
             anexos=anexos,
             pasta_inicial=pasta_inicial,
+            tamanho_max_mb=config.tamanho_max_mb,
         )
         if not dialog.exec():
             return

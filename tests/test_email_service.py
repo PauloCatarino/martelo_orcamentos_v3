@@ -62,6 +62,31 @@ def test_carregar_email_config_defaults_outlook(monkeypatch) -> None:
     assert config.smtp_verificar_certificado is True
 
 
+def test_carregar_email_config_tamanho_max_por_defeito(monkeypatch) -> None:
+    _patch_settings(monkeypatch, {})
+
+    config = email_service.carregar_email_config(object())
+
+    assert config.tamanho_max_mb == 18.0
+
+
+def test_carregar_email_config_le_tamanho_max_com_virgula(monkeypatch) -> None:
+    _patch_settings(monkeypatch, {"email_tamanho_max_mb": "12,5"})
+
+    config = email_service.carregar_email_config(object())
+
+    assert config.tamanho_max_mb == 12.5
+
+
+def test_carregar_email_config_ignora_tamanho_max_invalido(monkeypatch) -> None:
+    for valor in ("zero", "0", "-3"):
+        _patch_settings(monkeypatch, {"email_tamanho_max_mb": valor})
+
+        config = email_service.carregar_email_config(object())
+
+        assert config.tamanho_max_mb == 18.0
+
+
 def test_carregar_email_config_permite_desligar_verificacao(monkeypatch) -> None:
     _patch_settings(monkeypatch, {"smtp_verificar_certificado": "nao"})
 

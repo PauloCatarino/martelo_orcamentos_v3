@@ -1,9 +1,16 @@
-"""Dialog for reviewing and sending a budget email."""
+"""Dialog for reviewing and sending a budget email.
+
+Serve os três emails que o Martelo manda com anexos — orçamento, ponto de
+situação e projeto para o cliente. Por isso é aqui que se pesam os anexos:
+o utilizador vê o total enquanto os junta e é avisado ANTES de enviar, em vez
+de descobrir o problema no erro que volta do servidor.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -13,10 +20,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
 )
+
+from app.domain.anexos_email import LIMITE_PADRAO_MB, medir_anexo, resumir_anexos
+from app.ui import tema
 
 
 class EmailOrcamentoDialog(QDialog):
@@ -30,11 +42,13 @@ class EmailOrcamentoDialog(QDialog):
         corpo: str = "",
         anexos: list[str] | None = None,
         pasta_inicial: str | None = None,
+        tamanho_max_mb: float = LIMITE_PADRAO_MB,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Enviar Orçamento por Email")
         self.resize(820, 540)
         self._pasta_inicial = pasta_inicial or ""
+        self._tamanho_max_mb = float(tamanho_max_mb or LIMITE_PADRAO_MB)
 
         layout = QVBoxLayout(self)
 
@@ -61,11 +75,21 @@ class EmailOrcamentoDialog(QDialog):
         layout.addWidget(self.txt_corpo, 1)
 
         self.list_anexos = QListWidget()
-        self.list_anexos.setToolTip("Ficheiros que serão anexados ao email.")
-        for path in anexos or []:
-            self.list_anexos.addItem(path)
+        self.list_anexos.setToolTip(
+            "Ficheiros que serão anexados ao email, com o tamanho de cada um."
+        )
         layout.addWidget(QLabel("Anexos:"))
         layout.addWidget(self.list_anexos, 1)
+
+        self.lbl_tamanho = QLabel()
+        self.lbl_tamanho.setToolTip(
+            "Peso total dos anexos. Acima do limite o email costuma ser recusado "
+            "pelo servidor."
+        )
+        layout.addWidget(self.lbl_tamanho)
+
+        for path in anexos or []:
+            self._acrescentar_anexo(path)
 
         anexos_layout = QHBoxLayout()
         self.btn_adicionar = QPushButton("Adicionar anexo(s)")
@@ -92,6 +116,8 @@ class EmailOrcamentoDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
 
+        self._atualizar_tamanho()
+
     def destinatario(self) -> str:
         return self.ed_destinatario.text().strip()
 
@@ -105,7 +131,25 @@ class EmailOrcamentoDialog(QDialog):
         return self.txt_corpo.toHtml()
 
     def anexos(self) -> list[str]:
-        return [self.list_anexos.item(i).text() for i in range(self.list_anexos.count())]
+        """Os caminhos dos anexos — o que se vê na lista é nome + tamanho."""
+        return [
+            str(self.list_anexos.item(i).data(Qt.ItemDataRole.UserRole))
+            for i in range(self.list_anexos.count())
+        ]
+
+    def accept(self) -> None:  # noqa: D102 - o aviso é a única diferença
+        if self._confirmar_tamanho():
+            super().accept()
+
+    # ---- anexos -------------------------------------------------------------
+    def _acrescentar_anexo(self, caminho: str) -> None:
+        medida = medir_anexo(caminho)
+        item = QListWidgetItem(medida.etiqueta)
+        item.setData(Qt.ItemDataRole.UserRole, str(caminho))
+        item.setToolTip(str(caminho))
+        if not medida.existe:
+            item.setForeground(Qt.GlobalColor.red)
+        self.list_anexos.addItem(item)
 
     def _adicionar_anexos(self) -> None:
         start_dir = self._pasta_inicial
@@ -117,9 +161,42 @@ class EmailOrcamentoDialog(QDialog):
         existentes = set(self.anexos())
         for file_path in files:
             if file_path and file_path not in existentes:
-                self.list_anexos.addItem(file_path)
+                self._acrescentar_anexo(file_path)
                 existentes.add(file_path)
+        self._atualizar_tamanho()
 
     def _remover_anexos_selecionados(self) -> None:
         for item in self.list_anexos.selectedItems():
             self.list_anexos.takeItem(self.list_anexos.row(item))
+        self._atualizar_tamanho()
+
+    def _resumo_anexos(self):
+        return resumir_anexos(self.anexos(), limite_mb=self._tamanho_max_mb)
+
+    def _atualizar_tamanho(self) -> None:
+        """Refrescar a linha com o peso total, já com a cor do estado."""
+        resumo = self._resumo_anexos()
+        if resumo.excede:
+            cor = tema.TEXTO_ERRO
+        elif resumo.em_falta:
+            cor = tema.TEXTO_AVISO
+        else:
+            cor = tema.TEXTO_OK
+        self.lbl_tamanho.setText(resumo.texto_barra)
+        self.lbl_tamanho.setStyleSheet(f"color: {cor};")
+
+    def _confirmar_tamanho(self) -> bool:
+        """Avisar antes de enviar acima do limite. True = seguir em frente."""
+        resumo = self._resumo_anexos()
+        if not resumo.excede:
+            return True
+
+        caixa = QMessageBox(self)
+        caixa.setIcon(QMessageBox.Icon.Warning)
+        caixa.setWindowTitle("Anexos demasiado grandes")
+        caixa.setText(resumo.mensagem_aviso())
+        rever = caixa.addButton("Rever anexos", QMessageBox.ButtonRole.RejectRole)
+        caixa.addButton("Enviar mesmo assim", QMessageBox.ButtonRole.AcceptRole)
+        caixa.setDefaultButton(rever)
+        caixa.exec()
+        return caixa.clickedButton() is not rever

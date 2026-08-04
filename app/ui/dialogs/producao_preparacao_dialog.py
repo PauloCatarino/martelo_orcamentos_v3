@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
@@ -28,6 +30,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.anexos_email import formatar_tamanho
 from app.services import producao_preparacao_service as svc
 from app.ui import tema
 
@@ -429,11 +432,23 @@ class ProducaoPreparacaoDialog(QDialog):
             return
         QApplication.restoreOverrideCursor()
 
+        detalhe = f"{destino}{self._peso_do_ficheiro(destino)}"
         QMessageBox.information(
-            self, "Preparação de Produção", f"{mensagem}\n\n{destino}"
+            self, "Preparação de Produção", f"{mensagem}\n\n{detalhe}"
         )
-        self.status_label.setText(f"{mensagem} {destino}")
+        self.status_label.setText(f"{mensagem} {detalhe}")
         self._atualizar()
+
+    @staticmethod
+    def _peso_do_ficheiro(destino) -> str:
+        """`` (1,8 MB)`` quando o passo produziu um ficheiro; senão, nada."""
+        try:
+            caminho = Path(str(destino))
+            if not caminho.is_file():
+                return ""
+            return f" ({formatar_tamanho(caminho.stat().st_size)})"
+        except (OSError, ValueError):
+            return ""
 
     def _abrir_preferencias(self) -> None:
         dialogo = PreparacaoPreferenciasDialog(self._user_id, parent=self)

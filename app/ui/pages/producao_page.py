@@ -1609,6 +1609,7 @@ class ProducaoPage(QWidget):
             corpo=corpo,
             anexos=anexos,
             pasta_inicial=dossier.pasta or "",
+            tamanho_max_mb=config.tamanho_max_mb,
         )
         dialog.setWindowTitle("Enviar Ponto de Situação por Email")
         if not dialog.exec():
@@ -2824,6 +2825,7 @@ class ProducaoPage(QWidget):
                     processo_id,
                     utilizador=self._nome_do_utilizador(),
                 )
+                config = carregar_email_config(session)
         except (SQLAlchemyError, OSError, ValueError) as erro:
             QMessageBox.warning(
                 self,
@@ -2848,6 +2850,7 @@ class ProducaoPage(QWidget):
             corpo=envio.corpo_html,
             anexos=list(envio.anexos),
             pasta_inicial=envio.pasta_obra,
+            tamanho_max_mb=config.tamanho_max_mb,
         )
         dialogo.setWindowTitle("Projeto para o cliente — rever antes de enviar")
         if not dialogo.exec():
@@ -2865,8 +2868,6 @@ class ProducaoPage(QWidget):
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            with SessionLocal() as session:
-                config = carregar_email_config(session)
             enviar_email(
                 destino,
                 dialogo.assunto(),

@@ -148,6 +148,36 @@ def test_gerar_projeto_producao_pdf_em_a4_horizontal(tmp_path: Path) -> None:
     assert _estados_por_key(contexto)["projeto_pdf"].estado == svc.ESTADO_OK
 
 
+def test_projeto_producao_pdf_sai_leve_o_bastante_para_email(tmp_path: Path) -> None:
+    """Um CONJ.pdf pesado do iMos não pode dar um anexo impossível de enviar."""
+    import random
+
+    from PIL import Image
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    random.seed(3)
+    render = Image.new("RGB", (3000, 2100))
+    pixeis = render.load()
+    for y in range(2100):
+        base = 130 + int(80 * y / 2100)
+        for x in range(3000):
+            ruido = random.randint(-25, 25)
+            pixeis[x, y] = (base + ruido, base - 20 + ruido, base - 45 + ruido)
+
+    contexto = _contexto(tmp_path)
+    desenho = canvas.Canvas(str(contexto.conj_pdf), pagesize=(1684, 1190))
+    for _pagina in range(2):
+        desenho.drawImage(ImageReader(render), 0, 0, 1684, 1190)
+        desenho.showPage()
+    desenho.save()
+    assert contexto.conj_pdf.stat().st_size > 5 * 1024 * 1024
+
+    saida = svc.gerar_projeto_producao_pdf(contexto)
+
+    assert saida.stat().st_size < 5 * 1024 * 1024
+
+
 def test_chave_e_serializacao_das_preferencias() -> None:
     assert (
         svc.chave_validacoes_utilizador(7) == "producao_preparacao_validacoes:7"

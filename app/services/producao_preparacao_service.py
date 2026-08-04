@@ -21,6 +21,7 @@ from typing import Iterable, Optional, Sequence
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.services.pdf_compressao_service import comprimir_pdf
 from app.services.pdf_imagem_service import documento_pdf
 from app.services.system_setting_service import SystemSettingService
 
@@ -431,7 +432,13 @@ def supervisionar_para_producao(
 
 
 def gerar_projeto_producao_pdf(contexto: PreparacaoContexto) -> Path:
-    """Build 2_Projeto_Producao.pdf (A4 landscape) from the CONJ.pdf."""
+    """Build 2_Projeto_Producao.pdf (A4 landscape) from the CONJ.pdf.
+
+    O ficheiro sai já aligeirado: as imagens do iMos vêm em resolução máxima e
+    fariam um PDF de dezenas de MB — peso que não se vê na folha impressa mas
+    que chega para o email ser recusado. Fica um só ficheiro, o mesmo que se
+    imprime e que segue em anexo (ver ``pdf_compressao_service``).
+    """
     if not contexto.conj_pdf.exists():
         raise ValueError(f"CONJ.pdf em falta:\n{contexto.conj_pdf}")
 
@@ -446,6 +453,9 @@ def gerar_projeto_producao_pdf(contexto: PreparacaoContexto) -> Path:
         logger.warning("2_Projeto_Producao.pdf gerado por imagem: %s", exc)
         imagens = _imagens_do_conj(contexto.conj_pdf, MAX_PAGINAS_PROJETO_PDF)
         _imagens_para_pdf_a4(imagens, contexto.projeto_pdf)
+
+    resultado = comprimir_pdf(contexto.projeto_pdf)
+    logger.info("%s: %s", PROJETO_PRODUCAO_PDF_NOME, resultado.resumo())
     return contexto.projeto_pdf
 
 

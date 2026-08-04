@@ -14,6 +14,7 @@ import smtplib
 import ssl
 from typing import Any, Sequence
 
+from app.domain.anexos_email import LIMITE_PADRAO_MB
 from app.domain.export_paths import subpasta_versao
 from app.services.system_setting_service import SystemSettingService
 from app.utils.formatters import format_currency, format_version
@@ -33,6 +34,9 @@ class EmailConfig:
     #: Verificar o certificado do servidor de email. Desligar so' se o servidor
     #: interno tiver certificado proprio — ver ``_contexto_ssl``.
     smtp_verificar_certificado: bool = True
+    #: Peso maximo dos anexos, em MB de ficheiro real. Ja' desconta a margem da
+    #: codificacao (um anexo viaja ~1/3 mais pesado do que esta' no disco).
+    tamanho_max_mb: float = LIMITE_PADRAO_MB
 
 
 def carregar_email_config(session) -> EmailConfig:
@@ -54,6 +58,9 @@ def carregar_email_config(session) -> EmailConfig:
         smtp_tls=_to_bool(valor("smtp_tls", "false"), False),
         smtp_verificar_certificado=_to_bool(
             valor("smtp_verificar_certificado", "true"), True
+        ),
+        tamanho_max_mb=_to_float(
+            valor("email_tamanho_max_mb", str(LIMITE_PADRAO_MB)), LIMITE_PADRAO_MB
         ),
     )
 
@@ -578,6 +585,14 @@ def _to_int(value: str, default: int) -> int:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return default
+
+
+def _to_float(value: str, default: float) -> float:
+    try:
+        convertido = float(str(value).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return default
+    return convertido if convertido > 0 else default
 
 
 def _to_bool(value: str, default: bool) -> bool:
