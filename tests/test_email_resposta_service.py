@@ -216,3 +216,33 @@ def test_sem_nenhum_pedido_manda_a_data(tmp_path: Path) -> None:
 
 def test_a_extensao_nao_conta_para_a_pontuacao() -> None:
     assert pontuar_pedido("qualquer.msg") == 0
+
+
+# ---- a data nao pode levar o email atras ------------------------------------
+def test_data_ilegivel_nao_perde_o_assunto_nem_o_remetente() -> None:
+    """No executavel faltava o `win32timezone` e a leitura rebentava inteira.
+
+    Ler uma data de um objeto COM faz o pywin32 importar esse modulo por
+    baixo; o PyInstaller nao o via. O assunto e o remetente sao o que faz
+    falta para responder — a data e' so' a etiqueta.
+    """
+    from app.services.email_resposta_service import _data_recebida
+
+    class _MensagemComDataPodre:
+        Subject = "Pedido cotação"
+
+        @property
+        def ReceivedTime(self):  # noqa: N802 - assinatura do Outlook
+            raise ImportError("No module named 'win32timezone'")
+
+    assert _data_recebida(_MensagemComDataPodre()) is None
+
+
+def test_data_boa_continua_a_ser_lida() -> None:
+    from types import SimpleNamespace as NS
+
+    from app.services.email_resposta_service import _data_recebida
+
+    quando = datetime(2026, 8, 4, 11, 31)
+
+    assert _data_recebida(NS(ReceivedTime=quando)) == quando

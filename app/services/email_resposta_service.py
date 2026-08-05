@@ -194,10 +194,25 @@ def _abrir_pelo_outlook(caminho: str):
             Subject=_texto(getattr(mensagem, "Subject", "")),
             SenderEmailAddress=_texto(getattr(mensagem, "SenderEmailAddress", "")),
             SenderName=_texto(getattr(mensagem, "SenderName", "")),
-            ReceivedTime=_data(getattr(mensagem, "ReceivedTime", None)),
+            ReceivedTime=_data_recebida(mensagem),
         )
     finally:
         pythoncom.CoUninitialize()
+
+
+def _data_recebida(mensagem) -> datetime | None:
+    """A data de recepção — e nunca ao preço de perder o email todo.
+
+    Ler uma data de um objeto COM faz o pywin32 importar o ``win32timezone``
+    por baixo. No executável empacotado esse módulo chegou a faltar e a
+    exceção levava atrás o assunto e o remetente, que são o que realmente faz
+    falta para responder. A data é a parte decorativa da etiqueta.
+    """
+    try:
+        return _data(getattr(mensagem, "ReceivedTime", None))
+    except Exception as erro:  # noqa: BLE001 - sem data, mas com email
+        logger.info("Data do email guardado ilegível: %s", erro)
+        return None
 
 
 def _texto(valor: object) -> str:

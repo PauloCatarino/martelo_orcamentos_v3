@@ -42,6 +42,12 @@ hiddenimports = [
     "win32com.client",
     "pythoncom",
     "pywintypes",
+    # O pywin32 so' importa o win32timezone quando LE^ uma data de um objeto
+    # COM, e faz esse import a` mao la' dentro — o PyInstaller nao o ve'. Sem
+    # ele, ler o `.msg` do cliente rebentava SO' no executavel ("No module
+    # named 'win32timezone'"), enquanto na dev funcionava: e' a data de
+    # recepcao do email que o vai buscar. Descoberto pelo diario de bordo.
+    "win32timezone",
     "win32clipboard",
     "win32con",
     "win32gui",

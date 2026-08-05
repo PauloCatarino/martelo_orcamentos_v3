@@ -56,3 +56,21 @@ def test_instalador_continua_a_pedir_admin_para_instalar() -> None:
     texto = INSTALADOR.read_text(encoding="utf-8", errors="replace")
 
     assert "PrivilegesRequired=admin" in texto
+
+
+# ---- o que o PyInstaller nao ve' sozinho -------------------------------------
+SPEC = Path(__file__).resolve().parents[1] / "Martelo_Orcamentos_V3.spec"
+
+
+def test_win32timezone_vai_no_executavel() -> None:
+    """Sem ele, ler o `.msg` do cliente falha SO' no executavel.
+
+    O pywin32 importa o `win32timezone` a` mao quando le^ uma data de um
+    objeto COM, e o PyInstaller nao ve' esse import. Aconteceu na beta
+    0.9.5: "No module named 'win32timezone'" ao abrir o email guardado,
+    enquanto na dev funcionava.
+    """
+    if not SPEC.is_file():
+        pytest.skip("spec não disponível nesta cópia do projeto")
+
+    assert '"win32timezone"' in SPEC.read_text(encoding="utf-8", errors="replace")
