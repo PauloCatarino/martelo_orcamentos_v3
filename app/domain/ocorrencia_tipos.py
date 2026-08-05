@@ -27,6 +27,10 @@ class Classificacao:
 TIPOS: tuple[Classificacao, ...] = (
     Classificacao("pedido_adicional", "Pedido adicional", "neutro"),
     Classificacao("assistencia", "Assistência", "neutro"),
+    # Nem tudo o que se regista numa obra é um problema: muitas vezes o ticket
+    # serve só para dizer alguma coisa a um colega pelo Teams ou para o cliente
+    # ficar a saber. Família "neutro" — não entra na contagem de erros nossos.
+    Classificacao("informativo", "Informativo", "neutro"),
     Classificacao("erro_producao", "Erro de produção", "erro"),
     Classificacao("erro_preparacao", "Erro de preparação", "erro"),
     Classificacao("erro_medidas", "Erro de medidas", "erro"),

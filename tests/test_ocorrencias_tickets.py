@@ -348,3 +348,40 @@ def test_familia_do_tipo_separa_erro_nosso_de_pedido(session) -> None:
     assert tipos.e_erro_nosso("erro_producao") is True
     assert tipos.e_erro_nosso("pedido_adicional") is False
     assert tipos.e_erro_nosso("pecas_danificadas_cliente") is False
+
+
+# ---- tipo "Informativo" -----------------------------------------------------
+def test_tipo_informativo_existe_e_e_neutro() -> None:
+    """Nem tudo o que se regista numa obra e' um problema.
+
+    Pedido do Paulo (2026-08-05): muitas vezes o ticket serve so' para dizer
+    alguma coisa a um colega pelo Teams ou para o cliente ficar a saber.
+    """
+    assert tipos.normalizar_tipo("informativo") == "informativo"
+    assert tipos.rotulo_tipo("informativo") == "Informativo"
+    # Nao pode contar como erro nosso na analise do fim do ano.
+    assert tipos.familia_tipo("informativo") == "neutro"
+    assert not tipos.e_erro_nosso("informativo")
+
+
+def test_informativo_aparece_na_lista_de_tipos() -> None:
+    rotulos = [classificacao.rotulo for classificacao in tipos.TIPOS]
+
+    assert "Informativo" in rotulos
+    # Junto dos outros neutros, antes dos erros.
+    assert rotulos.index("Informativo") < rotulos.index("Erro de produção")
+
+
+def test_informativo_conta_no_resumo_por_tipo(session, obras) -> None:
+    viva, _ = obras
+    registar_ocorrencia(
+        session,
+        producao_id=viva.id,
+        assunto="Cliente avisado da data de montagem",
+        texto="Montagem marcada para 12-08; o cliente ficou a saber.",
+        tipo="informativo",
+    )
+
+    resumo = resumo_por_tipo(session)
+
+    assert resumo.get("informativo") == 1
