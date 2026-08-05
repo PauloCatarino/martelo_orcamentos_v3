@@ -138,6 +138,11 @@ class OrcamentoRelatoriosPage(QWidget):
     # Initial column widths suited to the content (phase 8W.2-UX, Part D);
     # "Descrição" is wide enough to show the full text. Columns stay resizable
     # (Interactive), so the user can still adjust them.
+    ITEMS_LARGURAS = {
+        "Item": 50, "Código": 90, "Descrição": 420, "Altura": 75,
+        "Largura": 75, "Profundidade": 95, "Unidade": 65, "Qt": 50,
+        "Preço Unitário": 100, "Preço Total": 100,
+    }
     PLACAS_LARGURAS = {
         "Ref": 80, "Descrição": 240, "P.Liq": 70, "Und": 45, "Desp %": 60,
         "Comp": 60, "Larg": 60, "Esp": 50, "Qt.Pla": 60, "Área": 75,
@@ -344,7 +349,18 @@ class OrcamentoRelatoriosPage(QWidget):
             self._caixa_titulo("Identificação do Orçamento", orc_box), 1
         )
 
-        self.items_table = self._criar_tabela(self.ITEMS_HEADERS)
+        self.items_table = self._criar_tabela(
+            self.ITEMS_HEADERS, larguras=self.ITEMS_LARGURAS
+        )
+        # A descrição de um item traz várias linhas — materiais, acabamentos, o
+        # que não está incluído. Mostrada numa linha só, ficava cortada com "…"
+        # e a única forma de a ler era passar o rato por cima. Aqui a célula
+        # quebra o texto e a altura da linha acompanha o conteúdo, para se
+        # conferir a descrição de relance, sem a caçar com o rato.
+        self.items_table.setWordWrap(True)
+        self.items_table.verticalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.ResizeToContents
+        )
         ligar_persistencia_larguras(self.items_table, "rel_items")
 
         self.total_label = QLabel("")
@@ -1146,7 +1162,14 @@ class OrcamentoRelatoriosPage(QWidget):
                 format_currency(item.preco_total),
             ]
             for col, texto in enumerate(valores):
-                self.items_table.setItem(row, col, criar_item_tabela(texto))
+                celula = criar_item_tabela(texto)
+                # Com linhas altas (descrições de várias linhas), o resto da
+                # linha tem de encostar em cima, senão os preços ficavam a
+                # meio da altura, longe do item a que pertencem.
+                celula.setTextAlignment(
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                )
+                self.items_table.setItem(row, col, celula)
 
         totais = calcular_totais_relatorio(items, self._iva_pct)
         self.total_label.setText(
