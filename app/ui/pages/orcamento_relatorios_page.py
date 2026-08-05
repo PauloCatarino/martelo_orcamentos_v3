@@ -72,6 +72,7 @@ from app.services.relatorio_operacoes_service import RelatorioOperacoesService
 from app.services.relatorio_simplificado_service import RelatorioSimplificadoService
 from app.ui import tema
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
+from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.relatorio_dashboards import DashboardsWidget
 from app.ui.widgets.table_item import criar_item_tabela
@@ -360,6 +361,18 @@ class OrcamentoRelatoriosPage(QWidget):
         self.items_table.setWordWrap(True)
         self.items_table.verticalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.ResizeToContents
+        )
+        # Mesmo formato do PDF e do separador Items: título a negrito, os
+        # materiais em itálico e as linhas "* " (o que NÃO está incluído) a
+        # verde — que é justamente a que mais importa conferir.
+        self.items_table.setItemDelegateForColumn(
+            self.ITEMS_HEADERS.index("Descrição"),
+            DescricaoItemDelegate(self.items_table),
+        )
+        # Ao arrastar a coluna, as alturas têm de ser recalculadas: o texto
+        # passa a quebrar noutro sítio.
+        self.items_table.horizontalHeader().sectionResized.connect(
+            lambda *_: self.items_table.resizeRowsToContents()
         )
         ligar_persistencia_larguras(self.items_table, "rel_items")
 

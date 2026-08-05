@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAbstractTextDocumentLayout, QPalette, QTextDocument
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableView
 
 from app.domain.descricao_format import descricao_para_html
 
@@ -34,9 +34,23 @@ class DescricaoItemDelegate(QStyledItemDelegate):
 
     def sizeHint(self, option, index) -> QSize:
         texto = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        largura = option.rect.width() if option.rect.width() > 0 else 320
-        doc = self._documento(texto, largura)
+        doc = self._documento(texto, self._largura_da_coluna(option, index))
         return QSize(int(doc.idealWidth()) + 2 * _MARGEM, int(doc.size().height()) + _MARGEM)
+
+    def _largura_da_coluna(self, option, index) -> int:
+        """Largura por onde o texto vai quebrar.
+
+        Ao medir a altura de uma linha, o Qt chama ``sizeHint`` com um
+        retângulo ainda sem largura. Sem perguntar à tabela qual é a coluna, a
+        altura saía calculada para uma largura inventada — e a linha ficava
+        alta de mais (ou curta, cortando o fim da descrição).
+        """
+        tabela = self.parent()
+        if isinstance(tabela, QTableView):
+            largura = tabela.columnWidth(index.column())
+            if largura > 0:
+                return largura
+        return option.rect.width() if option.rect.width() > 0 else 320
 
     @staticmethod
     def _documento(texto: str, largura: int, *, com_cor: bool = True) -> QTextDocument:
