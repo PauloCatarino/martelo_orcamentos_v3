@@ -20,6 +20,7 @@ from typing import Iterable, Optional, Sequence
 from sqlalchemy.orm import Session
 
 from app.services.system_setting_service import SystemSettingService
+from app.services.user_pref_service import UserPrefService
 
 
 logger = logging.getLogger(__name__)
@@ -176,9 +177,9 @@ class DocumentoImpressao:
         return self.papel_ficheiro.upper() != self.papel.upper()
 
 
-def chave_prioridades_utilizador(user_id: object) -> str:
-    """Return the per-user system-setting key for the print order."""
-    return f"producao_impressao_prioridades:{user_id or 'default'}"
+#: Chave da ordem de impressão de cada utilizador. O utilizador vai na sua
+#: própria coluna das ``user_prefs`` (ver :mod:`app.services.user_pref_service`).
+CHAVE_PRIORIDADES = "producao_impressao_prioridades"
 
 
 def prioridades_default() -> dict[str, int]:
@@ -189,9 +190,7 @@ def prioridades_default() -> dict[str, int]:
 def obter_prioridades_utilizador(session: Session, user_id: object) -> dict[str, int]:
     """Return this user's print order (the factory one, when never saved)."""
     prioridades = prioridades_default()
-    valor = SystemSettingService(session).obter_valor(
-        chave_prioridades_utilizador(user_id), None
-    )
+    valor = UserPrefService(session).obter_valor(user_id, CHAVE_PRIORIDADES, None)
     if not valor:
         return prioridades
 
@@ -223,8 +222,9 @@ def guardar_prioridades_utilizador(
         for nome, prioridade in prioridades.items()
         if str(nome) in CATEGORIAS_POR_NOME
     }
-    SystemSettingService(session).guardar_valor(
-        chave_prioridades_utilizador(user_id),
+    UserPrefService(session).guardar_valor(
+        user_id,
+        CHAVE_PRIORIDADES,
         json.dumps(limpas, ensure_ascii=False, sort_keys=True),
     )
 

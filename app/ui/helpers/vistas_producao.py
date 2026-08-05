@@ -11,7 +11,7 @@ import json
 
 from sqlalchemy.orm import Session
 
-from app.services.system_setting_service import SystemSettingService
+from app.services.user_pref_service import UserPrefService
 
 
 #: Máximo de vistas guardadas por utilizador.
@@ -40,9 +40,9 @@ class VistaProducao:
         }
 
 
-def chave_vistas(user_id: object) -> str:
-    """Return the per-user system-setting key for saved views."""
-    return f"producao_vistas:{user_id or 'default'}"
+#: Chave das vistas guardadas por cada utilizador. O utilizador vai na sua
+#: própria coluna das ``user_prefs`` (ver :mod:`app.services.user_pref_service`).
+CHAVE_VISTAS = "producao_vistas"
 
 
 def serializar_vistas(vistas) -> str:
@@ -103,13 +103,12 @@ def remover_vista(vistas, nome: str) -> list[VistaProducao]:
 
 def carregar_vistas(session: Session, user_id: object) -> list[VistaProducao]:
     """Load the saved views of one user."""
-    valor = SystemSettingService(session).obter_valor(chave_vistas(user_id), None)
+    valor = UserPrefService(session).obter_valor(user_id, CHAVE_VISTAS, None)
     return desserializar_vistas(valor)
 
 
 def guardar_vistas(session: Session, user_id: object, vistas) -> None:
     """Save the views of one user."""
-    SystemSettingService(session).guardar_valor(
-        chave_vistas(user_id),
-        serializar_vistas(vistas),
+    UserPrefService(session).guardar_valor(
+        user_id, CHAVE_VISTAS, serializar_vistas(vistas)
     )

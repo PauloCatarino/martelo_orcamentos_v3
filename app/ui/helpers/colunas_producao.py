@@ -9,7 +9,7 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
-from app.services.system_setting_service import SystemSettingService
+from app.services.user_pref_service import UserPrefService
 from app.utils.formatters import format_currency
 
 
@@ -186,9 +186,9 @@ LARGURAS_DEFAULT_PRODUCAO: dict[str, int] = {
 }
 
 
-def chave_config_colunas(user_id: object) -> str:
-    """Return the per-user system-setting key for production columns."""
-    return f"producao_colunas:{user_id or 'default'}"
+#: Chave da configuração de colunas de cada utilizador. O utilizador vai na sua
+#: própria coluna das ``user_prefs`` (ver :mod:`app.services.user_pref_service`).
+CHAVE_CONFIG_COLUNAS = "producao_colunas"
 
 
 def _visiveis_default() -> list[str]:
@@ -275,7 +275,7 @@ def desserializar_config(texto: str | None) -> tuple[list[str], dict[str, int]]:
 
 def carregar_config(session: Session, user_id: object) -> tuple[list[str], dict[str, int]]:
     """Load the production-column configuration for one user."""
-    valor = SystemSettingService(session).obter_valor(chave_config_colunas(user_id), None)
+    valor = UserPrefService(session).obter_valor(user_id, CHAVE_CONFIG_COLUNAS, None)
     return desserializar_config(valor)
 
 
@@ -286,7 +286,6 @@ def guardar_config(
     larguras: dict[str, int],
 ) -> None:
     """Save the production-column configuration for one user."""
-    SystemSettingService(session).guardar_valor(
-        chave_config_colunas(user_id),
-        serializar_config(visiveis, larguras),
+    UserPrefService(session).guardar_valor(
+        user_id, CHAVE_CONFIG_COLUNAS, serializar_config(visiveis, larguras)
     )

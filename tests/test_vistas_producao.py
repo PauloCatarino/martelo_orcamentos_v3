@@ -6,7 +6,7 @@ from app.ui.helpers.vistas_producao import (
     MAX_VISTAS,
     VistaProducao,
     carregar_vistas,
-    chave_vistas,
+    CHAVE_VISTAS,
     desserializar_vistas,
     guardar_vistas,
     remover_vista,
@@ -15,9 +15,11 @@ from app.ui.helpers.vistas_producao import (
 )
 
 
-def test_chave_e_por_utilizador() -> None:
-    assert chave_vistas(7) == "producao_vistas:7"
-    assert chave_vistas(None) == "producao_vistas:default"
+def test_a_chave_ja_nao_leva_o_utilizador_colado() -> None:
+    # O utilizador passou a viver na sua propria coluna das `user_prefs`:
+    # a chave e' so' o nome da preferencia.
+    assert CHAVE_VISTAS == "producao_vistas"
+    assert ":" not in CHAVE_VISTAS
 
 
 def test_ida_e_volta_pela_serializacao() -> None:

@@ -43,6 +43,7 @@ from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
 from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.models.user_permission import UserPermission
+from app.models.user_pref import UserPref
 
 __all__ = [
     "Cliente",
@@ -86,4 +87,5 @@ __all__ = [
     "SystemSetting",
     "User",
     "UserPermission",
+    "UserPref",
 ]

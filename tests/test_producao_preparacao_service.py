@@ -179,13 +179,9 @@ def test_projeto_producao_pdf_sai_leve_o_bastante_para_email(tmp_path: Path) -> 
 
 
 def test_chave_e_serializacao_das_preferencias() -> None:
-    assert (
-        svc.chave_validacoes_utilizador(7) == "producao_preparacao_validacoes:7"
-    )
-    assert (
-        svc.chave_validacoes_utilizador(None)
-        == "producao_preparacao_validacoes:default"
-    )
+    # O utilizador vive na coluna `user_id` das `user_prefs`, nao na chave.
+    assert svc.CHAVE_VALIDACOES == "producao_preparacao_validacoes"
+    assert ":" not in svc.CHAVE_VALIDACOES
 
     fonte = inspect.getsource(svc.guardar_validacoes_utilizador)
     assert "json.dumps" in fonte

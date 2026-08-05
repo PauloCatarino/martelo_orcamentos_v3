@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.services.pdf_compressao_service import comprimir_pdf
 from app.services.pdf_imagem_service import documento_pdf
 from app.services.system_setting_service import SystemSettingService
+from app.services.user_pref_service import UserPrefService
 
 
 logger = logging.getLogger(__name__)
@@ -237,9 +238,10 @@ class _Instantaneo:
         return self.ficheiros > 0
 
 
-def chave_validacoes_utilizador(user_id: object) -> str:
-    """Return the per-user system-setting key for the chosen validations."""
-    return f"producao_preparacao_validacoes:{user_id or 'default'}"
+#: Chave das validações escolhidas por cada utilizador. O utilizador já não
+#: entra na chave: vive na sua própria coluna das ``user_prefs`` (ver
+#: :mod:`app.services.user_pref_service`).
+CHAVE_VALIDACOES = "producao_preparacao_validacoes"
 
 
 def listar_validacoes_configuraveis() -> list[dict[str, str]]:
@@ -252,9 +254,7 @@ def listar_validacoes_configuraveis() -> list[dict[str, str]]:
 
 def obter_validacoes_utilizador(session: Session, user_id: object) -> set[str]:
     """Return the file validations chosen by one user (all, by default)."""
-    valor = SystemSettingService(session).obter_valor(
-        chave_validacoes_utilizador(user_id), None
-    )
+    valor = UserPrefService(session).obter_valor(user_id, CHAVE_VALIDACOES, None)
     if not valor:
         return set(KEYS_FICHEIROS)
 
@@ -276,15 +276,13 @@ def guardar_validacoes_utilizador(
     limpas = sorted(
         {str(key).strip() for key in keys if str(key).strip() in KEYS_FICHEIROS}
     )
-    SystemSettingService(session).guardar_valor(
-        chave_validacoes_utilizador(user_id),
-        json.dumps(limpas, ensure_ascii=False),
+    UserPrefService(session).guardar_valor(
+        user_id, CHAVE_VALIDACOES, json.dumps(limpas, ensure_ascii=False)
     )
 
 
-def chave_email_projeto_utilizador(user_id: object) -> str:
-    """Chave do 'avisar o cliente' de cada utilizador (é escolha pessoal)."""
-    return f"producao_email_projeto:{user_id or 'default'}"
+#: Chave do "avisar o cliente" de cada utilizador (é escolha pessoal).
+CHAVE_EMAIL_PROJETO = "producao_email_projeto"
 
 
 def obter_email_projeto_ativo(session: Session, user_id: object) -> bool:
@@ -293,9 +291,7 @@ def obter_email_projeto_ativo(session: Session, user_id: object) -> bool:
     Desligado por defeito: nem todos falam com o cliente, e ninguém deve ser
     surpreendido por uma janela de email que não pediu.
     """
-    valor = SystemSettingService(session).obter_valor(
-        chave_email_projeto_utilizador(user_id), ""
-    )
+    valor = UserPrefService(session).obter_valor(user_id, CHAVE_EMAIL_PROJETO, "")
     return str(valor or "").strip().upper() in {"ON", "1", "TRUE", "SIM"}
 
 
@@ -303,8 +299,8 @@ def guardar_email_projeto_ativo(
     session: Session, user_id: object, ativo: bool
 ) -> None:
     """Guardar a escolha deste utilizador."""
-    SystemSettingService(session).guardar_valor(
-        chave_email_projeto_utilizador(user_id), "ON" if ativo else "OFF"
+    UserPrefService(session).guardar_valor(
+        user_id, CHAVE_EMAIL_PROJETO, "ON" if ativo else "OFF"
     )
 
 

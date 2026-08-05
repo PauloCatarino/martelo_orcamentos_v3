@@ -157,7 +157,11 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "app_session" in source
     assert "carregar_config" in source
     assert "guardar_config" in source
-    assert "SystemSettingService" in helper_source
+    # As colunas sao preferencia PESSOAL: vao para as `user_prefs`, que uma
+    # conta normal pode escrever — a `system_settings` esta' trancada por causa
+    # das credenciais que guarda.
+    assert "UserPrefService" in helper_source
+    assert "SystemSettingService" not in helper_source
     assert "selectionChanged.connect(self._on_select_row)" in source
     assert "converter_orcamento" in source
     assert "criar_processo_externo" in source

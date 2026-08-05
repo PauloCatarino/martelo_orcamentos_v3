@@ -200,14 +200,10 @@ def test_pasta_inexistente_devolve_lista_vazia(tmp_path: Path) -> None:
     assert svc.listar_documentos(tmp_path / "nao_existe") == []
 
 
-def test_chave_das_prioridades_e_por_utilizador() -> None:
-    assert (
-        svc.chave_prioridades_utilizador(4) == "producao_impressao_prioridades:4"
-    )
-    assert (
-        svc.chave_prioridades_utilizador(None)
-        == "producao_impressao_prioridades:default"
-    )
+def test_a_chave_das_prioridades_ja_nao_leva_o_utilizador() -> None:
+    # Vive na coluna `user_id` das `user_prefs`.
+    assert svc.CHAVE_PRIORIDADES == "producao_impressao_prioridades"
+    assert ":" not in svc.CHAVE_PRIORIDADES
     assert json.dumps(svc.prioridades_default())
 
 
