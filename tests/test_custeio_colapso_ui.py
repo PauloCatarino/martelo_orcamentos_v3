@@ -40,6 +40,11 @@ class _FakePage:
     _toggle_composta = P._toggle_composta
     _on_cell_entered_ferragem = P._on_cell_entered_ferragem
     _esconder_x_ferragem = P._esconder_x_ferragem
+    # Abrir/agrupar tudo: o botão só existe na página a sério (e estes métodos
+    # saem sem fazer nada quando ele não está lá), mas são chamados por baixo.
+    _ids_colapsaveis = P._ids_colapsaveis
+    _tudo_expandido = P._tudo_expandido
+    _atualizar_botao_expandir_tudo = P._atualizar_botao_expandir_tudo
 
 
 def _montar():

@@ -350,6 +350,9 @@ class OrcamentoItemCusteioPage(QWidget):
     _TAMANHO_MINIATURA_MODULO = 28
     # Slightly shorter row for the discreet separator line (phase 8V.4).
     _ALTURA_SEPARADOR = 16
+    # Um botão só para as duas funções: o texto diz o que o próximo clique faz.
+    _TEXTO_EXPANDIR_TUDO = "▼ Expandir tudo"
+    _TEXTO_AGRUPAR_TUDO = "▶ Agrupar tudo"
     # Session-level clipboard for copy/cut of cost lines, shared across page
     # instances so lines can be pasted BETWEEN items (phase 8V.5).
     _clipboard_custeio: ClipboardCusteio | None = None
@@ -630,6 +633,11 @@ class OrcamentoItemCusteioPage(QWidget):
         self.insert_division_button = QPushButton("Inserir Divis\u00e3o")
         self.insert_division_button.clicked.connect(self.inserir_divisao)
 
+        # Um bot\u00e3o s\u00f3, com as duas fun\u00e7\u00f5es: abre tudo, e no clique seguinte
+        # agrupa tudo. O texto diz sempre o que o PR\u00d3XIMO clique vai fazer.
+        self.expandir_tudo_button = QPushButton(self._TEXTO_EXPANDIR_TUDO)
+        self.expandir_tudo_button.clicked.connect(self.alternar_expandir_tudo)
+
         # The library visibility toggle is kept beside the splitter so it stays
         # available even after the collapsible panel is hidden.
         self.import_module_button = QPushButton("Importar M\u00f3dulo")
@@ -674,6 +682,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.modalidade_label)
         actions_layout.addWidget(self.opcoes_simplificado_button)
         actions_layout.addWidget(self.insert_division_button)
+        actions_layout.addWidget(self.expandir_tudo_button)
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.guardar_modulo_button)
@@ -2095,6 +2104,7 @@ class OrcamentoItemCusteioPage(QWidget):
         """
         self._descendentes_composta = descendentes_por_composta(linhas)
         self._ferragens_associadas_por_peca = ferragens_associadas_por_peca(linhas)
+        self._atualizar_botao_expandir_tudo()
         for row, linha in self._custeio_by_row.items():
             tipo = normalize_custeio_linha_type(linha.tipo_linha)
             if tipo == PECA_COMPOSTA:
@@ -2232,6 +2242,69 @@ class OrcamentoItemCusteioPage(QWidget):
             self._aplicar_visibilidade_compostas()
         finally:
             self._carregando_tabela = False
+        self._atualizar_botao_expandir_tudo()
+
+    # --- abrir/agrupar tudo de uma vez ---------------------------------------
+
+    def _ids_colapsaveis(self) -> set[int]:
+        """Os blocos que abrem e fecham: compostas e peças com ferragens auto."""
+        return {
+            *self._descendentes_composta.keys(),
+            *self._ferragens_associadas_por_peca.keys(),
+        }
+
+    def _tudo_expandido(self) -> bool:
+        """Há blocos e estão todos abertos? (sem blocos, não há nada a abrir)"""
+        colapsaveis = self._ids_colapsaveis()
+        return bool(colapsaveis) and colapsaveis <= self._compostas_expandidas
+
+    def alternar_expandir_tudo(self) -> None:
+        """Abrir todos os blocos — ou agrupá-los todos, se já estiverem abertos."""
+        colapsaveis = self._ids_colapsaveis()
+        if not colapsaveis:
+            self.status_label.setText("Não há peças compostas para expandir.")
+            return
+
+        if self._tudo_expandido():
+            self._compostas_expandidas -= colapsaveis
+            aviso = f"{len(colapsaveis)} bloco(s) agrupado(s)."
+        else:
+            self._compostas_expandidas |= colapsaveis
+            aviso = f"{len(colapsaveis)} bloco(s) expandido(s)."
+
+        self._carregando_tabela = True
+        try:
+            for row, linha in self._custeio_by_row.items():
+                if linha.id in colapsaveis:
+                    self._definir_seta_composta(
+                        row,
+                        linha.id in self._compostas_expandidas,
+                        tipo_linha=linha.tipo_linha,
+                    )
+            self._aplicar_visibilidade_compostas()
+        finally:
+            self._carregando_tabela = False
+
+        self._atualizar_botao_expandir_tudo()
+        self.status_label.setText(aviso)
+
+    def _atualizar_botao_expandir_tudo(self) -> None:
+        """O texto do botão diz o que o PRÓXIMO clique faz."""
+        botao = getattr(self, "expandir_tudo_button", None)
+        if botao is None:
+            return
+
+        agrupar = self._tudo_expandido()
+        botao.setText(
+            self._TEXTO_AGRUPAR_TUDO if agrupar else self._TEXTO_EXPANDIR_TUDO
+        )
+        botao.setToolTip(
+            "Fechar todas as peças compostas, para ver o custeio de relance."
+            if agrupar
+            else "Abrir todas as peças compostas, para ver as peças e ferragens "
+            "que as compõem."
+        )
+        botao.setEnabled(bool(self._ids_colapsaveis()))
 
     # --- ✕ rápido para eliminar ferragens (aparece ao passar o rato) ------
 
