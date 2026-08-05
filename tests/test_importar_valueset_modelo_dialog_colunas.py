@@ -47,8 +47,8 @@ def dialog(_app, monkeypatch):
         def __init__(self, _session):
             pass
 
-        def listar_modelos_utilizador(self):
-            return [
+        def listar_modelos_para_separadores(self, _user_id, is_admin=False):
+            utilizador = [
                 _modelo(),
                 _modelo(
                     id=2,
@@ -57,9 +57,7 @@ def dialog(_app, monkeypatch):
                     descricao="Interiores mlm Linho/frentes lacadas",
                 ),
             ]
-
-        def listar_modelos_globais(self):
-            return [
+            globais = [
                 _modelo(
                     id=3,
                     codigo="GLOBAL_1",
@@ -68,6 +66,7 @@ def dialog(_app, monkeypatch):
                     visivel_para_todos=True,
                 )
             ]
+            return utilizador, globais
 
     monkeypatch.setattr(modulo, "SessionLocal", lambda: _FakeSession())
     monkeypatch.setattr(modulo, "DefValuesetModeloService", _FakeService)

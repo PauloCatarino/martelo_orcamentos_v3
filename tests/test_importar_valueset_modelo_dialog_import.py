@@ -45,8 +45,11 @@ def test_dialog_uses_user_and_global_service_methods() -> None:
     source = inspect.getsource(ImportarValuesetModeloDialog._carregar)
 
     assert "DefValuesetModeloService" in source
-    assert "listar_modelos_utilizador" in source
-    assert "listar_modelos_globais" in source
+    # Tem de ser o metodo que recebe o utilizador: o separador "Utilizador" so'
+    # pode mostrar os modelos de quem esta' com sessao iniciada.
+    assert "listar_modelos_para_separadores" in source
+    assert "self._user_id()" in source
+    assert "is_admin=False" in source
 
 
 def test_dialog_requires_selection_message() -> None:

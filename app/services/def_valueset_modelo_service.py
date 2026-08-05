@@ -73,21 +73,11 @@ class DefValuesetModeloService:
         """List active reusable ValueSet models."""
         return self.repository.list_active()
 
-    def listar_modelos_utilizador(self) -> list[DefValuesetModeloResumo]:
-        """List active models scoped to the user (not global / not shared)."""
-        return [
-            modelo
-            for modelo in self.repository.list_active()
-            if not self._e_global(modelo)
-        ]
-
-    def listar_modelos_globais(self) -> list[DefValuesetModeloResumo]:
-        """List active models that are global or shared with everyone."""
-        return [
-            modelo
-            for modelo in self.repository.list_active()
-            if self._e_global(modelo)
-        ]
+    # Havia aqui um `listar_modelos_utilizador()` que, apesar do nome, devolvia
+    # os modelos NAO-globais de TODA a gente — nao filtrava por dono nenhum. Era
+    # o que o dialogo de importar usava, e por isso mostrava os modelos dos
+    # colegas e do administrador. Removido: quem precisa das duas listas usa
+    # `listar_modelos_para_separadores`, que recebe o utilizador.
 
     def listar_modelos_para_separadores(
         self,

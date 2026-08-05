@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_valueset_modelo_service import DefValuesetModeloService
@@ -126,20 +127,36 @@ class ImportarValuesetModeloDialog(QDialog):
         return container
 
     def _carregar(self) -> None:
-        """Load user and global active ValueSet models."""
+        """Load active ValueSet models: the user's own, plus the global ones.
+
+        O separador "Utilizador" mostra **só os modelos de quem está com sessão
+        iniciada** — nem os dos colegas nem os do administrador. Quem importa um
+        modelo para um orçamento quer os seus; os que são para toda a gente
+        estão no separador "Global". (Na página Modelos ValueSet é diferente de
+        propósito: aí um administrador vê os de todos, porque é onde se gerem.)
+        """
         self.status_label.clear()
 
         try:
             with SessionLocal() as session:
                 service = DefValuesetModeloService(session)
-                self._abas["user"]["modelos"] = service.listar_modelos_utilizador()
-                self._abas["global"]["modelos"] = service.listar_modelos_globais()
+                utilizador, globais = service.listar_modelos_para_separadores(
+                    self._user_id(), is_admin=False
+                )
+                self._abas["user"]["modelos"] = utilizador
+                self._abas["global"]["modelos"] = globais
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os modelos ValueSet.")
             return
 
         self._filtrar("user")
         self._filtrar("global")
+
+    @staticmethod
+    def _user_id() -> int | None:
+        """Id de quem está com sessão iniciada (None sem sessão)."""
+        valor = getattr(app_session.current_user, "id", None)
+        return int(valor) if valor else None
 
     def _filtrar(self, key: str) -> None:
         """Filter one tab's models by its own search term."""

@@ -143,7 +143,7 @@ def test_listar_modelos(monkeypatch) -> None:
     assert service.listar_modelos() == [_resumo(id=3)]
 
 
-def test_listar_modelos_utilizador_e_globais(monkeypatch) -> None:
+def test_partilhado_com_todos_conta_como_global(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [
         _resumo(id=1, codigo="USER", ambito="UTILIZADOR", visivel_para_todos=False),
@@ -151,8 +151,7 @@ def test_listar_modelos_utilizador_e_globais(monkeypatch) -> None:
         _resumo(id=3, codigo="SHARED", ambito="UTILIZADOR", visivel_para_todos=True),
     ]
 
-    utilizador = service.listar_modelos_utilizador()
-    globais = service.listar_modelos_globais()
+    utilizador, globais = service.listar_modelos_para_separadores(None, is_admin=True)
 
     assert [modelo.codigo for modelo in utilizador] == ["USER"]
     assert sorted(modelo.codigo for modelo in globais) == ["GLOB", "SHARED"]
