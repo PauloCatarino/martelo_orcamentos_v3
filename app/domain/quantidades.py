@@ -3,8 +3,19 @@
 qt_total of a line = qt_mod_efetivo x qt_und, where qt_mod_efetivo is the qt_mod
 of the DIVISAO_INDEPENDENTE line that governs the block above it (or the line's
 own qt_mod when no division is active). A composite component (linha_pai set)
-also multiplies by the composed-unit quantity and, when present, the sibling
-main piece's qt_und (e.g. two doors per double-door unit).
+multiplies, além disso, pela quantidade de cada ancestral — e mais nada:
+
+    qt total = qt mod  x  qt und do composto  x  qt und do componente
+
+**Regra retirada (2026-08-05).** Havia aqui uma tentativa de adivinhar a "peça
+principal" de uma composta — a PRIMEIRA peça estrutural da lista — e multiplicar
+todos os outros componentes pela quantidade dela. Servia a porta dupla (2
+portas por unidade => 2x as dobradiças), mas o código não distingue "2 portas
+por unidade" de "2 lados por gaveta": numa gaveta, o primeiro componente é o
+LADO_GAVETA com 2, e o fundo, a frente, a corrediça e o puxador vinham todos a
+dobrar. Quantidades que dependem de uma peça (dobradiças por porta) configuram-se
+**nessa peça**, não na composta — a expansão desce aos associados dela, como se
+fez com as uniões nos topos, que passaram para o FUNDO_2000.
 
 Pure and deterministic: the caller passes the lines in display (id) order.
 """
@@ -15,12 +26,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from app.domain.custeio_linha_types import (
-    DIVISAO_INDEPENDENTE,
-    PECA,
-    PECA_COMPOSTA,
-    SEPARADOR,
-)
+from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, SEPARADOR
 from app.domain.medidas import normalizar_numero
 
 _UM = Decimal("1")
@@ -64,7 +70,7 @@ def calcular_quantidades(
       the active division's qt_mod, or the line's own qt_mod when no division is
       active;
     - a composite component (linha_pai set): qt_total = qt_mod_efetivo x
-      qt_und(peça principal) x qt_und(componente).
+      qt_und de cada ancestral x qt_und(componente).
 
     The lines MUST be given in display (id) order so each division governs the
     lines that follow it. Never raises.
@@ -106,25 +112,6 @@ def calcular_quantidades(
 
         if fatores_ancestrais:
             fatores_ancestrais.reverse()
-            # The composite header and its main PECA are siblings. A component
-            # such as a hinge/handle needs both the composed-unit count and the
-            # number of main pieces per unit (double door = 2 doors).
-            pai_direto = por_id.get(linha.linha_pai_id)
-            if pai_direto is not None and pai_direto.tipo_linha == PECA_COMPOSTA:
-                principais = [
-                    outra
-                    for outra in linhas
-                    if outra.linha_pai_id == pai_direto.id
-                    and outra.tipo_linha == PECA
-                    and outra.id != linha.id
-                ]
-                if principais:
-                    # ``linhas`` is already in display order; use the first
-                    # structural PECA rather than assuming IDs are sequential.
-                    principal = principais[0]
-                    fator_principal = _num(principal.qt_und)
-                    if fator_principal != _UM:
-                        fatores_ancestrais.append(fator_principal)
             qt_total = qt_mod_efetivo * qt_und
             for fator in fatores_ancestrais:
                 qt_total *= fator

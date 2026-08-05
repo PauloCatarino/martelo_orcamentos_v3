@@ -103,19 +103,47 @@ def test_qt_total_componente_multiplica_qt_und_principal() -> None:
     assert res[2].cadeia == (Decimal("1"), Decimal("2"), Decimal("5"))
 
 
-def test_componente_composta_multiplica_cabecalho_e_peca_principal() -> None:
-    """A double-door block counts both units and doors per unit."""
+def test_um_irmao_com_quantidade_nao_multiplica_os_outros() -> None:
+    """A quantidade de um componente não contamina os irmãos.
+
+    Havia aqui uma regra que adivinhava a "peça principal" da composta — a
+    primeira peça da lista — e multiplicava todos os outros componentes pela
+    quantidade dela. Numa gaveta o primeiro componente é o LADO_GAVETA, com 2,
+    e o fundo, a frente, a corrediça e o puxador vinham todos a dobrar.
+    """
     linhas = [
-        _peca(1, Decimal("2"), tipo=PECA_COMPOSTA),
-        _peca(2, Decimal("2"), tipo=PECA, linha_pai_id=1),
-        _peca(3, Decimal("6"), tipo=FERRAGEM, linha_pai_id=1),
+        _peca(1, Decimal("2"), tipo=PECA_COMPOSTA),  # 2 gavetas
+        _peca(2, Decimal("2"), tipo=PECA, linha_pai_id=1),  # 2 lados cada
+        _peca(3, Decimal("1"), tipo=PECA, linha_pai_id=1),  # 1 fundo cada
+        _peca(4, Decimal("1"), tipo=FERRAGEM, linha_pai_id=1),  # 1 corrediça
     ]
     res = calcular_quantidades(linhas)
 
+    assert res[2].qt_total == Decimal("4")  # 1 x 2 x 2
+    assert formatar_cadeia(res[2].cadeia) == "1 x 2 x 2"
+    assert res[3].qt_total == Decimal("2")  # 1 x 2 x 1 — e não 4
+    assert formatar_cadeia(res[3].cadeia) == "1 x 2 x 1"
+    assert res[4].qt_total == Decimal("2")
+    assert formatar_cadeia(res[4].cadeia) == "1 x 2 x 1"
+
+
+def test_quantidade_por_peca_vive_na_peca_e_nao_na_composta() -> None:
+    """Dobradiças por porta configuram-se NA PORTA — e aí multiplicam.
+
+    É o mesmo caminho das uniões nos topos, que passaram para o FUNDO_2000:
+    o que depende de uma peça pendura-se nessa peça, e a cadeia de ancestrais
+    trata do resto.
+    """
+    linhas = [
+        _peca(1, Decimal("2"), tipo=PECA_COMPOSTA),  # 2 unidades
+        _peca(2, Decimal("2"), tipo=PECA, linha_pai_id=1),  # 2 portas cada
+        _peca(3, Decimal("6"), tipo=FERRAGEM, linha_pai_id=2),  # 6 por PORTA
+    ]
+    res = calcular_quantidades(linhas)
+
+    # 1 módulo x 2 unidades x 2 portas x 6 dobradiças.
     assert res[3].qt_total == Decimal("24")
-    assert res[3].cadeia == (
-        Decimal("1"), Decimal("2"), Decimal("2"), Decimal("6")
-    )
+    assert formatar_cadeia(res[3].cadeia) == "1 x 2 x 2 x 6"
 
 
 def test_componente_porta_simples_nao_cria_fator_extra() -> None:

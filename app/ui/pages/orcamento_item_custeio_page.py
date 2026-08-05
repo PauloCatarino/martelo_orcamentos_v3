@@ -3734,7 +3734,7 @@ class OrcamentoItemCusteioPage(QWidget):
     ) -> str:
         """3-block tooltip for the quantity columns (QT mod / QT und / QT total).
 
-        Uses the resolved chain (modules × main piece × component) so QT total is
+        Uses the resolved chain (modules × composite × component) so QT total is
         shown with the effective division quantity, e.g. "3 × 1 × 5 = 15".
         """
         resultado = self._quantidades_por_linha.get(linha.id)
