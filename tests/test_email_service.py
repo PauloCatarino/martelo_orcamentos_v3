@@ -511,3 +511,45 @@ def test_juntar_ao_historico_sem_etiqueta_body() -> None:
 
 def test_juntar_ao_historico_sem_historico_nao_mexe() -> None:
     assert email_service._juntar_ao_historico("<p>novo</p>", "") == "<p>novo</p>"
+
+
+# ---- ligar ao Outlook: a armadilha da janela elevada -------------------------
+def _outlook_indisponivel(monkeypatch):
+    """win32 que nunca liga, e sem esperas entre tentativas."""
+    import time as _time
+
+    monkeypatch.setattr(_time, "sleep", lambda _s: None)
+
+    class _Win32:
+        def GetActiveObject(self, _nome):  # noqa: N802 - assinatura do pywin32
+            raise OSError("(-2146959355, 'A execução no servidor falhou', None, None)")
+
+        def Dispatch(self, _nome):  # noqa: N802 - assinatura do pywin32
+            raise OSError("(-2146959355, 'A execução no servidor falhou', None, None)")
+
+    return _Win32()
+
+
+def test_erro_de_janela_elevada_explica_o_instalador(monkeypatch) -> None:
+    monkeypatch.setattr(email_service, "_is_elevated", lambda: True)
+
+    with pytest.raises(RuntimeError) as erro:
+        email_service._ligar_outlook(_outlook_indisponivel(monkeypatch))
+
+    mensagem = str(erro.value)
+    # A saida imediata tem de estar la': fechar e abrir pelo atalho.
+    assert "atalho" in mensagem
+    # E a causa mais comum: ter carregado em "Abrir" no fim do instalador.
+    assert "INSTALAR" in mensagem
+    assert "ADMINISTRADOR" in mensagem
+
+
+def test_erro_sem_elevacao_aponta_para_o_office(monkeypatch) -> None:
+    monkeypatch.setattr(email_service, "_is_elevated", lambda: False)
+
+    with pytest.raises(RuntimeError) as erro:
+        email_service._ligar_outlook(_outlook_indisponivel(monkeypatch))
+
+    mensagem = str(erro.value)
+    assert "Reparar o Office" in mensagem
+    assert "ADMINISTRADOR" not in mensagem

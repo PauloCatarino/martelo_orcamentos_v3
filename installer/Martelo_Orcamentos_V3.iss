@@ -73,4 +73,10 @@ Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "Abrir {#AppName}"; Flags: nowait postinstall skipifsilent; WorkingDir: "{app}"
+; runasoriginaluser: o instalador corre elevado (PrivilegesRequired=admin, para
+; poder escrever em Program Files) e, sem esta bandeira, a aplicacao aberta no
+; fim do setup herdava esse nivel. O COM recusa ligar entre niveis diferentes,
+; e o Outlook — que corre como utilizador normal — ficava inalcancavel: o envio
+; de emails falhava com "A execucao no servidor falhou" ate' fechar e reabrir
+; pelo atalho. Aconteceu a` Andreia a testar a beta (2026-08-05).
+Filename: "{app}\{#AppExeName}"; Description: "Abrir {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser; WorkingDir: "{app}"

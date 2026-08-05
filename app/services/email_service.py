@@ -549,11 +549,15 @@ def _ligar_outlook(win32_client: Any) -> Any:
 
     if _is_elevated():
         mensagem = (
-            "Não foi possível ligar ao Outlook. A aplicação está a correr como "
-            "ADMINISTRADOR (elevada) e o Outlook corre como utilizador normal — o COM "
-            "recusa ligar entre níveis diferentes. SOLUÇÃO: feche e abra o Martelo V3 (ou "
-            "o VS Code/terminal a partir do qual o lança) SEM 'Executar como "
-            "administrador'.\n\nDetalhe técnico: " + str(ultimo_erro)
+            "Não foi possível ligar ao Outlook. Esta janela do Martelo está a "
+            "correr como ADMINISTRADOR e o Outlook corre como utilizador "
+            "normal — o Windows não os deixa falar entre si.\n\n"
+            "SOLUÇÃO: feche o Martelo e abra-o pelo atalho do menu Iniciar ou "
+            "do Ambiente de Trabalho. Depois disso o email já sai.\n\n"
+            "Acontece sobretudo quando se acabou de INSTALAR e se carregou em "
+            "'Abrir' no fim do instalador: essa janela nasce como "
+            "administrador. Basta fechá-la e voltar a abrir pelo atalho.\n\n"
+            "Detalhe técnico: " + str(ultimo_erro)
         )
     else:
         mensagem = (
