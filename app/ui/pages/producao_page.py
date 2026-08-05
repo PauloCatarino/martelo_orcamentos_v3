@@ -363,6 +363,14 @@ class ProducaoPage(QWidget):
         )
         self.imprimir_action.triggered.connect(self._abrir_impressao)
 
+        self.notificar_cliente_action = QAction("Notificar Cliente", self)
+        self.notificar_cliente_action.setToolTip(
+            "Preparar o email que diz ao cliente que a obra vai para produção "
+            "(o mesmo que o Martelo propõe ao passar de Desenho para Produção). "
+            "Aqui pode fazê-lo a qualquer momento; quem envia continua a ser você"
+        )
+        self.notificar_cliente_action.triggered.connect(self._notificar_cliente)
+
         self.criar_encomenda_imos_action = QAction("Criar Encomenda IMOS…", self)
         self.criar_encomenda_imos_action.setToolTip(
             "Criar no iMos a pasta do cliente (se faltar) e a encomenda desta "
@@ -377,12 +385,13 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.setToolTipsVisible(True)
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
+        self.funcoes_menu.addAction(self.notificar_cliente_action)
         self.funcoes_menu.addAction(self.criar_encomenda_imos_action)
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
             "Funções sobre a pasta da obra: preparar a obra para produção, "
-            "imprimir os documentos e criar a encomenda no iMos"
+            "imprimir os documentos, avisar o cliente e criar a encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -2808,17 +2817,37 @@ class ProducaoPage(QWidget):
             return self._format_value(getattr(processo, "pasta_servidor", ""))
         return str(caminho)
 
-    def _avisar_cliente_do_projeto(self, processo_id: int) -> None:
+    def _notificar_cliente(self) -> None:
+        """Avisar o cliente por email, a pedido — sem esperar pela mudança de estado.
+
+        A mesma preparação que o Martelo propõe ao passar de Desenho para
+        Produção, mas quando o utilizador quiser: para reenviar, para uma obra
+        que já lá estava, ou para quem não tem a opção automática ligada.
+        """
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para notificar o cliente.")
+            return
+
+        self._avisar_cliente_do_projeto(processo.id, automatico=False)
+
+    def _avisar_cliente_do_projeto(
+        self, processo_id: int, *, automatico: bool = True
+    ) -> None:
         """Preparar o email que diz ao cliente que a obra entrou em produção.
 
-        Só corre para quem ligou a opção nas Preferências da Preparação. O
-        Martelo prepara tudo; quem envia é o utilizador — e só quando o envio
+        O Martelo prepara tudo; quem envia é o utilizador — e só quando o envio
         corre bem é que fica o registo na coluna "Projeto Cliente".
+
+        ``automatico`` distingue as duas entradas: a mudança de estado só corre
+        para quem ligou a opção nas Preferências da Preparação e cala-se se
+        estiver desligada; o "Notificar Cliente" do menu Funções foi pedido a
+        clicar, por isso corre sempre — calar-se aí seria o botão não fazer nada.
         """
         user_id = self._colunas_user_id_int()
         try:
             with SessionLocal() as session:
-                if not obter_email_projeto_ativo(session, user_id):
+                if automatico and not obter_email_projeto_ativo(session, user_id):
                     return
                 envio = preparar_envio(
                     session,
