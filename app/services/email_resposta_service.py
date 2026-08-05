@@ -23,10 +23,27 @@ import re
 from types import SimpleNamespace
 from typing import Callable, Sequence
 
+from app.domain.pesquisa_texto import normalizar
+
 logger = logging.getLogger(__name__)
 
 #: Extensão dos emails guardados a partir do Outlook.
 EXTENSAO_EMAIL = ".msg"
+
+#: Palavras que denunciam um pedido de orçamento. Servem para adivinhar qual
+#: dos emails guardados é o pedido, quando a pasta tem vários que nada têm a
+#: ver com isso — e procuram-se **no nome do ficheiro**: ao arrastar um email
+#: do Outlook para uma pasta, o nome que ele ganha é o próprio assunto. Assim
+#: escolhe-se sem ter de abrir nenhum.
+PALAVRAS_PEDIDO: tuple[str, ...] = (
+    "orcamento",
+    "cotacao",
+    "preco",
+    "proposta",
+    "pedido",
+    "consulta",
+    "solicitacao",
+)
 
 #: Prefixos que já marcam uma resposta ou reencaminhamento.
 _JA_E_RESPOSTA = re.compile(r"^\s*(re|res|rv|fw|fwd|enc)\s*:", re.IGNORECASE)
@@ -56,11 +73,28 @@ class EmailDoCliente:
         return " — ".join(partes[:2]) + (f" {partes[2]}" if len(partes) > 2 else "")
 
 
+def pontuar_pedido(nome: object) -> int:
+    """Quantas palavras de pedido de orçamento aparecem no nome do ficheiro."""
+    texto = normalizar(Path(str(nome or "")).stem)
+    return sum(1 for palavra in PALAVRAS_PEDIDO if palavra in texto)
+
+
+def parece_pedido(nome: object) -> bool:
+    """O nome sugere mesmo um pedido de orçamento?"""
+    return pontuar_pedido(nome) > 0
+
+
 def procurar_emails_do_cliente(*pastas: Path | str | None) -> tuple[Path, ...]:
-    """Emails guardados nas pastas dadas, do mais recente para o mais antigo.
+    """Emails guardados nas pastas dadas, o mais provável primeiro.
 
     Procura por ordem: a primeira pasta que tiver emails ganha. Assim o email
     guardado na pasta da versão manda sobre um mais antigo na raiz da obra.
+
+    A ordem põe à frente os que **parecem um pedido de orçamento** pelo
+    assunto, e só depois desempata pela data: a pasta pode ter outros emails
+    que nada têm a ver, e é ao primeiro da lista que o Martelo propõe
+    responder.
+
     Nunca levanta — uma pasta do servidor pode simplesmente não responder.
     """
     for pasta in pastas:
@@ -79,7 +113,10 @@ def procurar_emails_do_cliente(*pastas: Path | str | None) -> tuple[Path, ...]:
             continue
         if encontrados:
             return tuple(
-                sorted(encontrados, key=lambda f: _modificado_em(f), reverse=True)
+                sorted(
+                    encontrados,
+                    key=lambda f: (-pontuar_pedido(f.name), -_modificado_em(f)),
+                )
             )
     return ()
 

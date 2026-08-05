@@ -181,3 +181,26 @@ def test_outlook_em_baixo_desliga_o_visto_e_avisa(
     assert dialogo.responder_a() == ""
     assert "email novo" in dialogo.lbl_resposta.text()
     assert dialogo.destinatario() == "compras@seiva.pt"
+
+
+def test_avisa_quando_o_email_escolhido_nao_parece_um_pedido(
+    _app, monkeypatch, tmp_path: Path
+) -> None:
+    _fingir_leitura(monkeypatch, assunto="Confirmação de morada")
+    guardado = _msg(tmp_path, "Confirmação de morada.msg")
+
+    dialogo = _dialogo_resposta([], [guardado])
+
+    # Continua a propor (a colega decide), mas dizendo que aquilo nao parece
+    # um pedido — para nao ir uma resposta parar a` conversa errada.
+    assert dialogo.responder_a() == guardado
+    assert "não parece um pedido" in dialogo.lbl_resposta.text()
+
+
+def test_pedido_normal_nao_leva_aviso(_app, monkeypatch, tmp_path: Path) -> None:
+    _fingir_leitura(monkeypatch)
+    guardado = _msg(tmp_path, "Pedido cotação Projeto CMM.msg")
+
+    dialogo = _dialogo_resposta([], [guardado])
+
+    assert "não parece" not in dialogo.lbl_resposta.text()

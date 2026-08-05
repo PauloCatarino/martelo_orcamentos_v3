@@ -230,8 +230,19 @@ class EmailOrcamentoDialog(QDialog):
         self.ed_assunto.setText(
             resposta_svc.assunto_de_resposta(lido.assunto) or self._assunto_proprio
         )
-        self.lbl_resposta.setText(f"A responder a: {lido.etiqueta}")
-        self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_OK};")
+
+        # A pasta pode ter emails que nada têm a ver com o pedido. Quando o
+        # assunto não sugere um pedido de orçamento, dizê-lo — em vez de deixar
+        # partir uma resposta para a conversa errada.
+        if resposta_svc.parece_pedido(lido.assunto or lido.nome_ficheiro):
+            self.lbl_resposta.setText(f"A responder a: {lido.etiqueta}")
+            self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_OK};")
+        else:
+            self.lbl_resposta.setText(
+                f"A responder a: {lido.etiqueta} — o assunto não parece um "
+                "pedido de orçamento; confirme se é este o email certo."
+            )
+            self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
 
     # ---- anexos -------------------------------------------------------------
     def _acrescentar_anexo(self, caminho: str) -> None:

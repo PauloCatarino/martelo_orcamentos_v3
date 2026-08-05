@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.services.email_resposta_service import (
+    parece_pedido,
+    pontuar_pedido,
     assunto_de_resposta,
     ler_email_do_cliente,
     preparar_resposta,
@@ -149,3 +151,68 @@ def test_caminho_vazio_devolve_none() -> None:
 
 def test_preparar_resposta_sem_emails_devolve_none(tmp_path: Path) -> None:
     assert preparar_resposta(tmp_path) is None
+
+
+# ---- adivinhar qual e' o pedido ---------------------------------------------
+def test_reconhece_um_pedido_pelo_assunto_no_nome() -> None:
+    # Ao arrastar do Outlook, o nome do ficheiro E' o assunto.
+    for nome in (
+        "Pedido cotação Projeto CMM.msg",
+        "ORÇAMENTO cozinha.msg",
+        "Consulta de preços.msg",
+        "proposta para roupeiros.msg",
+        "Solicitação de orcamento.msg",
+    ):
+        assert parece_pedido(nome), nome
+
+
+def test_nao_confunde_com_emails_que_nada_tem_a_ver() -> None:
+    for nome in (
+        "Fatura FT 2026-118.msg",
+        "Marcação de reunião.msg",
+        "Confirmação de entrega.msg",
+        "RE_ Boas férias.msg",
+    ):
+        assert not parece_pedido(nome), nome
+
+
+def test_acentos_e_maiusculas_sao_indiferentes() -> None:
+    assert pontuar_pedido("PEDIDO COTAÇÃO.msg") == pontuar_pedido("pedido cotacao.msg")
+    assert pontuar_pedido("Preços.msg") == pontuar_pedido("precos.msg")
+
+
+def test_mais_palavras_de_pedido_pontua_mais() -> None:
+    assert pontuar_pedido("Pedido de orçamento.msg") > pontuar_pedido("Pedido.msg")
+
+
+def test_o_pedido_vem_a_frente_mesmo_sendo_mais_antigo(tmp_path: Path) -> None:
+    # O caso real: a colega guarda varios emails na pasta e o do pedido nao e'
+    # o ultimo a chegar.
+    _msg(tmp_path, "Pedido cotação Projeto CMM.msg", idade_segundos=7200)
+    _msg(tmp_path, "Confirmação de morada.msg")
+
+    encontrados = procurar_emails_do_cliente(tmp_path)
+
+    assert encontrados[0].name == "Pedido cotação Projeto CMM.msg"
+
+
+def test_entre_dois_pedidos_ganha_o_mais_recente(tmp_path: Path) -> None:
+    _msg(tmp_path, "Pedido cotação antigo.msg", idade_segundos=7200)
+    _msg(tmp_path, "Pedido cotação novo.msg")
+
+    encontrados = procurar_emails_do_cliente(tmp_path)
+
+    assert encontrados[0].name == "Pedido cotação novo.msg"
+
+
+def test_sem_nenhum_pedido_manda_a_data(tmp_path: Path) -> None:
+    _msg(tmp_path, "Fatura.msg", idade_segundos=7200)
+    _msg(tmp_path, "Reunião.msg")
+
+    encontrados = procurar_emails_do_cliente(tmp_path)
+
+    assert [caminho.name for caminho in encontrados] == ["Reunião.msg", "Fatura.msg"]
+
+
+def test_a_extensao_nao_conta_para_a_pontuacao() -> None:
+    assert pontuar_pedido("qualquer.msg") == 0
