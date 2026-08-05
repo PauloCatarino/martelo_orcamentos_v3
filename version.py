@@ -1,13 +1,15 @@
-"""Versao da aplicacao Martelo Orcamentos V3.
+"""Versao da aplicacao Martelo Orcamentos V3 — reexportada para o empacotamento.
 
-Usada pelo executavel/instalador para identificar que versao cada colega
-tem instalada quando reportar problemas na fase de testes.
+**O numero NAO se edita aqui: edita-se em `app/config/versao.py`.**
+
+Este ficheiro existe porque o `build_beta.py` e o instalador o procuram na raiz
+desde o inicio. O numero em si vive dentro do pacote da aplicacao, para o
+executavel o encontrar pelo caminho da app — e para haver um so' numero, o
+mesmo no instalador, no diario de bordo e no "Reportar problema".
 """
 
-APP_VERSION = "0.9.6"
-APP_STAGE = "beta"
+from __future__ import annotations
 
+from app.config.versao import APP_STAGE, APP_VERSION, version_completa
 
-def version_completa() -> str:
-    """Ex.: '0.9.0-beta' (ou '0.9.0' se APP_STAGE vazio)."""
-    return f"{APP_VERSION}-{APP_STAGE}" if APP_STAGE else APP_VERSION
+__all__ = ["APP_STAGE", "APP_VERSION", "version_completa"]
