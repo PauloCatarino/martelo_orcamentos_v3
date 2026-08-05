@@ -4346,7 +4346,14 @@ class OrcamentoItemCusteioPage(QWidget):
         self.status_label.setText(f"Exclusões {acao} e custo total recalculado.")
 
     def eliminar_linhas_selecionadas(self) -> None:
-        """Physically delete the selected cost lines after confirmation."""
+        """Physically delete the selected cost lines after confirmation.
+
+        Um bloco FECHADO vale pela linha que se vê: eliminá-la leva o conteúdo
+        todo. ABERTO, elimina-se só o que está selecionado — que é o que o
+        utilizador tem à frente. Sem isto, eliminar uma composta fechada
+        deixava os filhos para trás como linhas soltas, e nem se via o que
+        tinha acontecido.
+        """
         linhas = sorted(idx.row() for idx in self.table.selectionModel().selectedRows())
         ids = [
             self._custeio_by_row[row].id
@@ -4357,13 +4364,8 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText("Selecione pelo menos uma linha.")
             return
 
-        if len(ids) == 1:
-            mensagem = "Deseja eliminar definitivamente esta linha de custeio?"
-        else:
-            mensagem = (
-                f"Deseja eliminar definitivamente as {len(ids)} linhas de custeio "
-                "selecionadas?"
-            )
+        arrastados = self._conteudo_de_blocos_fechados(ids)
+        mensagem = self._mensagem_eliminar(len(ids), len(arrastados))
 
         confirm = QMessageBox.question(
             self,
@@ -4376,13 +4378,56 @@ class OrcamentoItemCusteioPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                OrcamentoItemCusteioLinhaService(session).eliminar_linhas(ids)
+                OrcamentoItemCusteioLinhaService(session).eliminar_linhas(
+                    [*ids, *arrastados]
+                )
         except (SQLAlchemyError, ValueError):
             self.status_label.setText("Não foi possível eliminar as linhas de custeio.")
             return
 
         self.carregar()
-        self.status_label.setText(f"{len(ids)} linha(s) eliminada(s).")
+        total = len(ids) + len(arrastados)
+        self.status_label.setText(f"{total} linha(s) eliminada(s).")
+
+    def _conteudo_de_blocos_fechados(self, ids: list[int]) -> list[int]:
+        """Descendentes a eliminar junto — só dos blocos que estão FECHADOS."""
+        grupos = {
+            **self._descendentes_composta,
+            **self._ferragens_associadas_por_peca,
+        }
+        escolhidos = set(ids)
+        extra: list[int] = []
+        for linha_id in ids:
+            if linha_id in self._compostas_expandidas:
+                continue  # aberto: leva só o que está selecionado
+            for descendente in grupos.get(linha_id, ()):
+                if descendente not in escolhidos:
+                    escolhidos.add(descendente)
+                    extra.append(descendente)
+        return extra
+
+    @staticmethod
+    def _mensagem_eliminar(n_selecionadas: int, n_arrastadas: int) -> str:
+        """Dizer ao utilizador o que vai MESMO desaparecer, não só o que marcou."""
+        if not n_arrastadas:
+            if n_selecionadas == 1:
+                return "Deseja eliminar definitivamente esta linha de custeio?"
+            return (
+                f"Deseja eliminar definitivamente as {n_selecionadas} linhas de "
+                "custeio selecionadas?"
+            )
+
+        total = n_selecionadas + n_arrastadas
+        alvo = (
+            "Esta linha está fechada e leva atrás o que tem dentro"
+            if n_selecionadas == 1
+            else f"As {n_selecionadas} linhas selecionadas levam atrás o que têm dentro"
+        )
+        return (
+            f"{alvo}: mais {n_arrastadas} linha(s).\n\n"
+            f"Deseja eliminar definitivamente as {total} linhas de custeio?\n\n"
+            "Para eliminar só algumas, abra o bloco (seta ▶) e selecione-as."
+        )
 
     def selecionar_materia_prima_linha(self) -> None:
         """Pick a raw material and copy its snapshot into the selected line."""

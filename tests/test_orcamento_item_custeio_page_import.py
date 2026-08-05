@@ -615,8 +615,13 @@ def test_orcamento_item_custeio_page_eliminar_linhas() -> None:
     source = inspect.getsource(OrcamentoItemCusteioPage.eliminar_linhas_selecionadas)
     assert "selectedRows" in source
     assert "eliminar_linhas" in source
-    assert "definitivamente" in source
     assert "carregar" in source
+    # Continua a perguntar antes de apagar; o texto e' montado a` parte, para
+    # poder contar as linhas que um bloco fechado leva atras.
+    assert "QMessageBox.question" in source
+    assert "definitivamente" in inspect.getsource(
+        OrcamentoItemCusteioPage._mensagem_eliminar
+    )
 
 
 def test_orcamento_item_custeio_page_atualizar_geral() -> None:
