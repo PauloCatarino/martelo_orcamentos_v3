@@ -2115,20 +2115,31 @@ class OrcamentoItemCusteioPage(QWidget):
         self._aplicar_visibilidade_compostas()
 
     def _aplicar_visibilidade_compostas(self) -> None:
-        """Hide the descendant rows of every collapsed composite."""
-        id_por_row = {
-            linha.id: row for row, linha in self._custeio_by_row.items()
-        }
+        """Decidir a visibilidade de TODAS as linhas, não só das que se escondem.
+
+        O "escondido" do Qt é uma propriedade do NÚMERO da linha, não do que lá
+        está. Como aqui só se escondiam as descendentes e nunca se voltava a
+        mostrar nada, uma marca antiga sobrevivia à tabela ser repovoada: ao
+        inserir um separador acima de uma composta FECHADA, tudo descia uma
+        linha e o cabeçalho da composta ia parar a um número que continuava
+        marcado como escondido — a composta parecia apagada (os dados estavam
+        lá; apagando o separador, reaparecia). Com a composta aberta não havia
+        marcas antigas e por isso nunca falhava.
+        """
         grupos_colapsaveis = {
             **self._descendentes_composta,
             **self._ferragens_associadas_por_peca,
         }
-        for comp_id, descendentes in grupos_colapsaveis.items():
-            esconder = comp_id not in self._compostas_expandidas
-            for linha_id in descendentes:
-                row = id_por_row.get(linha_id)
-                if row is not None:
-                    self.table.setRowHidden(row, esconder)
+        esconder_ids = {
+            linha_id
+            for comp_id, descendentes in grupos_colapsaveis.items()
+            if comp_id not in self._compostas_expandidas
+            for linha_id in descendentes
+        }
+
+        for row in range(self.table.rowCount()):
+            linha = self._custeio_by_row.get(row)
+            self.table.setRowHidden(row, linha is not None and linha.id in esconder_ids)
 
     def _definir_seta_composta(
         self, row: int, expandida: bool, *, tipo_linha: str = PECA_COMPOSTA
