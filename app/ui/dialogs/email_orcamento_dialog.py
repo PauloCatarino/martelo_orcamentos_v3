@@ -181,8 +181,9 @@ class EmailOrcamentoDialog(QDialog):
 
         self.combo_resposta = QComboBox()
         self.combo_resposta.setToolTip(
-            "Emails guardados na pasta do orçamento, do mais recente para o "
-            "mais antigo."
+            "Emails guardados na pasta do orçamento. Aparecem primeiro os que "
+            "parecem um pedido de orçamento pelo assunto; depois, os mais "
+            "recentes."
         )
         for caminho in self._emails_do_cliente:
             self.combo_resposta.addItem(Path(caminho).name, caminho)
