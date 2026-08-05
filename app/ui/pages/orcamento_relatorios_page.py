@@ -55,6 +55,7 @@ from app.services.email_service import (
     escrever_relatorio_email,
     get_email_log_path,
 )
+from app.services.email_resposta_service import procurar_emails_do_cliente
 from app.services.custeio_auditoria_service import (
     CRITICO,
     CusteioAuditoriaService,
@@ -903,6 +904,18 @@ class OrcamentoRelatoriosPage(QWidget):
         )
         total = getattr(orcamento, "preco_total", None) or Decimal("0")
 
+        # O pedido do cliente costuma ficar guardado (.msg) na pasta da versão;
+        # responder-lhe só é possível pelo Outlook.
+        emails_do_cliente: list[str] = []
+        if (config.metodo or "outlook").lower() == "outlook":
+            pasta_versao = Path(pasta_inicial)
+            emails_do_cliente = [
+                str(caminho)
+                for caminho in procurar_emails_do_cliente(
+                    pasta_versao, pasta_versao.parent
+                )
+            ]
+
         dialog = EmailOrcamentoDialog(
             self,
             destinatario=emails_envio_orcamentos(cliente),
@@ -917,6 +930,7 @@ class OrcamentoRelatoriosPage(QWidget):
             anexos=anexos,
             pasta_inicial=pasta_inicial,
             tamanho_max_mb=config.tamanho_max_mb,
+            emails_do_cliente=emails_do_cliente,
         )
         if not dialog.exec():
             return
@@ -939,6 +953,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 remetente_email=remetente_email,
                 remetente_nome=remetente_nome,
                 cc=dialog.cc(),
+                responder_a=dialog.responder_a(),
             )
         except Exception as erro:
             QMessageBox.critical(

@@ -4,14 +4,20 @@ Serve os três emails que o Martelo manda com anexos — orçamento, ponto de
 situação e projeto para o cliente. Por isso é aqui que se pesam os anexos:
 o utilizador vê o total enquanto os junta e é avisado ANTES de enviar, em vez
 de descobrir o problema no erro que volta do servidor.
+
+É aqui também que se escolhe **responder** ao pedido do cliente em vez de
+mandar um email novo, quando esse pedido está guardado na pasta do orçamento.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -28,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.anexos_email import LIMITE_PADRAO_MB, medir_anexo, resumir_anexos
+from app.services import email_resposta_service as resposta_svc
 from app.ui import tema
 
 
@@ -43,14 +50,21 @@ class EmailOrcamentoDialog(QDialog):
         anexos: list[str] | None = None,
         pasta_inicial: str | None = None,
         tamanho_max_mb: float = LIMITE_PADRAO_MB,
+        emails_do_cliente: Sequence[str] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Enviar Orçamento por Email")
         self.resize(820, 540)
         self._pasta_inicial = pasta_inicial or ""
         self._tamanho_max_mb = float(tamanho_max_mb or LIMITE_PADRAO_MB)
+        self._emails_do_cliente = [str(caminho) for caminho in emails_do_cliente or ()]
+        # Guardados para repor se desligar o visto de responder.
+        self._destinatario_proprio = destinatario
+        self._assunto_proprio = assunto
 
         layout = QVBoxLayout(self)
+
+        self._montar_linha_resposta(layout)
 
         form = QFormLayout()
         self.ed_destinatario = QLineEdit(destinatario)
@@ -117,6 +131,7 @@ class EmailOrcamentoDialog(QDialog):
         layout.addWidget(self.button_box)
 
         self._atualizar_tamanho()
+        self._aplicar_resposta()
 
     def destinatario(self) -> str:
         return self.ed_destinatario.text().strip()
@@ -137,9 +152,86 @@ class EmailOrcamentoDialog(QDialog):
             for i in range(self.list_anexos.count())
         ]
 
+    def responder_a(self) -> str:
+        """Caminho do email a responder, ou vazio se for um email novo."""
+        if getattr(self, "check_responder", None) is None:
+            return ""
+        if not self.check_responder.isChecked():
+            return ""
+        return str(self.combo_resposta.currentData() or "")
+
     def accept(self) -> None:  # noqa: D102 - o aviso é a única diferença
         if self._confirmar_tamanho():
             super().accept()
+
+    # ---- responder ao pedido do cliente -------------------------------------
+    def _montar_linha_resposta(self, layout) -> None:
+        """Linha do topo — só aparece se houver mesmo um email guardado."""
+        self.check_responder = None
+        if not self._emails_do_cliente:
+            return
+
+        self.check_responder = QCheckBox("Responder ao pedido do cliente:")
+        self.check_responder.setChecked(True)
+        self.check_responder.setToolTip(
+            "Em vez de um email novo, responde ao pedido que o cliente enviou "
+            "— com o email dele citado por baixo e no mesmo fio de conversa.\n"
+            "Desligue para enviar um email novo, como antes."
+        )
+
+        self.combo_resposta = QComboBox()
+        self.combo_resposta.setToolTip(
+            "Emails guardados na pasta do orçamento, do mais recente para o "
+            "mais antigo."
+        )
+        for caminho in self._emails_do_cliente:
+            self.combo_resposta.addItem(Path(caminho).name, caminho)
+
+        self.lbl_resposta = QLabel()
+        self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_OK};")
+
+        linha = QHBoxLayout()
+        linha.addWidget(self.check_responder)
+        linha.addWidget(self.combo_resposta, 1)
+        layout.addLayout(linha)
+        layout.addWidget(self.lbl_resposta)
+
+        self.check_responder.stateChanged.connect(lambda _=0: self._aplicar_resposta())
+        self.combo_resposta.currentIndexChanged.connect(
+            lambda _=0: self._aplicar_resposta()
+        )
+
+    def _aplicar_resposta(self) -> None:
+        """Encher Destinatário e Assunto a partir do email do cliente."""
+        if getattr(self, "check_responder", None) is None:
+            return
+
+        self.combo_resposta.setEnabled(self.check_responder.isChecked())
+        if not self.check_responder.isChecked():
+            self.ed_destinatario.setText(self._destinatario_proprio)
+            self.ed_assunto.setText(self._assunto_proprio)
+            self.lbl_resposta.setText("Vai um email novo, sem responder a nada.")
+            self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
+            return
+
+        caminho = str(self.combo_resposta.currentData() or "")
+        lido = resposta_svc.ler_email_do_cliente(caminho)
+        if lido is None:
+            # Sem Outlook ou ficheiro ilegível: não bloquear ninguém.
+            self.check_responder.setChecked(False)
+            self.lbl_resposta.setText(
+                "Não consegui ler esse email guardado — o Martelo prepara um "
+                "email novo."
+            )
+            self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
+            return
+
+        self.ed_destinatario.setText(lido.de or self._destinatario_proprio)
+        self.ed_assunto.setText(
+            resposta_svc.assunto_de_resposta(lido.assunto) or self._assunto_proprio
+        )
+        self.lbl_resposta.setText(f"A responder a: {lido.etiqueta}")
+        self.lbl_resposta.setStyleSheet(f"color: {tema.TEXTO_OK};")
 
     # ---- anexos -------------------------------------------------------------
     def _acrescentar_anexo(self, caminho: str) -> None:

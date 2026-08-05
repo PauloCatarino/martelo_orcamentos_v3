@@ -33,6 +33,68 @@ def test_extrair_imagens_inline_ignora_ficheiro_inexistente() -> None:
     assert novo == corpo  # fica como estava
 
 
+class _FakeAnexos:
+    def __init__(self) -> None:
+        self.adicionados: list[str] = []
+
+    def Add(self, caminho):  # noqa: N802 - assinatura do Outlook
+        self.adicionados.append(str(caminho))
+        return SimpleNamespace(
+            PropertyAccessor=SimpleNamespace(SetProperty=lambda *_a: None)
+        )
+
+
+class _FakeMail:
+    """Uma mensagem do Outlook, o suficiente para o serviço a preencher."""
+
+    def __init__(self, html_inicial: str = "") -> None:
+        self.To = ""
+        self.CC = ""
+        self.Subject = ""
+        self.HTMLBody = html_inicial
+        self.SendUsingAccount = None
+        self.SentOnBehalfOfName = ""
+        self.SaveSentMessageFolder = None
+        self.Attachments = _FakeAnexos()
+        self.enviado = False
+        self.ultima_resposta: "_FakeMail | None" = None
+
+    def Send(self):  # noqa: N802 - assinatura do Outlook
+        self.enviado = True
+
+    def Reply(self):  # noqa: N802 - assinatura do Outlook
+        self.ultima_resposta = _FakeMail(self.HTMLBody)
+        return self.ultima_resposta
+
+
+class _FakeOutlook:
+    """Outlook de mentira: guarda o que se lhe pediu, não envia nada."""
+
+    def __init__(self, original: _FakeMail | None = None) -> None:
+        self.novo = _FakeMail()
+        self.original = original
+        self.abertos: list[str] = []
+        self.Session = SimpleNamespace(
+            OpenSharedItem=self._abrir,
+            GetDefaultFolder=lambda _n: "Enviados",
+            Accounts=SimpleNamespace(Count=0),
+        )
+
+    def _abrir(self, caminho):
+        self.abertos.append(str(caminho))
+        if self.original is None:
+            raise RuntimeError("nao ha' email guardado")
+        return self.original
+
+    def CreateItem(self, _tipo):  # noqa: N802 - assinatura do Outlook
+        return self.novo
+
+
+def _patch_outlook(monkeypatch, outlook: _FakeOutlook) -> None:
+    monkeypatch.setattr(email_service, "_require_win32com_client", lambda: object())
+    monkeypatch.setattr(email_service, "_ligar_outlook", lambda _c: outlook)
+
+
 class _FakeSystemSettingService:
     values: dict[str, str | None] = {}
 
@@ -366,3 +428,86 @@ def test_enviar_smtp_sem_credenciais_continua_a_funcionar_sem_cifra(monkeypatch)
 
     assert criados[0].login_args is None
     assert criados[0].enviou is True
+
+
+# ---- responder ao pedido do cliente -----------------------------------------
+def _config_outlook() -> email_service.EmailConfig:
+    return email_service.EmailConfig(metodo="outlook", copia="")
+
+
+def test_sem_responder_a_sai_um_email_novo(monkeypatch, tmp_path) -> None:
+    outlook = _FakeOutlook()
+    _patch_outlook(monkeypatch, outlook)
+    monkeypatch.setattr(email_service, "get_email_log_path", lambda: tmp_path / "l.log")
+
+    email_service.enviar_email(
+        "cliente@example.test",
+        "Orçamento 260836_01",
+        "<p>Segue o orçamento.</p>",
+        [],
+        config=_config_outlook(),
+    )
+
+    assert outlook.abertos == []
+    assert outlook.novo.enviado is True
+    assert outlook.novo.Subject == "Orçamento 260836_01"
+    assert outlook.novo.HTMLBody == "<p>Segue o orçamento.</p>"
+
+
+def test_responder_abre_o_msg_e_mantem_o_historico(monkeypatch, tmp_path) -> None:
+    guardado = tmp_path / "Pedido cotação.msg"
+    guardado.write_bytes(b"outlook")
+    original = _FakeMail("<html><body><p>Pedido do cliente</p></body></html>")
+    outlook = _FakeOutlook(original=original)
+    _patch_outlook(monkeypatch, outlook)
+    monkeypatch.setattr(email_service, "get_email_log_path", lambda: tmp_path / "l.log")
+
+    email_service.enviar_email(
+        "geral@seiva.pt",
+        "RE: Pedido cotação",
+        "<p>Segue o orçamento.</p>",
+        [],
+        config=_config_outlook(),
+        responder_a=str(guardado),
+    )
+
+    assert outlook.abertos == [str(guardado)]
+    # O email novo do Outlook nao foi usado: saiu mesmo uma resposta.
+    assert outlook.novo.enviado is False
+    enviada = original.ultima_resposta
+    assert enviada.enviado is True
+    assert enviada.To == "geral@seiva.pt"
+    assert enviada.Subject == "RE: Pedido cotação"
+    # O nosso texto por cima, o do cliente por baixo, dentro do <body>.
+    assert enviada.HTMLBody == (
+        "<html><body><p>Segue o orçamento.</p><p>Pedido do cliente</p></body></html>"
+    )
+
+
+def test_responder_a_ficheiro_que_sumiu_envia_email_novo(monkeypatch, tmp_path) -> None:
+    outlook = _FakeOutlook()
+    _patch_outlook(monkeypatch, outlook)
+    monkeypatch.setattr(email_service, "get_email_log_path", lambda: tmp_path / "l.log")
+
+    # Alguem apagou o .msg entretanto: nao se perde o email por causa disso.
+    email_service.enviar_email(
+        "cliente@example.test",
+        "Orçamento",
+        "<p>Corpo</p>",
+        [],
+        config=_config_outlook(),
+        responder_a=str(tmp_path / "sumiu.msg"),
+    )
+
+    assert outlook.abertos == []
+    assert outlook.novo.enviado is True
+
+
+def test_juntar_ao_historico_sem_etiqueta_body() -> None:
+    junto = email_service._juntar_ao_historico("<p>novo</p>", "texto antigo solto")
+
+    assert junto == "<p>novo</p>texto antigo solto"
+
+
+def test_juntar_ao_historico_sem_historico_nao_mexe() -> None:
+    assert email_service._juntar_ao_historico("<p>novo</p>", "") == "<p>novo</p>"

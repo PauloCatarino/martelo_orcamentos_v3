@@ -7,6 +7,7 @@ from datetime import datetime
 from email.message import EmailMessage
 import html
 import importlib
+import logging
 import os
 from pathlib import Path
 import re
@@ -18,6 +19,8 @@ from app.domain.anexos_email import LIMITE_PADRAO_MB
 from app.domain.export_paths import subpasta_versao
 from app.services.system_setting_service import SystemSettingService
 from app.utils.formatters import format_currency, format_version
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -111,8 +114,15 @@ def enviar_email(
     remetente_email: str | None = None,
     remetente_nome: str | None = None,
     cc: str | None = None,
+    responder_a: str | None = None,
 ) -> None:
-    """Send one HTML email through Outlook or SMTP."""
+    """Send one HTML email through Outlook or SMTP.
+
+    ``responder_a`` e' o caminho de um `.msg` guardado (o pedido do cliente):
+    em vez de um email novo, sai uma RESPOSTA a esse — com o historico citado
+    e no mesmo fio de conversa. So' pelo Outlook; por SMTP e' ignorado (nao ha'
+    forma de continuar uma conversa que a aplicacao nunca viu).
+    """
     destino = (destino or "").strip()
     assunto = assunto or "Orcamento"
     anexos = list(anexos or [])
@@ -146,8 +156,17 @@ def enviar_email(
                 remetente_email=remetente_email,
                 cc=cc_outlook,
                 imagens_inline=imagens_inline,
+                responder_a=responder_a or "",
             )
         else:
+            if responder_a:
+                _safe_log_result(
+                    from_email,
+                    log_dest,
+                    assunto,
+                    "AVISO: resposta pedida mas o metodo e' SMTP - foi email novo",
+                    anexos,
+                )
             _enviar_smtp(
                 destino,
                 assunto,
@@ -322,6 +341,7 @@ def _enviar_outlook(
     remetente_email: str,
     cc: str,
     imagens_inline: Sequence[tuple[str, str]] = (),
+    responder_a: str = "",
 ) -> None:
     win32_client = _require_win32com_client()
     try:
@@ -334,7 +354,8 @@ def _enviar_outlook(
     pythoncom.CoInitialize()
     try:
         outlook = _ligar_outlook(win32_client)
-        mail = outlook.CreateItem(0)
+        mail, historico = _criar_mensagem(outlook, responder_a)
+        corpo_html = _juntar_ao_historico(corpo_html, historico)
         if remetente_email:
             account = _find_outlook_account(outlook.Session, remetente_email)
             if account is not None:
@@ -366,6 +387,40 @@ def _enviar_outlook(
         mail.Send()
     finally:
         pythoncom.CoUninitialize()
+
+
+def _criar_mensagem(outlook: Any, responder_a: str) -> tuple[Any, str]:
+    """A mensagem a enviar e o historico que ja' traga.
+
+    Sem ``responder_a`` e' um email novo, como sempre. Com ele, e' o Outlook a
+    responder ao `.msg` guardado: fica com o encadeamento da conversa e com o
+    email do cliente citado — e desse citado precisamos para o repor por baixo
+    do nosso texto.
+    """
+    caminho = (responder_a or "").strip()
+    if not caminho or not os.path.exists(caminho):
+        if caminho:
+            # Nao rebentar por causa disto: o email sai como novo.
+            logger.warning("Email a responder nao encontrado: %s", caminho)
+        return outlook.CreateItem(0), ""
+
+    original = outlook.Session.OpenSharedItem(caminho)
+    resposta = original.Reply()
+    return resposta, str(getattr(resposta, "HTMLBody", "") or "")
+
+
+def _juntar_ao_historico(corpo_html: str, historico: str) -> str:
+    """Pôr o nosso texto POR CIMA do email citado, como numa resposta normal."""
+    if not historico:
+        return corpo_html
+
+    # Entrar logo a seguir ao <body ...>, para nao deixar texto solto fora do
+    # HTML; se a etiqueta nao existir, colar a' frente resolve na mesma.
+    posicao = historico.lower().find("<body")
+    fecho = historico.find(">", posicao) if posicao >= 0 else -1
+    if fecho > 0:
+        return historico[: fecho + 1] + corpo_html + historico[fecho + 1 :]
+    return corpo_html + historico
 
 
 def _contexto_ssl(verificar: bool = True) -> ssl.SSLContext:
