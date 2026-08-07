@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -30,7 +31,6 @@ from app.services.orcamento_item_valueset_linha_operacao_service import (
     OrcamentoItemValuesetLinhaOperacaoService,
 )
 from app.services.orcamento_item_valueset_linha_service import (
-    SNAPSHOT_FIELDS,
     EditarOrcamentoItemValuesetLinhaData,
     OrcamentoItemValuesetLinhaService,
 )
@@ -41,6 +41,9 @@ from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
 )
 from app.ui.dialogs.propagar_valueset_custeio_dialog import PropagarValuesetCusteioDialog
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_prioridades import (
+    avisar_prioridade_repetida_apos_colagem,
+)
 from app.ui.helpers.valueset_precos import (
     atualizacoes_de_divergencias,
     atualizar_modelo_origem_por_divergencias,
@@ -63,6 +66,9 @@ from app.utils.formatters import format_currency, format_quantity
 
 class OrcamentoItemValuesetPage(QWidget):
     """Page listing the ValueSet lines of a budget item."""
+
+    _copied_snapshot: dict | None = None
+    _copied_operacoes: list | None = None
 
     TABLE_HEADERS = [
         "Chave",
@@ -96,8 +102,6 @@ class OrcamentoItemValuesetPage(QWidget):
         self.orcamento_item_id = orcamento_item_id
         self._linhas_by_row: dict[int, OrcamentoItemValuesetLinhaResumo] = {}
         self._operacoes_por_linha: dict[int, str] = {}
-        self._copied_snapshot: dict | None = None
-        self._copied_operacoes: list | None = None
 
         self.cabecalho = BarraCabecalho(
             "ValueSet do Item",
@@ -115,8 +119,14 @@ class OrcamentoItemValuesetPage(QWidget):
         self.edit_button.clicked.connect(self.abrir_editar_linha)
         self.copy_button = QPushButton("Copiar Dados")
         self.copy_button.clicked.connect(self.copiar_dados)
+        self.copy_button.setToolTip(
+            "Copia prioridade, material e operações da linha selecionada (Ctrl+C)."
+        )
         self.paste_button = QPushButton("Colar Dados")
         self.paste_button.clicked.connect(self.colar_dados)
+        self.paste_button.setToolTip(
+            "Cola os dados numa linha existente, sem criar uma linha nova (Ctrl+V)."
+        )
         self.clear_button = QPushButton("Limpar Dados")
         self.clear_button.clicked.connect(self.limpar_dados)
         self.toggle_button = QPushButton("Ativar/Desativar")
@@ -154,6 +164,7 @@ class OrcamentoItemValuesetPage(QWidget):
         self.table.cellDoubleClicked.connect(self._handle_double_click)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
+        self._instalar_atalhos_clipboard()
         # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
         if ligar_persistencia_larguras(self.table, "valueset_item"):
             self._larguras_iniciais_aplicadas = True
@@ -172,6 +183,9 @@ class OrcamentoItemValuesetPage(QWidget):
 
     def carregar(self) -> None:
         """Load the ValueSet lines of the budget item."""
+        timer = getattr(self, "_prioridade_flash_timer", None)
+        if timer is not None:
+            timer.stop()
         self.table.setRowCount(0)
         self.status_label.clear()
 
@@ -672,16 +686,21 @@ class OrcamentoItemValuesetPage(QWidget):
             self.status_label.setText("Selecione uma linha.")
             return
 
-        self._copied_snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
-        self._copied_snapshot["prioridade"] = linha.prioridade
-
         try:
             with SessionLocal() as session:
-                self._copied_operacoes = OrcamentoItemValuesetLinhaOperacaoService(
+                type(self)._copied_snapshot = OrcamentoItemValuesetLinhaService(
+                    session
+                ).copiar_snapshot_linha(linha.id)
+                type(self)._copied_operacoes = OrcamentoItemValuesetLinhaOperacaoService(
                     session
                 ).listar_operacoes_da_linha(linha.id)
-        except SQLAlchemyError:
-            self._copied_operacoes = []
+        except (SQLAlchemyError, ValueError) as error:
+            type(self)._copied_snapshot = None
+            type(self)._copied_operacoes = None
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível copiar os dados.", error)
+            )
+            return
 
         self.status_label.setText("Dados da linha copiados.")
 
@@ -696,12 +715,14 @@ class OrcamentoItemValuesetPage(QWidget):
             self.status_label.setText("Selecione uma linha.")
             return
 
-        if self._copied_snapshot is None:
+        snapshot = type(self)._copied_snapshot
+        operacoes = type(self)._copied_operacoes
+        if snapshot is None:
             self.status_label.setText("Não existem dados copiados.")
             return
 
         colar_operacoes = False
-        total_operacoes = len(self._copied_operacoes) if self._copied_operacoes else 0
+        total_operacoes = len(operacoes) if operacoes else 0
         if total_operacoes:
             confirm = QMessageBox.question(
                 self,
@@ -714,14 +735,18 @@ class OrcamentoItemValuesetPage(QWidget):
 
         try:
             with SessionLocal() as session:
-                OrcamentoItemValuesetLinhaService(session).aplicar_snapshot_linha(
-                    linha.id, self._copied_snapshot
-                )
-                if colar_operacoes:
-                    OrcamentoItemValuesetLinhaOperacaoService(session).copiar_operacoes_de(
-                        self._copied_operacoes, linha.id
+                try:
+                    OrcamentoItemValuesetLinhaService(session).aplicar_snapshot_linha(
+                        linha.id, snapshot, commit=False
                     )
+                    if colar_operacoes:
+                        OrcamentoItemValuesetLinhaOperacaoService(
+                            session
+                        ).copiar_operacoes_de(operacoes or [], linha.id)
                     session.commit()
+                except Exception:
+                    session.rollback()
+                    raise
         except (SQLAlchemyError, ValueError) as error:
             self.status_label.setText(
                 mensagem_erro_bd("Não foi possível colar os dados.", error)
@@ -729,6 +754,16 @@ class OrcamentoItemValuesetPage(QWidget):
             return
 
         self.carregar()
+        aviso_prioridade = avisar_prioridade_repetida_apos_colagem(
+            self,
+            table=self.table,
+            headers=self.TABLE_HEADERS,
+            linhas_by_row=self._linhas_by_row,
+            linha_id=linha.id,
+        )
+        if aviso_prioridade:
+            self.status_label.setText(aviso_prioridade)
+            return
         if colar_operacoes:
             self.status_label.setText(
                 "Dados e operações colados — valide as operações na linha de destino."
@@ -838,11 +873,21 @@ class OrcamentoItemValuesetPage(QWidget):
 
         menu = QMenu(self)
         menu.addAction("Editar Linha", self.abrir_editar_linha)
-        menu.addAction("Copiar Dados", self.copiar_dados)
-        menu.addAction("Colar Dados", self.colar_dados)
+        menu.addAction("Copiar Dados (Ctrl+C)", self.copiar_dados)
+        menu.addAction("Colar Dados (Ctrl+V)", self.colar_dados)
         menu.addAction("Limpar Dados", self.limpar_dados)
         menu.addAction("Ativar/Desativar", self.alternar_linha_ativa)
         menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def _instalar_atalhos_clipboard(self) -> None:
+        """Atalhos de conteúdo ativos apenas quando a tabela tem foco."""
+        for sequencia, handler in (
+            (QKeySequence.StandardKey.Copy, self.copiar_dados),
+            (QKeySequence.StandardKey.Paste, self.colar_dados),
+        ):
+            atalho = QShortcut(sequencia, self.table)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(handler)
 
     def _handle_double_click(self, _row: int, _column: int) -> None:
         """Edit a line when the user double-clicks its row."""

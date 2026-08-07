@@ -157,6 +157,7 @@ def test_snapshot_copia_conteudo_sem_identidade(monkeypatch) -> None:
     assert snapshot["ref_materia_prima"] == "PLACA-31"
     assert snapshot["ref_le"] == "LE-31"
     assert snapshot["preco_orla_0_4_m2"] == Decimal("4.5")
+    assert snapshot["prioridade"] == _FakeRepository.by_id.prioridade
     for field in (
         "id",
         "def_valueset_modelo_id",
@@ -164,7 +165,6 @@ def test_snapshot_copia_conteudo_sem_identidade(monkeypatch) -> None:
         "codigo_opcao",
         "nome_opcao",
         "padrao",
-        "prioridade",
         "ordem",
         "ativo",
         "observacoes",

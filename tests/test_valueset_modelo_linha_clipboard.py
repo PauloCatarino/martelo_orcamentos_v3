@@ -116,7 +116,7 @@ def test_cola_material_portas_em_remates_sem_trocar_identidade(session) -> None:
     assert destino.chave == "MATERIAL_REMATES"
     assert destino.codigo_opcao == "REMATE_A"
     assert destino.nome_opcao == "Remates"
-    assert destino.prioridade == 7
+    assert destino.prioridade == portas.prioridade
     assert destino.ordem == 9
     assert destino.ativo is False
     assert destino.observacoes == "Identidade do remate"
@@ -148,6 +148,7 @@ def test_rollback_reverte_dados_e_operacoes_da_colagem(session) -> None:
 
     destino = session.get(DefValuesetModeloLinha, remates.id)
     assert destino.ref_materia_prima == "ANTIGA"
+    assert destino.prioridade == 7
     assert destino.ref_le == "LE-ANTIGA"
     assert destino.editado_localmente is False
     [operacao_destino] = _operacoes(session, remates.id)

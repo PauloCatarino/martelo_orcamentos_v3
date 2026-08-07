@@ -35,6 +35,7 @@ from app.services.orcamento_item_valueset_linha_operacao_service import (
 # Materia-prima snapshot fields that can be edited, copied, pasted and cleared
 # on an item ValueSet line (its key/option/order/active state are preserved).
 SNAPSHOT_FIELDS = (
+    "materia_prima_id",
     "ref_le",
     "descricao_no_orcamento",
     "ref_materia_prima",
@@ -50,6 +51,8 @@ SNAPSHOT_FIELDS = (
     "familia_materia_prima",
     "coresp_orla_0_4",
     "coresp_orla_1_0",
+    "preco_orla_0_4_m2",
+    "preco_orla_1_0_m2",
     "comp_mp",
     "larg_mp",
     "esp_mp",
@@ -243,7 +246,7 @@ class OrcamentoItemValuesetLinhaService:
         return snapshot
 
     def aplicar_snapshot_linha(
-        self, id: int, snapshot: dict
+        self, id: int, snapshot: dict, *, commit: bool = True
     ) -> OrcamentoItemValuesetLinhaResumo:
         """Apply a snapshot to one line, keeping its key, option, order and state.
 
@@ -266,7 +269,8 @@ class OrcamentoItemValuesetLinhaService:
         fields["editado_localmente"] = True
 
         result = self.repository.update(id=id, **fields)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return result
 

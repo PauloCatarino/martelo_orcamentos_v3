@@ -560,17 +560,23 @@ def test_orcamento_item_custeio_page_copiar_cortar_colar() -> None:
 
     # Session-level clipboard (class attribute, shared across page instances).
     assert "_clipboard_custeio" in OrcamentoItemCusteioPage.__dict__
+    assert "_clipboard_conteudo" not in OrcamentoItemCusteioPage.__dict__
 
     menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
     assert "Copiar (Ctrl+C)" in menu
     assert "Cortar (Ctrl+X)" in menu
     assert "Colar abaixo (Ctrl+V)" in menu
+    assert "Copiar dados" not in menu
+    assert "Colar dados na linha" not in menu
     assert "_clipboard_tem_conteudo" in menu  # paste only when there is content
 
     atalhos = inspect.getsource(OrcamentoItemCusteioPage._instalar_atalhos_clipboard)
     assert "StandardKey.Copy" in atalhos
     assert "StandardKey.Cut" in atalhos
     assert "StandardKey.Paste" in atalhos
+    assert "self.copiar_linhas" in atalhos
+    assert "self.colar_linhas" in atalhos
+    assert "Ctrl+Shift" not in atalhos
     assert "WidgetShortcut" in atalhos  # editors keep their own copy/paste
 
     colar = inspect.getsource(OrcamentoItemCusteioPage.colar_linhas)

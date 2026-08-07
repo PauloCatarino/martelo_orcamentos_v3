@@ -138,7 +138,7 @@ def test_page_has_snapshot_tools() -> None:
         assert hasattr(OrcamentoValuesetPage, method)
 
     copiar = inspect.getsource(OrcamentoValuesetPage.copiar_dados)
-    assert "SNAPSHOT_FIELDS" in copiar
+    assert "copiar_snapshot_linha" in copiar
     assert "Dados da linha copiados." in copiar
 
     colar = inspect.getsource(OrcamentoValuesetPage.colar_dados)
@@ -198,6 +198,8 @@ def test_page_copiar_colar_com_operacoes_opt_in() -> None:
     colar = inspect.getsource(OrcamentoValuesetPage.colar_dados)
     assert "_copied_operacoes" in colar
     assert "copiar_operacoes_de" in colar
+    assert "commit=False" in colar
+    assert "avisar_prioridade_repetida_apos_colagem" in colar
     assert "Colar também" in colar
     assert "Dados e operações colados" in colar
 

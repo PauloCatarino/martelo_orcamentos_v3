@@ -18,7 +18,8 @@ from app.repositories.def_valueset_modelo_linha_repository import (
 
 
 # Conteúdo reutilizável de uma linha de modelo. A identidade do destino
-# (modelo, chave, opção, prioridade, ordem, estado e notas) fica sempre intacta.
+# (modelo, chave, opção, ordem, estado e notas) fica sempre intacta; a prioridade
+# acompanha o conteúdo e é validada visualmente no destino.
 # A referência ao catálogo é partilhada, não é uma ligação filha a duplicar.
 SNAPSHOT_FIELDS = (
     "materia_prima_id",
@@ -172,7 +173,9 @@ class DefValuesetModeloLinhaService:
         if linha is None:
             raise ValueError("linha nao encontrada")
 
-        return {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        snapshot = {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+        snapshot["prioridade"] = linha.prioridade
+        return snapshot
 
     def aplicar_snapshot_linha(
         self, id: int, snapshot: dict, *, commit: bool = True
@@ -183,6 +186,8 @@ class DefValuesetModeloLinhaService:
             raise ValueError("linha nao encontrada")
 
         fields = {field: snapshot.get(field) for field in SNAPSHOT_FIELDS}
+        if "prioridade" in snapshot:
+            fields["prioridade"] = snapshot["prioridade"]
         fields["preco_liquido"] = self._compute_preco_liquido(
             fields["preco_tabela"],
             fields["margem_percentagem"],

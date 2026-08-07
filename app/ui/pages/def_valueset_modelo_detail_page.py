@@ -51,6 +51,9 @@ from app.ui.dialogs.propagar_operacoes_valueset_modelo_dialog import (
     PropagarOperacoesValuesetModeloDialog,
 )
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_prioridades import (
+    avisar_prioridade_repetida_apos_colagem,
+)
 from app.ui.helpers.valueset_precos import (
     atualizacoes_de_divergencias,
     detetar_divergencias_valueset,
@@ -133,12 +136,12 @@ class DefValuesetModeloDetailPage(QWidget):
         self.edit_button.clicked.connect(self.abrir_editar_linha)
         self.copy_button = QPushButton("Copiar Dados")
         self.copy_button.setToolTip(
-            "Copiar os dados de material e as operações da linha selecionada (Ctrl+C)."
+            "Copiar prioridade, dados de material e operações da linha selecionada (Ctrl+C)."
         )
         self.copy_button.clicked.connect(self.copiar_dados)
         self.paste_button = QPushButton("Colar Dados")
         self.paste_button.setToolTip(
-            "Colar os dados copiados na linha selecionada, mantendo a identidade do destino (Ctrl+V)."
+            "Colar numa linha existente, mantendo chave, opção e estrutura do destino (Ctrl+V)."
         )
         self.paste_button.clicked.connect(self.colar_dados)
         self.propagate_operations_button = QPushButton("Propagar Operações…")
@@ -230,6 +233,9 @@ class DefValuesetModeloDetailPage(QWidget):
 
     def carregar_linhas(self) -> None:
         """Load the model lines into the table."""
+        timer = getattr(self, "_prioridade_flash_timer", None)
+        if timer is not None:
+            timer.stop()
         self.table.setRowCount(0)
         self.status_label.clear()
 
@@ -598,6 +604,16 @@ class DefValuesetModeloDetailPage(QWidget):
             return
 
         self.carregar_linhas()
+        aviso_prioridade = avisar_prioridade_repetida_apos_colagem(
+            self,
+            table=self.table,
+            headers=self.LINHA_HEADERS,
+            linhas_by_row=self._linhas_by_row,
+            linha_id=linha.id,
+        )
+        if aviso_prioridade:
+            self.status_label.setText(aviso_prioridade)
+            return
         if colar_operacoes:
             self.status_label.setText(
                 "Dados e operações colados; a identidade da linha de destino foi mantida."
