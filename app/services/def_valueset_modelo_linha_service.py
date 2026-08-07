@@ -17,6 +17,34 @@ from app.repositories.def_valueset_modelo_linha_repository import (
 )
 
 
+# Conteúdo reutilizável de uma linha de modelo. A identidade do destino
+# (modelo, chave, opção, prioridade, ordem, estado e notas) fica sempre intacta.
+# A referência ao catálogo é partilhada, não é uma ligação filha a duplicar.
+SNAPSHOT_FIELDS = (
+    "materia_prima_id",
+    "ref_materia_prima",
+    "descricao_materia_prima",
+    "valor_texto",
+    "ref_le",
+    "descricao_no_orcamento",
+    "preco_tabela",
+    "margem_percentagem",
+    "desconto_percentagem",
+    "preco_liquido",
+    "unidade",
+    "desperdicio_percentagem",
+    "tipo_materia_prima",
+    "familia_materia_prima",
+    "coresp_orla_0_4",
+    "coresp_orla_1_0",
+    "preco_orla_0_4_m2",
+    "preco_orla_1_0_m2",
+    "comp_mp",
+    "larg_mp",
+    "esp_mp",
+)
+
+
 @dataclass(frozen=True)
 class CriarDefValuesetModeloLinhaData:
     """Input data for creating one reusable ValueSet model line."""
@@ -137,6 +165,38 @@ class DefValuesetModeloLinhaService:
     def obter_por_id(self, id: int) -> DefValuesetModeloLinhaResumo | None:
         """Get one reusable ValueSet model line by id."""
         return self.repository.get_by_id(id)
+
+    def copiar_snapshot_linha(self, id: int) -> dict:
+        """Return only the reusable material content of one model line."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        return {field: getattr(linha, field) for field in SNAPSHOT_FIELDS}
+
+    def aplicar_snapshot_linha(
+        self, id: int, snapshot: dict, *, commit: bool = True
+    ) -> DefValuesetModeloLinhaResumo:
+        """Replace material content while preserving the destination identity."""
+        linha = self.repository.get_by_id(id)
+        if linha is None:
+            raise ValueError("linha nao encontrada")
+
+        fields = {field: snapshot.get(field) for field in SNAPSHOT_FIELDS}
+        fields["preco_liquido"] = self._compute_preco_liquido(
+            fields["preco_tabela"],
+            fields["margem_percentagem"],
+            fields["desconto_percentagem"],
+            fields["preco_liquido"],
+        )
+        fields["origem_dados"] = "EDITADO_LOCALMENTE"
+        fields["editado_localmente"] = True
+
+        result = self.repository.update(id=id, **fields)
+        if commit:
+            self.session.commit()
+
+        return result
 
     def criar_linha(
         self, data: CriarDefValuesetModeloLinhaData

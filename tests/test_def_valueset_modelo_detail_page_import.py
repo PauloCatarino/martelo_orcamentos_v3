@@ -60,8 +60,62 @@ def test_page_has_line_actions() -> None:
         "_criar_linha_from_form_data",
         "_criar_modelo_data_from_form_data",
         "_modelo_error_message",
+        "copiar_dados",
+        "colar_dados",
+        "_abrir_menu_contexto",
+        "_instalar_atalhos_clipboard",
+        "propagar_operacoes",
     ):
         assert hasattr(DefValuesetModeloDetailPage, method)
+
+
+def test_page_copia_conteudo_para_linha_existente_com_atalhos_e_menu() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    assert "copy_button" in init
+    assert "paste_button" in init
+    assert "setToolTip" in init
+    assert "CustomContextMenu" in init
+    assert "_instalar_atalhos_clipboard" in init
+
+    atalhos = inspect.getsource(DefValuesetModeloDetailPage._instalar_atalhos_clipboard)
+    assert "QKeySequence.StandardKey.Copy" in atalhos
+    assert "QKeySequence.StandardKey.Paste" in atalhos
+    assert "WidgetShortcut" in atalhos
+
+    copiar = inspect.getsource(DefValuesetModeloDetailPage.copiar_dados)
+    assert "copiar_snapshot_linha" in copiar
+    assert "listar_operacoes_da_linha" in copiar
+
+    colar = inspect.getsource(DefValuesetModeloDetailPage.colar_dados)
+    assert "aplicar_snapshot_linha" in colar
+    assert "substituir_operacoes_de" in colar
+    assert "commit=False" in colar
+    assert "session.rollback()" in colar
+    assert "session.commit()" in colar
+    assert "identidade da linha de destino" in colar
+
+    menu = inspect.getsource(DefValuesetModeloDetailPage._abrir_menu_contexto)
+    assert "Copiar Dados (Ctrl+C)" in menu
+    assert "Colar Dados (Ctrl+V)" in menu
+
+
+def test_page_propaga_operacoes_com_dialogo_e_servico_controlado() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    assert "propagate_operations_button" in init
+    assert "Propagar Operações" in init
+    assert "setToolTip" in init
+
+    propagar = inspect.getsource(DefValuesetModeloDetailPage.propagar_operacoes)
+    assert "DefValuesetOperacaoPropagacaoService" in propagar
+    assert "preparar_contexto" in propagar
+    assert "PropagarOperacoesValuesetModeloDialog" in propagar
+    assert "dialog.selected_ids" in propagar
+    assert ".executar(" in propagar
+    assert "Propagação cancelada" in propagar
 
 
 def test_page_uses_line_service_and_dialog() -> None:

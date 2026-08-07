@@ -391,12 +391,13 @@ class DefModuloService:
     def _linhas_modulo_de_custeio(
         self, linhas, topo, componente_repository, prioridades_por_linha: dict[int, int]
     ) -> list[CriarDefModuloLinhaData]:
-        """Build the module lines for the selection, INCLUDING composite children.
+        """Build module lines for the selection, including every descendant.
 
-        Each top-level line gets a sequential ordem; a composite's children
-        (nivel>0, linha_pai_id == header) follow right after their header with
-        linha_pai_ordem set to the header's ordem (so the structure re-creates
-        directly on import, keeping the children's measure formulas).
+        The costing hierarchy may have more than one level (for example a
+        double-door set -> one-door set x 2 -> door/hinges/handle).  Persist the
+        whole tree in depth-first order and point each stored child at the
+        *ordem* of its immediate parent.  Older code only saved direct children
+        of a top-level composite and silently lost grandchildren.
         """
         filhos_por_pai: dict[int, list] = {}
         for linha in linhas:
@@ -409,26 +410,26 @@ class DefModuloService:
 
         resultado: list[CriarDefModuloLinhaData] = []
         ordem = 0
-        for pai in topo:
+
+        def adicionar_ramo(linha, linha_pai_ordem: int | None = None) -> None:
+            nonlocal ordem
             ordem += 1
-            ordem_pai = ordem
+            ordem_atual = ordem
             resultado.append(
                 self._linha_modulo_de_custeio(
-                    pai, ordem_pai, componente_repository, prioridades_por_linha
+                    linha,
+                    ordem_atual,
+                    componente_repository,
+                    prioridades_por_linha,
+                    linha_pai_ordem=linha_pai_ordem,
                 )
             )
-            if pai.tipo_linha == PECA_COMPOSTA:
-                for filho in filhos_por_pai.get(pai.id, []):
-                    ordem += 1
-                    resultado.append(
-                        self._linha_modulo_de_custeio(
-                            filho,
-                            ordem,
-                            componente_repository,
-                            prioridades_por_linha,
-                            linha_pai_ordem=ordem_pai,
-                        )
-                    )
+
+            for filho in filhos_por_pai.get(linha.id, []):
+                adicionar_ramo(filho, ordem_atual)
+
+        for pai in topo:
+            adicionar_ramo(pai)
 
         return resultado
 

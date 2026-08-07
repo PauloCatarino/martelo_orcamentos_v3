@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -21,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
@@ -38,9 +41,15 @@ from app.services.def_valueset_modelo_linha_service import (
     DefValuesetModeloLinhaService,
     EditarDefValuesetModeloLinhaData,
 )
+from app.services.def_valueset_operacao_propagacao_service import (
+    DefValuesetOperacaoPropagacaoService,
+)
 from app.ui.dialogs.atualizar_precos_valueset_dialog import AtualizarPrecosValuesetDialog
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
+from app.ui.dialogs.propagar_operacoes_valueset_modelo_dialog import (
+    PropagarOperacoesValuesetModeloDialog,
+)
 from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.helpers.valueset_precos import (
     atualizacoes_de_divergencias,
@@ -63,6 +72,11 @@ from app.utils.formatters import format_currency
 
 class DefValuesetModeloDetailPage(QWidget):
     """Detail page showing one ValueSet model and managing its lines."""
+
+    # Partilhado entre instâncias para permitir copiar de um modelo e colar
+    # noutro depois de regressar à lista.
+    _copied_snapshot: dict | None = None
+    _copied_operacoes: list | None = None
 
     LINHA_HEADERS = [
         "Chave",
@@ -117,6 +131,21 @@ class DefValuesetModeloDetailPage(QWidget):
         self.new_button.clicked.connect(self.abrir_nova_linha)
         self.edit_button = QPushButton("Editar Linha")
         self.edit_button.clicked.connect(self.abrir_editar_linha)
+        self.copy_button = QPushButton("Copiar Dados")
+        self.copy_button.setToolTip(
+            "Copiar os dados de material e as operações da linha selecionada (Ctrl+C)."
+        )
+        self.copy_button.clicked.connect(self.copiar_dados)
+        self.paste_button = QPushButton("Colar Dados")
+        self.paste_button.setToolTip(
+            "Colar os dados copiados na linha selecionada, mantendo a identidade do destino (Ctrl+V)."
+        )
+        self.paste_button.clicked.connect(self.colar_dados)
+        self.propagate_operations_button = QPushButton("Propagar Operações…")
+        self.propagate_operations_button.setToolTip(
+            "Selecionar outras linhas com a mesma chave e Ref LE e substituir as operações."
+        )
+        self.propagate_operations_button.clicked.connect(self.propagar_operacoes)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.subir_button = QPushButton("↑")
@@ -151,6 +180,9 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
+        actions_layout.addWidget(self.copy_button)
+        actions_layout.addWidget(self.paste_button)
+        actions_layout.addWidget(self.propagate_operations_button)
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.subir_button)
         actions_layout.addWidget(self.descer_button)
@@ -176,6 +208,9 @@ class DefValuesetModeloDetailPage(QWidget):
         self.table.horizontalHeader().setStretchLastSection(False)
         self._larguras_iniciais_aplicadas = False
         self.table.cellDoubleClicked.connect(self._handle_double_click)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
+        self._instalar_atalhos_clipboard()
         # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
         if ligar_persistencia_larguras(self.table, "valueset_modelo"):
             self._larguras_iniciais_aplicadas = True
@@ -477,6 +512,172 @@ class DefValuesetModeloDetailPage(QWidget):
     def abrir_nova_linha(self) -> None:
         """Open the dialog to create a new model line."""
         self._abrir_dialog_criar_linha(success_message="Linha criada.")
+
+    def _instalar_atalhos_clipboard(self) -> None:
+        """Bind copy/paste only while the model table has focus."""
+        for sequencia, handler in (
+            (QKeySequence.StandardKey.Copy, self.copiar_dados),
+            (QKeySequence.StandardKey.Paste, self.colar_dados),
+        ):
+            atalho = QShortcut(sequencia, self.table)
+            atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+            atalho.activated.connect(handler)
+
+    def copiar_dados(self) -> None:
+        """Copy reusable material content and detached operation snapshots."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha para copiar.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                type(self)._copied_snapshot = DefValuesetModeloLinhaService(
+                    session
+                ).copiar_snapshot_linha(linha.id)
+                type(self)._copied_operacoes = DefValuesetModeloLinhaOperacaoService(
+                    session
+                ).listar_operacoes_da_linha(linha.id)
+        except (SQLAlchemyError, ValueError) as error:
+            type(self)._copied_snapshot = None
+            type(self)._copied_operacoes = None
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível copiar os dados da linha.", error)
+            )
+            return
+
+        self.status_label.setText(
+            "Dados e operações da linha copiados. Selecione uma linha de destino."
+        )
+
+    def colar_dados(self) -> None:
+        """Replace the selected line content, preserving its identity."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione uma linha de destino.")
+            return
+
+        snapshot = type(self)._copied_snapshot
+        operacoes = type(self)._copied_operacoes
+        if snapshot is None:
+            self.status_label.setText("Não existem dados copiados.")
+            return
+
+        colar_operacoes = False
+        total_operacoes = len(operacoes) if operacoes else 0
+        if total_operacoes:
+            confirm = QMessageBox.question(
+                self,
+                "Colar operações",
+                f"A linha copiada tem {total_operacoes} operação(ões). Colar também "
+                "as operações? As operações da linha de destino serão substituídas.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            colar_operacoes = confirm == QMessageBox.StandardButton.Yes
+
+        try:
+            with SessionLocal() as session:
+                try:
+                    DefValuesetModeloLinhaService(session).aplicar_snapshot_linha(
+                        linha.id, snapshot, commit=False
+                    )
+                    if colar_operacoes:
+                        DefValuesetModeloLinhaOperacaoService(
+                            session
+                        ).substituir_operacoes_de(
+                            operacoes or [], linha.id, commit=False
+                        )
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    raise
+        except (SQLAlchemyError, ValueError) as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível colar os dados da linha.", error)
+            )
+            return
+
+        self.carregar_linhas()
+        if colar_operacoes:
+            self.status_label.setText(
+                "Dados e operações colados; a identidade da linha de destino foi mantida."
+            )
+        else:
+            self.status_label.setText(
+                "Dados colados; a identidade e as operações da linha de destino foram mantidas."
+            )
+
+    def _abrir_menu_contexto(self, pos) -> None:
+        """Show the model-line actions on right click."""
+        item = self.table.itemAt(pos)
+        if item is not None:
+            selected_rows = {
+                index.row() for index in self.table.selectionModel().selectedRows()
+            }
+            if item.row() not in selected_rows:
+                self.table.selectRow(item.row())
+
+        menu = QMenu(self)
+        menu.addAction("Editar Linha", self.abrir_editar_linha)
+        menu.addAction("Copiar Dados (Ctrl+C)", self.copiar_dados)
+        menu.addAction("Colar Dados (Ctrl+V)", self.colar_dados)
+        menu.addAction("Propagar Operações…", self.propagar_operacoes)
+        menu.addAction("Ativar/Desativar", self.alternar_linha_ativa)
+        menu.exec(self.table.viewport().mapToGlobal(pos))
+
+    def propagar_operacoes(self) -> None:
+        """Preview and propagate source operations to explicit model-line targets."""
+        linha = self._get_selected_linha()
+        if linha is None:
+            self.status_label.setText("Selecione a linha de origem das operações.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                contexto = DefValuesetOperacaoPropagacaoService(
+                    session
+                ).preparar_contexto(linha.id, app_session.current_user)
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível localizar os destinos.", error)
+            )
+            return
+
+        if not contexto.destinos:
+            self.status_label.setText(
+                "Não existem outras linhas com a mesma chave ValueSet e a mesma Ref LE."
+            )
+            return
+
+        dialog = PropagarOperacoesValuesetModeloDialog(contexto, parent=self)
+        if not dialog.exec():
+            self.status_label.setText("Propagação cancelada; nenhuma linha foi alterada.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = DefValuesetOperacaoPropagacaoService(session).executar(
+                    contexto, dialog.selected_ids, app_session.current_user
+                )
+        except (ValueError, PermissionError) as error:
+            self.status_label.setText(str(error))
+            return
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível propagar as operações.", error)
+            )
+            return
+
+        self.carregar_linhas()
+        self.status_label.setText(
+            f"Operações propagadas para {resultado.destinos_atualizados} linha(s): "
+            f"{resultado.substituidas} substituída(s), "
+            f"{resultado.adicionadas} adicionada(s) e "
+            f"{resultado.desativadas} desativada(s)."
+        )
 
     def _abrir_dialog_criar_linha(
         self,

@@ -4932,7 +4932,7 @@ class OrcamentoItemCusteioLinhaService:
                 self._importar_divisao_modulo(item_id, linha)
             elif tipo == PECA_COMPOSTA:
                 componentes += self._importar_composta_modulo(
-                    item_id, linha, filhos_por_pai_ordem.get(linha.ordem, []), avisos
+                    item_id, linha, filhos_por_pai_ordem, avisos
                 )
             else:
                 self._importar_peca_modulo(item_id, linha, tipo, avisos)
@@ -5077,17 +5077,21 @@ class OrcamentoItemCusteioLinhaService:
         self.repository.create_linha(**fields)
 
     def _importar_composta_modulo(
-        self, orcamento_item_id: int, linha, filhos: list, avisos: list[str]
+        self,
+        orcamento_item_id: int,
+        linha,
+        filhos_por_pai_ordem: dict[int, list],
+        avisos: list[str],
     ) -> int:
         """Recreate a composite into the item costing.
 
-        When the module stored the composite's CHILD lines, recreate the header
-        + those children DIRECTLY (keeping their measure formulas and linking the
-        quantity rule via the matching def_peca_componente). Otherwise fall back
-        to re-expanding from the def_peca (old modules). Returns how many
-        component sub-lines were created.
+        When the module stored descendants, recreate the complete hierarchy
+        (not only the first level), keeping formulas and quantity-rule snapshots.
+        Otherwise fall back to re-expanding from the def_peca (old modules).
+        Returns how many descendant lines were created.
         """
         peca = self._resolver_def_peca_modulo(linha)
+        filhos = filhos_por_pai_ordem.get(linha.ordem, [])
 
         if not filhos:
             return self._reexpandir_composta_da_def_peca(
@@ -5097,18 +5101,60 @@ class OrcamentoItemCusteioLinhaService:
         principal = self._criar_cabecalho_composta_modulo(
             orcamento_item_id, linha, peca, avisos
         )
+        return self._importar_descendentes_composta_modulo(
+            orcamento_item_id,
+            linha,
+            principal.id,
+            nivel=1,
+            filhos_por_pai_ordem=filhos_por_pai_ordem,
+            avisos=avisos,
+        )
+
+    def _importar_descendentes_composta_modulo(
+        self,
+        orcamento_item_id: int,
+        pai_modulo,
+        linha_pai_id: int,
+        *,
+        nivel: int,
+        filhos_por_pai_ordem: dict[int, list],
+        avisos: list[str],
+    ) -> int:
+        """Rebuild one stored module subtree below ``pai_modulo``."""
+        peca_pai = self._resolver_def_peca_modulo(pai_modulo)
         componentes_def = (
-            [c for c in self.componente_repository.list_by_peca_pai_id(peca.id) if c.ativo]
-            if peca is not None
+            [
+                componente
+                for componente in self.componente_repository.list_by_peca_pai_id(
+                    peca_pai.id
+                )
+                if componente.ativo
+            ]
+            if peca_pai is not None
             else []
         )
 
         criados = 0
+        filhos = filhos_por_pai_ordem.get(pai_modulo.ordem, [])
         for ordem, filho in enumerate(filhos, start=1):
-            self._importar_filho_composta_modulo(
-                orcamento_item_id, filho, principal.id, ordem, componentes_def, avisos
+            criada = self._importar_filho_composta_modulo(
+                orcamento_item_id,
+                filho,
+                linha_pai_id,
+                ordem,
+                nivel,
+                componentes_def,
+                avisos,
             )
             criados += 1
+            criados += self._importar_descendentes_composta_modulo(
+                orcamento_item_id,
+                filho,
+                criada.id,
+                nivel=nivel + 1,
+                filhos_por_pai_ordem=filhos_por_pai_ordem,
+                avisos=avisos,
+            )
 
         return criados
 
@@ -5220,9 +5266,10 @@ class OrcamentoItemCusteioLinhaService:
         filho,
         linha_pai_id: int,
         ordem: int,
+        nivel: int,
         componentes_def: list,
         avisos: list[str],
-    ) -> None:
+    ) -> OrcamentoItemCusteioLinhaResumo:
         """Recreate one composite CHILD from a module line (keeps its formulas).
 
         Resolves the material from the def_peca/ValueSet (as in the library),
@@ -5238,7 +5285,7 @@ class OrcamentoItemCusteioLinhaService:
                 peca,
                 tipo_linha=tipo,
                 origem="MODULO",
-                nivel=1,
+                nivel=nivel,
                 linha_pai_id=linha_pai_id,
                 ordem=ordem,
                 qt_und=self._qt_modulo(filho.qt_und, Decimal("1")),
@@ -5273,7 +5320,7 @@ class OrcamentoItemCusteioLinhaService:
                 ),
                 "chave_valueset": filho.chave_valueset,
                 "origem_tipo": "MODULO",
-                "nivel": 1,
+                "nivel": nivel,
                 "linha_pai_id": linha_pai_id,
                 "ordem": ordem,
                 "qt_mod": Decimal("1"),
@@ -5289,10 +5336,34 @@ class OrcamentoItemCusteioLinhaService:
         if componente is not None:
             fields["origem_id"] = componente.id
             fields.update(self._snapshot_regra_associado(componente))
+        elif getattr(filho, "def_regra_quantidade_id", None) is not None:
+            fields.update(
+                self._snapshot_regra_modulo(filho.def_regra_quantidade_id)
+            )
         if getattr(filho, "prioridade_valueset", None) is not None:
             fields["associado_valueset_prioridade"] = filho.prioridade_valueset
 
-        self.repository.create_linha(**fields)
+        return self.repository.create_linha(**fields)
+
+    def _snapshot_regra_modulo(self, regra_id: int) -> dict:
+        """Freeze a rule stored by an old module when no catalog link matches.
+
+        This compatibility path is needed by module snapshots whose hierarchy
+        was corrected after they were saved.  Their rule id is still reliable;
+        the remaining association settings use the legacy defaults already used
+        by module lines before full association snapshots existed.
+        """
+        regra = self.regra_quantidade_repository.get_by_id(regra_id)
+        if regra is not None and not regra.ativo:
+            regra = None
+        return {
+            "associado_regra_codigo": getattr(regra, "codigo", None),
+            "associado_regra_expressao": getattr(regra, "expressao", None),
+            "associado_modo_quantidade": TOTAL,
+            "associado_zona_aplicacao": None,
+            "associado_dimensao_referencia": DIM_COMP,
+            "associado_numero_topos": 0,
+        }
 
     @staticmethod
     def _componente_para_filho_modulo(filho, componentes_def):
@@ -5561,7 +5632,13 @@ class OrcamentoItemCusteioLinhaService:
         peca_filha = self._obter_def_peca_filha(componente)
 
         if peca_filha is not None:
-            if componente.tipo_componente != "PECA":
+            if self._eh_conjunto_virtual(peca_filha):
+                # A nested set is a real grouping line too.  Keeping it as a
+                # plain PECA hid the intermediate quantity (for example the
+                # two one-door assemblies inside a double-door set) and made
+                # saved-module round trips lose the intended hierarchy.
+                tipo_linha = PECA_COMPOSTA
+            elif componente.tipo_componente != "PECA":
                 tipo_linha = normalize_custeio_linha_type(
                     componente.tipo_componente
                 )

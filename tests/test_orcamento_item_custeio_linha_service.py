@@ -1042,6 +1042,27 @@ def test_associados_aninhados_sao_expandidos_com_hierarquia(monkeypatch) -> None
     assert segundo["linha_pai_id"] == 2
 
 
+def test_conjunto_aninhado_mantem_tipo_composto(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakePecaRepository.pecas = {
+        1: _peca(id=1, codigo="PORTA_DUPLA", tipo_peca="COMPOSTA", natureza="CONJUNTO"),
+        2: _peca(id=2, codigo="PORTA_UNICA", tipo_peca="COMPOSTA", natureza="CONJUNTO"),
+        3: _peca(id=3, codigo="PORTA", natureza="MATERIAL"),
+    }
+    _FakeComponenteRepository.componentes = [
+        _componente(id=20, def_peca_pai_id=1, def_peca_componente_id=2, quantidade=Decimal("2")),
+        _componente(id=21, def_peca_pai_id=2, def_peca_componente_id=3),
+    ]
+
+    service.adicionar_pecas_da_biblioteca(10, [1])
+
+    principal, conjunto_filho, porta = _FakeRepository.created_payloads
+    assert principal["tipo_linha"] == "PECA_COMPOSTA"
+    assert conjunto_filho["tipo_linha"] == "PECA_COMPOSTA"
+    assert conjunto_filho["qt_und"] == Decimal("2")
+    assert porta["linha_pai_id"] == 2
+
+
 def test_adicionar_peca_composta_cria_principal_e_componentes(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     _FakePecaRepository.pecas = {

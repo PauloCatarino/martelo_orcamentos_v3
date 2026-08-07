@@ -406,6 +406,53 @@ def test_guardar_de_linhas_custeio_topo_e_estrutura(session) -> None:
     assert com_linhas.modulo.ambito == AMBITO_UTILIZADOR
 
 
+def test_guardar_modulo_preserva_neto_e_pai_imediato(session) -> None:
+    """A arvore porta dupla -> porta -> dobradica nao pode perder o 2.º nivel."""
+    conjunto = _inserir_custeio(
+        session,
+        tipo_linha="PECA_COMPOSTA",
+        def_peca_codigo="PORTA_DUPLA+DOBRADICA+PUXADOR",
+        descricao="Porta dupla",
+    )
+    porta = _inserir_custeio(
+        session,
+        tipo_linha="PECA",
+        linha_pai_id=conjunto.id,
+        nivel=1,
+        def_peca_codigo="PORTA_SIMPLES",
+        descricao="Porta simples",
+        qt_und=Decimal("2"),
+    )
+    dobradica = _inserir_custeio(
+        session,
+        tipo_linha="FERRAGEM",
+        linha_pai_id=porta.id,
+        nivel=2,
+        def_peca_codigo="DOBRADICA",
+        descricao="Dobradiça",
+        qt_und=Decimal("5"),
+    )
+    session.commit()
+
+    modulo = DefModuloService(session).guardar_de_linhas_custeio(
+        orcamento_item_id=10,
+        linha_ids=[conjunto.id],
+        codigo="PORTA_DUPLA",
+        nome="Porta dupla",
+        user_id=7,
+    )
+
+    assert [linha.def_peca_codigo for linha in modulo.linhas] == [
+        "PORTA_DUPLA+DOBRADICA+PUXADOR",
+        "PORTA_SIMPLES",
+        "DOBRADICA",
+    ]
+    cabecalho, porta_guardada, dobradica_guardada = modulo.linhas
+    assert porta_guardada.linha_pai_ordem == cabecalho.ordem
+    assert dobradica_guardada.linha_pai_ordem == porta_guardada.ordem
+    assert dobradica_guardada.nivel == 2
+
+
 def test_guardar_modulo_preserva_prioridade_do_material_selecionado(session) -> None:
     linha = _inserir_custeio(
         session,

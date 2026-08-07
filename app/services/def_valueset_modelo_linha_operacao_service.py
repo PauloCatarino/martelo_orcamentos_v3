@@ -144,6 +144,37 @@ class DefValuesetModeloLinhaOperacaoService:
 
         return copiadas
 
+    def substituir_operacoes_de(
+        self,
+        origem: list[DefValuesetModeloLinhaOperacaoResumo],
+        destino_id: int,
+        *,
+        commit: bool = True,
+    ) -> int:
+        """Make destination operations equal to a detached source snapshot.
+
+        Existing destination links are reused in display order, missing links
+        are created and surplus links are only deactivated. This preserves
+        audit history, avoids destructive deletes and makes repeated pastes
+        idempotent.
+        """
+        existentes = self.repository.list_by_linha(destino_id)
+
+        for indice, ligacao in enumerate(origem):
+            fields = self._copy_fields(ligacao, destino_id)
+            if indice < len(existentes):
+                self.repository.update(id=existentes[indice].id, **fields)
+            else:
+                self.repository.create(**fields)
+
+        for excedente in existentes[len(origem) :]:
+            self.repository.deactivate(excedente.id)
+
+        if commit:
+            self.session.commit()
+
+        return len(origem)
+
     def editar_operacao_da_linha(
         self, id: int, data: EditarDefValuesetModeloLinhaOperacaoData
     ) -> DefValuesetModeloLinhaOperacaoResumo:
@@ -214,4 +245,27 @@ class DefValuesetModeloLinhaOperacaoService:
             return None
 
         return unidade_tempo.strip().upper()
+
+    @staticmethod
+    def _copy_fields(
+        ligacao: DefValuesetModeloLinhaOperacaoResumo, destino_id: int
+    ) -> dict:
+        """Build operation fields without copying link identity or timestamps."""
+        return {
+            "def_valueset_modelo_linha_id": destino_id,
+            "def_operacao_id": ligacao.def_operacao_id,
+            "ordem": ligacao.ordem,
+            "acao": ligacao.acao,
+            "metodo_calculo": ligacao.metodo_calculo,
+            "regra_calculo": ligacao.regra_calculo,
+            "quantidade_base": ligacao.quantidade_base,
+            "rasgo_qt_comp": ligacao.rasgo_qt_comp,
+            "rasgo_qt_larg": ligacao.rasgo_qt_larg,
+            "tempo_setup_minutos": ligacao.tempo_setup_minutos,
+            "tempo_por_unidade_minutos": ligacao.tempo_por_unidade_minutos,
+            "unidade_tempo": ligacao.unidade_tempo,
+            "obrigatorio": ligacao.obrigatorio,
+            "ativo": ligacao.ativo,
+            "observacoes": ligacao.observacoes,
+        }
 

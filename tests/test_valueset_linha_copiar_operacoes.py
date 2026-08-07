@@ -136,3 +136,34 @@ def test_linha_sem_operacoes_nao_copia_nada(session) -> None:
 
     assert copiadas == 0
     assert len(_ligacoes(session, origem_id)) == 2
+
+
+def test_substituir_reutiliza_ligacoes_e_e_idempotente(session) -> None:
+    origem_id, destino_id = _montar(session)
+    service = DefValuesetModeloLinhaOperacaoService(session)
+    origem = service.listar_operacoes_da_linha(origem_id)
+
+    assert service.substituir_operacoes_de(origem, destino_id) == 2
+    ids_primeira = [ligacao.id for ligacao in _ligacoes(session, destino_id)]
+
+    assert service.substituir_operacoes_de(origem, destino_id) == 2
+    destino = _ligacoes(session, destino_id)
+    assert [ligacao.id for ligacao in destino] == ids_primeira
+    assert len(destino) == 2
+    assert destino[0].def_operacao_id == origem[0].def_operacao_id
+    assert destino[0].metodo_calculo == origem[0].metodo_calculo
+    assert destino[1].ativo is False
+
+
+def test_substituir_desativa_operacoes_excedentes_sem_apagar(session) -> None:
+    origem_id, destino_id = _montar(session)
+    service = DefValuesetModeloLinhaOperacaoService(session)
+    origem = service.listar_operacoes_da_linha(origem_id)
+    service.substituir_operacoes_de(origem, destino_id)
+
+    service.substituir_operacoes_de(origem[:1], destino_id)
+
+    destino = _ligacoes(session, destino_id)
+    assert len(destino) == 2
+    assert destino[0].ativo is True
+    assert destino[1].ativo is False

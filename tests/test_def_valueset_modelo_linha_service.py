@@ -136,6 +136,88 @@ def _service(monkeypatch):
     return service_module.DefValuesetModeloLinhaService(session=session), session
 
 
+def test_snapshot_copia_conteudo_sem_identidade(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=7,
+        def_valueset_modelo_id=91,
+        chave="MATERIAL_PORTAS",
+        codigo_opcao="CARVALHO",
+        nome_opcao="Carvalho portas",
+        materia_prima_id=31,
+        ref_materia_prima="PLACA-31",
+        ref_le="LE-31",
+        preco_tabela=Decimal("100"),
+        preco_orla_0_4_m2=Decimal("4.5"),
+    )
+
+    snapshot = service.copiar_snapshot_linha(7)
+
+    assert snapshot["materia_prima_id"] == 31
+    assert snapshot["ref_materia_prima"] == "PLACA-31"
+    assert snapshot["ref_le"] == "LE-31"
+    assert snapshot["preco_orla_0_4_m2"] == Decimal("4.5")
+    for field in (
+        "id",
+        "def_valueset_modelo_id",
+        "chave",
+        "codigo_opcao",
+        "nome_opcao",
+        "padrao",
+        "prioridade",
+        "ordem",
+        "ativo",
+        "observacoes",
+    ):
+        assert field not in snapshot
+
+
+def test_aplicar_snapshot_preserva_identidade_e_pode_adiar_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=8,
+        def_valueset_modelo_id=10,
+        chave="MATERIAL_REMATES",
+        codigo_opcao="REMATE_A",
+        ordem=9,
+        ativo=False,
+    )
+
+    service.aplicar_snapshot_linha(
+        8,
+        {
+            "materia_prima_id": 31,
+            "ref_materia_prima": "PLACA-31",
+            "preco_tabela": Decimal("100"),
+            "margem_percentagem": Decimal("10"),
+            "desconto_percentagem": Decimal("5"),
+        },
+        commit=False,
+    )
+
+    payload = _FakeRepository.updated_payload
+    assert payload is not None
+    assert payload["id"] == 8
+    assert payload["materia_prima_id"] == 31
+    assert payload["ref_materia_prima"] == "PLACA-31"
+    assert payload["preco_liquido"] == Decimal("104.500")
+    assert payload["origem_dados"] == "EDITADO_LOCALMENTE"
+    assert payload["editado_localmente"] is True
+    for field in (
+        "def_valueset_modelo_id",
+        "chave",
+        "codigo_opcao",
+        "nome_opcao",
+        "padrao",
+        "prioridade",
+        "ordem",
+        "ativo",
+        "observacoes",
+    ):
+        assert field not in payload
+    assert session.committed is False
+
+
 def test_criar_linha_normaliza_chave_e_opcao_defaults(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 

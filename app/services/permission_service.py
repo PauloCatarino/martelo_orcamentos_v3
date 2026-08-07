@@ -28,9 +28,18 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
 # uma operação concreta. Nascem desligadas — dá-se a quem precisa, em vez de
 # tirar a quem não deve.
 PERMISSAO_CRIAR_ENCOMENDA_IMOS = "acao.criar_encomenda_imos"
+PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS = (
+    "acao.propagar_operacoes_valueset_outros"
+)
 
 ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
-    ((PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),)
+    (
+        (PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),
+        (
+            PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS,
+            "Propagar operações ValueSet para modelos globais ou de outros utilizadores",
+        ),
+    )
 )
 
 #: Tudo o que o administrador pode marcar na grelha de acessos.

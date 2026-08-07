@@ -542,6 +542,119 @@ def test_importar_composta_recria_filhos_com_formulas(session) -> None:
     assert pes.qt_und == Decimal("2")
 
 
+def test_importar_modulo_preserva_dobradicas_por_porta(session) -> None:
+    """1 modulo x 2 portas x 5 dobradicas tem de resultar em 10."""
+    item_id = _criar_item(session)
+    peca_repo = DefPecaRepository(session)
+    regra_repo = DefRegraQuantidadeRepository(session)
+
+    conjunto = peca_repo.create_def_peca(
+        codigo="PORTA_DUPLA+DOBRADICA+PUXADOR",
+        nome="Porta dupla",
+        descricao=None,
+        grupo="PORTAS",
+        tipo_peca="COMPOSTA",
+    )
+    porta = peca_repo.create_def_peca(
+        codigo="PORTA_SIMPLES",
+        nome="Porta simples",
+        descricao=None,
+        grupo="PORTAS",
+        tipo_peca="SIMPLES",
+    )
+    dobradica = peca_repo.create_def_peca(
+        codigo="DOBRADICA",
+        nome="Dobradiça",
+        descricao=None,
+        grupo="FERRAGENS",
+        tipo_peca="SIMPLES",
+    )
+    puxador = peca_repo.create_def_peca(
+        codigo="PUXADOR",
+        nome="Puxador",
+        descricao=None,
+        grupo="FERRAGENS",
+        tipo_peca="SIMPLES",
+    )
+    regra = regra_repo.create_regra(
+        codigo="DOBRADICA_POR_PORTA",
+        nome="Dobradiças por porta",
+        expressao="5",
+    )
+
+    modulo = DefModuloService(session).criar(
+        CriarDefModuloData(
+            codigo="MOD_PORTA_DUPLA",
+            nome="Porta dupla",
+            user_id=7,
+            linhas=[
+                CriarDefModuloLinhaData(
+                    ordem=1,
+                    tipo_linha="PECA_COMPOSTA",
+                    def_peca_id=conjunto.id,
+                    def_peca_codigo=conjunto.codigo,
+                    qt_und="1",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2,
+                    tipo_linha="PECA",
+                    def_peca_id=porta.id,
+                    def_peca_codigo=porta.codigo,
+                    linha_pai_ordem=1,
+                    nivel=1,
+                    qt_und="2",
+                    comp="H",
+                    larg="L/2",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=3,
+                    tipo_linha="FERRAGEM",
+                    def_peca_id=dobradica.id,
+                    def_peca_codigo=dobradica.codigo,
+                    linha_pai_ordem=2,
+                    nivel=2,
+                    qt_und="1",
+                    def_regra_quantidade_id=regra.id,
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=4,
+                    tipo_linha="FERRAGEM",
+                    def_peca_id=puxador.id,
+                    def_peca_codigo=puxador.codigo,
+                    linha_pai_ordem=2,
+                    nivel=2,
+                    qt_und="1",
+                ),
+            ],
+        )
+    )
+    session.commit()
+
+    service = OrcamentoItemCusteioLinhaService(session)
+    resultado = service.inserir_modulo_no_item(item_id, modulo.modulo.id)
+    assert resultado.componentes == 3
+
+    service.recalcular_medidas_do_item(item_id)
+    service.aplicar_regras_quantidade_do_item(item_id)
+    service.recalcular_quantidades_do_item(item_id)
+
+    linhas = OrcamentoItemCusteioLinhaRepository(
+        session
+    ).list_active_by_orcamento_item(item_id)
+    porta_linha = next(linha for linha in linhas if linha.def_peca_codigo == "PORTA_SIMPLES")
+    dobradica_linha = next(
+        linha for linha in linhas if linha.def_peca_codigo == "DOBRADICA"
+    )
+    puxador_linha = next(linha for linha in linhas if linha.def_peca_codigo == "PUXADOR")
+
+    assert dobradica_linha.linha_pai_id == porta_linha.id
+    assert puxador_linha.linha_pai_id == porta_linha.id
+    assert porta_linha.quantidade == Decimal("2.000")
+    assert dobradica_linha.qt_und == Decimal("5.000")
+    assert dobradica_linha.quantidade == Decimal("10.000")
+    assert puxador_linha.quantidade == Decimal("2.000")
+
+
 def test_importar_composta_aplica_formulas_do_cabecalho(session) -> None:
     """Phase C: header formulas stored on the module apply on import and the
     children's PAI_* transformations resolve from the header's real size."""
