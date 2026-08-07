@@ -237,6 +237,30 @@ TIPOS_ENTRADA: tuple[TipoEntrada, ...] = (
             ("Sem a descrição de produção", "É demasiado comprida para o chat"),
         ),
     ),
+    TipoEntrada(
+        "preferencia_orcamento",
+        "Preferências de orçamentação",
+        "Preferência",
+        "Como deve ser aplicada",
+        False,
+        "Critérios pessoais para ordenar propostas. Não altera preços nem medidas sem confirmação.",
+        sugestoes=(
+            ("Preferir módulos padrão", "Evitar soluções especiais quando existe alternativa equivalente"),
+            ("Mostrar primeiro a solução simples", "Menor número de módulos compatível com o pedido"),
+        ),
+    ),
+    TipoEntrada(
+        "regra_roupeiro",
+        "Regras para roupeiros",
+        "Regra",
+        "Quando se aplica",
+        False,
+        "Regras declaradas para compor roupeiros. O quadro “O que NÃO quero” continua obrigatório.",
+        sugestoes=(
+            ("Gavetas próximas do centro", "Quando o desenho não indicar outra posição"),
+            ("Perguntar quando a profundidade não for legível", "Nunca assumir a medida final"),
+        ),
+    ),
 )
 
 TIPOS_POR_CHAVE = {tipo.chave: tipo for tipo in TIPOS_ENTRADA}

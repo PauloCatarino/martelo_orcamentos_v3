@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models import DefModulo, DefModuloLinha
+from app.models import DefModulo, DefModuloCaracteristica, DefModuloLinha
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,12 @@ class DefModuloResumo:
     categoria: str
     imagem_path: str | None
     ativo: bool
+    largura_min_mm: Decimal | None = None
+    largura_preferida_mm: Decimal | None = None
+    largura_max_mm: Decimal | None = None
+    posicao_roupeiro: str | None = None
+    permite_espelhar: bool = False
+    tipo_item_compativel: str | None = None
     subcategoria: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -107,6 +114,12 @@ class DefModuloRepository:
         categoria: str = "OUTROS",
         subcategoria: str | None = None,
         imagem_path: str | None = None,
+        largura_min_mm: Decimal | None = None,
+        largura_preferida_mm: Decimal | None = None,
+        largura_max_mm: Decimal | None = None,
+        posicao_roupeiro: str | None = None,
+        permite_espelhar: bool = False,
+        tipo_item_compativel: str | None = None,
         ativo: bool = True,
     ) -> DefModuloResumo:
         """Create one module header."""
@@ -119,6 +132,12 @@ class DefModuloRepository:
             categoria=categoria,
             subcategoria=subcategoria,
             imagem_path=imagem_path,
+            largura_min_mm=largura_min_mm,
+            largura_preferida_mm=largura_preferida_mm,
+            largura_max_mm=largura_max_mm,
+            posicao_roupeiro=posicao_roupeiro,
+            permite_espelhar=permite_espelhar,
+            tipo_item_compativel=tipo_item_compativel,
             ativo=ativo,
         )
         self.session.add(modulo)
@@ -137,6 +156,12 @@ class DefModuloRepository:
         categoria: str,
         imagem_path: str | None,
         subcategoria: str | None = None,
+        largura_min_mm: Decimal | None = None,
+        largura_preferida_mm: Decimal | None = None,
+        largura_max_mm: Decimal | None = None,
+        posicao_roupeiro: str | None = None,
+        permite_espelhar: bool = False,
+        tipo_item_compativel: str | None = None,
     ) -> DefModuloResumo:
         """Update one module's header (the code is fixed)."""
         modulo = self.session.get(DefModulo, id)
@@ -150,6 +175,12 @@ class DefModuloRepository:
         modulo.categoria = categoria
         modulo.subcategoria = subcategoria
         modulo.imagem_path = imagem_path
+        modulo.largura_min_mm = largura_min_mm
+        modulo.largura_preferida_mm = largura_preferida_mm
+        modulo.largura_max_mm = largura_max_mm
+        modulo.posicao_roupeiro = posicao_roupeiro
+        modulo.permite_espelhar = permite_espelhar
+        modulo.tipo_item_compativel = tipo_item_compativel
         self.session.flush()
 
         return self._to_modulo_resumo(modulo)
@@ -241,9 +272,48 @@ class DefModuloRepository:
             subcategoria=modulo.subcategoria,
             imagem_path=modulo.imagem_path,
             ativo=modulo.ativo,
+            largura_min_mm=modulo.largura_min_mm,
+            largura_preferida_mm=modulo.largura_preferida_mm,
+            largura_max_mm=modulo.largura_max_mm,
+            posicao_roupeiro=modulo.posicao_roupeiro,
+            permite_espelhar=modulo.permite_espelhar,
+            tipo_item_compativel=modulo.tipo_item_compativel,
             created_at=modulo.created_at,
             updated_at=modulo.updated_at,
         )
+
+    def list_caracteristicas(self, def_modulo_id: int) -> dict[str, Decimal]:
+        """Lista apenas características com quantidade positiva."""
+        rows = self.session.execute(
+            select(DefModuloCaracteristica).where(
+                DefModuloCaracteristica.def_modulo_id == def_modulo_id,
+                DefModuloCaracteristica.quantidade > 0,
+            )
+        ).scalars()
+        return {row.codigo: row.quantidade for row in rows}
+
+    def guardar_caracteristicas(
+        self, def_modulo_id: int, caracteristicas: dict[str, Decimal]
+    ) -> None:
+        """Faz upsert; códigos retirados ficam a zero para manter histórico aditivo."""
+        existentes = {
+            row.codigo: row
+            for row in self.session.execute(
+                select(DefModuloCaracteristica).where(
+                    DefModuloCaracteristica.def_modulo_id == def_modulo_id
+                )
+            ).scalars()
+        }
+        normalizadas = {str(k).strip().upper(): Decimal(str(v)) for k, v in caracteristicas.items()}
+        for codigo, row in existentes.items():
+            row.quantidade = normalizadas.pop(codigo, Decimal("0"))
+        for codigo, quantidade in normalizadas.items():
+            self.session.add(
+                DefModuloCaracteristica(
+                    def_modulo_id=def_modulo_id, codigo=codigo, quantidade=quantidade
+                )
+            )
+        self.session.flush()
 
     def _to_linha_resumo(self, linha: DefModuloLinha) -> DefModuloLinhaResumo:
         return DefModuloLinhaResumo(

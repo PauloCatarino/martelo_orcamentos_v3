@@ -25,6 +25,11 @@ class OrcamentoItemModuloResumo:
     largura: Decimal | None
     profundidade: Decimal | None
     quantidade: Decimal
+    origem: str = "MANUAL"
+    def_modulo_id: int | None = None
+    ia_proposta_modulo_id: int | None = None
+    codigo_origem_snapshot: str | None = None
+    nome_origem_snapshot: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -95,6 +100,11 @@ class OrcamentoItemModuloRepository:
         largura: Decimal | None,
         profundidade: Decimal | None,
         quantidade: Decimal,
+        origem: str = "MANUAL",
+        def_modulo_id: int | None = None,
+        ia_proposta_modulo_id: int | None = None,
+        codigo_origem_snapshot: str | None = None,
+        nome_origem_snapshot: str | None = None,
     ) -> OrcamentoItemModuloResumo:
         """Create one module."""
         modulo = OrcamentoItemModulo(
@@ -106,6 +116,11 @@ class OrcamentoItemModuloRepository:
             largura=largura,
             profundidade=profundidade,
             quantidade=quantidade,
+            origem=origem,
+            def_modulo_id=def_modulo_id,
+            ia_proposta_modulo_id=ia_proposta_modulo_id,
+            codigo_origem_snapshot=codigo_origem_snapshot,
+            nome_origem_snapshot=nome_origem_snapshot,
         )
         self.session.add(modulo)
         self.session.flush()
@@ -169,6 +184,11 @@ class OrcamentoItemModuloRepository:
             largura=modulo.largura,
             profundidade=modulo.profundidade,
             quantidade=modulo.quantidade,
+            origem=modulo.origem,
+            def_modulo_id=modulo.def_modulo_id,
+            ia_proposta_modulo_id=modulo.ia_proposta_modulo_id,
+            codigo_origem_snapshot=modulo.codigo_origem_snapshot,
+            nome_origem_snapshot=modulo.nome_origem_snapshot,
             created_at=modulo.created_at,
             updated_at=modulo.updated_at,
         )

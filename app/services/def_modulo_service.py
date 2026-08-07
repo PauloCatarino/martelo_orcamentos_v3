@@ -28,6 +28,12 @@ from app.domain.modulo_categorias import (
 )
 from app.domain.modulo_estrutura import selecionar_linhas_topo
 from app.domain.modulo_pesquisa import filtrar_por_termo
+from app.domain.roupeiro_ia import (
+    ModuloElegivel,
+    POSICOES_MODULO,
+    POSICAO_QUALQUER,
+    TIPO_ITEM_ROUPEIRO_ABRIR,
+)
 from app.repositories.def_modulo_repository import (
     DefModuloLinhaResumo,
     DefModuloRepository,
@@ -79,6 +85,13 @@ class CriarDefModuloData:
     categoria: str = "OUTROS"
     subcategoria: str | None = None
     imagem_path: str | None = None
+    largura_min_mm: Decimal | None = None
+    largura_preferida_mm: Decimal | None = None
+    largura_max_mm: Decimal | None = None
+    posicao_roupeiro: str | None = None
+    permite_espelhar: bool = False
+    tipo_item_compativel: str | None = None
+    caracteristicas: dict[str, Decimal] = field(default_factory=dict)
     ativo: bool = True
     linhas: list[CriarDefModuloLinhaData] = field(default_factory=list)
 
@@ -94,6 +107,13 @@ class EditarDefModuloCabecalhoData:
     categoria: str = "OUTROS"
     subcategoria: str | None = None
     imagem_path: str | None = None
+    largura_min_mm: Decimal | None = None
+    largura_preferida_mm: Decimal | None = None
+    largura_max_mm: Decimal | None = None
+    posicao_roupeiro: str | None = None
+    permite_espelhar: bool = False
+    tipo_item_compativel: str | None = None
+    caracteristicas: dict[str, Decimal] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -180,6 +200,30 @@ class DefModuloService:
             linhas=self.repository.list_linhas(modulo_id),
         )
 
+    def listar_elegiveis_roupeiro_abrir(
+        self, user_id: int | None
+    ) -> list[ModuloElegivel]:
+        """Lista módulos visíveis e completamente catalogados para o piloto."""
+        visiveis = self.listar_globais() + self.listar_por_ambito_utilizador(user_id)
+        resultado: list[ModuloElegivel] = []
+        for modulo in visiveis:
+            if modulo.tipo_item_compativel != TIPO_ITEM_ROUPEIRO_ABRIR:
+                continue
+            resultado.append(
+                ModuloElegivel(
+                    id=modulo.id,
+                    codigo=modulo.codigo,
+                    nome=modulo.nome,
+                    largura_min_mm=modulo.largura_min_mm,
+                    largura_preferida_mm=modulo.largura_preferida_mm,
+                    largura_max_mm=modulo.largura_max_mm,
+                    posicao=modulo.posicao_roupeiro or POSICAO_QUALQUER,
+                    permite_espelhar=modulo.permite_espelhar,
+                    caracteristicas=self.repository.list_caracteristicas(modulo.id),
+                )
+            )
+        return resultado
+
     def criar(self, data: CriarDefModuloData) -> DefModuloComLinhas:
         """Create a module (header + lines) in one transaction."""
         codigo = self._normalize_codigo(data.codigo)
@@ -191,6 +235,14 @@ class DefModuloService:
         if self.repository.get_by_codigo(codigo) is not None:
             raise ValueError(f"Já existe um módulo com o código {codigo}.")
 
+        minimo, preferido, maximo, posicao = self._validar_metadados_roupeiro(
+            data.largura_min_mm,
+            data.largura_preferida_mm,
+            data.largura_max_mm,
+            data.posicao_roupeiro,
+            obrigatorio=False,
+        )
+
         modulo = self.repository.create_modulo(
             codigo=codigo,
             nome=nome,
@@ -201,7 +253,15 @@ class DefModuloService:
             subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
             ativo=data.ativo,
+            largura_min_mm=minimo,
+            largura_preferida_mm=preferido,
+            largura_max_mm=maximo,
+            posicao_roupeiro=posicao,
+            permite_espelhar=data.permite_espelhar,
+            tipo_item_compativel=data.tipo_item_compativel,
         )
+
+        self.repository.guardar_caracteristicas(modulo.id, data.caracteristicas or {})
 
         self._persistir_linhas(modulo.id, data.linhas)
 
@@ -251,6 +311,13 @@ class DefModuloService:
         categoria: str = OUTROS,
         subcategoria: str | None = None,
         imagem_path: str | None = None,
+        largura_min_mm: Decimal | None = None,
+        largura_preferida_mm: Decimal | None = None,
+        largura_max_mm: Decimal | None = None,
+        posicao_roupeiro: str | None = None,
+        permite_espelhar: bool = False,
+        tipo_item_compativel: str | None = None,
+        caracteristicas: dict[str, Decimal] | None = None,
     ) -> DefModuloComLinhas:
         """Save selected costing lines as a reusable module (phase 8U.1/8U.2).
 
@@ -286,6 +353,13 @@ class DefModuloService:
                 categoria=categoria,
                 subcategoria=subcategoria,
                 imagem_path=imagem_path,
+                largura_min_mm=largura_min_mm,
+                largura_preferida_mm=largura_preferida_mm,
+                largura_max_mm=largura_max_mm,
+                posicao_roupeiro=posicao_roupeiro,
+                permite_espelhar=permite_espelhar,
+                tipo_item_compativel=tipo_item_compativel,
+                caracteristicas=caracteristicas or {},
                 linhas=linhas_modulo,
             )
         )
@@ -313,6 +387,14 @@ class DefModuloService:
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
 
+        minimo, preferido, maximo, posicao = self._validar_metadados_roupeiro(
+            data.largura_min_mm,
+            data.largura_preferida_mm,
+            data.largura_max_mm,
+            data.posicao_roupeiro,
+            obrigatorio=False,
+        )
+
         self.repository.update_cabecalho(
             id=modulo_id,
             nome=nome,
@@ -322,7 +404,15 @@ class DefModuloService:
             categoria=normalize_modulo_categoria(data.categoria),
             subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
+            largura_min_mm=minimo,
+            largura_preferida_mm=preferido,
+            largura_max_mm=maximo,
+            posicao_roupeiro=posicao,
+            permite_espelhar=data.permite_espelhar,
+            tipo_item_compativel=data.tipo_item_compativel,
         )
+        if data.caracteristicas is not None:
+            self.repository.guardar_caracteristicas(modulo_id, data.caracteristicas)
 
         self.repository.delete_linhas_do_modulo(modulo_id)
         self._persistir_linhas(modulo_id, data.linhas)
@@ -347,6 +437,13 @@ class DefModuloService:
         categoria: str = OUTROS,
         subcategoria: str | None = None,
         imagem_path: str | None = None,
+        largura_min_mm: Decimal | None = None,
+        largura_preferida_mm: Decimal | None = None,
+        largura_max_mm: Decimal | None = None,
+        posicao_roupeiro: str | None = None,
+        permite_espelhar: bool = False,
+        tipo_item_compativel: str | None = None,
+        caracteristicas: dict[str, Decimal] | None = None,
     ) -> DefModuloComLinhas:
         """Overwrite an existing module from the current costing selection.
 
@@ -384,6 +481,13 @@ class DefModuloService:
                 categoria=categoria,
                 subcategoria=subcategoria,
                 imagem_path=imagem_path,
+                largura_min_mm=largura_min_mm,
+                largura_preferida_mm=largura_preferida_mm,
+                largura_max_mm=largura_max_mm,
+                posicao_roupeiro=posicao_roupeiro,
+                permite_espelhar=permite_espelhar,
+                tipo_item_compativel=tipo_item_compativel,
+                caracteristicas=caracteristicas or {},
                 linhas=linhas_modulo,
             ),
         )
@@ -552,6 +656,14 @@ class DefModuloService:
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
 
+        minimo, preferido, maximo, posicao = self._validar_metadados_roupeiro(
+            data.largura_min_mm,
+            data.largura_preferida_mm,
+            data.largura_max_mm,
+            data.posicao_roupeiro,
+            obrigatorio=False,
+        )
+
         result = self.repository.update_cabecalho(
             id=modulo_id,
             nome=nome,
@@ -561,7 +673,14 @@ class DefModuloService:
             categoria=normalize_modulo_categoria(data.categoria),
             subcategoria=self._normalize_subcategoria(data.subcategoria),
             imagem_path=self._normalize_optional(data.imagem_path),
+            largura_min_mm=minimo,
+            largura_preferida_mm=preferido,
+            largura_max_mm=maximo,
+            posicao_roupeiro=posicao,
+            permite_espelhar=data.permite_espelhar,
+            tipo_item_compativel=data.tipo_item_compativel,
         )
+        self.repository.guardar_caracteristicas(modulo_id, data.caracteristicas)
         self.session.commit()
 
         return result
@@ -624,6 +743,25 @@ class DefModuloService:
         return result
 
     # ----- helpers -----
+
+    @staticmethod
+    def _validar_metadados_roupeiro(
+        minimo, preferido, maximo, posicao, *, obrigatorio: bool
+    ) -> tuple[Decimal | None, Decimal | None, Decimal | None, str | None]:
+        valores = (minimo, preferido, maximo)
+        if not obrigatorio and all(valor is None for valor in valores):
+            return None, None, None, None
+        if any(valor is None for valor in valores):
+            raise ValueError(
+                "Preencha as larguras mínima, preferida e máxima para o módulo participar nas propostas."
+            )
+        minimo_d, preferido_d, maximo_d = (Decimal(str(valor)) for valor in valores)
+        if minimo_d <= 0 or not (minimo_d <= preferido_d <= maximo_d):
+            raise ValueError("As larguras devem respeitar: mínima ≤ preferida ≤ máxima.")
+        posicao_norm = (posicao or POSICAO_QUALQUER).strip().upper()
+        if posicao_norm not in POSICOES_MODULO:
+            raise ValueError("Posição de roupeiro inválida.")
+        return minimo_d, preferido_d, maximo_d, posicao_norm
 
     def _filtrar(
         self,

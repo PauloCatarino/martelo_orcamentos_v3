@@ -4876,7 +4876,12 @@ class OrcamentoItemCusteioLinhaService:
     # --- Import a saved module into the item (phase 8U.2) --------------------
 
     def inserir_modulo_no_item(
-        self, orcamento_item_id: int, modulo_id: int
+        self,
+        orcamento_item_id: int,
+        modulo_id: int,
+        *,
+        orcamento_item_modulo_id: int | None = None,
+        commit: bool = True,
     ) -> InserirModuloResult:
         """Append a saved module's lines to an item's costing (V2-style import).
 
@@ -4940,9 +4945,17 @@ class OrcamentoItemCusteioLinhaService:
 
         # Store the module image on the FIRST line of the imported block (the
         # division, or the first line) so the table can show its thumbnail.
-        self._marcar_imagem_modulo(item_id, ids_antes, modulo.imagem_path)
+        self._marcar_origem_modulo(
+            item_id,
+            ids_antes,
+            orcamento_item_modulo_id=orcamento_item_modulo_id,
+            imagem_path=modulo.imagem_path,
+        )
 
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
 
         return InserirModuloResult(
             modulo_codigo=modulo.codigo,
@@ -5008,12 +5021,15 @@ class OrcamentoItemCusteioLinhaService:
             return self._associados_requerem_divisao(peca, {peca.id})
         return False
 
-    def _marcar_imagem_modulo(
-        self, item_id: int, ids_antes: set[int], imagem_path: str | None
+    def _marcar_origem_modulo(
+        self,
+        item_id: int,
+        ids_antes: set[int],
+        *,
+        orcamento_item_modulo_id: int | None,
+        imagem_path: str | None,
     ) -> None:
-        """Set modulo_imagem_path on the first line created by this import."""
-        if not imagem_path:
-            return
+        """Liga todas as linhas importadas e mantém a imagem apenas na primeira."""
         novas = [
             linha
             for linha in self.repository.list_active_by_orcamento_item(item_id)
@@ -5022,9 +5038,14 @@ class OrcamentoItemCusteioLinhaService:
         if not novas:
             return
         primeira = min(novas, key=lambda linha: linha.id)
-        self.repository.update_linha(
-            id=primeira.id, modulo_imagem_path=imagem_path
-        )
+        for linha in novas:
+            campos = {
+                "origem_tipo": "MODULO",
+                "orcamento_item_modulo_id": orcamento_item_modulo_id,
+            }
+            if linha.id == primeira.id and imagem_path:
+                campos["modulo_imagem_path"] = imagem_path
+            self.repository.update_linha(id=linha.id, **campos)
 
     def _importar_divisao_modulo(self, orcamento_item_id: int, linha) -> None:
         """Recreate an independent-division line from a module line."""

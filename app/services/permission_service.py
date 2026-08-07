@@ -28,9 +28,13 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
 # uma operação concreta. Nascem desligadas — dá-se a quem precisa, em vez de
 # tirar a quem não deve.
 PERMISSAO_CRIAR_ENCOMENDA_IMOS = "acao.criar_encomenda_imos"
+PERMISSAO_ASSISTENTE_IA_ROUPEIROS = "acao.assistente_ia_roupeiros"
 
 ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
-    ((PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),)
+    (
+        (PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),
+        (PERMISSAO_ASSISTENTE_IA_ROUPEIROS, "Usar piloto IA para roupeiros"),
+    )
 )
 
 #: Tudo o que o administrador pode marcar na grelha de acessos.

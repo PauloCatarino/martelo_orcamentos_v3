@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 
 from app.core.session import app_session
 from app.db.session import SessionLocal
@@ -33,6 +34,7 @@ from app.services.ia_perfil_service import (
 )
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.models import IaOrcamentoAnalise, IaOrcamentoProposta
 
 
 #: Campos de texto de uma obra, sugeridos na coluna "onde aparece".
@@ -75,6 +77,15 @@ class IaPerfilPage(QWidget):
                 "perguntas. Cada utilizador tem o seu perfil e ninguém vê o dos "
                 "outros."
             ],
+        )
+
+        utilizador = app_session.current_user
+        self.identidade_label = QLabel(
+            f"Utilizador: {getattr(utilizador, 'nome', '') or '—'}   ·   "
+            f"Departamento: {getattr(utilizador, 'departamento', None) or '—'}"
+        )
+        self.identidade_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px;"
         )
 
         self.tipo_combo = QComboBox()
@@ -198,6 +209,7 @@ class IaPerfilPage(QWidget):
         linha_sugestoes.addStretch()
 
         layout.addWidget(self.cabecalho)
+        layout.addWidget(self.identidade_label)
         layout.addLayout(linha_tipo)
         layout.addWidget(self.ajuda_label)
         layout.addLayout(linha_sugestoes)
@@ -206,12 +218,27 @@ class IaPerfilPage(QWidget):
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
 
+        self.aprendizagem_label = QLabel("Aprendizagem de orçamentos — decisões privadas usadas na ordenação futura")
+        self.aprendizagem_label.setStyleSheet(f"color: {tema.CASTANHO_ESCURO}; font-weight: bold;")
+        self.aprendizagem_table = QTableWidget(0, 5)
+        self.aprendizagem_table.setHorizontalHeaderLabels(
+            ["Data", "Documento", "Zona", "Escolha top 3", "Decisão"]
+        )
+        self.aprendizagem_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.aprendizagem_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.aprendizagem_table.verticalHeader().setVisible(False)
+        self.aprendizagem_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.aprendizagem_table.setMaximumHeight(180)
+        layout.addWidget(self.aprendizagem_label)
+        layout.addWidget(self.aprendizagem_table)
+
         if tipo_inicial:
             indice = self.tipo_combo.findData(tipo_inicial)
             if indice >= 0:
                 self.tipo_combo.setCurrentIndex(indice)
 
         self._on_tipo_mudou()
+        self._carregar_aprendizagem()
 
         if expressao_inicial:
             # Veio de uma pesquisa que não encontrou nada: a palavra já fica
@@ -348,6 +375,39 @@ class IaPerfilPage(QWidget):
         self.resumo_label.setText(
             f"{len(linhas)} neste quadro · {total} no meu perfil"
         )
+
+    def _carregar_aprendizagem(self) -> None:
+        """Mostra apenas decisões pertencentes ao utilizador autenticado."""
+        user_id = self._user_id()
+        self.aprendizagem_table.setRowCount(0)
+        if user_id is None:
+            return
+        try:
+            with SessionLocal() as session:
+                rows = session.execute(
+                    select(IaOrcamentoAnalise, IaOrcamentoProposta)
+                    .join(IaOrcamentoProposta, IaOrcamentoProposta.analise_id == IaOrcamentoAnalise.id)
+                    .where(
+                        IaOrcamentoAnalise.user_id == user_id,
+                        IaOrcamentoProposta.user_id == user_id,
+                        IaOrcamentoProposta.decisao != "PENDENTE",
+                    )
+                    .order_by(IaOrcamentoProposta.updated_at.desc())
+                    .limit(50)
+                ).all()
+        except SQLAlchemyError:
+            return
+        self.aprendizagem_table.setRowCount(len(rows))
+        for indice, (analise, proposta) in enumerate(rows):
+            valores = (
+                analise.created_at.strftime("%d/%m/%Y %H:%M") if analise.created_at else "",
+                analise.documento_path,
+                f"Página {analise.pagina}",
+                str(proposta.posicao_top3),
+                proposta.decisao,
+            )
+            for coluna, valor in enumerate(valores):
+                self.aprendizagem_table.setItem(indice, coluna, QTableWidgetItem(valor))
 
     def _gravar(self) -> None:
         user_id = self._user_id()

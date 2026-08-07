@@ -39,7 +39,9 @@ SELECT CONCAT('>>> Vai aplicar em: ', DATABASE(), ' <<<') AS confirme_a_base;
 -- ---------------------------------------------------------------------------
 -- Sao ROLES e nao GRANTs soltos de proposito: quando uma migracao criar uma
 -- tabela nova, basta um CALL martelo_aplicar_grants() e TODAS as contas ficam
--- em dia. Sem roles seria preciso repetir os GRANTs pessoa a pessoa.
+-- em dia. O procedimento corre com os privilegios do seu DEFINER (root), mas
+-- so' percorre as tabelas da base ativa e valida que e' uma base do Martelo.
+-- Sem roles seria preciso repetir os GRANTs pessoa a pessoa.
 CREATE ROLE IF NOT EXISTS 'martelo_normal', 'martelo_admin';
 
 
@@ -63,7 +65,7 @@ CREATE ROLE IF NOT EXISTS 'martelo_normal', 'martelo_admin';
 DROP PROCEDURE IF EXISTS martelo_aplicar_grants;
 DELIMITER $$
 CREATE PROCEDURE martelo_aplicar_grants()
-    SQL SECURITY INVOKER
+    SQL SECURITY DEFINER
     COMMENT 'Aplica os privilegios dos dois perfis a todas as tabelas'
 BEGIN
     DECLARE v_fim INT DEFAULT 0;

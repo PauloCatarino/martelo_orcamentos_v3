@@ -15,6 +15,9 @@ Duas coisas, so':
     .venv\\Scripts\\python.exe scripts\\contas_mysql.py --mudar Ana
     .venv\\Scripts\\python.exe scripts\\contas_mysql.py --mudar-todas
 
+    # dar acesso dos perfis a tabelas acabadas de criar por uma migracao
+    .venv\\Scripts\\python.exe scripts\\contas_mysql.py --sincronizar-permissoes
+
 Por omissao trabalha na base do ``.env``; para a beta, ``--base martelo_v3_beta``.
 
 O ``--verificar`` precisa de uma conta que possa ler as tabelas ``mysql.*`` (o
@@ -267,6 +270,72 @@ def mudar_password(base: str, nomes: list[str]) -> int:
     return 0
 
 
+def sincronizar_permissoes(base: str) -> int:
+    """Reaplica, com confirmacao visivel da base, os GRANTs dos perfis.
+
+    Em bases antigas o procedimento ainda pode ser ``SQL SECURITY INVOKER``;
+    nesse caso e' preciso usar aqui o root (ou outra conta com GRANT OPTION).
+    Depois de reinstalar a versao atual de ``mysql_contas_beta.sql``, chega a
+    conta de manutencao ou um administrador do Martelo.
+    """
+    print("")
+    print(f"Base a atualizar: {base} em {settings.DB_HOST}:{settings.DB_PORT}")
+    utilizador, password = pedir_credenciais(
+        "use root nesta primeira correcao; depois podera usar administrador"
+    )
+    engine = ligar_como(utilizador, password, base)
+    procedimento_atualizado = False
+    try:
+        with engine.begin() as ligacao:
+            base_real = str(ligacao.execute(text("SELECT DATABASE()")).scalar() or "")
+            if base_real != base:
+                print(f"[ERRO] A ligacao abriu {base_real!r}, nao {base!r}.")
+                return 1
+            existe = ligacao.execute(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.TABLES "
+                    "WHERE TABLE_SCHEMA = :base AND TABLE_NAME = 'orcamentos'"
+                ),
+                {"base": base},
+            ).scalar()
+            if not existe:
+                print("[ERRO] A base nao parece ser do Martelo (falta `orcamentos`).")
+                return 1
+
+        # Uma conta com apenas EXECUTE pode chamar uma rotina sem conseguir
+        # ve-la em information_schema.ROUTINES. Por isso nao se usa essa vista
+        # para decidir se existe: tenta-se atualizar e, a seguir, chama-se.
+        # Numa base ja atualizada, o admin pode nao ter ALTER ROUTINE; isso nao
+        # e' um problema porque a chamada DEFINER abaixo continuara a funcionar.
+        try:
+            with engine.begin() as ligacao:
+                ligacao.execute(
+                    text(
+                        "ALTER PROCEDURE martelo_aplicar_grants "
+                        "SQL SECURITY DEFINER"
+                    )
+                )
+            procedimento_atualizado = True
+        except SQLAlchemyError:
+            procedimento_atualizado = False
+
+        with engine.begin() as ligacao:
+            ligacao.execute(text("CALL martelo_aplicar_grants()"))
+    except SQLAlchemyError as exc:
+        print("")
+        print(f"[ERRO] {_mensagem(exc)}")
+        print("Nesta primeira correcao tem de indicar o utilizador root.")
+        return 1
+    finally:
+        engine.dispose()
+
+    print("")
+    if procedimento_atualizado:
+        print("Procedimento antigo atualizado para SQL SECURITY DEFINER.")
+    print(f"Permissoes dos perfis sincronizadas em {base}.")
+    return 0
+
+
 def _mensagem(exc: SQLAlchemyError) -> str:
     original = getattr(exc, "orig", None)
     for arg in getattr(original, "args", ()) or ():
@@ -297,12 +366,20 @@ def main() -> int:
         action="store_true",
         help="percorrer todos os utilizadores, um a um",
     )
+    parser.add_argument(
+        "--sincronizar-permissoes",
+        action="store_true",
+        help="dar aos perfis acesso as tabelas criadas pelas migracoes",
+    )
     args = parser.parse_args()
 
     base = args.base or settings.DB_NAME
 
     if args.verificar:
         return verificar(base)
+
+    if args.sincronizar_permissoes:
+        return sincronizar_permissoes(base)
 
     if args.mudar_todas:
         return mudar_password(base, utilizadores_do_martelo(base))

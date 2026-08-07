@@ -83,6 +83,7 @@ from app.domain.custeio_simplificado import (
     ORLAGEM_SIMPLIFICADA_PUR,
 )
 from app.domain.numeros import formatar_percentagem
+from app.domain.item_types import ROUPEIRO_ABRIR
 from app.domain.peca_funcao_types import PECA_FUNCAO_LABELS
 from app.domain.peca_biblioteca import texto_biblioteca_peca
 from app.domain.peca_types import COMPOSTA
@@ -107,6 +108,11 @@ from app.domain.modulo_imagem import (
 )
 from app.services.def_modulo_service import DefModuloService
 from app.services.system_setting_service import SystemSettingService
+from app.services.permission_service import (
+    PERMISSAO_ASSISTENTE_IA_ROUPEIROS,
+    permissions_for_user,
+    pode,
+)
 from app.services.def_peca_service import DefPecaService
 from app.services.def_peca_user_pref_service import (
     SEM_PREFERENCIAS,
@@ -135,6 +141,7 @@ from app.ui.dialogs.guardar_modulo_dialog import (
     GuardarModuloDialogData,
 )
 from app.ui.dialogs.importar_modulo_dialog import ImportarModuloDialog
+from app.ui.dialogs.assistente_ia_roupeiro_dialog import AssistenteIaRoupeiroDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
@@ -658,6 +665,23 @@ class OrcamentoItemCusteioPage(QWidget):
         self.guardar_modulo_button.setEnabled(False)
         self.guardar_modulo_button.clicked.connect(self.guardar_como_modulo)
 
+        self.assistente_ia_button = QPushButton("Assistente IA")
+        self.assistente_ia_button.setToolTip(
+            "Analisar o PDF da pasta do orçamento e propor módulos para este custeio, sem alterar nada antes da confirmação."
+        )
+        self.assistente_ia_button.clicked.connect(self.abrir_assistente_ia_roupeiro)
+        try:
+            with SessionLocal() as session:
+                autorizado_ia = pode(
+                    permissions_for_user(session, app_session.current_user),
+                    PERMISSAO_ASSISTENTE_IA_ROUPEIROS,
+                )
+        except SQLAlchemyError:
+            autorizado_ia = False
+        self.assistente_ia_button.setVisible(
+            autorizado_ia and item.tipo_item == ROUPEIRO_ABRIR
+        )
+
         # Highlighted, read-only reference price the item carries to the items
         # list (produced cost, unit price and total). Updated on load/Atualizar.
         self.preco_item_label = QLabel("")
@@ -686,6 +710,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addSpacing(12)
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.guardar_modulo_button)
+        actions_layout.addWidget(self.assistente_ia_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.preco_item_label)
 
@@ -826,6 +851,21 @@ class OrcamentoItemCusteioPage(QWidget):
             self._abrir_separador_valueset(
                 "O ValueSet do item está vazio: preencha os materiais e "
                 "ferragens neste separador antes de inserir peças no custeio."
+            )
+
+    def abrir_assistente_ia_roupeiro(self) -> None:
+        """Abre o assistente no contexto deste custeio e recarrega após confirmação."""
+        utilizador = app_session.current_user
+        if utilizador is None:
+            self.status_label.setText("Inicie sessão para usar o Assistente IA.")
+            return
+        dialog = AssistenteIaRoupeiroDialog(
+            self, item_id=self.item_id, user_id=utilizador.id
+        )
+        if dialog.exec():
+            self.carregar()
+            self.status_label.setText(
+                f"Composição confirmada: {len(dialog.modulos_criados)} módulo(s) importado(s) e custeio recalculado."
             )
 
     def carregar(self) -> None:
@@ -1589,6 +1629,13 @@ class OrcamentoItemCusteioPage(QWidget):
                             categoria=dados.categoria,
                             subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
+                            largura_min_mm=dados.largura_min_mm,
+                            largura_preferida_mm=dados.largura_preferida_mm,
+                            largura_max_mm=dados.largura_max_mm,
+                            posicao_roupeiro=dados.posicao_roupeiro,
+                            permite_espelhar=dados.permite_espelhar,
+                            tipo_item_compativel=dados.tipo_item_compativel,
+                            caracteristicas=dados.caracteristicas,
                         )
                     else:
                         resultado = service.guardar_de_linhas_custeio(
@@ -1602,6 +1649,13 @@ class OrcamentoItemCusteioPage(QWidget):
                             categoria=dados.categoria,
                             subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
+                            largura_min_mm=dados.largura_min_mm,
+                            largura_preferida_mm=dados.largura_preferida_mm,
+                            largura_max_mm=dados.largura_max_mm,
+                            posicao_roupeiro=dados.posicao_roupeiro,
+                            permite_espelhar=dados.permite_espelhar,
+                            tipo_item_compativel=dados.tipo_item_compativel,
+                            caracteristicas=dados.caracteristicas,
                         )
             except ValueError as error:
                 dialog.set_error(str(error))

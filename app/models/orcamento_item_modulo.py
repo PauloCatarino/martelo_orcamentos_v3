@@ -42,6 +42,20 @@ class OrcamentoItemModulo(Base):
         default=Decimal("1"),
         server_default="1",
     )
+    origem: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="MANUAL", server_default="MANUAL"
+    )
+    def_modulo_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("def_modulos.id"), nullable=True, index=True
+    )
+    ia_proposta_modulo_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("ia_orcamento_proposta_modulos.id"),
+        nullable=True,
+        index=True,
+    )
+    codigo_origem_snapshot: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    nome_origem_snapshot: Mapped[str | None] = mapped_column(String(150), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

@@ -101,6 +101,15 @@ def test_criar_encomenda_imos_nasce_desligada() -> None:
     assert DEFAULT_USER_PERMISSIONS["menu.producao"] is True
 
 
+def test_piloto_ia_roupeiros_nasce_desligado() -> None:
+    from app.services.permission_service import (
+        DEFAULT_USER_PERMISSIONS,
+        PERMISSAO_ASSISTENTE_IA_ROUPEIROS,
+    )
+
+    assert DEFAULT_USER_PERMISSIONS[PERMISSAO_ASSISTENTE_IA_ROUPEIROS] is False
+
+
 def test_grelha_de_acessos_lista_menus_e_accoes() -> None:
     from app.services.permission_service import (
         ACAO_PERMISSIONS,

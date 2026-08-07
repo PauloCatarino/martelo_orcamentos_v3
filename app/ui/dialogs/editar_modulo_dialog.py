@@ -11,9 +11,12 @@ from app.ui import tema
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtWidgets import (
     QComboBox,
+    QCheckBox,
+    QDoubleSpinBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -35,6 +38,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_ambito,
     normalize_modulo_categoria,
 )
+from app.domain.roupeiro_ia import POSICOES_MODULO, TIPO_ITEM_ROUPEIRO_ABRIR
 from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_arvore_categorias,
     carregar_opcoes_categorias,
@@ -132,6 +136,25 @@ class EditarModuloDialog(QDialog):
         imagem_layout.addWidget(self.procurar_button)
         imagem_row.setLayout(imagem_layout)
 
+        self.compativel_roupeiro_input = QCheckBox("Participa nas propostas de Roupeiro Abrir")
+        self.compativel_roupeiro_input.setChecked(
+            getattr(dados, "tipo_item_compativel", None) == TIPO_ITEM_ROUPEIRO_ABRIR
+        )
+        self.compativel_roupeiro_input.setToolTip(
+            "Os módulos marcados podem ser propostos pela IA; as medidas vêm do item e das fórmulas do custeio."
+        )
+        self.posicao_input = QComboBox()
+        for posicao in POSICOES_MODULO:
+            self.posicao_input.addItem(posicao.title(), posicao)
+        self._selecionar(self.posicao_input, getattr(dados, "posicao_roupeiro", None) or "QUALQUER")
+        self.posicao_input.setToolTip("Posição em que este módulo pode ser usado na composição.")
+        self.espelhar_input = QCheckBox("Pode ser espelhado")
+        self.espelhar_input.setChecked(bool(getattr(dados, "permite_espelhar", False)))
+        self.espelhar_input.setToolTip("Permite inverter esquerda/direita sem trocar de módulo.")
+        self.caracteristicas_input = QLineEdit(self._formatar_caracteristicas(getattr(dados, "caracteristicas", None) or {}))
+        self.caracteristicas_input.setPlaceholderText("PORTAS=2; GAVETAS=3; PRATELEIRAS=5")
+        self.caracteristicas_input.setToolTip("Características estruturadas: CÓDIGO=QUANTIDADE, separadas por ponto e vírgula.")
+
         self.error_label = QLabel("")
         self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
         self.error_label.setWordWrap(True)
@@ -144,6 +167,10 @@ class EditarModuloDialog(QDialog):
         form.addRow("Categoria", self.categoria_input)
         form.addRow("Subcategoria", self.subcategoria_input)
         form.addRow("Imagem", imagem_row)
+        form.addRow("Assistente IA", self.compativel_roupeiro_input)
+        form.addRow("Posição", self.posicao_input)
+        form.addRow("Espelhar", self.espelhar_input)
+        form.addRow("Características", self.caracteristicas_input)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
@@ -197,7 +224,7 @@ class EditarModuloDialog(QDialog):
         """Return the edited header data."""
         descricao = self.descricao_input.toPlainText().strip()
         imagem = self.imagem_input.text().strip()
-        return EditarModuloDialogData(
+        data = EditarModuloDialogData(
             nome=self.nome_input.text().strip(),
             descricao=descricao or None,
             ambito=self.ambito_input.currentData() or AMBITO_UTILIZADOR,
@@ -205,6 +232,49 @@ class EditarModuloDialog(QDialog):
             imagem_path=imagem or None,
             subcategoria=self.subcategoria_input.currentData(),
         )
+        object.__setattr__(data, "largura_min_mm", None)
+        object.__setattr__(data, "largura_preferida_mm", None)
+        object.__setattr__(data, "largura_max_mm", None)
+        object.__setattr__(data, "posicao_roupeiro", self.posicao_input.currentData())
+        object.__setattr__(data, "permite_espelhar", self.espelhar_input.isChecked())
+        object.__setattr__(data, "tipo_item_compativel", TIPO_ITEM_ROUPEIRO_ABRIR if self.compativel_roupeiro_input.isChecked() else None)
+        object.__setattr__(data, "caracteristicas", self._ler_caracteristicas())
+        return data
+
+    @staticmethod
+    def _spin_largura(valor: Decimal | None) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0, 10000)
+        spin.setDecimals(1)
+        spin.setSpecialValueText("—")
+        spin.setValue(float(valor or 0))
+        spin.setToolTip("Largura do módulo em milímetros; zero significa não preenchida.")
+        return spin
+
+    @staticmethod
+    def _valor_spin(spin: QDoubleSpinBox) -> Decimal | None:
+        return Decimal(str(spin.value())) if spin.value() > 0 else None
+
+    @staticmethod
+    def _formatar_caracteristicas(valores: dict[str, Decimal]) -> str:
+        return "; ".join(f"{codigo}={quantidade}" for codigo, quantidade in sorted(valores.items()))
+
+    def _ler_caracteristicas(self) -> dict[str, Decimal]:
+        resultado: dict[str, Decimal] = {}
+        for parte in self.caracteristicas_input.text().split(";"):
+            if not parte.strip():
+                continue
+            if "=" not in parte:
+                raise ValueError("Use CÓDIGO=QUANTIDADE nas características.")
+            codigo, quantidade = parte.split("=", 1)
+            try:
+                valor = Decimal(quantidade.strip().replace(",", "."))
+            except InvalidOperation as exc:
+                raise ValueError(f"Quantidade inválida em {parte.strip()}.") from exc
+            if valor < 0:
+                raise ValueError("As quantidades das características não podem ser negativas.")
+            resultado[codigo.strip().upper()] = valor
+        return resultado
 
     def set_error(self, message: str) -> None:
         """Show an error while keeping the dialog open and the data filled."""
@@ -212,7 +282,11 @@ class EditarModuloDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Require a name, then delegate to on_save (keeps data on failure)."""
-        data = self.get_data()
+        try:
+            data = self.get_data()
+        except ValueError as error:
+            self.error_label.setText(str(error))
+            return
         if not data.nome:
             self.error_label.setText("O nome é obrigatório.")
             return

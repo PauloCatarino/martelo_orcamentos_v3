@@ -9,6 +9,7 @@ the destination item's ValueSet on import).
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -17,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -63,6 +65,16 @@ class DefModulo(Base):
     # Optional subcategory (codigo of a category whose parent is `categoria`).
     subcategoria: Mapped[str | None] = mapped_column(String(60), nullable=True)
     imagem_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    largura_min_mm: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    largura_preferida_mm: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    largura_max_mm: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    posicao_roupeiro: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    permite_espelhar: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    tipo_item_compativel: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, index=True
+    )
     ativo: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="1"
     )
@@ -82,6 +94,12 @@ class DefModulo(Base):
     )
     linhas: Mapped[list["DefModuloLinha"]] = relationship(
         "DefModuloLinha",
+        back_populates="modulo",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    caracteristicas = relationship(
+        "DefModuloCaracteristica",
         back_populates="modulo",
         cascade="all, delete-orphan",
         passive_deletes=True,

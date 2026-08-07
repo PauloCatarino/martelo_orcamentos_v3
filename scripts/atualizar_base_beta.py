@@ -5,8 +5,8 @@ normal do dia a dia: o beta ja' existe, com dados que o Paulo e os colegas
 andaram a criar, e so' falta apanhar as migracoes novas que entretanto
 entraram no dev.
 
-Nao copia nem apaga dados nenhuns: corre apenas `alembic upgrade head`
-contra a base do beta.
+Nao copia nem apaga dados nenhuns: corre `alembic upgrade head` contra a base
+do beta e sincroniza os privilegios dos perfis nas tabelas acabadas de criar.
 
 Uso:
     .venv\\Scripts\\python.exe scripts\\atualizar_base_beta.py --ver
@@ -60,6 +60,32 @@ def _versao_atual() -> str:
     return (res.stdout or "").strip() or "(desconhecida)"
 
 
+def _sincronizar_permissoes() -> None:
+    """Atualiza os roles depois das migracoes criarem tabelas."""
+    engine = sa.create_engine(_beta_url())
+    try:
+        with engine.begin() as ligacao:
+            ligacao.execute(sa.text("CALL martelo_aplicar_grants()"))
+    except sa.exc.SQLAlchemyError as exc:
+        original = getattr(exc, "orig", None)
+        mensagem = next(
+            (
+                arg.strip()
+                for arg in (getattr(original, "args", ()) or ())
+                if isinstance(arg, str) and arg.strip()
+            ),
+            str(original or exc).strip(),
+        )
+        raise RuntimeError(
+            "As migracoes foram aplicadas, mas nao foi possivel dar acesso "
+            f"as tabelas novas: {mensagem}\n"
+            "Corra: .venv\\Scripts\\python.exe scripts\\contas_mysql.py "
+            f"--base {BASE_BETA} --sincronizar-permissoes"
+        ) from exc
+    finally:
+        engine.dispose()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Aplicar as migracoes pendentes na base do beta."
@@ -87,6 +113,12 @@ def main() -> int:
         return 1
 
     print(res.stdout.strip())
+    print("A sincronizar permissoes dos perfis...")
+    try:
+        _sincronizar_permissoes()
+    except RuntimeError as exc:
+        print(f"[ERRO] {exc}", file=sys.stderr)
+        return 1
     print(f"Versao depois da atualizacao: {_versao_atual()}")
     print("Beta atualizado.")
     return 0

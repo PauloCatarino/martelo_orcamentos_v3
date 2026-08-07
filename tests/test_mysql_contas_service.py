@@ -121,6 +121,17 @@ def test_criar_conta_chama_o_procedimento_com_parametros() -> None:
     assert sessao.commits == 1
 
 
+def test_sincronizar_permissoes_chama_procedimento_e_confirma() -> None:
+    sessao = _SessaoFalsa()
+
+    servico.sincronizar_permissoes(sessao)
+
+    sql, parametros = sessao.executados[-1]
+    assert sql == "CALL martelo_aplicar_grants()"
+    assert parametros == {}
+    assert sessao.commits == 1
+
+
 def test_mudar_a_minha_password_nao_aceita_nome_de_ninguem() -> None:
     """O procedimento usa USER(): a app nem sequer manda um nome."""
     sessao = _SessaoFalsa()

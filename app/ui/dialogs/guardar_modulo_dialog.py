@@ -16,12 +16,15 @@ from app.ui import tema
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QCheckBox,
+    QDoubleSpinBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -51,6 +54,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.domain.roupeiro_ia import POSICOES_MODULO, TIPO_ITEM_ROUPEIRO_ABRIR
 from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_arvore_categorias,
     carregar_labels_categorias,
@@ -287,6 +291,20 @@ class GuardarModuloDialog(QDialog):
         imagem_layout.addWidget(self.ver_imagem_button)
         imagem_row.setLayout(imagem_layout)
 
+        self.compativel_roupeiro_input = QCheckBox("Participa nas propostas de Roupeiro Abrir")
+        self.compativel_roupeiro_input.setToolTip(
+            "Os módulos marcados podem ser propostos pela IA; as medidas vêm do item e das fórmulas do custeio."
+        )
+        self.posicao_input = QComboBox()
+        for posicao in POSICOES_MODULO:
+            self.posicao_input.addItem(posicao.title(), posicao)
+        self.posicao_input.setToolTip("Posição permitida na composição do roupeiro.")
+        self.espelhar_input = QCheckBox("Pode ser espelhado")
+        self.espelhar_input.setToolTip("Permite inverter esquerda/direita.")
+        self.caracteristicas_input = QLineEdit()
+        self.caracteristicas_input.setPlaceholderText("PORTAS=2; GAVETAS=3; PRATELEIRAS=5")
+        self.caracteristicas_input.setToolTip("Características CÓDIGO=QUANTIDADE separadas por ponto e vírgula.")
+
         form = QFormLayout()
         form.addRow("Código", self.codigo_input)
         form.addRow("Nome", self.nome_input)
@@ -295,6 +313,10 @@ class GuardarModuloDialog(QDialog):
         form.addRow("Categoria", self.categoria_input)
         form.addRow("Subcategoria", self.subcategoria_input)
         form.addRow("Imagem", imagem_row)
+        form.addRow("Assistente IA", self.compativel_roupeiro_input)
+        form.addRow("Posição", self.posicao_input)
+        form.addRow("Espelhar", self.espelhar_input)
+        form.addRow("Características", self.caracteristicas_input)
 
         painel = QWidget()
         layout = QVBoxLayout()
@@ -392,6 +414,10 @@ class GuardarModuloDialog(QDialog):
         self.ambito_input.setCurrentIndex(0)
         self._selecionar_categoria(OUTROS)
         self._recarregar_subcategorias(self.categoria_input.currentData())
+        self.compativel_roupeiro_input.setChecked(False)
+        self.posicao_input.setCurrentIndex(0)
+        self.espelhar_input.setChecked(False)
+        self.caracteristicas_input.clear()
         self.error_label.clear()
 
         self.tabela_utilizador.clearSelection()
@@ -420,6 +446,13 @@ class GuardarModuloDialog(QDialog):
                 else None
             ),
         )
+        self.compativel_roupeiro_input.setChecked(
+            modulo.tipo_item_compativel == TIPO_ITEM_ROUPEIRO_ABRIR
+        )
+        indice_pos = self.posicao_input.findData(modulo.posicao_roupeiro or "QUALQUER")
+        self.posicao_input.setCurrentIndex(max(0, indice_pos))
+        self.espelhar_input.setChecked(bool(modulo.permite_espelhar))
+        self.caracteristicas_input.clear()
         self.error_label.clear()
 
     # ----- Helpers -----
@@ -507,7 +540,7 @@ class GuardarModuloDialog(QDialog):
         """Return the dialog data (modulo_id set only in MODO SUBSTITUIR)."""
         descricao = self.descricao_input.toPlainText().strip()
         imagem = self.imagem_input.text().strip()
-        return GuardarModuloDialogData(
+        data = GuardarModuloDialogData(
             codigo=self.codigo_input.text().strip(),
             nome=self.nome_input.text().strip(),
             descricao=descricao or None,
@@ -517,6 +550,46 @@ class GuardarModuloDialog(QDialog):
             subcategoria=self.subcategoria_input.currentData(),
             modulo_id=self._modulo_id,
         )
+        object.__setattr__(data, "largura_min_mm", None)
+        object.__setattr__(data, "largura_preferida_mm", None)
+        object.__setattr__(data, "largura_max_mm", None)
+        object.__setattr__(data, "posicao_roupeiro", self.posicao_input.currentData())
+        object.__setattr__(data, "permite_espelhar", self.espelhar_input.isChecked())
+        object.__setattr__(data, "tipo_item_compativel", TIPO_ITEM_ROUPEIRO_ABRIR if self.compativel_roupeiro_input.isChecked() else None)
+        object.__setattr__(data, "caracteristicas", self._ler_caracteristicas())
+        return data
+
+    @staticmethod
+    def _spin_largura() -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0, 10000)
+        spin.setDecimals(1)
+        spin.setSpecialValueText("—")
+        spin.setToolTip("Largura em milímetros; zero significa não preenchida.")
+        return spin
+
+    @staticmethod
+    def _valor_spin(spin: QDoubleSpinBox) -> Decimal | None:
+        return Decimal(str(spin.value())) if spin.value() > 0 else None
+
+    def _ler_caracteristicas(self) -> dict[str, Decimal] | None:
+        if not self.caracteristicas_input.text().strip():
+            return None
+        resultado: dict[str, Decimal] = {}
+        for parte in self.caracteristicas_input.text().split(";"):
+            if not parte.strip():
+                continue
+            if "=" not in parte:
+                raise ValueError("Use CÓDIGO=QUANTIDADE nas características.")
+            codigo, quantidade = parte.split("=", 1)
+            try:
+                valor = Decimal(quantidade.strip().replace(",", "."))
+            except InvalidOperation as exc:
+                raise ValueError(f"Quantidade inválida em {parte.strip()}.") from exc
+            if valor < 0:
+                raise ValueError("As quantidades não podem ser negativas.")
+            resultado[codigo.strip().upper()] = valor
+        return resultado
 
     def set_error(self, message: str) -> None:
         """Show an error while keeping the dialog open and the data filled."""
@@ -524,7 +597,11 @@ class GuardarModuloDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Require code/name, confirm overwrite, then delegate to on_save."""
-        data = self.get_data()
+        try:
+            data = self.get_data()
+        except ValueError as error:
+            self.error_label.setText(str(error))
+            return
         if not data.codigo:
             self.error_label.setText("O código é obrigatório.")
             return

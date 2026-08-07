@@ -8,6 +8,7 @@ from app.models.def_margem_padrao import DefMargemPadrao
 from app.models.def_maquina_escalao_area import DefMaquinaEscalaoArea
 from app.models.def_materia_prima import DefMateriaPrima
 from app.models.def_modulo import DefModulo
+from app.models.def_modulo_caracteristica import DefModuloCaracteristica
 from app.models.def_modulo_categoria import DefModuloCategoria
 from app.models.def_modulo_linha import DefModuloLinha
 from app.models.def_operacao import DefOperacao
@@ -21,6 +22,11 @@ from app.models.def_valueset_modelo import DefValuesetModelo
 from app.models.def_valueset_modelo_linha import DefValuesetModeloLinha
 from app.models.def_valueset_modelo_linha_operacao import DefValuesetModeloLinhaOperacao
 from app.models.descricao_predefinida import DescricaoPredefinida
+from app.models.ia_orcamento import (
+    IaOrcamentoAnalise,
+    IaOrcamentoProposta,
+    IaOrcamentoPropostaModulo,
+)
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
 from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
@@ -53,6 +59,7 @@ __all__ = [
     "DefMaquinaEscalaoArea",
     "DefMateriaPrima",
     "DefModulo",
+    "DefModuloCaracteristica",
     "DefModuloCategoria",
     "DefModuloLinha",
     "DefOperacao",
@@ -81,6 +88,9 @@ __all__ = [
     "OrcamentoValuesetLinha",
     "OrcamentoValuesetLinhaOperacao",
     "IaPerfilEntrada",
+    "IaOrcamentoAnalise",
+    "IaOrcamentoProposta",
+    "IaOrcamentoPropostaModulo",
     "Producao",
     "ProducaoOcorrencia",
     "ProducaoOcorrenciaAnexo",

@@ -73,6 +73,27 @@ def sou_admin_na_base(session: Session) -> bool:
     return "martelo_admin" in str(perfil or "")
 
 
+def sincronizar_permissoes(session: Session) -> None:
+    """Da' aos perfis acesso a todas as tabelas atuais do Martelo.
+
+    Os perfis usam privilegios tabela a tabela para manter ``users``,
+    ``user_permissions`` e ``system_settings`` protegidas. Por isso, depois de
+    uma migracao criar tabelas, e' necessario voltar a chamar o procedimento
+    instalado pelo ``deploy/mysql_contas_beta.sql``.
+
+    O procedimento e' deliberadamente fechado a esta base e, nas instalacoes
+    atualizadas, corre como ``SQL SECURITY DEFINER``. Assim a conta de
+    manutencao ou um administrador do Martelo pode sincronizar os perfis sem
+    receber o privilegio global ``GRANT OPTION``.
+    """
+    _chamar(
+        session,
+        "CALL martelo_aplicar_grants()",
+        {},
+        falhou="Nao foi possivel sincronizar as permissoes das tabelas",
+    )
+
+
 def criar_conta(session: Session, *, username: str, password: str, admin: bool) -> None:
     """Cria a conta MySQL desta pessoa, com o perfil normal ou de admin."""
     _validar_password(password)

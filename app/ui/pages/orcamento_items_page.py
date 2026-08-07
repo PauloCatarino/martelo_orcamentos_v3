@@ -169,6 +169,7 @@ class OrcamentoItemsPage(QWidget):
         self.item_custeio_button = QPushButton("Custeio do Item")
         self.item_custeio_button.clicked.connect(self.abrir_custeio_item_selecionado)
 
+
         self.remove_button = QPushButton("Remover Item")
         self.remove_button.clicked.connect(self.remover_item_selecionado)
 

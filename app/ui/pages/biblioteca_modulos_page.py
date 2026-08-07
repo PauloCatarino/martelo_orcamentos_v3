@@ -526,28 +526,50 @@ class BibliotecaModulosPage(QWidget):
                             categoria=dados.categoria,
                             subcategoria=dados.subcategoria,
                             imagem_path=imagem_path,
+                            largura_min_mm=dados.largura_min_mm,
+                            largura_preferida_mm=dados.largura_preferida_mm,
+                            largura_max_mm=dados.largura_max_mm,
+                            posicao_roupeiro=dados.posicao_roupeiro,
+                            permite_espelhar=dados.permite_espelhar,
+                            tipo_item_compativel=dados.tipo_item_compativel,
+                            caracteristicas=dados.caracteristicas or {},
                         ),
                     )
             except ValueError as error:
                 dialog.set_error(str(error))
                 return False
-            except SQLAlchemyError:
-                dialog.set_error("Não foi possível guardar as alterações.")
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    "Não foi possível guardar as alterações. Detalhe técnico: "
+                    f"{error}"
+                )
                 return False
             guardado["aviso_imagem"] = aviso_imagem
             return True
 
+        dados_dialog = EditarModuloDialogData(
+            nome=modulo.nome,
+            descricao=modulo.descricao,
+            ambito=modulo.ambito,
+            categoria=modulo.categoria,
+            imagem_path=modulo.imagem_path,
+            subcategoria=modulo.subcategoria,
+        )
+        for chave, valor in {
+            "largura_min_mm": modulo.largura_min_mm,
+            "largura_preferida_mm": modulo.largura_preferida_mm,
+            "largura_max_mm": modulo.largura_max_mm,
+            "posicao_roupeiro": modulo.posicao_roupeiro,
+            "permite_espelhar": modulo.permite_espelhar,
+            "tipo_item_compativel": modulo.tipo_item_compativel,
+            "caracteristicas": self._caracteristicas_modulo(modulo.id),
+        }.items():
+            object.__setattr__(dados_dialog, chave, valor)
+
         dialog = EditarModuloDialog(
             self,
             codigo=modulo.codigo,
-            dados=EditarModuloDialogData(
-                nome=modulo.nome,
-                descricao=modulo.descricao,
-                ambito=modulo.ambito,
-                categoria=modulo.categoria,
-                imagem_path=modulo.imagem_path,
-                subcategoria=modulo.subcategoria,
-            ),
+            dados=dados_dialog,
             on_save=handle_save,
         )
         if dialog.exec():
@@ -556,6 +578,14 @@ class BibliotecaModulosPage(QWidget):
             if guardado.get("aviso_imagem"):
                 mensagem += " " + guardado["aviso_imagem"]
             self.status_label.setText(mensagem)
+
+    @staticmethod
+    def _caracteristicas_modulo(modulo_id: int) -> dict:
+        try:
+            with SessionLocal() as session:
+                return DefModuloService(session).repository.list_caracteristicas(modulo_id)
+        except SQLAlchemyError:
+            return {}
 
     def eliminar_modulo(self) -> None:
         """Delete the selected module and its lines (cascade), after confirming."""
