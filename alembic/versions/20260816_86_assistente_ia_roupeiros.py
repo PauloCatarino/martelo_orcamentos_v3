@@ -125,7 +125,92 @@ def _garantir_configuracao(chave: str, descricao: str, valor: str) -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError(
-        "O downgrade desta migração exige remoção de tabelas/colunas. "
-        "Só pode ser escrito depois de autorização explícita do utilizador."
+    """Remove apenas a estrutura aditiva do piloto autorizado.
+
+    Os registos de ``orcamento_item_modulos`` e respetivas linhas de custeio
+    permanecem; perdem somente os metadados que indicavam a origem IA.
+    """
+    op.drop_index(
+        "ix_orcamento_item_modulos_ia_proposta_modulo_id",
+        table_name="orcamento_item_modulos",
+    )
+    op.drop_index(
+        "ix_orcamento_item_modulos_def_modulo_id",
+        table_name="orcamento_item_modulos",
+    )
+    op.drop_constraint(
+        "fk_oim_ia_prop_mod", "orcamento_item_modulos", type_="foreignkey"
+    )
+    op.drop_constraint(
+        "fk_oim_def_modulo", "orcamento_item_modulos", type_="foreignkey"
+    )
+    op.drop_column("orcamento_item_modulos", "nome_origem_snapshot")
+    op.drop_column("orcamento_item_modulos", "codigo_origem_snapshot")
+    op.drop_column("orcamento_item_modulos", "ia_proposta_modulo_id")
+    op.drop_column("orcamento_item_modulos", "def_modulo_id")
+    op.drop_column("orcamento_item_modulos", "origem")
+
+    op.drop_index(
+        "ix_ia_prop_mod_def_modulo_id",
+        table_name="ia_orcamento_proposta_modulos",
+    )
+    op.drop_index(
+        "ix_ia_prop_mod_proposta_id",
+        table_name="ia_orcamento_proposta_modulos",
+    )
+    op.drop_table("ia_orcamento_proposta_modulos")
+
+    op.drop_index(
+        "ix_ia_orcamento_propostas_user_id",
+        table_name="ia_orcamento_propostas",
+    )
+    op.drop_index(
+        "ix_ia_orcamento_propostas_analise_id",
+        table_name="ia_orcamento_propostas",
+    )
+    op.drop_table("ia_orcamento_propostas")
+
+    op.drop_index(
+        "ix_ia_orcamento_analises_documento_hash",
+        table_name="ia_orcamento_analises",
+    )
+    op.drop_index(
+        "ix_ia_orcamento_analises_orcamento_item_id",
+        table_name="ia_orcamento_analises",
+    )
+    op.drop_index(
+        "ix_ia_orcamento_analises_user_id",
+        table_name="ia_orcamento_analises",
+    )
+    op.drop_table("ia_orcamento_analises")
+
+    op.drop_index(
+        "ix_def_modulo_caracteristicas_codigo",
+        table_name="def_modulo_caracteristicas",
+    )
+    op.drop_index(
+        "ix_def_modulo_caracteristicas_def_modulo_id",
+        table_name="def_modulo_caracteristicas",
+    )
+    op.drop_table("def_modulo_caracteristicas")
+
+    op.drop_index(
+        "ix_def_modulos_tipo_item_compativel", table_name="def_modulos"
+    )
+    op.drop_column("def_modulos", "tipo_item_compativel")
+    op.drop_column("def_modulos", "permite_espelhar")
+    op.drop_column("def_modulos", "posicao_roupeiro")
+    op.drop_column("def_modulos", "largura_max_mm")
+    op.drop_column("def_modulos", "largura_preferida_mm")
+    op.drop_column("def_modulos", "largura_min_mm")
+
+    op.execute(
+        sa.text(
+            "DELETE FROM system_settings WHERE chave IN ("
+            "'provedor_visao_roupeiros', "
+            "'modelo_openai_visao_roupeiros', "
+            "'modelo_local_visao_roupeiros', "
+            "'endpoint_local_visao_roupeiros'"
+            ")"
+        )
     )
