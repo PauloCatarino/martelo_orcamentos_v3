@@ -44,6 +44,12 @@ def _operacao(id: int, codigo: str, tipo: str, **kw) -> DefOperacaoResumo:
         maquina_preco_lado_longo_std=kw.get("preco_lado_longo"),
         maquina_limite_lado_mm=kw.get("limite_lado"),
         maquina_custo_setup_peca_std=kw.get("custo_setup_peca"),
+        maquina_custo_hora_std=kw.get("custo_hora_std"),
+        maquina_custo_hora_serie=kw.get("custo_hora_serie"),
+        maquina_preco_ml_serie=kw.get("preco_ml_serie"),
+        maquina_preco_lado_curto_serie=kw.get("preco_lado_curto_serie"),
+        maquina_preco_lado_longo_serie=kw.get("preco_lado_longo_serie"),
+        maquina_custo_setup_peca_serie=kw.get("custo_setup_peca_serie"),
     )
 
 
@@ -126,8 +132,49 @@ def test_exemplo_numerico_segue_o_motor_de_custeio() -> None:
     dialog.tempo_por_unidade_input.setText("0,04")
 
     texto = dialog.guia_label.text()
-    assert "4 min" in texto
-    assert "3,00 €" in texto
+    assert "Previsão para uma linha com QT = 1" in texto
+    assert "2,2 min" in texto
+    assert "1,65 €" in texto
+    assert "132 seg" in texto
+
+
+def test_rotulos_de_tempo_adaptam_se_a_unidade_escolhida() -> None:
+    dialog = DefPecaOperacaoDialog(_operacoes(), natureza_peca="FERRAGEM")
+    _selecionar_operacao(dialog, 3)
+
+    dialog.unidade_tempo_input.setCurrentIndex(
+        dialog.unidade_tempo_input.findData("FURO")
+    )
+    assert dialog.quantidade_base_label.text() == "N.º de furos por peça"
+    assert dialog.tempo_por_unidade_label.text() == "Tempo por furo (min)"
+
+    dialog.unidade_tempo_input.setCurrentIndex(
+        dialog.unidade_tempo_input.findData("LOTE")
+    )
+    assert dialog.quantidade_base_label.text() == "N.º de lotes/operações"
+    assert dialog.tempo_por_unidade_label.text() == "Tempo por lote (min)"
+
+
+def test_previsao_do_custeio_usa_tarifa_serie_da_linha() -> None:
+    operacao = _operacao(
+        20,
+        "EMBALAMENTO",
+        "EMBALAMENTO",
+        custo_hora_std=Decimal("30"),
+        custo_hora_serie=Decimal("20"),
+    )
+    dialog = DefPecaOperacaoDialog(
+        [operacao], natureza_peca="FERRAGEM", tipo_producao="SERIE"
+    )
+    dialog.unidade_tempo_input.setCurrentIndex(
+        dialog.unidade_tempo_input.findData("PECA")
+    )
+    dialog.tempo_por_unidade_input.setText("0,3")
+
+    texto = dialog.guia_label.text()
+    assert "tarifa SERIE" in texto
+    assert "Tarifa: 20 €/h" in texto
+    assert "0,10 €" in texto
 
 
 def test_acao_desativar_mostra_explicacao_propria() -> None:

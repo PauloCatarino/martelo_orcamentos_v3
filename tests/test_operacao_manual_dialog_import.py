@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import os
+from decimal import Decimal
+from types import SimpleNamespace
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtWidgets import QApplication
+
+_app = QApplication.instance() or QApplication([])
 
 
 def test_operacao_manual_dialog_imports() -> None:
@@ -35,4 +44,26 @@ def test_operacao_manual_dialog_aviso_custo_hora() -> None:
 
     assert hasattr(OperacaoManualDialog, "_atualizar_aviso_custo_hora")
     aviso = inspect.getsource(OperacaoManualDialog._atualizar_aviso_custo_hora)
-    assert "custo/hora STD" in aviso
+    assert "self._tipo_producao" in aviso
+
+
+def test_operacao_manual_mostra_custo_qt1_e_total_serie() -> None:
+    from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
+
+    maquina = SimpleNamespace(
+        id=1,
+        codigo="EMBALAMENTO",
+        nome="Embalamento",
+        tipo="EMBALAMENTO",
+        custo_hora=Decimal("30"),
+        custo_hora_serie=Decimal("20"),
+    )
+    dialog = OperacaoManualDialog([maquina], tipo_producao="SERIE")
+    dialog.tempo_input.setValue(0.3)
+    dialog.quantidade_input.setValue(10)
+
+    texto = dialog.resumo_label.text()
+    assert "QT = 1 · tarifa SERIE" in texto
+    assert "0,10 €" in texto
+    assert "Total para QT 10: 1,00 €" in texto
+    assert "3 min" in texto

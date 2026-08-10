@@ -115,11 +115,13 @@ def test_tempo_por_furo_tem_exemplo_numerico_do_motor() -> None:
     )
 
     assert guia.modo == MODO_TEMPO
-    # setup 2 + 5 furos × QT 10 × 0,04 = 2 -> total 4 min -> 4/60 × 45 = 3,00 €
+    # setup 2 + 5 furos × QT 1 × 0,04 = 0,2 -> 2,2 min -> 1,65 €.
     exemplo = next(linha for linha in guia.linhas if linha.startswith("Ex."))
-    assert "QT 10" in exemplo
-    assert "= 4 min" in exemplo
-    assert "3,00 €" in exemplo
+    assert "QT 1" in exemplo
+    assert "= 2,2 min" in exemplo
+    assert "1,65 €" in exemplo
+    assert guia.resultado_valor == "1,65 €"
+    assert "132 seg" in guia.resultado_detalhe
 
 
 def test_tempo_sem_tempos_configurados_avisa() -> None:
@@ -192,10 +194,12 @@ def test_rasgo_por_codigo_desativa_campos_de_tempo() -> None:
         CAMPO_TEMPO_POR_UNIDADE,
         CAMPO_UNIDADE_TEMPO,
     }
-    # 1 × 600 mm = 0,6 ML -> × QT 10 × 2 €/ML = 12,00 €
+    # 1 × 600 mm = 0,6 ML -> × QT 1 × 2 €/ML = 1,20 €
     exemplo = next(linha for linha in guia.linhas if linha.startswith("Ex."))
     assert "0,6 ML" in exemplo
-    assert "12,00 €" in exemplo
+    assert "QT 1" in exemplo
+    assert "1,20 €" in exemplo
+    assert guia.resultado_valor == "1,20 €"
 
 
 def test_rasgo_por_regra_calculo_tambem_e_detetado() -> None:

@@ -1381,6 +1381,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 parent=self,
                 on_save=guardar,
                 natureza_peca=linha.tipo_linha,
+                tipo_producao=linha.tipo_producao,
             )
             dialog.exec()
             return guardado
@@ -4677,7 +4678,14 @@ class OrcamentoItemCusteioPage(QWidget):
             saved = True
             return True
 
-        dialog = OperacaoManualDialog(maquinas, parent=self, on_save=handle_save)
+        dialog = OperacaoManualDialog(
+            maquinas,
+            parent=self,
+            on_save=handle_save,
+            tipo_producao=tipo_producao_efetivo(
+                self.item.tipo_producao, self._tipo_producao_default
+            ),
+        )
         if dialog.exec() and saved:
             self.carregar()
             self.status_label.setText("Operação manual inserida.")
@@ -4718,6 +4726,7 @@ class OrcamentoItemCusteioPage(QWidget):
             quantidade=linha.quantidade,
             parent=self,
             on_save=handle_save,
+            tipo_producao=linha.tipo_producao,
         )
         if dialog.exec() and saved:
             self.carregar()

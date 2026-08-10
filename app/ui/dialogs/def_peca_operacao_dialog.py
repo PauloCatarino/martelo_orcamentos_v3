@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QColor, QFont
 
-from app.domain.custo_producao import calcular_custo_por_minutos, calcular_tempo_operacao
+from app.domain.custo_producao import (
+    calcular_custo_por_minutos,
+    calcular_tempo_operacao,
+    escolher_tarifa,
+    preco_peca_escalao,
+)
 from app.domain.custo_producao import calcular_comprimento_rasgo_ml, calcular_custo_rasgo_cnc
 from app.domain.custo_producao import (
     calcular_custo_cnc,
@@ -34,6 +39,7 @@ from app.domain.custo_producao import (
 )
 from app.domain.medidas import normalizar_numero
 from app.domain.peca_natureza_types import FERRAGEM
+from app.domain.producao_types import TIPO_PRODUCAO_SERIE, normalize_tipo_producao
 from app.domain.tempos_producao import classificar_operacao
 from app.domain.operacao_guia import (
     CAMPO_QUANTIDADE_BASE,
@@ -172,6 +178,7 @@ class DefPecaOperacaoDialog(QDialog):
         mostrar_acao: bool = False,
         natureza_peca: str | None = None,
         configuracoes_existentes: list[ConfigOperacaoExistente] | None = None,
+        tipo_producao: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -180,6 +187,8 @@ class DefPecaOperacaoDialog(QDialog):
         self._is_edit = ligacao is not None
         self._mostrar_acao = mostrar_acao
         self._natureza_peca = natureza_peca
+        self._tipo_producao = normalize_tipo_producao(tipo_producao) or "STD"
+        self._usar_serie = self._tipo_producao == TIPO_PRODUCAO_SERIE
         self._configuracoes_existentes = configuracoes_existentes
         self._sugestoes_atual: list = []
         self._regra_rasgo_automatica = False
@@ -189,7 +198,19 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.setWindowTitle("Editar Operação da Peça" if self._is_edit else "Nova Operação da Peça")
         self.setModal(True)
-        self.setMinimumWidth(460)
+        self.setMinimumWidth(620)
+
+        self.assistente_label = QLabel(
+            "<b>Configuração assistida:</b> escolha primeiro uma opção em "
+            "«Configurar como…» ou copie uma configuração existente. Depois "
+            "reveja os campos e confirme no quadro azul o custo para QT = 1."
+        )
+        self.assistente_label.setWordWrap(True)
+        self.assistente_label.setTextFormat(Qt.TextFormat.RichText)
+        self.assistente_label.setStyleSheet(
+            "background-color: #fff8e8; border: 1px solid #ead7ad; "
+            "border-radius: 4px; padding: 7px; color: #513b20;"
+        )
 
         self.operacao_input = QComboBox()
         for operacao in operacoes_disponiveis:
@@ -263,7 +284,7 @@ class DefPecaOperacaoDialog(QDialog):
         )
 
         self.quantidade_base_input = QLineEdit()
-        self.quantidade_base_input.setPlaceholderText("Ex.: 1.5")
+        self.quantidade_base_input.setPlaceholderText("Normalmente 1")
         self.rasgo_qt_comp_input = QSpinBox()
         self.rasgo_qt_comp_input.setRange(0, 99)
         self.rasgo_qt_comp_input.setToolTip(
@@ -276,9 +297,9 @@ class DefPecaOperacaoDialog(QDialog):
         )
 
         self.tempo_setup_input = QLineEdit()
-        self.tempo_setup_input.setPlaceholderText("Ex.: 2 (minutos)")
+        self.tempo_setup_input.setPlaceholderText("Ex.: 2 min (uma vez por linha)")
         self.tempo_por_unidade_input = QLineEdit()
-        self.tempo_por_unidade_input.setPlaceholderText("Ex.: 0.35 (min/unidade)")
+        self.tempo_por_unidade_input.setPlaceholderText("Ex.: 0,1 min = 6 segundos")
         self.unidade_tempo_input = QComboBox()
         for opcao in UNIDADE_TEMPO_OPCOES:
             self.unidade_tempo_input.addItem(UNIDADE_TEMPO_LABELS[opcao], opcao or None)
@@ -360,9 +381,12 @@ class DefPecaOperacaoDialog(QDialog):
         self.rasgo_larg_label = QLabel("N.º larguras do rasgo")
         form.addRow(self.rasgo_comp_label, self.rasgo_qt_comp_input)
         form.addRow(self.rasgo_larg_label, self.rasgo_qt_larg_input)
-        form.addRow("Tempo setup (min)", self.tempo_setup_input)
-        form.addRow("Tempo por unidade (min)", self.tempo_por_unidade_input)
-        form.addRow("Unidade tempo", self.unidade_tempo_input)
+        self.tempo_setup_label = QLabel("Tempo setup (min)")
+        self.tempo_por_unidade_label = QLabel("Tempo por unidade (min)")
+        self.unidade_tempo_label = QLabel("Base do tempo")
+        form.addRow(self.tempo_setup_label, self.tempo_setup_input)
+        form.addRow(self.tempo_por_unidade_label, self.tempo_por_unidade_input)
+        form.addRow(self.unidade_tempo_label, self.unidade_tempo_input)
         form.addRow("Obrigatório", self.obrigatorio_input)
         form.addRow("Ativo", self.ativo_input)
         form.addRow("Observações", self.observacoes_input)
@@ -372,8 +396,17 @@ class DefPecaOperacaoDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.button_box.button(QDialogButtonBox.StandardButton.Save).setToolTip(
+            "Guardar esta configuração. Confirme primeiro a previsão QT = 1."
+        )
+        self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setToolTip(
+            "Fechar sem guardar alterações."
+        )
         self.simular_button = self.button_box.addButton(
             "Simular cálculo…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.simular_button.setToolTip(
+            "Testar outras quantidades e, quando aplicável, medidas reais da peça."
         )
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
@@ -393,6 +426,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.rasgo_qt_larg_input.valueChanged.connect(self._atualizar_guia)
 
         layout = QVBoxLayout()
+        layout.addWidget(self.assistente_label)
         layout.addLayout(form)
         layout.addWidget(self.guia_label)
         layout.addWidget(self.error_label)
@@ -709,6 +743,12 @@ class DefPecaOperacaoDialog(QDialog):
 
         self._preencher_valores(receita.valores)
 
+        self.assistente_label.setText(
+            f"<b>Receita aplicada: {escape(receita.label)}</b><br>"
+            f"{escape(receita.descricao)} Reveja o campo selecionado e confirme "
+            "a previsão QT = 1 no quadro azul."
+        )
+
         self.error_label.clear()
         foco = self._campos_texto_valores().get(receita.foco) or {
             CAMPO_RASGO_QT_COMP: self.rasgo_qt_comp_input,
@@ -782,6 +822,11 @@ class DefPecaOperacaoDialog(QDialog):
             return
 
         self._preencher_valores(self._sugestoes_atual[indice].valores)
+        sugestao = self._sugestoes_atual[indice]
+        self.assistente_label.setText(
+            f"<b>Configuração copiada: {escape(sugestao.label)}</b><br>"
+            f"{escape(sugestao.detalhe)} Confirme a previsão QT = 1 antes de guardar."
+        )
         self.error_label.clear()
         if self.quantidade_base_input.isEnabled():
             self.quantidade_base_input.setFocus()
@@ -798,6 +843,7 @@ class DefPecaOperacaoDialog(QDialog):
 
     def _atualizar_guia(self) -> None:
         """Refresh the always-visible formula panel and the dynamic fields."""
+        self._atualizar_rotulos_contextuais()
         if self._acao_desativar():
             self.guia_label.setText(
                 "<b>Variante: desativar operação</b><br>"
@@ -824,15 +870,43 @@ class DefPecaOperacaoDialog(QDialog):
             rasgo_qt_comp=self.rasgo_qt_comp_input.value(),
             rasgo_qt_larg=self.rasgo_qt_larg_input.value(),
             custo_hora=self._custo_hora_da_operacao(operacao),
-            preco_rasgo_ml=getattr(operacao, "maquina_preco_rasgo_ml_std", None),
+            preco_rasgo_ml=self._tarifa_da_operacao(
+                operacao,
+                "maquina_preco_rasgo_ml_std",
+                "maquina_preco_rasgo_ml_serie",
+            ),
             natureza_peca=self._natureza_peca,
             metodo_calculo=self._metodo_atual(),
-            preco_furo=getattr(operacao, "maquina_preco_furo_std", None),
-            preco_m2_face=getattr(operacao, "maquina_preco_m2_face_std", None),
+            preco_furo=self._tarifa_da_operacao(
+                operacao,
+                "maquina_preco_furo_std",
+                "maquina_preco_furo_serie",
+            ),
+            preco_m2_face=self._tarifa_da_operacao(
+                operacao,
+                "maquina_preco_m2_face_std",
+                "maquina_preco_m2_face_serie",
+            ),
         )
 
-        linhas = "<br>".join(escape(linha) for linha in guia.linhas)
-        self.guia_label.setText(f"<b>{escape(guia.titulo)}</b><br>{linhas}")
+        linhas = "<br>".join(f"• {escape(linha)}" for linha in guia.linhas)
+        resultado = escape(guia.resultado_valor or "Custo por validar")
+        detalhe = escape(guia.resultado_detalhe or "")
+        self.guia_label.setText(
+            "<table width='100%' cellspacing='0' cellpadding='1'>"
+            "<tr><td><b>"
+            + escape(f"{guia.referencia} · tarifa {self._tipo_producao}")
+            + "</b></td>"
+            "<td align='right'><span style='font-size: 17px; color: #075985;'>"
+            f"<b>{resultado}</b></span></td></tr></table>"
+            + (
+                f"<span style='color: #334155;'>{detalhe}</span><br>"
+                if detalhe
+                else ""
+            )
+            + "<hr><b>Como o Martelo calcula</b><br>"
+            + f"<b>{escape(guia.titulo)}</b><br>{linhas}"
+        )
 
         for campo, widget in self._widgets_guia().items():
             motivo = guia.campos_inativos.get(campo)
@@ -841,6 +915,58 @@ class DefPecaOperacaoDialog(QDialog):
             if motivo is not None:
                 tooltip = f"{tooltip}\n\n{motivo}"
             widget.setToolTip(tooltip)
+
+    def _atualizar_rotulos_contextuais(self) -> None:
+        """Name quantity/time fields in the user's current unit of work."""
+        metodo = self._metodo_atual()
+        unidade = (self.unidade_tempo_input.currentData() or "").upper()
+
+        if metodo == metodo_types.FURACAO:
+            quantidade_label = "N.º de furos por unidade"
+            quantidade_placeholder = "Ex.: 3 furos"
+        elif metodo == metodo_types.REVESTIMENTO:
+            quantidade_label = "N.º de faces (1 ou 2)"
+            quantidade_placeholder = "1 ou 2"
+        elif metodo in (metodo_types.RASGO, metodo_types.ESCALAO_AREA):
+            quantidade_label = "Quantidade base (não usada)"
+            quantidade_placeholder = "Calculada automaticamente"
+        elif unidade == "FURO":
+            quantidade_label = "N.º de furos por peça"
+            quantidade_placeholder = "Ex.: 3 furos por peça"
+        elif unidade == "UN":
+            quantidade_label = "N.º de unidades por peça"
+            quantidade_placeholder = "Normalmente 1"
+        elif unidade == "HORA":
+            quantidade_label = "Duração da operação (horas)"
+            quantidade_placeholder = "Ex.: 1,5 horas"
+        elif unidade in ("LOTE", "OPERACAO"):
+            quantidade_label = "N.º de lotes/operações"
+            quantidade_placeholder = "Normalmente 1"
+        elif unidade == "M2":
+            quantidade_label = "Área da peça (automática)"
+            quantidade_placeholder = "Calculada por COMP × LARG"
+        elif unidade == "ML":
+            quantidade_label = "Metros lineares por peça"
+            quantidade_placeholder = "Ex.: 1,2 ML"
+        else:
+            quantidade_label = "Quantidade por peça"
+            quantidade_placeholder = "Normalmente 1"
+
+        tempo_labels = {
+            "PECA": "Tempo por peça (min)",
+            "FURO": "Tempo por furo (min)",
+            "UN": "Tempo por unidade (min)",
+            "ML": "Tempo por ML (min)",
+            "M2": "Tempo por m² (min)",
+            "HORA": "Tempo por unidade (não usado)",
+            "LOTE": "Tempo por lote (min)",
+            "OPERACAO": "Tempo por operação (min)",
+        }
+        self.quantidade_base_label.setText(quantidade_label)
+        self.quantidade_base_input.setPlaceholderText(quantidade_placeholder)
+        self.tempo_por_unidade_label.setText(
+            tempo_labels.get(unidade, "Tempo por unidade (min)")
+        )
 
     def _abrir_simulador(self) -> None:
         """Open the simulator matching how the operation is actually costed."""
@@ -860,6 +986,7 @@ class DefPecaOperacaoDialog(QDialog):
                 bucket=bucket,
                 operacao=operacao,
                 escaloes=self._escaloes_da_operacao(operacao) if bucket == "cnc" else [],
+                usar_serie=self._usar_serie,
                 parent=self,
             ).exec()
             return
@@ -915,6 +1042,9 @@ class DefPecaOperacaoDialog(QDialog):
                 params = {"faces": int(quantidade or 1)}
             dialog.widget.limpar_operacoes()
             dialog.widget.adicionar_operacao(maquina_codigo, metodo, **params)
+            indice_modo = dialog.widget.modo_input.findData(self._tipo_producao)
+            if indice_modo >= 0:
+                dialog.widget.modo_input.setCurrentIndex(indice_modo)
         dialog.exec()
 
     def _operacao_selecionada(self):
@@ -925,6 +1055,13 @@ class DefPecaOperacaoDialog(QDialog):
         """Best-effort hourly cost from operation or embedded machine info."""
         if operacao is None:
             return None
+        custo = self._tarifa_da_operacao(
+            operacao,
+            "maquina_custo_hora_std",
+            "maquina_custo_hora_serie",
+        )
+        if custo is not None:
+            return custo
         custo = getattr(operacao, "custo_hora", None)
         if custo is not None:
             return custo
@@ -936,8 +1073,20 @@ class DefPecaOperacaoDialog(QDialog):
         custo = getattr(operacao, "maquina_custo_hora", None)
         if custo is not None:
             return custo
-        # Real machine STD tariff embedded in the read model (phase G2).
-        return getattr(operacao, "maquina_custo_hora_std", None)
+        return None
+
+    def _tarifa_da_operacao(
+        self, operacao, atributo_std: str, atributo_serie: str
+    ) -> Decimal | None:
+        """Select STD/SERIE exactly like costing (SERIE falls back to STD)."""
+        if operacao is None:
+            return None
+        valor, _fallback = escolher_tarifa(
+            getattr(operacao, atributo_std, None),
+            getattr(operacao, atributo_serie, None),
+            self._usar_serie,
+        )
+        return valor
 
     def _escaloes_da_operacao(self, operacao) -> list:
         """Load the machine's active area tiers for the CNC simulator."""
@@ -1062,7 +1211,15 @@ class SimuladorTarifaPainelDialog(QDialog):
     matches the production cost of a panel line with these measures.
     """
 
-    def __init__(self, *, bucket: str, operacao, escaloes: list, parent=None) -> None:
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        operacao,
+        escaloes: list,
+        usar_serie: bool = False,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Simular custo por tarifa da máquina")
         self.setModal(True)
@@ -1070,11 +1227,27 @@ class SimuladorTarifaPainelDialog(QDialog):
 
         self._bucket = bucket
         self._escaloes = list(escaloes or [])
-        self._preco_ml = getattr(operacao, "maquina_preco_ml_std", None)
-        self._preco_lado_curto = getattr(operacao, "maquina_preco_lado_curto_std", None)
-        self._preco_lado_longo = getattr(operacao, "maquina_preco_lado_longo_std", None)
+        self._usar_serie = usar_serie
+        self._tipo_producao = "SERIE" if usar_serie else "STD"
+        self._preco_ml = self._escolher(
+            operacao, "maquina_preco_ml_std", "maquina_preco_ml_serie"
+        )
+        self._preco_lado_curto = self._escolher(
+            operacao,
+            "maquina_preco_lado_curto_std",
+            "maquina_preco_lado_curto_serie",
+        )
+        self._preco_lado_longo = self._escolher(
+            operacao,
+            "maquina_preco_lado_longo_std",
+            "maquina_preco_lado_longo_serie",
+        )
         self._limite_lado_mm = getattr(operacao, "maquina_limite_lado_mm", None)
-        self._custo_setup_peca = getattr(operacao, "maquina_custo_setup_peca_std", None)
+        self._custo_setup_peca = self._escolher(
+            operacao,
+            "maquina_custo_setup_peca_std",
+            "maquina_custo_setup_peca_serie",
+        )
 
         operacao_texto = " - ".join(
             parte
@@ -1128,7 +1301,7 @@ class SimuladorTarifaPainelDialog(QDialog):
         self._recalcular()
 
     def _texto_tarifas(self, maquina_codigo: str | None) -> str:
-        nome = maquina_codigo or "—"
+        nome = f"{maquina_codigo or '—'} · tarifa {self._tipo_producao}"
         if self._bucket == "corte":
             return (
                 f"Máquina {nome} — €/ML: {self._fmt_tarifa(self._preco_ml)} • "
@@ -1240,7 +1413,9 @@ class SimuladorTarifaPainelDialog(QDialog):
 
     def _simular_cnc(self, comp: Decimal, larg: Decimal, qt: Decimal) -> str:
         area = comp * larg / Decimal("1000000")
-        custo, motivo = calcular_custo_cnc(area, qt, self._escaloes)
+        custo, motivo = calcular_custo_cnc(
+            area, qt, self._escaloes, usar_serie=self._usar_serie
+        )
         texto = (
             f"Área = {format_quantity(comp)} × {format_quantity(larg)} / 1 000 000 "
             f"= {format_quantity(area)} m² por peça"
@@ -1252,11 +1427,12 @@ class SimuladorTarifaPainelDialog(QDialog):
             )
         escalao = selecionar_escalao_area(self._escaloes, area)
         limite = getattr(escalao, "area_max_m2", None)
-        preco = getattr(escalao, "preco_peca_std", None)
+        preco, fallback = preco_peca_escalao(escalao, self._usar_serie)
         texto += (
             f"\nEscalão nível {getattr(escalao, 'nivel', '—')} "
             f"({'≤ ' + format_quantity(limite) + ' m²' if limite is not None else 'sem limite'}) "
-            f"→ {format_quantity(preco)} € por peça"
+            f"→ {format_quantity(preco)} € por peça ({self._tipo_producao}"
+            f"{' com fallback STD' if fallback else ''})"
         )
         return (
             f"{texto}\nCusto = {format_quantity(preco)} € × QT {format_quantity(qt)} "
@@ -1266,6 +1442,16 @@ class SimuladorTarifaPainelDialog(QDialog):
     @staticmethod
     def _fmt_tarifa(valor: Decimal | None) -> str:
         return format_quantity(valor) if valor is not None else "—"
+
+    def _escolher(
+        self, operacao, atributo_std: str, atributo_serie: str
+    ) -> Decimal | None:
+        valor, _fallback = escolher_tarifa(
+            getattr(operacao, atributo_std, None),
+            getattr(operacao, atributo_serie, None),
+            self._usar_serie,
+        )
+        return valor
 
     @staticmethod
     def _parse(text: str) -> Decimal | None:

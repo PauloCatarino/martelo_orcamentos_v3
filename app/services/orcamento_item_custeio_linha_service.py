@@ -4505,8 +4505,9 @@ class OrcamentoItemCusteioLinhaService:
         """Insert a user-defined manual-operation cost line (OPERACAO_MANUAL).
 
         ``tempo_manual`` stores the TOTAL minutes (tempo × quantidade); the cost is
-        ``(total minutes / 60) × custo_hora_std`` of the chosen machine and feeds
-        custo_producao. No materials/orlas/acabamentos are set.
+        ``(total minutes / 60) × custo_hora`` of the chosen machine, using the
+        item's effective STD/SERIE tariff, and feeds custo_producao. No
+        materials/orlas/acabamentos are set.
         """
         item_id = self._validate_required_id(orcamento_item_id, "orcamento_item_id")
         texto = (descricao or "").strip()

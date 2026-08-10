@@ -62,6 +62,11 @@ def test_resumo_embeds_real_machine_tariffs() -> None:
     assert {
         "maquina_custo_hora_std",
         "maquina_custo_hora_serie",
+        "maquina_preco_ml_serie",
+        "maquina_preco_lado_curto_serie",
+        "maquina_preco_lado_longo_serie",
+        "maquina_custo_setup_peca_serie",
+        "maquina_custo_hora_serie",
         "maquina_preco_ml_std",
         "maquina_preco_lado_curto_std",
         "maquina_preco_lado_longo_std",

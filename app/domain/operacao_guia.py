@@ -40,8 +40,10 @@ MODO_FURACAO = "FURACAO"
 MODO_REVESTIMENTO = "REVESTIMENTO"
 MODO_SEM_CUSTEIO = "SEM_CUSTEIO"
 
-# Example values used only to make the mini-example concrete.
-_EXEMPLO_QT = Decimal("10")
+# Reference values used only to make the preview concrete.  QT is deliberately
+# one: this dialog configures the value that will first be applied to one
+# costing unit.  Other quantities remain available in the detailed simulator.
+_EXEMPLO_QT = Decimal("1")
 _EXEMPLO_AREA_M2 = Decimal("0.5")
 _EXEMPLO_COMP_MM = Decimal("600")
 _EXEMPLO_LARG_MM = Decimal("400")
@@ -72,6 +74,9 @@ class GuiaOperacao:
     titulo: str
     linhas: tuple[str, ...]
     campos_inativos: dict[str, str] = field(default_factory=dict)
+    resultado_valor: str | None = None
+    resultado_detalhe: str | None = None
+    referencia: str = "Previsão para uma linha com QT = 1"
 
 
 def construir_guia_operacao(
@@ -165,6 +170,8 @@ def _guia_sem_custeio() -> GuiaOperacao:
             "Escolha um tipo de operação reconhecido para a operação contar "
             "para o custo.",
         ),
+        resultado_valor="Sem custo automático",
+        resultado_detalhe="A operação será ignorada pelo motor de custeio.",
     )
 
 
@@ -195,6 +202,11 @@ def _guia_tarifa(
         modo=MODO_TARIFA,
         titulo=f"Custo automático por tarifa da máquina ({bucket})",
         linhas=tuple(linhas),
+        resultado_valor="Calculado com as medidas da peça",
+        resultado_detalhe=(
+            "Neste modelo não existem COMP/LARG/orlas reais. Use «Simular "
+            "cálculo…» para validar uma peça concreta com QT = 1."
+        ),
     )
 
 
@@ -246,6 +258,15 @@ def _guia_rasgo(
             CAMPO_TEMPO_POR_UNIDADE: motivo,
             CAMPO_UNIDADE_TEMPO: motivo,
         },
+        resultado_valor=(
+            _fmt_euros(ml * _EXEMPLO_QT * normalizar_numero(preco_rasgo_ml))
+            if ml is not None and normalizar_numero(preco_rasgo_ml) is not None
+            else "Custo por validar"
+        ),
+        resultado_detalhe=(
+            "Referência com peça de 600 × 400 mm e QT = 1; confirme as "
+            "medidas reais no simulador."
+        ),
     )
 
 
@@ -276,6 +297,11 @@ def _guia_escalao_area(tempos_preenchidos: bool) -> GuiaOperacao:
             CAMPO_TEMPO_POR_UNIDADE: motivo,
             CAMPO_UNIDADE_TEMPO: motivo,
         },
+        resultado_valor="Calculado pelo escalão da área",
+        resultado_detalhe=(
+            "O preço exato depende de COMP × LARG. Simule as medidas reais "
+            "com QT = 1 antes de guardar."
+        ),
     )
 
 
@@ -306,6 +332,9 @@ def _guia_furacao(
         "Não conta para o custo: o método 'Furação' custeia por furo, não "
         "por tempo."
     )
+    custo_preview = furos * _EXEMPLO_QT * preco if (
+        furos is not None and furos > 0 and preco is not None
+    ) else None
     return GuiaOperacao(
         modo=MODO_FURACAO,
         titulo="Furação: custo por furo da máquina",
@@ -315,6 +344,14 @@ def _guia_furacao(
             CAMPO_TEMPO_POR_UNIDADE: motivo,
             CAMPO_UNIDADE_TEMPO: motivo,
         },
+        resultado_valor=(
+            _fmt_euros(custo_preview) if custo_preview is not None else "Custo por validar"
+        ),
+        resultado_detalhe=(
+            f"{_fmt(furos) if furos is not None and furos > 0 else '—'} "
+            f"furo(s) por unidade × QT 1 × "
+            f"{_fmt(preco) if preco is not None else 'tarifa em falta'} €/furo."
+        ),
     )
 
 
@@ -346,6 +383,11 @@ def _guia_revestimento(
     motivo = (
         "Não conta para o custo: o revestimento custeia por m² e por face."
     )
+    custo_preview = (
+        _EXEMPLO_AREA_M2 * faces * _EXEMPLO_QT * preco
+        if preco is not None
+        else None
+    )
     return GuiaOperacao(
         modo=MODO_REVESTIMENTO,
         titulo="Revestimento: custo por m² e por face",
@@ -355,6 +397,13 @@ def _guia_revestimento(
             CAMPO_TEMPO_POR_UNIDADE: motivo,
             CAMPO_UNIDADE_TEMPO: motivo,
         },
+        resultado_valor=(
+            _fmt_euros(custo_preview) if custo_preview is not None else "Custo por validar"
+        ),
+        resultado_detalhe=(
+            "Referência com área de 0,5 m² e QT = 1; confirme COMP × LARG "
+            "reais no simulador."
+        ),
     )
 
 
@@ -420,11 +469,59 @@ def _guia_tempo(
             "tempos informativos, não para o custo."
         )
 
+    resultado_valor, resultado_detalhe = _resultado_tempo_qt1(
+        unidade,
+        quantidade_base,
+        tempo_setup_minutos,
+        tempo_por_unidade_minutos,
+        custo_hora,
+    )
     return GuiaOperacao(
         modo=MODO_TEMPO,
         titulo="Custo por tempo (setup + quantidade × tempo por unidade)",
         linhas=tuple(linhas),
         campos_inativos=campos_inativos,
+        resultado_valor=resultado_valor,
+        resultado_detalhe=resultado_detalhe,
+    )
+
+
+def _resultado_tempo_qt1(
+    unidade: str,
+    quantidade_base: Decimal | None,
+    tempo_setup_minutos: Decimal | None,
+    tempo_por_unidade_minutos: Decimal | None,
+    custo_hora: Decimal | None,
+) -> tuple[str, str]:
+    """Build the prominent QT=1 result from the production-cost helpers."""
+    setup_min, variavel_min = calcular_tempo_operacao(
+        unidade or None,
+        quantidade_base,
+        tempo_setup_minutos,
+        tempo_por_unidade_minutos,
+        _EXEMPLO_AREA_M2,
+        _EXEMPLO_QT,
+    )
+    if setup_min is None and variavel_min is None:
+        return (
+            "Custo por validar",
+            "Falta indicar o tempo de setup e/ou o tempo por unidade.",
+        )
+
+    setup = setup_min or Decimal("0")
+    variavel = variavel_min or Decimal("0")
+    total = setup + variavel
+    segundos = total * Decimal("60")
+    tarifa = normalizar_numero(custo_hora)
+    custo = calcular_custo_por_minutos(total, tarifa)
+    detalhe = (
+        f"Tempo QT 1: setup {_fmt(setup)} + variável {_fmt(variavel)} = "
+        f"{_fmt(total)} min ({_fmt(segundos)} seg). Tarifa: "
+        f"{_fmt(tarifa) + ' €/h' if tarifa is not None else 'não definida'}."
+    )
+    return (
+        _fmt_euros(custo) if custo is not None else "Sem tarifa €/h",
+        detalhe,
     )
 
 

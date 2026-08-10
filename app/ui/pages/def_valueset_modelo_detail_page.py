@@ -9,7 +9,6 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
-    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -26,6 +25,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
+from app.domain.valueset_modelo_pesquisa import filtrar_linhas_valueset_modelo
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_operacao_service import DefOperacaoService
@@ -59,6 +59,7 @@ from app.ui.helpers.valueset_precos import (
     detetar_divergencias_valueset,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estilo_tabela_valueset import (
     aplicar_estilo_item_valueset,
     configurar_tabela_valueset,
@@ -113,6 +114,7 @@ class DefValuesetModeloDetailPage(QWidget):
         self.on_back = on_back
         self.on_modelo_duplicado = on_modelo_duplicado
         self._linhas_by_row: dict[int, DefValuesetModeloLinhaResumo] = {}
+        self._todas_linhas: list[DefValuesetModeloLinhaResumo] = []
         self._operacoes_por_linha: dict[int, str] = {}
 
         self.cabecalho = BarraCabecalho(
@@ -120,15 +122,31 @@ class DefValuesetModeloDetailPage(QWidget):
             [f"Configurações > Modelos ValueSet > {modelo.nome}"],
         )
 
-        form = QFormLayout()
-        for label, value in [
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(8)
+        info_campos = [
             ("Código", modelo.codigo),
             ("Nome", modelo.nome),
             ("Tipo", modelo.tipo or ""),
             ("Âmbito", modelo.ambito),
             ("Ativo", self._format_bool(modelo.ativo)),
-        ]:
-            form.addRow(f"{label}:", QLabel(value))
+        ]
+        for indice, (label, value) in enumerate(info_campos):
+            titulo = QLabel(f"{label}:")
+            titulo_font = titulo.font()
+            titulo_font.setBold(True)
+            titulo.setFont(titulo_font)
+            conteudo = QLabel(value)
+            conteudo.setToolTip(value)
+            info_layout.addWidget(titulo)
+            info_layout.addWidget(conteudo)
+            if indice < len(info_campos) - 1:
+                separador = QLabel("|")
+                separador.setObjectName("valuesetModeloInfoSeparador")
+                info_layout.addSpacing(6)
+                info_layout.addWidget(separador)
+                info_layout.addSpacing(6)
+        info_layout.addStretch()
 
         self.new_button = QPushButton("Nova Linha")
         self.new_button.clicked.connect(self.abrir_nova_linha)
@@ -171,7 +189,7 @@ class DefValuesetModeloDetailPage(QWidget):
         self.agrupar_button.clicked.connect(self.agrupar_por_chave)
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
         self.mostrar_inativas_check.stateChanged.connect(
-            lambda _=0: self.carregar_linhas()
+            lambda _=0: self._aplicar_filtro_linhas()
         )
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar_linhas)
@@ -195,6 +213,18 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout.addWidget(self.check_prices_button)
         actions_layout.addStretch()
         actions_layout.addWidget(self.back_button)
+
+        self.pesquisa_input = CampoPesquisa(
+            placeholder=(
+                "Pesquisar chave, opção, referência, descrição, tipo, família ou operação…"
+            ),
+            largura_max=620,
+        )
+        self.pesquisa_input.setToolTip(
+            "Filtra as linhas deste modelo à medida que escreve. "
+            "Use espaços ou % para combinar termos."
+        )
+        self.pesquisa_input.pesquisa_mudou.connect(self._aplicar_filtro_linhas)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModeloDetailStatus")
@@ -223,8 +253,9 @@ class DefValuesetModeloDetailPage(QWidget):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
-        layout.addLayout(form)
+        layout.addLayout(info_layout)
         layout.addLayout(actions_layout)
+        layout.addWidget(self.pesquisa_input)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
 
@@ -259,19 +290,35 @@ class DefValuesetModeloDetailPage(QWidget):
                         for ligacao in ligacoes
                     )
         except SQLAlchemyError as error:
+            self._todas_linhas = []
+            self._operacoes_por_linha = {}
             self.status_label.setText(
                 mensagem_erro_bd("Nao foi possivel carregar as linhas do modelo.", error)
             )
             return
 
+        self._todas_linhas = linhas
+        self._aplicar_filtro_linhas()
+
+    def _aplicar_filtro_linhas(self, _texto: str = "") -> None:
+        """Filtra em memória as linhas e operações do modelo atual."""
+        linhas = self._todas_linhas
         if not self.mostrar_inativas_check.isChecked():
             linhas = [linha for linha in linhas if linha.ativo]
-
+        linhas = filtrar_linhas_valueset_modelo(
+            linhas,
+            self.pesquisa_input.texto(),
+            self._operacoes_por_linha,
+        )
         self._preencher(linhas)
 
         if not linhas:
-            self.status_label.setText("Sem linhas neste modelo.")
+            if self.pesquisa_input.texto().strip():
+                self.status_label.setText("Nenhuma linha corresponde à pesquisa.")
+            else:
+                self.status_label.setText("Sem linhas neste modelo.")
         else:
+            self.status_label.setText(f"Linhas encontradas: {len(linhas)}.")
             self._avisar_prioridades_repetidas(linhas)
 
     def mover_linha(self, *, para_cima: bool) -> None:

@@ -43,15 +43,19 @@ class DefOperacaoResumo:
     maquina_preco_furo_serie: Decimal | None = None
     maquina_preco_m2_face_std: Decimal | None = None
     maquina_preco_m2_face_serie: Decimal | None = None
-    # Real machine tariffs (STD), so the dialogs can simulate with the same
-    # numbers the costing uses (phase G2).
+    # Real machine tariffs (STD/SERIE), so the dialogs can simulate with the
+    # same numbers and fallback rules the costing uses (phase G2).
     maquina_custo_hora_std: Decimal | None = None
     maquina_custo_hora_serie: Decimal | None = None
     maquina_preco_ml_std: Decimal | None = None
+    maquina_preco_ml_serie: Decimal | None = None
     maquina_preco_lado_curto_std: Decimal | None = None
+    maquina_preco_lado_curto_serie: Decimal | None = None
     maquina_preco_lado_longo_std: Decimal | None = None
+    maquina_preco_lado_longo_serie: Decimal | None = None
     maquina_limite_lado_mm: Decimal | None = None
     maquina_custo_setup_peca_std: Decimal | None = None
+    maquina_custo_setup_peca_serie: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -241,15 +245,27 @@ class DefOperacaoRepository:
             maquina_custo_hora_std=getattr(operacao.maquina, "custo_hora", None),
             maquina_custo_hora_serie=getattr(operacao.maquina, "custo_hora_serie", None),
             maquina_preco_ml_std=getattr(operacao.maquina, "preco_ml_std", None),
+            maquina_preco_ml_serie=getattr(
+                operacao.maquina, "preco_ml_serie", None
+            ),
             maquina_preco_lado_curto_std=getattr(
                 operacao.maquina, "preco_lado_curto_std", None
+            ),
+            maquina_preco_lado_curto_serie=getattr(
+                operacao.maquina, "preco_lado_curto_serie", None
             ),
             maquina_preco_lado_longo_std=getattr(
                 operacao.maquina, "preco_lado_longo_std", None
             ),
+            maquina_preco_lado_longo_serie=getattr(
+                operacao.maquina, "preco_lado_longo_serie", None
+            ),
             maquina_limite_lado_mm=getattr(operacao.maquina, "limite_lado_mm", None),
             maquina_custo_setup_peca_std=getattr(
                 operacao.maquina, "custo_setup_peca_std", None
+            ),
+            maquina_custo_setup_peca_serie=getattr(
+                operacao.maquina, "custo_setup_peca_serie", None
             ),
             created_at=operacao.created_at,
             updated_at=operacao.updated_at,

@@ -21,6 +21,29 @@ def test_page_accepts_modelo_and_on_back() -> None:
     assert "on_modelo_duplicado" in signature.parameters
 
 
+def test_cabecalho_do_modelo_compacta_metadados_na_horizontal() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    assert "info_layout = QHBoxLayout()" in init
+    assert "info_layout.addWidget(titulo)" in init
+    assert "info_layout.addWidget(conteudo)" in init
+    assert "conteudo.setToolTip(value)" in init
+    assert "QFormLayout" not in init
+
+
+def test_detalhe_do_modelo_tem_pesquisa_dinamica_de_linhas() -> None:
+    from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
+
+    init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
+    filtrar = inspect.getsource(DefValuesetModeloDetailPage._aplicar_filtro_linhas)
+    assert "CampoPesquisa" in init
+    assert "pesquisa_mudou.connect(self._aplicar_filtro_linhas)" in init
+    assert "setToolTip" in init
+    assert "filtrar_linhas_valueset_modelo" in filtrar
+    assert "_operacoes_por_linha" in filtrar
+
+
 def test_page_line_headers() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
@@ -206,6 +229,6 @@ def test_linhas_modelo_ocultam_inativas_por_defeito() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
     init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
-    carregar = inspect.getsource(DefValuesetModeloDetailPage.carregar_linhas)
+    filtrar = inspect.getsource(DefValuesetModeloDetailPage._aplicar_filtro_linhas)
     assert "mostrar_inativas_check" in init
-    assert "if linha.ativo" in carregar
+    assert "if linha.ativo" in filtrar
