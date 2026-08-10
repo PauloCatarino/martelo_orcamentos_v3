@@ -166,6 +166,11 @@ from app.ui.widgets.icone_eliminar import (
     icone_x_eliminar,
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.miniatura_ferragem import (
+    FERRAGEM_VISUAL_LABELS,
+    criar_miniatura_ferragem,
+    resolver_ferragem_visual,
+)
 from app.ui.widgets.ordem_grupos_biblioteca import ordenar_grupos
 from app.ui.widgets.miniatura_estrutura import (
     PUXADOR,
@@ -2843,6 +2848,20 @@ class OrcamentoItemCusteioPage(QWidget):
 
         return getattr(self, "_estruturas_visuais_por_linha", {}).get(linha.id, [])
 
+    def _ferragem_visual_da_linha(
+        self, linha: OrcamentoItemCusteioLinhaResumo
+    ) -> str | None:
+        """Resolve only supported hardware icons, never structural cube parts."""
+        if normalize_custeio_linha_type(getattr(linha, "tipo_linha", None)) != FERRAGEM:
+            return None
+        return resolver_ferragem_visual(
+            getattr(linha, "chave_valueset", None),
+            getattr(linha, "def_peca_codigo", None),
+            getattr(linha, "codigo", None),
+            getattr(linha, "descricao_no_orcamento", None),
+            getattr(linha, "descricao", None),
+        )
+
     def _criar_item_modulo(
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> QTableWidgetItem:
@@ -2853,6 +2872,17 @@ class OrcamentoItemCusteioPage(QWidget):
         """
         item = criar_item_tabela("")
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+        ferragem_visual = self._ferragem_visual_da_linha(linha)
+        if ferragem_visual is not None:
+            item.setIcon(QIcon(criar_miniatura_ferragem(ferragem_visual)))
+            nome = FERRAGEM_VISUAL_LABELS[ferragem_visual]
+            item.setToolTip(
+                f"Representação ilustrativa da ferragem: {nome}. "
+                "O símbolo serve apenas como auxiliar de memória e não altera "
+                "quantidades, materiais ou custos."
+            )
+            return item
 
         partes_estruturais = self._partes_estruturais_a_desenhar(linha)
         if partes_estruturais and any(

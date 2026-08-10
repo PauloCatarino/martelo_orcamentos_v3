@@ -21,11 +21,20 @@ from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
 from app.ui.widgets.miniatura_estrutura import (
+    _posicoes_puxadores_porta,
     criar_miniatura_estrutura,
     criar_miniatura_estrutura_componentes,
     PUXADOR,
     resolver_funcao_estrutural,
     tem_previsao_estrutural,
+)
+from app.ui.widgets.miniatura_ferragem import (
+    CORREDICA,
+    DOBRADICA,
+    PE,
+    PUXADOR as PUXADOR_FERRAGEM,
+    criar_miniatura_ferragem,
+    resolver_ferragem_visual,
 )
 
 _app = QApplication.instance() or QApplication([])
@@ -74,6 +83,74 @@ def test_a_ferragem_nao_leva_cubo_mesmo_com_nome_de_peca() -> None:
     item = page._criar_item_modulo(linha)
 
     assert page._partes_estruturais_a_desenhar(linha) == []
+    assert item.icon().isNull() is True
+    assert item.toolTip() == ""
+
+
+def test_reconhece_apenas_as_quatro_ferragens_com_icon_proprio() -> None:
+    assert resolver_ferragem_visual("FERRAGEM_DOBRADICA") == DOBRADICA
+    assert resolver_ferragem_visual("FERRAGEM_PE_NIVELADOR") == PE
+    assert resolver_ferragem_visual("CORREDICA") == CORREDICA
+    assert resolver_ferragem_visual("PUXADOR_PORTA_CORRER") == PUXADOR_FERRAGEM
+    # Estas ferragens não são um pé nem um puxador, apesar das palavras parciais.
+    assert resolver_ferragem_visual("NIVELADORES/PENDURAIS") is None
+    assert resolver_ferragem_visual("FERRAGEM_ESQUADRO_L_PUX_GOLA") is None
+    assert resolver_ferragem_visual("RODAS_PORTA_CORRER") is None
+
+
+def test_icons_de_ferragem_sao_distintos_e_tem_o_tamanho_da_coluna() -> None:
+    imagens = [
+        criar_miniatura_ferragem(tipo)
+        for tipo in (PUXADOR_FERRAGEM, DOBRADICA, CORREDICA, PE)
+    ]
+
+    assert all(imagem.width() == 28 and imagem.height() == 28 for imagem in imagens)
+    assert all(not imagem.isNull() for imagem in imagens)
+    assert len({bytes(imagem.toImage().constBits()) for imagem in imagens}) == 4
+
+
+def test_coluna_modulo_mostra_icon_e_tooltip_nas_ferragens_suportadas() -> None:
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    casos = (
+        ("FERRAGEM_DOBRADICA", "Dobradiça"),
+        ("FERRAGEM_PE_NIVELADOR", "Pé nivelador"),
+        ("FERRAGEM_CORREDICA", "Corrediça"),
+        ("FERRAGEM_PUXADOR", "Puxador"),
+    )
+
+    for indice, (chave, nome) in enumerate(casos, start=1):
+        linha = SimpleNamespace(
+            id=indice,
+            tipo_linha="FERRAGEM",
+            chave_valueset=chave,
+            def_peca_codigo=None,
+            codigo=None,
+            descricao_no_orcamento=None,
+            descricao="Ferragem",
+            modulo_imagem_path=None,
+        )
+        item = page._criar_item_modulo(linha)
+
+        assert item.icon().isNull() is False
+        assert f"ferragem: {nome}" in item.toolTip()
+        assert "não altera quantidades" in item.toolTip()
+
+
+def test_ferragem_desconhecida_continua_sem_icon() -> None:
+    page = OrcamentoItemCusteioPage.__new__(OrcamentoItemCusteioPage)
+    linha = SimpleNamespace(
+        id=1,
+        tipo_linha="FERRAGEM",
+        chave_valueset="FERRAGEM_UNIOES",
+        def_peca_codigo="SISTEMAS_UNIAO",
+        codigo="SISTEMAS_UNIAO",
+        descricao_no_orcamento="Cavilhas e parafusos",
+        descricao="Uniões",
+        modulo_imagem_path=None,
+    )
+
+    item = page._criar_item_modulo(linha)
+
     assert item.icon().isNull() is True
     assert item.toolTip() == ""
 
@@ -176,6 +253,14 @@ def test_porta_com_puxador_e_gaveta_tem_previsoes_distintas() -> None:
 
     assert porta.toImage() != porta_com_puxador.toImage()
     assert gaveta.toImage() != porta.toImage()
+
+
+def test_porta_dupla_coloca_um_puxador_de_cada_lado_da_divisao() -> None:
+    esquerda, direita = _posicoes_puxadores_porta(2)
+
+    assert esquerda < 14.2 < direita
+    assert direita - esquerda > 4
+    assert _posicoes_puxadores_porta(1) == (19.0,)
 
 
 def test_largura_inicial_da_porta_respeita_a_quantidade() -> None:

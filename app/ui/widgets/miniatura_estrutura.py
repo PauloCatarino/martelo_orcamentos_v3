@@ -183,7 +183,7 @@ def criar_miniatura_estrutura_componentes(
     if tem_puxador and portas:
         painter.setBrush(QColor("#5A3E2B"))
         painter.setPen(Qt.PenStyle.NoPen)
-        for x in ((13, 15) if portas >= 2 else (19,)):
+        for x in _posicoes_puxadores_porta(portas):
             painter.drawEllipse(ponto(x - 1, 18), 2 * escala, 2 * escala)
 
     painter.end()
@@ -197,6 +197,11 @@ def _quantidade_visual(quantidade) -> int:
     except (InvalidOperation, ValueError):
         return 1
     return 2 if numero >= 2 else 1
+
+
+def _posicoes_puxadores_porta(portas: int) -> tuple[float, ...]:
+    """Place double-door pulls on opposite sides of the centre division."""
+    return (11.5, 16.8) if portas >= 2 else (19.0,)
 
 
 def _normalizar_texto(texto: str | None) -> str:
