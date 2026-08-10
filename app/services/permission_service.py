@@ -31,6 +31,7 @@ PERMISSAO_CRIAR_ENCOMENDA_IMOS = "acao.criar_encomenda_imos"
 PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS = (
     "acao.propagar_operacoes_valueset_outros"
 )
+PERMISSAO_PUBLICAR_MODELO_VALUESET_GLOBAL = "acao.publicar_modelo_valueset_global"
 
 ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
     (
@@ -38,6 +39,10 @@ ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
         (
             PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS,
             "Propagar operações ValueSet para modelos globais ou de outros utilizadores",
+        ),
+        (
+            PERMISSAO_PUBLICAR_MODELO_VALUESET_GLOBAL,
+            "Publicar e substituir modelos ValueSet globais",
         ),
     )
 )

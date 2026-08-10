@@ -51,6 +51,9 @@ from app.ui.dialogs.propagar_operacoes_valueset_modelo_dialog import (
     PropagarOperacoesValuesetModeloDialog,
 )
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_modelo_publicacao import (
+    publicar_modelo_valueset_para_todos,
+)
 from app.ui.helpers.valueset_prioridades import (
     avisar_prioridade_repetida_apos_colagem,
 )
@@ -468,19 +471,37 @@ class DefValuesetModeloDetailPage(QWidget):
         saved_as = False
         saved_as_codigo: str | None = None
         saved_as_linhas = 0
+        saved_as_operacoes = 0
+        saved_as_substituiu = False
         modelo_novo: DefValuesetModeloResumo | None = None
 
         def handle_save_as(form_data) -> bool:
-            nonlocal saved_as, saved_as_codigo, saved_as_linhas, modelo_novo
+            nonlocal saved_as, saved_as_codigo, saved_as_linhas
+            nonlocal saved_as_operacoes, saved_as_substituiu, modelo_novo
 
             try:
-                with SessionLocal() as session:
-                    result = DefValuesetModeloService(session).duplicar_modelo(
+                dados_novos = self._criar_modelo_data_from_form_data(form_data)
+                if (form_data.ambito or "").strip().upper() == "GLOBAL":
+                    result = publicar_modelo_valueset_para_todos(
+                        dialog,
                         self.modelo.id,
-                        self._criar_modelo_data_from_form_data(form_data),
+                        dados_novos,
                     )
+                    if result is None:
+                        return False
+                    saved_as_substituiu = True
+                    saved_as_operacoes = result.operacoes_copiadas
+                else:
+                    with SessionLocal() as session:
+                        result = DefValuesetModeloService(session).duplicar_modelo(
+                            self.modelo.id,
+                            dados_novos,
+                        )
             except IntegrityError:
                 dialog.set_error("Já existe um modelo com esse código.")
+                return False
+            except PermissionError as error:
+                dialog.set_error(str(error))
                 return False
             except ValueError as error:
                 dialog.set_error(self._modelo_error_message(error))
@@ -509,12 +530,21 @@ class DefValuesetModeloDetailPage(QWidget):
         if not dialog.exec() or not saved_as or modelo_novo is None:
             return
 
-        mensagem = f"Modelo gravado como {saved_as_codigo}."
+        if saved_as_substituiu:
+            mensagem = (
+                f"Modelo global {saved_as_codigo} substituído: "
+                f"{saved_as_linhas} linhas e {saved_as_operacoes} operações copiadas."
+            )
+        else:
+            mensagem = f"Modelo gravado como {saved_as_codigo}."
         if self.on_modelo_duplicado is not None:
             self.on_modelo_duplicado(modelo_novo, mensagem)
             return
 
-        self.status_label.setText(f"{mensagem} {saved_as_linhas} linhas copiadas.")
+        if saved_as_substituiu:
+            self.status_label.setText(mensagem)
+        else:
+            self.status_label.setText(f"{mensagem} {saved_as_linhas} linhas copiadas.")
 
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""

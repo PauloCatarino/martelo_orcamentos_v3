@@ -16,7 +16,7 @@ desde o início — mas limita-se a reexportar isto.
 
 from __future__ import annotations
 
-APP_VERSION = "0.9.8"
+APP_VERSION = "0.9.9"
 APP_STAGE = "beta"
 
 

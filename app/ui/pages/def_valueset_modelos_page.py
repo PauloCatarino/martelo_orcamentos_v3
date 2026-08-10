@@ -29,6 +29,9 @@ from app.services.def_valueset_modelo_service import (
 from app.services.permission_service import is_admin
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.helpers.erros import mensagem_erro_bd
+from app.ui.helpers.valueset_modelo_publicacao import (
+    publicar_modelo_valueset_para_todos,
+)
 from app.ui.helpers.valueset_modelos_tabela import (
     COLUNAS_COM_DICA,
     COLUNAS_MODELO_VALUESET,
@@ -236,8 +239,10 @@ class DefValuesetModelosPage(QWidget):
 
         saved = False
         saved_as = False
+        saved_as_substituiu = False
         saved_as_codigo: str | None = None
         saved_as_linhas = 0
+        saved_as_operacoes = 0
 
         def handle_save(form_data) -> bool:
             nonlocal saved
@@ -274,16 +279,32 @@ class DefValuesetModelosPage(QWidget):
             return True
 
         def handle_save_as(form_data) -> bool:
-            nonlocal saved_as, saved_as_codigo, saved_as_linhas
+            nonlocal saved_as, saved_as_substituiu, saved_as_codigo
+            nonlocal saved_as_linhas, saved_as_operacoes
 
             try:
-                with SessionLocal() as session:
-                    result = DefValuesetModeloService(session).duplicar_modelo(
+                dados_novos = self._criar_modelo_data_from_form_data(form_data)
+                if (form_data.ambito or "").strip().upper() == "GLOBAL":
+                    result = publicar_modelo_valueset_para_todos(
+                        dialog,
                         modelo.id,
-                        self._criar_modelo_data_from_form_data(form_data),
+                        dados_novos,
                     )
+                    if result is None:
+                        return False
+                    saved_as_substituiu = True
+                    saved_as_operacoes = result.operacoes_copiadas
+                else:
+                    with SessionLocal() as session:
+                        result = DefValuesetModeloService(session).duplicar_modelo(
+                            modelo.id,
+                            dados_novos,
+                        )
             except IntegrityError:
                 dialog.set_error("Já existe um modelo com esse código.")
+                return False
+            except PermissionError as error:
+                dialog.set_error(str(error))
                 return False
             except ValueError as error:
                 dialog.set_error(self._error_message(error))
@@ -312,9 +333,15 @@ class DefValuesetModelosPage(QWidget):
             self.carregar_modelos()
             if saved_as_codigo:
                 self._select_modelo_by_codigo(saved_as_codigo)
-            self.status_label.setText(
-                f"Modelo gravado como novo ({saved_as_linhas} linhas copiadas)."
-            )
+            if saved_as_substituiu:
+                self.status_label.setText(
+                    f"Modelo global {saved_as_codigo} substituído "
+                    f"({saved_as_linhas} linhas e {saved_as_operacoes} operações copiadas)."
+                )
+            else:
+                self.status_label.setText(
+                    f"Modelo gravado como novo ({saved_as_linhas} linhas copiadas)."
+                )
 
     def alternar_modelo_ativo(self) -> None:
         """Toggle the active state of the selected model after confirmation."""
