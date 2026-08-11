@@ -1040,10 +1040,13 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def atualizar_geral(self) -> None:
         """Main refresh: recompute measures and orlas, then reload the table."""
+        excessos_material = []
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
                 self._recalcular_item_completo(service)
+                linhas = service.listar_linhas_ativas_do_item(self.item_id)
+                excessos_material = self._recolher_excessos_material(linhas)
         except EntradasCusteioInvalidas as error:
             self.carregar()
             self.status_label.setText(str(error))
@@ -1058,6 +1061,19 @@ class OrcamentoItemCusteioPage(QWidget):
             "Item atualizado (medidas, orlas, custos parciais e custo total "
             "recalculados)."
         )
+        if excessos_material:
+            rever = self._mostrar_excessos_material(excessos_material)
+            if rever:
+                self._selecionar_linha_excedida(excessos_material[0])
+                self.status_label.setText(
+                    f"{len(excessos_material)} linha(s) excedem o formato do "
+                    "material. Reveja as medidas ou fórmulas de origem."
+                )
+            else:
+                self.status_label.setText(
+                    f"Item atualizado com {len(excessos_material)} aviso(s) de "
+                    "dimensão mantido(s)."
+                )
 
     def atualizar_peca_da_biblioteca(self) -> None:
         """Refresh every selected library piece, including module-origin lines."""
@@ -4000,21 +4016,14 @@ class OrcamentoItemCusteioPage(QWidget):
                 novo_valor = normalizar_variaveis_medida(novo_valor)
             valores[self.EDITABLE_COLUMNS[header]] = novo_valor
 
-        if header in ("Comp", "Larg") and not self._confirmar_medidas_placa(
-            linha, valores["comp"], valores["larg"]
-        ):
-            self._atualizar_linha_visivel(row, linha)
-            return
-
         try:
             with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
                 # Fast inline edit: save only this line; the costs (full pipeline)
                 # stay on the Atualizar button. Quantities DO propagate (a division
                 # governs the block below; a composite parent's qt_und reaches its
                 # components), so qt edits reload the whole table.
-                resumo = OrcamentoItemCusteioLinhaService(
-                    session
-                ).atualizar_medidas_linha(
+                resumo = service.atualizar_medidas_linha(
                     linha.id,
                     qt_mod=valores["qt_mod"],
                     qt_und=valores["qt_und"],
@@ -4112,52 +4121,179 @@ class OrcamentoItemCusteioPage(QWidget):
         box.exec()
         return box.clickedButton() is sim
 
-    def _confirmar_medidas_placa(self, linha, comp, larg) -> bool:
-        """Warn, without blocking costing, when a piece exceeds its sheet.
+    @classmethod
+    def _recolher_excessos_material(cls, linhas):
+        """Collect every active line whose calculated result exceeds its material."""
+        excessos = []
+        for linha in linhas:
+            excesso = cls._limite_material_excedido(
+                linha, linha.comp_real, linha.larg_real
+            )
+            if excesso is not None:
+                tipo_limite, detalhes = excesso
+                excessos.append((linha, tipo_limite, detalhes))
+        return excessos
 
-        The check deliberately applies only to plain numeric measures. Formula
-        measures are evaluated later in the costing pipeline, where their final
-        value can depend on the budget item context.
+    @classmethod
+    def _texto_excesso_material(cls, ocorrencia) -> str:
+        """Format one offending piece/hardware line for the batch warning."""
+        linha, _tipo_limite, detalhes = ocorrencia
+        identificacao = (
+            getattr(linha, "def_peca_codigo", None)
+            or getattr(linha, "codigo", None)
+            or getattr(linha, "descricao", None)
+            or f"Linha {linha.id}"
+        )
+        tipo_linha = get_custeio_linha_type_label(linha.tipo_linha)
+        material = cls._descricao_material_limite(linha)
+        return "\n".join(
+            [f"• {tipo_linha}: {identificacao}", f"  Material: {material}"]
+            + [f"  {detalhe}" for detalhe in detalhes]
+        )
+
+    def _mostrar_excessos_material(self, excessos) -> bool:
+        """Show all post-recalculation material-limit warnings in one dialog.
+
+        Returns True when the user wants to review the source measures/formulas.
+        The recalculated results remain stored in either choice; this is an
+        informative production-feasibility warning, not a costing failure.
         """
-        excedidas = self._medidas_excedem_placa(linha, comp, larg)
-        if not excedidas:
-            return True
+        blocos = [self._texto_excesso_material(excesso) for excesso in excessos]
+        limite_visivel = 8
+        texto_visivel = "\n\n".join(blocos[:limite_visivel])
+        if len(blocos) > limite_visivel:
+            texto_visivel += (
+                f"\n\n… e mais {len(blocos) - limite_visivel} linha(s). "
+                "Use Mostrar detalhes para consultar todas."
+            )
 
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Peça superior à placa")
-        box.setText("A medida introduzida é superior à dimensão da placa selecionada.")
+        box.setWindowTitle("Dimensões superiores à matéria-prima")
+        box.setText(
+            f"Foram encontradas {len(excessos)} linha(s) que excedem o formato "
+            "da matéria-prima depois de calcular Comp real e Larg real."
+        )
         box.setInformativeText(
-            "\n".join(excedidas)
-            + "\n\nPode registar a medida: os cálculos de custeio mantêm-se. "
-            "Contudo, esta peça não poderá ser colocada numa placa no plano de corte."
+            texto_visivel
+            + "\n\nEstas peças/perfis não podem ser obtidos numa só placa ou perfil."
         )
-        registar = box.addButton(
-            "Registar mesmo assim", QMessageBox.ButtonRole.AcceptRole
+        if len(blocos) > limite_visivel:
+            box.setDetailedText("\n\n".join(blocos))
+
+        manter = box.addButton(
+            "Manter resultados", QMessageBox.ButtonRole.AcceptRole
         )
-        box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        manter.setToolTip(
+            "Mantém os resultados calculados apesar dos limites dos materiais."
+        )
+        rever = box.addButton("Rever no Custeio", QMessageBox.ButtonRole.RejectRole)
+        rever.setToolTip(
+            "Fecha o aviso e seleciona a primeira linha para rever medidas ou fórmulas."
+        )
+        box.setDefaultButton(rever)
+        box.setEscapeButton(rever)
         box.exec()
-        return box.clickedButton() is registar
+        return box.clickedButton() is rever
 
     @staticmethod
-    def _medidas_excedem_placa(linha, comp, larg) -> list[str]:
-        """Describe numeric piece dimensions that exceed the selected sheet."""
-        comp_peca = normalizar_numero(comp)
-        larg_peca = normalizar_numero(larg)
-        comp_placa = normalizar_numero(linha.comp_mp)
-        larg_placa = normalizar_numero(linha.larg_mp)
+    def _descricao_material_limite(linha) -> str:
+        """Return the most useful material identification for the warning."""
+        for valor in (
+            getattr(linha, "descricao_no_orcamento", None),
+            getattr(linha, "descricao_materia_prima", None),
+            getattr(linha, "ref_materia_prima", None),
+            getattr(linha, "mat_default", None),
+        ):
+            texto = str(valor or "").strip()
+            if texto:
+                return texto
+        return "material selecionado"
+
+    @staticmethod
+    def _limite_material_excedido(linha, comp_real, larg_real):
+        """Describe actual dimensions beyond a PLACAS or ML material limit."""
+        comp_peca = normalizar_numero(comp_real)
+        larg_peca = normalizar_numero(larg_real)
+        comp_material = normalizar_numero(getattr(linha, "comp_mp", None))
+        larg_material = normalizar_numero(getattr(linha, "larg_mp", None))
+
+        if eh_unidade_ml(getattr(linha, "unidade", None)):
+            if (
+                comp_peca is not None
+                and comp_material is not None
+                and comp_peca > comp_material
+            ):
+                return (
+                    "ML",
+                    [
+                        f"Comprimento real: {format_mm(comp_peca)}",
+                        f"Comprimento máximo do perfil (Comp MP): "
+                        f"{format_mm(comp_material)}",
+                    ],
+                )
+            return None
+
+        familia = str(getattr(linha, "familia_materia_prima", None) or "")
+        if familia.strip().upper() not in {"PLACA", "PLACAS"}:
+            return None
+
         excedidas: list[str] = []
-        if comp_peca is not None and comp_placa is not None and comp_peca > comp_placa:
+        if (
+            comp_peca is not None
+            and comp_material is not None
+            and comp_peca > comp_material
+        ):
             excedidas.append(
-                f"Comprimento da peça: {format_mm(comp_peca)} > "
-                f"comprimento da placa: {format_mm(comp_placa)}"
+                f"Comprimento real: {format_mm(comp_peca)} > "
+                f"Comp MP: {format_mm(comp_material)}"
             )
-        if larg_peca is not None and larg_placa is not None and larg_peca > larg_placa:
+        if (
+            larg_peca is not None
+            and larg_material is not None
+            and larg_peca > larg_material
+        ):
             excedidas.append(
-                f"Largura da peça: {format_mm(larg_peca)} > "
-                f"largura da placa: {format_mm(larg_placa)}"
+                f"Largura real: {format_mm(larg_peca)} > "
+                f"Larg MP: {format_mm(larg_material)}"
             )
-        return excedidas
+        if not excedidas:
+            return None
+
+        excedidas.insert(
+            0,
+            f"Peça: {format_mm(comp_peca)} × {format_mm(larg_peca)}",
+        )
+        excedidas.insert(
+            1,
+            f"Placa (Comp MP × Larg MP): {format_mm(comp_material)} × "
+            f"{format_mm(larg_material)}",
+        )
+        return "PLACAS", excedidas
+
+    def _selecionar_linha_excedida(self, ocorrencia) -> None:
+        """Focus the first offending raw measure/formula after the table reload."""
+        linha, _tipo_limite, detalhes = ocorrencia
+        row = next(
+            (
+                atual_row
+                for atual_row, atual in self._custeio_by_row.items()
+                if atual.id == linha.id
+            ),
+            None,
+        )
+        if row is None:
+            return
+
+        excede_comp = any(
+            detalhe.startswith("Comprimento real") for detalhe in detalhes
+        )
+        header = "Comp" if excede_comp else "Larg"
+        column = self.TABLE_HEADERS.index(header)
+        item = self.table.item(row, column)
+        self.table.setCurrentCell(row, column)
+        if item is not None:
+            self.table.scrollToItem(item)
 
     def _get_linha_selecionada(self) -> OrcamentoItemCusteioLinhaResumo | None:
         """Return the cost line of the selected table row."""

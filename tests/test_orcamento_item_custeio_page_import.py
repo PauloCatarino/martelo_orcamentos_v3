@@ -15,20 +15,190 @@ def test_orcamento_item_custeio_page_imports() -> None:
     assert OrcamentoItemCusteioPage is not None
 
 
-def test_medidas_superiores_placa_sao_identificadas_sem_bloquear_calculo() -> None:
+def test_limite_placas_usa_medidas_reais_e_dimensoes_da_mp() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 
-    linha = SimpleNamespace(comp_mp=Decimal("2750"), larg_mp=Decimal("1830"))
+    linha = SimpleNamespace(
+        familia_materia_prima="PLACAS",
+        unidade="M2",
+        comp_mp=Decimal("2750"),
+        larg_mp=Decimal("1830"),
+    )
 
-    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
-        linha, "2800", "1800"
-    ) == ["Comprimento da peça: 2800 mm > comprimento da placa: 2750 mm"]
-    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
-        linha, "2700", "1900"
-    ) == ["Largura da peça: 1900 mm > largura da placa: 1830 mm"]
-    assert OrcamentoItemCusteioPage._medidas_excedem_placa(
-        linha, "2700", "1800"
-    ) == []
+    excesso = OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("2800"), Decimal("600")
+    )
+
+    assert excesso == (
+        "PLACAS",
+        [
+            "Peça: 2800 mm × 600 mm",
+            "Placa (Comp MP × Larg MP): 2750 mm × 1830 mm",
+            "Comprimento real: 2800 mm > Comp MP: 2750 mm",
+        ],
+    )
+    assert OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("2700"), Decimal("1900")
+    ) == (
+        "PLACAS",
+        [
+            "Peça: 2700 mm × 1900 mm",
+            "Placa (Comp MP × Larg MP): 2750 mm × 1830 mm",
+            "Largura real: 1900 mm > Larg MP: 1830 mm",
+        ],
+    )
+    assert OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("2700"), Decimal("1800")
+    ) is None
+
+
+def test_limite_placas_ignora_outras_familias() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    linha = SimpleNamespace(
+        familia_materia_prima="FERRAGENS",
+        unidade="UND",
+        comp_mp=Decimal("1000"),
+        larg_mp=Decimal("100"),
+    )
+
+    assert OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("2000"), Decimal("200")
+    ) is None
+
+
+def test_limite_ml_compara_so_comp_real_com_comp_mp() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    linha = SimpleNamespace(
+        familia_materia_prima="FERRAGENS",
+        unidade="ml",
+        comp_mp=Decimal("6000"),
+        larg_mp=Decimal("25"),
+    )
+
+    assert OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("6100"), Decimal("14")
+    ) == (
+        "ML",
+        [
+            "Comprimento real: 6100 mm",
+            "Comprimento máximo do perfil (Comp MP): 6000 mm",
+        ],
+    )
+    # Em ML a largura do perfil não é um limite de corte da peça.
+    assert OrcamentoItemCusteioPage._limite_material_excedido(
+        linha, Decimal("5900"), Decimal("100")
+    ) is None
+
+
+def test_aviso_limite_identifica_descricao_no_orcamento() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    linha = SimpleNamespace(
+        descricao_no_orcamento="VARÃO ROUPEIRO ESTRIADO 5 MT",
+        descricao_materia_prima="Descrição interna",
+        ref_materia_prima="FER001",
+        mat_default="FERRAGEM_VARAO",
+    )
+
+    assert (
+        OrcamentoItemCusteioPage._descricao_material_limite(linha)
+        == "VARÃO ROUPEIRO ESTRIADO 5 MT"
+    )
+
+
+def test_atualizar_valida_todos_os_resultados_reais_depois_do_recalculo() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
+    assert source.index("_recalcular_item_completo") < source.index(
+        "listar_linhas_ativas_do_item"
+    )
+    assert source.index("listar_linhas_ativas_do_item") < source.index(
+        "_recolher_excessos_material"
+    )
+    assert "_mostrar_excessos_material" in source
+
+    # A edição inline apenas guarda a fórmula/medida; a validação agregada
+    # acontece no Atualizar, depois de HM/LM/PM serem propagados.
+    edicao = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "_limite_material_excedido" not in edicao
+
+    aviso = inspect.getsource(OrcamentoItemCusteioPage._mostrar_excessos_material)
+    assert "Manter resultados" in aviso
+    assert "Rever no Custeio" in aviso
+
+
+def test_atualizar_recolhe_varias_pecas_e_ferragens_excedidas() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    placa = SimpleNamespace(
+        id=1,
+        tipo_linha="PECA",
+        def_peca_codigo="COSTA_ONS_0000",
+        codigo="COSTA",
+        descricao="Costa",
+        descricao_no_orcamento="AGL LINHO CANCUN 10MM",
+        descricao_materia_prima=None,
+        ref_materia_prima=None,
+        mat_default=None,
+        familia_materia_prima="PLACAS",
+        unidade="M2",
+        comp_real=Decimal("2505"),
+        larg_real=Decimal("6150"),
+        comp_mp=Decimal("2850"),
+        larg_mp=Decimal("2100"),
+    )
+    varao = SimpleNamespace(
+        id=2,
+        tipo_linha="FERRAGEM",
+        def_peca_codigo=None,
+        codigo="VARAO",
+        descricao="Varão",
+        descricao_no_orcamento="VARÃO ROUPEIRO ESTRIADO 5 MT",
+        descricao_materia_prima=None,
+        ref_materia_prima=None,
+        mat_default=None,
+        familia_materia_prima="FERRAGENS",
+        unidade="ML",
+        comp_real=Decimal("6150"),
+        larg_real=None,
+        comp_mp=Decimal("6000"),
+        larg_mp=Decimal("25"),
+    )
+    suporte_ok = SimpleNamespace(
+        id=3,
+        tipo_linha="FERRAGEM",
+        def_peca_codigo=None,
+        codigo="SUPORTE",
+        descricao="Suporte",
+        descricao_no_orcamento="SUPORTE VARÃO",
+        descricao_materia_prima=None,
+        ref_materia_prima=None,
+        mat_default=None,
+        familia_materia_prima="FERRAGENS",
+        unidade="UND",
+        comp_real=None,
+        larg_real=None,
+        comp_mp=None,
+        larg_mp=None,
+    )
+
+    excessos = OrcamentoItemCusteioPage._recolher_excessos_material(
+        [placa, varao, suporte_ok]
+    )
+
+    assert [ocorrencia[0].id for ocorrencia in excessos] == [1, 2]
+    texto = "\n".join(
+        OrcamentoItemCusteioPage._texto_excesso_material(ocorrencia)
+        for ocorrencia in excessos
+    )
+    assert "COSTA_ONS_0000" in texto
+    assert "AGL LINHO CANCUN 10MM" in texto
+    assert "Largura real: 6150 mm > Larg MP: 2100 mm" in texto
+    assert "VARÃO ROUPEIRO ESTRIADO 5 MT" in texto
+    assert "Comprimento máximo do perfil (Comp MP): 6000 mm" in texto
 
 
 def test_adicionar_peca_avisa_quando_falta_divisao() -> None:
