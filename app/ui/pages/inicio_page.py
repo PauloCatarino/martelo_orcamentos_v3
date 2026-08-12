@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.tempo_atividade import formatar_tempo_ativo
 from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.inicio_dashboard_service import calcular_dashboard_orcamentos
 from app.services.custeio_auditoria_service import CusteioAuditoriaService
@@ -107,6 +108,9 @@ class InicioPage(QWidget):
             "adjudicados": self._criar_cartao("Adjudicados", tema.VERDE_ESCURO),
             "falta": self._criar_cartao("Falta orçamentar", tema.OCRE_ESCURO),
             "alertas": self._criar_cartao("Alertas de custo", tema.VERMELHO_ESCURO),
+            "tempo_medio": self._criar_cartao(
+                "Tempo médio/versão", tema.AZUL_ESCURO
+            ),
         }
         if incluir_producao:
             self.cards["producao"] = self._criar_cartao("Em produção", tema.AZUL_ESCURO)
@@ -120,10 +124,10 @@ class InicioPage(QWidget):
 
         recentes_box = QGroupBox("Orçamentos recentes")
         recentes_layout = QVBoxLayout(recentes_box)
-        self.recentes_table = QTableWidget(0, 10)
+        self.recentes_table = QTableWidget(0, 11)
         self.recentes_table.setHorizontalHeaderLabels(
             ["Orçamento", "Estado", "Cliente", "Ref. Cliente", "Enc. PHC",
-             "Obra", "Descrição", "Data", "Total", "Utilizador"]
+             "Obra", "Descrição", "Data", "Total", "Tempo ativo", "Utilizador"]
         )
         self.recentes_table.verticalHeader().setVisible(False)
         self.recentes_table.setAlternatingRowColors(True)
@@ -227,6 +231,11 @@ class InicioPage(QWidget):
         if auditoria_custeio and auditoria_custeio.impacto_conhecido:
             detalhe_alertas += f" · {format_currency(auditoria_custeio.impacto_conhecido)} conhecidos"
         self._set_card("alertas", dados.sem_total + dados.com_preco_manual + alertas_custeio, detalhe_alertas)
+        self._set_card(
+            "tempo_medio",
+            formatar_tempo_ativo(dados.tempo_medio_segundos),
+            f"{dados.orcamentos_com_tempo} orçamento(s) com tempo registado",
+        )
         if self.incluir_producao:
             self._set_card("producao", producao.em_producao if producao else "—", "Dados de Produção" if producao else "Fonte indisponível")
             self._set_card("atrasadas", producao.atrasadas if producao else "—", "Prazo de entrega ultrapassado" if producao else "Fonte indisponível")
@@ -302,7 +311,9 @@ class InicioPage(QWidget):
                 orcamento.ref_cliente or "", orcamento.enc_phc or "",
                 orcamento.obra or "", orcamento.descricao or "",
                 orcamento.created_at.strftime("%d/%m/%Y"),
-                format_currency(orcamento.preco_total), orcamento.utilizador or "",
+                format_currency(orcamento.preco_total),
+                formatar_tempo_ativo(orcamento.tempo_ativo_segundos),
+                orcamento.utilizador or "",
             ]
             for col, texto in enumerate(valores):
                 item = QTableWidgetItem(texto)

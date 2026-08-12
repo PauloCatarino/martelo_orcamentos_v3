@@ -37,6 +37,7 @@ from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
 from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
+from app.domain.tempo_atividade import formatar_tempo_ativo
 
 
 class OrcamentoDetailPage(QWidget):
@@ -137,6 +138,7 @@ class OrcamentoDetailPage(QWidget):
             ("info_2", "Info 2"),
             ("estado", "Estado"),
             ("preco_total", "Pre\u00e7o total"),
+            ("tempo_ativo", "Tempo ativo nesta vers\u00e3o"),
             ("created_at", "Criado em"),
         ]:
             value_label = QLabel("")
@@ -267,6 +269,9 @@ class OrcamentoDetailPage(QWidget):
             "info_2": self.orcamento.info_2 or "",
             "estado": self.orcamento.estado,
             "preco_total": format_currency(self.orcamento.preco_total),
+            "tempo_ativo": formatar_tempo_ativo(
+                self.orcamento.tempo_ativo_segundos
+            ),
             "created_at": self._format_datetime(self.orcamento.created_at),
         }
 
@@ -274,6 +279,16 @@ class OrcamentoDetailPage(QWidget):
             label = self._dados_gerais_labels.get(key)
             if label is not None:
                 label.setText(value)
+
+    def atualizar_tempo_ativo(
+        self, orcamento_versao_id: int, total_segundos: int
+    ) -> None:
+        """Refresh the visible counter after a background persistence block."""
+        if orcamento_versao_id != self.orcamento.orcamento_versao_id:
+            return
+        label = self._dados_gerais_labels.get("tempo_ativo")
+        if label is not None:
+            label.setText(formatar_tempo_ativo(total_segundos))
 
     def _build_breadcrumb_items(self) -> list[str]:
         """Return breadcrumb items for the active budget."""

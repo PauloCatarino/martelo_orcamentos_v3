@@ -24,6 +24,7 @@ from app.models import (
     OrcamentoItemValuesetLinha,
     OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
+    OrcamentoTempoAtividade,
     OrcamentoValuesetLinha,
     OrcamentoVersao,
     OrcamentoVersaoEncomendaPhc,
@@ -65,6 +66,8 @@ class OrcamentoResumo:
     encomendas_phc_total: int = 0
     # Pasta escolhida manualmente (orçamentos antigos, pré-V3).
     pasta_manual: str | None = None
+    # Soma dos segundos ativos de todos os utilizadores nesta versão.
+    tempo_ativo_segundos: int = 0
 
 
 @dataclass(frozen=True)
@@ -835,6 +838,18 @@ class OrcamentoRepository:
                 .correlate(OrcamentoVersao)
                 .scalar_subquery()
                 .label("enc_phc_todos"),
+                select(
+                    func.coalesce(
+                        func.sum(OrcamentoTempoAtividade.segundos_ativos), 0
+                    )
+                )
+                .where(
+                    OrcamentoTempoAtividade.orcamento_versao_id
+                    == OrcamentoVersao.id
+                )
+                .correlate(OrcamentoVersao)
+                .scalar_subquery()
+                .label("tempo_ativo_segundos"),
             )
             .join(Orcamento, OrcamentoVersao.orcamento_id == Orcamento.id)
             .join(Cliente, Orcamento.cliente_id == Cliente.id)
@@ -872,4 +887,5 @@ class OrcamentoRepository:
             tem_preco_manual=bool(row["tem_preco_manual"]),
             encomendas_phc_total=encomendas_total,
             pasta_manual=row["pasta_manual"],
+            tempo_ativo_segundos=int(row["tempo_ativo_segundos"] or 0),
         )

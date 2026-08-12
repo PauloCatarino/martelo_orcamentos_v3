@@ -40,7 +40,9 @@ def test_inicio_tem_filtros_dez_cartoes_e_tabela_compacta() -> None:
         assert nome in init
     for cartao in ("desenho", "finalizadas", "valor_producao", "sem_preco_producao"):
         assert cartao in init
-    assert "QTableWidget(0, 10)" in init
+    assert "QTableWidget(0, 11)" in init
+    assert "Tempo ativo" in init
+    assert "Tempo m\u00e9dio/vers\u00e3o" in init
     assert "ref_cliente" in preencher
     assert "enc_phc" in preencher
     assert "utilizador" in preencher

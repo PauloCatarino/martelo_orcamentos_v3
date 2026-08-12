@@ -31,6 +31,7 @@ from app.services.permission_service import (
     permissions_for_user,
 )
 from app.ui import tema
+from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.pages import (
     AjudaPage,
     BibliotecaModulosPage,
@@ -415,6 +416,17 @@ class MainWindow(QMainWindow):
 
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+        self._tempo_orcamento_tracker = OrcamentoTempoTracker(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+        )
+        self._tempo_orcamento_tracker.tempoAtualizado.connect(
+            self._atualizar_tempo_orcamento_visivel
+        )
         self.show_page("inicio")
 
     def _format_user_info(self) -> str:
@@ -730,10 +742,38 @@ class MainWindow(QMainWindow):
             self.arquivo_v2_page.carregar()
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
+        self._sincronizar_tempo_orcamento(name)
         self._destacar_nav(name)
         # Diário: saber em que menu a pessoa estava explica metade dos erros.
         diario_bordo.definir_menu(name)
         diario_bordo.registar_acao("Abriu o menu", name)
+
+    def _sincronizar_tempo_orcamento(self, pagina: str) -> None:
+        """Count time only while a concrete budget detail is the current page."""
+        tracker = getattr(self, "_tempo_orcamento_tracker", None)
+        if tracker is None:
+            return
+        versao_id = None
+        if pagina == "orcamento_detail":
+            detalhe = self._pages_by_name.get("orcamento_detail")
+            if isinstance(detalhe, OrcamentoDetailPage):
+                versao_id = detalhe.orcamento.orcamento_versao_id
+        tracker.definir_orcamento(versao_id)
+
+    def _atualizar_tempo_orcamento_visivel(
+        self, orcamento_versao_id: int, total_segundos: int
+    ) -> None:
+        detalhe = self._pages_by_name.get("orcamento_detail")
+        if isinstance(detalhe, OrcamentoDetailPage):
+            detalhe.atualizar_tempo_ativo(
+                orcamento_versao_id, total_segundos
+            )
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        tracker = getattr(self, "_tempo_orcamento_tracker", None)
+        if tracker is not None:
+            tracker.encerrar()
+        super().closeEvent(event)
 
     def _destacar_nav(self, name: str) -> None:
         """Realça o botão da sidebar correspondente à página atual."""

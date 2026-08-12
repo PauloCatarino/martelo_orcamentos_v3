@@ -31,6 +31,7 @@ from app.models.orcamento_item_valueset_linha import OrcamentoItemValuesetLinha
 from app.models.orcamento_item_valueset_linha_operacao import (
     OrcamentoItemValuesetLinhaOperacao,
 )
+from app.models.orcamento_tempo_atividade import OrcamentoTempoAtividade
 from app.models.orcamento_versao import OrcamentoVersao
 from app.models.orcamento_versao_encomenda_phc import OrcamentoVersaoEncomendaPhc
 from app.models.orcamento_versao_evento import OrcamentoVersaoEvento
@@ -74,6 +75,7 @@ __all__ = [
     "OrcamentoItemVariavel",
     "OrcamentoItemValuesetLinha",
     "OrcamentoItemValuesetLinhaOperacao",
+    "OrcamentoTempoAtividade",
     "OrcamentoVersao",
     "OrcamentoVersaoEncomendaPhc",
     "OrcamentoVersaoEvento",

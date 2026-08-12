@@ -30,6 +30,8 @@ class DashboardOrcamentos:
     valor_adjudicado: Decimal
     com_preco_manual: int
     sem_total: int
+    tempo_medio_segundos: int
+    orcamentos_com_tempo: int
     recentes: tuple[OrcamentoResumo, ...]
     avisos: tuple[AvisoDashboard, ...]
 
@@ -45,6 +47,7 @@ def calcular_dashboard_orcamentos(
     valor_em_curso = Decimal("0")
     valor_adjudicado = Decimal("0")
     avisos: list[AvisoDashboard] = []
+    tempos_registados: list[int] = []
 
     for orcamento in orcamentos:
         estado = _normalizar(orcamento.estado)
@@ -69,6 +72,9 @@ def calcular_dashboard_orcamentos(
         if preco is None:
             sem_total += 1
             avisos.append(_aviso(orcamento, "crítico", "Total ainda não calculado"))
+        tempo_ativo = max(0, int(orcamento.tempo_ativo_segundos or 0))
+        if tempo_ativo:
+            tempos_registados.append(tempo_ativo)
 
     recentes = tuple(sorted(orcamentos, key=lambda item: item.created_at, reverse=True)[:limite_recentes])
     return DashboardOrcamentos(
@@ -81,6 +87,12 @@ def calcular_dashboard_orcamentos(
         valor_adjudicado=valor_adjudicado,
         com_preco_manual=manuais,
         sem_total=sem_total,
+        tempo_medio_segundos=(
+            sum(tempos_registados) // len(tempos_registados)
+            if tempos_registados
+            else 0
+        ),
+        orcamentos_com_tempo=len(tempos_registados),
         recentes=recentes,
         avisos=tuple(avisos[:limite_avisos]),
     )
