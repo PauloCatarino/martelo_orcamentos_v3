@@ -324,20 +324,24 @@ def _cenario_roupeiro(session):
     simples = _inserir_custeio(
         session, tipo_linha="PECA", ordem=2, def_peca_codigo="LATERAL",
         descricao="Lateral", comp="H", larg="P", esp="19",
+        descricao_livre="Lateral esquerda do corpo",
         chave_valueset="MATERIAL_LATERAIS", codigo_orlas="2200",
         qt_mod=Decimal("1"), qt_und=Decimal("2"),
     )
     composta = _inserir_custeio(
         session, tipo_linha="PECA_COMPOSTA", ordem=3, def_peca_id=5,
         def_peca_codigo="GAVETA", descricao="Gaveta",
+        descricao_livre="Bloco de gavetas interior",
     )
     filho = _inserir_custeio(
         session, tipo_linha="FERRAGEM", ordem=4, nivel=1, linha_pai_id=composta.id,
         def_peca_codigo="CORREDICA", descricao="Corrediça",
+        descricao_livre="Corrediça reforçada",
         comp="LM", larg="PM", qt_und=Decimal("4"),
     )
     pe = _inserir_custeio(
         session, tipo_linha="FERRAGEM", ordem=5, def_peca_codigo="PE", descricao="Pé",
+        descricao_livre="Pé regulável",
     )
     session.commit()
     return div, simples, composta, filho, pe
@@ -400,10 +404,55 @@ def test_guardar_de_linhas_custeio_topo_e_estrutura(session) -> None:
     assert simples_linha.codigo_orlas == "2200"
     assert simples_linha.qt_und == "2"  # stored as text
     assert simples_linha.descricao == "Lateral"
+    assert simples_linha.descricao_livre == "Lateral esquerda do corpo"
+    assert composta_linha.descricao_livre == "Bloco de gavetas interior"
+    assert corredica.descricao_livre == "Corrediça reforçada"
+    assert pe_linha.descricao_livre == "Pé regulável"
 
     # Header scoped to the user.
     assert com_linhas.modulo.user_id == 7
     assert com_linhas.modulo.ambito == AMBITO_UTILIZADOR
+
+
+def test_guardar_modulo_respeita_ordem_visual_da_divisao(session) -> None:
+    """Reproduz o gaveteiro: a divisão tem ID maior mas aparece antes das peças."""
+    separador = _inserir_custeio(
+        session,
+        tipo_linha="SEPARADOR",
+        descricao="Linha do módulo",
+        ordem_visual=22,
+    )
+    peca = _inserir_custeio(
+        session,
+        tipo_linha="PECA",
+        def_peca_codigo="TETO_2111",
+        descricao="Teto",
+        codigo_orlas="2111",
+        ordem_visual=24,
+    )
+    divisao = _inserir_custeio(
+        session,
+        tipo_linha="DIVISAO_INDEPENDENTE",
+        descricao="GAVETEIRO",
+        ordem_visual=23,
+    )
+    session.commit()
+
+    resultado = DefModuloService(session).guardar_de_linhas_custeio(
+        orcamento_item_id=10,
+        linha_ids=[separador.id, peca.id, divisao.id],
+        codigo="GAV_VISUAL",
+        nome="Gaveteiro visual",
+        ambito=AMBITO_UTILIZADOR,
+        user_id=7,
+    )
+
+    assert [linha.tipo_linha for linha in resultado.linhas] == [
+        "SEPARADOR",
+        "DIVISAO_INDEPENDENTE",
+        "PECA",
+    ]
+    assert resultado.linhas[-1].codigo_orlas == "2111"
 
 
 def test_guardar_modulo_preserva_neto_e_pai_imediato(session) -> None:

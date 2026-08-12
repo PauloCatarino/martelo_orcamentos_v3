@@ -1263,10 +1263,17 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText("Não foi possível importar o módulo.")
             return
 
+        # Mostrar logo a estrutura completa acabada de importar. Sem isto, os
+        # descendentes das peças compostas existem mas nascem recolhidos, o que
+        # faz um módulo de 17 linhas parecer ter importado apenas as 10 de topo.
+        self._compostas_expandidas.update(resultado.linha_ids_criados)
         self.carregar()
+        total_linhas = resultado.criadas + resultado.componentes
         mensagem = (
             f"Módulo {resultado.modulo_codigo} importado: "
-            f"{resultado.criadas} linha(s)."
+            f"{total_linhas} linha(s) "
+            f"({resultado.criadas} principais + "
+            f"{resultado.componentes} componentes)."
         )
         if resultado.avisos:
             mensagem += " " + " ".join(resultado.avisos)

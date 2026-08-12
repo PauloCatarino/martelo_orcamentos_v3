@@ -7,8 +7,14 @@ from types import SimpleNamespace
 from app.domain.modulo_estrutura import selecionar_linhas_topo
 
 
-def _l(id, *, ordem, nivel=0, linha_pai_id=None):
-    return SimpleNamespace(id=id, ordem=ordem, nivel=nivel, linha_pai_id=linha_pai_id)
+def _l(id, *, ordem, nivel=0, linha_pai_id=None, ordem_visual=None):
+    return SimpleNamespace(
+        id=id,
+        ordem=ordem,
+        nivel=nivel,
+        linha_pai_id=linha_pai_id,
+        ordem_visual=ordem_visual,
+    )
 
 
 def test_topo_inclui_divisao_simples_e_cabecalho_composto() -> None:
@@ -59,6 +65,21 @@ def test_ordena_por_ordem_da_tabela() -> None:
     topo = selecionar_linhas_topo(linhas, [1, 2, 3])
 
     assert [linha.id for linha in topo] == [2, 3, 1]
+
+
+def test_ordem_visual_mantem_divisao_antes_das_pecas() -> None:
+    """Uma divisão movida na grelha não pode ir para o fim do módulo."""
+    linhas = [
+        _l(10, ordem=None, ordem_visual=22),  # separador
+        _l(30, ordem=None, ordem_visual=24),  # peça
+        _l(40, ordem=None, ordem_visual=25),  # peça
+        # ID maior, mas visualmente entre o separador e as peças.
+        _l(50, ordem=None, ordem_visual=23),  # divisão independente
+    ]
+
+    topo = selecionar_linhas_topo(linhas, [10, 30, 40, 50])
+
+    assert [linha.id for linha in topo] == [10, 50, 30, 40]
 
 
 def test_sem_selecao_devolve_vazio() -> None:

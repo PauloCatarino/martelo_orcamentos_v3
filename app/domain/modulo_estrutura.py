@@ -29,10 +29,11 @@ def _linha_de_topo(linha, por_id: dict):
 def selecionar_linhas_topo(linhas: Sequence, linha_ids) -> list:
     """Return the ordered, de-duplicated TOP-LEVEL lines for the selection.
 
-    ``linhas`` are the item's cost-line resumos (any order); ``linha_ids`` the
-    selected ids. Composite children map to their header; nivel-0 lines stay as
-    they are. The result is ordered by each line's own ordem (then id), so the
-    saved module keeps the table order and its independent divisions. Pure.
+    ``linhas`` are the item's cost-line resumos; ``linha_ids`` the selected ids.
+    Composite children map to their header; nivel-0 lines stay as they are. When
+    the item has an explicit ``ordem_visual`` (created by inserting/reordering
+    separators or divisions), that order must win. Otherwise the legacy
+    ``ordem``/id ordering is kept. Pure.
     """
     por_id = {linha.id: linha for linha in linhas}
     selecionados = set(linha_ids)
@@ -45,8 +46,20 @@ def selecionar_linhas_topo(linhas: Sequence, linha_ids) -> list:
                 topo_ids.add(topo.id)
 
     topo = [por_id[topo_id] for topo_id in topo_ids]
-    topo.sort(
-        key=lambda linha: (linha.ordem if linha.ordem is not None else 0, linha.id)
-    )
+    if any(getattr(linha, "ordem_visual", None) is not None for linha in linhas):
+        topo.sort(
+            key=lambda linha: (
+                getattr(linha, "ordem_visual", None) is None,
+                getattr(linha, "ordem_visual", None) or 0,
+                linha.id,
+            )
+        )
+    else:
+        topo.sort(
+            key=lambda linha: (
+                linha.ordem if linha.ordem is not None else 0,
+                linha.id,
+            )
+        )
 
     return topo

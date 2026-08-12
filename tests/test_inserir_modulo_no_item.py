@@ -123,11 +123,13 @@ def _criar_modulo_roupeiro(session, lateral_id: int, gaveta_id: int) -> int:
                 CriarDefModuloLinhaData(
                     ordem=2, tipo_linha="PECA", def_peca_id=lateral_id,
                     def_peca_codigo="LATERAL", comp="H", larg="P", esp="19",
+                    descricao_livre="Lateral esquerda do corpo",
                     chave_valueset="MATERIAL_LATERAIS", qt_und="2",
                 ),
                 CriarDefModuloLinhaData(
                     ordem=3, tipo_linha="PECA_COMPOSTA", def_peca_id=gaveta_id,
-                    def_peca_codigo="GAVETA", descricao="Gaveta", qt_und="1",
+                    def_peca_codigo="GAVETA", descricao="Gaveta",
+                    descricao_livre="Bloco de gavetas interior", qt_und="1",
                 ),
             ],
         )
@@ -148,6 +150,7 @@ def test_importar_modulo_cria_linhas_reexpande_composta(session) -> None:
     assert resultado.modulo_codigo == "ROUP_2P"
     assert resultado.criadas == 3  # division + lateral + composite header
     assert resultado.componentes == 1  # the composite re-expanded its component
+    assert len(resultado.linha_ids_criados) == 4
 
     linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
         item_id
@@ -174,6 +177,8 @@ def test_importar_modulo_cria_linhas_reexpande_composta(session) -> None:
     assert lateral.chave_valueset == "MATERIAL_LATERAIS"
     assert lateral.preco_liquido == Decimal("5.79")
     assert lateral.unidade == "m2"
+    assert lateral.descricao_livre == "Lateral esquerda do corpo"
+    assert cabecalho.descricao_livre == "Bloco de gavetas interior"
 
 
 def test_importar_modulo_resolve_material_pela_prioridade_exata(session) -> None:
@@ -264,7 +269,9 @@ def test_importar_modulo_prioridade_inexistente_nao_faz_fallback(session) -> Non
     assert any("Prioridade ValueSet 2 não configurada" in aviso for aviso in resultado.avisos)
 
 
-def test_importar_modulo_grava_imagem_na_primeira_linha(session) -> None:
+def test_importar_modulo_grava_imagem_na_primeira_divisao_apos_separador(
+    session,
+) -> None:
     item_id = _criar_item(session)
     _criar_valueset_laterais(session, item_id)
     lateral_id, gaveta_id = _criar_pecas(session)
@@ -275,11 +282,14 @@ def test_importar_modulo_grava_imagem_na_primeira_linha(session) -> None:
             categoria="ROUPEIROS", imagem_path="C:/imagens/ROUP_IMG.png",
             linhas=[
                 CriarDefModuloLinhaData(
-                    ordem=1, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod="1",
+                    ordem=1, tipo_linha="SEPARADOR",
+                ),
+                CriarDefModuloLinhaData(
+                    ordem=2, tipo_linha="DIVISAO_INDEPENDENTE", qt_mod="1",
                     descricao_livre="Corpo", comp="H", larg="L", esp="P",
                 ),
                 CriarDefModuloLinhaData(
-                    ordem=2, tipo_linha="PECA", def_peca_id=lateral_id,
+                    ordem=3, tipo_linha="PECA", def_peca_id=lateral_id,
                     def_peca_codigo="LATERAL", comp="H", larg="P", esp="19",
                     chave_valueset="MATERIAL_LATERAIS", qt_und="2",
                 ),
@@ -294,11 +304,11 @@ def test_importar_modulo_grava_imagem_na_primeira_linha(session) -> None:
     linhas = OrcamentoItemCusteioLinhaRepository(session).list_active_by_orcamento_item(
         item_id
     )
-    primeira = min(linhas, key=lambda l: l.id)
-    # The image lives on the FIRST line of the block (the division); others empty.
-    assert primeira.tipo_linha == "DIVISAO_INDEPENDENTE"
-    assert primeira.modulo_imagem_path == "C:/imagens/ROUP_IMG.png"
-    outras = [l for l in linhas if l.id != primeira.id]
+    separador = next(l for l in linhas if l.tipo_linha == "SEPARADOR")
+    divisao = next(l for l in linhas if l.tipo_linha == "DIVISAO_INDEPENDENTE")
+    assert separador.modulo_imagem_path is None
+    assert divisao.modulo_imagem_path == "C:/imagens/ROUP_IMG.png"
+    outras = [l for l in linhas if l.id != divisao.id]
     assert all(l.modulo_imagem_path is None for l in outras)
 
 
@@ -468,7 +478,8 @@ def _criar_modulo_composta_com_filhos(
                     ordem=2, tipo_linha="PECA", def_peca_id=fundo_id,
                     def_peca_codigo="FUNDO", linha_pai_ordem=1, nivel=1,
                     comp="L", larg="P", esp="19",
-                    chave_valueset="MATERIAL_FUNDOS", qt_und="1",
+                    chave_valueset="MATERIAL_FUNDOS", codigo_orlas="2111",
+                    qt_und="1",
                 ),
                 CriarDefModuloLinhaData(
                     ordem=3, tipo_linha="FERRAGEM", def_peca_id=pes_id,
@@ -519,6 +530,7 @@ def test_importar_composta_recria_filhos_com_formulas(session) -> None:
     # The child kept its measure formulas from the module (not re-expanded).
     assert fundo.comp == "L"
     assert fundo.larg == "P"
+    assert fundo.codigo_orlas == "2111"
     # origem_id linked to the matching def_peca_componente (for the rule).
     assert fundo.origem_id == comp_fundo_id
     assert pes.origem_id == comp_pes_id
@@ -537,6 +549,7 @@ def test_importar_composta_recria_filhos_com_formulas(session) -> None:
     assert fundo.comp_real == Decimal("1000.000")
     assert fundo.larg_real == Decimal("500.000")
     assert fundo.area_m2 == Decimal("0.5000")  # 1000 x 500 mm -> 0.5 m2
+    assert fundo.codigo_orlas == "2111"  # recalcular nunca repõe a orla da biblioteca
     assert fundo.custo_mp is not None and fundo.custo_mp > 0
     # Hardware qty came from the rule: CEIL(COMP/500) = CEIL(1000/500) = 2.
     assert pes.qt_und == Decimal("2")

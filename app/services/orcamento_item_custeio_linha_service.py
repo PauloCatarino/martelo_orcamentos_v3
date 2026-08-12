@@ -400,6 +400,7 @@ class InserirModuloResult:
     criadas: int
     componentes: int
     avisos: list[str]
+    linha_ids_criados: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -4939,9 +4940,15 @@ class OrcamentoItemCusteioLinhaService:
                 self._importar_peca_modulo(item_id, linha, tipo, avisos)
             criadas += 1
 
-        # Store the module image on the FIRST line of the imported block (the
-        # division, or the first line) so the table can show its thumbnail.
+        # Store the module image on the first independent division. A module may
+        # start with a visual separator, which cannot display a thumbnail.
         self._marcar_imagem_modulo(item_id, ids_antes, modulo.imagem_path)
+
+        linha_ids_criados = tuple(
+            linha.id
+            for linha in self.repository.list_active_by_orcamento_item(item_id)
+            if linha.id not in ids_antes
+        )
 
         self.session.commit()
 
@@ -4950,6 +4957,7 @@ class OrcamentoItemCusteioLinhaService:
             criadas=criadas,
             componentes=componentes,
             avisos=avisos,
+            linha_ids_criados=linha_ids_criados,
         )
 
     def _validar_contexto_divisao_para_modulo(
@@ -5012,7 +5020,7 @@ class OrcamentoItemCusteioLinhaService:
     def _marcar_imagem_modulo(
         self, item_id: int, ids_antes: set[int], imagem_path: str | None
     ) -> None:
-        """Set modulo_imagem_path on the first line created by this import."""
+        """Set the image on the first imported division (or visible fallback)."""
         if not imagem_path:
             return
         novas = [
@@ -5022,7 +5030,14 @@ class OrcamentoItemCusteioLinhaService:
         ]
         if not novas:
             return
-        primeira = min(novas, key=lambda linha: linha.id)
+        divisoes = [
+            linha for linha in novas if linha.tipo_linha == DIVISAO_INDEPENDENTE
+        ]
+        visiveis = [linha for linha in novas if linha.tipo_linha != SEPARADOR]
+        candidatas = divisoes or visiveis
+        if not candidatas:
+            return
+        primeira = min(candidatas, key=lambda linha: linha.id)
         self.repository.update_linha(
             id=primeira.id, modulo_imagem_path=imagem_path
         )
@@ -5212,6 +5227,8 @@ class OrcamentoItemCusteioLinhaService:
             descricao = linha.descricao or linha.descricao_livre
             if descricao:
                 override["descricao"] = descricao
+            if linha.descricao_livre is not None:
+                override["descricao_livre"] = linha.descricao_livre
             if override:
                 self.repository.update_linha(id=principal.id, **override)
             return principal
@@ -5234,6 +5251,7 @@ class OrcamentoItemCusteioLinhaService:
                 or linha.def_peca_codigo
                 or "Peça composta"
             ),
+            descricao_livre=linha.descricao_livre,
             codigo_orlas=linha.codigo_orlas,
             chave_valueset=linha.chave_valueset,
             origem_tipo="MODULO",
@@ -5404,6 +5422,7 @@ class OrcamentoItemCusteioLinhaService:
                 or linha.def_peca_codigo
                 or "Linha do módulo"
             ),
+            descricao_livre=linha.descricao_livre,
             chave_valueset=linha.chave_valueset,
             codigo_orlas=linha.codigo_orlas,
             comp=linha.comp,
@@ -5431,6 +5450,8 @@ class OrcamentoItemCusteioLinhaService:
             fields["esp"] = linha.esp
         if linha.codigo_orlas is not None:
             fields["codigo_orlas"] = linha.codigo_orlas
+        if linha.descricao_livre is not None:
+            fields["descricao_livre"] = linha.descricao_livre
         qt_mod = self._qt_modulo(linha.qt_mod)
         if qt_mod is not None:
             fields["qt_mod"] = qt_mod

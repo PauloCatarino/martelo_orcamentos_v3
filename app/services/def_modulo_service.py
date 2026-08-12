@@ -455,7 +455,12 @@ class DefModuloService:
             def_peca_codigo=linha.def_peca_codigo,
             codigo=linha.codigo,
             descricao=None if eh_divisao else linha.descricao,
-            descricao_livre=linha.descricao if eh_divisao else None,
+            # A divisão guarda o texto editável em ``descricao``; nas
+            # restantes linhas a coluna da grelha usa ``descricao_livre``.
+            # O snapshot do módulo tem de preservar ambos os percursos.
+            descricao_livre=(
+                linha.descricao if eh_divisao else linha.descricao_livre
+            ),
             qt_mod=self._texto_quantidade(linha.qt_mod),
             qt_und=self._texto_quantidade(linha.qt_und),
             # comp/larg/esp keep the TEXT/formula (H, L/3, HM, LM...), never the

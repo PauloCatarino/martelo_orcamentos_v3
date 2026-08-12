@@ -1460,6 +1460,15 @@ def test_custeio_page_miniatura_modulo() -> None:
     assert "copiar_imagem_para_pasta" in copiar
 
 
+def test_importar_modulo_expande_linhas_e_mostra_total_real() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    source = inspect.getsource(OrcamentoItemCusteioPage.importar_modulo)
+    assert "linha_ids_criados" in source
+    assert "_compostas_expandidas.update" in source
+    assert "resultado.criadas + resultado.componentes" in source
+
+
 def test_custeio_tem_barra_cabecalho_unica() -> None:
     """R2.2: costing header uses one BarraCabecalho, without the old data toggle."""
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
