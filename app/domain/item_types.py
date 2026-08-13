@@ -7,6 +7,7 @@ ROUPEIRO_CORRER = "ROUPEIRO_CORRER"
 MOVEL_WC = "MOVEL_WC"
 COZINHA = "COZINHA"
 OUTRO = "OUTRO"
+SUPLEMENTO = "SUPLEMENTO"
 
 ITEM_TYPE_LABELS = {
     ROUPEIRO_ABRIR: "Roupeiro Abrir",
@@ -14,6 +15,7 @@ ITEM_TYPE_LABELS = {
     MOVEL_WC: "M\u00f3vel WC",
     COZINHA: "Cozinha",
     OUTRO: "Outro",
+    SUPLEMENTO: "Suplemento",
 }
 
 
@@ -24,7 +26,12 @@ def get_item_type_label(tipo_item: str | None) -> str:
 
 def get_item_type_options() -> tuple[tuple[str, str], ...]:
     """Return item type options as code/label pairs."""
-    return tuple(ITEM_TYPE_LABELS.items())
+    # SUPLEMENTO is reserved for automatically generated budget rows.
+    return tuple(
+        (codigo, label)
+        for codigo, label in ITEM_TYPE_LABELS.items()
+        if codigo != SUPLEMENTO
+    )
 
 
 def normalize_item_type(tipo_item: str | None) -> str:

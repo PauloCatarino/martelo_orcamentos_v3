@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -26,8 +27,13 @@ from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
 from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.orcamento_suplemento_service import (
+    OrcamentoSuplementoService,
+    SuplementoPlacaResumo,
+)
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
+from app.ui.dialogs.orcamento_suplementos_dialog import OrcamentoSuplementosDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
 
@@ -67,10 +73,18 @@ class OrcamentoCusteioPage(QWidget):
         info.setWordWrap(True)
 
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setToolTip("Recalcular e atualizar o custeio do orçamento")
         self.refresh_button.clicked.connect(self.carregar)
+
+        self.suplementos_button = QPushButton("Adicionar Suplementos...")
+        self.suplementos_button.setToolTip(
+            "Gerir suplementos de placas não stock, uma vez por referência e orçamento"
+        )
+        self.suplementos_button.clicked.connect(self._abrir_suplementos)
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.suplementos_button)
         actions_layout.addStretch()
 
         # Highlighted "updated at HH:MM:SS" banner above the table (Lança Encanto).
@@ -84,6 +98,40 @@ class OrcamentoCusteioPage(QWidget):
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoCusteioStatus")
+
+        self.suplementos_label = QLabel("Suplementos de placas não stock")
+        self.suplementos_label.setStyleSheet("font-weight: bold;")
+        self.suplementos_table = QTableWidget(0, 10)
+        self.suplementos_table.setHorizontalHeaderLabels(
+            [
+                "Ref. placa",
+                "Descrição",
+                "Esp.",
+                "Fonte",
+                "Valor base",
+                "Valor local",
+                "Qt",
+                "Editado localmente",
+                "Notas para o cliente",
+                "Itens",
+            ]
+        )
+        self.suplementos_table.verticalHeader().setVisible(False)
+        self.suplementos_table.setAlternatingRowColors(True)
+        self.suplementos_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.suplementos_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        larguras_suplementos = (90, 310, 55, 75, 90, 90, 55, 130, 360, 55)
+        for coluna, largura in enumerate(larguras_suplementos):
+            self.suplementos_table.setColumnWidth(coluna, largura)
+        ligar_persistencia_larguras(
+            self.suplementos_table,
+            "orcamento_custeio_suplementos",
+            guardar_ordem=True,
+        )
+        self.suplementos_table.setMaximumHeight(190)
+        self.suplementos_total_label = QLabel("")
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
         self.table.setHorizontalHeaderLabels(self.TABLE_HEADERS)
@@ -101,6 +149,9 @@ class OrcamentoCusteioPage(QWidget):
         layout.addLayout(actions_layout)
         layout.addWidget(self.banner)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.suplementos_label)
+        layout.addWidget(self.suplementos_table)
+        layout.addWidget(self.suplementos_total_label)
         layout.addWidget(self.table, stretch=1)
 
         self.setLayout(layout)
@@ -130,15 +181,99 @@ class OrcamentoCusteioPage(QWidget):
                 linhas = OrcamentoItemCusteioLinhaService(session).listar_linhas_da_versao(
                     self.orcamento_versao_id
                 )
+                suplementos = OrcamentoSuplementoService(session).listar(
+                    self.orcamento_versao_id
+                )
+                item_service = OrcamentoItemService(session)
+                custo_suplementos = item_service.get_custo_suplementos_versao(
+                    self.orcamento_versao_id
+                )
+                preco_suplementos = item_service.get_preco_suplementos_versao(
+                    self.orcamento_versao_id
+                )
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar as linhas de custeio.")
             return
 
         item_labels = {item.id: self._item_label(item) for item in items}
+        self._preencher_suplementos(
+            suplementos, custo_suplementos, preco_suplementos
+        )
         self._preencher(linhas, item_labels)
         self.banner.setText(
             f"Atualizado às {datetime.now().strftime('%H:%M:%S')}"
         )
+
+    def _abrir_suplementos(self) -> None:
+        """Open the budget-level editor and persist all selected references."""
+        try:
+            with SessionLocal() as session:
+                suplementos = OrcamentoSuplementoService(session).listar(
+                    self.orcamento_versao_id
+                )
+        except SQLAlchemyError:
+            QMessageBox.critical(
+                self,
+                "Suplementos",
+                "Não foi possível carregar as referências de placas.",
+            )
+            return
+
+        dialog = OrcamentoSuplementosDialog(suplementos, self)
+        if not dialog.exec():
+            return
+        try:
+            with SessionLocal() as session:
+                ativos = OrcamentoSuplementoService(session).guardar(
+                    self.orcamento_versao_id, dialog.dados()
+                )
+        except (SQLAlchemyError, ValueError) as erro:
+            QMessageBox.critical(
+                self,
+                "Suplementos",
+                f"Não foi possível guardar os suplementos:\n{erro}",
+            )
+            return
+        self.carregar()
+        self.status_label.setText(
+            f"Suplementos guardados: {ativos} referência(s) ativa(s)."
+        )
+
+    def _preencher_suplementos(
+        self,
+        suplementos: list[SuplementoPlacaResumo],
+        custo_total,
+        preco_total,
+    ) -> None:
+        ativos = [row for row in suplementos if row.ativo]
+        self.suplementos_table.setRowCount(len(ativos))
+        for row_index, suplemento in enumerate(ativos):
+            values = [
+                suplemento.ref_le,
+                suplemento.descricao,
+                format_quantity(suplemento.esp),
+                suplemento.suplemento_ref_le,
+                format_currency(suplemento.valor_base),
+                format_currency(suplemento.valor_local),
+                format_quantity(suplemento.quantidade),
+                self._format_bool(suplemento.editado_localmente),
+                suplemento.nota_cliente,
+                str(suplemento.numero_itens),
+            ]
+            for column_index, value in enumerate(values):
+                self.suplementos_table.setItem(
+                    row_index, column_index, QTableWidgetItem(value)
+                )
+        self.suplementos_table.setVisible(bool(ativos))
+        if ativos:
+            self.suplementos_total_label.setText(
+                f"Valor global fixo dos suplementos: {format_currency(preco_total)}"
+                "    |    Sem margens adicionais"
+            )
+        else:
+            self.suplementos_total_label.setText(
+                "Sem suplementos aplicados a esta versão do orçamento."
+            )
 
     def _preencher(
         self,

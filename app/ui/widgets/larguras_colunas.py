@@ -16,6 +16,7 @@ def ligar_persistencia_larguras(
     chave: str,
     *,
     forcar_interativas: bool = True,
+    guardar_ordem: bool = False,
 ) -> bool:
     """Restaura/persiste as larguras das colunas REDIMENSIONÁVEIS de ``table``.
 
@@ -23,8 +24,13 @@ def ligar_persistencia_larguras(
     (sem sessão, usa "default"). Colunas em modo Stretch/ResizeToContents são
     ignoradas (a sua largura é automática).
 
-    Devolve ``True`` se restaurou alguma largura guardada (útil para tabelas que
-    semeiam larguras-por-conteúdo só quando ainda não há nada guardado).
+    Quando ``guardar_ordem`` está ativo, o utilizador também pode arrastar os
+    cabeçalhos e a ordem visual fica guardada com a mesma separação por
+    utilizador.
+
+    Devolve ``True`` se restaurou alguma largura ou ordem guardada (útil para
+    tabelas que semeiam larguras-por-conteúdo só quando ainda não há nada
+    guardado).
     """
     # QTableView/QTableWidget expose ``horizontalHeader()``, while QTreeView
     # and QTreeWidget expose the same QHeaderView through ``header()``.
@@ -49,6 +55,16 @@ def ligar_persistencia_larguras(
             header.resizeSection(col, largura)
             restaurou = True
 
+    if guardar_ordem:
+        header.setSectionsMovable(True)
+        ordem = _para_lista_int(settings.value(_chave_ordem(chave)))
+        if ordem is not None and sorted(ordem) == list(range(header.count())):
+            for posicao_visual, indice_logico in enumerate(ordem):
+                posicao_atual = header.visualIndex(indice_logico)
+                if posicao_atual != posicao_visual:
+                    header.moveSection(posicao_atual, posicao_visual)
+            restaurou = True
+
     def _guardar(indice: int, _antiga: int, nova: int) -> None:
         if header.sectionResizeMode(indice) != interativo:
             return
@@ -56,11 +72,30 @@ def ligar_persistencia_larguras(
             QSettings(_ORG, _APP).setValue(_chave_larguras(chave, indice), int(nova))
 
     header.sectionResized.connect(_guardar)
+
+    if guardar_ordem:
+
+        def _guardar_ordem(
+            _indice_logico: int,
+            _posicao_antiga: int,
+            _posicao_nova: int,
+        ) -> None:
+            ordem_atual = [
+                header.logicalIndex(posicao_visual)
+                for posicao_visual in range(header.count())
+            ]
+            QSettings(_ORG, _APP).setValue(_chave_ordem(chave), ordem_atual)
+
+        header.sectionMoved.connect(_guardar_ordem)
     return restaurou
 
 
 def _chave_larguras(chave: str, indice: int) -> str:
     return f"larguras/{_utilizador_atual()}/{chave}/{indice}"
+
+
+def _chave_ordem(chave: str) -> str:
+    return f"ordem_colunas/{_utilizador_atual()}/{chave}"
 
 
 def _utilizador_atual() -> str:
@@ -74,5 +109,14 @@ def _para_int(valor) -> int | None:
         return None
     try:
         return int(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _para_lista_int(valor) -> list[int] | None:
+    if not isinstance(valor, (list, tuple)):
+        return None
+    try:
+        return [int(item) for item in valor]
     except (TypeError, ValueError):
         return None

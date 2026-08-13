@@ -26,7 +26,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
-from app.domain.item_types import get_item_type_label
+from app.domain.item_types import SUPLEMENTO, get_item_type_label
 from app.domain.numeros import formatar_percentagem, parse_decimal_humano
 from app.domain.precos import (
     BlocosCusto,
@@ -310,7 +310,9 @@ class OrcamentoItemsPage(QWidget):
                 # no full pipeline recompute), so the list reflects the costing
                 # without needing the "Atualizar Custos" button.
                 item_service.aplicar_precos_da_versao(self.orcamento_versao_id)
-                items = item_service.list_items_by_versao(self.orcamento_versao_id)
+                items = item_service.list_items_com_suplementos_by_versao(
+                    self.orcamento_versao_id
+                )
                 tipo_default = item_service.get_tipo_producao_default(
                     self.orcamento_versao_id
                 )
@@ -364,7 +366,9 @@ class OrcamentoItemsPage(QWidget):
         )
 
         self.soma_preco_label = QLabel("Soma Preço Final: 0,00 €")
-        self.soma_preco_label.setToolTip("Soma do Preço Total de todos os items.")
+        self.soma_preco_label.setToolTip(
+            "Soma do Preço Total dos items e dos suplementos globais do orçamento."
+        )
 
         self.objetivo_spin = QDoubleSpinBox()
         self.objetivo_spin.setDecimals(2)
@@ -467,7 +471,7 @@ class OrcamentoItemsPage(QWidget):
             self._carregando_margens = False
 
     def _atualizar_soma_preco(self, items: list[OrcamentoItemResumo]) -> None:
-        """Refresh the 'Soma Preço Final' label from the loaded items."""
+        """Refresh the final sum, including version-level supplements."""
         soma = sum(
             (item.preco_total for item in items if item.preco_total is not None),
             Decimal("0"),
@@ -744,6 +748,12 @@ class OrcamentoItemsPage(QWidget):
 
     def editar_item_selecionado(self) -> None:
         """Edit the currently selected item."""
+        selecionado = self._get_selected_item()
+        if selecionado is not None and selecionado.tipo_item == SUPLEMENTO:
+            self.status_label.setText(
+                "Linha automática: edite-a em Custeio > Adicionar Suplementos."
+            )
+            return
         item_id = self._get_selected_item_id()
         if item_id is None:
             self.status_label.setText("Selecione um item para editar.")
@@ -798,6 +808,12 @@ class OrcamentoItemsPage(QWidget):
     def remover_item_selecionado(self) -> None:
         """Remove the currently selected item after confirmation."""
         diario_bordo.registar_acao("Remover item do orçamento")
+        selecionado = self._get_selected_item()
+        if selecionado is not None and selecionado.tipo_item == SUPLEMENTO:
+            self.status_label.setText(
+                "Linha automática: desative-a em Custeio > Adicionar Suplementos."
+            )
+            return
         item_id = self._get_selected_item_id()
         if item_id is None:
             self.status_label.setText("Selecione um item para remover.")
@@ -836,6 +852,12 @@ class OrcamentoItemsPage(QWidget):
             self.status_label.setText("Selecione um item para abrir o custeio.")
             return
 
+        if item.tipo_item == SUPLEMENTO:
+            self.status_label.setText(
+                "Esta linha automática não possui custeio de item."
+            )
+            return
+
         if self.on_open_item_custeio is None:
             self.status_label.setText("Custeio do item indisponivel.")
             return
@@ -852,6 +874,7 @@ class OrcamentoItemsPage(QWidget):
 
             for row_index, item in enumerate(items):
                 self._items_by_row[row_index] = item
+                automatico = item.tipo_item == SUPLEMENTO
                 producao_efetiva = tipo_producao_efetivo(
                     item.tipo_producao, self._tipo_producao_default
                 )
@@ -880,8 +903,8 @@ class OrcamentoItemsPage(QWidget):
                             blocos.custo_produzido if blocos else None,
                         )
                     ),
-                    item.modalidade_custeio,
-                    producao_efetiva,
+                    "Automático" if automatico else item.modalidade_custeio,
+                    "Automático" if automatico else producao_efetiva,
                 ]
 
                 ajuste_column = self.TABLE_HEADERS.index("Ajuste")
@@ -890,33 +913,39 @@ class OrcamentoItemsPage(QWidget):
                     tooltip = self._tooltip_formula(header, item, blocos)
                     # A coluna "Produção" mostra um combo; não pôr texto por baixo.
                     table_item = QTableWidgetItem(
-                        "" if header == "Produção" else value
+                        "" if header == "Produção" and not automatico else value
                     )
                     table_item.setBackground(QColor(tema.cor_zebra(row_index)))
                     if tooltip:
                         table_item.setToolTip(tooltip)
+                    if automatico:
+                        table_item.setBackground(QColor(tema.BEGE_AREIA))
+                        table_item.setToolTip(
+                            "Linha gerada automaticamente pelo suplemento da placa."
+                        )
                     if item.preco_manual and header in ("Preço Unitário", "Preço Total"):
                         table_item.setBackground(QColor(tema.OCRE_SUAVE))
                         table_item.setForeground(QColor(tema.OCRE_ESCURO))
                         table_item.setToolTip("Preço manual — não vem do custeio.")
                     if column_index == 0:
                         table_item.setData(Qt.ItemDataRole.UserRole, item.id)
-                    if column_index != ajuste_column:
+                    if automatico or column_index != ajuste_column:
                         table_item.setFlags(
                             table_item.flags() & ~Qt.ItemFlag.ItemIsEditable
                         )
                     self.table.setItem(row_index, column_index, table_item)
 
-                self.table.setCellWidget(
-                    row_index,
-                    self.TABLE_HEADERS.index("Produção"),
-                    self._criar_combo_producao(item),
-                )
-                self.table.setCellWidget(
-                    row_index,
-                    self.TABLE_HEADERS.index("Custeio"),
-                    self._criar_combo_custeio(item),
-                )
+                if not automatico:
+                    self.table.setCellWidget(
+                        row_index,
+                        self.TABLE_HEADERS.index("Produção"),
+                        self._criar_combo_producao(item),
+                    )
+                    self.table.setCellWidget(
+                        row_index,
+                        self.TABLE_HEADERS.index("Custeio"),
+                        self._criar_combo_custeio(item),
+                    )
         finally:
             self._carregando_tabela = False
 

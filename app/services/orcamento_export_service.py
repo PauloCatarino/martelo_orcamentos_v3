@@ -176,7 +176,10 @@ class OrcamentoExportService:
 
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
-        items = OrcamentoItemService(self.session).list_items_by_versao(orcamento_versao_id)
+        item_service = OrcamentoItemService(self.session)
+        items = item_service.list_items_com_suplementos_by_versao(
+            orcamento_versao_id
+        )
         if orcamento is None or cliente is None:
             raise ValueError("Orçamento ou cliente não encontrado para esta versão.")
 
@@ -283,7 +286,10 @@ class OrcamentoExportService:
 
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
-        items = OrcamentoItemService(self.session).list_items_by_versao(orcamento_versao_id)
+        item_service = OrcamentoItemService(self.session)
+        items = item_service.list_items_com_suplementos_by_versao(
+            orcamento_versao_id
+        )
         if orcamento is None or cliente is None:
             raise ValueError("Orçamento ou cliente não encontrado para esta versão.")
 

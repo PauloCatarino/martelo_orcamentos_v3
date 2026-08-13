@@ -13,6 +13,7 @@ from app.domain.custeio_linha_types import (
     SEPARADOR,
 )
 from app.domain.item_types import normalize_item_type
+from app.domain.item_types import SUPLEMENTO
 from app.domain.numeros import validar_decimal
 from app.domain.precos import (
     BlocosCusto,
@@ -39,6 +40,9 @@ from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
 from app.repositories.orcamento_item_repository import OrcamentoItemRepository, OrcamentoItemResumo
+from app.repositories.orcamento_versao_placa_nao_stock_repository import (
+    OrcamentoVersaoPlacaNaoStockRepository,
+)
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
 
 _CENTIMOS = Decimal("0.01")
@@ -312,11 +316,80 @@ class OrcamentoItemService:
         return deleted
 
     def recalcular_total_versao(self, orcamento_versao_id: int) -> Decimal:
-        """Recalculate and store the total for a budget version."""
-        total = self.repository.sum_preco_total_by_versao(orcamento_versao_id)
+        """Recalculate the version total, including global material supplements."""
+        total_itens = self.repository.sum_preco_total_by_versao(orcamento_versao_id)
+        total = total_itens + self.get_preco_suplementos_versao(orcamento_versao_id)
         self.repository.update_preco_total_versao(orcamento_versao_id, total)
 
         return total
+
+    def get_custo_suplementos_versao(self, orcamento_versao_id: int) -> Decimal:
+        """Return active local supplement costs, counted once per board key."""
+        somar = getattr(self.repository, "sum_suplementos_by_versao", None)
+        # Some lightweight callers/test doubles predate global supplements.
+        return somar(orcamento_versao_id) if somar is not None else Decimal("0")
+
+    def get_preco_suplementos_versao(self, orcamento_versao_id: int) -> Decimal:
+        """Sum fixed supplement totals, without applying any budget margin."""
+        listar = getattr(self.repository, "list_valores_suplementos_by_versao", None)
+        valores = listar(orcamento_versao_id) if listar is not None else []
+        if not valores:
+            custo = self.get_custo_suplementos_versao(orcamento_versao_id)
+            valores = [custo] if custo else []
+        return sum(
+            (
+                valor.quantize(_CENTIMOS, rounding=ROUND_HALF_UP)
+                for valor in valores
+            ),
+            Decimal("0"),
+        )
+
+    def list_items_com_suplementos_by_versao(
+        self, orcamento_versao_id: int
+    ) -> list[OrcamentoItemResumo]:
+        """Return real items followed by one read-only row per supplement."""
+        items = self.list_items_by_versao(orcamento_versao_id)
+        ordem = max((item.ordem for item in items), default=0)
+        suplementos = [
+            row
+            for row in OrcamentoVersaoPlacaNaoStockRepository(
+                self.session
+            ).list_by_versao(orcamento_versao_id)
+            if row.suplemento_ativo
+        ]
+        suplementos.sort(key=lambda row: (row.ref_le.casefold(), row.descricao.casefold()))
+        for indice, suplemento in enumerate(suplementos, start=1):
+            custo = suplemento.suplemento_valor_local or Decimal("0")
+            quantidade = suplemento.suplemento_quantidade or Decimal("1")
+            preco = custo.quantize(_CENTIMOS, rounding=ROUND_HALF_UP)
+            preco_total = (preco * quantidade).quantize(
+                _CENTIMOS, rounding=ROUND_HALF_UP
+            )
+            descricao = (
+                f"{suplemento.ref_le} · {suplemento.descricao}\n"
+                "Suplemento por material não existente em stock."
+            )
+            if suplemento.suplemento_nota_cliente:
+                descricao += f"\n{suplemento.suplemento_nota_cliente}"
+            items.append(
+                OrcamentoItemResumo(
+                    id=-indice,
+                    orcamento_versao_id=orcamento_versao_id,
+                    ordem=ordem + indice,
+                    codigo="SUP_NSTOCK",
+                    tipo_item=SUPLEMENTO,
+                    item="SUPLEMENTO PLACA NÃO STOCK",
+                    descricao=descricao,
+                    altura=None,
+                    largura=None,
+                    profundidade=None,
+                    quantidade=quantidade,
+                    unidade="un",
+                    preco_unitario=preco,
+                    preco_total=preco_total,
+                )
+            )
+        return items
 
     def get_margens_versao(self, orcamento_versao_id: int) -> MargensOrcamento:
         """Return the version's margins (zeros when the version is missing)."""
@@ -475,6 +548,12 @@ class OrcamentoItemService:
                     quantidade=quantidade,
                 )
             )
+
+        # Supplements are fixed extraordinary charges: margin solving must not
+        # increase or reduce them.
+        constante_manual += self.get_preco_suplementos_versao(
+            orcamento_versao_id
+        )
 
         return atingir_objetivo(itens, constante_manual, margens, objetivo)
 

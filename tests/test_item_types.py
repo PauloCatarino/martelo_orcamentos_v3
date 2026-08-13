@@ -8,6 +8,7 @@ from app.domain.item_types import (
     OUTRO,
     ROUPEIRO_ABRIR,
     ROUPEIRO_CORRER,
+    SUPLEMENTO,
     get_item_type_label,
     get_item_type_options,
     normalize_item_type,
@@ -20,6 +21,7 @@ def test_item_type_labels() -> None:
     assert get_item_type_label(MOVEL_WC) == "M\u00f3vel WC"
     assert get_item_type_label(COZINHA) == "Cozinha"
     assert get_item_type_label(OUTRO) == "Outro"
+    assert get_item_type_label(SUPLEMENTO) == "Suplemento"
 
 
 def test_item_type_normalization() -> None:
@@ -38,3 +40,4 @@ def test_item_type_options() -> None:
     assert (MOVEL_WC, "M\u00f3vel WC") in options
     assert (COZINHA, "Cozinha") in options
     assert (OUTRO, "Outro") in options
+    assert (SUPLEMENTO, "Suplemento") not in options

@@ -25,13 +25,18 @@ class TotaisRelatorio:
     total_geral: Decimal
 
 
-def calcular_totais_relatorio(items, iva_pct: Decimal = IVA_PADRAO_PCT) -> TotaisRelatorio:
-    """Sum the items' quantity and price, then apply VAT (pure/testable)."""
+def calcular_totais_relatorio(
+    items,
+    iva_pct: Decimal = IVA_PADRAO_PCT,
+    acrescimo_subtotal: Decimal = Decimal("0"),
+) -> TotaisRelatorio:
+    """Sum item prices and an optional budget-level addition, then apply VAT."""
     total_qt = Decimal("0")
     subtotal = Decimal("0")
     for item in items:
         total_qt += item.quantidade or Decimal("0")
         subtotal += item.preco_total or Decimal("0")
+    subtotal += acrescimo_subtotal or Decimal("0")
     iva = subtotal * iva_pct / Decimal("100")
     return TotaisRelatorio(
         total_qt=total_qt,

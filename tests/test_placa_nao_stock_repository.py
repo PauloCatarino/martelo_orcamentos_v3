@@ -42,3 +42,28 @@ def test_isolado_por_versao(session) -> None:
     session.commit()
 
     assert repo.chaves_ativas(2) == set()
+
+
+def test_desativar_nao_stock_preserva_suplemento_ativo(session) -> None:
+    repo = OrcamentoVersaoPlacaNaoStockRepository(session)
+    repo.set_estado(1, "LE01", "AGL", Decimal("19"), True)
+    repo.set_suplemento(
+        1,
+        "LE01",
+        "AGL",
+        Decimal("19"),
+        ativo=True,
+        suplemento_ref_le="PLC0120",
+        valor_base=Decimal("70"),
+        valor_local=Decimal("75"),
+        editado_localmente=True,
+    )
+
+    repo.set_estado(1, "LE01", "AGL", Decimal("19"), False)
+    session.commit()
+
+    rows = repo.list_by_versao(1)
+    assert len(rows) == 1
+    assert rows[0].nao_stock is False
+    assert rows[0].suplemento_ativo is True
+    assert rows[0].suplemento_valor_local == Decimal("75")

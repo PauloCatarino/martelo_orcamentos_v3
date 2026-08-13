@@ -38,6 +38,16 @@ def test_calcular_totais_relatorio_lida_com_none() -> None:
     assert totais.total_geral == Decimal("0")
 
 
+def test_calcular_totais_relatorio_inclui_acrescimo_global() -> None:
+    totais = calcular_totais_relatorio(
+        [], Decimal("23"), acrescimo_subtotal=Decimal("185.96")
+    )
+
+    assert totais.subtotal == Decimal("185.96")
+    assert totais.iva == Decimal("42.7708")
+    assert totais.total_geral == Decimal("228.7308")
+
+
 def test_iva_padrao_e_23() -> None:
     assert IVA_PADRAO_PCT == Decimal("23")
 

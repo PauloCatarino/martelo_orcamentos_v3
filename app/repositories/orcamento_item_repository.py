@@ -20,6 +20,7 @@ from app.models import (
     OrcamentoItemValuesetLinhaOperacao,
     OrcamentoItemVariavel,
     OrcamentoVersao,
+    OrcamentoVersaoPlacaNaoStock,
 )
 
 
@@ -374,6 +375,50 @@ class OrcamentoItemRepository:
         value = self.session.execute(statement).scalar_one()
 
         return Decimal(value)
+
+    def sum_suplementos_by_versao(self, orcamento_versao_id: int) -> Decimal:
+        """Return active global supplement costs of one budget version."""
+        statement = select(
+            func.coalesce(
+                func.sum(
+                    OrcamentoVersaoPlacaNaoStock.suplemento_valor_local
+                    * func.coalesce(
+                        OrcamentoVersaoPlacaNaoStock.suplemento_quantidade, 1
+                    )
+                ),
+                0,
+            )
+        ).where(
+            OrcamentoVersaoPlacaNaoStock.orcamento_versao_id
+            == orcamento_versao_id,
+            OrcamentoVersaoPlacaNaoStock.suplemento_ativo.is_(True),
+        )
+        value = self.session.execute(statement).scalar_one()
+        return Decimal(value)
+
+    def list_valores_suplementos_by_versao(
+        self, orcamento_versao_id: int
+    ) -> list[Decimal]:
+        """Return each active supplement cost for per-row price rounding."""
+        statement = (
+            select(
+                OrcamentoVersaoPlacaNaoStock.suplemento_valor_local,
+                OrcamentoVersaoPlacaNaoStock.suplemento_quantidade,
+            )
+            .where(
+                OrcamentoVersaoPlacaNaoStock.orcamento_versao_id
+                == orcamento_versao_id,
+                OrcamentoVersaoPlacaNaoStock.suplemento_ativo.is_(True),
+            )
+            .order_by(
+                OrcamentoVersaoPlacaNaoStock.ref_le.asc(),
+                OrcamentoVersaoPlacaNaoStock.id.asc(),
+            )
+        )
+        return [
+            Decimal(valor or 0) * Decimal(quantidade or 1)
+            for valor, quantidade in self.session.execute(statement).all()
+        ]
 
     def update_preco_total_versao(self, orcamento_versao_id: int, preco_total: Decimal) -> bool:
         """Update a budget version total."""

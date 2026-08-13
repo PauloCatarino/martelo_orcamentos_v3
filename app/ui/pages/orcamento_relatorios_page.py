@@ -679,7 +679,8 @@ class OrcamentoRelatoriosPage(QWidget):
                 cliente = orcamento_service.get_cliente_da_versao(
                     self.orcamento_versao_id
                 )
-                items = OrcamentoItemService(session).list_items_by_versao(
+                item_service = OrcamentoItemService(session)
+                items = item_service.list_items_com_suplementos_by_versao(
                     self.orcamento_versao_id
                 )
                 resumo = relatorio.resumo_da_versao(self.orcamento_versao_id)

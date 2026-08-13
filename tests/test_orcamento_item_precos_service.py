@@ -333,12 +333,17 @@ def test_objetivo_trata_item_manual_com_custeio_como_constante(monkeypatch) -> N
         _linha(2, custo_mp=Decimal("80"), custo_producao=Decimal("40")),
     ]
     service, _ = _make_service(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "get_preco_suplementos_versao",
+        lambda _versao_id: Decimal("140"),
+    )
 
     service.resolver_objetivo_preco(7, Decimal("1000"))
 
     # O item 2 (manual + com custeio) NAO e variavel; entra como constante.
     assert len(capturado["itens"]) == 1
-    assert capturado["constante_manual"] == Decimal("183")
+    assert capturado["constante_manual"] == Decimal("323")
 
 
 def test_recalcular_preco_item_calcula_grava_e_devolve(monkeypatch) -> None:
