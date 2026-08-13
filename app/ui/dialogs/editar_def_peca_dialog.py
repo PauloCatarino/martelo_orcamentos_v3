@@ -14,10 +14,12 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.domain.orla_types import (
@@ -47,6 +49,7 @@ from app.ui.helpers.valueset_combo_helper import (
     carregar_chaves_valueset_combo,
     obter_valor_chave_combo,
 )
+from app.ui.widgets.orla_peca_preview import OrlaPecaPreview
 
 
 @dataclass(frozen=True)
@@ -199,6 +202,18 @@ class EditarDefPecaDialog(QDialog):
         for combo in orla_combos:
             for code, label in get_orla_type_options():
                 combo.addItem(label, code)
+        self.orla_c1_input.setToolTip(
+            "Orla do primeiro lado do comprimento, representado na aresta inferior."
+        )
+        self.orla_c2_input.setToolTip(
+            "Orla do segundo lado do comprimento, representado na aresta superior."
+        )
+        self.orla_l1_input.setToolTip(
+            "Orla do primeiro lado da largura, representado na aresta esquerda."
+        )
+        self.orla_l2_input.setToolTip(
+            "Orla do segundo lado da largura, representado na aresta direita."
+        )
 
         self.usa_orlas_input = QCheckBox("A peça leva orlas")
         self.usa_orlas_input.setChecked(True)
@@ -210,6 +225,10 @@ class EditarDefPecaDialog(QDialog):
         self.usa_orlas_input.toggled.connect(self._update_orlas_enabled)
         self.orla_preview_label = QLabel()
         self.orla_preview_label.setObjectName("editarDefPecaOrlaPreview")
+        self.orla_preview_label.setToolTip(
+            "Código compacto das orlas na ordem C1, C2, L1 e L2."
+        )
+        self.orla_peca_preview = OrlaPecaPreview()
 
         for combo in orla_combos:
             combo.currentIndexChanged.connect(self._update_orla_preview)
@@ -253,14 +272,33 @@ class EditarDefPecaDialog(QDialog):
         self.button_box.rejected.connect(self.reject)
 
         orla_group = QGroupBox("Orlas")
-        orla_form = QFormLayout()
-        orla_form.addRow("Usa orlas", self.usa_orlas_input)
-        orla_form.addRow("C1 - Comprimento lado 1", self.orla_c1_input)
-        orla_form.addRow("C2 - Comprimento lado 2", self.orla_c2_input)
-        orla_form.addRow("L1 - Largura lado 1", self.orla_l1_input)
-        orla_form.addRow("L2 - Largura lado 2", self.orla_l2_input)
-        orla_form.addRow(self.orla_preview_label)
-        orla_group.setLayout(orla_form)
+        orla_group_layout = QVBoxLayout()
+        usa_orlas_form = QFormLayout()
+        usa_orlas_form.addRow("Usa orlas", self.usa_orlas_input)
+        orla_group_layout.addLayout(usa_orlas_form)
+
+        orla_body_layout = QHBoxLayout()
+        orla_campos_widget = QWidget()
+        orla_campos_layout = QVBoxLayout(orla_campos_widget)
+        orla_campos_layout.setContentsMargins(0, 0, 0, 0)
+        orla_campos_layout.setSpacing(3)
+        for texto, campo in (
+            ("C1 - Comprimento lado 1", self.orla_c1_input),
+            ("C2 - Comprimento lado 2", self.orla_c2_input),
+            ("L1 - Largura lado 1", self.orla_l1_input),
+            ("L2 - Largura lado 2", self.orla_l2_input),
+        ):
+            etiqueta = QLabel(texto)
+            etiqueta.setBuddy(campo)
+            orla_campos_layout.addWidget(etiqueta)
+            orla_campos_layout.addWidget(campo)
+        orla_campos_layout.addWidget(self.orla_preview_label)
+        orla_body_layout.addWidget(orla_campos_widget, 1)
+        orla_body_layout.addWidget(
+            self.orla_peca_preview, 1, Qt.AlignmentFlag.AlignTop
+        )
+        orla_group_layout.addLayout(orla_body_layout)
+        orla_group.setLayout(orla_group_layout)
 
         valueset_group = QGroupBox("ValueSets")
         valueset_form = QFormLayout()
@@ -412,7 +450,8 @@ class EditarDefPecaDialog(QDialog):
             self.orla_l2_input,
         ):
             combo.setEnabled(usa_orlas)
-        self.orla_preview_label.setVisible(usa_orlas)
+        self.orla_preview_label.setEnabled(usa_orlas)
+        self.orla_peca_preview.set_usa_orlas(usa_orlas)
 
     def _update_orla_preview(self) -> None:
         """Refresh the edge banding code preview from the combo boxes."""
@@ -423,6 +462,12 @@ class EditarDefPecaDialog(QDialog):
             self.orla_l2_input.currentData(),
         )
         self.orla_preview_label.setText(f"Código de orlas: {code}")
+        self.orla_peca_preview.set_orlas(
+            self.orla_c1_input.currentData(),
+            self.orla_c2_input.currentData(),
+            self.orla_l1_input.currentData(),
+            self.orla_l2_input.currentData(),
+        )
 
     def set_error(self, message: str) -> None:
         """Show a user-facing error while keeping the dialog open."""
