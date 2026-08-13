@@ -121,10 +121,7 @@ class OcorrenciasPage(QWidget):
         self.table.setSortingEnabled(True)
         self.table.itemDoubleClicked.connect(lambda _i: self._abrir_obra())
         cabecalho_tabela = self.table.horizontalHeader()
-        cabecalho_tabela.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        cabecalho_tabela.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         cabecalho_tabela.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         for coluna, largura in (
             (0, 230),

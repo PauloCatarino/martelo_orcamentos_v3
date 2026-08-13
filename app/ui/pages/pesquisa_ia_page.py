@@ -61,10 +61,7 @@ def _nova_tabela(
     cabecalho = tabela.horizontalHeader()
     cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     cabecalho.setStretchLastSection(esticar_ultima)
-    cabecalho.setStyleSheet(
-        f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-        f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-    )
+    cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
     restaurado = ligar_persistencia_larguras(tabela, chave)
     return tabela, restaurado
 

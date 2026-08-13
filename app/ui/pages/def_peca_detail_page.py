@@ -573,13 +573,8 @@ class DefPecaDetailPage(QWidget):
             QTableWidget.SelectionBehavior.SelectRows
         )
         self.regras_componentes_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        # Explicit local selection colours: the global table rule can otherwise
-        # leave selected cells with white text over a very light background.
         self.regras_componentes_table.setStyleSheet(
-            "QTableWidget { selection-background-color: #D6C2A5; "
-            f"selection-color: {tema.TEXTO_NORMAL}; outline: 0; }}\n"
-            "QTableWidget::item:selected, QTableWidget::item:selected:active "
-            f"{{ background-color: #D6C2A5; color: {tema.TEXTO_NORMAL}; }}"
+            tema.ESTILO_REALCE_VISTAS_DADOS
         )
         self.regras_componentes_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive

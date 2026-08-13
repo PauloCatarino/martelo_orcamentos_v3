@@ -137,10 +137,7 @@ class OcorrenciasObraDialog(QDialog):
         self.table.itemSelectionChanged.connect(self._mostrar_detalhe)
         self.table.itemDoubleClicked.connect(lambda _item: self._editar())
         cabecalho_tabela = self.table.horizontalHeader()
-        cabecalho_tabela.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        cabecalho_tabela.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         cabecalho_tabela.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         for coluna, largura in ((0, 48), (1, 120), (2, 160), (4, 110), (5, 100), (6, 60)):
             self.table.setColumnWidth(coluna, largura)

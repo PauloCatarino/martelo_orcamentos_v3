@@ -143,10 +143,7 @@ class ProducaoImpressaoDialog(QDialog):
         self.tabela.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.tabela.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         cabecalho = self.tabela.horizontalHeader()
-        cabecalho.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         for coluna, largura in _LARGURAS.items():
             self.tabela.setColumnWidth(coluna, largura)
         # O nome do ficheiro é o que cresce; as outras colunas ficam justas.

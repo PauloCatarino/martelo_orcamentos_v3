@@ -133,10 +133,9 @@ class CusteioAuditoriaPage(QWidget):
         table.setStyleSheet(
             tema.ESTILO_TABELA_CONFIG_CABECALHO
             + f"\nQTableWidget {{ alternate-background-color: {tema.BEGE_CLARO};"
-              f" selection-background-color: {tema.CASTANHO_ESCURO};"
-              " selection-color: #FFFFFF; outline: 0; }"
-              f"\nQTableWidget::item:hover {{ background-color: {tema.BEGE_AREIA};"
-              f" color: {tema.TEXTO_NORMAL}; }}"
+              " outline: 0; }"
+            + "\n"
+            + tema.ESTILO_REALCE_VISTAS_DADOS
         )
         table.setMouseTracking(True)
         table.horizontalHeader().setDefaultAlignment(

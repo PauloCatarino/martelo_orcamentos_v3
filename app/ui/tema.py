@@ -212,18 +212,50 @@ ESTILO_ARVORE_NAV = (
 )
 
 
+# Realce transversal para todas as vistas de dados. Inclui as classes base e
+# as variantes Widget de forma explícita: assim a regra funciona tanto nas
+# tabelas preenchidas à mão como nas vistas ligadas a modelos/proxies.
+ESTILO_REALCE_VISTAS_DADOS = (
+    f"QTableView, QTableWidget, QTreeView, QTreeWidget {{"
+    f" selection-background-color: {CASTANHO_ESCURO}; selection-color: #FFFFFF;"
+    f" gridline-color: {CINZA_CASTANHO}; outline: 0; }}\n"
+    f"QTableView::item:hover, QTableWidget::item:hover,"
+    f" QTreeView::item:hover, QTreeWidget::item:hover {{"
+    f" background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}\n"
+    f"QTableView::item:selected, QTableWidget::item:selected,"
+    f" QTreeView::item:selected, QTreeWidget::item:selected {{"
+    f" background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+)
+
+
+# Aparência base transversal: as páginas podem acrescentar dimensões e
+# realces sem perder cabeçalhos, seleção e contraste comuns.
+ESTILO_CABECALHO_VISTAS_DADOS = (
+    f"QHeaderView::section {{ background-color: {CASTANHO_MEDIO}; color: #FFFFFF;"
+    " padding: 6px 8px; border: none; border-right: 1px solid #A99175;"
+    " font-weight: bold; }"
+)
+
+
+ESTILO_VISTAS_DADOS = (
+    f"QTableView, QTableWidget, QTreeView, QTreeWidget {{ background-color: #FFFFFF;"
+    f" alternate-background-color: {BEGE_CLARO}; }}\n"
+    + ESTILO_CABECALHO_VISTAS_DADOS
+    + "\n"
+    + ESTILO_REALCE_VISTAS_DADOS
+)
+
+
 # Estilo comum de tabelas de configuracao.
 ESTILO_TABELA_CONFIG = (
-    f"QTableWidget {{ gridline-color: {CINZA_CASTANHO}; }}\n"
     "QTableWidget::item { padding: 6px 8px; }\n"
-    f"QTableWidget::item:selected {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}"
+    + ESTILO_REALCE_VISTAS_DADOS
 )
 
 
 # Estilo comum de tabelas de configuracao com cabecalho castanho.
-ESTILO_TABELA_CONFIG_CABECALHO = ESTILO_TABELA_CONFIG + (
-    f"\nQHeaderView::section {{ background-color: {CASTANHO_ESCURO}; color: #FFFFFF;"
-    " padding: 6px 8px; border: none; font-weight: bold; }"
+ESTILO_TABELA_CONFIG_CABECALHO = (
+    ESTILO_TABELA_CONFIG + "\n" + ESTILO_CABECALHO_VISTAS_DADOS
 )
 
 
@@ -267,4 +299,4 @@ ESTILO_CONTROLOS = (
     "QGroupBox::title { subcontrol-origin: margin; left: 9px; padding: 0 4px; }"
 )
 
-ESTILO_GLOBAL = ESTILO_ABAS + "\n" + ESTILO_CONTROLOS
+ESTILO_GLOBAL = ESTILO_ABAS + "\n" + ESTILO_CONTROLOS + "\n" + ESTILO_VISTAS_DADOS

@@ -622,10 +622,7 @@ class OrcamentoRelatoriosPage(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
         # Discreet Lança Encanto header style.
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         if tooltips:
             for indice, nome in enumerate(headers):
                 item = tabela.horizontalHeaderItem(indice)

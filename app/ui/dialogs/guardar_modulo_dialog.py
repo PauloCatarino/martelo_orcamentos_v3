@@ -89,10 +89,7 @@ class GuardarModuloDialog(QDialog):
     _COLUNAS = ("Imagem",) + _COLUNAS
     _TAMANHO_MINIATURA = 54
     _LARGURAS_COLUNAS = (72, 150, 230, 135, 100, 75)
-    _ESTILO_SELECAO_TABELA = """
-        QTableWidget::item:selected { background-color: #5A3B27; color: white; }
-        QTableWidget::item:selected:!active { background-color: #76523A; color: white; }
-    """
+    _ESTILO_SELECAO_TABELA = tema.ESTILO_REALCE_VISTAS_DADOS
 
     def __init__(
         self,

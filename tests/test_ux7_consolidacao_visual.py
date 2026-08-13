@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import re
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidget
 
@@ -43,3 +45,43 @@ def test_tema_global_inclui_controlos_e_abas() -> None:
     assert "QLineEdit" in tema.ESTILO_GLOBAL
     assert "QGroupBox" in tema.ESTILO_GLOBAL
     assert "QTabBar" in tema.ESTILO_GLOBAL
+
+
+def test_tema_global_uniformiza_hover_e_selecao_das_vistas_de_dados() -> None:
+    from app.ui import tema
+
+    estilo = tema.ESTILO_REALCE_VISTAS_DADOS
+    for vista in ("QTableView", "QTableWidget", "QTreeView", "QTreeWidget"):
+        assert f"{vista}::item:hover" in estilo
+        assert f"{vista}::item:selected" in estilo
+
+    assert f"background-color: {tema.CASTANHO_ESCURO}" in estilo
+    assert "color: #FFFFFF" in estilo
+    assert estilo in tema.ESTILO_GLOBAL
+
+
+def test_cabecalho_comum_fica_castanho_com_texto_branco() -> None:
+    from app.ui import tema
+
+    estilo = tema.ESTILO_CABECALHO_VISTAS_DADOS
+    assert f"background-color: {tema.CASTANHO_MEDIO}" in estilo
+    assert "color: #FFFFFF" in estilo
+    assert estilo in tema.ESTILO_GLOBAL
+
+
+def test_paginas_nao_reintroduzem_estilos_locais_conflitantes() -> None:
+    raiz_ui = Path(__file__).parents[1] / "app" / "ui"
+    padrao_realce = re.compile(
+        r"Q(?:Table|Tree)(?:View|Widget)::item:(?:hover|selected)"
+    )
+    padrao_cabecalho = re.compile(r"QHeaderView::section(?!:)\s*\{")
+    conflitos: list[str] = []
+
+    for caminho in raiz_ui.rglob("*.py"):
+        if caminho.name == "tema.py":
+            continue
+        fonte = caminho.read_text(encoding="utf-8")
+        if padrao_realce.search(fonte) or padrao_cabecalho.search(fonte):
+            conflitos.append(str(caminho.relative_to(raiz_ui)))
+
+    assert conflitos == []

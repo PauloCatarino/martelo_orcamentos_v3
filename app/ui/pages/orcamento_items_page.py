@@ -263,8 +263,7 @@ class OrcamentoItemsPage(QWidget):
         )
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
+            tema.ESTILO_CABECALHO_VISTAS_DADOS
         )
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         self.table.cellChanged.connect(self._on_cell_changed)

@@ -87,10 +87,7 @@ class RefClienteDuplicadaDialog(QDialog):
         self._larguras_restauradas = ligar_persistencia_larguras(
             self.table, "dialog_ref_cliente_duplicada_v2"
         )
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         self.table.itemSelectionChanged.connect(self._atualizar_reabrir)
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 

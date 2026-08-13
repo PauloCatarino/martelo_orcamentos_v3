@@ -144,10 +144,7 @@ class IaPerfilPage(QWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         cabecalho_tabela = self.table.horizontalHeader()
-        cabecalho_tabela.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        cabecalho_tabela.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         cabecalho_tabela.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         cabecalho_tabela.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         cabecalho_tabela.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)

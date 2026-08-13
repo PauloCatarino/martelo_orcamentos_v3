@@ -73,10 +73,7 @@ class ProducaoV2SyncDialog(QDialog):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         header = self.table.horizontalHeader()
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.table.setColumnWidth(_COL_APLICAR, 70)
         self.table.setColumnWidth(_COL_PROCESSO, 230)

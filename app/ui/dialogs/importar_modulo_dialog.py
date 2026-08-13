@@ -38,6 +38,7 @@ from app.domain.modulo_categorias import (
     normalize_modulo_categoria,
 )
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
+from app.ui import tema
 from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_arvore_categorias,
     carregar_labels_categorias,
@@ -179,10 +180,7 @@ class ImportarModuloDialog(QDialog):
         tabela.cellClicked.connect(self._on_tabela_clicada)
         tabela.cellDoubleClicked.connect(self._on_tabela_duplo_clique)
         ligar_persistencia_larguras(tabela, "dialog_importar_modulo_lista")
-        tabela.setStyleSheet(
-            "QTableWidget::item:selected { background-color: #5A3B27; color: white; }"
-            "QTableWidget::item:selected:!active { background-color: #76523A; color: white; }"
-        )
+        tabela.setStyleSheet(tema.ESTILO_REALCE_VISTAS_DADOS)
         return tabela
 
     @staticmethod

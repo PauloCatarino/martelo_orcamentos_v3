@@ -127,10 +127,7 @@ class EncomendasPHCTab(QWidget):
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         ligar_persistencia_larguras(table, "encomendas_phc")
         return table
 
@@ -333,10 +330,7 @@ class DiagnosticoPHCTab(QWidget):
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         ligar_persistencia_larguras(table, "diagnostico_phc")
         return table
 
@@ -576,10 +570,7 @@ class EncomendasClienteFinalTab(QWidget):
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         ligar_persistencia_larguras(table, chave_larguras)
         return table
 

@@ -219,10 +219,7 @@ class OrcamentoDetailPage(QWidget):
         header = self.historico_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         ligar_persistencia_larguras(self.historico_table, "orcamento_historico")
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)

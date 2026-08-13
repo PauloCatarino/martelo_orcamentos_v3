@@ -63,6 +63,10 @@ def _criar_nav_tree() -> QTreeWidget:
     [
         ("ESTILO_TABELA_CONFIG", lambda: QTableWidget(1, 1)),
         ("ESTILO_TABELA_CONFIG_CABECALHO", lambda: QTableWidget(1, 1)),
+        ("ESTILO_CABECALHO_VISTAS_DADOS", lambda: QTableWidget(1, 1)),
+        ("ESTILO_REALCE_VISTAS_DADOS", lambda: QTableWidget(1, 1)),
+        ("ESTILO_VISTAS_DADOS", lambda: QTableWidget(1, 1)),
+        ("ESTILO_GLOBAL", lambda: QTableWidget(1, 1)),
         ("ESTILO_ABAS", QTabWidget),
         ("ESTILO_SIDEBAR", QPushButton),
         ("ESTILO_ARVORE_NAV", _criar_nav_tree),

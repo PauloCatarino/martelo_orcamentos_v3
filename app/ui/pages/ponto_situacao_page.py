@@ -334,10 +334,7 @@ class PontoSituacaoPage(QWidget):
         for col in range(table.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         for indice, largura in enumerate((180, 420, 110, 110, 90)):
             table.setColumnWidth(indice, largura)
         ligar_persistencia_larguras(table, "ponto_situacao_atrasadas")
@@ -402,10 +399,7 @@ class PontoSituacaoPage(QWidget):
         for col in range(table.columnCount()):
             header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
 
         # Larguras-base sensatas (os setores ficam todos com o mesmo default).
         larguras_base = {

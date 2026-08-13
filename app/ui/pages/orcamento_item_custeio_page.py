@@ -725,14 +725,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setMouseTracking(True)
-        self.table.setStyleSheet(
-            f"QTableWidget {{ selection-background-color: {tema.CASTANHO_ESCURO};"
-            " selection-color: #FFFFFF; outline: 0; }\n"
-            f"QTableWidget::item:hover {{ background-color: {BEGE_AREIA};"
-            f" color: {tema.TEXTO_NORMAL}; }}\n"
-            f"QTableWidget::item:selected {{ background-color: {tema.CASTANHO_ESCURO};"
-            " color: #FFFFFF; }}"
-        )
+        self.table.setStyleSheet(tema.ESTILO_REALCE_VISTAS_DADOS)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         # Fast (Excel-like) editing: one click / typing enters edit; read-only

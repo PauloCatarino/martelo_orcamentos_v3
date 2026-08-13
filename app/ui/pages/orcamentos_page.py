@@ -235,10 +235,7 @@ class OrcamentosPage(QWidget):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         # Ordenação feita à mão (a tabela é preenchida linha a linha com cores
         # de grupo): o clique no cabeçalho reordena a lista e volta a preencher.
         header.setSectionsClickable(True)

@@ -536,10 +536,7 @@ class ProducaoPage(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setSectionsMovable(False)
         header.setStretchLastSection(False)
-        header.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         header.customContextMenuRequested.connect(self._abrir_menu_colunas)
         header.setToolTip(
@@ -930,10 +927,7 @@ class ProducaoPage(QWidget):
             f"QTreeView {{ background-color: {tema.BEGE_CLARO};"
             f" color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CINZA_CASTANHO}; }}"
             f"QTreeView::item {{ color: {tema.CASTANHO_ESCURO}; padding: 2px; }}"
-            f"QTreeView::item:hover {{ background: {tema.BEGE_AREIA};"
-            f" color: {tema.CASTANHO_ESCURO}; }}"
-            f"QTreeView::item:selected {{ background: {tema.CASTANHO_ESCURO};"
-            f" color: #FFFFFF; }}"
+            + tema.ESTILO_REALCE_VISTAS_DADOS
         )
         self.arvore_pasta.setToolTip(
             "Conteudo da pasta da obra - duplo-clique abre o ficheiro/pasta"

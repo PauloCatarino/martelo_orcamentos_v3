@@ -59,6 +59,19 @@ def test_configurar_instala_delegate_de_fundo() -> None:
     app.processEvents()
 
 
+def test_estilo_orcamentos_usa_realce_castanho_com_texto_branco() -> None:
+    app = QApplication.instance() or QApplication([])
+    tabela = QTableWidget(1, 1)
+
+    configurar_tabela_orcamentos(tabela)
+
+    estilo = tabela.styleSheet()
+    assert tema.ESTILO_REALCE_VISTAS_DADOS in estilo
+    assert "#D6C2A5" not in estilo
+    tabela.deleteLater()
+    app.processEvents()
+
+
 def test_delegate_pinta_fundo_da_linha_apesar_do_stylesheet() -> None:
     # Guards the regression: the ``::item`` stylesheet rule makes Qt ignore
     # setBackground, so the highlight must come from the delegate + role.

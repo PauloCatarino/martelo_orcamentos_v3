@@ -45,7 +45,7 @@ def test_importar_modulo_dialog_imports() -> None:
 
     tabela = inspect.getsource(ImportarModuloDialog._criar_tabela_lista)
     assert "setDefaultSectionSize" in tabela
-    assert "item:selected" in tabela
+    assert "ESTILO_REALCE_VISTAS_DADOS" in tabela
 
 
 def test_custeio_page_importar_modulo_wiring() -> None:

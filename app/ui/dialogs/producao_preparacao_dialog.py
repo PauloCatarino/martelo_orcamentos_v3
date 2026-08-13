@@ -228,10 +228,7 @@ class ProducaoPreparacaoDialog(QDialog):
         self.tabela.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tabela.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         cabecalho = self.tabela.horizontalHeader()
-        cabecalho.setStyleSheet(
-            f"QHeaderView::section {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 3px; }}"
-        )
+        cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         for coluna in (_COL_ACAO, _COL_VALIDACAO, _COL_ESTADO):
             cabecalho.setSectionResizeMode(
                 coluna, QHeaderView.ResizeMode.ResizeToContents
