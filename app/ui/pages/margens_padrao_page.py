@@ -475,11 +475,15 @@ class MargensPadraoPage(QWidget):
 
     @staticmethod
     def _criar_spin() -> QDoubleSpinBox:
-        """Build one percent field of the Standard form."""
+        """Build one compact percent field for Standard and Cliente Final."""
         spin = QDoubleSpinBox()
         spin.setDecimals(2)
         spin.setRange(-100.0, 999.99)
         spin.setSuffix(" %")
+        # Estes formulários ocupam apenas uma pequena coluna à esquerda. O
+        # limite conserva espaço para "-100,00 %" e para os botões do spin,
+        # sem esticar o campo até à largura total do ecrã.
+        spin.setMaximumWidth(110)
         spin.setToolTip(TOOLTIP_VALOR_INICIAL)
         return spin
 

@@ -66,6 +66,9 @@ from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 class BibliotecaModulosPage(QWidget):
     """Settings page to manage the reusable module library."""
 
+    _TEXTO_EXPANDIR_TUDO = "▼ Expandir tudo"
+    _TEXTO_COLAPSAR_TUDO = "▶ Colapsar tudo"
+
     # Kept for reference / backwards compatibility; the page now renders a tree.
     TABLE_HEADERS = [
         "Imagem",
@@ -125,15 +128,15 @@ class BibliotecaModulosPage(QWidget):
 
         filtro_row = QHBoxLayout()
         filtro_row.addWidget(self.pesquisa_input, stretch=1)
-        filtro_row.addWidget(QLabel("Categoria"))
-        filtro_row.addWidget(self.categoria_filtro)
-        filtro_row.addWidget(self.gerir_categorias_button)
 
         self.arvore_utilizador = self._criar_arvore("biblioteca_modulos_utilizador")
         self.arvore_globais = self._criar_arvore("biblioteca_modulos_globais")
         self.tabs = QTabWidget()
         self.tabs.addTab(self.arvore_utilizador, "Utilizador")
         self.tabs.addTab(self.arvore_globais, "Global")
+        self.tabs.currentChanged.connect(
+            lambda _indice=0: self._atualizar_botao_expansao()
+        )
 
         self.editar_button = QPushButton("Editar")
         self.editar_button.setToolTip("Editar o cabeçalho do módulo selecionado")
@@ -150,12 +153,8 @@ class BibliotecaModulosPage(QWidget):
         self.ver_linhas_button = QPushButton("Ver linhas")
         self.ver_linhas_button.setToolTip("Ver as linhas do módulo (só leitura)")
         self.ver_linhas_button.clicked.connect(self.ver_linhas)
-        self.expandir_button = QPushButton("Expandir tudo")
-        self.expandir_button.setToolTip("Expandir todas as categorias")
-        self.expandir_button.clicked.connect(lambda: self._expandir(True))
-        self.colapsar_button = QPushButton("Colapsar tudo")
-        self.colapsar_button.setToolTip("Colapsar todas as categorias")
-        self.colapsar_button.clicked.connect(lambda: self._expandir(False))
+        self.expandir_button = QPushButton(self._TEXTO_EXPANDIR_TUDO)
+        self.expandir_button.clicked.connect(self.alternar_expansao)
         self.atualizar_button = QPushButton("Atualizar")
         self.atualizar_button.setToolTip("Recarregar a biblioteca")
         self.atualizar_button.clicked.connect(self.carregar)
@@ -171,10 +170,16 @@ class BibliotecaModulosPage(QWidget):
         buttons_layout.addWidget(self.converter_button)
         buttons_layout.addWidget(self.ver_linhas_button)
         buttons_layout.addWidget(self.expandir_button)
-        buttons_layout.addWidget(self.colapsar_button)
         buttons_layout.addWidget(self.atualizar_button)
+        buttons_layout.addWidget(QLabel("Categoria"))
+        buttons_layout.addWidget(self.categoria_filtro)
+        buttons_layout.addWidget(self.gerir_categorias_button)
         buttons_layout.addStretch()
-        buttons_layout.addWidget(self.voltar_button)
+
+        status_layout = QHBoxLayout()
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        status_layout.addWidget(self.voltar_button)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -182,7 +187,7 @@ class BibliotecaModulosPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(filtro_row)
         layout.addLayout(buttons_layout)
-        layout.addWidget(self.status_label)
+        layout.addLayout(status_layout)
         layout.addWidget(self.tabs, stretch=1)
         self.setLayout(layout)
 
@@ -249,6 +254,7 @@ class BibliotecaModulosPage(QWidget):
     def _refill(self) -> None:
         self._preencher_arvore(self.arvore_utilizador, self._modulos_utilizador)
         self._preencher_arvore(self.arvore_globais, self._modulos_globais)
+        self._atualizar_botao_expansao()
 
         total = len(self._modulos_utilizador) + len(self._modulos_globais)
         if total == 0:
@@ -288,6 +294,8 @@ class BibliotecaModulosPage(QWidget):
             arvore.setColumnWidth(indice, largura)
         ligar_persistencia_larguras(arvore, chave_larguras)
         arvore.itemDoubleClicked.connect(self._on_duplo_clique)
+        arvore.itemExpanded.connect(lambda _item: self._atualizar_botao_expansao())
+        arvore.itemCollapsed.connect(lambda _item: self._atualizar_botao_expansao())
         return arvore
 
     def _label(self, codigo: str | None) -> str:
@@ -356,13 +364,59 @@ class BibliotecaModulosPage(QWidget):
         no.setData(0, Qt.ItemDataRole.UserRole, item)
         return no
 
-    def _expandir(self, expandir: bool) -> None:
+    def _nos_expansiveis(self) -> list[QTreeWidgetItem]:
+        """Return group nodes with children from the active tree."""
         arvore = self.tabs.currentWidget()
-        if isinstance(arvore, QTreeWidget):
-            if expandir:
-                arvore.expandAll()
-            else:
-                arvore.collapseAll()
+        if not isinstance(arvore, QTreeWidget):
+            return []
+
+        nos: list[QTreeWidgetItem] = []
+        iterador = QTreeWidgetItemIterator(arvore)
+        while iterador.value():
+            no = iterador.value()
+            if no.childCount() > 0:
+                nos.append(no)
+            iterador += 1
+        return nos
+
+    def _tudo_expandido(self) -> bool:
+        """Whether every expandable group in the active tree is open."""
+        nos = self._nos_expansiveis()
+        return bool(nos) and all(no.isExpanded() for no in nos)
+
+    def alternar_expansao(self) -> None:
+        """Expand all groups, or collapse all when they are already open."""
+        arvore = self.tabs.currentWidget()
+        nos = self._nos_expansiveis()
+        if not isinstance(arvore, QTreeWidget) or not nos:
+            self.status_label.setText("Não há categorias para expandir.")
+            self._atualizar_botao_expansao()
+            return
+
+        if self._tudo_expandido():
+            arvore.collapseAll()
+            self.status_label.setText("Categorias colapsadas.")
+        else:
+            arvore.expandAll()
+            self.status_label.setText("Categorias expandidas.")
+        self._atualizar_botao_expansao()
+
+    def _atualizar_botao_expansao(self) -> None:
+        """Make the button describe the action performed by the next click."""
+        botao = getattr(self, "expandir_button", None)
+        if botao is None:
+            return
+
+        colapsar = self._tudo_expandido()
+        botao.setText(
+            self._TEXTO_COLAPSAR_TUDO if colapsar else self._TEXTO_EXPANDIR_TUDO
+        )
+        botao.setToolTip(
+            "Colapsar todas as categorias e subcategorias."
+            if colapsar
+            else "Expandir todas as categorias e subcategorias."
+        )
+        botao.setEnabled(bool(self._nos_expansiveis()))
 
     def _on_duplo_clique(self, item, _column) -> None:
         if item is not None and item.data(0, Qt.ItemDataRole.UserRole) is not None:

@@ -47,7 +47,9 @@ class ModuloLinhasDialog(QDialog):
 
         self.setWindowTitle("Linhas do Módulo")
         self.setModal(True)
-        self.setMinimumSize(680, 460)
+        self.setMinimumSize(820, 650)
+        self.resize(950, 840)
+        self.setSizeGripEnabled(True)
 
         self.imagem_label = QLabel("Sem imagem")
         self.imagem_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

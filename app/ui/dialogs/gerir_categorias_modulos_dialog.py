@@ -48,7 +48,9 @@ class GerirCategoriasModulosDialog(QDialog):
 
         self.setWindowTitle("Gerir Categorias de Módulos")
         self.setModal(True)
-        self.setMinimumSize(560, 460)
+        self.setMinimumSize(760, 560)
+        self.resize(900, 700)
+        self.setSizeGripEnabled(True)
 
         self.nova_input = QLineEdit()
         self.nova_input.setPlaceholderText(

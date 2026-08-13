@@ -33,6 +33,23 @@ def test_margens_padrao_page_explica_valor_inicial() -> None:
 
     assert "VALOR INICIAL" in TOOLTIP_VALOR_INICIAL
     assert "altera livremente" in TOOLTIP_VALOR_INICIAL
+
+
+def test_campos_standard_e_cliente_final_sao_compactos() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from app.ui.pages.margens_padrao_page import MargensPadraoPage
+
+    app = QApplication.instance() or QApplication([])
+    spin = MargensPadraoPage._criar_spin()
+
+    assert spin.maximumWidth() == 110
+    assert spin.minimum() == -100.0
+    assert spin.maximum() == 999.99
+    spin.deleteLater()
+    app.processEvents()
+
+
 def test_margens_ocultam_inativas_e_tem_larguras_interativas() -> None:
     import inspect
     from app.ui.pages.margens_padrao_page import MargensPadraoPage

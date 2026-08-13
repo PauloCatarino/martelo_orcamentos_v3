@@ -67,6 +67,27 @@ Antes de instalar a versão candidata:
 3. As integrações de produção dependem de fontes externas; deve ser validado o comportamento online e indisponível no ambiente real.
 4. A cópia de segurança da base V3 deve ser confirmada pelo responsável antes da instalação.
 
+## Campanha de robustez com utilizador inexperiente — planeada
+
+Executar brevemente, antes da distribuição alargada a todos os utilizadores da
+empresa, uma campanha orientada a utilização inesperada e dados mal inseridos.
+O objetivo é confirmar que a aplicação recusa ou normaliza a entrada e nunca
+encerra inesperadamente nem grava cálculos incoerentes.
+
+- [ ] Introduzir letras, texto misto e espaços em campos numéricos e percentuais.
+- [ ] Testar acentos, símbolos, aspas, barras, emojis e outros caracteres especiais.
+- [ ] Testar campos obrigatórios vazios, apenas com espaços e textos muito extensos.
+- [ ] Testar números negativos, zero, valores enormes e excesso de casas decimais.
+- [ ] Colar blocos válidos e inválidos vindos do Excel, incluindo células vazias.
+- [ ] Repetir rapidamente cliques em Guardar, Recalcular, Abrir e Atualizar.
+- [ ] Mudar de menu, fechar diálogos e terminar sessão durante operações demoradas.
+- [ ] Simular perda temporária da base de dados, PHC, V2 e outras fontes externas.
+- [ ] Testar dois ou mais utilizadores a editar os mesmos dados em simultâneo.
+- [ ] Confirmar mensagens claras, ausência de crash e integridade dos cálculos e dados.
+
+Registado a pedido do utilizador em 13 de agosto de 2026, durante os refinamentos
+finais dos vários menus.
+
 ## Critério de aprovação
 
 A versão candidata fica pronta quando:
