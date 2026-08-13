@@ -46,9 +46,10 @@ def _criar_linha(session, item_id, **fields):
     return linha
 
 
-def _valueset(session, item_id, chave):
+def _valueset(session, item_id, chave, prioridade=1):
     session.add(OrcamentoItemValuesetLinha(
         orcamento_item_id=item_id, chave=chave, padrao=True, ordem=1,
+        prioridade=prioridade,
         preco_liquido=Decimal("5.79"), unidade="m2",
         desperdicio_percentagem=Decimal("5"),
     ))
@@ -63,9 +64,10 @@ def _linhas(session, item_id):
 
 def test_copiar_peca_simples_e_colar_abaixo_duplica(session) -> None:
     item_id = _criar_item(session)
-    _valueset(session, item_id, "MATERIAL_LATERAIS")
+    _valueset(session, item_id, "MATERIAL_LATERAIS", prioridade=2)
     a = _criar_linha(session, item_id, descricao="A", comp="H", larg="P",
-                     chave_valueset="MATERIAL_LATERAIS", qt_und=Decimal("2"))
+                     chave_valueset="MATERIAL_LATERAIS", qt_und=Decimal("2"),
+                     valueset_prioridade=2)
     b = _criar_linha(session, item_id, descricao="B")
     service = OrcamentoItemCusteioLinhaService(session)
 
@@ -82,6 +84,7 @@ def test_copiar_peca_simples_e_colar_abaixo_duplica(session) -> None:
     service.recalcular_medidas_do_item(item_id)
     service.recalcular_custo_materia_prima_do_item(item_id)
     copia = _linhas(session, item_id)[1]
+    assert copia.valueset_prioridade == 2
     assert copia.comp_real == Decimal("2000.000")  # H
     assert copia.larg_real == Decimal("500.000")   # P
     assert copia.custo_mp is not None and copia.custo_mp > 0
@@ -195,7 +198,9 @@ def test_colar_nao_parte_composta_de_destino(session) -> None:
 
 def test_cortar_move_linha_origem_eliminada_apos_colar(session) -> None:
     item_id = _criar_item(session)
-    a = _criar_linha(session, item_id, descricao="A")
+    a = _criar_linha(
+        session, item_id, descricao="A", valueset_prioridade=3
+    )
     b = _criar_linha(session, item_id, descricao="B")
     service = OrcamentoItemCusteioLinhaService(session)
 
@@ -206,6 +211,7 @@ def test_cortar_move_linha_origem_eliminada_apos_colar(session) -> None:
     descricoes = [l.descricao for l in _linhas(session, item_id)]
     # A moved to below B (original A removed): B, A.
     assert descricoes == ["B", "A"]
+    assert _linhas(session, item_id)[1].valueset_prioridade == 3
 
 
 def test_colar_entre_items_recalcula_no_destino(session) -> None:

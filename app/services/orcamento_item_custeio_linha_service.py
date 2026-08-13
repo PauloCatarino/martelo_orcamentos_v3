@@ -4357,6 +4357,7 @@ class OrcamentoItemCusteioLinhaService:
         "def_peca_id", "def_peca_codigo", "chave_valueset", "codigo_orlas",
         "qt_mod", "qt_und", "quantidade", "comp", "larg", "esp",
         "nivel", "origem_tipo", "origem_id", "mat_default",
+        "valueset_prioridade",
         "associado_regra_codigo", "associado_regra_expressao",
         "associado_modo_quantidade", "associado_zona_aplicacao",
         "associado_dimensao_referencia", "associado_numero_topos",
@@ -4498,7 +4499,11 @@ class OrcamentoItemCusteioLinhaService:
         chave = fields.get("chave_valueset")
         if not chave:
             return
-        prioridade = fields.get("associado_valueset_prioridade")
+        # Preserve the exact option carried by the copied line. Associated-piece
+        # priority is only a fallback for legacy lines without that snapshot.
+        prioridade = fields.get("valueset_prioridade")
+        if prioridade is None:
+            prioridade = fields.get("associado_valueset_prioridade")
         vs_linha = self._resolver_valueset_por_chave(
             item_id, chave, prioridade
         )

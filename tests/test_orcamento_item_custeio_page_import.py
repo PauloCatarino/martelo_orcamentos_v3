@@ -632,6 +632,9 @@ def test_colagem_excel_executa_duas_colunas_sem_chamar_metodo_antigo(
     import app.ui.pages.orcamento_item_custeio_page as page_module
     from app.domain.custeio_linha_types import PECA
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
 
     class TabelaFake:
         def currentRow(self):
@@ -696,6 +699,7 @@ def test_colagem_excel_executa_duas_colunas_sem_chamar_metodo_antigo(
         page_module, "OrcamentoItemCusteioLinhaService", ServiceFake
     )
     clipboard = page_module.QGuiApplication.clipboard()
+    assert app is not None
     anterior = clipboard.text()
     try:
         clipboard.setText("590\t1280\r\n65\t670\r\n")
