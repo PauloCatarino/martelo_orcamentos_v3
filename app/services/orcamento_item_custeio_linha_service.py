@@ -1186,13 +1186,16 @@ class OrcamentoItemCusteioLinhaService:
 
         return atualizadas
 
-    def recalcular_quantidades_do_item(self, orcamento_item_id: int) -> int:
+    def recalcular_quantidades_do_item(
+        self, orcamento_item_id: int, *, commit: bool = True
+    ) -> int:
         """Recompute qt_total of every active line, honouring divisions/composites.
 
         A DIVISAO_INDEPENDENTE qt_mod governs the block below it (until the next
         division) and a composite component multiplies by its main piece's
         qt_und (phase 8T.4). Pure quantity recompute (measures/costs untouched);
-        commits. Returns how many lines had their qt_total changed.
+        Commits by default; a larger atomic batch may defer that commit.
+        Returns how many lines had their qt_total changed.
         """
         linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
         quantidades = calcular_quantidades(
@@ -1206,7 +1209,10 @@ class OrcamentoItemCusteioLinhaService:
                 self.repository.update_linha(id=linha.id, quantidade=novo)
                 atualizadas += 1
 
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
 
         return atualizadas
 
@@ -4036,6 +4042,7 @@ class OrcamentoItemCusteioLinhaService:
         descricao=None,
         descricao_livre=None,
         propagar_item: bool = True,
+        commit: bool = True,
     ) -> OrcamentoItemCusteioLinhaResumo | None:
         """Save edited quantities/measures of one cost line, then recompute.
 
@@ -4046,6 +4053,8 @@ class OrcamentoItemCusteioLinhaService:
         fast inline edit passes ``propagar_item=False`` to save only this line
         (the general recompute is then deferred to the Atualizar button). ValueSet
         data is not touched and ``editado_localmente`` is NOT changed here.
+        ``commit=False`` lets bulk-entry callers keep all edits in one
+        transaction (used by Excel measure paste).
         """
         linha = self.repository.get_by_id(linha_id)
         if linha is None:
@@ -4150,7 +4159,9 @@ class OrcamentoItemCusteioLinhaService:
             # Fast inline edit: propagate only the quantities (division block /
             # composite components); costs stay on the Atualizar button (the cost
             # pipeline already uses qt_total).
-            self.recalcular_quantidades_do_item(linha.orcamento_item_id)
+            self.recalcular_quantidades_do_item(
+                linha.orcamento_item_id, commit=commit
+            )
 
         return self.repository.get_by_id(linha_id)
 

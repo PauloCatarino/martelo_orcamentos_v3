@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import sys
 
 
 def test_dialog_imports() -> None:
@@ -72,14 +73,68 @@ def test_dialog_has_actions() -> None:
     assert "calcular_preco_liquido" in calcular
 
 
-def test_dialog_locks_chave() -> None:
+def test_dialog_so_bloqueia_chave_em_edicao() -> None:
     from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
         OrcamentoItemValuesetLinhaDialog,
     )
 
     source = inspect.getsource(OrcamentoItemValuesetLinhaDialog.__init__)
 
-    assert "self.chave_input.setEnabled(False)" in source
+    assert "self.chave_input.setEnabled(not self._is_edit)" in source
+
+
+def test_dialog_permite_nova_linha_e_gravar_como() -> None:
+    from app.ui.dialogs.orcamento_item_valueset_linha_dialog import (
+        OrcamentoItemValuesetLinhaDialog,
+    )
+
+    init_source = inspect.getsource(OrcamentoItemValuesetLinhaDialog.__init__)
+    gravar_como = inspect.getsource(OrcamentoItemValuesetLinhaDialog._validate_and_save_as)
+    validar = inspect.getsource(OrcamentoItemValuesetLinhaDialog._validate_and_run)
+
+    assert "Nova Linha ValueSet do Item" in init_source
+    assert "Gravar como…" in init_source
+    assert "self.save_as_button.setVisible(self._is_edit)" in init_source
+    assert "codigo_opcao_novo=True" in gravar_como
+    assert 'codigo_opcao=""' in validar
+    assert 'origem_dados="EDITADO_LOCALMENTE"' in validar
+    assert "editado_localmente=True" in validar
+
+
+def test_nova_linha_item_tem_chave_editavel_e_origem_local(monkeypatch) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from app.ui.dialogs import orcamento_item_valueset_linha_dialog as modulo
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    monkeypatch.setattr(
+        modulo,
+        "carregar_chaves_valueset_combo",
+        lambda combo, valor_atual=None: combo.addItem(
+            "Material peças simplificadas", "MATERIAL_PECAS_SIMPLES"
+        ),
+    )
+    monkeypatch.setattr(
+        modulo,
+        "obter_valor_chave_combo",
+        lambda _combo: "MATERIAL_PECAS_SIMPLES",
+    )
+    guardado = []
+    dialog = modulo.OrcamentoItemValuesetLinhaDialog(
+        on_save=lambda dados: guardado.append(dados) or True
+    )
+    dialog.nome_opcao_input.setText("MDF local do item")
+
+    assert dialog.chave_input.isEnabled()
+    assert not dialog.operacoes_button.isEnabled()
+    assert dialog.save_as_button.isHidden()
+    dialog._validate_and_accept()
+
+    assert guardado[-1].codigo_opcao == ""
+    assert guardado[-1].origem_dados == "EDITADO_LOCALMENTE"
+    assert guardado[-1].editado_localmente is True
+    dialog.deleteLater()
+    app.processEvents()
 
 
 def test_dialog_picker_marks_materia_prima_local() -> None:

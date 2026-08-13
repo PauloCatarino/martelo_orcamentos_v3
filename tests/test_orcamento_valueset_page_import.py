@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 
 def test_page_imports() -> None:
@@ -54,6 +55,7 @@ def test_page_has_actions() -> None:
 
     for method in (
         "importar_modelo",
+        "abrir_nova_linha",
         "abrir_editar_linha",
         "alternar_linha_ativa",
         "carregar",
@@ -72,6 +74,120 @@ def test_page_edit_uses_dialog_and_service() -> None:
     assert "OrcamentoValuesetLinhaDialog" in source
     assert "editar_linha" in source
     assert "Linha ValueSet atualizada." in source
+
+
+def test_page_cria_e_grava_como_opcao_local_transacional() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    init_source = inspect.getsource(OrcamentoValuesetPage.__init__)
+    criar = inspect.getsource(OrcamentoValuesetPage._criar_linha_local)
+    nova = inspect.getsource(OrcamentoValuesetPage.abrir_nova_linha)
+    editar = inspect.getsource(OrcamentoValuesetPage.abrir_editar_linha)
+
+    assert 'QPushButton("Nova Linha")' in init_source
+    assert "CriarOrcamentoValuesetLinhaData" in criar
+    assert "commit=False" in criar
+    assert "copiar_operacoes_de" in criar
+    assert "session.commit()" in criar
+    assert 'origem_dados="EDITADO_LOCALMENTE"' in criar
+    assert "editado_localmente=True" in criar
+    assert "OrcamentoValuesetLinhaDialog" in nova
+    assert "on_save_as=handle_save_as" in editar
+    assert "prioridades_usadas" in criar
+
+
+def test_criar_linha_local_orcamento_escolhe_prioridade_livre_e_copia_operacoes(
+    monkeypatch,
+) -> None:
+    from app.ui.pages import orcamento_valueset_page as modulo
+
+    registo = SimpleNamespace(criada=None, operacoes=None, commit=False)
+
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def commit(self):
+            registo.commit = True
+
+    class FakeService:
+        def __init__(self, _session):
+            pass
+
+        def listar_por_chave(self, _versao_id, _chave):
+            return [
+                SimpleNamespace(ativo=True, prioridade=1, ordem=68),
+                SimpleNamespace(ativo=True, prioridade=2, ordem=69),
+            ]
+
+        def criar_linha(self, data, *, commit=True):
+            registo.criada = (data, commit)
+            return SimpleNamespace(id=99, prioridade=data.prioridade)
+
+    class FakeOperacoesService:
+        def __init__(self, _session):
+            pass
+
+        def listar_operacoes_da_linha(self, linha_id):
+            assert linha_id == 7
+            return [SimpleNamespace(id=1)]
+
+        def copiar_operacoes_de(self, operacoes, destino_id):
+            registo.operacoes = (operacoes, destino_id)
+
+    monkeypatch.setattr(modulo, "SessionLocal", FakeSession)
+    monkeypatch.setattr(modulo, "OrcamentoValuesetLinhaService", FakeService)
+    monkeypatch.setattr(
+        modulo, "OrcamentoValuesetLinhaOperacaoService", FakeOperacoesService
+    )
+    form = SimpleNamespace(
+        chave="MATERIAL_PECAS_SIMPLES",
+        codigo_opcao="",
+        nome_opcao="MDF local",
+        prioridade=1,
+        ref_materia_prima="PLC001",
+        descricao_materia_prima="MDF local",
+        valor_texto="MDF local",
+        ref_le="PLC001",
+        descricao_no_orcamento="MDF local",
+        preco_tabela=None,
+        margem_percentagem=None,
+        desconto_percentagem=None,
+        preco_liquido=None,
+        unidade="M2",
+        desperdicio_percentagem=None,
+        tipo_materia_prima="MDF",
+        familia_materia_prima="PLACAS",
+        coresp_orla_0_4=None,
+        coresp_orla_1_0=None,
+        preco_orla_0_4_m2=None,
+        preco_orla_1_0_m2=None,
+        comp_mp=None,
+        larg_mp=None,
+        esp_mp=None,
+        observacoes=None,
+        ativo=True,
+    )
+    origem = SimpleNamespace(id=7, descricao=None, origem="MODELO")
+    page = SimpleNamespace(orcamento_versao_id=20)
+
+    result = modulo.OrcamentoValuesetPage._criar_linha_local(
+        page, form, linha_origem=origem
+    )
+
+    data, commit_criar = registo.criada
+    assert result.id == 99
+    assert data.prioridade == 3
+    assert data.ordem == 70
+    assert data.origem_dados == "EDITADO_LOCALMENTE"
+    assert data.origem_modelo_id is None
+    assert data.editado_localmente is True
+    assert commit_criar is False
+    assert registo.operacoes[1] == 99
+    assert registo.commit is True
 
 
 def test_page_uses_service_and_dialog() -> None:

@@ -288,6 +288,21 @@ def test_criar_linha_normaliza_chave_e_opcao_defaults(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_criar_linha_pode_adiar_commit_para_copiar_operacoes(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarOrcamentoValuesetLinhaData(
+            orcamento_versao_id=20,
+            chave="MATERIAL_PECAS_SIMPLES",
+            nome_opcao="Opção local",
+        ),
+        commit=False,
+    )
+
+    assert session.committed is False
+
+
 def test_criar_linha_valida_versao_obrigatoria(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 

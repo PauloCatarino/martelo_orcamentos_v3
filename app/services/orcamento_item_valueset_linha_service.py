@@ -293,7 +293,10 @@ class OrcamentoItemValuesetLinhaService:
         return result
 
     def criar_linha(
-        self, data: CriarOrcamentoItemValuesetLinhaData
+        self,
+        data: CriarOrcamentoItemValuesetLinhaData,
+        *,
+        commit: bool = True,
     ) -> OrcamentoItemValuesetLinhaResumo:
         """Create one budget item ValueSet line."""
         fields = self._build_fields(data)
@@ -305,7 +308,8 @@ class OrcamentoItemValuesetLinhaService:
         )
 
         result = self.repository.create(**fields)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return result
 

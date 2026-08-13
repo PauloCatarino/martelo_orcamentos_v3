@@ -4,7 +4,7 @@ from __future__ import annotations
 from app.ui import tema
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from PySide6.QtGui import QGuiApplication
@@ -118,19 +118,26 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
     def __init__(
         self,
-        linha: OrcamentoValuesetLinhaResumo,
+        linha: OrcamentoValuesetLinhaResumo | None = None,
         parent=None,
         on_save: Callable[[OrcamentoValuesetLinhaDialogData], bool] | None = None,
+        on_save_as: Callable[[OrcamentoValuesetLinhaDialogData], bool] | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.linha = linha
         self.on_save = on_save
-        self._codigo_opcao_original = linha.codigo_opcao
+        self.on_save_as = on_save_as
+        self._is_edit = linha is not None
+        self._codigo_opcao_original = linha.codigo_opcao if linha is not None else ""
         self._suppress = False
         self.operacoes_alteradas = False
 
-        self.setWindowTitle("Editar Linha ValueSet do Orçamento")
+        self.setWindowTitle(
+            "Editar Linha ValueSet do Orçamento"
+            if self._is_edit
+            else "Nova Linha ValueSet do Orçamento"
+        )
         self.setModal(True)
         self.setMinimumWidth(560)
         self.setMinimumHeight(680)
@@ -143,8 +150,14 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         self.resize(620, max(780, min(altura_disponivel - 80, 1000)))
 
         self.chave_input = QComboBox()
-        carregar_chaves_valueset_combo(self.chave_input, valor_atual=linha.chave)
-        self.chave_input.setEnabled(False)
+        carregar_chaves_valueset_combo(
+            self.chave_input,
+            valor_atual=linha.chave if linha is not None else None,
+        )
+        self.chave_input.setEnabled(not self._is_edit)
+        self.chave_input.setToolTip(
+            "Chave ValueSet da nova linha. Numa linha existente, a chave é protegida."
+        )
 
         self.codigo_opcao_input = QLineEdit()
         self.codigo_opcao_input.setVisible(False)
@@ -181,8 +194,10 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.origem_dados_input.addItem(origem)
         self.origem_dados_input.setToolTip(ORIGEM_DADOS_INFO)
         self.origem_dados_input.activated.connect(self._avisar_origem_dados)
-        self._origem_dados_atual = ""
+        self.origem_dados_input.setCurrentText("EDITADO_LOCALMENTE")
+        self._origem_dados_atual = "EDITADO_LOCALMENTE"
         self.editado_localmente_input = QCheckBox()
+        self.editado_localmente_input.setChecked(True)
         self.prioridade_input = QLineEdit()
         self.prioridade_input.setPlaceholderText("Ex.: 1 (vazio = nunca escolhida)")
         self.prioridade_input.setToolTip(PRIORIDADE_TOOLTIP)
@@ -250,8 +265,21 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             "Operações específicas desta variante, com ação explícita para "
             "adicionar, substituir ou desativar operações base."
         )
+        self.operacoes_button.setEnabled(self._is_edit)
+        if not self._is_edit:
+            self.operacoes_button.setToolTip(
+                "Guarde primeiro a nova linha para poder associar operações."
+            )
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Criar uma nova opção local na mesma chave, sem alterar a linha original."
+        )
+        self.save_as_button.setVisible(self._is_edit)
         self.button_box.accepted.connect(self._validate_and_accept)
         self.operacoes_button.clicked.connect(self.abrir_operacoes_da_linha)
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
@@ -260,13 +288,17 @@ class OrcamentoValuesetLinhaDialog(QDialog):
         layout.addWidget(self.button_box)
         self.setLayout(layout)
 
-        self._load_linha(linha)
+        if linha is not None:
+            self._load_linha(linha)
         self._connect_recalculo()
         self.orla_0_4_input.doubleClicked.connect(lambda: self._abrir_picker_orla("0_4"))
         self.orla_1_0_input.doubleClicked.connect(lambda: self._abrir_picker_orla("1_0"))
 
     def abrir_operacoes_da_linha(self) -> None:
         """Open the operation manager for this budget ValueSet line."""
+        if self.linha is None:
+            self.set_error("Guarde primeiro a nova linha para associar operações.")
+            return
         linha_id = self.linha.id
 
         def listar_operacoes():
@@ -570,6 +602,22 @@ class OrcamentoValuesetLinhaDialog(QDialog):
 
     def _validate_and_accept(self) -> None:
         """Validate required fields before accepting."""
+        self._validate_and_run(self.on_save)
+
+    def _validate_and_save_as(self) -> None:
+        """Create a second local option without changing the original line."""
+        self._validate_and_run(self.on_save_as, codigo_opcao_novo=True)
+
+    def _validate_and_run(
+        self,
+        callback: Callable[[OrcamentoValuesetLinhaDialogData], bool] | None,
+        *,
+        codigo_opcao_novo: bool = False,
+    ) -> None:
+        if obter_valor_chave_combo(self.chave_input) is None:
+            self.set_error("Selecione uma chave ValueSet.")
+            return
+
         if not self.nome_opcao_input.text().strip():
             self.set_error("A opção é obrigatória.")
             return
@@ -582,8 +630,16 @@ class OrcamentoValuesetLinhaDialog(QDialog):
             self.set_error(str(error))
             return
 
+        if codigo_opcao_novo:
+            data = replace(
+                data,
+                codigo_opcao="",
+                origem_dados="EDITADO_LOCALMENTE",
+                editado_localmente=True,
+            )
+
         self.error_label.clear()
-        if self.on_save is not None and not self.on_save(data):
+        if callback is not None and not callback(data):
             return
 
         self.accept()

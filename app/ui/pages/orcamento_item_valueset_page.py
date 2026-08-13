@@ -31,6 +31,7 @@ from app.services.orcamento_item_valueset_linha_operacao_service import (
     OrcamentoItemValuesetLinhaOperacaoService,
 )
 from app.services.orcamento_item_valueset_linha_service import (
+    CriarOrcamentoItemValuesetLinhaData,
     EditarOrcamentoItemValuesetLinhaData,
     OrcamentoItemValuesetLinhaService,
 )
@@ -115,6 +116,11 @@ class OrcamentoItemValuesetPage(QWidget):
         self.create_button.clicked.connect(self.criar_do_orcamento)
         self.import_button = QPushButton("Importar Modelo")
         self.import_button.clicked.connect(self.importar_modelo)
+        self.new_button = QPushButton("Nova Linha")
+        self.new_button.setToolTip(
+            "Criar uma nova opção ValueSet apenas neste item."
+        )
+        self.new_button.clicked.connect(self.abrir_nova_linha)
         self.edit_button = QPushButton("Editar Linha")
         self.edit_button.clicked.connect(self.abrir_editar_linha)
         self.copy_button = QPushButton("Copiar Dados")
@@ -139,6 +145,7 @@ class OrcamentoItemValuesetPage(QWidget):
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.create_button)
         actions_layout.addWidget(self.import_button)
+        actions_layout.addWidget(self.new_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.copy_button)
         actions_layout.addWidget(self.paste_button)
@@ -501,6 +508,106 @@ class OrcamentoItemValuesetPage(QWidget):
                 [divergencia.linha_id for divergencia in selecionadas]
             )
 
+    def _criar_linha_local(self, form_data, *, linha_origem=None):
+        """Create one item-only option and copy source operations atomically."""
+        with SessionLocal() as session:
+            service = OrcamentoItemValuesetLinhaService(session)
+            existentes = service.listar_por_chave(
+                self.orcamento_item_id, form_data.chave
+            )
+            prioridades_usadas = {
+                linha.prioridade
+                for linha in existentes
+                if linha.ativo and linha.prioridade is not None
+            }
+            prioridade = form_data.prioridade
+            if prioridade is not None and prioridade in prioridades_usadas:
+                prioridade = 1
+                while prioridade in prioridades_usadas:
+                    prioridade += 1
+
+            proxima_ordem = max((linha.ordem for linha in existentes), default=0) + 1
+            result = service.criar_linha(
+                CriarOrcamentoItemValuesetLinhaData(
+                    orcamento_item_id=self.orcamento_item_id,
+                    chave=form_data.chave,
+                    codigo_opcao=form_data.codigo_opcao,
+                    nome_opcao=form_data.nome_opcao,
+                    padrao=False,
+                    prioridade=prioridade,
+                    ordem=proxima_ordem,
+                    descricao=(linha_origem.descricao if linha_origem else None),
+                    materia_prima_id=None,
+                    ref_materia_prima=form_data.ref_materia_prima,
+                    descricao_materia_prima=form_data.descricao_materia_prima,
+                    valor_texto=form_data.valor_texto,
+                    origem=(linha_origem.origem if linha_origem else None),
+                    ref_le=form_data.ref_le,
+                    descricao_no_orcamento=form_data.descricao_no_orcamento,
+                    preco_tabela=form_data.preco_tabela,
+                    margem_percentagem=form_data.margem_percentagem,
+                    desconto_percentagem=form_data.desconto_percentagem,
+                    preco_liquido=form_data.preco_liquido,
+                    unidade=form_data.unidade,
+                    desperdicio_percentagem=form_data.desperdicio_percentagem,
+                    tipo_materia_prima=form_data.tipo_materia_prima,
+                    familia_materia_prima=form_data.familia_materia_prima,
+                    coresp_orla_0_4=form_data.coresp_orla_0_4,
+                    coresp_orla_1_0=form_data.coresp_orla_1_0,
+                    preco_orla_0_4_m2=form_data.preco_orla_0_4_m2,
+                    preco_orla_1_0_m2=form_data.preco_orla_1_0_m2,
+                    comp_mp=form_data.comp_mp,
+                    larg_mp=form_data.larg_mp,
+                    esp_mp=form_data.esp_mp,
+                    origem_dados="EDITADO_LOCALMENTE",
+                    herdado_do_orcamento=False,
+                    editado_localmente=True,
+                    observacoes=form_data.observacoes,
+                    ativo=form_data.ativo,
+                ),
+                commit=False,
+            )
+
+            if linha_origem is not None:
+                operacoes_service = OrcamentoItemValuesetLinhaOperacaoService(session)
+                operacoes = operacoes_service.listar_operacoes_da_linha(
+                    linha_origem.id
+                )
+                operacoes_service.copiar_operacoes_de(operacoes, result.id)
+
+            session.commit()
+            return result
+
+    def abrir_nova_linha(self) -> None:
+        """Create a ValueSet option local to this budget item."""
+        criada = None
+
+        def handle_save(form_data) -> bool:
+            nonlocal criada
+            try:
+                criada = self._criar_linha_local(form_data)
+            except (IntegrityError, ValueError) as error:
+                dialog.set_error(
+                    mensagem_erro_bd(
+                        "Não foi possível criar a linha. Verifique os dados.", error
+                    )
+                )
+                return False
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd("Não foi possível criar a linha.", error)
+                )
+                return False
+            return True
+
+        dialog = OrcamentoItemValuesetLinhaDialog(parent=self, on_save=handle_save)
+        if dialog.exec() and criada is not None:
+            self.carregar()
+            prioridade = criada.prioridade if criada.prioridade is not None else "vazia"
+            self.status_label.setText(
+                f"Nova opção local do item criada com prioridade {prioridade}."
+            )
+
     def abrir_editar_linha(self) -> None:
         """Open the edit dialog for the selected ValueSet line."""
         linha = self._get_selected_linha()
@@ -509,6 +616,7 @@ class OrcamentoItemValuesetPage(QWidget):
             return
 
         saved = False
+        saved_as = None
 
         def handle_save(form_data) -> bool:
             nonlocal saved
@@ -565,11 +673,49 @@ class OrcamentoItemValuesetPage(QWidget):
             saved = True
             return True
 
-        dialog = OrcamentoItemValuesetLinhaDialog(linha, parent=self, on_save=handle_save)
+        def handle_save_as(form_data) -> bool:
+            nonlocal saved_as
+            try:
+                saved_as = self._criar_linha_local(
+                    form_data, linha_origem=linha
+                )
+            except (IntegrityError, ValueError) as error:
+                dialog.set_error(
+                    mensagem_erro_bd(
+                        "Não foi possível gravar como nova opção. Verifique os dados.",
+                        error,
+                    )
+                )
+                return False
+            except SQLAlchemyError as error:
+                dialog.set_error(
+                    mensagem_erro_bd(
+                        "Não foi possível gravar como nova opção.", error
+                    )
+                )
+                return False
+            return True
+
+        dialog = OrcamentoItemValuesetLinhaDialog(
+            linha,
+            parent=self,
+            on_save=handle_save,
+            on_save_as=handle_save_as,
+        )
         if dialog.exec() and saved:
             self.carregar()
             self.status_label.setText("Linha ValueSet atualizada.")
             self._perguntar_propagar_custeio(linha.id)
+        elif saved_as is not None:
+            self.carregar()
+            prioridade = (
+                saved_as.prioridade if saved_as.prioridade is not None else "vazia"
+            )
+            self.status_label.setText(
+                "Linha gravada como nova opção local do item, com as operações "
+                f"da original e prioridade {prioridade}."
+            )
+            self._perguntar_propagar_custeio(saved_as.id)
         elif dialog.operacoes_alteradas:
             self.carregar()
             self.status_label.setText("Operações da linha atualizadas.")
@@ -872,6 +1018,7 @@ class OrcamentoItemValuesetPage(QWidget):
                 self.table.selectRow(item.row())
 
         menu = QMenu(self)
+        menu.addAction("Nova Linha", self.abrir_nova_linha)
         menu.addAction("Editar Linha", self.abrir_editar_linha)
         menu.addAction("Copiar Dados (Ctrl+C)", self.copiar_dados)
         menu.addAction("Colar Dados (Ctrl+V)", self.colar_dados)

@@ -433,6 +433,7 @@ class _FakeValuesetChaveRepository:
 class _FakeSession:
     def __init__(self) -> None:
         self.committed = False
+        self.flushed = False
         self.item = None
         self.versao = None
 
@@ -443,6 +444,9 @@ class _FakeSession:
 
     def commit(self) -> None:
         self.committed = True
+
+    def flush(self) -> None:
+        self.flushed = True
 
     def expire_all(self) -> None:
         pass
@@ -1507,6 +1511,24 @@ def test_recalcular_quantidades_so_altera_o_bloco_editado(monkeypatch) -> None:
     assert _FakeRepository.updated_payloads[0]["quantidade"] == Decimal("10")
 
 
+def test_recalcular_quantidades_permite_adiar_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1,
+            tipo_linha="PECA",
+            qt_mod=Decimal("1"),
+            qt_und=Decimal("2"),
+            quantidade=Decimal("0"),
+        )
+    ]
+
+    service.recalcular_quantidades_do_item(30, commit=False)
+
+    assert session.committed is False
+    assert session.flushed is True
+
+
 # --- Component quantity rules (phase 8T.5.1) ---------------------------------
 
 _DOBRADICA_EXPR = (
@@ -1883,6 +1905,32 @@ def test_atualizar_medidas_linha_recalcula_qt_total(monkeypatch) -> None:
     # Editing quantities/measures must NOT flag the line as locally edited.
     assert "editado_localmente" not in payload
     assert session.committed is True
+
+
+def test_atualizar_medidas_linha_permite_lote_sem_commit(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+    session.item = SimpleNamespace(
+        altura=None,
+        largura=None,
+        profundidade=None,
+        modalidade_custeio="SIMPLIFICADO",
+    )
+    _FakeRepository.by_id = _resumo(id=5)
+
+    service.atualizar_medidas_linha(
+        5,
+        qt_mod="1",
+        qt_und="1",
+        comp="590",
+        larg="1280",
+        esp="19",
+        propagar_item=False,
+        commit=False,
+    )
+
+    assert session.committed is False
+    assert session.flushed is True
+    assert _FakeRepository.updated_payload["comp_real"] == Decimal("590")
 
 
 def test_atualizar_medidas_linha_resolve_variaveis_e_area(monkeypatch) -> None:

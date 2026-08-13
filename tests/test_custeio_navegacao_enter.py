@@ -6,10 +6,20 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QTableWidgetItem
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QLineEdit,
+    QStyle,
+    QStyleOptionViewItem,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+)
 
 from app.ui.pages.orcamento_item_custeio_page import (
+    BibliotecaPecasDelegate,
     CusteioEnterDelegate,
     CusteioLinhasTable,
 )
@@ -98,3 +108,39 @@ def test_celula_editavel_trata_celula_vazia() -> None:
 def test_tabela_instala_delegate_de_enter() -> None:
     tabela = _tabela()
     assert isinstance(tabela.itemDelegate(), CusteioEnterDelegate)
+
+
+def test_delegate_interceta_bloco_excel_multilinha_em_comp() -> None:
+    tabela = _tabela()
+    tabela.setCurrentCell(0, 3)  # Comp
+    chamadas: list[bool] = []
+    tabela.colar_medidas_excel_handler = lambda: chamadas.append(True)
+    clipboard = QApplication.clipboard()
+    anterior = clipboard.text()
+    try:
+        clipboard.setText("590\r\n65\r\n440\r\n")
+        evento = QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_V,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+        tratado = tabela.itemDelegate().eventFilter(QLineEdit(), evento)
+    finally:
+        clipboard.setText(anterior)
+
+    assert tratado is True
+    assert chamadas == [True]
+
+
+def test_delegate_biblioteca_realca_folha_marcada() -> None:
+    arvore = QTreeWidget()
+    folha = QTreeWidgetItem(arvore, ["Fundo[0000]"])
+    folha.setFlags(folha.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+    folha.setCheckState(0, Qt.CheckState.Checked)
+    indice = arvore.indexFromItem(folha, 0)
+    opcao = QStyleOptionViewItem()
+
+    BibliotecaPecasDelegate(arvore).initStyleOption(opcao, indice)
+
+    assert opcao.state & QStyle.StateFlag.State_Selected
+    assert "drawLine" in BibliotecaPecasDelegate.paint.__code__.co_names

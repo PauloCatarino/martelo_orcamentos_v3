@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStyle,
+    QStyleOptionViewItem,
     QStyledItemDelegate,
     QTabWidget,
     QTableWidget,
@@ -187,6 +188,60 @@ def _clipboard_tem_bloco_medidas_multicelula() -> bool:
     """True when the system clipboard holds a multi-cell numeric Excel block."""
     bloco = parse_bloco_medidas_excel(QGuiApplication.clipboard().text())
     return bloco is not None and (len(bloco) > 1 or len(bloco[0]) > 1)
+
+
+class BibliotecaPecasDelegate(QStyledItemDelegate):
+    """Keep checked library pieces highlighted with an explicit visible tick."""
+
+    def initStyleOption(  # noqa: N802 (Qt override)
+        self, option: QStyleOptionViewItem, index
+    ) -> None:
+        super().initStyleOption(option, index)
+        if (
+            index.data(Qt.ItemDataRole.CheckStateRole)
+            == Qt.CheckState.Checked.value
+        ):
+            option.state |= QStyle.StateFlag.State_Selected
+
+    def paint(self, painter, option, index) -> None:  # noqa: N802 (Qt override)
+        super().paint(painter, option, index)
+        if (
+            index.data(Qt.ItemDataRole.CheckStateRole)
+            != Qt.CheckState.Checked.value
+        ):
+            return
+
+        # Some native Windows/Qt styles paint the checked indicator as an empty
+        # white square once the whole row has the selected state.  Draw a clear
+        # brown tick over that native indicator so the persistent selection is
+        # always visible, independently of the active platform style.
+        visual = QStyleOptionViewItem(option)
+        self.initStyleOption(visual, index)
+        view = self.parent()
+        indicador = view.style().subElementRect(
+            QStyle.SubElement.SE_ItemViewItemCheckIndicator,
+            visual,
+            view,
+        )
+        painter.save()
+        caneta = painter.pen()
+        caneta.setColor(QColor(tema.CASTANHO_ESCURO))
+        caneta.setWidth(2)
+        painter.setPen(caneta)
+        centro = indicador.center()
+        painter.drawLine(
+            indicador.left() + 3,
+            centro.y(),
+            centro.x() - 1,
+            indicador.bottom() - 3,
+        )
+        painter.drawLine(
+            centro.x() - 1,
+            indicador.bottom() - 3,
+            indicador.right() - 2,
+            indicador.top() + 3,
+        )
+        painter.restore()
 
 
 class CusteioEnterDelegate(QStyledItemDelegate):
@@ -632,6 +687,16 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         self.opcoes_simplificado_button.clicked.connect(self._abrir_opcoes_simplificado)
 
+        self.colar_medidas_excel_button = QPushButton("Colar Medidas Excel")
+        self.colar_medidas_excel_button.setToolTip(
+            "Copie no Excel uma coluna de medidas (Comp) ou duas colunas "
+            "contíguas (Comp e Larg), selecione a primeira célula Comp/Larg "
+            "no custeio e clique aqui. Também pode usar Ctrl+V."
+        )
+        self.colar_medidas_excel_button.clicked.connect(
+            self.colar_medidas_excel_com_aviso
+        )
+
         # Recalcular Medidas is part of the full Atualizar pipeline below, so
         # users have one clear action for refreshing measures and all costs.
 
@@ -686,6 +751,7 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.producao_label)
         actions_layout.addWidget(self.modalidade_label)
         actions_layout.addWidget(self.opcoes_simplificado_button)
+        actions_layout.addWidget(self.colar_medidas_excel_button)
         actions_layout.addWidget(self.insert_division_button)
         actions_layout.addWidget(self.expandir_tudo_button)
         actions_layout.addSpacing(12)
@@ -970,9 +1036,9 @@ class OrcamentoItemCusteioPage(QWidget):
     # Lembrete da linha supervisor em Simplificado (peças soltas): mostrado
     # sempre que nenhuma ação acabou de escrever uma mensagem mais recente.
     AVISO_SIMPLIFICADO_MEDIDAS = (
-        "Custeio Simplificado (peças soltas): escreva Comp e Larg em números — "
-        "as variáveis H/L/P estão suprimidas. Pode colar as colunas do Excel "
-        "(Ctrl+V na coluna Comp)."
+        "Custeio Simplificado (peças soltas): copie no Excel uma coluna (Comp) "
+        "ou duas colunas contíguas (Comp/Larg), selecione a primeira célula Comp "
+        "e use Ctrl+V ou Colar Medidas Excel."
     )
 
     def _atualizar_modalidade_custeio(self) -> None:
@@ -982,6 +1048,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custeio: Simplificado" if simplificado else "Custeio: Standard"
         )
         self.opcoes_simplificado_button.setVisible(simplificado)
+        self.colar_medidas_excel_button.setVisible(simplificado)
         # Supervisor: em Simplificado, com a linha de estado livre, lembra que
         # as medidas são escritas em números (variáveis suprimidas).
         if simplificado and not self.status_label.text():
@@ -1745,6 +1812,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tree_biblioteca_pecas.setHeaderLabel("Peças")
         self.tree_biblioteca_pecas.setAlternatingRowColors(True)
         self.tree_biblioteca_pecas.setMouseTracking(True)
+        self.tree_biblioteca_pecas.setStyleSheet(tema.ESTILO_REALCE_VISTAS_DADOS)
+        self.tree_biblioteca_pecas.setItemDelegate(
+            BibliotecaPecasDelegate(self.tree_biblioteca_pecas)
+        )
         self.tree_biblioteca_pecas.itemPressed.connect(self._on_biblioteca_item_pressed)
         self.tree_biblioteca_pecas.itemClicked.connect(self._on_biblioteca_item_clicked)
         self.tree_biblioteca_pecas.itemChanged.connect(self._on_biblioteca_item_changed)
@@ -4467,19 +4538,6 @@ class OrcamentoItemCusteioPage(QWidget):
             )
             return True
 
-        # Confirm every sheet overflow before writing anything, so cancelling
-        # leaves the Excel paste entirely untouched instead of only partly saved.
-        for linha, celulas in destinos:
-            valores = {"comp": linha.comp, "larg": linha.larg}
-            for indice, campo in enumerate(alvos):
-                if indice < len(celulas) and celulas[indice]:
-                    valores[campo.lower()] = celulas[indice]
-            if not self._confirmar_medidas_placa(
-                linha, valores["comp"], valores["larg"]
-            ):
-                self.status_label.setText("Colagem de medidas cancelada.")
-                return True
-
         atualizadas = 0
         try:
             with SessionLocal() as session:
@@ -4497,8 +4555,10 @@ class OrcamentoItemCusteioPage(QWidget):
                         larg=valores["larg"],
                         esp=linha.esp,
                         propagar_item=False,
+                        commit=False,
                     )
                     atualizadas += 1
+                session.commit()
         except (SQLAlchemyError, ValueError) as error:
             self.carregar()
             self.status_label.setText(
@@ -4516,6 +4576,31 @@ class OrcamentoItemCusteioPage(QWidget):
             mensagem += f" ({em_falta} linha(s) do Excel sem peça correspondente.)"
         self.status_label.setText(mensagem)
         return True
+
+    def colar_medidas_excel_com_aviso(self) -> None:
+        """Paste Excel measures or explain exactly what must be corrected."""
+        if self._colar_medidas_do_excel():
+            return
+
+        row = self.table.currentRow()
+        col = self.table.currentColumn()
+        header = (
+            self.TABLE_HEADERS[col]
+            if row >= 0 and 0 <= col < len(self.TABLE_HEADERS)
+            else ""
+        )
+        if header not in ("Comp", "Larg"):
+            self.status_label.setText(
+                "Para colar medidas do Excel, selecione primeiro a célula Comp "
+                "ou Larg da primeira peça de destino."
+            )
+            return
+
+        self.status_label.setText(
+            "Os dados copiados não são um bloco de medidas válido. Copie apenas "
+            "uma coluna numérica (Comp ou Larg) ou duas colunas numéricas "
+            "contíguas (Comp e Larg), sem títulos nem texto."
+        )
 
     def _menu_contexto_material(self, pos) -> None:
         """Show a right-click menu with the line material and delete actions."""

@@ -608,6 +608,110 @@ def test_orcamento_item_custeio_page_has_parts_library_tree() -> None:
     assert "listar_ativas_para_biblioteca" in carregar
 
 
+def test_custeio_simplificado_tem_colagem_excel_explicita_e_atomica() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    init = inspect.getsource(OrcamentoItemCusteioPage.__init__)
+    atualizar_modalidade = inspect.getsource(
+        OrcamentoItemCusteioPage._atualizar_modalidade_custeio
+    )
+    colar = inspect.getsource(OrcamentoItemCusteioPage._colar_medidas_do_excel)
+    aviso = inspect.getsource(OrcamentoItemCusteioPage.colar_medidas_excel_com_aviso)
+
+    assert "Colar Medidas Excel" in init
+    assert "colar_medidas_excel_button.setToolTip" in init
+    assert "colar_medidas_excel_button.setVisible(simplificado)" in atualizar_modalidade
+    assert "commit=False" in colar
+    assert "session.commit()" in colar
+    assert "sem títulos nem texto" in aviso
+
+
+def test_colagem_excel_executa_duas_colunas_sem_chamar_metodo_antigo(
+    monkeypatch,
+) -> None:
+    import app.ui.pages.orcamento_item_custeio_page as page_module
+    from app.domain.custeio_linha_types import PECA
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    class TabelaFake:
+        def currentRow(self):
+            return 0
+
+        def currentColumn(self):
+            return OrcamentoItemCusteioPage.TABLE_HEADERS.index("Comp")
+
+        def rowCount(self):
+            return 2
+
+    class EstadoFake:
+        texto = ""
+
+        def setText(self, texto):
+            self.texto = texto
+
+    class SessaoFake:
+        commits = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def commit(self):
+            self.commits += 1
+
+    chamadas = []
+
+    class ServiceFake:
+        def __init__(self, _session):
+            pass
+
+        def atualizar_medidas_linha(self, linha_id, **valores):
+            chamadas.append((linha_id, valores))
+
+    linhas = {
+        row: SimpleNamespace(
+            id=row + 1,
+            tipo_linha=PECA,
+            qt_mod=Decimal("1"),
+            qt_und=Decimal("1"),
+            comp=None,
+            larg=None,
+            esp=Decimal("19"),
+        )
+        for row in range(2)
+    }
+    pagina = SimpleNamespace(
+        table=TabelaFake(),
+        TABLE_HEADERS=OrcamentoItemCusteioPage.TABLE_HEADERS,
+        _custeio_by_row=linhas,
+        _coluna_editavel=lambda _header, _linha: True,
+        status_label=EstadoFake(),
+        carregar=lambda: None,
+    )
+    sessao = SessaoFake()
+    monkeypatch.setattr(page_module, "SessionLocal", lambda: sessao)
+    monkeypatch.setattr(
+        page_module, "OrcamentoItemCusteioLinhaService", ServiceFake
+    )
+    clipboard = page_module.QGuiApplication.clipboard()
+    anterior = clipboard.text()
+    try:
+        clipboard.setText("590\t1280\r\n65\t670\r\n")
+        tratado = OrcamentoItemCusteioPage._colar_medidas_do_excel(pagina)
+    finally:
+        clipboard.setText(anterior)
+
+    assert tratado is True
+    assert [(linha_id, dados["comp"], dados["larg"]) for linha_id, dados in chamadas] == [
+        (1, "590", "1280"),
+        (2, "65", "670"),
+    ]
+    assert all(dados["commit"] is False for _linha_id, dados in chamadas)
+    assert sessao.commits == 1
+
+
 def test_orcamento_item_custeio_page_add_selections_inserts_pieces() -> None:
     from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
 

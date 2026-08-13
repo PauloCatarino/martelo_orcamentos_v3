@@ -367,6 +367,21 @@ def test_criar_linha_do_item(monkeypatch) -> None:
     assert session.committed is True
 
 
+def test_criar_linha_item_pode_adiar_commit_para_copiar_operacoes(monkeypatch) -> None:
+    service, session = _service(monkeypatch)
+
+    service.criar_linha(
+        service_module.CriarOrcamentoItemValuesetLinhaData(
+            orcamento_item_id=30,
+            chave="MATERIAL_PECAS_SIMPLES",
+            nome_opcao="Opção local do item",
+        ),
+        commit=False,
+    )
+
+    assert session.committed is False
+
+
 def test_duplicar_chave_e_opcao_recusada_no_item(monkeypatch) -> None:
     service, session = _service(monkeypatch)
     _FakeItemRepository.opcao_existing = _item_resumo(id=2, codigo_opcao="BLUM_RETA")
