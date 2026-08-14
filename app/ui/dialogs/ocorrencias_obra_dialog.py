@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QSize, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -49,6 +49,7 @@ from app.ui.dialogs.editar_ocorrencia_dialog import EditarOcorrenciaDialog
 from app.ui.dialogs.equipa_dialog import EquipaDialog
 from app.ui.dialogs.escolher_pessoas_teams_dialog import EscolherPessoasTeamsDialog
 from app.ui.helpers.anexos_ocorrencia import guardar_anexos, resolver_pasta_obra
+from app.ui.helpers.teams_clipboard import copiar_fotos_inline
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.faixa_anexos import FaixaAnexos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -156,9 +157,19 @@ class OcorrenciasObraDialog(QDialog):
         self.detalhe_texto.setMaximumHeight(110)
         self.detalhe_texto.setToolTip("Texto completo do ticket selecionado")
 
-        self.detalhe_anexos = FaixaAnexos(altura=96)
-        self.detalhe_anexos.setAcceptDrops(False)
-        self.detalhe_anexos.setToolTip("Fotos deste ticket — duplo-clique abre")
+        self.detalhe_fotos_label = QLabel("Fotografias associadas ao ticket")
+        self.detalhe_fotos_label.setStyleSheet(
+            f"color: {tema.CASTANHO_ESCURO}; font-weight: bold;"
+        )
+        self.detalhe_anexos = FaixaAnexos(
+            altura=176,
+            tamanho_icone=QSize(190, 128),
+            mostrar_nomes=True,
+            somente_leitura=True,
+        )
+        self.detalhe_anexos.setToolTip(
+            "Fotografias deste ticket — duplo-clique abre a imagem completa"
+        )
 
         self.detalhe_envio = QLabel("")
         self.detalhe_envio.setWordWrap(True)
@@ -178,7 +189,8 @@ class OcorrenciasObraDialog(QDialog):
         self.teams_button = QPushButton("Enviar para Teams")
         self.teams_button.setToolTip(
             "Abrir a conversa do responsável no Teams com o ticket já escrito. "
-            "As fotos ficam copiadas para colar a seguir com Ctrl+V."
+            "As fotografias ficam copiadas como imagem incorporada para colar "
+            "a seguir com Ctrl+V."
         )
         self.teams_button.clicked.connect(self._enviar_teams)
 
@@ -224,6 +236,7 @@ class OcorrenciasObraDialog(QDialog):
         layout.addWidget(self.table, stretch=1)
         layout.addWidget(self.detalhe_titulo)
         layout.addWidget(self.detalhe_texto)
+        layout.addWidget(self.detalhe_fotos_label)
         layout.addWidget(self.detalhe_anexos)
         layout.addWidget(self.detalhe_envio)
         layout.addLayout(botoes)
@@ -393,7 +406,10 @@ class OcorrenciasObraDialog(QDialog):
         ]
         self.detalhe_titulo.setText("   |   ".join(partes))
         self.detalhe_texto.setPlainText(linha["texto"] or "")
-        self.detalhe_anexos.carregar([_Anexo(**anexo) for anexo in linha["anexos"]])
+        anexos = [_Anexo(**anexo) for anexo in linha["anexos"]]
+        self.detalhe_anexos.carregar(anexos)
+        self.detalhe_fotos_label.setVisible(bool(anexos))
+        self.detalhe_anexos.setVisible(bool(anexos))
         self.detalhe_envio.setText(self._texto_envio(linha))
 
     def _texto_envio(self, linha: dict) -> str:
@@ -417,6 +433,8 @@ class OcorrenciasObraDialog(QDialog):
         self.detalhe_titulo.setText("")
         self.detalhe_texto.clear()
         self.detalhe_anexos.carregar([])
+        self.detalhe_fotos_label.hide()
+        self.detalhe_anexos.hide()
         self.detalhe_envio.setText("")
 
     def _limpar_filtros(self) -> None:
@@ -596,16 +614,20 @@ class OcorrenciasObraDialog(QDialog):
             self._processo, _Ticket(linha), anexos
         )
         fotos = teams_service.caminhos_de_anexos(anexos)
-        self._copiar_para_area_transferencia(mensagem, fotos)
-        recado = " As fotos ficaram copiadas: no Teams, Ctrl+V." if fotos else ""
 
         if escolha.apenas_copiar():
-            self.status_label.setText(f"Ticket copiado.{recado}")
+            QApplication.clipboard().setText(mensagem)
+            self.status_label.setText(
+                "Texto do ticket copiado para a área de transferência."
+            )
             return
 
         destinatarios = escolha.escolhidos()
         if not destinatarios:
-            self.status_label.setText(f"Ticket copiado.{recado}")
+            QApplication.clipboard().setText(mensagem)
+            self.status_label.setText(
+                "Texto do ticket copiado para a área de transferência."
+            )
             return
 
         enderecos = [membro.email for membro in destinatarios]
@@ -613,11 +635,25 @@ class OcorrenciasObraDialog(QDialog):
         if not teams_service.abrir_chat_teams(
             enderecos, mensagem, formato=self._formato_teams
         ):
+            QApplication.clipboard().setText(mensagem)
             self.status_label.setText(
                 "Não foi possível abrir o Teams. O ticket ficou copiado — cole "
                 "com Ctrl+V."
             )
             return
+
+        fotos_copiadas = copiar_fotos_inline(fotos) if fotos else 0
+        if fotos_copiadas == 1:
+            recado = " A fotografia ficou copiada como imagem: no Teams, Ctrl+V."
+        elif fotos_copiadas > 1:
+            recado = (
+                f" As {fotos_copiadas} fotografias ficaram copiadas numa "
+                "composição: no Teams, Ctrl+V."
+            )
+        elif fotos:
+            recado = " Não foi possível preparar as fotografias para colar."
+        else:
+            recado = ""
 
         try:
             with SessionLocal() as session:
@@ -639,24 +675,6 @@ class OcorrenciasObraDialog(QDialog):
         self.status_label.setText(
             f"Teams aberto na conversa de {nomes} com o ticket escrito.{recado}"
         )
-
-    def _copiar_para_area_transferencia(self, mensagem: str, fotos) -> None:
-        """Put the text on the clipboard — e os ficheiros, se os houver.
-
-        No Teams, um Ctrl+V a seguir anexa as fotos à mensagem. Sem fotos fica
-        só o texto, que é o que serve para colar em qualquer chat.
-        """
-        area = QApplication.clipboard()
-        if not fotos:
-            area.setText(mensagem)
-            return
-
-        from PySide6.QtCore import QMimeData, QUrl
-
-        dados = QMimeData()
-        dados.setText(mensagem)
-        dados.setUrls([QUrl.fromLocalFile(caminho) for caminho in fotos])
-        area.setMimeData(dados)
 
     def _membro_do_ticket(self, linha: dict):
         """Team member of this ticket: pelo id se foi escolhido, senão pelo nome."""

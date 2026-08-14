@@ -66,11 +66,13 @@ def test_gravidade_alta_e_avisada_no_texto() -> None:
     assert "Gravidade: ALTA" in urgente
 
 
-def test_o_texto_diz_quantas_fotos_seguem() -> None:
+def test_o_texto_diz_quantas_fotos_estao_associadas() -> None:
     anexos = [SimpleNamespace(caminho="C:/obra/T0003_01.png")]
 
-    assert "(1 foto em anexo)" in montar_texto_ticket(_obra(), _ticket(), anexos)
-    assert "(2 fotos em anexo)" in montar_texto_ticket(
+    assert "(1 fotografia associada ao ticket)" in montar_texto_ticket(
+        _obra(), _ticket(), anexos
+    )
+    assert "(2 fotografias associadas ao ticket)" in montar_texto_ticket(
         _obra(), _ticket(), anexos * 2
     )
 

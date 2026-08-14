@@ -52,33 +52,54 @@ class FaixaAnexos(QListWidget):
     mudou = Signal()
     aviso = Signal(str)
 
-    def __init__(self, parent=None, *, altura: int = 104) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        altura: int = 104,
+        tamanho_icone: QSize | None = None,
+        mostrar_nomes: bool = False,
+        somente_leitura: bool = False,
+    ) -> None:
         super().__init__(parent)
 
         self._itens: list[AnexoVista] = []
         self._removidos: list[int] = []
+        self._mostrar_nomes = mostrar_nomes
+        self._somente_leitura = somente_leitura
+        tamanho = tamanho_icone or QSize(96, 72)
 
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setFlow(QListWidget.Flow.LeftToRight)
         self.setWrapping(False)
-        self.setIconSize(QSize(96, 72))
-        self.setGridSize(QSize(108, 84))
+        self.setIconSize(tamanho)
+        altura_texto = 24 if mostrar_nomes else 0
+        self.setGridSize(
+            QSize(tamanho.width() + 16, tamanho.height() + 12 + altura_texto)
+        )
         self.setFixedHeight(altura)
         self.setMovement(QListWidget.Movement.Static)
-        self.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        self.setAcceptDrops(True)
+        self.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.setSelectionMode(
+            QListWidget.SelectionMode.SingleSelection
+            if somente_leitura
+            else QListWidget.SelectionMode.ExtendedSelection
+        )
+        self.setAcceptDrops(not somente_leitura)
         self.setDragEnabled(False)
         self.setToolTip(
             "Fotos do ticket. Ctrl+V cola a imagem copiada do chat; também pode "
             "arrastar ficheiros para aqui. Duplo-clique abre a foto."
         )
 
-        atalho = QShortcut(QKeySequence.StandardKey.Paste, self)
-        atalho.activated.connect(self.colar)
+        if not somente_leitura:
+            atalho = QShortcut(QKeySequence.StandardKey.Paste, self)
+            atalho.activated.connect(self.colar)
 
         self.itemDoubleClicked.connect(self._abrir_item)
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._menu_contexto)
+        if not somente_leitura:
+            self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.customContextMenuRequested.connect(self._menu_contexto)
 
     # ---- carregar / ler --------------------------------------------------
     def carregar(self, anexos) -> None:
@@ -110,6 +131,8 @@ class FaixaAnexos(QListWidget):
     # ---- acrescentar -----------------------------------------------------
     def colar(self) -> None:
         """Take whatever is on the clipboard: an image or copied files."""
+        if self._somente_leitura:
+            return
         dados = QApplication.clipboard().mimeData()
         if dados is None:
             return
@@ -144,6 +167,8 @@ class FaixaAnexos(QListWidget):
 
     def acrescentar_ficheiros(self, caminhos) -> None:
         """Add files chosen or dropped by the user."""
+        if self._somente_leitura:
+            return
         novos = 0
         for caminho in caminhos or ():
             texto = str(caminho or "").strip()
@@ -167,6 +192,8 @@ class FaixaAnexos(QListWidget):
     # ---- remover ---------------------------------------------------------
     def remover_selecionados(self) -> None:
         """Take the selected thumbnails out of the ticket."""
+        if self._somente_leitura:
+            return
         linhas = sorted((self.row(item) for item in self.selectedItems()), reverse=True)
         if not linhas:
             return
@@ -182,7 +209,10 @@ class FaixaAnexos(QListWidget):
 
     # ---- eventos ---------------------------------------------------------
     def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt)
-        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+        if not self._somente_leitura and event.key() in (
+            Qt.Key.Key_Delete,
+            Qt.Key.Key_Backspace,
+        ):
             self.remover_selecionados()
             return
         super().keyPressEvent(event)
@@ -213,10 +243,13 @@ class FaixaAnexos(QListWidget):
     def _render(self) -> None:
         self.clear()
         for anexo in self._itens:
-            item = QListWidgetItem(self)
+            item = QListWidgetItem()
             item.setIcon(self._icone(anexo))
+            if self._mostrar_nomes:
+                item.setText(anexo.nome)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter)
             item.setToolTip(self._tooltip(anexo))
-            item.setSizeHint(QSize(104, 80))
+            item.setSizeHint(self.gridSize())
             self.addItem(item)
 
     def _icone(self, anexo: AnexoVista):

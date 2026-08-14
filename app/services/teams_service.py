@@ -8,8 +8,9 @@ certa, já com a mensagem escrita. A pessoa que está a enviar só tem de carreg
 em Enter. Não precisa de API, de registo de aplicação nem de autorização de
 administrador — funciona com Teams de trabalho e com Teams gratuito.
 
-As fotos não cabem num link. Vão pela área de transferência: o programa copia
-os ficheiros do ticket e, no Teams, um Ctrl+V anexa-os à mensagem.
+As fotos não cabem num link. Depois de abrir o chat, a interface copia os
+próprios pixels para a área de transferência; no Teams, Ctrl+V insere-os no
+corpo da mensagem em vez de anexar os ficheiros.
 """
 
 from __future__ import annotations
@@ -99,8 +100,10 @@ def montar_texto_ticket(processo, ocorrencia, anexos=()) -> str:
     caminhos = [caminho for caminho in caminhos if caminho]
     if caminhos:
         linhas.append("")
-        plural = "fotos" if len(caminhos) > 1 else "foto"
-        linhas.append(f"({len(caminhos)} {plural} em anexo)")
+        plural = (
+            "fotografias associadas" if len(caminhos) > 1 else "fotografia associada"
+        )
+        linhas.append(f"({len(caminhos)} {plural} ao ticket)")
 
     autor = _texto(getattr(ocorrencia, "autor", ""))
     if autor:
