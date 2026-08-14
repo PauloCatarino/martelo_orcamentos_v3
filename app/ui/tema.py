@@ -21,6 +21,7 @@ _ICONES_DIR = Path(__file__).parent / "assets" / "icons"
 _DROPDOWN_ARROW = (_ICONES_DIR / "dropdown_arrow.svg").as_posix()
 _SPIN_UP_ARROW = (_ICONES_DIR / "spin_up.svg").as_posix()
 _SPIN_DOWN_ARROW = (_ICONES_DIR / "spin_down.svg").as_posix()
+_CHECK_INDICATOR = (_ICONES_DIR / "check_indicator_checked.svg").as_posix()
 
 # --- Palette (Lança Encanto) -------------------------------------------------
 CASTANHO_ESCURO = "#5A3E2B"   # text / strong accent
@@ -228,6 +229,18 @@ ESTILO_REALCE_VISTAS_DADOS = (
 )
 
 
+# Os indicadores de QTableWidgetItem/QTreeWidgetItem/QListWidgetItem dependem
+# do estilo nativo do sistema. Em alguns temas Windows, o estado marcado fica
+# branco sobre branco e parece desmarcado. O SVG inclui a caixa e o visto para
+# garantir contraste tanto nas linhas normais como nas linhas selecionadas.
+ESTILO_CHECKS_VISTAS_DADOS = (
+    f"QTableView::indicator:checked, QTableWidget::indicator:checked,"
+    f" QListView::indicator:checked, QListWidget::indicator:checked,"
+    f" QTreeView::indicator:checked, QTreeWidget::indicator:checked {{"
+    f" image: url({_CHECK_INDICATOR}); width: 16px; height: 16px; }}"
+)
+
+
 # Aparência base transversal: as páginas podem acrescentar dimensões e
 # realces sem perder cabeçalhos, seleção e contraste comuns.
 ESTILO_CABECALHO_VISTAS_DADOS = (
@@ -243,6 +256,8 @@ ESTILO_VISTAS_DADOS = (
     + ESTILO_CABECALHO_VISTAS_DADOS
     + "\n"
     + ESTILO_REALCE_VISTAS_DADOS
+    + "\n"
+    + ESTILO_CHECKS_VISTAS_DADOS
 )
 
 

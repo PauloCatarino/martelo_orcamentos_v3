@@ -69,6 +69,24 @@ def test_cabecalho_comum_fica_castanho_com_texto_branco() -> None:
     assert estilo in tema.ESTILO_GLOBAL
 
 
+def test_checks_de_vistas_de_dados_usam_indicador_visivel() -> None:
+    from app.ui import tema
+
+    estilo = tema.ESTILO_CHECKS_VISTAS_DADOS
+    for vista in (
+        "QTableView",
+        "QTableWidget",
+        "QListView",
+        "QListWidget",
+        "QTreeView",
+        "QTreeWidget",
+    ):
+        assert f"{vista}::indicator:checked" in estilo
+
+    assert "check_indicator_checked.svg" in estilo
+    assert estilo in tema.ESTILO_GLOBAL
+
+
 def test_paginas_nao_reintroduzem_estilos_locais_conflitantes() -> None:
     raiz_ui = Path(__file__).parents[1] / "app" / "ui"
     padrao_realce = re.compile(
