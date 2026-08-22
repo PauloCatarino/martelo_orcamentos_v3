@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
+    QDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -63,12 +64,20 @@ from app.ui.dialogs.ia_martelo_dialog import IaMarteloDialog
 from app.services.cutrite_service import (
     execute_cutrite_import,
     execute_cutrite_resumo_pdf,
+    find_lista_material_workbook,
     prepare_cutrite_import,
     prepare_cutrite_resumo_pdf,
 )
 from app.services.lista_material_imos_service import (
+    execute_automation_cutrite_macro,
+    execute_import_csv_imos_macro,
     execute_lista_material_imos,
     prepare_lista_material_imos,
+)
+from app.services.lista_material_assistente_service import (
+    ListaMaterialAssistantService,
+    apply_workbook_decisions,
+    prepare_workbook_for_assistant,
 )
 from app.services.producao_service import (
     ProducaoService,
@@ -104,6 +113,11 @@ from app.ui import tema
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
+from app.ui.dialogs.lista_material_assistente_dialog import (
+    ListaMaterialAssistenteDialog,
+)
+from app.ui.dialogs.lista_material_pdf_dialog import ListaMaterialPdfDialog
+from app.ui.dialogs.lista_material_revisao_dialog import ListaMaterialRevisaoDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
@@ -317,7 +331,18 @@ class ProducaoPage(QWidget):
         )
         self.lista_material_button.clicked.connect(self._lista_material_imos)
 
-        # Um só botão CUT-RITE que abre as duas ações; cada ação leva a sua dica.
+        # Um só botão CUT-RITE reúne a preparação assistida, o envio e o PDF.
+        self.analisar_lista_material_action = QAction(
+            "Analisar/Completar Lista Material…", self
+        )
+        self.analisar_lista_material_action.setToolTip(
+            "Depois de Importar CSV IMOS e executar AUTOMATION no Excel, "
+            "guardar/fechar o livro e rever as sugestões antes do CUT-RITE"
+        )
+        self.analisar_lista_material_action.triggered.connect(
+            self._analisar_lista_material
+        )
+
         self.enviar_cutrite_action = QAction(
             icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
         )
@@ -336,6 +361,8 @@ class ProducaoPage(QWidget):
 
         self.cutrite_menu = QMenu(self)
         self.cutrite_menu.setToolTipsVisible(True)
+        self.cutrite_menu.addAction(self.analisar_lista_material_action)
+        self.cutrite_menu.addSeparator()
         self.cutrite_menu.addAction(self.enviar_cutrite_action)
         self.cutrite_menu.addAction(self.exportar_pdf_cutrite_action)
 
@@ -363,6 +390,15 @@ class ProducaoPage(QWidget):
         )
         self.imprimir_action.triggered.connect(self._abrir_impressao)
 
+        self.exportar_documentacao_action = QAction("Exportar documentação…", self)
+        self.exportar_documentacao_action.setToolTip(
+            "Abrir o centro de PDFs: selecionar documentos separados, criar "
+            "pacote combinado e usar presets pessoais"
+        )
+        self.exportar_documentacao_action.triggered.connect(
+            self._abrir_exportar_documentacao
+        )
+
         self.notificar_cliente_action = QAction("Notificar Cliente", self)
         self.notificar_cliente_action.setToolTip(
             "Preparar o email que diz ao cliente que a obra vai para produção "
@@ -385,6 +421,7 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.setToolTipsVisible(True)
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
+        self.funcoes_menu.addAction(self.exportar_documentacao_action)
         self.funcoes_menu.addAction(self.notificar_cliente_action)
         self.funcoes_menu.addAction(self.criar_encomenda_imos_action)
 
@@ -2154,6 +2191,58 @@ class ProducaoPage(QWidget):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(context.output_path)))
             return
 
+        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
+        try:
+            with SessionLocal() as session:
+                assistant_service = ListaMaterialAssistantService(session)
+                assistant_config = assistant_service.resolve_config(
+                    user_id=user_id,
+                    client=values["NOME_CLIENTE_SIMPLEX"] or values["NOME_CLIENTE"],
+                    production_description=values["DESCRICAO_PRODUCAO"],
+                )
+                assistant_dialog = ListaMaterialAssistenteDialog(assistant_config, self)
+                if assistant_dialog.exec() != QDialog.DialogCode.Accepted:
+                    self.status_label.setText("Criação da Lista Material cancelada.")
+                    return
+                assistant_config = assistant_dialog.config()
+                if assistant_dialog.save_as_defaults():
+                    assistant_service.save_profile_defaults(assistant_config)
+        except SQLAlchemyError as error:
+            QMessageBox.critical(
+                self,
+                "Assistente Lista Material",
+                "Não foi possível carregar as preferências do assistente. "
+                "Confirme que a migração 20260821_91 foi aplicada.\n\n"
+                f"Detalhe: {error}",
+            )
+            return
+
+        values.update(
+            {
+                "ASSISTENTE_PUXADOR": assistant_config.handle,
+                "ASSISTENTE_PUXADOR_EXCECOES": "; ".join(
+                    f"{key}={value}"
+                    for key, value in assistant_config.handle_exceptions.items()
+                ),
+                "ASSISTENTE_LACAGEM_FORMAL": (
+                    "Ativa" if assistant_config.formal_lacquering else "Desativada"
+                ),
+                "ASSISTENTE_MODULOS": ", ".join(
+                    name for name, enabled in assistant_config.modules.items() if enabled
+                ),
+                "ASSISTENTE_BOARD_AVAILABLE": assistant_config.board_catalog_available,
+                "ASSISTENTE_BOARD_MESSAGE": assistant_config.board_catalog_message,
+            }
+        )
+        # Recriar o contexto para transportar a configuração escolhida para o Excel.
+        with SessionLocal() as session:
+            context = prepare_lista_material_imos(
+                session,
+                processo_id=processo.id,
+                nome_enc_imos=nome_enc,
+                values=values,
+            )
+
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.status_label.setText("A gerar a Lista Material (Excel)...")
         QApplication.processEvents()
@@ -2170,10 +2259,268 @@ class ProducaoPage(QWidget):
         finally:
             QApplication.restoreOverrideCursor()
 
+        try:
+            with SessionLocal() as session:
+                ListaMaterialAssistantService(session).create_work_snapshot(
+                    production_id=processo.id,
+                    workbook_path=output_path,
+                    config=assistant_config,
+                )
+        except SQLAlchemyError as error:
+            # O ficheiro já foi criado corretamente; a falha do histórico é
+            # comunicada sem esconder nem apagar o resultado.
+            QMessageBox.warning(
+                self,
+                "Assistente Lista Material",
+                "O Excel foi criado, mas não foi possível registar o snapshot "
+                f"da configuração.\n\nDetalhe: {error}",
+            )
+
         self.status_label.setText("Lista Material criada.")
-        QMessageBox.information(
-            self, "Lista Material IMOS", f"Ficheiro criado:\n{output_path}"
+        self._oferecer_fluxo_inicial_lista_material(processo, output_path)
+
+    def _oferecer_fluxo_inicial_lista_material(
+        self,
+        processo: Producao,
+        workbook_path: Path,
+    ) -> None:
+        importar = QMessageBox.question(
+            self,
+            "Lista Material criada — passo 1 de 3",
+            f"Ficheiro criado:\n{workbook_path}\n\n"
+            "Pretende importar agora o CSV do IMOS?\n\n"
+            "Será executada a macro existente Import_CSV_Imos_1. O Excel "
+            "fica visível para responder às perguntas da macro.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
         )
+        if importar != QMessageBox.StandardButton.Yes:
+            QMessageBox.information(
+                self,
+                "Lista Material IMOS",
+                "O Excel foi criado. Pode continuar mais tarde através dos "
+                "botões do livro ou de CUT-RITE > Analisar/Completar Lista Material.",
+            )
+            return
+
+        self.status_label.setText("A importar o CSV IMOS através do Excel...")
+        QApplication.processEvents()
+        try:
+            execute_import_csv_imos_macro(workbook_path)
+        except Exception as error:  # Excel COM / macro VBA
+            self.status_label.setText("A importação CSV IMOS não foi concluída.")
+            QMessageBox.warning(
+                self,
+                "Importar CSV IMOS",
+                f"Não foi possível concluir a importação.\n\nDetalhe: {error}",
+            )
+            return
+
+        preencher = QMessageBox.question(
+            self,
+            "CSV IMOS importado — passo 2 de 3",
+            "A LISTA_ORDENADA foi preenchida.\n\nPretende executar agora "
+            "a transformação AUTOMATION para preencher a LISTAGEM_CUT_RITE?\n\n"
+            "Será usada a mesma macro que está por trás do botão AUTOMATION.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if preencher != QMessageBox.StandardButton.Yes:
+            self.status_label.setText("CSV IMOS importado; AUTOMATION pendente.")
+            return
+
+        self.status_label.setText("A preencher a LISTAGEM_CUT_RITE...")
+        QApplication.processEvents()
+        try:
+            execute_automation_cutrite_macro(workbook_path)
+        except Exception as error:  # Excel COM / macro VBA
+            self.status_label.setText("A transformação AUTOMATION não foi concluída.")
+            QMessageBox.warning(
+                self,
+                "Preencher LISTAGEM_CUT_RITE",
+                f"Não foi possível concluir a transformação.\n\nDetalhe: {error}",
+            )
+            return
+
+        analisar = QMessageBox.question(
+            self,
+            "LISTAGEM_CUT_RITE preenchida — passo 3 de 3",
+            "A transformação inicial ficou concluída. Pretende abrir agora o "
+            "Assistente Lista Material para rever as otimizações sugeridas?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if analisar == QMessageBox.StandardButton.Yes:
+            self._rever_lista_material_assistente(processo, explicit=True)
+        else:
+            self.status_label.setText(
+                "LISTAGEM_CUT_RITE preenchida; revisão do assistente pendente."
+            )
+
+    def _abrir_exportar_documentacao(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione um processo para exportar documentação.")
+            return
+        folder = Path(str(getattr(processo, "pasta_servidor", "") or "").strip())
+        try:
+            workbook = find_lista_material_workbook(
+                folder,
+                nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+            )
+        except ValueError as error:
+            QMessageBox.warning(self, "Exportar documentação", str(error))
+            return
+        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
+        client = self.cliente_simplex_input.text().strip() or self.cliente_input.text().strip()
+        try:
+            with SessionLocal() as session:
+                dialog = ListaMaterialPdfDialog(
+                    session,
+                    workbook_path=workbook,
+                    production_id=processo.id,
+                    user_id=user_id,
+                    client=client,
+                    parent=self,
+                )
+                dialog.exec()
+        except SQLAlchemyError as error:
+            QMessageBox.critical(
+                self,
+                "Exportar documentação",
+                "Não foi possível carregar os presets PDF. Confirme que a "
+                f"migração 20260821_91 foi aplicada.\n\nDetalhe: {error}",
+            )
+
+    def _rever_lista_material_assistente(
+        self,
+        processo: Producao,
+        *,
+        explicit: bool,
+    ) -> tuple[bool, int]:
+        """Analisa a tabela criada por AUTOMATION e aplica só decisões humanas."""
+        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
+        user_name = str(
+            getattr(app_session.current_user, "username", "") or "Utilizador"
+        )
+        client = (
+            self.cliente_simplex_input.text().strip()
+            or self.cliente_input.text().strip()
+        )
+        try:
+            workbook_path = find_lista_material_workbook(
+                Path(pasta_servidor), nome_enc_imos=nome_enc
+            )
+            with SessionLocal() as session:
+                assistant_service = ListaMaterialAssistantService(session)
+                assistant_config = assistant_service.resolve_work_config(
+                    production_id=processo.id,
+                    user_id=user_id,
+                    client=client,
+                    production_description=(
+                        self.descricao_producao_text.toPlainText().strip()
+                    ),
+                )
+                prepare_workbook_for_assistant(
+                    workbook_path,
+                    config=assistant_config,
+                    user_name=user_name,
+                )
+                audit = assistant_service.audit_workbook(
+                    workbook_path, config=assistant_config
+                )
+                execution = assistant_service.record_audit(
+                    production_id=processo.id,
+                    user_id=user_id,
+                    audit=audit,
+                    kind="analise_manual" if explicit else "pre_cutrite",
+                )
+                if not audit.suggestions:
+                    return True, 0
+                review = ListaMaterialRevisaoDialog(audit, self)
+                if review.exec() != QDialog.DialogCode.Accepted:
+                    self.status_label.setText(
+                        "Análise da Lista Material cancelada sem alterar o Excel."
+                    )
+                    return False, 0
+                decisions = review.decisions()
+                applied = apply_workbook_decisions(
+                    workbook_path,
+                    decisions,
+                    user_name=user_name,
+                )
+                try:
+                    assistant_service.record_decisions(
+                        execution_id=execution.id,
+                        decisions=decisions,
+                        rows=audit.rows,
+                        config=assistant_config,
+                    )
+                except SQLAlchemyError as learning_error:
+                    session.rollback()
+                    QMessageBox.warning(
+                        self,
+                        "Aprendizagem da Lista Material",
+                        "As alterações foram aplicadas e guardadas no Excel, "
+                        "mas não foi possível atualizar o histórico de "
+                        "aprendizagem. Pode continuar a trabalhar no ficheiro."
+                        f"\n\nDetalhe: {learning_error}",
+                    )
+                if explicit:
+                    opened = QDesktopServices.openUrl(
+                        QUrl.fromLocalFile(str(workbook_path))
+                    )
+                    if not opened:
+                        QMessageBox.warning(
+                            self,
+                            "Abrir Lista Material",
+                            "As alterações foram guardadas, mas o Windows não "
+                            "conseguiu abrir automaticamente o Excel.\n\n"
+                            f"Ficheiro:\n{workbook_path}",
+                        )
+                return True, applied
+        except (ValueError, RuntimeError, SQLAlchemyError) as error:
+            QMessageBox.warning(
+                self,
+                "Analisar/Completar Lista Material",
+                "Não foi possível analisar a Lista Material. Confirme que já "
+                "executou Importar CSV IMOS e AUTOMATION e que guardou e fechou "
+                "o Excel.\n\n"
+                f"Detalhe: {error}",
+            )
+            return False, 0
+
+    def _analisar_lista_material(self) -> None:
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText(
+                "Selecione um processo para analisar a Lista Material."
+            )
+            return
+        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        if not pasta_servidor:
+            QMessageBox.warning(
+                self,
+                "Analisar/Completar Lista Material",
+                "Pasta do processo em falta.",
+            )
+            return
+        completed, applied = self._rever_lista_material_assistente(
+            processo, explicit=True
+        )
+        if not completed:
+            return
+        if applied:
+            self.status_label.setText(
+                f"Lista Material analisada: {applied} alterações aplicadas; "
+                "Excel aberto para confirmação."
+            )
+        else:
+            self.status_label.setText(
+                "Lista Material analisada; Excel aberto para confirmação."
+            )
 
     def _enviar_cutrite(self) -> None:
         processo = self._processo_selecionado()
@@ -2194,6 +2541,13 @@ class ProducaoPage(QWidget):
                 "Enviar CUT-RITE",
                 "Pasta do processo em falta. Crie a pasta antes de enviar ao CUT-RITE.",
             )
+            return
+
+        # Releitura obrigatória: alterações locais entram novamente na análise.
+        reviewed, _ = self._rever_lista_material_assistente(
+            processo, explicit=False
+        )
+        if not reviewed:
             return
 
         self._cutrite_dialog = CutRiteProgressDialog(self)

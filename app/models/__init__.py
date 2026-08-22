@@ -45,6 +45,21 @@ from app.models.system_setting import SystemSetting
 from app.models.user import User
 from app.models.user_permission import UserPermission
 from app.models.user_pref import UserPref
+from app.models.lista_material_assistente import (
+    ListaMaterialAliasPlaca,
+    ListaMaterialBarraReceita,
+    ListaMaterialCncOperacao,
+    ListaMaterialExecucao,
+    ListaMaterialModulo,
+    ListaMaterialObraConfig,
+    ListaMaterialPdfDocumento,
+    ListaMaterialPdfExportacao,
+    ListaMaterialPdfPreset,
+    ListaMaterialPerfil,
+    ListaMaterialPlacaSnapshot,
+    ListaMaterialRelacaoOrla,
+    ListaMaterialSugestao,
+)
 
 __all__ = [
     "Cliente",
@@ -90,4 +105,17 @@ __all__ = [
     "User",
     "UserPermission",
     "UserPref",
+    "ListaMaterialAliasPlaca",
+    "ListaMaterialBarraReceita",
+    "ListaMaterialCncOperacao",
+    "ListaMaterialExecucao",
+    "ListaMaterialModulo",
+    "ListaMaterialObraConfig",
+    "ListaMaterialPdfDocumento",
+    "ListaMaterialPdfExportacao",
+    "ListaMaterialPdfPreset",
+    "ListaMaterialPerfil",
+    "ListaMaterialPlacaSnapshot",
+    "ListaMaterialRelacaoOrla",
+    "ListaMaterialSugestao",
 ]

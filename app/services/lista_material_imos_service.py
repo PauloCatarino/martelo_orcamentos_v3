@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import importlib
 import json
 import os
 import subprocess
@@ -10,6 +11,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.producao import Producao
@@ -17,6 +19,8 @@ from app.services.system_setting_service import SystemSettingService
 
 KEY_PASTA_BASE_DADOS_ORCAMENTO = "pasta_base_dados_orcamento"
 TEMPLATE_FILENAME = "Lista_Material_IMOS_MARTELO.xltm"
+MACRO_IMPORT_CSV_IMOS = "Import_CSV_Imos_1"
+MACRO_AUTOMATION_CUTRITE = "Preencher_Tabela_Cut_Rite"
 
 
 @dataclass(frozen=True)
@@ -66,7 +70,10 @@ def prepare_lista_material_imos(
         raise ValueError(f"Modelo Excel nao encontrado:\n{template_path}")
 
     output_path = folder_path / f"Lista_Material_{nome_enc_txt}.xlsm"
-    values_json = json.dumps(dict(values or {}), ensure_ascii=False)
+    # O payload segue em Base64, mas fica limitado a ASCII para atravessar sem
+    # ambiguidades o Windows PowerShell 5.1 e instalações com code pages
+    # diferentes. O ConvertFrom-Json recompõe os caracteres Unicode.
+    values_json = json.dumps(dict(values or {}), ensure_ascii=True)
     values_b64 = base64.b64encode(values_json.encode("utf-8")).decode("ascii")
 
     return ListaMaterialImosContext(
@@ -84,7 +91,7 @@ def execute_lista_material_imos(
     temp_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", suffix=".ps1", delete=False
+            mode="w", encoding="utf-8-sig", suffix=".ps1", delete=False
         ) as tf:
             tf.write(_lista_material_imos_ps_script())
             temp_path = tf.name
@@ -127,6 +134,94 @@ def execute_lista_material_imos(
                 pass
 
 
+def execute_lista_material_workbook_macro(
+    workbook_path: Path,
+    macro_name: str,
+    *macro_args: object,
+) -> Path:
+    """Executa uma macro existente com Excel visível e guarda o livro.
+
+    O Excel fica visível porque as macros atuais apresentam confirmações e,
+    em alguns casos, formulários que exigem intervenção do utilizador.
+    """
+    path = Path(workbook_path)
+    if not path.is_file():
+        raise ValueError(f"Excel Lista Material não encontrado:\n{path}")
+    win32_client = importlib.import_module("win32com.client")
+    excel = None
+    workbook = None
+    try:
+        excel = win32_client.DispatchEx("Excel.Application")
+        excel.Visible = True
+        excel.DisplayAlerts = True
+        # O ficheiro foi criado pelo Martelo a partir do modelo interno.
+        # A macro tem de estar ativa para este fluxo explicitamente pedido.
+        try:
+            excel.AutomationSecurity = 1
+        except Exception:
+            pass
+        workbook = excel.Workbooks.Open(str(path.resolve()), ReadOnly=False)
+        if workbook.ReadOnly:
+            raise RuntimeError(
+                "O Excel está aberto ou bloqueado. Guarde e feche o livro antes de continuar."
+            )
+        excel.Run(f"'{workbook.Name}'!{macro_name}", *macro_args)
+        workbook.Save()
+        return path
+    finally:
+        if workbook is not None:
+            workbook.Close(False)
+        if excel is not None:
+            excel.Quit()
+
+
+def _sheet_has_material_rows(
+    workbook_path: Path,
+    sheet_name: str,
+    *,
+    start_row: int,
+    description_column: int,
+) -> bool:
+    workbook = load_workbook(Path(workbook_path), read_only=True, data_only=True)
+    try:
+        if sheet_name not in workbook.sheetnames:
+            return False
+        sheet = workbook[sheet_name]
+        return any(
+            sheet.cell(row, description_column).value not in (None, "")
+            for row in range(start_row, sheet.max_row + 1)
+        )
+    finally:
+        workbook.close()
+
+
+def execute_import_csv_imos_macro(workbook_path: Path) -> Path:
+    path = execute_lista_material_workbook_macro(
+        workbook_path, MACRO_IMPORT_CSV_IMOS
+    )
+    if not _sheet_has_material_rows(
+        path, "LISTA_ORDENADA", start_row=4, description_column=2
+    ):
+        raise RuntimeError(
+            "A macro terminou, mas a LISTA_ORDENADA ficou sem peças. "
+            "Confirme se o CSV existe em I:\\Cutrite\\Work\\Cutrite_Import_CSV e se o nome contém a encomenda IMOS."
+        )
+    return path
+
+
+def execute_automation_cutrite_macro(workbook_path: Path) -> Path:
+    path = execute_lista_material_workbook_macro(
+        workbook_path, MACRO_AUTOMATION_CUTRITE, True
+    )
+    if not _sheet_has_material_rows(
+        path, "LISTAGEM_CUT_RITE", start_row=3, description_column=1
+    ):
+        raise RuntimeError(
+            "A macro AUTOMATION terminou, mas a LISTAGEM_CUT_RITE ficou sem peças."
+        )
+    return path
+
+
 def _lista_material_imos_ps_script() -> str:
     return r"""
 param(
@@ -145,6 +240,24 @@ function To-OADate([string]$text) {
     $dt = [datetime]::ParseExact($text, 'dd-MM-yyyy', $null)
     return $dt.ToOADate()
   } catch { return $null }
+}
+
+function Get-OrCreateSheet($book, [string]$name) {
+  try { return $book.Worksheets.Item($name) } catch { }
+  $after = $book.Worksheets.Item($book.Worksheets.Count)
+  $sheet = $book.Worksheets.Add([Type]::Missing, $after)
+  [Runtime.InteropServices.Marshal]::ReleaseComObject($after) | Out-Null
+  $sheet.Name = $name
+  return $sheet
+}
+
+function Set-Headers($sheet, [string[]]$headers) {
+  for ($i = 0; $i -lt $headers.Count; $i++) {
+    $sheet.Cells.Item(1, $i + 1).Value2 = $headers[$i]
+  }
+  $sheet.Range($sheet.Cells.Item(1,1), $sheet.Cells.Item(1,$headers.Count)).Font.Bold = $true
+  $sheet.Range($sheet.Cells.Item(1,1), $sheet.Cells.Item(1,$headers.Count)).Interior.Color = 14737632
+  $sheet.Columns.AutoFit() | Out-Null
 }
 
 $excel = New-Object -ComObject Excel.Application
@@ -193,6 +306,75 @@ try {
 
     if (Test-Path -LiteralPath $OutputPath) { Remove-Item -LiteralPath $OutputPath -Force }
     $wb.SaveAs($OutputPath, 52)
+
+    # Camada técnica do novo assistente. Não altera A:Y nem a coluna Z
+    # (Tipo_Lacagem), que continuam a ser o contrato com o CUT-RITE/VBA.
+    try {
+      $assistant = Get-OrCreateSheet $wb 'ASSISTENTE'
+      $assistant.Cells.Clear() | Out-Null
+      Set-Headers $assistant @('Definição','Valor','Origem/observação')
+      $assistant.Cells.Item(2,1).Value2 = 'Estado catálogo placas'
+      $assistant.Cells.Item(2,2).Value2 = if ($v.ASSISTENTE_BOARD_AVAILABLE) { 'Disponível' } else { 'Modo histórico/manual' }
+      $assistant.Cells.Item(2,3).Value2 = [string]$v.ASSISTENTE_BOARD_MESSAGE
+      $assistant.Cells.Item(3,1).Value2 = 'Puxador da obra'
+      $assistant.Cells.Item(3,2).Value2 = [string]$v.ASSISTENTE_PUXADOR
+      $assistant.Cells.Item(3,3).Value2 = 'Sugestão editável; admite exceções por Artigo/RP.'
+      $assistant.Cells.Item(4,1).Value2 = 'Exceções de puxador'
+      $assistant.Cells.Item(4,2).Value2 = [string]$v.ASSISTENTE_PUXADOR_EXCECOES
+      $assistant.Cells.Item(4,3).Value2 = 'Substituições por Artigo/RP.'
+      $assistant.Cells.Item(5,1).Value2 = 'Lacagem formal'
+      $assistant.Cells.Item(5,2).Value2 = [string]$v.ASSISTENTE_LACAGEM_FORMAL
+      $assistant.Cells.Item(5,3).Value2 = 'Tipo_Lacagem mantém-se em Z apenas por compatibilidade.'
+      $assistant.Cells.Item(6,1).Value2 = 'Módulos ativos'
+      $assistant.Cells.Item(6,2).Value2 = [string]$v.ASSISTENTE_MODULOS
+      $assistant.Cells.Item(7,1).Value2 = 'Validação MP'
+      $assistant.Cells.Item(7,2).Value2 = 'LEGADA'
+      $assistant.Cells.Item(7,3).Value2 = 'O novo motor placa-orla não consulta a folha MP.'
+      $assistant.Cells.Item(8,1).Value2 = 'Passo seguinte'
+      $assistant.Cells.Item(8,2).Value2 = 'Analisar/Completar Lista Material'
+      $assistant.Cells.Item(8,3).Value2 = 'Depois de Importar CSV IMOS e executar AUTOMATION, guarde e feche o Excel; no Martelo V3 use CUT-RITE > Analisar/Completar Lista Material.'
+      $assistant.Columns.AutoFit() | Out-Null
+
+      $raw = Get-OrCreateSheet $wb 'RAW_IMOS'
+      $raw.Cells.Clear() | Out-Null
+      Set-Headers $raw @('SourceID','Origem','Importado_em','Dados_IMOS')
+
+      $suggestions = Get-OrCreateSheet $wb 'SUGESTOES'
+      $suggestions.Cells.Clear() | Out-Null
+      Set-Headers $suggestions @('Estado','SourceID','Folha','Linha','Campo','Original','Sugerido','Motivo','Confiança','Decisão')
+
+      $validation = Get-OrCreateSheet $wb 'VALIDACAO'
+      $validation.Cells.Clear() | Out-Null
+      Set-Headers $validation @('Estado','SourceID','Regra','Material','Orla','Resultado','Explicação')
+      $validation.Cells.Item(2,1).Value2 = 'INFORMAÇÃO'
+      $validation.Cells.Item(2,3).Value2 = 'CATALOGO_PLACAS'
+      $validation.Cells.Item(2,6).Value2 = if ($v.ASSISTENTE_BOARD_AVAILABLE) { 'DISPONÍVEL' } else { 'PENDENTE' }
+      $validation.Cells.Item(2,7).Value2 = [string]$v.ASSISTENTE_BOARD_MESSAGE
+
+      $log = Get-OrCreateSheet $wb 'LOG'
+      $log.Cells.Clear() | Out-Null
+      Set-Headers $log @('Data','Utilizador','Ação','SourceID','Campo','Original','Novo','Motivo')
+      $log.Cells.Item(2,1).Value2 = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+      $log.Cells.Item(2,2).Value2 = [string]$v.RESPONSAVEL
+      $log.Cells.Item(2,3).Value2 = 'Livro criado pelo Martelo V3'
+
+      $wsCutTechnical = $wb.Worksheets.Item('LISTAGEM_CUT_RITE')
+      $wsCutTechnical.Range('AA2').Value2 = 'SourceID'
+      $wsCutTechnical.Range('AB2').Value2 = 'Estado_Assistente'
+      $wsCutTechnical.Range('AA3').Formula = '=IF(A3<>"","SRC-"&TEXT(ROW()-2,"000000"),"")'
+      $wsCutTechnical.Range('AB3').Value2 = ''
+      try {
+        $lastRow = [Math]::Max(3, $wsCutTechnical.UsedRange.Rows.Count)
+        if ($lastRow -gt 3) { $wsCutTechnical.Range("AA3:AA$lastRow").FillDown() }
+      } catch { }
+      [Runtime.InteropServices.Marshal]::ReleaseComObject($wsCutTechnical) | Out-Null
+      foreach ($s in @($assistant,$raw,$suggestions,$validation,$log)) {
+        [Runtime.InteropServices.Marshal]::ReleaseComObject($s) | Out-Null
+      }
+      $wb.Save() | Out-Null
+    } catch {
+      throw "Falha ao preparar as folhas do Assistente Lista Material: $($_.Exception.Message)"
+    }
 
     try {
       $wsCut = $wb.Worksheets.Item('LISTAGEM_CUT_RITE')

@@ -95,12 +95,27 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
     assert "self.lista_material_button.clicked.connect(self._lista_material_imos)" in init_source
     assert "Gerar o Excel 'Lista Material_IMOS' na pasta do processo" in init_source
-    # Um só botão "CUT-RITE" com as duas ações no menu.
+    workflow_source = inspect.getsource(
+        ProducaoPage._oferecer_fluxo_inicial_lista_material
+    )
+    assert "execute_import_csv_imos_macro" in workflow_source
+    assert "execute_automation_cutrite_macro" in workflow_source
+    assert "passo 1 de 3" in workflow_source
+    assert "passo 2 de 3" in workflow_source
+    assert "passo 3 de 3" in workflow_source
+    assert "self._rever_lista_material_assistente" in workflow_source
+    # Um só botão "CUT-RITE" com preparação, envio e PDF no menu.
     assert '"CUT-RITE"' in init_source
     assert "self.cutrite_button.setMenu(self.cutrite_menu)" in init_source
     assert "self.cutrite_menu.setToolTipsVisible(True)" in init_source
     assert "self.enviar_cutrite_button" not in init_source
     assert "self.exportar_resumo_pdf_button" not in init_source
+    assert '"Analisar/Completar Lista Material…", self' in init_source
+    assert (
+        "self.analisar_lista_material_action.triggered.connect("
+        in init_source
+    )
+    assert "self._analisar_lista_material" in init_source
     assert '"Enviar CUT-RITE", self' in init_source
     assert "self.enviar_cutrite_action.triggered.connect(self._enviar_cutrite)" in init_source
     assert "Criar o plano de corte no CUT-RITE a partir da Lista Material" in init_source
@@ -113,6 +128,18 @@ def test_producao_page_init_uses_expected_widgets() -> None:
         "Exportar o plano de corte em PDF e gravar diretamente na pasta da obra"
         in init_source
     )
+    review_source = inspect.getsource(ProducaoPage._rever_lista_material_assistente)
+    send_source = inspect.getsource(ProducaoPage._enviar_cutrite)
+    assert "prepare_workbook_for_assistant" in review_source
+    assert "resolve_work_config" in review_source
+    assert "ListaMaterialRevisaoDialog" in review_source
+    assert "except SQLAlchemyError as learning_error" in review_source
+    assert "session.rollback()" in review_source
+    assert "As alterações foram aplicadas e guardadas no Excel" in review_source
+    assert "if explicit:" in review_source
+    assert "QDesktopServices.openUrl" in review_source
+    assert "QUrl.fromLocalFile(str(workbook_path))" in review_source
+    assert "self._rever_lista_material_assistente" in send_source
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "doubleClicked.connect(self._handle_table_double_click)" in init_source
