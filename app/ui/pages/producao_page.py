@@ -335,6 +335,7 @@ class ProducaoPage(QWidget):
         self.analisar_lista_material_action = QAction(
             "Analisar/Completar Lista Material…", self
         )
+        self.analisar_lista_material_action.setIcon(icone_ficheiro("icon_excel.ico"))
         self.analisar_lista_material_action.setToolTip(
             "Depois de Importar CSV IMOS e executar AUTOMATION no Excel, "
             "guardar/fechar o livro e rever as sugestões antes do CUT-RITE"
@@ -376,6 +377,7 @@ class ProducaoPage(QWidget):
 
         # Botão "Funções" com as ações da pasta da obra, como no CUT-RITE.
         self.preparacao_action = QAction("Preparação", self)
+        self.preparacao_action.setIcon(icone("preparacao_producao"))
         self.preparacao_action.setToolTip(
             "Validar o que já está feito na pasta da obra (PDFs, Caderno de "
             "Encargos, programas CNC) e executar os passos que faltam até a "
@@ -384,6 +386,7 @@ class ProducaoPage(QWidget):
         self.preparacao_action.triggered.connect(self._abrir_preparacao)
 
         self.imprimir_action = QAction("Imprimir", self)
+        self.imprimir_action.setIcon(icone("imprimir"))
         self.imprimir_action.setToolTip(
             "Ver os documentos da pasta da obra e imprimir os selecionados pela "
             "sua ordem de prioridade (a ordem fica guardada para si)"
@@ -391,6 +394,7 @@ class ProducaoPage(QWidget):
         self.imprimir_action.triggered.connect(self._abrir_impressao)
 
         self.exportar_documentacao_action = QAction("Exportar documentação…", self)
+        self.exportar_documentacao_action.setIcon(icone("exportar_documentacao"))
         self.exportar_documentacao_action.setToolTip(
             "Abrir o centro de PDFs: selecionar documentos separados, criar "
             "pacote combinado e usar presets pessoais"
@@ -400,6 +404,7 @@ class ProducaoPage(QWidget):
         )
 
         self.notificar_cliente_action = QAction("Notificar Cliente", self)
+        self.notificar_cliente_action.setIcon(icone("notificar_cliente"))
         self.notificar_cliente_action.setToolTip(
             "Preparar o email que diz ao cliente que a obra vai para produção "
             "(o mesmo que o Martelo propõe ao passar de Desenho para Produção). "
@@ -408,6 +413,9 @@ class ProducaoPage(QWidget):
         self.notificar_cliente_action.triggered.connect(self._notificar_cliente)
 
         self.criar_encomenda_imos_action = QAction("Criar Encomenda IMOS…", self)
+        self.criar_encomenda_imos_action.setIcon(
+            icone_ficheiro("icon_imos_2025.ico")
+        )
         self.criar_encomenda_imos_action.setToolTip(
             "Criar no iMos a pasta do cliente (se faltar) e a encomenda desta "
             "obra. Mostra primeiro tudo o que vai ser criado; nada é gravado "
