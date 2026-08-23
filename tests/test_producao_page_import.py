@@ -3,6 +3,121 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
+
+
+def test_resposta_nao_no_passo_4_abre_o_excel_para_trabalho(
+    monkeypatch, tmp_path
+) -> None:
+    from app.ui.pages import producao_page
+    from app.ui.pages.producao_page import ProducaoPage
+
+    workbook_path = tmp_path / "Lista_Material_teste.xlsm"
+    workbook_path.touch()
+    answers = iter(
+        [
+            producao_page.QMessageBox.StandardButton.Yes,
+            producao_page.QMessageBox.StandardButton.Yes,
+            producao_page.QMessageBox.StandardButton.No,
+            producao_page.QMessageBox.StandardButton.No,
+        ]
+    )
+    opened_urls: list[str] = []
+
+    monkeypatch.setattr(
+        producao_page.QMessageBox,
+        "question",
+        staticmethod(lambda *_args, **_kwargs: next(answers)),
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_import_csv_imos_macro",
+        lambda path: path,
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_automation_cutrite_macro",
+        lambda path: path,
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_import_listas_ferragens_macro",
+        lambda path: path,
+    )
+    monkeypatch.setattr(
+        producao_page.QDesktopServices,
+        "openUrl",
+        staticmethod(lambda url: opened_urls.append(url.toLocalFile()) or True),
+    )
+
+    class _StatusLabel:
+        text = ""
+
+        def setText(self, text: str) -> None:
+            self.text = text
+
+    class _Page:
+        status_label = _StatusLabel()
+
+        def _rever_lista_material_assistente(self, *_args, **_kwargs):
+            raise AssertionError("O assistente não deve abrir quando a resposta é Não.")
+
+    page = _Page()
+    ProducaoPage._oferecer_fluxo_inicial_lista_material(
+        page,
+        object(),
+        workbook_path,
+    )
+
+    assert [Path(path) for path in opened_urls] == [workbook_path]
+    assert "a abrir o Excel" in page.status_label.text
+
+
+def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) -> None:
+    from app.ui.pages import producao_page
+    from app.ui.pages.producao_page import ProducaoPage
+
+    workbook_path = tmp_path / "Lista_Material_teste.xlsm"
+    workbook_path.touch()
+    answers = iter([producao_page.QMessageBox.StandardButton.Yes] * 4)
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        producao_page.QMessageBox,
+        "question",
+        staticmethod(lambda *_args, **_kwargs: next(answers)),
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_import_csv_imos_macro",
+        lambda path: events.append("csv") or path,
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_automation_cutrite_macro",
+        lambda path: events.append("automation") or path,
+    )
+    monkeypatch.setattr(
+        producao_page,
+        "execute_import_listas_ferragens_macro",
+        lambda path: events.append("ferragens") or path,
+    )
+
+    class _StatusLabel:
+        def setText(self, _text: str) -> None:
+            pass
+
+    class _Page:
+        status_label = _StatusLabel()
+
+        def _rever_lista_material_assistente(self, *_args, **_kwargs):
+            events.append("assistente")
+
+    ProducaoPage._oferecer_fluxo_inicial_lista_material(
+        _Page(), object(), workbook_path
+    )
+
+    assert events == ["csv", "automation", "ferragens", "assistente"]
 
 
 def test_producao_page_imports_and_headers() -> None:
@@ -100,10 +215,17 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     )
     assert "execute_import_csv_imos_macro" in workflow_source
     assert "execute_automation_cutrite_macro" in workflow_source
-    assert "passo 1 de 3" in workflow_source
-    assert "passo 2 de 3" in workflow_source
-    assert "passo 3 de 3" in workflow_source
+    assert "execute_import_listas_ferragens_macro" in workflow_source
+    assert "passo 1 de 4" in workflow_source
+    assert "passo 2 de 4" in workflow_source
+    assert "passo 3 de 4" in workflow_source
+    assert "passo 4 de 4" in workflow_source
     assert "self._rever_lista_material_assistente" in workflow_source
+    assert (
+        "QDesktopServices.openUrl(QUrl.fromLocalFile(str(workbook_path)))"
+        in workflow_source
+    )
+    assert "a abrir o Excel para continuar o trabalho" in workflow_source
     # Um só botão "CUT-RITE" com preparação, envio e PDF no menu.
     assert '"CUT-RITE"' in init_source
     assert "self.cutrite_button.setMenu(self.cutrite_menu)" in init_source

@@ -399,6 +399,10 @@ class ProducaoPreparacaoDialog(QDialog):
                 svc.gerar_projeto_producao_pdf,
                 "PDF do projeto de produção gerado:",
             ),
+            svc.ACAO_MOVER_CONJ_PDF: (
+                svc.mover_conj_para_obra,
+                "PDF dos layouts movido para a pasta da obra:",
+            ),
             svc.ACAO_COPIAR_PROGRAMAS_OBRA: (
                 svc.copiar_programas_para_obra,
                 "Programas CNC copiados para a obra:",
@@ -412,6 +416,23 @@ class ProducaoPreparacaoDialog(QDialog):
         if funcao_mensagem is None:
             return
         funcao, mensagem = funcao_mensagem
+
+        if acao == svc.ACAO_MOVER_CONJ_PDF and self._contexto.conj_pdf.exists():
+            resposta = QMessageBox.question(
+                self,
+                "Substituir PDF CONJ",
+                "Já existe este PDF na pasta da obra:\n\n"
+                f"{self._contexto.conj_pdf}\n\n"
+                "Pretende substituí-lo pelo novo PDF exportado pelo iMos?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                self.status_label.setText("Movimento do PDF CONJ cancelado.")
+                return
+            funcao = lambda contexto: svc.mover_conj_para_obra(
+                contexto, substituir=True
+            )
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:

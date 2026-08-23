@@ -138,18 +138,22 @@ class CaminhosSistemaPage(QWidget):
 
         for row_index, setting in enumerate(configuracoes):
             self._settings_by_row[row_index] = setting
+            dica = setting.descricao or setting.chave
 
             label_item = QTableWidgetItem(setting.descricao or setting.chave)
             label_item.setData(Qt.ItemDataRole.UserRole, setting.chave)
             label_item.setFlags(label_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            label_item.setToolTip(dica)
 
             value_item = QTableWidgetItem(setting.valor or "")
+            value_item.setToolTip(dica)
 
             self.table.setItem(row_index, 0, label_item)
             self.table.setItem(row_index, 1, value_item)
 
             browse_button = QPushButton("Procurar...")
             browse_button.setEnabled(setting.tipo in self.BROWSE_TYPES)
+            browse_button.setToolTip(f"Selecionar: {dica}")
             browse_button.clicked.connect(lambda _checked=False, row=row_index: self._procurar(row))
             self.table.setCellWidget(row_index, 2, browse_button)
 

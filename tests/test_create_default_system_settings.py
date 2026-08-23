@@ -11,6 +11,8 @@ from scripts.create_default_system_settings import (
     PASTA_EMBEDDINGS_IA_DEFAULT,
     PASTA_IMAGENS_MODULOS_CHAVE,
     PASTA_IMAGENS_MODULOS_DEFAULT,
+    PASTA_LAYOUTS_PDF_IMOS_CHAVE,
+    PASTA_LAYOUTS_PDF_IMOS_DEFAULT,
     PASTA_PESQUISA_PROFUNDA_IA_DEFAULT,
     PRODUCAO_BASE_PATH_CHAVE,
     PRODUCAO_BASE_PATH_CHAVE_LEGACY,
@@ -45,6 +47,12 @@ def test_default_system_settings_constants_import() -> None:
     assert settings_by_key["modelo_claude_ia"].valor == "claude-opus-4-8"
     assert settings_by_key["pasta_base_orcamentos"].tipo == "pasta"
     assert settings_by_key["ficheiro_imos_msg"].tipo == "ficheiro"
+    layouts_imos = settings_by_key[PASTA_LAYOUTS_PDF_IMOS_CHAVE]
+    assert layouts_imos.descricao == "Pasta onde vão os PDFs dos Layouts da obra"
+    assert layouts_imos.tipo == "pasta"
+    assert layouts_imos.grupo == "IMOS"
+    assert layouts_imos.valor == PASTA_LAYOUTS_PDF_IMOS_DEFAULT
+    assert layouts_imos.valor == r"C:\IMOS_Output_Batches\PDF_MultiSheet_Layout"
     assert settings_by_key["phc_sql_server"].valor == r"Server_le\phc"
     assert settings_by_key["phc_sql_server"].grupo == "PHC"
     assert settings_by_key["phc_sql_database"].valor == "lancaencanto"

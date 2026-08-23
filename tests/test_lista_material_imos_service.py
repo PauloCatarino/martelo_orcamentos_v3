@@ -14,11 +14,13 @@ import app.models  # noqa: F401  (register all models on Base.metadata)
 from app.models.producao import Producao
 from app.repositories.system_setting_repository import SystemSettingRepository
 from app.services.lista_material_imos_service import (
+    MACRO_IMPORT_LISTAS_FERRAGENS,
     TEMPLATE_FILENAME,
     ListaMaterialImosContext,
     _sheet_has_material_rows,
     _lista_material_imos_ps_script,
     execute_lista_material_workbook_macro,
+    execute_import_listas_ferragens_macro,
     execute_lista_material_imos,
     prepare_lista_material_imos,
 )
@@ -268,6 +270,21 @@ def test_macro_excel_e_executada_visivel_com_argumentos(monkeypatch, tmp_path) -
     assert calls["saved"] is True
     assert calls["closed"] is False
     assert calls["quit"] is True
+
+
+def test_importar_listas_ferragens_executa_macro_correta(monkeypatch, tmp_path) -> None:
+    path = tmp_path / "Lista_Material_TESTE.xlsm"
+    calls: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(
+        "app.services.lista_material_imos_service.execute_lista_material_workbook_macro",
+        lambda *args: calls.append(args) or path,
+    )
+
+    result = execute_import_listas_ferragens_macro(path)
+
+    assert result == path
+    assert calls == [(path, MACRO_IMPORT_LISTAS_FERRAGENS)]
 
 
 def test_validacao_dos_passos_confirma_se_a_folha_recebeu_pecas(tmp_path) -> None:

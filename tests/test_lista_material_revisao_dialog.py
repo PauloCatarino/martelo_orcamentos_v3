@@ -269,6 +269,16 @@ def test_configuracao_cnc_tem_campo_proprio_e_migra_formato_antigo() -> None:
     dialog.close()
 
 
+def test_configuracao_abre_com_mais_altura_para_mostrar_os_modulos() -> None:
+    dialog = ListaMaterialAssistenteDialog(
+        AssistantConfig(user_id=2, client="JF_VIVA")
+    )
+
+    assert dialog.minimumHeight() == 700
+    assert dialog.height() >= 760
+    dialog.close()
+
+
 def test_qualquer_celula_operacional_pode_ser_editada_manualmente() -> None:
     dialog = ListaMaterialRevisaoDialog(_audit())
     headers = [

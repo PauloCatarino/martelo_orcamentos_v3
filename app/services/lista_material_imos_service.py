@@ -21,6 +21,7 @@ KEY_PASTA_BASE_DADOS_ORCAMENTO = "pasta_base_dados_orcamento"
 TEMPLATE_FILENAME = "Lista_Material_IMOS_MARTELO.xltm"
 MACRO_IMPORT_CSV_IMOS = "Import_CSV_Imos_1"
 MACRO_AUTOMATION_CUTRITE = "Preencher_Tabela_Cut_Rite"
+MACRO_IMPORT_LISTAS_FERRAGENS = "ImportarListasFerragensIMOS_14"
 
 
 @dataclass(frozen=True)
@@ -220,6 +221,13 @@ def execute_automation_cutrite_macro(workbook_path: Path) -> Path:
             "A macro AUTOMATION terminou, mas a LISTAGEM_CUT_RITE ficou sem peças."
         )
     return path
+
+
+def execute_import_listas_ferragens_macro(workbook_path: Path) -> Path:
+    """Executa no Excel o fluxo de movimento e importação das listas IMOS."""
+    return execute_lista_material_workbook_macro(
+        workbook_path, MACRO_IMPORT_LISTAS_FERRAGENS
+    )
 
 
 def _lista_material_imos_ps_script() -> str:

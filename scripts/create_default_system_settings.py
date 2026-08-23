@@ -89,6 +89,10 @@ PASTA_ORIGEM_PROGRAMAS_CNC_DEFAULT = r"\\SERVER_LE\Homag_iX\_ProgramasCNC"
 PASTA_DESTINO_PROGRAMAS_CNC_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\Operador\FICHEIROS_MPR"
 )
+PASTA_LAYOUTS_PDF_IMOS_CHAVE = "pasta_layouts_pdf_imos"
+PASTA_LAYOUTS_PDF_IMOS_DEFAULT = (
+    r"C:\IMOS_Output_Batches\PDF_MultiSheet_Layout"
+)
 STREAMLIT_SQL_USER_CHAVE = "streamlit_sql_user"
 STREAMLIT_SQL_PASSWORD_CHAVE = "streamlit_sql_password"
 STREAMLIT_SQL_USER_DEFAULT = "Lanca_Encanto_ReadOnly"
@@ -210,6 +214,13 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         PRODUCAO_BASE_PATH_DEFAULT,
     ),
     SystemSettingSeed("pasta_base_imorder", "Pasta Base Imorder / imos iX", "pasta", "IMOS"),
+    SystemSettingSeed(
+        PASTA_LAYOUTS_PDF_IMOS_CHAVE,
+        "Pasta onde vão os PDFs dos Layouts da obra",
+        "pasta",
+        "IMOS",
+        PASTA_LAYOUTS_PDF_IMOS_DEFAULT,
+    ),
     SystemSettingSeed(
         "imos_pasta_raiz",
         "iMos - Pasta raiz das encomendas (dentro de Order)",

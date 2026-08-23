@@ -6,24 +6,31 @@ import inspect
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services import producao_preparacao_service as svc
+from app.services.system_setting_service import SystemSettingService
 
 
 def _contexto(base: Path) -> svc.PreparacaoContexto:
     obra = base / "1319_01_01_JF_VIVA"
     obra.mkdir(parents=True, exist_ok=True)
+    layouts = base / "layouts"
+    nome_enc_imos = "1319_01_26_JF_VIVA"
     return svc.PreparacaoContexto(
         codigo_processo="26.1319_01_01_JF_VIVA",
         pasta_obra=obra,
-        nome_enc_imos="1319_01_26_JF_VIVA",
+        nome_enc_imos=nome_enc_imos,
         nome_plano_cut_rite="1319_01_01_26_JF_VIVA",
+        pasta_layouts_pdf_imos=layouts,
+        conj_pdf_origem=layouts / f"{nome_enc_imos}.pdf",
         pasta_origem_cnc=base / "cnc",
-        pasta_origem_cnc_obra=base / "cnc" / "1319_01_26_JF_VIVA",
-        pasta_programas_obra=obra / "1319_01_26_JF_VIVA",
+        pasta_origem_cnc_obra=base / "cnc" / nome_enc_imos,
+        pasta_programas_obra=obra / nome_enc_imos,
         pasta_destino_cnc=base / "mpr",
         pasta_destino_cnc_ano=base / "mpr" / "2026_MPR",
-        pasta_destino_cnc_obra=base / "mpr" / "2026_MPR" / "1319_01_26_JF_VIVA",
-        conj_pdf=obra / svc.CONJ_PDF_NOME,
+        pasta_destino_cnc_obra=base / "mpr" / "2026_MPR" / nome_enc_imos,
+        conj_pdf=obra / f"CONJ_{nome_enc_imos}.pdf",
         projeto_pdf=obra / svc.PROJETO_PRODUCAO_PDF_NOME,
     )
 
@@ -46,6 +53,81 @@ def test_pasta_vazia_marca_tudo_pendente(tmp_path: Path) -> None:
     assert estados["cnc_origem"].estado == svc.ESTADO_PENDENTE
     assert estados["cnc_obra"].estado == svc.ESTADO_BLOQUEADO
     assert estados["obra_pronta"].estado == svc.ESTADO_BLOQUEADO
+
+
+def test_contexto_resolve_layout_imos_e_nome_conj_da_obra(
+    session, tmp_path: Path
+) -> None:
+    layouts = tmp_path / "exports_imos"
+    SystemSettingService(session).guardar_valor(
+        svc.KEY_PASTA_LAYOUTS_PDF_IMOS, str(layouts)
+    )
+
+    contexto = svc.resolver_contexto(
+        session,
+        codigo_processo="26.1449_01_01_JF_VIVA",
+        pasta_obra=tmp_path / "obra",
+        nome_enc_imos="1449_01_26_JF_VIVA",
+    )
+
+    assert contexto.conj_pdf_origem == layouts / "1449_01_26_JF_VIVA.pdf"
+    assert contexto.conj_pdf == tmp_path / "obra" / "CONJ_1449_01_26_JF_VIVA.pdf"
+
+
+def test_mover_layout_imos_para_obra_renomeia_e_remove_origem(tmp_path: Path) -> None:
+    contexto = _contexto(tmp_path)
+    contexto.pasta_layouts_pdf_imos.mkdir(parents=True)
+    contexto.conj_pdf_origem.write_bytes(b"layout real")
+
+    antes = _estados_por_key(contexto)["conj_pdf"]
+    destino = svc.mover_conj_para_obra(contexto)
+    depois = _estados_por_key(contexto)["conj_pdf"]
+
+    assert antes.acao == svc.ACAO_MOVER_CONJ_PDF
+    assert antes.acao_label == "Mover"
+    assert destino == contexto.conj_pdf
+    assert destino.read_bytes() == b"layout real"
+    assert not contexto.conj_pdf_origem.exists()
+    assert depois.estado == svc.ESTADO_OK
+
+
+def test_mover_conj_nao_substitui_destino_sem_confirmacao(tmp_path: Path) -> None:
+    contexto = _contexto(tmp_path)
+    contexto.pasta_layouts_pdf_imos.mkdir(parents=True)
+    contexto.conj_pdf_origem.write_bytes(b"novo")
+    contexto.conj_pdf.write_bytes(b"anterior")
+
+    estado = _estados_por_key(contexto)["conj_pdf"]
+    with pytest.raises(FileExistsError, match="confirmação"):
+        svc.mover_conj_para_obra(contexto)
+
+    assert estado.estado == svc.ESTADO_DESATUALIZADO
+    assert estado.acao == svc.ACAO_MOVER_CONJ_PDF
+    assert contexto.conj_pdf.read_bytes() == b"anterior"
+    assert contexto.conj_pdf_origem.read_bytes() == b"novo"
+
+
+def test_mover_conj_substitui_so_quando_confirmado(tmp_path: Path) -> None:
+    contexto = _contexto(tmp_path)
+    contexto.pasta_layouts_pdf_imos.mkdir(parents=True)
+    contexto.conj_pdf_origem.write_bytes(b"novo")
+    contexto.conj_pdf.write_bytes(b"anterior")
+
+    svc.mover_conj_para_obra(contexto, substituir=True)
+
+    assert contexto.conj_pdf.read_bytes() == b"novo"
+    assert not contexto.conj_pdf_origem.exists()
+
+
+def test_conj_pdf_legacy_continua_valido_para_obras_antigas(tmp_path: Path) -> None:
+    contexto = _contexto(tmp_path)
+    legado = contexto.pasta_obra / svc.CONJ_PDF_NOME_LEGACY
+    legado.write_bytes(b"obra antiga")
+
+    estado = _estados_por_key(contexto)["conj_pdf"]
+
+    assert estado.estado == svc.ESTADO_OK
+    assert estado.detalhe == str(legado)
 
 
 def test_ficheiro_existente_fica_ok(tmp_path: Path) -> None:
@@ -202,6 +284,7 @@ def test_dialogo_preparacao_tem_as_pecas_esperadas() -> None:
     assert "Preferências..." in fonte
     assert '"Ação", "Validação", "Estado", "Detalhe"' in fonte
     assert "svc.ACAO_GERAR_PROJETO_PDF" in fonte
+    assert "svc.ACAO_MOVER_CONJ_PDF" in fonte
     assert "svc.ACAO_COPIAR_PROGRAMAS_OBRA" in fonte
     assert "svc.ACAO_ENVIAR_PROGRAMAS_CNC" in fonte
     # Preferências por utilizador, não globais.

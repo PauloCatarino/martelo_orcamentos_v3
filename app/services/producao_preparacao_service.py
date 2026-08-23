@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -36,7 +37,14 @@ KEY_PASTA_DESTINO_CNC = "pasta_destino_programas_cnc"
 DEFAULT_PASTA_ORIGEM_CNC = r"\\SERVER_LE\Homag_iX\_ProgramasCNC"
 DEFAULT_PASTA_DESTINO_CNC = r"\\SERVER_LE\_Lanca_Encanto\Operador\FICHEIROS_MPR"
 
-CONJ_PDF_NOME = "CONJ.pdf"
+#: Pasta local onde o iMos exporta os layouts PDF de cada encomenda.
+KEY_PASTA_LAYOUTS_PDF_IMOS = "pasta_layouts_pdf_imos"
+DEFAULT_PASTA_LAYOUTS_PDF_IMOS = (
+    r"C:\IMOS_Output_Batches\PDF_MultiSheet_Layout"
+)
+
+CONJ_PDF_PADRAO = "CONJ_<Nome Enc IMOS IX>.pdf"
+CONJ_PDF_NOME_LEGACY = "CONJ.pdf"
 PROJETO_PRODUCAO_PDF_NOME = "2_Projeto_Producao.pdf"
 
 ESTADO_OK = "ok"
@@ -45,6 +53,7 @@ ESTADO_DESATUALIZADO = "desatualizado"
 ESTADO_BLOQUEADO = "bloqueado"
 
 ACAO_GERAR_PROJETO_PDF = "gerar_projeto_pdf"
+ACAO_MOVER_CONJ_PDF = "mover_conj_pdf"
 ACAO_COPIAR_PROGRAMAS_OBRA = "copiar_programas_obra"
 ACAO_ENVIAR_PROGRAMAS_CNC = "enviar_programas_cnc"
 
@@ -88,10 +97,9 @@ VALIDACOES_FICHEIROS: tuple[ValidacaoFicheiro, ...] = (
         key="projeto_pdf",
         label=PROJETO_PRODUCAO_PDF_NOME,
         padrao=PROJETO_PRODUCAO_PDF_NOME,
-        padroes_origem=(CONJ_PDF_NOME,),
         descricao=(
-            "Valida se o 2_Projeto_Producao.pdf foi gerado a partir do CONJ.pdf "
-            "em A4 horizontal."
+            "Valida se o 2_Projeto_Producao.pdf foi gerado a partir do PDF "
+            "CONJ da encomenda, em A4 horizontal."
         ),
     ),
     ValidacaoFicheiro(
@@ -139,9 +147,12 @@ VALIDACOES_FICHEIROS: tuple[ValidacaoFicheiro, ...] = (
     ),
     ValidacaoFicheiro(
         key="conj_pdf",
-        label=CONJ_PDF_NOME,
-        padrao=CONJ_PDF_NOME,
-        descricao="Valida se existe o CONJ.pdf (desenho de conjunto) na pasta da obra.",
+        label=CONJ_PDF_PADRAO,
+        padrao=CONJ_PDF_PADRAO,
+        descricao=(
+            "Valida o desenho de conjunto e permite mover o PDF exportado pelo "
+            "iMos para a pasta da obra, acrescentando o prefixo CONJ_."
+        ),
     ),
 )
 
@@ -183,6 +194,8 @@ class PreparacaoContexto:
     pasta_obra: Path
     nome_enc_imos: str
     nome_plano_cut_rite: str
+    pasta_layouts_pdf_imos: Path
+    conj_pdf_origem: Path
     pasta_origem_cnc: Path
     pasta_origem_cnc_obra: Path
     pasta_programas_obra: Path
@@ -329,6 +342,10 @@ def resolver_contexto(
         raise ValueError("Nome Enc IMOS IX em falta no processo.")
 
     settings = SystemSettingService(session)
+    pasta_layouts = Path(
+        settings.obter_valor(KEY_PASTA_LAYOUTS_PDF_IMOS, "")
+        or DEFAULT_PASTA_LAYOUTS_PDF_IMOS
+    )
     origem_cnc = Path(
         settings.obter_valor(KEY_PASTA_ORIGEM_CNC, "") or DEFAULT_PASTA_ORIGEM_CNC
     )
@@ -337,21 +354,38 @@ def resolver_contexto(
     )
     pasta = Path(pasta_texto)
     pasta_ano = destino_cnc / f"{datetime.now().year}_MPR"
+    nome_layout_pdf = _nome_layout_pdf(nome_enc)
 
     return PreparacaoContexto(
         codigo_processo=str(codigo_processo or "").strip(),
         pasta_obra=pasta,
         nome_enc_imos=nome_enc,
         nome_plano_cut_rite=str(nome_plano_cut_rite or "").strip(),
+        pasta_layouts_pdf_imos=pasta_layouts,
+        conj_pdf_origem=pasta_layouts / nome_layout_pdf,
         pasta_origem_cnc=origem_cnc,
         pasta_origem_cnc_obra=origem_cnc / nome_enc,
         pasta_programas_obra=pasta / nome_enc,
         pasta_destino_cnc=destino_cnc,
         pasta_destino_cnc_ano=pasta_ano,
         pasta_destino_cnc_obra=pasta_ano / nome_enc,
-        conj_pdf=pasta / CONJ_PDF_NOME,
+        conj_pdf=pasta / f"CONJ_{nome_layout_pdf}",
         projeto_pdf=pasta / PROJETO_PRODUCAO_PDF_NOME,
     )
+
+
+def _nome_layout_pdf(nome_enc_imos: str) -> str:
+    """Return the exact PDF filename exported by iMos for one order."""
+    nome = str(nome_enc_imos or "").strip()
+    if not nome:
+        raise ValueError("Nome Enc IMOS IX em falta no processo.")
+    if "/" in nome or "\\" in nome:
+        raise ValueError("Nome Enc IMOS IX inválido: não pode conter pastas.")
+    if nome.casefold().endswith(".pdf"):
+        nome = nome[:-4]
+    if not nome:
+        raise ValueError("Nome Enc IMOS IX inválido.")
+    return f"{nome}.pdf"
 
 
 def recolher_estados(
@@ -428,31 +462,95 @@ def supervisionar_para_producao(
 
 
 def gerar_projeto_producao_pdf(contexto: PreparacaoContexto) -> Path:
-    """Build 2_Projeto_Producao.pdf (A4 landscape) from the CONJ.pdf.
+    """Build 2_Projeto_Producao.pdf (A4 landscape) from the CONJ PDF.
 
     O ficheiro sai já aligeirado: as imagens do iMos vêm em resolução máxima e
     fariam um PDF de dezenas de MB — peso que não se vê na folha impressa mas
     que chega para o email ser recusado. Fica um só ficheiro, o mesmo que se
     imprime e que segue em anexo (ver ``pdf_compressao_service``).
     """
-    if not contexto.conj_pdf.exists():
-        raise ValueError(f"CONJ.pdf em falta:\n{contexto.conj_pdf}")
+    conj_pdf = _conj_pdf_existente(contexto)
+    if conj_pdf is None:
+        raise ValueError(f"PDF CONJ em falta:\n{contexto.conj_pdf}")
 
     try:
         _gerar_projeto_pdf_vetorial(
-            contexto.conj_pdf,
+            conj_pdf,
             contexto.projeto_pdf,
             max_paginas=MAX_PAGINAS_PROJETO_PDF,
         )
     except Exception as exc:  # pragma: no cover - depende do PDF de origem
         # PDFs que o pypdf não consegue transformar ainda saem como imagem.
         logger.warning("2_Projeto_Producao.pdf gerado por imagem: %s", exc)
-        imagens = _imagens_do_conj(contexto.conj_pdf, MAX_PAGINAS_PROJETO_PDF)
+        imagens = _imagens_do_conj(conj_pdf, MAX_PAGINAS_PROJETO_PDF)
         _imagens_para_pdf_a4(imagens, contexto.projeto_pdf)
 
     resultado = comprimir_pdf(contexto.projeto_pdf)
     logger.info("%s: %s", PROJETO_PRODUCAO_PDF_NOME, resultado.resumo())
     return contexto.projeto_pdf
+
+
+def mover_conj_para_obra(
+    contexto: PreparacaoContexto, *, substituir: bool = False
+) -> Path:
+    """Move the iMos layout PDF into the obra folder with the ``CONJ_`` prefix.
+
+    A publicação no destino é feita primeiro; a origem só é removida depois de
+    a cópia completa estar segura. Um destino existente nunca é substituído sem
+    a confirmação explícita que o diálogo transmite em ``substituir``.
+    """
+    origem = contexto.conj_pdf_origem
+    destino = contexto.conj_pdf
+
+    if not origem.is_file():
+        raise ValueError(
+            "PDF dos layouts do iMos em falta:\n"
+            f"{origem}\n\n"
+            "Confirme o Nome Enc IMOS IX e a pasta em "
+            "Configurações → Caminhos do Sistema."
+        )
+    if not contexto.pasta_obra.is_dir():
+        raise ValueError(f"Pasta da obra em falta:\n{contexto.pasta_obra}")
+    if destino.exists() and not destino.is_file():
+        raise ValueError(f"O destino existe mas não é um ficheiro:\n{destino}")
+    if destino.exists() and not substituir:
+        raise FileExistsError(
+            "Já existe um PDF CONJ na pasta da obra. A substituição requer "
+            f"confirmação:\n{destino}"
+        )
+
+    temporario: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{destino.stem}_",
+            suffix=".tmp",
+            dir=destino.parent,
+            delete=False,
+        ) as ficheiro_temporario:
+            temporario = Path(ficheiro_temporario.name)
+
+        shutil.copy2(origem, temporario)
+        if temporario.stat().st_size != origem.stat().st_size:
+            raise OSError("A cópia de segurança no destino ficou incompleta.")
+
+        # os.replace publica o PDF completo de forma atómica e, quando o
+        # utilizador confirmou, substitui o CONJ anterior sem deixar meio PDF.
+        os.replace(temporario, destino)
+        temporario = None
+    finally:
+        if temporario is not None and temporario.exists():
+            temporario.unlink()
+
+    try:
+        origem.unlink()
+    except OSError as exc:
+        raise OSError(
+            "O PDF foi colocado na pasta da obra, mas não foi possível remover "
+            f"o original da pasta iMos:\n{origem}"
+        ) from exc
+
+    logger.info("PDF CONJ movido: %s -> %s", origem, destino)
+    return destino
 
 
 def copiar_programas_para_obra(contexto: PreparacaoContexto) -> Path:
@@ -479,6 +577,9 @@ def enviar_programas_para_cnc(contexto: PreparacaoContexto) -> Path:
 def _estado_ficheiro(
     contexto: PreparacaoContexto, validacao: ValidacaoFicheiro
 ) -> PreparacaoEstado:
+    if validacao.key == "conj_pdf":
+        return _estado_conj_pdf(contexto, validacao)
+
     if validacao.key == "projeto_pdf":
         acao, acao_label = ACAO_GERAR_PROJETO_PDF, "Gerar"
     else:
@@ -540,6 +641,58 @@ def _estado_ficheiro(
         descricao=validacao.descricao,
         acao=acao,
         acao_label=acao_label,
+    )
+
+
+def _estado_conj_pdf(
+    contexto: PreparacaoContexto, validacao: ValidacaoFicheiro
+) -> PreparacaoEstado:
+    """Describe both the obra CONJ and a still-unprocessed iMos export."""
+    conj_existente = _conj_pdf_existente(contexto)
+    destino_existe = conj_existente is not None
+    destino_nomeado_existe = contexto.conj_pdf.is_file()
+    origem_existe = contexto.conj_pdf_origem.is_file()
+
+    if origem_existe:
+        estado = ESTADO_DESATUALIZADO if destino_existe else ESTADO_PENDENTE
+        detalhe = (
+            f"Origem pronta a mover: {contexto.conj_pdf_origem}\n"
+            f"Destino: {contexto.conj_pdf}"
+        )
+        if destino_nomeado_existe:
+            detalhe += "\nJá existe um CONJ no destino; será pedida confirmação."
+        elif destino_existe:
+            detalhe += "\nO antigo CONJ.pdf será preservado para compatibilidade."
+        return PreparacaoEstado(
+            key=validacao.key,
+            label=contexto.conj_pdf.name,
+            estado=estado,
+            detalhe=detalhe,
+            descricao=validacao.descricao,
+            acao=ACAO_MOVER_CONJ_PDF,
+            acao_label="Mover",
+        )
+
+    if destino_existe:
+        return PreparacaoEstado(
+            key=validacao.key,
+            label=contexto.conj_pdf.name,
+            estado=ESTADO_OK,
+            detalhe=str(conj_existente),
+            descricao=validacao.descricao,
+        )
+
+    return PreparacaoEstado(
+        key=validacao.key,
+        label=contexto.conj_pdf.name,
+        estado=ESTADO_PENDENTE,
+        detalhe=(
+            f"{contexto.conj_pdf} (em falta)\n"
+            f"Origem esperada: {contexto.conj_pdf_origem}"
+        ),
+        descricao=validacao.descricao,
+        acao=ACAO_MOVER_CONJ_PDF,
+        acao_label="Mover",
     )
 
 
@@ -701,7 +854,8 @@ def _origens_da_validacao(
     if validacao.key == "cutrite_pdf":
         return []
     if validacao.key == "projeto_pdf":
-        return [contexto.conj_pdf] if contexto.conj_pdf.exists() else []
+        conj_pdf = _conj_pdf_existente(contexto)
+        return [conj_pdf] if conj_pdf is not None else []
 
     origens: list[Path] = []
     for padrao in validacao.padroes_origem:
@@ -729,6 +883,14 @@ def _caminho_pdf_cutrite(contexto: PreparacaoContexto) -> Optional[Path]:
         return None
     ficheiro = nome if nome.casefold().endswith(".pdf") else f"{nome}.pdf"
     return contexto.pasta_obra / ficheiro
+
+
+def _conj_pdf_existente(contexto: PreparacaoContexto) -> Optional[Path]:
+    """Prefer the new named CONJ, accepting legacy ``CONJ.pdf`` for old works."""
+    if contexto.conj_pdf.is_file():
+        return contexto.conj_pdf
+    legado = contexto.pasta_obra / CONJ_PDF_NOME_LEGACY
+    return legado if legado.is_file() else None
 
 
 def _listar_ficheiros(pasta: Path, padrao: str) -> list[Path]:

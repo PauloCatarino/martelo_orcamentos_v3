@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -43,7 +44,13 @@ class ListaMaterialAssistenteDialog(QDialog):
         super().__init__(parent)
         self._base = config
         self.setWindowTitle("Assistente Lista Material — configuração da obra")
-        self.resize(620, 650)
+        self.setMinimumWidth(650)
+        self.setMinimumHeight(700)
+        screen = QGuiApplication.primaryScreen()
+        available_height = (
+            screen.availableGeometry().height() if screen is not None else 960
+        )
+        self.resize(680, max(760, min(available_height - 60, 900)))
 
         title = QLabel(f"Cliente: {config.client or 'não indicado'}")
         title.setStyleSheet("font-size: 16px; font-weight: 600;")

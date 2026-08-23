@@ -49,3 +49,14 @@ def test_caminhos_sistema_page_supports_browse_buttons() -> None:
     assert "getExistingDirectory" in source
     assert "getOpenFileName" in source
     assert CaminhosSistemaPage.BROWSE_TYPES == {"pasta", "ficheiro"}
+
+
+def test_caminhos_sistema_mostra_tooltip_da_configuracao() -> None:
+    from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
+
+    source = inspect.getsource(CaminhosSistemaPage._preencher_tabela)
+
+    assert "setting.descricao or setting.chave" in source
+    assert "label_item.setToolTip(dica)" in source
+    assert "value_item.setToolTip(dica)" in source
+    assert "browse_button.setToolTip" in source

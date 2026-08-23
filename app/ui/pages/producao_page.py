@@ -71,6 +71,7 @@ from app.services.cutrite_service import (
 from app.services.lista_material_imos_service import (
     execute_automation_cutrite_macro,
     execute_import_csv_imos_macro,
+    execute_import_listas_ferragens_macro,
     execute_lista_material_imos,
     prepare_lista_material_imos,
 )
@@ -2294,7 +2295,7 @@ class ProducaoPage(QWidget):
     ) -> None:
         importar = QMessageBox.question(
             self,
-            "Lista Material criada — passo 1 de 3",
+            "Lista Material criada — passo 1 de 4",
             f"Ficheiro criado:\n{workbook_path}\n\n"
             "Pretende importar agora o CSV do IMOS?\n\n"
             "Será executada a macro existente Import_CSV_Imos_1. O Excel "
@@ -2326,7 +2327,7 @@ class ProducaoPage(QWidget):
 
         preencher = QMessageBox.question(
             self,
-            "CSV IMOS importado — passo 2 de 3",
+            "CSV IMOS importado — passo 2 de 4",
             "A LISTA_ORDENADA foi preenchida.\n\nPretende executar agora "
             "a transformação AUTOMATION para preencher a LISTAGEM_CUT_RITE?\n\n"
             "Será usada a mesma macro que está por trás do botão AUTOMATION.",
@@ -2350,9 +2351,47 @@ class ProducaoPage(QWidget):
             )
             return
 
+        importar_listas = QMessageBox.question(
+            self,
+            "Listas de ferragens IMOS — passo 3 de 4",
+            "A LISTAGEM_CUT_RITE foi preenchida. Pretende importar agora para "
+            "este Excel as quatro listas de ferragens exportadas pelo IMOS?\n\n"
+            "Serão processados os ficheiros 2_List_Ferragens, 3_Resumo_Precos, "
+            "4_Etiqueta_Palete e 5_List_Ferragens_Integrador. A macro apresenta "
+            "os passos e pede confirmação antes de substituir separadores existentes.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if importar_listas == QMessageBox.StandardButton.Yes:
+            self.status_label.setText(
+                "A importar as listas de ferragens do IMOS para o Excel..."
+            )
+            QApplication.processEvents()
+            try:
+                execute_import_listas_ferragens_macro(workbook_path)
+                self.status_label.setText(
+                    "Listas de ferragens processadas; a preparar o Assistente."
+                )
+            except Exception as error:  # Excel COM / macro VBA
+                self.status_label.setText(
+                    "A importação das listas de ferragens não foi concluída."
+                )
+                QMessageBox.warning(
+                    self,
+                    "Importar listas de ferragens IMOS",
+                    "Não foi possível concluir a importação das listas. "
+                    "Pode continuar sem usar o Assistente ou repetir mais tarde "
+                    "através do botão do Excel.\n\n"
+                    f"Detalhe: {error}",
+                )
+        else:
+            self.status_label.setText(
+                "Importação das listas de ferragens ignorada; a preparar o Assistente."
+            )
+
         analisar = QMessageBox.question(
             self,
-            "LISTAGEM_CUT_RITE preenchida — passo 3 de 3",
+            "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",
             "A transformação inicial ficou concluída. Pretende abrir agora o "
             "Assistente Lista Material para rever as otimizações sugeridas?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -2362,8 +2401,14 @@ class ProducaoPage(QWidget):
             self._rever_lista_material_assistente(processo, explicit=True)
         else:
             self.status_label.setText(
-                "LISTAGEM_CUT_RITE preenchida; revisão do assistente pendente."
+                "LISTAGEM_CUT_RITE preenchida; a abrir o Excel para continuar o trabalho."
             )
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(workbook_path))):
+                QMessageBox.warning(
+                    self,
+                    "Abrir Lista Material",
+                    f"Não foi possível abrir o Excel:\n{workbook_path}",
+                )
 
     def _abrir_exportar_documentacao(self) -> None:
         processo = self._processo_selecionado()
