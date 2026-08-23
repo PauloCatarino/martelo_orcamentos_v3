@@ -68,6 +68,7 @@ class ValidacaoFicheiro:
     key: str
     label: str
     padrao: str
+    padroes_destino_legacy: tuple[str, ...] = ()
     padroes_origem: tuple[str, ...] = ()
     descricao: str = ""
 
@@ -81,15 +82,17 @@ VALIDACOES_FICHEIROS: tuple[ValidacaoFicheiro, ...] = (
     ),
     ValidacaoFicheiro(
         key="lista_material_pdf",
-        label="Lista_Material_*.pdf",
-        padrao="Lista_Material_*.pdf",
+        label="6_Lista_Material_<Nome Enc IMOS IX>.pdf",
+        padrao="6_Lista_Material_*.pdf",
+        padroes_destino_legacy=("Lista_Material_*.pdf",),
         padroes_origem=("Lista_Material_*.xlsm", "Lista_Material_*.xlsx"),
         descricao="Valida se existe na pasta da obra o PDF da Lista de Material.",
     ),
     ValidacaoFicheiro(
         key="ferragens_a4_pdf",
-        label="1_List_FerragensA4.pdf",
-        padrao="1_List_FerragensA4.pdf",
+        label="2_Lista_Ferragens_<Nome Enc IMOS IX>.pdf",
+        padrao="2_Lista_Ferragens_*.pdf",
+        padroes_destino_legacy=("1_List_FerragensA4.pdf",),
         padroes_origem=("1_List_Ferragens.xlsx", "1_List_Ferragens.xlsm"),
         descricao="Valida se existe o PDF das ferragens na pasta da obra.",
     ),
@@ -103,19 +106,10 @@ VALIDACOES_FICHEIROS: tuple[ValidacaoFicheiro, ...] = (
         ),
     ),
     ValidacaoFicheiro(
-        key="resumo_geral_pdf",
-        label="3_Resumo_Geral_Encomenda.pdf",
-        padrao="3_Resumo_Geral_Encomenda.pdf",
-        padroes_origem=(
-            "3_Resumo_Geral_Encomenda.xlsx",
-            "3_Resumo_Geral_Encomenda.xlsm",
-        ),
-        descricao="Valida se existe o PDF do resumo geral da encomenda.",
-    ),
-    ValidacaoFicheiro(
         key="etiqueta_palete_pdf",
-        label="5_Etiqueta_Palete.pdf",
-        padrao="5_Etiqueta_Palete.pdf",
+        label="5_Etiqueta_Palete_<Nome Enc IMOS IX>.pdf",
+        padrao="5_Etiqueta_Palete_*.pdf",
+        padroes_destino_legacy=("5_Etiqueta_Palete.pdf",),
         padroes_origem=(
             "5_Etiqueta_Palete_PDF.xlsx",
             "5_Etiqueta_Palete.xlsx",
@@ -125,8 +119,9 @@ VALIDACOES_FICHEIROS: tuple[ValidacaoFicheiro, ...] = (
     ),
     ValidacaoFicheiro(
         key="resumo_ml_orlas_pdf",
-        label="6_Resumo_ML_OrlasA4.pdf",
-        padrao="6_Resumo_ML_OrlasA4.pdf",
+        label="4_Resumo_Orlas_<Nome Enc IMOS IX>.pdf",
+        padrao="4_Resumo_Orlas_*.pdf",
+        padroes_destino_legacy=("6_Resumo_ML_OrlasA4.pdf",),
         padroes_origem=(
             "6_Resumo_ML_OrlasA4.xlsx",
             "6_Resumo_ML_OrlasA4.xlsm",
@@ -845,7 +840,11 @@ def _caminho_da_validacao(
         return contexto.conj_pdf
     if validacao.key == "projeto_pdf":
         return contexto.projeto_pdf
-    return _primeiro_ficheiro(contexto.pasta_obra, validacao.padrao)
+    for padrao in (validacao.padrao, *validacao.padroes_destino_legacy):
+        caminho = _primeiro_ficheiro(contexto.pasta_obra, padrao)
+        if caminho is not None:
+            return caminho
+    return None
 
 
 def _origens_da_validacao(

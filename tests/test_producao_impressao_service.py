@@ -30,7 +30,6 @@ def _obra_com_documentos(tmp_path: Path) -> Path:
     _pdf(obra, f"{NOME_PLANO}.pdf", landscape(A3))
     _pdf(obra, "1_List_FerragensA4.pdf")
     _pdf(obra, "2_Projeto_Producao.pdf", landscape(A4))
-    _pdf(obra, "3_Resumo_Geral_Encomenda.pdf")
     _pdf(obra, f"Lista_Material_{NOME_ENC}.pdf", landscape(A3))
     _pdf(obra, "5_Etiqueta_Palete.pdf")
     _pdf(obra, "qualquer_coisa.pdf")
@@ -56,7 +55,6 @@ def test_lista_so_pdfs_por_ordem_de_prioridade(tmp_path: Path) -> None:
         f"{NOME_PLANO}.pdf",
         "1_List_FerragensA4.pdf",
         "2_Projeto_Producao.pdf",
-        "3_Resumo_Geral_Encomenda.pdf",
         f"Lista_Material_{NOME_ENC}.pdf",
         "5_Etiqueta_Palete.pdf",
         "qualquer_coisa.pdf",
@@ -93,6 +91,23 @@ def test_categorias_e_defaults_de_impressao(tmp_path: Path) -> None:
     assert material.orientacao == svc.ORIENTACAO_HORIZONTAL
 
     assert por_nome["qualquer_coisa.pdf"].categoria == svc.CATEGORIA_OUTROS
+
+
+def test_novos_nomes_do_centro_exportacao_sao_categorizados(tmp_path: Path) -> None:
+    obra = tmp_path / "obra"
+    obra.mkdir()
+    novos = {
+        f"2_Lista_Ferragens_{NOME_ENC}.pdf": svc.CATEGORIA_FERRAGENS,
+        f"4_Resumo_Orlas_{NOME_ENC}.pdf": svc.CATEGORIA_RESUMO_ML,
+        f"5_Etiqueta_Palete_{NOME_ENC}.pdf": svc.CATEGORIA_ETIQUETA,
+        f"6_Lista_Material_{NOME_ENC}.pdf": svc.CATEGORIA_MATERIAIS,
+    }
+    for nome in novos:
+        _pdf(obra, nome)
+
+    documentos = _listar(obra)
+
+    assert {documento.nome: documento.categoria for documento in documentos} == novos
 
 
 def test_papel_e_orientacao_saem_do_proprio_pdf(tmp_path: Path) -> None:
@@ -360,6 +375,8 @@ def test_dialogo_impressao_tem_as_pecas_esperadas() -> None:
     assert "guardar_prioridades_utilizador" in fonte
     assert "setToolTip" in fonte
     assert "status_label" in fonte
+    assert "WindowMaximized" in fonte
+    assert "pre_visualizacao.setMaximumHeight(280)" in fonte
 
 
 def test_pagina_producao_abre_a_impressao() -> None:

@@ -193,6 +193,8 @@ class ProducaoPreparacaoDialog(QDialog):
         self.setWindowTitle("Preparação de Produção")
         self.setModal(True)
         self.resize(1500, 860)
+        self.setMinimumSize(1100, 700)
+        self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
 
         intro = QLabel(
             "Painel de preparação da obra para Produção: valida o que já está "
@@ -340,7 +342,9 @@ class ProducaoPreparacaoDialog(QDialog):
             self.tabela.setItem(linha, _COL_VALIDACAO, validacao_item)
             self.tabela.setItem(linha, _COL_ESTADO, estado_item)
             self.tabela.setItem(linha, _COL_DETALHE, detalhe_item)
-            self.tabela.setRowHeight(linha, 46)
+            # Linhas compactas permitem ver todas as validações usuais sem
+            # scroll; o detalhe integral continua disponível na tooltip.
+            self.tabela.setRowHeight(linha, 40)
 
     def _widget_acao(self, estado: svc.PreparacaoEstado) -> QWidget:
         caixa = QWidget()

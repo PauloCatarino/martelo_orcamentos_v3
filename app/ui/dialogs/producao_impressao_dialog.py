@@ -94,6 +94,8 @@ class ProducaoImpressaoDialog(QDialog):
         self.setWindowTitle("Imprimir Documentos")
         self.setModal(True)
         self.resize(1560, 900)
+        self.setMinimumSize(1100, 700)
+        self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
 
         processo_label = QLabel(f"Processo: {codigo_processo or '-'}")
         processo_label.setStyleSheet(
@@ -117,10 +119,10 @@ class ProducaoImpressaoDialog(QDialog):
         )
         pre_visualizacao.setMinimumWidth(500)
         # Sem limite de altura a pré-visualização come a lista de documentos.
-        pre_visualizacao.setMaximumHeight(340)
+        pre_visualizacao.setMaximumHeight(280)
         self.imagem_label = QLabel("Selecione um documento na lista.")
         self.imagem_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagem_label.setMinimumSize(480, 260)
+        self.imagem_label.setMinimumSize(480, 200)
         self.imagem_label.setStyleSheet(
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"

@@ -142,10 +142,29 @@ def test_ficheiro_existente_fica_ok(tmp_path: Path) -> None:
     assert str(contexto.pasta_obra) in estados["ferragens_a4_pdf"].detalhe
 
 
+def test_novos_nomes_pdf_do_centro_exportacao_ficam_ok(tmp_path: Path) -> None:
+    contexto = _contexto(tmp_path)
+    nome_enc = contexto.nome_enc_imos
+    esperados = {
+        "ferragens_a4_pdf": f"2_Lista_Ferragens_{nome_enc}.pdf",
+        "resumo_ml_orlas_pdf": f"4_Resumo_Orlas_{nome_enc}.pdf",
+        "etiqueta_palete_pdf": f"5_Etiqueta_Palete_{nome_enc}.pdf",
+        "lista_material_pdf": f"6_Lista_Material_{nome_enc}.pdf",
+    }
+    for nome in esperados.values():
+        (contexto.pasta_obra / nome).write_bytes(b"")
+
+    estados = _estados_por_key(contexto)
+
+    for key, nome in esperados.items():
+        assert estados[key].estado == svc.ESTADO_OK
+        assert estados[key].detalhe.endswith(nome)
+
+
 def test_pdf_mais_antigo_que_o_excel_fica_desatualizado(tmp_path: Path) -> None:
     contexto = _contexto(tmp_path)
-    pdf = contexto.pasta_obra / "3_Resumo_Geral_Encomenda.pdf"
-    excel = contexto.pasta_obra / "3_Resumo_Geral_Encomenda.xlsx"
+    pdf = contexto.pasta_obra / "5_Etiqueta_Palete_1319_01_26_JF_VIVA.pdf"
+    excel = contexto.pasta_obra / "5_Etiqueta_Palete.xlsx"
     pdf.write_bytes(b"")
     excel.write_bytes(b"")
     import os
@@ -155,7 +174,15 @@ def test_pdf_mais_antigo_que_o_excel_fica_desatualizado(tmp_path: Path) -> None:
 
     estados = _estados_por_key(contexto)
 
-    assert estados["resumo_geral_pdf"].estado == svc.ESTADO_DESATUALIZADO
+    assert estados["etiqueta_palete_pdf"].estado == svc.ESTADO_DESATUALIZADO
+
+
+def test_resumo_geral_encomenda_foi_retirado_das_validacoes() -> None:
+    assert "resumo_geral_pdf" not in svc.KEYS_FICHEIROS
+    assert all(
+        "3_Resumo_Geral_Encomenda" not in opcao["label"]
+        for opcao in svc.listar_validacoes_configuraveis()
+    )
 
 
 def test_plano_cutrite_sem_nome_fica_bloqueado(tmp_path: Path) -> None:
@@ -291,6 +318,8 @@ def test_dialogo_preparacao_tem_as_pecas_esperadas() -> None:
     assert "guardar_validacoes_utilizador" in fonte
     assert "setToolTip" in fonte
     assert "status_label" in fonte
+    assert "WindowMaximized" in fonte
+    assert "setRowHeight(linha, 40)" in fonte
 
 
 def test_pagina_producao_abre_a_preparacao() -> None:

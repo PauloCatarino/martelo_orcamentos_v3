@@ -26,7 +26,7 @@ class PdfDocument:
     identifier: str
     name: str
     category: str
-    sheet: str | None
+    sheets: tuple[str, ...]
     filename: str
     order: int
     combinable: bool = True
@@ -38,6 +38,7 @@ class PdfDocumentState:
     document: PdfDocument
     available: bool
     reason: str = ""
+    export_sheets: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -48,17 +49,52 @@ class PdfExportResult:
 
 
 DEFAULT_DOCUMENTS = (
-    PdfDocument("caderno_encargos", "Caderno de Encargos", "Caderno de Encargos", "2_CAD_ENCARGOS", "Caderno_de_Encargos.pdf", 10),
-    PdfDocument("rosto", "Rosto", "Caderno de Encargos", "2_ROSTO", "Rosto_Caderno_Encargos.pdf", 15),
-    PdfDocument("ferragens", "Ferragens", "Ferragens", "1_FERRAGENS", "Ferragens.pdf", 30),
-    PdfDocument("purch", "Purch", "Ferragens", None, "Purch.pdf", 31, unavailable_reason="O modelo atual só contém Purch dentro da macro agrupada; falta inventariar uma origem separada."),
-    PdfDocument("spp", "SPP", "Ferragens", "3_SPP", "SPP.pdf", 32),
-    PdfDocument("etiqueta_palete", "Etiqueta Palete", "Etiquetas e paletes", "5_ETIQUETA_PALETE", "Etiqueta_Palete.pdf", 40),
-    PdfDocument("resumo_orlas", "Resumo de Orlas", "Orlas", "ResumoOrlas", "Resumo_Orlas.pdf", 50),
-    PdfDocument("listagem_artigo", "Listagem por Artigo", "Listagens", "LISTAGEM_por_Artigo", "Listagem_por_Artigo.pdf", 60),
-    PdfDocument("listagem_cutrite", "Listagem CUT-RITE", "CUT-RITE", "LISTAGEM_CUT_RITE", "Listagem_CUT_RITE.pdf", 70),
-    PdfDocument("relatorio", "Relatório geral", "Relatórios gerais", "RELATORIO", "Relatorio_Geral.pdf", 80),
+    PdfDocument(
+        "ferragens",
+        "Ferragens + Purch + SPP",
+        "Ferragens",
+        ("1_FERRAGENS", "2_PURCH", "3_SPP"),
+        "2_Lista_Ferragens_{nome_enc_imos}.pdf",
+        20,
+    ),
+    PdfDocument(
+        "resumo_orlas",
+        "Resumo de Orlas",
+        "Orlas",
+        ("ResumoOrlas",),
+        "4_Resumo_Orlas_{nome_enc_imos}.pdf",
+        40,
+    ),
+    PdfDocument(
+        "etiqueta_palete",
+        "Etiqueta Palete",
+        "Etiquetas e paletes",
+        ("5_ETIQUETA_PALETE",),
+        "5_Etiqueta_Palete_{nome_enc_imos}.pdf",
+        50,
+    ),
+    PdfDocument(
+        "listagem_artigo",
+        "Listagem por Artigo",
+        "Listagens",
+        ("LISTAGEM_por_Artigo",),
+        "6_Lista_Material_{nome_enc_imos}.pdf",
+        60,
+    ),
+    PdfDocument(
+        "relatorio",
+        "Relatório geral",
+        "Relatórios gerais",
+        ("RELATORIO",),
+        "Relatorio_Geral.pdf",
+        80,
+    ),
 )
+
+RETIRED_DOCUMENT_IDS = frozenset(
+    {"caderno_encargos", "rosto", "purch", "spp", "listagem_cutrite"}
+)
+FERRAGENS_LEGACY_IDS = frozenset({"ferragens", "purch", "spp"})
 
 
 def sync_pdf_document_registry(session: Session) -> int:
@@ -76,8 +112,8 @@ def sync_pdf_document_registry(session: Session) -> int:
             changed += 1
         row.nome = document.name
         row.categoria = document.category
-        row.origem_tipo = "folha" if document.sheet else "pendente"
-        row.origem_valor = document.sheet or ""
+        row.origem_tipo = "folhas" if len(document.sheets) > 1 else "folha"
+        row.origem_valor = "|".join(document.sheets)
         row.nome_ficheiro = document.filename
         row.combinavel = document.combinable
         row.ordem = document.order
@@ -85,6 +121,11 @@ def sync_pdf_document_registry(session: Session) -> int:
         row.prerequisitos_json = json.dumps(
             {"indisponivel": document.unavailable_reason}, ensure_ascii=False
         )
+    session.execute(
+        update(ListaMaterialPdfDocumento)
+        .where(ListaMaterialPdfDocumento.identificador.in_(RETIRED_DOCUMENT_IDS))
+        .values(ativo=False)
+    )
     session.commit()
     return changed
 
@@ -97,10 +138,15 @@ def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
         for document in sorted(DEFAULT_DOCUMENTS, key=lambda item: item.order):
             if document.unavailable_reason:
                 result.append(PdfDocumentState(document, False, document.unavailable_reason))
-            elif document.sheet not in sheets:
-                result.append(PdfDocumentState(document, False, f"Folha '{document.sheet}' não existe neste livro."))
-            else:
-                sheet = workbook[document.sheet]
+                continue
+
+            export_sheets: list[str] = []
+            unavailable_sheets: list[str] = []
+            for sheet_name in document.sheets:
+                if sheet_name not in sheets:
+                    unavailable_sheets.append(sheet_name)
+                    continue
+                sheet = workbook[sheet_name]
                 has_data = any(
                     cell.value not in (None, "")
                     for row in sheet.iter_rows(
@@ -111,13 +157,33 @@ def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
                     )
                     for cell in row
                 )
-                result.append(
-                    PdfDocumentState(
-                        document,
-                        has_data,
-                        "" if has_data else "A folha existe, mas não contém dados para exportar.",
-                    )
+                if has_data:
+                    export_sheets.append(sheet_name)
+                else:
+                    unavailable_sheets.append(sheet_name)
+
+            available = bool(export_sheets)
+            if available and unavailable_sheets:
+                reason = (
+                    "Serão incluídos os separadores com dados: "
+                    f"{', '.join(export_sheets)}. Sem dados: "
+                    f"{', '.join(unavailable_sheets)}."
                 )
+            elif available:
+                reason = f"Separadores incluídos: {', '.join(export_sheets)}."
+            else:
+                reason = (
+                    "Nenhum dos separadores necessários contém dados: "
+                    f"{', '.join(document.sheets)}."
+                )
+            result.append(
+                PdfDocumentState(
+                    document,
+                    available,
+                    reason,
+                    tuple(export_sheets),
+                )
+            )
         return result
     finally:
         workbook.close()
@@ -134,6 +200,68 @@ def collision_free_path(folder: Path, filename: str) -> Path:
     raise RuntimeError(f"Não foi possível criar um nome livre para {base.name}.")
 
 
+def normalize_pdf_identifiers(identifiers: Iterable[str]) -> set[str]:
+    """Mapeia presets antigos para o catálogo atual sem reativar documentos removidos."""
+    selected = {str(identifier) for identifier in identifiers}
+    if selected & FERRAGENS_LEGACY_IDS:
+        selected.add("ferragens")
+    selected.difference_update(RETIRED_DOCUMENT_IDS)
+    return selected
+
+
+def document_filename(document: PdfDocument, nome_enc_imos: str = "") -> str:
+    """Resolve o nome final de um PDF, protegendo o fragmento vindo do Excel."""
+    if "{nome_enc_imos}" not in document.filename:
+        return document.filename
+    nome = str(nome_enc_imos or "").strip()
+    if not nome:
+        raise ValueError(
+            "Nome Enc IMOS IX em falta no Excel (DEFENICOES!E3)."
+        )
+    invalidos = '<>:"/\\|?*'
+    nome_seguro = "".join(
+        "_" if char in invalidos or ord(char) < 32 else char for char in nome
+    )
+    nome_seguro = nome_seguro.strip(" .")
+    if not nome_seguro:
+        raise ValueError("Nome Enc IMOS IX inválido para criar o nome do PDF.")
+    return document.filename.format(nome_enc_imos=nome_seguro)
+
+
+def read_nome_enc_imos_ix(workbook_path: Path) -> str:
+    """Lê o Nome Enc IMOS IX do contrato estável DEFENICOES!E3."""
+    workbook = load_workbook(Path(workbook_path), read_only=True, data_only=True)
+    try:
+        if "DEFENICOES" not in workbook.sheetnames:
+            return ""
+        return str(workbook["DEFENICOES"]["E3"].value or "").strip()
+    finally:
+        workbook.close()
+
+
+def _unique_sheet_names(states: Iterable[PdfDocumentState]) -> tuple[str, ...]:
+    result: list[str] = []
+    for state in states:
+        for sheet_name in state.export_sheets:
+            if sheet_name not in result:
+                result.append(sheet_name)
+    return tuple(result)
+
+
+def _export_sheets_to_pdf(
+    excel, workbook, sheet_names: tuple[str, ...], output: Path
+) -> None:
+    if not sheet_names:
+        raise ValueError("Não existem separadores com dados para exportar.")
+    if len(sheet_names) == 1:
+        workbook.Worksheets.Item(sheet_names[0]).ExportAsFixedFormat(0, str(output))
+        return
+    workbook.Worksheets.Item(sheet_names[0]).Select(True)
+    for sheet_name in sheet_names[1:]:
+        workbook.Worksheets.Item(sheet_name).Select(False)
+    excel.ActiveSheet.ExportAsFixedFormat(0, str(output))
+
+
 def export_pdf_documents(
     workbook_path: Path,
     destination: Path,
@@ -144,7 +272,7 @@ def export_pdf_documents(
     package_name: str = "Documentacao_Producao.pdf",
     progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> PdfExportResult:
-    selected_ids = set(identifiers)
+    selected_ids = normalize_pdf_identifiers(identifiers)
     states = {state.document.identifier: state for state in inspect_pdf_documents(workbook_path)}
     selected = [
         states[item.identifier]
@@ -157,6 +285,10 @@ def export_pdf_documents(
         raise ValueError("Existem documentos indisponíveis:\n" + details)
     if not selected:
         raise ValueError("Selecione pelo menos um documento disponível.")
+
+    nome_enc_imos = ""
+    if any("{nome_enc_imos}" in state.document.filename for state in selected):
+        nome_enc_imos = read_nome_enc_imos_ix(workbook_path)
 
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
@@ -185,10 +317,13 @@ def export_pdf_documents(
                 document = state.document
                 if progress_callback:
                     progress_callback(f"A exportar {document.name}…", index - 1, total)
-                output = collision_free_path(destination, document.filename)
+                output = collision_free_path(
+                    destination, document_filename(document, nome_enc_imos)
+                )
                 try:
-                    sheet = workbook.Worksheets.Item(document.sheet)
-                    sheet.ExportAsFixedFormat(0, str(output))
+                    _export_sheets_to_pdf(
+                        excel, workbook, state.export_sheets, output
+                    )
                     outputs.append(output)
                 except Exception as exc:
                     errors.append(f"{document.name}: {exc}")
@@ -196,10 +331,9 @@ def export_pdf_documents(
             if progress_callback:
                 progress_callback("A criar o pacote combinado…", total, total)
             package = collision_free_path(destination, package_name)
-            workbook.Worksheets.Item(selected[0].document.sheet).Select(True)
-            for state in selected[1:]:
-                workbook.Worksheets.Item(state.document.sheet).Select(False)
-            excel.ActiveSheet.ExportAsFixedFormat(0, str(package))
+            _export_sheets_to_pdf(
+                excel, workbook, _unique_sheet_names(selected), package
+            )
         if progress_callback:
             progress_callback("Exportação concluída.", total, total)
     finally:

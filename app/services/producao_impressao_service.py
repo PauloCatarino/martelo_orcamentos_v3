@@ -35,7 +35,6 @@ SUMATRA_CAMINHOS_DEFAULT = (
 CATEGORIA_CUT_RITE = "CUT-RITE PLANO CORTE"
 CATEGORIA_FERRAGENS = "FERRAGENS"
 CATEGORIA_PROJETO = "PROJETO PRODUÇÃO"
-CATEGORIA_RESUMO_GERAL = "RESUMO GERAL"
 CATEGORIA_MATERIAIS = "LISTA PEÇAS/MATERIAIS"
 CATEGORIA_ETIQUETA = "ETIQUETA PALETE"
 CATEGORIA_RESUMO_ML = "RESUMO ML ORLAS"
@@ -74,7 +73,7 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
         DO_PDF,
         DO_PDF,
         3,
-        re.compile(r"^1_list_ferr", re.IGNORECASE),
+        re.compile(r"^(?:1_list_ferr|2_lista_ferragens_)", re.IGNORECASE),
     ),
     CategoriaImpressao(
         CATEGORIA_PROJETO,
@@ -83,14 +82,6 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
         ORIENTACAO_HORIZONTAL,
         2,
         re.compile(r"^2_proj", re.IGNORECASE),
-    ),
-    CategoriaImpressao(
-        CATEGORIA_RESUMO_GERAL,
-        3,
-        DO_PDF,
-        DO_PDF,
-        1,
-        re.compile(r"^3_resumo_geral", re.IGNORECASE),
     ),
     CategoriaImpressao(CATEGORIA_MATERIAIS, 4, "A3", ORIENTACAO_HORIZONTAL, 1),
     CategoriaImpressao(
@@ -107,7 +98,7 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
         DO_PDF,
         DO_PDF,
         1,
-        re.compile(r"^6_resumo_ml", re.IGNORECASE),
+        re.compile(r"^(?:4_resumo_orlas_|6_resumo_ml)", re.IGNORECASE),
     ),
     CategoriaImpressao(CATEGORIA_AUTOCAD, 7, DO_PDF, DO_PDF, 1),
     CategoriaImpressao(CATEGORIA_OUTROS, 8, DO_PDF, DO_PDF, 1),
@@ -311,7 +302,7 @@ def categorizar(
     enc_imos = str(nome_enc_imos or "").strip().casefold()
     if enc_imos and minusculas.startswith(f"lista_material_{enc_imos}"):
         return CATEGORIA_MATERIAIS
-    if minusculas.startswith("lista_material"):
+    if minusculas.startswith(("lista_material", "6_lista_material_")):
         return CATEGORIA_MATERIAIS
 
     for categoria in CATEGORIAS:

@@ -34,6 +34,7 @@ from app.services.lista_material_pdf_service import (
     PdfPresetService,
     export_pdf_documents,
     inspect_pdf_documents,
+    normalize_pdf_identifiers,
     sync_pdf_document_registry,
 )
 
@@ -62,7 +63,7 @@ class ListaMaterialPdfDialog(QDialog):
         self._last_result = None
 
         self.setWindowTitle("Exportar documentação")
-        self.resize(820, 720)
+        self.resize(820, 640)
 
         title = QLabel("Centro de Exportação PDF")
         title.setStyleSheet("font-size: 18px; font-weight: 600;")
@@ -193,7 +194,9 @@ class ListaMaterialPdfDialog(QDialog):
         if preset is None:
             return
         try:
-            identifiers = set(json.loads(preset.documentos_json or "[]"))
+            identifiers = normalize_pdf_identifiers(
+                json.loads(preset.documentos_json or "[]")
+            )
         except (TypeError, json.JSONDecodeError):
             identifiers = set()
         for identifier, check in self.checks.items():
