@@ -91,12 +91,14 @@ class EditarOcorrenciaDialog(QDialog):
         self.colar_button.setToolTip("Colar a foto que copiou do chat ou do explorador")
         self.colar_button.clicked.connect(self.anexos_widget.colar)
 
-        self.escolher_button = QPushButton("Escolher ficheiros…")
-        self.escolher_button.setToolTip("Juntar fotos que já estão gravadas no computador")
+        self.escolher_button = QPushButton("Escolher fotos ou PDFs…")
+        self.escolher_button.setToolTip(
+            "Juntar fotos ou PDFs que já estão gravados no computador"
+        )
         self.escolher_button.clicked.connect(self.anexos_widget.escolher_ficheiros)
 
-        self.remover_button = QPushButton("Remover foto")
-        self.remover_button.setToolTip("Tirar do ticket a foto selecionada")
+        self.remover_button = QPushButton("Remover anexo")
+        self.remover_button.setToolTip("Tirar do ticket o anexo selecionado")
         self.remover_button.clicked.connect(self.anexos_widget.remover_selecionados)
 
         self.gravar_button = QPushButton("Registar" if novo else "Gravar")
@@ -155,7 +157,7 @@ class EditarOcorrenciaDialog(QDialog):
         layout.addLayout(formulario)
         layout.addWidget(QLabel("O que aconteceu"))
         layout.addWidget(self.texto_input, stretch=1)
-        layout.addWidget(QLabel("Fotos"))
+        layout.addWidget(QLabel("Fotos e PDFs"))
         layout.addWidget(self.anexos_widget)
         layout.addLayout(botoes_anexos)
         layout.addLayout(botoes)

@@ -33,3 +33,58 @@ def documento_pdf(caminho: Path | str) -> Iterator[object]:
     finally:
         documento.close()
         buffer.close()
+
+
+#: Miniaturas já desenhadas, por (caminho, data de alteração, tamanho, alvo).
+#: O mesmo PDF é pedido de cada vez que se muda de ticket; desenhar a página
+#: outra vez seria ir buscar o ficheiro à rede sem necessidade. Se o ficheiro
+#: mudar no disco, a chave muda e a miniatura é refeita.
+_MINIATURAS: dict[tuple, object] = {}
+_MINIATURAS_MAXIMO = 64
+
+
+def miniatura_primeira_pagina(caminho: Path | str, largura: int, altura: int):
+    """Return the first page of a PDF as a QPixmap that fits (largura, altura).
+
+    Devolve ``None`` quando não há como desenhar (ficheiro que desapareceu, PDF
+    estragado, sem páginas). Uma miniatura é sempre acessória: nunca levanta
+    exceção nem impede o ecrã de abrir.
+    """
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QPixmap
+
+    try:
+        ficheiro = Path(caminho)
+        estado = ficheiro.stat()
+    except OSError:
+        return None
+
+    chave = (str(ficheiro), estado.st_mtime_ns, estado.st_size, largura, altura)
+    if chave in _MINIATURAS:
+        return _MINIATURAS[chave]
+
+    miniatura = None
+    try:
+        with documento_pdf(ficheiro) as documento:
+            if documento.pageCount() > 0:
+                pagina = documento.pagePointSize(0)
+                if pagina.width() > 0 and pagina.height() > 0:
+                    escala = min(
+                        largura / pagina.width(), altura / pagina.height()
+                    )
+                    imagem = documento.render(
+                        0,
+                        QSize(
+                            max(1, int(pagina.width() * escala)),
+                            max(1, int(pagina.height() * escala)),
+                        ),
+                    )
+                    if not imagem.isNull():
+                        miniatura = QPixmap.fromImage(imagem)
+    except Exception:  # noqa: BLE001 - sem miniatura não é erro
+        miniatura = None
+
+    if len(_MINIATURAS) >= _MINIATURAS_MAXIMO:
+        _MINIATURAS.clear()
+    _MINIATURAS[chave] = miniatura
+    return miniatura

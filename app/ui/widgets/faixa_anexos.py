@@ -1,4 +1,4 @@
-"""Faixa de miniaturas das fotos de um ticket: colar, arrastar, escolher.
+"""Faixa de miniaturas dos anexos de um ticket: colar, arrastar, escolher.
 
 A entrada que interessa mesmo é o **Ctrl+V**: a foto do cliente chega pelo
 chat, copia-se de lá e cola-se aqui. Tudo o resto é alternativa para quando a
@@ -25,7 +25,14 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
-from app.domain.ocorrencia_anexos import EXTENSOES_IMAGEM, e_imagem, existe
+from app.domain.ocorrencia_anexos import (
+    EXTENSOES_IMAGEM,
+    EXTENSOES_PDF,
+    e_imagem,
+    e_pdf,
+    existe,
+)
+from app.services.pdf_imagem_service import miniatura_primeira_pagina
 
 
 @dataclass
@@ -88,8 +95,9 @@ class FaixaAnexos(QListWidget):
         self.setAcceptDrops(not somente_leitura)
         self.setDragEnabled(False)
         self.setToolTip(
-            "Fotos do ticket. Ctrl+V cola a imagem copiada do chat; também pode "
-            "arrastar ficheiros para aqui. Duplo-clique abre a foto."
+            "Anexos do ticket (fotos e PDFs). Ctrl+V cola a imagem copiada do "
+            "chat; também pode arrastar ficheiros para aqui. Nos PDFs a "
+            "miniatura é a primeira página. Duplo-clique abre o anexo."
         )
 
         if not somente_leitura:
@@ -154,13 +162,15 @@ class FaixaAnexos(QListWidget):
         self.aviso.emit("Não há nenhuma imagem nem ficheiro copiado.")
 
     def escolher_ficheiros(self) -> None:
-        """Open the file chooser for pictures."""
-        filtros = " ".join(f"*{ext}" for ext in sorted(EXTENSOES_IMAGEM))
+        """Open the file chooser for pictures and PDFs."""
+        imagens = " ".join(f"*{ext}" for ext in sorted(EXTENSOES_IMAGEM))
+        pdfs = " ".join(f"*{ext}" for ext in sorted(EXTENSOES_PDF))
         caminhos, _ = QFileDialog.getOpenFileNames(
             self,
-            "Escolher fotos do ticket",
+            "Escolher anexos do ticket",
             "",
-            f"Imagens ({filtros});;Todos os ficheiros (*.*)",
+            f"Fotos e PDFs ({imagens} {pdfs});;Imagens ({imagens});;"
+            f"PDF ({pdfs});;Todos os ficheiros (*.*)",
         )
         if caminhos:
             self.acrescentar_ficheiros(caminhos)
@@ -265,6 +275,13 @@ class FaixaAnexos(QListWidget):
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
             )
+        if anexo.caminho and e_pdf(anexo.caminho) and existe(anexo.caminho):
+            # Um PDF vê-se como as fotos: a primeira página faz de miniatura.
+            miniatura = miniatura_primeira_pagina(
+                anexo.caminho, self.iconSize().width(), self.iconSize().height()
+            )
+            if miniatura is not None and not miniatura.isNull():
+                return miniatura
         return QPixmap()
 
     @staticmethod
@@ -273,7 +290,12 @@ class FaixaAnexos(QListWidget):
             return f"{anexo.nome} (colada — grava ao registar o ticket)"
         if anexo.caminho and not existe(anexo.caminho):
             return f"{anexo.nome}\n{anexo.caminho}\n(ficheiro já não está lá)"
-        return f"{anexo.nome}\n{anexo.caminho or ''}"
+        abrir = (
+            "PDF — duplo-clique abre"
+            if e_pdf(anexo.caminho)
+            else "Duplo-clique abre"
+        )
+        return f"{anexo.nome}\n{anexo.caminho or ''}\n({abrir})"
 
     def _abrir_item(self, item: QListWidgetItem) -> None:
         linha = self.row(item)
@@ -281,7 +303,7 @@ class FaixaAnexos(QListWidget):
             return
         anexo = self._itens[linha]
         if not anexo.caminho or not existe(anexo.caminho):
-            self.aviso.emit("Esta foto ainda não foi gravada.")
+            self.aviso.emit("Este anexo ainda não foi gravado.")
             return
 
         from PySide6.QtCore import QUrl
@@ -292,9 +314,9 @@ class FaixaAnexos(QListWidget):
     def _menu_contexto(self, posicao) -> None:
         menu = QMenu(self)
         colar = menu.addAction("Colar imagem (Ctrl+V)")
-        escolher = menu.addAction("Escolher ficheiros…")
+        escolher = menu.addAction("Escolher fotos ou PDFs…")
         menu.addSeparator()
-        remover = menu.addAction("Remover selecionadas")
+        remover = menu.addAction("Remover selecionados")
         remover.setEnabled(bool(self.selectedItems()))
 
         escolhida = menu.exec(self.mapToGlobal(posicao))

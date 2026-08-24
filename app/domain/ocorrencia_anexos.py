@@ -26,6 +26,10 @@ EXTENSOES_IMAGEM = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
 )
 
+#: Anexos que não são fotos mas que também se veem em miniatura (a primeira
+#: página serve de pré-visualização, como nas imagens).
+EXTENSOES_PDF = frozenset({".pdf"})
+
 
 @dataclass(frozen=True)
 class ResultadoAnexo:
@@ -62,6 +66,13 @@ def e_imagem(caminho: str | Path | None) -> bool:
     if not caminho:
         return False
     return Path(str(caminho)).suffix.lower() in EXTENSOES_IMAGEM
+
+
+def e_pdf(caminho: str | Path | None) -> bool:
+    """True when the file is a PDF (by extension)."""
+    if not caminho:
+        return False
+    return Path(str(caminho)).suffix.lower() in EXTENSOES_PDF
 
 
 def proximo_caminho(pasta: Path, numero: int | None, extensao: str) -> Path:

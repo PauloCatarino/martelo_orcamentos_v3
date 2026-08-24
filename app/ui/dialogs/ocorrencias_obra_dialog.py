@@ -157,7 +157,7 @@ class OcorrenciasObraDialog(QDialog):
         self.detalhe_texto.setMaximumHeight(110)
         self.detalhe_texto.setToolTip("Texto completo do ticket selecionado")
 
-        self.detalhe_fotos_label = QLabel("Fotografias associadas ao ticket")
+        self.detalhe_fotos_label = QLabel("Fotografias e PDFs associados ao ticket")
         self.detalhe_fotos_label.setStyleSheet(
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold;"
         )
@@ -168,7 +168,8 @@ class OcorrenciasObraDialog(QDialog):
             somente_leitura=True,
         )
         self.detalhe_anexos.setToolTip(
-            "Fotografias deste ticket — duplo-clique abre a imagem completa"
+            "Anexos deste ticket — nos PDFs a miniatura é a primeira página; "
+            "duplo-clique abre o ficheiro"
         )
 
         self.detalhe_envio = QLabel("")
