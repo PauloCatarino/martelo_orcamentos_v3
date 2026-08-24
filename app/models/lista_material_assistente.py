@@ -216,6 +216,7 @@ class ListaMaterialPdfPreset(Base):
     exportar_separados: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
     criar_pacote: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     ultimo_usado: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
+    predefinido: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 

@@ -226,7 +226,7 @@ def test_producao_page_init_uses_expected_widgets() -> None:
         in workflow_source
     )
     assert "a abrir o Excel para continuar o trabalho" in workflow_source
-    # Um só botão "CUT-RITE" com preparação, envio e PDF no menu.
+    # O CUT-RITE fica só com envio/PDF; a análise opcional vive em Funções.
     assert '"CUT-RITE"' in init_source
     assert "self.cutrite_button.setMenu(self.cutrite_menu)" in init_source
     assert "self.cutrite_menu.setToolTipsVisible(True)" in init_source
@@ -237,6 +237,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
         "self.analisar_lista_material_action.triggered.connect("
         in init_source
     )
+    assert "self.funcoes_menu.addAction(self.analisar_lista_material_action)" in init_source
+    assert "self.cutrite_menu.addAction(self.analisar_lista_material_action)" not in init_source
     assert "self._analisar_lista_material" in init_source
     assert '"Enviar CUT-RITE", self' in init_source
     assert "self.enviar_cutrite_action.triggered.connect(self._enviar_cutrite)" in init_source
@@ -261,7 +263,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "if explicit:" in review_source
     assert "QDesktopServices.openUrl" in review_source
     assert "QUrl.fromLocalFile(str(workbook_path))" in review_source
-    assert "self._rever_lista_material_assistente" in send_source
+    assert "self._rever_lista_material_assistente" not in send_source
+    assert "self._cutrite_worker" in send_source
     assert '"Eliminar"' in init_source
     assert "Eliminar obra: registo e/ou pasta no servidor" in init_source
     assert "doubleClicked.connect(self._handle_table_double_click)" in init_source

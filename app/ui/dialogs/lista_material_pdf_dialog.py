@@ -72,10 +72,9 @@ class ListaMaterialPdfDialog(QDialog):
         subtitle.setStyleSheet("color: #5c6570;")
 
         self.preset_combo = QComboBox()
-        self.preset_combo.setToolTip("Aplicar uma seleção guardada para este utilizador e cliente")
-        self.preset_combo.addItem("Sem preset", None)
-        for preset in self.preset_service.list(user_id=self.user_id, client=self.client):
-            self.preset_combo.addItem(preset.nome, preset)
+        self.preset_combo.setToolTip(
+            "Aplicar uma seleção guardada apenas para este utilizador e cliente"
+        )
         self.preset_combo.currentIndexChanged.connect(self._apply_preset)
 
         self.preset_name = QLineEdit()
@@ -84,10 +83,15 @@ class ListaMaterialPdfDialog(QDialog):
         save_preset = QPushButton("Guardar preset")
         save_preset.setToolTip("Guardar seleção e opções como preferência deste utilizador/cliente")
         save_preset.clicked.connect(self._save_preset)
+        self.default_preset_check = QCheckBox("Predefinido")
+        self.default_preset_check.setToolTip(
+            "Carregar automaticamente este preset ao abrir o Centro de Exportação PDF"
+        )
         preset_row = QHBoxLayout()
         preset_row.addWidget(QLabel("Preset:"))
         preset_row.addWidget(self.preset_combo, 2)
         preset_row.addWidget(self.preset_name, 2)
+        preset_row.addWidget(self.default_preset_check)
         preset_row.addWidget(save_preset)
 
         categories: dict[str, QGroupBox] = {}
@@ -181,6 +185,27 @@ class ListaMaterialPdfDialog(QDialog):
         layout.addWidget(self.progress)
         layout.addLayout(action_row)
 
+        self._reload_presets(apply_default=True)
+
+    def _reload_presets(
+        self, *, select_id: int | None = None, apply_default: bool = False
+    ) -> None:
+        presets = self.preset_service.list(user_id=self.user_id, client=self.client)
+        selected_index = 0
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.clear()
+        self.preset_combo.addItem("Sem preset", None)
+        for preset in presets:
+            self.preset_combo.addItem(preset.nome, preset)
+            if select_id is not None and preset.id == select_id:
+                selected_index = self.preset_combo.count() - 1
+            elif select_id is None and apply_default and preset.predefinido:
+                selected_index = self.preset_combo.count() - 1
+        self.preset_combo.setCurrentIndex(selected_index)
+        self.preset_combo.blockSignals(False)
+        if selected_index:
+            self._apply_preset()
+
     def _select_all(self, checked: bool) -> None:
         for check in self.checks.values():
             if check.isEnabled():
@@ -192,6 +217,8 @@ class ListaMaterialPdfDialog(QDialog):
     def _apply_preset(self) -> None:
         preset = self.preset_combo.currentData()
         if preset is None:
+            self.preset_name.clear()
+            self.default_preset_check.setChecked(False)
             return
         try:
             identifiers = normalize_pdf_identifiers(
@@ -204,21 +231,27 @@ class ListaMaterialPdfDialog(QDialog):
         self.separate_check.setChecked(bool(preset.exportar_separados))
         self.package_check.setChecked(bool(preset.criar_pacote))
         self.preset_name.setText(preset.nome)
+        self.default_preset_check.setChecked(bool(preset.predefinido))
 
     def _save_preset(self) -> None:
         try:
-            self.preset_service.save(
+            preset = self.preset_service.save(
                 user_id=self.user_id,
                 client=self.client,
                 name=self.preset_name.text(),
                 identifiers=self._selected_ids(),
                 export_separate=self.separate_check.isChecked(),
                 create_package=self.package_check.isChecked(),
+                make_default=self.default_preset_check.isChecked(),
             )
         except ValueError as exc:
             self.status_label.setText(str(exc))
             return
-        self.status_label.setText("Preset guardado para este utilizador e cliente.")
+        self._reload_presets(select_id=preset.id)
+        sufixo = " e definido como predefinido" if preset.predefinido else ""
+        self.status_label.setText(
+            f"Preset guardado apenas para este utilizador e cliente{sufixo}."
+        )
 
     def _choose_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(self, "Pasta de destino", self.destination.text())

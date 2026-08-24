@@ -320,6 +320,9 @@ def test_dialogo_preparacao_tem_as_pecas_esperadas() -> None:
     assert "status_label" in fonte
     assert "WindowMaximized" in fonte
     assert "setRowHeight(linha, 40)" in fonte
+    assert fonte.index("layout.addLayout(botoes)") < fonte.index(
+        "layout.addWidget(self.tabela, stretch=1)"
+    )
 
 
 def test_pagina_producao_abre_a_preparacao() -> None:

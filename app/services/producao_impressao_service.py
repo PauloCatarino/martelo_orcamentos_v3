@@ -154,6 +154,7 @@ class DocumentoImpressao:
     selecionado: bool = True
     tamanho: int = 0
     geometria_paginas: list[GeometriaPagina] = dataclass_field(default_factory=list)
+    chave_prioridade: str = ""
 
     @property
     def segue_o_pdf(self) -> bool:
@@ -171,6 +172,7 @@ class DocumentoImpressao:
 #: Chave da ordem de impressão de cada utilizador. O utilizador vai na sua
 #: própria coluna das ``user_prefs`` (ver :mod:`app.services.user_pref_service`).
 CHAVE_PRIORIDADES = "producao_impressao_prioridades"
+PREFIXO_CHAVE_DOCUMENTO = "documento:"
 
 
 def prioridades_default() -> dict[str, int]:
@@ -195,7 +197,8 @@ def obter_prioridades_utilizador(session: Session, user_id: object) -> dict[str,
         return prioridades
 
     for nome, prioridade in guardadas.items():
-        if nome not in prioridades:
+        nome = str(nome)
+        if nome not in prioridades and not nome.startswith(PREFIXO_CHAVE_DOCUMENTO):
             continue
         try:
             prioridades[nome] = int(prioridade)
@@ -212,6 +215,7 @@ def guardar_prioridades_utilizador(
         str(nome): int(prioridade)
         for nome, prioridade in prioridades.items()
         if str(nome) in CATEGORIAS_POR_NOME
+        or str(nome).startswith(PREFIXO_CHAVE_DOCUMENTO)
     }
     UserPrefService(session).guardar_valor(
         user_id,
@@ -264,24 +268,47 @@ def ordenar_documentos(
 def prioridades_dos_documentos(
     documentos: Sequence[DocumentoImpressao],
 ) -> dict[str, int]:
-    """Return the category order implied by the documents on screen."""
+    """Return category fallbacks and each stable document type on screen."""
     prioridades = prioridades_default()
+    categorias_vistas: set[str] = set()
     for documento in documentos:
-        if documento.categoria in prioridades:
+        if (
+            documento.categoria in prioridades
+            and documento.categoria not in categorias_vistas
+        ):
             prioridades[documento.categoria] = int(documento.prioridade)
+            categorias_vistas.add(documento.categoria)
+        chave = documento.chave_prioridade or documento.categoria
+        if chave.startswith(PREFIXO_CHAVE_DOCUMENTO):
+            # Documentos do mesmo tipo (por exemplo vários RP) conservam a
+            # ordem alfabética entre si e usam a posição do primeiro.
+            prioridades.setdefault(chave, int(documento.prioridade))
+        elif chave in prioridades:
+            prioridades[chave] = int(documento.prioridade)
     return prioridades
 
 
 def ordem_foi_alterada(
     documentos: Sequence[DocumentoImpressao], prioridades_guardadas: dict[str, int]
 ) -> bool:
-    """True when the user changed the order of the categories on screen."""
+    """True when the visible document-type order differs from the saved one."""
     atuais = prioridades_dos_documentos(documentos)
-    categorias_na_lista = {documento.categoria for documento in documentos}
-    return any(
-        atuais.get(nome) != prioridades_guardadas.get(nome)
-        for nome in categorias_na_lista
-    )
+    vistos: set[str] = set()
+    for documento in documentos:
+        chave = documento.chave_prioridade or documento.categoria
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        guardada = prioridades_guardadas.get(
+            chave,
+            prioridades_guardadas.get(
+                documento.categoria,
+                prioridades_default().get(documento.categoria, 8),
+            ),
+        )
+        if atuais.get(chave) != guardada:
+            return True
+    return False
 
 
 def categorizar(
@@ -387,6 +414,21 @@ def resolver_sumatra(session: Optional[Session]) -> Optional[str]:
     return None
 
 
+def chave_prioridade_documento(nome: str, categoria: str) -> str:
+    """Return a stable per-document-type key, without obra/client identifiers."""
+    base = Path(str(nome or "")).stem.casefold()
+    base = re.sub(r"[^a-z0-9]+", "_", base).strip("_")
+    # Os PDFs criados para cada obra terminam normalmente no identificador
+    # numérico da encomenda e no cliente. Esse sufixo não pode entrar na
+    # preferência, porque a mesma ordem tem de servir na obra seguinte.
+    base = re.sub(
+        r"(?:^|_)\d{4}(?:_\d{2}){2,}(?:_[a-z0-9]+)*$",
+        "",
+        base,
+    ).strip("_")
+    return f"{PREFIXO_CHAVE_DOCUMENTO}{categoria}:{base or 'sem_nome'}"
+
+
 def _documento(
     caminho: Path,
     *,
@@ -402,13 +444,19 @@ def _documento(
         origem=origem,
     )
     categoria = CATEGORIAS_POR_NOME[categoria_nome]
+    chave_prioridade = chave_prioridade_documento(caminho.name, categoria_nome)
     paginas = analisar_paginas(caminho)
     dominante = geometria_dominante(paginas)
     return DocumentoImpressao(
         caminho=caminho,
         nome=caminho.name,
         categoria=categoria_nome,
-        prioridade=int(prioridades.get(categoria_nome, categoria.prioridade)),
+        prioridade=int(
+            prioridades.get(
+                chave_prioridade,
+                prioridades.get(categoria_nome, categoria.prioridade),
+            )
+        ),
         origem=origem,
         papel_ficheiro=dominante.papel if dominante else "",
         orientacao_ficheiro=dominante.orientacao if dominante else "",
@@ -418,6 +466,7 @@ def _documento(
         quantidade=categoria.quantidade,
         tamanho=_tamanho(caminho),
         geometria_paginas=paginas,
+        chave_prioridade=chave_prioridade,
     )
 
 

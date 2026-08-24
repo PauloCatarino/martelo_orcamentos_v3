@@ -364,7 +364,11 @@ class PdfPresetService:
                     ListaMaterialPdfPreset.user_id == int(user_id),
                     ListaMaterialPdfPreset.cliente_chave == key,
                 )
-                .order_by(ListaMaterialPdfPreset.ultimo_usado.desc(), ListaMaterialPdfPreset.nome)
+                .order_by(
+                    ListaMaterialPdfPreset.predefinido.desc(),
+                    ListaMaterialPdfPreset.ultimo_usado.desc(),
+                    ListaMaterialPdfPreset.nome,
+                )
             ).scalars()
         )
 
@@ -377,6 +381,7 @@ class PdfPresetService:
         identifiers: Iterable[str],
         export_separate: bool,
         create_package: bool,
+        make_default: bool = False,
     ) -> ListaMaterialPdfPreset:
         name = str(name or "").strip()
         if not name:
@@ -390,6 +395,18 @@ class PdfPresetService:
             )
             .values(ultimo_usado=False)
         )
+        if make_default:
+            # Só pode existir um preset predefinido por utilizador/cliente.
+            # A filtragem pelo user_id impede que esta escolha altere ou
+            # exponha presets pertencentes a outro utilizador.
+            self.session.execute(
+                update(ListaMaterialPdfPreset)
+                .where(
+                    ListaMaterialPdfPreset.user_id == int(user_id),
+                    ListaMaterialPdfPreset.cliente_chave == key,
+                )
+                .values(predefinido=False)
+            )
         row = self.session.execute(
             select(ListaMaterialPdfPreset).where(
                 ListaMaterialPdfPreset.user_id == int(user_id),
@@ -404,6 +421,7 @@ class PdfPresetService:
         row.exportar_separados = bool(export_separate)
         row.criar_pacote = bool(create_package)
         row.ultimo_usado = True
+        row.predefinido = bool(make_default)
         self.session.commit()
         return row
 

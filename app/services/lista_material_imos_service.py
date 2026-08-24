@@ -340,7 +340,7 @@ try {
       $assistant.Cells.Item(7,3).Value2 = 'O novo motor placa-orla não consulta a folha MP.'
       $assistant.Cells.Item(8,1).Value2 = 'Passo seguinte'
       $assistant.Cells.Item(8,2).Value2 = 'Analisar/Completar Lista Material'
-      $assistant.Cells.Item(8,3).Value2 = 'Depois de Importar CSV IMOS e executar AUTOMATION, guarde e feche o Excel; no Martelo V3 use CUT-RITE > Analisar/Completar Lista Material.'
+      $assistant.Cells.Item(8,3).Value2 = 'Depois de Importar CSV IMOS e executar AUTOMATION, guarde e feche o Excel; no Martelo V3 use Funções > Analisar/Completar Lista Material.'
       $assistant.Columns.AutoFit() | Out-Null
 
       $raw = Get-OrCreateSheet $wb 'RAW_IMOS'

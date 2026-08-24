@@ -332,7 +332,8 @@ class ProducaoPage(QWidget):
         )
         self.lista_material_button.clicked.connect(self._lista_material_imos)
 
-        # Um só botão CUT-RITE reúne a preparação assistida, o envio e o PDF.
+        # A análise da Lista Material é uma função opcional e independente do
+        # envio; as ações específicas do CUT-RITE ficam concentradas no botão.
         self.analisar_lista_material_action = QAction(
             "Analisar/Completar Lista Material…", self
         )
@@ -363,8 +364,6 @@ class ProducaoPage(QWidget):
 
         self.cutrite_menu = QMenu(self)
         self.cutrite_menu.setToolTipsVisible(True)
-        self.cutrite_menu.addAction(self.analisar_lista_material_action)
-        self.cutrite_menu.addSeparator()
         self.cutrite_menu.addAction(self.enviar_cutrite_action)
         self.cutrite_menu.addAction(self.exportar_pdf_cutrite_action)
 
@@ -428,6 +427,8 @@ class ProducaoPage(QWidget):
 
         self.funcoes_menu = QMenu(self)
         self.funcoes_menu.setToolTipsVisible(True)
+        self.funcoes_menu.addAction(self.analisar_lista_material_action)
+        self.funcoes_menu.addSeparator()
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
         self.funcoes_menu.addAction(self.exportar_documentacao_action)
@@ -436,8 +437,8 @@ class ProducaoPage(QWidget):
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
-            "Funções sobre a pasta da obra: preparar a obra para produção, "
-            "imprimir os documentos, avisar o cliente e criar a encomenda no iMos"
+            "Funções sobre a obra e a respetiva pasta: analisar a Lista Material, "
+            "preparar a produção, imprimir, avisar o cliente e criar a encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -2308,7 +2309,7 @@ class ProducaoPage(QWidget):
                 self,
                 "Lista Material IMOS",
                 "O Excel foi criado. Pode continuar mais tarde através dos "
-                "botões do livro ou de CUT-RITE > Analisar/Completar Lista Material.",
+                "botões do livro ou de Funções > Analisar/Completar Lista Material.",
             )
             return
 
@@ -2442,7 +2443,8 @@ class ProducaoPage(QWidget):
                 self,
                 "Exportar documentação",
                 "Não foi possível carregar os presets PDF. Confirme que a "
-                f"migração 20260821_91 foi aplicada.\n\nDetalhe: {error}",
+                f"base de dados está atualizada até à migração 20260824_94.\n\n"
+                f"Detalhe: {error}",
             )
 
     def _rever_lista_material_assistente(
@@ -2594,13 +2596,6 @@ class ProducaoPage(QWidget):
                 "Enviar CUT-RITE",
                 "Pasta do processo em falta. Crie a pasta antes de enviar ao CUT-RITE.",
             )
-            return
-
-        # Releitura obrigatória: alterações locais entram novamente na análise.
-        reviewed, _ = self._rever_lista_material_assistente(
-            processo, explicit=False
-        )
-        if not reviewed:
             return
 
         self._cutrite_dialog = CutRiteProgressDialog(self)

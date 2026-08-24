@@ -264,8 +264,8 @@ class ProducaoPreparacaoDialog(QDialog):
         layout.addWidget(intro)
         layout.addWidget(contexto_group)
         layout.addWidget(self.resumo_label)
-        layout.addWidget(self.tabela, stretch=1)
         layout.addLayout(botoes)
+        layout.addWidget(self.tabela, stretch=1)
         layout.addWidget(self.status_label)
 
         self._atualizar()

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from openpyxl import Workbook
 
-from app.models.lista_material_assistente import ListaMaterialPdfDocumento
+from app.models.lista_material_assistente import (
+    ListaMaterialPdfDocumento,
+    ListaMaterialPdfPreset,
+)
 from app.services.lista_material_pdf_service import (
     DEFAULT_DOCUMENTS,
+    PdfPresetService,
     _export_sheets_to_pdf,
     collision_free_path,
     document_filename,
@@ -13,6 +17,72 @@ from app.services.lista_material_pdf_service import (
     read_nome_enc_imos_ix,
     sync_pdf_document_registry,
 )
+
+
+def test_presets_sao_listados_apenas_para_o_proprio_utilizador(session) -> None:
+    service = PdfPresetService(session)
+    service.save(
+        user_id=10,
+        client="JF_VIVA",
+        name="Preset Paulo",
+        identifiers=["ferragens"],
+        export_separate=True,
+        create_package=False,
+    )
+    service.save(
+        user_id=20,
+        client="JF_VIVA",
+        name="Preset Outro Utilizador",
+        identifiers=["relatorio"],
+        export_separate=True,
+        create_package=False,
+    )
+
+    assert [row.nome for row in service.list(user_id=10, client="JF_VIVA")] == [
+        "Preset Paulo"
+    ]
+
+
+def test_preset_predefinido_e_unico_por_utilizador_e_cliente(session) -> None:
+    service = PdfPresetService(session)
+    first = service.save(
+        user_id=10,
+        client="JF_VIVA",
+        name="Produção",
+        identifiers=["ferragens"],
+        export_separate=True,
+        create_package=False,
+        make_default=True,
+    )
+    service.save(
+        user_id=10,
+        client="JF_VIVA",
+        name="Arquivo",
+        identifiers=["relatorio"],
+        export_separate=False,
+        create_package=True,
+        make_default=False,
+    )
+    session.refresh(first)
+    assert first.predefinido is True
+
+    second = service.save(
+        user_id=10,
+        client="JF_VIVA",
+        name="Arquivo",
+        identifiers=["relatorio"],
+        export_separate=False,
+        create_package=True,
+        make_default=True,
+    )
+
+    defaults = (
+        session.query(ListaMaterialPdfPreset)
+        .filter_by(user_id=10, cliente_chave="JF_VIVA", predefinido=True)
+        .all()
+    )
+    assert defaults == [second]
+    assert service.list(user_id=10, client="JF_VIVA")[0] == second
 
 
 def test_exportacao_agrupada_seleciona_ferragens_purch_e_spp(tmp_path) -> None:

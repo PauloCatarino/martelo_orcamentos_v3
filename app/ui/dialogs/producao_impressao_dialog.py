@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -27,6 +26,7 @@ from app.db.session import SessionLocal
 from app.services import producao_impressao_service as svc
 from app.services.pdf_imagem_service import documento_pdf
 from app.ui import tema
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
 _COL_SEL = 0
@@ -148,9 +148,11 @@ class ProducaoImpressaoDialog(QDialog):
         cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         for coluna, largura in _LARGURAS.items():
             self.tabela.setColumnWidth(coluna, largura)
-        # O nome do ficheiro é o que cresce; as outras colunas ficam justas.
-        cabecalho.setStretchLastSection(False)
-        cabecalho.setSectionResizeMode(_COL_FICHEIRO, QHeaderView.ResizeMode.Stretch)
+        # Todas as colunas ficam ajustáveis. As larguras são restauradas e
+        # guardadas por máquina/utilizador, como nas restantes tabelas do V3.
+        ligar_persistencia_larguras(
+            self.tabela, "dialog_producao_impressao"
+        )
         self.tabela.itemSelectionChanged.connect(self._mostrar_pre_visualizacao)
         self.tabela.setToolTip(
             "Documentos encontrados na pasta da obra. Marque o que quer "
@@ -174,6 +176,12 @@ class ProducaoImpressaoDialog(QDialog):
             "Voltar à ordem de origem (a que vem de fábrica), sem gravar"
         )
         self.repor_button.clicked.connect(self._repor_ordem)
+
+        self.guardar_ordem_button = QPushButton("Guardar ordem")
+        self.guardar_ordem_button.setToolTip(
+            "Guardar esta ordem de prioridade como predefinida apenas para o utilizador atual"
+        )
+        self.guardar_ordem_button.clicked.connect(self._guardar_ordem)
 
         self.tudo_button = QPushButton("Selecionar tudo")
         self.tudo_button.setToolTip("Marcar todos os documentos")
@@ -201,6 +209,7 @@ class ProducaoImpressaoDialog(QDialog):
         acoes.addWidget(self.subir_button)
         acoes.addWidget(self.descer_button)
         acoes.addWidget(self.repor_button)
+        acoes.addWidget(self.guardar_ordem_button)
         acoes.addWidget(self.tudo_button)
         acoes.addWidget(self.limpar_button)
         acoes.addStretch()
@@ -388,7 +397,7 @@ class ProducaoImpressaoDialog(QDialog):
         self._mostrar_documentos()
         self.tabela.selectRow(destino)
         self.status_label.setText(
-            "Ordem alterada — ao imprimir pode gravá-la para as próximas obras."
+            "Ordem alterada — clique em Guardar ordem para a usar nas próximas obras."
         )
 
     def _repor_ordem(self) -> None:
@@ -400,29 +409,9 @@ class ProducaoImpressaoDialog(QDialog):
         self._mostrar_documentos()
         self.status_label.setText("Ordem de origem reposta (ainda não gravada).")
 
-    def _perguntar_gravar_ordem(self) -> None:
-        """Ask whether the new order is only for this obra or the new model."""
-        if not svc.ordem_foi_alterada(self._documentos, self._prioridades_guardadas):
-            return
-
-        pergunta = QMessageBox(self)
-        pergunta.setWindowTitle("Ordem de impressão")
-        pergunta.setIcon(QMessageBox.Icon.Question)
-        pergunta.setText("Mudou a ordem de impressão dos documentos.")
-        pergunta.setInformativeText(
-            "Quer gravar esta ordem para as próximas obras (fica só para si), "
-            "ou usá-la apenas nesta impressão?"
-        )
-        gravar = pergunta.addButton(
-            "Gravar para as próximas obras", QMessageBox.ButtonRole.AcceptRole
-        )
-        pergunta.addButton("Só nesta obra", QMessageBox.ButtonRole.RejectRole)
-        pergunta.exec()
-
-        if pergunta.clickedButton() is not gravar:
-            self.status_label.setText("Ordem usada só nesta obra.")
-            return
-
+    def _guardar_ordem(self) -> None:
+        """Guardar explicitamente esta ordem como preferência do utilizador."""
+        self._ler_marcados()
         prioridades = svc.prioridades_dos_documentos(self._documentos)
         try:
             with SessionLocal() as session:
@@ -435,7 +424,9 @@ class ProducaoImpressaoDialog(QDialog):
             )
             return
         self._prioridades_guardadas = prioridades
-        self.status_label.setText("Ordem gravada para as próximas impressões.")
+        self.status_label.setText(
+            "Ordem predefinida gravada apenas para este utilizador."
+        )
 
     # ---- imprimir ----------------------------------------------------------
     def _imprimir(self) -> None:
@@ -446,8 +437,6 @@ class ProducaoImpressaoDialog(QDialog):
                 self, "Imprimir Documentos", "Nenhum documento selecionado."
             )
             return
-
-        self._perguntar_gravar_ordem()
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:

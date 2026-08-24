@@ -190,6 +190,47 @@ def test_prioridades_do_utilizador_mandam_na_ordem(tmp_path: Path) -> None:
     assert documentos[1].nome == f"{NOME_PLANO}.pdf"
 
 
+def test_ordem_pessoal_distingue_documentos_da_mesma_categoria(tmp_path: Path) -> None:
+    primeira = tmp_path / "obra_1449"
+    primeira.mkdir()
+    _pdf(primeira, "1_Cliente_CE_1449_01_01_JF_VIVA.pdf")
+    _pdf(primeira, "1_Montagem_CE_1449_01_01_JF_VIVA.pdf")
+    documentos = svc.listar_documentos(primeira)
+    por_nome = {documento.nome: documento for documento in documentos}
+    por_nome["1_Montagem_CE_1449_01_01_JF_VIVA.pdf"].prioridade = 0
+    por_nome["1_Cliente_CE_1449_01_01_JF_VIVA.pdf"].prioridade = 1
+    prioridades = svc.prioridades_dos_documentos(
+        [
+            por_nome["1_Montagem_CE_1449_01_01_JF_VIVA.pdf"],
+            por_nome["1_Cliente_CE_1449_01_01_JF_VIVA.pdf"],
+        ]
+    )
+
+    segunda = tmp_path / "obra_1500"
+    segunda.mkdir()
+    _pdf(segunda, "1_Cliente_CE_1500_02_01_OUTRO_CLIENTE.pdf")
+    _pdf(segunda, "1_Montagem_CE_1500_02_01_OUTRO_CLIENTE.pdf")
+
+    seguintes = svc.listar_documentos(segunda, prioridades=prioridades)
+
+    assert [documento.nome for documento in seguintes] == [
+        "1_Montagem_CE_1500_02_01_OUTRO_CLIENTE.pdf",
+        "1_Cliente_CE_1500_02_01_OUTRO_CLIENTE.pdf",
+    ]
+
+
+def test_prioridades_gravadas_ficam_isoladas_por_utilizador(session) -> None:
+    chave = svc.chave_prioridade_documento(
+        "1_Cliente_CE_1449_01_01_JF_VIVA.pdf", svc.CATEGORIA_OUTROS
+    )
+    prioridades = svc.prioridades_default() | {chave: 0}
+
+    svc.guardar_prioridades_utilizador(session, 10, prioridades)
+
+    assert svc.obter_prioridades_utilizador(session, 10)[chave] == 0
+    assert chave not in svc.obter_prioridades_utilizador(session, 20)
+
+
 def test_ordem_alterada_e_detetada(tmp_path: Path) -> None:
     obra = _obra_com_documentos(tmp_path)
     documentos = _listar(obra)
@@ -369,10 +410,12 @@ def test_dialogo_impressao_tem_as_pecas_esperadas() -> None:
 
     assert "Imprimir Selecionados" in fonte
     assert "▲ Subir" in fonte and "▼ Descer" in fonte
-    # A pergunta que decide se a nova ordem fica como modelo.
-    assert "Gravar para as próximas obras" in fonte
-    assert "Só nesta obra" in fonte
+    assert 'QPushButton("Guardar ordem")' in fonte
+    assert "self.guardar_ordem_button.clicked.connect(self._guardar_ordem)" in fonte
     assert "guardar_prioridades_utilizador" in fonte
+    assert "_perguntar_gravar_ordem" not in fonte
+    assert "ligar_persistencia_larguras" in fonte
+    assert '"dialog_producao_impressao"' in fonte
     assert "setToolTip" in fonte
     assert "status_label" in fonte
     assert "WindowMaximized" in fonte

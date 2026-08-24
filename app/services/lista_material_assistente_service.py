@@ -1248,7 +1248,7 @@ def prepare_workbook_for_assistant(
                 "Passo seguinte",
                 "Analisar/Completar Lista Material",
                 "Depois de Importar CSV IMOS e executar AUTOMATION, guarde e feche o Excel; "
-                "no Martelo V3 use CUT-RITE > Analisar/Completar Lista Material.",
+                "no Martelo V3 use Funções > Analisar/Completar Lista Material.",
             ),
         )
         for row_number, values in enumerate(assistant_rows, start=1):
