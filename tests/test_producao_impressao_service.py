@@ -473,3 +473,19 @@ def test_etiqueta_origem_escreve_em_bonito():
     assert svc.etiqueta_origem(svc.ORIGEM_AUTOCAD) == "AutoCAD/IMOS"
     assert svc.etiqueta_origem(svc.ORIGEM_DESCONHECIDA) == "Desconhecida"
     assert svc.etiqueta_origem("") == "Desconhecida"
+
+
+def test_plano_de_corte_tem_origem_cut_rite(tmp_path: Path):
+    """O plano de corte é sempre do CUT-RITE, diga o PDF o que disser."""
+    obra = _obra_com_documentos(tmp_path)
+    documentos = svc.listar_documentos(
+        obra, nome_plano_cut_rite=NOME_PLANO, nome_enc_imos=NOME_ENC
+    )
+    plano = next(doc for doc in documentos if doc.categoria == svc.CATEGORIA_CUT_RITE)
+    assert plano.origem == svc.ORIGEM_CUT_RITE
+    assert svc.etiqueta_origem(plano.origem) == "CUT-RITE"
+
+
+def test_origem_pela_categoria_so_manda_no_plano():
+    assert svc.origem_pela_categoria(svc.CATEGORIA_CUT_RITE) == svc.ORIGEM_CUT_RITE
+    assert svc.origem_pela_categoria(svc.CATEGORIA_OUTROS) == ""

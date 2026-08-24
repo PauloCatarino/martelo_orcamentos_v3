@@ -45,6 +45,7 @@ CATEGORIA_OUTROS = "OUTROS"
 ORIGEM_AUTOCAD = "autocad"
 ORIGEM_EXCEL = "excel"
 ORIGEM_STREAMLIT = "streamlit"
+ORIGEM_CUT_RITE = "cut-rite"
 ORIGEM_DESCONHECIDA = "desconhecida"
 
 #: Como a origem aparece escrita na coluna "Origem" da lista de impressão.
@@ -52,8 +53,13 @@ ETIQUETAS_ORIGEM = {
     ORIGEM_AUTOCAD: "AutoCAD/IMOS",
     ORIGEM_EXCEL: "Excel",
     ORIGEM_STREAMLIT: "Streamlit",
+    ORIGEM_CUT_RITE: "CUT-RITE",
     ORIGEM_DESCONHECIDA: "Desconhecida",
 }
+
+#: Categorias que so podem ter vindo de um sitio, seja o que for que o PDF
+#: diga por dentro. O plano de corte, por exemplo, e sempre do CUT-RITE.
+ORIGENS_POR_CATEGORIA = {CATEGORIA_CUT_RITE: ORIGEM_CUT_RITE}
 
 ORIENTACAO_HORIZONTAL = "Horizontal"
 ORIENTACAO_VERTICAL = "Vertical"
@@ -468,6 +474,7 @@ def _documento(
         nome_enc_imos=nome_enc_imos,
         origem=origem,
     )
+    origem = origem_pela_categoria(categoria_nome) or origem
     categoria = CATEGORIAS_POR_NOME[categoria_nome]
     chave_prioridade = chave_prioridade_documento(caminho.name, categoria_nome)
     paginas = analisar_paginas(caminho)
@@ -521,6 +528,11 @@ def origem_pelo_nome(nome_ficheiro: str) -> str:
         if padrao.match(nome):
             return origem
     return ""
+
+
+def origem_pela_categoria(categoria: str) -> str:
+    """Return the origin implied by the category, or "" when it says nothing."""
+    return ORIGENS_POR_CATEGORIA.get((categoria or "").strip(), "")
 
 
 def etiqueta_origem(origem: str) -> str:
