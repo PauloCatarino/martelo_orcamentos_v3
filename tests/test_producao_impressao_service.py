@@ -432,3 +432,44 @@ def test_pagina_producao_abre_a_impressao() -> None:
     assert "self.imprimir_action.triggered.connect(self._abrir_impressao)" in fonte
     assert "ProducaoImpressaoDialog" in fonte
     assert hasattr(ProducaoPage, "_abrir_impressao")
+
+
+def test_caderno_encargos_do_streamlit_e_reconhecido():
+    """Os 1_*_CE_*.pdf do Streamlit são o Caderno de Encargos."""
+    nomes = (
+        "1_Cliente_CE_1134.pdf",
+        "1_Ferragem_CE_1134.pdf",
+        "1_Montagem_CE_1134.pdf",
+        "1_Producao_CE_1134.pdf",
+        "1_Projeto_CE_1134.pdf",
+    )
+    for nome in nomes:
+        assert svc.categorizar(nome) == svc.CATEGORIA_CADERNO_ENCARGOS
+        assert svc.origem_pelo_nome(nome) == svc.ORIGEM_STREAMLIT
+
+
+def test_lista_ferragens_nao_e_caderno_encargos():
+    """O 1_List_Ferragens continua em FERRAGENS, não no caderno."""
+    assert svc.categorizar("1_List_FerragensA4.pdf") == svc.CATEGORIA_FERRAGENS
+
+
+def test_lista_material_numerada_e_do_excel():
+    """"6_Lista_Material_*.pdf" é a lista de materiais, saída do Excel."""
+    nome = f"6_Lista_Material_{NOME_ENC}.pdf"
+    assert svc.categorizar(nome, nome_enc_imos=NOME_ENC) == svc.CATEGORIA_MATERIAIS
+    assert svc.origem_pelo_nome(nome) == svc.ORIGEM_EXCEL
+    assert svc.origem_pelo_nome(f"Lista_Material_{NOME_ENC}.pdf") == svc.ORIGEM_EXCEL
+
+
+def test_origem_do_nome_manda_sobre_o_conteudo(tmp_path: Path):
+    """O nome decide: o PDF do Streamlit não fica "desconhecida"."""
+    caminho = _pdf(tmp_path, "1_Projeto_CE_1134.pdf")
+    assert svc.detetar_origem(caminho) == svc.ORIGEM_STREAMLIT
+    assert svc.etiqueta_origem(svc.detetar_origem(caminho)) == "Streamlit"
+
+
+def test_etiqueta_origem_escreve_em_bonito():
+    assert svc.etiqueta_origem(svc.ORIGEM_EXCEL) == "Excel"
+    assert svc.etiqueta_origem(svc.ORIGEM_AUTOCAD) == "AutoCAD/IMOS"
+    assert svc.etiqueta_origem(svc.ORIGEM_DESCONHECIDA) == "Desconhecida"
+    assert svc.etiqueta_origem("") == "Desconhecida"

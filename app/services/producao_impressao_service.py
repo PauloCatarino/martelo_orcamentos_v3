@@ -39,7 +39,21 @@ CATEGORIA_MATERIAIS = "LISTA PEÇAS/MATERIAIS"
 CATEGORIA_ETIQUETA = "ETIQUETA PALETE"
 CATEGORIA_RESUMO_ML = "RESUMO ML ORLAS"
 CATEGORIA_AUTOCAD = "AUTOCAD/IMOS IX"
+CATEGORIA_CADERNO_ENCARGOS = "CADERNO ENCARGOS"
 CATEGORIA_OUTROS = "OUTROS"
+
+ORIGEM_AUTOCAD = "autocad"
+ORIGEM_EXCEL = "excel"
+ORIGEM_STREAMLIT = "streamlit"
+ORIGEM_DESCONHECIDA = "desconhecida"
+
+#: Como a origem aparece escrita na coluna "Origem" da lista de impressão.
+ETIQUETAS_ORIGEM = {
+    ORIGEM_AUTOCAD: "AutoCAD/IMOS",
+    ORIGEM_EXCEL: "Excel",
+    ORIGEM_STREAMLIT: "Streamlit",
+    ORIGEM_DESCONHECIDA: "Desconhecida",
+}
 
 ORIENTACAO_HORIZONTAL = "Horizontal"
 ORIENTACAO_VERTICAL = "Vertical"
@@ -82,6 +96,17 @@ CATEGORIAS: tuple[CategoriaImpressao, ...] = (
         ORIENTACAO_HORIZONTAL,
         2,
         re.compile(r"^2_proj", re.IGNORECASE),
+    ),
+    CategoriaImpressao(
+        CATEGORIA_CADERNO_ENCARGOS,
+        3,
+        DO_PDF,
+        DO_PDF,
+        1,
+        # 1_Cliente_CE_*.pdf, 1_Ferragem_CE_*.pdf, 1_Montagem_CE_*.pdf,
+        # 1_Producao_CE_*.pdf, 1_Projeto_CE_*.pdf — o caderno de encargos que
+        # vem do Streamlit. Nao apanha o 1_list_ferr (esse e FERRAGENS).
+        re.compile(r"^1_[^_]+_ce(?:[_.\-\s]|$)", re.IGNORECASE),
     ),
     CategoriaImpressao(CATEGORIA_MATERIAIS, 4, "A3", ORIENTACAO_HORIZONTAL, 1),
     CategoriaImpressao(
@@ -316,7 +341,7 @@ def categorizar(
     *,
     nome_plano_cut_rite: str = "",
     nome_enc_imos: str = "",
-    origem: str = "desconhecida",
+    origem: str = ORIGEM_DESCONHECIDA,
 ) -> str:
     """Return the category of one document, from its name and origin."""
     nome = (nome_ficheiro or "").strip()
@@ -336,7 +361,7 @@ def categorizar(
         if categoria.padrao is not None and categoria.padrao.match(nome):
             return categoria.nome
 
-    if origem == "autocad":
+    if origem == ORIGEM_AUTOCAD:
         return CATEGORIA_AUTOCAD
     return CATEGORIA_OUTROS
 
@@ -478,17 +503,48 @@ _RE_MEDIA_BOX = re.compile(
 )
 
 
+#: Origens que se sabem pelo nome do ficheiro. Ha PDFs que nao dizem quem os
+#: gravou (o Streamlit e o Excel nem sempre deixam /Producer legivel) e ficavam
+#: eternamente em "desconhecida".
+ORIGENS_POR_NOME: tuple[tuple[re.Pattern[str], str], ...] = (
+    # 1_Cliente_CE_*.pdf e companhia: caderno de encargos gerado no Streamlit.
+    (re.compile(r"^1_[^_]+_ce(?:[_.\-\s]|$)", re.IGNORECASE), ORIGEM_STREAMLIT),
+    # Lista_Material_*.pdf / 6_Lista_Material_*.pdf: sai do Excel da obra.
+    (re.compile(r"^(?:\d+[_\-\s]+)?lista_material", re.IGNORECASE), ORIGEM_EXCEL),
+)
+
+
+def origem_pelo_nome(nome_ficheiro: str) -> str:
+    """Return the origin recognised by the file name, or "" when unknown."""
+    nome = (nome_ficheiro or "").strip()
+    for padrao, origem in ORIGENS_POR_NOME:
+        if padrao.match(nome):
+            return origem
+    return ""
+
+
+def etiqueta_origem(origem: str) -> str:
+    """Return the origin as it should be written in the list."""
+    chave = (origem or "").strip().casefold()
+    return ETIQUETAS_ORIGEM.get(chave, origem or ETIQUETAS_ORIGEM[ORIGEM_DESCONHECIDA])
+
+
 def detetar_origem(caminho: Path) -> str:
-    """Guess whether the PDF came from AutoCAD/IMOS or from Excel."""
+    """Guess whether the PDF came from AutoCAD/IMOS, Excel or Streamlit."""
+    pelo_nome = origem_pelo_nome(Path(caminho).name)
+    if pelo_nome:
+        return pelo_nome
     texto = _cabecalho_pdf(caminho)
     if not texto:
-        return "desconhecida"
+        return ORIGEM_DESCONHECIDA
     minusculas = texto.lower()
     if "autocad" in minusculas or "imos" in minusculas or "/predictor" in minusculas:
-        return "autocad"
+        return ORIGEM_AUTOCAD
+    if "streamlit" in minusculas:
+        return ORIGEM_STREAMLIT
     if "excel" in minusculas or "microsoft" in minusculas:
-        return "excel"
-    return "desconhecida"
+        return ORIGEM_EXCEL
+    return ORIGEM_DESCONHECIDA
 
 
 def analisar_paginas(caminho: Path) -> list[GeometriaPagina]:

@@ -280,8 +280,16 @@ class ProducaoImpressaoDialog(QDialog):
             ficheiro.setToolTip(str(documento.caminho))
             self.tabela.setItem(linha, _COL_FICHEIRO, ficheiro)
 
-            self.tabela.setItem(linha, _COL_CATEGORIA, QTableWidgetItem(documento.categoria))
-            self.tabela.setItem(linha, _COL_ORIGEM, QTableWidgetItem(documento.origem))
+            categoria_item = QTableWidgetItem(documento.categoria)
+            categoria_item.setToolTip(
+                "Categoria reconhecida pelo nome do ficheiro — manda na ordem "
+                "de impressão e no papel por defeito"
+            )
+            self.tabela.setItem(linha, _COL_CATEGORIA, categoria_item)
+
+            origem_item = QTableWidgetItem(svc.etiqueta_origem(documento.origem))
+            origem_item.setToolTip("Programa que gravou este PDF")
+            self.tabela.setItem(linha, _COL_ORIGEM, origem_item)
 
             quantidade = QSpinBox()
             quantidade.setRange(1, 99)
