@@ -23,6 +23,7 @@ import re
 import sys
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -69,6 +70,11 @@ COLUMN_ALIASES = {
     "largura": ("largmp", "largura", "larg"),
     "espessura": ("espmp", "espessura", "esp"),
     "fornecedor": ("nomefornecedor", "fornecedor"),
+    # Optional columns: older copies of the workbook do not have them yet, so
+    # everything below must keep working when the column is missing.
+    "tipo_preco": ("tipopreco",),
+    "ativo": ("ativo", "activo"),
+    "data_ultimo_preco": ("dataultimopreco",),
 }
 
 
@@ -141,6 +147,53 @@ def to_decimal(value: object) -> Decimal | None:
         return None
 
 
+def to_date(value: object) -> date | None:
+    """Convert a cell value into a date, or None when not parseable."""
+    if value is None or isinstance(value, bool):
+        return None
+
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    for formato in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%m-%d-%Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text, formato).date()
+        except ValueError:
+            continue
+
+    return None
+
+
+def to_bool_sim_nao(value: object) -> bool | None:
+    """Read a SIM/NAO (or 1/0, TRUE/FALSE) cell, or None when empty/unknown."""
+    if value is None:
+        return None
+
+    if isinstance(value, bool):
+        return value
+
+    text = to_text(value)
+    if text is None:
+        return None
+
+    normalized = unicodedata.normalize("NFKD", text.upper())
+    normalized = "".join(c for c in normalized if not unicodedata.combining(c))
+
+    if normalized in ("SIM", "S", "1", "TRUE", "VERDADEIRO", "X"):
+        return True
+    if normalized in ("NAO", "N", "0", "FALSE", "FALSO"):
+        return False
+
+    return None
+
+
 def detect_header_row(rows: list, min_nonempty: int = HEADER_MIN_NONEMPTY) -> int:
     """Return the index of the first row that looks like a header."""
     fallback_index: int | None = None
@@ -205,7 +258,46 @@ def extract_row(row: tuple, column_map: dict) -> dict:
         "largura": to_decimal(cell("largura")),
         "espessura": to_decimal(cell("espessura")),
         "fornecedor": to_text(cell("fornecedor")),
+        # Optional columns (absent in older copies of the workbook).
+        "tipo_preco": to_text(cell("tipo_preco")),
+        "ativo": to_bool_sim_nao(cell("ativo")),
+        "data_ultimo_preco": to_date(cell("data_ultimo_preco")),
     }
+
+
+def build_linhas_excel(headers: list, linhas_numeradas: list) -> list:
+    """Build the LinhaExcel objects the validation rules work on.
+
+    ``linhas_numeradas`` holds ``(numero_da_linha_no_excel, row)`` pairs, so
+    every finding can point the user at the exact line to fix.
+    """
+    from app.domain.materias_primas_validacao import LinhaExcel
+
+    column_map = build_column_map(headers)
+    linhas = []
+
+    for numero, row in linhas_numeradas:
+        values = extract_row(row, column_map)
+        linhas.append(
+            LinhaExcel(
+                numero=numero,
+                ref_le=values["ref_le"],
+                descricao=values["descricao"],
+                familia=values["familia_original_excel"],
+                tipo=values["tipo_original_excel"],
+                unidade=values["unidade"],
+                preco_tabela=values["preco_tabela"],
+                preco_liquido=values["preco_liquido"],
+                espessura=values["espessura"],
+                coresp_orla_0_4=values["coresp_orla_0_4"],
+                coresp_orla_1_0=values["coresp_orla_1_0"],
+                tipo_preco=values["tipo_preco"],
+                ativo=values["ativo"],
+                data_ultimo_preco=values["data_ultimo_preco"],
+            )
+        )
+
+    return linhas
 
 
 def run_import(service, headers: list, data_rows: list, dry_run: bool) -> ImportSummary:
@@ -304,6 +396,16 @@ def resolve_excel_path(
 
 def read_rows(path: str | Path) -> tuple[list, list]:
     """Read the workbook and return (headers, data_rows)."""
+    headers, linhas_numeradas = read_rows_numeradas(path)
+    return headers, [row for _, row in linhas_numeradas]
+
+
+def read_rows_numeradas(path: str | Path) -> tuple[list, list]:
+    """Read the workbook and return (headers, [(numero_no_excel, row), ...]).
+
+    The row number is the real Excel line, which is what the user sees when the
+    verification report asks to fix "linha 93".
+    """
     openpyxl = _require_openpyxl()
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
@@ -317,10 +419,13 @@ def read_rows(path: str | Path) -> tuple[list, list]:
 
     header_index = detect_header_row(all_rows[:HEADER_SCAN_LIMIT])
     headers = [to_text(cell) or "" for cell in all_rows[header_index]]
-    data_rows = [
-        row for row in all_rows[header_index + 1 :] if any(to_text(cell) for cell in row)
+    linhas_numeradas = [
+        # +1 because Excel lines are 1-based and the header is itself a line.
+        (index + 1, row)
+        for index, row in enumerate(all_rows)
+        if index > header_index and any(to_text(cell) for cell in row)
     ]
-    return headers, data_rows
+    return headers, linhas_numeradas
 
 
 def importar_materias_primas(session, override: str | Path | None = None) -> ImportSummary:
@@ -342,6 +447,31 @@ def importar_materias_primas(session, override: str | Path | None = None) -> Imp
     headers, data_rows = read_rows(resolution.path)
     service = DefMateriaPrimaService(session)
     return run_import(service, headers, data_rows, dry_run=False)
+
+
+def analisar_materias_primas(session, override: str | Path | None = None):
+    """Verify the configured Excel without writing anything to the database.
+
+    Returns ``(caminho, relatorio)``. Raises FileNotFoundError when the Excel is
+    missing and RuntimeError when openpyxl is unavailable, exactly like
+    ``importar_materias_primas``, so the caller can show the same messages.
+    """
+    from app.domain.materias_primas_validacao import validar_linhas
+
+    resolution = resolve_excel_path(session=session, override=override)
+    if resolution is None:
+        expected = (
+            ExcelPathResolution(path=Path(override), source=PATH_SOURCE_MANUAL)
+            if override
+            else get_default_excel_path_resolution(session)
+        )
+        raise FileNotFoundError(str(expected.path))
+
+    headers, linhas_numeradas = read_rows_numeradas(resolution.path)
+    linhas = build_linhas_excel(headers, linhas_numeradas)
+    existentes = DefMateriaPrimaService(session).listar_materias_primas()
+
+    return resolution.path, validar_linhas(linhas, existentes)
 
 
 def print_summary(summary: ImportSummary, dry_run: bool) -> None:
@@ -447,7 +577,8 @@ def _criar_data(values: dict) -> CriarDefMateriaPrimaData:
         espessura=values["espessura"],
         fornecedor=values["fornecedor"],
         origem_dados=ORIGEM_DADOS,
-        ativo=True,
+        # The ATIVO column is optional: without it, a new material is active.
+        ativo=True if values["ativo"] is None else values["ativo"],
     )
 
 
@@ -473,7 +604,9 @@ def _editar_data(values: dict, existing) -> EditarDefMateriaPrimaData:
         espessura=values["espessura"],
         fornecedor=values["fornecedor"],
         origem_dados=ORIGEM_DADOS,
-        ativo=existing.ativo,
+        # Without the ATIVO column the state kept in the Martelo wins, so an
+        # older copy of the workbook never reactivates what was disabled here.
+        ativo=existing.ativo if values["ativo"] is None else values["ativo"],
     )
 
 

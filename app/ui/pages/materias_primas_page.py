@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.materias_primas_validacao import resumir
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
@@ -70,6 +71,12 @@ class MateriasPrimasPage(QWidget):
         self.refresh_button.clicked.connect(self.carregar_materias_primas)
         self.refresh_button.setToolTip("Recarregar as matérias-primas importadas")
 
+        self.verificar_button = QPushButton("Verificar Excel")
+        self.verificar_button.clicked.connect(self.verificar_excel)
+        self.verificar_button.setToolTip(
+            "Ler o Excel e mostrar o que precisa de correção — sem gravar nada"
+        )
+
         self.import_button = QPushButton("Importar/Atualizar Excel")
         self.import_button.clicked.connect(self.importar_do_excel)
         self.import_button.setToolTip(
@@ -93,6 +100,7 @@ class MateriasPrimasPage(QWidget):
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa)
+        toolbar.addWidget(self.verificar_button)
         toolbar.addWidget(self.import_button)
         toolbar.addWidget(self.open_excel_button)
         toolbar.addWidget(self.refresh_button)
@@ -170,8 +178,75 @@ class MateriasPrimasPage(QWidget):
         if not materias_primas:
             self.status_label.setText("Sem materias-primas para mostrar.")
 
+    def _analisar_excel(self):
+        """Read and validate the configured Excel. Returns (caminho, relatorio).
+
+        Returns None (and fills the status line) when the file cannot be read,
+        so both the verification and the import can bail out the same way.
+        """
+        try:
+            from scripts.import_materias_primas_excel import analisar_materias_primas
+
+            with SessionLocal() as session:
+                return analisar_materias_primas(session)
+        except FileNotFoundError as error:
+            print(f"[Materias-Primas] Excel nao encontrado: {error}")
+            self.status_label.setText(
+                "Ficheiro Excel de matérias-primas não encontrado. "
+                "Verifique a configuração."
+            )
+        except (ImportError, SQLAlchemyError, RuntimeError, OSError) as error:
+            print(f"[Materias-Primas] Erro ao verificar o Excel: {error}")
+            self.status_label.setText("Não foi possível verificar o Excel.")
+
+        return None
+
+    def verificar_excel(self) -> None:
+        """Show what is wrong in the Excel without writing anything."""
+        self.status_label.setText("A verificar o Excel…")
+        analise = self._analisar_excel()
+        if analise is None:
+            return
+
+        caminho, relatorio = analise
+        self.status_label.setText(resumir(relatorio))
+        self._mostrar_relatorio(relatorio, caminho)
+
+    def _mostrar_relatorio(self, relatorio, caminho) -> None:
+        """Open the verification report dialog."""
+        from app.ui.dialogs.verificar_excel_materias_primas_dialog import (
+            VerificarExcelMateriasPrimasDialog,
+        )
+
+        VerificarExcelMateriasPrimasDialog(relatorio, str(caminho), self).exec()
+
     def importar_do_excel(self) -> None:
         """Run the real raw-material import from the configured Excel (upsert by ref_le)."""
+        analise = self._analisar_excel()
+        if analise is None:
+            return
+
+        caminho, relatorio = analise
+        if relatorio.criticos:
+            escolha = QMessageBox.warning(
+                self,
+                "Problemas no Excel",
+                f"O Excel tem {len(relatorio.criticos)} problemas críticos "
+                "(por exemplo referências repetidas ou preços a zero).\n\n"
+                "Quer ver a lista antes de importar?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if escolha == QMessageBox.StandardButton.Cancel:
+                self.status_label.setText("Importação cancelada.")
+                return
+            if escolha == QMessageBox.StandardButton.Yes:
+                self.status_label.setText(resumir(relatorio))
+                self._mostrar_relatorio(relatorio, caminho)
+                return
+
         confirm = QMessageBox.question(
             self,
             "Importar/Atualizar Excel",

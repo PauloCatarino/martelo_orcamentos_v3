@@ -131,3 +131,28 @@ def test_materia_matches_search_checks_multiple_columns_and_tokens() -> None:
     assert materia_matches_search(materia, "ferragens und") is True
     assert materia_matches_search(materia, "corredica blum") is False
     assert materia_matches_search(materia, "") is True
+
+
+def test_materias_primas_page_has_excel_verification() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    assert hasattr(MateriasPrimasPage, "verificar_excel")
+
+    init = inspect.getsource(MateriasPrimasPage.__init__)
+    assert "Verificar Excel" in init
+
+    source = inspect.getsource(MateriasPrimasPage.verificar_excel)
+    assert "_analisar_excel" in source
+    assert "_mostrar_relatorio" in source
+    # A verificação nunca grava: não chama a importação.
+    assert "importar_materias_primas" not in source
+
+
+def test_materias_primas_page_avisa_antes_de_importar_com_criticos() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    source = inspect.getsource(MateriasPrimasPage.importar_do_excel)
+
+    assert "_analisar_excel" in source
+    assert "relatorio.criticos" in source
+    assert "Cancel" in source
