@@ -91,3 +91,31 @@ def test_focar_materia_prima_ignora_ref_vazia() -> None:
     MateriasPrimasPage.focar_materia_prima(fake, None)
 
     assert chamou_pesquisa == []  # nem sequer filtra
+
+
+def test_mostrar_onde_ficou_realca_sem_filtrar_a_lista() -> None:
+    """Depois de gravar interessa ver a vizinhança, não isolar a linha."""
+    table = _tabela_com_refs(["PLC0001", "PLC0002", "PLC0003"])
+    pesquisas: list[str] = []
+    piscadas: list[int] = []
+    fake = SimpleNamespace(
+        table=table,
+        campo_pesquisa=SimpleNamespace(definir_texto=pesquisas.append),
+        _piscar_linha=piscadas.append,
+    )
+
+    MateriasPrimasPage.mostrar_onde_ficou(fake, "plc0002")
+
+    assert piscadas == [1]
+    assert pesquisas == []  # a pesquisa não é tocada
+    assert table.currentRow() == 1
+
+
+def test_mostrar_onde_ficou_ignora_ref_vazia() -> None:
+    table = _tabela_com_refs(["PLC0001"])
+    fake = SimpleNamespace(
+        table=table,
+        _piscar_linha=lambda _row: pytest.fail("não devia piscar nada"),
+    )
+
+    MateriasPrimasPage.mostrar_onde_ficou(fake, None)

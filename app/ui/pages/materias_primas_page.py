@@ -116,6 +116,13 @@ class MateriasPrimasPage(QWidget):
             "emails no Outlook — nada é enviado sem si"
         )
 
+        self.ler_resposta_button = QPushButton("Ler resposta…")
+        self.ler_resposta_button.clicked.connect(self.ler_resposta_fornecedor)
+        self.ler_resposta_button.setToolTip(
+            "Abrir o ficheiro que o fornecedor devolveu e rever os preços antes "
+            "de entrarem no catálogo"
+        )
+
         self.mostrar_inativos_input = QCheckBox("Mostrar não ativos")
         self.mostrar_inativos_input.setToolTip(
             "Mostrar também as matérias-primas descontinuadas, riscadas"
@@ -156,6 +163,7 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.ativar_button)
         toolbar.addWidget(self.fornecedores_button)
         toolbar.addWidget(self.pedir_precos_button)
+        toolbar.addWidget(self.ler_resposta_button)
         toolbar.addWidget(self.mostrar_inativos_input)
         toolbar.addStretch()
         toolbar.addWidget(self.verificar_button)
@@ -169,6 +177,10 @@ class MateriasPrimasPage(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # A ordem natural é a da descrição, que junta sozinha os equivalentes
+        # (todas as "AGL MLM BRANCO ..." ficam seguidas). Clicar num cabeçalho
+        # reordena por essa coluna, para quando se procura de outra maneira.
+        self.table.setSortingEnabled(True)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
@@ -571,6 +583,81 @@ class MateriasPrimasPage(QWidget):
         )
         return True
 
+    def ler_resposta_fornecedor(self) -> None:
+        """Ler o ficheiro devolvido por um fornecedor e rever o que traz."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.ui.dialogs.resposta_fornecedor_dialog import RespostaFornecedorDialog
+        from app.services.pedido_precos_service import PedidoPrecosService
+
+        try:
+            with SessionLocal() as session:
+                pasta = str(PedidoPrecosService(session).pasta_dos_pedidos())
+        except SQLAlchemyError:
+            pasta = ""
+
+        caminho, _ = QFileDialog.getOpenFileName(
+            self,
+            "Resposta do fornecedor",
+            pasta,
+            "Ficheiros Excel (*.xlsx *.xlsm);;Todos os ficheiros (*)",
+        )
+        if not caminho:
+            return
+
+        propostas = self._ler_resposta(caminho)
+        if propostas is None:
+            return
+
+        if not propostas:
+            self.status_label.setText(
+                "O ficheiro não trazia nenhuma linha preenchida."
+            )
+            return
+
+        dialogo = RespostaFornecedorDialog(
+            propostas,
+            caminho=caminho,
+            parent=self,
+            on_aplicar=self._aplicar_resposta,
+        )
+        dialogo.exec()
+
+    def _ler_resposta(self, caminho: str):
+        """Ler o ficheiro do fornecedor (None em caso de erro)."""
+        from app.services.resposta_fornecedor_service import RespostaFornecedorService
+
+        try:
+            with SessionLocal() as session:
+                return RespostaFornecedorService(session).ler_ficheiro(caminho)
+        except (OSError, RuntimeError, ValueError, SQLAlchemyError) as error:
+            print(f"[Materias-Primas] Erro ao ler a resposta: {error}")
+            self.status_label.setText(
+                "Não foi possível ler o ficheiro. Confirme que é o Excel do pedido."
+            )
+            return None
+
+    def _aplicar_resposta(self, propostas: list) -> bool:
+        """Gravar no catálogo as linhas que o utilizador aprovou."""
+        from app.services.resposta_fornecedor_service import RespostaFornecedorService
+
+        try:
+            with SessionLocal() as session:
+                resultado = RespostaFornecedorService(session).aplicar(propostas)
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao aplicar a resposta: {error}")
+            self.status_label.setText("Não foi possível aplicar os preços.")
+            return False
+
+        self.carregar_materias_primas()
+        partes = [f"{resultado.atualizadas} preços atualizados"]
+        if resultado.desativadas:
+            partes.append(f"{resultado.desativadas} materiais desativados")
+        if resultado.erros:
+            partes.append(f"{len(resultado.erros)} com erro")
+        self.status_label.setText(" · ".join(partes) + ".")
+        return True
+
     def _listar_fornecedores(self):
         """Fornecedores com a contagem de materiais, ou None em caso de erro."""
         from app.services.def_fornecedor_service import DefFornecedorService
@@ -701,8 +788,31 @@ class MateriasPrimasPage(QWidget):
             return False
 
         self.carregar_materias_primas()
+        self.mostrar_onde_ficou(resultado.ref_le)
         self.status_label.setText(mensagem)
         return True
+
+    def mostrar_onde_ficou(self, ref_le: str | None) -> None:
+        """Levar a vista até à matéria-prima gravada, sem filtrar a lista.
+
+        A lista é ordenada pela descrição, por isso uma matéria-prima nova
+        aparece ao pé das suas equivalentes e não no fim — mas só se vê isso se
+        a vista lá for. Ao contrário do ``focar_materia_prima``, que isola a
+        linha para o assistente, aqui interessa precisamente a vizinhança.
+        """
+        if not ref_le:
+            return
+
+        alvo = ref_le.strip().upper()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is not None and (item.text() or "").strip().upper() == alvo:
+                self.table.selectRow(row)
+                self.table.scrollToItem(
+                    item, QAbstractItemView.ScrollHint.PositionAtCenter
+                )
+                self._piscar_linha(row)
+                return
 
     def focar_materia_prima(self, ref_le: str | None) -> None:
         """Filtra pela Ref LE, seleciona e pisca a matéria-prima (assistente 3B)."""
@@ -776,6 +886,7 @@ class MateriasPrimasPage(QWidget):
 
     def _preencher_tabela(self, materias_primas: list[DefMateriaPrimaResumo]) -> None:
         """Fill the table with raw material read models."""
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(materias_primas))
         self._materias_por_row = {}
 
@@ -817,6 +928,8 @@ class MateriasPrimasPage(QWidget):
                 self.table.setItem(row_index, column_index, item)
 
             self._pintar_avisos(row_index, materia)
+
+        self.table.setSortingEnabled(True)
 
         if (
             not self._larguras_restauradas

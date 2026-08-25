@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.session import app_session
 from app.domain.materia_prima_types import (
     ORIGEM_PRECO_MANUAL,
+    ORIGENS_PRECO_VALIDAS,
     TIPO_PRECO_TABELA,
     formatar_ref_le,
     prefixo_da_familia,
@@ -23,6 +24,16 @@ from app.repositories.def_materia_prima_repository import (
 )
 
 ORIGEM_DADOS_V3 = "V3"
+
+
+def _origem_do_preco(origem_dados: str) -> str:
+    """A que origem pertence este preço, para o histórico.
+
+    A origem dos dados e a origem do preço partilham as palavras (EXCEL,
+    FORNECEDOR); tudo o resto — incluindo o próprio V3 — é uma alteração
+    manual de alguém.
+    """
+    return origem_dados if origem_dados in ORIGENS_PRECO_VALIDAS else ORIGEM_PRECO_MANUAL
 
 
 @dataclass(frozen=True)
@@ -330,11 +341,7 @@ class DefMateriaPrimaService:
             margem=atual.margem,
             preco_liquido=atual.preco_liquido,
             data_preco=atual.data_ultimo_preco,
-            origem=(
-                ORIGEM_DADOS_EXCEL
-                if origem_dados == ORIGEM_DADOS_EXCEL
-                else ORIGEM_PRECO_MANUAL
-            ),
+            origem=_origem_do_preco(origem_dados),
             user_id=self._utilizador_atual_id(),
         )
 
