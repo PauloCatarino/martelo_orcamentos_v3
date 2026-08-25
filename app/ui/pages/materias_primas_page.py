@@ -109,6 +109,13 @@ class MateriasPrimasPage(QWidget):
             "destinatário do pedido de preços"
         )
 
+        self.pedir_precos_button = QPushButton("✉ Pedir preços…")
+        self.pedir_precos_button.clicked.connect(self.pedir_precos)
+        self.pedir_precos_button.setToolTip(
+            "Juntar os preços por rever, agrupá-los por fornecedor e preparar os "
+            "emails no Outlook — nada é enviado sem si"
+        )
+
         self.mostrar_inativos_input = QCheckBox("Mostrar não ativos")
         self.mostrar_inativos_input.setToolTip(
             "Mostrar também as matérias-primas descontinuadas, riscadas"
@@ -148,6 +155,7 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.editar_button)
         toolbar.addWidget(self.ativar_button)
         toolbar.addWidget(self.fornecedores_button)
+        toolbar.addWidget(self.pedir_precos_button)
         toolbar.addWidget(self.mostrar_inativos_input)
         toolbar.addStretch()
         toolbar.addWidget(self.verificar_button)
@@ -503,6 +511,65 @@ class MateriasPrimasPage(QWidget):
         dialogo.exec()
         # A lista mostra o nome do fornecedor, que pode ter sido corrigido.
         self.carregar_materias_primas()
+
+    def pedir_precos(self) -> None:
+        """Preparar os pedidos de atualização de preços aos fornecedores."""
+        from app.ui.dialogs.pedido_precos_dialog import PedidoPrecosDialog
+
+        pedidos = self._levantar_pedidos(MESES_PRECO_DESATUALIZADO)
+        if pedidos is None:
+            return
+
+        dialogo = PedidoPrecosDialog(
+            pedidos,
+            parent=self,
+            on_preparar=self._preparar_pedidos,
+            on_meses_mudou=lambda meses: self._levantar_pedidos(meses) or [],
+        )
+        dialogo.exec()
+
+    def _levantar_pedidos(self, meses: int):
+        """O que há a rever, agrupado por fornecedor (None em caso de erro)."""
+        from app.services.pedido_precos_service import PedidoPrecosService
+
+        try:
+            with SessionLocal() as session:
+                return PedidoPrecosService(session).levantar_pedidos(meses)
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao levantar os pedidos: {error}")
+            self.status_label.setText("Não foi possível reunir os preços a rever.")
+            return None
+
+    def _preparar_pedidos(self, pedidos: list) -> bool:
+        """Gerar os anexos e abrir os emails no Outlook, um por fornecedor."""
+        from app.core.session import app_session
+        from app.services.pedido_precos_service import PedidoPrecosService
+
+        utilizador = app_session.current_user
+        remetente = getattr(utilizador, "nome", None)
+
+        try:
+            with SessionLocal() as session:
+                service = PedidoPrecosService(session)
+                preparados = [
+                    service.preparar(pedido, remetente=remetente) for pedido in pedidos
+                ]
+                for preparado in preparados:
+                    service.abrir_no_outlook(preparado)
+        except (RuntimeError, OSError, SQLAlchemyError) as error:
+            print(f"[Materias-Primas] Erro ao preparar os pedidos: {error}")
+            self.status_label.setText(
+                "Não foi possível preparar os emails. Verifique se o Outlook está aberto."
+            )
+            return False
+
+        quantos = len(preparados)
+        self.status_label.setText(
+            f"{quantos} email{'s' if quantos != 1 else ''} aberto"
+            f"{'s' if quantos != 1 else ''} no Outlook, por rever e enviar. "
+            f"Anexos guardados em {preparados[0].anexo.parent}."
+        )
+        return True
 
     def _listar_fornecedores(self):
         """Fornecedores com a contagem de materiais, ou None em caso de erro."""
