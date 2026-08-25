@@ -99,23 +99,6 @@ def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
     assert '"Sim" if materia.ativo else' in table_source
 
 
-def test_materias_primas_page_has_excel_import() -> None:
-    from app.ui.pages.materias_primas_page import MateriasPrimasPage
-
-    assert hasattr(MateriasPrimasPage, "importar_do_excel")
-
-    init = inspect.getsource(MateriasPrimasPage.__init__)
-    assert "Atualizar P" in init  # "Atualizar Página"
-    assert "Importar/Atualizar Excel" in init
-
-    source = inspect.getsource(MateriasPrimasPage.importar_do_excel)
-    assert "QMessageBox" in source
-    assert "Deseja continuar?" in source
-    assert "importar_materias_primas" in source
-    assert "carregar_materias_primas" in source
-    assert "atualizadas" in source
-
-
 def test_materias_primas_page_reapplies_search_on_refresh() -> None:
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 
@@ -165,26 +148,41 @@ def test_materia_matches_search_checks_multiple_columns_and_tokens() -> None:
     assert materia_matches_search(materia, "") is True
 
 
-def test_materias_primas_page_has_excel_verification() -> None:
+def test_o_excel_deixou_de_ser_fonte_do_catalogo() -> None:
+    """O V3 e o dono: importar do Excel escreveria por cima do que aqui se edita."""
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 
-    assert hasattr(MateriasPrimasPage, "verificar_excel")
+    for saiu in (
+        "importar_do_excel",
+        "verificar_excel",
+        "abrir_excel",
+        "_analisar_excel",
+    ):
+        assert not hasattr(MateriasPrimasPage, saiu)
 
     init = inspect.getsource(MateriasPrimasPage.__init__)
-    assert "Verificar Excel" in init
-
-    source = inspect.getsource(MateriasPrimasPage.verificar_excel)
-    assert "_analisar_excel" in source
-    assert "_mostrar_relatorio" in source
-    # A verificação nunca grava: não chama a importação.
-    assert "importar_materias_primas" not in source
+    assert "Importar" not in init
+    assert "Verificar Excel" not in init
 
 
-def test_materias_primas_page_avisa_antes_de_importar_com_criticos() -> None:
+def test_pagina_exporta_para_excel() -> None:
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 
-    source = inspect.getsource(MateriasPrimasPage.importar_do_excel)
+    assert hasattr(MateriasPrimasPage, "exportar_excel")
 
-    assert "_analisar_excel" in source
-    assert "relatorio.criticos" in source
-    assert "Cancel" in source
+    init = inspect.getsource(MateriasPrimasPage.__init__)
+    assert "Exportar Excel" in init
+
+    fonte = inspect.getsource(MateriasPrimasPage.exportar_excel)
+    assert "getSaveFileName" in fonte
+    assert "exportar_materias_primas" in fonte
+    # A exportacao le a tabela; nunca escreve na base de dados.
+    assert "SessionLocal" not in fonte
+
+
+def test_colunas_podem_ser_arrastadas_e_a_ordem_fica_guardada() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    init = inspect.getsource(MateriasPrimasPage.__init__)
+
+    assert "guardar_ordem=True" in init

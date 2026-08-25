@@ -29,7 +29,6 @@ from app.domain.materia_prima_types import (
     preco_desatualizado,
     preco_em_falta,
 )
-from app.domain.materias_primas_validacao import resumir
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
@@ -150,6 +149,13 @@ class MateriasPrimasPage(QWidget):
             "de entrarem no catálogo"
         )
 
+        self.exportar_button = QPushButton("Exportar Excel")
+        self.exportar_button.clicked.connect(self.exportar_excel)
+        self.exportar_button.setToolTip(
+            "Gravar num ficheiro Excel exatamente o que está a ver — as colunas "
+            "que escolheu, pela ordem em que as pôs. Para consultar ou imprimir."
+        )
+
         self.colunas_button = QPushButton("Colunas…")
         self.colunas_button.setToolTip(
             "Escolher as colunas que quer ver. A escolha fica guardada na sua "
@@ -163,18 +169,6 @@ class MateriasPrimasPage(QWidget):
         )
         self.mostrar_inativos_input.stateChanged.connect(self.aplicar_pesquisa)
 
-        self.verificar_button = QPushButton("Verificar Excel")
-        self.verificar_button.clicked.connect(self.verificar_excel)
-        self.verificar_button.setToolTip(
-            "Ler o Excel e mostrar o que precisa de correção — sem gravar nada"
-        )
-
-        self.import_button = QPushButton("Importar/Atualizar Excel")
-        self.import_button.clicked.connect(self.importar_do_excel)
-        self.import_button.setToolTip(
-            "Importar ou atualizar o catálogo a partir do Excel configurado"
-        )
-
         self.status_label = QLabel("")
         self.status_label.setObjectName("materiasPrimasStatus")
 
@@ -183,12 +177,6 @@ class MateriasPrimasPage(QWidget):
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
         self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
-
-        self.open_excel_button = QPushButton("Abrir Excel")
-        self.open_excel_button.setToolTip(
-            "Abrir o ficheiro Excel de origem das matérias-primas"
-        )
-        self.open_excel_button.clicked.connect(self.abrir_excel)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa)
@@ -201,9 +189,7 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.colunas_button)
         toolbar.addWidget(self.mostrar_inativos_input)
         toolbar.addStretch()
-        toolbar.addWidget(self.verificar_button)
-        toolbar.addWidget(self.import_button)
-        toolbar.addWidget(self.open_excel_button)
+        toolbar.addWidget(self.exportar_button)
         toolbar.addWidget(self.refresh_button)
 
         self.table = QTableWidget(0, len(self.TABLE_HEADERS))
@@ -220,8 +206,10 @@ class MateriasPrimasPage(QWidget):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(False)
         header.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
+        # guardar_ordem: o utilizador arrasta os cabeçalhos para a ordem que
+        # quiser e ela fica guardada na conta dele, tal como as larguras.
         self._larguras_restauradas = ligar_persistencia_larguras(
-            self.table, "materias_primas"
+            self.table, "materias_primas", guardar_ordem=True
         )
         self._abrir_menu_colunas = ligar_menu_colunas(
             self.table, "materias_primas", self.COLUNAS_OCULTAS_POR_DEFEITO
@@ -245,27 +233,6 @@ class MateriasPrimasPage(QWidget):
         self.setLayout(layout)
         self.carregar_materias_primas()
 
-    def abrir_excel(self) -> None:
-        """Open the configured source workbook without modifying it."""
-        from scripts.import_materias_primas_excel import (
-            get_default_excel_path_resolution,
-            resolve_excel_path,
-        )
-
-        try:
-            with SessionLocal() as session:
-                resolucao = resolve_excel_path(session=session)
-                esperada = get_default_excel_path_resolution(session).path
-        except (SQLAlchemyError, OSError):
-            self.status_label.setText("Não foi possível localizar o Excel configurado.")
-            return
-
-        if resolucao is None:
-            self.status_label.setText(f"Ficheiro Excel não encontrado: {esperada}")
-            return
-
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolucao.path)))
-
     def carregar_materias_primas(self) -> None:
         """Load raw materials into the table."""
         self.table.setRowCount(0)
@@ -284,111 +251,6 @@ class MateriasPrimasPage(QWidget):
 
         if not materias_primas:
             self.status_label.setText("Sem materias-primas para mostrar.")
-
-    def _analisar_excel(self):
-        """Read and validate the configured Excel. Returns (caminho, relatorio).
-
-        Returns None (and fills the status line) when the file cannot be read,
-        so both the verification and the import can bail out the same way.
-        """
-        try:
-            from scripts.import_materias_primas_excel import analisar_materias_primas
-
-            with SessionLocal() as session:
-                return analisar_materias_primas(session)
-        except FileNotFoundError as error:
-            print(f"[Materias-Primas] Excel nao encontrado: {error}")
-            self.status_label.setText(
-                "Ficheiro Excel de matérias-primas não encontrado. "
-                "Verifique a configuração."
-            )
-        except (ImportError, SQLAlchemyError, RuntimeError, OSError) as error:
-            print(f"[Materias-Primas] Erro ao verificar o Excel: {error}")
-            self.status_label.setText("Não foi possível verificar o Excel.")
-
-        return None
-
-    def verificar_excel(self) -> None:
-        """Show what is wrong in the Excel without writing anything."""
-        self.status_label.setText("A verificar o Excel…")
-        analise = self._analisar_excel()
-        if analise is None:
-            return
-
-        caminho, relatorio = analise
-        self.status_label.setText(resumir(relatorio))
-        self._mostrar_relatorio(relatorio, caminho)
-
-    def _mostrar_relatorio(self, relatorio, caminho) -> None:
-        """Open the verification report dialog."""
-        from app.ui.dialogs.verificar_excel_materias_primas_dialog import (
-            VerificarExcelMateriasPrimasDialog,
-        )
-
-        VerificarExcelMateriasPrimasDialog(relatorio, str(caminho), self).exec()
-
-    def importar_do_excel(self) -> None:
-        """Run the real raw-material import from the configured Excel (upsert by ref_le)."""
-        analise = self._analisar_excel()
-        if analise is None:
-            return
-
-        caminho, relatorio = analise
-        if relatorio.criticos:
-            escolha = QMessageBox.warning(
-                self,
-                "Problemas no Excel",
-                f"O Excel tem {len(relatorio.criticos)} problemas críticos "
-                "(por exemplo referências repetidas ou preços a zero).\n\n"
-                "Quer ver a lista antes de importar?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Yes,
-            )
-            if escolha == QMessageBox.StandardButton.Cancel:
-                self.status_label.setText("Importação cancelada.")
-                return
-            if escolha == QMessageBox.StandardButton.Yes:
-                self.status_label.setText(resumir(relatorio))
-                self._mostrar_relatorio(relatorio, caminho)
-                return
-
-        confirm = QMessageBox.question(
-            self,
-            "Importar/Atualizar Excel",
-            "Esta operação vai atualizar as matérias-primas a partir do Excel "
-            "configurado. As referências existentes serão atualizadas e não "
-            "duplicadas. Deseja continuar?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if confirm != QMessageBox.StandardButton.Yes:
-            return
-
-        try:
-            from scripts.import_materias_primas_excel import importar_materias_primas
-
-            with SessionLocal() as session:
-                summary = importar_materias_primas(session)
-        except FileNotFoundError as error:
-            print(f"[Materias-Primas] Excel nao encontrado: {error}")
-            self.status_label.setText(
-                "Ficheiro Excel de matérias-primas não encontrado. "
-                "Verifique a configuração."
-            )
-            return
-        except (ImportError, SQLAlchemyError, RuntimeError, OSError) as error:
-            print(f"[Materias-Primas] Erro ao importar do Excel: {error}")
-            self.status_label.setText(
-                "Não foi possível importar as matérias-primas do Excel."
-            )
-            return
-
-        self.carregar_materias_primas()
-        self.status_label.setText(
-            f"Importação concluída: {summary.criadas} criadas, "
-            f"{summary.atualizadas} atualizadas, {summary.erros} erros."
-        )
 
     def aplicar_pesquisa(self, _text: str | None = None) -> None:
         """Filter the loaded raw materials according to the search text."""
@@ -1014,6 +876,64 @@ class MateriasPrimasPage(QWidget):
         ):
             self.table.resizeColumnsToContents()
             self._larguras_seed_feito = True
+
+    def exportar_excel(self) -> None:
+        """Gravar num Excel o que está à vista, com as colunas do utilizador."""
+        from PySide6.QtWidgets import QFileDialog
+
+        from app.services.materias_primas_excel_export import (
+            exportar_materias_primas,
+            nome_do_ficheiro,
+        )
+
+        if not self.table.rowCount():
+            self.status_label.setText("Não há nada para exportar.")
+            return
+
+        caminho, _filtro = QFileDialog.getSaveFileName(
+            self,
+            "Exportar matérias-primas",
+            nome_do_ficheiro(),
+            "Ficheiros Excel (*.xlsx)",
+        )
+        if not caminho:
+            return
+
+        colunas, linhas = self._conteudo_para_exportar()
+        try:
+            destino = exportar_materias_primas(colunas, linhas, caminho)
+        except (OSError, RuntimeError) as error:
+            print(f"[Materias-Primas] Erro ao exportar: {error}")
+            self.status_label.setText(
+                "Não foi possível gravar o ficheiro. Verifique se não está aberto."
+            )
+            return
+
+        self.status_label.setText(
+            f"{len(linhas)} matérias-primas exportadas para {destino}."
+        )
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(destino.parent)))
+
+    def _conteudo_para_exportar(self):
+        """As colunas visíveis (pela ordem do utilizador) e as linhas à vista."""
+        cabecalho = self.table.horizontalHeader()
+        indices = [
+            cabecalho.logicalIndex(posicao)
+            for posicao in range(cabecalho.count())
+            if not cabecalho.isSectionHidden(cabecalho.logicalIndex(posicao))
+        ]
+        colunas = [self.TABLE_HEADERS[indice] for indice in indices]
+
+        linhas = []
+        for row in range(self.table.rowCount()):
+            valores = []
+            for indice in indices:
+                item = self.table.item(row, indice)
+                valores.append(item.text() if item is not None else "")
+            materia = self._materias_por_row.get(row)
+            linhas.append((valores, getattr(materia, "ativo", True)))
+
+        return colunas, linhas
 
     def _escolher_colunas(self) -> None:
         """Abrir o menu das colunas (o mesmo do clique direito no cabeçalho)."""

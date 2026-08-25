@@ -419,3 +419,24 @@ def test_extract_row_le_as_colunas_novas() -> None:
     assert values["nome_fabricante"] == "SONAE"
     assert values["ref_phc"] == "FF00327"
     assert values["data_ultimo_preco"] == date(2026, 4, 23)
+
+
+def test_conta_as_materias_editadas_no_v3() -> None:
+    """A tranca do script: o Excel nao pode escrever por cima do que o V3 editou."""
+    from types import SimpleNamespace
+
+    service = SimpleNamespace(
+        listar_materias_primas=lambda: [
+            SimpleNamespace(origem_dados="EXCEL"),
+            SimpleNamespace(origem_dados="V3"),
+            SimpleNamespace(origem_dados="V3"),
+            SimpleNamespace(origem_dados="FORNECEDOR"),
+        ]
+    )
+
+    assert importer.contar_editadas_no_v3(service) == 2
+
+
+def test_script_tem_a_opcao_de_forcar() -> None:
+    assert importer.parse_args([]).forcar is False
+    assert importer.parse_args(["--forcar"]).forcar is True

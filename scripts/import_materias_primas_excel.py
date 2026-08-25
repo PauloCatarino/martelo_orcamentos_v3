@@ -1,6 +1,12 @@
 """Import / synchronise raw materials from the Excel file into def_materias_primas.
 
-The Excel file is, for now, the external source of raw materials. This script
+LEGADO. O Excel deixou de ser a fonte das materias-primas: o catalogo e agora
+editado dentro do V3 (Orcamentos > Materias-Primas). Este script fica para o
+carregamento inicial e para casos pontuais de carga em massa — correr uma
+importacao sobre um catalogo ja editado escreveria por cima desse trabalho, e
+por isso o script recusa-se a faze-lo sem ``--forcar``.
+
+The Excel file was, until August 2026, the external source of raw materials. This script
 reads ``TAB_MATERIAS_PRIMAS.xlsm`` and creates or updates rows in the internal
 ``def_materias_primas`` table, using ``ref_le`` as the synchronisation key.
 
@@ -517,7 +523,30 @@ def parse_args(argv: list | None = None) -> argparse.Namespace:
         action="store_true",
         help="Analisa o ficheiro sem gravar na base de dados.",
     )
+    parser.add_argument(
+        "--forcar",
+        action="store_true",
+        help=(
+            "Importar mesmo que o catalogo ja tenha sido editado no V3 "
+            "(escreve por cima desse trabalho)."
+        ),
+    )
     return parser.parse_args(sys.argv[1:] if argv is None else argv)
+
+
+def contar_editadas_no_v3(service) -> int:
+    """Quantas materias-primas ja foram editadas dentro do V3.
+
+    E o sinal de que o Excel deixou de ser a fonte: importar por cima delas
+    perderia o que la foi feito.
+    """
+    from app.services.def_materia_prima_service import ORIGEM_DADOS_V3
+
+    return sum(
+        1
+        for materia in service.listar_materias_primas()
+        if materia.origem_dados == ORIGEM_DADOS_V3
+    )
 
 
 def main(argv: list | None = None) -> int:
@@ -558,6 +587,17 @@ def main(argv: list | None = None) -> int:
             return 1
 
         service = DefMateriaPrimaService(session)
+
+        editadas = contar_editadas_no_v3(service)
+        if editadas and not args.dry_run and not args.forcar:
+            print(
+                f"RECUSADO: {editadas} materias-primas ja foram editadas dentro do "
+                "V3.\nO Excel deixou de ser a fonte do catalogo; importar agora "
+                "escreveria por cima desse trabalho.\nSe e mesmo isso que quer, "
+                "repita com --forcar (ou use --dry-run para so ver)."
+            )
+            return 1
+
         summary = run_import(service, headers, data_rows, args.dry_run)
 
     print(f"Ficheiro: {resolution.path}")
