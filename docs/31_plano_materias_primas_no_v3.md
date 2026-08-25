@@ -266,14 +266,16 @@ testes**.
 
 ### 6.6 O que falta
 
-- **G4** exportar para Excel; **G5** tabela de fornecedores; **G6** pedido de
-  precos; **G7** importar a resposta; **G8** assistente.
-- **Retirar os botoes do Excel** ("Verificar Excel" e "Importar/Atualizar Excel")
-  depois da importacao final do ponto 3 do guiao. As regras de validacao que
-  foram escritas para o ficheiro passam a servir para validar o **catalogo do
-  V3** (precos em falta, orlas que nao existem, espessuras que nao batem certo).
+- **G4** a **G8 estao FEITOS**: exportar para Excel, tabela de fornecedores,
+  pedido de precos, importar a resposta e o assistente. O G8 tem documento
+  proprio: `docs/32_assistente_resposta_fornecedor_g8.md`.
+- **Os botoes do Excel sairam da barra** (commit 6468756) e o script de
+  importacao recusa-se a correr por cima do que ja foi editado no V3. Falta
+  virar as regras de validacao escritas para o ficheiro para validar o
+  **catalogo do V3** (precos em falta, orlas que nao existem, espessuras que
+  nao batem certo).
 - A auditoria de custeio continua a assinalar como erro uma linha de material de
   preco livre ainda sem preco. Esta **correto** (o orcamento sairia a zero), mas
   a mensagem pode passar a dizer "material de preco livre: escreva o preco nesta
   linha" em vez do aviso generico.
-- A **beta** precisa da migracao 95 quando la chegar.
+- A **beta** precisa das migracoes 95 e 96 quando la chegar.

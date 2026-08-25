@@ -14,14 +14,37 @@ from app.domain.resposta_fornecedor import (
     ESTADO_DESCONTINUADO,
     PropostaPreco,
     ler_respostas,
+    mapear_colunas,
 )
 from app.services.def_materia_prima_service import (
     DefMateriaPrimaService,
     EditarDefMateriaPrimaData,
 )
+from app.services.leitor_pdf_precos import e_pdf, ler_pdf, resumo_da_leitura
 
 #: Quantas linhas do topo procurar até encontrar o cabeçalho.
 LIMITE_PROCURA_CABECALHO = 10
+
+
+@dataclass(frozen=True)
+class LeituraResposta:
+    """What came out of the file, and how it was read.
+
+    As notas são a parte honesta do assistente: dizem que colunas foram
+    reconhecidas por adivinhação e que a leitura de um PDF é um palpite. Quem
+    revê fica a saber onde olhar duas vezes.
+    """
+
+    propostas: tuple = ()
+    notas: tuple = ()
+    origem: str = "EXCEL"
+
+    def __iter__(self):
+        """Percorrer a leitura é percorrer as propostas."""
+        return iter(self.propostas)
+
+    def __len__(self) -> int:
+        return len(self.propostas)
 
 
 @dataclass(frozen=True)
@@ -43,14 +66,64 @@ class RespostaFornecedorService:
 
     def ler_ficheiro(self, caminho: str | Path) -> list[PropostaPreco]:
         """Ler o ficheiro devolvido pelo fornecedor, sem gravar nada."""
-        cabecalhos, linhas, primeira = ler_folha(caminho)
-        catalogo = {
-            (materia.ref_le or "").upper(): materia
-            for materia in self.materias.listar_materias_primas()
-            if materia.ref_le
-        }
+        return list(self.ler_com_notas(caminho).propostas)
 
-        return ler_respostas(cabecalhos, linhas, catalogo, primeira_linha=primeira)
+    def ler_com_notas(self, caminho: str | Path) -> LeituraResposta:
+        """Ler o ficheiro e dizer também *como* foi lido.
+
+        Aceita o anexo que mandámos, uma folha refeita à maneira do fornecedor
+        ou uma tabela de preços em PDF. Em nenhum dos casos escreve seja o que
+        for: só propõe.
+        """
+        catalogo, por_referencia = self._indices()
+
+        if e_pdf(caminho):
+            cabecalhos, linhas, primeira = ler_pdf(
+                caminho, reconhecer=_reconhecedor(catalogo, por_referencia)
+            )
+            origem, notas = "PDF", [resumo_da_leitura(linhas)]
+        else:
+            cabecalhos, linhas, primeira = ler_folha(caminho)
+            origem, notas = "EXCEL", []
+
+        mapa = mapear_colunas(cabecalhos, linhas)
+        notas.extend(mapa.notas(cabecalhos))
+
+        propostas = ler_respostas(
+            cabecalhos,
+            linhas,
+            catalogo,
+            primeira_linha=primeira,
+            materias_por_referencia=por_referencia,
+            mapa=mapa,
+        )
+
+        return LeituraResposta(
+            propostas=tuple(propostas), notas=tuple(notas), origem=origem
+        )
+
+    def _indices(self) -> tuple[dict, dict]:
+        """O catálogo indexado pelas duas referências que o identificam."""
+        catalogo: dict = {}
+        por_referencia: dict = {}
+        ambiguas: set = set()
+        for materia in self.materias.listar_materias_primas():
+            if materia.ref_le:
+                catalogo[materia.ref_le.upper()] = materia
+            referencia = (materia.referencia_fornecedor or "").strip().upper()
+            if not referencia:
+                continue
+            if referencia in por_referencia:
+                # Referência usada por dois materiais nossos: deixa de servir
+                # para identificar seja qual for.
+                ambiguas.add(referencia)
+                continue
+            por_referencia[referencia] = materia
+
+        for referencia in ambiguas:
+            por_referencia.pop(referencia, None)
+
+        return catalogo, por_referencia
 
     def aplicar(
         self,
@@ -95,6 +168,20 @@ class RespostaFornecedorService:
             ignoradas=ignoradas,
             erros=tuple(erros),
         )
+
+
+def _reconhecedor(catalogo: dict, por_referencia: dict):
+    """Uma função que diz se um pedaço de texto é referência conhecida.
+
+    É o que permite ler o PDF do fornecedor: no meio da linha, a palavra que
+    bate certo com o nosso código ou com a referência dele é o artigo.
+    """
+
+    def reconhecer(palavra: str) -> bool:
+        chave = (palavra or "").strip().upper()
+        return bool(chave) and (chave in catalogo or chave in por_referencia)
+
+    return reconhecer
 
 
 def _dados_atualizados(materia, proposta: PropostaPreco, hoje: date):

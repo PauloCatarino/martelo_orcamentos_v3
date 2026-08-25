@@ -286,8 +286,8 @@ def test_ler_folha_encontra_o_cabecalho_abaixo_do_logotipo(tmp_path) -> None:
 def test_dialogo_marca_o_seguro_e_deixa_o_duvidoso_por_marcar() -> None:
     propostas = ler_respostas(
         CABECALHOS,
-        [_linha(preco_novo=31.2), _linha(preco_novo=48.9)],
-        _catalogo(),
+        [_linha(preco_novo=31.2), _linha(codigo="PLC0053", preco_novo=48.9)],
+        {**_catalogo(), **_catalogo(id=2, ref_le="PLC0053")},
     )
 
     dialogo = RespostaFornecedorDialog(propostas)

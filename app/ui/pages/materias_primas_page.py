@@ -145,8 +145,9 @@ class MateriasPrimasPage(QWidget):
         self.ler_resposta_button = QPushButton("Ler resposta…")
         self.ler_resposta_button.clicked.connect(self.ler_resposta_fornecedor)
         self.ler_resposta_button.setToolTip(
-            "Abrir o ficheiro que o fornecedor devolveu e rever os preços antes "
-            "de entrarem no catálogo"
+            "Abrir o ficheiro que o fornecedor devolveu — o nosso anexo, a "
+            "lista dele em Excel ou uma tabela de preços em PDF — e rever os "
+            "preços antes de entrarem no catálogo"
         )
 
         self.exportar_button = QPushButton("Exportar Excel")
@@ -500,40 +501,50 @@ class MateriasPrimasPage(QWidget):
             self,
             "Resposta do fornecedor",
             pasta,
-            "Ficheiros Excel (*.xlsx *.xlsm);;Todos os ficheiros (*)",
+            "Resposta do fornecedor (*.xlsx *.xlsm *.pdf);;"
+            "Ficheiros Excel (*.xlsx *.xlsm);;Tabela em PDF (*.pdf);;"
+            "Todos os ficheiros (*)",
         )
         if not caminho:
             return
 
-        propostas = self._ler_resposta(caminho)
-        if propostas is None:
+        leitura = self._ler_resposta(caminho)
+        if leitura is None:
             return
 
-        if not propostas:
+        if not leitura.propostas:
             self.status_label.setText(
-                "O ficheiro não trazia nenhuma linha preenchida."
+                "Não foi reconhecida nenhuma linha neste ficheiro. "
+                + " ".join(leitura.notas)
             )
             return
 
         dialogo = RespostaFornecedorDialog(
-            propostas,
+            list(leitura.propostas),
             caminho=caminho,
             parent=self,
             on_aplicar=self._aplicar_resposta,
+            notas=leitura.notas,
         )
         dialogo.exec()
 
     def _ler_resposta(self, caminho: str):
-        """Ler o ficheiro do fornecedor (None em caso de erro)."""
+        """Ler o ficheiro do fornecedor (None em caso de erro).
+
+        Serve tanto o anexo que mandámos como a lista do próprio fornecedor, em
+        Excel ou em PDF. O que a leitura teve de adivinhar vem nas notas, para
+        ser dito a quem revê.
+        """
         from app.services.resposta_fornecedor_service import RespostaFornecedorService
 
         try:
             with SessionLocal() as session:
-                return RespostaFornecedorService(session).ler_ficheiro(caminho)
+                return RespostaFornecedorService(session).ler_com_notas(caminho)
         except (OSError, RuntimeError, ValueError, SQLAlchemyError) as error:
             print(f"[Materias-Primas] Erro ao ler a resposta: {error}")
             self.status_label.setText(
-                "Não foi possível ler o ficheiro. Confirme que é o Excel do pedido."
+                "Não foi possível ler o ficheiro. Confirme que é o Excel do "
+                "pedido ou uma tabela de preços em PDF."
             )
             return None
 

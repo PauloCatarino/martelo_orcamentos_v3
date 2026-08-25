@@ -58,6 +58,7 @@ class RespostaFornecedorDialog(QDialog):
         "Preço novo",
         "Variação",
         "Desc%",
+        "O que o V3 assinala",
         "Observações do fornecedor",
     ]
 
@@ -70,12 +71,14 @@ class RespostaFornecedorDialog(QDialog):
         "Preço de tabela que o fornecedor indicou.",
         "De quanto muda o preço.",
         "Desconto indicado pelo fornecedor.",
+        "O que parece estranho nesta linha — leia antes de aplicar.",
         "O que o fornecedor escreveu.",
     ]
 
     COLUNA_VISTO = 0
     COLUNA_ESTADO = 1
     COLUNA_VARIACAO = 6
+    COLUNA_AVISOS = 8
 
     def __init__(
         self,
@@ -83,11 +86,13 @@ class RespostaFornecedorDialog(QDialog):
         caminho: str | None = None,
         parent=None,
         on_aplicar: Callable[[list[PropostaPreco]], bool] | None = None,
+        notas=None,
     ) -> None:
         super().__init__(parent)
 
         self.propostas = propostas
         self.on_aplicar = on_aplicar
+        self.notas = list(notas or [])
 
         self.setWindowTitle("Resposta do fornecedor")
         self.setModal(True)
@@ -102,6 +107,18 @@ class RespostaFornecedorDialog(QDialog):
             f"Ficheiro: {caminho}" if caminho else "Ficheiro do fornecedor."
         )
         self.caminho_label.setWordWrap(True)
+
+        self.notas_label = QLabel("\n".join(f"• {nota}" for nota in self.notas))
+        self.notas_label.setWordWrap(True)
+        self.notas_label.setVisible(bool(self.notas))
+        self.notas_label.setToolTip(
+            "Como o ficheiro foi lido. O que aqui aparece é um palpite do V3 e "
+            "pede uma vista de olhos."
+        )
+        self.notas_label.setStyleSheet(
+            f"background: {tema.OCRE_SUAVE}; color: {tema.OCRE_ESCURO};"
+            " padding: 6px; border-radius: 4px;"
+        )
 
         self.mostrar_tudo_input = QCheckBox("Mostrar também o que não muda nada")
         self.mostrar_tudo_input.setToolTip(
@@ -148,6 +165,7 @@ class RespostaFornecedorDialog(QDialog):
         layout = QVBoxLayout()
         layout.addWidget(self.resumo_label)
         layout.addWidget(self.caminho_label)
+        layout.addWidget(self.notas_label)
         layout.addLayout(filtros)
         layout.addWidget(self.table, stretch=1)
         layout.addLayout(botoes)
@@ -206,6 +224,7 @@ class RespostaFornecedorDialog(QDialog):
                 format_currency(proposta.preco_novo),
                 self._texto_variacao(proposta),
                 f"{proposta.desconto_novo:g}%" if proposta.desconto_novo is not None else "",
+                " · ".join(proposta.avisos),
                 proposta.observacoes or "",
             ]
             for coluna, valor in enumerate(valores, start=1):

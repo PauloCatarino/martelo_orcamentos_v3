@@ -186,3 +186,14 @@ def test_colunas_podem_ser_arrastadas_e_a_ordem_fica_guardada() -> None:
     init = inspect.getsource(MateriasPrimasPage.__init__)
 
     assert "guardar_ordem=True" in init
+
+
+def test_pagina_aceita_a_resposta_em_pdf_e_mostra_as_notas() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    abrir = inspect.getsource(MateriasPrimasPage.ler_resposta_fornecedor)
+    ler = inspect.getsource(MateriasPrimasPage._ler_resposta)
+
+    assert "*.pdf" in abrir
+    assert "notas=leitura.notas" in abrir
+    assert "ler_com_notas" in ler
