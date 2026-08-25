@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<title>Mockup — Matérias-Primas dentro do Martelo V3</title>
+<style>
+  :root{
+    --castanho-escuro:#5A3E2B; --castanho-medio:#8B6F4E; --bege-areia:#EFE7DA;
+    --bege-claro:#F7F2EA; --cinza-castanho:#D9CFC2; --texto:#2E2A26;
+    --ok:#0A5C0A; --aviso:#8A5A00; --erro:#B00020; --novo:#1d6fa5;
+    --ocre-suave:#F2DEB3; --vermelho-suave:#E8C7C1; --azul-suave:#D8E7F3;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:#EAE3D8;font:13px/1.45 "Segoe UI",Arial,sans-serif;color:var(--texto)}
+  .app{max-width:1320px;margin:0 auto}
+  h1{font-size:19px;margin:0 0 4px;color:var(--castanho-escuro)}
+  h2{font-size:15px;margin:0 0 4px;color:var(--castanho-escuro)}
+  h3{font-size:13px;margin:16px 0 8px;color:var(--castanho-escuro)}
+  .sub{color:var(--castanho-medio);font-size:12px;margin-bottom:18px}
+  section{background:#FDFBF7;border:1px solid var(--cinza-castanho);border-radius:6px;padding:16px;margin-bottom:20px}
+  .etiqueta{display:inline-block;background:var(--bege-areia);border:1px solid var(--castanho-medio);
+            border-radius:10px;padding:1px 9px;font-size:11px;color:var(--castanho-escuro);margin-left:6px}
+  .novo{border-color:var(--novo);color:var(--novo);background:#EAF3FA}
+  .existe{border-color:var(--ok);color:var(--ok);background:#E7F2E7}
+  nav{background:#FDFBF7;border:1px solid var(--cinza-castanho);border-radius:6px;padding:10px 16px;margin-bottom:20px}
+  nav a{color:var(--castanho-escuro);text-decoration:none;margin-right:18px;font-weight:600;font-size:12px}
+  nav a:hover{text-decoration:underline}
+
+  /* --- janela da app --- */
+  .janela{border:1px solid var(--cinza-castanho);border-radius:5px;overflow:hidden;background:#fff}
+  .janela .titulo{background:var(--castanho-escuro);color:#fff;padding:6px 12px;font-size:12px}
+  .barra{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:9px 12px;
+         background:var(--bege-claro);border-bottom:1px solid var(--cinza-castanho)}
+  input.pesquisa{width:250px;padding:4px 8px;border:1px solid var(--cinza-castanho);border-radius:4px;font:12px "Segoe UI"}
+  button{font:12px "Segoe UI",Arial;padding:5px 11px;background:#F3EEE6;border:1px solid var(--cinza-castanho);
+         border-radius:4px;color:var(--texto);cursor:default}
+  button.principal{background:var(--castanho-escuro);color:#fff;border-color:var(--castanho-escuro);font-weight:600}
+  button.destaque{background:#EAF3FA;border-color:var(--novo);color:var(--novo);font-weight:600}
+  label.check{font-size:12px;display:inline-flex;align-items:center;gap:5px}
+
+  /* --- tabelas --- */
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th{background:var(--castanho-medio);color:#fff;text-align:left;padding:5px 8px;font-weight:600;white-space:nowrap}
+  td{padding:4px 8px;border-bottom:1px solid var(--bege-areia);white-space:nowrap}
+  tr:nth-child(even) td{background:var(--bege-claro)}
+  td.num{text-align:right}
+  tr.inativo td{color:#9A928A;text-decoration:line-through;background:#F2EFEA !important}
+  tr.inativo td.semrisco{text-decoration:none}
+  .cel-antiga{background:var(--ocre-suave) !important}
+  .cel-erro{background:var(--vermelho-suave) !important}
+  .cel-nova{background:var(--azul-suave) !important}
+  .rodape-tabela{padding:7px 12px;background:var(--bege-claro);border-top:1px solid var(--cinza-castanho);
+                 font-size:12px;color:var(--castanho-escuro)}
+
+  /* --- diálogo --- */
+  .dialogo{border:1px solid var(--castanho-medio);border-radius:5px;background:#fff;max-width:860px}
+  .dialogo .titulo{background:var(--castanho-medio)}
+  .abas{display:flex;gap:2px;padding:8px 12px 0;background:var(--bege-claro)}
+  .aba{padding:5px 14px;border:1px solid var(--cinza-castanho);border-bottom:none;border-radius:4px 4px 0 0;
+       background:#EFE7DA;font-size:12px}
+  .aba.ativa{background:#fff;font-weight:600;color:var(--castanho-escuro)}
+  .campos{display:grid;grid-template-columns:130px 1fr 130px 1fr;gap:8px 10px;padding:14px;align-items:center}
+  .campos label{font-size:12px;color:var(--castanho-escuro);text-align:right}
+  .campos .valor{border:1px solid var(--cinza-castanho);border-radius:3px;padding:4px 7px;background:#fff;font-size:12px}
+  .campos .calculado{background:var(--bege-areia);color:var(--castanho-medio)}
+  .auditoria{padding:8px 14px;background:var(--bege-claro);border-top:1px solid var(--cinza-castanho);
+             font-size:11.5px;color:var(--castanho-medio)}
+  .botoes{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--cinza-castanho)}
+
+  /* --- email --- */
+  .email{border:1px solid var(--cinza-castanho);border-radius:5px;overflow:hidden;background:#fff;max-width:800px}
+  .email .cab{padding:10px 14px;border-bottom:1px solid var(--cinza-castanho);background:var(--bege-claro);font-size:12px}
+  .email .cab div{margin:3px 0}
+  .email .cab b{color:var(--castanho-escuro);display:inline-block;min-width:64px}
+  .corpo{padding:18px 20px;font:13.5px/1.6 Calibri,"Segoe UI",Arial,sans-serif}
+  .corpo p{margin:0 0 12px}
+  .logo{height:34px;background:var(--castanho-escuro);color:#fff;display:inline-flex;align-items:center;
+        padding:0 14px;border-radius:3px;font-weight:700;letter-spacing:2px;font-size:14px;margin-bottom:14px}
+  .caixa{background:var(--bege-claro);border-left:3px solid var(--castanho-medio);padding:10px 14px;margin:0 0 12px}
+  .anexo{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--cinza-castanho);border-radius:4px;
+         padding:6px 11px;background:var(--bege-claro);font-size:12px}
+  .rodape-mail{color:var(--castanho-medio);font-size:12px;border-top:1px solid var(--bege-areia);padding-top:10px}
+
+  .nota{background:#FFFDF6;border:1px solid var(--castanho-medio);border-left-width:4px;border-radius:4px;
+        padding:10px 14px;font-size:12.5px;margin:14px 0}
+  .nota b{color:var(--castanho-escuro)}
+  ul.limpa{margin:6px 0 0;padding-left:18px;font-size:12.5px}
+  ul.limpa li{margin-bottom:5px}
+  .legenda{font-size:11.5px;color:var(--castanho-medio);margin-top:7px}
+  .duas{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  .decisao{background:#EAF3FA;border:1px solid var(--novo);border-radius:4px;padding:10px 14px;margin:14px 0;font-size:12.5px}
+  .decisao b{color:var(--novo)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <h1>Matérias-Primas dentro do Martelo V3</h1>
+  <div class="sub">
+    Mockup para validação — 25-08-2026. Mostra as três peças novas: a tabela a funcionar dentro do V3,
+    o pedido de preços ao fornecedor e a volta desse pedido.
+    <span class="etiqueta novo">azul = novo</span>
+    <span class="etiqueta existe">verde = já existe</span>
+  </div>
+
+  <nav>
+    <a href="#tabela">1. A tabela no V3</a>
+    <a href="#ficha">2. Ficha do material + histórico</a>
+    <a href="#pedido">3. Pedir preços ao fornecedor</a>
+    <a href="#volta">4. A volta do fornecedor</a>
+    <a href="#decisoes">5. Decisões que preciso de si</a>
+  </nav>
+
+  <!-- ================= 1. TABELA ================= -->
+  <section id="tabela">
+    <h2>1. A tabela de Matérias-Primas no V3</h2>
+    <div class="sub">O Excel deixa de ser a fonte: passa a ser um destino de exportação.</div>
+
+    <div class="janela">
+      <div class="titulo">Martelo Orçamentos V3 — Orçamentos › Matérias-Primas</div>
+      <div class="barra">
+        <input class="pesquisa" value="" placeholder="Pesquisar matéria-prima… (espaço para vários termos)">
+        <button>🧹</button>
+        <button class="principal">+ Novo material</button>
+        <button>Editar</button>
+        <button>Duplicar</button>
+        <button>Desativar</button>
+        <label class="check"><input type="checkbox"> Mostrar não ativos</label>
+        <span style="flex:1"></span>
+        <button class="destaque">✉ Pedir preços ao fornecedor…</button>
+        <button>Exportar Excel</button>
+        <button>Importar Excel</button>
+      </div>
+
+      <table>
+        <tr>
+          <th>Ref LE</th><th>Descrição</th><th>Tipo</th><th>Família</th><th>Und</th>
+          <th>Preço tabela</th><th>Desc%</th><th>Mrg%</th><th>Preço líquido</th>
+          <th>Último preço</th><th>Stock</th><th>Fornecedor</th><th>Ativo</th>
+        </tr>
+        <tr>
+          <td>PLC0001</td><td>AGL FOL ALD. BÉTULA DESENROLADA 19MM</td><td>AGLOMERADO</td><td>PLACAS</td><td>M2</td>
+          <td class="num">24,87 €</td><td class="num">20%</td><td class="num">—</td><td class="num">19,90 €</td>
+          <td>23-04-2026</td><td>Não</td><td>ALDECOR</td><td>Sim</td>
+        </tr>
+        <tr>
+          <td>PLC0009</td><td>AGL FOL ALD. FAIA BRANCA FIG. 19MM</td><td>AGLOMERADO</td><td>PLACAS</td><td>M2</td>
+          <td class="num cel-erro">—</td><td class="num">20%</td><td class="num">—</td><td class="num cel-erro">0,00 €</td>
+          <td>23-04-2026</td><td>Não</td><td>ALDECOR</td><td>Sim</td>
+        </tr>
+        <tr>
+          <td>PLC0052</td><td>AGL TERM BEGE ARDENNE 413/BRILHO 19MM</td><td>AGLOMERADO</td><td>PLACAS</td><td>M2</td>
+          <td class="num">31,20 €</td><td class="num">18%</td><td class="num">—</td><td class="num">25,58 €</td>
+          <td class="cel-antiga">23-07-2025</td><td>Sim</td><td>SONAE</td><td>Sim</td>
+        </tr>
+        <tr>
+          <td>PLC0097</td><td>PLACAS LIVRES</td><td>—</td><td>PLACAS</td><td>M2</td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">preço livre</td>
+          <td>—</td><td>—</td><td>—</td><td>Sim</td>
+        </tr>
+        <tr class="inativo">
+          <td>FER0033</td><td>CABO ALIMENTACAO EFLEX BR 2PIN EURO 2MT</td><td>ILUMINACAO</td><td>FERRAGENS</td><td>UND</td>
+          <td class="num">8,40 €</td><td class="num">5%</td><td class="num">—</td><td class="num">7,98 €</td>
+          <td>23-07-2025</td><td>Não</td><td>BLUM</td><td class="semrisco">Não</td>
+        </tr>
+        <tr class="inativo">
+          <td>FER0071</td><td>BASE FRIGORIFICO PLASTICO MOD 600MM</td><td>ACESSORIOS</td><td>FERRAGENS</td><td>UND</td>
+          <td class="num">12,10 €</td><td class="num">5%</td><td class="num">—</td><td class="num">11,50 €</td>
+          <td>12-01-2026</td><td>Não</td><td>—</td><td class="semrisco">Não</td>
+        </tr>
+      </table>
+      <div class="rodape-tabela">
+        332 materiais · <b style="color:var(--aviso)">70 preços com mais de 12 meses</b> —
+        <a href="#pedido" style="color:var(--novo)">pedir atualização aos fornecedores</a> ·
+        <b style="color:var(--erro)">7 sem preço</b>
+      </div>
+    </div>
+
+    <div class="legenda">
+      Descontinuados aparecem <span style="text-decoration:line-through;color:#9A928A">riscados e a cinzento</span>,
+      e só quando o "Mostrar não ativos" está ligado — é o equivalente ao <b>Ctrl+5</b> do Excel.
+      A coluna "Ativo" fica sem risco, para se poder ler.
+      Preço a zero a vermelho, preço com mais de 12 meses a âmbar: as mesmas cores do Excel e do "Verificar Excel".
+    </div>
+
+    <div class="nota">
+      <b>Os orçamentos antigos não sofrem nada.</b> Cada linha de custeio já guarda a sua própria cópia
+      do material (referência, descrição e preço do dia em que foi usado). Desativar um material, mudar-lhe
+      o preço ou até corrigir-lhe a descrição <b>não altera um único orçamento já feito</b> — e o material
+      desativado deixa de aparecer nas escolhas de orçamentos novos, coisa que o V3 já faz hoje.
+    </div>
+  </section>
+
+  <!-- ================= 2. FICHA ================= -->
+  <section id="ficha">
+    <h2>2. Ficha do material — com histórico e quem mexeu</h2>
+
+    <div class="dialogo">
+      <div class="titulo">Editar matéria-prima — PLC0052</div>
+      <div class="abas">
+        <div class="aba ativa">Dados</div>
+        <div class="aba">Histórico de preços</div>
+        <div class="aba">Onde está a ser usado</div>
+      </div>
+      <div class="campos">
+        <label>Ref LE</label><div class="valor calculado">PLC0052 <span style="font-size:11px">(automático)</span></div>
+        <label>Ativo</label><div class="valor">Sim ▾</div>
+
+        <label>Descrição</label><div class="valor" style="grid-column:span 3">AGL TERM BEGE ARDENNE 413/BRILHO 19MM</div>
+
+        <label>Família</label><div class="valor">PLACAS ▾</div>
+        <label>Tipo</label><div class="valor">AGLOMERADO ▾</div>
+
+        <label>Unidade</label><div class="valor">M2 ▾</div>
+        <label>Tipo de preço</label><div class="valor">TABELA ▾</div>
+
+        <label>Preço tabela</label><div class="valor">31,20 €</div>
+        <label>Data do preço</label><div class="valor cel-antiga">23-07-2025</div>
+
+        <label>Desconto</label><div class="valor">18%</div>
+        <label>Margem</label><div class="valor">0%</div>
+
+        <label>Preço líquido</label><div class="valor calculado">25,58 € — calculado</div>
+        <label>Desperdício</label><div class="valor">20%</div>
+
+        <label>Comp × Larg × Esp</label><div class="valor">2800 × 2070 × 19</div>
+        <label>Orlas 0.4 / 1.0</label><div class="valor">ORL0004 ▾ / ORL0005 ▾</div>
+
+        <label>Fornecedor</label><div class="valor">SONAE ▾</div>
+        <label>Fabricante</label><div class="valor">SONAE</div>
+
+        <label>Ref. fornecedor</label><div class="valor">413/BRILHO</div>
+        <label>Stock</label><div class="valor">Sim ▾</div>
+      </div>
+      <div class="auditoria">
+        Criado por <b>paulo</b> em 12-03-2026 · Última alteração por <b>admin</b> em 20-08-2026 ·
+        Origem dos dados: importado do Excel
+      </div>
+      <div class="botoes">
+        <button>Gravar como…</button><span style="flex:1"></span>
+        <button>Cancelar</button><button class="principal">Gravar</button>
+      </div>
+    </div>
+
+    <h3>Separador "Histórico de preços"</h3>
+    <table style="max-width:860px">
+      <tr><th>Data</th><th>Preço tabela</th><th>Variação</th><th>Preço líquido</th><th>Origem</th><th>Quem</th></tr>
+      <tr><td>20-08-2026</td><td class="num">31,20 €</td><td class="num" style="color:var(--erro)">+8,3%</td><td class="num">25,58 €</td><td>Resposta do fornecedor</td><td>importado</td></tr>
+      <tr><td>23-07-2025</td><td class="num">28,80 €</td><td class="num" style="color:var(--erro)">+4,7%</td><td class="num">23,62 €</td><td>Excel</td><td>paulo</td></tr>
+      <tr><td>05-02-2025</td><td class="num">27,50 €</td><td class="num">—</td><td class="num">22,55 €</td><td>Excel</td><td>paulo</td></tr>
+    </table>
+    <div class="legenda">
+      O separador <b>"Onde está a ser usado"</b> mostra em que orçamentos o material aparece — útil antes de
+      desativar, para saber o que se está a mexer (e não muda nada nesses orçamentos, é só informação).
+    </div>
+  </section>
+
+  <!-- ================= 3. PEDIDO ================= -->
+  <section id="pedido">
+    <h2>3. Pedir preços ao fornecedor</h2>
+    <div class="sub">O V3 junta o que está velho, agrupa por fornecedor e prepara um email por cada um.</div>
+
+    <div class="janela" style="margin-bottom:18px">
+      <div class="titulo">Pedir atualização de preços</div>
+      <div class="barra">
+        <span style="font-size:12px">Preços com mais de</span>
+        <input class="pesquisa" style="width:60px" value="12">
+        <span style="font-size:12px">meses · 70 materiais em 6 fornecedores</span>
+      </div>
+      <table>
+        <tr><th>✓</th><th>Fornecedor</th><th>Materiais</th><th>Preço mais antigo</th><th>Email</th></tr>
+        <tr><td>☑</td><td>SONAE</td><td class="num">24</td><td class="cel-antiga">23-07-2025</td><td>comercial@sonae…</td></tr>
+        <tr><td>☑</td><td>EGGER</td><td class="num">18</td><td class="cel-antiga">23-07-2025</td><td>pt.vendas@egger…</td></tr>
+        <tr><td>☑</td><td>BLUM</td><td class="num">15</td><td class="cel-antiga">08-08-2025</td><td>encomendas@blum…</td></tr>
+        <tr><td>☐</td><td>ALDECOR</td><td class="num">9</td><td>12-01-2026</td><td class="cel-erro">— sem email —</td></tr>
+        <tr><td>☑</td><td>FINSA</td><td class="num">4</td><td class="cel-antiga">01-04-2025</td><td>geral@finsa…</td></tr>
+      </table>
+      <div class="botoes">
+        <button>Pré-visualizar email</button><button class="principal">Preparar 4 emails no Outlook</button>
+      </div>
+    </div>
+
+    <h3>O email que o fornecedor recebe</h3>
+    <div class="email">
+      <div class="cab">
+        <div><b>Para:</b> comercial@sonae.pt</div>
+        <div><b>Assunto:</b> Atualização de preços — Lança Encanto (24 referências)</div>
+        <div><b>Anexo:</b> <span class="anexo">📄 Precos_LancaEncanto_SONAE_2026-08-25.xlsx</span></div>
+      </div>
+      <div class="corpo">
+        <div class="logo">LANÇA ENCANTO</div>
+        <p>Bom dia,</p>
+        <p>
+          Na preparação dos nossos orçamentos usamos uma base de dados própria com os preços dos
+          materiais que nos fornecem. Alguns desses preços já têm mais de um ano e, para não
+          orçamentarmos com valores desatualizados, gostaríamos de os confirmar convosco.
+        </p>
+        <div class="caixa">
+          <b>O que pedimos:</b> que preencham a coluna <b>«Preço atualizado»</b> da tabela em anexo
+          e nos devolvam o ficheiro <b>respondendo a este email</b>. Se alguma referência ou descrição
+          tiver mudado, há colunas próprias para isso. Se algum artigo já não existir, basta escrever
+          «descontinuado» nas observações.
+        </div>
+        <p>
+          A tabela leva apenas as <b>24 referências</b> que precisamos de confirmar, com a vossa
+          referência e a designação por que as conhecemos — nada mais. O ficheiro que nos devolverem
+          entra <b>diretamente</b> na nossa base de dados, por isso não é preciso mudarem o formato
+          nem responderem com outra lista.
+        </p>
+        <p>Agradecemos desde já a colaboração.</p>
+        <div class="rodape-mail">
+          Com os melhores cumprimentos,<br>
+          <b>Paulo Catarino</b> · Departamento de Orçamentos<br>
+          Lança Encanto · geral@lancaencanto.pt
+        </div>
+      </div>
+    </div>
+
+    <h3>A tabela que vai em anexo — só o que interessa ao fornecedor</h3>
+    <table style="max-width:1000px">
+      <tr>
+        <th>Código</th><th>Ref. fornecedor</th><th>Designação</th><th>Und</th>
+        <th class="cel-nova" style="background:var(--novo)">Preço atualizado</th>
+        <th class="cel-nova" style="background:var(--novo)">Nova ref.</th>
+        <th class="cel-nova" style="background:var(--novo)">Nova designação</th>
+        <th class="cel-nova" style="background:var(--novo)">Observações</th>
+      </tr>
+      <tr><td>PLC0052</td><td>413/BRILHO</td><td>AGL TERM BEGE ARDENNE 413/BRILHO 19MM</td><td>M2</td>
+          <td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td></tr>
+      <tr><td>PLC0051</td><td>410/BRILHO</td><td>AGL TERM BRANCO GHIACCIO 410/BRILHO 19MM</td><td>M2</td>
+          <td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td></tr>
+      <tr><td>PLC0055</td><td>410/MATE</td><td>AGL TERM BRANCO GHIACCIO 410/MATE 19MM</td><td>M2</td>
+          <td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td><td class="cel-nova"></td></tr>
+    </table>
+    <div class="legenda">
+      A azul, as únicas colunas que o fornecedor preenche. <b>O que NÃO vai:</b> o nosso desconto, a nossa
+      margem, o preço líquido, o desperdício, o stock, as orlas correspondentes ou em que obras usamos o
+      material. O <b>«Código»</b> é a nossa referência interna e serve só para o V3 saber a que linha
+      pertence a resposta — vai bloqueado, com o aviso "não alterar".
+    </div>
+  </section>
+
+  <!-- ================= 4. VOLTA ================= -->
+  <section id="volta">
+    <h2>4. A volta do fornecedor</h2>
+    <div class="sub">O ficheiro devolvido é lido e proposto — nunca aplicado às cegas.</div>
+
+    <div class="janela">
+      <div class="titulo">Resposta do fornecedor — SONAE · Precos_LancaEncanto_SONAE_2026-08-25.xlsx</div>
+      <div class="barra">
+        <span style="font-size:12px">24 referências · <b style="color:var(--ok)">21 com preço novo</b> ·
+        <b style="color:var(--aviso)">2 a confirmar</b> · <b>1 descontinuada</b></span>
+        <span style="flex:1"></span>
+        <label class="check"><input type="checkbox" checked> Registar no histórico</label>
+      </div>
+      <table>
+        <tr><th>✓</th><th>Código</th><th>Designação</th><th>Preço atual</th><th>Preço novo</th><th>Variação</th><th>Observações do fornecedor</th></tr>
+        <tr><td>☑</td><td>PLC0052</td><td>AGL TERM BEGE ARDENNE 413/BRILHO</td><td class="num">28,80 €</td><td class="num">31,20 €</td><td class="num" style="color:var(--erro)">+8,3%</td><td></td></tr>
+        <tr><td>☑</td><td>PLC0051</td><td>AGL TERM BRANCO GHIACCIO 410/BRILHO</td><td class="num">27,40 €</td><td class="num">28,10 €</td><td class="num" style="color:var(--erro)">+2,6%</td><td></td></tr>
+        <tr><td>☑</td><td>PLC0055</td><td>AGL TERM BRANCO GHIACCIO 410/MATE</td><td class="num">29,90 €</td><td class="num">28,50 €</td><td class="num" style="color:var(--ok)">−4,7%</td><td></td></tr>
+        <tr><td>☐</td><td>PLC0054</td><td>AGL TERM CINZA GRAFITE 879/BRILHO</td><td class="num">30,10 €</td><td class="num cel-antiga">48,90 €</td><td class="num cel-antiga">+62,5%</td><td>subida invulgar — confirmar</td></tr>
+        <tr><td>☐</td><td>PLC0053</td><td>AGL TERM CINZA PERLA 475/BRILHO</td><td class="num">29,50 €</td><td class="num">—</td><td class="num">—</td><td class="cel-erro">descontinuado → propor desativar</td></tr>
+      </table>
+      <div class="rodape-tabela">
+        O assistente leu o ficheiro mesmo com as colunas trocadas de sítio e assinalou
+        a subida de +62,5% para confirmação.
+      </div>
+      <div class="botoes">
+        <button>Ver ficheiro recebido</button><span style="flex:1"></span>
+        <button>Cancelar</button><button class="principal">Aplicar as 21 selecionadas</button>
+      </div>
+    </div>
+
+    <div class="nota">
+      <b>Onde a IA ajuda mesmo</b> (e onde não vale a pena):
+      <ul class="limpa">
+        <li><b>Encontrar as colunas</b> quando o fornecedor mexe no ficheiro, muda os títulos ou responde
+            com a lista dele em vez da nossa — é o problema mais chato e o que mais tempo poupa;</li>
+        <li><b>Ler uma tabela de preços em PDF</b> que o fornecedor mande em vez de preencher o anexo;</li>
+        <li><b>Assinalar valores estranhos</b> (uma subida de +62%, um preço 10× maior por engano numa vírgula)
+            antes de entrarem na base de dados;</li>
+        <li><b>Não</b> para decidir sozinha o que fica gravado: a decisão final é sempre um visto seu.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= 5. DECISÕES ================= -->
+  <section id="decisoes">
+    <h2>5. Decisões que preciso de si</h2>
+    <div class="decisao">
+      <b>1. O preço atual vai no anexo?</b> No mockup, o fornecedor <u>não</u> vê o preço que temos —
+      só preenche o novo. A alternativa é mostrar-lhe o nosso valor e pedir "confirme ou corrija", que
+      costuma ter mais respostas, mas dá-lhe uma âncora na negociação. Qual prefere?
+    </div>
+    <div class="decisao">
+      <b>2. Aplicar automaticamente?</b> Disse "importava diretamente". No mockup há um ecrã de revisão
+      com vistos, porque um engano do fornecedor (uma vírgula a mais) entraria direto nos orçamentos.
+      Proponho: revisão sempre, mas com um botão "aceitar tudo" para quando confiar na resposta.
+    </div>
+    <div class="decisao">
+      <b>3. Emails dos fornecedores.</b> Hoje não existem no V3 — a tabela de matérias-primas só tem o
+      <i>nome</i> do fornecedor, em texto. Para isto funcionar é preciso uma pequena tabela de
+      fornecedores (nome, email, contacto). Faz sentido aproveitar e ficar com ela a sério?
+    </div>
+    <div class="decisao">
+      <b>4. E o Excel antigo?</b> Proponho: continua a poder ser importado (para não perder nada), mas
+      passa a ser o V3 a mandar; e ganha um "Exportar Excel" que gera o ficheiro no mesmo formato,
+      para consulta e impressão.
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
