@@ -546,3 +546,38 @@ raciocinio dele e que, tendo o Martelo V3 "todo o universo" la dentro, faz
 sentido que **inserir e alterar materias-primas passe a ser feito no proprio
 V3**. Fica como direccao assumida para uma ronda futura, nao como duvida em
 aberto.
+
+### 8.8 Proteccao do PLIQ e janela de verificacao (2026-08-25)
+
+**A macro ja esta corrigida** (verificado a ler o codigo VBA do ficheiro):
+`ws.Unprotect "1234"` na linha 16 e `ws.Protect "1234"` na linha 67,
+descomentadas e com a password entre aspas.
+
+**Mesmo assim, a folha NAO foi protegida** — e a decisao mudou por uma razao
+medida no proprio Excel: com a folha protegida, **acrescentar uma linha nova a
+tabela fica bloqueado**, mesmo autorizando a insercao de linhas
+(`AllowInsertingRows`). E como o Excel trata as tabelas. Isso tirava ao Paulo a
+tarefa mais comum do ficheiro, que e acrescentar materiais.
+
+Em vez disso, a coluna `PLIQ` levou uma **validacao de dados que recusa qualquer
+valor escrito a mao** (`=0`, que e sempre falso e nao depende da lingua do
+Excel), com a mensagem: "O PLIQ e calculado automaticamente a partir do
+PRECO_TABELA, do MRG e do DESC2. Para mudar o preco, altere uma dessas tres
+colunas."
+
+Verificado que a linha nova continua a herdar a formula do PLIQ e que se pode
+continuar a acrescentar linhas.
+
+Limite honesto: a validacao trava quem **escreve** por cima, mas **nao trava um
+colar** (o Excel nao aplica validacoes a colagens). Para travar tambem as
+colagens so mesmo protegendo a folha — e ai perde-se a insercao de linhas. Fica
+a troca registada; se um dia o registo passar para dentro do V3 (F4), o problema
+desaparece por si.
+
+Salvaguarda: `TAB_MATERIAS_PRIMAS_backup_20260825_112459.xlsm`.
+
+**Janela "Verificar Excel"**: abre agora a 92% da largura e 88% da altura do
+ecra (ate 1700x950, minimo 1100x600), as colunas tem teto para nenhuma comer o
+resto, encolhem sozinhas se o ecra for pequeno (nunca abaixo de 150 px nas de
+texto) e cada celula leva o texto completo em tooltip. Se o utilizador arrastar
+os cabecalhos, as larguras dele mandam e o automatismo nao lhes toca.

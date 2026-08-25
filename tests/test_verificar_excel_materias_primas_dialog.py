@@ -107,3 +107,61 @@ def test_dialogo_nao_grava_nada() -> None:
     assert "SessionLocal" not in fonte
     assert "Service" not in fonte
     assert "commit" not in fonte
+
+
+def test_dialogo_abre_grande_o_suficiente() -> None:
+    dialogo = VerificarExcelMateriasPrimasDialog(_relatorio())
+
+    assert dialogo.minimumWidth() >= 1100
+    assert dialogo.minimumHeight() >= 600
+    assert dialogo.width() >= dialogo.minimumWidth()
+    assert dialogo.height() >= dialogo.minimumHeight()
+
+
+def test_larguras_semeadas_tem_teto_por_coluna() -> None:
+    dialogo = VerificarExcelMateriasPrimasDialog(_relatorio())
+
+    # Força a semeadura: numa máquina com larguras já guardadas, o diálogo
+    # respeita-as e não mexe em nada (é isso que o teste seguinte cobre).
+    dialogo._larguras_restauradas = False
+    dialogo._larguras_semeadas = False
+    dialogo._ajustar_larguras()
+
+    for coluna, maximo in enumerate(dialogo.LARGURAS_MAXIMAS):
+        assert dialogo.table.columnWidth(coluna) <= maximo
+
+
+def test_larguras_guardadas_pelo_utilizador_mandam() -> None:
+    dialogo = VerificarExcelMateriasPrimasDialog(_relatorio())
+
+    dialogo._larguras_restauradas = True
+    dialogo._larguras_semeadas = False
+    dialogo.table.setColumnWidth(3, 900)
+    dialogo._ajustar_larguras()
+
+    assert dialogo.table.columnWidth(3) == 900
+
+
+def test_celulas_levam_o_texto_completo_em_tooltip() -> None:
+    dialogo = VerificarExcelMateriasPrimasDialog(_relatorio())
+
+    item = dialogo.table.item(0, 5)
+    assert item.toolTip() == "Preencha o PRECO_TABELA."
+
+
+def test_colunas_cabem_na_janela_mesmo_num_ecra_pequeno() -> None:
+    dialogo = VerificarExcelMateriasPrimasDialog(_relatorio())
+    dialogo.resize(1100, 700)
+
+    dialogo._larguras_restauradas = False
+    dialogo._larguras_semeadas = False
+    dialogo._ajustar_larguras()
+
+    total = sum(
+        dialogo.table.columnWidth(coluna)
+        for coluna in range(dialogo.table.columnCount())
+    )
+    assert total <= 1100 - dialogo.MARGEM_TABELA
+    # E nenhuma coluna de texto fica ilegível.
+    for coluna in (3, 4, 5):
+        assert dialogo.table.columnWidth(coluna) >= dialogo.LARGURA_MINIMA_TEXTO

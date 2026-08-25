@@ -46,6 +46,14 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
         "O que fazer",
     ]
 
+    # Teto por coluna ao semear as larguras: sem isto, a descrição e o "o que
+    # fazer" empurram as últimas colunas para fora do ecrã.
+    LARGURAS_MAXIMAS = [90, 60, 90, 330, 380, 460]
+    # Espaço que a tabela perde para margens e barra de deslocamento.
+    MARGEM_TABELA = 70
+    # Abaixo disto uma coluna de texto deixa de dizer alguma coisa.
+    LARGURA_MINIMA_TEXTO = 150
+
     HEADER_TOOLTIPS = [
         "CRÍTICO impede ou estraga a importação; AVISO merece revisão; "
         "INFO é só para o utilizador saber.",
@@ -68,7 +76,8 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
 
         self.setWindowTitle("Verificar Excel de matérias-primas")
         self.setModal(True)
-        self.setMinimumSize(1040, 520)
+        self.setMinimumSize(1100, 600)
+        self._dimensionar_ao_ecra()
 
         self.resumo_label = QLabel(resumir(relatorio))
         self.resumo_label.setWordWrap(True)
@@ -106,7 +115,10 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
         cabecalho = self.table.horizontalHeader()
         cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
-        ligar_persistencia_larguras(self.table, "dialog_verificar_excel_materias_primas")
+        self._larguras_restauradas = ligar_persistencia_larguras(
+            self.table, "dialog_verificar_excel_materias_primas"
+        )
+        self._larguras_semeadas = False
         for indice, tooltip in enumerate(self.HEADER_TOOLTIPS):
             item = self.table.horizontalHeaderItem(indice)
             if item is not None:
@@ -148,6 +160,18 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
         self.setLayout(layout)
 
         self._preencher()
+
+    def _dimensionar_ao_ecra(self) -> None:
+        """Abrir grande: o relatório tem colunas largas e vale a pena ver tudo."""
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is None:
+            self.resize(1400, 800)
+            return
+
+        disponivel = ecra.availableGeometry()
+        largura = min(int(disponivel.width() * 0.92), 1700)
+        altura = min(int(disponivel.height() * 0.88), 950)
+        self.resize(max(largura, 1100), max(altura, 600))
 
     def _criar_filtro(self, texto: str, tooltip: str, marcado: bool = True) -> QCheckBox:
         """Create one severity filter checkbox."""
@@ -196,9 +220,13 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
                 if coluna == 0 and fundo is not None:
                     item.setBackground(QColor(fundo))
                     item.setForeground(QColor(texto))
+                if valor:
+                    # Texto completo à espreita, para as colunas largas que a
+                    # tabela corta.
+                    item.setToolTip(valor)
                 self.table.setItem(linha, coluna, item)
 
-        self.table.resizeColumnsToContents()
+        self._ajustar_larguras()
 
         if not avisos:
             self.status_label.setText(
@@ -214,6 +242,60 @@ class VerificarExcelMateriasPrimasDialog(QDialog):
         else:
             self.status_label.setText(
                 "Sem problemas críticos — a importação pode avançar."
+            )
+
+    def _ajustar_larguras(self) -> None:
+        """Semear as larguras uma única vez, sem deixar uma coluna comer o resto.
+
+        Se o utilizador já arrastou os cabeçalhos noutra sessão, as larguras
+        guardadas mandam e nada é mexido.
+        """
+        if self._larguras_restauradas or self._larguras_semeadas:
+            return
+
+        self.table.resizeColumnsToContents()
+        for coluna, maximo in enumerate(self.LARGURAS_MAXIMAS):
+            if self.table.columnWidth(coluna) > maximo:
+                self.table.setColumnWidth(coluna, maximo)
+
+        self._encolher_para_caber()
+        self._larguras_semeadas = True
+
+    def _encolher_para_caber(self) -> None:
+        """Num ecrã pequeno, encolher as colunas de texto até tudo caber."""
+        largura_util = self.width() - self.MARGEM_TABELA
+        excesso = sum(
+            self.table.columnWidth(coluna) for coluna in range(self.table.columnCount())
+        ) - largura_util
+        if excesso <= 0:
+            return
+
+        # Só as três colunas de texto cedem espaço; as de gravidade, linha e
+        # referência já estão no osso.
+        elasticas = [3, 4, 5]
+        folga = sum(
+            self.table.columnWidth(coluna) - self.LARGURA_MINIMA_TEXTO
+            for coluna in elasticas
+        )
+        if folga <= 0:
+            return
+
+        for coluna in elasticas:
+            largura = self.table.columnWidth(coluna)
+            cede = int((largura - self.LARGURA_MINIMA_TEXTO) / folga * min(excesso, folga))
+            self.table.setColumnWidth(coluna, largura - cede)
+
+        # Os arredondamentos deixam sempre uns pixéis a mais: tira-os à coluna
+        # mais larga, para a linha caber mesmo sem barra horizontal.
+        sobra = (
+            sum(self.table.columnWidth(c) for c in range(self.table.columnCount()))
+            - largura_util
+        )
+        if sobra > 0:
+            mais_larga = max(elasticas, key=self.table.columnWidth)
+            self.table.setColumnWidth(
+                mais_larga,
+                max(self.table.columnWidth(mais_larga) - sobra, self.LARGURA_MINIMA_TEXTO),
             )
 
     def texto_para_copiar(self) -> str:
