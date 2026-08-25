@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.domain.contactos import formatar_telefone
 from app.repositories.def_fornecedor_repository import (
     DefFornecedorRepository,
     DefFornecedorResumo,
@@ -52,7 +53,7 @@ class DefFornecedorService:
             email=self._texto(data.email),
             email_cc=self._texto(data.email_cc),
             pessoa_contacto=self._texto(data.pessoa_contacto),
-            telefone=self._texto(data.telefone),
+            telefone=formatar_telefone(data.telefone),
             observacoes=self._texto(data.observacoes),
             ativo=data.ativo,
         )
@@ -71,7 +72,7 @@ class DefFornecedorService:
             email=self._texto(data.email),
             email_cc=self._texto(data.email_cc),
             pessoa_contacto=self._texto(data.pessoa_contacto),
-            telefone=self._texto(data.telefone),
+            telefone=formatar_telefone(data.telefone),
             observacoes=self._texto(data.observacoes),
             ativo=data.ativo,
         )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -102,6 +102,7 @@ class MateriaPrimaDialog(QDialog):
         materia: DefMateriaPrimaResumo | None = None,
         parent=None,
         on_save: Callable[[MateriaPrimaDialogData], bool] | None = None,
+        on_save_as: Callable[[MateriaPrimaDialogData], bool] | None = None,
         historico: list[PrecoHistoricoResumo] | None = None,
         utilizacoes: int = 0,
         ref_le_sugerida: Callable[[str], str | None] | None = None,
@@ -111,6 +112,7 @@ class MateriaPrimaDialog(QDialog):
 
         self.materia = materia
         self.on_save = on_save
+        self.on_save_as = on_save_as
         self._historico = historico or []
         self._utilizacoes = utilizacoes
         self._ref_le_sugerida = ref_le_sugerida
@@ -145,6 +147,15 @@ class MateriaPrimaDialog(QDialog):
         )
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Grava estes dados como uma matéria-prima nova, sem alterar a "
+            "original. A referência é atribuída automaticamente."
+        )
+        self.save_as_button.setVisible(self._is_edit)
+        self.save_as_button.clicked.connect(self._validar_e_gravar_como)
         self.button_box.accepted.connect(self._validar_e_aceitar)
         self.button_box.rejected.connect(self.reject)
 
@@ -551,7 +562,15 @@ class MateriaPrimaDialog(QDialog):
             observacoes=self._texto_ou_none(self.observacoes_input.toPlainText()),
         )
 
-    def _validar_e_aceitar(self) -> None:
+    def _validar_e_gravar_como(self) -> None:
+        """Gravar os dados do ecrã como uma matéria-prima nova.
+
+        A Ref LE é limpa de propósito: o registo novo recebe a próxima livre da
+        família, para nunca haver duas matérias-primas com a mesma referência.
+        """
+        self._validar_e_aceitar(gravar_como=True)
+
+    def _validar_e_aceitar(self, gravar_como: bool = False) -> None:
         """Validar o essencial antes de gravar."""
         if not self.descricao_input.text().strip():
             self.set_error("A descrição é obrigatória.")
@@ -586,7 +605,12 @@ class MateriaPrimaDialog(QDialog):
                 return
 
         self.error_label.clear()
-        if self.on_save is not None and not self.on_save(self.get_data()):
+        dados = self.get_data()
+        if gravar_como:
+            dados = replace(dados, ref_le=None)
+            if self.on_save_as is not None and not self.on_save_as(dados):
+                return
+        elif self.on_save is not None and not self.on_save(dados):
             return
 
         self.accept()
@@ -623,10 +647,19 @@ class MateriaPrimaDialog(QDialog):
         return date(escolhida.year(), escolhida.month(), escolhida.day())
 
     def _selecionar_fornecedor(self, materia: DefMateriaPrimaResumo) -> None:
-        """Escolher o fornecedor pelo id; sem id, tenta pelo nome que veio do Excel."""
-        indice = self.fornecedor_input.findData(materia.fornecedor_id)
+        """Escolher o fornecedor pelo id; sem id, tenta pelo nome que veio do Excel.
+
+        O ``findData`` só é usado quando há mesmo um id: com ``None`` ele casa
+        com o traço da primeira linha e o nome nunca chegava a ser tentado.
+        """
+        indice = -1
+        if materia.fornecedor_id is not None:
+            indice = self.fornecedor_input.findData(materia.fornecedor_id)
+
         if indice < 0 and materia.fornecedor:
-            indice = self.fornecedor_input.findText(materia.fornecedor.strip())
+            indice = self.fornecedor_input.findText(
+                materia.fornecedor.strip(), Qt.MatchFlag.MatchFixedString
+            )
 
         self.fornecedor_input.setCurrentIndex(indice if indice >= 0 else 0)
 

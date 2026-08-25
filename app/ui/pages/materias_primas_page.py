@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import replace
 
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
@@ -96,12 +95,6 @@ class MateriasPrimasPage(QWidget):
             "Editar a matéria-prima selecionada (duplo-clique faz o mesmo)"
         )
 
-        self.duplicar_button = QPushButton("Duplicar")
-        self.duplicar_button.clicked.connect(self.duplicar_materia_prima)
-        self.duplicar_button.setToolTip(
-            "Criar uma matéria-prima nova a partir da selecionada"
-        )
-
         self.ativar_button = QPushButton("Desativar")
         self.ativar_button.clicked.connect(self.alternar_ativo)
         self.ativar_button.setToolTip(
@@ -153,7 +146,6 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.campo_pesquisa)
         toolbar.addWidget(self.novo_button)
         toolbar.addWidget(self.editar_button)
-        toolbar.addWidget(self.duplicar_button)
         toolbar.addWidget(self.ativar_button)
         toolbar.addWidget(self.fornecedores_button)
         toolbar.addWidget(self.mostrar_inativos_input)
@@ -410,12 +402,6 @@ class MateriasPrimasPage(QWidget):
         if materia is not None:
             self._abrir_dialogo(materia)
 
-    def duplicar_materia_prima(self) -> None:
-        """Criar uma matéria-prima nova a partir da selecionada."""
-        materia = self._exigir_selecao()
-        if materia is not None:
-            self._abrir_dialogo(materia, duplicar=True)
-
     def alternar_ativo(self) -> None:
         """Descontinuar (ou repor) a matéria-prima selecionada."""
         materia = self._exigir_selecao()
@@ -469,15 +455,17 @@ class MateriasPrimasPage(QWidget):
         except SQLAlchemyError:
             return 0
 
-    def _abrir_dialogo(
-        self, materia: DefMateriaPrimaResumo | None, duplicar: bool = False
-    ) -> None:
-        """Abrir a ficha da matéria-prima (nova, a editar ou a duplicar)."""
+    def _abrir_dialogo(self, materia: DefMateriaPrimaResumo | None) -> None:
+        """Abrir a ficha da matéria-prima (nova ou a editar).
+
+        A partir de uma ficha aberta, o "Gravar como…" cria uma matéria-prima
+        nova com estes dados — é o mesmo gesto que existe nos outros menus.
+        """
         from app.ui.dialogs.materia_prima_dialog import MateriaPrimaDialog
 
         historico: list = []
         utilizacoes = 0
-        if materia is not None and not duplicar:
+        if materia is not None:
             try:
                 with SessionLocal() as session:
                     service = DefMateriaPrimaService(session)
@@ -486,26 +474,16 @@ class MateriasPrimasPage(QWidget):
             except SQLAlchemyError as error:
                 print(f"[Materias-Primas] Erro ao ler o histórico: {error}")
 
-        base = materia
-        if duplicar and materia is not None:
-            # A cópia entra sem referência: o V3 atribui a próxima da família.
-            base = replace(materia, id=0, ref_le=None, descricao=f"{materia.descricao} (cópia)")
-
         dialogo = MateriaPrimaDialog(
-            base if not duplicar else None,
+            materia,
             parent=self,
-            on_save=lambda dados: self._guardar(
-                dados, None if duplicar else materia
-            ),
+            on_save=lambda dados: self._guardar(dados, materia),
+            on_save_as=lambda dados: self._guardar(dados, None),
             historico=historico,
             utilizacoes=utilizacoes,
             ref_le_sugerida=self._proxima_ref_le,
             fornecedores=self._listar_fornecedores() or [],
         )
-        if duplicar and base is not None:
-            dialogo._carregar(base)
-            dialogo.ref_le_input.clear()
-
         dialogo.exec()
 
     def gerir_fornecedores(self) -> None:

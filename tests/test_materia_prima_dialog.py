@@ -153,3 +153,60 @@ def test_sem_ref_le_e_sem_fonte_de_sugestao_pede_a_referencia() -> None:
     dialogo._validar_e_aceitar()
 
     assert "Ref LE" in dialogo.error_label.text()
+
+
+def test_gravar_como_cria_registo_novo_sem_referencia() -> None:
+    """A referência é limpa: o registo novo recebe a próxima livre da família."""
+    gravados: list = []
+    gravados_como: list = []
+    dialogo = MateriaPrimaDialog(
+        _materia(),
+        on_save=lambda dados: gravados.append(dados) or True,
+        on_save_as=lambda dados: gravados_como.append(dados) or True,
+    )
+
+    dialogo._validar_e_gravar_como()
+
+    assert gravados == []
+    assert len(gravados_como) == 1
+    assert gravados_como[0].ref_le is None
+    assert gravados_como[0].descricao == "AGL TERM BEGE ARDENNE 19MM"
+
+
+def test_gravar_como_so_aparece_a_editar() -> None:
+    novo = MateriaPrimaDialog(None)
+    edicao = MateriaPrimaDialog(_materia())
+
+    assert novo.save_as_button.isVisible() is False
+    assert edicao.save_as_button.isVisibleTo(edicao) is True
+
+
+def test_fornecedor_e_escolhido_pelo_id() -> None:
+    from types import SimpleNamespace
+
+    fornecedores = [
+        SimpleNamespace(id=7, nome="SONAE"),
+        SimpleNamespace(id=9, nome="B&F"),
+    ]
+
+    dialogo = MateriaPrimaDialog(
+        _materia(fornecedor="SONAE", fornecedor_id=7), fornecedores=fornecedores
+    )
+
+    assert dialogo.fornecedor_input.currentText() == "SONAE"
+    assert dialogo.get_data().fornecedor_id == 7
+    assert dialogo.get_data().fornecedor == "SONAE"
+
+
+def test_fornecedor_sem_id_e_encontrado_pelo_nome() -> None:
+    """Regressão: com fornecedor_id a None o campo ficava sempre em branco."""
+    from types import SimpleNamespace
+
+    fornecedores = [SimpleNamespace(id=9, nome="B&F")]
+
+    dialogo = MateriaPrimaDialog(
+        _materia(fornecedor="B&F", fornecedor_id=None), fornecedores=fornecedores
+    )
+
+    assert dialogo.fornecedor_input.currentText() == "B&F"
+    assert dialogo.get_data().fornecedor_id == 9

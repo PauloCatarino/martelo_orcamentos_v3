@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -73,7 +73,8 @@ class FornecedoresDialog(QDialog):
 
         self.setWindowTitle("Fornecedores")
         self.setModal(True)
-        self.setMinimumSize(900, 520)
+        self.setMinimumSize(1000, 620)
+        self._dimensionar_ao_ecra()
 
         self.info_label = QLabel(
             "Os emails aqui guardados são a sugestão de destinatário do pedido de "
@@ -127,6 +128,18 @@ class FornecedoresDialog(QDialog):
         self.setLayout(layout)
 
         self._preencher()
+
+    def _dimensionar_ao_ecra(self) -> None:
+        """Abrir grande: são muitos fornecedores e a coluna do email é larga."""
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is None:
+            self.resize(1300, 800)
+            return
+
+        disponivel = ecra.availableGeometry()
+        largura = min(int(disponivel.width() * 0.85), 1500)
+        altura = min(int(disponivel.height() * 0.88), 950)
+        self.resize(max(largura, 1000), max(altura, 620))
 
     def _preencher(self) -> None:
         """Encher a tabela e assinalar quem fornece material mas não tem email."""

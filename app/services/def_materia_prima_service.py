@@ -143,6 +143,7 @@ class DefMateriaPrimaService:
             )
         self._validate_ref_le_unica(ref_le, exclude_id=None)
         utilizador_id = self._utilizador_atual_id()
+        fornecedor_id = self._resolver_fornecedor_id(data)
 
         result = self.repository.create_materia_prima(
             criado_por_id=utilizador_id,
@@ -172,7 +173,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
-            fornecedor_id=data.fornecedor_id,
+            fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -195,6 +196,7 @@ class DefMateriaPrimaService:
         origem_dados = self._normalize_origem_dados(data.origem_dados)
         self._validate_ref_le_unica(ref_le, exclude_id=id)
         anterior = self.repository.get_by_id(id)
+        fornecedor_id = self._resolver_fornecedor_id(data, anterior)
 
         result = self.repository.update_materia_prima(
             alterado_por_id=self._utilizador_atual_id(),
@@ -224,7 +226,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
-            fornecedor_id=data.fornecedor_id,
+            fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -274,6 +276,29 @@ class DefMateriaPrimaService:
     def contar_utilizacoes(self, id: int) -> int:
         """Em quantas linhas de orçamento este material já foi usado."""
         return self.repository.contar_utilizacoes(id)
+
+    def _resolver_fornecedor_id(
+        self, data, anterior: DefMateriaPrimaResumo | None = None
+    ) -> int | None:
+        """Descobrir a que fornecedor pertence o material.
+
+        Quem edita na aplicação escolhe o fornecedor de uma lista e manda o id.
+        Quem importa (do Excel, ou amanhã da resposta de um fornecedor) só tem o
+        **nome** — e sem esta tradução a ligação perdia-se a cada importação,
+        deixando o pedido de preços sem saber a quem escrever.
+        """
+        if data.fornecedor_id is not None:
+            return data.fornecedor_id
+
+        nome = (data.fornecedor or "").strip()
+        if not nome:
+            # Nada dito sobre o fornecedor: fica como estava.
+            return getattr(anterior, "fornecedor_id", None)
+
+        from app.repositories.def_fornecedor_repository import DefFornecedorRepository
+
+        fornecedor = DefFornecedorRepository(self.session).get_by_nome(nome)
+        return fornecedor.id if fornecedor is not None else None
 
     def _utilizador_atual_id(self) -> int | None:
         """Id de quem está a usar a app, ou None nos scripts (seed, importação)."""
