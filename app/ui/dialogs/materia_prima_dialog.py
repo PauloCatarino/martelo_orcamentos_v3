@@ -68,6 +68,7 @@ class MateriaPrimaDialogData:
     coresp_orla_1_0: str | None
     cor: str | None
     fornecedor: str | None
+    fornecedor_id: int | None
     nome_fabricante: str | None
     referencia_fornecedor: str | None
     ref_phc: str | None
@@ -104,6 +105,7 @@ class MateriaPrimaDialog(QDialog):
         historico: list[PrecoHistoricoResumo] | None = None,
         utilizacoes: int = 0,
         ref_le_sugerida: Callable[[str], str | None] | None = None,
+        fornecedores: list | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -112,6 +114,7 @@ class MateriaPrimaDialog(QDialog):
         self._historico = historico or []
         self._utilizacoes = utilizacoes
         self._ref_le_sugerida = ref_le_sugerida
+        self._fornecedores = fornecedores or []
         self._is_edit = materia is not None
 
         self.setWindowTitle(
@@ -242,7 +245,14 @@ class MateriaPrimaDialog(QDialog):
         self.orla_1_0_input.setToolTip("Ref LE da orla grossa correspondente (1,0 mm).")
 
         self.cor_input = QLineEdit()
-        self.fornecedor_input = QLineEdit()
+        self.fornecedor_input = QComboBox()
+        self.fornecedor_input.addItem(SEM_VALOR, None)
+        for fornecedor in self._fornecedores:
+            self.fornecedor_input.addItem(fornecedor.nome, fornecedor.id)
+        self.fornecedor_input.setToolTip(
+            "Fornecedor do material. A lista vem do botão «Fornecedores…», que é "
+            "onde se guardam os emails do pedido de preços."
+        )
         self.fabricante_input = QLineEdit()
         self.referencia_fornecedor_input = QLineEdit()
         self.referencia_fornecedor_input.setToolTip(
@@ -347,18 +357,28 @@ class MateriaPrimaDialog(QDialog):
         if self.materia is None:
             return "Matéria-prima nova — vai ficar registada em seu nome."
 
-        partes = []
-        if self.materia.criado_por:
-            partes.append(f"Criado por {self.materia.criado_por}")
-        if self.materia.created_at:
-            partes.append(f"em {self.materia.created_at:%d-%m-%Y}")
-        if self.materia.alterado_por:
-            partes.append(f"· última alteração por {self.materia.alterado_por}")
-        if self.materia.updated_at:
-            partes.append(f"em {self.materia.updated_at:%d-%m-%Y}")
-        partes.append(f"· origem dos dados: {self.materia.origem_dados}")
+        criado = self._quem_e_quando(
+            self.materia.criado_por, self.materia.created_at, "Criado"
+        )
+        alterado = self._quem_e_quando(
+            self.materia.alterado_por, self.materia.updated_at, "Última alteração"
+        )
+        partes = [parte for parte in (criado, alterado) if parte]
+        partes.append(f"origem dos dados: {self.materia.origem_dados}")
 
-        return " ".join(partes)
+        return " · ".join(partes)
+
+    def _quem_e_quando(self, quem: str | None, quando, prefixo: str) -> str:
+        """«Criado por paulo em 12-03-2026», ou só a data quando não há autor.
+
+        Os materiais que vieram do Excel não têm autor: nesses, dizer «criado
+        por» ninguém não ajudaria — fica só a data.
+        """
+        if quando is None:
+            return f"{prefixo} por {quem}" if quem else ""
+
+        data = f"{quando:%d-%m-%Y}"
+        return f"{prefixo} por {quem} em {data}" if quem else f"{prefixo} em {data}"
 
     def _texto_utilizacoes(self) -> str:
         """Quantos orçamentos já usam este material."""
@@ -440,7 +460,7 @@ class MateriaPrimaDialog(QDialog):
         self.orla_0_4_input.setText(materia.coresp_orla_0_4 or "")
         self.orla_1_0_input.setText(materia.coresp_orla_1_0 or "")
         self.cor_input.setText(materia.cor or "")
-        self.fornecedor_input.setText(materia.fornecedor or "")
+        self._selecionar_fornecedor(materia)
         self.fabricante_input.setText(materia.nome_fabricante or "")
         self.referencia_fornecedor_input.setText(materia.referencia_fornecedor or "")
         self.ref_phc_input.setText(materia.ref_phc or "")
@@ -519,7 +539,8 @@ class MateriaPrimaDialog(QDialog):
             coresp_orla_0_4=self._texto_ou_none(self.orla_0_4_input.text()),
             coresp_orla_1_0=self._texto_ou_none(self.orla_1_0_input.text()),
             cor=self._texto_ou_none(self.cor_input.text()),
-            fornecedor=self._texto_ou_none(self.fornecedor_input.text()),
+            fornecedor=self._nome_do_fornecedor(),
+            fornecedor_id=self.fornecedor_input.currentData(),
             nome_fabricante=self._texto_ou_none(self.fabricante_input.text()),
             referencia_fornecedor=self._texto_ou_none(
                 self.referencia_fornecedor_input.text()
@@ -600,6 +621,21 @@ class MateriaPrimaDialog(QDialog):
             return None
 
         return date(escolhida.year(), escolhida.month(), escolhida.day())
+
+    def _selecionar_fornecedor(self, materia: DefMateriaPrimaResumo) -> None:
+        """Escolher o fornecedor pelo id; sem id, tenta pelo nome que veio do Excel."""
+        indice = self.fornecedor_input.findData(materia.fornecedor_id)
+        if indice < 0 and materia.fornecedor:
+            indice = self.fornecedor_input.findText(materia.fornecedor.strip())
+
+        self.fornecedor_input.setCurrentIndex(indice if indice >= 0 else 0)
+
+    def _nome_do_fornecedor(self) -> str | None:
+        """Nome do fornecedor escolhido, para acompanhar o id na linha."""
+        if self.fornecedor_input.currentData() is None:
+            return None
+
+        return self.fornecedor_input.currentText().strip() or None
 
     def _selecionar(self, combo: QComboBox, valor: str | None) -> None:
         """Escolher um valor na lista, ou o traço quando não existe."""

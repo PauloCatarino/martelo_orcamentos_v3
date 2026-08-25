@@ -57,6 +57,7 @@ class CriarDefMateriaPrimaData:
     cor: str | None = None
     nome_fabricante: str | None = None
     ref_phc: str | None = None
+    fornecedor_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class EditarDefMateriaPrimaData:
     cor: str | None = None
     nome_fabricante: str | None = None
     ref_phc: str | None = None
+    fornecedor_id: int | None = None
 
 
 class DefMateriaPrimaService:
@@ -170,6 +172,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
+            fornecedor_id=data.fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
             observacoes=data.observacoes,
@@ -221,6 +224,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
+            fornecedor_id=data.fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
             observacoes=data.observacoes,

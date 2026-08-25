@@ -109,6 +109,13 @@ class MateriasPrimasPage(QWidget):
             "linhas novas, mas os orçamentos que já a usam ficam intactos"
         )
 
+        self.fornecedores_button = QPushButton("Fornecedores…")
+        self.fornecedores_button.clicked.connect(self.gerir_fornecedores)
+        self.fornecedores_button.setToolTip(
+            "Ver e preencher os contactos dos fornecedores — é daqui que sai o "
+            "destinatário do pedido de preços"
+        )
+
         self.mostrar_inativos_input = QCheckBox("Mostrar não ativos")
         self.mostrar_inativos_input.setToolTip(
             "Mostrar também as matérias-primas descontinuadas, riscadas"
@@ -148,6 +155,7 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.editar_button)
         toolbar.addWidget(self.duplicar_button)
         toolbar.addWidget(self.ativar_button)
+        toolbar.addWidget(self.fornecedores_button)
         toolbar.addWidget(self.mostrar_inativos_input)
         toolbar.addStretch()
         toolbar.addWidget(self.verificar_button)
@@ -492,12 +500,87 @@ class MateriasPrimasPage(QWidget):
             historico=historico,
             utilizacoes=utilizacoes,
             ref_le_sugerida=self._proxima_ref_le,
+            fornecedores=self._listar_fornecedores() or [],
         )
         if duplicar and base is not None:
             dialogo._carregar(base)
             dialogo.ref_le_input.clear()
 
         dialogo.exec()
+
+    def gerir_fornecedores(self) -> None:
+        """Abrir a lista de fornecedores, para preencher contactos e emails."""
+        from app.ui.dialogs.fornecedores_dialog import FornecedoresDialog
+
+        fornecedores = self._listar_fornecedores()
+        if fornecedores is None:
+            return
+
+        dialogo = FornecedoresDialog(
+            fornecedores,
+            parent=self,
+            on_save=self._guardar_fornecedores,
+            on_criar=self._criar_fornecedor,
+        )
+        dialogo.exec()
+        # A lista mostra o nome do fornecedor, que pode ter sido corrigido.
+        self.carregar_materias_primas()
+
+    def _listar_fornecedores(self):
+        """Fornecedores com a contagem de materiais, ou None em caso de erro."""
+        from app.services.def_fornecedor_service import DefFornecedorService
+
+        try:
+            with SessionLocal() as session:
+                return DefFornecedorService(session).listar_fornecedores()
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao ler os fornecedores: {error}")
+            self.status_label.setText("Não foi possível ler os fornecedores.")
+            return None
+
+    def _guardar_fornecedores(self, alteracoes: dict) -> bool:
+        """Gravar as alterações feitas na tabela de fornecedores."""
+        from app.services.def_fornecedor_service import DefFornecedorService
+
+        try:
+            with SessionLocal() as session:
+                service = DefFornecedorService(session)
+                for fornecedor_id, dados in alteracoes.items():
+                    service.editar_fornecedor(fornecedor_id, dados)
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return False
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao gravar fornecedores: {error}")
+            self.status_label.setText("Não foi possível gravar os fornecedores.")
+            return False
+
+        quantos = len(alteracoes)
+        self.status_label.setText(
+            f"{quantos} fornecedor{'es' if quantos != 1 else ''} atualizado"
+            f"{'s' if quantos != 1 else ''}."
+        )
+        return True
+
+    def _criar_fornecedor(self, nome: str):
+        """Criar um fornecedor. Devolve a lista atualizada, ou None se falhou."""
+        from app.services.def_fornecedor_service import (
+            DefFornecedorService,
+            FornecedorData,
+        )
+
+        try:
+            with SessionLocal() as session:
+                service = DefFornecedorService(session)
+                service.criar_fornecedor(FornecedorData(nome=nome))
+                return service.listar_fornecedores()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao criar fornecedor: {error}")
+            self.status_label.setText("Não foi possível criar o fornecedor.")
+
+        return None
 
     def _proxima_ref_le(self, familia: str) -> str | None:
         """Referência que uma matéria-prima nova dessa família vai receber."""
@@ -533,6 +616,7 @@ class MateriasPrimasPage(QWidget):
             "largura": dados.largura,
             "espessura": dados.espessura,
             "fornecedor": dados.fornecedor,
+            "fornecedor_id": dados.fornecedor_id,
             "tipo_preco": dados.tipo_preco,
             "data_ultimo_preco": dados.data_ultimo_preco,
             "stock": dados.stock,

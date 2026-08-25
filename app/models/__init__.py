@@ -3,6 +3,7 @@
 from app.models.cliente import Cliente
 from app.models.equipa_membro import EquipaMembro
 from app.models.ia_perfil import IaPerfilEntrada
+from app.models.def_fornecedor import DefFornecedor
 from app.models.def_maquina import DefMaquina
 from app.models.def_margem_padrao import DefMargemPadrao
 from app.models.def_maquina_escalao_area import DefMaquinaEscalaoArea
@@ -68,6 +69,7 @@ __all__ = [
     "DefMaquina",
     "DefMargemPadrao",
     "DefMaquinaEscalaoArea",
+    "DefFornecedor",
     "DefMateriaPrima",
     "DefMateriaPrimaPrecoHistorico",
     "DefModulo",

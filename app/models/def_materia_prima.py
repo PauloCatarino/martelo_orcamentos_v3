@@ -42,6 +42,7 @@ class DefMateriaPrima(Base):
         Index("ix_def_materias_primas_origem_dados", "origem_dados"),
         Index("ix_def_materias_primas_tipo_preco", "tipo_preco"),
         Index("ix_def_materias_primas_data_ultimo_preco", "data_ultimo_preco"),
+        Index("ix_def_materias_primas_fornecedor_id", "fornecedor_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -63,7 +64,13 @@ class DefMateriaPrima(Base):
     comprimento: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     largura: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     espessura: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
+    # Nome do fornecedor em texto (o que veio do Excel) e a ligação à ficha do
+    # fornecedor, que é onde estão os emails do pedido de preços. O texto fica:
+    # é o que garante que nada se perde quando um nome não casa.
     fornecedor: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    fornecedor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("def_fornecedores.id"), nullable=True
+    )
     # TABELA (preço do fornecedor) ou LIVRE (preço escrito dentro do orçamento).
     tipo_preco: Mapped[str] = mapped_column(
         String(20),

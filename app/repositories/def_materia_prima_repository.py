@@ -52,6 +52,7 @@ class DefMateriaPrimaResumo:
     cor: str | None = None
     nome_fabricante: str | None = None
     ref_phc: str | None = None
+    fornecedor_id: int | None = None
     # Nomes de quem criou e de quem alterou pela última vez, prontos a mostrar.
     criado_por: str | None = None
     alterado_por: str | None = None
@@ -182,6 +183,7 @@ class DefMateriaPrimaRepository:
         cor: str | None = None,
         nome_fabricante: str | None = None,
         ref_phc: str | None = None,
+        fornecedor_id: int | None = None,
         criado_por_id: int | None = None,
         alterado_por_id: int | None = None,
     ) -> DefMateriaPrimaResumo:
@@ -193,6 +195,7 @@ class DefMateriaPrimaRepository:
             cor=cor,
             nome_fabricante=nome_fabricante,
             ref_phc=ref_phc,
+            fornecedor_id=fornecedor_id,
             criado_por_id=criado_por_id,
             alterado_por_id=alterado_por_id,
             descricao=descricao,
@@ -255,6 +258,7 @@ class DefMateriaPrimaRepository:
         cor: str | None = None,
         nome_fabricante: str | None = None,
         ref_phc: str | None = None,
+        fornecedor_id: int | None = None,
         alterado_por_id: int | None = None,
     ) -> DefMateriaPrimaResumo:
         """Update one raw material."""
@@ -290,6 +294,7 @@ class DefMateriaPrimaRepository:
         materia.cor = cor
         materia.nome_fabricante = nome_fabricante
         materia.ref_phc = ref_phc
+        materia.fornecedor_id = fornecedor_id
         if alterado_por_id is not None:
             materia.alterado_por_id = alterado_por_id
         self.session.flush()
@@ -456,6 +461,7 @@ class DefMateriaPrimaRepository:
             cor=materia.cor,
             nome_fabricante=materia.nome_fabricante,
             ref_phc=materia.ref_phc,
+            fornecedor_id=materia.fornecedor_id,
             criado_por=_nome_do_utilizador(materia.criado_por),
             alterado_por=_nome_do_utilizador(materia.alterado_por),
         )
