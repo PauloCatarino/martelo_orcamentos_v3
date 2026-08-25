@@ -309,3 +309,28 @@ def test_telefone_fica_no_formato_999_999_999(service) -> None:
     )
 
     assert fornecedor.telefone == "932 523 885"
+
+
+def test_dialogo_tem_botao_para_ligar_pelo_nome() -> None:
+    chamadas: list = []
+    atualizados = [_resumo(materias_primas=80)]
+    dialogo = FornecedoresDialog(
+        [_resumo()],
+        on_ligar_pelo_nome=lambda: (
+            chamadas.append(1) or ("80 matérias-primas ligadas.", atualizados)
+        ),
+    )
+
+    dialogo._ligar_pelo_nome()
+
+    assert chamadas == [1]
+    assert dialogo.table.item(0, dialogo.COLUNA_MATERIAIS).text() == "80"
+    assert "80 matérias-primas ligadas" in dialogo.status_label.text()
+
+
+def test_botao_de_ligar_so_aparece_quando_ha_quem_o_faca() -> None:
+    sem_acao = FornecedoresDialog([_resumo()])
+    com_acao = FornecedoresDialog([_resumo()], on_ligar_pelo_nome=lambda: None)
+
+    assert sem_acao.ligar_button.isVisibleTo(sem_acao) is False
+    assert com_acao.ligar_button.isVisibleTo(com_acao) is True

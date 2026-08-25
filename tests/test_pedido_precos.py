@@ -245,3 +245,40 @@ def test_dialogo_sem_nada_a_rever() -> None:
     dialogo = PedidoPrecosDialog([])
 
     assert "nada a pedir" in dialogo.status_label.text()
+
+
+def test_agrupa_pelo_nome_quando_o_id_nao_esta_preenchido() -> None:
+    """Regressão: sem id, os materiais caíam todos em «(sem fornecedor)».
+
+    A ligação por id perdeu-se numa importação antiga; o nome escrito na linha
+    chega para saber a quem pedir preços.
+    """
+    materias = [
+        _materia(id=1, fornecedor_id=None, fornecedor="SONAE"),
+        _materia(id=2, fornecedor_id=None, fornecedor=" sonae "),
+        _materia(id=3, fornecedor_id=1),
+    ]
+
+    pedidos = agrupar_por_fornecedor(materias, [_fornecedor()], HOJE)
+
+    assert len(pedidos) == 1
+    assert pedidos[0].fornecedor_nome == "SONAE"
+    assert pedidos[0].total == 3
+    assert pedidos[0].tem_email is True
+    assert pedidos[0].fornecedor_id == 1
+
+
+def test_nome_sem_ficha_fica_no_seu_proprio_grupo() -> None:
+    """Um nome que não tem ficha não se mistura com os outros."""
+    materias = [
+        _materia(id=1, fornecedor_id=None, fornecedor="FORNECEDOR NOVO"),
+        _materia(id=2, fornecedor_id=None, fornecedor="OUTRO QUALQUER"),
+        _materia(id=3, fornecedor_id=None, fornecedor=None),
+    ]
+
+    pedidos = agrupar_por_fornecedor(materias, [], HOJE)
+    por_nome = {pedido.fornecedor_nome: pedido for pedido in pedidos}
+
+    assert set(por_nome) == {"FORNECEDOR NOVO", "OUTRO QUALQUER", "(sem fornecedor)"}
+    assert all(pedido.total == 1 for pedido in pedidos)
+    assert not any(pedido.tem_email for pedido in pedidos)

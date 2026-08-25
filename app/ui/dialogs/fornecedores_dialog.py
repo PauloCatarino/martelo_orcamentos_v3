@@ -64,12 +64,15 @@ class FornecedoresDialog(QDialog):
         parent=None,
         on_save: Callable[[dict[int, FornecedorData]], bool] | None = None,
         on_criar: Callable[[str], list[DefFornecedorResumo] | None] | None = None,
+        on_ligar_pelo_nome: Callable[[], tuple[str, list[DefFornecedorResumo]] | None]
+        | None = None,
     ) -> None:
         super().__init__(parent)
 
         self.fornecedores = fornecedores
         self.on_save = on_save
         self.on_criar = on_criar
+        self.on_ligar_pelo_nome = on_ligar_pelo_nome
 
         self.setWindowTitle("Fornecedores")
         self.setModal(True)
@@ -103,6 +106,14 @@ class FornecedoresDialog(QDialog):
         self.criar_button.setToolTip("Criar um fornecedor novo")
         self.criar_button.clicked.connect(self._criar_fornecedor)
 
+        self.ligar_button = QPushButton("Ligar materiais pelo nome")
+        self.ligar_button.setToolTip(
+            "Percorre o catálogo e liga a este fornecedor as matérias-primas que "
+            "têm o mesmo nome escrito. Útil depois de uma importação."
+        )
+        self.ligar_button.setVisible(on_ligar_pelo_nome is not None)
+        self.ligar_button.clicked.connect(self._ligar_pelo_nome)
+
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
 
@@ -118,6 +129,7 @@ class FornecedoresDialog(QDialog):
         barra.addWidget(self.nome_novo_input)
         barra.addWidget(self.criar_button)
         barra.addStretch()
+        barra.addWidget(self.ligar_button)
 
         layout = QVBoxLayout()
         layout.addWidget(self.info_label)
@@ -245,6 +257,20 @@ class FornecedoresDialog(QDialog):
         self.fornecedores = atualizados
         self._preencher()
         self.status_label.setText(f"Fornecedor «{nome}» criado.")
+
+    def _ligar_pelo_nome(self) -> None:
+        """Repor as ligações entre matérias-primas e fornecedores, pelo nome."""
+        if self.on_ligar_pelo_nome is None:
+            return
+
+        resultado = self.on_ligar_pelo_nome()
+        if resultado is None:
+            return
+
+        mensagem, atualizados = resultado
+        self.fornecedores = atualizados
+        self._preencher()
+        self.status_label.setText(mensagem)
 
     def _guardar(self) -> None:
         """Gravar as alterações da tabela."""

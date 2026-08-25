@@ -23,6 +23,9 @@ from app.domain.materia_prima_types import (
     preco_desatualizado,
 )
 
+#: Rótulo do grupo dos materiais que não se sabe a quem pertencem.
+SEM_FORNECEDOR = "(sem fornecedor)"
+
 #: Colunas do anexo. As marcadas para preencher vão destacadas no ficheiro.
 COLUNA_CODIGO = "Código"
 COLUNA_REF_FORNECEDOR = "Ref. fornecedor"
@@ -139,22 +142,31 @@ def agrupar_por_fornecedor(
     email — aparecem na lista para se ver que existem, mas não se lhes pode
     escrever enquanto não tiverem ficha.
     """
-    fichas = {fornecedor.id: fornecedor for fornecedor in fornecedores}
-    grupos: dict[int | None, list[LinhaPedido]] = {}
-    nomes: dict[int | None, str] = {}
+    por_id = {fornecedor.id: fornecedor for fornecedor in fornecedores}
+    por_nome = {
+        _normalizar(fornecedor.nome): fornecedor for fornecedor in fornecedores
+    }
+    grupos: dict[object, list[LinhaPedido]] = {}
+    fichas: dict[object, object] = {}
+    nomes: dict[object, str] = {}
 
     for materia in materiais_a_rever(materias, hoje, meses_limite):
-        chave = getattr(materia, "fornecedor_id", None)
-        ficha = fichas.get(chave)
+        ficha = _ficha_do_fornecedor(materia, por_id, por_nome)
+        chave = ficha.id if ficha is not None else (
+            _normalizar(getattr(materia, "fornecedor", None)) or None
+        )
+        fichas.setdefault(chave, ficha)
         nomes.setdefault(
             chave,
-            ficha.nome if ficha is not None else (materia.fornecedor or "(sem fornecedor)"),
+            ficha.nome
+            if ficha is not None
+            else (getattr(materia, "fornecedor", None) or SEM_FORNECEDOR),
         )
         grupos.setdefault(chave, []).append(_linha(materia, hoje))
 
     pedidos = [
         PedidoFornecedor(
-            fornecedor_id=chave,
+            fornecedor_id=getattr(fichas.get(chave), "id", None),
             fornecedor_nome=nomes[chave],
             email=getattr(fichas.get(chave), "email", None),
             email_cc=getattr(fichas.get(chave), "email_cc", None),
@@ -166,6 +178,25 @@ def agrupar_por_fornecedor(
 
     # Os que se conseguem enviar primeiro, e dentro desses os maiores lotes.
     return sorted(pedidos, key=lambda p: (not p.tem_email, -p.total, p.fornecedor_nome))
+
+
+def _ficha_do_fornecedor(materia, por_id: dict, por_nome: dict):
+    """A ficha do fornecedor deste material: pelo id, ou pelo nome.
+
+    O id é o caminho normal, mas nem sempre está preenchido — materiais vindos
+    de importações antigas só trazem o nome escrito. Sem esta segunda tentativa,
+    esses caíam todos no mesmo saco «sem fornecedor» e ninguém lhes pedia preços.
+    """
+    ficha = por_id.get(getattr(materia, "fornecedor_id", None))
+    if ficha is not None:
+        return ficha
+
+    return por_nome.get(_normalizar(getattr(materia, "fornecedor", None)))
+
+
+def _normalizar(valor: str | None) -> str:
+    """Nome de fornecedor comparável: sem espaços à volta e em maiúsculas."""
+    return (valor or "").strip().upper()
 
 
 def _linha(materia, hoje: date | None) -> LinhaPedido:

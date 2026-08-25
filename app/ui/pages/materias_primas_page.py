@@ -519,6 +519,7 @@ class MateriasPrimasPage(QWidget):
             parent=self,
             on_save=self._guardar_fornecedores,
             on_criar=self._criar_fornecedor,
+            on_ligar_pelo_nome=self._ligar_materiais_pelo_nome,
         )
         dialogo.exec()
         # A lista mostra o nome do fornecedor, que pode ter sido corrigido.
@@ -669,6 +670,33 @@ class MateriasPrimasPage(QWidget):
             print(f"[Materias-Primas] Erro ao ler os fornecedores: {error}")
             self.status_label.setText("Não foi possível ler os fornecedores.")
             return None
+
+    def _ligar_materiais_pelo_nome(self):
+        """Repor as ligações material-fornecedor a partir do nome escrito.
+
+        As importações antigas só traziam o nome, e houve uma altura em que isso
+        apagava a ligação. Isto repõe-na sem ninguém ter de ir ao terminal.
+        """
+        from app.services.def_fornecedor_service import DefFornecedorService
+        from scripts.reparar_ligacao_fornecedores import reparar
+
+        try:
+            with SessionLocal() as session:
+                resumo = reparar(session)
+                atualizados = DefFornecedorService(session).listar_fornecedores()
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao ligar os materiais: {error}")
+            self.status_label.setText("Não foi possível ligar os materiais.")
+            return None
+
+        partes = [f"{resumo['ligadas']} matérias-primas ligadas"]
+        if resumo["ja_ligadas"]:
+            partes.append(f"{resumo['ja_ligadas']} já estavam")
+        if resumo["sem_fornecedor"]:
+            nomes = ", ".join(sorted(resumo["sem_fornecedor"])[:4])
+            partes.append(f"sem ficha: {nomes}")
+
+        return " · ".join(partes) + ".", atualizados
 
     def _guardar_fornecedores(self, alteracoes: dict) -> bool:
         """Gravar as alterações feitas na tabela de fornecedores."""
