@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -229,7 +230,7 @@ def test_run_import_creates_with_desperdicio() -> None:
 
     importer.run_import(service, headers, rows, dry_run=False)
 
-    assert service.created[0].desperdicio_percentagem == Decimal("0.15")
+    assert service.created[0].desperdicio_percentagem == Decimal("15")
 
 
 def test_run_import_updates_existing_with_desp_and_orlas() -> None:
@@ -248,7 +249,7 @@ def test_run_import_updates_existing_with_desp_and_orlas() -> None:
 
     assert service.created == []
     _, data = service.updated[0]
-    assert data.desperdicio_percentagem == Decimal("0.15")
+    assert data.desperdicio_percentagem == Decimal("15")
     assert data.coresp_orla_0_4 == "ORL0002"
     assert data.coresp_orla_1_0 == "ORL0003"
 
@@ -273,7 +274,7 @@ def test_importar_materias_primas_reuses_run_import(monkeypatch) -> None:
     assert summary.criadas == 1
     assert service.created[0].coresp_orla_0_4 == "ORL0002"
     assert service.created[0].coresp_orla_1_0 == "ORL0003"
-    assert service.created[0].desperdicio_percentagem == Decimal("0.15")
+    assert service.created[0].desperdicio_percentagem == Decimal("15")
 
 
 def test_importar_materias_primas_raises_when_excel_missing(monkeypatch) -> None:
@@ -380,3 +381,41 @@ def test_resolve_excel_path_empty_config_falls_back_to_cwd(monkeypatch, tmp_path
     assert resolution is not None
     assert resolution.path == fallback_file
     assert resolution.source == importer.PATH_SOURCE_FALLBACK
+
+
+def test_percentagens_passam_de_fracao_para_percentagem_humana() -> None:
+    """No Excel 0,2 quer dizer 20% (a coluna esta formatada como percentagem).
+
+    A base de dados passou a guardar percentagem humana, para a leitura deixar
+    de depender de adivinhar pelo valor.
+    """
+    assert importer._percentagem(Decimal("0.2")) == Decimal("20.0")
+    assert importer._percentagem(Decimal("0.025")) == Decimal("2.5")
+    # Ja em percentagem humana, fica como esta.
+    assert importer._percentagem(Decimal("20")) == Decimal("20")
+    assert importer._percentagem(None) is None
+
+
+def test_tipo_preco_aceita_a_coluna_nova_e_tem_valor_por_omissao() -> None:
+    assert importer._tipo_preco("LIVRE") == "LIVRE"
+    assert importer._tipo_preco(" livre ") == "LIVRE"
+    assert importer._tipo_preco("TABELA") == "TABELA"
+    # Coluna em falta (Excel antigo) ou valor estranho: fica TABELA.
+    assert importer._tipo_preco(None) == "TABELA"
+    assert importer._tipo_preco("xpto") == "TABELA"
+
+
+def test_extract_row_le_as_colunas_novas() -> None:
+    headers = ["Ref_LE", "DESCRICAO_no_ORCAMENTO", "TIPO_PRECO", "ATIVO", "COR", "STOCK",
+               "NOME_FABRICANTE", "REF_PHC", "DATA_ULTIMO_PRECO"]
+    row = ("PLC0001", "AGL 19MM", "LIVRE", "NAO", "BRANCO", "1", "SONAE", "FF00327", "23-04-2026")
+
+    values = importer.extract_row(row, importer.build_column_map(headers))
+
+    assert values["tipo_preco"] == "LIVRE"
+    assert values["ativo"] is False
+    assert values["cor"] == "BRANCO"
+    assert values["stock"] is True
+    assert values["nome_fabricante"] == "SONAE"
+    assert values["ref_phc"] == "FF00327"
+    assert values["data_ultimo_preco"] == date(2026, 4, 23)

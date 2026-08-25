@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QTableWidget, QTableWidgetItem
@@ -50,17 +52,31 @@ def test_duplo_clique_em_modo_resolucao_aplica_materia() -> None:
     assert aplicadas == [materia]
 
 
-def test_duplo_clique_fora_de_modo_resolucao_nao_faz_nada() -> None:
-    aplicadas: list = []
+def test_duplo_clique_fora_de_modo_resolucao_abre_a_ficha() -> None:
+    """Fora do modo resolução, o duplo-clique passou a abrir a ficha para editar."""
+    abertas: list = []
+    materia = SimpleNamespace(id=5)
     fake = SimpleNamespace(
-        _materias_por_row={0: SimpleNamespace(id=5)},
+        _materias_por_row={0: materia},
         _resolucao_callback=None,  # não está em modo resolução
         sair_modo_resolucao=lambda: None,
+        _abrir_dialogo=abertas.append,
     )
 
     MateriasPrimasPage._on_duplo_clique(fake, 0, 0)
 
-    assert aplicadas == []
+    assert abertas == [materia]
+
+
+def test_duplo_clique_em_linha_sem_materia_nao_faz_nada() -> None:
+    fake = SimpleNamespace(
+        _materias_por_row={},
+        _resolucao_callback=None,
+        sair_modo_resolucao=lambda: None,
+        _abrir_dialogo=lambda _materia: pytest.fail("não devia abrir nada"),
+    )
+
+    MateriasPrimasPage._on_duplo_clique(fake, 0, 0)
 
 
 def test_focar_materia_prima_ignora_ref_vazia() -> None:

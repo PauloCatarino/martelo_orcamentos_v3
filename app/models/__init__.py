@@ -7,6 +7,7 @@ from app.models.def_maquina import DefMaquina
 from app.models.def_margem_padrao import DefMargemPadrao
 from app.models.def_maquina_escalao_area import DefMaquinaEscalaoArea
 from app.models.def_materia_prima import DefMateriaPrima
+from app.models.def_materia_prima_preco_historico import DefMateriaPrimaPrecoHistorico
 from app.models.def_modulo import DefModulo
 from app.models.def_modulo_categoria import DefModuloCategoria
 from app.models.def_modulo_linha import DefModuloLinha
@@ -68,6 +69,7 @@ __all__ = [
     "DefMargemPadrao",
     "DefMaquinaEscalaoArea",
     "DefMateriaPrima",
+    "DefMateriaPrimaPrecoHistorico",
     "DefModulo",
     "DefModuloCategoria",
     "DefModuloLinha",

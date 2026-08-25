@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
+    ForeignKey,
     Index,
     Numeric,
     String,
@@ -16,9 +18,10 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.domain.materia_prima_types import TIPO_PRECO_TABELA
 
 ORIGEM_DADOS_EXCEL = "EXCEL"
 
@@ -37,6 +40,8 @@ class DefMateriaPrima(Base):
         Index("ix_def_materias_primas_familia_original_excel", "familia_original_excel"),
         Index("ix_def_materias_primas_ativo", "ativo"),
         Index("ix_def_materias_primas_origem_dados", "origem_dados"),
+        Index("ix_def_materias_primas_tipo_preco", "tipo_preco"),
+        Index("ix_def_materias_primas_data_ultimo_preco", "data_ultimo_preco"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -59,6 +64,24 @@ class DefMateriaPrima(Base):
     largura: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     espessura: Mapped[Decimal | None] = mapped_column(Numeric(14, 3), nullable=True)
     fornecedor: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    # TABELA (preço do fornecedor) ou LIVRE (preço escrito dentro do orçamento).
+    tipo_preco: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=TIPO_PRECO_TABELA,
+        server_default=TIPO_PRECO_TABELA,
+    )
+    data_ultimo_preco: Mapped[date | None] = mapped_column(Date, nullable=True)
+    stock: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    cor: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    nome_fabricante: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    ref_phc: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    criado_por_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )
+    alterado_por_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id"), nullable=True
+    )
     origem_dados: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -73,4 +96,13 @@ class DefMateriaPrima(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    criado_por: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[criado_por_id],
+    )
+    alterado_por: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[alterado_por_id],
     )

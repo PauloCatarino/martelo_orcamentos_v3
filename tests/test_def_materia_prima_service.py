@@ -35,6 +35,18 @@ def _resumo(**kwargs) -> DefMateriaPrimaResumo:
     return DefMateriaPrimaResumo(**base)
 
 
+def _campos_do_resumo(kwargs: dict) -> dict:
+    """Só os campos que o read model conhece.
+
+    O repositório recebe mais coisas do que o resumo devolve (por exemplo
+    ``criado_por_id``), e o duplo de teste tem de deixar essas passar ao lado.
+    """
+    conhecidos = set(DefMateriaPrimaResumo.__dataclass_fields__)
+    return {
+        chave: valor for chave, valor in kwargs.items() if chave in conhecidos
+    }
+
+
 class _FakeRepository:
     all_rows: list[DefMateriaPrimaResumo] = []
     active_rows: list[DefMateriaPrimaResumo] = []
@@ -48,6 +60,10 @@ class _FakeRepository:
     updated_payload: dict | None = None
     deactivate_result = True
     deactivated_id: int | None = None
+    ativo_definido: bool | None = None
+    ultimo_numero: int = 0
+    prefixo_pedido: str | None = None
+    precos_registados: list = []
 
     def __init__(self, _session: object) -> None:
         pass
@@ -72,15 +88,33 @@ class _FakeRepository:
 
     def create_materia_prima(self, **kwargs) -> DefMateriaPrimaResumo:
         self.__class__.created_payload = kwargs
-        return _resumo(id=1, **kwargs)
+        return _resumo(id=1, **_campos_do_resumo(kwargs))
 
     def update_materia_prima(self, **kwargs) -> DefMateriaPrimaResumo:
         self.__class__.updated_payload = kwargs
-        return _resumo(**kwargs)
+        return _resumo(**_campos_do_resumo(kwargs))
 
     def deactivate_materia_prima(self, id: int) -> bool:
         self.__class__.deactivated_id = id
         return self.deactivate_result
+
+    def definir_ativo(self, id: int, *, ativo: bool, alterado_por_id=None) -> bool:
+        self.__class__.deactivated_id = id
+        self.__class__.ativo_definido = ativo
+        return self.deactivate_result
+
+    def ultimo_numero_ref_le(self, prefixo: str) -> int:
+        self.__class__.prefixo_pedido = prefixo
+        return self.ultimo_numero
+
+    def registar_preco(self, **kwargs) -> None:
+        self.__class__.precos_registados = [*self.precos_registados, kwargs]
+
+    def historico_precos(self, materia_prima_id: int, limite: int = 50) -> list:
+        return []
+
+    def contar_utilizacoes(self, materia_prima_id: int) -> int:
+        return 0
 
 
 class _FakeSession:
@@ -102,6 +136,10 @@ def _reset() -> None:
     _FakeRepository.updated_payload = None
     _FakeRepository.deactivate_result = True
     _FakeRepository.deactivated_id = None
+    _FakeRepository.ativo_definido = None
+    _FakeRepository.ultimo_numero = 0
+    _FakeRepository.prefixo_pedido = None
+    _FakeRepository.precos_registados = []
 
 
 def _service(monkeypatch):
@@ -167,7 +205,9 @@ def test_criar_normaliza_descricao_ref_le_e_origem(monkeypatch) -> None:
     assert _FakeRepository.created_payload is not None
     assert _FakeRepository.created_payload["descricao"] == "AGL 19MM"
     assert _FakeRepository.created_payload["ref_le"] == "PLC0001"
-    assert _FakeRepository.created_payload["origem_dados"] == "EXCEL"
+    # Sem origem indicada, o material nasceu no proprio V3 (o Excel deixou de
+    # ser o dono do catalogo e tem de ser dito expressamente).
+    assert _FakeRepository.created_payload["origem_dados"] == "V3"
     assert _FakeRepository.created_payload["preco_tabela"] == Decimal("24.87")
     assert _FakeRepository.created_payload["preco_liquido"] is None
     assert result.descricao == "AGL 19MM"

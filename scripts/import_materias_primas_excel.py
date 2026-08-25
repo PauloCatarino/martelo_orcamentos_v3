@@ -75,6 +75,10 @@ COLUMN_ALIASES = {
     "tipo_preco": ("tipopreco",),
     "ativo": ("ativo", "activo"),
     "data_ultimo_preco": ("dataultimopreco",),
+    "cor": ("cor",),
+    "stock": ("stock",),
+    "nome_fabricante": ("nomefabricante", "fabricante"),
+    "ref_phc": ("refphc",),
 }
 
 
@@ -262,6 +266,10 @@ def extract_row(row: tuple, column_map: dict) -> dict:
         "tipo_preco": to_text(cell("tipo_preco")),
         "ativo": to_bool_sim_nao(cell("ativo")),
         "data_ultimo_preco": to_date(cell("data_ultimo_preco")),
+        "cor": to_text(cell("cor")),
+        "stock": to_bool_sim_nao(cell("stock")),
+        "nome_fabricante": to_text(cell("nome_fabricante")),
+        "ref_phc": to_text(cell("ref_phc")),
     }
 
 
@@ -557,6 +565,28 @@ def main(argv: list | None = None) -> int:
     return 0
 
 
+def _percentagem(valor: Decimal | None) -> Decimal | None:
+    """Guardar percentagens humanas (20), não fracções (0,2).
+
+    No Excel as colunas estão formatadas como percentagem, por isso a célula
+    traz 0,2 para 20%. A base de dados passou a guardar percentagem humana.
+    """
+    from app.domain.numeros import normalize_percentagem_humana
+
+    return normalize_percentagem_humana(valor)
+
+
+def _tipo_preco(valor: str | None) -> str:
+    """TIPO_PRECO do Excel, ou TABELA quando a coluna não existe / vem vazia."""
+    from app.domain.materia_prima_types import (
+        TIPO_PRECO_TABELA,
+        TIPOS_PRECO_VALIDOS,
+    )
+
+    normalizado = (valor or "").strip().upper()
+    return normalizado if normalizado in TIPOS_PRECO_VALIDOS else TIPO_PRECO_TABELA
+
+
 def _criar_data(values: dict) -> CriarDefMateriaPrimaData:
     return CriarDefMateriaPrimaData(
         descricao=values["descricao"],
@@ -566,12 +596,18 @@ def _criar_data(values: dict) -> CriarDefMateriaPrimaData:
         familia_original_excel=values["familia_original_excel"],
         coresp_orla_0_4=values["coresp_orla_0_4"],
         coresp_orla_1_0=values["coresp_orla_1_0"],
-        desperdicio_percentagem=values["desperdicio_percentagem"],
+        desperdicio_percentagem=_percentagem(values["desperdicio_percentagem"]),
         unidade=values["unidade"],
         preco_tabela=values["preco_tabela"],
-        desconto=values["desconto"],
-        margem=values["margem"],
+        desconto=_percentagem(values["desconto"]),
+        margem=_percentagem(values["margem"]),
         preco_liquido=values["preco_liquido"],
+        tipo_preco=_tipo_preco(values["tipo_preco"]),
+        data_ultimo_preco=values["data_ultimo_preco"],
+        stock=values["stock"],
+        cor=values["cor"],
+        nome_fabricante=values["nome_fabricante"],
+        ref_phc=values["ref_phc"],
         comprimento=values["comprimento"],
         largura=values["largura"],
         espessura=values["espessura"],
@@ -593,12 +629,18 @@ def _editar_data(values: dict, existing) -> EditarDefMateriaPrimaData:
         familia_martelo=existing.familia_martelo,
         coresp_orla_0_4=values["coresp_orla_0_4"],
         coresp_orla_1_0=values["coresp_orla_1_0"],
-        desperdicio_percentagem=values["desperdicio_percentagem"],
+        desperdicio_percentagem=_percentagem(values["desperdicio_percentagem"]),
         unidade=values["unidade"],
         preco_tabela=values["preco_tabela"],
-        desconto=values["desconto"],
-        margem=values["margem"],
+        desconto=_percentagem(values["desconto"]),
+        margem=_percentagem(values["margem"]),
         preco_liquido=values["preco_liquido"],
+        tipo_preco=_tipo_preco(values["tipo_preco"]),
+        data_ultimo_preco=values["data_ultimo_preco"],
+        stock=values["stock"],
+        cor=values["cor"],
+        nome_fabricante=values["nome_fabricante"],
+        ref_phc=values["ref_phc"],
         comprimento=values["comprimento"],
         largura=values["largura"],
         espessura=values["espessura"],

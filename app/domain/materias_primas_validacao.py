@@ -31,6 +31,32 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
+# O vocabulário do catálogo (tipos de preço, famílias, unidades) vive em
+# app.domain.materia_prima_types e é reexportado aqui, para quem já importava
+# estes nomes deste módulo continuar a encontrá-los.
+from app.domain.materia_prima_types import (
+    FAMILIAS_VALIDAS,
+    MESES_PRECO_DESATUALIZADO,
+    TIPO_PRECO_LIVRE,
+    TIPO_PRECO_TABELA,
+    TIPOS_PRECO_VALIDOS,
+    UNIDADES_VALIDAS,
+)
+
+__all__ = [
+    "FAMILIAS_VALIDAS",
+    "MESES_PRECO_DESATUALIZADO",
+    "TIPOS_PRECO_VALIDOS",
+    "TIPO_PRECO_LIVRE",
+    "TIPO_PRECO_TABELA",
+    "UNIDADES_VALIDAS",
+    "AvisoExcel",
+    "LinhaExcel",
+    "RelatorioExcel",
+    "resumir",
+    "validar_linhas",
+]
+
 # Same words as the costing audit (``app.services.custeio_auditoria_service``),
 # repeated here on purpose: this module must stay pure (no database, no Qt) so
 # it can be tested without opening an Excel file or a session.
@@ -50,19 +76,6 @@ CAT_PRECO_DESATUALIZADO = "preco_desatualizado"
 CAT_VALOR_FORA_DA_LISTA = "valor_fora_da_lista"
 CAT_DESAPARECEU_DO_EXCEL = "desapareceu_do_excel"
 CAT_PRECO_ALTERADO = "preco_alterado"
-
-# Accepted values (the same lists that feed the Excel dropdowns).
-FAMILIAS_VALIDAS = ("ACABAMENTOS", "FERRAGENS", "ORLA", "PLACAS")
-UNIDADES_VALIDAS = ("M2", "ML", "UND")
-
-# TIPO_PRECO column: TABELA = price comes from the catalog; LIVRE = the material
-# is a placeholder whose price/description the user fills in inside the budget.
-TIPO_PRECO_TABELA = "TABELA"
-TIPO_PRECO_LIVRE = "LIVRE"
-TIPOS_PRECO_VALIDOS = (TIPO_PRECO_TABELA, TIPO_PRECO_LIVRE)
-
-# A price older than this many months is flagged for review.
-MESES_PRECO_DESATUALIZADO = 12
 # Table-price differences below this are noise, not a change (same tolerance as
 # the ValueSet price sync).
 TOLERANCIA_PRECO = Decimal("0.05")

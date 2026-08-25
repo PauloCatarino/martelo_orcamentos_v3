@@ -158,3 +158,122 @@ Riscos a vigiar:
    revisao? (proposta: revisao, com "aceitar tudo" a mao)
 3. Criamos tabela de fornecedores a serio (nome, email, contacto)?
 4. O Excel antigo continua a poder ser importado, ou passa a ser so exportacao?
+
+---
+
+## 6. O que ficou feito (2026-08-25) - G1, G2 e G3
+
+### 6.1 Decisoes do Paulo que fecharam o desenho
+
+1. **O anexo mostra o preco atual.** O fornecedor preenche o **preco de tabela**
+   e a **percentagem de desconto** - as duas colunas que o Excel ja tinha. O
+   preco liquido e calculado por nos e nunca sai daqui.
+2. **A importacao da resposta e automatica, a validacao e sempre humana.** Mesmo
+   com o ficheiro bem preenchido, os valores passam por confirmacao antes de
+   entrarem no catalogo.
+3. **Vai existir tabela de fornecedores.** Os fornecedores tem varios emails por
+   departamento, por isso no envio o V3 **sugere** o destinatario e o utilizador
+   pode altera-lo e acrescentar CC.
+4. **O Excel deixa de ser fonte.** A partir do momento em que os dados sao
+   editados no V3, o ficheiro fica desatualizado e nao pode voltar a importar.
+
+### 6.2 G1 - Base de dados (migracao `20260825_95`)
+
+Campos novos em `def_materias_primas`: `tipo_preco` (TABELA/LIVRE),
+`data_ultimo_preco`, `stock`, `cor`, `nome_fabricante`, `ref_phc`,
+`criado_por_id` e `alterado_por_id`. Tabela nova
+`def_materias_primas_precos_historico` (so acrescenta, nunca reescreve) e os
+*grants* do MySQL aplicados como nas outras tabelas.
+
+A migracao **converte as percentagens** de fraccao (0,2) para percentagem humana
+(20). Era o P11 do documento 30: a leitura dependia de adivinhar pelo valor e
+enganava-se numa margem de 100%. E seguro correr duas vezes e nao toca em
+orcamentos - as linhas de custeio tem a sua propria copia.
+
+Vocabulario partilhado em `app/domain/materia_prima_types.py` (tipos de preco,
+familias, unidades, prefixos das referencias, `preco_em_falta`,
+`preco_desatualizado`), para o modelo, a validacao e os ecras falarem todos a
+mesma lingua.
+
+### 6.3 G2 - Editar dentro do V3
+
+- **Nova materia-prima / Editar / Duplicar / Desativar** e **"Mostrar nao
+  ativos"** na pagina de Materias-Primas; duplo-clique abre a ficha;
+- linhas descontinuadas **riscadas e a cinzento**, como o `Ctrl+5` do Excel, com
+  a coluna "Ativo" legivel;
+- colunas novas: **Ultimo preco**, **Stock** e **Fornecedor**; preco em falta a
+  vermelho e preco com mais de 12 meses a ambar - as mesmas cores do Excel;
+- rodape com o que esta a vista, quantos precos ha a rever e quantos estao sem
+  preco;
+- ficha (`app/ui/dialogs/materia_prima_dialog.py`) com **Dados** e **Historico de
+  precos**, o preco liquido **calculado** e nao escrito, a referencia atribuida
+  automaticamente pela familia, e a linha de quem criou / quem alterou;
+- desativar pede confirmacao e diz em quantas linhas de orcamento o material
+  esta a ser usado;
+- materiais de **preco livre** nao tem campos de preco: o valor escreve-se dentro
+  do orcamento.
+
+Uma consequencia assumida: **sem origem indicada, um material passa a nascer com
+`origem_dados = "V3"`** (era `EXCEL`). A importacao continua a marcar `EXCEL`
+expressamente.
+
+### 6.4 G3 - Regressao (a rede de seguranca)
+
+`tests/test_materias_primas_no_v3_regressao.py` - 19 testes com base de dados a
+serio, que provam:
+
+- desativar um material **nao muda** a referencia, a descricao nem o preco das
+  linhas de orcamento onde ja foi usado;
+- alterar o preco ou a descricao **nao muda** os orcamentos ja calculados;
+- um material desativado sai das escolhas (`pesquisar`, `list_active`) mas
+  continua no catalogo e pode ser reposto;
+- as referencias nunca se repetem nem se reaproveitam, mesmo depois de
+  desativar;
+- o historico so ganha linha quando o preco muda mesmo;
+- "preco em falta" e "preco a rever" ignoram os materiais de preco livre.
+
+Mais `tests/test_migracao_materias_primas_no_v3.py` (4 testes: colunas,
+conversao das percentagens, idempotencia e downgrade). Suite completa: **3723
+testes**.
+
+### 6.5 Guiao de teste
+
+1. Na pasta principal, correr a migracao com `python -m alembic upgrade head`.
+   Esperado: a base fica em `20260825_95`.
+2. Abrir o Martelo V3 (base **martelo_v3_dev**) e entrar como `paulo`.
+3. **Orcamentos > Materias-Primas** e clicar em **"Importar/Atualizar Excel"**
+   **uma ultima vez**: e o que traz do Excel o `TIPO_PRECO`, a
+   `DATA_ULTIMO_PRECO`, o stock, a cor, o fabricante e a referencia PHC.
+   **Depois desta importacao o Excel deixa de ser usado.**
+4. Confirmar na lista: coluna **Ultimo preco** preenchida, com ambar nos precos
+   de 2025; **Preco Liquido** a vermelho nos 7 sem preco; as "PLACAS LIVRES" a
+   dizer *preco livre*.
+5. **"+ Nova materia-prima"**: escolher familia PLACAS e confirmar que o campo
+   Ref LE sugere a proxima referencia livre. Preencher preco de tabela 30 e
+   desconto 20 e confirmar que o **preco liquido da 24,00 EUR** sozinho. Gravar.
+6. Selecionar essa materia-prima nova e **Desativar**. Confirmar que desaparece
+   da lista e que o rodape passa a dizer "1 descontinuada escondida".
+7. Ligar **"Mostrar nao ativos"**: aparece **riscada e a cinzento**.
+8. Com ela selecionada, o botao passa a **"Repor ativo"** - clicar e confirmar
+   que volta ao normal.
+9. Escolher uma materia-prima **ja usada num orcamento** (por exemplo uma placa
+   comum), abrir com duplo-clique e confirmar o separador **Historico de precos**
+   e a frase "Usado em N linhas de orcamento".
+10. Alterar-lhe o preco de tabela e gravar. Abrir um **orcamento antigo** que use
+    essa materia-prima e confirmar que **os valores nao mudaram**.
+11. Voltar a ficha e confirmar que o **Historico** ganhou uma linha nova, com a
+    variacao em percentagem e o seu nome.
+
+### 6.6 O que falta
+
+- **G4** exportar para Excel; **G5** tabela de fornecedores; **G6** pedido de
+  precos; **G7** importar a resposta; **G8** assistente.
+- **Retirar os botoes do Excel** ("Verificar Excel" e "Importar/Atualizar Excel")
+  depois da importacao final do ponto 3 do guiao. As regras de validacao que
+  foram escritas para o ficheiro passam a servir para validar o **catalogo do
+  V3** (precos em falta, orlas que nao existem, espessuras que nao batem certo).
+- A auditoria de custeio continua a assinalar como erro uma linha de material de
+  preco livre ainda sem preco. Esta **correto** (o orcamento sairia a zero), mas
+  a mensagem pode passar a dizer "material de preco livre: escreva o preco nesta
+  linha" em vez do aviso generico.
+- A **beta** precisa da migracao 95 quando la chegar.

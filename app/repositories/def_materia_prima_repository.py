@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import DefMateriaPrima
+from app.domain.materia_prima_types import (
+    ORIGEM_PRECO_MANUAL,
+    TIPO_PRECO_LIVRE,
+    TIPO_PRECO_TABELA,
+)
+from app.models import DefMateriaPrima, DefMateriaPrimaPrecoHistorico, User
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,38 @@ class DefMateriaPrimaResumo:
     desperdicio_percentagem: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    tipo_preco: str = TIPO_PRECO_TABELA
+    data_ultimo_preco: date | None = None
+    stock: bool | None = None
+    cor: str | None = None
+    nome_fabricante: str | None = None
+    ref_phc: str | None = None
+    # Nomes de quem criou e de quem alterou pela última vez, prontos a mostrar.
+    criado_por: str | None = None
+    alterado_por: str | None = None
+
+    @property
+    def preco_livre(self) -> bool:
+        """True quando o preço é para escrever dentro de cada orçamento."""
+        return self.tipo_preco == TIPO_PRECO_LIVRE
+
+
+@dataclass(frozen=True)
+class PrecoHistoricoResumo:
+    """Read model for one recorded price of a raw material."""
+
+    id: int
+    materia_prima_id: int
+    ref_le: str | None
+    preco_tabela: Decimal | None
+    desconto: Decimal | None
+    margem: Decimal | None
+    preco_liquido: Decimal | None
+    data_preco: date | None
+    origem: str
+    utilizador: str | None
+    observacoes: str | None
+    created_at: datetime | None = None
 
 
 class DefMateriaPrimaRepository:
@@ -139,9 +176,25 @@ class DefMateriaPrimaRepository:
         origem_dados: str = "EXCEL",
         ativo: bool = True,
         observacoes: str | None = None,
+        tipo_preco: str = TIPO_PRECO_TABELA,
+        data_ultimo_preco: date | None = None,
+        stock: bool | None = None,
+        cor: str | None = None,
+        nome_fabricante: str | None = None,
+        ref_phc: str | None = None,
+        criado_por_id: int | None = None,
+        alterado_por_id: int | None = None,
     ) -> DefMateriaPrimaResumo:
         """Create one raw material."""
         materia = DefMateriaPrima(
+            tipo_preco=tipo_preco,
+            data_ultimo_preco=data_ultimo_preco,
+            stock=stock,
+            cor=cor,
+            nome_fabricante=nome_fabricante,
+            ref_phc=ref_phc,
+            criado_por_id=criado_por_id,
+            alterado_por_id=alterado_por_id,
             descricao=descricao,
             ref_le=ref_le,
             referencia_fornecedor=referencia_fornecedor,
@@ -196,6 +249,13 @@ class DefMateriaPrimaRepository:
         origem_dados: str = "EXCEL",
         ativo: bool = True,
         observacoes: str | None = None,
+        tipo_preco: str = TIPO_PRECO_TABELA,
+        data_ultimo_preco: date | None = None,
+        stock: bool | None = None,
+        cor: str | None = None,
+        nome_fabricante: str | None = None,
+        ref_phc: str | None = None,
+        alterado_por_id: int | None = None,
     ) -> DefMateriaPrimaResumo:
         """Update one raw material."""
         materia = self.session.get(DefMateriaPrima, id)
@@ -224,20 +284,143 @@ class DefMateriaPrimaRepository:
         materia.origem_dados = origem_dados
         materia.ativo = ativo
         materia.observacoes = observacoes
+        materia.tipo_preco = tipo_preco
+        materia.data_ultimo_preco = data_ultimo_preco
+        materia.stock = stock
+        materia.cor = cor
+        materia.nome_fabricante = nome_fabricante
+        materia.ref_phc = ref_phc
+        if alterado_por_id is not None:
+            materia.alterado_por_id = alterado_por_id
         self.session.flush()
 
         return self._to_resumo(materia)
 
     def deactivate_materia_prima(self, id: int) -> bool:
         """Deactivate one raw material."""
+        return self.definir_ativo(id, ativo=False)
+
+    def definir_ativo(
+        self, id: int, *, ativo: bool, alterado_por_id: int | None = None
+    ) -> bool:
+        """Ativar ou desativar um material. Devolve False se não existir.
+
+        Desativar não apaga nada: o material deixa de aparecer nas escolhas de
+        linhas novas, mas os orçamentos onde já foi usado ficam exatamente como
+        estavam, porque cada linha guarda a sua própria cópia dos dados.
+        """
         materia = self.session.get(DefMateriaPrima, id)
         if materia is None:
             return False
 
-        materia.ativo = False
+        materia.ativo = ativo
+        if alterado_por_id is not None:
+            materia.alterado_por_id = alterado_por_id
         self.session.flush()
 
         return True
+
+    def ultimo_numero_ref_le(self, prefixo: str) -> int:
+        """Maior número já usado numa família (PLC -> 121), 0 quando não há.
+
+        Olha para TODAS as referências, ativas ou não: uma Ref LE nunca pode ser
+        reaproveitada, porque identifica o material nos orçamentos antigos.
+        """
+        statement = select(DefMateriaPrima.ref_le).where(
+            DefMateriaPrima.ref_le.like(f"{prefixo}%")
+        )
+        maior = 0
+        for (ref_le,) in self.session.execute(statement):
+            sufixo = (ref_le or "")[len(prefixo) :]
+            if sufixo.isdigit():
+                maior = max(maior, int(sufixo))
+
+        return maior
+
+    def contar_utilizacoes(self, materia_prima_id: int) -> int:
+        """Quantas linhas de orçamento usam este material (todas as versões)."""
+        from app.models import (
+            OrcamentoItemCusteioLinha,
+            OrcamentoItemValuesetLinha,
+            OrcamentoValuesetLinha,
+        )
+
+        total = 0
+        for modelo in (
+            OrcamentoItemCusteioLinha,
+            OrcamentoItemValuesetLinha,
+            OrcamentoValuesetLinha,
+        ):
+            statement = select(func.count()).select_from(modelo).where(
+                modelo.materia_prima_id == materia_prima_id
+            )
+            total += self.session.execute(statement).scalar_one()
+
+        return total
+
+    def registar_preco(
+        self,
+        *,
+        materia_prima_id: int,
+        ref_le: str | None = None,
+        preco_tabela: Decimal | None = None,
+        desconto: Decimal | None = None,
+        margem: Decimal | None = None,
+        preco_liquido: Decimal | None = None,
+        data_preco: date | None = None,
+        origem: str = ORIGEM_PRECO_MANUAL,
+        user_id: int | None = None,
+        observacoes: str | None = None,
+    ) -> None:
+        """Escrever uma linha no histórico de preços (nunca reescreve nada)."""
+        self.session.add(
+            DefMateriaPrimaPrecoHistorico(
+                materia_prima_id=materia_prima_id,
+                ref_le=ref_le,
+                preco_tabela=preco_tabela,
+                desconto=desconto,
+                margem=margem,
+                preco_liquido=preco_liquido,
+                data_preco=data_preco,
+                origem=origem,
+                user_id=user_id,
+                observacoes=observacoes,
+            )
+        )
+        self.session.flush()
+
+    def historico_precos(
+        self, materia_prima_id: int, limite: int = 50
+    ) -> list[PrecoHistoricoResumo]:
+        """Histórico de preços de um material, do mais recente para o mais antigo."""
+        statement = (
+            select(DefMateriaPrimaPrecoHistorico, User.nome)
+            .join(User, User.id == DefMateriaPrimaPrecoHistorico.user_id, isouter=True)
+            .where(DefMateriaPrimaPrecoHistorico.materia_prima_id == materia_prima_id)
+            .order_by(
+                DefMateriaPrimaPrecoHistorico.created_at.desc(),
+                DefMateriaPrimaPrecoHistorico.id.desc(),
+            )
+            .limit(limite)
+        )
+
+        return [
+            PrecoHistoricoResumo(
+                id=linha.id,
+                materia_prima_id=linha.materia_prima_id,
+                ref_le=linha.ref_le,
+                preco_tabela=linha.preco_tabela,
+                desconto=linha.desconto,
+                margem=linha.margem,
+                preco_liquido=linha.preco_liquido,
+                data_preco=linha.data_preco,
+                origem=linha.origem,
+                utilizador=nome,
+                observacoes=linha.observacoes,
+                created_at=linha.created_at,
+            )
+            for linha, nome in self.session.execute(statement)
+        ]
 
     def _to_resumo(self, materia: DefMateriaPrima) -> DefMateriaPrimaResumo:
         """Convert an ORM raw material to the read model."""
@@ -267,4 +450,20 @@ class DefMateriaPrimaRepository:
             observacoes=materia.observacoes,
             created_at=materia.created_at,
             updated_at=materia.updated_at,
+            tipo_preco=materia.tipo_preco,
+            data_ultimo_preco=materia.data_ultimo_preco,
+            stock=materia.stock,
+            cor=materia.cor,
+            nome_fabricante=materia.nome_fabricante,
+            ref_phc=materia.ref_phc,
+            criado_por=_nome_do_utilizador(materia.criado_por),
+            alterado_por=_nome_do_utilizador(materia.alterado_por),
         )
+
+
+def _nome_do_utilizador(user) -> str | None:
+    """Nome de quem mexeu, ou None quando o registo não tem utilizador."""
+    if user is None:
+        return None
+
+    return user.nome or user.username

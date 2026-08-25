@@ -46,6 +46,9 @@ def test_materias_primas_page_table_headers() -> None:
         "Unidade",
         "Desp %",
         "Pre\u00e7o L\u00edquido",
+        "\u00daltimo pre\u00e7o",
+        "Stock",
+        "Fornecedor",
         "Orla 0.4",
         "Orla 1.0",
         "Comp MP",
@@ -53,6 +56,15 @@ def test_materias_primas_page_table_headers() -> None:
         "Esp MP",
         "Ativo",
     ]
+    # As colunas dos avisos t\u00eam de continuar a apontar para as certas.
+    assert (
+        MateriasPrimasPage.TABLE_HEADERS[MateriasPrimasPage.COLUNA_PRECO_LIQUIDO]
+        == "Pre\u00e7o L\u00edquido"
+    )
+    assert (
+        MateriasPrimasPage.TABLE_HEADERS[MateriasPrimasPage.COLUNA_ULTIMO_PRECO]
+        == "\u00daltimo pre\u00e7o"
+    )
 
 
 def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
@@ -63,7 +75,7 @@ def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
 
     assert "DefMateriaPrimaService" in load_source
     assert "listar_materias_primas" in load_source
-    assert "format_currency" in table_source
+    assert "format_currency" in inspect.getsource(MateriasPrimasPage._texto_preco)
     assert '"Sim" if materia.ativo else "N\\u00e3o"' in table_source
 
 
