@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 
 from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QMenu, QTableView, QTableWidget
 
 from app.core.session import app_session
@@ -40,8 +41,11 @@ def ligar_menu_colunas(
     table: QTableView | QTableWidget,
     chave: str,
     ocultas_por_defeito: Collection[str] = (),
-) -> None:
-    """Attach a right-click header menu to show/hide table columns."""
+):
+    """Attach a right-click header menu to show/hide table columns.
+
+    Devolve a função que abre o menu, para uma página lhe poder dar um botão.
+    """
     header = table.horizontalHeader()
     settings = QSettings(_ORG, _APP)
     nomes = _nomes_colunas(table)
@@ -74,7 +78,8 @@ def ligar_menu_colunas(
         settings.setValue(_settings_key(chave, indice), bool(visivel))
         settings.sync()
 
-    def _abrir_menu(pos) -> None:
+    def _abrir_menu(pos=None) -> None:
+        """Menu das colunas. Sem posição, abre onde está o rato (num botão)."""
         menu = QMenu(header)
         mostrar_todas = menu.addAction("Mostrar todas")
         mostrar_todas.triggered.connect(_mostrar_todas)
@@ -92,10 +97,14 @@ def ligar_menu_colunas(
                 )
             )
 
-        menu.exec(header.mapToGlobal(pos))
+        menu.exec(QCursor.pos() if pos is None else header.mapToGlobal(pos))
 
     header.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
     header.customContextMenuRequested.connect(_abrir_menu)
+
+    # Devolvido para quem quiser oferecer um botão além do menu do cabeçalho:
+    # o clique direito é rápido para quem sabe, mas ninguém o descobre sozinho.
+    return _abrir_menu
 
 
 def _nomes_colunas(table: QTableView | QTableWidget) -> list[str]:

@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
+    QMessageBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -49,6 +50,9 @@ class PedidoPrecosDialog(QDialog):
 
     COLUNA_VISTO = 0
     COLUNA_EMAIL = 4
+
+    #: A partir daqui, abrir tantas janelas do Outlook de uma vez pede aviso.
+    AVISO_MUITOS_EMAILS = 5
 
     def __init__(
         self,
@@ -223,6 +227,17 @@ class PedidoPrecosDialog(QDialog):
                 "Escolha pelo menos um fornecedor com email preenchido."
             )
             return
+
+        if len(escolhidos) > self.AVISO_MUITOS_EMAILS:
+            resposta = QMessageBox.question(
+                self,
+                "Preparar vários emails",
+                f"Vão abrir-se {len(escolhidos)} mensagens no Outlook, uma por "
+                "fornecedor. Continuar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
 
         if self.on_preparar is not None and not self.on_preparar(escolhidos):
             return

@@ -10,6 +10,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import openpyxl
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
@@ -282,3 +283,47 @@ def test_nome_sem_ficha_fica_no_seu_proprio_grupo() -> None:
     assert set(por_nome) == {"FORNECEDOR NOVO", "OUTRO QUALQUER", "(sem fornecedor)"}
     assert all(pedido.total == 1 for pedido in pedidos)
     assert not any(pedido.tem_email for pedido in pedidos)
+
+
+def test_avisa_antes_de_abrir_muitas_janelas_do_outlook(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    materias = [
+        _materia(id=n, fornecedor_id=n, fornecedor=f"F{n}") for n in range(1, 8)
+    ]
+    fornecedores = [
+        _fornecedor(id=n, nome=f"F{n}", email=f"f{n}@x.pt") for n in range(1, 8)
+    ]
+    pedidos = agrupar_por_fornecedor(materias, fornecedores, HOJE)
+    preparados: list = []
+    dialogo = PedidoPrecosDialog(
+        pedidos, on_preparar=lambda p: preparados.append(p) or True
+    )
+
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.No),
+    )
+    dialogo._preparar()
+
+    assert preparados == []  # sete janelas de uma vez pedem confirmação
+
+
+def test_poucos_emails_nao_pedem_confirmacao(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    pedidos = agrupar_por_fornecedor([_materia()], [_fornecedor()], HOJE)
+    preparados: list = []
+    dialogo = PedidoPrecosDialog(
+        pedidos, on_preparar=lambda p: preparados.append(p) or True
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: pytest.fail("não devia perguntar nada")),
+    )
+
+    dialogo._preparar()
+
+    assert len(preparados) == 1

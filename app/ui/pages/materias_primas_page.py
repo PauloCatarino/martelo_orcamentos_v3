@@ -46,26 +46,53 @@ class MateriasPrimasPage(QWidget):
 
     TABLE_HEADERS = [
         "Ref LE",
-        "Descri\u00e7\u00e3o",
+        "Descrição",
         "Tipo Excel",
-        "Fam\u00edlia Excel",
+        "Família Excel",
         "Unidade",
+        "Tipo preço",
+        "Preço tabela",
+        "Desc %",
+        "Mrg %",
         "Desp %",
-        "Pre\u00e7o L\u00edquido",
-        "\u00daltimo pre\u00e7o",
+        "Preço Líquido",
+        "Último preço",
         "Stock",
         "Fornecedor",
+        "Ref. fornecedor",
+        "Fabricante",
+        "Cor",
+        "Ref. PHC",
         "Orla 0.4",
         "Orla 1.0",
         "Comp MP",
         "Larg MP",
         "Esp MP",
+        "Observações",
+        "Criado por",
+        "Alterado por",
         "Ativo",
     ]
 
-    #: Colunas que levam as cores dos avisos (pre\u00e7o em falta / pre\u00e7o antigo).
-    COLUNA_PRECO_LIQUIDO = 6
-    COLUNA_ULTIMO_PRECO = 7
+    #: Colunas escondidas até alguém as pedir no botão "Colunas...".
+    #: Cada utilizador guarda a sua escolha, por isso isto é só o ponto de partida.
+    COLUNAS_OCULTAS_POR_DEFEITO = (
+        "Tipo preço",
+        "Preço tabela",
+        "Desc %",
+        "Mrg %",
+        "Ref. fornecedor",
+        "Fabricante",
+        "Cor",
+        "Ref. PHC",
+        "Observações",
+        "Criado por",
+        "Alterado por",
+    )
+
+    #: Colunas que levam as cores dos avisos (preço em falta / preço antigo).
+    COLUNA_PRECO_LIQUIDO = TABLE_HEADERS.index("Preço Líquido")
+    COLUNA_ULTIMO_PRECO = TABLE_HEADERS.index("Último preço")
 
     def __init__(self) -> None:
         super().__init__()
@@ -123,6 +150,13 @@ class MateriasPrimasPage(QWidget):
             "de entrarem no catálogo"
         )
 
+        self.colunas_button = QPushButton("Colunas…")
+        self.colunas_button.setToolTip(
+            "Escolher as colunas que quer ver. A escolha fica guardada na sua "
+            "conta — cada pessoa vê a tabela à sua maneira."
+        )
+        self.colunas_button.clicked.connect(self._escolher_colunas)
+
         self.mostrar_inativos_input = QCheckBox("Mostrar não ativos")
         self.mostrar_inativos_input.setToolTip(
             "Mostrar também as matérias-primas descontinuadas, riscadas"
@@ -164,6 +198,7 @@ class MateriasPrimasPage(QWidget):
         toolbar.addWidget(self.fornecedores_button)
         toolbar.addWidget(self.pedir_precos_button)
         toolbar.addWidget(self.ler_resposta_button)
+        toolbar.addWidget(self.colunas_button)
         toolbar.addWidget(self.mostrar_inativos_input)
         toolbar.addStretch()
         toolbar.addWidget(self.verificar_button)
@@ -188,7 +223,9 @@ class MateriasPrimasPage(QWidget):
         self._larguras_restauradas = ligar_persistencia_larguras(
             self.table, "materias_primas"
         )
-        ligar_menu_colunas(self.table, "materias_primas")
+        self._abrir_menu_colunas = ligar_menu_colunas(
+            self.table, "materias_primas", self.COLUNAS_OCULTAS_POR_DEFEITO
+        )
         self._larguras_seed_feito = False
         # Mapa linha->matéria-prima e "modo resolução" (assistente): duplo-clique
         # aplica a matéria-prima à linha do custeio e volta.
@@ -926,6 +963,10 @@ class MateriasPrimasPage(QWidget):
                 materia.tipo_original_excel or "",
                 materia.familia_original_excel or "",
                 materia.unidade or "",
+                materia.tipo_preco,
+                format_currency(materia.preco_tabela),
+                formatar_percentagem(normalize_percentagem_humana(materia.desconto)),
+                formatar_percentagem(normalize_percentagem_humana(materia.margem)),
                 formatar_percentagem(
                     normalize_percentagem_humana(materia.desperdicio_percentagem)
                 ),
@@ -933,12 +974,19 @@ class MateriasPrimasPage(QWidget):
                 self._texto_data_preco(materia),
                 self._texto_stock(materia),
                 materia.fornecedor or "",
+                materia.referencia_fornecedor or "",
+                materia.nome_fabricante or "",
+                materia.cor or "",
+                materia.ref_phc or "",
                 materia.coresp_orla_0_4 or "",
                 materia.coresp_orla_1_0 or "",
                 format_quantity(materia.comprimento),
                 format_quantity(materia.largura),
                 format_quantity(materia.espessura),
-                "Sim" if materia.ativo else "N\u00e3o",
+                materia.observacoes or "",
+                materia.criado_por or "",
+                materia.alterado_por or "",
+                "Sim" if materia.ativo else "Não",
             ]
 
             riscado = not materia.ativo
@@ -966,6 +1014,10 @@ class MateriasPrimasPage(QWidget):
         ):
             self.table.resizeColumnsToContents()
             self._larguras_seed_feito = True
+
+    def _escolher_colunas(self) -> None:
+        """Abrir o menu das colunas (o mesmo do clique direito no cabeçalho)."""
+        self._abrir_menu_colunas()
 
     def _texto_preco(self, materia: DefMateriaPrimaResumo) -> str:
         """Preço líquido, ou a menção de que é escrito no orçamento."""

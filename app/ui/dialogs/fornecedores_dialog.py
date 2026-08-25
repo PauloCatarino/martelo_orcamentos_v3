@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
+    QMessageBox,
     QDialogButtonBox,
     QHBoxLayout,
     QHeaderView,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.domain.contactos import formatar_telefone
 from app.repositories.def_fornecedor_repository import DefFornecedorResumo
 from app.services.def_fornecedor_service import FornecedorData
 from app.ui import tema
@@ -123,7 +125,7 @@ class FornecedoresDialog(QDialog):
         self.button_box.button(QDialogButtonBox.StandardButton.Save).setText("Guardar")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText("Fechar")
         self.button_box.accepted.connect(self._guardar)
-        self.button_box.rejected.connect(self.reject)
+        self.button_box.rejected.connect(self._fechar)
 
         barra = QHBoxLayout()
         barra.addWidget(self.nome_novo_input)
@@ -163,7 +165,9 @@ class FornecedoresDialog(QDialog):
                 fornecedor.email or "",
                 fornecedor.email_cc or "",
                 fornecedor.pessoa_contacto or "",
-                fornecedor.telefone or "",
+                # Formatado à vista, mesmo para os que foram gravados antes de
+                # a formatação existir.
+                formatar_telefone(fornecedor.telefone) or "",
                 str(fornecedor.materias_primas),
             ]
             for coluna, valor in enumerate(valores):
@@ -258,9 +262,47 @@ class FornecedoresDialog(QDialog):
         self._preencher()
         self.status_label.setText(f"Fornecedor «{nome}» criado.")
 
+    def _confirmar_perder_alteracoes(self, acao: str) -> bool:
+        """Perguntar antes de deitar fora o que ainda não foi gravado.
+
+        A tabela edita-se diretamente e é fácil escrever vinte emails e sair
+        sem gravar — sem este aviso, desapareciam sem dizer nada.
+        """
+        pendentes = self.alteracoes()
+        if not pendentes:
+            return True
+
+        quantos = len(pendentes)
+        resposta = QMessageBox.question(
+            self,
+            "Alterações por gravar",
+            f"Tem {quantos} fornecedor{'es' if quantos != 1 else ''} alterado"
+            f"{'s' if quantos != 1 else ''} por gravar.\n\n"
+            f"Quer gravar antes de {acao}?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if resposta == QMessageBox.StandardButton.Cancel:
+            return False
+        if resposta == QMessageBox.StandardButton.Save:
+            return self.on_save is None or self.on_save(pendentes)
+
+        return True
+
+    def _fechar(self) -> None:
+        """Fechar, dando primeiro a hipótese de gravar o que está por gravar."""
+        if self._confirmar_perder_alteracoes("fechar"):
+            self.reject()
+
     def _ligar_pelo_nome(self) -> None:
         """Repor as ligações entre matérias-primas e fornecedores, pelo nome."""
         if self.on_ligar_pelo_nome is None:
+            return
+
+        # A operação relê tudo da base de dados e substitui a tabela.
+        if not self._confirmar_perder_alteracoes("ligar os materiais"):
             return
 
         resultado = self.on_ligar_pelo_nome()

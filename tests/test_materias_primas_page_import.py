@@ -38,33 +38,52 @@ def test_materias_primas_page_tem_zebra_por_celula() -> None:
 def test_materias_primas_page_table_headers() -> None:
     from app.ui.pages.materias_primas_page import MateriasPrimasPage
 
-    assert MateriasPrimasPage.TABLE_HEADERS == [
-        "Ref LE",
-        "Descri\u00e7\u00e3o",
-        "Tipo Excel",
-        "Fam\u00edlia Excel",
-        "Unidade",
-        "Desp %",
-        "Pre\u00e7o L\u00edquido",
-        "\u00daltimo pre\u00e7o",
-        "Stock",
-        "Fornecedor",
-        "Orla 0.4",
-        "Orla 1.0",
-        "Comp MP",
-        "Larg MP",
-        "Esp MP",
-        "Ativo",
-    ]
-    # As colunas dos avisos t\u00eam de continuar a apontar para as certas.
-    assert (
-        MateriasPrimasPage.TABLE_HEADERS[MateriasPrimasPage.COLUNA_PRECO_LIQUIDO]
-        == "Pre\u00e7o L\u00edquido"
-    )
-    assert (
-        MateriasPrimasPage.TABLE_HEADERS[MateriasPrimasPage.COLUNA_ULTIMO_PRECO]
-        == "\u00daltimo pre\u00e7o"
-    )
+    cabecalhos = MateriasPrimasPage.TABLE_HEADERS
+
+    # A tabela tem tudo o que o catálogo guarda; cada utilizador escolhe
+    # depois o que quer ver no botão "Colunas...".
+    assert cabecalhos[0] == "Ref LE"
+    assert cabecalhos[1] == "Descrição"
+    assert cabecalhos[-1] == "Ativo"
+    for esperada in (
+        "Tipo preço", "Preço tabela", "Desc %", "Mrg %", "Desp %",
+        "Preço Líquido", "Último preço", "Stock", "Fornecedor",
+        "Ref. fornecedor", "Fabricante", "Cor", "Ref. PHC", "Orla 0.4", "Orla 1.0",
+        "Comp MP", "Larg MP", "Esp MP", "Observações", "Criado por",
+        "Alterado por",
+    ):
+        assert esperada in cabecalhos
+
+    assert len(cabecalhos) == len(set(cabecalhos))
+
+    # As colunas dos avisos têm de continuar a apontar para as certas.
+    assert cabecalhos[MateriasPrimasPage.COLUNA_PRECO_LIQUIDO] == "Preço Líquido"
+    assert cabecalhos[MateriasPrimasPage.COLUNA_ULTIMO_PRECO] == "Último preço"
+
+    # As escondidas por defeito existem mesmo, e as principais ficam à vista.
+    assert set(MateriasPrimasPage.COLUNAS_OCULTAS_POR_DEFEITO).issubset(cabecalhos)
+    for visivel in ("Ref LE", "Descrição", "Preço Líquido", "Ativo"):
+        assert visivel not in MateriasPrimasPage.COLUNAS_OCULTAS_POR_DEFEITO
+
+
+def test_materias_primas_page_tem_botao_de_colunas() -> None:
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    init = inspect.getsource(MateriasPrimasPage.__init__)
+
+    assert "Colunas" in init
+    assert "ligar_menu_colunas" in init
+    assert "COLUNAS_OCULTAS_POR_DEFEITO" in init
+
+
+def test_uma_linha_tem_um_valor_por_coluna() -> None:
+    """Se as duas listas saírem de sincronia, a tabela mostra valores trocados."""
+    from app.ui.pages.materias_primas_page import MateriasPrimasPage
+
+    fonte = inspect.getsource(MateriasPrimasPage._preencher_tabela)
+    bloco = fonte[fonte.index("values = ["):fonte.index("]", fonte.index("values = ["))]
+
+    assert bloco.count(",") == len(MateriasPrimasPage.TABLE_HEADERS)
 
 
 def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
@@ -76,7 +95,8 @@ def test_materias_primas_page_uses_service_and_currency_formatter() -> None:
     assert "DefMateriaPrimaService" in load_source
     assert "listar_materias_primas" in load_source
     assert "format_currency" in inspect.getsource(MateriasPrimasPage._texto_preco)
-    assert '"Sim" if materia.ativo else "N\\u00e3o"' in table_source
+    # A coluna "Ativo" diz Sim/Não (sem depender de como o acento está escrito).
+    assert '"Sim" if materia.ativo else' in table_source
 
 
 def test_materias_primas_page_has_excel_import() -> None:

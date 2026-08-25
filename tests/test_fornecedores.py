@@ -334,3 +334,91 @@ def test_botao_de_ligar_so_aparece_quando_ha_quem_o_faca() -> None:
 
     assert sem_acao.ligar_button.isVisibleTo(sem_acao) is False
     assert com_acao.ligar_button.isVisibleTo(com_acao) is True
+
+
+def test_dialogo_mostra_o_telefone_formatado_mesmo_se_guardado_a_bruta() -> None:
+    """Os contactos gravados antes da formatação existir também se leem bem."""
+    dialogo = FornecedoresDialog([_resumo(telefone="932523885")])
+
+    assert dialogo.table.item(0, dialogo.COLUNA_TELEFONE).text() == "932 523 885"
+
+
+def test_telefone_ja_formatado_nao_e_alterado_pelo_dialogo() -> None:
+    dialogo = FornecedoresDialog([_resumo(telefone="932 523 885")])
+
+    assert dialogo.table.item(0, dialogo.COLUNA_TELEFONE).text() == "932 523 885"
+    # E não conta como alteração por gravar.
+    assert dialogo.alteracoes() == {}
+
+
+def test_fechar_com_alteracoes_pergunta_antes_de_perder(monkeypatch) -> None:
+    """A tabela edita-se direta: sair sem gravar não pode ser silencioso."""
+    from PySide6.QtWidgets import QMessageBox
+
+    gravados: list = []
+    dialogo = FornecedoresDialog([_resumo()], on_save=lambda m: gravados.append(m) or True)
+    dialogo.table.item(0, dialogo.COLUNA_EMAIL).setText("novo@sonae.pt")
+
+    perguntas: list = []
+
+    def _resposta(*args, **kwargs):
+        perguntas.append(args[2])
+        return QMessageBox.StandardButton.Save
+
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(_resposta))
+    dialogo._fechar()
+
+    assert len(perguntas) == 1
+    assert "por gravar" in perguntas[0]
+    assert len(gravados) == 1  # escolheu gravar, e gravou
+
+
+def test_fechar_sem_alteracoes_nao_pergunta_nada(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    dialogo = FornecedoresDialog([_resumo()])
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: pytest.fail("não devia perguntar nada")),
+    )
+
+    dialogo._fechar()
+
+
+def test_cancelar_o_aviso_nao_fecha_nem_grava(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    gravados: list = []
+    dialogo = FornecedoresDialog([_resumo()], on_save=lambda m: gravados.append(m) or True)
+    dialogo.table.item(0, dialogo.COLUNA_EMAIL).setText("novo@sonae.pt")
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel),
+    )
+
+    assert dialogo._confirmar_perder_alteracoes("fechar") is False
+    assert gravados == []
+
+
+def test_ligar_pelo_nome_avisa_antes_de_deitar_fora_o_que_esta_por_gravar(
+    monkeypatch,
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    ligou: list = []
+    dialogo = FornecedoresDialog(
+        [_resumo()],
+        on_ligar_pelo_nome=lambda: ligou.append(1) or ("feito.", [_resumo()]),
+    )
+    dialogo.table.item(0, dialogo.COLUNA_EMAIL).setText("novo@sonae.pt")
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(lambda *a, **k: QMessageBox.StandardButton.Cancel),
+    )
+
+    dialogo._ligar_pelo_nome()
+
+    assert ligou == []  # a operação nem chegou a correr
