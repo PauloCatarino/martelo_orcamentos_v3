@@ -11,6 +11,7 @@ from app.services.lista_material_pdf_service import (
     PdfPresetService,
     _export_sheets_to_pdf,
     _remover_ficheiro_a_substituir,
+    agrupar_para_exportacao,
     collision_free_path,
     document_filename,
     inspect_pdf_documents,
@@ -167,10 +168,10 @@ def test_nomes_pdf_incluem_nome_enc_imos_ix(tmp_path) -> None:
         "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf"
     )
     assert document_filename(by_id["lista_purch"], nome_enc) == (
-        "2_Lista_Purch_1449_01_26_JF_VIVA.pdf"
+        "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf"
     )
     assert document_filename(by_id["lista_spp"], nome_enc) == (
-        "2_Lista_SPP_1449_01_26_JF_VIVA.pdf"
+        "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf"
     )
     assert document_filename(by_id["resumo_orlas"], nome_enc) == (
         "4_Resumo_Orlas_1449_01_26_JF_VIVA.pdf"
@@ -200,16 +201,72 @@ def test_preset_antigo_de_ferragens_abre_os_tres_documentos() -> None:
     ) == {"relatorio"}
 
 
-def test_ferragens_purch_e_spp_sao_documentos_separados() -> None:
+def test_ferragens_purch_e_spp_sao_vistos_separados_do_mesmo_pdf() -> None:
     by_id = {document.identifier: document for document in DEFAULT_DOCUMENTS}
+    trio = ("lista_ferragens", "lista_purch", "lista_spp")
 
     assert by_id["lista_ferragens"].sheets == ("1_FERRAGENS",)
     assert by_id["lista_purch"].sheets == ("2_PURCH",)
     assert by_id["lista_spp"].sheets == ("3_SPP",)
-    assert {
-        by_id[identifier].category
-        for identifier in ("lista_ferragens", "lista_purch", "lista_spp")
-    } == {"Ferragens"}
+    assert by_id["lista_purch"].name == "Purch (Objectos Comprados)"
+    assert by_id["lista_spp"].name == "SPP (Stretchable Purchased Part)"
+    assert {by_id[identifier].category for identifier in trio} == {"Ferragens"}
+    # Vistos separados no menu, um único ficheiro na pasta.
+    assert {by_id[identifier].group for identifier in trio} == {"ferragens"}
+    assert {by_id[identifier].filename for identifier in trio} == {
+        "2_Lista_Ferragens_{nome_enc_imos}.pdf"
+    }
+
+
+def test_ferragens_purch_e_spp_saem_num_unico_pdf(tmp_path) -> None:
+    path = tmp_path / "lista.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "DEFENICOES"
+    workbook.active["E3"] = "1449_01_26_JF_VIVA"
+    for nome in ("1_FERRAGENS", "2_PURCH", "3_SPP", "ResumoOrlas"):
+        workbook.create_sheet(nome)["A1"] = nome
+    workbook.save(path)
+
+    states = [
+        state
+        for state in inspect_pdf_documents(path)
+        if state.document.identifier
+        in ("lista_ferragens", "lista_purch", "lista_spp", "resumo_orlas")
+    ]
+
+    assert agrupar_para_exportacao(states, "1449_01_26_JF_VIVA") == [
+        (
+            "Ferragens + Purch + SPP",
+            "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf",
+            ("1_FERRAGENS", "2_PURCH", "3_SPP"),
+        ),
+        (
+            "Resumo de Orlas",
+            "4_Resumo_Orlas_1449_01_26_JF_VIVA.pdf",
+            ("ResumoOrlas",),
+        ),
+    ]
+
+
+def test_grupo_de_ferragens_leva_so_os_separadores_escolhidos(tmp_path) -> None:
+    path = tmp_path / "lista.xlsx"
+    workbook = Workbook()
+    workbook.active.title = "DEFENICOES"
+    workbook.active["E3"] = "1449_01_26_JF_VIVA"
+    for nome in ("1_FERRAGENS", "2_PURCH", "3_SPP"):
+        workbook.create_sheet(nome)["A1"] = nome
+    workbook.save(path)
+
+    states = {state.document.identifier: state for state in inspect_pdf_documents(path)}
+    escolhidos = [states["lista_ferragens"], states["lista_spp"]]
+
+    assert agrupar_para_exportacao(escolhidos, "1449_01_26_JF_VIVA") == [
+        (
+            "Ferragens + Purch + SPP",
+            "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf",
+            ("1_FERRAGENS", "3_SPP"),
+        )
+    ]
 
 
 def test_substituir_devolve_o_nome_original(tmp_path) -> None:

@@ -113,7 +113,13 @@ class ListaMaterialPdfDialog(QDialog):
                 label += " — dados em falta"
             check = QCheckBox(label)
             check.setEnabled(state.available)
-            check.setToolTip(state.reason or f"Exportar {state.document.name} individualmente ou no pacote")
+            dica = state.reason or f"Exportar {state.document.name} individualmente ou no pacote"
+            if state.document.group:
+                dica += (
+                    "\nOs separadores marcados aqui saem juntos num único PDF: "
+                    f"{state.document.filename.replace('{nome_enc_imos}', '…')}"
+                )
+            check.setToolTip(dica)
             category_layouts[category].addWidget(check)
             self.checks[state.document.identifier] = check
 

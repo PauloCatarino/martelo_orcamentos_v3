@@ -31,6 +31,10 @@ class PdfDocument:
     order: int
     combinable: bool = True
     unavailable_reason: str = ""
+    # Documentos com o mesmo `group` sao vistos separados no menu (cada um
+    # mostra se o seu separador existe e tem dados), mas saem num unico PDF.
+    group: str = ""
+    group_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -56,22 +60,28 @@ DEFAULT_DOCUMENTS = (
         ("1_FERRAGENS",),
         "2_Lista_Ferragens_{nome_enc_imos}.pdf",
         20,
+        group="ferragens",
+        group_label="Ferragens + Purch + SPP",
     ),
     PdfDocument(
         "lista_purch",
-        "Purch",
+        "Purch (Objectos Comprados)",
         "Ferragens",
         ("2_PURCH",),
-        "2_Lista_Purch_{nome_enc_imos}.pdf",
+        "2_Lista_Ferragens_{nome_enc_imos}.pdf",
         21,
+        group="ferragens",
+        group_label="Ferragens + Purch + SPP",
     ),
     PdfDocument(
         "lista_spp",
-        "SPP",
+        "SPP (Stretchable Purchased Part)",
         "Ferragens",
         ("3_SPP",),
-        "2_Lista_SPP_{nome_enc_imos}.pdf",
+        "2_Lista_Ferragens_{nome_enc_imos}.pdf",
         22,
+        group="ferragens",
+        group_label="Ferragens + Purch + SPP",
     ),
     PdfDocument(
         "resumo_orlas",
@@ -185,7 +195,14 @@ def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
                     unavailable_sheets.append(sheet_name)
 
             available = bool(export_sheets)
-            if available and unavailable_sheets:
+            if len(document.sheets) == 1:
+                folha = document.sheets[0]
+                reason = (
+                    f"O separador {folha} existe e tem dados."
+                    if available
+                    else f"O separador {folha} não existe ou está vazio neste Excel."
+                )
+            elif available and unavailable_sheets:
                 reason = (
                     "Serão incluídos os separadores com dados: "
                     f"{', '.join(export_sheets)}. Sem dados: "
@@ -277,6 +294,40 @@ def _unique_sheet_names(states: Iterable[PdfDocumentState]) -> tuple[str, ...]:
     return tuple(result)
 
 
+def agrupar_para_exportacao(
+    states: Iterable[PdfDocumentState], nome_enc_imos: str = ""
+) -> list[tuple[str, str, tuple[str, ...]]]:
+    """Junta num só PDF os documentos que partilham `group`.
+
+    Devolve (rótulo, nome do ficheiro, folhas a exportar) pela ordem do
+    catálogo. As folhas de um grupo saem no mesmo PDF, como estavam antes de
+    Ferragens/Purch/SPP passarem a ter visto próprio no menu.
+    """
+    grupos: dict[str, list[PdfDocumentState]] = {}
+    ordem: list[str] = []
+    for state in states:
+        chave = state.document.group or state.document.identifier
+        if chave not in grupos:
+            grupos[chave] = []
+            ordem.append(chave)
+        grupos[chave].append(state)
+
+    resultado: list[tuple[str, str, tuple[str, ...]]] = []
+    for chave in ordem:
+        membros = grupos[chave]
+        primeiro = membros[0].document
+        rotulo = primeiro.group_label or primeiro.name
+        folhas: list[str] = []
+        for membro in membros:
+            for folha in membro.export_sheets:
+                if folha not in folhas:
+                    folhas.append(folha)
+        resultado.append(
+            (rotulo, document_filename(primeiro, nome_enc_imos), tuple(folhas))
+        )
+    return resultado
+
+
 def _remover_ficheiro_a_substituir(output: Path, overwrite: bool) -> None:
     """Apaga o PDF antigo antes de o Excel escrever por cima."""
     if not overwrite or not output.exists():
@@ -336,15 +387,12 @@ def export_pdf_documents(
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
 
-    planned: list[tuple[PdfDocumentState, str]] = []
+    planned: list[tuple[str, str, tuple[str, ...]]] = []
     if export_separate:
-        planned = [
-            (state, document_filename(state.document, nome_enc_imos))
-            for state in selected
-        ]
+        planned = agrupar_para_exportacao(selected, nome_enc_imos)
     existing = [
         destination / filename
-        for _, filename in planned
+        for _, filename, _ in planned
         if (destination / filename).exists()
     ]
     if create_package and (destination / package_name).exists():
@@ -375,21 +423,18 @@ def export_pdf_documents(
         except Exception:
             pass
         workbook = excel.Workbooks.Open(str(Path(workbook_path).resolve()), ReadOnly=True)
-        total = len(selected)
+        total = max(len(planned), 1)
         if export_separate:
-            for index, (state, filename) in enumerate(planned, start=1):
-                document = state.document
+            for index, (rotulo, filename, folhas) in enumerate(planned, start=1):
                 if progress_callback:
-                    progress_callback(f"A exportar {document.name}…", index - 1, total)
+                    progress_callback(f"A exportar {rotulo}…", index - 1, total)
                 output = resolve_output_path(destination, filename, overwrite=overwrite)
                 try:
                     _remover_ficheiro_a_substituir(output, overwrite)
-                    _export_sheets_to_pdf(
-                        excel, workbook, state.export_sheets, output
-                    )
+                    _export_sheets_to_pdf(excel, workbook, folhas, output)
                     outputs.append(output)
                 except Exception as exc:
-                    errors.append(f"{document.name}: {exc}")
+                    errors.append(f"{rotulo}: {exc}")
         if create_package:
             if progress_callback:
                 progress_callback("A criar o pacote combinado…", total, total)
