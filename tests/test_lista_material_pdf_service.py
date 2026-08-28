@@ -10,11 +10,13 @@ from app.services.lista_material_pdf_service import (
     DEFAULT_DOCUMENTS,
     PdfPresetService,
     _export_sheets_to_pdf,
+    _remover_ficheiro_a_substituir,
     collision_free_path,
     document_filename,
     inspect_pdf_documents,
     normalize_pdf_identifiers,
     read_nome_enc_imos_ix,
+    resolve_output_path,
     sync_pdf_document_registry,
 )
 
@@ -25,7 +27,7 @@ def test_presets_sao_listados_apenas_para_o_proprio_utilizador(session) -> None:
         user_id=10,
         client="JF_VIVA",
         name="Preset Paulo",
-        identifiers=["ferragens"],
+        identifiers=["lista_ferragens"],
         export_separate=True,
         create_package=False,
     )
@@ -49,7 +51,7 @@ def test_preset_predefinido_e_unico_por_utilizador_e_cliente(session) -> None:
         user_id=10,
         client="JF_VIVA",
         name="Produção",
-        identifiers=["ferragens"],
+        identifiers=["lista_ferragens"],
         export_separate=True,
         create_package=False,
         make_default=True,
@@ -136,9 +138,13 @@ def test_inventario_pdf_mostra_disponiveis_e_indisponiveis(tmp_path) -> None:
 
     states = {item.document.identifier: item for item in inspect_pdf_documents(path)}
 
-    assert states["ferragens"].available is True
-    assert states["ferragens"].export_sheets == ("1_FERRAGENS", "2_PURCH")
-    assert "3_SPP" in states["ferragens"].reason
+    assert states["lista_ferragens"].available is True
+    assert states["lista_ferragens"].export_sheets == ("1_FERRAGENS",)
+    assert states["lista_purch"].available is True
+    assert states["lista_purch"].export_sheets == ("2_PURCH",)
+    assert states["lista_spp"].available is False
+    assert "3_SPP" in states["lista_spp"].reason
+    assert "ferragens" not in states
     assert "caderno_encargos" not in states
     assert "rosto" not in states
     assert "purch" not in states
@@ -157,8 +163,14 @@ def test_nomes_pdf_incluem_nome_enc_imos_ix(tmp_path) -> None:
     nome_enc = read_nome_enc_imos_ix(path)
 
     assert nome_enc == "1449_01_26_JF_VIVA"
-    assert document_filename(by_id["ferragens"], nome_enc) == (
+    assert document_filename(by_id["lista_ferragens"], nome_enc) == (
         "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf"
+    )
+    assert document_filename(by_id["lista_purch"], nome_enc) == (
+        "2_Lista_Purch_1449_01_26_JF_VIVA.pdf"
+    )
+    assert document_filename(by_id["lista_spp"], nome_enc) == (
+        "2_Lista_SPP_1449_01_26_JF_VIVA.pdf"
     )
     assert document_filename(by_id["resumo_orlas"], nome_enc) == (
         "4_Resumo_Orlas_1449_01_26_JF_VIVA.pdf"
@@ -171,11 +183,61 @@ def test_nomes_pdf_incluem_nome_enc_imos_ix(tmp_path) -> None:
     )
 
 
-def test_preset_antigo_de_ferragens_e_normalizado() -> None:
-    assert normalize_pdf_identifiers(["purch", "spp"]) == {"ferragens"}
+def test_preset_antigo_de_ferragens_abre_os_tres_documentos() -> None:
+    assert normalize_pdf_identifiers(["ferragens"]) == {
+        "lista_ferragens",
+        "lista_purch",
+        "lista_spp",
+    }
+    assert normalize_pdf_identifiers(["purch", "spp"]) == {
+        "lista_ferragens",
+        "lista_purch",
+        "lista_spp",
+    }
+    assert normalize_pdf_identifiers(["lista_purch"]) == {"lista_purch"}
     assert normalize_pdf_identifiers(
         ["caderno_encargos", "listagem_cutrite", "relatorio"]
     ) == {"relatorio"}
+
+
+def test_ferragens_purch_e_spp_sao_documentos_separados() -> None:
+    by_id = {document.identifier: document for document in DEFAULT_DOCUMENTS}
+
+    assert by_id["lista_ferragens"].sheets == ("1_FERRAGENS",)
+    assert by_id["lista_purch"].sheets == ("2_PURCH",)
+    assert by_id["lista_spp"].sheets == ("3_SPP",)
+    assert {
+        by_id[identifier].category
+        for identifier in ("lista_ferragens", "lista_purch", "lista_spp")
+    } == {"Ferragens"}
+
+
+def test_substituir_devolve_o_nome_original(tmp_path) -> None:
+    existing = tmp_path / "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf"
+    existing.write_bytes(b"existente")
+
+    substituir = resolve_output_path(
+        tmp_path, "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf", overwrite=True
+    )
+    manter = resolve_output_path(
+        tmp_path, "2_Lista_Ferragens_1449_01_26_JF_VIVA.pdf", overwrite=False
+    )
+
+    assert substituir == existing
+    assert manter.name == "2_Lista_Ferragens_1449_01_26_JF_VIVA_2.pdf"
+
+
+def test_substituir_apaga_o_pdf_antigo_antes_de_exportar(tmp_path) -> None:
+    existing = tmp_path / "2_Lista_Purch_1449_01_26_JF_VIVA.pdf"
+    existing.write_bytes(b"existente")
+
+    _remover_ficheiro_a_substituir(existing, True)
+    assert existing.exists() is False
+
+    mantido = tmp_path / "2_Lista_SPP_1449_01_26_JF_VIVA.pdf"
+    mantido.write_bytes(b"existente")
+    _remover_ficheiro_a_substituir(mantido, False)
+    assert mantido.read_bytes() == b"existente"
 
 
 def test_colisao_de_nome_nunca_sobrescreve(tmp_path) -> None:

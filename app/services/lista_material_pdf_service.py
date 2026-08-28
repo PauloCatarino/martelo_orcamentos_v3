@@ -50,12 +50,28 @@ class PdfExportResult:
 
 DEFAULT_DOCUMENTS = (
     PdfDocument(
-        "ferragens",
-        "Ferragens + Purch + SPP",
+        "lista_ferragens",
         "Ferragens",
-        ("1_FERRAGENS", "2_PURCH", "3_SPP"),
+        "Ferragens",
+        ("1_FERRAGENS",),
         "2_Lista_Ferragens_{nome_enc_imos}.pdf",
         20,
+    ),
+    PdfDocument(
+        "lista_purch",
+        "Purch",
+        "Ferragens",
+        ("2_PURCH",),
+        "2_Lista_Purch_{nome_enc_imos}.pdf",
+        21,
+    ),
+    PdfDocument(
+        "lista_spp",
+        "SPP",
+        "Ferragens",
+        ("3_SPP",),
+        "2_Lista_SPP_{nome_enc_imos}.pdf",
+        22,
     ),
     PdfDocument(
         "resumo_orlas",
@@ -92,9 +108,15 @@ DEFAULT_DOCUMENTS = (
 )
 
 RETIRED_DOCUMENT_IDS = frozenset(
-    {"caderno_encargos", "rosto", "purch", "spp", "listagem_cutrite"}
+    {"caderno_encargos", "rosto", "ferragens", "purch", "spp", "listagem_cutrite"}
 )
+# Presets antigos guardavam um unico documento com as tres folhas juntas.
 FERRAGENS_LEGACY_IDS = frozenset({"ferragens", "purch", "spp"})
+FERRAGENS_DOCUMENT_IDS = ("lista_ferragens", "lista_purch", "lista_spp")
+
+
+class PdfExportCancelled(Exception):
+    """O utilizador cancelou a exportacao na pergunta de substituicao."""
 
 
 def sync_pdf_document_registry(session: Session) -> int:
@@ -189,6 +211,13 @@ def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
         workbook.close()
 
 
+def resolve_output_path(folder: Path, filename: str, *, overwrite: bool) -> Path:
+    """Devolve o caminho final: substitui o existente ou cria o _2, _3, ..."""
+    if overwrite:
+        return Path(folder) / filename
+    return collision_free_path(folder, filename)
+
+
 def collision_free_path(folder: Path, filename: str) -> Path:
     base = Path(folder) / filename
     if not base.exists():
@@ -204,7 +233,7 @@ def normalize_pdf_identifiers(identifiers: Iterable[str]) -> set[str]:
     """Mapeia presets antigos para o catálogo atual sem reativar documentos removidos."""
     selected = {str(identifier) for identifier in identifiers}
     if selected & FERRAGENS_LEGACY_IDS:
-        selected.add("ferragens")
+        selected.update(FERRAGENS_DOCUMENT_IDS)
     selected.difference_update(RETIRED_DOCUMENT_IDS)
     return selected
 
@@ -248,6 +277,19 @@ def _unique_sheet_names(states: Iterable[PdfDocumentState]) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _remover_ficheiro_a_substituir(output: Path, overwrite: bool) -> None:
+    """Apaga o PDF antigo antes de o Excel escrever por cima."""
+    if not overwrite or not output.exists():
+        return
+    try:
+        output.unlink()
+    except OSError as exc:
+        raise RuntimeError(
+            f"nao foi possivel substituir {output.name}; "
+            f"confirme se o PDF esta aberto noutro programa ({exc})"
+        ) from exc
+
+
 def _export_sheets_to_pdf(
     excel, workbook, sheet_names: tuple[str, ...], output: Path
 ) -> None:
@@ -271,6 +313,7 @@ def export_pdf_documents(
     create_package: bool = False,
     package_name: str = "Documentacao_Producao.pdf",
     progress_callback: Callable[[str, int, int], None] | None = None,
+    conflict_resolver: Callable[[tuple[Path, ...]], bool] | None = None,
 ) -> PdfExportResult:
     selected_ids = normalize_pdf_identifiers(identifiers)
     states = {state.document.identifier: state for state in inspect_pdf_documents(workbook_path)}
@@ -292,6 +335,27 @@ def export_pdf_documents(
 
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
+
+    planned: list[tuple[PdfDocumentState, str]] = []
+    if export_separate:
+        planned = [
+            (state, document_filename(state.document, nome_enc_imos))
+            for state in selected
+        ]
+    existing = [
+        destination / filename
+        for _, filename in planned
+        if (destination / filename).exists()
+    ]
+    if create_package and (destination / package_name).exists():
+        existing.append(destination / package_name)
+
+    # Sem quem responda a pergunta, o comportamento seguro mantem-se:
+    # nunca substituir, criar o _2.
+    overwrite = False
+    if existing and conflict_resolver is not None:
+        overwrite = bool(conflict_resolver(tuple(existing)))
+
     try:
         import win32com.client as win32_client
     except ImportError as exc:
@@ -313,14 +377,13 @@ def export_pdf_documents(
         workbook = excel.Workbooks.Open(str(Path(workbook_path).resolve()), ReadOnly=True)
         total = len(selected)
         if export_separate:
-            for index, state in enumerate(selected, start=1):
+            for index, (state, filename) in enumerate(planned, start=1):
                 document = state.document
                 if progress_callback:
                     progress_callback(f"A exportar {document.name}…", index - 1, total)
-                output = collision_free_path(
-                    destination, document_filename(document, nome_enc_imos)
-                )
+                output = resolve_output_path(destination, filename, overwrite=overwrite)
                 try:
+                    _remover_ficheiro_a_substituir(output, overwrite)
                     _export_sheets_to_pdf(
                         excel, workbook, state.export_sheets, output
                     )
@@ -330,7 +393,8 @@ def export_pdf_documents(
         if create_package:
             if progress_callback:
                 progress_callback("A criar o pacote combinado…", total, total)
-            package = collision_free_path(destination, package_name)
+            package = resolve_output_path(destination, package_name, overwrite=overwrite)
+            _remover_ficheiro_a_substituir(package, overwrite)
             _export_sheets_to_pdf(
                 excel, workbook, _unique_sheet_names(selected), package
             )
