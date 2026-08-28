@@ -191,3 +191,58 @@ def test_copia_completa_passa(tmp_path: Path) -> None:
     tabelas, rotinas = backup.verificar(caminho, 2, procedimentos_esperados=1)
 
     assert (tabelas, rotinas) == (2, 1)
+
+
+# ---------------------------------------------------------------------------
+# Com que conta e' que a copia se liga
+# ---------------------------------------------------------------------------
+#
+# A copia deve usar a conta so' dela (le tudo, nao escreve nada). Se usar a de
+# manutencao, o dump sai sem os procedimentos -- e uma base restaurada sem o
+# martelo_aplicar_grants e' uma base onde nenhum colega consegue trabalhar.
+
+def test_usa_a_conta_das_copias_quando_esta_configurada(monkeypatch) -> None:
+    monkeypatch.setenv("BACKUP_DB_USER", "martelo_backup")
+    monkeypatch.setenv("BACKUP_DB_PASSWORD", "seja-o-que-for")
+
+    utilizador, password, propria = backup.credenciais_da_copia()
+
+    assert (utilizador, password, propria) == ("martelo_backup", "seja-o-que-for", True)
+
+
+def test_sem_conta_das_copias_recai_na_de_manutencao_e_avisa(monkeypatch) -> None:
+    from app.config.settings import settings
+
+    monkeypatch.delenv("BACKUP_DB_USER", raising=False)
+    monkeypatch.delenv("BACKUP_DB_PASSWORD", raising=False)
+    monkeypatch.setattr(settings, "DB_USER", "martelo_v3", raising=False)
+
+    utilizador, _, propria = backup.credenciais_da_copia()
+
+    # Recai, mas diz que nao e' a conta propria -- e' isso que faz sair o aviso.
+    assert utilizador == "martelo_v3"
+    assert propria is False
+
+
+def test_restaurar_usa_sempre_a_conta_de_manutencao(monkeypatch) -> None:
+    """Restaurar CRIA uma base: a conta das copias nao escreve, de proposito."""
+    from app.config.settings import settings
+
+    monkeypatch.setenv("BACKUP_DB_USER", "martelo_backup")
+    monkeypatch.setattr(settings, "DB_USER", "martelo_v3", raising=False)
+
+    assert backup.credenciais_de_manutencao()[0] == "martelo_v3"
+
+
+def test_a_password_nao_vai_na_linha_de_comandos(tmp_path, monkeypatch) -> None:
+    """Fica num ficheiro de opcoes: senao via-se no Gestor de Tarefas."""
+    monkeypatch.setenv("BACKUP_DB_USER", "martelo_backup")
+    monkeypatch.setenv("BACKUP_DB_PASSWORD", "password-secreta")
+
+    caminho = backup._ficheiro_de_opcoes(tmp_path)
+    conteudo = caminho.read_text(encoding="utf-8")
+
+    assert "user=martelo_backup" in conteudo
+    assert "password=password-secreta" in conteudo
+    # E o ficheiro vive numa pasta temporaria, que desaparece no fim.
+    assert caminho.parent == tmp_path

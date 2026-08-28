@@ -107,13 +107,41 @@ def encontrar_mysqldump() -> Path:
 # A copia
 # ---------------------------------------------------------------------------
 
-def _ficheiro_de_opcoes(pasta: Path) -> Path:
+def credenciais_da_copia() -> tuple[str, str, bool]:
+    """A conta com que a copia se liga: ``(utilizador, password, e_a_propria)``.
+
+    Prefere a conta so' das copias (``BACKUP_DB_USER`` / ``BACKUP_DB_PASSWORD``
+    no ``.env``), que le tudo e nao escreve nada -- ver
+    ``deploy/mysql_conta_copias.sql``. So' se ela nao estiver configurada e' que
+    usa a conta de manutencao, e nesse caso avisa: e' a conta de manutencao que
+    nao consegue ler os procedimentos, e uma copia sem eles nao serve.
+    """
+    utilizador = (os.getenv("BACKUP_DB_USER") or "").strip()
+    password = os.getenv("BACKUP_DB_PASSWORD") or ""
+    if utilizador:
+        return utilizador, password, True
+
+    return settings.DB_USER, settings.DB_PASSWORD, False
+
+
+def credenciais_de_manutencao() -> tuple[str, str]:
+    """A conta do ``.env``, para o que precisa de ESCRITA (restaurar um teste).
+
+    A conta das copias nao serve aqui: nao escreve nada, de proposito.
+    """
+    return settings.DB_USER, settings.DB_PASSWORD
+
+
+def _ficheiro_de_opcoes(
+    pasta: Path, credenciais: tuple[str, str] | None = None
+) -> Path:
     """Ficheiro temporario com a password, para ela nao ir na linha de comandos."""
+    utilizador, password = credenciais or credenciais_da_copia()[:2]
     caminho = pasta / "my.cnf"
     caminho.write_text(
         "[client]\n"
-        f"user={settings.DB_USER}\n"
-        f"password={settings.DB_PASSWORD}\n"
+        f"user={utilizador}\n"
+        f"password={password}\n"
         f"host={settings.DB_HOST}\n"
         f"port={settings.DB_PORT}\n",
         encoding="utf-8",
@@ -187,7 +215,9 @@ def fazer_dump(
             destino.unlink()
         texto = (erro or b"").decode("utf-8", errors="replace").strip()
         if "SHOW CREATE PROCEDURE" in texto or "SHOW_ROUTINE" in texto:
-            raise SystemExit(AVISO_SHOW_ROUTINE.format(conta=settings.DB_USER))
+            raise SystemExit(
+                AVISO_SHOW_ROUTINE.format(conta=credenciais_da_copia()[0])
+            )
         raise SystemExit(f"[ERRO] o mysqldump falhou (codigo {processo.returncode}):\n{texto}")
 
 
@@ -246,14 +276,15 @@ def verificar(
 
 def contar_na_base(base: str) -> tuple[int, int]:
     """Quantas tabelas e procedimentos a base tem agora (para conferir a copia)."""
+    utilizador, password, _ = credenciais_da_copia()
     try:
         import pymysql
 
         ligacao = pymysql.connect(
             host=settings.DB_HOST,
             port=int(settings.DB_PORT),
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD,
+            user=utilizador,
+            password=password,
             connect_timeout=6,
         )
         with ligacao.cursor() as cursor:
@@ -418,9 +449,12 @@ def testar_restauro(copia: Path, mysqldump: Path) -> None:
         raise SystemExit(f"[ERRO] nao encontrei o mysql.exe ao lado de {mysqldump}")
 
     print(f"[1/3] criar a base de teste {nome}")
+    # Restaurar cria uma base e escreve nela: a conta das copias nao serve
+    # (nao escreve nada, de proposito). Aqui vai a de manutencao.
+    manutencao = credenciais_de_manutencao()
     ligacao = pymysql.connect(
         host=settings.DB_HOST, port=int(settings.DB_PORT),
-        user=settings.DB_USER, password=settings.DB_PASSWORD, connect_timeout=6,
+        user=manutencao[0], password=manutencao[1], connect_timeout=6,
     )
     with ligacao.cursor() as cursor:
         cursor.execute(
@@ -431,7 +465,7 @@ def testar_restauro(copia: Path, mysqldump: Path) -> None:
 
     print(f"[2/3] restaurar {copia.name}")
     with tempfile.TemporaryDirectory(prefix="martelo_rst_") as temporaria:
-        opcoes = _ficheiro_de_opcoes(Path(temporaria))
+        opcoes = _ficheiro_de_opcoes(Path(temporaria), manutencao)
         with gzip.open(copia, "rb") as entrada:
             processo = subprocess.Popen(
                 [str(mysql), f"--defaults-file={opcoes}", nome],
@@ -550,6 +584,14 @@ def main() -> int:
 
     log(f"Martelo V3 — copia de seguranca de {args.base}")
     log(f"  {agora:%Y-%m-%d %H:%M:%S}")
+    conta, _, conta_propria = credenciais_da_copia()
+    log(f"  conta: {conta}" + ("" if conta_propria else "   <-- ver aviso"))
+    if not conta_propria:
+        log("      AVISO: nao ha' conta so' das copias configurada. Esta a usar")
+        log("             a conta de MANUTENCAO, que costuma nao conseguir ler")
+        log("             os procedimentos -- e uma copia sem eles nao serve.")
+        log("             Ponha BACKUP_DB_USER e BACKUP_DB_PASSWORD no .env")
+        log("             (a conta do deploy\\mysql_conta_copias.sql).")
     log()
 
     try:

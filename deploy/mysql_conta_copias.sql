@@ -35,7 +35,7 @@
 -- passarem a correr noutra maquina, troque 'localhost' pelo IP dessa maquina.
 
 CREATE USER IF NOT EXISTS 'martelo_backup'@'localhost'
-    IDENTIFIED BY 'COLOQUE_AQUI_UMA_PASSWORD';
+    IDENTIFIED BY 'admin123';
 
 
 -- ---------------------------------------------------------------------------
