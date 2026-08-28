@@ -62,6 +62,28 @@ class BaseIndisponivel(Exception):
 _ERROS_DE_CREDENCIAIS = (1045, 1044, 1698)
 
 
+def mensagem_base_indisponivel() -> str:
+    """Diz QUAL o computador que nao respondeu, e nao so' que algo falhou.
+
+    A base do Martelo vive num PC da empresa, e o endereco dele esta' escrito
+    no ficheiro de configuracao de cada maquina. Basta esse PC estar desligado
+    -- ou, um dia, mudar de endereco -- para toda a gente deixar de entrar ao
+    mesmo tempo. Sem o nome do computador na mensagem, ninguem consegue
+    adivinhar o que se passa, e a chamada que chega e' "o Martelo nao abre".
+
+    Com o endereco a` frente, quem esta' do outro lado consegue dizer logo se
+    o computador esta' desligado ou se o endereco deixou de ser aquele.
+    """
+    return (
+        "Nao foi possivel ligar a base de dados do Martelo.\n\n"
+        f"O Martelo tentou chegar a '{settings.DB_NAME}' em "
+        f"{settings.DB_HOST}:{settings.DB_PORT} e nao houve resposta.\n\n"
+        "Normalmente e' o computador onde a base vive que esta' desligado ou "
+        "fora da rede. Se ele estiver ligado e o problema continuar, mostre "
+        "esta mensagem ao responsavel: o endereco pode ter mudado."
+    )
+
+
 def ligar(user: str, password: str) -> Engine:
     """Liga a base com estas credenciais e passa a ser a ligacao da app.
 
@@ -85,9 +107,7 @@ def ligar(user: str, password: str) -> Engine:
             raise CredenciaisInvalidas(
                 "Utilizador ou palavra-passe invalidos."
             ) from exc
-        raise BaseIndisponivel(
-            "Nao foi possivel ligar a base de dados do Martelo."
-        ) from exc
+        raise BaseIndisponivel(mensagem_base_indisponivel()) from exc
 
     desligar()
     SessionLocal.configure(bind=engine)
