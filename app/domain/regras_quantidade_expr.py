@@ -108,8 +108,13 @@ def avaliar_regra_quantidade(
         return None, "Expressão inválida: contém elementos não permitidos."
 
     ctx = _normalizar_contexto(contexto)
+    # O arredondamento final tem de ficar DENTRO do try: um resultado infinito
+    # (basta escrever ``1e400``) fazia o ``math.ceil`` rebentar com
+    # OverflowError ja' fora da rede, e o ecra mostrava "ERRO inesperado" em
+    # vez do motivo — ao contrario do que esta funcao promete.
     try:
         valor = _avaliar_no(arvore.body, ctx)
+        quantidade = _para_quantidade(valor)
     except _ErroRegra as erro:
         return None, erro.motivo
     except ZeroDivisionError:
@@ -117,7 +122,7 @@ def avaliar_regra_quantidade(
     except (TypeError, ValueError, ArithmeticError):
         return None, "Não foi possível avaliar a expressão."
 
-    return _para_quantidade(valor), None
+    return quantidade, None
 
 
 def _normalizar_contexto(contexto: dict | None) -> dict[str, Decimal]:

@@ -25,7 +25,6 @@ KEY_STREAMLIT_TRUST_CERT = "streamlit_sql_trust_server_certificate"
 DEFAULT_STREAMLIT_SERVER = r"DESKTOP-PTJ4TE6,1433"
 DEFAULT_STREAMLIT_DATABASE = "Lanca_Encanto2026"
 DEFAULT_STREAMLIT_USER = "Lanca_Encanto_ReadOnly"
-DEFAULT_STREAMLIT_PASSWORD = "Lanca_ReadOnly_2026!"
 DEFAULT_STREAMLIT_TRUSTED = False
 DEFAULT_STREAMLIT_TRUST_CERT = True
 
@@ -59,9 +58,10 @@ def load_streamlit_config(session: Session) -> StreamlitConfig:
     def _texto(chave: str, default: str = "") -> str:
         return (settings_service.obter_valor(chave, "") or "").strip() or default
 
-    password = (
-        settings_service.obter_valor(KEY_STREAMLIT_PASSWORD, "") or ""
-    ).strip() or DEFAULT_STREAMLIT_PASSWORD
+    # A password vem SO' da base (Configuracoes > Streamlit), nunca do codigo:
+    # este repositorio e' publico e o valor que aqui estava era a credencial
+    # verdadeira do SQL Server. O PHC e o iMos ja' faziam assim.
+    password = (settings_service.obter_valor(KEY_STREAMLIT_PASSWORD, "") or "").strip()
     return {
         "server": _texto(KEY_STREAMLIT_SERVER, DEFAULT_STREAMLIT_SERVER),
         "database": _texto(KEY_STREAMLIT_DATABASE, DEFAULT_STREAMLIT_DATABASE),

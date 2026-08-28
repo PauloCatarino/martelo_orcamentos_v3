@@ -182,3 +182,18 @@ def test_regra_uniao_topos_128_respeita_tabela_confirmada() -> None:
         )
         assert motivo is None
         assert quantidade == esperado
+
+
+def test_resultado_infinito_devolve_motivo_e_nao_rebenta() -> None:
+    """Um numero enorme na regra tem de dar motivo, nao "ERRO inesperado".
+
+    A funcao promete que nunca levanta excecao, mas o arredondamento final
+    estava fora do try: ``1e400`` avalia para infinito e o ``math.ceil``
+    rebentava com OverflowError ate' ao ecra. Apanhado na campanha de
+    robustez de 2026-08-28, antes da versao oficial.
+    """
+    for expressao in ("1e400", "1e400 * 2", "COMP * 1e400", "2 + 1e309"):
+        quantidade, motivo = avaliar_regra_quantidade(expressao, CONTEXTO_EXEMPLO)
+
+        assert quantidade is None, expressao
+        assert motivo == "Não foi possível avaliar a expressão.", expressao

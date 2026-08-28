@@ -15,6 +15,7 @@ env/
 .env.*
 # ... mas o modelo (sem password) fica versionado:
 !deploy/.env.beta.exemplo
+!deploy/.env.producao.exemplo
 
 # Contas MySQL geradas pelo scripts/gerar_contas_mysql.py.
 # LEVAM AS PASSWORDS DE TODA A GENTE em texto simples: nunca podem ir para o

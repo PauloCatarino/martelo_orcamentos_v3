@@ -1,19 +1,23 @@
-"""Gerar o executavel (e, opcionalmente, o instalador) do beta do Martelo V3.
+"""Gerar o executavel (e, opcionalmente, o instalador) do Martelo V3.
 
 Passos:
   1. PyInstaller empacota a app  ->  dist\\Martelo_Orcamentos_V3\\
-  2. Copia deploy\\.env.beta (servidor e base, SEM credenciais) para junto do .exe
+  2. Copia o .env escolhido (servidor e base, SEM credenciais) para junto do .exe
   3. (--installer) Inno Setup gera  installer\\Output\\Setup_Martelo_V3_<versao>.exe
 
 Uso:
-    .venv\\Scripts\\python.exe build_beta.py               # so' o executavel
-    .venv\\Scripts\\python.exe build_beta.py --installer    # + instalador
-    .venv\\Scripts\\python.exe build_beta.py --profile full # inclui a IA (grande)
+    .venv\\Scripts\\python.exe build_beta.py --producao --installer  # VERSAO OFICIAL
+    .venv\\Scripts\\python.exe build_beta.py --installer             # beta (testes)
+    .venv\\Scripts\\python.exe build_beta.py --profile full          # inclui a IA (grande)
+
+O que muda entre oficial e beta e' SO' o ficheiro .env que vai dentro do
+instalador -- `deploy\\.env.producao` (base oficial, sem rotulo na janela) ou
+`deploy\\.env.beta` (base de testes). O executavel e' exatamente o mesmo.
 
 Pre-requisitos:
   - PyInstaller instalado no .venv
-  - deploy\\.env.beta criado (copiar de deploy\\.env.beta.exemplo; nao leva
-    credenciais nenhumas -- cada pessoa entra com a sua conta)
+  - deploy\\.env.producao (ou deploy\\.env.beta) criado a partir do .exemplo ao
+    lado; nao leva credenciais nenhumas -- cada pessoa entra com a sua conta
   - Para --installer: Inno Setup 6 (ISCC.exe)
 """
 
@@ -29,7 +33,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist" / "Martelo_Orcamentos_V3"
-ENV_ORIGEM = ROOT / "deploy" / ".env.beta"
+ENV_BETA = ROOT / "deploy" / ".env.beta"
+ENV_PRODUCAO = ROOT / "deploy" / ".env.producao"
 SPEC = ROOT / "Martelo_Orcamentos_V3.spec"
 ISS = ROOT / "installer" / "Martelo_Orcamentos_V3.iss"
 
@@ -55,8 +60,8 @@ def _ler_env(caminho: Path) -> dict[str, str]:
     return dados
 
 
-def _verificar_env() -> None:
-    """Confirma que deploy/.env.beta chega mesmo ao servidor ANTES de construir.
+def _verificar_env(env_origem: Path) -> None:
+    """Confirma que o .env escolhido chega mesmo ao servidor ANTES de construir.
 
     Fail-fast: evita gastar minutos a gerar um instalador que nao conecta.
 
@@ -64,18 +69,18 @@ def _verificar_env() -> None:
     por isso a prova de ligacao pede-as aqui, a quem esta' a fazer o build. Se
     for para saltar (build sem servidor a` mao), responda em branco.
     """
-    print("[0/3] verificar deploy/.env.beta")
-    if not ENV_ORIGEM.exists():
+    print(f"[0/3] verificar {env_origem}")
+    if not env_origem.exists():
         raise SystemExit(
-            f"[ERRO] falta {ENV_ORIGEM}.\n"
-            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta."
+            f"[ERRO] falta {env_origem}.\n"
+            f"       Copie {env_origem}.exemplo para {env_origem.name}."
         )
 
-    env = _ler_env(ENV_ORIGEM)
+    env = _ler_env(env_origem)
     for chave in ("DB_USER", "DB_PASSWORD"):
         if env.get(chave):
             raise SystemExit(
-                f"[ERRO] o {ENV_ORIGEM} tem {chave} preenchido.\n"
+                f"[ERRO] o {env_origem} tem {chave} preenchido.\n"
                 "       Este ficheiro vai para o PC de toda a gente e NAO pode\n"
                 "       levar credenciais: cada pessoa entra com a sua conta.\n"
                 "       Apague a linha e volte a correr o build."
@@ -83,7 +88,7 @@ def _verificar_env() -> None:
 
     for chave in ("DB_HOST", "DB_NAME"):
         if not env.get(chave):
-            raise SystemExit(f"[ERRO] falta {chave} em {ENV_ORIGEM}.")
+            raise SystemExit(f"[ERRO] falta {chave} em {env_origem}.")
 
     base = f"{env.get('DB_NAME')} @ {env.get('DB_HOST')}"
     print(f"      sem credenciais do Martelo (bem) -> {base}")
@@ -167,25 +172,25 @@ def _pyinstaller(profile: str) -> None:
     print(f"      OK -> {DIST}")
 
 
-def _copiar_env() -> None:
-    print("[2/3] copiar .env do beta")
-    if not ENV_ORIGEM.exists():
+def _copiar_env(env_origem: Path) -> None:
+    print(f"[2/3] copiar {env_origem.name} para junto do .exe")
+    if not env_origem.exists():
         raise SystemExit(
-            f"[ERRO] falta {ENV_ORIGEM}.\n"
-            "       Copie deploy\\.env.beta.exemplo para deploy\\.env.beta."
+            f"[ERRO] falta {env_origem}.\n"
+            f"       Copie {env_origem}.exemplo para {env_origem.name}."
         )
 
     # Ultima barreira antes de o ficheiro ir para o PC de toda a gente: mesmo
     # que alguem tenha acrescentado credenciais depois da verificacao inicial,
     # nao passam daqui.
-    env = _ler_env(ENV_ORIGEM)
+    env = _ler_env(env_origem)
     if env.get("DB_USER") or env.get("DB_PASSWORD"):
         raise SystemExit(
-            f"[ERRO] o {ENV_ORIGEM} tem credenciais e ia para todos os PCs.\n"
+            f"[ERRO] o {env_origem} tem credenciais e ia para todos os PCs.\n"
             "       Apague DB_USER/DB_PASSWORD antes de construir."
         )
 
-    shutil.copy2(ENV_ORIGEM, DIST / ".env")
+    shutil.copy2(env_origem, DIST / ".env")
     print(f"      OK (sem credenciais) -> {DIST / '.env'}")
 
 
@@ -207,13 +212,23 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--installer", action="store_true", help="tambem gerar o instalador")
     ap.add_argument("--profile", choices=["lean", "full"], default="lean")
+    ap.add_argument(
+        "--producao",
+        action="store_true",
+        help="versao OFICIAL: leva o deploy\\.env.producao (base oficial) "
+             "em vez do .env.beta",
+    )
     args = ap.parse_args()
 
+    env_origem = ENV_PRODUCAO if args.producao else ENV_BETA
+    destino = "OFICIAL" if args.producao else "beta (testes)"
+
     versao = _versao()
-    print(f"Martelo V3  versao {versao}  (perfil {args.profile})\n")
-    _verificar_env()
+    print(f"Martelo V3  versao {versao}  [{destino}]  (perfil {args.profile})")
+    print(f"  configuracao: {env_origem.name}\n")
+    _verificar_env(env_origem)
     _pyinstaller(args.profile)
-    _copiar_env()
+    _copiar_env(env_origem)
     if args.installer:
         _instalador(versao)
     print("\nConcluido.")
