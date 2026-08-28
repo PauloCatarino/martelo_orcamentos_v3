@@ -13,6 +13,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.domain.orcamento_estados import ESTADO_INICIAL
+from app.domain.orcamento_numeracao import chave_numero_minimo, primeiro_numero_do_ano
 from app.domain.precos import MargensOrcamento
 from app.models import (
     Cliente,
@@ -29,6 +30,7 @@ from app.models import (
     OrcamentoVersao,
     OrcamentoVersaoEncomendaPhc,
     OrcamentoVersaoPlacaNaoStock,
+    SystemSetting,
     User,
 )
 
@@ -182,7 +184,19 @@ class OrcamentoRepository:
         return self._row_to_orcamento_resumo(row)
 
     def get_next_num_orcamento(self, ano: int) -> str:
-        """Return the next budget number for a year."""
+        """Return the next budget number for a year.
+
+        Normalmente e' o maior numero ja' usado nesse ano mais um. Mas o Martelo
+        V3 herdou um ano a meio: em 2026 os orcamentos 260001..260867 sao do
+        Martelo V2, e as pastas deles estao no servidor com trabalho real la'
+        dentro. Como o V3 arranca com a tabela vazia, sem mais nada comecava no
+        260001 e ia escrevendo por cima das pastas dos clientes, uma a uma.
+
+        Por isso ha' um PISO por ano, guardado nas configuracoes
+        (``orcamento_numero_minimo_<ano>``): o numero devolvido nunca fica
+        abaixo dele. Em 2027, com o ano a comecar do zero no V3, o piso deixa
+        de fazer falta e a chave simplesmente nao existe.
+        """
         statement = select(Orcamento.num_orcamento).where(Orcamento.ano == ano)
         existing_numbers = self.session.execute(statement).scalars().all()
 
@@ -193,9 +207,24 @@ class OrcamentoRepository:
         ]
 
         if numeric_numbers:
-            return str(max(numeric_numbers) + 1)
+            proximo = max(numeric_numbers) + 1
+        else:
+            proximo = primeiro_numero_do_ano(ano)
 
-        return f"{ano % 100:02d}0001"
+        return str(max(proximo, self._numero_minimo(ano)))
+
+    def _numero_minimo(self, ano: int) -> int:
+        """Piso da numeracao deste ano, ou 0 se nao houver nenhum definido."""
+        chave = chave_numero_minimo(ano)
+        valor = self.session.execute(
+            select(SystemSetting.valor).where(
+                SystemSetting.chave == chave,
+                SystemSetting.ativo.is_(True),
+            )
+        ).scalar_one_or_none()
+
+        texto = str(valor or "").strip()
+        return int(texto) if texto.isdigit() else 0
 
     def num_orcamento_existe(self, ano: int, num_orcamento: str) -> bool:
         """Return whether a budget with this year/number already exists."""

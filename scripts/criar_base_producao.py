@@ -42,6 +42,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config.settings import settings  # noqa: E402
+from app.domain.orcamento_numeracao import (  # noqa: E402
+    chave_numero_minimo,
+    primeiro_numero_do_ano,
+)
+
+#: Ano em que o V3 entra ao servico -- o unico que herda numeros do V2.
+ANO_ARRANQUE = 2026
 
 
 def _do_backup(nome: str):
@@ -306,6 +313,15 @@ def criar(
             clientes = int(cursor.fetchone()[0])
             cursor.execute(f"SELECT COUNT(*) FROM `{destino}`.users")
             utilizadores = int(cursor.fetchone()[0])
+            # O piso da numeracao: sem ele o primeiro orcamento a serio ia
+            # escrever dentro da pasta de um cliente do Martelo V2.
+            cursor.execute(
+                f"SELECT valor FROM `{destino}`.system_settings "
+                "WHERE chave = %s AND ativo = 1",
+                (chave_numero_minimo(ANO_ARRANQUE),),
+            )
+            linha = cursor.fetchone()
+            piso = str(linha[0]).strip() if linha and linha[0] else ""
         ligacao.close()
 
         print(f"      {tabelas} tabelas, {rotinas} procedimentos, migracao {migracao}")
@@ -315,6 +331,19 @@ def criar(
         if orcamentos:
             raise SystemExit(
                 f"[ERRO] a base nova ficou com {orcamentos} orcamentos e devia ter 0."
+            )
+
+        if piso.isdigit():
+            print(f"      o primeiro orcamento de {ANO_ARRANQUE} vai ser o {piso}")
+        else:
+            raise SystemExit(
+                f"[ERRO] falta o piso da numeracao de {ANO_ARRANQUE} nesta base.\n"
+                f"       Sem ele o Martelo comeca no "
+                f"{primeiro_numero_do_ano(ANO_ARRANQUE)} e escreve por cima das\n"
+                "       pastas dos orcamentos do Martelo V2, uma a uma.\n"
+                f"       A base de origem ({origem}) tem de estar na migracao\n"
+                "       20260828_97 ou mais recente:\n"
+                "           .venv\\Scripts\\alembic.exe upgrade head"
             )
 
 
