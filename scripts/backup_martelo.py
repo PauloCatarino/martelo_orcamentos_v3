@@ -139,7 +139,7 @@ AVISO_SHOW_ROUTINE = """
            FLUSH PRIVILEGES;
 
        Melhor ainda: dar as copias uma conta so' delas, que le tudo e nao
-       escreve nada -- ver deploy\\mysql_conta_backup.sql.
+       escreve nada -- ver deploy\\mysql_conta_copias.sql.
 """
 
 
