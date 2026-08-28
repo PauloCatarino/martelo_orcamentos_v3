@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.models.lista_material_assistente import ListaMaterialPdfExportacao
 
 from app.services.lista_material_pdf_service import (
+    PdfExportCancelled,
     PdfPresetService,
     export_pdf_documents,
     inspect_pdf_documents,
@@ -132,7 +133,10 @@ class ListaMaterialPdfDialog(QDialog):
         select_row.addStretch()
 
         self.destination = QLineEdit(str(self.workbook_path.parent))
-        self.destination.setToolTip("Pasta onde serão criados os PDFs; ficheiros existentes nunca são substituídos")
+        self.destination.setToolTip(
+            "Pasta onde serão criados os PDFs; se já existirem ficheiros com o "
+            "mesmo nome, o Martelo pergunta se quer substituir"
+        )
         choose_folder = QPushButton("Escolher pasta…")
         choose_folder.setToolTip("Selecionar a pasta de destino")
         choose_folder.clicked.connect(self._choose_folder)
@@ -163,7 +167,9 @@ class ListaMaterialPdfDialog(QDialog):
         self.progress.setValue(0)
 
         export_button = QPushButton("Exportar")
-        export_button.setToolTip("Exportar a seleção sem substituir ficheiros existentes")
+        export_button.setToolTip(
+            "Exportar a seleção; PDFs já existentes só são substituídos se confirmar"
+        )
         export_button.clicked.connect(self._export)
         close_button = QPushButton("Fechar")
         close_button.setToolTip("Fechar o centro de exportação")
@@ -263,6 +269,30 @@ class ListaMaterialPdfDialog(QDialog):
         self.progress.setValue(int(current * 100 / max(total, 1)))
         QApplication.processEvents()
 
+    def _confirmar_substituicao(self, existentes: tuple[Path, ...]) -> bool:
+        """Pergunta o que fazer aos PDFs que já estão na pasta de destino."""
+        nomes = "\n".join(f"- {caminho.name}" for caminho in existentes[:12])
+        if len(existentes) > 12:
+            nomes += f"\n- (e mais {len(existentes) - 12} ficheiro(s))"
+        box = QMessageBox(self)
+        box.setWindowTitle("PDFs já existentes")
+        box.setIcon(QMessageBox.Question)
+        box.setText("Já existem PDFs com estes nomes na pasta de destino:")
+        box.setInformativeText(
+            f"{nomes}\n\nQuer substituir os ficheiros existentes?\n"
+            "Se não substituir, os atuais ficam como estão e os novos são "
+            "gravados com _2 no fim do nome."
+        )
+        substituir = box.addButton("Substituir", QMessageBox.YesRole)
+        manter = box.addButton("Manter e criar _2", QMessageBox.NoRole)
+        cancelar = box.addButton("Cancelar", QMessageBox.RejectRole)
+        box.setDefaultButton(manter)
+        box.exec()
+        escolhido = box.clickedButton()
+        if escolhido is cancelar or escolhido is None:
+            raise PdfExportCancelled()
+        return escolhido is substituir
+
     def _export(self) -> None:
         if not self.separate_check.isChecked() and not self.package_check.isChecked():
             self.status_label.setText("Ative ficheiros separados, pacote combinado, ou ambos.")
@@ -275,7 +305,12 @@ class ListaMaterialPdfDialog(QDialog):
                 export_separate=self.separate_check.isChecked(),
                 create_package=self.package_check.isChecked(),
                 progress_callback=self._on_progress,
+                conflict_resolver=self._confirmar_substituicao,
             )
+        except PdfExportCancelled:
+            self.progress.setValue(0)
+            self.status_label.setText("Exportação cancelada. Nada foi alterado na pasta.")
+            return
         except Exception as exc:
             self.status_label.setText("A exportação falhou.")
             QMessageBox.critical(self, "Exportar documentação", str(exc))

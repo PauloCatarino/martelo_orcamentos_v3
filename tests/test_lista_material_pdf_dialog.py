@@ -15,3 +15,16 @@ def test_dialogo_pdf_carrega_preset_predefinido_e_isola_utilizador() -> None:
     assert "user_id=self.user_id" in reload_source
     assert "preset.predefinido" in reload_source
     assert "make_default=self.default_preset_check.isChecked()" in save_source
+
+
+def test_dialogo_pdf_pergunta_antes_de_substituir_ficheiros() -> None:
+    from app.ui.dialogs.lista_material_pdf_dialog import ListaMaterialPdfDialog
+
+    export_source = inspect.getsource(ListaMaterialPdfDialog._export)
+    confirm_source = inspect.getsource(ListaMaterialPdfDialog._confirmar_substituicao)
+
+    assert "conflict_resolver=self._confirmar_substituicao" in export_source
+    assert "except PdfExportCancelled:" in export_source
+    assert "Substituir" in confirm_source
+    assert "Manter e criar _2" in confirm_source
+    assert "raise PdfExportCancelled()" in confirm_source
