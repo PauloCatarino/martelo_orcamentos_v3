@@ -109,7 +109,15 @@ a = Analysis(
     # Reproduzido com um programa de tres linhas empacotado a` parte: nao tem
     # nada a ver com o Martelo. Assim o scipy passa a ser carregado pelo Python
     # normal, a partir do disco, e funciona como em desenvolvimento.
-    module_collection_mode={"scipy": "py"},
+    # O mesmo vale para o torch. O `torch/_numpy/_ufuncs.py` percorre um ciclo
+    # `for name in _binary:` e escreve `vars()[name] = ...`; carregado de dentro
+    # do executavel, o `name` desaparece entre uma linha e a seguinte e o import
+    # rebenta com `NameError: name 'name' is not defined`. Arrasta o
+    # transformers e o sentence-transformers -- outra vez a Pesquisa por IA
+    # inteira, uma camada abaixo do scipy (relatorio do Paulo, 29-08-2026).
+    #
+    # Nao pesa praticamente nada: o hook do torch ja' poe estes .py no disco.
+    module_collection_mode={"scipy": "py", "torch": "py"},
 )
 pyz = PYZ(a.pure)
 
