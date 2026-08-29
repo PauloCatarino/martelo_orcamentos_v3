@@ -77,6 +77,66 @@ def _seccao(titulo: str, widget: QWidget) -> QWidget:
     return caixa
 
 
+def montar_fontes(v3, phc, refs, trechos) -> str:
+    """De onde vieram os valores que o modelo teve a` frente.
+
+    Nao se pede isto ao modelo: um modelo pequeno inventa a fonte com a mesma
+    facilidade com que inventa o preco. Esta lista e' montada com o que
+    REALMENTE lhe foi entregue, por isso ou esta' certa ou nao aparece.
+    """
+    linhas: list[str] = []
+
+    referencias_v3 = [
+        (materia.ref_le or "").strip() for materia in v3 if (materia.ref_le or "").strip()
+    ]
+    if referencias_v3:
+        linhas.append("Matérias-primas V3: " + " | ".join(referencias_v3))
+
+    referencias_phc = [
+        str(linha.get("Ref") or "").strip()
+        for linha in phc
+        if str(linha.get("Ref") or "").strip()
+    ]
+    if referencias_phc:
+        linhas.append("PHC: " + " | ".join(referencias_phc))
+
+    # Uma referencia de placa aparece em varias folhas (EGGER, stock do B&F,
+    # stock da WoodSide) com precos diferentes -- e saber de QUAL folha veio o
+    # preco e' precisamente o que o Paulo precisa.
+    folhas_por_referencia: dict[str, list[str]] = {}
+    for referencia in refs:
+        nome = (referencia.referencia or "").strip()
+        folha = (referencia.folha or "").strip()
+        if not nome:
+            continue
+        folhas = folhas_por_referencia.setdefault(nome, [])
+        if folha and folha not in folhas:
+            folhas.append(folha)
+    if folhas_por_referencia:
+        partes = [
+            f"{nome} ({' | '.join(folhas)})" if folhas else nome
+            for nome, folhas in folhas_por_referencia.items()
+        ]
+        linhas.append("Referências de placas: " + " | ".join(partes))
+
+    locais_por_ficheiro: dict[str, list[str]] = {}
+    for resultado in trechos:
+        ficheiro = (resultado.ficheiro or "").strip() or "(sem ficheiro)"
+        local = (resultado.local or "").strip()
+        locais = locais_por_ficheiro.setdefault(ficheiro, [])
+        if local and local not in locais:
+            locais.append(local)
+    for ficheiro, locais in locais_por_ficheiro.items():
+        linhas.append(
+            f"{ficheiro} ({' | '.join(locais)})" if locais else ficheiro
+        )
+
+    if not linhas:
+        return ""
+    marcadores = [f"• {linha}" for linha in linhas]
+    return "\n\nFontes:\n" + "\n".join(marcadores)
+
+
 class _RespostaWorker(QObject):
     """Gera a resposta IA fora da thread da UI, emitindo pedacos (streaming)."""
 
@@ -149,6 +209,9 @@ class PesquisaIAPage(QWidget):
         #: tabela continuava com a anterior -- e a resposta IA era gerada
         #: com os catalogos do artigo errado, sem ninguem dar por isso.
         self._texto_catalogos: str = ""
+        #: As fontes da ultima resposta, acrescentadas no fim quando ela
+        #: acaba de ser escrita.
+        self._fontes: str = ""
         self._referencias_todas: list[LinhaReferencia] = []
         self._referencias_filtradas: list[LinhaReferencia] = []
         self._resposta_thread: QThread | None = None
@@ -510,6 +573,8 @@ class PesquisaIAPage(QWidget):
             )
             return
 
+        self._fontes = montar_fontes(v3, phc, refs, trechos)
+
         partes: list[str] = []
         linhas_artigos: list[str] = []
         for materia in v3:
@@ -606,6 +671,9 @@ class PesquisaIAPage(QWidget):
     def _resposta_concluida(self) -> None:
         if not self.resposta_text.toPlainText().strip():
             self.resposta_text.setPlainText("(sem resposta)")
+        if self._fontes:
+            self.resposta_text.moveCursor(QTextCursor.MoveOperation.End)
+            self.resposta_text.insertPlainText(self._fontes)
         self.status_label.setText("Resposta gerada.")
 
     def _finalizar_geracao(self) -> None:
