@@ -285,10 +285,23 @@ def criar(
             )
             if int(cursor.fetchone()[0]):
                 cursor.execute("CALL martelo_aplicar_grants()")
-                print("      OK (martelo_aplicar_grants)")
+                print("      OK (martelo_aplicar_grants) - contas dos colegas")
             else:
                 print("      AVISO: o procedimento martelo_aplicar_grants nao veio.")
                 print("             Corra o deploy\\mysql_contas_beta.sql nesta base.")
+
+            # A conta de manutencao (a do .env) tambem precisa de entrar: e' ela
+            # que corre as migracoes e os scripts de seed. O
+            # `martelo_aplicar_grants` nao trata dela -- so' dos perfis dos
+            # colegas -- e sem isto o primeiro `alembic upgrade` na base oficial
+            # parava com "Access denied to database 'martelo_v3'".
+            conta_manutencao = settings.DB_USER
+            if conta_manutencao and conta_manutencao != utilizador:
+                cursor.execute(
+                    f"GRANT ALL PRIVILEGES ON `{destino}`.* "
+                    f"TO '{conta_manutencao}'@'localhost'"
+                )
+                print(f"      OK - conta de manutencao ({conta_manutencao})")
         ligacao_destino.commit()
         ligacao_destino.close()
 
@@ -384,11 +397,10 @@ Feito. A base `{args.destino}` esta' pronta.
 Falta:
   1. Fazer-lhe uma copia de seguranca ANTES de a por a trabalhar:
        .venv\\Scripts\\python.exe scripts\\backup_martelo.py --base {args.destino}
-  2. Apontar o .env da versao oficial para ela (DB_NAME={args.destino},
-     APP_ENV=production).
-  3. Confirmar que os numeros dos orcamentos comecam onde deve: o primeiro
-     orcamento de 2026 vai ser o 260001. Se as pastas 260001..260006 dos testes
-     ainda estiverem no servidor, trate delas primeiro.
+  2. Passar a copia diaria para esta base:
+       scripts\\instalar_backup_agendado.ps1 -Base {args.destino} -Copia "<pasta no servidor>"
+  3. Apontar o .env da versao oficial para ela: no deploy\\.env.producao,
+     DB_NAME={args.destino} e APP_ENV=production.
 """)
     return 0
 
