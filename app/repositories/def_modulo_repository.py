@@ -54,6 +54,9 @@ class DefModuloLinhaResumo:
     linha_pai_ordem: int | None
     nivel: int
     ativo: bool
+    #: Ver DefModuloLinha.operacoes_json. Fica no fim e com valor por omissao
+    #: para nao obrigar quem constroi o resumo a saber deste detalhe.
+    operacoes_json: str | None = None
 
 
 class DefModuloRepository:
@@ -268,4 +271,5 @@ class DefModuloRepository:
             linha_pai_ordem=linha.linha_pai_ordem,
             nivel=linha.nivel,
             ativo=linha.ativo,
+            operacoes_json=getattr(linha, "operacoes_json", None),
         )

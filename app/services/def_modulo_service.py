@@ -7,6 +7,8 @@ to the module). This phase covers create / read / list / search / delete only.
 
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 
@@ -28,6 +30,9 @@ from app.domain.modulo_categorias import (
 )
 from app.domain.modulo_estrutura import selecionar_linhas_topo
 from app.domain.modulo_pesquisa import filtrar_por_termo
+from app.repositories.orcamento_item_custeio_linha_operacao_repository import (
+    OrcamentoItemCusteioLinhaOperacaoRepository,
+)
 from app.repositories.def_modulo_repository import (
     DefModuloLinhaResumo,
     DefModuloRepository,
@@ -65,6 +70,8 @@ class CriarDefModuloLinhaData:
     linha_pai_ordem: int | None = None
     nivel: int = 0
     ativo: bool = True
+    #: Ver DefModuloLinha.operacoes_json.
+    operacoes_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +243,7 @@ class DefModuloService:
                 linha_pai_ordem=linha.linha_pai_ordem,
                 nivel=linha.nivel,
                 ativo=linha.ativo,
+                operacoes_json=getattr(linha, "operacoes_json", None),
             )
 
     def guardar_de_linhas_custeio(
@@ -477,7 +485,61 @@ class DefModuloService:
             linha_pai_ordem=linha_pai_ordem,
             nivel=linha.nivel,
             ativo=True,
+            operacoes_json=self._operacoes_locais_json(getattr(linha, "id", None)),
         )
+
+    def _operacoes_locais_json(self, linha_id: int | None) -> str | None:
+        """As operações editadas À MÃO nesta linha, para irem com o módulo.
+
+        Só as editadas localmente. As linhas que nunca foram mexidas ficam a
+        NULL e continuam a resolver as operações pelo catálogo da peça — assim
+        um módulo antigo apanha na mesma as melhorias que se fizerem ao
+        catálogo, e só fica congelado aquilo que alguém afinou de propósito.
+
+        É o caso que motivou isto: uma operação manual de recorte com o tempo
+        de CNC acertado para dar o preço pretendido. Guardar o módulo e voltar
+        a importá-lo devolvia a peça ao catálogo e perdia a afinação toda.
+        """
+        if linha_id is None:
+            return None
+
+        operacoes = OrcamentoItemCusteioLinhaOperacaoRepository(
+            self.session
+        ).list_active(int(linha_id))
+        if not operacoes:
+            return None
+
+        itens = [
+            {
+                "def_operacao_id": operacao.def_operacao_id,
+                # Guardados só para a mensagem de aviso quando a operação
+                # desaparecer do catálogo entretanto.
+                "codigo": operacao.codigo,
+                "nome": operacao.nome,
+                "ordem": operacao.ordem,
+                "metodo_calculo": operacao.metodo_calculo,
+                "regra_calculo": operacao.regra_calculo,
+                "quantidade_base": self._numero_json(operacao.quantidade_base),
+                "rasgo_qt_comp": operacao.rasgo_qt_comp,
+                "rasgo_qt_larg": operacao.rasgo_qt_larg,
+                "tempo_setup_minutos": self._numero_json(
+                    operacao.tempo_setup_minutos
+                ),
+                "tempo_por_unidade_minutos": self._numero_json(
+                    operacao.tempo_por_unidade_minutos
+                ),
+                "unidade_tempo": operacao.unidade_tempo,
+                "obrigatorio": bool(getattr(operacao, "obrigatorio", True)),
+                "observacoes": getattr(operacao, "observacoes", None),
+            }
+            for operacao in operacoes
+        ]
+        return json.dumps(itens, ensure_ascii=False, separators=(",", ":"))
+
+    @staticmethod
+    def _numero_json(valor) -> str | None:
+        """Decimais viajam como texto: em JSON um float perderia casas."""
+        return None if valor is None else format(valor, "f")
 
     def _prioridades_valueset_das_linhas(
         self, orcamento_item_id: int, linhas

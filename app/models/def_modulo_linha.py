@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -75,6 +76,11 @@ class DefModuloLinha(Base):
     )
     # Composite parent/child relation WITHIN the module, by order (resolved on
     # insertion into a real item costing).
+    #: Operacoes editadas A` MAO nesta linha, guardadas com o modulo. A NULL
+    #: (o normal) a linha resolve as operacoes pelo catalogo da peca -- e assim
+    #: continua a apanhar melhorias do catalogo. Preenchida, o modulo repoe
+    #: exatamente o que estava afinado quando foi guardado.
+    operacoes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     linha_pai_ordem: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nivel: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     ativo: Mapped[bool] = mapped_column(

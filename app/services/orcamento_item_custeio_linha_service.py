@@ -4947,6 +4947,9 @@ class OrcamentoItemCusteioLinhaService:
 
         criadas = 0
         componentes = 0
+        # ordem da linha no módulo -> id da linha de custeio que nasceu dela,
+        # para saber onde repor as operações guardadas.
+        mapa_linhas: dict[int, int] = {}
         for linha in linhas_modulo:
             if linha.linha_pai_ordem is not None:
                 continue  # handled within its composite parent
@@ -4955,11 +4958,29 @@ class OrcamentoItemCusteioLinhaService:
                 self._importar_divisao_modulo(item_id, linha)
             elif tipo == PECA_COMPOSTA:
                 componentes += self._importar_composta_modulo(
-                    item_id, linha, filhos_por_pai_ordem, avisos
+                    item_id, linha, filhos_por_pai_ordem, avisos, mapa_linhas
                 )
             else:
-                self._importar_peca_modulo(item_id, linha, tipo, avisos)
+                self._importar_peca_modulo(
+                    item_id, linha, tipo, avisos, mapa_linhas
+                )
             criadas += 1
+
+        # As operações vão no fim, com a árvore toda já criada: assim uma linha
+        # filha encontra sempre a sua, seja qual for a ordem de criação.
+        for linha in linhas_modulo:
+            operacoes_json = getattr(linha, "operacoes_json", None)
+            if not operacoes_json:
+                continue
+            linha_id = mapa_linhas.get(int(linha.ordem))
+            if linha_id is None:
+                self._adicionar_aviso(
+                    avisos,
+                    f"Não foi possível repor as operações guardadas da linha "
+                    f"{linha.codigo or linha.def_peca_codigo or linha.ordem}.",
+                )
+                continue
+            self._aplicar_operacoes_do_modulo(linha_id, operacoes_json, avisos)
 
         # Store the module image on the first independent division. A module may
         # start with a visual separator, which cannot display a thumbnail.
@@ -4980,6 +5001,85 @@ class OrcamentoItemCusteioLinhaService:
             avisos=avisos,
             linha_ids_criados=linha_ids_criados,
         )
+
+    @staticmethod
+    def _registar_linha_do_modulo(mapa, linha_modulo, criada) -> None:
+        """Ligar a linha do módulo à linha de custeio que acabou de nascer.
+
+        A chave é a ``ordem`` da linha no módulo, que é um contador corrido por
+        toda a árvore (pais e filhos) — por isso serve de identificador.
+        """
+        if mapa is None or criada is None:
+            return
+        ordem = getattr(linha_modulo, "ordem", None)
+        linha_id = getattr(criada, "id", None)
+        if ordem is not None and linha_id is not None:
+            mapa[int(ordem)] = int(linha_id)
+
+    def _aplicar_operacoes_do_modulo(
+        self, linha_id: int, operacoes_json: str | None, avisos: list[str]
+    ) -> None:
+        """Repor na linha nova as operações que vieram guardadas no módulo.
+
+        Escreve-as diretamente como operações locais, em vez de passar pelo
+        ``adicionar_operacao_local``: esse materializava primeiro as operações
+        da peça e só depois acrescentava, o que daria a soma das duas coisas. O
+        que o módulo guardou é o conjunto completo, e é esse que fica.
+
+        Uma operação que entretanto tenha desaparecido do catálogo não impede a
+        importação — fica o aviso e as restantes entram na mesma.
+        """
+        if not operacoes_json:
+            return
+        try:
+            dados = json.loads(operacoes_json)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return
+        if not isinstance(dados, list) or not dados:
+            return
+
+        # Segurança: a linha acabou de nascer e não devia ter nada, mas se
+        # tiver fica o que o módulo manda, não a mistura dos dois.
+        self.linha_operacao_repository.delete_by_linha(linha_id)
+
+        for item in dados:
+            if not isinstance(item, dict):
+                continue
+            def_operacao_id = item.get("def_operacao_id")
+            operacao = (
+                self.operacao_repository.get_by_id(int(def_operacao_id))
+                if def_operacao_id is not None
+                else None
+            )
+            if operacao is None:
+                self._adicionar_aviso(
+                    avisos,
+                    f"Operação {item.get('codigo') or def_operacao_id} do módulo "
+                    "já não existe no catálogo; a linha ficou sem ela.",
+                )
+                continue
+            data = OperacaoLocalData(
+                def_operacao_id=int(def_operacao_id),
+                ordem=int(item.get("ordem") or 1),
+                metodo_calculo=item.get("metodo_calculo"),
+                regra_calculo=item.get("regra_calculo"),
+                quantidade_base=normalizar_numero(item.get("quantidade_base")),
+                rasgo_qt_comp=int(item.get("rasgo_qt_comp") or 0),
+                rasgo_qt_larg=int(item.get("rasgo_qt_larg") or 0),
+                tempo_setup_minutos=normalizar_numero(
+                    item.get("tempo_setup_minutos")
+                ),
+                tempo_por_unidade_minutos=normalizar_numero(
+                    item.get("tempo_por_unidade_minutos")
+                ),
+                unidade_tempo=item.get("unidade_tempo"),
+                obrigatorio=bool(item.get("obrigatorio", True)),
+                observacoes=item.get("observacoes"),
+            )
+            self.linha_operacao_repository.create(
+                linha_id=linha_id,
+                **self._campos_operacao_local(operacao, data),
+            )
 
     def _validar_contexto_divisao_para_modulo(
         self, orcamento_item_id: int, linhas_modulo
@@ -5083,7 +5183,12 @@ class OrcamentoItemCusteioLinhaService:
         )
 
     def _importar_peca_modulo(
-        self, orcamento_item_id: int, linha, tipo: str, avisos: list[str]
+        self,
+        orcamento_item_id: int,
+        linha,
+        tipo: str,
+        avisos: list[str],
+        mapa: dict[int, int] | None = None,
     ) -> None:
         """Recreate a simple piece / standalone hardware line from a module line.
 
@@ -5093,7 +5198,9 @@ class OrcamentoItemCusteioLinhaService:
         """
         peca = self._resolver_def_peca_modulo(linha)
         if peca is None:
-            self._importar_linha_modulo_sem_peca(orcamento_item_id, linha, tipo, avisos)
+            self._importar_linha_modulo_sem_peca(
+                orcamento_item_id, linha, tipo, avisos, mapa
+            )
             return
 
         fields, aviso = self._build_peca_line_fields(
@@ -5111,7 +5218,8 @@ class OrcamentoItemCusteioLinhaService:
             self._adicionar_aviso(avisos, aviso)
 
         self._aplicar_estrutura_modulo(fields, linha)
-        self.repository.create_linha(**fields)
+        criada = self.repository.create_linha(**fields)
+        self._registar_linha_do_modulo(mapa, linha, criada)
 
     def _importar_composta_modulo(
         self,
@@ -5119,6 +5227,7 @@ class OrcamentoItemCusteioLinhaService:
         linha,
         filhos_por_pai_ordem: dict[int, list],
         avisos: list[str],
+        mapa: dict[int, int] | None = None,
     ) -> int:
         """Recreate a composite into the item costing.
 
@@ -5138,6 +5247,7 @@ class OrcamentoItemCusteioLinhaService:
         principal = self._criar_cabecalho_composta_modulo(
             orcamento_item_id, linha, peca, avisos
         )
+        self._registar_linha_do_modulo(mapa, linha, principal)
         return self._importar_descendentes_composta_modulo(
             orcamento_item_id,
             linha,
@@ -5145,6 +5255,7 @@ class OrcamentoItemCusteioLinhaService:
             nivel=1,
             filhos_por_pai_ordem=filhos_por_pai_ordem,
             avisos=avisos,
+            mapa=mapa,
         )
 
     def _importar_descendentes_composta_modulo(
@@ -5156,6 +5267,7 @@ class OrcamentoItemCusteioLinhaService:
         nivel: int,
         filhos_por_pai_ordem: dict[int, list],
         avisos: list[str],
+        mapa: dict[int, int] | None = None,
     ) -> int:
         """Rebuild one stored module subtree below ``pai_modulo``."""
         peca_pai = self._resolver_def_peca_modulo(pai_modulo)
@@ -5183,6 +5295,7 @@ class OrcamentoItemCusteioLinhaService:
                 componentes_def,
                 avisos,
             )
+            self._registar_linha_do_modulo(mapa, filho, criada)
             criados += 1
             criados += self._importar_descendentes_composta_modulo(
                 orcamento_item_id,
@@ -5191,6 +5304,7 @@ class OrcamentoItemCusteioLinhaService:
                 nivel=nivel + 1,
                 filhos_por_pai_ordem=filhos_por_pai_ordem,
                 avisos=avisos,
+                mapa=mapa,
             )
 
         return criados
@@ -5422,7 +5536,12 @@ class OrcamentoItemCusteioLinhaService:
         return None
 
     def _importar_linha_modulo_sem_peca(
-        self, orcamento_item_id: int, linha, tipo: str, avisos: list[str]
+        self,
+        orcamento_item_id: int,
+        linha,
+        tipo: str,
+        avisos: list[str],
+        mapa: dict[int, int] | None = None,
     ) -> None:
         """Create the best-effort line when a module piece no longer exists."""
         codigo_peca = linha.def_peca_codigo or linha.codigo
@@ -5432,7 +5551,7 @@ class OrcamentoItemCusteioLinhaService:
                 "linha criada sem material."
             )
         qt_und = self._qt_modulo(linha.qt_und, Decimal("1"))
-        self.repository.create_linha(
+        criada = self.repository.create_linha(
             orcamento_item_id=orcamento_item_id,
             tipo_linha=tipo,
             codigo=linha.codigo or linha.def_peca_codigo,
@@ -5457,6 +5576,7 @@ class OrcamentoItemCusteioLinhaService:
             editado_localmente=False,
             ativo=True,
         )
+        self._registar_linha_do_modulo(mapa, linha, criada)
 
     def _aplicar_estrutura_modulo(self, fields: dict, linha) -> None:
         """Overlay a module line's structural fields onto built piece fields.
