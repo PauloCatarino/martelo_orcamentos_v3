@@ -418,11 +418,12 @@ class PesquisaIAPage(QWidget):
             self.status_label.setText("Escreva algo para pesquisar nos cat\u00e1logos.")
             return
         servico = self._servico_catalogos()
-        if not servico.disponivel():
-            self.status_label.setText(
-                "\u00cdndice de cat\u00e1logos n\u00e3o encontrado. Corra: "
-                "python -m scripts.indexar_pesquisa_ia"
-            )
+        motivo = servico.motivo_indisponivel()
+        if motivo is not None:
+            # A mensagem vem do servico ja' escrita para quem a le': quem abre
+            # este menu no PC de trabalho nao corre comandos nem sabe o que e'
+            # um modulo Python. Antes dizia-se-lhe para correr um script.
+            self.status_label.setText(" ".join(motivo.split()))
             return
         self.status_label.setText("A pesquisar nos cat\u00e1logos (IA)...")
         self.catalogos_button.setEnabled(False)

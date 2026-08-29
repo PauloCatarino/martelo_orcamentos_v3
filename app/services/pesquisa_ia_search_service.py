@@ -42,12 +42,49 @@ class PesquisaCatalogosService:
         self._modelo = None
 
     def disponivel(self) -> bool:
+        return self.motivo_indisponivel() is None
+
+    def motivo_indisponivel(self) -> str | None:
+        """Porque e' que a pesquisa por IA nao da' para usar, em portugues.
+
+        Sao duas coisas diferentes, e antes so' se olhava para uma:
+
+        1. O INDICE -- os ficheiros que descrevem os catalogos. Vivem numa pasta
+           do servidor, por isso ou existem para toda a gente ou para ninguem.
+        2. A BIBLIOTECA que le' o indice (sentence-transformers). Essa vive
+           dentro da aplicacao, e o executavel normal NAO a leva: sao centenas
+           de MB que so' servem para esta funcionalidade.
+
+        Como o indice esta' no servidor, ele existe em todos os PCs -- e sem
+        esta verificacao a aplicacao dizia "disponivel" e depois estoirava com
+        "No module named 'sentence_transformers'", uma frase que nao ajuda
+        ninguem a perceber o que se passa.
+        """
+        if not self._pasta:
+            return (
+                "A pesquisa por IA ainda nao esta' configurada: falta indicar a "
+                "pasta dos catalogos em Configuracoes."
+            )
+
         base = Path(self._pasta)
-        return (
-            bool(self._pasta)
-            and (base / EMBEDDINGS_FILENAME).exists()
-            and (base / META_FILENAME).exists()
-        )
+        if not (base / EMBEDDINGS_FILENAME).exists() or not (base / META_FILENAME).exists():
+            return (
+                "Nao encontrei o indice dos catalogos em:\n"
+                f"{self._pasta}\n\n"
+                "Confirme que tem acesso a essa pasta do servidor."
+            )
+
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            return (
+                "Esta instalacao do Martelo nao inclui a pesquisa por IA.\n\n"
+                "E' a unica funcionalidade que fica de fora: ocupa centenas de "
+                "MB e tornava a instalacao muito mais pesada para toda a gente. "
+                "O resto do Martelo funciona na mesma."
+            )
+
+        return None
 
     def _carregar(self) -> None:
         if self._meta is not None:
