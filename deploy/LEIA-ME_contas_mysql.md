@@ -195,18 +195,37 @@ Ainda **sem** distribuir nada aos colegas:
    (o `.env` novo já não leva credenciais; o build recusa-se a empacotar um que
    as tenha)
 
-### O Arquivo V2 é a exceção
+### O Arquivo V2 já não é exceção
 
-O `.env` continua a levar as credenciais do `orc_user`, porque a consulta aos
-orçamentos antigos precisa delas. O que as torna inofensivas é o passo 1: a
-secção 8 do `mysql_contas_beta.sql` tira a escrita a essa conta e deixa-lhe só
-`SELECT`. Confirme com:
+Durante algum tempo o `.env` de cada PC levou as credenciais do `orc_user` para
+consultar os orçamentos antigos. Duas coisas correram mal com essa ideia:
 
-```sql
-SHOW GRANTS FOR 'orc_user'@'%';
+1. O `orc_user` **não é uma conta só de leitura** — é a conta com que o Martelo
+   V2 trabalha, escrita incluída. Quando se lhe tirou a escrita, o V2 parou em
+   todos os PCs e teve de ser reposta.
+2. Uma conta escrita num ficheiro que vai para todos os PCs é uma conta que
+   qualquer pessoa pode copiar e usar por fora dos dois programas.
+
+Agora o V3 consulta o arquivo com **a conta de quem entra na aplicação** — a
+base `orcamentos_v2` está no mesmo servidor MySQL. Não há segunda password em
+ficheiro nenhum, e quem pode ler o arquivo decide-se uma vez no servidor:
+
+```
+deploy/mysql_arquivo_v2.sql     (correr como root, uma vez)
 ```
 
-Deve mostrar `GRANT SELECT ON orcamentos_v2.*` — e não `ALL PRIVILEGES`.
+Esse ficheiro dá `SELECT` aos dois perfis nas tabelas de que o Martelo precisa —
+e **não** na base inteira: a tabela `users` do V2 guarda as passwords, por isso
+dela só se dão as colunas `id` e `username`.
+
+Quem não tiver esse acesso vê no menu Arquivo V2 uma frase a dizê-lo, em vez de
+um erro de SQL. Confirme com:
+
+```sql
+SHOW GRANTS FOR 'martelo_normal';
+```
+
+Não mexa nos privilégios do `orc_user`: continua a ser a conta do Martelo V2.
 
 ### Contas criadas pelos scripts de seed
 

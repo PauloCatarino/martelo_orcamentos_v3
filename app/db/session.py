@@ -19,6 +19,7 @@ qualquer maneira, para nunca trabalhar com uma conta vinda de ficheiro.
 from __future__ import annotations
 
 from collections.abc import Generator
+from typing import NamedTuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -156,3 +157,41 @@ def get_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+class LigacaoAtual(NamedTuple):
+    """Conta e servidor com que a aplicacao esta' ligada neste momento."""
+
+    utilizador: str
+    password: str
+    host: str
+    porta: int
+
+
+def credenciais_da_sessao() -> LigacaoAtual | None:
+    """A conta com que a pessoa entrou, para chegar a OUTRA base do MESMO servidor.
+
+    O arquivo do Martelo V2 (``orcamentos_v2``) vive no mesmo MySQL que o V3.
+    Antes, para o consultar, ia no ``.env`` de cada PC uma segunda conta
+    partilhada -- e a que la' estava era a `orc_user`, a conta com que o proprio
+    V2 TRABALHA, com escrita em tudo. Quem abrisse o ficheiro ficava com ela.
+
+    Assim nao ha' segunda password nenhuma: consulta-se o arquivo com a conta de
+    quem entrou. Quem pode ler o arquivo decide-se no servidor, uma vez
+    (``deploy/mysql_arquivo_v2.sql``), e nao ficheiro a ficheiro.
+
+    Devolve ``None`` quando ainda ninguem entrou -- ai' nao ha' conta nenhuma
+    para usar, e quem chamou tem de dizer isso a` pessoa.
+    """
+    engine = _engine_atual
+    if engine is None:
+        return None
+    url = engine.url
+    if not url.username or not url.password:
+        return None
+    return LigacaoAtual(
+        utilizador=url.username,
+        password=url.password,
+        host=url.host or "",
+        porta=int(url.port or 3306),
+    )

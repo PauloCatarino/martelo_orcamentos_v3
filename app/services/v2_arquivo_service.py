@@ -16,6 +16,9 @@ from typing import Any
 
 from sqlalchemy import MetaData, Table, create_engine, event, inspect, select, update
 from sqlalchemy.engine import Engine, URL
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db.session import credenciais_da_sessao
 
 
 class V2ArquivoConfigError(RuntimeError):
@@ -102,22 +105,47 @@ ALIASES = {
 
 
 def criar_engine_v2(*, read_only: bool = True) -> Engine:
-    """Create a V2 engine with a session-level SQL safety guard."""
+    """Create a V2 engine with a session-level SQL safety guard.
+
+    A conta usada é, por esta ordem:
+
+    1. ``V2_DATABASE_URL`` ou ``V2_DB_USER``/``V2_DB_PASSWORD``, se estiverem
+       no ``.env`` — é assim na máquina de quem faz manutenção.
+    2. **A conta com que a pessoa entrou no Martelo.** O arquivo do V2 vive no
+       mesmo servidor MySQL, por isso não é preciso segunda password nenhuma:
+       basta que essa conta tenha leitura no arquivo, o que se dá uma vez no
+       servidor com ``deploy\\mysql_arquivo_v2.sql``.
+
+    O ``.env`` que vai dentro do instalador não leva credenciais — se levasse a
+    conta partilhada do arquivo, qualquer pessoa que abrisse o ficheiro ficava
+    com ela.
+    """
     url = os.getenv("V2_DATABASE_URL")
     if not url:
         user = os.getenv("V2_DB_USER")
         password = os.getenv("V2_DB_PASSWORD")
+        host = os.getenv("V2_DB_HOST", "")
+        porta = os.getenv("V2_DB_PORT", "")
         if not user or not password:
-            raise V2ArquivoConfigError(
-                "Arquivo V2 não configurado. Defina V2_DB_USER e V2_DB_PASSWORD "
-                "ou V2_DATABASE_URL."
-            )
+            atual = credenciais_da_sessao()
+            if atual is None:
+                raise V2ArquivoConfigError(
+                    "Arquivo V2 indisponível: ainda não entrou no Martelo. "
+                    "O arquivo é consultado com a conta com que entra na "
+                    "aplicação."
+                )
+            user, password = atual.utilizador, atual.password
+            # O arquivo está no mesmo servidor do Martelo. Seguir o servidor da
+            # ligação em curso faz com que uma mudança de máquina (o servidor da
+            # empresa, um dia) não deixe esta ligação para trás.
+            host = host or atual.host
+            porta = porta or str(atual.porta)
         url = URL.create(
             "mysql+pymysql",
             username=user,
             password=password,
-            host=os.getenv("V2_DB_HOST", "192.168.5.201"),
-            port=int(os.getenv("V2_DB_PORT", "3306")),
+            host=host or "192.168.5.201",
+            port=int(porta or "3306"),
             database=os.getenv("V2_DB_NAME", "orcamentos_v2"),
             query={"charset": "utf8mb4"},
         )
@@ -131,6 +159,38 @@ def criar_engine_v2(*, read_only: bool = True) -> Engine:
         _bloquear_escrita if read_only else _bloquear_operacoes_nao_controladas,
     )
     return engine
+
+
+#: Erros do MySQL que querem dizer "esta conta não chega lá", e não "a rede
+#: falhou": 1044/1045 acesso negado, 1142/1143 falta privilégio na tabela ou
+#: coluna, 1698 plugin de autenticação.
+_ERROS_SEM_ACESSO = (1044, 1045, 1142, 1143, 1698)
+
+
+def explicar_erro_v2(exc: Exception, *, ao_gravar: bool = False) -> str:
+    """Traduz a falha para uma frase que se percebe sem saber SQL.
+
+    "Confirme rede, servidor e credenciais" servia para tudo e não ajudava em
+    nada. O caso comum tem nome: a conta da pessoa ainda não tem acesso ao
+    arquivo — coisa que se resolve uma vez, no servidor.
+    """
+    original = getattr(exc, "orig", None)
+    argumentos = getattr(original, "args", ()) or ()
+    codigo = argumentos[0] if argumentos and isinstance(argumentos[0], int) else None
+    if codigo in _ERROS_SEM_ACESSO:
+        return (
+            "A sua conta ainda não tem acesso ao Arquivo V2.\n\n"
+            "Os orçamentos antigos vivem noutra base de dados ('orcamentos_v2'), "
+            "no mesmo servidor. Quem faz a manutenção do Martelo tem de correr "
+            "uma vez o ficheiro deploy\\mysql_arquivo_v2.sql para dar acesso a "
+            "toda a gente."
+        )
+    if ao_gravar:
+        return "Não foi possível gravar a alteração na base V2."
+    return (
+        "Não foi possível consultar a base V2. "
+        "Confirme que o servidor está ligado e que tem rede."
+    )
 
 
 def criar_engine_v2_readonly() -> Engine:
@@ -201,16 +261,20 @@ class V2ArquivoService:
         tabelas_disponiveis = set(inspect(self.engine).get_table_names())
         from_clause = tabela
         colunas = [tabela]
+        # As duas juncoes seguintes sao um extra: dao o NOME do cliente e de
+        # quem criou. Se a conta nao chegar a essas tabelas, mostra-se a lista
+        # sem esses nomes -- perder uma coluna e' muito melhor do que perder o
+        # arquivo inteiro por causa de um privilegio a menos.
         if "client_id" in tabela.c and "clients" in tabelas_disponiveis:
-            clients = Table("clients", metadata, autoload_with=self.engine)
-            if "id" in clients.c and "nome" in clients.c:
+            clients = self._refletir_opcional("clients", metadata)
+            if clients is not None and "id" in clients.c and "nome" in clients.c:
                 from_clause = from_clause.outerjoin(
                     clients, tabela.c.client_id == clients.c.id
                 )
                 colunas.append(clients.c.nome.label("__cliente_nome"))
         if "created_by" in tabela.c and "users" in tabelas_disponiveis:
-            users = Table("users", metadata, autoload_with=self.engine)
-            if "id" in users.c and "username" in users.c:
+            users = self._refletir_opcional("users", metadata)
+            if users is not None and "id" in users.c and "username" in users.c:
                 from_clause = from_clause.outerjoin(
                     users, tabela.c.created_by == users.c.id
                 )
@@ -295,6 +359,18 @@ class V2ArquivoService:
                 raise V2ArquivoWriteError(
                     "O orçamento mudou entretanto no V2. Atualize a lista e tente novamente."
                 )
+
+    def _refletir_opcional(self, nome: str, metadata: MetaData) -> Table | None:
+        """Le a estrutura de uma tabela acessoria, ou devolve ``None``.
+
+        A tabela ``users`` do V2 guarda as passwords, por isso no servidor so'
+        se da acesso a`s colunas ``id`` e ``username``. Se um dia esse acesso
+        nao existir de todo, isto devolve ``None`` em vez de rebentar.
+        """
+        try:
+            return Table(nome, metadata, autoload_with=self.engine)
+        except SQLAlchemyError:
+            return None
 
     def _carregar_tabela(self) -> _V2Tabela:
         insp = inspect(self.engine)

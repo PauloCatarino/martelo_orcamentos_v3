@@ -8,6 +8,7 @@ import pytest
 
 from app.models.producao import Producao
 from app.services import producao_v2_sync_service as sync
+from app.services import v2_arquivo_service
 
 
 def _linha_v2(**overrides) -> dict:
@@ -145,9 +146,16 @@ def test_aplicar_selecao_cria_obra_nova(session) -> None:
     assert processo.estado == "Desenho"
 
 
-def test_criar_engine_v2_sem_credenciais(monkeypatch) -> None:
+def test_criar_engine_v2_sem_credenciais_e_sem_ninguem_ligado(monkeypatch) -> None:
+    """Sem conta no .env e sem ninguem dentro do Martelo, nao ha' por onde ir.
+
+    O arquivo do V2 passou a ser consultado com a conta de quem ENTRA na
+    aplicacao. Se ainda ninguem entrou, o erro tem de o dizer -- e nao ficar a
+    tentar ligar-se com credenciais que nao existem.
+    """
     for chave in ("V2_DATABASE_URL", "V2_DB_USER", "V2_DB_PASSWORD"):
         monkeypatch.delenv(chave, raising=False)
+    monkeypatch.setattr(v2_arquivo_service, "credenciais_da_sessao", lambda: None)
 
     with pytest.raises(sync.ProducaoV2ConfigError):
         sync.criar_engine_v2()

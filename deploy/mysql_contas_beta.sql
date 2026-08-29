@@ -349,16 +349,17 @@ FLUSH PRIVILEGES;
 -- Fica a licao: antes de mexer nos privilegios de uma conta, ver QUEM a usa.
 -- Esta e' partilhada por dois programas.
 --
--- O problema de fundo continua de pe' e resolve-se de outra maneira: as
--- credenciais do orc_user vao no .env de todos os PCs com acesso total a`
--- base do V2. A solucao certa e' dar ao V3 uma conta PROPRIA e so'-leitura
--- para consultar o arquivo, deixando o orc_user em paz para o V2:
+-- O problema de fundo -- as credenciais do orc_user irem no .env de todos os
+-- PCs, com acesso total a` base do V2 -- JA' ESTA' RESOLVIDO, e nao foi com
+-- uma conta nova: foi tirando a conta partilhada da equacao.
 --
---   CREATE USER 'martelo_v3_arquivo'@'%' IDENTIFIED BY '<password>';
---   GRANT SELECT ON `orcamentos_v2`.* TO 'martelo_v3_arquivo'@'%';
+-- O V3 consulta o arquivo com a conta de quem ENTROU na aplicacao. Uma conta
+-- nova ainda era uma password escrita num ficheiro que vai para todos os PCs;
+-- assim nao ha' password nenhuma em ficheiro.
 --
--- ...e trocar V2_DB_USER/V2_DB_PASSWORD no .env para essa conta nova. Fica
--- para um proximo capitulo, com o V2 testado a seguir.
+-- Os privilegios de leitura no arquivo estao em:  deploy/mysql_arquivo_v2.sql
+-- (correr uma vez, como root). Nao sao a base toda: a tabela `users` do V2
+-- guarda as passwords e dela so' se da^ o id e o nome.
 
 
 -- ---------------------------------------------------------------------------

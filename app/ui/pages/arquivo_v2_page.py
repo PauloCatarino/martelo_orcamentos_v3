@@ -27,6 +27,7 @@ from app.services.v2_arquivo_service import (
     V2ArquivoWriteError,
     criar_engine_v2,
     criar_engine_v2_readonly,
+    explicar_erro_v2,
 )
 from app.services.v2_arquivo_pastas_service import resolver_pasta_orcamento_v2
 from app.ui.dialogs.editar_arquivo_v2_dialog import EditarArquivoV2Dialog
@@ -140,11 +141,9 @@ class ArquivoV2Page(QWidget):
             self.status.setText(str(error))
             self._render()
             return
-        except SQLAlchemyError:
+        except SQLAlchemyError as error:
             self._todos = []
-            self.status.setText(
-                "Não foi possível consultar a base V2. Confirme rede, servidor e credenciais."
-            )
+            self.status.setText(explicar_erro_v2(error))
             self._render()
             return
         finally:
@@ -265,8 +264,8 @@ class ArquivoV2Page(QWidget):
         except (V2ArquivoConfigError, V2ArquivoSchemaError, V2ArquivoWriteError, ValueError) as error:
             self.status.setText(str(error))
             return
-        except SQLAlchemyError:
-            self.status.setText("Não foi possível gravar a alteração na base V2.")
+        except SQLAlchemyError as error:
+            self.status.setText(explicar_erro_v2(error, ao_gravar=True))
             return
         finally:
             if engine is not None:
