@@ -355,6 +355,10 @@ class OperacaoEfetivaLinhaResumo:
     tempo_por_unidade_minutos: Decimal | None
     unidade_tempo: str | None
     obrigatorio: bool
+    #: O comentario que a pessoa escreveu na operacao. Ficava gravado na base
+    #: mas nao vinha ate' aqui -- e como o ecra' so' mostra o que vem neste
+    #: resumo, ao reabrir a operacao o campo aparecia vazio e parecia perdido.
+    observacoes: str | None = None
     local_id: int | None = None
     def_operacao_id: int | None = None
 
@@ -2653,6 +2657,7 @@ class OrcamentoItemCusteioLinhaService:
                     quantidade_base=normalizar_numero(
                         getattr(ligacao, "quantidade_base", None)
                     ),
+                    observacoes=getattr(ligacao, "observacoes", None),
                     rasgo_qt_comp=int(getattr(ligacao, "rasgo_qt_comp", 0) or 0),
                     rasgo_qt_larg=int(getattr(ligacao, "rasgo_qt_larg", 0) or 0),
                     tempo_setup_minutos=normalizar_numero(

@@ -1431,7 +1431,7 @@ class OrcamentoItemCusteioPage(QWidget):
                     quantidade_base=operacao.quantidade_base,
                     obrigatorio=operacao.obrigatorio,
                     ativo=True,
-                    observacoes=None,
+                    observacoes=getattr(operacao, "observacoes", None),
                     rasgo_qt_comp=operacao.rasgo_qt_comp,
                     rasgo_qt_larg=operacao.rasgo_qt_larg,
                     tempo_setup_minutos=operacao.tempo_setup_minutos,

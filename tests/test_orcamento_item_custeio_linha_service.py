@@ -3926,6 +3926,70 @@ def test_operacao_local_adiciona_recalcula_e_fica_identificada(monkeypatch) -> N
     assert operacoes[0].quantidade_base == Decimal("4")
 
 
+def test_operacao_local_guarda_e_devolve_as_observacoes(monkeypatch) -> None:
+    """O comentário escrito na operação tem de voltar ao ecrã.
+
+    Ficava gravado na base de dados mas não vinha no resumo que alimenta o
+    diálogo — ao reabrir a operação o campo aparecia vazio, e quem o escreveu
+    conclui, com razão, que o Martelo não o gravou.
+    """
+    service, _ = _service(monkeypatch)
+    linha = _resumo(
+        id=7,
+        tipo_linha="FERRAGEM",
+        def_peca_id=4,
+        operacoes_snapshot_json="[]",
+    )
+    _FakeRepository.by_id = linha
+    _FakeRepository.active_rows = [linha]
+    _FakeOperacaoRepository.operacoes = {
+        12: _operacao("CNC_5_EIXOS", id=12, tipo_operacao="CNC", maquina_id=3)
+    }
+    _FakeMaquinaRepository.maquinas = {
+        3: SimpleNamespace(codigo="CNC_5_EIXOS", nome="CNC 5 eixos")
+    }
+    monkeypatch.setattr(service, "recalcular_item_completo", lambda item_id: None)
+
+    service.adicionar_operacao_local(
+        7,
+        service_module.OperacaoLocalData(
+            def_operacao_id=12,
+            ordem=1,
+            tempo_setup_minutos=Decimal("2"),
+            tempo_por_unidade_minutos=Decimal("3"),
+            observacoes="Recorte 'L' do pilar — 5 recortes",
+        ),
+    )
+
+    operacoes = service.listar_operacoes_efetivas_da_linha(7)
+    assert operacoes[0].observacoes == "Recorte 'L' do pilar — 5 recortes"
+
+
+def test_operacao_sem_observacoes_continua_vazia(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    linha = _resumo(
+        id=7,
+        tipo_linha="FERRAGEM",
+        def_peca_id=4,
+        operacoes_snapshot_json="[]",
+    )
+    _FakeRepository.by_id = linha
+    _FakeRepository.active_rows = [linha]
+    _FakeOperacaoRepository.operacoes = {
+        12: _operacao("CNC_5_EIXOS", id=12, tipo_operacao="CNC", maquina_id=3)
+    }
+    _FakeMaquinaRepository.maquinas = {
+        3: SimpleNamespace(codigo="CNC_5_EIXOS", nome="CNC 5 eixos")
+    }
+    monkeypatch.setattr(service, "recalcular_item_completo", lambda item_id: None)
+
+    service.adicionar_operacao_local(
+        7, service_module.OperacaoLocalData(def_operacao_id=12, ordem=1)
+    )
+
+    assert service.listar_operacoes_efetivas_da_linha(7)[0].observacoes is None
+
+
 def test_operacao_local_remove_ultima_e_repor_volta_a_origem(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     linha = _resumo(
