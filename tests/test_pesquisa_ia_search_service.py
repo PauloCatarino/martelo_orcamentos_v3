@@ -209,3 +209,72 @@ def test_sem_pasta_configurada_o_motivo_manda_as_configuracoes(tmp_path) -> None
 
     assert motivo is not None
     assert "Configuracoes" in motivo
+
+
+# ---------------------------------------------------------------------------
+# Onde e' que o modelo e' procurado
+# ---------------------------------------------------------------------------
+#
+# O modelo sao 458 MB. Se ficasse so' o NOME, a biblioteca ia descarrega-lo da
+# internet na primeira pesquisa de CADA PC -- e a rede da empresa pode nem
+# deixar chegar ao huggingface.co. Por isso ele vive no servidor, ao lado do
+# indice, e e' de la' que tem de ser lido.
+
+def _modelo_no_servidor(tmp_path):
+    """Imita a pasta ia_models do servidor, com o modelo la' dentro."""
+    indice = tmp_path / "Pesquisa_IA_Martelo"
+    modelo = indice / service_module.SUBPASTA_MODELOS / service_module.MODELO_EMBEDDINGS_DEFAULT
+    modelo.mkdir(parents=True)
+    (modelo / "config.json").write_text("{}", encoding="utf-8")
+    return indice, modelo
+
+
+def test_o_modelo_do_servidor_e_preferido_ao_nome(tmp_path) -> None:
+    indice, modelo = _modelo_no_servidor(tmp_path)
+
+    assert service_module.resolver_modelo(str(indice)) == str(modelo)
+
+
+def test_sem_modelo_no_servidor_fica_o_nome(tmp_path) -> None:
+    """Na maquina de manutencao, que tem internet, o nome ainda serve."""
+    indice = tmp_path / "Pesquisa_IA_Martelo"
+    indice.mkdir()
+
+    assert (
+        service_module.resolver_modelo(str(indice))
+        == service_module.MODELO_EMBEDDINGS_DEFAULT
+    )
+
+
+def test_uma_pasta_configurada_a_mao_ganha_ao_servidor(tmp_path) -> None:
+    indice, _ = _modelo_no_servidor(tmp_path)
+    escolhido = tmp_path / "modelo_a_parte"
+    escolhido.mkdir()
+
+    assert service_module.resolver_modelo(str(indice), str(escolhido)) == str(escolhido)
+
+
+def test_um_nome_configurado_a_mao_e_procurado_no_servidor(tmp_path) -> None:
+    """Trocar de modelo nas configuracoes continua a ler do servidor."""
+    indice = tmp_path / "Pesquisa_IA_Martelo"
+    outro = indice / service_module.SUBPASTA_MODELOS / "outro-modelo"
+    outro.mkdir(parents=True)
+
+    assert service_module.resolver_modelo(str(indice), "outro-modelo") == str(outro)
+
+
+def test_sem_pasta_de_indice_nao_rebenta(tmp_path) -> None:
+    assert (
+        service_module.resolver_modelo("")
+        == service_module.MODELO_EMBEDDINGS_DEFAULT
+    )
+
+
+def test_indexar_e_pesquisar_usam_o_mesmo_modelo(tmp_path) -> None:
+    """Indexar com um modelo e pesquisar com outro daria resultados sem nexo."""
+    from app.services import pesquisa_ia_index_service as index_module
+
+    indice, modelo = _modelo_no_servidor(tmp_path)
+
+    assert index_module.resolver_modelo is service_module.resolver_modelo
+    assert index_module.resolver_modelo(str(indice)) == str(modelo)

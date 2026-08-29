@@ -10,6 +10,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.services.pesquisa_ia_search_service import resolver_modelo
 from app.services.system_setting_service import SystemSettingService
 
 EMBEDDINGS_FILENAME = "embeddings.npy"
@@ -30,9 +31,10 @@ def _config(session: Session) -> tuple[str, str, str]:
     svc = SystemSettingService(session)
     catalogos = (svc.obter_valor("pasta_pesquisa_profunda_ia", "") or "").strip()
     indice = (svc.obter_valor("pasta_embeddings_ia", "") or "").strip()
-    modelo = (
-        (svc.obter_valor("modelo_embeddings_ia", "") or "").strip()
-        or MODELO_EMBEDDINGS_DEFAULT
+    # O mesmo modelo que a pesquisa usa. Indexar com um modelo e pesquisar com
+    # outro daria resultados sem nexo, e nada avisaria.
+    modelo = resolver_modelo(
+        indice, (svc.obter_valor("modelo_embeddings_ia", "") or "").strip()
     )
     return catalogos, indice, modelo
 

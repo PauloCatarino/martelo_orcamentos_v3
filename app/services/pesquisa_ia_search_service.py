@@ -16,6 +16,42 @@ EMBEDDINGS_FILENAME = "embeddings.npy"
 META_FILENAME = "meta.jsonl"
 MODELO_EMBEDDINGS_DEFAULT = "paraphrase-multilingual-MiniLM-L12-v2"
 
+#: Subpasta, ao lado do indice, onde o modelo vive no servidor.
+SUBPASTA_MODELOS = "ia_models"
+
+
+def resolver_modelo(pasta_indice: str, escolhido: str = "") -> str:
+    """Onde ir buscar o modelo da pesquisa por IA.
+
+    O modelo sao 458 MB. Se aqui ficasse so' o NOME dele
+    (``paraphrase-multilingual-MiniLM-L12-v2``), a biblioteca ia descarrega-lo
+    da internet na primeira pesquisa -- em cada PC, e a pedir acesso ao
+    huggingface.co que a rede da empresa pode nem permitir.
+
+    Por isso procura-se primeiro no servidor, na pasta ``ia_models`` ao lado do
+    indice: uma copia so', que toda a gente le'. O nome fica como ultimo
+    recurso, para a maquina de quem faz manutencao (que tem internet e ja' o
+    tem em cache).
+
+    Ordem: o que estiver configurado (se for uma pasta que existe) ->
+    ``<indice>/ia_models/<nome>`` -> o nome do modelo.
+    """
+    escolhido = (escolhido or "").strip()
+    if escolhido:
+        # Um caminho que existe ganha sempre. Se for so' um nome de modelo,
+        # continua a servir de nome no fim.
+        if Path(escolhido).is_dir():
+            return escolhido
+
+    nome = escolhido or MODELO_EMBEDDINGS_DEFAULT
+    pasta_indice = (pasta_indice or "").strip()
+    if pasta_indice:
+        no_servidor = Path(pasta_indice) / SUBPASTA_MODELOS / nome
+        if no_servidor.is_dir():
+            return str(no_servidor)
+
+    return nome
+
 
 @dataclass(frozen=True)
 class ResultadoCatalogo:
@@ -33,9 +69,9 @@ class PesquisaCatalogosService:
     def __init__(self, session: Session) -> None:
         svc = SystemSettingService(session)
         self._pasta = (svc.obter_valor("pasta_embeddings_ia", "") or "").strip()
-        self._modelo_nome = (
-            (svc.obter_valor("modelo_embeddings_ia", "") or "").strip()
-            or MODELO_EMBEDDINGS_DEFAULT
+        self._modelo_nome = resolver_modelo(
+            self._pasta,
+            (svc.obter_valor("modelo_embeddings_ia", "") or "").strip(),
         )
         self._meta: list[dict] | None = None
         self._matriz = None
