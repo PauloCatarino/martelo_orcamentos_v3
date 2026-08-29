@@ -28,6 +28,7 @@ from app.services.phc_materiais_service import query_phc_materiais
 from app.services.placas_referencias_service import LinhaReferencia, listar_referencias
 from app.services.pesquisa_ia_resposta_service import RespostaIAService
 from app.services.pesquisa_ia_search_service import PesquisaCatalogosService
+from app.ui.helpers.painel_recolhivel import PainelRecolhivel
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
@@ -66,15 +67,24 @@ def _nova_tabela(
     return tabela, restaurado
 
 
-def _seccao(titulo: str, widget: QWidget) -> QWidget:
-    """Agrupa um rotulo + widget numa caixa, para ser um painel do splitter."""
-    caixa = QWidget()
-    vbox = QVBoxLayout(caixa)
-    vbox.setContentsMargins(0, 0, 0, 0)
-    vbox.setSpacing(4)
-    vbox.addWidget(QLabel(titulo))
-    vbox.addWidget(widget)
-    return caixa
+def _ficha(texto: str) -> QPushButton:
+    """Um contador clicavel para a barra de cima.
+
+    Diz quantos resultados ha' em cada tabela ANTES de se abrir seja o que
+    for, e leva la' quem carregar nele.
+    """
+    botao = QPushButton(texto)
+    botao.setFlat(True)
+    botao.setCursor(Qt.CursorShape.PointingHandCursor)
+    botao.setStyleSheet(
+        "QPushButton {"
+        f" border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 10px;"
+        f" padding: 3px 11px; color: {tema.TEXTO_NORMAL}; text-align: left; }}"
+        f"QPushButton:hover {{ background-color: {tema.BEGE_AREIA}; }}"
+        f"QPushButton:disabled {{ color: {tema.CINZA_ESCURO};"
+        f" border-color: {tema.CINZA_SUAVE}; }}"
+    )
+    return botao
 
 
 def montar_fontes(v3, phc, refs, trechos) -> str:
@@ -291,38 +301,75 @@ class PesquisaIAPage(QWidget):
             "'Pesquisar cat\u00e1logos (IA)' + 'Gerar resposta IA'."
         )
 
+        # A resposta e' o que se le' primeiro, por isso fica em cima. Antes
+        # estava no fundo, depois de quatro tabelas -- era preciso percorrer a
+        # pagina toda para chegar aquilo que se tinha ido buscar.
+        # Fechada enquanto nao houver resposta: uma caixa de texto vazia a
+        # ocupar um terco do ecra' era exatamente o que tornava esta pagina
+        # pesada. Abre-se sozinha quando a resposta comeca a ser escrita.
+        self.painel_resposta = PainelRecolhivel(
+            "Resposta IA (com cita\u00e7\u00f5es e fontes)",
+            self.resposta_text,
+            aberto=False,
+            com_botao_grande=False,
+        )
+        self.painel_v3 = PainelRecolhivel(
+            "Mat\u00e9rias-primas do V3 (interno)", self.v3_table
+        )
+        self.painel_phc = PainelRecolhivel(
+            "Artigos PHC (Ferragens, Madeiras, Orlas)", self.phc_table
+        )
+        self.painel_referencias = PainelRecolhivel(
+            "Refer\u00eancias de placas (cat\u00e1logo curado)", self.referencias_table
+        )
+        self.painel_catalogos = PainelRecolhivel(
+            "Cat\u00e1logos (documentos) \u2014 duplo-clique abre o ficheiro",
+            self.catalogo_table,
+        )
+        self._paineis = [
+            self.painel_resposta,
+            self.painel_v3,
+            self.painel_phc,
+            self.painel_referencias,
+            self.painel_catalogos,
+        ]
+        for painel in self._paineis:
+            painel.grande_pedido.connect(self._alternar_painel_grande)
+
+        self.fichas: dict[str, QPushButton] = {}
+        linha_fichas = QHBoxLayout()
+        linha_fichas.setSpacing(6)
+        for chave, painel in (
+            ("v3", self.painel_v3),
+            ("phc", self.painel_phc),
+            ("placas", self.painel_referencias),
+            ("catalogos", self.painel_catalogos),
+        ):
+            ficha = _ficha("")
+            ficha.clicked.connect(
+                lambda _=False, alvo=painel: self._mostrar_painel(alvo)
+            )
+            self.fichas[chave] = ficha
+            linha_fichas.addWidget(ficha)
+        linha_fichas.addStretch()
+
         self.tabelas_splitter = QSplitter(Qt.Orientation.Vertical)
         self.tabelas_splitter.setChildrenCollapsible(False)
-        self.tabelas_splitter.addWidget(
-            _seccao("Mat\u00e9rias-primas V3 (interno):", self.v3_table)
-        )
-        self.tabelas_splitter.addWidget(
-            _seccao("Artigos PHC (Ferragens, Madeiras, Orlas):", self.phc_table)
-        )
-        self.tabelas_splitter.addWidget(
-            _seccao(
-                "Refer\u00eancias de placas (cat\u00e1logo curado):",
-                self.referencias_table,
-            )
-        )
-        self.tabelas_splitter.addWidget(
-            _seccao(
-                "Cat\u00e1logos (documentos) - duplo-clique abre o ficheiro:",
-                self.catalogo_table,
-            )
-        )
-        self.tabelas_splitter.addWidget(
-            _seccao("Resposta IA (com cita\u00e7\u00f5es):", self.resposta_text)
-        )
-        for indice, fator in enumerate((2, 2, 2, 1, 1)):
+        for painel in self._paineis:
+            self.tabelas_splitter.addWidget(painel)
+        for indice, fator in enumerate((1, 2, 2, 2, 2)):
             self.tabelas_splitter.setStretchFactor(indice, fator)
-        ligar_persistencia_splitter(self.tabelas_splitter, "pesquisa_ia")
+        # Chave nova: a ordem dos paineis mudou (a resposta subiu para o
+        # primeiro), e as alturas guardadas da ordem antiga davam um arranjo
+        # sem sentido a quem ja' usava a pagina.
+        ligar_persistencia_splitter(self.tabelas_splitter, "pesquisa_ia_paineis")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(10)
         layout.addWidget(self.cabecalho)
         layout.addLayout(toolbar)
+        layout.addLayout(linha_fichas)
         layout.addWidget(self.status_label)
         layout.addWidget(self.tabelas_splitter, stretch=1)
         self.setLayout(layout)
@@ -404,19 +451,93 @@ class PesquisaIAPage(QWidget):
         self._texto_catalogos = ""
         self.catalogo_table.setRowCount(0)
 
+    def _mostrar_painel(self, painel: PainelRecolhivel) -> None:
+        """Abrir um painel a partir da ficha que o conta."""
+        if not painel.esta_aberto():
+            painel.abrir(True)
+
+    def _alternar_painel_grande(self, painel: PainelRecolhivel) -> None:
+        """Dar o ecrã só a esta tabela, ou devolver tudo ao normal.
+
+        Serve para percorrer os 17 artigos do PHC sem andar aos saltos entre
+        quatro tabelas espremidas.
+        """
+        voltar = painel.em_grande()
+        for outro in self._paineis:
+            outro.definir_em_grande(False)
+        if voltar:
+            self._arrumar_paineis()
+            return
+
+        painel.definir_em_grande(True)
+        for outro in self._paineis:
+            outro.abrir(outro is painel)
+
+    def _arrumar_paineis(self) -> None:
+        """Voltar ao arranjo normal: aberto o que tem alguma coisa para mostrar."""
+        self._atualizar_status()
+        self.painel_resposta.abrir(bool(self.resposta_text.toPlainText().strip()))
+
     def _atualizar_status(self) -> None:
-        partes = [
-            f"V3: {len(self._v3_filtrados)}/{len(self._v3)}",
-            f"PHC: {len(self._phc_filtrados)}/{len(self._phc)}",
-        ]
-        if self._referencias_todas:
-            partes.append(
-                f"Placas: {len(self._referencias_filtradas)}/"
-                f"{len(self._referencias_todas)}"
-            )
-        if not self._phc:
-            partes.append("(carregue o PHC para incluir artigos PHC)")
-        self.status_label.setText("   *   ".join(partes))
+        """Escrever as contagens nas fichas e nos títulos dos painéis."""
+        self.painel_v3.definir_contagem(
+            len(self._v3_filtrados),
+            len(self._v3),
+            texto_vazio=(
+                "Nenhuma matéria-prima do V3 corresponde à pesquisa. "
+                "Pode existir no PHC ou nos catálogos dos fornecedores."
+            ),
+        )
+        self.painel_phc.definir_contagem(
+            len(self._phc_filtrados),
+            len(self._phc),
+            texto_vazio=(
+                "Ainda não carregou os artigos do PHC — use "
+                "'Carregar/Atualizar (PHC)'."
+                if not self._phc
+                else "Nenhum artigo do PHC corresponde à pesquisa."
+            ),
+        )
+        self.painel_referencias.definir_contagem(
+            len(self._referencias_filtradas),
+            len(self._referencias_todas),
+            texto_vazio=(
+                "Ainda não carregou as referências de placas — use "
+                "'Carregar referências (placas)'."
+                if not self._referencias_todas
+                else (
+                    "Nenhuma referência de placa corresponde à pesquisa. "
+                    "Este catálogo curado só tem Finsa, Fiware e EGGER."
+                )
+            ),
+        )
+        exatos = sum(1 for resultado in self._ultimos_catalogos if resultado.exato)
+        self.painel_catalogos.definir_contagem(
+            len(self._ultimos_catalogos),
+            detalhe=f"{exatos} exactos" if exatos else "",
+            texto_vazio=(
+                "Carregue em 'Pesquisar catálogos (IA)' para procurar nos "
+                "catálogos e tabelas dos fornecedores."
+            ),
+        )
+
+        self.fichas["v3"].setText(
+            f"Matérias-primas V3   {len(self._v3_filtrados)}"
+        )
+        self.fichas["phc"].setText(f"Artigos PHC   {len(self._phc_filtrados)}")
+        self.fichas["placas"].setText(
+            f"Referências de placas   {len(self._referencias_filtradas)}"
+        )
+        self.fichas["catalogos"].setText(
+            f"Catálogos   {len(self._ultimos_catalogos)}"
+        )
+        for chave, quantos in (
+            ("v3", len(self._v3_filtrados)),
+            ("phc", len(self._phc_filtrados)),
+            ("placas", len(self._referencias_filtradas)),
+            ("catalogos", len(self._ultimos_catalogos)),
+        ):
+            self.fichas[chave].setEnabled(quantos > 0)
 
     @staticmethod
     def _escrever_linha(tabela: QTableWidget, row_index: int, valores: list[str]) -> None:
@@ -520,6 +641,7 @@ class PesquisaIAPage(QWidget):
         self._ultimos_catalogos = resultados
         self._texto_catalogos = texto
         self._preencher_catalogos(resultados)
+        self._atualizar_status()
         exatos = sum(1 for resultado in resultados if resultado.exato)
         detalhe = (
             f" ({exatos} com o que pediu)"
@@ -543,6 +665,16 @@ class PesquisaIAPage(QWidget):
             for col, valor in enumerate(valores):
                 item = QTableWidgetItem(valor)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
+                if not resultado.exato:
+                    # A pesquisa devolve sempre 30 resultados; os que nao tem
+                    # o que foi pedido sao o vizinho mais parecido. Ficam
+                    # esbatidos e nao entram na resposta -- ve^-se logo que
+                    # estao ali so' para consulta.
+                    item.setForeground(QColor(tema.CINZA_ESCURO))
+                    item.setToolTip(
+                        "Aproximação: não contém o que pesquisou, "
+                        "por isso não entra na resposta IA."
+                    )
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, resultado.caminho)
                 self.catalogo_table.setItem(row_index, col, item)
@@ -644,6 +776,7 @@ class PesquisaIAPage(QWidget):
         if self._resposta_thread is not None:
             return
         self.resposta_text.clear()
+        self.painel_resposta.abrir(True)
         self.status_label.setText("A gerar resposta IA...")
         self.resposta_button.setEnabled(False)
 

@@ -72,8 +72,14 @@ def test_pesquisa_ia_page_usa_tabelas_separadas_e_padroes_visuais() -> None:
     assert "pesquisa_ia_v3" in init_source
     assert "pesquisa_ia_phc" in init_source
     assert "pesquisa_ia_referencias" in init_source
-    assert "Mat\\u00e9rias-primas V3" in init_source
+    # Os títulos passaram a ser o cabeçalho de um painel que abre e fecha.
+    assert "Mat\\u00e9rias-primas do V3" in init_source
     assert "Artigos PHC" in init_source
+    assert "PainelRecolhivel" in init_source
+    # A resposta é o primeiro painel: é o que se lê primeiro.
+    assert init_source.index("self.painel_resposta") < init_source.index(
+        "self.painel_v3"
+    )
     assert "QHeaderView.ResizeMode.Interactive" in nova_tabela_source
     assert "ligar_persistencia_larguras" in nova_tabela_source
     assert "DefMateriaPrimaService" in carregar_v3_source

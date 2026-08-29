@@ -19,7 +19,7 @@ from __future__ import annotations
 #: 1.0.0 = a primeira versao oficial, a que vai para os PCs de toda a gente a
 #: 31 de agosto de 2026. Ate' aqui o Martelo andou em beta, numa base de dados
 #: de testes; a partir daqui e' o programa da casa, com dados a serio.
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 
 #: Vazio quer dizer versao oficial. Enquanto tiver texto ("beta", "rc"), esse
 #: texto aparece no numero da versao E o rotulo do ambiente aparece na janela.
