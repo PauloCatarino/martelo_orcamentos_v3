@@ -53,6 +53,14 @@ CHAVE_FORMATO_LINK = "teams_formato_link"
 #: Acima disto o Windows corta o URL. O texto completo fica sempre no ticket.
 MAX_MENSAGEM = 1500
 
+#: O limite verdadeiro e' do URL JA' CODIFICADO, e nao do texto que se escreve.
+#: Ao codificar, uma quebra de linha passa a ocupar 3 caracteres e um "ç" passa
+#: a ocupar 6 -- um ticket de 1500 caracteres pode dar um URL de 4000. Quando
+#: isso acontece o Windows corta, e o que se perde e' precisamente o
+#: `&message=`: o Teams abre a conversa com a caixa VAZIA e ninguem percebe
+#: porque. Por isso o corte e' medido no fim, no URL montado.
+MAX_URL = 1900
+
 
 def base_do_formato(formato: str | None) -> str:
     """Return the link prefix for a format key (unknown keys fall back)."""
@@ -149,7 +157,9 @@ def link_chat_teams(emails, mensagem: str = "", *, formato: str | None = None) -
     url = f"{base_do_formato(formato)}?users={quote(','.join(destinos), safe='@,')}"
     texto = (mensagem or "").strip()
     if texto:
-        url += f"&message={quote(encurtar(texto), safe='')}"
+        cabe = texto_que_cabe(texto, len(url) + len("&message="))
+        if cabe:
+            url += f"&message={quote(cabe, safe='')}"
     return url
 
 
@@ -164,11 +174,46 @@ def formato_configurado(session) -> str:
 
 
 def encurtar(mensagem: str, limite: int = MAX_MENSAGEM) -> str:
-    """Trim the message so the deep link survives the Windows URL limit."""
+    """Trim the message by character count.
+
+    Continua aqui porque limita o tamanho do texto antes de mais nada; o corte
+    que garante que o link funciona e' o do :func:`texto_que_cabe`.
+    """
     texto = mensagem or ""
     if len(texto) <= limite:
         return texto
     return texto[: limite - 1].rstrip() + "…"
+
+
+def texto_que_cabe(mensagem: str, ja_ocupado: int, limite: int = MAX_URL) -> str:
+    """O maior pedaco da mensagem que ainda cabe no URL depois de codificado.
+
+    ``ja_ocupado`` e' o comprimento do que o URL ja' tem (endereco base e
+    destinatarios). Devolve texto vazio quando nem um pedaco util cabe -- ai' o
+    Teams abre na conversa certa com a caixa vazia, que e' mau, mas menos mau
+    do que um link cortado a meio que nao abre nada.
+    """
+    texto = encurtar(mensagem)
+    if not texto:
+        return ""
+
+    def cabe(pedaco: str) -> bool:
+        return ja_ocupado + len(quote(pedaco, safe="")) <= limite
+
+    if cabe(texto):
+        return texto
+
+    # Procura binaria: o maior prefixo que ainda cabe. Fazer caractere a
+    # caractere seria O(n) chamadas ao quote() para textos de milhares de
+    # caracteres.
+    baixo, alto = 0, len(texto)
+    while baixo < alto:
+        meio = (baixo + alto + 1) // 2
+        if cabe(texto[:meio] + "…"):
+            baixo = meio
+        else:
+            alto = meio - 1
+    return texto[:baixo].rstrip() + "…" if baixo else ""
 
 
 def caminhos_de_anexos(anexos) -> list[str]:

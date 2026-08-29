@@ -509,9 +509,11 @@ def _ticket_para_relatorio(ticket, *, incluir_fotos: bool) -> TicketRelatorio:
     """Turn one ticket into the plain text the report needs."""
     envio = ""
     if ticket.enviado_em:
+        # "aberto" e nao "enviado": o Martelo escreve o ticket na conversa,
+        # mas quem carrega em Enter e' a pessoa (ver o dialogo das ocorrencias).
         via = (ticket.enviado_via or "chat").capitalize()
         envio = (
-            f"enviado a {ticket.enviado_para or '—'} no {via} em "
+            f"{via} aberto para {ticket.enviado_para or '—'} em "
             f"{formatar_data(ticket.enviado_em)}"
         )
 

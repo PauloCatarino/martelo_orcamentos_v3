@@ -416,10 +416,15 @@ class OcorrenciasObraDialog(QDialog):
     def _texto_envio(self, linha: dict) -> str:
         if linha["enviado_em"]:
             self.detalhe_envio.setStyleSheet(f"color: {tema.TEXTO_OK};")
+            # NAO dizer "enviado": o Martelo abre a conversa com o ticket
+            # escrito, mas quem carrega em Enter e' a pessoa. Chamar-lhe
+            # "enviado" ja' fez alguem fechar o Teams convencido de que o
+            # aviso tinha seguido -- e nao tinha seguido nada.
             via = (linha["enviado_via"] or "").capitalize() or "chat"
             return (
-                f"Enviado a {linha['enviado_para'] or '—'} no {via} — "
-                f"{formatar_data(linha['enviado_em'])}"
+                f"{via} aberto para {linha['enviado_para'] or '—'} — "
+                f"{formatar_data(linha['enviado_em'])} · "
+                "o envio faz-se no Teams, com Enter"
             )
         if linha["resolvido_em"]:
             self.detalhe_envio.setStyleSheet(f"color: {tema.TEXTO_OK};")

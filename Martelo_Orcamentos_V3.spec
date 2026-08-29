@@ -99,6 +99,17 @@ a = Analysis(
     excludes=excludes,
     noarchive=False,
     optimize=0,
+    # O scipy tem de ir como ficheiros .py, e nao compilado dentro do
+    # executavel. O `scipy/stats/_distn_infrastructure.py` acaba com um ciclo
+    # que apaga variaveis auxiliares e depois faz `del obj`; carregado pelo
+    # importador do PyInstaller esse `obj` desaparece, e o import rebenta com
+    # `NameError: name 'obj' is not defined`. Arrasta com ele o sklearn e o
+    # sentence-transformers -- ou seja, a Pesquisa por IA inteira.
+    #
+    # Reproduzido com um programa de tres linhas empacotado a` parte: nao tem
+    # nada a ver com o Martelo. Assim o scipy passa a ser carregado pelo Python
+    # normal, a partir do disco, e funciona como em desenvolvimento.
+    module_collection_mode={"scipy": "py"},
 )
 pyz = PYZ(a.pure)
 
