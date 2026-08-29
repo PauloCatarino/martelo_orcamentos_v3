@@ -2677,6 +2677,43 @@ class OrcamentoItemCusteioLinhaService:
             )
         return sorted(resultado, key=lambda item: (item.ordem, item.codigo))
 
+    @staticmethod
+    def _e_linha_de_operacao_manual(linha) -> bool:
+        """A linha e' uma operacao manual (um trabalho, nao uma peca)?"""
+        if normalize_custeio_linha_type(getattr(linha, "tipo_linha", None)) == (
+            OPERACAO_MANUAL
+        ):
+            return True
+        codigo = (getattr(linha, "def_peca_codigo", None) or "").strip().upper()
+        return codigo == OPERACAO_MANUAL
+
+    def operacoes_das_linhas_manuais(self, orcamento_item_id: int) -> dict[int, str]:
+        """Que trabalho esta' associado a cada linha de operacao manual do item.
+
+        Nessas linhas a coluna "Def. Peca" mostra sempre OPERACAO_MANUAL, e
+        sozinha nao diz nada: duas linhas com recortes completamente diferentes
+        ficam iguais na tabela. Devolve-se o nome das operacoes para a tabela
+        poder escrever "OPERACAO_MANUAL (CNC 5 Eixos)".
+
+        So' as linhas manuais. Numa peca normal o codigo da peca ja' identifica
+        o trabalho, e repetir as operacoes em todas as linhas so' tornava a
+        coluna ilegivel.
+        """
+        resultado: dict[int, str] = {}
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if not self._e_linha_de_operacao_manual(linha):
+                continue
+            nomes: list[str] = []
+            for operacao in self.listar_operacoes_efetivas_da_linha(linha.id):
+                # O nome ("CNC 5 Eixos") le^-se melhor do que o codigo
+                # ("CNC_5_EIXOS"); o codigo fica para quando nao ha' nome.
+                nome = (operacao.nome or operacao.codigo or "").strip()
+                if nome and nome not in nomes:
+                    nomes.append(nome)
+            if nomes:
+                resultado[int(linha.id)] = ", ".join(nomes)
+        return resultado
+
     def tem_edicao_operacoes_local(self, linha_id: int) -> bool:
         """Return whether the line has a materialized local operation set."""
         return self.linha_operacao_repository.has_any(linha_id)

@@ -78,7 +78,12 @@ def test_pesquisa_catalogos_disponivel_e_retrieval_hibrido(
     assert resultados[0].fornecedor == "Fornecedor A"
     assert resultados[0].ficheiro == "catalogo.xlsx"
     assert resultados[0].local == "Folha Orlas / linha 7"
-    assert resultados[0].score == 1.3
+    # 1,0 de semelhanca semantica + 0,30 (tem as duas palavras) + 0,25 de
+    # premio por ter tudo o que foi pedido. Era 1,3 quando o bonus era um
+    # valor unico de 0,3 para "tem todas as palavras" -- ver
+    # tests/test_pesquisa_ia_ranking.py.
+    assert resultados[0].score == 1.55
+    assert resultados[0].exato is True
     assert resultados[1].local == "P\u00e1gina 3"
 
 

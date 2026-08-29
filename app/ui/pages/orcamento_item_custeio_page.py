@@ -616,6 +616,9 @@ class OrcamentoItemCusteioPage(QWidget):
         # Assistente de resolução (Fase 2): leva o utilizador a um menu externo
         # (Matérias-Primas, Máquinas/Tarifas, …). None => sem saltos externos.
         self._on_navegar_menu = on_navegar_menu
+        #: linha_id -> "CNC 5 Eixos" para as linhas de operacao manual, para
+        #: a coluna "Def. Peca" nao ficar so com OPERACAO_MANUAL repetido.
+        self._operacoes_manuais: dict[int, str] = {}
         self._biblioteca_pecas: list[DefPecaResumo] = []
         self._prefs_biblioteca = SEM_PREFERENCIAS
         self._selecionados: set[int] = set()
@@ -911,6 +914,9 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
                 custeio_service = OrcamentoItemCusteioLinhaService(session)
                 linhas = custeio_service.listar_linhas_do_item(self.item_id)
+                self._operacoes_manuais = custeio_service.operacoes_das_linhas_manuais(
+                    self.item_id
+                )
                 erros_entrada = custeio_service.validar_entradas_do_item(self.item_id)
                 # Cache the item ValueSet options + key types once, for the
                 # per-row 'Mat. default' dropdown (filtered by compatibility).
@@ -4983,6 +4989,22 @@ class OrcamentoItemCusteioPage(QWidget):
             self.carregar()
             self.status_label.setText("Operação manual atualizada.")
 
+    def _texto_def_peca(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
+        """A coluna "Def. Peça", com o trabalho quando é uma operação manual.
+
+        Numa operação manual o código é sempre o mesmo — OPERACAO_MANUAL — e
+        duas linhas com trabalhos completamente diferentes ficavam iguais na
+        tabela. Passa a ler-se "OPERACAO_MANUAL (CNC 5 Eixos)". Nas peças
+        normais nada muda: o código da peça já diz o que é.
+        """
+        codigo = linha.def_peca_codigo or (
+            "" if linha.def_peca_id is None else str(linha.def_peca_id)
+        )
+        operacoes = self._operacoes_manuais.get(linha.id)
+        if codigo and operacoes:
+            return f"{codigo} ({operacoes})"
+        return codigo
+
     def _linha_para_valores(
         self, linha: OrcamentoItemCusteioLinhaResumo
     ) -> dict[str, str]:
@@ -5004,8 +5026,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tipo linha": self._tipo_linha_label(linha),
             "Código": linha.codigo or "",
             "Descrição livre": descricao_livre,
-            "Def. Peça": linha.def_peca_codigo
-            or ("" if linha.def_peca_id is None else str(linha.def_peca_id)),
+            "Def. Peça": self._texto_def_peca(linha),
             "Descrição": descricao_col,
             "Linha pai": "" if linha.linha_pai_id is None else str(linha.linha_pai_id),
             "Nível": str(nivel),

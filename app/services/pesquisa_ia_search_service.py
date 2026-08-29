@@ -53,6 +53,31 @@ def resolver_modelo(pasta_indice: str, escolhido: str = "") -> str:
     return nome
 
 
+#: Quanto vale, no maximo, a correspondencia literal de palavras, por cima da
+#: semelhanca semantica. Sao duas parcelas: uma proporcional as palavras
+#: encontradas, e um premio quando o trecho tem TUDO o que foi pedido.
+PESO_PALAVRAS = 0.30
+PREMIO_TUDO_PRESENTE = 0.25
+
+#: Peso de cada palavra na parte proporcional. Uma referencia ("B3768", "ST12")
+#: vale muito mais do que uma palavra comum: quem a escreve sabe o que procura.
+PESO_REFERENCIA = 1.0
+PESO_PALAVRA_COMUM = 0.3
+
+
+def e_referencia(token: str) -> bool:
+    """O token parece um codigo de artigo -- letras E digitos, como "B3768"?
+
+    E' o que separa "H3170" de "carvalho". Sem isto, procurar
+    "carvalho kendal H3170" nao encontrava nada: exigia-se que as TRES
+    palavras estivessem no trecho, e o catalogo da EGGER escreve
+    "Roble Kendal natural" -- nunca "carvalho".
+    """
+    if len(token) < 3:
+        return False
+    return any(c.isdigit() for c in token) and any(c.isalpha() for c in token)
+
+
 @dataclass(frozen=True)
 class ResultadoCatalogo:
     score: float
@@ -61,6 +86,12 @@ class ResultadoCatalogo:
     caminho: str
     local: str
     trecho: str
+    #: O trecho contem MESMO as referencias que foram pedidas (ex.: "B3768").
+    #: A pesquisa semantica devolve sempre 30 resultados, tenham eles alguma
+    #: coisa a ver ou nao; sem esta marca nao ha' como distinguir os que
+    #: interessam do enchimento, e a resposta IA acabava a ler catalogos de
+    #: outro artigo.
+    exato: bool = False
 
 
 class PesquisaCatalogosService:
@@ -151,20 +182,38 @@ class PesquisaCatalogosService:
         score = self._matriz @ q
 
         tokens = _normalizar(texto).split()
+        referencias = [token for token in tokens if e_referencia(token)]
+        exatos: list[bool] = [False] * len(self._meta)
         if tokens:
-            boost = np.array(
-                [
-                    0.3
-                    if all(
-                        token in _normalizar(meta.get("texto", ""))
-                        for token in tokens
-                    )
-                    else 0.0
-                    for meta in self._meta
-                ],
-                dtype="float32",
-            )
-            score = score + boost
+            pesos = [
+                PESO_REFERENCIA if e_referencia(token) else PESO_PALAVRA_COMUM
+                for token in tokens
+            ]
+            total = sum(pesos)
+            valores = []
+            for posicao, meta in enumerate(self._meta):
+                alvo = _normalizar(meta.get("texto", ""))
+                encontrado = sum(
+                    peso for token, peso in zip(tokens, pesos) if token in alvo
+                )
+                # As referencias mandam: se foram pedidas, so' conta como certo
+                # o trecho que as tem todas. Sem referencias na pergunta, vale
+                # a exigencia antiga -- as palavras todas.
+                if referencias:
+                    exato = all(token in alvo for token in referencias)
+                else:
+                    exato = encontrado >= total
+                exatos[posicao] = exato
+                # O premio vale para qualquer pesquisa, nao so' para as
+                # referencias: procurar "dobradica blum" encontra 9 trechos com
+                # as duas palavras, e sem premio eles empatavam com placas de
+                # melamina que nao tem nenhuma delas -- so' porque a semelhanca
+                # semantica de um catalogo com outro e' sempre alta.
+                valores.append(
+                    PESO_PALAVRAS * (encontrado / total)
+                    + (PREMIO_TUDO_PRESENTE if exato else 0.0)
+                )
+            score = score + np.array(valores, dtype="float32")
 
         ordem = np.argsort(-score)[:top_n]
         resultados: list[ResultadoCatalogo] = []
@@ -182,6 +231,7 @@ class PesquisaCatalogosService:
                     caminho=str(meta.get("caminho") or ""),
                     local=local,
                     trecho=str(meta.get("texto") or ""),
+                    exato=exatos[int(i)],
                 )
             )
         return resultados

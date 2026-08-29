@@ -144,6 +144,11 @@ class PesquisaIAPage(QWidget):
         self._phc_filtrados: list[dict] = []
         self._cat_service: PesquisaCatalogosService | None = None
         self._ultimos_catalogos: list = []
+        #: A pergunta a que os catalogos em cima pertencem. Sem isto os
+        #: resultados ficavam presos: escrevia-se outra referencia e a
+        #: tabela continuava com a anterior -- e a resposta IA era gerada
+        #: com os catalogos do artigo errado, sem ninguem dar por isso.
+        self._texto_catalogos: str = ""
         self._referencias_todas: list[LinhaReferencia] = []
         self._referencias_filtradas: list[LinhaReferencia] = []
         self._resposta_thread: QThread | None = None
@@ -316,10 +321,25 @@ class PesquisaIAPage(QWidget):
             self._phc_filtrados = self._phc
             self._referencias_filtradas = self._referencias_todas
 
+        if texto.strip() != self._texto_catalogos:
+            self._esquecer_catalogos()
+
         self._preencher_v3(self._v3_filtrados)
         self._preencher_phc(self._phc_filtrados)
         self._preencher_referencias(self._referencias_filtradas)
         self._atualizar_status()
+
+    def _esquecer_catalogos(self) -> None:
+        """Deitar fora os catalogos da pergunta anterior.
+
+        As materias-primas e o PHC voltam a filtrar-se sozinhos enquanto se
+        escreve; os catalogos nao, porque a pesquisa por IA e' lenta e so' corre
+        a pedido. Por isso a tabela tem de ficar VAZIA em vez de ficar
+        desatualizada -- vazia percebe-se, desatualizada engana.
+        """
+        self._ultimos_catalogos = []
+        self._texto_catalogos = ""
+        self.catalogo_table.setRowCount(0)
 
     def _atualizar_status(self) -> None:
         partes = [
@@ -435,9 +455,16 @@ class PesquisaIAPage(QWidget):
             return
         self.catalogos_button.setEnabled(True)
         self._ultimos_catalogos = resultados
+        self._texto_catalogos = texto
         self._preencher_catalogos(resultados)
+        exatos = sum(1 for resultado in resultados if resultado.exato)
+        detalhe = (
+            f" ({exatos} com o que pediu)"
+            if exatos
+            else " (nenhum com o texto exato — são aproximações)"
+        )
         self.status_label.setText(
-            f'Cat\u00e1logos: {len(resultados)} resultados para "{texto}".'
+            f'Cat\u00e1logos: {len(resultados)} resultados para "{texto}"{detalhe}.'
         )
 
     def _preencher_catalogos(self, resultados) -> None:
@@ -471,7 +498,12 @@ class PesquisaIAPage(QWidget):
         v3 = self._v3_filtrados[:8]
         phc = self._phc_filtrados[:8]
         refs = self._referencias_filtradas[:10]
-        trechos = self._ultimos_catalogos[:8]
+        # So' os trechos que contem MESMO o que foi pedido. A pesquisa devolve
+        # sempre 30 resultados, e os que sobram sao o vizinho mais parecido --
+        # placas de outra cor, acessorios de outra familia. Entregues ao modelo
+        # em pe' de igualdade, ele respondia sobre esses.
+        exatos = [resultado for resultado in self._ultimos_catalogos if resultado.exato]
+        trechos = (exatos or self._ultimos_catalogos)[:8]
         if not v3 and not phc and not refs and not trechos:
             self.status_label.setText(
                 "Sem dados - pesquise primeiro (e carregue o PHC / cat\u00e1logos)."
