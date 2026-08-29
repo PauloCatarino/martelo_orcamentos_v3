@@ -194,6 +194,59 @@ def _copiar_env(env_origem: Path) -> None:
     print(f"      OK (sem credenciais) -> {DIST / '.env'}")
 
 
+def _onde_estamos() -> str:
+    """Ramo e ultimo commit, para o cabecalho do build.
+
+    Serve para uma pergunta que aparece sempre: "o que esta' neste instalador
+    e' o mesmo que esta' no GitHub?". Se aqui disser `main` e nao houver nada
+    por gravar, a resposta e' sim.
+    """
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(
+                ["git", *args], cwd=str(ROOT), capture_output=True, text=True,
+                check=True,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, OSError):
+            return ""
+
+    ramo = git("rev-parse", "--abbrev-ref", "HEAD")
+    if not ramo:
+        return ""
+    commit = git("rev-parse", "--short", "HEAD")
+    por_gravar = git("status", "--porcelain")
+    linha = f"  ramo: {ramo} ({commit})"
+    if ramo != "main":
+        linha += "   <-- ATENCAO: os colegas correm o `main`"
+    if por_gravar:
+        quantos = len(por_gravar.splitlines())
+        linha += f"\n  {quantos} ficheiro(s) por gravar no git -- este .exe nao"
+        linha += " fica registado em lado nenhum"
+    return linha
+
+
+def _verificar_versao_livre(versao: str, substituir: bool) -> None:
+    """Um numero, um instalador.
+
+    Dois ficheiros diferentes com o mesmo nome e deixa de haver forma de saber
+    o que e' que cada colega tem instalado -- e um dia alguem vai jurar que
+    atualizou quando nao atualizou.
+
+    Isto corre ANTES do PyInstaller de proposito: mais vale o aviso agora do
+    que ao fim de dez minutos de espera.
+    """
+    ja_existe = ROOT / "installer" / "Output" / f"Setup_Martelo_V3_{versao}.exe"
+    if ja_existe.exists() and not substituir:
+        raise SystemExit(
+            f"[ERRO] ja' existe um instalador com a versao {versao}:\n"
+            f"       {ja_existe}\n\n"
+            "       Se mudou alguma coisa no programa, suba a versao primeiro:\n"
+            "           .venv\\Scripts\\python.exe scripts\\nova_versao.py\n\n"
+            "       Se e' so' repetir o mesmo build (o anterior falhou a meio),\n"
+            "       acrescente --substituir ao comando."
+        )
+
+
 def _instalador(versao: str) -> None:
     print("[3/3] Inno Setup (instalador)")
     iscc = next((c for c in ISCC_CANDIDATOS if c.exists()), None)
@@ -213,6 +266,12 @@ def main() -> None:
     ap.add_argument("--installer", action="store_true", help="tambem gerar o instalador")
     ap.add_argument("--profile", choices=["lean", "full"], default="lean")
     ap.add_argument(
+        "--substituir",
+        action="store_true",
+        help="deixar reescrever um instalador com uma versao que ja' existe "
+             "(so' para repetir um build que falhou a meio)",
+    )
+    ap.add_argument(
         "--producao",
         action="store_true",
         help="versao OFICIAL: leva o deploy\\.env.producao (base oficial) "
@@ -225,7 +284,14 @@ def main() -> None:
 
     versao = _versao()
     print(f"Martelo V3  versao {versao}  [{destino}]  (perfil {args.profile})")
-    print(f"  configuracao: {env_origem.name}\n")
+    print(f"  configuracao: {env_origem.name}")
+    onde = _onde_estamos()
+    if onde:
+        print(onde)
+    print()
+    # Primeiro de tudo: antes de pedir seja o que for e antes de empacotar.
+    if args.installer:
+        _verificar_versao_livre(versao, args.substituir)
     _verificar_env(env_origem)
     _pyinstaller(args.profile)
     _copiar_env(env_origem)
