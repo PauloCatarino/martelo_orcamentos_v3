@@ -44,7 +44,11 @@ param(
     [switch]$Simular,
 
     # Apagar a tarefa em vez de a criar.
-    [switch]$Remover
+    [switch]$Remover,
+
+    # Nao guardar password nenhuma: a tarefa corre so' quando a pessoa tiver
+    # sessao iniciada no PC. Chega a`s pastas de rede na mesma.
+    [switch]$SemPassword
 )
 
 $ErrorActionPreference = "Stop"
@@ -148,20 +152,66 @@ $definicoes = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
     -MultipleInstances IgnoreNew
 
-if (-not [string]::IsNullOrWhiteSpace($Copia)) {
-    Escrever "A tarefa vai escrever numa pasta de rede, por isso tem de correr com" "White"
-    Escrever "uma conta do Windows - mesmo quando ninguem tem sessao iniciada." "White"
-    Escrever "O Windows vai pedir-lhe a password dessa conta e guarda-la ele proprio." "White"
+function Registar-ComSessaoIniciada {
+    # A tarefa corre com a sessao de quem esta' no PC. Nao guarda password
+    # nenhuma, e chega a`s pastas de rede na mesma -- mas so' corre enquanto
+    # essa pessoa estiver com sessao iniciada. Com o -StartWhenAvailable, se a
+    # hora passar sem sessao, a copia faz-se assim que ela entrar.
+    $entrada = New-ScheduledTaskPrincipal `
+        -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $gatilhos `
+        -Settings $definicoes -Principal $entrada -Force | Out-Null
+}
+
+$comPassword = (-not [string]::IsNullOrWhiteSpace($Copia)) -and (-not $SemPassword)
+
+if ($comPassword) {
+    Escrever "A tarefa vai escrever numa pasta de rede." "White"
     Escrever ""
-    $credenciais = Get-Credential -Message "Conta do Windows que corre a copia (ex.: $env:USERDOMAIN\$env:USERNAME)"
-    Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $gatilhos -Settings $definicoes `
-        -User $credenciais.UserName `
-        -Password $credenciais.GetNetworkCredential().Password `
-        -RunLevel Limited -Force | Out-Null
+    Escrever "Para correr MESMO QUANDO ninguem tem sessao iniciada no PC, o Windows" "White"
+    Escrever "precisa de guardar a conta e a password de quem a corre. Quem as guarda" "White"
+    Escrever "e' o Windows, nao o Martelo, e nao ficam em ficheiro nenhum do projeto." "White"
+    Escrever ""
+    Escrever "Se preferir nao dar a password, feche a janela que vai aparecer: a tarefa" "Yellow"
+    Escrever "fica a correr so' quando o Paulo tiver sessao iniciada (que e' quase" "Yellow"
+    Escrever "sempre, ja' que este PC e' o servidor da base de dados)." "Yellow"
+    Escrever ""
+
+    $credenciais = Get-Credential `
+        -Message "Conta do Windows que corre a copia" `
+        -UserName "$env:USERDOMAIN\$env:USERNAME"
+
+    if ($null -eq $credenciais -or [string]::IsNullOrWhiteSpace($credenciais.UserName)) {
+        Escrever "Nao deu credenciais. A criar a tarefa em modo 'com sessao iniciada'." "Yellow"
+        Registar-ComSessaoIniciada
+        $comPassword = $false
+    } else {
+        # O Agendador exige a conta qualificada (PC\utilizador). Se a pessoa
+        # escrever so' o nome, o Windows recusa com "O parametro esta'
+        # incorreto" -- uma mensagem que nao ajuda ninguem.
+        $utilizador = $credenciais.UserName
+        if ($utilizador -notmatch '[\\@]') { $utilizador = "$env:COMPUTERNAME\$utilizador" }
+        $utilizador = $utilizador -replace '^\\', "$env:COMPUTERNAME\"
+
+        try {
+            Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $gatilhos `
+                -Settings $definicoes `
+                -User $utilizador `
+                -Password $credenciais.GetNetworkCredential().Password `
+                -RunLevel Limited -Force -ErrorAction Stop | Out-Null
+            Escrever "Conta usada: $utilizador" "Gray"
+        } catch {
+            Escrever "O Windows recusou essa conta ou password:" "Red"
+            Escrever "   $($_.Exception.Message)" "Red"
+            Escrever ""
+            Escrever "A criar a tarefa em modo 'com sessao iniciada', que nao precisa de" "Yellow"
+            Escrever "password. Corre sempre que o Paulo tiver sessao aberta." "Yellow"
+            Registar-ComSessaoIniciada
+            $comPassword = $false
+        }
+    }
 } else {
-    $entrada = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $gatilhos -Settings $definicoes `
-        -Principal $entrada -Force | Out-Null
+    Registar-ComSessaoIniciada
 }
 
 Escrever "Tarefa criada." "Green"
@@ -188,7 +238,12 @@ if ($resultado -eq 0) {
 
 Escrever ""
 Escrever "A partir de agora:" "White"
-Escrever "  - a copia corre todos os dias a`s $Hora"
+if ($comPassword) {
+    Escrever "  - a copia corre todos os dias a`s $Hora, mesmo sem ninguem no PC"
+} else {
+    Escrever "  - a copia corre todos os dias a`s $Hora, com sessao iniciada"
+    Escrever "    (se a essa hora nao houver sessao, faz-se assim que entrar)"
+}
 Escrever "  - o que aconteceu fica em  backup.log  na pasta das copias"
 Escrever "  - a ultima linha de estado fica em  ultima_copia.txt"
 Escrever ""
