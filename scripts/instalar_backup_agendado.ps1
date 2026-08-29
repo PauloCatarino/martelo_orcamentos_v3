@@ -181,8 +181,20 @@ if ($comPassword) {
         -Message "Conta do Windows que corre a copia" `
         -UserName "$env:USERDOMAIN\$env:USERNAME"
 
-    if ($null -eq $credenciais -or [string]::IsNullOrWhiteSpace($credenciais.UserName)) {
-        Escrever "Nao deu credenciais. A criar a tarefa em modo 'com sessao iniciada'." "Yellow"
+    # Cancelar devolve $null; carregar OK com a password em branco devolve uma
+    # conta sem password. Sao a mesma decisao -- "nao quero dar a password" --
+    # e tem de dar a mesma resposta calma, e nao um erro do Windows.
+    $semPasswordEscrita = $false
+    if ($null -ne $credenciais) {
+        $semPasswordEscrita = [string]::IsNullOrEmpty(
+            $credenciais.GetNetworkCredential().Password
+        )
+    }
+
+    if ($null -eq $credenciais -or [string]::IsNullOrWhiteSpace($credenciais.UserName) `
+        -or $semPasswordEscrita) {
+        Escrever "Sem password. A tarefa vai correr quando o Paulo tiver sessao" "Yellow"
+        Escrever "iniciada -- que e' o que se queria." "Yellow"
         Registar-ComSessaoIniciada
         $comPassword = $false
     } else {
