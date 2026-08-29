@@ -1009,6 +1009,7 @@ class OrcamentoRelatoriosPage(QWidget):
             anexos=dialog.anexos(),
         )
 
+        estado_novo: str | None = None
         try:
             with SessionLocal() as session:
                 OrcamentoHistoricoService(session).registar(
@@ -1017,6 +1018,12 @@ class OrcamentoRelatoriosPage(QWidget):
                     f"Orçamento enviado para {dialog.destinatario()}",
                 )
                 session.commit()
+                # O orçamento seguiu para o cliente: o estado tem de o dizer,
+                # sem obrigar ninguém a ir ao Editar Orçamento mudá-lo à mão.
+                # Só sobe de "por enviar" — um Adjudicado não recua.
+                estado_novo = OrcamentoService(session).marcar_como_enviado(
+                    self.orcamento_versao_id
+                )
         except SQLAlchemyError as erro:
             QMessageBox.warning(
                 self,
@@ -1027,6 +1034,8 @@ class OrcamentoRelatoriosPage(QWidget):
             return
 
         msg = "Email enviado com sucesso."
+        if estado_novo:
+            msg += f"\n\nO orçamento passou ao estado '{estado_novo}'."
         if relatorio is not None:
             msg += f"\n\nRegisto gravado em:\n{relatorio}"
         QMessageBox.information(self, "Email", msg)

@@ -16,11 +16,25 @@ from app.domain import relatorio_graficos
 from app.ui import tema
 from app.utils.formatters import format_currency
 
+#: Porque e' que os graficos nao abriram. Guardado para o ecra' poder dizer a
+#: verdade: durante meses a pagina dizia "Instale matplotlib" quando o
+#: matplotlib estava instalado -- o que falhava era o `dateutil` a ser lido
+#: depois do shiboken (ver deploy/rthook_dateutil.py). Uma mensagem errada
+#: manda a pessoa fazer o que nao serve de nada.
+MOTIVO_SEM_GRAFICOS: str | None = None
+
 try:  # matplotlib é opcional (ver docstring do módulo).
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
-except Exception:  # noqa: BLE001 — qualquer falha de import desativa os gráficos.
+except ImportError as erro:
     FigureCanvas = Figure = None
+    MOTIVO_SEM_GRAFICOS = f"O matplotlib não está instalado ({erro})."
+except Exception as erro:  # noqa: BLE001
+    FigureCanvas = Figure = None
+    MOTIVO_SEM_GRAFICOS = (
+        f"O matplotlib está instalado mas não arrancou: "
+        f"{type(erro).__name__}: {erro}"
+    )
 
 # Cores das barras a partir da paleta Lança Encanto.
 _COR_BARRA_1 = tema.CASTANHO_MEDIO
@@ -43,7 +57,15 @@ _CORES_PIZZA = (
     tema.BEGE_CLARO,
 )
 
-_MENSAGEM_SEM_MATPLOTLIB = "Instale matplotlib para ver os gráficos."
+def _mensagem_sem_graficos() -> str:
+    """O que dizer quando nao ha' graficos -- a razao verdadeira."""
+    if MOTIVO_SEM_GRAFICOS is None:
+        return "Instale matplotlib para ver os gráficos."
+    return (
+        "Não foi possível desenhar os gráficos.\n\n"
+        f"{MOTIVO_SEM_GRAFICOS}\n\n"
+        "Use 'Reportar problema' para nos enviar esta mensagem."
+    )
 
 # Áreas de gráfico (chave interna -> título da secção), pela ordem de desenho.
 _SECCOES = (
@@ -74,7 +96,7 @@ class DashboardsWidget(QWidget):
 
         if FigureCanvas is None:
             # Sem matplotlib: mostra o aviso e não cria canvases.
-            aviso = QLabel(_MENSAGEM_SEM_MATPLOTLIB)
+            aviso = QLabel(_mensagem_sem_graficos())
             aviso.setWordWrap(True)
             aviso.setStyleSheet(
                 f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 12px;"

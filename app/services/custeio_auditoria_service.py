@@ -220,15 +220,25 @@ def auditar_linhas(linhas: list[LinhaAuditoriaDados]) -> CusteioAuditoriaResulta
                 "Corrigir QT módulo/QT unidade e recalcular o item.",
             )
 
-        if linha.tipo_linha == PECA and any(
-            valor is None or valor <= 0
-            for valor in (linha.comp_real, linha.larg_real, linha.esp_real)
+        # Uma peça de SERVIÇO (sem_material) não tem medidas — e não precisa
+        # delas. É o caso da OPERACAO_MANUAL: um recorte de CNC custa o tempo
+        # de máquina, não o metro quadrado. Exigir-lhe comprimento, largura e
+        # espessura dava um erro CRÍTICO em todas essas linhas, e um erro que
+        # aparece sempre deixa de ser lido.
+        if (
+            linha.tipo_linha == PECA
+            and not linha.sem_material
+            and any(
+                valor is None or valor <= 0
+                for valor in (linha.comp_real, linha.larg_real, linha.esp_real)
+            )
         ):
             add(
                 linha, "Dimensões", "DIMENSOES_PECA_EM_FALTA",
                 "A peça não tem comprimento, largura e espessura reais válidos.",
                 "Corrigir as fórmulas/medidas da peça antes de aceitar o custo.",
             )
+
 
         if linha.desperdicio_percentagem is not None and linha.desperdicio_percentagem > 100:
             add(

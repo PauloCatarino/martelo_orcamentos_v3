@@ -95,7 +95,11 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    # Corre ANTES de tudo o resto, shiboken incluido -- e' o unico sitio onde o
+    # `dateutil` pode ser carregado a tempo. Sem ele os graficos dos Dashboards
+    # nao abrem no executavel e a pagina diz "Instale matplotlib", que e'
+    # mentira. Ver o proprio ficheiro para a explicacao inteira.
+    runtime_hooks=[str(ROOT / "deploy" / "rthook_dateutil.py")],
     excludes=excludes,
     noarchive=False,
     optimize=0,

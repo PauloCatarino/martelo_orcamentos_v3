@@ -4367,6 +4367,8 @@ def test_custo_rasgo_cnc_integrado_usa_geometria_da_linha() -> None:
         preco_rasgo_ml_std=Decimal("0.40")
     )
     service.maquina_repository = SimpleNamespace(get_by_id=lambda _id: maquina)
+    # Este teste salta o __init__ de proposito; a cache do catalogo vive la'.
+    service._cache_maquinas = {}
     linha = SimpleNamespace(
         comp_real=Decimal("2000"), larg_real=Decimal("600"), quantidade=Decimal("1")
     )

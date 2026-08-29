@@ -69,11 +69,42 @@ def test_linha_coerente_nao_cria_ocorrencia() -> None:
 
 def test_valida_quantidade_dimensoes_desperdicio_e_tempo() -> None:
     resultado = auditar_linhas([_linha(
+        # sem_material=False: e' uma peca de material, e essa TEM de ter
+        # medidas (ver o teste da peca de servico logo a seguir).
+        sem_material=False,
         quantidade=Decimal("0"), comp_real=None,
         desperdicio_percentagem=Decimal("150"), tempo_setup=Decimal("-1"),
     )])
     testes = {item.codigo_teste for item in resultado.itens}
     assert {"QUANTIDADE_INVALIDA", "DIMENSOES_PECA_EM_FALTA", "DESPERDICIO_ELEVADO", "TEMPO_NEGATIVO"} <= testes
+
+
+def test_peca_de_servico_sem_medidas_nao_e_erro() -> None:
+    """Uma OPERACAO_MANUAL de CNC custa tempo de máquina, não metros quadrados.
+
+    O Paulo montou um orçamento inteiro com recortes de CNC assim e a
+    auditoria dava um CRÍTICO em cada linha. Um erro que aparece sempre deixa
+    de ser lido — e escondia os erros a sério.
+    """
+    resultado = auditar_linhas([_linha(
+        linha_codigo="OPERACAO_MANUAL",
+        sem_material=True,
+        comp_real=None, larg_real=None, esp_real=None,
+        custo_cnc=Decimal("25.50"), custo_producao=Decimal("25.50"),
+    )])
+
+    assert resultado.total == 0
+
+
+def test_peca_com_material_sem_medidas_continua_a_ser_erro() -> None:
+    """A regra antiga mantém-se onde faz sentido: sem medidas não há área."""
+    resultado = auditar_linhas([_linha(
+        sem_material=False, comp_real=None, larg_real=None, esp_real=None,
+    )])
+
+    assert "DIMENSOES_PECA_EM_FALTA" in {
+        item.codigo_teste for item in resultado.itens
+    }
 
 
 def test_exclusao_manual_mostra_impacto_exato_e_saude() -> None:
@@ -125,6 +156,7 @@ def test_saude_versao_usa_item_menos_saudavel() -> None:
             _linha(
                 linha_id=2,
                 orcamento_item_id=20,
+                sem_material=False,
                 quantidade=Decimal("0"),
                 comp_real=None,
             ),

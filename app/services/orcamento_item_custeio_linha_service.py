@@ -604,6 +604,34 @@ class OrcamentoItemCusteioLinhaService:
         self.linha_operacao_repository = (
             OrcamentoItemCusteioLinhaOperacaoRepository(session)
         )
+        # Catalogo lido vezes sem conta durante um recalculo: a mesma maquina
+        # e a mesma peca sao pedidas centenas de vezes por item, e cada pedido
+        # e' uma ida a` base de dados no servidor. Medido no orcamento 260868
+        # (30 itens): 284 das 1111 consultas por item eram estas.
+        #
+        # Sao definicoes, nao dados do orcamento: nao mudam a meio de um
+        # recalculo. O servico vive dentro de um `with SessionLocal()`, por
+        # isso a cache dura o que dura a operacao.
+        self._cache_maquinas: dict[int, object] = {}
+        self._cache_pecas: dict[int, object] = {}
+
+    def _maquina(self, maquina_id):
+        """A maquina do catalogo, lida da base uma vez so'."""
+        if maquina_id is None:
+            return None
+        chave = int(maquina_id)
+        if chave not in self._cache_maquinas:
+            self._cache_maquinas[chave] = self.maquina_repository.get_by_id(chave)
+        return self._cache_maquinas[chave]
+
+    def _peca(self, peca_id):
+        """A peca do catalogo, lida da base uma vez so'."""
+        if peca_id is None:
+            return None
+        chave = int(peca_id)
+        if chave not in self._cache_pecas:
+            self._cache_pecas[chave] = self.peca_repository.get_by_id(chave)
+        return self._cache_pecas[chave]
 
     def listar_linhas_do_item(
         self, orcamento_item_id: int
@@ -787,7 +815,7 @@ class OrcamentoItemCusteioLinhaService:
             raise ValueError(
                 "A linha selecionada não está ligada à biblioteca de peças."
             )
-        peca = self.peca_repository.get_by_id(raiz.def_peca_id)
+        peca = self._peca(raiz.def_peca_id)
         if peca is None:
             raise ValueError("A peça ligada a esta linha já não existe na biblioteca.")
         if not peca.ativo:
@@ -1790,6 +1818,15 @@ class OrcamentoItemCusteioLinhaService:
         quantity rules → quantities → finishing → areas → orlas → raw-material →
         hardware → ML → finishing cost → operations → production → times → total.
         """
+        # NOTA de desempenho (medido no orçamento 260868 — 30 itens, 2022
+        # linhas): esta sequência leva ~30 s, e ~25 000 das 27 000 consultas
+        # são LEITURAS. Cerca de 500 por item vêm do ``update_linha``, que vai
+        # buscar à base cada linha que a passagem anterior lá acabou de
+        # escrever. Pôr ``expire_on_commit = False`` à volta desta sequência
+        # NÃO resolve — foi tentado e medido, e o número de leituras ficou
+        # exatamente igual: os objetos não estão sequer no mapa de identidade
+        # da sessão. Resolver isto a sério é mexer no repositório, e não se faz
+        # à pressa no código que calcula os preços.
         self.garantir_entradas_validas_do_item(orcamento_item_id)
         self.recalcular_medidas_do_item(orcamento_item_id)
         self.aplicar_regras_quantidade_do_item(orcamento_item_id)
@@ -1987,7 +2024,7 @@ class OrcamentoItemCusteioLinhaService:
                 ignoradas += 1
                 continue
 
-            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            peca = self._peca(linha.def_peca_id)
             acab_sup, aviso_sup = self._resolver_acabamento_face(
                 orcamento_item_id, peca, face_superior=True
             )
@@ -2131,7 +2168,7 @@ class OrcamentoItemCusteioLinhaService:
                 ignoradas += 1
                 continue
 
-            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            peca = self._peca(linha.def_peca_id)
             custo_sup, aviso_sup = self._custo_acabamento_face(
                 orcamento_item_id, peca, linha, face_superior=True
             )
@@ -2496,7 +2533,7 @@ class OrcamentoItemCusteioLinhaService:
                 nomes.append(nome)
 
             if operacao.maquina_id is not None:
-                maquina = self.maquina_repository.get_by_id(operacao.maquina_id)
+                maquina = self._maquina(operacao.maquina_id)
                 if maquina is not None:
                     nome_maquina = maquina.codigo or maquina.nome
                     if nome_maquina and nome_maquina not in maquinas:
@@ -3243,7 +3280,7 @@ class OrcamentoItemCusteioLinhaService:
         if op_orlagem is None or linha.def_peca_id is None:
             return None
 
-        peca = self.peca_repository.get_by_id(linha.def_peca_id)
+        peca = self._peca(linha.def_peca_id)
         if peca is None or getattr(peca, "usa_orlas", True):
             return None
 
@@ -3268,7 +3305,7 @@ class OrcamentoItemCusteioLinhaService:
         maquina_id = getattr(operacao, "maquina_id", None)
         if maquina_id is None:
             return None
-        return self.maquina_repository.get_by_id(maquina_id)
+        return self._maquina(maquina_id)
 
     def _tipo_producao_efetivo_do_item(self, orcamento_item_id: int) -> str:
         """Resolve the effective production type (item exception or versão default)."""
@@ -3742,7 +3779,7 @@ class OrcamentoItemCusteioLinhaService:
         usar_serie = tipo_efetivo == TIPO_PRODUCAO_SERIE
 
         maquina = (
-            self.maquina_repository.get_by_id(linha.def_maquina_id)
+            self._maquina(linha.def_maquina_id)
             if linha.def_maquina_id is not None
             else None
         )
@@ -4711,7 +4748,7 @@ class OrcamentoItemCusteioLinhaService:
         defined); the code feeds the Máquina column (and the tooltip).
         """
         maquina = (
-            self.maquina_repository.get_by_id(def_maquina_id)
+            self._maquina(def_maquina_id)
             if def_maquina_id is not None
             else None
         )
@@ -4829,7 +4866,7 @@ class OrcamentoItemCusteioLinhaService:
         pecas_selecionadas = [
             peca
             for def_peca_id in def_peca_ids
-            if (peca := self.peca_repository.get_by_id(def_peca_id)) is not None
+            if (peca := self._peca(def_peca_id)) is not None
         ]
         self._validar_contexto_divisao_para_pecas(item_id, pecas_selecionadas)
 
@@ -5641,7 +5678,7 @@ class OrcamentoItemCusteioLinhaService:
     def _resolver_def_peca_modulo(self, linha) -> DefPecaResumo | None:
         """Resolve a module line's active def_peca (by id, then code)."""
         if linha.def_peca_id is not None:
-            peca = self.peca_repository.get_by_id(linha.def_peca_id)
+            peca = self._peca(linha.def_peca_id)
             if peca is not None and peca.ativo:
                 return peca
 
@@ -5951,7 +5988,7 @@ class OrcamentoItemCusteioLinhaService:
         the definition up by code (referencia_componente).
         """
         if componente.def_peca_componente_id is not None:
-            peca = self.peca_repository.get_by_id(componente.def_peca_componente_id)
+            peca = self._peca(componente.def_peca_componente_id)
             if peca is not None:
                 return peca
 
@@ -6154,7 +6191,7 @@ class OrcamentoItemCusteioLinhaService:
             return larg
         if linha.def_peca_id is None:
             return larg
-        peca = self.peca_repository.get_by_id(linha.def_peca_id)
+        peca = self._peca(linha.def_peca_id)
         nova = self._largura_padrao_porta(peca, qt_und)
         return nova if nova is not None else larg
 

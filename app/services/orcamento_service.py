@@ -15,7 +15,10 @@ from app.domain.margens_padrao_types import (
     normalizar_perfil_margens,
     normalize_ambito,
 )
-from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
+from app.domain.orcamento_estados import (
+    ESTADOS_ORCAMENTO,
+    estado_apos_envio,
+)
 from app.domain.precos import MargensOrcamento
 from app.domain.ref_cliente_semelhanca import (
     Semelhanca,
@@ -282,6 +285,33 @@ class OrcamentoService:
             and utilizador_result
             and cliente_result
         )
+
+    def marcar_como_enviado(self, orcamento_versao_id: int) -> str | None:
+        """Passar o orçamento a "Enviado" depois de seguir para o cliente.
+
+        Devolve o estado novo, ou ``None`` se não havia nada a mudar. A regra
+        de quando muda está em
+        :func:`app.domain.orcamento_estados.estado_apos_envio`: só sobe de
+        "por enviar"; um orçamento já Adjudicado não recua.
+        """
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return None
+
+        anterior = versao.estado
+        novo = estado_apos_envio(anterior)
+        if novo is None:
+            return None
+
+        if not self.repository.update_estado(orcamento_versao_id, novo):
+            return None
+        OrcamentoHistoricoService(self.session).registar(
+            orcamento_versao_id,
+            "estado",
+            f"Estado: {anterior} → {novo} (email para o cliente)",
+        )
+        self.session.commit()
+        return novo
 
     def get_proxima_versao(self, orcamento_versao_id: int) -> int:
         """Return the next version number for this budget."""

@@ -181,7 +181,12 @@ from app.ui.widgets.miniatura_estrutura import (
     tem_previsao_estrutural,
 )
 from app.ui.widgets.table_item import criar_item_tabela
-from app.utils.formatters import format_currency, format_mm, format_quantity
+from app.utils.formatters import (
+    format_currency,
+    format_medida_real,
+    format_mm,
+    format_quantity,
+)
 
 
 def _clipboard_tem_bloco_medidas_multicelula() -> bool:
@@ -5039,9 +5044,11 @@ class OrcamentoItemCusteioPage(QWidget):
             "Comp": self._format_medida_var(linha.comp),
             "Larg": self._format_medida_var(linha.larg),
             "Esp": self._format_medida_var(linha.esp),
-            "Comp real": format_quantity(linha.comp_real),
-            "Larg real": format_quantity(linha.larg_real),
-            "Esp real": format_quantity(linha.esp_real),
+            # Uma casa decimal chega: "L/3" de 1840 da' 613,333333 e a coluna
+            # ficava ilegivel. O valor guardado nao muda -- so' a leitura.
+            "Comp real": format_medida_real(linha.comp_real),
+            "Larg real": format_medida_real(linha.larg_real),
+            "Esp real": format_medida_real(linha.esp_real),
             "Área m²": self._format_medida3(linha.area_m2),
             "Perímetro ML": self._format_medida3(linha.perimetro_ml),
             "Chave ValueSet": linha.chave_valueset or "",
