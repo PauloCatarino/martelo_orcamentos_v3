@@ -59,6 +59,7 @@ from app.services.orcamento_item_service import (
     OrcamentoItemService,
 )
 from app.services.orcamento_service import OrcamentoService
+from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
@@ -523,15 +524,17 @@ class OrcamentoItemsPage(QWidget):
         self._notify_items_changed()
 
     def atualizar_custos(self) -> None:
-        """Recompute every item's costing pipeline and apply the margins."""
+        """Recompute every item's costing pipeline and apply the margins.
+
+        Corre a MESMA pipeline dos relatórios (``recalcular_versao``), incluindo
+        o custo de placa inteira das placas Não-Stock. Tem de ser exatamente a
+        mesma: desde que as exportações deixaram de recalcular, é este botão que
+        fixa os números que vão sair no PDF, no Excel e no plano de corte.
+        """
         diario_bordo.registar_acao("Atualizar custos do orçamento")
         try:
             with SessionLocal() as session:
-                item_service = OrcamentoItemService(session)
-                items = item_service.list_items_by_versao(self.orcamento_versao_id)
-                for item in items:
-                    self._recalcular_custeio_do_item(session, item.id)
-                resultado = item_service.aplicar_precos_da_versao(
+                resultado = RelatorioConsumosService(session).recalcular_versao(
                     self.orcamento_versao_id
                 )
         except (SQLAlchemyError, ValueError):

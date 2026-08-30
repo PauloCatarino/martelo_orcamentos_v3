@@ -30,10 +30,17 @@ def test_orcamento_relatorios_page_imports() -> None:
     assert "RelatorioConsumosService" in carregar
     assert "resumo_da_versao" in carregar
     assert "get_cliente_da_versao" in carregar
-    # Recompute the version before aggregating (8W.1.1).
-    assert "recalcular_versao" in carregar
+    # Ler, nunca recalcular: quem atualiza os custos é o botão "Atualizar
+    # Custos" do orçamento. Aqui só se pergunta se o custeio mexeu desde então.
+    assert "recalcular_versao" not in carregar
+    assert "custeio_desatualizado" in carregar
     assert "RelatorioOperacoesService" in carregar
     assert "listar_da_versao" in carregar
+
+    # O recálculo continua a existir, mas só quando alguém o pede.
+    recalcular = inspect.getsource(OrcamentoRelatoriosPage.recalcular_e_carregar)
+    assert "recalcular_versao" in recalcular
+    assert "self.carregar()" in recalcular
 
 
 def test_relatorio_operacoes_em_linhas_tem_separador_proprio() -> None:

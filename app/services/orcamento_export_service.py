@@ -166,14 +166,15 @@ class OrcamentoExportService:
         )
 
     def exportar_pdf_orcamento(self, orcamento_versao_id: int) -> Path:
-        """Recalcula a versão e exporta o PDF do orçamento, devolvendo o ``Path``.
+        """Exporta o PDF do orçamento a partir do custeio GRAVADO.
 
-        O custeio é recalculado primeiro (o PDF lê os custos já gravados nas
-        linhas) para o PDF estar sempre atual. Levanta ``ValueError`` quando a
-        pasta base não está configurada ou faltam dados da versão.
+        Não recalcula nada: quem atualiza os custos é o botão "Atualizar Custos"
+        do orçamento. Os Relatórios avisam à cara do utilizador quando o custeio
+        mexeu depois do último recálculo (ver
+        ``RelatorioConsumosService.custeio_desatualizado``). Levanta
+        ``ValueError`` quando a pasta base não está configurada ou faltam dados
+        da versão.
         """
-        RelatorioConsumosService(self.session).recalcular_versao(orcamento_versao_id)
-
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
         item_service = OrcamentoItemService(self.session)
@@ -214,9 +215,8 @@ class OrcamentoExportService:
         return output
 
     def exportar_resumo_custos(self, orcamento_versao_id: int) -> Path:
-        """Recalcula a versao e exporta o Excel interno de Resumo de Custos."""
+        """Exporta o Excel interno de Resumo de Custos a partir do custeio gravado."""
         relatorio = RelatorioConsumosService(self.session)
-        relatorio.recalcular_versao(orcamento_versao_id)
 
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(
             orcamento_versao_id
@@ -276,14 +276,12 @@ class OrcamentoExportService:
         return output
 
     def exportar_excel_orcamento(self, orcamento_versao_id: int) -> Path:
-        """Recalcula a versão e exporta o Excel do orçamento, devolvendo o ``Path``.
+        """Exporta o Excel do orçamento a partir do custeio GRAVADO.
 
         À semelhança de :meth:`exportar_pdf_orcamento`, mas grava ``.xlsx``.
         Levanta ``ValueError`` quando a pasta base não está configurada ou
         faltam dados da versão.
         """
-        RelatorioConsumosService(self.session).recalcular_versao(orcamento_versao_id)
-
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         cliente = self.orcamento_service.get_cliente_da_versao(orcamento_versao_id)
         item_service = OrcamentoItemService(self.session)
@@ -316,14 +314,12 @@ class OrcamentoExportService:
         return output
 
     def exportar_excel_phc(self, orcamento_versao_id: int) -> Path:
-        """Recalcula a versão e exporta o Excel no formato PHC (folha "PHC").
+        """Exporta o Excel no formato PHC (folha "PHC") a partir do custeio gravado.
 
         Grava ``{num}_{vv}_PHC.xlsx`` na pasta da versão, para importação no PHC.
         Levanta ``ValueError`` quando a pasta base não está configurada ou faltam
         dados da versão.
         """
-        RelatorioConsumosService(self.session).recalcular_versao(orcamento_versao_id)
-
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(
             orcamento_versao_id
         )

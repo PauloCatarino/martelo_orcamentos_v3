@@ -26,9 +26,12 @@ class PlanoCorteService:
         self.session = session
 
     def dados_plano_corte(self, orcamento_versao_id: int) -> list[GrupoCorte]:
-        """Recalcula a versão e devolve os grupos de peças de placa."""
+        """Devolve os grupos de peças de placa a partir do custeio GRAVADO.
+
+        Não recalcula o custeio: quem o atualiza é o botão "Atualizar Custos" do
+        orçamento, e os Relatórios avisam quando ele mexeu desde então.
+        """
         relatorio = RelatorioConsumosService(self.session)
-        relatorio.recalcular_versao(orcamento_versao_id)
         resumo = relatorio.resumo_da_versao(orcamento_versao_id)
 
         itens = OrcamentoItemRepository(self.session).list_items_by_versao(

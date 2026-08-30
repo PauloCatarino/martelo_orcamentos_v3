@@ -85,6 +85,16 @@ class OrcamentoVersao(Base):
     tipo_producao_default: Mapped[str] = mapped_column(
         String(10), nullable=False, default="STD", server_default="STD"
     )
+    # Retrato do estado do custeio na altura em que a pipeline correu pela
+    # última vez (ver ``RelatorioConsumosService.impressao_digital_custeio``).
+    # Serve para os Relatórios e as exportações saberem, sem recalcular nada, se
+    # os números gravados ainda são os que a pipeline daria hoje.
+    custeio_impressao_digital: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    custeio_recalculado_em: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(
