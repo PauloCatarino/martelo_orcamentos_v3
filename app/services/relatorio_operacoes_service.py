@@ -64,6 +64,10 @@ class RelatorioOperacoesService:
     ) -> list[RelatorioOperacaoLinha]:
         items = self.item_repository.list_items_by_versao(orcamento_versao_id)
         items_by_id = {item.id: item for item in items}
+        # Um cache das variantes por ITEM, e não por linha: são as mesmas para
+        # todas as linhas do item, e no orçamento 260868 isto sozinho poupava
+        # ~2000 leituras a cada abertura dos Relatórios.
+        caches_variantes: dict[int, dict] = {}
         resultado: list[RelatorioOperacaoLinha] = []
         for linha in self.custeio_repository.list_by_orcamento_versao(
             orcamento_versao_id
@@ -77,8 +81,14 @@ class RelatorioOperacoesService:
             quantidade_total = (
                 (normalizar_numero(linha.quantidade) or ZERO) * fator_item
             )
+            cache = caches_variantes.get(item.id)
+            if cache is None:
+                cache = self.linha_service.cache_operacoes_variantes_do_item(
+                    item.id
+                )
+                caches_variantes[item.id] = cache
             operacoes = self.linha_service.listar_operacoes_efetivas_da_linha(
-                linha.id
+                linha.id, linha=linha, cache_variantes=cache
             )
             if not operacoes:
                 resultado.append(

@@ -92,15 +92,24 @@ def test_relatorio_lista_operacoes_e_linha_sem_operacoes() -> None:
             ),
         ]
     )
+    # O cache das variantes é construído UMA vez por item e reaproveitado em
+    # todas as linhas desse item (poupa ~2000 leituras no orçamento 260868).
+    caches_pedidos = []
     service.linha_service = SimpleNamespace(
-        listar_operacoes_efetivas_da_linha=lambda linha_id: (
+        cache_operacoes_variantes_do_item=lambda item_id: (
+            caches_pedidos.append(item_id) or {"item": item_id}
+        ),
+        listar_operacoes_efetivas_da_linha=lambda linha_id, *, linha, cache_variantes: (
             [_operacao("CNC", "CNC", origem="Edição local")]
             if linha_id == 10
             else []
-        )
+        ),
     )
 
     resultado = service.listar_da_versao(2)
+
+    # Duas linhas do mesmo item: um só cache.
+    assert caches_pedidos == [1]
 
     assert len(resultado) == 2
     assert resultado[0].quantidade_total == Decimal("6")

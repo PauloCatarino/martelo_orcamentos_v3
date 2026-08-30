@@ -7,8 +7,11 @@ by its item's quantity, and delegates the aggregation to the pure
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import ROUND_CEILING, Decimal
+from hashlib import sha256
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.consumos import (
@@ -20,6 +23,10 @@ from app.domain.consumos import (
 from app.domain.custos import calcular_custo_mp, fator_desperdicio
 from app.domain.medidas import normalizar_numero
 from app.domain.precos import MargensOrcamento
+from app.models.orcamento_item import OrcamentoItem
+from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
+from app.models.orcamento_versao import OrcamentoVersao
+from app.models.orcamento_versao_placa_nao_stock import OrcamentoVersaoPlacaNaoStock
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
@@ -31,7 +38,10 @@ from app.repositories.orcamento_versao_placa_nao_stock_repository import (
 from app.services.orcamento_item_custeio_linha_service import (
     OrcamentoItemCusteioLinhaService,
 )
-from app.services.orcamento_item_service import OrcamentoItemService
+from app.services.orcamento_item_service import (
+    AplicarPrecosResult,
+    OrcamentoItemService,
+)
 
 _UM = Decimal("1")
 _ZERO = Decimal("0")
@@ -49,22 +59,143 @@ class RelatorioConsumosService:
         self.custeio_repository = OrcamentoItemCusteioLinhaRepository(session)
         self.nao_stock_repository = OrcamentoVersaoPlacaNaoStockRepository(session)
 
-    def recalcular_versao(self, orcamento_versao_id: int) -> None:
+    def recalcular_versao(self, orcamento_versao_id: int) -> AplicarPrecosResult:
         """Recompute the FULL costing pipeline of every item, apply the Não-Stock
         boards, then apply prices.
 
-        So the report always reflects the current costing state even if the user
-        never clicked "Atualizar" inside each item's costing (phase 8W.1.1).
         Reuses the existing per-item pipeline orchestrator and the version price
-        application — no duplicated logic.
+        application — no duplicated logic. At the end it stamps the version with
+        the costing fingerprint, so the reports and the exports can tell — with
+        one cheap query and without recomputing anything — whether the stored
+        numbers are still the ones the pipeline would produce today.
         """
         custeio_service = OrcamentoItemCusteioLinhaService(self.session)
         for item in self.item_repository.list_items_by_versao(orcamento_versao_id):
             custeio_service.recalcular_item_completo(item.id)
         self._aplicar_placa_inteira(orcamento_versao_id, custeio_service)
-        OrcamentoItemService(self.session).aplicar_precos_da_versao(
+        resultado = OrcamentoItemService(self.session).aplicar_precos_da_versao(
             orcamento_versao_id
         )
+        self.marcar_custeio_recalculado(orcamento_versao_id)
+        return resultado
+
+    def recalcular_versao_se_necessario(self, orcamento_versao_id: int) -> bool:
+        """Recompute only when the costing changed since the last pipeline run.
+
+        Devolve ``True`` quando chegou a recalcular. Quem só quer LER (os
+        relatórios, as exportações) não deve chamar isto: deve perguntar ao
+        :meth:`custeio_desatualizado` e avisar o utilizador.
+        """
+        if not self.custeio_desatualizado(orcamento_versao_id):
+            return False
+        self.recalcular_versao(orcamento_versao_id)
+        return True
+
+    # ----- Impressão digital do custeio -----
+
+    def custeio_desatualizado(self, orcamento_versao_id: int) -> bool:
+        """Diz se alguém mexeu no custeio depois do último recálculo completo.
+
+        Uma versão que nunca passou pela pipeline (ou que vem de antes desta
+        marca existir) conta como desatualizada — é o lado seguro: mais vale
+        pedir um recálculo a mais do que deixar sair um relatório com números
+        velhos.
+        """
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+        guardada = versao.custeio_impressao_digital
+        if not guardada:
+            return True
+        return guardada != self.impressao_digital_custeio(orcamento_versao_id)
+
+    def marcar_custeio_recalculado(self, orcamento_versao_id: int) -> None:
+        """Grava na versão o retrato do custeio tal como está agora."""
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return
+        versao.custeio_impressao_digital = self.impressao_digital_custeio(
+            orcamento_versao_id
+        )
+        versao.custeio_recalculado_em = datetime.now()
+        self.session.commit()
+
+    def impressao_digital_custeio(self, orcamento_versao_id: int) -> str:
+        """Retrato barato (3 consultas agregadas) do estado do custeio da versão.
+
+        Junta, das linhas de custeio, dos itens e das placas Não-Stock, aquilo
+        que muda quando alguém mexe no custeio: quantas linhas há, quando foram
+        tocadas pela última vez, que ids são, e a soma dos custos e preços já
+        gravados. As margens da versão entram pelo valor, porque são elas que
+        transformam custo em preço.
+
+        Não é uma prova criptográfica de nada — é um sinal de "isto mexeu-se".
+        Serve para dizer ao utilizador que os números gravados já não são os que
+        a pipeline daria, não para decidir preços. Por isso olha para os NÚMEROS
+        do custeio (custos, quantidades, quantas linhas, que ids, quando foram
+        tocadas) e não para os textos: mudar a descrição de uma peça não põe o
+        custeio por recalcular — e essa descrição já sai atualizada no PDF, que
+        a lê da base na hora.
+        """
+        linhas = self.session.execute(
+            select(
+                func.count(OrcamentoItemCusteioLinha.id),
+                func.max(OrcamentoItemCusteioLinha.updated_at),
+                func.sum(OrcamentoItemCusteioLinha.id),
+                func.sum(OrcamentoItemCusteioLinha.quantidade),
+                func.sum(OrcamentoItemCusteioLinha.custo_mp),
+                func.sum(OrcamentoItemCusteioLinha.custo_producao),
+                func.sum(OrcamentoItemCusteioLinha.custo_total),
+                func.sum(OrcamentoItemCusteioLinha.preco_total),
+            )
+            .select_from(OrcamentoItemCusteioLinha)
+            .join(
+                OrcamentoItem,
+                OrcamentoItem.id == OrcamentoItemCusteioLinha.orcamento_item_id,
+            )
+            .where(OrcamentoItem.orcamento_versao_id == orcamento_versao_id)
+        ).one()
+
+        itens = self.session.execute(
+            select(
+                func.count(OrcamentoItem.id),
+                func.max(OrcamentoItem.updated_at),
+                func.sum(OrcamentoItem.id),
+                func.sum(OrcamentoItem.quantidade),
+                func.sum(OrcamentoItem.preco_total),
+                func.sum(OrcamentoItem.ajuste_eur),
+            ).where(OrcamentoItem.orcamento_versao_id == orcamento_versao_id)
+        ).one()
+
+        placas = self.session.execute(
+            select(
+                func.count(OrcamentoVersaoPlacaNaoStock.id),
+                func.max(OrcamentoVersaoPlacaNaoStock.updated_at),
+                func.sum(OrcamentoVersaoPlacaNaoStock.id),
+            ).where(
+                OrcamentoVersaoPlacaNaoStock.orcamento_versao_id
+                == orcamento_versao_id
+            )
+        ).one()
+
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        margens = (
+            (
+                versao.margem_lucro_pct,
+                versao.margem_mp_pct,
+                versao.margem_mao_obra_pct,
+                versao.margem_acabamentos_pct,
+                versao.custos_administrativos_pct,
+                versao.tipo_producao_default,
+            )
+            if versao is not None
+            else ()
+        )
+
+        material = "|".join(
+            str(valor) for valor in (*linhas, *itens, *placas, *margens)
+        )
+        return sha256(material.encode("utf-8")).hexdigest()
 
     # ----- Não-Stock (phase 8W.2) -----
 

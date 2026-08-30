@@ -74,7 +74,7 @@ class OrcamentoCusteioPage(QWidget):
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.setToolTip("Recalcular e atualizar o custeio do orçamento")
-        self.refresh_button.clicked.connect(self.carregar)
+        self.refresh_button.clicked.connect(lambda: self.carregar(forcar=True))
 
         self.suplementos_button = QPushButton("Adicionar Suplementos...")
         self.suplementos_button.setToolTip(
@@ -161,20 +161,26 @@ class OrcamentoCusteioPage(QWidget):
         super().showEvent(event)
         self.carregar()
 
-    def carregar(self) -> None:
-        """Recompute the costing of every item, then load the costing lines.
+    def carregar(self, forcar: bool = False) -> None:
+        """Load the costing lines, recomputing only when the costing changed.
 
-        The listing reads the costs stored on the lines, so it first recomputes
-        the full costing pipeline of ALL items (the SAME logic as the reports)
-        and applies the version prices, to always reflect the current state.
+        A listagem lê os custos gravados nas linhas. Recalcular a pipeline
+        completa a cada visita a este separador custava ~27 s no orçamento
+        260868, quase sempre para reescrever exatamente os mesmos números: agora
+        só recalcula quando o retrato do custeio mudou desde a última passagem
+        (ou quando o botão "Atualizar" o pede à mão).
         """
         self.status_label.clear()
 
         try:
             with SessionLocal() as session:
-                RelatorioConsumosService(session).recalcular_versao(
-                    self.orcamento_versao_id
-                )
+                relatorio = RelatorioConsumosService(session)
+                if forcar:
+                    relatorio.recalcular_versao(self.orcamento_versao_id)
+                else:
+                    relatorio.recalcular_versao_se_necessario(
+                        self.orcamento_versao_id
+                    )
                 items = OrcamentoItemService(session).list_items_by_versao(
                     self.orcamento_versao_id
                 )

@@ -1819,7 +1819,14 @@ class OrcamentoItemCusteioLinhaService:
         hardware → ML → finishing cost → operations → production → times → total.
         """
         # NOTA de desempenho (medido no orçamento 260868 — 30 itens, 2022
-        # linhas): esta sequência leva ~30 s, e ~25 000 das 27 000 consultas
+        # linhas): esta sequência leva ~25 s e ~27 000 consultas. O que mudou na
+        # 1.0.8 não foi o custo desta passagem: foi o NÚMERO de vezes que ela
+        # corre. Abrir os Relatórios e exportar cinco formatos corria-a seis
+        # vezes; agora corre uma só vez, quando alguém carrega em "Atualizar
+        # Custos" (ver ``RelatorioConsumosService.impressao_digital_custeio``).
+        #
+        # Continua a valer a pena baixar o custo desta passagem, e o caminho
+        # está identificado: ~25 000 das 27 000 consultas
         # são LEITURAS. Cerca de 500 por item vêm do ``update_linha``, que vai
         # buscar à base cada linha que a passagem anterior lá acabou de
         # escrever. Pôr ``expire_on_commit = False`` à volta desta sequência
@@ -2646,21 +2653,45 @@ class OrcamentoItemCusteioLinhaService:
                 pares.append((operacao, ligacao))
         return pares
 
+    def cache_operacoes_variantes_do_item(self, orcamento_item_id: int) -> dict:
+        """Cache das operações das variantes de UM item, para reutilizar em série.
+
+        É o mesmo para todas as linhas do item. Quem percorre a versão inteira
+        (o relatório de Operações) constrói-o uma vez por item e passa-o ao
+        :meth:`listar_operacoes_efetivas_da_linha`.
+        """
+        return self._cache_operacoes_variantes_do_item(orcamento_item_id)
+
     def listar_operacoes_efetivas_da_linha(
-        self, linha_id: int
+        self,
+        linha_id: int,
+        *,
+        linha=None,
+        cache_variantes: dict | None = None,
     ) -> list[OperacaoEfetivaLinhaResumo]:
         """Return the frozen piece operations composed with item ValueSet actions.
 
         This is a read-only projection for the costing UI. It never refreshes the
         catalog snapshot and never changes costs or historical quote data.
+
+        ``linha`` e ``cache_variantes`` existem só para quem chama isto em série
+        para a versão inteira (o relatório de Operações): passando a linha que
+        já tem em mãos e o cache das variantes do item, poupa duas consultas por
+        linha — no orçamento 260868 são ~2000 linhas. Quem chama para UMA linha
+        não passa nada e o comportamento é exatamente o mesmo.
         """
-        linha = self.repository.get_by_id(linha_id)
+        if linha is None:
+            linha = self.repository.get_by_id(linha_id)
         if linha is None:
             raise ValueError("Linha de custeio não encontrada.")
         if not self._linha_recebe_operacoes(linha):
             return []
 
-        cache = self._cache_operacoes_variantes_do_item(linha.orcamento_item_id)
+        cache = (
+            cache_variantes
+            if cache_variantes is not None
+            else self._cache_operacoes_variantes_do_item(linha.orcamento_item_id)
+        )
         pares = self._pares_operacao_ligacao_da_linha(linha, cache)
         resultado: list[OperacaoEfetivaLinhaResumo] = []
         for posicao, (operacao, ligacao) in enumerate(pares, start=1):

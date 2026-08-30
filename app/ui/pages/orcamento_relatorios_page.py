@@ -288,6 +288,8 @@ class OrcamentoRelatoriosPage(QWidget):
         # recalculates immediately (8W.2-UX, Part A) — there is no save button.
         self._placas_por_linha: dict = {}
         self._carregando_placas = False
+        #: Impede dois recálculos ao mesmo tempo na mesma versão.
+        self._a_recalcular = False
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoRelatoriosStatus")
@@ -437,7 +439,12 @@ class OrcamentoRelatoriosPage(QWidget):
         # Only "Atualizar" remains: the Não-Stock checkbox now saves and
         # recalculates on its own (8W.2-UX, Part A).
         self.atualizar_button = QPushButton("Atualizar")
-        self.atualizar_button.clicked.connect(self.carregar)
+        self.atualizar_button.setToolTip(
+            "Recalcula o custeio completo de todos os items e volta a carregar "
+            "os relatórios. Só é preciso quando o banner avisa que o custeio "
+            "mexeu — abrir os relatórios e exportar já não recalculam nada."
+        )
+        self.atualizar_button.clicked.connect(self.recalcular_e_carregar)
 
         topo = QHBoxLayout()
         topo.addWidget(self.atualizar_button)
@@ -585,14 +592,24 @@ class OrcamentoRelatoriosPage(QWidget):
 
     # ----- Widgets helpers -----
 
+    _ESTILO_BANNER = (
+        f"QLabel {{ background-color: {tema.BEGE_AREIA}; "
+        f"color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CINZA_CASTANHO}; "
+        f"border-radius: 4px; padding: 4px 8px; font-weight: bold; }}"
+    )
+    #: Mesmo banner, em vermelho, quando o custeio mexeu desde o último
+    #: recálculo — os números em baixo são os do recálculo anterior.
+    _ESTILO_BANNER_AVISO = (
+        f"QLabel {{ background-color: {tema.VERMELHO_SUAVE}; "
+        f"color: {tema.VERMELHO_ESCURO}; border: 1px solid {tema.VERMELHO_ESCURO}; "
+        f"border-radius: 4px; padding: 4px 8px; font-weight: bold; }}"
+    )
+
     def _criar_banner(self) -> QLabel:
         """A discreet Lança Encanto banner for the 'updated at HH:MM:SS' message."""
         banner = QLabel("")
-        banner.setStyleSheet(
-            f"QLabel {{ background-color: {tema.BEGE_AREIA}; "
-            f"color: {tema.CASTANHO_ESCURO}; border: 1px solid {tema.CINZA_CASTANHO}; "
-            f"border-radius: 4px; padding: 4px 8px; font-weight: bold; }}"
-        )
+        banner.setWordWrap(True)
+        banner.setStyleSheet(self._ESTILO_BANNER)
         return banner
 
     def _titulo_seccao(self, texto: str) -> QLabel:
@@ -660,17 +677,55 @@ class OrcamentoRelatoriosPage(QWidget):
 
     # ----- Data -----
 
-    def carregar(self) -> None:
-        """Recompute the costing of every item, then load the report data.
+    def recalcular_e_carregar(self) -> bool:
+        """Corre a pipeline completa do custeio e depois recarrega os relatórios.
 
-        The report reads the costs already stored on the lines, so it must first
-        recompute the full costing pipeline of ALL items and apply the version
-        prices — otherwise it would show a stale state (phase 8W.1.1).
+        É o que o botão "Atualizar" faz, e o que o visto do Não-Stock precisa de
+        fazer (o custo de placa inteira só entra nas linhas depois da pipeline).
+        Devolve ``False`` quando o recálculo falhou.
+        """
+        # O ``processEvents`` abaixo (que é o que faz aparecer a mensagem antes
+        # dos ~25 s de cálculo) deixa passar um segundo clique no "Atualizar";
+        # sem esta guarda, duas pipelines corriam ao mesmo tempo na mesma versão.
+        if self._a_recalcular:
+            return False
+        self._a_recalcular = True
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText("A recalcular o custeio de todos os items…")
+        QApplication.processEvents()
+        try:
+            with SessionLocal() as session:
+                RelatorioConsumosService(session).recalcular_versao(
+                    self.orcamento_versao_id
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível recalcular o custeio.")
+            return False
+        finally:
+            self._a_recalcular = False
+            QApplication.restoreOverrideCursor()
+
+        self.carregar()
+        return True
+
+    def carregar(self) -> None:
+        """Load the report data from the costing ALREADY stored on the lines.
+
+        Deliberately does NOT recompute anything. Quem atualiza os custos é o
+        botão "Atualizar Custos" do orçamento (e o "Atualizar" desta página);
+        recalcular aqui — e outra vez em cada exportação — custava ~27 s e
+        ~27 000 consultas de cada vez, sobre números que não tinham mudado.
+
+        Para nunca sair um relatório com números velhos, verifica a impressão
+        digital do custeio e avisa, em cima da tabela, quando ele mexeu desde o
+        último recálculo.
         """
         try:
             with SessionLocal() as session:
                 relatorio = RelatorioConsumosService(session)
-                relatorio.recalcular_versao(self.orcamento_versao_id)
+                desatualizado = relatorio.custeio_desatualizado(
+                    self.orcamento_versao_id
+                )
 
                 orcamento_service = OrcamentoService(session)
                 orcamento = orcamento_service.get_orcamento_by_versao_id(
@@ -707,9 +762,25 @@ class OrcamentoRelatoriosPage(QWidget):
 
         hora = datetime.now().strftime("%H:%M:%S")
         mensagem = f"Relatórios atualizados às {hora}"
+        if desatualizado:
+            mensagem = (
+                f"{mensagem} — ATENÇÃO: o custeio mexeu desde o último "
+                "recálculo. Carregue em «Atualizar» antes de exportar."
+            )
         self.banner_relatorio.setText(mensagem)
         self.banner_consumos.setText(mensagem)
-        self.status_label.setText("")
+        self._marcar_banners_desatualizados(desatualizado)
+        self.status_label.setText(
+            "Custeio por recalcular: os números em baixo são os do último "
+            "recálculo." if desatualizado else ""
+        )
+
+    def _marcar_banners_desatualizados(self, desatualizado: bool) -> None:
+        """Pinta os banners de aviso quando o custeio já não está atual."""
+        for banner in (self.banner_relatorio, self.banner_consumos):
+            banner.setStyleSheet(
+                self._ESTILO_BANNER_AVISO if desatualizado else self._ESTILO_BANNER
+            )
 
     def _exportar_pdf(self) -> None:
         """Export the budget PDF to the version folder (phase 8W.4.1)."""
@@ -845,9 +916,45 @@ class OrcamentoRelatoriosPage(QWidget):
             self, "Plano de Corte", f"Plano de corte criado em:\n{caminho}"
         )
 
+    def _avisar_custeio_desatualizado(self, acao: str) -> bool:
+        """Guarda leve para as exportações que não passam pelo supervisor.
+
+        Só aparece quando o custeio mexeu desde o último recálculo; devolve
+        ``False`` quando o utilizador desiste de exportar.
+        """
+        try:
+            with SessionLocal() as session:
+                desatualizado = RelatorioConsumosService(
+                    session
+                ).custeio_desatualizado(self.orcamento_versao_id)
+        except SQLAlchemyError:
+            return True
+
+        if not desatualizado:
+            return True
+
+        resposta = QMessageBox.question(
+            self,
+            "Custeio por recalcular",
+            "O custeio mexeu desde o último recálculo completo.\n\n"
+            f"Se {acao} agora, o ficheiro sai com os números do recálculo "
+            "anterior.\n\nAtualizar os custos primeiro?",
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+        if resposta == QMessageBox.StandardButton.Cancel:
+            return False
+        if resposta == QMessageBox.StandardButton.Yes:
+            return self.recalcular_e_carregar()
+        return True
+
     def _exportar_resumo_custos(self) -> None:
         """Exporta o Resumo de Custos (modelo) para a pasta da versao."""
         diario_bordo.registar_acao("Exportar resumo de custos")
+        if not self._avisar_custeio_desatualizado("exportar o Resumo de Custos"):
+            return
         try:
             with SessionLocal() as session:
                 caminho = OrcamentoExportService(session).exportar_resumo_custos(
@@ -1040,13 +1147,22 @@ class OrcamentoRelatoriosPage(QWidget):
             msg += f"\n\nRegisto gravado em:\n{relatorio}"
         QMessageBox.information(self, "Email", msg)
 
-    def _confirmar_supervisor(self, acao: str) -> bool:
-        """Always show version health before customer-facing PDF/email output."""
+    def _confirmar_supervisor(self, acao: str, _ja_recalculou: bool = False) -> bool:
+        """Always show version health before customer-facing PDF/email output.
+
+        A auditoria é de leitura e continua a correr sempre. O que mudou é que
+        as exportações já não recalculam o custeio: por isso este diálogo é
+        também o sítio onde o supervisor diz que o custeio mexeu desde o último
+        recálculo, e oferece o recálculo antes de deixar sair o ficheiro.
+        """
         try:
             with SessionLocal() as session:
                 resultado = CusteioAuditoriaService(session).executar_versao(
                     self.orcamento_versao_id
                 )
+                desatualizado = RelatorioConsumosService(
+                    session
+                ).custeio_desatualizado(self.orcamento_versao_id)
         except SQLAlchemyError:
             resposta = QMessageBox.warning(
                 self,
@@ -1096,6 +1212,12 @@ class OrcamentoRelatoriosPage(QWidget):
             f"Críticas: {saude.criticos}  |  Avisos: {saude.avisos}  |  "
             f"Ocorrências: {saude.ocorrencias}"
         )
+        if desatualizado:
+            mensagem += (
+                "\n\nATENÇÃO: o custeio mexeu desde o último recálculo completo."
+                f"\nSe {acao} agora, o ficheiro sai com os números do recálculo "
+                "anterior."
+            )
         if detalhes:
             mensagem += f"\n\nPrincipais ocorrências:\n{detalhes}"
         mensagem += (
@@ -1104,15 +1226,24 @@ class OrcamentoRelatoriosPage(QWidget):
         )
 
         dialog = QMessageBox(self)
-        dialog.setWindowTitle(titulo)
+        dialog.setWindowTitle(
+            "Supervisor — custeio por recalcular" if desatualizado else titulo
+        )
         dialog.setIcon(
             QMessageBox.Icon.Critical
             if abaixo_limite
             else QMessageBox.Icon.Warning
-            if saude.saude_pct < 100
+            if saude.saude_pct < 100 or desatualizado
             else QMessageBox.Icon.Information
         )
         dialog.setText(mensagem)
+        recalcular_button = (
+            dialog.addButton(
+                "Atualizar custos agora", QMessageBox.ButtonRole.ActionRole
+            )
+            if desatualizado and not _ja_recalculou
+            else None
+        )
         continuar_button = dialog.addButton(
             "Assumir e continuar"
             if saude.saude_pct < 100
@@ -1128,9 +1259,17 @@ class OrcamentoRelatoriosPage(QWidget):
         rever_button = dialog.addButton(
             "Rever orçamento", QMessageBox.ButtonRole.RejectRole
         )
-        dialog.setDefaultButton(rever_button)
+        dialog.setDefaultButton(
+            recalcular_button if recalcular_button is not None else rever_button
+        )
         dialog.exec()
         escolhido = dialog.clickedButton()
+        if recalcular_button is not None and escolhido is recalcular_button:
+            # Recalcula e volta a mostrar o supervisor, agora com a saúde do
+            # custeio novo. Só uma vez: depois do recálculo já não está velho.
+            if not self.recalcular_e_carregar():
+                return False
+            return self._confirmar_supervisor(acao, _ja_recalculou=True)
         if escolhido is operacoes_button:
             self.tabs.setCurrentWidget(self.operacoes_tab)
             return False
@@ -1310,8 +1449,9 @@ class OrcamentoRelatoriosPage(QWidget):
             self.status_label.setText("Não foi possível gravar o Não-Stock.")
             return
 
-        # Recompute with the new Não-Stock state and refresh both tabs.
-        self.carregar()
+        # O custo de placa inteira só entra nas linhas depois da pipeline, por
+        # isso este visto é dos poucos sítios da página que TEM de recalcular.
+        self.recalcular_e_carregar()
 
     def _preencher_orlas(self, orlas) -> None:
         self.orlas_table.setRowCount(0)
