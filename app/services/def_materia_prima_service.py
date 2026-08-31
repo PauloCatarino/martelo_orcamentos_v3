@@ -333,6 +333,7 @@ class DefMateriaPrimaService:
         if all(getattr(atual, campo) is None for campo in campos):
             return
 
+        self._registar_preco_de_partida(anterior)
         self.repository.registar_preco(
             materia_prima_id=atual.id,
             ref_le=atual.ref_le,
@@ -343,6 +344,42 @@ class DefMateriaPrimaService:
             data_preco=atual.data_ultimo_preco,
             origem=_origem_do_preco(origem_dados),
             user_id=self._utilizador_atual_id(),
+        )
+
+    def _registar_preco_de_partida(
+        self, anterior: DefMateriaPrimaResumo | None
+    ) -> None:
+        """Guardar o preço que lá estava, quando o material ainda não tem histórico.
+
+        Sem isto, a primeira alteração de preço de um material apagava o passado
+        sem deixar rasto: o histórico ficava com uma linha só — a nova — e a
+        pergunta "quanto é que isto custava antes?" deixava de ter resposta.
+        Acontecia a todos os materiais que nasceram fora da aplicação (a
+        importação inicial do Excel), que são a maioria do catálogo.
+
+        Escreve a linha de partida com o preço ANTIGO e sem utilizador: não foi
+        ninguém que o pôs pela aplicação, veio com o material.
+        """
+        if anterior is None or self.repository.tem_historico_precos(anterior.id):
+            return
+
+        campos = ("preco_tabela", "desconto", "margem", "preco_liquido")
+        if all(getattr(anterior, campo) is None for campo in campos):
+            return
+
+        self.repository.registar_preco(
+            materia_prima_id=anterior.id,
+            ref_le=anterior.ref_le,
+            preco_tabela=anterior.preco_tabela,
+            desconto=anterior.desconto,
+            margem=anterior.margem,
+            preco_liquido=anterior.preco_liquido,
+            data_preco=anterior.data_ultimo_preco,
+            origem=_origem_do_preco(
+                self._normalize_origem_dados(anterior.origem_dados)
+            ),
+            user_id=None,
+            observacoes="Preço de partida, registado quando o material foi alterado pela primeira vez.",
         )
 
     def _normalize_descricao(self, descricao: str | None) -> str:

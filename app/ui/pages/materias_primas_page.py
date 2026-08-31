@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -216,9 +216,15 @@ class MateriasPrimasPage(QWidget):
             self.table, "materias_primas", self.COLUNAS_OCULTAS_POR_DEFEITO
         )
         self._larguras_seed_feito = False
-        # Mapa linha->matéria-prima e "modo resolução" (assistente): duplo-clique
-        # aplica a matéria-prima à linha do custeio e volta.
-        self._materias_por_row: dict[int, DefMateriaPrimaResumo] = {}
+        # A tabela é ordenável: clicar num cabeçalho troca as linhas de sítio.
+        # Por isso o mapa é por ID da matéria-prima, e cada linha leva o seu id
+        # colado à célula (UserRole). Guardar isto por NÚMERO DE LINHA dava a
+        # ficha errada assim que a tabela fosse reordenada — e como o "Guardar"
+        # da ficha grava no material que ela abriu, a edição ia parar ao
+        # material errado.
+        self._materias_por_id: dict[int, DefMateriaPrimaResumo] = {}
+        # "Modo resolução" (assistente): duplo-clique aplica a matéria-prima à
+        # linha do custeio e volta.
         self._resolucao_callback = None
         self.table.cellDoubleClicked.connect(self._on_duplo_clique)
         self.table.itemSelectionChanged.connect(self._atualizar_botoes)
@@ -296,13 +302,29 @@ class MateriasPrimasPage(QWidget):
 
         return " · ".join(partes) + "."
 
+    def _materia_da_linha(self, row: int) -> DefMateriaPrimaResumo | None:
+        """A matéria-prima de uma linha da tabela, pelo id colado à célula.
+
+        Nunca pelo número da linha: a tabela é ordenável e o número da linha
+        muda de material assim que alguém clica num cabeçalho.
+        """
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+
+        materia_id = item.data(Qt.ItemDataRole.UserRole)
+        if materia_id is None:
+            return None
+
+        return self._materias_por_id.get(int(materia_id))
+
     def _materia_selecionada(self) -> DefMateriaPrimaResumo | None:
         """A matéria-prima da linha selecionada, ou None."""
         linhas = self.table.selectionModel().selectedRows()
         if not linhas:
             return None
 
-        return self._materias_por_row.get(linhas[0].row())
+        return self._materia_da_linha(linhas[0].row())
 
     def _exigir_selecao(self) -> DefMateriaPrimaResumo | None:
         """Como acima, mas a avisar quando não há nada escolhido."""
@@ -798,7 +820,7 @@ class MateriasPrimasPage(QWidget):
 
     def _on_duplo_clique(self, row: int, _column: int) -> None:
         callback = self._resolucao_callback
-        materia = self._materias_por_row.get(row)
+        materia = self._materia_da_linha(row)
         if materia is None:
             return
 
@@ -826,10 +848,10 @@ class MateriasPrimasPage(QWidget):
         """Fill the table with raw material read models."""
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(materias_primas))
-        self._materias_por_row = {}
+        self._materias_por_id = {}
 
         for row_index, materia in enumerate(materias_primas):
-            self._materias_por_row[row_index] = materia
+            self._materias_por_id[materia.id] = materia
             values = [
                 materia.ref_le or "",
                 materia.descricao,
@@ -865,6 +887,9 @@ class MateriasPrimasPage(QWidget):
             riscado = not materia.ativo
             for column_index, value in enumerate(values):
                 item = QTableWidgetItem(value)
+                # O id viaja com a célula. Ordenar a tabela troca as células de
+                # linha, e o id vai com elas — ao contrário do número da linha.
+                item.setData(Qt.ItemDataRole.UserRole, materia.id)
                 item.setBackground(QColor(tema.cor_zebra(row_index)))
                 if riscado:
                     # Descontinuado: risco por cima e cinzento, como o Ctrl+5 do
@@ -941,7 +966,7 @@ class MateriasPrimasPage(QWidget):
             for indice in indices:
                 item = self.table.item(row, indice)
                 valores.append(item.text() if item is not None else "")
-            materia = self._materias_por_row.get(row)
+            materia = self._materia_da_linha(row)
             linhas.append((valores, getattr(materia, "ativo", True)))
 
         return colunas, linhas

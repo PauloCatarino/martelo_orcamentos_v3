@@ -64,6 +64,7 @@ class _FakeRepository:
     ultimo_numero: int = 0
     prefixo_pedido: str | None = None
     precos_registados: list = []
+    historico_existente: bool = False
 
     def __init__(self, _session: object) -> None:
         pass
@@ -110,6 +111,9 @@ class _FakeRepository:
     def registar_preco(self, **kwargs) -> None:
         self.__class__.precos_registados = [*self.precos_registados, kwargs]
 
+    def tem_historico_precos(self, materia_prima_id: int) -> bool:
+        return self.historico_existente
+
     def historico_precos(self, materia_prima_id: int, limite: int = 50) -> list:
         return []
 
@@ -140,6 +144,7 @@ def _reset() -> None:
     _FakeRepository.ultimo_numero = 0
     _FakeRepository.prefixo_pedido = None
     _FakeRepository.precos_registados = []
+    _FakeRepository.historico_existente = False
 
 
 def _service(monkeypatch):
@@ -386,3 +391,101 @@ def test_desativar_inexistente_sem_commit(monkeypatch) -> None:
     assert service.desativar_materia_prima(11) is False
     assert _FakeRepository.deactivated_id == 11
     assert session.committed is False
+
+
+# ----- Histórico: o preço antigo não se pode perder -----
+#
+# O catálogo entrou quase todo pela importação inicial, fora da aplicação, e
+# esses materiais ficaram sem linha nenhuma no histórico. A primeira alteração
+# de preço escrevia só a linha NOVA: o preço que lá estava antes desaparecia e
+# a coluna "Variação" ficava com um travessão. Foi o que o Paulo apanhou no
+# PLC0051 a 31-08-2026.
+
+
+def test_primeira_alteracao_de_preco_guarda_o_preco_de_partida(monkeypatch) -> None:
+    service, _session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5,
+        ref_le="PLC0051",
+        preco_tabela=Decimal("20.36"),
+        margem=Decimal("10"),
+        preco_liquido=Decimal("22.40"),
+        origem_dados="EXCEL",
+    )
+    _FakeRepository.historico_existente = False
+
+    service.editar_materia_prima(
+        5,
+        service_module.EditarDefMateriaPrimaData(
+            descricao="Material",
+            ref_le="PLC0051",
+            preco_tabela=Decimal("21.36"),
+            margem=Decimal("10"),
+            preco_liquido=Decimal("23.50"),
+        ),
+    )
+
+    registados = _FakeRepository.precos_registados
+    assert len(registados) == 2, "faltou a linha de partida com o preço antigo"
+
+    partida, nova = registados
+    assert partida["preco_tabela"] == Decimal("20.36")
+    assert partida["preco_liquido"] == Decimal("22.40")
+    assert partida["origem"] == "EXCEL"
+    assert partida["user_id"] is None  # não foi ninguém pela aplicação
+    assert "partida" in (partida["observacoes"] or "").lower()
+
+    assert nova["preco_tabela"] == Decimal("21.36")
+    assert nova["preco_liquido"] == Decimal("23.50")
+
+
+def test_alteracao_seguinte_nao_repete_a_linha_de_partida(monkeypatch) -> None:
+    service, _session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5, ref_le="PLC0051", preco_tabela=Decimal("21.36")
+    )
+    _FakeRepository.historico_existente = True  # já tem passado guardado
+
+    service.editar_materia_prima(
+        5,
+        service_module.EditarDefMateriaPrimaData(
+            descricao="Material", ref_le="PLC0051", preco_tabela=Decimal("22.00")
+        ),
+    )
+
+    registados = _FakeRepository.precos_registados
+    assert len(registados) == 1
+    assert registados[0]["preco_tabela"] == Decimal("22.00")
+
+
+def test_editar_sem_mexer_no_preco_nao_escreve_historico(monkeypatch) -> None:
+    service, _session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(
+        id=5, ref_le="PLC0051", preco_tabela=Decimal("21.36")
+    )
+
+    service.editar_materia_prima(
+        5,
+        service_module.EditarDefMateriaPrimaData(
+            descricao="Descrição nova", ref_le="PLC0051",
+            preco_tabela=Decimal("21.36"),
+        ),
+    )
+
+    assert _FakeRepository.precos_registados == []
+
+
+def test_material_sem_preco_nenhum_nao_ganha_linha_de_partida(monkeypatch) -> None:
+    service, _session = _service(monkeypatch)
+    _FakeRepository.by_id = _resumo(id=5, ref_le="PLC0051")  # tudo a None
+
+    service.editar_materia_prima(
+        5,
+        service_module.EditarDefMateriaPrimaData(
+            descricao="Material", ref_le="PLC0051", preco_tabela=Decimal("9.99")
+        ),
+    )
+
+    registados = _FakeRepository.precos_registados
+    assert len(registados) == 1  # só a linha nova; não havia preço de partida
+    assert registados[0]["preco_tabela"] == Decimal("9.99")

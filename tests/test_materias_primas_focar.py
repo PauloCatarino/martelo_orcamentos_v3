@@ -42,7 +42,7 @@ def test_duplo_clique_em_modo_resolucao_aplica_materia() -> None:
     aplicadas: list = []
     materia = SimpleNamespace(id=5, ref_le="PLC0033")
     fake = SimpleNamespace(
-        _materias_por_row={0: materia},
+        _materia_da_linha=lambda _row: materia,
         _resolucao_callback=aplicadas.append,
         sair_modo_resolucao=lambda: None,
     )
@@ -57,7 +57,7 @@ def test_duplo_clique_fora_de_modo_resolucao_abre_a_ficha() -> None:
     abertas: list = []
     materia = SimpleNamespace(id=5)
     fake = SimpleNamespace(
-        _materias_por_row={0: materia},
+        _materia_da_linha=lambda _row: materia,
         _resolucao_callback=None,  # não está em modo resolução
         sair_modo_resolucao=lambda: None,
         _abrir_dialogo=abertas.append,
@@ -70,7 +70,7 @@ def test_duplo_clique_fora_de_modo_resolucao_abre_a_ficha() -> None:
 
 def test_duplo_clique_em_linha_sem_materia_nao_faz_nada() -> None:
     fake = SimpleNamespace(
-        _materias_por_row={},
+        _materia_da_linha=lambda _row: None,
         _resolucao_callback=None,
         sair_modo_resolucao=lambda: None,
         _abrir_dialogo=lambda _materia: pytest.fail("não devia abrir nada"),

@@ -394,6 +394,16 @@ class DefMateriaPrimaRepository:
         )
         self.session.flush()
 
+    def tem_historico_precos(self, materia_prima_id: int) -> bool:
+        """Se este material já tem alguma linha no histórico de preços."""
+        statement = (
+            select(DefMateriaPrimaPrecoHistorico.id)
+            .where(DefMateriaPrimaPrecoHistorico.materia_prima_id == materia_prima_id)
+            .limit(1)
+        )
+
+        return self.session.execute(statement).first() is not None
+
     def historico_precos(
         self, materia_prima_id: int, limite: int = 50
     ) -> list[PrecoHistoricoResumo]:
