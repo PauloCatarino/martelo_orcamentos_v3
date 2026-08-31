@@ -49,6 +49,7 @@ from app.domain.ocorrencia_relatorio import contar_tickets
 from app.domain.pesquisa_texto import normalizar
 from app.domain.producao_estados import ESTADOS_PRODUCAO
 from app.models.user import User
+from app.services import ollama_local
 from app.services.ia_perfil_service import listar_entradas
 from app.services.producao_ocorrencias_service import dados_para_relatorio
 from app.services.producao_service import (
@@ -782,12 +783,8 @@ class AssistenteProducaoService:
         # A redação de texto (email) gera muito mais tokens que a extração de
         # filtros; dá-se mais tempo (mas cai no determinístico se exceder).
         tempo_limite = 60 if formato_json else 150
-        req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=tempo_limite) as resp:  # noqa: S310
+        req = ollama_local.pedido_chat(payload)
+        with ollama_local.abrir(req, timeout=tempo_limite, modelo=modelo) as resp:
             dados = json.loads(resp.read().decode("utf-8"))
         return (dados.get("message", {}).get("content") or "").strip()
 

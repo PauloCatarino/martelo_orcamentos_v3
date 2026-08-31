@@ -6,6 +6,7 @@ from collections.abc import Iterator
 
 from sqlalchemy.orm import Session
 
+from app.services import ollama_local
 from app.services.system_setting_service import SystemSettingService
 
 SYSTEM = (
@@ -77,12 +78,8 @@ class RespostaIAService:
             ],
             "stream": False,
         }
-        req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
+        req = ollama_local.pedido_chat(payload)
+        with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
             dados = json.loads(resp.read().decode("utf-8"))
         return (dados.get("message", {}).get("content") or "").strip()
 
@@ -103,12 +100,8 @@ class RespostaIAService:
             ],
             "stream": True,
         }
-        req = urllib.request.Request(
-            "http://localhost:11434/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=180) as resp:  # noqa: S310
+        req = ollama_local.pedido_chat(payload)
+        with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
             for linha in resp:
                 linha = linha.strip()
                 if not linha:

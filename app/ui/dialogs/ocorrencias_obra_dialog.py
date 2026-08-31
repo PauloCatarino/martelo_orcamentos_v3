@@ -648,6 +648,19 @@ class OcorrenciasObraDialog(QDialog):
             )
             return
 
+        # O Windows aceitar o pedido de abrir o link NÃO quer dizer que o Teams
+        # abriu. No PC da Andreia (31-08-2026) apareceu a janela "Como quer
+        # abrir isto?" a propor navegadores; ela fechou-a e o Martelo deu na
+        # mesma a mensagem de sucesso E gravou o envio no ticket — quando não
+        # tinha sido enviado nada. Quem confirma é quem está a ver o ecrã.
+        if not self._confirmar_teams_abriu(nomes):
+            QApplication.clipboard().setText(mensagem)
+            self.status_label.setText(
+                "Envio NÃO registado — o ticket continua por enviar. O texto "
+                "ficou copiado: cole-o no Teams com Ctrl+V."
+            )
+            return
+
         fotos_copiadas = copiar_fotos_inline(fotos) if fotos else 0
         if fotos_copiadas == 1:
             recado = " A fotografia ficou copiada como imagem: no Teams, Ctrl+V."
@@ -681,6 +694,30 @@ class OcorrenciasObraDialog(QDialog):
         self.status_label.setText(
             f"Teams aberto na conversa de {nomes} com o ticket escrito.{recado}"
         )
+
+    def _confirmar_teams_abriu(self, nomes: str) -> bool:
+        """Perguntar se a conversa do Teams abriu mesmo, antes de dar por enviado.
+
+        O ``QDesktopServices.openUrl`` devolve verdadeiro quando o Windows
+        ACEITA o pedido — não quando o Teams abre. Quando o computador não sabe
+        abrir aquele tipo de ligação, o Windows mostra a janela "Como quer abrir
+        isto?" com uma lista de navegadores, e daí não sai mensagem nenhuma.
+        Como o registo no ticket é a prova de que a pessoa foi avisada, não pode
+        ser escrito com base num palpite.
+        """
+        resposta = QMessageBox.question(
+            self,
+            "Enviar para Teams",
+            f"O Teams abriu a conversa de {nomes} com o ticket já escrito?\n\n"
+            "Se abriu, carregue em Enter no Teams para enviar e responda Sim "
+            "aqui — o envio fica registado no ticket.\n\n"
+            "Se em vez do Teams apareceu uma janela do Windows a perguntar "
+            "«Como quer abrir isto?», responda Não: o ticket fica por enviar e "
+            "o texto vai para a área de transferência.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
 
     def _membro_do_ticket(self, linha: dict):
         """Team member of this ticket: pelo id se foi escolhido, senão pelo nome."""
