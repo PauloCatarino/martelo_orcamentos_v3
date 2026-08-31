@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -2239,18 +2240,18 @@ class ProducaoPage(QWidget):
                 QMessageBox.warning(self, "Lista Material IMOS", str(error))
             return
 
+        substituir = False
         if context.output_path.exists():
-            resposta = QMessageBox.question(
-                self,
-                "Lista Material IMOS",
-                f"O Excel da Lista Material da obra {processo.codigo_processo} já existe:\n"
-                f"{context.output_path}\n\nPretende abrir?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.Yes,
+            escolha = self._escolher_o_que_fazer_a_lista(
+                processo.codigo_processo, context.output_path
             )
-            if resposta == QMessageBox.StandardButton.Yes:
+            if escolha == "abrir":
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(context.output_path)))
-            return
+                return
+            if escolha != "substituir":
+                self.status_label.setText("Lista Material — nada foi alterado.")
+                return
+            substituir = True
 
         user_id = int(getattr(app_session.current_user, "id", 0) or 0)
         try:
@@ -2304,17 +2305,38 @@ class ProducaoPage(QWidget):
                 values=values,
             )
 
+        # A lista antiga sai da frente ANTES de se escrever a nova, e só é
+        # descartada quando a nova estiver mesmo feita. Se a geração falhar a
+        # meio (o Excel é conduzido por fora, e isso falha), quem estava a
+        # substituir ficava sem a lista antiga e sem a nova.
+        guardada = None
+        if substituir:
+            try:
+                guardada = self._por_a_lista_de_lado(context.output_path)
+            except OSError as error:
+                QMessageBox.critical(
+                    self,
+                    "Lista Material IMOS",
+                    "Não foi possível pôr a lista atual de lado para a "
+                    f"substituir:\n{context.output_path}\n\n"
+                    "Se o ficheiro estiver aberto no Excel, feche-o e tente "
+                    f"outra vez.\n\nDetalhe: {error}",
+                )
+                return
+
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.status_label.setText("A gerar a Lista Material (Excel)...")
         QApplication.processEvents()
         try:
             output_path = execute_lista_material_imos(context)
         except Exception as error:  # Excel COM / PowerShell
+            reposta = self._repor_lista_guardada(guardada, context.output_path)
             QMessageBox.critical(
                 self,
                 "Lista Material IMOS",
                 "Não foi possível criar o Excel 'Lista Material_IMOS'.\n\n"
-                f"Detalhe: {error}",
+                + ("A lista que existia foi reposta como estava.\n\n" if reposta else "")
+                + f"Detalhe: {error}",
             )
             return
         finally:
@@ -2337,8 +2359,99 @@ class ProducaoPage(QWidget):
                 f"da configuração.\n\nDetalhe: {error}",
             )
 
-        self.status_label.setText("Lista Material criada.")
+        if guardada is not None:
+            self.status_label.setText(
+                f"Lista Material substituída. A anterior ficou em «{guardada.name}»."
+            )
+        else:
+            self.status_label.setText("Lista Material criada.")
         self._oferecer_fluxo_inicial_lista_material(processo, output_path)
+
+    # ---- Lista Material: já existe, o que fazer? ---------------------------
+
+    def _escolher_o_que_fazer_a_lista(self, codigo_processo: str, caminho) -> str:
+        """Abrir a que existe, ou fazer uma nova por cima? Devolve a escolha.
+
+        Antes só perguntava "pretende abrir?" — quem quisesse refazer a lista
+        tinha de ir apagar o ficheiro à mão no servidor.
+        """
+        dialogo = QMessageBox(self)
+        dialogo.setWindowTitle("Lista Material IMOS")
+        dialogo.setIcon(QMessageBox.Icon.Question)
+        dialogo.setText(
+            f"A Lista Material da obra {codigo_processo} já existe:\n{caminho}\n\n"
+            "O que pretende fazer?"
+        )
+        abrir_button = dialogo.addButton(
+            "Abrir a lista existente", QMessageBox.ButtonRole.AcceptRole
+        )
+        nova_button = dialogo.addButton(
+            "Criar nova (substitui a atual)", QMessageBox.ButtonRole.DestructiveRole
+        )
+        cancelar_button = dialogo.addButton(
+            "Cancelar", QMessageBox.ButtonRole.RejectRole
+        )
+        dialogo.setDefaultButton(abrir_button)
+        dialogo.exec()
+
+        escolhido = dialogo.clickedButton()
+        if escolhido is abrir_button:
+            return "abrir"
+        if escolhido is not nova_button:
+            return "cancelar"
+
+        # A lista pode levar horas de trabalho à mão por cima do que o Martelo
+        # gera. Substituí-la é uma decisão, não um clique distraído.
+        confirmar = QMessageBox.question(
+            self,
+            "Criar nova Lista Material",
+            "A lista que existe vai ser substituída por uma nova, gerada de "
+            "raiz a partir dos dados da obra.\n\n"
+            "TUDO o que tenha sido escrito ou corrigido à mão dentro dela "
+            "deixa de estar na lista de trabalho.\n\n"
+            "A anterior não é apagada: fica na mesma pasta, com a data e a "
+            "hora no nome, para se poder ir lá buscar o que for preciso.\n\n"
+            "Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirmar != QMessageBox.StandardButton.Yes:
+            return "cancelar"
+
+        return "substituir"
+
+    @staticmethod
+    def _por_a_lista_de_lado(caminho):
+        """Renomear a lista atual com data e hora; devolve o novo caminho.
+
+        O carimbo vai ao segundo, e duas substituições dentro do mesmo segundo
+        dariam o mesmo nome — no Windows, mudar o nome para um ficheiro que já
+        existe rebenta. Nesse caso junta-se um número, para nunca escrever por
+        cima de uma lista guardada antes.
+        """
+        carimbo = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"{caminho.stem}_substituida_{carimbo}"
+        destino = caminho.with_name(f"{base}{caminho.suffix}")
+        repetido = 2
+        while destino.exists():
+            destino = caminho.with_name(f"{base}_{repetido}{caminho.suffix}")
+            repetido += 1
+
+        caminho.rename(destino)
+        return destino
+
+    @staticmethod
+    def _repor_lista_guardada(guardada, caminho) -> bool:
+        """Voltar a pôr a lista antiga no lugar; True quando conseguiu."""
+        if guardada is None or not guardada.exists():
+            return False
+        try:
+            if caminho.exists():
+                caminho.unlink()
+            guardada.rename(caminho)
+        except OSError:
+            return False
+        return True
 
     def _oferecer_fluxo_inicial_lista_material(
         self,

@@ -365,10 +365,15 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "DATA_CONCLUSAO" in source
     assert "NOME_ENC_IMOS_IX" in source
     assert "QDesktopServices.openUrl" in source
-    assert "O Excel da Lista Material da obra" in source
-    assert "Pretende abrir?" in source
+    # Quando a lista ja' existe ha' escolha: abrir a que esta' la', ou fazer uma
+    # nova por cima (pedido do Paulo, 2026-08-31). Antes so' perguntava
+    # "pretende abrir?" e quem quisesse refazer tinha de ir apagar o ficheiro
+    # a` mao no servidor.
+    assert "_escolher_o_que_fazer_a_lista" in source
+    assert "A Lista Material da obra" in source
+    assert "Abrir a lista existente" in source
+    assert "Criar nova (substitui a atual)" in source
     assert "QUrl.fromLocalFile(str(context.output_path))" in source
-    assert "Substituir?" not in inspect.getsource(ProducaoPage._lista_material_imos)
     assert "Pasta ainda não criada" in source
     assert "nome_plano_corte_input" in source
     assert "nome_enc_imos_ix_input" in source
