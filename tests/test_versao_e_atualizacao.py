@@ -163,20 +163,6 @@ def test_pasta_sem_instalador_nenhum_explica_se(monkeypatch, tmp_path: Path) -> 
     assert "não encontrei nenhum instalador" in estado.problema.lower()
 
 
-@pytest.mark.parametrize("existe", [True, False])
-def test_diz_se_o_instalador_pede_password(
-    monkeypatch, tmp_path: Path, existe: bool
-) -> None:
-    """O instalador é cifrado; a password está num ficheiro ao lado dele."""
-    (tmp_path / V3.format("1.0.9")).write_text("x")
-    if existe:
-        (tmp_path / modulo.NOME_FICHEIRO_PASSWORD).write_text("x")
-
-    estado = _servico(monkeypatch, pasta=str(tmp_path)).estado()
-
-    assert estado.pede_password is existe
-
-
 def test_o_servico_nao_instala_nada_sozinho() -> None:
     """Uma versão com problema não pode entrar sozinha em todos os PCs."""
     import inspect

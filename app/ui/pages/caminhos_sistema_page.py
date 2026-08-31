@@ -20,8 +20,35 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.repositories.system_setting_repository import SystemSettingResumo
 from app.services.system_setting_service import SystemSettingService
+from app.domain.pesquisa_texto import corresponde_texto, normalizar
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+
+
+def configuracao_corresponde(configuracao, procurado: str) -> bool:
+    """Se este caminho deve aparecer para o que está escrito na pesquisa.
+
+    Procura no nome da chave, na descrição, no grupo e no próprio valor — quem
+    anda à procura tanto se lembra do nome ("instaladores") como do sítio
+    ("SERVER_LE"). Aceita palavras soltas (sem acentos, singular ou plural) e
+    também um pedaço de palavra, porque quem procura escreve "instala" e não
+    espera ter de acertar na palavra inteira.
+    """
+    texto = (procurado or "").strip()
+    if not texto:
+        return True
+
+    campos = [
+        configuracao.chave or "",
+        configuracao.descricao or "",
+        configuracao.grupo or "",
+        configuracao.valor or "",
+    ]
+    if corresponde_texto(campos, texto):
+        return True
+
+    return normalizar(texto) in normalizar(" ".join(campos))
 
 
 class CaminhosSistemaPage(QWidget):
@@ -39,6 +66,8 @@ class CaminhosSistemaPage(QWidget):
 
         self.on_back = on_back
         self._settings_by_row: dict[int, SystemSettingResumo] = {}
+        #: Tudo o que veio da base; a tabela mostra só o que passa a pesquisa.
+        self._configuracoes: list[SystemSettingResumo] = []
 
         self.cabecalho = BarraCabecalho(
             "Caminhos do Sistema",
@@ -79,10 +108,23 @@ class CaminhosSistemaPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         ligar_persistencia_larguras(self.table, "caminhos_sistema")
 
+        # São mais de meia centena de linhas: sem pesquisa, encontrar um
+        # caminho pelo nome era percorrer a lista toda com os olhos.
+        self.campo_pesquisa = CampoPesquisa(
+            placeholder="Pesquisar caminho — nome, descrição ou valor…"
+        )
+        self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
+        self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
+
+        pesquisa_layout = QHBoxLayout()
+        pesquisa_layout.addWidget(self.campo_pesquisa)
+        pesquisa_layout.addStretch()
+
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
         layout.addWidget(self.cabecalho)
+        layout.addLayout(pesquisa_layout)
         layout.addLayout(actions_layout)
         layout.addWidget(self.status_label)
         layout.addWidget(self.table, stretch=1)
@@ -103,10 +145,35 @@ class CaminhosSistemaPage(QWidget):
             self.status_label.setText("Nao foi possivel carregar os caminhos do sistema.")
             return
 
-        self._preencher_tabela(configuracoes)
+        self._configuracoes = configuracoes
+        self.aplicar_pesquisa()
 
-        if not configuracoes:
+    def aplicar_pesquisa(self, _texto: str | None = None) -> None:
+        """Mostrar só os caminhos que correspondem ao que está escrito."""
+        procurado = self.campo_pesquisa.texto()
+        visiveis = [
+            configuracao
+            for configuracao in self._configuracoes
+            if configuracao_corresponde(configuracao, procurado)
+        ]
+
+        self._preencher_tabela(visiveis)
+
+        if not self._configuracoes:
             self.status_label.setText("Sem caminhos do sistema para mostrar.")
+        elif not visiveis:
+            self.status_label.setText(
+                f"Sem resultados para «{procurado}». Limpe a pesquisa (pincel) "
+                "para ver os caminhos todos."
+            )
+        elif procurado.strip():
+            self.status_label.setText(
+                f"{len(visiveis)} de {len(self._configuracoes)} caminhos à vista."
+            )
+        else:
+            self.status_label.setText(
+                f"{len(self._configuracoes)} caminhos do sistema."
+            )
 
     def guardar_configuracoes(self) -> None:
         """Save edited setting values."""

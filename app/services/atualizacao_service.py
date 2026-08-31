@@ -27,9 +27,6 @@ from app.services.system_setting_service import SystemSettingService
 #: Chave em ``system_settings`` (Configurações → Caminhos do Sistema).
 CHAVE_PASTA_INSTALADORES = "pasta_instaladores"
 
-#: O instalador é cifrado e pede palavra-passe; ela está num ficheiro ao lado.
-NOME_FICHEIRO_PASSWORD = "Password_Instalador.txt"
-
 
 @dataclass(frozen=True)
 class EstadoVersao:
@@ -41,13 +38,6 @@ class EstadoVersao:
     pasta: Path | None
     ha_atualizacao: bool
     problema: str | None = None
-
-    @property
-    def pede_password(self) -> bool:
-        """Se existe o ficheiro da palavra-passe ao lado do instalador."""
-        if self.pasta is None:
-            return False
-        return (self.pasta / NOME_FICHEIRO_PASSWORD).exists()
 
 
 class AtualizacaoService:

@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
 )
 
 from app.config.versao import version_completa
-from app.services.atualizacao_service import NOME_FICHEIRO_PASSWORD
 from app.ui import tema
 from app.ui.ajuda import GuiaAjuda, carregar_guias
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
@@ -241,12 +240,6 @@ class AjudaPage(QWidget):
             "tiver aberto antes de continuar.\n\n"
             f"Instalador:\n{estado.caminho_instalador}"
         )
-        if estado.pede_password:
-            aviso += (
-                "\n\nO instalador vai pedir uma palavra-passe. Ela está no "
-                f"ficheiro «{NOME_FICHEIRO_PASSWORD}», na mesma pasta."
-            )
-
         resposta = QMessageBox.question(
             self,
             "Atualizar o Martelo",

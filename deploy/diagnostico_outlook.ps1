@@ -110,7 +110,55 @@ if ($marcado) {
     Write-Host "      4. Fechar o Martelo e voltar a abrir"
     Write-Host "      (verificar tambem em 'Alterar definicoes para todos os utilizadores')"
 } else {
-    Write-Host "  Nao esta' marcado. Bom." -ForegroundColor Green
+    Write-Host "  O ficheiro .exe nao esta' marcado. Bom." -ForegroundColor Green
+}
+
+# --------------------------------------------- CAUSA 1b: o ATALHO esta' marcado
+Escrever-Titulo "CAUSA 1b - o atalho marcado para abrir como administrador"
+
+# Um atalho (.lnk) pode trazer o visto "Executar como administrador" nas
+# Propriedades > Avancadas. Esse visto vive DENTRO do ficheiro do atalho e nao
+# no registo, por isso a CAUSA 1 nao o apanha: o .exe aparece limpo e o Martelo
+# continua a abrir elevado sempre que se usa aquele atalho.
+# No formato dos atalhos do Windows, e' o bit 0x20 do byte 0x15 do cabecalho.
+$pastasAtalhos = @(
+    "$env:APPDATA\Microsoft\Windows\Start Menu\Programs",
+    "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
+    "$env:USERPROFILE\Desktop",
+    "$env:PUBLIC\Desktop"
+)
+$atalhoMarcado = $false
+$algumAtalho = $false
+foreach ($pasta in $pastasAtalhos) {
+    if (-not (Test-Path $pasta)) { continue }
+    $atalhos = Get-ChildItem -Path $pasta -Filter "*Martelo*.lnk" -Recurse -ErrorAction SilentlyContinue
+    foreach ($atalho in $atalhos) {
+        $algumAtalho = $true
+        try {
+            $bytes = [System.IO.File]::ReadAllBytes($atalho.FullName)
+            $elevaSempre = ($bytes.Length -gt 0x15) -and (($bytes[0x15] -band 0x20) -ne 0)
+        } catch {
+            Write-Host "  (nao consegui ler $($atalho.FullName))" -ForegroundColor Yellow
+            continue
+        }
+        if ($elevaSempre) {
+            Write-Host "  MARCADO: $($atalho.FullName)" -ForegroundColor Red
+            $atalhoMarcado = $true
+        } else {
+            Write-Host "  ok: $($atalho.FullName)" -ForegroundColor Green
+        }
+    }
+}
+if (-not $algumAtalho) {
+    Write-Host "  Nao encontrei atalhos do Martelo." -ForegroundColor Yellow
+}
+if ($atalhoMarcado) {
+    Write-Host ""
+    Write-Host "  >>> E' ESTA A CAUSA. Como resolver (uma vez so'):" -ForegroundColor Red
+    Write-Host "      1. Botao direito NO ATALHO marcado -> Propriedades"
+    Write-Host "      2. Separador Atalho -> botao 'Avancadas...'"
+    Write-Host "      3. DESMARCAR 'Executar como administrador' -> OK -> OK"
+    Write-Host "      4. Fechar o Martelo e voltar a abrir por esse atalho"
 }
 
 # ------------------------------------------- CAUSA 2: conta / UAC / elevacao
@@ -174,10 +222,26 @@ if ($janelaElevada) {
     }
 }
 
-Write-Host ""
+Escrever-Titulo "Conclusao"
+
 if ($janelaElevada) {
-    Write-Host "ATENCAO: correu como administrador. Repita numa janela normal." -ForegroundColor Red
+    Write-Host "  Nao da' para concluir: repita numa janela NORMAL." -ForegroundColor Red
+} elseif ($marcado -or $atalhoMarcado) {
+    Write-Host "  O Martelo abre sempre elevado. Desmarque o visto indicado acima." -ForegroundColor Red
+} elseif (-not $classico) {
+    Write-Host "  Falta o Outlook classico do Office neste computador." -ForegroundColor Red
+} else {
+    Write-Host "  Daqui o Outlook responde e nada esta' marcado para elevar." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Se o Martelo continua a dizer que esta' como ADMINISTRADOR, entao"
+    Write-Host "  foi aberto a` mao dessa maneira: botao direito -> 'Executar como"
+    Write-Host "  administrador', ou o 'Abrir' no fim do instalador."
+    Write-Host ""
+    Write-Host "  FACA ASSIM: feche o Martelo por completo e abra-o com um CLIQUE"
+    Write-Host "  NORMAL no atalho (nunca com o botao direito)."
 }
+
+Write-Host ""
 Write-Host "Fim. Tire uma fotografia/print desta janela e envie ao Paulo."
 Write-Host ""
 Read-Host "Carregue em ENTER para fechar"
