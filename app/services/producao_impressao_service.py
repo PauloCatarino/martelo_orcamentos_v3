@@ -61,6 +61,18 @@ ETIQUETAS_ORIGEM = {
 #: diga por dentro. O plano de corte, por exemplo, e sempre do CUT-RITE.
 ORIGENS_POR_CATEGORIA = {CATEGORIA_CUT_RITE: ORIGEM_CUT_RITE}
 
+#: Documentos que se imprimem SEMPRE frente e verso.
+#:
+#: O Caderno de Encargos da produção (``1_Producao_CE_<obra>_<cliente>.pdf``) é
+#: o único: são muitas páginas, vai para a fábrica, e sai sempre em duplex. O
+#: visto não fica guardado de uma impressão para a outra, por isso, sem este
+#: valor por defeito, alguém tinha de se lembrar de o marcar à mão de cada vez
+#: — e quando se esquecia gastava o dobro do papel.
+#:
+#: Compara-se pelo nome SEM o identificador da obra nem o cliente (o mesmo
+#: corte que a chave da ordem de impressão faz), para servir em todas as obras.
+DOCUMENTOS_DUPLEX_POR_DEFEITO = frozenset({"1_producao_ce"})
+
 ORIENTACAO_HORIZONTAL = "Horizontal"
 ORIENTACAO_VERTICAL = "Vertical"
 
@@ -445,19 +457,38 @@ def resolver_sumatra(session: Optional[Session]) -> Optional[str]:
     return None
 
 
-def chave_prioridade_documento(nome: str, categoria: str) -> str:
-    """Return a stable per-document-type key, without obra/client identifiers."""
+def base_do_documento(nome: str) -> str:
+    """O nome do documento sem o identificador da obra nem o cliente.
+
+    ``1_Producao_CE_1403_01_01_JF_VIVA.pdf`` -> ``1_producao_ce``.
+
+    Os PDFs criados para cada obra terminam normalmente no identificador
+    numérico da encomenda e no cliente. Esse sufixo tem de sair: tanto a ordem
+    de impressão como o duplex são do TIPO de documento, e têm de servir na
+    obra seguinte.
+    """
     base = Path(str(nome or "")).stem.casefold()
     base = re.sub(r"[^a-z0-9]+", "_", base).strip("_")
-    # Os PDFs criados para cada obra terminam normalmente no identificador
-    # numérico da encomenda e no cliente. Esse sufixo não pode entrar na
-    # preferência, porque a mesma ordem tem de servir na obra seguinte.
-    base = re.sub(
+    return re.sub(
         r"(?:^|_)\d{4}(?:_\d{2}){2,}(?:_[a-z0-9]+)*$",
         "",
         base,
     ).strip("_")
-    return f"{PREFIXO_CHAVE_DOCUMENTO}{categoria}:{base or 'sem_nome'}"
+
+
+def chave_prioridade_documento(nome: str, categoria: str) -> str:
+    """Return a stable per-document-type key, without obra/client identifiers."""
+    return f"{PREFIXO_CHAVE_DOCUMENTO}{categoria}:{base_do_documento(nome) or 'sem_nome'}"
+
+
+def duplex_por_defeito(nome: str) -> bool:
+    """Se este documento deve nascer com o visto do frente-e-verso marcado."""
+    return base_do_documento(nome) in DOCUMENTOS_DUPLEX_POR_DEFEITO
+
+
+def duplex_por_defeito(nome: str) -> bool:
+    """Se este documento deve nascer com o visto do frente-e-verso marcado."""
+    return base_do_documento(nome) in DOCUMENTOS_DUPLEX_POR_DEFEITO
 
 
 def _documento(
@@ -496,6 +527,7 @@ def _documento(
         papel=categoria.papel,
         orientacao=categoria.orientacao,
         quantidade=categoria.quantidade,
+        duplex=duplex_por_defeito(caminho.name),
         tamanho=_tamanho(caminho),
         geometria_paginas=paginas,
         chave_prioridade=chave_prioridade,

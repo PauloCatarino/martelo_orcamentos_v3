@@ -419,7 +419,10 @@ def test_dialogo_impressao_tem_as_pecas_esperadas() -> None:
     assert "setToolTip" in fonte
     assert "status_label" in fonte
     assert "WindowMaximized" in fonte
-    assert "pre_visualizacao.setMaximumHeight(280)" in fonte
+    # A pre-visualizacao deixou de ter altura fixa: agora ha' uma divisoria
+    # arrastavel, para se poder ver a folha em maior (pedido do Paulo).
+    assert "pre_visualizacao.setMaximumHeight(280)" not in fonte
+    assert "QSplitter(Qt.Orientation.Vertical)" in fonte
 
 
 def test_pagina_producao_abre_a_impressao() -> None:

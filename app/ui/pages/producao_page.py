@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSplitter,
+    QStyle,
     QTableView,
     QTextEdit,
     QStackedWidget,
@@ -165,6 +166,55 @@ VISTA_SEM_FILTROS = "Todas as obras"
 
 #: Data sentinela dos campos ``QDateEdit`` — apresentada como vazia.
 DATA_VAZIA = QDate(1752, 9, 14)
+
+#: Largura da setinha do calendário, quando o estilo não a souber dizer.
+_LARGURA_SETA_CALENDARIO = 24
+
+
+class CampoData(QDateEdit):
+    """Campo de data que, estando vazio, começa em HOJE quando se vai escolher.
+
+    O "vazio" destes campos é, para o Qt, a data mínima — 14 de setembro de
+    1752. Quem carregava na setinha para pôr a Data Início caía no calendário
+    nesse ano e tinha de andar dois séculos e meio para a frente até chegar ao
+    mês em que estamos. Hoje é a data que se quer em quase todos os casos, e é
+    dela que se anda para trás ou para a frente.
+
+    Só reage a gestos que já são "vou escolher uma data": a setinha do
+    calendário, o F4 e as setas do teclado. Clicar no meio do campo para ler ou
+    para escrever à mão NÃO preenche nada — senão bastava passar por cima de um
+    processo para lhe aparecer uma data que ninguém pôs, e ela ficava gravada
+    ao Salvar.
+    """
+
+    def _comecar_em_hoje_se_vazio(self) -> bool:
+        """Põe hoje quando está vazio; devolve se chegou a mexer."""
+        if self.date() != DATA_VAZIA:
+            return False
+        self.setDate(QDate.currentDate())
+        return True
+
+    def _e_na_setinha(self, posicao) -> bool:
+        largura_seta = self.style().pixelMetric(
+            QStyle.PixelMetric.PM_ScrollBarExtent, None, self
+        ) or _LARGURA_SETA_CALENDARIO
+        return posicao.x() >= self.width() - max(largura_seta, 16)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if self._e_na_setinha(event.position().toPoint()):
+            self._comecar_em_hoje_se_vazio()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        if event.key() in (
+            Qt.Key.Key_F4,
+            Qt.Key.Key_Down,
+            Qt.Key.Key_Up,
+            Qt.Key.Key_PageDown,
+            Qt.Key.Key_PageUp,
+        ) and self._comecar_em_hoje_se_vazio():
+            return  # a primeira tecla serve só para chegar a hoje
+        super().keyPressEvent(event)
 
 #: Coluna usada para "ordem de entrada" (mais recentes em cima).
 COLUNA_ORDEM_ENTRADA = next(
@@ -919,7 +969,7 @@ class ProducaoPage(QWidget):
 
     def _campo_data(self) -> QDateEdit:
         """Date field with calendar popup; empty is the minimum date."""
-        campo = QDateEdit()
+        campo = CampoData()
         campo.setDisplayFormat("dd-MM-yyyy")
         campo.setCalendarPopup(True)
         campo.setMinimumDate(DATA_VAZIA)
@@ -927,6 +977,7 @@ class ProducaoPage(QWidget):
         campo.setDate(DATA_VAZIA)
         campo.setToolTip(
             "Escolha no calendário ou escreva dd-mm-aaaa. "
+            "Estando vazio, carregar na setinha começa em HOJE. "
             "Para limpar, recue até a data ficar vazia."
         )
         return campo

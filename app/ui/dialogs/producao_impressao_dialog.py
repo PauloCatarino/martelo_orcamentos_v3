@@ -16,15 +16,18 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.services import producao_impressao_service as svc
 from app.services.pdf_imagem_service import documento_pdf
+from app.services.user_pref_service import UserPrefService
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
@@ -118,8 +121,10 @@ class ProducaoImpressaoDialog(QDialog):
             f"QGroupBox {{ color: {tema.CASTANHO_ESCURO}; font-weight: bold; }}"
         )
         pre_visualizacao.setMinimumWidth(500)
-        # Sem limite de altura a pré-visualização come a lista de documentos.
-        pre_visualizacao.setMaximumHeight(280)
+        # A altura deixou de ser fixa: quem quiser ver melhor a folha arrasta a
+        # divisória e a pré-visualização cresce à custa da lista (o QSplitter
+        # mais abaixo). O mínimo é só para nunca desaparecer de todo.
+        pre_visualizacao.setMinimumHeight(180)
         self.imagem_label = QLabel("Selecione um documento na lista.")
         self.imagem_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.imagem_label.setMinimumSize(480, 200)
@@ -216,13 +221,88 @@ class ProducaoImpressaoDialog(QDialog):
         acoes.addWidget(self.imprimir_button)
         acoes.addWidget(self.fechar_button)
 
+        # Divisória arrastável entre a pré-visualização e a lista: a folha que
+        # se vai imprimir aparecia num quadrado pequeno e fixo, e não havia
+        # maneira de a ver melhor sem sair do diálogo. Agora puxa-se a lista
+        # para baixo e a pré-visualização fica com o espaço todo.
+        topo_widget = QWidget()
+        topo_widget.setLayout(topo)
+
+        lista_widget = QWidget()
+        lista_layout = QVBoxLayout(lista_widget)
+        lista_layout.setContentsMargins(0, 0, 0, 0)
+        # Os botões acompanham a lista: são todos sobre ela (Subir, Descer,
+        # Selecionar tudo…).
+        lista_layout.addLayout(acoes)
+        lista_layout.addWidget(self.tabela, stretch=1)
+
+        self.divisoria = QSplitter(Qt.Orientation.Vertical)
+        self.divisoria.addWidget(topo_widget)
+        self.divisoria.addWidget(lista_widget)
+        self.divisoria.setChildrenCollapsible(False)
+        self.divisoria.setStretchFactor(0, 0)
+        self.divisoria.setStretchFactor(1, 1)
+        self.divisoria.splitterMoved.connect(self._guardar_alturas)
+        self._divisoria_repartida = False
+
         layout = QVBoxLayout(self)
-        layout.addLayout(topo)
-        layout.addLayout(acoes)
-        layout.addWidget(self.tabela, stretch=1)
+        layout.addWidget(self.divisoria, stretch=1)
         layout.addWidget(self.status_label)
 
         self._carregar()
+
+    # ---- divisória ---------------------------------------------------------
+
+    #: Onde fica guardada a altura da divisória, na conta de cada utilizador.
+    CHAVE_DIVISORIA = "producao_impressao_altura_previsualizacao"
+    ALTURA_PREVISUALIZACAO_DEFAULT = 280
+
+    def _altura_guardada(self) -> int:
+        """A altura da pré-visualização que este utilizador deixou da última vez."""
+        try:
+            with SessionLocal() as session:
+                guardado = UserPrefService(session).obter_valor(
+                    self._user_id, self.CHAVE_DIVISORIA
+                )
+            if guardado:
+                return max(180, int(guardado))
+        except (SQLAlchemyError, TypeError, ValueError):
+            pass
+
+        return self.ALTURA_PREVISUALIZACAO_DEFAULT
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        """Repartir o espaço só quando a janela já tem a altura verdadeira.
+
+        No construtor a janela ainda não foi maximizada, e a altura que ela tem
+        nessa altura não serve para nada: repartir aí dava uma pré-visualização
+        a ocupar metade do diálogo e a lista espremida.
+        """
+        super().showEvent(event)
+        if self._divisoria_repartida:
+            return
+
+        self._divisoria_repartida = True
+        altura = self._altura_guardada()
+        disponivel = self.divisoria.height() or self.height()
+        self.divisoria.setSizes([altura, max(200, disponivel - altura)])
+
+    def _guardar_alturas(self, *_args) -> None:
+        """Guardar a altura assim que o utilizador larga a divisória.
+
+        Se não der para gravar (rede, permissões), fica só nesta sessão — não
+        vale a pena interromper uma impressão por causa disto.
+        """
+        alturas = self.divisoria.sizes()
+        if not alturas:
+            return
+        try:
+            with SessionLocal() as session:
+                UserPrefService(session).guardar_valor(
+                    self._user_id, self.CHAVE_DIVISORIA, str(int(alturas[0]))
+                )
+        except (SQLAlchemyError, ValueError):
+            pass
 
     # ---- carregar / mostrar ------------------------------------------------
     def _carregar(self) -> None:
