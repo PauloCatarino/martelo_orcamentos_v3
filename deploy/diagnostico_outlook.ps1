@@ -31,6 +31,33 @@ Write-Host "Diagnostico do envio de emails do Martelo V3"
 Write-Host "PC: $env:COMPUTERNAME   Utilizador: $env:USERNAME"
 Write-Host ("Data: " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss"))
 
+# ---------------------------------------------------------------------------
+# Este script NAO PODE correr como administrador.
+# O problema que estamos a investigar e' precisamente um programa elevado nao
+# conseguir falar com o Outlook. Se esta janela estiver elevada, a "prova dos
+# noves" la' em baixo falha SEMPRE -- e falha pela janela, nao pelo Martelo.
+# Daria uma resposta errada, que e' pior do que nao dar resposta nenhuma.
+# ---------------------------------------------------------------------------
+$identidadeInicial = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principalInicial = New-Object Security.Principal.WindowsPrincipal($identidadeInicial)
+$janelaElevada = $principalInicial.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if ($janelaElevada) {
+    Write-Host ""
+    Write-Host "  !!! ESTA JANELA DO POWERSHELL ESTA' A CORRER COMO ADMINISTRADOR !!!" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Assim o teste nao serve: e' a propria janela que nao consegue" -ForegroundColor Yellow
+    Write-Host "  falar com o Outlook, e nao ficamos a saber nada sobre o Martelo." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  FECHE esta janela e abra o PowerShell NORMAL:" -ForegroundColor Yellow
+    Write-Host "    menu Iniciar -> escrever 'PowerShell' -> Enter" -ForegroundColor Yellow
+    Write-Host "    (SEM 'Executar como administrador')" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Ou, mais simples: botao direito neste ficheiro ->" -ForegroundColor Yellow
+    Write-Host "  'Executar com o PowerShell'." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 # ---------------------------------------------------------------- o executavel
 Escrever-Titulo "Onde esta' o Martelo"
 
@@ -89,10 +116,7 @@ if ($marcado) {
 # ------------------------------------------- CAUSA 2: conta / UAC / elevacao
 Escrever-Titulo "CAUSA 2 - a conta e o UAC"
 
-$identidade = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = New-Object Security.Principal.WindowsPrincipal($identidade)
-$elevado = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-Write-Host "  Esta janela do PowerShell esta' elevada: $elevado"
+Write-Host "  Esta janela do PowerShell esta' elevada: $janelaElevada"
 
 $uac = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" `
     -ErrorAction SilentlyContinue
@@ -135,17 +159,25 @@ if ($processo) {
 # --------------------------------------------------------- prova dos noves
 Escrever-Titulo "Prova dos noves - tentar mesmo ligar ao Outlook"
 
-try {
-    $ol = New-Object -ComObject Outlook.Application
-    Write-Host "  LIGOU. Versao do Outlook: $($ol.Version)" -ForegroundColor Green
-    Write-Host "  Daqui o Martelo tambem consegue, desde que abra da mesma maneira."
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ol) | Out-Null
-} catch {
-    Write-Host "  NAO LIGOU." -ForegroundColor Red
-    Write-Host "  $($_.Exception.Message)"
+if ($janelaElevada) {
+    Write-Host "  SALTADO: esta janela esta' elevada, o resultado nao valeria nada." -ForegroundColor Red
+    Write-Host "  Volte a correr o script numa janela normal (ver aviso la' em cima)."
+} else {
+    try {
+        $ol = New-Object -ComObject Outlook.Application
+        Write-Host "  LIGOU. Versao do Outlook: $($ol.Version)" -ForegroundColor Green
+        Write-Host "  Daqui o Martelo tambem consegue, desde que abra da mesma maneira."
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ol) | Out-Null
+    } catch {
+        Write-Host "  NAO LIGOU." -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)"
+    }
 }
 
 Write-Host ""
+if ($janelaElevada) {
+    Write-Host "ATENCAO: correu como administrador. Repita numa janela normal." -ForegroundColor Red
+}
 Write-Host "Fim. Tire uma fotografia/print desta janela e envie ao Paulo."
 Write-Host ""
 Read-Host "Carregue em ENTER para fechar"
