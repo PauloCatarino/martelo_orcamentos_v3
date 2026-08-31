@@ -144,6 +144,10 @@ class PlanoCriacaoImos:
     # Rasto de uma criação anterior desta obra, quando existe.
     ja_criada_em: datetime | None = None
     ja_criada_por: str = ""
+    ja_criada_nome: str = ""
+    #: A encomenda no ecrã É a que esta obra já criou (mesmo nome, e continua no
+    #: iMos). Não há nada a criar: a janela informa em vez de acusar.
+    ja_criada_com_este_nome: bool = False
     # Dados do cliente (dbo.CMSINCIDENTADRESS); vazio quando não há nada a gravar.
     contacto: tuple[CampoImos, ...] = ()
 
@@ -153,7 +157,20 @@ class PlanoCriacaoImos:
 
     @property
     def pode_criar(self) -> bool:
-        return not self.bloqueios
+        # Já criada com este nome não é um erro, mas também não há nada a
+        # fazer: o botão fica desligado até o nome mudar.
+        return not self.bloqueios and not self.ja_criada_com_este_nome
+
+    @property
+    def texto_ja_criada(self) -> str:
+        """A frase que diz que a encomenda já está feita — data, quem, nome."""
+        if not self.ja_criada_em:
+            return ""
+
+        quando = self.ja_criada_em.strftime("%d-%m-%Y às %H:%M")
+        quem = f" por {self.ja_criada_por}" if self.ja_criada_por else ""
+        nome = self.ja_criada_nome or self.nome_encomenda
+        return f"Encomenda «{nome}» criada no iMos em {quando}{quem}."
 
     @property
     def nome_truncado(self) -> bool:
@@ -340,6 +357,15 @@ def mapear_contacto(processo, cliente: Cliente | None) -> tuple[CampoImos, ...]:
     )
 
 
+def _mesmo_nome(um: str, outro: str) -> bool:
+    """Se são o mesmo nome de encomenda, ignorando espaços e maiúsculas.
+
+    O iMos não distingue maiúsculas de minúsculas nos nomes das encomendas, e
+    um espaço a mais colado ao nome não faz dele outra encomenda.
+    """
+    return (um or "").strip().casefold() == (outro or "").strip().casefold()
+
+
 def _cliente_da_obra(session: Session, processo) -> Cliente | None:
     """Ficha do cliente da obra, quando existe ligação."""
     cliente_id = getattr(processo, "cliente_id", None)
@@ -418,11 +444,43 @@ def preparar(
             f"A pasta raiz '{pasta_raiz}' não existe no iMos. O Martelo não a "
             "cria: confirme a definição imos_pasta_raiz."
         )
-    if caminho.encomenda_ja_existe:
-        bloqueios.append(
-            f"Já existe uma encomenda '{nome}' nesta pasta do iMos. "
-            "O Martelo não duplica nem substitui encomendas."
+    # Rasto de uma criação anterior desta obra. Tem de ser lido ANTES das
+    # verificações de duplicado, porque é ele que decide se elas se aplicam:
+    # uma coisa é olhar para a encomenda que esta obra já criou, outra é estar
+    # mesmo a tentar criar uma nova.
+    criada_em = getattr(processo, "imos_criado_em", None)
+    criada_por = ""
+    criada_nome = ""
+    if criada_em:
+        autor_id = getattr(processo, "imos_criado_por_id", None)
+        autor = session.get(User, autor_id) if autor_id else None
+        criada_por = getattr(autor, "nome", "") or getattr(autor, "username", "") or ""
+        criada_nome = getattr(processo, "imos_nome_encomenda", "") or nome
+
+    # O utilizador está a olhar para a encomenda que ESTA obra já criou, com o
+    # mesmo nome — não está a criar coisa nenhuma. Aí não faz sentido acusá-lo
+    # de duplicar: a janela limita-se a dizer que já está feita, quando e por
+    # quem. As verificações de duplicado voltam assim que ele mudar o nome.
+    ja_criada = bool(criada_em) and _mesmo_nome(criada_nome, nome)
+
+    if ja_criada and not caminho.encomenda_ja_existe:
+        # Está no registo do Martelo mas já não está no iMos: alguém a apagou
+        # ou mudou-a de sítio. Aí criar de novo é legítimo — mas convém dizê-lo.
+        ja_criada = False
+        quem = f" por {criada_por}" if criada_por else ""
+        avisos.append(
+            f"Esta obra criou a encomenda '{criada_nome}' no iMos em "
+            f"{criada_em.strftime('%d-%m-%Y %H:%M')}{quem}, mas ela já lá não "
+            "está — foi apagada ou mudada de sítio. Se criar agora, fica uma "
+            "encomenda nova."
         )
+
+    if caminho.encomenda_ja_existe:
+        if not ja_criada:
+            bloqueios.append(
+                f"Já existe uma encomenda '{nome}' nesta pasta do iMos. "
+                "O Martelo não duplica nem substitui encomendas."
+            )
     else:
         # O nome tem de ser único em TODA a árvore, não só nesta pasta: os
         # dados do cliente são guardados por nome de encomenda, sem pasta.
@@ -435,20 +493,14 @@ def preparar(
                 "Altere o nome antes de criar."
             )
 
-    # Rasto de uma criação anterior: é o que evita criar duas vezes por
-    # engano, sem obrigar ninguém a ir ao iX Organizer confirmar.
-    criada_em = getattr(processo, "imos_criado_em", None)
-    criada_por = ""
-    if criada_em:
-        autor_id = getattr(processo, "imos_criado_por_id", None)
-        autor = session.get(User, autor_id) if autor_id else None
-        criada_por = getattr(autor, "nome", "") or getattr(autor, "username", "") or ""
-        anterior = getattr(processo, "imos_nome_encomenda", "") or nome
+    if criada_em and not ja_criada and not _mesmo_nome(criada_nome, nome):
+        # Nome novo numa obra que já criou uma encomenda: pode ser mesmo uma
+        # segunda encomenda, mas também pode ser engano.
         quem = f" por {criada_por}" if criada_por else ""
         avisos.append(
-            f"Esta obra já criou a encomenda '{anterior}' no iMos em "
-            f"{criada_em.strftime('%d-%m-%Y %H:%M')}{quem}. Confirme que não "
-            "está a criar a mesma coisa outra vez."
+            f"Esta obra já criou a encomenda '{criada_nome}' no iMos em "
+            f"{criada_em.strftime('%d-%m-%Y %H:%M')}{quem}. Vai criar OUTRA, "
+            f"com o nome '{nome}'. Confirme que é mesmo isso que quer."
         )
 
     campos = mapear_campos(processo, nome_encomenda=nome, textos=textos)
@@ -497,6 +549,8 @@ def preparar(
         contacto=contacto,
         ja_criada_em=criada_em,
         ja_criada_por=criada_por,
+        ja_criada_nome=criada_nome,
+        ja_criada_com_este_nome=ja_criada,
     )
 
 

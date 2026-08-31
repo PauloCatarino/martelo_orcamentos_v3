@@ -426,3 +426,20 @@ def test_producao_exige_obra_selecionada() -> None:
     source = inspect.getsource(ProducaoPage._abrir_criar_encomenda_imos)
     assert "Selecione uma obra" in source
     assert "processo_id=processo.id" in source
+
+
+def test_dialogo_mostra_a_encomenda_ja_criada_sem_vermelho() -> None:
+    """A informação de "já criada" não pode sair no bloco vermelho dos erros."""
+    import inspect
+
+    from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
+
+    fonte = inspect.getsource(ImosEncomendaDialog._render_avisos)
+
+    # A frase informativa vem do plano e aparece antes dos bloqueios.
+    assert "ja_criada_com_este_nome" in fonte
+    assert "texto_ja_criada" in fonte
+    assert fonte.index("plano.ja_criada_com_este_nome") < fonte.index("plano.bloqueios")
+
+    # O vermelho continua reservado aos bloqueios e à falta de permissão.
+    assert "if plano.bloqueios or not self._pode_criar" in fonte

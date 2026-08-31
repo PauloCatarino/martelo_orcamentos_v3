@@ -369,6 +369,16 @@ class ImosEncomendaDialog(QDialog):
 
     def _render_avisos(self, plano: PlanoCriacaoImos) -> None:
         partes: list[str] = []
+        if plano.ja_criada_com_este_nome:
+            # Não é erro nem aviso: é o estado normal de uma obra cuja encomenda
+            # já foi feita. Antes saía a vermelho, com "Não é possível criar" e
+            # "confirme que não está a criar a mesma coisa outra vez" — dava a
+            # entender que alguma coisa tinha corrido mal, quando estava tudo bem.
+            partes.append(
+                f"{plano.texto_ja_criada}\n"
+                "Não há nada a criar. Para criar OUTRA encomenda para esta "
+                "obra, altere o nome acima."
+            )
         if plano.bloqueios:
             partes.append(
                 "Não é possível criar:\n"
@@ -409,6 +419,8 @@ class ImosEncomendaDialog(QDialog):
             self.status_label.setText("Leitura concluída. A escrita no iMos está desligada.")
         elif plano.bloqueios:
             self.status_label.setText("Leitura concluída. Resolva os pontos a vermelho.")
+        elif plano.ja_criada_com_este_nome:
+            self.status_label.setText("Esta encomenda já está criada no iMos.")
         elif plano.pastas_a_criar:
             self.status_label.setText(
                 "Pronto a criar: "

@@ -715,18 +715,20 @@ def test_obra_ainda_sem_encomenda_nao_avisa_nada(session, monkeypatch) -> None:
     assert plano.avisos == ()
 
 
-def test_obra_que_ja_criou_encomenda_avisa_com_data_e_autor(
-    session, monkeypatch
-) -> None:
+def test_encomenda_ja_criada_e_informacao_e_nao_erro(session, monkeypatch) -> None:
+    """O estado normal de uma obra cuja encomenda ja' foi feita.
+
+    Antes saia a vermelho, com "Nao e' possivel criar" e "confirme que nao esta'
+    a criar a mesma coisa outra vez" -- dava a entender que algo tinha corrido
+    mal, quando estava tudo bem. Pedido do Paulo, 2026-08-31.
+    """
     from app.models.user import User
 
-    _com_caminho(monkeypatch, _caminho())
+    # Mesmo nome E ja' la' no iMos: e' a encomenda desta obra.
+    _com_caminho(monkeypatch, _caminho(encomenda=7614))
     autor = User(
-        username="paulo",
-        nome="Paulo Catarino",
-        email="p@le.pt",
-        password_hash="x",
-        role="user",
+        username="angela", nome="Angela", email="a@le.pt",
+        password_hash="x", role="user",
     )
     session.add(autor)
     session.flush()
@@ -735,34 +737,96 @@ def test_obra_que_ja_criou_encomenda_avisa_com_data_e_autor(
         session,
         _cfg(),
         _obra(
-            imos_criado_em=datetime(2026, 7, 28, 17, 56),
+            imos_criado_em=datetime(2026, 8, 31, 9, 24),
             imos_criado_por_id=autor.id,
             imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
         ),
     )
 
-    aviso = next(a for a in plano.avisos if "já criou a encomenda" in a)
-    assert "1260_01_26_LINHAS_DIREITAS" in aviso
-    assert "28-07-2026 17:56" in aviso
-    assert "por Paulo Catarino" in aviso
-    # É um aviso, não um bloqueio: pode ser uma segunda versão legítima.
-    assert plano.pode_criar is True
-    assert plano.ja_criada_por == "Paulo Catarino"
+    assert plano.ja_criada_com_este_nome is True
+    # Nada de vermelho: nem bloqueio, nem "confirme que nao esta' a duplicar".
+    assert plano.bloqueios == ()
+    assert not any("duplica" in aviso for aviso in plano.avisos)
+    assert not any("mesma coisa outra vez" in aviso for aviso in plano.avisos)
+    # Mas tambem nao ha' nada a criar.
+    assert plano.pode_criar is False
+
+    # A frase leva o nome, a data e quem a criou.
+    texto = plano.texto_ja_criada
+    assert "1260_01_26_LINHAS_DIREITAS" in texto
+    assert "31-08-2026" in texto and "09:24" in texto
+    assert "Angela" in texto
 
 
-def test_aviso_de_ja_criada_funciona_sem_autor_conhecido(
-    session, monkeypatch
-) -> None:
-    _com_caminho(monkeypatch, _caminho())
+def test_encomenda_ja_criada_sem_autor_conhecido(session, monkeypatch) -> None:
+    _com_caminho(monkeypatch, _caminho(encomenda=7614))
 
     plano = servico.preparar(
         session,
         _cfg(),
-        _obra(imos_criado_em=datetime(2026, 7, 28, 9, 5), imos_criado_por_id=None),
+        _obra(
+            imos_criado_em=datetime(2026, 8, 31, 9, 24),
+            imos_criado_por_id=None,
+            imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+        ),
     )
 
-    assert any("já criou a encomenda" in a for a in plano.avisos)
+    assert plano.ja_criada_com_este_nome is True
     assert plano.ja_criada_por == ""
+    assert "por" not in plano.texto_ja_criada
+    assert "1260_01_26_LINHAS_DIREITAS" in plano.texto_ja_criada
+
+
+def test_nome_igual_mas_ja_nao_esta_no_imos_deixa_criar(session, monkeypatch) -> None:
+    """Alguem apagou a encomenda no iMos: criar de novo e' legitimo."""
+    _com_caminho(monkeypatch, _caminho(encomenda=None))
+
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        _obra(
+            imos_criado_em=datetime(2026, 8, 31, 9, 24),
+            imos_nome_encomenda="1260_01_26_LINHAS_DIREITAS",
+        ),
+    )
+
+    assert plano.ja_criada_com_este_nome is False
+    assert plano.pode_criar is True
+    assert any("já lá não está" in aviso for aviso in plano.avisos)
+
+
+def test_criar_encomenda_NOVA_volta_a_verificar_o_duplicado(
+    session, monkeypatch
+) -> None:
+    """O outro lado do pedido: nome novo -> as verificacoes voltam, a vermelho."""
+    # O utilizador mudou o nome; esse nome ja' existe nesta pasta do iMos.
+    _com_caminho(monkeypatch, _caminho(encomenda=7614))
+
+    plano = servico.preparar(
+        session,
+        _cfg(),
+        _obra(
+            imos_criado_em=datetime(2026, 8, 31, 9, 24),
+            imos_nome_encomenda="1260_01_26_OUTRO_NOME",
+        ),
+    )
+
+    assert plano.ja_criada_com_este_nome is False
+    assert plano.pode_criar is False
+    assert any("não duplica nem substitui" in bloqueio for bloqueio in plano.bloqueios)
+    # E avisa que vai criar uma SEGUNDA encomenda para a mesma obra.
+    assert any("Vai criar OUTRA" in a for a in plano.avisos)
+
+
+def test_obra_que_nunca_criou_continua_a_ser_bloqueada(session, monkeypatch) -> None:
+    """Sem rasto de criacao, uma encomenda que ja' exista continua a bloquear."""
+    _com_caminho(monkeypatch, _caminho(encomenda=7614))
+
+    plano = servico.preparar(session, _cfg(), _obra())
+
+    assert plano.ja_criada_com_este_nome is False
+    assert plano.pode_criar is False
+    assert plano.bloqueios
 
 
 def test_executar_guarda_o_rasto_na_obra(session, monkeypatch) -> None:
