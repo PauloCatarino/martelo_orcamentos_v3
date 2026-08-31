@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import smtplib
 import ssl
+import sys
 from typing import Any, Sequence
 
 from app.domain.anexos_email import LIMITE_PADRAO_MB
@@ -533,6 +534,63 @@ def _is_elevated() -> bool:
         return False
 
 
+def _caminho_do_executavel() -> str:
+    """O .exe do Martelo (ou o python.exe, quando corre a partir do código)."""
+    return str(Path(sys.executable).resolve())
+
+
+def _marcado_para_abrir_como_administrador() -> bool:
+    """Se alguém pôs o visto "Executar este programa como administrador".
+
+    O Windows guarda esse visto no registo, e ele fica colado ao ficheiro: a
+    partir daí o Martelo abre SEMPRE elevado, mesmo pelo atalho — e o Outlook
+    deixa de responder para sempre, não só depois de instalar. Como o aviso
+    antigo mandava "abrir pelo atalho", quem tinha este visto ficava a dar
+    voltas sem nunca resolver.
+    """
+    alvo = _caminho_do_executavel().casefold()
+    try:
+        import winreg
+    except ImportError:  # não é Windows
+        return False
+
+    chave = r"Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers"
+    for raiz in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(raiz, chave) as aberta:
+                indice = 0
+                while True:
+                    try:
+                        nome, valor, _tipo = winreg.EnumValue(aberta, indice)
+                    except OSError:
+                        break
+                    indice += 1
+                    if nome.casefold() == alvo and "RUNASADMIN" in str(valor).upper():
+                        return True
+        except OSError:
+            continue
+
+    return False
+
+
+def _outlook_classico_instalado() -> bool:
+    """Se existe um Outlook com automação (COM) registado nesta máquina.
+
+    O "novo Outlook" do Windows não tem automação nenhuma: com ele instalado
+    sozinho, nada disto funciona e não há visto nenhum para desmarcar.
+    """
+    try:
+        import winreg
+    except ImportError:
+        return True  # não é Windows: não fazemos afirmações
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"Outlook.Application\CLSID"):
+            return True
+    except OSError:
+        return False
+
+
 def _ligar_outlook(win32_client: Any) -> Any:
     import time
 
@@ -547,8 +605,48 @@ def _ligar_outlook(win32_client: Any) -> Any:
             ultimo_erro = exc
             time.sleep(1.0)
 
+    raise RuntimeError(_explicar_falha_do_outlook(ultimo_erro))
+
+
+def _explicar_falha_do_outlook(ultimo_erro: object) -> str:
+    """Dizer a CAUSA concreta, e não uma lista de coisas a experimentar.
+
+    Antes havia duas mensagens: "está elevado" e "erro do servidor COM". A
+    primeira mandava fechar e abrir pelo atalho — o que não resolve nada quando
+    o Martelo está marcado no Windows para abrir sempre como administrador, que
+    foi o que aconteceu no PC da Andreia. Agora dizemos qual dos casos é.
+    """
+    if not _outlook_classico_instalado():
+        return (
+            "Não foi possível ligar ao Outlook: este computador não tem o "
+            "Outlook clássico (o do Office).\n\n"
+            "O 'novo Outlook' do Windows não deixa outros programas prepararem "
+            "emails, por isso o Martelo não consegue lá chegar.\n\n"
+            "SOLUÇÃO: instalar/abrir o Outlook do Office neste computador. Se "
+            "só existir o 'novo Outlook', é preciso voltar ao clássico "
+            "(no novo Outlook, desligar o separador 'Novo Outlook').\n\n"
+            "Detalhe técnico: " + str(ultimo_erro)
+        )
+
+    if _is_elevated() and _marcado_para_abrir_como_administrador():
+        return (
+            "Não foi possível ligar ao Outlook. O Martelo está marcado no "
+            "Windows para abrir SEMPRE como administrador, e o Outlook corre "
+            "como utilizador normal — o Windows não os deixa falar entre si.\n\n"
+            "SOLUÇÃO (é preciso fazê-la uma vez só):\n"
+            f"1. Vá a {_caminho_do_executavel()}\n"
+            "2. Clique com o botão direito → Propriedades → separador "
+            "Compatibilidade\n"
+            "3. DESMARQUE 'Executar este programa como administrador' e "
+            "carregue em OK\n"
+            "4. Feche o Martelo e volte a abri-lo\n\n"
+            "Enquanto esse visto estiver marcado, fechar e abrir pelo atalho "
+            "não resolve — ele abre elevado à mesma.\n\n"
+            "Detalhe técnico: " + str(ultimo_erro)
+        )
+
     if _is_elevated():
-        mensagem = (
+        return (
             "Não foi possível ligar ao Outlook. Esta janela do Martelo está a "
             "correr como ADMINISTRADOR e o Outlook corre como utilizador "
             "normal — o Windows não os deixa falar entre si.\n\n"
@@ -557,15 +655,20 @@ def _ligar_outlook(win32_client: Any) -> Any:
             "Acontece sobretudo quando se acabou de INSTALAR e se carregou em "
             "'Abrir' no fim do instalador: essa janela nasce como "
             "administrador. Basta fechá-la e voltar a abrir pelo atalho.\n\n"
+            "Se voltar a acontecer depois de abrir pelo atalho, veja nas "
+            "Propriedades do Martelo (separador Compatibilidade) se está "
+            "marcado 'Executar este programa como administrador' — e desmarque.\n\n"
             "Detalhe técnico: " + str(ultimo_erro)
         )
-    else:
-        mensagem = (
-            "Não foi possível ligar ao Outlook (erro do servidor COM). Verifique: o "
-            "Outlook está aberto; a bitness do Office e do Python coincidem; experimente "
-            "Reparar o Office.\n\nDetalhe técnico: " + str(ultimo_erro)
-        )
-    raise RuntimeError(mensagem)
+
+    return (
+        "Não foi possível ligar ao Outlook (erro do servidor COM).\n\n"
+        "Verifique, por esta ordem: o Outlook está aberto e já acabou de "
+        "arrancar; não está à espera de nenhuma janela (palavra-passe, perfil); "
+        "experimente fechar o Outlook, abri-lo de novo e repetir. Se persistir, "
+        "Reparar o Office.\n\n"
+        "Detalhe técnico: " + str(ultimo_erro)
+    )
 
 
 def _find_outlook_account(session: Any, smtp_address: str) -> Any | None:

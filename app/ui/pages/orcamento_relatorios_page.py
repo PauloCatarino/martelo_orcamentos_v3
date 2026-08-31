@@ -104,6 +104,45 @@ _NOTA_CONSUMOS = (
 )
 
 
+def explicar_erro_de_ficheiro(erro: Exception) -> str:
+    """Traduzir os erros de gravação para uma frase que se possa agir.
+
+    Quando o ficheiro de destino está aberto no Excel, o Windows recusa a
+    gravação e o Python devolve "[Errno 13] Permission denied" com o caminho
+    todo à frente. Isso chegava assim ao ecrã — e ainda por cima como "ERRO
+    inesperado", porque o ``PermissionError`` nem sequer estava a ser apanhado.
+    Quem está a orçamentar não tem de saber o que é um Errno 13: tem de saber
+    que o ficheiro está aberto e que basta fechá-lo.
+    """
+    if isinstance(erro, PermissionError):
+        nome = Path(getattr(erro, "filename", "") or "").name
+        alvo = f"«{nome}»" if nome else "o ficheiro"
+        return (
+            f"O Windows não deixou gravar {alvo}.\n\n"
+            "Quase sempre é porque o ficheiro está ABERTO — no Excel, seu ou de "
+            "um colega. Feche-o e tente outra vez.\n\n"
+            "Se ninguém o tiver aberto, então falta-lhe permissão para gravar "
+            "nessa pasta do servidor.\n\n"
+            f"Detalhe técnico: {erro}"
+        )
+
+    if isinstance(erro, FileNotFoundError):
+        return (
+            "Não foi encontrado um ficheiro ou uma pasta necessária.\n\n"
+            "Verifique se tem ligação ao servidor (SERVER_LE) e se a pasta do "
+            f"orçamento existe.\n\nDetalhe técnico: {erro}"
+        )
+
+    if isinstance(erro, OSError):
+        return (
+            "Não foi possível chegar ao ficheiro no servidor.\n\n"
+            "Verifique a ligação de rede ao SERVER_LE e tente outra vez.\n\n"
+            f"Detalhe técnico: {erro}"
+        )
+
+    return str(erro)
+
+
 class OrcamentoRelatoriosPage(QWidget):
     """Reports page for one budget version (all its items)."""
 
@@ -802,11 +841,11 @@ class OrcamentoRelatoriosPage(QWidget):
                 caminho = OrcamentoExportService(session).exportar_pdf_orcamento(
                     self.orcamento_versao_id
                 )
-        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+        except (ValueError, SQLAlchemyError, RuntimeError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Exportar PDF",
-                f"Não foi possível exportar o PDF:\n{erro}",
+                f"Não foi possível exportar o PDF:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
@@ -824,11 +863,11 @@ class OrcamentoRelatoriosPage(QWidget):
                 caminho = OrcamentoExportService(session).exportar_excel_orcamento(
                     self.orcamento_versao_id
                 )
-        except (ValueError, SQLAlchemyError) as erro:
+        except (ValueError, SQLAlchemyError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Exportar Excel",
-                f"Não foi possível exportar o Excel:\n{erro}",
+                f"Não foi possível exportar o Excel:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
@@ -846,11 +885,11 @@ class OrcamentoRelatoriosPage(QWidget):
                 caminho = OrcamentoExportService(session).exportar_excel_phc(
                     self.orcamento_versao_id
                 )
-        except (ValueError, SQLAlchemyError) as erro:
+        except (ValueError, SQLAlchemyError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Exportar PHC",
-                f"Não foi possível exportar o Excel PHC:\n{erro}",
+                f"Não foi possível exportar o Excel PHC:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
@@ -880,7 +919,7 @@ class OrcamentoRelatoriosPage(QWidget):
             QMessageBox.critical(
                 self,
                 "Plano de Corte",
-                f"Não foi possível preparar o plano de corte:\n{erro}",
+                f"Não foi possível preparar o plano de corte:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
@@ -902,11 +941,11 @@ class OrcamentoRelatoriosPage(QWidget):
                 caminho = OrcamentoExportService(session).exportar_plano_corte(
                     self.orcamento_versao_id
                 )
-        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+        except (ValueError, SQLAlchemyError, RuntimeError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Plano de Corte",
-                f"Não foi possível gerar o plano de corte:\n{erro}",
+                f"Não foi possível gerar o plano de corte:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
         finally:
@@ -960,11 +999,11 @@ class OrcamentoRelatoriosPage(QWidget):
                 caminho = OrcamentoExportService(session).exportar_resumo_custos(
                     self.orcamento_versao_id
                 )
-        except (ValueError, SQLAlchemyError) as erro:
+        except (ValueError, SQLAlchemyError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Resumo de Custos",
-                f"Não foi possível exportar o Resumo de Custos:\n{erro}",
+                f"Não foi possível exportar o Resumo de Custos:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
@@ -1005,7 +1044,7 @@ class OrcamentoRelatoriosPage(QWidget):
 
                 try:
                     pdf_path = export.exportar_pdf_orcamento(self.orcamento_versao_id)
-                except (ValueError, SQLAlchemyError, RuntimeError) as erro_pdf:
+                except (ValueError, SQLAlchemyError, RuntimeError, OSError) as erro_pdf:
                     pasta = export.resolver_pasta_versao(
                         self.orcamento_versao_id, criar=False
                     )
@@ -1016,17 +1055,17 @@ class OrcamentoRelatoriosPage(QWidget):
                         "Email",
                         "Não foi possível gerar/anexar o PDF automaticamente.\n"
                         "Pode continuar e adicionar anexos manualmente.\n\n"
-                        f"Detalhe: {erro_pdf}",
+                        f"Detalhe: {explicar_erro_de_ficheiro(erro_pdf)}",
                     )
                 else:
                     anexos = [str(pdf_path)]
                     pdf_filename = pdf_path.name
                     pasta_inicial = str(pdf_path.parent)
-        except (ValueError, SQLAlchemyError, RuntimeError) as erro:
+        except (ValueError, SQLAlchemyError, RuntimeError, OSError) as erro:
             QMessageBox.critical(
                 self,
                 "Email",
-                f"Não foi possível preparar o email:\n{erro}",
+                f"Não foi possível preparar o email:\n{explicar_erro_de_ficheiro(erro)}",
             )
             return
 
