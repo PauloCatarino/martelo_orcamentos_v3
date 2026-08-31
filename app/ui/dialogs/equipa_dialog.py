@@ -20,7 +20,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.session import SessionLocal
 from app.domain.texto_endereco import endereco_suspeito
 from app.services import teams_service
-from app.services.system_setting_service import SystemSettingService
 from app.services.equipa_service import (
     atualizar_membro,
     criar_membro,
@@ -192,20 +191,21 @@ class EquipaDialog(QDialog):
         self.formato_combo.blockSignals(False)
 
     def _gravar_formato(self) -> None:
-        """Save the chosen link format (takes effect on the next send)."""
-        try:
-            with SessionLocal() as session:
-                SystemSettingService(session).guardar_valor(
-                    teams_service.CHAVE_FORMATO_LINK,
-                    self.formato_combo.currentData(),
-                )
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível gravar o formato do link.")
-            return
+        """Guardar o formato do link NESTE computador.
 
+        Já não vai à base de dados. Era o mesmo valor para toda a gente — e as
+        contas normais nem sequer podem escrever na tabela onde ele estava (é
+        de propósito: é lá que vivem as credenciais das ligações e o
+        interruptor da escrita no iMos). Quem tentava mudar levava com um "Não
+        foi possível gravar o formato do link" e ficava sem saída.
+
+        O formato depende do Teams que está instalado em cada máquina, por isso
+        é em cada máquina que fica — como as larguras das colunas.
+        """
+        teams_service.guardar_formato(self.formato_combo.currentData())
         self.status_label.setText(
-            "Formato do link gravado. Experimente enviar um ticket para ver se "
-            "o 'Para:' fica preenchido."
+            "Formato do link guardado NESTE computador. Experimente enviar um "
+            "ticket para ver se o 'Para:' fica preenchido."
         )
 
     # ---- ações -----------------------------------------------------------

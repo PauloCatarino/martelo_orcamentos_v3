@@ -17,6 +17,9 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
+from PySide6.QtCore import QSettings
+
+from app.core.session import app_session
 from app.domain import ocorrencia_tipos as tipos
 from app.domain.ocorrencia_anexos import existe as anexo_existe
 from app.domain.texto_endereco import limpar_endereco
@@ -47,8 +50,14 @@ FORMATOS_LINK: tuple[tuple[str, str, str], ...] = (
 )
 FORMATO_PADRAO = "trabalho"
 
-#: Chave em system_settings onde fica o formato escolhido.
+#: Chave ANTIGA, em system_settings. Continua a ser lida uma vez, para quem ja'
+#: tinha um formato escolhido nao o perder; o que se grava vai para o
+#: QSettings deste computador (ver formato_configurado).
 CHAVE_FORMATO_LINK = "teams_formato_link"
+
+#: Onde o Qt guarda as preferencias desta maquina (o mesmo das larguras).
+_ORG = "Lanca Encanto"
+_APP = "Martelo Orcamentos V3"
 
 #: Acima disto o Windows corta o URL. O texto completo fica sempre no ticket.
 MAX_MENSAGEM = 1500
@@ -163,14 +172,51 @@ def link_chat_teams(emails, mensagem: str = "", *, formato: str | None = None) -
     return url
 
 
-def formato_configurado(session) -> str:
-    """Read the chosen link format from the system settings."""
+def formato_configurado(session=None) -> str:
+    """O formato do link a usar NESTE computador.
+
+    Isto não é uma regra da empresa: depende do que está instalado em cada
+    máquina — se tem o Teams de secretária registado, se o Windows sabe abrir
+    ligações ``msteams:``, se a conta é de trabalho ou pessoal. Um valor único
+    para toda a gente não pode servir dois PCs diferentes.
+
+    Estava em ``system_settings``, e isso trazia dois problemas ao mesmo tempo:
+    era o MESMO valor para todos, e as contas normais só LEEM essa tabela — de
+    propósito, porque é lá que vivem as credenciais das ligações externas e o
+    interruptor da escrita no iMos. Resultado: quem tentava mudar levava com um
+    "Não foi possível gravar o formato do link" e ficava sem saída.
+
+    Fica agora guardado como as larguras das colunas: neste computador, na
+    conta de quem está a usar. O valor antigo do ``system_settings``, quando
+    existe, serve de ponto de partida na primeira vez.
+    """
+    guardado = QSettings(_ORG, _APP).value(_chave_formato())
+    if guardado:
+        return str(guardado).strip().lower()
+
+    if session is None:
+        return FORMATO_PADRAO
+
     from app.services.system_setting_service import SystemSettingService
 
     valor = SystemSettingService(session).obter_valor(
         CHAVE_FORMATO_LINK, FORMATO_PADRAO
     )
     return (valor or FORMATO_PADRAO).strip().lower()
+
+
+def guardar_formato(formato: str) -> None:
+    """Guardar o formato do link NESTE computador (não toca na base de dados)."""
+    chave = (formato or "").strip().lower()
+    if chave not in {candidato for candidato, _rotulo, _base in FORMATOS_LINK}:
+        chave = FORMATO_PADRAO
+    QSettings(_ORG, _APP).setValue(_chave_formato(), chave)
+
+
+def _chave_formato() -> str:
+    """Uma entrada por utilizador do Martelo, como nas larguras das colunas."""
+    utilizador = getattr(app_session.current_user, "username", "") or "default"
+    return f"teams/formato_link/{utilizador}"
 
 
 def encurtar(mensagem: str, limite: int = MAX_MENSAGEM) -> str:
