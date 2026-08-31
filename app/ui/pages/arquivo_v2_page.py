@@ -220,9 +220,19 @@ class ArquivoV2Page(QWidget):
                 item.utilizador,
                 f"V2 · {item.tabela_origem}",
             ]
+            coluna_cliente = self.HEADERS.index("Cliente")
             for column, valor in enumerate(valores):
                 cell = QTableWidgetItem(str(valor or ""))
-                cell.setToolTip(str(valor or ""))
+                dica = str(valor or "")
+                if column == coluna_cliente and item.cliente_temporario:
+                    # Distinguir sem sujar a coluna: o nome fica igual ao dos
+                    # clientes do PHC, e quem quiser saber a proveniência passa
+                    # o rato por cima.
+                    dica = (
+                        f"{dica}\n\nCliente TEMPORÁRIO do V2 (ainda não estava "
+                        "no PHC quando o orçamento foi feito)."
+                    )
+                cell.setToolTip(dica)
                 self.table.setItem(row, column, cell)
             total_index = self.HEADERS.index("Total")
             aplicar_estilo_linha_orcamento(
