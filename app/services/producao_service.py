@@ -284,20 +284,45 @@ def _processos_ja_criados(session: Session) -> dict[tuple[str, str], str]:
 
     Numa consulta só: percorrer a lista de orçamentos a perguntar obra a obra
     dava uma ida à base de dados por cada linha.
+
+    Os números não vêm todos escritos da mesma maneira — as obras trazidas do
+    V2 guardam as versões como ``1`` e não ``01``, e a mesma encomenda pode
+    estar como ``100`` ou ``0100``. Por isso normaliza-se dos dois lados, como
+    já faz a :func:`listar_versoes_processo`: comparar o texto cru deixava
+    passar obras que já existem, e o orçamento voltava a aparecer na lista.
     """
     rows = session.execute(
-        select(Producao.ano, Producao.num_enc_phc, Producao.codigo_processo).where(
-            Producao.versao_obra == "01",
-            Producao.versao_plano == "01",
+        select(
+            Producao.ano,
+            Producao.num_enc_phc,
+            Producao.versao_obra,
+            Producao.versao_plano,
+            Producao.codigo_processo,
         )
     ).all()
-    return {
-        (str(ano or "").strip(), str(num_enc or "").strip().casefold()): (
-            codigo or ""
-        )
-        for ano, num_enc, codigo in rows
-        if str(num_enc or "").strip()
-    }
+
+    criados: dict[tuple[str, str], str] = {}
+    for ano, num_enc, versao_obra, versao_plano, codigo in rows:
+        # Só a obra 01/01 conta: é a que a conversão cria, e é a única que
+        # ela recusa criar outra vez.
+        if _two_digit(versao_obra) != "01" or _two_digit(versao_plano) != "01":
+            continue
+        for valor in _enc_query_values(num_enc):
+            criados.setdefault(
+                (str(ano or "").strip(), valor.casefold()), codigo or ""
+            )
+    return criados
+
+
+def _codigo_do_processo_criado(
+    ja_criados: dict[tuple[str, str], str], ano, numero
+) -> str | None:
+    """Código da obra já criada para esta encomenda, ou None."""
+    for valor in _enc_query_values(numero):
+        codigo = ja_criados.get((str(ano).strip(), valor.casefold()))
+        if codigo is not None:
+            return codigo
+    return None
 
 
 def levantar_orcamentos_para_conversao(
@@ -354,9 +379,7 @@ def levantar_orcamentos_para_conversao(
         por_converter = []
         ja_convertidas = []
         for numero in encomendas:
-            codigo = ja_criados.get(
-                (str(orcamento.ano).strip(), str(numero).strip().casefold())
-            )
+            codigo = _codigo_do_processo_criado(ja_criados, orcamento.ano, numero)
             if codigo is None:
                 por_converter.append(numero)
             else:

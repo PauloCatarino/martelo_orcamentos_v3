@@ -141,6 +141,99 @@ def test_versao_fica_na_lista_ate_a_ultima_encomenda_ser_convertida(
     assert len(excluidos) == 1
 
 
+def test_obra_com_a_versao_escrita_a_um_digito_tambem_conta(session) -> None:
+    """As obras vindas do V2 guardam «1» em vez de «01»."""
+    from app.models import Producao
+
+    _orcamento(session, encomendas=["1499"])
+    session.add(
+        Producao(
+            estado="Desenho",
+            codigo_processo="26.1499_01_01_JF_VIVA",
+            ano="2026",
+            num_enc_phc="1499",
+            versao_obra="1",
+            versao_plano="1",
+            nome_cliente="MÓVEIS J.F. VIVA",
+        )
+    )
+    session.flush()
+
+    convertiveis, excluidos = levantar_orcamentos_para_conversao(session)
+
+    assert convertiveis == []
+    assert "26.1499_01_01_JF_VIVA" in excluidos[0]["motivo"]
+
+
+def test_encomenda_com_zeros_a_frente_e_a_mesma_encomenda(session) -> None:
+    """No orçamento está «100»; na obra ficou «0100»."""
+    from app.models import Producao
+
+    _orcamento(session, encomendas=["100"])
+    session.add(
+        Producao(
+            estado="Desenho",
+            codigo_processo="26.0100_01_01_CLIENTE_PHC",
+            ano="2026",
+            num_enc_phc="0100",
+            versao_obra="01",
+            versao_plano="01",
+            nome_cliente="Cliente PHC",
+        )
+    )
+    session.flush()
+
+    convertiveis, excluidos = levantar_orcamentos_para_conversao(session)
+
+    assert convertiveis == []
+    assert "já foi passado para produção" in excluidos[0]["motivo"]
+
+
+def test_nova_versao_da_obra_nao_esconde_o_orcamento(session) -> None:
+    """Só a obra 01/01 conta: uma versão 02 não é a conversão do orçamento."""
+    from app.models import Producao
+
+    _orcamento(session, encomendas=["1499"])
+    session.add(
+        Producao(
+            estado="Desenho",
+            codigo_processo="26.1499_02_01_JF_VIVA",
+            ano="2026",
+            num_enc_phc="1499",
+            versao_obra="02",
+            versao_plano="01",
+            nome_cliente="MÓVEIS J.F. VIVA",
+        )
+    )
+    session.flush()
+
+    convertiveis, _excluidos = levantar_orcamentos_para_conversao(session)
+
+    assert [item["enc_phc"] for item in convertiveis] == ["1499"]
+
+
+def test_obra_de_outro_ano_nao_esconde_o_orcamento(session) -> None:
+    from app.models import Producao
+
+    _orcamento(session, encomendas=["1499"], ano=2026)
+    session.add(
+        Producao(
+            estado="Desenho",
+            codigo_processo="25.1499_01_01_JF_VIVA",
+            ano="2025",
+            num_enc_phc="1499",
+            versao_obra="01",
+            versao_plano="01",
+            nome_cliente="MÓVEIS J.F. VIVA",
+        )
+    )
+    session.flush()
+
+    convertiveis, _excluidos = levantar_orcamentos_para_conversao(session)
+
+    assert [item["enc_phc"] for item in convertiveis] == ["1499"]
+
+
 def test_orcamento_nao_adjudicado_fica_de_fora_com_o_motivo(session) -> None:
     _orcamento(session, encomendas=["100"], estado="Em elaboração")
 
