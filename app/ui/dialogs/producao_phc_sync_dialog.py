@@ -11,17 +11,17 @@ Ver ``app/services/producao_phc_sync_service.py``.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QHeaderView,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -61,6 +61,34 @@ _COLUNAS = (
     "O que diz lá fora",
 )
 
+#: A coluna que fica com o espaço que sobrar: os nomes dos clientes são longos
+#: ("GOSIMAT- COMERCIO E INDUSTRIA DE MATERIAIS DE CONSTRUÇÃO") e é a única que
+#: ganha mesmo em ser larga.
+COLUNA_CLIENTE = 3
+
+#: Largura da coluna dos vistos. Fixa: só lá cabe uma caixinha.
+LARGURA_VISTOS = 34
+
+#: Folga a somar à largura do conteúdo, para o texto não ficar colado à linha.
+FOLGA_COLUNA = 18
+
+#: Teto para a largura de arranque de cada coluna. Sem ele, um nome comprido
+#: ("GOSIMAT- COMERCIO E INDUSTRIA DE MATERIAIS DE CONSTRUÇÃO") empurrava as
+#: colunas seguintes para fora do ecrã. O utilizador pode alargar à mão.
+LARGURA_MAXIMA_SEMEADA = 240
+
+#: Quanto do ecrã a janela pode ocupar quando as colunas todas não cabem.
+FRACAO_MAXIMA_DO_ECRA = 0.94
+
+#: Abaixo disto a caixa deixa de se ler, mesmo num ecrã pequeno.
+LARGURA_MINIMA = 1040
+
+#: Onde ficam guardadas as larguras que o utilizador arrastar.
+#: O ``_2`` existe porque a primeira versão gravava também as larguras de
+#: arranque, como se tivessem sido escolhidas — quem já tinha aberto a caixa
+#: ficava preso a elas e não via as larguras corrigidas.
+CHAVE_LARGURAS = "dialog_producao_phc_sync_2"
+
 
 def _salta_dois_estados(diff: dict) -> bool:
     """A obra ainda esta' em Desenho e ja' vai arquivada, sem passar pelo meio.
@@ -84,9 +112,11 @@ class ProducaoPhcSyncDialog(QDialog):
             if automatico
             else "Sincronizar estados"
         )
-        self.resize(1040, 620)
+        self.resize(LARGURA_MINIMA, 640)
         self._diffs = list(diffs)
         self._linhas_visiveis = list(range(len(self._diffs)))
+        self._ja_ajustou = False
+        self._larguras_por_arrumar = False
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
@@ -252,16 +282,77 @@ class ProducaoPhcSyncDialog(QDialog):
         for linha, diff in enumerate(self._diffs):
             self._preencher_linha(linha, diff)
 
+        # Larguras de arranque pelo conteúdo, ANTES de ligar a persistência:
+        # assim estas não ficam gravadas como se o utilizador as tivesse
+        # arrastado, e o que ele arrumou noutro dia escreve por cima delas.
+        self._semear_larguras()
+        self._larguras_por_arrumar = not ligar_persistencia_larguras(
+            self.table, CHAVE_LARGURAS
+        )
+        return self.table
+
+    def _semear_larguras(self) -> None:
+        self.table.resizeColumnsToContents()
         cabecalho = self.table.horizontalHeader()
         for coluna in range(len(_COLUNAS)):
-            cabecalho.setSectionResizeMode(
+            cabecalho.resizeSection(
                 coluna,
-                QHeaderView.ResizeMode.Stretch
-                if coluna == 3
-                else QHeaderView.ResizeMode.ResizeToContents,
+                min(
+                    cabecalho.sectionSize(coluna) + FOLGA_COLUNA,
+                    LARGURA_MAXIMA_SEMEADA,
+                ),
             )
-        ligar_persistencia_larguras(self.table, "dialog_producao_phc_sync")
-        return self.table
+        cabecalho.resizeSection(0, LARGURA_VISTOS)
+
+    def _largura_das_colunas(self) -> int:
+        cabecalho = self.table.horizontalHeader()
+        return sum(
+            cabecalho.sectionSize(coluna) for coluna in range(len(_COLUNAS))
+        )
+
+    def _largura_desejada(self) -> int:
+        """Largura para as colunas caberem todas, sem passar do ecrã."""
+        margens = self.layout().contentsMargins()
+        preciso = (
+            self._largura_das_colunas()
+            + margens.left()
+            + margens.right()
+            + self.table.frameWidth() * 2
+            + self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent)
+        )
+        preciso = max(preciso, LARGURA_MINIMA)
+        # O ecrã manda sempre: uma caixa mais larga do que ele deixa os botões
+        # de fora e não há maneira de a fechar.
+        ecra = self.screen() or QGuiApplication.primaryScreen()
+        if ecra is not None:
+            maximo = int(ecra.availableGeometry().width() * FRACAO_MAXIMA_DO_ECRA)
+            preciso = min(preciso, maximo)
+        return preciso
+
+    def showEvent(self, event) -> None:  # noqa: N802 - assinatura do Qt
+        """Ajustar a largura quando a janela já sabe em que ecrã está.
+
+        Só à primeira, e só se o utilizador ainda não tiver arrastado nada:
+        a partir daí manda o que ele arrumou.
+        """
+        super().showEvent(event)
+        if self._ja_ajustou:
+            return
+        self._ja_ajustou = True
+        self.resize(self._largura_desejada(), self.height())
+        if self._larguras_por_arrumar:
+            # Depois de o Qt assentar o layout: só aí a tabela sabe a largura
+            # que ficou com, e portanto quanto é que sobra.
+            QTimer.singleShot(0, self._dar_o_resto_ao_cliente)
+
+    def _dar_o_resto_ao_cliente(self) -> None:
+        """O espaço que sobra vai para o nome do cliente, não para o vazio."""
+        cabecalho = self.table.horizontalHeader()
+        sobra = self.table.viewport().width() - self._largura_das_colunas()
+        if sobra > 0:
+            cabecalho.resizeSection(
+                COLUNA_CLIENTE, cabecalho.sectionSize(COLUNA_CLIENTE) + sobra
+            )
 
     def _preencher_linha(self, linha: int, diff: dict) -> None:
         visto = QTableWidgetItem()

@@ -7,10 +7,13 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 _app = QApplication.instance() or QApplication([])
+
+from app.ui.dialogs.producao_phc_sync_dialog import CHAVE_LARGURAS
 
 
 def _diffs():
@@ -151,6 +154,117 @@ def test_o_botao_de_gravar_desliga_se_ninguem_marcar_nada() -> None:
 
     dialog._desmarcar_tudo()
     assert dialog._ok_button.isEnabled() is False
+
+
+def _limpar_larguras_guardadas() -> None:
+    """Sem sessão, as larguras guardam-se em "default" — é esse o resíduo."""
+    from PySide6.QtCore import QSettings
+
+    settings = QSettings("Lanca Encanto", "Martelo Orcamentos V3")
+    for chave in settings.allKeys():
+        if CHAVE_LARGURAS in chave and "/default/" in chave:
+            settings.remove(chave)
+    settings.sync()
+
+
+@pytest.fixture()
+def sem_larguras_guardadas():
+    _limpar_larguras_guardadas()
+    yield
+    _limpar_larguras_guardadas()
+
+
+def test_as_larguras_de_arranque_nao_deixam_uma_coluna_comer_o_ecra(
+    sem_larguras_guardadas,
+) -> None:
+    from app.ui.dialogs.producao_phc_sync_dialog import (
+        LARGURA_MAXIMA_SEMEADA,
+        LARGURA_VISTOS,
+        ProducaoPhcSyncDialog,
+    )
+
+    diffs = _diffs()
+    diffs[0]["cliente"] = "GOSIMAT- COMERCIO E INDUSTRIA DE MATERIAIS DE " * 3
+    dialog = ProducaoPhcSyncDialog(diffs)
+    cabecalho = dialog.table.horizontalHeader()
+    larguras = [
+        cabecalho.sectionSize(coluna)
+        for coluna in range(dialog.table.columnCount())
+    ]
+
+    assert larguras[0] == LARGURA_VISTOS
+    assert max(larguras) <= LARGURA_MAXIMA_SEMEADA
+
+
+def test_as_larguras_de_arranque_nao_se_gravam_sozinhas(
+    sem_larguras_guardadas,
+) -> None:
+    """Só o que o utilizador arrasta é que fica guardado.
+
+    Se as larguras de arranque se gravassem, passavam a contar como escolha
+    dele e o programa nunca mais as podia melhorar.
+    """
+    from PySide6.QtCore import QSettings
+
+    from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
+
+    ProducaoPhcSyncDialog(_diffs())
+
+    settings = QSettings("Lanca Encanto", "Martelo Orcamentos V3")
+    guardadas = [
+        chave
+        for chave in settings.allKeys()
+        if CHAVE_LARGURAS in chave and "/default/" in chave
+    ]
+
+    assert guardadas == []
+
+
+def test_o_que_o_utilizador_arrasta_fica_guardado(sem_larguras_guardadas) -> None:
+    from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
+
+    primeiro = ProducaoPhcSyncDialog(_diffs())
+    primeiro.table.horizontalHeader().resizeSection(1, 321)
+
+    segundo = ProducaoPhcSyncDialog(_diffs())
+
+    assert segundo.table.horizontalHeader().sectionSize(1) == 321
+
+
+def test_a_janela_abre_larga_para_caber_tudo(sem_larguras_guardadas) -> None:
+    from app.ui.dialogs.producao_phc_sync_dialog import (
+        LARGURA_MINIMA,
+        ProducaoPhcSyncDialog,
+    )
+
+    dialog = ProducaoPhcSyncDialog(_diffs())
+    desejada = dialog._largura_desejada()
+    ecra = dialog.screen()
+
+    # Nunca maior do que o ecrã: uma caixa que não cabe não se consegue fechar.
+    assert ecra is None or desejada <= ecra.availableGeometry().width()
+    if ecra is None or ecra.availableGeometry().width() >= LARGURA_MINIMA:
+        assert desejada >= LARGURA_MINIMA
+
+
+def test_o_espaco_que_sobra_vai_para_o_nome_do_cliente(
+    sem_larguras_guardadas,
+) -> None:
+    from app.ui.dialogs.producao_phc_sync_dialog import (
+        COLUNA_CLIENTE,
+        ProducaoPhcSyncDialog,
+    )
+
+    dialog = ProducaoPhcSyncDialog(_diffs())
+    # Uma tabela larguíssima: as colunas não chegam ao fim e sobra espaço.
+    dialog.table.resize(3000, 400)
+    _app.processEvents()  # o viewport só sabe a largura depois do layout
+    cabecalho = dialog.table.horizontalHeader()
+    antes = cabecalho.sectionSize(COLUNA_CLIENTE)
+
+    dialog._dar_o_resto_ao_cliente()
+
+    assert cabecalho.sectionSize(COLUNA_CLIENTE) > antes
 
 
 def test_uma_linha_tirada_a_mao_deixa_de_contar() -> None:
