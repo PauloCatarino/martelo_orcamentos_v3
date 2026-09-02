@@ -17,16 +17,18 @@ Option Explicit
 '        - DisplayAlerts = False
 '        - Calculation = Manual
 '
-'   2) Elimina separadores antigos (se existirem) antes de importar:
-'        - 1_FERRAGENS
-'        - 2_PURCH
-'        - 3_SPP
-'        - 5_ETIQUETA_PALETE
-'
-'   3) Procura na pasta do ficheiro atual os ficheiros mais recentes que
+'   2) Procura na pasta do ficheiro atual os ficheiros mais recentes que
 '      correspondem aos padrões:
 '        - 2_List_Ferragens*.xls*
 '        - 4_Etiqueta_Palete*.xls*
+'      Nem todas as obras geram os dois no IMOS: importa-se o que existir
+'      e so' se desiste quando nao existe nenhum deles.
+'
+'   3) Elimina os separadores antigos que VAO ser substituidos -- e so'
+'      esses. Sem o ficheiro das ferragens ficam 1_FERRAGENS / 2_PURCH /
+'      3_SPP como estavam; sem o da etiqueta fica 5_ETIQUETA_PALETE.
+'      Apagar um separador cujo ficheiro o IMOS ja' nao gera era perde-lo
+'      sem nada para por no lugar.
 '
 '   4) Importa o ficheiro "2_List_Ferragens*.xls*", procurando os separadores
 '      PELO NOME (o IMOS IX ja os entrega nomeados):
@@ -140,23 +142,20 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
     Application.DisplayAlerts = False
     Application.Calculation = xlCalculationManual
 
-    '---------------------------
-    ' 1) Limpar separadores antigos
-    '---------------------------
-    etapa = "Eliminar separadores antigos"
-    IMOS_EliminarSeparador wbAtual, "1_FERRAGENS"
-    IMOS_EliminarSeparador wbAtual, "2_PURCH"
-    IMOS_EliminarSeparador wbAtual, "3_SPP"
-    IMOS_EliminarSeparador wbAtual, "5_ETIQUETA_PALETE"
+    ' Os separadores antigos so' sao eliminados DEPOIS de se saber que
+    ' ficheiros existem (mais abaixo): apagar um separador cujo ficheiro o IMOS
+    ' ja' nao gera era perde-lo sem nada para pôr no lugar.
 
     '---------------------------
-    ' 2) Encontrar ficheiros mais recentes
+    ' 1) Encontrar ficheiros mais recentes
     '---------------------------
     etapa = "Procurar ficheiros na pasta"
     f1 = IMOS_GetNewestMatchingFile(pasta, PATTERN_FERRAGENS)
     f2 = IMOS_GetNewestMatchingFile(pasta, PATTERN_ETIQUETA)
 
-    If f1 = "" Or f2 = "" Then
+    ' Nem todas as obras geram os dois ficheiros no IMOS. So se desiste
+    ' quando nao existe NENHUM deles; havendo um, importa-se esse.
+    If f1 = "" And f2 = "" Then
         Application.DisplayAlerts = True
         MsgBox "Ficheiros não encontrados na pasta:" & vbCrLf & _
                " - " & PATTERN_FERRAGENS & vbCrLf & _
@@ -165,8 +164,19 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
         GoTo LimparSair
     End If
 
-    full1 = pasta & "\" & f1
-    full2 = pasta & "\" & f2
+    If f1 <> "" Then full1 = pasta & "\" & f1
+    If f2 <> "" Then full2 = pasta & "\" & f2
+
+    '---------------------------
+    ' 2) Limpar os separadores que VAO ser substituidos
+    '---------------------------
+    etapa = "Eliminar separadores antigos"
+    If f1 <> "" Then
+        IMOS_EliminarSeparador wbAtual, "1_FERRAGENS"
+        IMOS_EliminarSeparador wbAtual, "2_PURCH"
+        IMOS_EliminarSeparador wbAtual, "3_SPP"
+    End If
+    If f2 <> "" Then IMOS_EliminarSeparador wbAtual, "5_ETIQUETA_PALETE"
 
     '---------------------------
     ' 3) Folha base para inserção
@@ -181,6 +191,9 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
     '=========================================================
     ' 4) IMPORTAR 1_List_Ferragens (até 3 folhas)
     '=========================================================
+    ' Sem o ficheiro das ferragens salta-se para a etiqueta.
+    If f1 = "" Then GoTo SemFerragens
+
     etapa = "Abrir 2_List_Ferragens"
     Set wbImportar = IMOS_AbrirWorkbookSeguro(full1, abriuWB)
 
@@ -313,6 +326,8 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
         End If
     End If
 
+SemFerragens:
+
     '=========================================================
     ' 6) Recalcular folha After (para inserir a etiqueta a seguir)
     '=========================================================
@@ -322,6 +337,9 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
     '=========================================================
     ' 7) IMPORTAR 5_Etiqueta
     '=========================================================
+    ' Sem o ficheiro da etiqueta salta-se este bloco todo.
+    If f2 = "" Then GoTo SemEtiqueta
+
     etapa = "Abrir 4_Etiqueta_Palete"
     Set wbImportar = IMOS_AbrirWorkbookSeguro(full2, abriuWB)
 
@@ -343,6 +361,8 @@ Public Sub ImportarFicheiros_1_Ferragens_5_Etiqueta_Palete_11()
 
     If abriuWB Then wbImportar.Close SaveChanges:=False
     Set wbImportar = Nothing
+
+SemEtiqueta:
 
     '=========================================================
     ' 8) Ativar folha final

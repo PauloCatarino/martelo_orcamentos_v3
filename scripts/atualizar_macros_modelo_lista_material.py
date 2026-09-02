@@ -26,7 +26,10 @@ MODELO_SERVIDOR = Path(
     r"\Base_Dados_Orcamento\Lista_Material_IMOS_MARTELO.xltm"
 )
 PASTA_VBA = Path(__file__).resolve().parent / "vba"
-MODULOS = ("Import_List_Ferr_Etiq_11",)
+#: Os dois módulos do fluxo IMOS. O `RenomeiaListagensImos_13` é o ponto de
+#: entrada (macro `ImportarListasFerragensIMOS_14`, a que a app chama) e usa o
+#: `Import_List_Ferr_Etiq_11` para as ferragens e a etiqueta.
+MODULOS = ("Import_List_Ferr_Etiq_11", "RenomeiaListagensImos_13")
 
 
 def criar_copia_seguranca(modelo: Path) -> Path:

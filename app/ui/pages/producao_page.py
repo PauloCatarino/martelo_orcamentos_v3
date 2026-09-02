@@ -2569,10 +2569,13 @@ class ProducaoPage(QWidget):
             self,
             "Listas de ferragens IMOS — passo 3 de 4",
             "A LISTAGEM_CUT_RITE foi preenchida. Pretende importar agora para "
-            "este Excel as quatro listas de ferragens exportadas pelo IMOS?\n\n"
-            "Serão processados os ficheiros 2_List_Ferragens, 3_Resumo_Precos, "
-            "4_Etiqueta_Palete e 5_List_Ferragens_Integrador. A macro apresenta "
-            "os passos e pede confirmação antes de substituir separadores existentes.",
+            "este Excel as listas de ferragens exportadas pelo IMOS?\n\n"
+            "São processados os ficheiros que o IMOS gerou para esta obra — "
+            "2_List_Ferragens, 3_Resumo_Precos, 4_Etiqueta_Palete e "
+            "5_List_Ferragens_Integrador. Não é preciso terem sido gerados "
+            "todos: a macro importa os que existirem e diz quais faltaram. "
+            "Apresenta os passos e pede confirmação antes de substituir "
+            "separadores existentes.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
