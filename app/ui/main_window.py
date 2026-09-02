@@ -32,6 +32,7 @@ from app.services.permission_service import (
 )
 from app.ui import tema
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
+from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.pages import (
     AjudaPage,
@@ -442,7 +443,29 @@ class MainWindow(QMainWindow):
         self._verificador_clientes_phc.clientes_atualizados.connect(
             self.clientes_page.carregar_phc
         )
+        # Aviso diário com as obras que o PHC/Streamlit já finalizou ou
+        # arquivou. Cada pessoa vê as suas: o estado é marcado por outros na
+        # empresa e, sem isto, só chegava cá pelo botão do Ponto Situação.
+        self._verificador_estados_phc = VerificadorEstadosPHC(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            responsavel=self._primeiro_nome_do_utilizador(),
+            ativo=self._permissions.get("menu.producao", False),
+        )
+        self._verificador_estados_phc.estados_atualizados.connect(
+            self.producao_page.carregar_processos
+        )
         self.show_page("inicio")
+
+    def _primeiro_nome_do_utilizador(self) -> str:
+        """O nome por que as obras estão assinadas na coluna Responsável."""
+        if self.authenticated_user is None or not self.authenticated_user.nome:
+            return ""
+        return self.authenticated_user.nome.split()[0]
 
     def _format_user_info(self) -> str:
         """Return display text for the authenticated user."""

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
 from app.core import diario_bordo
 from app.db.session import SessionLocal
-from app.domain import agenda_clientes_phc
+from app.domain import agenda_diaria_phc
 from app.repositories.cliente_repository import DiferencasPHC
 from app.services.cliente_phc_sync_service import (
     ClientePhcSyncService,
@@ -134,7 +134,7 @@ class VerificadorClientesPHC(QObject):
         if not self._ativo or self._a_trabalhar or self._user_id is None:
             return
         hoje = datetime.now()
-        if not agenda_clientes_phc.deve_verificar(hoje, self._ultima_verificacao()):
+        if not agenda_diaria_phc.deve_verificar(hoje, self._ultima_verificacao()):
             return
 
         # Marca já o dia como feito. Se o PHC estiver em baixo, o utilizador não
@@ -153,7 +153,7 @@ class VerificadorClientesPHC(QObject):
                 )
         except Exception:  # noqa: BLE001 - sem preferências, verifica-se na mesma
             return None
-        return agenda_clientes_phc.ler_data(valor)
+        return agenda_diaria_phc.ler_data(valor)
 
     def _guardar_verificacao(self, dia) -> None:
         try:
@@ -161,7 +161,7 @@ class VerificadorClientesPHC(QObject):
                 UserPrefService(session).guardar_valor(
                     self._user_id,
                     CHAVE_ULTIMA_VERIFICACAO,
-                    agenda_clientes_phc.escrever_data(dia),
+                    agenda_diaria_phc.escrever_data(dia),
                 )
         except Exception:  # noqa: BLE001 - não vale a pena falhar por isto
             pass

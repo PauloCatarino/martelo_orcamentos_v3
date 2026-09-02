@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from app.domain.agenda_clientes_phc import (
+from app.domain.agenda_diaria_phc import (
     deve_verificar,
     escrever_data,
     ler_data,

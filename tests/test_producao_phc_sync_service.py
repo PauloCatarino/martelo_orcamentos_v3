@@ -32,14 +32,22 @@ def _processo(
     )
 
 
-def test_detetar_diferencas_estado_phc_filtra_e_mapeia(session, monkeypatch) -> None:
+def test_do_phc_so_vem_o_finalizado_e_o_arquivado(session, monkeypatch) -> None:
+    """O Desenho e a Producao sao do utilizador: nao se copiam do PHC.
+
+    Numa comparacao com dados reais, ler tambem o `2 - DESENHO` e o
+    `4 - PRODUCAO` dava 52 sugestoes por cima do trabalho de quem esta' na
+    obra. Os estados que o Martelo nao conhece (`3 - STANDBY`, `8 - SERVICOS`)
+    tambem nao interessam ca'.
+    """
     import app.services.producao_phc_sync_service as service_module
 
     session.add_all(
         [
             _processo(id=1, num_enc_phc="1001", estado="Desenho"),
-            _processo(id=2, num_enc_phc="1002", estado="Finalizado"),
-            _processo(id=4, num_enc_phc="1003", estado="Desenho"),
+            _processo(id=2, num_enc_phc="1002", estado="Desenho"),
+            _processo(id=3, num_enc_phc="1003", estado="Desenho"),
+            _processo(id=4, num_enc_phc="1004", estado="Producao"),
         ]
     )
     session.commit()
@@ -48,9 +56,10 @@ def test_detetar_diferencas_estado_phc_filtra_e_mapeia(session, monkeypatch) -> 
     def fake_query(session_arg, **kwargs):
         chamadas.append(kwargs)
         return [
-            {"Ano": 2026, "Enc_No": "1001", "Estado_PHC": "Em Produ\u00e7\u00e3o"},
-            {"Ano": 2026, "Enc_No": "1002", "Estado_PHC": "Finalizado"},
-            {"Ano": 2026, "Enc_No": "1003", "Estado_PHC": "Sem Estado"},
+            {"Ano": 2026, "Enc_No": "1001", "Estado_PHC": "4 - PRODU\u00c7\u00c3O"},
+            {"Ano": 2026, "Enc_No": "1002", "Estado_PHC": "3 - STANDBY"},
+            {"Ano": 2026, "Enc_No": "1003", "Estado_PHC": "2 - DESENHO"},
+            {"Ano": 2026, "Enc_No": "1004", "Estado_PHC": "7 - ARQUIVADO"},
         ]
 
     monkeypatch.setattr(service_module, "query_phc_estado_debug_rows", fake_query)
@@ -58,16 +67,51 @@ def test_detetar_diferencas_estado_phc_filtra_e_mapeia(session, monkeypatch) -> 
     diffs = service_module.detetar_diferencas_estado_phc(session)
 
     assert chamadas == [{"ano": "2026", "max_rows": 0}]
-    assert diffs == [
-        {
-            "id": 1,
-            "codigo": "26.1001_01_01_CLIENTE",
-            "num_enc_phc": "1001",
-            "cliente": "Cliente 1",
-            "estado_martelo": "Desenho",
-            "estado_sugerido": "Producao",
-            "estado_phc_raw": "Em Produ\u00e7\u00e3o",
-        }
+    assert [(d["id"], d["estado_sugerido"]) for d in diffs] == [(4, "Arquivado")]
+    assert diffs[0]["estado_phc_raw"] == "7 - ARQUIVADO"
+    assert diffs[0]["fonte"] == "PHC"
+    assert diffs[0]["responsavel"] == "Ana"
+
+
+def test_uma_obra_nunca_recua_de_estado(session, monkeypatch) -> None:
+    """Ja' se viu o PHC a querer por uma obra arquivada de volta em producao."""
+    import app.services.producao_phc_sync_service as service_module
+
+    session.add_all(
+        [
+            _processo(id=1, num_enc_phc="1001", estado="Arquivado"),
+            _processo(id=2, num_enc_phc="1002", estado="Arquivado"),
+        ]
+    )
+    session.commit()
+
+    def fake_query(session_arg, **kwargs):
+        return [
+            {"Ano": 2026, "Enc_No": "1001", "Estado_PHC": "4 - PRODU\u00c7\u00c3O"},
+            # Finalizado vem ANTES de arquivado: tambem seria recuar.
+            {"Ano": 2026, "Enc_No": "1002", "Estado_PHC": "5 - FINALIZADO"},
+        ]
+
+    monkeypatch.setattr(service_module, "query_phc_estado_debug_rows", fake_query)
+
+    assert service_module.detetar_diferencas_estado_phc(session) == []
+
+
+def test_uma_obra_sem_estado_aceita_o_que_vier(session, monkeypatch) -> None:
+    import app.services.producao_phc_sync_service as service_module
+
+    session.add(_processo(id=1, num_enc_phc="1001", estado=""))
+    session.commit()
+
+    def fake_query(session_arg, **kwargs):
+        return [{"Ano": 2026, "Enc_No": "1001", "Estado_PHC": "5 - FINALIZADO"}]
+
+    monkeypatch.setattr(service_module, "query_phc_estado_debug_rows", fake_query)
+
+    diffs = service_module.detetar_diferencas_estado_phc(session)
+
+    assert [(d["estado_martelo"], d["estado_sugerido"]) for d in diffs] == [
+        ("(sem estado)", "Finalizado")
     ]
 
 
@@ -131,7 +175,7 @@ def test_mapear_status_streamlit_tolerante(raw, esperado) -> None:
     assert service_module._mapear_status_streamlit(raw) == esperado
 
 
-def test_detetar_diferencas_estado_streamlit_status_e_ok(
+def test_detetar_diferencas_estado_streamlit_so_estados_de_fora(
     session,
     monkeypatch,
 ) -> None:
@@ -188,101 +232,100 @@ def test_detetar_diferencas_estado_streamlit_status_e_ok(
     )
     session.commit()
     query_chamadas = []
-    indice_chamadas = []
 
     def fake_encomendas(session_arg, *, ano_minimo, max_linhas=0):
         query_chamadas.append({"ano_minimo": ano_minimo, "max_linhas": max_linhas})
         return [
             {"Ano": 2026, "Numero": "_001", "Status": "Finalizada"},
             {"Ano": 2026, "Numero": "_002", "Status": "Arquivada"},
+            # "A editar" nao e' um estado de fora: quem manda no Desenho e na
+            # Producao e' o utilizador, no Martelo.
             {"Ano": 2026, "Numero": "_003", "Status": "A editar"},
             {"Ano": 2026, "Numero": "_004", "Status": "A editar"},
             {"Ano": 2026, "Numero": "_118", "Status": "Finalizada"},
             {"Ano": 2025, "Numero": "_099", "Status": "Finalizada"},
         ]
 
-    def fake_carregar_indice(session_arg, *, anos_normais, anos_especiais):
-        indice_chamadas.append((list(anos_normais), list(anos_especiais)))
-        return {
-            ("E", "2026", "_003"): [{"bd_orla_ok": "10"}],
-            ("E", "2026", "_004"): [
-                {"bd_corte_ok": "0", "bd_orla_ok": None, "bd_cnc_ok": "N"}
-            ],
-        }
-
     monkeypatch.setattr(
         service_module,
         "query_encomendas_cliente_final",
         fake_encomendas,
     )
-    monkeypatch.setattr(service_module, "carregar_indice", fake_carregar_indice)
 
     diffs = service_module.detetar_diferencas_estado_streamlit(session)
 
     assert query_chamadas == [{"ano_minimo": 2026, "max_linhas": 0}]
-    assert indice_chamadas == [([], ["2026"])]
-    assert diffs == [
-        {
-            "id": 1,
-            "codigo": "26._001_01_01_CLIENTE",
-            "num_enc_phc": "_001",
-            "cliente": "Cliente 1",
-            "estado_martelo": "Desenho",
-            "estado_sugerido": "Finalizado",
-            "estado_phc_raw": "Finalizada",
-            "fonte": "Streamlit",
-        },
-        {
-            "id": 2,
-            "codigo": "26._002_01_01_CLIENTE",
-            "num_enc_phc": "_002",
-            "cliente": "Cliente 2",
-            "estado_martelo": "Desenho",
-            "estado_sugerido": "Arquivado",
-            "estado_phc_raw": "Arquivada",
-            "fonte": "Streamlit",
-        },
-        {
-            "id": 3,
-            "codigo": "26._003_01_01_CLIENTE",
-            "num_enc_phc": "_003",
-            "cliente": "Cliente 3",
-            "estado_martelo": "Desenho",
-            "estado_sugerido": "Producao",
-            "estado_phc_raw": "A editar",
-            "fonte": "Streamlit",
-        },
-        {
-            "id": 4,
-            "codigo": "26._004_01_01_CLIENTE",
-            "num_enc_phc": "_004",
-            "cliente": "Cliente 4",
-            "estado_martelo": "Producao",
-            "estado_sugerido": "Desenho",
-            "estado_phc_raw": "A editar",
-            "fonte": "Streamlit",
-        },
-        {
-            "id": 5,
-            "codigo": "26._118_01_01_CLIENTE",
-            "num_enc_phc": "_118",
-            "cliente": "Cliente 5",
-            "estado_martelo": "Desenho",
-            "estado_sugerido": "Finalizado",
-            "estado_phc_raw": "Finalizada",
-            "fonte": "Streamlit",
-        },
-        {
-            "id": 6,
-            "codigo": "26._118_02_01_CLIENTE",
-            "num_enc_phc": "_118",
-            "cliente": "Cliente 6",
-            "estado_martelo": "Producao",
-            "estado_sugerido": "Finalizado",
-            "estado_phc_raw": "Finalizada",
-            "fonte": "Streamlit",
-        },
+    # _003 e _004 ficam de fora (Status que nao e' terminal); a encomenda PHC
+    # 1005 tambem, porque esta funcao so' olha para as de cliente final.
+    assert [(d["id"], d["estado_sugerido"]) for d in diffs] == [
+        (1, "Finalizado"),
+        (2, "Arquivado"),
+        (5, "Finalizado"),
+        (6, "Finalizado"),
     ]
+    assert all(diff["fonte"] == "Streamlit" for diff in diffs)
+    assert diffs[0]["estado_phc_raw"] == "Finalizada"
+
+
+def test_levantar_junta_as_duas_fontes_e_ordena(session, monkeypatch) -> None:
+    import app.services.producao_phc_sync_service as service_module
+
+    monkeypatch.setattr(
+        service_module,
+        "detetar_diferencas_estado_phc",
+        lambda s, **k: [{"codigo": "26.2000_01_01_B", "id": 2}],
+    )
+    monkeypatch.setattr(
+        service_module,
+        "detetar_diferencas_estado_streamlit",
+        lambda s, **k: [{"codigo": "26.1000_01_01_A", "id": 1}],
+    )
+
+    levantamento = service_module.levantar_estados_de_fora(lambda: session)
+
+    # Misturadas e por código: quem lê a lista não quer o PHC todo primeiro.
+    assert [d["id"] for d in levantamento.diferencas] == [1, 2]
+    assert bool(levantamento) is True
+    assert levantamento.falharam_as_duas is False
+
+
+def test_uma_fonte_em_baixo_nao_estraga_a_outra(session, monkeypatch) -> None:
+    """PHC e Streamlit são servidores diferentes: um pode faltar sozinho."""
+    import app.services.producao_phc_sync_service as service_module
+
+    def rebenta(_session, **_kwargs):
+        raise RuntimeError("sem rede")
+
+    monkeypatch.setattr(service_module, "detetar_diferencas_estado_phc", rebenta)
+    monkeypatch.setattr(
+        service_module,
+        "detetar_diferencas_estado_streamlit",
+        lambda s, **k: [{"codigo": "26.1000_01_01_A", "id": 1}],
+    )
+
+    levantamento = service_module.levantar_estados_de_fora(lambda: session)
+
+    assert [d["id"] for d in levantamento.diferencas] == [1]
+    assert levantamento.erro_phc == "sem rede"
+    assert levantamento.erro_streamlit == ""
+    assert levantamento.falharam_as_duas is False
+
+
+def test_as_duas_em_baixo_dizem_se(session, monkeypatch) -> None:
+    import app.services.producao_phc_sync_service as service_module
+
+    def rebenta(_session, **_kwargs):
+        raise RuntimeError("sem rede")
+
+    monkeypatch.setattr(service_module, "detetar_diferencas_estado_phc", rebenta)
+    monkeypatch.setattr(
+        service_module, "detetar_diferencas_estado_streamlit", rebenta
+    )
+
+    levantamento = service_module.levantar_estados_de_fora(lambda: session)
+
+    assert levantamento.falharam_as_duas is True
+    assert bool(levantamento) is False
 
 
 def test_aplicar_estados_atualiza_selecionados(session) -> None:

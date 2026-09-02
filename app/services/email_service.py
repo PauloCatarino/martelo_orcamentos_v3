@@ -17,6 +17,7 @@ import sys
 from typing import Any, Sequence
 
 from app.domain.anexos_email import LIMITE_PADRAO_MB
+from app.domain.assistente_obra import saudacao_por_hora
 from app.domain.export_paths import subpasta_versao
 from app.services.system_setting_service import SystemSettingService
 from app.utils.formatters import format_currency, format_version
@@ -199,14 +200,26 @@ def construir_assunto_email(orcamento) -> str:
     return f"Orçamento {num}_{versao} - {obra}".strip(" -")
 
 
+#: Vai a seguir ao total. O orçamento é sempre sem IVA, e sem esta linha havia
+#: quem lesse o valor como o que ia pagar.
+AVISO_IVA = "Acresce IVA à taxa em vigor"
+
+
 def construir_corpo_email(
     orcamento,
     cliente,
     total,
     *,
     pdf_filename: str = "",
+    momento: datetime | None = None,
 ) -> str:
-    """Build the default HTML body for a budget email."""
+    """Build the default HTML body for a budget email.
+
+    ``momento`` só existe para os testes poderem fixar a hora: a saudação
+    (Bom dia / Boa tarde / Boa noite) é a da altura em que o email é escrito.
+    """
+    agora = momento or datetime.now()
+    saudacao = saudacao_por_hora(agora.hour)
     cliente_nome = html.escape(getattr(cliente, "nome", None) or "")
     num = html.escape(getattr(orcamento, "num_orcamento", None) or "")
     versao = html.escape(subpasta_versao(getattr(orcamento, "numero_versao", 1)))
@@ -229,11 +242,14 @@ def construir_corpo_email(
 
     return (
         "<div style='font-family: Arial, sans-serif; color:#333;'>"
-        f"<p style='margin:0 0 12px;'>Exmo(a). Sr(a). {cliente_nome},</p>"
+        f"<p style='margin:0 0 12px;'>{saudacao},</p>"
+        f"<p style='margin:0 0 12px;'>Exmo(a). Sr(a). <b>{cliente_nome}</b>,</p>"
         "<p style='margin:0 0 12px;'>Segue em anexo o orçamento "
         f"{num}_{versao}{pdf_part} solicitado.</p>"
         f"{obra_ref_html}"
-        f"<p style='margin:0 0 12px;'><b>Total:</b> {format_currency(total)}</p>"
+        "<p style='margin:0 0 12px;'><b>Total:</b> "
+        f"<b style='font-size:18px;'>{format_currency(total)}</b>"
+        f"<span style='margin-left:8px;'>{AVISO_IVA}</span></p>"
         "<p style='margin:0 0 16px;'>Se tiver alguma dúvida ou necessitar de "
         "mais informação, não hesite em contactar-nos.</p>"
         "<p style='margin:0 0 4px;'>Com os melhores cumprimentos,</p>"

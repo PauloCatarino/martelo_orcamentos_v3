@@ -86,7 +86,7 @@ def test_desligado_nao_vai_ao_phc(verificador) -> None:
 def test_quando_e_hora_pede_a_verificacao_e_marca_o_dia(monkeypatch, _app) -> None:
     objeto = VerificadorClientesPHC(user_id=1, ativo=True)
     dias: list[object] = []
-    monkeypatch.setattr(modulo.agenda_clientes_phc, "deve_verificar", lambda *a: True)
+    monkeypatch.setattr(modulo.agenda_diaria_phc, "deve_verificar", lambda *a: True)
     monkeypatch.setattr(objeto, "_ultima_verificacao", lambda: None)
     monkeypatch.setattr(objeto, "_guardar_verificacao", dias.append)
     pedidos: list[int] = []

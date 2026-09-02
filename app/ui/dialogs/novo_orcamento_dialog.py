@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSpinBox,
     QTextEdit,
@@ -298,7 +299,7 @@ class NovoOrcamentoDialog(QDialog):
 
         from PySide6.QtCore import Qt as _Qt
         from PySide6.QtGui import QGuiApplication
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
+        from PySide6.QtWidgets import QInputDialog
 
         from app.services.phc_automation_service import (
             PhcAutomationError,
@@ -413,10 +414,62 @@ class NovoOrcamentoDialog(QDialog):
 
         self._adotar_proposta(numero, ano)
 
+        # A proposta ja' existe no PHC, mas no Martelo ainda nao ha' orcamento
+        # nenhum: isso so' acontece no «Guardar» desta janela. Ja' houve quem
+        # fechasse aqui a pensar que o PHC tinha tratado dos dois lados.
+        texto += (
+            "\n\n"
+            "⚠️ Falta guardar no Martelo.\n"
+            "A proposta ficou criada no PHC, mas o orçamento ainda NÃO existe "
+            "no Martelo. Carregue em «Guardar» nesta janela para o criar — se "
+            "fechar agora, fica com a proposta no PHC e sem orçamento cá."
+        )
+
         if resultado.avisos:
             QMessageBox.warning(self, "Proposta criada — com diferenças", texto)
         else:
             QMessageBox.information(self, "Proposta criada no PHC", texto)
+
+        self._realcar_guardar()
+
+    def _realcar_guardar(self) -> None:
+        """Deixar claro que ainda falta o «Guardar» deste lado."""
+        guardar = self.button_box.button(QDialogButtonBox.StandardButton.Save)
+        guardar.setText("Guardar no Martelo")
+        guardar.setDefault(True)
+        guardar.setStyleSheet(
+            f"QPushButton {{ background-color: {tema.CASTANHO_ESCURO};"
+            " color: #FFFFFF; font-weight: 600; padding: 6px 14px;"
+            " border-radius: 4px; }"
+            f"QPushButton:hover {{ background-color: {tema.CASTANHO_MEDIO}; }}"
+        )
+        guardar.setToolTip(
+            "A proposta já está no PHC. Falta criar o orçamento no Martelo."
+        )
+        guardar.setFocus()
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
+        self.error_label.setText(
+            "Proposta criada no PHC. O orçamento só fica no Martelo depois de "
+            "carregar em «Guardar no Martelo»."
+        )
+
+    def reject(self) -> None:  # noqa: D102 - assinatura do Qt
+        """Confirmar antes de sair com uma proposta criada e nada guardado."""
+        if self._proposta_phc:
+            resposta = QMessageBox.question(
+                self,
+                "Sair sem guardar?",
+                f"A proposta {self._proposta_phc} já foi criada no PHC, mas o "
+                "orçamento ainda não existe no Martelo.\n\n"
+                "Se sair agora, fica com a proposta no PHC e sem orçamento cá "
+                "— e terá de a registar à mão mais tarde.\n\n"
+                "Quer mesmo sair sem guardar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+        super().reject()
 
     def _adotar_proposta(self, numero: int, ano: int) -> None:
         """Fixar a proposta e mostrar o nº do orçamento que dela resulta."""

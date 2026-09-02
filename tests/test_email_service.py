@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ssl
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -221,6 +222,42 @@ def test_construir_corpo_email_escapa_campos_e_inclui_total() -> None:
     assert "REF &amp; &lt;9&gt;" in corpo
     assert "1234,50 €" in corpo
     assert "{{assinatura}}" in corpo
+
+
+def _corpo(hora: int) -> str:
+    return email_service.construir_corpo_email(
+        SimpleNamespace(
+            num_orcamento="260001", numero_versao=1, obra="", ref_cliente=""
+        ),
+        SimpleNamespace(nome="MÓVEIS J.F. VIVA"),
+        Decimal("175"),
+        momento=datetime(2026, 9, 3, hora, 0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("hora", "saudacao"),
+    [(9, "Bom dia"), (15, "Boa tarde"), (21, "Boa noite")],
+)
+def test_o_email_comeca_por_cumprimentar_a_horas(hora, saudacao) -> None:
+    corpo = _corpo(hora)
+
+    assert corpo.index(saudacao) < corpo.index("Exmo(a)")
+
+
+def test_o_nome_do_cliente_vai_a_negrito() -> None:
+    assert "<b>MÓVEIS J.F. VIVA</b>" in _corpo(10)
+
+
+def test_o_total_destaca_se_e_avisa_que_falta_o_iva() -> None:
+    """O orçamento é sempre sem IVA; sem a linha havia quem lesse o total
+    como o que ia pagar."""
+    corpo = _corpo(10)
+
+    assert "<b style='font-size:18px;'>175,00 €</b>" in corpo
+    assert "Acresce IVA à taxa em vigor" in corpo
+    # O aviso vem depois do valor, não antes.
+    assert corpo.index("175,00 €") < corpo.index("Acresce IVA")
 
 
 def test_get_email_log_path_usa_env_explicit_e_cria_pasta(tmp_path, monkeypatch) -> None:

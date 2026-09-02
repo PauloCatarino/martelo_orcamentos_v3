@@ -1,9 +1,14 @@
-"""Quando é que o Martelo vai espreitar os clientes do PHC (regra pura).
+"""Quando é que o Martelo vai espreitar o PHC (regra pura, sem Qt nem base).
 
-A lista de clientes é feita no PHC e copiada para o Martelo. Enquanto alguém não
-se lembrasse de carregar em «Atualizar PHC», um cliente novo simplesmente não
-existia cá. Esta regra decide, sem Qt e sem base de dados, se já é hora de ir
-ver — para poder ser testada sozinha.
+Há coisas que se decidem no PHC e o Martelo só copia: a lista de clientes, e o
+estado das obras que já foram finalizadas ou arquivadas. Enquanto ninguém se
+lembrasse de carregar num botão, essas mudanças simplesmente não chegavam cá.
+
+Esta regra — dias úteis, a partir das 09h00, uma vez por dia — é partilhada
+pelos analisadores diários que existem: o dos clientes
+(``app/ui/helpers/verificacao_clientes_phc.py``) e o dos estados das obras
+(``app/ui/helpers/verificacao_estados_phc.py``). Vive sozinha para poder ser
+testada sozinha.
 """
 
 from __future__ import annotations

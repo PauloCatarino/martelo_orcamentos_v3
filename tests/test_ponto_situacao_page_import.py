@@ -34,7 +34,7 @@ def test_ponto_situacao_page_imports_and_uses_charts() -> None:
     assert "S\\u00f3 as minhas" in source
     assert "responsavel=responsavel" in source
     assert '"Obras atrasadas"' in source
-    assert "detetar_diferencas_estado_phc" in source
+    assert "levantar_estados_de_fora" in source
     assert "aplicar_estados" in source
     assert "ProducaoPhcSyncDialog" in source
     assert '"Validar pre\\u00e7os"' in source

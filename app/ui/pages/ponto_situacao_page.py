@@ -44,8 +44,7 @@ from app.services.estado_producao_service import estado_producao_por_processo
 from app.services.producao_dashboard_service import calcular_dashboard
 from app.services.producao_phc_sync_service import (
     aplicar_estados,
-    detetar_diferencas_estado_phc,
-    detetar_diferencas_estado_streamlit,
+    levantar_estados_de_fora,
 )
 from app.services.producao_precos_service import (
     aplicar_precos,
@@ -777,7 +776,12 @@ class PontoSituacaoPage(QWidget):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Sincronizar PHC")
-        box.setText("Atualizar os estados de que obras?")
+        box.setText(
+            "Atualizar os estados de que obras?\n\n"
+            "Só se procuram obras que o PHC ou o Streamlit já deram por "
+            "finalizadas ou arquivadas. O Desenho e a Produção são seus: "
+            "nunca vêm de fora."
+        )
         btn_minhas = box.addButton(
             f"S\u00f3 as minhas ({nome_login})" if nome_login else "S\u00f3 as minhas",
             QMessageBox.ButtonRole.AcceptRole,
@@ -798,36 +802,18 @@ class PontoSituacaoPage(QWidget):
         self.atualizado_label.setText("A consultar o PHC/Streamlit...")
         QApplication.processEvents()
         try:
-            try:
-                with SessionLocal() as session:
-                    diffs_phc = detetar_diferencas_estado_phc(
-                        session,
-                        responsavel=responsavel,
-                    )
-            except Exception as exc:  # ligacao/SQL/config PHC
-                diffs_phc = []
-                erro_phc = exc
-            else:
-                erro_phc = None
-
-            try:
-                with SessionLocal() as session:
-                    diffs_streamlit = detetar_diferencas_estado_streamlit(
-                        session,
-                        responsavel=responsavel,
-                    )
-            except Exception as exc:  # ligacao/SQL/config Streamlit
-                diffs_streamlit = []
-                erro_streamlit = exc
-            else:
-                erro_streamlit = None
-
-            diffs = diffs_phc + diffs_streamlit
-            diffs.sort(key=lambda d: d["codigo"].casefold())
+            levantamento = levantar_estados_de_fora(
+                SessionLocal,
+                responsavel=responsavel,
+            )
         finally:
             QApplication.restoreOverrideCursor()
 
-        if erro_phc is not None and erro_streamlit is not None:
+        diffs = levantamento.diferencas
+        erro_phc = levantamento.erro_phc or None
+        erro_streamlit = levantamento.erro_streamlit or None
+
+        if levantamento.falharam_as_duas:
             QMessageBox.warning(
                 self,
                 "Sincronizar PHC",
@@ -852,7 +838,8 @@ class PontoSituacaoPage(QWidget):
             QMessageBox.information(
                 self,
                 "Sincronizar PHC",
-                "Estados j\u00e1 sincronizados - sem diferen\u00e7as face ao PHC/Streamlit.",
+                "Nenhuma obra ficou por fechar: n\u00e3o h\u00e1 nada finalizado nem "
+                "arquivado l\u00e1 fora que o Martelo ainda n\u00e3o saiba.",
             )
             self._carregar()
             return
