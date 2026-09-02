@@ -42,7 +42,7 @@ from app.services.relatorio_producao_service import gerar_ocorrencias_pdf
 from app.ui import tema
 from app.ui.dialogs.ocorrencias_obra_dialog import CORES_FAMILIA, OcorrenciasObraDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 
@@ -70,7 +70,8 @@ class OcorrenciasPage(QWidget):
             label="Pesquisar:", placeholder="Pesquisar no assunto ou no texto…"
         )
         self.pesquisa.pesquisa_mudou.connect(lambda _t: self.carregar())
-        self.pesquisa.limpar_clicado.connect(self._limpar_filtros)
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.ano_filtro = QComboBox()
         self.ano_filtro.setToolTip("Ano das obras")
@@ -108,6 +109,7 @@ class OcorrenciasPage(QWidget):
         filtros.addWidget(self.tipo_filtro)
         filtros.addWidget(self.estado_filtro)
         filtros.addWidget(self.responsavel_filtro)
+        filtros.addWidget(self.limpar_filtros_button)
         filtros.addStretch()
         filtros.addWidget(self.atualizar_button)
 

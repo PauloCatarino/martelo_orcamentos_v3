@@ -68,7 +68,6 @@ class ConverterOrcamentoDialog(QDialog):
             placeholder="Pesquisar orçamento, cliente ou encomenda PHC..."
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         # Nota fixa com o critério: sem ela, quem procura um orçamento que
         # sabe que existe fica a olhar para uma lista vazia sem perceber

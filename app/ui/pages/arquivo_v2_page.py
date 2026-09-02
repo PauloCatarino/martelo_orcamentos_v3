@@ -89,7 +89,6 @@ class ArquivoV2Page(QWidget):
             placeholder="Pesquisar número, cliente, referência, obra ou descrição…"
         )
         self.pesquisa.pesquisa_mudou.connect(self._render)
-        self.pesquisa.limpar_clicado.connect(self._render)
 
         self.estado = QComboBox()
         self.estado.addItem("Todos")

@@ -95,7 +95,6 @@ class _OrigemTab(QWidget):
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.setToolTip("Filtrar a lista já carregada (vários termos: espaço ou %)")
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         filtros = QHBoxLayout()
         filtros.addWidget(QLabel("Ano"))

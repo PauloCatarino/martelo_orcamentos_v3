@@ -3,25 +3,38 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QToolButton, QWidget
-
-from app.ui.icones import icone_ficheiro
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QWidget,
+)
 
 
 class CampoPesquisa(QWidget):
-    """Search field with a brush clear button, reusable across pages."""
+    """Search field, reusable across pages.
+
+    Tinha ao lado um botão "pincel" para limpar. Foi retirado: o próprio campo
+    já traz um ``X`` lá dentro e dois botões a fazer a mesma coisa só ocupavam
+    espaço e confundiam. O espaço que sobrou foi para o campo, que passou a ser
+    mais largo.
+
+    Onde o pincel também servia para repor os OUTROS filtros da página (estado,
+    cliente, responsável…), essa ação passou a ter um botão próprio, com nome,
+    junto desses filtros — ver :class:`BotaoLimparFiltros`.
+    """
 
     pesquisa_mudou = Signal(str)  # a cada tecla (textChanged)
     pesquisar = Signal(str)       # só ao premir Enter (returnPressed)
-    limpar_clicado = Signal()
 
     def __init__(
         self,
         parent=None,
         *,
         label: str = "Pesquisar:",
-        placeholder: str = "Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026",
-        largura_max: int = 360,
+        placeholder: str = "Pesquisar — espaço ou % para vários termos…",
+        largura_max: int = 420,
     ) -> None:
         super().__init__(parent)
 
@@ -29,16 +42,14 @@ class CampoPesquisa(QWidget):
         self._input.setPlaceholderText(placeholder)
         self._input.setClearButtonEnabled(True)
         self._input.setMaximumWidth(largura_max)
+        self._input.setToolTip(
+            "Pesquisa em todos os campos. Vários termos: separe por espaço "
+            "ou %. O X limpa a pesquisa."
+        )
         self._input.textChanged.connect(self.pesquisa_mudou.emit)
         self._input.returnPressed.connect(
             lambda: self.pesquisar.emit(self._input.text())
         )
-
-        self._botao = QToolButton()
-        self._botao.setIcon(icone_ficheiro("icon_cleaner.ico"))
-        self._botao.setToolTip("Limpar pesquisa e filtros")
-        self._botao.setAutoRaise(True)
-        self._botao.clicked.connect(self._on_limpar)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -46,7 +57,6 @@ class CampoPesquisa(QWidget):
         if label:
             layout.addWidget(QLabel(label))
         layout.addWidget(self._input)
-        layout.addWidget(self._botao)
         layout.addStretch()
 
     def texto(self) -> str:
@@ -58,9 +68,21 @@ class CampoPesquisa(QWidget):
         self._input.setText(texto or "")
 
     def limpar(self) -> None:
-        """Clear the text without emitting limpar_clicado."""
+        """Clear the text."""
         self._input.clear()
 
-    def _on_limpar(self) -> None:
-        self._input.clear()
-        self.limpar_clicado.emit()
+
+class BotaoLimparFiltros(QPushButton):
+    """Repor todos os filtros da página, e não só a pesquisa.
+
+    Herdou a função que o pincel tinha nas páginas com filtros (estado,
+    cliente, responsável, vista…). Aqui é um botão com nome, ao pé dos filtros
+    que repõe — em vez de um ícone ao lado da caixa de pesquisa, que se
+    confundia com o ``X`` de limpar o texto.
+    """
+
+    def __init__(self, parent=None, *, texto: str = "Limpar filtros") -> None:
+        super().__init__(texto, parent)
+        self.setToolTip(
+            "Repor a pesquisa e todos os filtros desta página (mostrar tudo)"
+        )

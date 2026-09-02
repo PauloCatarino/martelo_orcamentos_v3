@@ -109,7 +109,6 @@ class ClientesPage(QWidget):
             placeholder="Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         self.refresh_button = QPushButton("Atualizar")
         self.refresh_button.clicked.connect(self.carregar)
@@ -222,7 +221,6 @@ class ClientesPage(QWidget):
             placeholder="Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026"
         )
         self.phc_campo_pesquisa.pesquisa_mudou.connect(self._render_phc)
-        self.phc_campo_pesquisa.limpar_clicado.connect(self._render_phc)
 
         self.phc_refresh_button = QPushButton("Atualizar")
         self.phc_refresh_button.clicked.connect(self.carregar_phc)

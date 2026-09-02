@@ -62,7 +62,7 @@ from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui.dialogs.ref_cliente_duplicada_dialog import RefClienteDuplicadaDialog
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.estilo_tabela_orcamentos import (
     FUNDO_LINHA_ROLE,
@@ -205,7 +205,8 @@ class OrcamentosPage(QWidget):
 
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._limpar_filtros)
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.estado_combo = QComboBox()
         self.cliente_combo = QComboBox()
@@ -221,6 +222,7 @@ class OrcamentosPage(QWidget):
         filters_layout.addWidget(self.cliente_combo)
         filters_layout.addWidget(QLabel("Utilizador"))
         filters_layout.addWidget(self.utilizador_combo)
+        filters_layout.addWidget(self.limpar_filtros_button)
         filters_layout.addStretch()
 
         self.status_label = QLabel("")

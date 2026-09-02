@@ -153,7 +153,7 @@ from app.ui.helpers.vistas_producao import (
     substituir_vista,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
 
 
@@ -551,7 +551,24 @@ class ProducaoPage(QWidget):
 
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._limpar_filtros)
+
+        # Pesquisa dedicada ao Nº Enc PHC. A pesquisa do lado não sabe se
+        # «1320» é uma encomenda ou um pedaço de texto noutro campo qualquer,
+        # e devolve tudo o que apanha; aqui procura-se só na coluna certa.
+        self.enc_phc_input = QLineEdit()
+        self.enc_phc_input.setPlaceholderText("Nº Enc PHC")
+        self.enc_phc_input.setClearButtonEnabled(True)
+        self.enc_phc_input.setFixedWidth(140)
+        self.enc_phc_input.setToolTip(
+            "Procurar SÓ pelo número da encomenda. Vai estreitando à medida "
+            "que escreve (14 → 1449, 1463, 1494).\n"
+            "Ignora os zeros à frente (0100 = 100) e distingue o underscore: "
+            "«182» não encontra a obra «_182», que é do Streamlit."
+        )
+        self.enc_phc_input.textChanged.connect(self._render)
+
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.estado_combo = QComboBox()
         self.cliente_combo = QComboBox()
@@ -601,6 +618,9 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(self.vista_combo)
         filters_layout.addWidget(self.vista_button)
         filters_layout.addWidget(self.campo_pesquisa)
+        # Sem rótulo ao lado: o próprio campo já diz «Nº Enc PHC» lá dentro, e
+        # esta barra tem de caber num portátil sem cortar os filtros da direita.
+        filters_layout.addWidget(self.enc_phc_input)
         filters_layout.addWidget(QLabel("Estado"))
         filters_layout.addWidget(self.estado_combo)
         filters_layout.addWidget(QLabel("Cliente"))
@@ -608,6 +628,7 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(QLabel("Responsável"))
         filters_layout.addWidget(self.responsavel_combo)
         filters_layout.addWidget(self.atrasadas_check)
+        filters_layout.addWidget(self.limpar_filtros_button)
         filters_layout.addStretch()
         filters_layout.addWidget(self.obras_ano_label)
 
@@ -1252,6 +1273,7 @@ class ProducaoPage(QWidget):
             cliente=self._combo_valor(self.cliente_combo),
             responsavel=self._combo_valor(self.responsavel_combo),
             so_atrasadas=self.atrasadas_check.isChecked(),
+            enc_phc=self.enc_phc_input.text(),
         )
         self.footer_label.setText(
             f"{self.proxy.rowCount()} de {self.modelo.rowCount()}"
@@ -1284,6 +1306,7 @@ class ProducaoPage(QWidget):
         """Clear search and reset all filters to 'Todos'."""
         widgets = [
             self.campo_pesquisa,
+            self.enc_phc_input,
             self.estado_combo,
             self.cliente_combo,
             self.responsavel_combo,
@@ -1294,6 +1317,7 @@ class ProducaoPage(QWidget):
 
         estados_sinais = [(widget, widget.blockSignals(True)) for widget in widgets]
         self.campo_pesquisa.limpar()
+        self.enc_phc_input.clear()
         for combo in (self.estado_combo, self.cliente_combo, self.responsavel_combo):
             if combo.count():
                 combo.setCurrentIndex(0)
@@ -1817,6 +1841,7 @@ class ProducaoPage(QWidget):
 
         widgets = (
             self.campo_pesquisa,
+            self.enc_phc_input,
             self.estado_combo,
             self.cliente_combo,
             self.responsavel_combo,
@@ -1824,6 +1849,7 @@ class ProducaoPage(QWidget):
         )
         estados_sinais = [(w, w.blockSignals(True)) for w in widgets]
         self.campo_pesquisa.definir_texto(vista.texto)
+        self.enc_phc_input.setText(vista.enc_phc)
         self.responsavel_combo.setCurrentText(vista.responsavel)
         self._atualizar_filtro_clientes()
         self.estado_combo.setCurrentText(vista.estado)
@@ -1843,6 +1869,7 @@ class ProducaoPage(QWidget):
             cliente=self.cliente_combo.currentText() or "Todos",
             responsavel=self.responsavel_combo.currentText() or "Todos",
             so_atrasadas=self.atrasadas_check.isChecked(),
+            enc_phc=self.enc_phc_input.text().strip(),
         )
 
     def _abrir_menu_vistas(self) -> None:

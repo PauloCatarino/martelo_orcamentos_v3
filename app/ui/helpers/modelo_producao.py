@@ -318,6 +318,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
         self._cliente: str | None = None
         self._responsavel: str | None = None
         self._so_atrasadas = False
+        self._enc_phc: str = ""
         self._sinonimos: dict = {}
         self.setSortRole(ProducaoTableModel.ROLE_ORDENACAO)
 
@@ -333,6 +334,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
         cliente: str | None = None,
         responsavel: str | None = None,
         so_atrasadas: bool = False,
+        enc_phc: str = "",
     ) -> None:
         """Set every filter at once and re-run the filtering."""
         self._termos = termos_pesquisa(texto, self._sinonimos)
@@ -340,6 +342,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
         self._cliente = cliente
         self._responsavel = responsavel
         self._so_atrasadas = bool(so_atrasadas)
+        self._enc_phc = enc_phc or ""
         self.invalidateFilter()
 
     def filterAcceptsRow(  # noqa: N802 (Qt override)
@@ -362,6 +365,7 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
             cliente=self._cliente,
             responsavel=self._responsavel,
             so_atrasadas=self._so_atrasadas,
+            enc_phc=self._enc_phc,
             indice=modelo.indice(source_row),
         )
 

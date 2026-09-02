@@ -42,7 +42,6 @@ class SelecionarClienteDialog(QDialog):
             placeholder="Pesquisar \u2014 espa\u00e7o ou % para v\u00e1rios termos\u2026"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         self.status_label = QLabel("")
 

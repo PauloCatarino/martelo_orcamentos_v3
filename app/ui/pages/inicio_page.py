@@ -87,7 +87,6 @@ class InicioPage(QWidget):
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px 8px;"
         )
         self.pesquisa.pesquisa_mudou.connect(lambda _="": self.carregar())
-        self.pesquisa.limpar_clicado.connect(self.carregar)
         for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo,
                       self.periodo_combo):
             combo.currentTextChanged.connect(lambda _="": self.carregar())

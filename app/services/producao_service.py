@@ -1093,6 +1093,37 @@ def vocabulario_pesquisa(processos) -> set[str]:
     return vocabulario
 
 
+def _partes_enc(valor) -> tuple[bool, str]:
+    """Separar um nº de encomenda em (é do Streamlit, dígitos sem zeros à frente).
+
+    ``1449`` -> ``(False, "1449")``; ``0100`` -> ``(False, "100")``;
+    ``_182`` -> ``(True, "182")``. O underscore faz parte do número e distingue
+    duas obras diferentes, por isso viaja à parte dos dígitos.
+    """
+    texto = str(valor or "").strip()
+    digitos = re.sub(r"\D+", "", texto).lstrip("0")
+    return texto.startswith("_"), digitos
+
+
+def enc_phc_corresponde(valor, procurado) -> bool:
+    """True quando o nº de encomenda da obra serve o que foi escrito.
+
+    Compara pelo **início** do número, para a lista ir estreitando à medida que
+    se escreve: ``14`` mostra 1449, 1463 e 1494; ``1449`` deixa só uma. Ignora
+    os zeros à frente (``0100`` = ``100``) e respeita o underscore: ``182``
+    NÃO encontra ``_182``, porque são encomendas diferentes — uma é do PHC e a
+    outra do Streamlit.
+    """
+    procurado_streamlit, procurado_digitos = _partes_enc(procurado)
+    if not procurado_digitos:
+        return True
+
+    valor_streamlit, valor_digitos = _partes_enc(valor)
+    if procurado_streamlit != valor_streamlit:
+        return False
+    return valor_digitos.startswith(procurado_digitos)
+
+
 def processo_corresponde(
     processo,
     *,
@@ -1101,6 +1132,7 @@ def processo_corresponde(
     cliente=None,
     responsavel=None,
     so_atrasadas=False,
+    enc_phc=None,
     indice=None,
 ) -> bool:
     """Return True when one process matches the current search and filters.
@@ -1129,6 +1161,8 @@ def processo_corresponde(
         getattr(processo, "data_entrega", None),
         getattr(processo, "estado", None),
     ).atrasada:
+        return False
+    if not enc_phc_corresponde(getattr(processo, "num_enc_phc", None), enc_phc):
         return False
 
     if not termos:

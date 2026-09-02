@@ -28,6 +28,9 @@ class VistaProducao:
     cliente: str = "Todos"
     responsavel: str = "Todos"
     so_atrasadas: bool = False
+    #: Pesquisa dedicada ao Nº Enc PHC. Tem de ficar por omissão vazia: as
+    #: vistas gravadas antes de este filtro existir não a trazem.
+    enc_phc: str = ""
 
     def como_dict(self) -> dict:
         return {
@@ -37,6 +40,7 @@ class VistaProducao:
             "cliente": self.cliente,
             "responsavel": self.responsavel,
             "so_atrasadas": self.so_atrasadas,
+            "enc_phc": self.enc_phc,
         }
 
 
@@ -80,6 +84,7 @@ def desserializar_vistas(texto: str | None) -> list[VistaProducao]:
                 cliente=str(item.get("cliente") or "Todos"),
                 responsavel=str(item.get("responsavel") or "Todos"),
                 so_atrasadas=bool(item.get("so_atrasadas")),
+                enc_phc=str(item.get("enc_phc") or ""),
             )
         )
     return vistas[:MAX_VISTAS]

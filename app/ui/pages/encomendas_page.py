@@ -87,7 +87,6 @@ class EncomendasPHCTab(QWidget):
             "Filtrar a tabela já carregada (vários termos: espaço ou %)"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         filtros_layout = QHBoxLayout()
         filtros_layout.addWidget(QLabel("Ano mínimo"))
@@ -280,7 +279,6 @@ class DiagnosticoPHCTab(QWidget):
             "Filtrar a tabela já carregada (vários termos: espaço ou %)"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
-        self.campo_pesquisa.limpar_clicado.connect(self._render)
 
         num_enc_label = QLabel("Num Enc PHC")
         num_enc_label.setToolTip("Número da encomenda PHC opcional")
@@ -498,7 +496,6 @@ class EncomendasClienteFinalTab(QWidget):
             "Filtrar a tabela de encomendas já carregada (vários termos: espaço ou %)"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self._render_master)
-        self.campo_pesquisa.limpar_clicado.connect(self._render_master)
 
         filtros_layout = QHBoxLayout()
         filtros_layout.addWidget(QLabel("Ano mínimo"))

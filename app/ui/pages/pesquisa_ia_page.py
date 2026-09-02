@@ -251,7 +251,6 @@ class PesquisaIAPage(QWidget):
             )
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
-        self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa)

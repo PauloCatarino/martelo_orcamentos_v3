@@ -177,7 +177,6 @@ class MateriasPrimasPage(QWidget):
             placeholder="Pesquisar mat\u00e9ria-prima\u2026 (espa\u00e7o para v\u00e1rios termos)"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
-        self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.campo_pesquisa)

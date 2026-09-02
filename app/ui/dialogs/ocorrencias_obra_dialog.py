@@ -50,7 +50,7 @@ from app.ui.dialogs.equipa_dialog import EquipaDialog
 from app.ui.dialogs.escolher_pessoas_teams_dialog import EscolherPessoasTeamsDialog
 from app.ui.helpers.anexos_ocorrencia import guardar_anexos, resolver_pasta_obra
 from app.ui.helpers.teams_clipboard import copiar_fotos_inline
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.faixa_anexos import FaixaAnexos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
@@ -101,7 +101,8 @@ class OcorrenciasObraDialog(QDialog):
             label="Pesquisar:", placeholder="Pesquisar no assunto ou no texto…"
         )
         self.pesquisa.pesquisa_mudou.connect(lambda _texto: self.carregar())
-        self.pesquisa.limpar_clicado.connect(self._limpar_filtros)
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.tipo_filtro = self._combo_filtro("Tipo: todos", tipos.TIPOS, "Filtrar por tipo de ticket")
         self.estado_filtro = QComboBox()
@@ -126,6 +127,7 @@ class OcorrenciasObraDialog(QDialog):
         filtros.addWidget(self.tipo_filtro)
         filtros.addWidget(self.estado_filtro)
         filtros.addWidget(self.responsavel_filtro)
+        filtros.addWidget(self.limpar_filtros_button)
         filtros.addStretch()
 
         self.table = QTableWidget(0, len(COLUNAS))

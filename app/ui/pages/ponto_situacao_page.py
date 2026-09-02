@@ -56,7 +56,7 @@ from app.ui import tema
 from app.ui.dialogs.producao_phc_sync_dialog import ProducaoPhcSyncDialog
 from app.ui.dialogs.producao_precos_dialog import ProducaoPrecosDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 CORES_ESTADO = {
@@ -146,7 +146,8 @@ class PontoSituacaoPage(QWidget):
         # (query Streamlit, lenta) só refaz a consulta ao premir Enter.
         self.campo_pesquisa.pesquisa_mudou.connect(self._carregar)
         self.campo_pesquisa.pesquisar.connect(self._pos_filtros)
-        self.campo_pesquisa.limpar_clicado.connect(self._limpar_filtros)
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.utilizador_combo = QComboBox()
         self.cliente_combo = QComboBox()
@@ -185,6 +186,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(self.cliente_combo)
         toolbar.addWidget(QLabel("Utilizador"))
         toolbar.addWidget(self.utilizador_combo)
+        toolbar.addWidget(self.limpar_filtros_button)
         toolbar.addWidget(self.atualizar_button)
         toolbar.addWidget(self.exportar_pdf_button)
         toolbar.addWidget(self.sincronizar_phc_button)

@@ -114,7 +114,6 @@ class CaminhosSistemaPage(QWidget):
             placeholder="Pesquisar caminho — nome, descrição ou valor…"
         )
         self.campo_pesquisa.pesquisa_mudou.connect(self.aplicar_pesquisa)
-        self.campo_pesquisa.limpar_clicado.connect(self.aplicar_pesquisa)
 
         pesquisa_layout = QHBoxLayout()
         pesquisa_layout.addWidget(self.campo_pesquisa)

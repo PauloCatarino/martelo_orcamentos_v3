@@ -70,14 +70,15 @@ def test_campos_a_none_nao_rebentam() -> None:
 
 
 def test_a_pagina_usa_o_widget_de_pesquisa_da_casa() -> None:
-    """O mesmo campo + pincel dos outros menus, não um inventado aqui."""
+    """O mesmo campo dos outros menus, não um inventado aqui."""
     import inspect
 
     from app.ui.pages.caminhos_sistema_page import CaminhosSistemaPage
 
     fonte = inspect.getsource(CaminhosSistemaPage.__init__)
     assert "CampoPesquisa" in fonte
-    assert "limpar_clicado" in fonte
+    # O pincel foi retirado: quem limpa a pesquisa é o X dentro do campo.
+    assert "limpar_clicado" not in fonte
 
     aplicar = inspect.getsource(CaminhosSistemaPage.aplicar_pesquisa)
     assert "configuracao_corresponde" in aplicar
