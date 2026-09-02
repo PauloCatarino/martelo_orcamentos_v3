@@ -6,8 +6,15 @@ modelo real ``260618_01_PHC.xlsx``, para ser importada pelo PHC.
 Cada item gera uma linha principal (RefCliente/Referencia/Designacao + dimensões
 numéricas + Qtd/Und/Venda) e, por cada linha extra da descrição, uma linha só
 com a coluna ``Designacao`` (C) preenchida. A coluna ``Venda`` é escrita como
-TEXTO ("1191,62", vírgula decimal) com ``number_format`` ``"@"`` para o PHC a ler
-tal e qual.
+TEXTO ("1191,62", vírgula decimal) com formato ``"@"`` para o PHC a ler tal e
+qual.
+
+**Formato ``.xls`` (BIFF8), não ``.xlsx``**: é o que o PHC importa sem
+reclamar. Daí o ``xlwt`` em vez do ``openpyxl`` usado no resto do programa.
+
+**Designação partida aos 55 caracteres**: o PHC corta a designação nesse
+comprimento e o que passa disso desaparece na importação, sem aviso. A regra da
+quebra está em :mod:`app.domain.texto_phc`.
 
 Recebe DADOS simples (read-models ou ``SimpleNamespace``), sem DB nem Qt, para
 ser testável.
@@ -18,9 +25,10 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import Workbook
+import xlwt
 
 from app.domain.descricao_format import parse_descricao
+from app.domain.texto_phc import quebrar_designacao
 
 # Cabeçalho da folha "PHC" (colunas A..I), na ordem esperada pelo PHC.
 _HEADERS = [
@@ -36,7 +44,16 @@ _HEADERS = [
 ]
 _PREFIXO = "COMP. MOB. - "
 _REFERENCIA = "MOB"
-_FMT_TEXTO = "@"
+
+#: Coluna (0-based) da designação e da venda.
+_COL_DESIGNACAO = 2
+_COL_VENDA = 8
+
+#: Largura mínima/máxima das colunas, em caracteres (xlwt conta em 1/256 de
+#: caractere).
+_LARGURA_MIN = 10
+_LARGURA_MAX = 60
+_UNIDADE_LARGURA = 256
 
 
 def _num(value) -> float | None:
@@ -65,62 +82,93 @@ def _venda_texto(value) -> str | None:
         return None
 
 
+def _texto_da_linha(linha) -> str:
+    """A linha da descrição já com o prefixo que o PHC vê ("- ", "* ")."""
+    if linha.tipo == "traco":
+        return f"- {linha.texto}"
+    if linha.tipo == "estrela":
+        return f"* {linha.texto}"
+    if linha.tipo == "titulo":
+        return linha.texto.upper()
+    return linha.texto
+
+
+def linhas_do_item(item) -> list[list]:
+    """As linhas da folha para UM item: a principal e as da descrição.
+
+    Cada uma já cabe nos 55 caracteres da designação do PHC. Separado do
+    ``xlwt`` de propósito, para se poder testar o conteúdo sem gravar ficheiro.
+    """
+    descricao = parse_descricao(getattr(item, "descricao", None))
+    titulo = (
+        descricao[0].texto
+        if (descricao and descricao[0].tipo != "vazia")
+        else ""
+    )
+    designacao = f"{_PREFIXO}{titulo.upper()}" if titulo else _PREFIXO.rstrip()
+
+    und = (getattr(item, "unidade", "") or "").strip() or "un"
+    und = "un" if und.lower() == "und" else und
+    venda = _venda_texto(getattr(item, "preco_unitario", None))
+
+    partidas = quebrar_designacao(designacao) or [""]
+    linhas = [
+        [
+            getattr(item, "codigo", None) or "",
+            _REFERENCIA,
+            partidas[0],
+            _num(getattr(item, "altura", None)),
+            _num(getattr(item, "largura", None)),
+            _num(getattr(item, "profundidade", None)),
+            _num(getattr(item, "quantidade", None)),
+            und,
+            venda,
+        ]
+    ]
+    # O resto do título continua em baixo, como qualquer linha de descrição.
+    for continuacao in partidas[1:]:
+        linhas.append(["", "", continuacao, None, None, None, None, None, None])
+
+    for linha in descricao[1:]:
+        if linha.tipo == "vazia":
+            continue
+        for pedaco in quebrar_designacao(_texto_da_linha(linha)):
+            linhas.append(["", "", pedaco, None, None, None, None, None, None])
+
+    return linhas
+
+
 def gerar_excel_phc(output_path, *, orcamento, items) -> Path:
-    """Gera o Excel no formato PHC em ``output_path`` e devolve o ``Path``."""
+    """Gera o ficheiro ``.xls`` no formato PHC e devolve o ``Path``."""
     output_path = Path(output_path)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "PHC"
-    ws.append(_HEADERS)
+    livro = xlwt.Workbook(encoding="utf-8")
+    folha = livro.add_sheet("PHC")
+    estilo_texto = xlwt.easyxf(num_format_str="@")
+    estilo_cabecalho = xlwt.easyxf("font: bold on")
 
+    for coluna, titulo in enumerate(_HEADERS):
+        folha.write(0, coluna, titulo, estilo_cabecalho)
+
+    larguras = [len(titulo) for titulo in _HEADERS]
+    indice = 1
     for item in items:
-        linhas = parse_descricao(getattr(item, "descricao", None))
-        titulo = linhas[0].texto if (linhas and linhas[0].tipo != "vazia") else ""
-        designacao = f"{_PREFIXO}{titulo.upper()}" if titulo else _PREFIXO.rstrip()
+        for valores in linhas_do_item(item):
+            for coluna, valor in enumerate(valores):
+                if valor is None or valor == "":
+                    continue
+                if coluna == _COL_VENDA:
+                    folha.write(indice, coluna, valor, estilo_texto)
+                else:
+                    folha.write(indice, coluna, valor)
+                larguras[coluna] = max(larguras[coluna], len(str(valor)))
+            indice += 1
 
-        und = (getattr(item, "unidade", "") or "").strip() or "un"
-        und = "un" if und.lower() == "und" else und
-
-        venda = _venda_texto(getattr(item, "preco_unitario", None))
-
-        ws.append(
-            [
-                getattr(item, "codigo", None) or "",
-                _REFERENCIA,
-                designacao,
-                _num(getattr(item, "altura", None)),
-                _num(getattr(item, "largura", None)),
-                _num(getattr(item, "profundidade", None)),
-                _num(getattr(item, "quantidade", None)),
-                und,
-                venda,
-            ]
-        )
-        if venda is not None:
-            ws.cell(row=ws.max_row, column=9).number_format = _FMT_TEXTO
-
-        # Linhas extra da descrição: só a coluna Designacao (C), restantes vazias.
-        for linha in linhas[1:]:
-            if linha.tipo == "vazia":
-                continue
-            if linha.tipo == "traco":
-                texto = f"- {linha.texto}"
-            elif linha.tipo == "estrela":
-                texto = f"* {linha.texto}"
-            elif linha.tipo == "titulo":
-                texto = linha.texto.upper()
-            else:
-                texto = linha.texto
-            ws.append(["", "", texto, None, None, None, None, None, None])
-
-    # Ajuste simples da largura das colunas (como no V2).
-    for col_cells in ws.columns:
-        max_len = max(len(str(cell.value or "")) for cell in col_cells)
-        ws.column_dimensions[col_cells[0].column_letter].width = min(
-            max(max_len + 2, 10), 60
+    for coluna, largura in enumerate(larguras):
+        folha.col(coluna).width = _UNIDADE_LARGURA * min(
+            max(largura + 2, _LARGURA_MIN), _LARGURA_MAX
         )
 
-    wb.save(str(output_path))
+    livro.save(str(output_path))
 
     return output_path

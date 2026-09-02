@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.domain import export_paths
 from app.domain.relatorio_totais import calcular_totais_relatorio
+from app.services.dashboard_pdf_service import gerar_pdf_dashboard
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
@@ -316,7 +317,8 @@ class OrcamentoExportService:
     def exportar_excel_phc(self, orcamento_versao_id: int) -> Path:
         """Exporta o Excel no formato PHC (folha "PHC") a partir do custeio gravado.
 
-        Grava ``{num}_{vv}_PHC.xlsx`` na pasta da versão, para importação no PHC.
+        Grava ``{num}_{vv}_PHC.xls`` na pasta da versão. É ``.xls`` (e não
+        ``.xlsx``) porque é esse o formato que o PHC importa sem reclamar.
         Levanta ``ValueError`` quando a pasta base não está configurada ou faltam
         dados da versão.
         """
@@ -337,9 +339,43 @@ class OrcamentoExportService:
 
         output = pasta / (
             f"{orcamento.num_orcamento}_"
-            f"{export_paths.subpasta_versao(orcamento.numero_versao)}_PHC.xlsx"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}_PHC.xls"
         )
         gerar_excel_phc(output, orcamento=orcamento, items=items)
+
+        return output
+
+    def exportar_dashboard_pdf(self, orcamento_versao_id: int) -> Path:
+        """Grava o PDF do dashboard (um gráfico por página) na pasta da versão."""
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        if orcamento is None:
+            raise ValueError("Orçamento não encontrado para esta versão.")
+
+        pasta = self.resolver_pasta_versao(orcamento_versao_id, criar=True)
+        if pasta is None:
+            raise ValueError(
+                "Defina a 'Pasta base dos Orcamentos' em Configurações → Caminhos."
+            )
+
+        resumo = RelatorioConsumosService(self.session).resumo_da_versao(
+            orcamento_versao_id
+        )
+        num_versao = (
+            f"{orcamento.num_orcamento}_"
+            f"{export_paths.subpasta_versao(orcamento.numero_versao)}"
+        )
+        cliente = (orcamento.cliente_nome or "").strip()
+        obra = (orcamento.obra or "").strip()
+
+        output = pasta / f"Dashboard_{num_versao}.pdf"
+        gerar_pdf_dashboard(
+            output,
+            resumo,
+            titulo=f"Dashboard do orçamento {num_versao}",
+            subtitulo=" · ".join(parte for parte in (cliente, obra) if parte),
+        )
 
         return output
 

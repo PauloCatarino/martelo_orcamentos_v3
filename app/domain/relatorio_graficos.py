@@ -135,6 +135,24 @@ def dados_maquinas(maquinas) -> GraficoBarras:
     )
 
 
+#: Os nomes das categorias, como saem de ``consumos.distribuicao_custos``.
+#: Um teste garante que continuam a bater certo -- se lá mudarem e aqui não, a
+#: pizza por blocos passava a somar zero em silêncio.
+CATEGORIA_PLACAS = "Placas"
+CATEGORIA_ORLAS = "Orlas"
+CATEGORIA_FERRAGENS = "Ferragens"
+CATEGORIA_MAQUINAS = "Máquinas / MO"
+CATEGORIA_ACABAMENTOS = "Acabamentos"
+CATEGORIA_MARGENS = "Margens"
+
+#: As três que o PHC/Martelo trata como um único bloco de matéria-prima no
+#: cálculo do preço (``BlocosCusto.bloco_mp``).
+CATEGORIAS_MATERIAL = (CATEGORIA_PLACAS, CATEGORIA_ORLAS, CATEGORIA_FERRAGENS)
+
+#: Como se chama esse bloco na pizza dos blocos.
+NOME_MATERIAL = "Material (placas + orlas + ferragens)"
+
+
 def dados_distribuicao(distribuicao) -> GraficoPizza:
     """Distribuição de custos: uma fatia por categoria com euros > 0.
 
@@ -150,4 +168,40 @@ def dados_distribuicao(distribuicao) -> GraficoPizza:
         titulo="Distribuição de custos",
         fatias=fatias,
         total_venda=distribuicao.total_venda,
+    )
+
+
+def dados_distribuicao_blocos(distribuicao) -> GraficoPizza:
+    """A mesma venda, vista pelos blocos com que o preço é calculado.
+
+    Material (placas + orlas + ferragens), máquinas/mão de obra, acabamentos e
+    margem. Responde a uma pergunta diferente da outra pizza: não "que material
+    é que pesa mais", mas "quanto disto é material, quanto é trabalho e quanto
+    é margem".
+
+    Os acabamentos são um bloco de custo próprio no cálculo do preço, por isso
+    têm fatia própria — mas na maioria dos orçamentos estão a zero e, como
+    qualquer categoria a zero, não desenham fatia nenhuma.
+    """
+    por_nome = {c.nome: c for c in distribuicao.categorias}
+
+    material = sum(
+        (por_nome[nome].euros for nome in CATEGORIAS_MATERIAL if nome in por_nome),
+        _ZERO,
+    )
+    total = distribuicao.total_venda
+
+    def pct(euros):
+        return (euros / total * Decimal("100")) if total > _ZERO else _ZERO
+
+    fatias = [FatiaPizza(NOME_MATERIAL, material, pct(material))]
+    for nome in (CATEGORIA_MAQUINAS, CATEGORIA_ACABAMENTOS, CATEGORIA_MARGENS):
+        categoria = por_nome.get(nome)
+        if categoria is not None:
+            fatias.append(FatiaPizza(nome, categoria.euros, categoria.pct))
+
+    return GraficoPizza(
+        titulo="Material, mão de obra e margem",
+        fatias=[f for f in fatias if f.euros > _ZERO],
+        total_venda=total,
     )

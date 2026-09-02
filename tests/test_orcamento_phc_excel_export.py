@@ -1,13 +1,27 @@
-"""Teste do gerador do Excel no formato PHC (C2b)."""
+"""O Excel do orçamento no formato que o PHC importa.
+
+Duas coisas que o PHC exige e que aqui se garantem: o ficheiro é mesmo um
+``.xls`` (não um ``.xlsx`` com outro nome), e nenhuma linha da designação passa
+dos 55 caracteres — o que passa disso o PHC corta em silêncio.
+"""
 
 from __future__ import annotations
 
 from decimal import Decimal
 from types import SimpleNamespace
 
-from openpyxl import load_workbook
+from app.domain.texto_phc import MAX_CARACTERES_LINHA
+from app.services.orcamento_phc_excel_export import (
+    gerar_excel_phc,
+    linhas_do_item,
+)
 
-from app.services.orcamento_phc_excel_export import gerar_excel_phc
+#: Os primeiros bytes de um ficheiro OLE (o formato do .xls). Um .xlsx começa
+#: por "PK" — é assim que se distingue um dos outros sem abrir o Excel.
+ASSINATURA_XLS = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+COL_REF, COL_REFERENCIA, COL_DESIGNACAO = 0, 1, 2
+COL_ALTURA, COL_LARGURA, COL_PROF, COL_QTD, COL_UND, COL_VENDA = 3, 4, 5, 6, 7, 8
 
 
 def _items() -> list[SimpleNamespace]:
@@ -41,85 +55,91 @@ def _items() -> list[SimpleNamespace]:
     ]
 
 
-def test_gerar_excel_phc_cria_folha_e_cabecalho(tmp_path) -> None:
-    output = tmp_path / "260001_01_PHC.xlsx"
+def test_o_ficheiro_e_mesmo_um_xls(tmp_path) -> None:
+    """Um .xlsx renomeado para .xls é recusado pelo PHC."""
+    output = tmp_path / "260001_01_PHC.xls"
     orcamento = SimpleNamespace(num_orcamento="260001", numero_versao=1)
 
     resultado = gerar_excel_phc(output, orcamento=orcamento, items=_items())
 
     assert resultado == output
     assert output.exists()
-
-    wb = load_workbook(output)
-    assert wb.sheetnames == ["PHC"]
-    ws = wb["PHC"]
-
-    cabecalho = [cell.value for cell in ws[1]]
-    assert cabecalho == [
-        "RefCliente",
-        "Referencia",
-        "Designacao",
-        "XAltura",
-        "YLargura",
-        "ZEspessura",
-        "Qtd",
-        "Und",
-        "Venda",
-    ]
+    assert output.read_bytes()[:8] == ASSINATURA_XLS
 
 
-def test_gerar_excel_phc_linha_principal_e_extra(tmp_path) -> None:
-    output = tmp_path / "260001_01_PHC.xlsx"
-    orcamento = SimpleNamespace(num_orcamento="260001", numero_versao=1)
+def test_linha_principal_leva_o_item_todo() -> None:
+    linhas = linhas_do_item(_items()[0])
+    principal = linhas[0]
 
-    gerar_excel_phc(output, orcamento=orcamento, items=_items())
-
-    ws = load_workbook(output)["PHC"]
-
-    # Linha 2: linha principal do 1.º item.
-    assert ws.cell(row=2, column=1).value == "RP_01(A)"
-    assert ws.cell(row=2, column=2).value == "MOB"
-    designacao = ws.cell(row=2, column=3).value
-    assert designacao.startswith("COMP. MOB. - ")
-    assert "MOVEL DE COZINHA EM TERMOLAMINADO" in designacao
-    # Dimensões e quantidade como números.
-    assert ws.cell(row=2, column=4).value == 720
-    assert ws.cell(row=2, column=5).value == 600
-    assert ws.cell(row=2, column=6).value == 560
-    assert ws.cell(row=2, column=7).value == 2
+    assert principal[COL_REF] == "RP_01(A)"
+    assert principal[COL_REFERENCIA] == "MOB"
+    assert principal[COL_DESIGNACAO].startswith("COMP. MOB. - ")
+    assert "MOVEL DE COZINHA EM TERMOLAMINADO" in principal[COL_DESIGNACAO]
+    assert principal[COL_ALTURA] == 720
+    assert principal[COL_LARGURA] == 600
+    assert principal[COL_PROF] == 560
+    assert principal[COL_QTD] == 2
     # "und" -> "un".
-    assert ws.cell(row=2, column=8).value == "un"
-    # Venda como TEXTO "1191,62" com number_format "@".
-    venda_cell = ws.cell(row=2, column=9)
-    assert venda_cell.value == "1191,62"
-    assert isinstance(venda_cell.value, str)
-    assert venda_cell.number_format == "@"
-
-    # Linhas extra: só a coluna C (Designacao) preenchida.
-    extra_traco = ws.cell(row=3, column=3).value
-    assert extra_traco == "- Puxador TIC-TAC"
-    assert ws.cell(row=3, column=1).value in (None, "")
-    assert ws.cell(row=3, column=9).value in (None, "")
-    extra_estrela = ws.cell(row=4, column=3).value
-    assert extra_estrela == "* Montado em obra"
-
-    # A linha vazia da descrição não gera linha extra: o 2.º item segue-se já.
-    assert ws.cell(row=5, column=1).value == "RP_02"
+    assert principal[COL_UND] == "un"
+    # Venda como TEXTO com vírgula decimal, para o PHC ler tal e qual.
+    assert principal[COL_VENDA] == "1191,62"
+    assert isinstance(principal[COL_VENDA], str)
 
 
-def test_gerar_excel_phc_item_sem_descricao_e_unidade(tmp_path) -> None:
-    output = tmp_path / "260001_01_PHC.xlsx"
-    orcamento = SimpleNamespace(num_orcamento="260001", numero_versao=1)
+def test_as_linhas_da_descricao_so_levam_a_designacao() -> None:
+    linhas = linhas_do_item(_items()[0])
+    extras = linhas[1:]
 
-    gerar_excel_phc(output, orcamento=orcamento, items=_items())
+    assert [linha[COL_DESIGNACAO] for linha in extras] == [
+        "- Puxador TIC-TAC",
+        "* Montado em obra",
+    ]
+    for linha in extras:
+        assert linha[COL_REF] == ""
+        assert linha[COL_VENDA] is None
+    # A linha vazia da descrição não gera linha nenhuma.
+    assert len(linhas) == 3
 
-    ws = load_workbook(output)["PHC"]
 
-    # 2.º item (linha 5): sem descrição -> só o prefixo sem traço final.
-    assert ws.cell(row=5, column=3).value == "COMP. MOB. -"
-    # Unidade vazia -> "un" por defeito.
-    assert ws.cell(row=5, column=8).value == "un"
-    # Altura/profundidade None ficam vazias; largura é número.
-    assert ws.cell(row=5, column=4).value in (None, "")
-    assert ws.cell(row=5, column=5).value == 800
-    assert ws.cell(row=5, column=9).value == "50,00"
+def test_item_sem_descricao_e_sem_unidade() -> None:
+    linhas = linhas_do_item(_items()[1])
+
+    assert len(linhas) == 1
+    assert linhas[0][COL_DESIGNACAO] == "COMP. MOB. -"
+    assert linhas[0][COL_UND] == "un"
+    assert linhas[0][COL_ALTURA] is None
+    assert linhas[0][COL_LARGURA] == 800
+    assert linhas[0][COL_VENDA] == "50,00"
+
+
+def test_nenhuma_linha_passa_dos_55_caracteres() -> None:
+    """O que passa de 55 o PHC corta — e ninguém dá por isso."""
+    item = SimpleNamespace(
+        codigo="RP_01",
+        descricao=(
+            "ROUPEIRO PORTAS ABRIR C/ INTERIOR EM AGL MLM B3822 ASM "
+            "19/16/8MM E FRENTES EM AGL MLM BRANCO B3768 MA 19MM\n"
+            "- 1 BLOCO DE 3 GAVETAS C/ CORREDIÇA EXTRAÇÃO TOTAL E TRAVÃO "
+            "AMORTECIDO NAS DUAS PONTAS"
+        ),
+        altura=Decimal("2540"),
+        largura=Decimal("900"),
+        profundidade=Decimal("550"),
+        quantidade=Decimal("1"),
+        unidade="un",
+        preco_unitario=Decimal("428.83"),
+    )
+
+    linhas = linhas_do_item(item)
+    designacoes = [linha[COL_DESIGNACAO] for linha in linhas]
+
+    assert all(len(texto) <= MAX_CARACTERES_LINHA for texto in designacoes)
+    # Partiu-se mesmo: o título sozinho já não cabia numa linha.
+    assert len(linhas) > 2
+    # E não se perdeu nada pelo caminho.
+    assert "B3768 MA 19MM" in " ".join(designacoes)
+    assert "AMORTECIDO NAS DUAS PONTAS" in " ".join(designacoes)
+    # As continuações continuam a ser linhas só de designação.
+    for linha in linhas[1:]:
+        assert linha[COL_REF] == ""
+        assert linha[COL_QTD] is None

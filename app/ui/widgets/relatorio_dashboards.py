@@ -1,16 +1,30 @@
-"""Dashboards (gráficos matplotlib embebidos) dos relatórios (fase 8W.3a/8W.3b).
+"""Dashboards (gráficos matplotlib embebidos) dos relatórios.
 
-Quatro gráficos de barras (placas / orlas / ferragens / máquinas) seguidos de um
-gráfico de pizza da distribuição de custos, empilhados numa área de scroll
-vertical. O matplotlib é opcional: quando não está instalado o widget mostra um
-aviso em vez dos gráficos, para o resto da página de relatórios continuar a
-funcionar. A modelação (pura) dos dados está em
-:mod:`app.domain.relatorio_graficos`.
+Cinco cartões numa área de scroll: placas, orlas, ferragens e máquinas/MO em
+barras deitadas, e no fim as duas leituras da distribuição de custos lado a
+lado — a de sempre (uma fatia por categoria) e a por blocos (material, mão de
+obra, acabamentos, margem).
+
+Cada cartão tem um cabeçalho com o total e a contagem, para o número que
+interessa não ter de ser somado de cabeça.
+
+O matplotlib é opcional: quando não está instalado o widget mostra um aviso em
+vez dos gráficos, para o resto da página de relatórios continuar a funcionar. A
+modelação (pura) dos dados está em :mod:`app.domain.relatorio_graficos` e o
+desenho em :mod:`app.services.dashboard_desenho`, partilhado com o PDF.
 """
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.domain import relatorio_graficos
 from app.ui import tema
@@ -36,26 +50,23 @@ except Exception as erro:  # noqa: BLE001
         f"{type(erro).__name__}: {erro}"
     )
 
-# Cores das barras a partir da paleta Lança Encanto.
-_COR_BARRA_1 = tema.CASTANHO_MEDIO
-_COR_BARRA_2 = tema.CASTANHO_ESCURO
+if FigureCanvas is not None:
+    from app.services import dashboard_desenho
 
-# Nº mínimo de "slots" no eixo X: com poucas categorias as barras não esticam.
-_MIN_SLOTS_X = 6
+#: Quantos pixéis vale uma polegada de figura, ao dar altura ao canvas.
+_PPP = 96
 
-# Abaixo desta percentagem a fatia é minúscula -> não desenha a % (evita
-# sobreposição em fatias pequeninas).
-_PCT_MIN_PIZZA = 3.0
+#: Altura fixa dos dois canvases das pizzas (em polegadas).
+ALTURA_PIZZA = 4.6
 
-# Paleta da pizza: tons de app.ui.tema, uma cor por fatia (cicla se preciso).
-_CORES_PIZZA = (
-    tema.CASTANHO_ESCURO,
-    tema.CASTANHO_MEDIO,
-    tema.PLACA_INTEIRA_FUNDO,
-    tema.BEGE_AREIA,
-    tema.CINZA_CASTANHO,
-    tema.BEGE_CLARO,
+#: As quatro áreas de barras: chave interna -> (título do cartão, unidade).
+_SECCOES_BARRAS = (
+    ("placas", "Placas"),
+    ("orlas", "Orlas"),
+    ("ferragens", "Ferragens"),
+    ("maquinas", "Máquinas / MO"),
 )
+
 
 def _mensagem_sem_graficos() -> str:
     """O que dizer quando nao ha' graficos -- a razao verdadeira."""
@@ -67,28 +78,91 @@ def _mensagem_sem_graficos() -> str:
         "Use 'Reportar problema' para nos enviar esta mensagem."
     )
 
-# Áreas de gráfico (chave interna -> título da secção), pela ordem de desenho.
-_SECCOES = (
-    ("placas", "Placas"),
-    ("orlas", "Orlas"),
-    ("ferragens", "Ferragens"),
-    ("maquinas", "Máquinas / MO"),
-    ("distribuicao", "Distribuição de Custos"),
-)
+
+def _contagem(grafico, singular: str, plural: str) -> str:
+    quantas = len(grafico.etiquetas)
+    return f"{quantas} {singular if quantas == 1 else plural}"
 
 
-def _formatar_pct_pizza(pct: float) -> str:
-    """Esconde as percentagens das fatias pequenas (abaixo de _PCT_MIN_PIZZA)."""
-    return f"{pct:.1f}%" if pct >= _PCT_MIN_PIZZA else ""
+def _total_barras(grafico) -> str:
+    """O total do gráfico: da última série, que é a que conta.
+
+    Nas placas a 1.ª série é o custo teórico e a 2.ª o que está no orçamento —
+    é o segundo que interessa somar.
+    """
+    if not grafico.series:
+        return ""
+    valores = [float(v) for v in grafico.series[-1].valores]
+    total = sum(valores)
+    if grafico.unidade == "€":
+        return format_currency(total)
+    return f"{total:,.2f}".replace(",", " ").replace(".", ",") + f" {grafico.unidade}"
+
+
+class CartaoGrafico(QFrame):
+    """Um gráfico com cabeçalho: título, contagem e total."""
+
+    def __init__(self, titulo: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("cartaoGrafico")
+        self.setStyleSheet(
+            f"QFrame#cartaoGrafico {{ background-color: #FFFFFF;"
+            f" border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 6px; }}"
+        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        fora = QVBoxLayout(self)
+        fora.setContentsMargins(0, 0, 0, 0)
+        fora.setSpacing(0)
+
+        cabecalho = QWidget()
+        cabecalho.setStyleSheet(
+            f"background-color: {tema.BEGE_AREIA};"
+            f" border-bottom: 1px solid {tema.CINZA_CASTANHO};"
+            " border-top-left-radius: 6px; border-top-right-radius: 6px;"
+        )
+        linha = QHBoxLayout(cabecalho)
+        linha.setContentsMargins(12, 7, 12, 7)
+        linha.setSpacing(10)
+
+        self.titulo_label = QLabel(titulo)
+        self.titulo_label.setStyleSheet(
+            f"font-weight: bold; color: {tema.CASTANHO_ESCURO}; background: transparent;"
+        )
+        self.contagem_label = QLabel("")
+        self.contagem_label.setStyleSheet(
+            f"color: {tema.CASTANHO_MEDIO}; background: transparent;"
+        )
+        self.total_label = QLabel("")
+        self.total_label.setStyleSheet(
+            f"font-weight: bold; color: {tema.CASTANHO_ESCURO}; background: transparent;"
+        )
+        linha.addWidget(self.titulo_label)
+        linha.addWidget(self.contagem_label)
+        linha.addStretch(1)
+        linha.addWidget(self.total_label)
+        fora.addWidget(cabecalho)
+
+        self.corpo = QWidget()
+        self.corpo_layout = QVBoxLayout(self.corpo)
+        self.corpo_layout.setContentsMargins(8, 8, 8, 8)
+        self.corpo_layout.setSpacing(8)
+        fora.addWidget(self.corpo)
+
+    def descrever(self, contagem: str, total: str) -> None:
+        self.contagem_label.setText(contagem)
+        self.total_label.setText(total)
 
 
 class DashboardsWidget(QWidget):
-    """Pilha vertical de quatro gráficos de barras + pizza de distribuição."""
+    """Cartões com os gráficos do orçamento, numa área de scroll."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
         self._canvases: dict[str, object] = {}
+        self._cartoes: dict[str, CartaoGrafico] = {}
+        self._resumo = None
 
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
@@ -107,162 +181,104 @@ class DashboardsWidget(QWidget):
             return
 
         conteudo = QWidget()
-        conteudo_layout = QVBoxLayout()
+        conteudo_layout = QVBoxLayout(conteudo)
         conteudo_layout.setContentsMargins(0, 0, 0, 0)
         conteudo_layout.setSpacing(12)
-        for chave, titulo in _SECCOES:
-            conteudo_layout.addWidget(self._titulo_seccao(titulo))
-            # layout="constrained" recalcula o espaçamento ao redimensionar (as
-            # etiquetas do eixo X deixam de ficar cortadas); a pizza leva mais
-            # altura para a legenda por baixo.
-            altura = 4.2 if chave == "distribuicao" else 3.0
-            canvas = FigureCanvas(Figure(figsize=(6, altura), layout="constrained"))
+
+        for chave, titulo in _SECCOES_BARRAS:
+            cartao = CartaoGrafico(titulo)
+            canvas = self._novo_canvas(dashboard_desenho.ALTURA_MINIMA)
+            cartao.corpo_layout.addWidget(canvas)
+            self._cartoes[chave] = cartao
             self._canvases[chave] = canvas
-            conteudo_layout.addWidget(canvas)
+            conteudo_layout.addWidget(cartao)
+
+        cartao_pizzas = CartaoGrafico("Distribuição de custos")
+        lado_a_lado = QHBoxLayout()
+        lado_a_lado.setContentsMargins(0, 0, 0, 0)
+        lado_a_lado.setSpacing(8)
+        for chave in ("distribuicao", "distribuicao_blocos"):
+            canvas = self._novo_canvas(ALTURA_PIZZA)
+            self._canvases[chave] = canvas
+            lado_a_lado.addWidget(canvas, 1)
+        cartao_pizzas.corpo_layout.addLayout(lado_a_lado)
+        self._cartoes["distribuicao"] = cartao_pizzas
+        conteudo_layout.addWidget(cartao_pizzas)
+
         conteudo_layout.addStretch()
-        conteudo.setLayout(conteudo_layout)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(conteudo)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ border: 1px solid {tema.CINZA_CASTANHO};"
+            " border-radius: 4px; background-color: #FBF9F6; }"
+        )
 
         layout.addWidget(scroll, stretch=1)
         self.setLayout(layout)
 
+    def _novo_canvas(self, altura_polegadas: float):
+        # layout="constrained" recalcula o espaçamento ao redimensionar, para as
+        # etiquetas não ficarem cortadas.
+        canvas = FigureCanvas(
+            Figure(figsize=(7, altura_polegadas), layout="constrained")
+        )
+        canvas.setMinimumHeight(int(altura_polegadas * _PPP))
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        return canvas
+
     # ----- API pública -----
 
     def atualizar(self, resumo) -> None:
-        """Redesenha os gráficos (4 barras + pizza) a partir de um ResumoConsumos."""
+        """Redesenha os gráficos a partir de um ``ResumoConsumos``."""
         if FigureCanvas is None:
             return
-        self._desenhar(
-            self._canvases["placas"],
-            relatorio_graficos.dados_placas(resumo.placas),
-        )
-        self._desenhar(
-            self._canvases["orlas"],
-            relatorio_graficos.dados_orlas(resumo.orlas),
-        )
-        self._desenhar(
-            self._canvases["ferragens"],
-            relatorio_graficos.dados_ferragens(resumo.ferragens),
-        )
-        self._desenhar(
-            self._canvases["maquinas"],
-            relatorio_graficos.dados_maquinas(resumo.maquinas),
-        )
-        self._desenhar_pizza(
-            self._canvases["distribuicao"],
-            relatorio_graficos.dados_distribuicao(resumo.distribuicao),
-        )
+        self._resumo = resumo
 
-    # ----- Desenho -----
-
-    def _desenhar(self, canvas, grafico) -> None:
-        """Desenha um GraficoBarras (1 ou 2 séries) num canvas.
-
-        1 série -> barras simples; 2 séries -> barras agrupadas (com offset) e
-        legenda. Os Decimal são convertidos para float ao desenhar. Sem etiquetas
-        -> texto centrado "Sem dados" (sem barras).
-        """
-        figura = canvas.figure
-        figura.clear()
-        eixo = figura.add_subplot(111)
-        eixo.set_title(grafico.titulo, color=tema.CASTANHO_ESCURO)
-
-        if not grafico.etiquetas:
-            eixo.text(
-                0.5, 0.5, "Sem dados",
-                ha="center", va="center", transform=eixo.transAxes,
-                color=tema.CASTANHO_MEDIO,
+        graficos = self.graficos_de_barras(resumo)
+        contagens = {
+            "placas": ("referência", "referências"),
+            "orlas": ("referência", "referências"),
+            "ferragens": ("referência", "referências"),
+            "maquinas": ("centro", "centros"),
+        }
+        for chave, grafico in graficos.items():
+            singular, plural = contagens[chave]
+            self._cartoes[chave].descrever(
+                _contagem(grafico, singular, plural), _total_barras(grafico)
             )
-            eixo.set_xticks([])
-            eixo.set_yticks([])
+            canvas = self._canvases[chave]
+            # A altura acompanha o número de linhas: oito ferragens já não
+            # ficam espremidas em dois centímetros.
+            altura = dashboard_desenho.altura_grafico(grafico)
+            canvas.figure.set_size_inches(7, altura)
+            canvas.setMinimumHeight(int(altura * _PPP))
+            canvas.figure.clear()
+            dashboard_desenho.desenhar_barras(canvas.figure, grafico)
             canvas.draw_idle()
-            return
 
-        posicoes = list(range(len(grafico.etiquetas)))
-        cores = (_COR_BARRA_1, _COR_BARRA_2)
-
-        if len(grafico.series) <= 1:
-            valores = [
-                float(v) for v in (grafico.series[0].valores if grafico.series else [])
-            ]
-            eixo.bar(posicoes, valores, width=0.6, color=_COR_BARRA_1)
-        else:
-            largura = 0.8 / len(grafico.series)
-            for indice, serie in enumerate(grafico.series):
-                deslocamento = (indice - (len(grafico.series) - 1) / 2) * largura
-                valores = [float(v) for v in serie.valores]
-                eixo.bar(
-                    [p + deslocamento for p in posicoes],
-                    valores,
-                    width=largura,
-                    label=serie.nome,
-                    color=cores[indice % len(cores)],
-                )
-            eixo.legend()
-
-        eixo.set_xticks(posicoes)
-        eixo.set_xticklabels(
-            grafico.etiquetas, rotation=30, ha="right", rotation_mode="anchor"
+        pizza = relatorio_graficos.dados_distribuicao(resumo.distribuicao)
+        blocos = relatorio_graficos.dados_distribuicao_blocos(resumo.distribuicao)
+        self._cartoes["distribuicao"].descrever(
+            "as duas leituras do mesmo total",
+            format_currency(resumo.distribuicao.total_venda),
         )
-        # Reserva um nº mínimo de slots para as barras não esticarem com poucas
-        # categorias.
-        eixo.set_xlim(-0.6, max(len(grafico.etiquetas), _MIN_SLOTS_X) - 0.4)
-        eixo.set_ylabel(grafico.unidade)
-
-        canvas.draw_idle()
-
-    def _desenhar_pizza(self, canvas, grafico) -> None:
-        """Desenha um GraficoPizza (distribuição de custos) num canvas.
-
-        Uma fatia por categoria, com percentagem dentro da fatia e legenda
-        "<nome> — <valor>". Sem fatias -> texto centrado "Sem dados".
-        """
-        figura = canvas.figure
-        figura.clear()
-        eixo = figura.add_subplot(111)
-
-        if not grafico.fatias:
-            eixo.set_title(grafico.titulo, color=tema.CASTANHO_ESCURO)
-            eixo.text(
-                0.5, 0.5, "Sem dados",
-                ha="center", va="center", transform=eixo.transAxes,
-                color=tema.CASTANHO_MEDIO,
-            )
-            eixo.set_xticks([])
-            eixo.set_yticks([])
+        for chave, grafico in (
+            ("distribuicao", pizza),
+            ("distribuicao_blocos", blocos),
+        ):
+            canvas = self._canvases[chave]
+            canvas.figure.clear()
+            dashboard_desenho.desenhar_pizza(canvas.figure, grafico)
             canvas.draw_idle()
-            return
 
-        valores = [float(f.euros) for f in grafico.fatias]
-        cores = [
-            _CORES_PIZZA[i % len(_CORES_PIZZA)] for i in range(len(grafico.fatias))
-        ]
-        legendas = [
-            f"{f.nome} — {format_currency(f.euros)}" for f in grafico.fatias
-        ]
-
-        fatias, _textos, _autotextos = eixo.pie(
-            valores, autopct=_formatar_pct_pizza, colors=cores, pctdistance=0.8
-        )
-        eixo.set_title(
-            f"Distribuição de custos — Total de venda: "
-            f"{format_currency(grafico.total_venda)}",
-            color=tema.CASTANHO_ESCURO,
-        )
-        # Legenda por baixo: funciona melhor com constrained e deixa a pizza maior.
-        eixo.legend(
-            fatias, legendas, loc="upper center", bbox_to_anchor=(0.5, -0.02), ncol=3
-        )
-        eixo.axis("equal")
-
-        canvas.draw_idle()
-
-    def _titulo_seccao(self, texto: str) -> QLabel:
-        label = QLabel(texto)
-        label.setStyleSheet(
-            f"font-weight: bold; color: {tema.CASTANHO_ESCURO}; padding-top: 4px;"
-        )
-        return label
+    @staticmethod
+    def graficos_de_barras(resumo) -> dict:
+        """Os quatro gráficos de barras, pela ordem em que aparecem."""
+        return {
+            "placas": relatorio_graficos.dados_placas(resumo.placas),
+            "orlas": relatorio_graficos.dados_orlas(resumo.orlas),
+            "ferragens": relatorio_graficos.dados_ferragens(resumo.ferragens),
+            "maquinas": relatorio_graficos.dados_maquinas(resumo.maquinas),
+        }

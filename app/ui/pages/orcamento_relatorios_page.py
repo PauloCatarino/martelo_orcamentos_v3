@@ -342,7 +342,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self.operacoes_tab = self._criar_tab_operacoes()
         self.tabs.addTab(self.operacoes_tab, "Operações")
         self.tabs.addTab(self._criar_tab_simplificado(), "Custeio Simplificado")
-        self.tabs.addTab(self.dashboards, "Dashboards")
+        self.tabs.addTab(self._criar_tab_dashboards(), "Dashboards")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -358,6 +358,27 @@ class OrcamentoRelatoriosPage(QWidget):
         self.carregar()
 
     # ----- Layout: tab 1 (budget report) -----
+
+    def _criar_tab_dashboards(self) -> QWidget:
+        """Os gráficos, com o botão que os grava em PDF na pasta da versão."""
+        self.exportar_dashboard_button = QPushButton("Exportar Dashboard em PDF")
+        self.exportar_dashboard_button.setToolTip(
+            "Grava estes gráficos em PDF na pasta desta versão — um gráfico "
+            "por página, A4 deitado."
+        )
+        self.exportar_dashboard_button.clicked.connect(self._exportar_dashboard_pdf)
+
+        barra = QHBoxLayout()
+        barra.addStretch()
+        barra.addWidget(self.exportar_dashboard_button)
+
+        tab = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(barra)
+        layout.addWidget(self.dashboards, stretch=1)
+        tab.setLayout(layout)
+        return tab
 
     def _criar_tab_relatorio(self) -> QWidget:
         cliente_box = QFormLayout()
@@ -461,9 +482,25 @@ class OrcamentoRelatoriosPage(QWidget):
             "Gera/anexa o PDF do orçamento e abre o email para confirmação antes de enviar."
         )
         self.enviar_email_button.clicked.connect(self._enviar_email)
+        self.exportar_tudo_button = QPushButton("Exportar TUDO")
+        self.exportar_tudo_button.setToolTip(
+            "Faz de uma vez o que os botões seguintes fazem um a um: PDF, "
+            "Excel, Resumo de Custos, Excel PHC, Plano de Corte e Dashboard.\n"
+            "Grava tudo na pasta desta versão e diz no fim o que ficou feito."
+        )
+        self.exportar_tudo_button.setStyleSheet(
+            f"QPushButton {{ background-color: {tema.CASTANHO_ESCURO};"
+            " color: #FFFFFF; font-weight: bold; padding: 5px 14px;"
+            " border-radius: 4px; }"
+            f"QPushButton:hover {{ background-color: {tema.CASTANHO_MEDIO}; }}"
+            f"QPushButton:disabled {{ background-color: {tema.CINZA_CASTANHO};"
+            f" color: {tema.CINZA_ESCURO}; }}"
+        )
+        self.exportar_tudo_button.clicked.connect(self._exportar_tudo)
         barra = QHBoxLayout()
         barra.addStretch()
         barra.addWidget(self.abrir_pasta_button)
+        barra.addWidget(self.exportar_tudo_button)
         barra.addWidget(self.exportar_pdf_button)
         barra.addWidget(self.exportar_excel_button)
         barra.addWidget(self.exportar_resumo_button)
@@ -1079,6 +1116,82 @@ class OrcamentoRelatoriosPage(QWidget):
         QMessageBox.information(
             self, "Resumo de Custos", f"Resumo de Custos criado em:\n{caminho}"
         )
+
+    def _exportar_dashboard_pdf(self) -> None:
+        """Grava os gráficos do dashboard em PDF, na pasta da versão."""
+        diario_bordo.registar_acao("Exportar dashboard em PDF")
+        if not self._avisar_custeio_desatualizado("exportar o Dashboard"):
+            return
+        try:
+            with SessionLocal() as session:
+                caminho = OrcamentoExportService(session).exportar_dashboard_pdf(
+                    self.orcamento_versao_id
+                )
+        except (ValueError, SQLAlchemyError, RuntimeError, OSError) as erro:
+            QMessageBox.critical(
+                self,
+                "Dashboard",
+                "Não foi possível exportar o Dashboard:\n"
+                f"{explicar_erro_de_ficheiro(erro)}",
+            )
+            return
+
+        QMessageBox.information(self, "Dashboard", f"Dashboard criado em:\n{caminho}")
+
+    #: O que o botão "Exportar TUDO" faz, pela ordem por que aparece na barra.
+    #: Cada entrada é (nome para o utilizador, método do serviço).
+    EXPORTACOES_TODAS = (
+        ("PDF do orçamento", "exportar_pdf_orcamento"),
+        ("Excel do orçamento", "exportar_excel_orcamento"),
+        ("Resumo de Custos", "exportar_resumo_custos"),
+        ("Excel para o PHC", "exportar_excel_phc"),
+        ("Plano de Corte", "exportar_plano_corte"),
+        ("Dashboard", "exportar_dashboard_pdf"),
+    )
+
+    def _exportar_tudo(self) -> None:
+        """Corre as seis exportações de uma vez e resume o que ficou feito.
+
+        Uma que falhe não pára as outras: mais vale ficar com cinco ficheiros e
+        saber qual é que faltou do que não ficar com nenhum.
+        """
+        diario_bordo.registar_acao("Exportar tudo")
+        if not self._avisar_custeio_desatualizado("exportar tudo"):
+            return
+
+        feitos: list[str] = []
+        falhados: list[str] = []
+        pasta = None
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                servico = OrcamentoExportService(session)
+                for nome, metodo in self.EXPORTACOES_TODAS:
+                    try:
+                        caminho = getattr(servico, metodo)(self.orcamento_versao_id)
+                    except Exception as erro:  # noqa: BLE001 - continuar a lista
+                        falhados.append(f"{nome}: {explicar_erro_de_ficheiro(erro)}")
+                        continue
+                    feitos.append(f"{nome}  →  {Path(caminho).name}")
+                    pasta = Path(caminho).parent
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        linhas = []
+        if feitos:
+            linhas.append(f"Ficaram gravados {len(feitos)} ficheiros:")
+            linhas.extend(f"  • {texto}" for texto in feitos)
+        if pasta is not None:
+            linhas.extend(["", f"Na pasta: {pasta}"])
+        if falhados:
+            linhas.extend(["", "Estes não deram:"])
+            linhas.extend(f"  • {texto}" for texto in falhados)
+
+        texto = "\n".join(linhas) or "Não havia nada para exportar."
+        if falhados:
+            QMessageBox.warning(self, "Exportar tudo", texto)
+        else:
+            QMessageBox.information(self, "Exportar tudo", texto)
 
     def _enviar_email(self) -> None:
         """Send the budget PDF by email and register the send in history."""

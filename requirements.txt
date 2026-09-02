@@ -14,3 +14,4 @@ pywin32
 sentence-transformers
 pypdf
 rectpack
+xlwt>=1.3

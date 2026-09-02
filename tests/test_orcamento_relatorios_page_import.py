@@ -207,11 +207,11 @@ def test_dashboards_tab_e_widget() -> None:
 
 def test_formatar_pct_pizza_esconde_fatias_pequenas() -> None:
     # 8W.3c: percentagens abaixo de _PCT_MIN_PIZZA não são desenhadas.
-    from app.ui.widgets.relatorio_dashboards import _formatar_pct_pizza
+    from app.services.dashboard_desenho import _formatar_pct
 
-    assert _formatar_pct_pizza(0.6) == ""
-    assert _formatar_pct_pizza(3.0) == "3.0%"
-    assert _formatar_pct_pizza(17.7) == "17.7%"
+    assert _formatar_pct(0.6) == ""
+    assert _formatar_pct(3.0) == "3.0%"
+    assert _formatar_pct(17.7) == "17.7%"
 
 
 def test_detail_page_wires_relatorios_tab() -> None:
