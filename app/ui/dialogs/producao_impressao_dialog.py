@@ -409,7 +409,13 @@ class ProducaoImpressaoDialog(QDialog):
             duplex.setCheckState(
                 Qt.CheckState.Checked if documento.duplex else Qt.CheckState.Unchecked
             )
-            duplex.setToolTip("Imprimir frente e verso")
+            duplex.setToolTip(
+                "Imprimir frente e verso.\n"
+                "A folha vira pela margem que o formato pede, sem ter de a "
+                "escolher: A4 pela margem MAIOR, A3 pela margem MENOR.\n"
+                "Num documento com folhas dos dois tamanhos (o plano de corte), "
+                "cada uma vira à sua maneira."
+            )
             self.tabela.setItem(linha, _COL_DUPLEX, duplex)
 
             cor = QComboBox()

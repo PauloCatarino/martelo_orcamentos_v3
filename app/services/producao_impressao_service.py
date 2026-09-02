@@ -159,6 +159,16 @@ PASTAS_IGNORADAS = {"mails", "imagens", "excels"}
 #: encontrava o formato pelo nome e imprimia no papel por defeito.
 IDS_PAPEL_WINDOWS = {"A4": 9, "A3": 8}
 
+#: Por que margem se vira a folha no duplex, conforme o formato: o **A4** vira
+#: pela margem MAIOR e o **A3** pela margem MENOR. Dizer só "duplex" deixava a
+#: escolha ao driver da impressora, que virava tudo da mesma maneira e punha o
+#: verso das folhas A3 de pernas para o ar. Os nomes são os que o SumatraPDF
+#: aceita em ``-print-settings``.
+DUPLEX_POR_PAPEL = {"A4": "duplexlong", "A3": "duplexshort"}
+
+#: Quando não se sabe o formato (PDF ilegível), deixa-se a decisão ao driver.
+DUPLEX_INDEFINIDO = "duplex"
+
 #: Windows: DC_PAPERNAMES e DC_PAPERS nas capacidades do driver.
 _DC_PAPERS = 2
 _DC_PAPERNAMES = 16
@@ -722,9 +732,10 @@ def definicoes_sumatra(
     Vai sempre ``disable-auto-rotation``: por defeito o SumatraPDF roda a
     página para "encaixar" melhor no papel e essa rotação passa por cima da
     orientação pedida — era o que punha a folha A4 do plano na vertical.
-    """
-    extras = _extras_sumatra(documento)
 
+    O duplex é decidido por comando e não por documento: cada bloco de páginas
+    vira pela margem que o SEU formato pede (A4 pela maior, A3 pela menor).
+    """
     if not documento.segue_o_pdf:
         definicoes = []
         identificador = id_papel(documento.papel, formatos)
@@ -734,13 +745,13 @@ def definicoes_sumatra(
             definicoes.append(_orientacao_sumatra(documento.orientacao))
         definicoes.append("fit")
         definicoes.append("disable-auto-rotation")
-        return [",".join(definicoes + extras)]
+        return [",".join(definicoes + _extras_sumatra(documento, documento.papel))]
 
     grupos = _grupos_de_paginas(documento.geometria_paginas)
     if not grupos:
         # Sem conseguir ler as páginas, deixa-se a rotação automática fazer o
         # seu trabalho: é melhor do que impor uma orientação às cegas.
-        return [",".join(["shrink"] + extras)]
+        return [",".join(["shrink"] + _extras_sumatra(documento))]
 
     comandos = []
     for intervalo, geometria in grupos:
@@ -753,7 +764,9 @@ def definicoes_sumatra(
         # necessário se o desenho bater nas margens que a impressora não pinta.
         definicoes.append("shrink")
         definicoes.append("disable-auto-rotation")
-        comandos.append(",".join(definicoes + extras))
+        comandos.append(
+            ",".join(definicoes + _extras_sumatra(documento, geometria.papel))
+        )
     return comandos
 
 
@@ -820,10 +833,29 @@ def _orientacao_sumatra(orientacao: str) -> str:
     return "landscape" if orientacao.casefold().startswith("h") else "portrait"
 
 
-def _extras_sumatra(documento: DocumentoImpressao) -> list[str]:
+def modo_duplex(papel: Optional[str]) -> str:
+    """Definição de duplex do SumatraPDF para um formato de papel.
+
+    A4 vira pela margem maior, A3 pela margem menor. Um formato desconhecido
+    (ou "Do PDF" sem se conseguir ler o PDF) devolve o ``duplex`` genérico, que
+    é o que se fazia antes: mais vale deixar o driver decidir do que virar a
+    folha ao contrário por adivinhação.
+    """
+    return DUPLEX_POR_PAPEL.get((papel or "").strip().upper(), DUPLEX_INDEFINIDO)
+
+
+def _extras_sumatra(
+    documento: DocumentoImpressao, papel: Optional[str] = None
+) -> list[str]:
+    """Opções que não dependem do papel — exceto o duplex, que depende.
+
+    ``papel`` é o formato daquele comando: o forçado na coluna Papel, ou o da
+    página quando se segue o PDF. Um documento com folhas A4 e A3 (o plano de
+    corte) leva um comando por formato, cada um com o seu modo de duplex.
+    """
     extras = []
     if documento.duplex:
-        extras.append("duplex")
+        extras.append(modo_duplex(papel))
     if documento.cor.casefold() in {"pb", "monocromatico", "monochrome"}:
         extras.append("monochrome")
     return extras

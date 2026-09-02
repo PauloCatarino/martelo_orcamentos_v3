@@ -302,11 +302,12 @@ def test_definicoes_sumatra_por_modo(tmp_path: Path) -> None:
     projeto = por_nome["2_Projeto_Producao.pdf"]
     assert svc.definicoes_sumatra(projeto) == ["paperkind=9,landscape,fit,disable-auto-rotation"]
 
-    # Frente e verso e preto-e-branco entram no fim das definições.
+    # Frente e verso e preto-e-branco entram no fim das definições. O projeto
+    # é A4, por isso o duplex vira pela margem maior (duplexlong).
     projeto.duplex = True
     projeto.cor = "pb"
     assert svc.definicoes_sumatra(projeto) == [
-        "paperkind=9,landscape,fit,disable-auto-rotation,duplex,monochrome"
+        "paperkind=9,landscape,fit,disable-auto-rotation,duplexlong,monochrome"
     ]
 
     # Forçar vertical continua possível para quem quiser.
