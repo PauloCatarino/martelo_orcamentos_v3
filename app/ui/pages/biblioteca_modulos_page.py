@@ -44,6 +44,7 @@ from app.domain.modulo_imagem import copiar_imagem_para_pasta
 from app.domain.modulo_pesquisa import modulo_corresponde, termo_tokens
 from app.services.def_modulo_categoria_service import DefModuloCategoriaService
 from app.services.def_modulo_service import (
+    CriarDefModuloData,
     DefModuloService,
     EditarDefModuloCabecalhoData,
 )
@@ -139,17 +140,15 @@ class BibliotecaModulosPage(QWidget):
         )
 
         self.editar_button = QPushButton("Editar")
-        self.editar_button.setToolTip("Editar o cabeçalho do módulo selecionado")
+        self.editar_button.setToolTip(
+            "Editar o cabeçalho do módulo selecionado.\n"
+            "É também aqui que se faz «Gravar como…» — uma cópia do módulo "
+            "para si ou para todos, sem mexer no original."
+        )
         self.editar_button.clicked.connect(self.editar_modulo)
         self.eliminar_button = QPushButton("Eliminar")
         self.eliminar_button.setToolTip("Eliminar o módulo selecionado")
         self.eliminar_button.clicked.connect(self.eliminar_modulo)
-        self.converter_button = QPushButton("Converter Âmbito")
-        self.converter_button.setToolTip(
-            "Converter o módulo entre Utilizador e Global (reversível; "
-            "módulos globais são geridos pelo administrador)"
-        )
-        self.converter_button.clicked.connect(self.converter_ambito)
         self.ver_linhas_button = QPushButton("Ver linhas")
         self.ver_linhas_button.setToolTip("Ver as linhas do módulo (só leitura)")
         self.ver_linhas_button.clicked.connect(self.ver_linhas)
@@ -167,7 +166,6 @@ class BibliotecaModulosPage(QWidget):
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.editar_button)
         buttons_layout.addWidget(self.eliminar_button)
-        buttons_layout.addWidget(self.converter_button)
         buttons_layout.addWidget(self.ver_linhas_button)
         buttons_layout.addWidget(self.expandir_button)
         buttons_layout.addWidget(self.atualizar_button)
@@ -501,56 +499,6 @@ class BibliotecaModulosPage(QWidget):
         if dialog.alterado:
             self.carregar()
 
-    def converter_ambito(self) -> None:
-        """Convert the selected module between Utilizador and Global."""
-        item = self._modulo_selecionado()
-        if item is None:
-            self.status_label.setText("Selecione um módulo para converter.")
-            return
-
-        modulo = item.modulo
-        if not self._pode_gerir(modulo):
-            self._avisar_sem_permissao()
-            return
-
-        atual = normalize_modulo_ambito(modulo.ambito)
-        novo = AMBITO_UTILIZADOR if atual == AMBITO_GLOBAL else AMBITO_GLOBAL
-        rotulo_novo = MODULO_AMBITO_LABELS[novo]
-        resposta = QMessageBox.question(
-            self,
-            "Converter Âmbito",
-            f"Converter o módulo {modulo.codigo} de "
-            f"{MODULO_AMBITO_LABELS[atual]} para {rotulo_novo}?\n\n"
-            "A conversão é reversível.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if resposta != QMessageBox.StandardButton.Yes:
-            return
-
-        utilizador = app_session.current_user
-        try:
-            with SessionLocal() as session:
-                DefModuloService(session).converter_ambito(
-                    modulo.id,
-                    novo,
-                    acting_user_id=(
-                        utilizador.id if utilizador is not None else None
-                    ),
-                    is_admin=is_admin(utilizador),
-                )
-        except ValueError as error:
-            self.status_label.setText(str(error))
-            return
-        except SQLAlchemyError:
-            self.status_label.setText("Não foi possível converter o módulo.")
-            return
-
-        self.carregar()
-        self.status_label.setText(
-            f"Módulo {modulo.codigo} convertido para {rotulo_novo}."
-        )
-
     def editar_modulo(self) -> None:
         """Edit the selected module's header."""
         item = self._modulo_selecionado()
@@ -559,9 +507,9 @@ class BibliotecaModulosPage(QWidget):
             return
 
         modulo = item.modulo
-        if not self._pode_gerir(modulo):
-            self._avisar_sem_permissao()
-            return
+        # A caixa abre para toda a gente: quem não pode mexer num módulo global
+        # pode na mesma ficar com uma cópia sua, pelo «Gravar como…».
+        pode_guardar = self._pode_gerir(modulo)
         guardado: dict = {}
 
         def handle_save(dados: EditarModuloDialogData) -> bool:
@@ -589,6 +537,43 @@ class BibliotecaModulosPage(QWidget):
                 dialog.set_error("Não foi possível guardar as alterações.")
                 return False
             guardado["aviso_imagem"] = aviso_imagem
+            guardado["codigo"] = modulo.codigo
+            guardado["novo"] = False
+            return True
+
+        def handle_save_as(dados: EditarModuloDialogData) -> bool:
+            """Cria um módulo NOVO com estes dados e as linhas do original."""
+            novo_codigo = dialog.codigo()
+            imagem_path, aviso_imagem = self._copiar_imagem_modulo(
+                dados.imagem_path, novo_codigo
+            )
+            utilizador = app_session.current_user
+            try:
+                with SessionLocal() as session:
+                    DefModuloService(session).duplicar(
+                        modulo.id,
+                        CriarDefModuloData(
+                            codigo=novo_codigo,
+                            nome=dados.nome,
+                            descricao=dados.descricao,
+                            ambito=dados.ambito,
+                            categoria=dados.categoria,
+                            subcategoria=dados.subcategoria,
+                            imagem_path=imagem_path,
+                        ),
+                        acting_user_id=self._user_id(),
+                        is_admin=is_admin(utilizador),
+                    )
+            except ValueError as error:
+                dialog.set_error(str(error))
+                return False
+            except SQLAlchemyError:
+                dialog.set_error("Não foi possível gravar o módulo novo.")
+                return False
+            guardado["aviso_imagem"] = aviso_imagem
+            guardado["codigo"] = novo_codigo
+            guardado["novo"] = True
+            guardado["ambito"] = dados.ambito
             return True
 
         dialog = EditarModuloDialog(
@@ -603,10 +588,25 @@ class BibliotecaModulosPage(QWidget):
                 subcategoria=modulo.subcategoria,
             ),
             on_save=handle_save,
+            on_save_as=handle_save_as,
+            pode_guardar=pode_guardar,
+            motivo_sem_guardar=(
+                "Este módulo é global e é o administrador que o gere — não o "
+                "pode alterar aqui. Pode ficar com uma cópia sua: escreva "
+                "outro código, escolha «Utilizador (só meu)» e use «Gravar "
+                "como…»."
+            ),
         )
         if dialog.exec():
             self.carregar()
-            mensagem = f"Módulo {modulo.codigo} atualizado."
+            codigo = guardado.get("codigo", modulo.codigo)
+            if guardado.get("novo"):
+                onde = MODULO_AMBITO_LABELS[
+                    normalize_modulo_ambito(guardado.get("ambito"))
+                ]
+                mensagem = f"Módulo {codigo} criado em {onde}."
+            else:
+                mensagem = f"Módulo {codigo} atualizado."
             if guardado.get("aviso_imagem"):
                 mensagem += " " + guardado["aviso_imagem"]
             self.status_label.setText(mensagem)

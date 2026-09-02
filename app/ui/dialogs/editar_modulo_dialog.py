@@ -63,19 +63,28 @@ class EditarModuloDialog(QDialog):
         codigo: str,
         dados: EditarModuloDialogData,
         on_save: Callable[[EditarModuloDialogData], bool] | None = None,
+        on_save_as: Callable[[EditarModuloDialogData], bool] | None = None,
+        pode_guardar: bool = True,
+        motivo_sem_guardar: str = "",
     ) -> None:
         super().__init__(parent)
 
         self.on_save = on_save
+        self.on_save_as = on_save_as
+        self._codigo_original = codigo
 
         self.setWindowTitle(f"Editar Módulo {codigo}")
         self.setModal(True)
         self.setMinimumWidth(520)
 
+        # O código é editável só por causa do «Gravar como…»: mudá-lo aqui não
+        # renomeia o módulo, cria um novo (o `_validate_and_accept` recusa
+        # guardar por cima com um código diferente).
         self.codigo_input = QLineEdit(codigo)
-        self.codigo_input.setReadOnly(True)
         self.codigo_input.setToolTip(
-            "O código é fixo (as linhas do módulo vêm do custeio)."
+            "O código identifica o módulo. Para guardar por cima deste, deixe-o "
+            "como está; para criar um módulo novo, escreva outro e use "
+            "«Gravar como…»."
         )
 
         self.nome_input = QLineEdit(dados.nome or "")
@@ -152,11 +161,35 @@ class EditarModuloDialog(QDialog):
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(
             "Cancelar"
         )
+        self.save_as_button = self.button_box.addButton(
+            "Gravar como…", QDialogButtonBox.ButtonRole.ActionRole
+        )
+        self.save_as_button.setToolTip(
+            "Cria um módulo NOVO com estes dados e as mesmas linhas, sem mexer "
+            "no original.\nEscreva um código diferente e escolha o âmbito "
+            "(Utilizador ou Global)."
+        )
+        self.save_as_button.clicked.connect(self._validate_and_save_as)
         self.button_box.accepted.connect(self._validate_and_accept)
         self.button_box.rejected.connect(self.reject)
 
+        # Quem não pode mexer no módulo (um global, sem ser administrador) pode
+        # na mesma ficar com uma cópia sua — é para isso que o «Gravar como…»
+        # continua ligado.
+        if not pode_guardar:
+            guardar = self.button_box.button(QDialogButtonBox.StandardButton.Save)
+            guardar.setEnabled(False)
+            guardar.setToolTip(motivo_sem_guardar)
+            self.aviso_label = QLabel(motivo_sem_guardar)
+            self.aviso_label.setWordWrap(True)
+            self.aviso_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
+        else:
+            self.aviso_label = None
+
         layout = QVBoxLayout()
         layout.addLayout(form)
+        if self.aviso_label is not None:
+            layout.addWidget(self.aviso_label)
         layout.addWidget(self.error_label)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
@@ -193,6 +226,10 @@ class EditarModuloDialog(QDialog):
         self.subcategoria_input.setCurrentIndex(indice if indice >= 0 else 0)
         self.subcategoria_input.blockSignals(False)
 
+    def codigo(self) -> str:
+        """O código escrito no campo (pode ser outro, no «Gravar como…»)."""
+        return self.codigo_input.text().strip().upper()
+
     def get_data(self) -> EditarModuloDialogData:
         """Return the edited header data."""
         descricao = self.descricao_input.toPlainText().strip()
@@ -211,14 +248,44 @@ class EditarModuloDialog(QDialog):
         self.error_label.setText(message)
 
     def _validate_and_accept(self) -> None:
-        """Require a name, then delegate to on_save (keeps data on failure)."""
+        """Guardar por cima deste módulo: exige nome e o código original."""
         data = self.get_data()
         if not data.nome:
             self.error_label.setText("O nome é obrigatório.")
             return
+        if self.codigo() != self._codigo_original.strip().upper():
+            self.error_label.setText(
+                f"Mudou o código para «{self.codigo()}». Um módulo não muda de "
+                "código — para criar um novo com estes dados, use "
+                "«Gravar como…»."
+            )
+            return
 
         self.error_label.clear()
         if self.on_save is not None and not self.on_save(data):
+            return
+
+        self.accept()
+
+    def _validate_and_save_as(self) -> None:
+        """Gravar como módulo novo: exige nome e um código diferente."""
+        data = self.get_data()
+        if not data.nome:
+            self.error_label.setText("O nome é obrigatório.")
+            return
+        if not self.codigo():
+            self.error_label.setText("Escreva o código do módulo novo.")
+            return
+        if self.codigo() == self._codigo_original.strip().upper():
+            self.error_label.setText(
+                "Escreva um código diferente de "
+                f"«{self._codigo_original}» — senão ficavam dois módulos com o "
+                "mesmo código."
+            )
+            return
+
+        self.error_label.clear()
+        if self.on_save_as is not None and not self.on_save_as(data):
             return
 
         self.accept()

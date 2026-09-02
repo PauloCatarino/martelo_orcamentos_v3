@@ -634,6 +634,83 @@ class DefModuloService:
 
         return result
 
+    def duplicar(
+        self,
+        modulo_id: int,
+        data: CriarDefModuloData,
+        *,
+        acting_user_id: int | None,
+        is_admin: bool,
+    ) -> DefModuloComLinhas:
+        """Copia um módulo (cabeçalho + linhas) para um código novo.
+
+        É o «Gravar como…»: ao contrário de ``converter_ambito``, que MUDAVA o
+        âmbito do módulo (o mesmo que cortar de um lado e colar no outro), aqui
+        o original fica onde estava. É assim que se pode ter o mesmo módulo em
+        Global e na biblioteca de alguém, cada um a seguir o seu caminho.
+
+        Qualquer pessoa pode copiar um módulo global para a sua biblioteca —
+        é só dela. Criar um módulo GLOBAL continua a ser do administrador: o
+        que é global aparece a toda a gente.
+        """
+        original = self.repository.get_by_id(modulo_id)
+        if original is None:
+            raise ValueError("Módulo não encontrado.")
+
+        ambito = normalize_modulo_ambito(data.ambito)
+        if ambito == AMBITO_GLOBAL and not is_admin:
+            raise ValueError(
+                "Só o administrador pode criar módulos globais. "
+                "Grave-o como módulo de utilizador (só seu)."
+            )
+        user_id = acting_user_id if ambito == AMBITO_UTILIZADOR else None
+        if ambito == AMBITO_UTILIZADOR and user_id is None:
+            raise ValueError(
+                "É necessário estar autenticado para guardar um módulo de "
+                "utilizador."
+            )
+
+        linhas = [
+            CriarDefModuloLinhaData(
+                ordem=linha.ordem,
+                tipo_linha=linha.tipo_linha,
+                def_peca_id=linha.def_peca_id,
+                def_peca_codigo=linha.def_peca_codigo,
+                codigo=linha.codigo,
+                descricao=linha.descricao,
+                descricao_livre=linha.descricao_livre,
+                qt_mod=linha.qt_mod,
+                qt_und=linha.qt_und,
+                comp=linha.comp,
+                larg=linha.larg,
+                esp=linha.esp,
+                chave_valueset=linha.chave_valueset,
+                prioridade_valueset=linha.prioridade_valueset,
+                codigo_orlas=linha.codigo_orlas,
+                def_regra_quantidade_id=linha.def_regra_quantidade_id,
+                linha_pai_ordem=linha.linha_pai_ordem,
+                nivel=linha.nivel,
+                ativo=linha.ativo,
+                operacoes_json=getattr(linha, "operacoes_json", None),
+            )
+            for linha in self.repository.list_linhas(modulo_id)
+        ]
+
+        return self.criar(
+            CriarDefModuloData(
+                codigo=data.codigo,
+                nome=data.nome,
+                descricao=data.descricao,
+                ambito=ambito,
+                user_id=user_id,
+                categoria=data.categoria,
+                subcategoria=data.subcategoria,
+                imagem_path=data.imagem_path,
+                ativo=original.ativo,
+                linhas=linhas,
+            )
+        )
+
     def eliminar(self, modulo_id: int) -> bool:
         """Delete a module and its lines (cascade)."""
         deleted = self.repository.delete_modulo(modulo_id)

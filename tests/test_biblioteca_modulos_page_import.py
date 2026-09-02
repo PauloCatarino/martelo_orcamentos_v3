@@ -75,7 +75,10 @@ def test_editar_modulo_dialog_imports() -> None:
 
     init = inspect.getsource(EditarModuloDialog.__init__)
     assert "on_save" in init
-    assert "setReadOnly" in init  # the code is fixed
+    # O código deixou de ser fixo: muda-se para criar um módulo novo com
+    # «Gravar como…» (guardar por cima com outro código é recusado).
+    assert "on_save_as" in init
+    assert "Gravar como" in init
     procurar = inspect.getsource(EditarModuloDialog._procurar_imagem)
     assert "QFileDialog" in procurar
 
