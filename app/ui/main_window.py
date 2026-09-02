@@ -31,6 +31,7 @@ from app.services.permission_service import (
     permissions_for_user,
 )
 from app.ui import tema
+from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.pages import (
     AjudaPage,
@@ -426,6 +427,20 @@ class MainWindow(QMainWindow):
         )
         self._tempo_orcamento_tracker.tempoAtualizado.connect(
             self._atualizar_tempo_orcamento_visivel
+        )
+        # Aviso diário (dias úteis, a partir das 09h00) quando o PHC tem
+        # clientes novos ou editados. Só para quem tem o menu Clientes.
+        self._verificador_clientes_phc = VerificadorClientesPHC(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            ativo=self._permissions.get("menu.clientes", False),
+        )
+        self._verificador_clientes_phc.clientes_atualizados.connect(
+            self.clientes_page.carregar_phc
         )
         self.show_page("inicio")
 

@@ -6,7 +6,7 @@ from app.ui import tema
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QBrush, QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout,
@@ -69,7 +69,11 @@ class DescricoesPredefinidasDialog(QDialog):
         super().__init__(parent)
         self._user_id = user_id
         self.setWindowTitle("Descrições pré-definidas")
-        self.setMinimumSize(520, 520)
+        # Janela mais alta: a lista de descrições cresce com o uso e obrigava a
+        # andar sempre a fazer scroll. O mínimo fica baixo de propósito, para a
+        # janela caber também nos portáteis com ecrã pequeno.
+        self.setMinimumSize(520, 420)
+        self.resize(600, self._altura_util())
 
         self.edit_search = QLineEdit()
         self.edit_search.setPlaceholderText("Pesquisar (use % para separar palavras)")
@@ -78,6 +82,14 @@ class DescricoesPredefinidasDialog(QDialog):
 
         self.lista = QListWidget()
         self.lista.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        # Mesma lógica de seleção dos outros menus (castanho + texto branco): sem
+        # isto o Windows pintava a linha selecionada de cinzento claro e escrevia
+        # o texto a branco por cima, deixando-a ilegível. O estilo também encolhe
+        # a altura das linhas, para caberem mais descrições no ecrã.
+        self.lista.setStyleSheet(tema.ESTILO_LISTAS)
+        self.lista.setAlternatingRowColors(True)
+        self.lista.setSpacing(0)
+        self.lista.setUniformItemSizes(True)
 
         self.btn_add = QPushButton("Adicionar")
         self.btn_edit = QPushButton("Editar")
@@ -103,6 +115,7 @@ class DescricoesPredefinidasDialog(QDialog):
         acao_row.addWidget(self.btn_cancel)
 
         layout = QVBoxLayout()
+        layout.setSpacing(6)
         layout.addWidget(self.edit_search)
         layout.addWidget(self.lista, stretch=1)
         layout.addLayout(btn_row)
@@ -110,6 +123,14 @@ class DescricoesPredefinidasDialog(QDialog):
         self.setLayout(layout)
 
         self._carregar()
+
+    @staticmethod
+    def _altura_util() -> int:
+        """Altura de abertura da janela: quase todo o ecrã, sem o ultrapassar."""
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is None:
+            return 760
+        return max(420, int(ecra.availableGeometry().height() * 0.85))
 
     def _carregar(self) -> None:
         self.lista.clear()

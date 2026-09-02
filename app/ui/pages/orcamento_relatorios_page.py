@@ -17,8 +17,8 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -71,6 +71,7 @@ from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.services.relatorio_operacoes_service import RelatorioOperacoesService
 from app.services.relatorio_simplificado_service import RelatorioSimplificadoService
 from app.ui import tema
+from app.ui.icones import icone
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -431,6 +432,14 @@ class OrcamentoRelatoriosPage(QWidget):
         self.banner_relatorio = self._criar_banner()
 
         # Top bar with the export actions (PDF: 8W.4.1; Excel: 8W.4.2).
+        # "Abrir Pasta" fica primeiro: é onde todos os restantes botões gravam.
+        self.abrir_pasta_button = QPushButton("Abrir Pasta")
+        self.abrir_pasta_button.setIcon(icone("pasta_abrir"))
+        self.abrir_pasta_button.setToolTip(
+            "Abre no explorador a pasta desta versão do orçamento — a mesma "
+            "onde os botões de exportação gravam os ficheiros."
+        )
+        self.abrir_pasta_button.clicked.connect(self._abrir_pasta_orcamento)
         self.exportar_pdf_button = QPushButton("Exportar PDF")
         self.exportar_pdf_button.clicked.connect(self._exportar_pdf)
         self.exportar_excel_button = QPushButton("Exportar Excel")
@@ -454,6 +463,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self.enviar_email_button.clicked.connect(self._enviar_email)
         barra = QHBoxLayout()
         barra.addStretch()
+        barra.addWidget(self.abrir_pasta_button)
         barra.addWidget(self.exportar_pdf_button)
         barra.addWidget(self.exportar_excel_button)
         barra.addWidget(self.exportar_resumo_button)
@@ -819,6 +829,65 @@ class OrcamentoRelatoriosPage(QWidget):
         for banner in (self.banner_relatorio, self.banner_consumos):
             banner.setStyleSheet(
                 self._ESTILO_BANNER_AVISO if desatualizado else self._ESTILO_BANNER
+            )
+
+    def _abrir_pasta_orcamento(self) -> None:
+        """Abre no explorador a pasta desta versão do orçamento.
+
+        Usa a MESMA pasta onde as exportações gravam. Se ainda não existir (o
+        orçamento nunca foi exportado), pergunta antes de a criar — assim o
+        botão nunca cria pastas às escondidas no servidor.
+        """
+        diario_bordo.registar_acao("Abrir pasta do orçamento")
+        try:
+            with SessionLocal() as session:
+                pasta = OrcamentoExportService(session).resolver_pasta_versao(
+                    self.orcamento_versao_id, criar=False
+                )
+        except (ValueError, SQLAlchemyError, OSError) as erro:
+            QMessageBox.critical(
+                self,
+                "Abrir Pasta",
+                "Não foi possível localizar a pasta do orçamento:\n"
+                f"{explicar_erro_de_ficheiro(erro)}",
+            )
+            return
+
+        if pasta is None:
+            QMessageBox.information(
+                self,
+                "Abrir Pasta",
+                "Ainda não há pasta para este orçamento.\n\n"
+                "Confirme a «Pasta base dos Orçamentos» em Configurações → "
+                "Caminhos do sistema e se o orçamento já tem cliente associado.",
+            )
+            return
+
+        if not pasta.exists():
+            resposta = QMessageBox.question(
+                self,
+                "Abrir Pasta",
+                f"A pasta ainda não existe:\n{pasta}\n\n"
+                "É criada quando exportar o PDF/Excel. Quer criá-la agora?",
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            try:
+                pasta.mkdir(parents=True, exist_ok=True)
+            except OSError as erro:
+                QMessageBox.critical(
+                    self,
+                    "Abrir Pasta",
+                    "Não foi possível criar a pasta:\n"
+                    f"{explicar_erro_de_ficheiro(erro)}",
+                )
+                return
+
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(pasta))):
+            QMessageBox.warning(
+                self,
+                "Abrir Pasta",
+                f"O Windows não conseguiu abrir a pasta:\n{pasta}",
             )
 
     def _exportar_pdf(self) -> None:

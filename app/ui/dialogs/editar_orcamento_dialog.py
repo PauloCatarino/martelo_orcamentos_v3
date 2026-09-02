@@ -119,7 +119,14 @@ class EditarOrcamentoDialog(QDialog):
         # Phase 5: management of the version's PHC orders. The list keeps
         # (numero, is_principal) pairs; the principal shows a star prefix.
         self.encomendas_list = QListWidget()
-        self.encomendas_list.setMaximumHeight(88)
+        self.encomendas_list.setMinimumHeight(96)
+        self.encomendas_list.setMaximumHeight(140)
+        # Sem este estilo o Windows pinta a linha selecionada com o realce claro
+        # do sistema e o texto branco da paleta por cima: o número ficava quase
+        # invisível. Com ESTILO_LISTAS a seleção é castanha com texto branco,
+        # como nas tabelas, e as linhas alternam de cor.
+        self.encomendas_list.setStyleSheet(tema.ESTILO_LISTAS)
+        self.encomendas_list.setAlternatingRowColors(True)
         self.encomendas_list.setToolTip(
             "Encomendas PHC desta versão; a principal (★) aparece nas listas"
         )
@@ -152,9 +159,16 @@ class EditarOrcamentoDialog(QDialog):
         acoes_layout.addWidget(self.remover_encomenda_button)
         acoes_layout.addWidget(self.principal_encomenda_button)
         acoes_layout.addStretch()
+        self.encomendas_legenda_label = QLabel(
+            "★ principal (é a que aparece nas listas)   ·   • adicional"
+        )
+        self.encomendas_legenda_label.setStyleSheet(
+            f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;"
+        )
         encomendas_layout = QVBoxLayout()
         encomendas_layout.addLayout(adicionar_layout)
         encomendas_layout.addWidget(self.encomendas_list)
+        encomendas_layout.addWidget(self.encomendas_legenda_label)
         encomendas_layout.addLayout(acoes_layout)
         self.encomendas_group = QGroupBox("Encomendas PHC")
         self.encomendas_group.setLayout(encomendas_layout)
@@ -285,12 +299,16 @@ class EditarOrcamentoDialog(QDialog):
 
     def _inserir_encomenda(self, numero: str, is_principal: bool) -> None:
         """Append one PHC order row to the list widget."""
-        prefixo = "★ " if is_principal else "    "
+        prefixo = "★ " if is_principal else "•  "
         item = QListWidgetItem(f"{prefixo}{numero}")
         item.setData(Qt.ItemDataRole.UserRole, (numero, is_principal))
         item.setToolTip(
             "Encomenda principal" if is_principal else "Encomenda adicional"
         )
+        # A principal fica a negrito: é a que aparece nas listas de orçamentos.
+        fonte = item.font()
+        fonte.setBold(is_principal)
+        item.setFont(fonte)
         self.encomendas_list.addItem(item)
 
     def _redesenhar_encomendas(

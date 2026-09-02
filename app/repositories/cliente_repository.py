@@ -33,6 +33,31 @@ class ClienteListaResumo:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class DiferencasPHC:
+    """O que uma sincronização com o PHC iria criar/alterar (só leitura)."""
+
+    #: Etiquetas ``"<num PHC> — <nome>"`` dos clientes que ainda não existem cá.
+    novos: tuple[str, ...]
+    #: Idem, dos que existem mas têm algum campo diferente do PHC.
+    alterados: tuple[str, ...]
+
+    @property
+    def total(self) -> int:
+        """Quantos clientes é que a sincronização mexeria."""
+        return len(self.novos) + len(self.alterados)
+
+    def __bool__(self) -> bool:
+        return self.total > 0
+
+
+def _texto_igual(atual: object, vindo_do_phc: object) -> bool:
+    """Comparar dois campos de texto tratando None e '' como a mesma coisa."""
+    return ("" if atual is None else str(atual).strip()) == (
+        "" if vindo_do_phc is None else str(vindo_do_phc).strip()
+    )
+
+
 class ClienteRepository:
     """Repository for customer list and temporary-customer write operations."""
 
@@ -234,6 +259,58 @@ class ClienteRepository:
 
         self.session.flush()
         return criados, atualizados
+
+    #: Campos que a sincronização copia do PHC — e, por isso, os únicos que
+    #: contam para dizer que um cliente "mudou lá fora".
+    _CAMPOS_PHC = (
+        "nome",
+        "nome_simplex",
+        "morada",
+        "email",
+        "pagina_web",
+        "telefone",
+        "telemovel",
+        "info_1",
+    )
+
+    def diferencas_phc(self, clientes: list[DadosClientePHC]) -> DiferencasPHC:
+        """Que clientes é que uma sincronização criaria/alteraria (sem escrever).
+
+        É a versão "só olhar" de :meth:`sincronizar_phc`: serve o aviso diário,
+        que só incomoda o utilizador quando há mesmo novidades no PHC.
+        """
+        nums = [c.num_cliente_phc for c in clientes if c.num_cliente_phc]
+        existentes: dict[str, Cliente] = {}
+        if nums:
+            rows = (
+                self.session.execute(
+                    select(Cliente).where(
+                        Cliente.is_temporary.is_(False),
+                        Cliente.num_cliente_phc.in_(nums),
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for cliente in rows:
+                chave = (cliente.num_cliente_phc or "").strip()
+                if chave:
+                    existentes[chave] = cliente
+
+        novos: list[str] = []
+        alterados: list[str] = []
+        for dados in clientes:
+            cliente = existentes.get(dados.num_cliente_phc)
+            etiqueta = f"{dados.num_cliente_phc} — {dados.nome}"
+            if cliente is None:
+                novos.append(etiqueta)
+            elif any(
+                not _texto_igual(getattr(cliente, campo), getattr(dados, campo))
+                for campo in self._CAMPOS_PHC
+            ):
+                alterados.append(etiqueta)
+
+        return DiferencasPHC(novos=tuple(novos), alterados=tuple(alterados))
 
     def contar_orcamentos(self, cliente_id: int) -> int:
         """Count budgets associated with one customer."""

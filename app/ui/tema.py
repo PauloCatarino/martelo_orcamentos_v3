@@ -274,6 +274,28 @@ ESTILO_TABELA_CONFIG_CABECALHO = (
 )
 
 
+# Listas simples (QListWidget/QListView) que não são vistas de dados. Sem uma
+# regra ``::item``, o Windows desenha a linha selecionada com o realce claro do
+# sistema e escreve por cima o texto branco da paleta — branco sobre cinzento
+# claro, ilegível. Aqui vale a MESMA lógica das tabelas: seleção a castanho
+# escuro com texto branco. Fica de fora do ESTILO_GLOBAL de propósito (as listas
+# pendentes dos QComboBox já têm regras próprias); cada lista aplica-o.
+ESTILO_LISTAS = (
+    f"QListWidget, QListView {{ background-color: #FFFFFF; color: {TEXTO_NORMAL};"
+    f" border: 1px solid {CINZA_CASTANHO}; border-radius: 4px;"
+    f" alternate-background-color: {BEGE_CLARO};"
+    f" selection-background-color: {CASTANHO_ESCURO}; selection-color: #FFFFFF;"
+    " outline: 0; }\n"
+    # Linhas compactas: o padding é o único controlo da altura de cada linha.
+    "QListWidget::item, QListView::item { padding: 1px 4px; border: none; }\n"
+    f"QListWidget::item:hover, QListView::item:hover {{"
+    f" background-color: {BEGE_AREIA}; }}\n"
+    f"QListWidget::item:selected, QListView::item:selected {{"
+    f" background-color: {CASTANHO_ESCURO}; color: #FFFFFF; }}\n"
+    + ESTILO_CHECKS_VISTAS_DADOS
+)
+
+
 # Estilo global moderado dos controlos. Páginas podem continuar a sobrepor
 # regras específicas sem perder a identidade visual comum.
 ESTILO_CONTROLOS = (

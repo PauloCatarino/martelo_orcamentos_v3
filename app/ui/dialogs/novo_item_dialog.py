@@ -6,6 +6,7 @@ from app.ui import tema
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -61,6 +62,10 @@ class NovoItemDialog(QDialog):
         self.descricao_input = QTextEdit()
         self.descricao_input.setMinimumHeight(140)
         self.descricoes_button = QPushButton("Descrições pré-definidas…")
+        # Sem isto o Qt trata-o como botão "por omissão" enquanto tem o foco, e
+        # o Enter ficava preso a reabrir esta janela em vez de seguir para o
+        # campo seguinte. Continua a abrir-se com a barra de espaços ou o rato.
+        self.descricoes_button.setAutoDefault(False)
         self.descricoes_button.clicked.connect(self._abrir_descricoes_predefinidas)
         descricao_widget = QWidget()
         descricao_layout = QVBoxLayout(descricao_widget)
@@ -131,6 +136,36 @@ class NovoItemDialog(QDialog):
 
         if item_data is not None:
             self._fill_from_data(item_data)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - assinatura do Qt
+        """Enter salta para o campo seguinte, tal como o TAB.
+
+        Por omissão o Qt manda o Enter para o botão por omissão (Guardar), o que
+        fechava a janela a meio do preenchimento. Aqui o Enter passa a andar
+        pelos campos; para gravar, o utilizador clica em Guardar (ou chega ao
+        botão pelo próprio Enter/TAB e carrega em Espaço/Enter).
+
+        Duas exceções. A Descrição é multilinha, e lá dentro o Enter tem de
+        escrever uma linha nova — para sair dela sem tirar a mão do teclado há o
+        Ctrl+Enter. E nos botões do fundo (Guardar / Gravar como / Cancelar) o
+        Enter continua a carregar no botão, senão não havia forma de gravar
+        pelo teclado.
+        """
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            foco = self.focusWidget()
+            com_control = bool(
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            )
+            nos_botoes_do_fundo = foco is not None and self.button_box.isAncestorOf(
+                foco
+            )
+            if not nos_botoes_do_fundo and (
+                com_control or not isinstance(foco, QTextEdit)
+            ):
+                self.focusNextChild()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
     def get_data(self) -> NovoItemDialogData:
         """Return normalized dialog data."""
