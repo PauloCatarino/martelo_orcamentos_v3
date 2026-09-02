@@ -88,6 +88,7 @@ from app.services.producao_service import (
     converter_orcamento,
     criar_nova_versao,
     criar_processo_externo,
+    dados_encomenda_phc,
     eliminar_processo_completo,
     gerar_nome_enc_imos_ix,
     gerar_nome_plano_cut_rite,
@@ -105,6 +106,8 @@ from app.services.producao_pastas_service import (
     arvore_pastas_processo,
     caminho_versao_de_processo,
     caminho_versao_de_processo_existente,
+    caminho_versao_para_criar,
+    criar_pasta_versao,
     preview_conteudo_pasta,
 )
 from app.services.producao_preparacao_service import (
@@ -2182,9 +2185,14 @@ class ProducaoPage(QWidget):
             return
 
         if caminho is None:
+            # Antes ficava-se por aqui, com um aviso e mais nada: quem precisava
+            # da pasta tinha de ir criá-la à mão no servidor, com o risco de lhe
+            # dar um nome que o Martelo depois não reconhecia. Agora oferece-se
+            # criá-la, com o nome certo, no sítio certo.
             self.status_label.setText("Pasta ainda não criada.")
-            QMessageBox.warning(self, "Abrir pasta", "Pasta ainda não criada.")
-            return
+            caminho = self._criar_pasta_da_obra_a_pedido(processo.id)
+            if caminho is None:
+                return
 
         # A pasta encontrada no servidor pode ter outro nome (pastas antigas):
         # mostrar no campo o caminho que foi mesmo aberto.
@@ -2194,6 +2202,20 @@ class ProducaoPage(QWidget):
             self.pasta_obra_input.setToolTip(str(caminho))
 
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(caminho)))
+
+    def _criar_pasta_da_obra_a_pedido(self, processo_id: int):
+        """Oferecer criar a pasta desta obra; devolve o caminho, ou None.
+
+        Chamado quando se tenta abrir uma pasta que ainda não existe. O nome e
+        o sítio são calculados pelas mesmas regras do «Novo Processo», por isso
+        a pasta nasce onde o Martelo a vai voltar a encontrar.
+        """
+        criado = self._perguntar_criar_pasta_obra(processo_id, "Abrir pasta")
+        if not criado:
+            return None
+        self.carregar_processos(selecionar_id=processo_id)
+        self.status_label.setText(f"Pasta criada: {criado}")
+        return Path(criado)
 
     def _lista_material_imos(self) -> None:
         processo = self._processo_selecionado()
@@ -3576,32 +3598,139 @@ class ProducaoPage(QWidget):
         if dialog.selected_orcamento_id is None or dialog.selected_versao_id is None:
             return
 
-        created_by_id = (
-            app_session.current_user.id
-            if app_session.current_user is not None
-            else None
-        )
+        current_user = app_session.current_user
+        created_by_id = current_user.id if current_user is not None else None
+        partes_nome = (current_user.nome or "").split() if current_user is not None else []
+        responsavel = partes_nome[0] if partes_nome else None
 
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             with SessionLocal() as session:
+                # Data Início, Data Entrega e Descrição artigos vêm do PHC,
+                # exatamente como no «Novo Processo». Se o PHC não responder,
+                # a obra é criada na mesma com esses campos vazios.
+                dados_encomenda = dados_encomenda_phc(
+                    session,
+                    ano=dialog.selected_ano,
+                    num_enc_phc=dialog.selected_num_enc_phc,
+                )
                 processo = converter_orcamento(
                     session,
                     orcamento_id=dialog.selected_orcamento_id,
                     versao_id=dialog.selected_versao_id,
                     created_by_id=created_by_id,
                     num_enc_phc=dialog.selected_num_enc_phc,
+                    responsavel=responsavel,
+                    dados_encomenda=dados_encomenda,
                 )
                 processo_id = processo.id
                 codigo_processo = processo.codigo_processo
+                resumo = self._resumo_obra_criada(processo)
         except ValueError as error:
             QMessageBox.warning(self, "Converter Orçamento", str(error))
             return
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível converter o orçamento.")
             return
+        finally:
+            QApplication.restoreOverrideCursor()
 
+        # Os filtros que estavam ativos escondiam a obra acabada de criar: o
+        # utilizador convertia e ficava a olhar para a lista sem a ver lá.
+        self._limpar_filtros()
         self.carregar_processos(selecionar_id=processo_id)
         self.status_label.setText(f"Processo {codigo_processo} criado.")
+
+        pasta = self._perguntar_criar_pasta_obra(processo_id, "Converter Orçamento")
+        if pasta:
+            resumo += f"\n\nPasta criada no servidor:\n{pasta}"
+        QMessageBox.information(self, "Converter Orçamento", resumo)
+
+    @staticmethod
+    def _resumo_obra_criada(processo: Producao) -> str:
+        """Ficha da obra acabada de criar, para a mensagem de confirmação."""
+        linhas = [
+            f"Obra criada: {processo.codigo_processo}",
+            "",
+            f"Cliente: {processo.nome_cliente or '—'}",
+            f"Nº Enc PHC: {processo.num_enc_phc or '—'}",
+            f"Orçamento: {processo.num_orcamento or '—'}"
+            f" (versão {processo.versao_orc or '—'})",
+            f"Ref. Cliente: {processo.ref_cliente or '—'}",
+            f"Estado: {processo.estado or '—'}",
+            f"Responsável: {processo.responsavel or '—'}",
+            f"Data Início: {processo.data_inicio or '—'}",
+            f"Data Entrega: {processo.data_entrega or '—'}",
+        ]
+        descricao = str(processo.descricao_artigos or "").strip()
+        if descricao:
+            linhas.extend(["", "Descrição artigos:", descricao])
+        return "\n".join(linhas)
+
+    def _perguntar_criar_pasta_obra(self, processo_id: int, titulo: str) -> str:
+        """Perguntar se quer criar já a pasta da obra; devolve o caminho criado.
+
+        O «Novo Processo» cria a pasta sozinho. Aqui pergunta-se primeiro,
+        porque a conversão pode ser feita muito antes de a obra arrancar — mas
+        o resultado é o mesmo: a obra fica com a pasta no servidor.
+        """
+        # Procurar as pastas no servidor pode demorar com a rede lenta.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                processo = session.get(Producao, processo_id)
+                if processo is None:
+                    return ""
+                if caminho_versao_de_processo_existente(session, processo) is not None:
+                    return ""
+                destino = caminho_versao_para_criar(
+                    session,
+                    ano=processo.ano,
+                    tipo_pasta=processo.tipo_pasta,
+                    num_enc_phc=processo.num_enc_phc,
+                    versao_obra=processo.versao_obra,
+                    versao_plano=processo.versao_plano,
+                    nome_simplex=processo.nome_cliente_simplex,
+                    nome_cliente=processo.nome_cliente,
+                    ref_cliente=processo.ref_cliente,
+                )
+        except (SQLAlchemyError, OSError, ValueError) as error:
+            QMessageBox.warning(
+                self, titulo, f"Não foi possível preparar a pasta da obra:\n\n{error}"
+            )
+            return ""
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        resposta = QMessageBox.question(
+            self,
+            titulo,
+            "Quer criar agora a pasta desta obra no servidor?\n\n"
+            f"{destino}",
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return ""
+
+        return self._criar_pasta_da_obra(processo_id, destino, titulo)
+
+    def _criar_pasta_da_obra(self, processo_id: int, destino, titulo: str) -> str:
+        """Criar a pasta no servidor e guardá-la na obra. '' quando falha."""
+        try:
+            with SessionLocal() as session:
+                processo = session.get(Producao, processo_id)
+                if processo is None:
+                    return ""
+                criar_pasta_versao(destino)
+                processo.pasta_servidor = str(destino)
+                session.commit()
+        except (SQLAlchemyError, OSError) as error:
+            QMessageBox.warning(
+                self, titulo, f"Não foi possível criar a pasta:\n\n{error}"
+            )
+            return ""
+
+        self._invalidar_cache_detalhe()
+        return str(destino)
 
     def _novo_processo(self) -> None:
         if self._dirty:

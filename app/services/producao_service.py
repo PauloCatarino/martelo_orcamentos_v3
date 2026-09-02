@@ -270,8 +270,46 @@ def gerar_nome_enc_imos_ix(
     return f"{nnnn}_{_two_digit(versao_obra)}_{aa}_{cliente}"
 
 
-def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
-    """Return adjudicated budget versions with their budget and customer data."""
+#: Critérios que um orçamento tem de cumprir para aparecer na conversão. É o
+#: texto mostrado ao utilizador no diálogo — está aqui para a lista e a
+#: explicação nunca poderem discordar uma da outra.
+CRITERIOS_CONVERSAO = (
+    "Só aparecem aqui os orçamentos que estão **Adjudicados**, que já têm "
+    "**Nº Enc PHC** e que **ainda não foram passados para produção**."
+)
+
+
+def _processos_ja_criados(session: Session) -> dict[tuple[str, str], str]:
+    """(ano, nº enc) -> código do processo, para as obras 01/01 já criadas.
+
+    Numa consulta só: percorrer a lista de orçamentos a perguntar obra a obra
+    dava uma ida à base de dados por cada linha.
+    """
+    rows = session.execute(
+        select(Producao.ano, Producao.num_enc_phc, Producao.codigo_processo).where(
+            Producao.versao_obra == "01",
+            Producao.versao_plano == "01",
+        )
+    ).all()
+    return {
+        (str(ano or "").strip(), str(num_enc or "").strip().casefold()): (
+            codigo or ""
+        )
+        for ano, num_enc, codigo in rows
+        if str(num_enc or "").strip()
+    }
+
+
+def levantar_orcamentos_para_conversao(
+    session: Session,
+) -> tuple[list[dict], list[dict]]:
+    """Orçamentos prontos a converter e, à parte, os que ficaram de fora.
+
+    A segunda lista é o que permite responder ao utilizador quando ele procura
+    um orçamento que sabe que existe e não lhe aparece nada: em vez de um ecrã
+    vazio, diz-se-lhe porquê — não está Adjudicado, não tem Nº Enc PHC, ou já
+    foi passado para produção.
+    """
     statement = (
         select(Orcamento, OrcamentoVersao, Cliente)
         .join(OrcamentoVersao, OrcamentoVersao.orcamento_id == Orcamento.id)
@@ -285,29 +323,81 @@ def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
 
     rows = session.execute(statement).all()
     encomendas_service = OrcamentoEncomendaPhcService(session)
-    resultado = []
+    ja_criados = _processos_ja_criados(session)
+    convertiveis: list[dict] = []
+    excluidos: list[dict] = []
+
     for orcamento, versao, cliente in rows:
+        identificacao = {
+            "ano": orcamento.ano,
+            "num_orcamento": orcamento.num_orcamento,
+            "numero_versao": versao.numero_versao,
+            "cliente_nome": cliente.nome,
+        }
+
         if _normalizar_texto(versao.estado) != "adjudicado":
+            estado = str(versao.estado or "").strip() or "sem estado"
+            excluidos.append(
+                {**identificacao, "motivo": f"está em «{estado}», não Adjudicado"}
+            )
             continue
-        encomendas = encomendas_service.listar_encomendas(versao.id)
-        resultado.append(
+
+        encomendas = [enc.numero for enc in encomendas_service.listar_encomendas(versao.id)]
+        if not encomendas and _tem_texto(versao.enc_phc):
+            encomendas = [str(versao.enc_phc).strip()]
+        if not encomendas:
+            excluidos.append({**identificacao, "motivo": "não tem Nº Enc PHC"})
+            continue
+
+        # Cada encomenda PHC dá origem à sua própria obra: a versão só sai da
+        # lista quando TODAS já foram passadas para produção.
+        por_converter = []
+        ja_convertidas = []
+        for numero in encomendas:
+            codigo = ja_criados.get(
+                (str(orcamento.ano).strip(), str(numero).strip().casefold())
+            )
+            if codigo is None:
+                por_converter.append(numero)
+            else:
+                ja_convertidas.append(codigo or numero)
+
+        if not por_converter:
+            excluidos.append(
+                {
+                    **identificacao,
+                    "motivo": "já foi passado para produção "
+                    f"({', '.join(ja_convertidas)})",
+                }
+            )
+            continue
+
+        convertiveis.append(
             {
                 "orcamento_id": orcamento.id,
                 "versao_id": versao.id,
-                "ano": orcamento.ano,
-                "num_orcamento": orcamento.num_orcamento,
-                "numero_versao": versao.numero_versao,
-                "cliente_nome": cliente.nome,
-                "enc_phc": versao.enc_phc,
-                # Phase 5: every PHC order of the version, principal first.
-                "encomendas_phc": [enc.numero for enc in encomendas],
+                **identificacao,
+                # A encomenda que a conversão vai usar por omissão: a primeira
+                # que ainda não tem obra (e não a principal, que pode já ter).
+                "enc_phc": por_converter[0],
+                # Phase 5: as encomendas PHC da versão que faltam converter.
+                "encomendas_phc": por_converter,
+                # As que já têm obra, para a coluna avisar que faltam estas.
+                "encomendas_convertidas": ja_convertidas,
                 "preco_total": versao.preco_total,
                 "is_temporary": cliente.is_temporary,
                 "source_system": cliente.source_system,
                 "num_cliente_phc": cliente.num_cliente_phc,
             }
         )
-    return resultado
+
+    return convertiveis, excluidos
+
+
+def listar_orcamentos_convertiveis(session: Session) -> list[dict]:
+    """Return adjudicated budget versions still waiting to become a process."""
+    convertiveis, _excluidos = levantar_orcamentos_para_conversao(session)
+    return convertiveis
 
 
 def validar_conversao(
@@ -333,6 +423,54 @@ def validar_conversao(
     return erros
 
 
+def extrair_dados_encomenda_phc(linhas) -> dict:
+    """Datas e descrições da obra, a partir dos itens de uma encomenda PHC.
+
+    É a MESMA leitura que o «Novo Processo» faz: a data da encomenda passa a
+    Data Início, a data de entrega do PHC passa a Data Entrega, e as descrições
+    dos artigos (sem repetidos, pela ordem em que vêm) enchem a Descrição
+    artigos. Função pura, para se poder testar sem PHC nenhum.
+    """
+    primeira = next((linha for linha in linhas or [] if isinstance(linha, dict)), None)
+    if primeira is None:
+        return {}
+
+    vistas: set[str] = set()
+    descricoes: list[str] = []
+    for linha in linhas:
+        if not isinstance(linha, dict):
+            continue
+        texto = str(linha.get("Descricao_Artigo") or "").strip()
+        if not texto or texto in vistas:
+            continue
+        vistas.add(texto)
+        descricoes.append(texto)
+
+    return {
+        "data_inicio": str(primeira.get("Data_Encomenda") or "").strip(),
+        "data_entrega": str(primeira.get("Data_Entrega") or "").strip(),
+        "descricao_artigos": "\n".join(descricoes).strip(),
+    }
+
+
+def dados_encomenda_phc(session: Session, *, ano, num_enc_phc) -> dict:
+    """Ler no PHC os dados da encomenda para encher a obra.
+
+    Devolve um dicionário vazio quando o PHC não responde (máquina sem ligação,
+    encomenda que lá não existe): a obra é criada na mesma e os campos ficam
+    por preencher, como estavam antes. Nunca deve impedir uma conversão.
+    """
+    from app.services.encomendas_phc_service import query_phc_encomenda_itens
+
+    try:
+        linhas = query_phc_encomenda_itens(
+            session, num_enc_phc=num_enc_phc, ano=ano
+        )
+    except Exception:  # noqa: BLE001 - PHC/rede/config são externos
+        return {}
+    return extrair_dados_encomenda_phc(linhas)
+
+
 def converter_orcamento(
     session: Session,
     *,
@@ -340,11 +478,18 @@ def converter_orcamento(
     versao_id: int,
     created_by_id: int | None,
     num_enc_phc: str | None = None,
+    responsavel: str | None = None,
+    dados_encomenda: dict | None = None,
 ) -> Producao:
     """Convert one adjudicated budget version into a production process.
 
     ``num_enc_phc`` selects which PHC order of the version becomes the
     process (phase 5); None uses the principal order.
+
+    ``dados_encomenda`` traz o que se lê no PHC sobre a encomenda (Data
+    Início, Data Entrega e Descrição artigos), para a obra nascer com os
+    mesmos campos preenchidos que nasce pelo «Novo Processo». Vem de fora
+    (:func:`dados_encomenda_phc`) para este serviço não depender do PHC.
     """
     statement = (
         select(Orcamento, OrcamentoVersao, Cliente)
@@ -423,6 +568,15 @@ def converter_orcamento(
         localizacao=versao.localizacao,
         descricao_orcamento=versao.descricao,
         preco_total=versao.preco_total,
+        responsavel=str(responsavel or "").strip() or None,
+        # Os mesmos campos que o «Novo Processo» traz do PHC.
+        descricao_artigos=str(
+            (dados_encomenda or {}).get("descricao_artigos") or ""
+        ).strip()
+        or None,
+        data_inicio=normalizar_data((dados_encomenda or {}).get("data_inicio")) or None,
+        data_entrega=normalizar_data((dados_encomenda or {}).get("data_entrega"))
+        or None,
         created_by_id=created_by_id,
     )
     session.add(processo)

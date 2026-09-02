@@ -25,7 +25,8 @@ def test_converter_orcamento_dialog_uses_service_validation_and_buttons() -> Non
     source = inspect.getsource(ConverterOrcamentoDialog)
 
     assert "Converter Orçamento" in source
-    assert "listar_orcamentos_convertiveis" in source
+    # Traz também os excluídos, para poder explicar uma pesquisa sem resultados.
+    assert "levantar_orcamentos_para_conversao" in source
     assert "validar_conversao" in source
     assert "CampoPesquisa" in source
     assert '"OK"' in source
