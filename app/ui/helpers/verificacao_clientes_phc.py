@@ -41,6 +41,18 @@ ATRASO_ARRANQUE_MS = 20 * 1000
 #: Quantos nomes se mostram na mensagem antes de resumir com "e mais N".
 MAX_NOMES_NA_MENSAGEM = 8
 
+#: Título das caixas de mensagem deste aviso.
+TITULO = "Analisador diário de clientes do PHC"
+
+#: Como o aviso se apresenta. A caixa aparece sozinha, sem ninguém a ter
+#: pedido: quem a vê tem de perceber logo quem fala, o que faz e quando.
+APRESENTACAO = (
+    "Sou o analisador diário dos clientes do PHC.\n"
+    "Todos os dias úteis, às 09h00, vou ver se há clientes novos ou "
+    "alterados no PHC.\n\n"
+    "Hoje encontrei novidades:"
+)
+
 
 class _TrabalhoPHC(QObject):
     """Vive na thread de trabalho; fala com o PHC e responde por sinais."""
@@ -162,14 +174,22 @@ class VerificadorClientesPHC(QObject):
             # Nada mudou: o utilizador nem dá por isto.
             return
 
-        if (
-            QMessageBox.question(
-                self._janela(),
-                "Clientes do PHC",
-                self.mensagem_diferencas(diferencas),
-            )
-            != QMessageBox.StandardButton.Yes
-        ):
+        caixa = QMessageBox(self._janela())
+        caixa.setWindowTitle(TITULO)
+        caixa.setIcon(QMessageBox.Icon.Question)
+        caixa.setText(self.mensagem_diferencas(diferencas))
+        # A lista completa fica atrás do "Mostrar detalhes": com 40 clientes
+        # novos a caixa crescia até não caber no ecrã.
+        detalhe = self.detalhe_diferencas(diferencas)
+        if detalhe:
+            caixa.setDetailedText(detalhe)
+        sim = caixa.addButton(
+            "Sim, atualizar agora", QMessageBox.ButtonRole.YesRole
+        )
+        caixa.addButton("Agora não", QMessageBox.ButtonRole.NoRole)
+        caixa.setDefaultButton(sim)
+        caixa.exec()
+        if caixa.clickedButton() is not sim:
             return
 
         self._a_trabalhar = True
@@ -181,11 +201,12 @@ class VerificadorClientesPHC(QObject):
         self.clientes_atualizados.emit()
         QMessageBox.information(
             self._janela(),
-            "Clientes do PHC",
-            "Lista de clientes atualizada.\n\n"
-            f"Total no PHC: {resumo.total_phc}\n"
-            f"Criados: {resumo.criados}\n"
-            f"Atualizados: {resumo.atualizados}",
+            TITULO,
+            "Já está: a tabela de clientes do Martelo ficou igual à do PHC.\n\n"
+            f"Clientes lidos no PHC: {resumo.total_phc}\n"
+            f"Criados de novo: {resumo.criados}\n"
+            f"Atualizados: {resumo.atualizados}\n\n"
+            "Volto a verificar amanhã de manhã.",
         )
 
     @Slot(str)
@@ -200,8 +221,12 @@ class VerificadorClientesPHC(QObject):
     # ---- texto --------------------------------------------------------------
     @staticmethod
     def mensagem_diferencas(diferencas: DiferencasPHC) -> str:
-        """Mensagem a mostrar ao utilizador (pura, para poder ser testada)."""
-        linhas = ["Há novidades nos clientes do PHC:", ""]
+        """Mensagem a mostrar ao utilizador (pura, para poder ser testada).
+
+        Começa por se apresentar: a caixa aparece sozinha, sem ninguém lhe ter
+        pedido nada, e quem a vê tem de perceber logo o que é e de onde veio.
+        """
+        linhas = [APRESENTACAO, ""]
         if diferencas.novos:
             linhas.append(f"Clientes novos: {len(diferencas.novos)}")
             linhas.extend(_amostra(diferencas.novos))
@@ -213,11 +238,31 @@ class VerificadorClientesPHC(QObject):
         linhas.extend(
             [
                 "",
-                "Quer atualizar agora a lista de clientes do Martelo?",
-                "(No PHC é apenas leitura.)",
+                "Quer que atualize agora a tabela de clientes do Martelo?",
+                "No PHC só leio; escrevo apenas na base de dados do Martelo.",
             ]
         )
         return "\n".join(linhas)
+
+    @staticmethod
+    def detalhe_diferencas(diferencas: DiferencasPHC) -> str:
+        """Lista completa, para o «Mostrar detalhes» da caixa de mensagem.
+
+        Vazia quando a caixa já mostra tudo — assim o botão de detalhes só
+        aparece quando há mesmo mais alguma coisa para ver.
+        """
+        if diferencas.total <= MAX_NOMES_NA_MENSAGEM:
+            return ""
+        blocos = []
+        if diferencas.novos:
+            blocos.append(
+                "\n".join(["CLIENTES NOVOS:", *diferencas.novos])
+            )
+        if diferencas.alterados:
+            blocos.append(
+                "\n".join(["CLIENTES EDITADOS:", *diferencas.alterados])
+            )
+        return "\n\n".join(blocos)
 
     def _janela(self) -> QWidget | None:
         """A janela que serve de pai às caixas de mensagem."""
