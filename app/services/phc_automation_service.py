@@ -45,6 +45,11 @@ TABS_REF_ATE_DESIGNACAO = 8
 # Números com 4 ou mais dígitos mantêm-se (ex.: 1234 -> 1234).
 LARGURA_MIN_NUM_CLIENTE = 4
 
+# Cliente genérico do PHC ("CONSUMIDOR FINAL"). Os clientes temporários do
+# Martelo não existem no PHC: a proposta é feita neste cliente e o nome é
+# depois substituído pelo nome verdadeiro, na janela que o PHC abre a seguir.
+CLIENTE_GENERICO_PHC = "063"
+
 # Pausas (segundos) para dar tempo ao PHC de responder entre passos.
 # Deliberadamente lentas: o PHC valida cliente/ref e move o cursor entre
 # colunas da grelha, e é preciso dar-lhe tempo para acompanhar.
@@ -60,6 +65,13 @@ PAUSA_APOS_GRAVAR = 2.5
 # seguintes perdem-se e os campos ficam trocados.
 PAUSA_ANTES_ENTER_CLIENTE = 2.0
 PAUSA_APOS_CLIENTE = 4.0
+
+# Cliente genérico: depois do ENTER no nº, o PHC abre uma janela pequena
+# ("Dossiers Internos") com o campo Nome já selecionado. Estas pausas dão-lhe
+# tempo para abrir, aceitar o nome escrito e voltar a fechar.
+PAUSA_ABRIR_JANELA_NOME = 3.0
+PAUSA_APOS_NOME = 2.0
+PAUSA_FECHAR_JANELA_NOME = 3.0
 
 # Espera ativa: aguardar que o processo do PHC acalme (uso de CPU abaixo deste
 # valor) antes de continuar. É o mais próximo de "confirmar que já acabou" que
@@ -182,17 +194,25 @@ def construir_plano(
     num_cliente_phc: str,
     ref_cliente: str | None,
     designacao: str,
+    nome_cliente: str | None = None,
 ) -> list[Passo]:
     """Construir a sequência de passos para criar a proposta no PHC.
 
     Reproduz os passos manuais: ALT+N, nº cliente + ENTER, TAB x2, ref.
     cliente, TAB x8, designação. O ``Gravar`` é tratado à parte pelo executor.
+
+    ``nome_cliente`` é para os **clientes temporários** do Martelo, que não
+    existem no PHC. Nesse caso o nº é o do cliente genérico (063, «CONSUMIDOR
+    FINAL») e o PHC abre a seguir uma janela com o campo Nome já selecionado —
+    escreve-se lá o nome verdadeiro e confirma-se com ENTER. Daí para a frente
+    os passos são exatamente os mesmos.
     """
     num_cliente = formatar_num_cliente_phc(num_cliente_phc)
     if not num_cliente:
         raise ValueError("Falta o número de cliente PHC.")
 
     ref = (ref_cliente or "").strip()
+    nome = (nome_cliente or "").strip()
 
     plano: list[Passo] = [
         PassoTeclas(TECLA_NOVA_PROPOSTA, "Nova proposta (ALT+N)"),
@@ -206,9 +226,29 @@ def construir_plano(
         # os TABs seguintes perdem-se e os campos ficam trocados.
         PassoPausa(PAUSA_APOS_CLIENTE, "Esperar o nome do cliente"),
         PassoEsperarPronto("Confirmar que o PHC acabou de buscar o cliente"),
-        _tabs(TABS_CLIENTE_ATE_REF, "Ir até Ref. Cliente"),
-        PassoPausa(PAUSA_APOS_TABS),
     ]
+
+    if nome:
+        # A janela do Nome abre por cima da proposta, já com «CONSUMIDOR
+        # FINAL» selecionado: escrever substitui-o, sem ter de apagar nada.
+        plano.extend(
+            [
+                PassoPausa(PAUSA_ABRIR_JANELA_NOME, "Esperar a janela do Nome"),
+                PassoEsperarPronto("Confirmar que a janela do Nome abriu"),
+                PassoTexto(nome, "Nome do cliente temporário"),
+                PassoPausa(PAUSA_APOS_NOME, "Deixar o PHC ver o nome"),
+                PassoTeclas("{ENTER}", "Confirmar o nome (OK)"),
+                PassoPausa(PAUSA_FECHAR_JANELA_NOME, "Esperar fechar a janela"),
+                PassoEsperarPronto("Confirmar que voltou à proposta"),
+            ]
+        )
+
+    plano.extend(
+        [
+            _tabs(TABS_CLIENTE_ATE_REF, "Ir até Ref. Cliente"),
+            PassoPausa(PAUSA_APOS_TABS),
+        ]
+    )
 
     if ref:
         plano.append(PassoTexto(ref, "Ref. cliente"))
@@ -289,12 +329,14 @@ class PhcAutomationService:
         num_cliente_phc: str,
         ref_cliente: str | None,
         designacao: str,
+        nome_cliente: str | None = None,
     ) -> PhcPropostaResultado:
         """Criar a proposta base no PHC e devolver o número lido (best-effort)."""
         plano = construir_plano(
             num_cliente_phc=num_cliente_phc,
             ref_cliente=ref_cliente,
             designacao=designacao,
+            nome_cliente=nome_cliente,
         )
 
         with _sem_avisos_pywinauto():

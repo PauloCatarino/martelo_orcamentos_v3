@@ -95,6 +95,7 @@ def registar_proposta_no_phc(
     ref_cliente: str | None,
     designacao: str,
     data_iso: str | None = None,
+    nome_cliente: str | None = None,
     automation: PhcAutomationService | None = None,
 ) -> RegistoPropostaResultado:
     """Criar a proposta no PHC e confirmar o número atribuído.
@@ -103,6 +104,12 @@ def registar_proposta_no_phc(
     nada foi criado). Se a criação correr mas a leitura falhar, devolve um
     resultado com ``erro_leitura`` — a proposta existe e o número tem de ser
     confirmado por uma pessoa.
+
+    ``nome_cliente`` só é usado nos **clientes temporários**: aí o
+    ``num_cliente_phc`` é o do cliente genérico (063) e o nome verdadeiro é
+    escrito na janela que o PHC abre a seguir. É também esse nome que depois
+    identifica a proposta na base de dados do PHC, já que o número de cliente
+    é o mesmo em todas elas.
     """
     # Marca de água ANTES: o maior nº de PROPOSTA do ano. Tem de ser só de
     # propostas — cada tipo de dossier tem a sua própria série de OBRANO (as
@@ -120,6 +127,7 @@ def registar_proposta_no_phc(
         num_cliente_phc=num_cliente_phc,
         ref_cliente=ref_cliente,
         designacao=designacao,
+        nome_cliente=nome_cliente,
     )
 
     if obrano_base is None:
@@ -132,6 +140,7 @@ def registar_proposta_no_phc(
             obrano_base=obrano_base,
             num_cliente=num_cliente_phc,
             ref_cliente=ref_cliente,
+            nome_cliente=nome_cliente,
         )
     except Exception as exc:  # noqa: BLE001
         return RegistoPropostaResultado(erro_leitura=str(exc))
@@ -159,6 +168,7 @@ def registar_proposta_no_phc(
             designacoes,
             ref_cliente=ref_cliente,
             designacao=designacao,
+            nome_cliente=nome_cliente,
         )
     except Exception:  # noqa: BLE001 - a verificação é uma rede de segurança
         avisos = []
@@ -167,10 +177,15 @@ def registar_proposta_no_phc(
 
 
 def descrever_resultado(
-    resultado: RegistoPropostaResultado, *, num_cliente_phc: str
+    resultado: RegistoPropostaResultado,
+    *,
+    num_cliente_phc: str,
+    nome_cliente: str | None = None,
 ) -> str:
     """Texto para mostrar ao utilizador, honesto sobre o que se sabe."""
     cliente = formatar_num_cliente_phc(num_cliente_phc)
+    if (nome_cliente or "").strip():
+        cliente = f"{cliente} (genérico) com o nome «{nome_cliente.strip()}»"
 
     if resultado.tipo_errado:
         return (
@@ -194,6 +209,10 @@ def descrever_resultado(
     texto = (
         f"Proposta PHC nº {proposta.numero} ({proposta.ano}) criada para o "
         f"cliente {cliente}.\n\n"
+    )
+    if (nome_cliente or "").strip():
+        texto += f"  Nome no PHC:         {proposta.nome or '(vazio)'}\n"
+    texto += (
         f"  Ref. cliente no PHC: {proposta.ref_cliente or '(vazio)'}\n"
         f"  Data:                {proposta.data or '—'}\n"
         f"  Nº do orçamento V3:  {resultado.codigo_v3}"
@@ -206,6 +225,8 @@ def descrever_resultado(
             "\n\nIsto costuma significar que a grelha do PHC neste computador "
             "tem as colunas noutra ordem. Confirma a proposta no PHC."
         )
+    elif (nome_cliente or "").strip():
+        texto += "\n\n✅ Nome, ref. cliente e designação verificados no PHC."
     else:
         texto += "\n\n✅ Ref. cliente e designação verificadas no PHC."
 

@@ -83,6 +83,10 @@ class NovoOrcamentoDialog(QDialog):
 
         self._cliente_id: int | None = None
         self._num_cliente_phc: str | None = None
+        # Nome e tipo do cliente escolhido: nos temporários a proposta vai no
+        # cliente genérico do PHC e é o nome que a identifica.
+        self._cliente_nome: str = ""
+        self._cliente_temporario: bool = False
         self.cliente_label = QLabel("\u2014 nenhum cliente escolhido \u2014")
         self.escolher_cliente_button = QPushButton("Escolher cliente\u2026")
         self.escolher_cliente_button.clicked.connect(self._escolher_cliente)
@@ -320,11 +324,11 @@ class NovoOrcamentoDialog(QDialog):
             self.error_label.setText("Escolha um cliente antes de criar no PHC.")
             return
 
-        num_cliente = self._num_cliente_phc
+        num_cliente, nome_cliente = self._cliente_phc_da_proposta()
         if not num_cliente:
             self.error_label.setText(
-                "O cliente escolhido não tem número de cliente PHC — não é "
-                "possível criar a proposta no PHC."
+                "O cliente escolhido não tem número de cliente PHC nem nome — "
+                "não é possível criar a proposta no PHC."
             )
             return
 
@@ -333,15 +337,29 @@ class NovoOrcamentoDialog(QDialog):
         if not designacao:
             designacao = construir_designacao(ref_cliente)
 
+        detalhes = [f"  Nº cliente PHC: {formatar_num_cliente_phc(num_cliente)}"]
+        if nome_cliente:
+            detalhes.append(f"  Nome a escrever: {nome_cliente}")
+        detalhes.append(f"  Ref. cliente:   {ref_cliente or '(vazio)'}")
+        detalhes.append(f"  Designação:     {designacao}")
+
+        aviso_temporario = ""
+        if nome_cliente:
+            aviso_temporario = (
+                "\nEste cliente é TEMPORÁRIO (não existe no PHC): a proposta "
+                "vai no cliente genérico 063 «CONSUMIDOR FINAL» e o PHC abre "
+                "uma janela onde o nome é substituído pelo nome acima.\n"
+            )
+
         confirmar = QMessageBox.question(
             self,
             "Confirmar criação no PHC",
             (
                 "Vou conduzir a janela do PHC e criar esta proposta:\n\n"
-                f"  Nº cliente PHC: {formatar_num_cliente_phc(num_cliente)}\n"
-                f"  Ref. cliente:   {ref_cliente or '(vazio)'}\n"
-                f"  Designação:     {designacao}\n\n"
-                "O PHC tem de estar aberto em Dossiers Internos com "
+                + "\n".join(detalhes)
+                + "\n"
+                + aviso_temporario
+                + "\nO PHC tem de estar aberto em Dossiers Internos com "
                 "'Proposta' escolhido no seletor.\n"
                 "Durante o processo NÃO mexas no rato nem no teclado.\n\n"
                 "Continuar?"
@@ -363,6 +381,7 @@ class NovoOrcamentoDialog(QDialog):
                     num_cliente_phc=num_cliente,
                     ref_cliente=ref_cliente,
                     designacao=designacao,
+                    nome_cliente=nome_cliente,
                 )
         except PhcAutomationError as exc:
             QMessageBox.critical(self, "Erro na automação do PHC", str(exc))
@@ -373,7 +392,9 @@ class NovoOrcamentoDialog(QDialog):
         finally:
             QGuiApplication.restoreOverrideCursor()
 
-        texto = descrever_resultado(resultado, num_cliente_phc=num_cliente)
+        texto = descrever_resultado(
+            resultado, num_cliente_phc=num_cliente, nome_cliente=nome_cliente
+        )
 
         if resultado.tipo_errado:
             QMessageBox.critical(self, "Documento errado no PHC", texto)
@@ -481,23 +502,44 @@ class NovoOrcamentoDialog(QDialog):
         cliente = dialog.selected_cliente
         self._cliente_id = cliente.id
         self._num_cliente_phc = (cliente.num_cliente_phc or "").strip() or None
+        self._cliente_nome = (cliente.nome or "").strip()
+        self._cliente_temporario = bool(cliente.is_temporary)
         tipo = "Tempor\u00e1rio" if cliente.is_temporary else "PHC"
         self.cliente_label.setText(f"{cliente.nome} ({tipo})")
         self._atualizar_criar_phc_disponivel()
         self._atualizar_opcao_margens_cliente()
 
+    def _cliente_phc_da_proposta(self) -> tuple[str | None, str | None]:
+        """(n\u00ba de cliente a escrever no PHC, nome a escrever) para este cliente.
+
+        Cliente do PHC: o seu pr\u00f3prio n\u00famero, sem nome a escrever (o PHC vai
+        busc\u00e1-lo). Cliente **tempor\u00e1rio**: n\u00e3o existe no PHC, por isso a
+        proposta \u00e9 feita no cliente gen\u00e9rico ``063`` (\u00abCONSUMIDOR FINAL\u00bb) e o
+        nome verdadeiro \u00e9 escrito na janela que o PHC abre a seguir.
+        """
+        from app.services.phc_automation_service import CLIENTE_GENERICO_PHC
+
+        if self._cliente_temporario:
+            nome = (self._cliente_nome or "").strip()
+            return (CLIENTE_GENERICO_PHC, nome) if nome else (None, None)
+        return (self._num_cliente_phc, None)
+
     def _atualizar_criar_phc_disponivel(self) -> None:
-        """S\u00f3 d\u00e1 para criar no PHC se o cliente tiver n\u00famero de cliente PHC."""
+        """Quem pode ir para o PHC: cliente com n\u00ba PHC, ou tempor\u00e1rio com nome."""
         if self._proposta_phc:
             return
-        tem_numero = bool(self._num_cliente_phc)
-        self.criar_phc_button.setEnabled(tem_numero)
-        if tem_numero:
-            self.proposta_phc_label.setText("\u2014 sem proposta no PHC \u2014")
-        else:
+        num_cliente, nome = self._cliente_phc_da_proposta()
+        self.criar_phc_button.setEnabled(bool(num_cliente))
+        if not num_cliente:
             self.proposta_phc_label.setText(
-                "\u2014 cliente sem n\u00ba PHC: n\u00e3o d\u00e1 para criar proposta \u2014"
+                "\u2014 cliente sem n\u00ba PHC nem nome: n\u00e3o d\u00e1 para criar proposta \u2014"
             )
+        elif nome:
+            self.proposta_phc_label.setText(
+                "\u2014 sem proposta no PHC (cliente tempor\u00e1rio: vai no 063) \u2014"
+            )
+        else:
+            self.proposta_phc_label.setText("\u2014 sem proposta no PHC \u2014")
 
     def _carregar_disponibilidade_margens(self) -> None:
         """Enable the margin options that have an applicable record."""

@@ -184,7 +184,9 @@ def test_marca_de_agua_e_so_de_propostas(monkeypatch):
 
     bases: list[int] = []
 
-    def _localizar(_session, *, ano, obrano_base, num_cliente, ref_cliente):
+    def _localizar(
+        _session, *, ano, obrano_base, num_cliente, ref_cliente, nome_cliente=None
+    ):
         bases.append(obrano_base)
         return _proposta() if obrano_base < 806 else None
 

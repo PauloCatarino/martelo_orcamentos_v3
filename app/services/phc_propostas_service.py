@@ -45,6 +45,10 @@ class PropostaPhc:
     num_cliente: str | None
     ref_cliente: str | None
     data: str | None
+    #: Nome do destinatário gravado na proposta (``BO.NOME``). Nos clientes
+    #: temporários é o único campo que distingue uma proposta da outra: todas
+    #: ficam no cliente genérico 63, com nomes diferentes.
+    nome: str | None = None
 
 
 def _inteiro(valor) -> int | None:
@@ -93,6 +97,7 @@ def build_query_propostas_do_ano(
     return (
         f"SELECT TOP ({int(max_linhas)}) "
         "BO.OBRANO AS Numero, YEAR(BO.DATAOBRA) AS Ano, BO.NO AS Num_Cliente, "
+        "LTRIM(RTRIM(BO.NOME)) AS Nome, "
         "LTRIM(RTRIM(BO.U_ORCC)) AS Ref_Cliente, "
         "CONVERT(VARCHAR(10), BO.DATAOBRA, 104) AS Data "
         "FROM BO WITH (NOLOCK) "
@@ -184,6 +189,7 @@ def verificar_proposta_gravada(
     *,
     ref_cliente: str | None,
     designacao: str | None,
+    nome_cliente: str | None = None,
 ) -> list[str]:
     """Confirmar que a proposta ficou no PHC como era pretendido.
 
@@ -195,6 +201,18 @@ def verificar_proposta_gravada(
     Devolve a lista de avisos (vazia = tudo conforme).
     """
     avisos: list[str] = []
+
+    # Cliente temporário: o nome é escrito à mão na janela que o PHC abre.
+    # Se ficou "CONSUMIDOR FINAL", a janela não apareceu ou o nome perdeu-se —
+    # e a proposta fica no PHC sem se saber de quem é.
+    esperado_nome = (nome_cliente or "").strip()
+    if esperado_nome:
+        gravado_nome = (proposta.nome or "").strip()
+        if gravado_nome.casefold() != esperado_nome.casefold():
+            avisos.append(
+                f"O Nome no PHC ficou {gravado_nome or '(vazio)'!r} em vez de "
+                f"{esperado_nome!r}."
+            )
 
     esperado_ref = (ref_cliente or "").strip()
     if esperado_ref:
@@ -240,6 +258,7 @@ def _linhas_para_propostas(linhas) -> list[PropostaPhc]:
                 num_cliente=str(num_cliente) if num_cliente is not None else None,
                 ref_cliente=_texto(linha.get("Ref_Cliente")),
                 data=_texto(linha.get("Data")),
+                nome=_texto(linha.get("Nome")),
             )
         )
     return propostas
@@ -250,14 +269,21 @@ def escolher_proposta_criada(
     *,
     num_cliente: str | None = None,
     ref_cliente: str | None = None,
+    nome_cliente: str | None = None,
 ) -> PropostaPhc | None:
     """Escolher, entre as candidatas, a proposta que acabou de ser criada.
 
     O cliente é um **requisito**, não uma preferência: propostas de outro
     cliente são descartadas. Sem isso arriscávamos mapear no V3 o número de
     uma proposta que outra pessoa criou ao mesmo tempo. Entre as do cliente
-    certo, prefere a que tem a mesma ref. cliente e, em caso de empate, a de
-    número mais baixo (a primeira criada depois da marca de água).
+    certo, prefere a que tem o mesmo nome (conta para os clientes temporários,
+    onde todas ficam no cliente genérico 63 e só o nome as distingue), depois
+    a mesma ref. cliente e, em caso de empate, a de número mais baixo (a
+    primeira criada depois da marca de água).
+
+    O nome é preferência e não requisito de propósito: se o PHC o cortar por
+    ser comprido, o número continua a ser encontrado — quem avisa da diferença
+    é a :func:`verificar_proposta_gravada`.
 
     Devolve ``None`` quando não há nenhuma candidata segura — nesse caso o
     número deve ser confirmado por uma pessoa, nunca adivinhado.
@@ -276,13 +302,17 @@ def escolher_proposta_criada(
             return None
 
     ref = (ref_cliente or "").strip().casefold()
+    nome = (nome_cliente or "").strip().casefold()
 
-    def pontuar(proposta: PropostaPhc) -> tuple[int, int]:
+    def pontuar(proposta: PropostaPhc) -> tuple[int, int, int]:
+        mesmo_nome = bool(
+            nome and (proposta.nome or "").strip().casefold() == nome
+        )
         mesma_ref = bool(
             ref and (proposta.ref_cliente or "").strip().casefold() == ref
         )
-        # Ordenar: ref igual primeiro, depois nº mais baixo.
-        return (0 if mesma_ref else 1, proposta.numero)
+        # Ordenar: nome igual primeiro, depois ref igual, depois nº mais baixo.
+        return (0 if mesmo_nome else 1, 0 if mesma_ref else 1, proposta.numero)
 
     return sorted(candidatas, key=pontuar)[0]
 
@@ -354,6 +384,7 @@ def localizar_proposta_criada(
     obrano_base: int,
     num_cliente: str | None = None,
     ref_cliente: str | None = None,
+    nome_cliente: str | None = None,
 ) -> PropostaPhc | None:
     """Localizar a proposta criada depois de ``obrano_base`` (SÓ-LEITURA).
 
@@ -364,5 +395,8 @@ def localizar_proposta_criada(
         session, ano=ano, obrano_minimo=obrano_base, num_cliente=num_cliente
     )
     return escolher_proposta_criada(
-        candidatas, num_cliente=num_cliente, ref_cliente=ref_cliente
+        candidatas,
+        num_cliente=num_cliente,
+        ref_cliente=ref_cliente,
+        nome_cliente=nome_cliente,
     )
