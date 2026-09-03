@@ -284,11 +284,15 @@ def test_a_dica_do_nome_imos_diz_que_e_o_nome_da_uniao() -> None:
 
 
 def test_a_dica_da_ref_fornecedor_diz_a_origem_e_que_pode_faltar() -> None:
+    # Sondagem ao PHC a 03-09-2026: dos 2336 artigos FF, ZERO tinham o
+    # `forref` preenchido. A referencia do fornecedor so' pode vir do iMos.
     dica = MateriaPrimaDialog.COMPONENTES_DICAS["Ref Fornecedor"]
 
     assert "PHC" in dica
     assert "iMos" in dica
     assert "vazia" in dica
+    # E nao e' o numero do catalogo que vem dentro da descricao Hafele.
+    assert "637.76.352" in dica
 
 
 def test_a_dica_da_descricao_diz_que_e_so_para_ler() -> None:

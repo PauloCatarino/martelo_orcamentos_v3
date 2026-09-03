@@ -157,10 +157,13 @@ class MateriaPrimaDialog(QDialog):
         ),
         "Ref Fornecedor": (
             "A referência do fornecedor — a 3.ª e última chave.\n"
-            "Vem do PHC quando lá está registada; senão, do campo «Ref do "
-            "Fornecedor» do iMos.\n"
-            "Nem sempre existe num sítio nem no outro: pode ficar vazia, desde "
-            "que o nome da união esteja preenchido.\n"
+            "Copie-a do campo «Ref do Fornecedor» do iMos, tal e qual. No PHC "
+            "esse campo está por preencher em todos os artigos de ferragem, "
+            "por isso não há lá nada a copiar.\n"
+            "Não é o número do catálogo que aparece dentro da descrição "
+            "(637.76.352): é o campo próprio, que costuma ser outro.\n"
+            "Também nem sempre existe no iMos — pode ficar vazia, desde que o "
+            "nome da união esteja preenchido.\n"
             "A marca no fim (…BLUM, …HAFELE) é ignorada na comparação."
         ),
     }
