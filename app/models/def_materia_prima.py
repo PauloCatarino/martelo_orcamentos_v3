@@ -88,6 +88,11 @@ class DefMateriaPrima(Base):
     # vai ter link, e nao ter link nao e' aviso nenhum. Os links dos catalogos
     # levam muito parametro atras, dai os 1000 caracteres.
     link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # So' o NOME do ficheiro da imagem do IMOS
+    # (HF_637.76.352_PE_AXILO_72_92.JPG). A pasta onde ele vive esta' na
+    # configuracao `pasta_imagens_imos` -- assim o dia em que a biblioteca
+    # do IMOS mudar de sitio muda-se um caminho e nao trezentas fichas.
+    imagem_ficheiro: Mapped[str | None] = mapped_column(String(255), nullable=True)
     criado_por_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=True
     )

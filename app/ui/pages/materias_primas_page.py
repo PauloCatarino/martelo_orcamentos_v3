@@ -32,12 +32,17 @@ from app.domain.materia_prima_types import (
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
 from app.services.def_materia_prima_service import DefMateriaPrimaService
+from app.services.system_setting_service import SystemSettingService
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.colunas_visiveis import ligar_menu_colunas
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
+
+#: Onde vivem as imagens dos artigos do iMos ("Preview Image"). O valor
+#: define-se em Configurações → Caminhos do Sistema.
+KEY_PASTA_IMAGENS_IMOS = "pasta_imagens_imos"
 
 
 class MateriasPrimasPage(QWidget):
@@ -63,6 +68,7 @@ class MateriasPrimasPage(QWidget):
         "Cor",
         "Ref. PHC",
         "Link",
+        "Imagem",
         "Orla 0.4",
         "Orla 1.0",
         "Comp MP",
@@ -85,6 +91,7 @@ class MateriasPrimasPage(QWidget):
         "Fabricante",
         "Cor",
         "Ref. PHC",
+        "Imagem",
         "Observações",
         "Criado por",
         "Alterado por",
@@ -425,8 +432,25 @@ class MateriasPrimasPage(QWidget):
             utilizacoes=utilizacoes,
             ref_le_sugerida=self._proxima_ref_le,
             fornecedores=self._listar_fornecedores() or [],
+            pasta_imagens=self._pasta_das_imagens(),
         )
         dialogo.exec()
+
+    def _pasta_das_imagens(self) -> str:
+        """Onde estão as imagens dos artigos do iMos.
+
+        Vem de Configurações → Caminhos do Sistema. Se a configuração não
+        existir ou a base não responder, devolve vazio — a ficha diz que falta
+        configurar a pasta em vez de mostrar um quadrado vazio.
+        """
+        try:
+            with SessionLocal() as session:
+                return (
+                    SystemSettingService(session).obter_valor(KEY_PASTA_IMAGENS_IMOS, "")
+                    or ""
+                )
+        except SQLAlchemyError:
+            return ""
 
     def gerir_fornecedores(self) -> None:
         """Abrir a lista de fornecedores, para preencher contactos e emails."""
@@ -716,6 +740,7 @@ class MateriasPrimasPage(QWidget):
             "nome_fabricante": dados.nome_fabricante,
             "ref_phc": dados.ref_phc,
             "link": dados.link,
+            "imagem_ficheiro": dados.imagem_ficheiro,
             "ativo": dados.ativo,
             "observacoes": dados.observacoes,
             "origem_dados": ORIGEM_DADOS_V3,
@@ -875,6 +900,7 @@ class MateriasPrimasPage(QWidget):
                 materia.cor or "",
                 materia.ref_phc or "",
                 materia.link or "",
+                materia.imagem_ficheiro or "",
                 materia.coresp_orla_0_4 or "",
                 materia.coresp_orla_1_0 or "",
                 format_quantity(materia.comprimento),

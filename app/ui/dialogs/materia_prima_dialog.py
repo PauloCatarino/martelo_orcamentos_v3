@@ -6,15 +6,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from PySide6.QtCore import QDate, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -44,7 +46,12 @@ from app.repositories.def_materia_prima_repository import (
 from app.ui import tema
 from app.utils.formatters import format_currency
 
-SEM_VALOR = "—"
+SEM_VALOR = "\u2014"
+
+#: Lado maior da imagem do material na ficha, em pixeis. Grande o
+#: suficiente para se ver a peca, pequeno o suficiente para nao empurrar
+#: os campos para fora do ecra.
+LADO_IMAGEM = 190
 
 
 @dataclass(frozen=True)
@@ -75,6 +82,7 @@ class MateriaPrimaDialogData:
     referencia_fornecedor: str | None
     ref_phc: str | None
     link: str | None
+    imagem_ficheiro: str | None
     stock: bool | None
     ativo: bool
     observacoes: str | None
@@ -110,6 +118,7 @@ class MateriaPrimaDialog(QDialog):
         utilizacoes: int = 0,
         ref_le_sugerida: Callable[[str], str | None] | None = None,
         fornecedores: list | None = None,
+        pasta_imagens: str | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -120,6 +129,7 @@ class MateriaPrimaDialog(QDialog):
         self._utilizacoes = utilizacoes
         self._ref_le_sugerida = ref_le_sugerida
         self._fornecedores = fornecedores or []
+        self._pasta_imagens = (pasta_imagens or "").strip()
         self._is_edit = materia is not None
 
         self.setWindowTitle(
@@ -172,6 +182,7 @@ class MateriaPrimaDialog(QDialog):
         if materia is not None:
             self._carregar(materia)
         self._atualizar_estado_preco()
+        self._mostrar_imagem()
 
     # ------------------------------------------------------------------ campos
 
@@ -287,6 +298,37 @@ class MateriaPrimaDialog(QDialog):
             "Abrir este link no browser. Confirme sempre a morada antes de abrir."
         )
         self.abrir_link_button.clicked.connect(self._abrir_link)
+
+        # A imagem do material: o IMOS guarda o NOME do ficheiro na ficha do
+        # artigo ("Preview Image") e os ficheiros vivem todos na mesma pasta da
+        # biblioteca. Aqui guarda-se o mesmo nome, e a pasta e' a configuracao
+        # `pasta_imagens_imos`.
+        self.imagem_input = QLineEdit()
+        self.imagem_input.setPlaceholderText("HF_637.76.352_PE_AXILO_72_92.JPG")
+        self.imagem_input.setToolTip(
+            "Nome do ficheiro da imagem, como vem no «Preview Image» do iMos.\n"
+            "A pasta onde ele vive define-se em Configurações → Caminhos do "
+            "Sistema («pasta_imagens_imos»).\n"
+            "É opcional — sem imagem a ficha funciona na mesma."
+        )
+        self.imagem_input.textChanged.connect(self._mostrar_imagem)
+
+        self.imagem_label = QLabel()
+        self.imagem_label.setFixedSize(LADO_IMAGEM, LADO_IMAGEM)
+        self.imagem_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imagem_label.setWordWrap(True)
+        self.imagem_label.setStyleSheet(
+            f"border: 1px solid {tema.CINZA_CASTANHO}; border-radius: 4px;"
+            f" background-color: #FFFFFF; color: {tema.CINZA_ESCURO};"
+            " font-size: 11px; padding: 6px;"
+        )
+
+        self.procurar_imagem_button = QPushButton("Procurar…")
+        self.procurar_imagem_button.setToolTip(
+            "Escolher a imagem na biblioteca do iMos. Fica guardado só o nome "
+            "do ficheiro, não o caminho todo."
+        )
+        self.procurar_imagem_button.clicked.connect(self._procurar_imagem)
         # Ligar o sinal depois do botao existir, e correr uma vez a seguir: com
         # o campo vazio o botao nasce desligado.
         self.link_input.textChanged.connect(self._atualizar_botao_link)
@@ -336,9 +378,22 @@ class MateriaPrimaDialog(QDialog):
         direita.addRow("Ref. fornecedor", self.referencia_fornecedor_input)
         direita.addRow("Ref. PHC", self.ref_phc_input)
 
+        # A imagem fica a` direita dos campos, com o nome do ficheiro por baixo:
+        # quem abre a ficha ve' logo a peca de que se trata, sem ler nada.
+        coluna_imagem = QVBoxLayout()
+        coluna_imagem.setSpacing(6)
+        titulo_imagem = QLabel("Imagem")
+        titulo_imagem.setStyleSheet(f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;")
+        coluna_imagem.addWidget(titulo_imagem)
+        coluna_imagem.addWidget(self.imagem_label)
+        coluna_imagem.addWidget(self.imagem_input)
+        coluna_imagem.addWidget(self.procurar_imagem_button)
+        coluna_imagem.addStretch()
+
         colunas = QHBoxLayout()
         colunas.addLayout(esquerda, stretch=1)
         colunas.addLayout(direita, stretch=1)
+        colunas.addLayout(coluna_imagem)
 
         marcas = QHBoxLayout()
         marcas.addWidget(self.stock_input)
@@ -504,6 +559,7 @@ class MateriaPrimaDialog(QDialog):
         self.referencia_fornecedor_input.setText(materia.referencia_fornecedor or "")
         self.ref_phc_input.setText(materia.ref_phc or "")
         self.link_input.setText(materia.link or "")
+        self.imagem_input.setText(materia.imagem_ficheiro or "")
         self.stock_input.setChecked(bool(materia.stock))
         self.ativo_input.setChecked(materia.ativo)
         self.observacoes_input.setPlainText(materia.observacoes or "")
@@ -587,6 +643,7 @@ class MateriaPrimaDialog(QDialog):
             ),
             ref_phc=self._texto_ou_none(self.ref_phc_input.text()),
             link=self._texto_ou_none(self.link_input.text()),
+            imagem_ficheiro=self._texto_ou_none(self.imagem_input.text()),
             stock=self.stock_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
             observacoes=self._texto_ou_none(self.observacoes_input.toPlainText()),
@@ -660,6 +717,64 @@ class MateriaPrimaDialog(QDialog):
                 "Não foi possível abrir este link. Confirme que a morada está "
                 "completa (começa por «https://»)."
             )
+
+    def _caminho_da_imagem(self) -> Path | None:
+        """O ficheiro da imagem, juntando a pasta configurada ao nome escrito."""
+        nome = self.imagem_input.text().strip()
+        if not nome or not self._pasta_imagens:
+            return None
+        return Path(self._pasta_imagens) / nome
+
+    def _mostrar_imagem(self) -> None:
+        """Desenhar a imagem — ou dizer, sem rodeios, porque não há nenhuma.
+
+        A pasta é uma unidade de rede: quando ela não responde, a ficha não
+        pode ficar com um quadrado vazio a fingir que o material não tem
+        imagem. Diz-se o que se passa.
+        """
+        nome = self.imagem_input.text().strip()
+        if not nome:
+            self.imagem_label.setPixmap(QPixmap())
+            self.imagem_label.setText("Sem imagem")
+            return
+
+        if not self._pasta_imagens:
+            self.imagem_label.setPixmap(QPixmap())
+            self.imagem_label.setText(
+                "Falta configurar a pasta das imagens do iMos em "
+                "Configurações → Caminhos do Sistema."
+            )
+            return
+
+        caminho = self._caminho_da_imagem()
+        pixmap = QPixmap(str(caminho)) if caminho is not None else QPixmap()
+        if pixmap.isNull():
+            self.imagem_label.setPixmap(QPixmap())
+            self.imagem_label.setText(f"Não foi encontrada a imagem\n«{nome}».")
+            return
+
+        self.imagem_label.setText("")
+        self.imagem_label.setPixmap(
+            pixmap.scaled(
+                LADO_IMAGEM - 8,
+                LADO_IMAGEM - 8,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def _procurar_imagem(self) -> None:
+        """Escolher a imagem na biblioteca do iMos; guarda só o nome."""
+        pasta = self._pasta_imagens or ""
+        escolhido, _ = QFileDialog.getOpenFileName(
+            self,
+            "Escolher a imagem do material",
+            pasta,
+            "Imagens (*.jpg *.jpeg *.png *.gif *.bmp);;Todos os ficheiros (*)",
+        )
+        if not escolhido:
+            return
+        self.imagem_input.setText(Path(escolhido).name)
 
     def set_error(self, mensagem: str) -> None:
         """Mostrar um erro sem fechar o diálogo."""

@@ -53,6 +53,7 @@ class DefMateriaPrimaResumo:
     nome_fabricante: str | None = None
     ref_phc: str | None = None
     link: str | None = None
+    imagem_ficheiro: str | None = None
     fornecedor_id: int | None = None
     # Nomes de quem criou e de quem alterou pela última vez, prontos a mostrar.
     criado_por: str | None = None
@@ -185,6 +186,7 @@ class DefMateriaPrimaRepository:
         nome_fabricante: str | None = None,
         ref_phc: str | None = None,
         link: str | None = None,
+        imagem_ficheiro: str | None = None,
         fornecedor_id: int | None = None,
         criado_por_id: int | None = None,
         alterado_por_id: int | None = None,
@@ -198,6 +200,7 @@ class DefMateriaPrimaRepository:
             nome_fabricante=nome_fabricante,
             ref_phc=ref_phc,
             link=link,
+            imagem_ficheiro=imagem_ficheiro,
             fornecedor_id=fornecedor_id,
             criado_por_id=criado_por_id,
             alterado_por_id=alterado_por_id,
@@ -262,6 +265,7 @@ class DefMateriaPrimaRepository:
         nome_fabricante: str | None = None,
         ref_phc: str | None = None,
         link: str | None = None,
+        imagem_ficheiro: str | None = None,
         fornecedor_id: int | None = None,
         alterado_por_id: int | None = None,
     ) -> DefMateriaPrimaResumo:
@@ -299,6 +303,7 @@ class DefMateriaPrimaRepository:
         materia.nome_fabricante = nome_fabricante
         materia.ref_phc = ref_phc
         materia.link = link
+        materia.imagem_ficheiro = imagem_ficheiro
         materia.fornecedor_id = fornecedor_id
         if alterado_por_id is not None:
             materia.alterado_por_id = alterado_por_id
@@ -477,6 +482,7 @@ class DefMateriaPrimaRepository:
             nome_fabricante=materia.nome_fabricante,
             ref_phc=materia.ref_phc,
             link=materia.link,
+            imagem_ficheiro=materia.imagem_ficheiro,
             fornecedor_id=materia.fornecedor_id,
             criado_por=_nome_do_utilizador(materia.criado_por),
             alterado_por=_nome_do_utilizador(materia.alterado_por),
