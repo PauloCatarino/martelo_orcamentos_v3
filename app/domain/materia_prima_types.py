@@ -115,3 +115,51 @@ def preco_desatualizado(
 
     meses = meses_desde(getattr(materia, "data_ultimo_preco", None), hoje)
     return meses is None or meses >= meses_limite
+
+
+# --- Componentes de uma matéria-prima composta (fase 1 da ponte ao iMos) ----
+# O Martelo orça uma ferragem como UM todo (FER0015 = dobradiça de copo +
+# calço H0). O iMos exporta a mesma obra desmontada, uma linha por componente.
+# Estas duas palavras dizem o papel de cada filho na contagem:
+#
+# PRINCIPAL   — identifica o conjunto e MANDA na contagem. Um conjunto pode ter
+#               vários (apelidos: dois pés AXILO de alturas diferentes que valem
+#               o mesmo Ref LE), mas a mesma referência nunca é principal em
+#               dois conjuntos — senão a contagem ficava ambígua.
+# SECUNDARIO  — só confere. É CONSUMIDO pelos conjuntos que os principais já
+#               contaram, e pode ser partilhado por muitos conjuntos (o calço H0
+#               entra em várias dobradiças).
+PAPEL_PRINCIPAL = "PRINCIPAL"
+PAPEL_SECUNDARIO = "SECUNDARIO"
+PAPEIS_COMPONENTE_VALIDOS = (PAPEL_PRINCIPAL, PAPEL_SECUNDARIO)
+
+#: Marcas que o iMos cola à referência do fornecedor ("174H7100E    BLUM").
+#: Saem fora ao normalizar, senão a mesma peça nunca bate certo com ela própria.
+MARCAS_NA_REF_FORNECEDOR = (
+    "ARTIMOL",
+    "BLUM",
+    "EMUCA",
+    "FINSA",
+    "HAFELE",
+    "MAELGA",
+    "PECOL",
+    "SONAE",
+)
+
+
+def normalizar_ref_fornecedor(valor: str | None) -> str | None:
+    """Limpar uma referência de fornecedor vinda do iMos.
+
+    ``"174H7100E    BLUM"`` fica ``"174H7100E"``: maiúsculas, espaços
+    colapsados e a marca fora. Sem isto a mesma peça escrita de duas maneiras
+    nunca casava — e o iMos escreve-a de duas maneiras (a referência do
+    catálogo da Häfele num pé, um número interno no outro).
+
+    Devolve ``None`` quando não sobra nada de útil.
+    """
+    limpo = " ".join(str(valor or "").upper().split())
+    if not limpo:
+        return None
+    palavras = [p for p in limpo.split(" ") if p not in MARCAS_NA_REF_FORNECEDOR]
+    limpo = " ".join(palavras).strip()
+    return limpo or None

@@ -43,6 +43,7 @@ LARGURAS = {
     "Fornecedor": 18,
     "Ref. fornecedor": 20,
     "Fabricante": 16,
+    "Nome iMos": 32,
     "Link": 46,
     "Imagem": 34,
     "Observações": 32,

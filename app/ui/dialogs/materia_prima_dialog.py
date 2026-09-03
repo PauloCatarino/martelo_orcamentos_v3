@@ -33,12 +33,19 @@ from PySide6.QtWidgets import (
 
 from app.domain.materia_prima_types import (
     FAMILIAS_VALIDAS,
+    PAPEIS_COMPONENTE_VALIDOS,
+    PAPEL_PRINCIPAL,
+    PAPEL_SECUNDARIO,
     TIPO_PRECO_LIVRE,
     TIPO_PRECO_TABELA,
     TIPOS_PRECO_VALIDOS,
     UNIDADES_VALIDAS,
 )
 from app.domain.numeros import formatar_percentagem
+from app.repositories.def_materia_prima_componente_repository import (
+    ComponenteDados,
+    ComponenteResumo,
+)
 from app.repositories.def_materia_prima_repository import (
     DefMateriaPrimaResumo,
     PrecoHistoricoResumo,
@@ -97,6 +104,25 @@ class MateriaPrimaDialog(QDialog):
     escrito dentro de cada orçamento.
     """
 
+    #: As colunas do separador Componentes. As tres chaves da ponte ao iMos
+    #: aparecem pela ordem em que a importacao as tenta.
+    COMPONENTES_HEADERS = [
+        "Papel",
+        "Descrição",
+        "Qt/conj.",
+        "Nome iMos",
+        "Ref PHC",
+        "Ref Fornecedor",
+    ]
+    COMPONENTES_LARGURAS = {
+        "Papel": 122,
+        "Descrição": 240,
+        "Qt/conj.": 70,
+        "Nome iMos": 230,
+        "Ref PHC": 90,
+        "Ref Fornecedor": 150,
+    }
+
     HISTORICO_HEADERS = [
         "Data",
         "Preço tabela",
@@ -119,6 +145,7 @@ class MateriaPrimaDialog(QDialog):
         ref_le_sugerida: Callable[[str], str | None] | None = None,
         fornecedores: list | None = None,
         pasta_imagens: str | None = None,
+        componentes: list[ComponenteResumo] | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -130,6 +157,7 @@ class MateriaPrimaDialog(QDialog):
         self._ref_le_sugerida = ref_le_sugerida
         self._fornecedores = fornecedores or []
         self._pasta_imagens = (pasta_imagens or "").strip()
+        self._componentes_iniciais = componentes or []
         self._is_edit = materia is not None
 
         self.setWindowTitle(
@@ -145,6 +173,7 @@ class MateriaPrimaDialog(QDialog):
 
         self.abas = QTabWidget()
         self.abas.addTab(self._aba_dados(), "Dados")
+        self.abas.addTab(self._aba_componentes(), "Componentes")
         self.abas.addTab(self._aba_historico(), "Histórico de preços")
 
         self.error_label = QLabel("")
@@ -417,6 +446,187 @@ class MateriaPrimaDialog(QDialog):
         pagina = QWidget()
         pagina.setLayout(layout)
         return pagina
+
+    def _aba_componentes(self) -> QWidget:
+        """Separador com os componentes (filhos) deste conjunto.
+
+        O Martelo orça uma ferragem como UM todo; o iMos exporta a mesma obra
+        desmontada, uma linha por componente. Esta tabela é o mapa entre as
+        duas coisas — e é ela que permite avaliar uma obra desenhada aos preços
+        do catálogo.
+        """
+        explicacao = QLabel(
+            "Para as ferragens que o Martelo orça como um conjunto (dobradiça "
+            "de copo + calço, pé + base). Cada linha é um componente, com as "
+            "referências por onde ele aparece nas listas do iMos.\n"
+            "O PRINCIPAL é quem conta os conjuntos — pode haver mais do que um "
+            "(dois pés de alturas diferentes que valem o mesmo Ref LE). Os "
+            "SECUNDARIO só conferem, e podem repetir-se noutros conjuntos.\n"
+            "O preço fica sempre nesta matéria-prima: isto é um mapa de "
+            "referências, não uma segunda forma de calcular o preço."
+        )
+        explicacao.setWordWrap(True)
+        explicacao.setStyleSheet(f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;")
+
+        self.componentes_table = QTableWidget(0, len(self.COMPONENTES_HEADERS))
+        self.componentes_table.setHorizontalHeaderLabels(self.COMPONENTES_HEADERS)
+        self.componentes_table.verticalHeader().setVisible(False)
+        self.componentes_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.componentes_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        for indice, cabecalho in enumerate(self.COMPONENTES_HEADERS):
+            self.componentes_table.setColumnWidth(
+                indice, self.COMPONENTES_LARGURAS.get(cabecalho, 110)
+            )
+        self.componentes_table.setToolTip(
+            "Duplo clique numa célula para escrever. As três referências são "
+            "tentadas por esta ordem: nome iMos, Ref PHC, Ref Fornecedor."
+        )
+
+        self.add_componente_button = QPushButton("+ Componente")
+        self.add_componente_button.setToolTip(
+            "Acrescentar uma linha. Nasce SECUNDARIO — só quem manda na "
+            "contagem se declara principal."
+        )
+        self.add_componente_button.clicked.connect(
+            lambda: self._acrescentar_componente()
+        )
+
+        self.remover_componente_button = QPushButton("Eliminar linha")
+        self.remover_componente_button.setToolTip(
+            "Eliminar o componente escolhido. Só é gravado ao carregar em "
+            "«Guardar»."
+        )
+        self.remover_componente_button.clicked.connect(self._remover_componente)
+
+        botoes = QHBoxLayout()
+        botoes.addWidget(self.add_componente_button)
+        botoes.addWidget(self.remover_componente_button)
+        botoes.addStretch()
+
+        self.componentes_status = QLabel("")
+        self.componentes_status.setStyleSheet(
+            f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;"
+        )
+        self.componentes_status.setWordWrap(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(explicacao)
+        layout.addLayout(botoes)
+        layout.addWidget(self.componentes_table, stretch=1)
+        layout.addWidget(self.componentes_status)
+
+        pagina = QWidget()
+        pagina.setLayout(layout)
+
+        for componente in self._componentes_iniciais:
+            self._acrescentar_componente(componente)
+        self._descrever_componentes()
+        return pagina
+
+    def _acrescentar_componente(
+        self, componente: ComponenteResumo | None = None
+    ) -> None:
+        """Uma linha nova na tabela dos componentes."""
+        linha = self.componentes_table.rowCount()
+        self.componentes_table.insertRow(linha)
+
+        papel = QComboBox()
+        for valor in PAPEIS_COMPONENTE_VALIDOS:
+            papel.addItem(valor, valor)
+        papel.setCurrentText(
+            componente.papel if componente is not None else PAPEL_SECUNDARIO
+        )
+        papel.setToolTip(
+            "PRINCIPAL conta os conjuntos; SECUNDARIO só confere e pode "
+            "repetir-se noutros conjuntos."
+        )
+        papel.currentIndexChanged.connect(self._descrever_componentes)
+        self.componentes_table.setCellWidget(linha, 0, papel)
+
+        if componente is None:
+            valores = ("", "1", "", "", "")
+        else:
+            valores = (
+                componente.descricao or "",
+                self._texto_decimal(componente.quantidade),
+                componente.nome_imos or "",
+                componente.ref_phc or "",
+                componente.ref_fornecedor or "",
+            )
+        for deslocamento, valor in enumerate(valores, start=1):
+            self.componentes_table.setItem(
+                linha, deslocamento, QTableWidgetItem(valor)
+            )
+
+        self._descrever_componentes()
+
+    def _remover_componente(self) -> None:
+        linha = self.componentes_table.currentRow()
+        if linha < 0:
+            self.componentes_status.setText(
+                "Escolha primeiro a linha que quer eliminar."
+            )
+            return
+        self.componentes_table.removeRow(linha)
+        self._descrever_componentes()
+
+    def _descrever_componentes(self) -> None:
+        """A linha de apoio: quantos são e quantos contam."""
+        total = self.componentes_table.rowCount()
+        if not total:
+            self.componentes_status.setText(
+                "Sem componentes. Uma ferragem simples não precisa de nenhum — "
+                "nesse caso basta escrever o nome do artigo do iMos no "
+                "separador Dados."
+            )
+            return
+        principais = sum(
+            1
+            for linha in range(total)
+            if self._papel_da_linha(linha) == PAPEL_PRINCIPAL
+        )
+        aviso = ""
+        if principais == 0:
+            aviso = (
+                "  —  sem nenhum PRINCIPAL este conjunto nunca vai ser contado "
+                "numa obra."
+            )
+        self.componentes_status.setText(
+            f"{total} componente{'s' if total != 1 else ''}, "
+            f"{principais} principa{'is' if principais != 1 else 'l'}.{aviso}"
+        )
+
+    def _papel_da_linha(self, linha: int) -> str:
+        widget = self.componentes_table.cellWidget(linha, 0)
+        if widget is None:
+            return PAPEL_SECUNDARIO
+        return widget.currentData() or PAPEL_SECUNDARIO
+
+    def _celula_componente(self, linha: int, coluna: int) -> str:
+        item = self.componentes_table.item(linha, coluna)
+        return (item.text() if item is not None else "").strip()
+
+    def componentes(self) -> list[ComponenteDados]:
+        """Os componentes tal como estão na tabela, prontos a gravar."""
+        linhas: list[ComponenteDados] = []
+        for linha in range(self.componentes_table.rowCount()):
+            quantidade = self._para_decimal(self._celula_componente(linha, 2))
+            linhas.append(
+                ComponenteDados(
+                    papel=self._papel_da_linha(linha),
+                    descricao=self._celula_componente(linha, 1) or None,
+                    quantidade=quantidade if quantidade is not None else Decimal("1"),
+                    nome_imos=self._celula_componente(linha, 3) or None,
+                    ref_phc=self._celula_componente(linha, 4) or None,
+                    ref_fornecedor=self._celula_componente(linha, 5) or None,
+                    ordem=linha + 1,
+                )
+            )
+        return linhas
 
     def _aba_historico(self) -> QWidget:
         """Separador com o histórico de preços do material."""

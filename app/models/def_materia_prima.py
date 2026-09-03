@@ -43,6 +43,7 @@ class DefMateriaPrima(Base):
         Index("ix_def_materias_primas_tipo_preco", "tipo_preco"),
         Index("ix_def_materias_primas_data_ultimo_preco", "data_ultimo_preco"),
         Index("ix_def_materias_primas_fornecedor_id", "fornecedor_id"),
+        Index("ix_def_materias_primas_nome_imos", "nome_imos"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -83,6 +84,10 @@ class DefMateriaPrima(Base):
     cor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     nome_fabricante: Mapped[str | None] = mapped_column(String(150), nullable=True)
     ref_phc: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # O nome do artigo no iMos (AGL_MLM_LINHO_CANCUN_19MM, SUPORTE_VARAO).
+    # E' a ponte para os casos 1 PARA 1 -- placas, orlas e ferragens simples,
+    # que nao precisam da tabela de componentes.
+    nome_imos: Mapped[str | None] = mapped_column(String(150), nullable=True)
     # Morada na net para ver o material: a pagina do fabricante, a foto do
     # fornecedor, o PDF do sistema. Opcional -- a maioria dos materiais nunca
     # vai ter link, e nao ter link nao e' aviso nenhum. Os links dos catalogos

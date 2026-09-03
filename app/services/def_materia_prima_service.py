@@ -70,6 +70,7 @@ class CriarDefMateriaPrimaData:
     ref_phc: str | None = None
     link: str | None = None
     imagem_ficheiro: str | None = None
+    nome_imos: str | None = None
     fornecedor_id: int | None = None
 
 
@@ -107,6 +108,7 @@ class EditarDefMateriaPrimaData:
     ref_phc: str | None = None
     link: str | None = None
     imagem_ficheiro: str | None = None
+    nome_imos: str | None = None
     fornecedor_id: int | None = None
 
 
@@ -190,6 +192,7 @@ class DefMateriaPrimaService:
             ref_phc=data.ref_phc,
             link=data.link,
             imagem_ficheiro=data.imagem_ficheiro,
+            nome_imos=data.nome_imos,
             fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
@@ -245,6 +248,7 @@ class DefMateriaPrimaService:
             ref_phc=data.ref_phc,
             link=data.link,
             imagem_ficheiro=data.imagem_ficheiro,
+            nome_imos=data.nome_imos,
             fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,

@@ -126,10 +126,13 @@ def test_botao_abrir_so_liga_quando_ha_morada_escrita() -> None:
 # --- Tabela ------------------------------------------------------------------
 
 
-def test_tabela_tem_coluna_link_a_seguir_a_ref_phc() -> None:
+def test_tabela_tem_coluna_link_junto_as_referencias() -> None:
+    # A ordem das colunas agrupa o que é da mesma família: primeiro as duas
+    # chaves da ponte ao iMos (Ref. PHC e Nome iMos), depois o link e a imagem.
     cabecalhos = MateriasPrimasPage.TABLE_HEADERS
 
-    assert "Link" in cabecalhos
-    assert cabecalhos.index("Link") == cabecalhos.index("Ref. PHC") + 1
-    # Os valores de cada linha são construídos na mesma ordem dos cabeçalhos.
+    assert cabecalhos.index("Nome iMos") == cabecalhos.index("Ref. PHC") + 1
+    assert cabecalhos.index("Link") == cabecalhos.index("Nome iMos") + 1
+    assert cabecalhos.index("Imagem") == cabecalhos.index("Link") + 1
+    # O link nasce visível; o nome do ficheiro e o nome do artigo, não.
     assert "Link" not in MateriasPrimasPage.COLUNAS_OCULTAS_POR_DEFEITO

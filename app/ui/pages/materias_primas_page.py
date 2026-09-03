@@ -67,6 +67,7 @@ class MateriasPrimasPage(QWidget):
         "Fabricante",
         "Cor",
         "Ref. PHC",
+        "Nome iMos",
         "Link",
         "Imagem",
         "Orla 0.4",
@@ -91,6 +92,7 @@ class MateriasPrimasPage(QWidget):
         "Fabricante",
         "Cor",
         "Ref. PHC",
+        "Nome iMos",
         "Imagem",
         "Observações",
         "Criado por",
@@ -423,16 +425,26 @@ class MateriasPrimasPage(QWidget):
             except SQLAlchemyError as error:
                 print(f"[Materias-Primas] Erro ao ler o histórico: {error}")
 
+        componentes = (
+            self._listar_componentes(materia.id) if materia is not None else []
+        )
+
         dialogo = MateriaPrimaDialog(
             materia,
             parent=self,
-            on_save=lambda dados: self._guardar(dados, materia),
-            on_save_as=lambda dados: self._guardar(dados, None),
+            on_save=lambda dados: self._guardar(
+                dados, materia, dialogo.componentes()
+            ),
+            # O "Gravar como..." NÃO leva os componentes: as referências
+            # principais só podem identificar um conjunto, e copiá-las para uma
+            # matéria-prima nova era garantir uma colisão.
+            on_save_as=lambda dados: self._guardar(dados, None, []),
             historico=historico,
             utilizacoes=utilizacoes,
             ref_le_sugerida=self._proxima_ref_le,
             fornecedores=self._listar_fornecedores() or [],
             pasta_imagens=self._pasta_das_imagens(),
+            componentes=componentes,
         )
         dialogo.exec()
 
@@ -706,8 +718,15 @@ class MateriasPrimasPage(QWidget):
         except SQLAlchemyError:
             return None
 
-    def _guardar(self, dados, materia: DefMateriaPrimaResumo | None) -> bool:
-        """Gravar a ficha. Devolve False para o diálogo ficar aberto no erro."""
+    def _guardar(
+        self, dados, materia: DefMateriaPrimaResumo | None, componentes=None
+    ) -> bool:
+        """Gravar a ficha. Devolve False para o diálogo ficar aberto no erro.
+
+        ``componentes`` é a lista do separador Componentes. Vem a ``None`` em
+        quem chama sem ficha (o assistente), e nesse caso não se toca nos
+        componentes que já existem.
+        """
         from app.services.def_materia_prima_service import (
             CriarDefMateriaPrimaData,
             EditarDefMateriaPrimaData,
@@ -739,6 +758,7 @@ class MateriasPrimasPage(QWidget):
             "cor": dados.cor,
             "nome_fabricante": dados.nome_fabricante,
             "ref_phc": dados.ref_phc,
+            "nome_imos": dados.nome_imos,
             "link": dados.link,
             "imagem_ficheiro": dados.imagem_ficheiro,
             "ativo": dados.ativo,
@@ -773,10 +793,56 @@ class MateriasPrimasPage(QWidget):
             self.status_label.setText("Não foi possível gravar a matéria-prima.")
             return False
 
+        # Os componentes só se podem gravar depois: uma matéria-prima nova só
+        # tem id quando já está na base. Se falharem, a matéria-prima fica
+        # gravada e a ficha aberta a dizer porquê — é o que se quer, senão
+        # perdia-se o resto do que ele escreveu.
+        if componentes is not None and not self._guardar_componentes(
+            resultado.id, componentes
+        ):
+            self.carregar_materias_primas()
+            return False
+
         self.carregar_materias_primas()
         self.mostrar_onde_ficou(resultado.ref_le)
         self.status_label.setText(mensagem)
         return True
+
+    def _guardar_componentes(self, materia_prima_id: int, componentes) -> bool:
+        """Gravar a lista de componentes de um conjunto."""
+        from app.services.def_materia_prima_componente_service import (
+            DefMateriaPrimaComponenteService,
+        )
+
+        try:
+            with SessionLocal() as session:
+                DefMateriaPrimaComponenteService(session).guardar_lista(
+                    materia_prima_id, componentes
+                )
+                session.commit()
+        except ValueError as error:
+            self.status_label.setText(str(error))
+            return False
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao gravar componentes: {error}")
+            self.status_label.setText("Não foi possível gravar os componentes.")
+            return False
+        return True
+
+    def _listar_componentes(self, materia_prima_id: int) -> list:
+        """Os componentes de um conjunto, para a ficha os mostrar."""
+        from app.services.def_materia_prima_componente_service import (
+            DefMateriaPrimaComponenteService,
+        )
+
+        try:
+            with SessionLocal() as session:
+                return DefMateriaPrimaComponenteService(session).listar(
+                    materia_prima_id
+                )
+        except SQLAlchemyError as error:
+            print(f"[Materias-Primas] Erro ao ler os componentes: {error}")
+            return []
 
     def mostrar_onde_ficou(self, ref_le: str | None) -> None:
         """Levar a vista até à matéria-prima gravada, sem filtrar a lista.
@@ -899,6 +965,7 @@ class MateriasPrimasPage(QWidget):
                 materia.nome_fabricante or "",
                 materia.cor or "",
                 materia.ref_phc or "",
+                materia.nome_imos or "",
                 materia.link or "",
                 materia.imagem_ficheiro or "",
                 materia.coresp_orla_0_4 or "",
