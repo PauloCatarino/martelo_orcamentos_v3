@@ -81,6 +81,7 @@ from app.utils.formatters import (
     format_currency,
     format_mm,
     format_quantity,
+    format_quantity_2,
     format_version,
 )
 
@@ -1590,9 +1591,9 @@ class OrcamentoRelatoriosPage(QWidget):
                     "P.Liq": format_currency(placa.pliq),
                     "Und": placa.unidade or "",
                     "Desp %": self._fmt_pct(placa.desp),
-                    "Comp": format_mm(placa.comp_mp),
-                    "Larg": format_mm(placa.larg_mp),
-                    "Esp": format_mm(placa.esp_mp),
+                    "Comp": self._fmt_mm(placa.comp_mp),
+                    "Larg": self._fmt_mm(placa.larg_mp),
+                    "Esp": self._fmt_mm(placa.esp_mp),
                     "Qt.Pla": str(placa.qt_placas),
                     "Área": self._fmt_m2(placa.area_placa),
                     "m² Usad": self._fmt_m2(placa.m2_consumidos),
@@ -1682,8 +1683,8 @@ class OrcamentoRelatoriosPage(QWidget):
             valores = [
                 orla.ref_orla or "",
                 orla.descricao or "",
-                f"{format_quantity(orla.espessura)} mm",
-                format_mm(orla.largura),
+                self._fmt_mm(orla.espessura),
+                self._fmt_mm(orla.largura),
                 self._fmt_ml(orla.ml_total),
                 format_currency(orla.custo_total),
             ]
@@ -1706,7 +1707,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 format_currency(ferragem.pliq),
                 ferragem.unidade or "",
                 self._fmt_pct(ferragem.desp),
-                format_quantity(ferragem.qt_total),
+                self._fmt_qt(ferragem.qt_total),
                 self._fmt_ml(ferragem.ml),
                 format_currency(custo_und),
                 format_currency(ferragem.custo_total),
@@ -1724,7 +1725,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 format_currency(maquina.custo_total),
                 self._fmt_ml(maquina.ml_corte) if maquina.ml_corte else "",
                 self._fmt_ml(maquina.ml_orlado) if maquina.ml_orlado else "",
-                format_quantity(maquina.num_pecas) if maquina.num_pecas else "",
+                self._fmt_qt(maquina.num_pecas) if maquina.num_pecas else "",
             ]
             for col, texto in enumerate(valores):
                 self.maquinas_table.setItem(row, col, criar_item_tabela(texto))
@@ -1742,10 +1743,10 @@ class OrcamentoRelatoriosPage(QWidget):
             valores = [
                 operacao.operacoes,
                 operacao.maquina,
-                format_quantity(operacao.qt_total),
-                format_quantity(operacao.tempo_setup),
-                format_quantity(operacao.tempo_cnc),
-                format_quantity(outros_tempos),
+                self._fmt_qt(operacao.qt_total),
+                self._fmt_qt(operacao.tempo_setup),
+                self._fmt_qt(operacao.tempo_cnc),
+                self._fmt_qt(outros_tempos),
                 format_currency(operacao.custo_total),
             ]
             for col, texto in enumerate(valores):
@@ -1843,20 +1844,34 @@ class OrcamentoRelatoriosPage(QWidget):
 
     # ----- Formatting helpers -----
 
+    # As tabelas do resumo de consumos mostram tudo com NO MÁXIMO duas casas
+    # decimais (format_quantity_2): os m², os ml, os mm, as quantidades e as
+    # percentagens saíam do cálculo com dez e doze casas e ninguém lia as
+    # colunas. O valor guardado e o que entra nas contas não mudam.
+
     @staticmethod
     def _fmt_m2(valor) -> str:
-        texto = format_quantity(valor)
+        texto = format_quantity_2(valor)
         return f"{texto} m²" if texto else ""
 
     @staticmethod
     def _fmt_ml(valor) -> str:
-        texto = format_quantity(valor)
+        texto = format_quantity_2(valor)
         return f"{texto} ml" if texto else ""
 
     @staticmethod
     def _fmt_pct(valor) -> str:
-        texto = format_quantity(valor)
+        texto = format_quantity_2(valor)
         return f"{texto} %" if texto else ""
+
+    @staticmethod
+    def _fmt_mm(valor) -> str:
+        texto = format_quantity_2(valor)
+        return f"{texto} mm" if texto else ""
+
+    @staticmethod
+    def _fmt_qt(valor) -> str:
+        return format_quantity_2(valor)
 
     @staticmethod
     def _format_data(value: datetime | None) -> str:

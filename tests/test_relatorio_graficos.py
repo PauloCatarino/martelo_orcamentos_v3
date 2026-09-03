@@ -25,13 +25,14 @@ from app.domain.relatorio_graficos import (
 
 
 def _placa(*, ref_le="LE01", descricao="AGL", custo_mp_total=Decimal("15"),
+           custo_placa_inteira=Decimal("25"),
            custo_no_orcamento=Decimal("15")) -> ConsumoPlaca:
     return ConsumoPlaca(
         ref_le=ref_le, descricao_no_orcamento=descricao, esp_mp=Decimal("19"),
         pliq=Decimal("5"), unidade="m2", desp=Decimal("0"),
         comp_mp=Decimal("2750"), larg_mp=Decimal("1830"), area_placa=Decimal("5"),
         m2_total_pecas=Decimal("3"), m2_consumidos=Decimal("3"), qt_placas=1,
-        custo_mp_total=custo_mp_total, custo_placa_inteira=Decimal("25"),
+        custo_mp_total=custo_mp_total, custo_placa_inteira=custo_placa_inteira,
         nao_stock=False, custo_no_orcamento=custo_no_orcamento,
         agravamento=Decimal("0"),
     )
@@ -63,28 +64,45 @@ def _maquina(centro, custo_total) -> ConsumoMaquina:
 # --- Placas (duas séries) ----------------------------------------------------
 
 
-def test_dados_placas_duas_series() -> None:
+def test_dados_placas_duas_series_sao_placa_inteira_e_orcamento() -> None:
+    # As duas séries são as colunas "C.Placa Usad" e "Custo no Orç." da tabela
+    # do resumo de placas. O custo teórico (C.MP Tot) NÃO desenha barra: sem
+    # Não-Stock é igual ao custo no orçamento e davam duas barras iguais.
     grafico = dados_placas([
-        _placa(ref_le="LE01", custo_mp_total=Decimal("15"),
+        _placa(ref_le="LE01", descricao="AGL", custo_mp_total=Decimal("15"),
+               custo_placa_inteira=Decimal("30"),
                custo_no_orcamento=Decimal("25")),
-        _placa(ref_le="LE02", custo_mp_total=Decimal("8"),
+        _placa(ref_le="LE02", descricao="AGL", custo_mp_total=Decimal("8"),
+               custo_placa_inteira=Decimal("12"),
                custo_no_orcamento=Decimal("8")),
     ])
 
     assert grafico.titulo == "Placas — custo"
     assert grafico.unidade == "€"
-    assert grafico.etiquetas == ["LE01", "LE02"]
-    assert [s.nome for s in grafico.series] == ["Teórico (% desp.)", "No orçamento"]
-    assert grafico.series[0].valores == [Decimal("15"), Decimal("8")]
+    assert grafico.etiquetas == ["LE01\nAGL", "LE02\nAGL"]
+    assert [s.nome for s in grafico.series] == [
+        "Placas inteiras (C.Placa Usad)",
+        "No orçamento (Custo no Orç.)",
+    ]
+    assert grafico.series[0].valores == [Decimal("30"), Decimal("12")]
     assert grafico.series[1].valores == [Decimal("25"), Decimal("8")]
 
 
+def test_dados_placas_etiqueta_junta_ref_e_descricao() -> None:
+    grafico = dados_placas([_placa(ref_le="PLC0033", descricao="MDF Hidrófugo")])
+
+    assert grafico.etiquetas == ["PLC0033\nMDF Hidrófugo"]
+
+
 def test_dados_placas_etiqueta_descricao_truncada_quando_sem_ref() -> None:
-    grafico = dados_placas([_placa(ref_le="", descricao="Aglomerado Melamina Branca")])
+    grafico = dados_placas([
+        _placa(ref_le="", descricao="Aglomerado Melamina Branca Hidrófuga 19"),
+    ])
 
     etiqueta = grafico.etiquetas[0]
+    assert "\n" not in etiqueta
     assert etiqueta.endswith("…")
-    assert len(etiqueta) == 18
+    assert len(etiqueta) == 30
 
 
 # --- Orlas -------------------------------------------------------------------
@@ -97,7 +115,9 @@ def test_dados_orlas_uma_serie_ml() -> None:
     ])
 
     assert grafico.unidade == "ml"
-    assert grafico.etiquetas == ["ORLA_FINA", "ORLA_GROSSA"]
+    # Etiqueta = referência + descrição: a mesma referência aparece duas vezes
+    # nesta tabela (espessuras diferentes) e sem a descrição eram indistintas.
+    assert grafico.etiquetas == ["ORLA_FINA\nAGL", "ORLA_GROSSA\nAGL"]
     assert len(grafico.series) == 1
     assert grafico.series[0].nome == "ML"
     assert grafico.series[0].valores == [Decimal("4"), Decimal("2")]
@@ -113,8 +133,8 @@ def test_dados_ferragens_uma_serie_custo() -> None:
     ])
 
     assert grafico.unidade == "€"
-    # Segunda ferragem sem ref -> etiqueta pela descrição.
-    assert grafico.etiquetas == ["FER01", "Pé nivelador"]
+    # Segunda ferragem sem ref -> etiqueta só com a descrição.
+    assert grafico.etiquetas == ["FER01\nDobradiça", "Pé nivelador"]
     assert len(grafico.series) == 1
     assert grafico.series[0].nome == "Custo"
     assert grafico.series[0].valores == [Decimal("6"), Decimal("9")]

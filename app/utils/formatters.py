@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
 
@@ -20,6 +20,30 @@ def format_quantity(value: Any, unidade: str | None = None) -> str:
     number = _to_decimal(value)
     if number is None:
         return ""
+
+    return _format_decimal_trimmed(number)
+
+
+def format_quantity_2(value: Any) -> str:
+    """Uma quantidade com NO MÁXIMO duas casas decimais.
+
+    As tabelas do resumo de consumos (placas, orlas, ferragens, máquinas/MO)
+    mostravam o número tal como sai do cálculo -- 6,903333333333 m²,
+    0,8333333 min -- e as colunas ficavam ilegíveis. Ninguém compra placas
+    à milésima de m²: duas casas dizem o mesmo.
+
+    É **só** a apresentação -- o valor guardado e o que entra nas contas
+    continuam inteiros. Os zeros à direita continuam a ser cortados, por
+    isso ``6`` aparece como ``6`` e não como ``6,00``.
+    """
+    number = _to_decimal(value)
+    if number is None:
+        return ""
+
+    try:
+        number = number.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:  # números absurdamente grandes: fica como estava
+        pass
 
     return _format_decimal_trimmed(number)
 

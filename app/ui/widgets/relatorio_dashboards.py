@@ -17,6 +17,7 @@ desenho em :mod:`app.services.dashboard_desenho`, partilhado com o PDF.
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -52,6 +53,37 @@ except Exception as erro:  # noqa: BLE001
 
 if FigureCanvas is not None:
     from app.services import dashboard_desenho
+
+    class CanvasSemRoda(FigureCanvas):
+        """Um canvas do matplotlib que ENTREGA a roda do rato à página.
+
+        O canvas do matplotlib apanha o evento da roda (usa-o para o zoom das
+        suas ferramentas) e fica com ele. Como os gráficos ocupam quase toda a
+        área visível, rodar a roda em cima de um gráfico não fazia nada: só
+        arrastando a barra de scroll à direita é que a página andava.
+
+        Aqui não há ferramentas de zoom nenhumas, por isso o evento é entregue
+        à barra de scroll da página. **Entregue à mão** e não apenas ignorado:
+        o Qt só reencaminha a roda para o widget de cima nalguns casos, e a
+        página tem de andar sempre.
+        """
+
+        def wheelEvent(self, event) -> None:  # noqa: N802 (nome do Qt)
+            area = self._area_de_scroll()
+            if area is None:
+                event.ignore()
+                return
+            QApplication.sendEvent(area.verticalScrollBar(), event)
+            event.accept()
+
+        def _area_de_scroll(self):
+            """A área de scroll onde este canvas está, se estiver nalguma."""
+            pai = self.parentWidget()
+            while pai is not None:
+                if isinstance(pai, QScrollArea):
+                    return pai
+                pai = pai.parentWidget()
+            return None
 
 #: Quantos pixéis vale uma polegada de figura, ao dar altura ao canvas.
 _PPP = 96
@@ -221,7 +253,7 @@ class DashboardsWidget(QWidget):
     def _novo_canvas(self, altura_polegadas: float):
         # layout="constrained" recalcula o espaçamento ao redimensionar, para as
         # etiquetas não ficarem cortadas.
-        canvas = FigureCanvas(
+        canvas = CanvasSemRoda(
             Figure(figsize=(7, altura_polegadas), layout="constrained")
         )
         canvas.setMinimumHeight(int(altura_polegadas * _PPP))

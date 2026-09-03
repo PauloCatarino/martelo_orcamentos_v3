@@ -207,11 +207,116 @@ def test_dashboards_tab_e_widget() -> None:
 
 def test_formatar_pct_pizza_esconde_fatias_pequenas() -> None:
     # 8W.3c: percentagens abaixo de _PCT_MIN_PIZZA não são desenhadas.
+    # A percentagem vai com vírgula, como o resto da aplicação.
     from app.services.dashboard_desenho import _formatar_pct
 
     assert _formatar_pct(0.6) == ""
-    assert _formatar_pct(3.0) == "3.0%"
-    assert _formatar_pct(17.7) == "17.7%"
+    assert _formatar_pct(3.0) == "3,0%"
+    assert _formatar_pct(17.7) == "17,7%"
+
+
+def test_legenda_da_pizza_repete_a_percentagem_da_fatia() -> None:
+    # A legenda tem de trazer a MESMA percentagem que está escrita na fatia,
+    # senão não há como ligar "27,7%" no gráfico à linha "Placas" na legenda.
+    from decimal import Decimal
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+
+    from app.domain.relatorio_graficos import FatiaPizza, GraficoPizza
+    from app.services.dashboard_desenho import desenhar_pizza
+
+    grafico = GraficoPizza(
+        titulo="Distribuição de custos",
+        fatias=[
+            FatiaPizza("Placas", Decimal("75"), Decimal("75")),
+            FatiaPizza("Ferragens", Decimal("25"), Decimal("25")),
+        ],
+        total_venda=Decimal("100"),
+    )
+    figura = Figure()
+    desenhar_pizza(figura, grafico)
+
+    legenda = figura.axes[0].get_legend()
+    textos = [t.get_text() for t in legenda.get_texts()]
+    assert textos == [
+        "Placas — 75,0% — 75,00 €",
+        "Ferragens — 25,0% — 25,00 €",
+    ]
+
+
+def test_legenda_da_pizza_usa_o_peso_do_que_esta_desenhado() -> None:
+    # Quando uma categoria fica de fora, o matplotlib recalcula as
+    # percentagens sobre as fatias desenhadas -- a legenda tem de fazer o
+    # mesmo, senão dizia 30% numa fatia onde está escrito 37,5%.
+    from decimal import Decimal
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib.figure import Figure
+
+    from app.domain.relatorio_graficos import FatiaPizza, GraficoPizza
+    from app.services.dashboard_desenho import desenhar_pizza
+
+    grafico = GraficoPizza(
+        titulo="Distribuição de custos",
+        fatias=[
+            FatiaPizza("Placas", Decimal("30"), Decimal("30")),
+            FatiaPizza("Ferragens", Decimal("50"), Decimal("50")),
+        ],
+        total_venda=Decimal("100"),   # faltam 20 EUR (categoria filtrada)
+    )
+    figura = Figure()
+    desenhar_pizza(figura, grafico)
+
+    textos = [t.get_text() for t in figura.axes[0].get_legend().get_texts()]
+    assert textos[0].startswith("Placas — 37,5%")
+    assert textos[1].startswith("Ferragens — 62,5%")
+
+
+def test_roda_do_rato_em_cima_de_um_grafico_faz_scroll_a_pagina() -> None:
+    # A roda do rato tem de fazer scroll à página do dashboard: o canvas do
+    # matplotlib ficava com o evento e só arrastando a barra lateral é que a
+    # página andava.
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication, QScrollArea
+
+    from app.ui.widgets.relatorio_dashboards import DashboardsWidget
+
+    app = QApplication.instance() or QApplication([])
+    widget = DashboardsWidget()
+    widget.resize(900, 600)
+    widget.show()
+    app.processEvents()
+
+    barra = widget.findChild(QScrollArea).verticalScrollBar()
+    assert barra.maximum() > 0, "a página tem de ser maior do que a janela"
+    assert barra.value() == 0
+
+    canvas = widget._canvases["placas"]
+    evento = QWheelEvent(
+        QPointF(50, 50),
+        canvas.mapToGlobal(QPoint(50, 50)),
+        QPoint(0, -120),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(canvas, evento)
+    app.processEvents()
+
+    assert barra.value() > 0, "rodar a roda em cima do gráfico tem de descer"
+    widget.deleteLater()
 
 
 def test_detail_page_wires_relatorios_tab() -> None:
@@ -221,3 +326,34 @@ def test_detail_page_wires_relatorios_tab() -> None:
     assert "OrcamentoRelatoriosPage" in source
     # The detail-page file uses \uXXXX escapes, so match the ASCII prefix.
     assert "Relat" in source
+
+
+def test_resumo_de_consumos_mostra_no_maximo_duas_casas_decimais() -> None:
+    # As colunas de m2/ml/mm/qt/% do resumo de consumos saíam do cálculo com
+    # dez e doze casas decimais e não se liam.
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage as P
+
+    assert P._fmt_m2("6.903333333333") == "6,9 m²"
+    assert P._fmt_ml("1058.216666") == "1058,22 ml"
+    assert P._fmt_mm("613.333333") == "613,33 mm"
+    assert P._fmt_pct("12.5") == "12,5 %"
+    assert P._fmt_qt("0.8333333") == "0,83"
+    # Sem valor não escreve unidade nenhuma.
+    assert P._fmt_m2(None) == ""
+    assert P._fmt_mm(None) == ""
+
+
+def test_tabelas_do_resumo_de_consumos_usam_o_formatador_de_duas_casas() -> None:
+    # Guarda contra alguém voltar a pôr format_quantity/format_mm (sem limite
+    # de casas) nas quatro tabelas do resumo.
+    from app.ui.pages.orcamento_relatorios_page import OrcamentoRelatoriosPage
+
+    for metodo in (
+        OrcamentoRelatoriosPage._preencher_placas,
+        OrcamentoRelatoriosPage._preencher_orlas,
+        OrcamentoRelatoriosPage._preencher_ferragens,
+        OrcamentoRelatoriosPage._preencher_maquinas,
+    ):
+        fonte = inspect.getsource(metodo)
+        assert "format_quantity(" not in fonte
+        assert "format_mm(" not in fonte

@@ -15,6 +15,20 @@ different (it overrides this one).
 
 from __future__ import annotations
 
+# O `six`/`dateutil` TÊM de ser carregados antes do PySide6, senão o gancho do
+# shiboken rebenta a importar o `matplotlib.figure` com
+# "'_SixMetaPathImporter' object has no attribute '_path'" -- é a mesma
+# armadilha que o `deploy/rthook_dateutil.py` resolve dentro do executável e o
+# `app/main.py` em desenvolvimento. Aqui é preciso porque quase todos os
+# módulos de teste importam PySide6, e sem isto qualquer teste que desenhe um
+# gráfico passava sozinho e falhava na suite inteira.
+try:  # pragma: no cover - só ordem de importação
+    import six  # noqa: F401
+    import dateutil.rrule  # noqa: F401
+    import dateutil.tz  # noqa: F401
+except Exception:  # noqa: BLE001
+    pass
+
 import pytest
 from sqlalchemy import BigInteger, create_engine
 from sqlalchemy.ext.compiler import compiles

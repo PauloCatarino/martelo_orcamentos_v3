@@ -58,3 +58,34 @@ def test_medida_real_sem_valor_fica_vazia() -> None:
     from app.utils.formatters import format_medida_real
 
     assert format_medida_real(None) == ""
+
+
+def test_quantity_2_corta_nas_duas_casas_decimais() -> None:
+    """As colunas do resumo de consumos mostravam dez e doze casas decimais."""
+    from app.utils.formatters import format_quantity_2
+
+    assert format_quantity_2("6.903333333333") == "6,9"
+    assert format_quantity_2("1058.216666") == "1058,22"
+    assert format_quantity_2(Decimal("0.8333333")) == "0,83"
+
+
+def test_quantity_2_nao_inventa_decimais_a_um_numero_redondo() -> None:
+    from app.utils.formatters import format_quantity_2
+
+    assert format_quantity_2(6) == "6"
+    assert format_quantity_2(Decimal("1830")) == "1830"
+    assert format_quantity_2("0.40") == "0,4"
+
+
+def test_quantity_2_arredonda_para_cima_a_meio() -> None:
+    from app.utils.formatters import format_quantity_2
+
+    assert format_quantity_2("2.005") == "2,01"
+    assert format_quantity_2("2.004") == "2"
+
+
+def test_quantity_2_sem_valor_fica_vazia() -> None:
+    from app.utils.formatters import format_quantity_2
+
+    assert format_quantity_2(None) == ""
+    assert format_quantity_2("") == ""

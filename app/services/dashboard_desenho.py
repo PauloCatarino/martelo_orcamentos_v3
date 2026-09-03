@@ -23,10 +23,12 @@ COR_BARRA_1 = tema.CASTANHO_MEDIO
 COR_BARRA_2 = tema.CASTANHO_ESCURO
 
 #: Altura (em polegadas) de cada linha de um gráfico de barras deitadas.
-ALTURA_POR_LINHA = 0.34
+#: As etiquetas do eixo têm DUAS linhas (referência + descrição), por isso cada
+#: linha precisa de mais altura do que quando era só a referência.
+ALTURA_POR_LINHA = 0.46
 
-#: Altura extra por linha quando há duas séries (placas: teórico + orçamento).
-ALTURA_POR_LINHA_DUPLA = 0.52
+#: Altura extra por linha quando há duas séries (placas: inteiras + orçamento).
+ALTURA_POR_LINHA_DUPLA = 0.64
 
 #: Margem em polegadas para título, eixo e legenda.
 ALTURA_FIXA = 1.15
@@ -125,7 +127,9 @@ def desenhar_barras(figura, grafico, *, com_titulo: bool = True) -> None:
         eixo.legend(loc="lower right", fontsize=8, framealpha=0.9)
 
     eixo.set_yticks(posicoes)
-    eixo.set_yticklabels(grafico.etiquetas, fontsize=9)
+    # 8 pontos: a etiqueta tem duas linhas (referência + descrição) e a 9 as
+    # linhas de baixo encostavam na etiqueta seguinte.
+    eixo.set_yticklabels(grafico.etiquetas, fontsize=8)
     eixo.invert_yaxis()
     eixo.set_xlim(0, (maximo or 1.0) * FOLGA_VALOR)
     eixo.set_xlabel(
@@ -158,7 +162,25 @@ def _escrever_valores(eixo, barras, valores, unidade, maximo) -> None:
 
 
 def _formatar_pct(pct: float) -> str:
-    return f"{pct:.1f}%" if pct >= PCT_MIN_PIZZA else ""
+    """A percentagem escrita na fatia -- vazia quando a fatia é pequena de mais.
+
+    Vai com vírgula decimal, como tudo o resto na aplicação, e é EXATAMENTE
+    a mesma que aparece na legenda: é por esse número que se liga a fatia à
+    linha da legenda.
+    """
+    if pct < PCT_MIN_PIZZA:
+        return ""
+    return _texto_pct(pct)
+
+
+def _texto_pct(pct) -> str:
+    """``27,7%`` -- a percentagem como se escreve em português."""
+    return f"{float(pct):.1f}%".replace(".", ",")
+
+
+def _pct_desenhada(euros, total: float) -> float:
+    """O peso desta fatia no que está desenhado (não no total de venda)."""
+    return (float(euros) / total * 100.0) if total else 0.0
 
 
 def desenhar_pizza(figura, grafico) -> None:
@@ -187,9 +209,22 @@ def desenhar_pizza(figura, grafico) -> None:
     for texto, cor in zip(percentagens, cores):
         texto.set_color(tema.TEXTO_NORMAL if cor in _FUNDOS_CLAROS else "#FFFFFF")
 
+    # A legenda repete a percentagem que está escrita na fatia: sem ela, ver
+    # "27,7%" no gráfico e "Placas — 10358,31 €" na legenda obrigava a somar de
+    # cabeça para saber qual era qual. Nas fatias pequenas de mais para lá caber
+    # o número, a legenda é o único sítio onde a percentagem aparece.
+    # A percentagem da legenda é calculada sobre as fatias DESENHADAS, tal como
+    # o matplotlib calcula a que escreve dentro da fatia. Usar aqui a
+    # percentagem do modelo (que é sobre o total de venda) dava dois números
+    # diferentes para a mesma fatia sempre que uma categoria ficasse de fora.
+    total_desenhado = sum(valores)
     eixo.legend(
         fatias,
-        [f"{f.nome} — {format_currency(f.euros)}" for f in grafico.fatias],
+        [
+            f"{f.nome} — {_texto_pct(_pct_desenhada(f.euros, total_desenhado))}"
+            f" — {format_currency(f.euros)}"
+            for f in grafico.fatias
+        ],
         loc="upper center",
         bbox_to_anchor=(0.5, -0.02),
         ncol=1,

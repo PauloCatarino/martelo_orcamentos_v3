@@ -12,9 +12,11 @@ from decimal import Decimal
 
 _ZERO = Decimal("0")
 
-# Comprimento máximo de uma etiqueta construída a partir da descrição (mantém o
-# eixo X legível quando falta a referência).
-_MAX_ETIQUETA = 18
+# Comprimento máximo da descrição na etiqueta. As barras são deitadas, por isso
+# a etiqueta vai em duas linhas — referência em cima, descrição em baixo — e a
+# descrição é cortada aqui para o eixo não empurrar o gráfico todo para a
+# direita.
+_MAX_ETIQUETA = 30
 
 
 @dataclass(frozen=True)
@@ -62,20 +64,46 @@ def _truncar(texto: str | None) -> str:
 
 
 def _etiqueta_ref(ref, descricao) -> str:
-    """Etiqueta = referência quando existe, senão a descrição truncada."""
+    """Etiqueta = referência EM CIMA e descrição EM BAIXO, em duas linhas.
+
+    Só com a referência (PLC0033, ORL0003, FER0015) ninguém sabe de que
+    material se trata — e há referências repetidas na mesma tabela (a mesma
+    orla em duas espessuras), que ficavam com duas barras impossíveis de
+    distinguir. A descrição por baixo resolve as duas coisas.
+
+    Quando falta uma das duas partes, a etiqueta é só a outra.
+    """
     ref_limpa = (ref or "").strip()
-    if ref_limpa:
-        return ref_limpa
-    return _truncar(descricao)
+    descricao_limpa = _truncar(descricao)
+    if ref_limpa and descricao_limpa:
+        return f"{ref_limpa}\n{descricao_limpa}"
+    return ref_limpa or descricao_limpa
 
 
 def dados_placas(placas) -> GraficoBarras:
-    """Placas: duas séries (custo teórico %desp. vs. custo no orçamento), em €."""
+    """Placas: placas inteiras vs. custo no orçamento, em €.
+
+    As duas séries são as duas colunas da tabela do resumo de placas:
+
+    - **C.Placa Usad** — o que custam as placas INTEIRAS que é preciso comprar;
+    - **Custo no Orç.** — o que esta placa leva ao orçamento.
+
+    Até aqui a 1.ª série era o custo teórico (C.MP Tot) e, sem Não-Stock, esse
+    é exatamente igual ao custo no orçamento: o gráfico desenhava duas barras
+    do mesmo comprimento e não dizia nada. Assim mostra a diferença que
+    interessa — quanto é que ficam a mais as placas inteiras.
+    """
     etiquetas = [_etiqueta_ref(p.ref_le, p.descricao_no_orcamento) for p in placas]
     series = (
         [
-            SerieBarras("Teórico (% desp.)", [p.custo_mp_total for p in placas]),
-            SerieBarras("No orçamento", [p.custo_no_orcamento for p in placas]),
+            SerieBarras(
+                "Placas inteiras (C.Placa Usad)",
+                [p.custo_placa_inteira for p in placas],
+            ),
+            SerieBarras(
+                "No orçamento (Custo no Orç.)",
+                [p.custo_no_orcamento for p in placas],
+            ),
         ]
         if placas
         else []
@@ -90,7 +118,7 @@ def dados_placas(placas) -> GraficoBarras:
 
 def dados_orlas(orlas) -> GraficoBarras:
     """Orlas: uma série de metros lineares, em ml."""
-    etiquetas = [(o.ref_orla or "").strip() for o in orlas]
+    etiquetas = [_etiqueta_ref(o.ref_orla, o.descricao) for o in orlas]
     series = [SerieBarras("ML", [o.ml_total for o in orlas])] if orlas else []
     return GraficoBarras(
         titulo="Orlas — metros lineares",
