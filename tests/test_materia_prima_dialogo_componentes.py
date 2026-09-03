@@ -258,3 +258,105 @@ def test_gravar_como_avisa_no_tooltip_do_botao() -> None:
 
     assert "componentes" in dialogo.save_as_button.toolTip().lower()
     dialogo.deleteLater()
+
+
+# --- De onde vem cada coluna (o Paulo perguntou, e enganou-se numa) ---------
+
+
+def test_cada_coluna_dos_componentes_diz_de_onde_vem() -> None:
+    dialogo = MateriaPrimaDialog()
+
+    for indice, cabecalho in enumerate(MateriaPrimaDialog.COMPONENTES_HEADERS):
+        titulo = dialogo.componentes_table.horizontalHeaderItem(indice)
+        assert titulo is not None
+        assert titulo.toolTip() == MateriaPrimaDialog.COMPONENTES_DICAS[cabecalho]
+        assert titulo.toolTip().strip()
+    dialogo.deleteLater()
+
+
+def test_a_dica_do_nome_imos_diz_que_e_o_nome_da_uniao() -> None:
+    # Foi ele que reparou: o nome da uniao nunca muda, os parametros la'
+    # dentro mudam. E' por isso que e' a primeira chave.
+    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Nome iMos"]
+
+    assert "união" in dica
+    assert "nunca muda" in dica
+
+
+def test_a_dica_da_ref_fornecedor_diz_a_origem_e_que_pode_faltar() -> None:
+    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Ref Fornecedor"]
+
+    assert "PHC" in dica
+    assert "iMos" in dica
+    assert "vazia" in dica
+
+
+def test_a_dica_da_descricao_diz_que_e_so_para_ler() -> None:
+    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Descrição"]
+
+    assert "PHC" in dica
+    assert "não liga nada" in dica
+
+
+def test_as_celulas_tambem_levam_a_dica_da_coluna() -> None:
+    # O tooltip da tabela nao chega a's celulas, e e' com o cursor em cima da
+    # celula que a duvida aparece.
+    dialogo = MateriaPrimaDialog(componentes=[COPO])
+
+    for coluna in range(1, len(MateriaPrimaDialog.COMPONENTES_HEADERS)):
+        celula = dialogo.componentes_table.item(0, coluna)
+        cabecalho = MateriaPrimaDialog.COMPONENTES_HEADERS[coluna]
+        assert celula.toolTip() == MateriaPrimaDialog.COMPONENTES_DICAS[cabecalho]
+    dialogo.deleteLater()
+
+
+def test_a_dica_do_papel_esta_na_lista_de_escolha() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO])
+
+    escolha = dialogo.componentes_table.cellWidget(0, 0)
+
+    assert escolha.toolTip() == MateriaPrimaDialog.COMPONENTES_DICAS["Papel"]
+    dialogo.deleteLater()
+
+
+# --- O «Nome iMos» dos Dados num conjunto conta a mesma linha duas vezes ----
+
+
+def test_conjunto_com_nome_imos_nos_dados_e_avisado() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO, CALCO])
+
+    dialogo.nome_imos_input.setText("PE_AXILO_H72_92_63776352")
+
+    assert "contada duas vezes" in dialogo.componentes_status.text()
+    dialogo.deleteLater()
+
+
+def test_limpar_o_nome_imos_dos_dados_tira_o_aviso() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO, CALCO])
+    dialogo.nome_imos_input.setText("PE_AXILO_H72_92_63776352")
+
+    dialogo.nome_imos_input.setText("")
+
+    assert "contada duas vezes" not in dialogo.componentes_status.text()
+    assert "2 componentes" in dialogo.componentes_status.text()
+    dialogo.deleteLater()
+
+
+def test_material_simples_com_nome_imos_nao_leva_aviso_nenhum() -> None:
+    # Sem componentes, o campo dos Dados e' exactamente onde ele deve estar.
+    dialogo = MateriaPrimaDialog()
+
+    dialogo.nome_imos_input.setText("AGL_MLM_LINHO_CANCUN_19MM")
+
+    assert "contada duas vezes" not in dialogo.componentes_status.text()
+    dialogo.deleteLater()
+
+
+def test_a_dica_do_campo_dos_dados_manda_deixar_vazio_num_conjunto() -> None:
+    dialogo = MateriaPrimaDialog()
+
+    dica = dialogo.nome_imos_input.toolTip()
+
+    assert "CONJUNTO" in dica
+    assert "vazio" in dica
+    dialogo.deleteLater()

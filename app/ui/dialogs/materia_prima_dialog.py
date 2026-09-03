@@ -124,6 +124,46 @@ class MateriaPrimaDialog(QDialog):
         "Ref PHC": 90,
         "Ref Fornecedor": 150,
     }
+    #: De onde vem cada coluna. Sao seis campos parecidos, vindos de tres
+    #: programas diferentes, e sem isto escrito nao ha' forma de adivinhar
+    #: qual e' qual: o Paulo escreveu a Ref do Fornecedor com o numero que
+    #: aparece DENTRO da descricao Hafele em vez do campo proprio do iMos.
+    COMPONENTES_DICAS = {
+        "Papel": (
+            "PRINCIPAL é quem conta os conjuntos — uma linha do iMos que bata "
+            "certo com um PRINCIPAL vale um conjunto inteiro.\n"
+            "SECUNDARIO só confere que o componente lá está, e pode repetir-se "
+            "noutros conjuntos (a mesma base serve vários pés)."
+        ),
+        "Descrição": (
+            "Só para se ler — não liga nada a lado nenhum.\n"
+            "Escreva a descrição do PHC: é a que toda a gente reconhece."
+        ),
+        "Qt/conj.": (
+            "Quantas unidades deste componente entram NUM conjunto.\n"
+            "Pé + base: 1 e 1. Dobradiça com dois calços: o calço leva 2."
+        ),
+        "Nome iMos": (
+            "O nome da UNIÃO no iMos — a chave principal.\n"
+            "É o único que nunca muda: os parâmetros lá dentro (descrição 1 e "
+            "2, fornecedor, referência do fornecedor) podem ser alterados, o "
+            "nome da união não.\n"
+            "Copie-o tal e qual do iMos, ex.: PE_AXILO_H72_92_63776352."
+        ),
+        "Ref PHC": (
+            "A referência do artigo no PHC — a 2.ª chave, usada quando o nome "
+            "da união não bate certo.\n"
+            "É o mesmo campo «Ref PHC» que já existe do lado do iMos."
+        ),
+        "Ref Fornecedor": (
+            "A referência do fornecedor — a 3.ª e última chave.\n"
+            "Vem do PHC quando lá está registada; senão, do campo «Ref do "
+            "Fornecedor» do iMos.\n"
+            "Nem sempre existe num sítio nem no outro: pode ficar vazia, desde "
+            "que o nome da união esteja preenchido.\n"
+            "A marca no fim (…BLUM, …HAFELE) é ignorada na comparação."
+        ),
+    }
 
     HISTORICO_HEADERS = [
         "Data",
@@ -324,11 +364,13 @@ class MateriaPrimaDialog(QDialog):
         self.nome_imos_input = QLineEdit()
         self.nome_imos_input.setPlaceholderText("AGL_MLM_LINHO_CANCUN_19MM")
         self.nome_imos_input.setToolTip(
-            "Nome do artigo no iMos, para as listas de uma obra baterem certo "
-            "com este material.\n"
+            "O nome da UNIÃO no iMos, para as listas de uma obra baterem "
+            "certo com este material. É o único nome que nunca muda.\n"
             "É a ponte para os materiais SIMPLES — placas, orlas e ferragens "
-            "que não são conjuntos. Quando o material é composto, as "
-            "referências vivem no separador Componentes."
+            "que não são conjuntos.\n"
+            "Quando o material é um CONJUNTO, deixe este campo vazio: as "
+            "referências vivem todas no separador Componentes, senão a mesma "
+            "linha do iMos fica contada duas vezes."
         )
 
         self.link_input = QLineEdit()
@@ -498,6 +540,9 @@ class MateriaPrimaDialog(QDialog):
             self.componentes_table.setColumnWidth(
                 indice, self.COMPONENTES_LARGURAS.get(cabecalho, 110)
             )
+            titulo = self.componentes_table.horizontalHeaderItem(indice)
+            if titulo is not None:
+                titulo.setToolTip(self.COMPONENTES_DICAS.get(cabecalho, ""))
         self.componentes_table.setToolTip(
             "Duplo clique numa célula para escrever. As três referências são "
             "tentadas por esta ordem: nome iMos, Ref PHC, Ref Fornecedor."
@@ -539,6 +584,12 @@ class MateriaPrimaDialog(QDialog):
         pagina = QWidget()
         pagina.setLayout(layout)
 
+        # O campo dos Dados e o separador Componentes contam a mesma historia:
+        # mexer num tem de acordar o aviso do outro.
+        self.nome_imos_input.textChanged.connect(
+            lambda _: self._descrever_componentes()
+        )
+
         for componente in self._componentes_iniciais:
             self._acrescentar_componente(componente)
         self._descrever_componentes()
@@ -557,10 +608,7 @@ class MateriaPrimaDialog(QDialog):
         papel.setCurrentText(
             componente.papel if componente is not None else PAPEL_SECUNDARIO
         )
-        papel.setToolTip(
-            "PRINCIPAL conta os conjuntos; SECUNDARIO só confere e pode "
-            "repetir-se noutros conjuntos."
-        )
+        papel.setToolTip(self.COMPONENTES_DICAS["Papel"])
         papel.currentIndexChanged.connect(self._descrever_componentes)
         self.componentes_table.setCellWidget(linha, 0, papel)
 
@@ -575,9 +623,15 @@ class MateriaPrimaDialog(QDialog):
                 componente.ref_fornecedor or "",
             )
         for deslocamento, valor in enumerate(valores, start=1):
-            self.componentes_table.setItem(
-                linha, deslocamento, QTableWidgetItem(valor)
+            celula = QTableWidgetItem(valor)
+            # A dica tem de estar na celula: o tooltip da tabela nao chega
+            # aqui, e e' com o cursor em cima da celula que a duvida aparece.
+            celula.setToolTip(
+                self.COMPONENTES_DICAS.get(
+                    self.COMPONENTES_HEADERS[deslocamento], ""
+                )
             )
+            self.componentes_table.setItem(linha, deslocamento, celula)
 
         self._descrever_componentes()
 
@@ -611,6 +665,14 @@ class MateriaPrimaDialog(QDialog):
             aviso = (
                 "  —  sem nenhum PRINCIPAL este conjunto nunca vai ser contado "
                 "numa obra."
+            )
+        elif self.nome_imos_input.text().strip():
+            # A mesma referencia em dois sitios conta a mesma linha do iMos
+            # duas vezes: uma pelo campo dos Dados, outra pelo PRINCIPAL.
+            aviso = (
+                "  —  atenção: o «Nome iMos» do separador Dados também está "
+                "preenchido. Num conjunto esse campo deve ficar vazio, senão a "
+                "mesma linha do iMos é contada duas vezes."
             )
         self.componentes_status.setText(
             f"{total} componente{'s' if total != 1 else ''}, "
