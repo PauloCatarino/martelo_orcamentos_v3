@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -88,6 +89,7 @@ class MateriaPrimaDialogData:
     nome_fabricante: str | None
     referencia_fornecedor: str | None
     ref_phc: str | None
+    nome_imos: str | None
     link: str | None
     imagem_ficheiro: str | None
     stock: bool | None
@@ -166,7 +168,9 @@ class MateriaPrimaDialog(QDialog):
             else "Nova matéria-prima"
         )
         self.setModal(True)
-        self.setMinimumSize(760, 560)
+        # Larga o suficiente para as seis colunas do separador Componentes
+        # caberem sem se arrastar a barra: a "Ref Fornecedor" ficava de fora.
+        self.setMinimumSize(1120, 620)
 
         self._criar_campos()
         self._ligar_calculo_do_preco()
@@ -194,7 +198,9 @@ class MateriaPrimaDialog(QDialog):
         )
         self.save_as_button.setToolTip(
             "Grava estes dados como uma matéria-prima nova, sem alterar a "
-            "original. A referência é atribuída automaticamente."
+            "original. A referência é atribuída automaticamente.\n"
+            "Os componentes NÃO vão com ela — as referências principais só "
+            "podem identificar um conjunto."
         )
         self.save_as_button.setVisible(self._is_edit)
         self.save_as_button.clicked.connect(self._validar_e_gravar_como)
@@ -315,6 +321,16 @@ class MateriaPrimaDialog(QDialog):
         self.ref_phc_input = QLineEdit()
         self.ref_phc_input.setToolTip("Referência do artigo no PHC, quando existe.")
 
+        self.nome_imos_input = QLineEdit()
+        self.nome_imos_input.setPlaceholderText("AGL_MLM_LINHO_CANCUN_19MM")
+        self.nome_imos_input.setToolTip(
+            "Nome do artigo no iMos, para as listas de uma obra baterem certo "
+            "com este material.\n"
+            "É a ponte para os materiais SIMPLES — placas, orlas e ferragens "
+            "que não são conjuntos. Quando o material é composto, as "
+            "referências vivem no separador Componentes."
+        )
+
         self.link_input = QLineEdit()
         self.link_input.setPlaceholderText("https://…")
         self.link_input.setToolTip(
@@ -406,6 +422,7 @@ class MateriaPrimaDialog(QDialog):
         direita.addRow("Fabricante", self.fabricante_input)
         direita.addRow("Ref. fornecedor", self.referencia_fornecedor_input)
         direita.addRow("Ref. PHC", self.ref_phc_input)
+        direita.addRow("Nome iMos", self.nome_imos_input)
 
         # A imagem fica a` direita dos campos, com o nome do ficheiro por baixo:
         # quem abre a ficha ve' logo a peca de que se trata, sem ler nada.
@@ -768,6 +785,7 @@ class MateriaPrimaDialog(QDialog):
         self.fabricante_input.setText(materia.nome_fabricante or "")
         self.referencia_fornecedor_input.setText(materia.referencia_fornecedor or "")
         self.ref_phc_input.setText(materia.ref_phc or "")
+        self.nome_imos_input.setText(materia.nome_imos or "")
         self.link_input.setText(materia.link or "")
         self.imagem_input.setText(materia.imagem_ficheiro or "")
         self.stock_input.setChecked(bool(materia.stock))
@@ -852,6 +870,7 @@ class MateriaPrimaDialog(QDialog):
                 self.referencia_fornecedor_input.text()
             ),
             ref_phc=self._texto_ou_none(self.ref_phc_input.text()),
+            nome_imos=self._texto_ou_none(self.nome_imos_input.text()),
             link=self._texto_ou_none(self.link_input.text()),
             imagem_ficheiro=self._texto_ou_none(self.imagem_input.text()),
             stock=self.stock_input.isChecked(),
@@ -859,12 +878,39 @@ class MateriaPrimaDialog(QDialog):
             observacoes=self._texto_ou_none(self.observacoes_input.toPlainText()),
         )
 
+    def _componentes_ficam_para_tras(self) -> bool:
+        """Perguntar antes de gravar como nova, quando há componentes.
+
+        As referências principais só podem identificar UM conjunto, por isso
+        copiá-las para uma matéria-prima nova era garantir uma colisão. Em vez
+        de o fazer em silêncio, diz-se o que vai acontecer.
+        """
+        quantos = self.componentes_table.rowCount()
+        if not quantos:
+            return True
+
+        resposta = QMessageBox.question(
+            self,
+            "Gravar como uma matéria-prima nova",
+            f"Esta ficha tem {quantos} componente{'s' if quantos != 1 else ''}.\n\n"
+            "A matéria-prima nova vai nascer SEM eles: as referências dos "
+            "componentes principais só podem identificar um conjunto, e "
+            "copiá-las daria logo um conflito.\n\n"
+            "Grave à mesma e depois escreva os componentes da nova?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
+
     def _validar_e_gravar_como(self) -> None:
         """Gravar os dados do ecrã como uma matéria-prima nova.
 
         A Ref LE é limpa de propósito: o registo novo recebe a próxima livre da
         família, para nunca haver duas matérias-primas com a mesma referência.
+        Os componentes ficam para trás, e isso é dito antes de acontecer.
         """
+        if not self._componentes_ficam_para_tras():
+            return
         self._validar_e_aceitar(gravar_como=True)
 
     def _validar_e_aceitar(self, gravar_como: bool = False) -> None:

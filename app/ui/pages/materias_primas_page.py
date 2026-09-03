@@ -797,19 +797,26 @@ class MateriasPrimasPage(QWidget):
         # tem id quando já está na base. Se falharem, a matéria-prima fica
         # gravada e a ficha aberta a dizer porquê — é o que se quer, senão
         # perdia-se o resto do que ele escreveu.
-        if componentes is not None and not self._guardar_componentes(
-            resultado.id, componentes
-        ):
-            self.carregar_materias_primas()
+        erro = (
+            self._erro_ao_guardar_componentes(resultado.id, componentes)
+            if componentes is not None
+            else None
+        )
+
+        # O recarregar escreve na linha de apoio ("N matérias-primas à
+        # vista..."), por isso a mensagem vem SEMPRE depois dele — senão o
+        # motivo do erro aparecia e desaparecia sem ninguém o ler.
+        self.carregar_materias_primas()
+        if erro:
+            self.status_label.setText(erro)
             return False
 
-        self.carregar_materias_primas()
         self.mostrar_onde_ficou(resultado.ref_le)
         self.status_label.setText(mensagem)
         return True
 
-    def _guardar_componentes(self, materia_prima_id: int, componentes) -> bool:
-        """Gravar a lista de componentes de um conjunto."""
+    def _erro_ao_guardar_componentes(self, materia_prima_id: int, componentes):
+        """Gravar os componentes. Devolve a mensagem do erro, ou None."""
         from app.services.def_materia_prima_componente_service import (
             DefMateriaPrimaComponenteService,
         )
@@ -821,13 +828,11 @@ class MateriasPrimasPage(QWidget):
                 )
                 session.commit()
         except ValueError as error:
-            self.status_label.setText(str(error))
-            return False
+            return str(error)
         except SQLAlchemyError as error:
             print(f"[Materias-Primas] Erro ao gravar componentes: {error}")
-            self.status_label.setText("Não foi possível gravar os componentes.")
-            return False
-        return True
+            return "Não foi possível gravar os componentes."
+        return None
 
     def _listar_componentes(self, materia_prima_id: int) -> list:
         """Os componentes de um conjunto, para a ficha os mostrar."""

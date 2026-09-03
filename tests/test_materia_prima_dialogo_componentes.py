@@ -186,3 +186,75 @@ def test_celulas_vazias_viajam_como_none() -> None:
     assert linha.ref_fornecedor is None
     assert linha.descricao is None
     dialogo.deleteLater()
+
+
+# --- O campo Nome iMos (materiais simples, 1 para 1) -------------------------
+
+
+def test_a_ficha_tem_o_campo_nome_imos() -> None:
+    # Faltava, e sem ele o «Guardar» de QUALQUER matéria-prima rebentava:
+    # a página pedia dados.nome_imos a uma dataclass que não o tinha.
+    dialogo = MateriaPrimaDialog()
+    dialogo.descricao_input.setText("AGL MLM LINHO CANCUN 19MM")
+    dialogo.nome_imos_input.setText("  AGL_MLM_LINHO_CANCUN_19MM  ")
+
+    assert dialogo.get_data().nome_imos == "AGL_MLM_LINHO_CANCUN_19MM"
+    dialogo.deleteLater()
+
+
+def test_sem_nome_imos_escrito_fica_none() -> None:
+    dialogo = MateriaPrimaDialog()
+    dialogo.descricao_input.setText("QUALQUER COISA")
+
+    assert dialogo.get_data().nome_imos is None
+    dialogo.deleteLater()
+
+
+# --- A ficha tem de caber ----------------------------------------------------
+
+
+def test_a_ficha_e_larga_para_as_colunas_dos_componentes_caberem() -> None:
+    dialogo = MateriaPrimaDialog()
+
+    largura_das_colunas = sum(MateriaPrimaDialog.COMPONENTES_LARGURAS.values())
+
+    assert dialogo.minimumWidth() >= largura_das_colunas
+    dialogo.deleteLater()
+
+
+# --- "Gravar como..." avisa antes de deixar os componentes para trás --------
+
+
+def test_gravar_como_sem_componentes_nao_pergunta_nada() -> None:
+    dialogo = MateriaPrimaDialog()
+
+    assert dialogo._componentes_ficam_para_tras() is True
+    dialogo.deleteLater()
+
+
+def test_gravar_como_com_componentes_pergunta_e_diz_quantos(monkeypatch) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from app.ui.dialogs import materia_prima_dialog as modulo
+
+    perguntas: list[str] = []
+
+    def _fingir(parent, titulo, texto, botoes, defeito):
+        perguntas.append(texto)
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(modulo.QMessageBox, "question", staticmethod(_fingir))
+    dialogo = MateriaPrimaDialog(componentes=[COPO, CALCO])
+
+    assert dialogo._componentes_ficam_para_tras() is False
+    assert len(perguntas) == 1
+    assert "2 componentes" in perguntas[0]
+    assert "SEM eles" in perguntas[0]
+    dialogo.deleteLater()
+
+
+def test_gravar_como_avisa_no_tooltip_do_botao() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO])
+
+    assert "componentes" in dialogo.save_as_button.toolTip().lower()
+    dialogo.deleteLater()
