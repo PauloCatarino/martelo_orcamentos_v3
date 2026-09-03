@@ -429,16 +429,33 @@ class MateriasPrimasPage(QWidget):
             self._listar_componentes(materia.id) if materia is not None else []
         )
 
+        def gravar(dados, como_nova: bool = False) -> bool:
+            """Gravar e, se correr mal, dizer PORQUÊ dentro da ficha.
+
+            A ficha é modal e tapa a linha de apoio da página — era lá que a
+            mensagem de erro ia parar, e por isso uma gravação recusada parecia
+            uma gravação em silêncio. Apanhado a 03-09-2026, com os componentes
+            a serem recusados pela base sem ninguém ver o motivo.
+            """
+            gravou = (
+                self._guardar(dados, None, [])
+                if como_nova
+                else self._guardar(dados, materia, dialogo.componentes())
+            )
+            if not gravou:
+                dialogo.set_error(
+                    self.status_label.text() or "Não foi possível gravar."
+                )
+            return gravou
+
         dialogo = MateriaPrimaDialog(
             materia,
             parent=self,
-            on_save=lambda dados: self._guardar(
-                dados, materia, dialogo.componentes()
-            ),
+            on_save=gravar,
             # O "Gravar como..." NÃO leva os componentes: as referências
             # principais só podem identificar um conjunto, e copiá-las para uma
             # matéria-prima nova era garantir uma colisão.
-            on_save_as=lambda dados: self._guardar(dados, None, []),
+            on_save_as=lambda dados: gravar(dados, como_nova=True),
             historico=historico,
             utilizacoes=utilizacoes,
             ref_le_sugerida=self._proxima_ref_le,

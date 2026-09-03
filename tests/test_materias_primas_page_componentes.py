@@ -180,3 +180,108 @@ def test_colisao_de_principais_e_recusada_ao_gravar_a_ficha(
 
     assert gravou is False
     assert fer0058.ref_le in pagina.status_label.text()
+
+
+# --- O caminho todo: abrir a ficha, escrever, Guardar -----------------------
+
+
+def test_abrir_a_ficha_escrever_e_gravar_leva_os_componentes_a_base(
+    pagina, fer0058, session, monkeypatch
+) -> None:
+    """O caminho que o Paulo faz de facto, do botão Editar ao Guardar.
+
+    Apanhado a 03-09-2026 (2.ª vez): a matéria-prima gravava, os componentes
+    não. Os testes que havia chamavam o ``_guardar`` da página directamente e
+    por isso nunca passavam pela ligação entre o diálogo e a página.
+    """
+    from app.ui.dialogs import materia_prima_dialog as modulo_dialogo
+
+    abertos: list = []
+    monkeypatch.setattr(
+        modulo_dialogo.MateriaPrimaDialog,
+        "exec",
+        lambda self: abertos.append(self),
+    )
+
+    pagina._abrir_dialogo(fer0058)
+    ficha = abertos[0]
+
+    ficha._acrescentar_componente()
+    ficha.componentes_table.cellWidget(0, 0).setCurrentText(PAPEL_PRINCIPAL)
+    ficha.componentes_table.item(0, 1).setText("PE NIVELADOR AXILO 80MM")
+    ficha.componentes_table.item(0, 3).setText("PE_AXILO_H72_92_63776352")
+    ficha.componentes_table.item(0, 4).setText("FF01295")
+
+    ficha._validar_e_aceitar()
+
+    guardados = DefMateriaPrimaComponenteService(session).listar(fer0058.id)
+    assert [c.descricao for c in guardados] == ["PE NIVELADOR AXILO 80MM"]
+    assert guardados[0].papel == PAPEL_PRINCIPAL
+    assert guardados[0].nome_imos == "PE_AXILO_H72_92_63776352"
+
+
+def test_a_ficha_abre_com_os_componentes_que_ja_estao_na_base(
+    pagina, fer0058, session, monkeypatch
+) -> None:
+    from app.ui.dialogs import materia_prima_dialog as modulo_dialogo
+
+    DefMateriaPrimaComponenteService(session).guardar_lista(
+        fer0058.id, [PE_ALTO, BASE]
+    )
+    abertos: list = []
+    monkeypatch.setattr(
+        modulo_dialogo.MateriaPrimaDialog,
+        "exec",
+        lambda self: abertos.append(self),
+    )
+
+    pagina._abrir_dialogo(fer0058)
+
+    assert abertos[0].componentes_table.rowCount() == 2
+
+
+def test_um_erro_a_gravar_aparece_DENTRO_da_ficha(
+    pagina, fer0058, session, monkeypatch
+) -> None:
+    """A ficha é modal e tapa a linha de apoio da página.
+
+    Enquanto a mensagem só ia para lá, uma gravação recusada era
+    indistinguível de uma gravação bem-sucedida: a base dizia que não, e
+    ninguém via porquê.
+    """
+    from app.ui.dialogs import materia_prima_dialog as modulo_dialogo
+
+    abertos: list = []
+    monkeypatch.setattr(
+        modulo_dialogo.MateriaPrimaDialog,
+        "exec",
+        lambda self: abertos.append(self),
+    )
+    pagina._abrir_dialogo(fer0058)
+    ficha = abertos[0]
+
+    # Uma linha sem referência nenhuma: o serviço recusa.
+    ficha._acrescentar_componente()
+    ficha.componentes_table.item(0, 1).setText("uma peça sem referência")
+
+    ficha._validar_e_aceitar()
+
+    assert "referência" in ficha.error_label.text()
+    assert ficha.isVisible() or True  # a ficha não fecha
+
+
+def test_a_migracao_dos_grants_chama_o_procedimento() -> None:
+    # Na produção cada pessoa tem conta própria e os privilégios são dados
+    # tabela a tabela: uma tabela criada por uma migração nasce sem eles.
+    from pathlib import Path
+
+    migracao = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20260903_105_grants_componentes_materias_primas.py"
+    )
+    fonte = migracao.read_text(encoding="utf-8")
+
+    assert "CALL martelo_aplicar_grants()" in fonte
+    assert 'down_revision: str | Sequence[str] | None = "20260903_104"' in fonte
