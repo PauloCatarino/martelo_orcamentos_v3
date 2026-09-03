@@ -45,6 +45,7 @@ def _materia(id_: int, ref_le: str, descricao: str, preco: str) -> SimpleNamespa
         nome_fabricante="ABET LAMINATI",
         cor="BRANCO",
         ref_phc=None,
+        link=None,
         coresp_orla_0_4="ORL0004",
         coresp_orla_1_0="ORL0005",
         comprimento=Decimal("3050"),

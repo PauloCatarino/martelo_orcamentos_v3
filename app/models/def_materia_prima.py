@@ -83,6 +83,11 @@ class DefMateriaPrima(Base):
     cor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     nome_fabricante: Mapped[str | None] = mapped_column(String(150), nullable=True)
     ref_phc: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Morada na net para ver o material: a pagina do fabricante, a foto do
+    # fornecedor, o PDF do sistema. Opcional -- a maioria dos materiais nunca
+    # vai ter link, e nao ter link nao e' aviso nenhum. Os links dos catalogos
+    # levam muito parametro atras, dai os 1000 caracteres.
+    link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     criado_por_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id"), nullable=True
     )

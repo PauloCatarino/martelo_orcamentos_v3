@@ -68,6 +68,7 @@ class CriarDefMateriaPrimaData:
     cor: str | None = None
     nome_fabricante: str | None = None
     ref_phc: str | None = None
+    link: str | None = None
     fornecedor_id: int | None = None
 
 
@@ -103,6 +104,7 @@ class EditarDefMateriaPrimaData:
     cor: str | None = None
     nome_fabricante: str | None = None
     ref_phc: str | None = None
+    link: str | None = None
     fornecedor_id: int | None = None
 
 
@@ -184,6 +186,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
+            link=data.link,
             fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,
@@ -237,6 +240,7 @@ class DefMateriaPrimaService:
             cor=data.cor,
             nome_fabricante=data.nome_fabricante,
             ref_phc=data.ref_phc,
+            link=data.link,
             fornecedor_id=fornecedor_id,
             origem_dados=origem_dados,
             ativo=data.ativo,

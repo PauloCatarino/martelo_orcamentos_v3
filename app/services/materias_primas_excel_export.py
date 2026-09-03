@@ -43,6 +43,7 @@ LARGURAS = {
     "Fornecedor": 18,
     "Ref. fornecedor": 20,
     "Fabricante": 16,
+    "Link": 46,
     "Observações": 32,
 }
 LARGURA_PADRAO = 13

@@ -7,7 +7,8 @@ from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -72,6 +74,7 @@ class MateriaPrimaDialogData:
     nome_fabricante: str | None
     referencia_fornecedor: str | None
     ref_phc: str | None
+    link: str | None
     stock: bool | None
     ativo: bool
     observacoes: str | None
@@ -272,6 +275,23 @@ class MateriaPrimaDialog(QDialog):
         self.ref_phc_input = QLineEdit()
         self.ref_phc_input.setToolTip("Referência do artigo no PHC, quando existe.")
 
+        self.link_input = QLineEdit()
+        self.link_input.setPlaceholderText("https://…")
+        self.link_input.setToolTip(
+            "Morada na net onde se vê este material: a página do fabricante, a "
+            "foto do fornecedor, o PDF do sistema.\n"
+            "É opcional — a maioria dos materiais não tem link nenhum."
+        )
+        self.abrir_link_button = QPushButton("Abrir")
+        self.abrir_link_button.setToolTip(
+            "Abrir este link no browser. Confirme sempre a morada antes de abrir."
+        )
+        self.abrir_link_button.clicked.connect(self._abrir_link)
+        # Ligar o sinal depois do botao existir, e correr uma vez a seguir: com
+        # o campo vazio o botao nasce desligado.
+        self.link_input.textChanged.connect(self._atualizar_botao_link)
+        self._atualizar_botao_link()
+
         self.stock_input = QCheckBox("Material de stock")
         self.ativo_input = QCheckBox("Ativo")
         self.ativo_input.setChecked(True)
@@ -325,8 +345,16 @@ class MateriaPrimaDialog(QDialog):
         marcas.addWidget(self.ativo_input)
         marcas.addStretch()
 
+        # O link ocupa a largura toda: uma morada de catálogo não cabe em meia
+        # linha, e cortada não se percebe para onde vai.
+        linha_link = QHBoxLayout()
+        linha_link.addWidget(QLabel("Link"))
+        linha_link.addWidget(self.link_input, stretch=1)
+        linha_link.addWidget(self.abrir_link_button)
+
         layout = QVBoxLayout()
         layout.addLayout(colunas)
+        layout.addLayout(linha_link)
         layout.addLayout(marcas)
         layout.addWidget(QLabel("Observações"))
         layout.addWidget(self.observacoes_input)
@@ -475,6 +503,7 @@ class MateriaPrimaDialog(QDialog):
         self.fabricante_input.setText(materia.nome_fabricante or "")
         self.referencia_fornecedor_input.setText(materia.referencia_fornecedor or "")
         self.ref_phc_input.setText(materia.ref_phc or "")
+        self.link_input.setText(materia.link or "")
         self.stock_input.setChecked(bool(materia.stock))
         self.ativo_input.setChecked(materia.ativo)
         self.observacoes_input.setPlainText(materia.observacoes or "")
@@ -557,6 +586,7 @@ class MateriaPrimaDialog(QDialog):
                 self.referencia_fornecedor_input.text()
             ),
             ref_phc=self._texto_ou_none(self.ref_phc_input.text()),
+            link=self._texto_ou_none(self.link_input.text()),
             stock=self.stock_input.isChecked(),
             ativo=self.ativo_input.isChecked(),
             observacoes=self._texto_ou_none(self.observacoes_input.toPlainText()),
@@ -614,6 +644,22 @@ class MateriaPrimaDialog(QDialog):
             return
 
         self.accept()
+
+    def _atualizar_botao_link(self) -> None:
+        """O «Abrir» só liga quando há mesmo uma morada escrita."""
+        self.abrir_link_button.setEnabled(bool(self.link_input.text().strip()))
+
+    def _abrir_link(self) -> None:
+        """Abrir o link no browser do sistema."""
+        morada = self.link_input.text().strip()
+        if not morada:
+            return
+        url = QUrl.fromUserInput(morada)
+        if not url.isValid() or not QDesktopServices.openUrl(url):
+            self.set_error(
+                "Não foi possível abrir este link. Confirme que a morada está "
+                "completa (começa por «https://»)."
+            )
 
     def set_error(self, mensagem: str) -> None:
         """Mostrar um erro sem fechar o diálogo."""
