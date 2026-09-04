@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.services.v2_arquivo_service import OrcamentoV2Resumo
 from app.utils.formatters import format_currency
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ class EditarArquivoV2Dialog(QDialog):
         )
         self.contexto_label.setStyleSheet("font-weight: bold;")
 
-        self.estado_combo = QComboBox()
+        self.estado_combo = ComboSemScroll()
         self.estado_combo.addItems(list(ESTADOS_ORCAMENTO))
         if item.estado and self.estado_combo.findText(item.estado) < 0:
             self.estado_combo.addItem(item.estado)

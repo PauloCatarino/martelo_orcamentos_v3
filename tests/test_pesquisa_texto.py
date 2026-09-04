@@ -86,11 +86,48 @@ def test_sugestao_para_erro_de_escrita() -> None:
 def test_sugerir_pesquisa_so_reescreve_o_que_nao_existe() -> None:
     vocabulario = {"roupeiro", "porta"}
 
-    assert sugerir_pesquisa("roupeirs", vocabulario) == "roupeiro"
+    # letras trocadas: nem inteiro nem pedaço existe, aqui vale a pena sugerir
+    assert sugerir_pesquisa("ruopeiro", vocabulario) == "roupeiro"
     # tudo já existe: não vale a pena sugerir nada
     assert sugerir_pesquisa("roupeiro porta", vocabulario) == ""
     assert sugerir_pesquisa("", vocabulario) == ""
 
 
+def test_sugerir_pesquisa_cala_se_quando_o_pedaco_ja_encontra() -> None:
+    """«877» encontra o 260877 — não faz sentido perguntar «Quis dizer 77?»."""
+    vocabulario = {"260877", "260879", "roupeiro"}
+
+    assert sugerir_pesquisa("877", vocabulario) == ""
+    assert sugerir_pesquisa("roupeir", vocabulario) == ""
+
+
 def test_raizes_devolve_pela_ordem_de_escrita() -> None:
     assert raizes("Roupeiros de Correr") == ["roupeiro", "de", "correr"]
+
+
+def test_encontra_por_pedaco_de_palavra() -> None:
+    """Raramente se escreve o número do orçamento todo."""
+    indice = indexar(["260877", "260877_02", "PEDRO REIS", "ROUPEIROS PORTAS ABRIR"])
+
+    assert corresponde(indice, expandir_termos("877")) is True
+    assert corresponde(indice, expandir_termos("0877")) is True
+    assert corresponde(indice, expandir_termos("260877")) is True
+    assert corresponde(indice, expandir_termos("roup")) is True
+    assert corresponde(indice, expandir_termos("pedr")) is True
+
+
+def test_pedaco_curto_de_mais_continua_a_exigir_a_palavra_inteira() -> None:
+    """Com uma ou duas letras, procurar por pedaço devolvia a lista toda."""
+    indice = indexar(["260877", "ROUPEIROS"])
+
+    assert corresponde(indice, expandir_termos("87")) is False
+    assert corresponde(indice, expandir_termos("r")) is False
+    # três já chega
+    assert corresponde(indice, expandir_termos("877")) is True
+
+
+def test_todas_as_palavras_escritas_tem_de_estar_la() -> None:
+    indice = indexar(["260877", "PEDRO REIS"])
+
+    assert corresponde(indice, expandir_termos("877 reis")) is True
+    assert corresponde(indice, expandir_termos("877 silva")) is False

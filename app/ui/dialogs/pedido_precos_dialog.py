@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -23,6 +22,7 @@ from app.domain.materia_prima_types import MESES_PRECO_DESATUALIZADO
 from app.domain.pedido_precos import PedidoFornecedor
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import SpinSemScroll
 
 
 class PedidoPrecosDialog(QDialog):
@@ -73,7 +73,7 @@ class PedidoPrecosDialog(QDialog):
         self.setMinimumSize(900, 520)
         self._dimensionar_ao_ecra()
 
-        self.meses_input = QSpinBox()
+        self.meses_input = SpinSemScroll()
         self.meses_input.setRange(1, 60)
         self.meses_input.setValue(meses)
         self.meses_input.setSuffix(" meses")

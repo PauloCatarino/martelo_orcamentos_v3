@@ -30,11 +30,12 @@ from app.services.user_admin_service import (
     update_user_access,
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 def _combo_departamentos(valor: str = "") -> QComboBox:
     """Combo editavel com as areas sugeridas — aceita areas novas."""
-    combo = QComboBox()
+    combo = ComboSemScroll()
     combo.setEditable(True)
     combo.addItem("")
     combo.addItems(DEPARTAMENTOS)

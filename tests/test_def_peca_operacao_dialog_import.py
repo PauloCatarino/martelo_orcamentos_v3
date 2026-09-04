@@ -50,7 +50,7 @@ def test_def_peca_operacao_dialog_uses_regra_operacao_options() -> None:
     source_names = DefPecaOperacaoDialog.__init__.__code__.co_names
 
     assert "get_regra_operacao_options" in source_names
-    assert "QComboBox" in source_names
+    assert "ComboSemScroll" in source_names
 
 
 def test_def_peca_operacao_dialog_parses_decimais() -> None:

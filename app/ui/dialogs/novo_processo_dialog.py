@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -32,6 +31,7 @@ from app.services.streamlit_sql_service import query_streamlit_encomenda_itens
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import SpinSemScroll
 
 
 _COLUNAS_PHC = (
@@ -70,7 +70,7 @@ class _OrigemTab(QWidget):
         self._linhas: list[dict] = []
         self._linhas_visiveis: list[dict] = []
 
-        self.ano_spin = QSpinBox()
+        self.ano_spin = SpinSemScroll()
         self.ano_spin.setRange(2000, 2100)
         self.ano_spin.setValue(datetime.now().year)
         self.ano_spin.setToolTip("Ano da encomenda a pesquisar")

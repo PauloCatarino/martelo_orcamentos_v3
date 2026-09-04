@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -33,6 +32,7 @@ from app.services.ia_perfil_service import (
 )
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 #: Campos de texto de uma obra, sugeridos na coluna "onde aparece".
@@ -77,7 +77,7 @@ class IaPerfilPage(QWidget):
             ],
         )
 
-        self.tipo_combo = QComboBox()
+        self.tipo_combo = ComboSemScroll()
         for tipo in TIPOS_ENTRADA:
             self.tipo_combo.addItem(tipo.titulo, tipo.chave)
         self.tipo_combo.setToolTip("Escolha o tipo de informação que quer acrescentar")
@@ -89,7 +89,7 @@ class IaPerfilPage(QWidget):
 
         # Uma folha em branco é o que mais trava quem nunca ensinou o
         # assistente: o quadro chega com linhas prontas a escolher.
-        self.sugestoes_combo = QComboBox()
+        self.sugestoes_combo = ComboSemScroll()
         self.sugestoes_combo.setMinimumWidth(340)
         self.sugestoes_combo.setToolTip(
             "Linhas já escritas para este quadro. Escolha uma para a pôr nos "
@@ -110,7 +110,7 @@ class IaPerfilPage(QWidget):
         self.significado_input = QLineEdit()
 
         self.campos_label = QLabel("Onde aparece")
-        self.campos_combo = QComboBox()
+        self.campos_combo = ComboSemScroll()
         self.campos_combo.setEditable(True)
         self.campos_combo.addItems(CAMPOS_SUGERIDOS)
         self.campos_combo.setToolTip(

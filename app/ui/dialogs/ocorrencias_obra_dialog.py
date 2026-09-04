@@ -53,6 +53,7 @@ from app.ui.helpers.teams_clipboard import copiar_fotos_inline
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.faixa_anexos import FaixaAnexos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 #: Fundo e texto de cada família de classificação (ver ocorrencia_tipos).
@@ -105,7 +106,7 @@ class OcorrenciasObraDialog(QDialog):
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.tipo_filtro = self._combo_filtro("Tipo: todos", tipos.TIPOS, "Filtrar por tipo de ticket")
-        self.estado_filtro = QComboBox()
+        self.estado_filtro = ComboSemScroll()
         self.estado_filtro.setToolTip(
             "Filtrar por estado. Por omissão mostra tudo — os resolvidos ficam "
             "à vista, com a cor da coluna Estado a distingui-los."
@@ -118,7 +119,7 @@ class OcorrenciasObraDialog(QDialog):
             self.estado_filtro.addItem(estado.rotulo, estado.chave)
         self.estado_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
-        self.responsavel_filtro = QComboBox()
+        self.responsavel_filtro = ComboSemScroll()
         self.responsavel_filtro.setToolTip("Filtrar por responsável")
         self.responsavel_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
@@ -815,7 +816,7 @@ class OcorrenciasObraDialog(QDialog):
 
     # ---- apoio -----------------------------------------------------------
     def _combo_filtro(self, primeiro: str, itens, tooltip: str) -> QComboBox:
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.setToolTip(tooltip)
         combo.addItem(primeiro, None)
         for item in itens:

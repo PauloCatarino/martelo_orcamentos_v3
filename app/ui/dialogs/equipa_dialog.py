@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -30,6 +29,7 @@ from app.services.equipa_service import (
 )
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class EquipaDialog(QDialog):
@@ -54,7 +54,7 @@ class EquipaDialog(QDialog):
         cabecalho.setWordWrap(True)
         cabecalho.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
 
-        self.formato_combo = QComboBox()
+        self.formato_combo = ComboSemScroll()
         self.formato_combo.setToolTip(
             "Se o Teams abrir sem o destinatário preenchido no 'Para:', "
             "experimente outro formato. Depende de a conta ser de trabalho ou "

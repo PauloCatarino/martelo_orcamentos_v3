@@ -5,7 +5,6 @@ from __future__ import annotations
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -39,6 +38,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class ArquivoV2Page(QWidget):
@@ -90,7 +90,7 @@ class ArquivoV2Page(QWidget):
         )
         self.pesquisa.pesquisa_mudou.connect(self._render)
 
-        self.estado = QComboBox()
+        self.estado = ComboSemScroll()
         self.estado.addItem("Todos")
         self.estado.currentTextChanged.connect(self._render)
 

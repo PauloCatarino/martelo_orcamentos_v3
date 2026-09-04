@@ -155,6 +155,7 @@ from app.ui.helpers.vistas_producao import (
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 TIPOS_PASTA_PRODUCAO = (
@@ -570,9 +571,9 @@ class ProducaoPage(QWidget):
         self.limpar_filtros_button = BotaoLimparFiltros()
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
-        self.estado_combo = QComboBox()
-        self.cliente_combo = QComboBox()
-        self.responsavel_combo = QComboBox()
+        self.estado_combo = ComboSemScroll()
+        self.cliente_combo = ComboSemScroll()
+        self.responsavel_combo = ComboSemScroll()
         self.cliente_combo.setToolTip(
             "Só mostra os clientes com obras do responsável escolhido"
         )
@@ -580,7 +581,7 @@ class ProducaoPage(QWidget):
             combo.currentTextChanged.connect(self._render)
         self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)
 
-        self.vista_combo = QComboBox()
+        self.vista_combo = ComboSemScroll()
         self.vista_combo.setMinimumWidth(150)
         self.vista_combo.setToolTip(
             "Vistas guardadas: combinações de pesquisa e filtros, suas e só suas"
@@ -741,10 +742,10 @@ class ProducaoPage(QWidget):
         self.preco_total_input = QLineEdit()
         self.qt_artigos_input = QLineEdit()
 
-        self.estado_form_combo = QComboBox()
+        self.estado_form_combo = ComboSemScroll()
         self.estado_form_combo.addItems(ESTADOS_PRODUCAO)
 
-        self.responsavel_form_combo = QComboBox()
+        self.responsavel_form_combo = ComboSemScroll()
         self.responsavel_form_combo.setEditable(True)
 
         self.ref_cliente_input = QLineEdit()
@@ -753,7 +754,7 @@ class ProducaoPage(QWidget):
         self.data_inicio_input = self._campo_data()
         self.data_entrega_input = self._campo_data()
 
-        self.tipo_pasta_combo = QComboBox()
+        self.tipo_pasta_combo = ComboSemScroll()
         self.tipo_pasta_combo.addItems(TIPOS_PASTA_PRODUCAO)
 
         # Cada linha agrupa campos que se leem em conjunto (nomes do processo,

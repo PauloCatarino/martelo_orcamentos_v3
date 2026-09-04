@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -28,6 +27,7 @@ from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
 from app.repositories.cliente_repository import ClienteListaResumo
 from app.repositories.user_repository import UserRepository
 from app.services.orcamento_encomenda_phc_service import EncomendaPhcInput
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -105,10 +105,10 @@ class EditarOrcamentoDialog(QDialog):
         self.cliente_group = QGroupBox("Cliente")
         self.cliente_group.setLayout(cliente_form)
 
-        self.estado_combo = QComboBox()
+        self.estado_combo = ComboSemScroll()
         self.estado_combo.setEditable(False)
         self.estado_combo.addItems(list(ESTADOS_ORCAMENTO))
-        self.utilizador_combo = QComboBox()
+        self.utilizador_combo = ComboSemScroll()
         self._carregar_utilizadores()
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()

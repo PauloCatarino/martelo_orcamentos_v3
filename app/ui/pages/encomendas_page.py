@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -37,6 +36,7 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import SpinSemScroll
 
 
 class EncomendasPHCTab(QWidget):
@@ -62,14 +62,14 @@ class EncomendasPHCTab(QWidget):
 
         self._linhas: list[dict] = []
 
-        self.ano_spin = QSpinBox()
+        self.ano_spin = SpinSemScroll()
         self.ano_spin.setRange(1900, 2200)
         self.ano_spin.setValue(2026)
         self.ano_spin.setToolTip(
             "Carregar encomendas com data igual ou posterior a 01-01 deste ano"
         )
 
-        self.max_linhas_spin = QSpinBox()
+        self.max_linhas_spin = SpinSemScroll()
         self.max_linhas_spin.setRange(0, 100000)
         self.max_linhas_spin.setValue(5000)
         self.max_linhas_spin.setToolTip(
@@ -254,14 +254,14 @@ class DiagnosticoPHCTab(QWidget):
             "Filtrar por número da encomenda PHC; deixe vazio para carregar várias"
         )
 
-        self.ano_spin = QSpinBox()
+        self.ano_spin = SpinSemScroll()
         self.ano_spin.setRange(1900, 2200)
         self.ano_spin.setValue(2026)
         self.ano_spin.setToolTip(
             "Carregar diagnóstico com data igual ou posterior a 01-01 deste ano"
         )
 
-        self.max_linhas_spin = QSpinBox()
+        self.max_linhas_spin = SpinSemScroll()
         self.max_linhas_spin.setRange(1, 50000)
         self.max_linhas_spin.setValue(2000)
         self.max_linhas_spin.setToolTip(
@@ -464,21 +464,21 @@ class EncomendasClienteFinalTab(QWidget):
         self._encomendas: list[dict] = []
         self._encomendas_by_row: dict[int, dict] = {}
 
-        self.ano_spin = QSpinBox()
+        self.ano_spin = SpinSemScroll()
         self.ano_spin.setRange(1900, 2200)
         self.ano_spin.setValue(2026)
         self.ano_spin.setToolTip(
             "Carregar encomendas com Ano igual ou posterior a este"
         )
 
-        self.max_encomendas_spin = QSpinBox()
+        self.max_encomendas_spin = SpinSemScroll()
         self.max_encomendas_spin.setRange(0, 1000000)
         self.max_encomendas_spin.setValue(5000)
         self.max_encomendas_spin.setToolTip(
             "Limite de encomendas a carregar (0 = sem limite)"
         )
 
-        self.max_itens_spin = QSpinBox()
+        self.max_itens_spin = SpinSemScroll()
         self.max_itens_spin.setRange(0, 1000000)
         self.max_itens_spin.setValue(20000)
         self.max_itens_spin.setToolTip(

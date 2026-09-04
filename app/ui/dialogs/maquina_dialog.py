@@ -9,7 +9,6 @@ from decimal import Decimal
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -24,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.repositories.def_maquina_repository import DefMaquinaResumo
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 
 TIPO_OPCOES = (
     "CORTE",
@@ -101,7 +101,7 @@ class MaquinaDialog(QDialog):
         self.nome_input = QLineEdit()
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(70)
-        self.tipo_input = QComboBox()
+        self.tipo_input = ComboSemScroll()
         for opcao in TIPO_OPCOES:
             self.tipo_input.addItem(opcao, opcao)
         self.observacoes_input = QLineEdit()
@@ -246,7 +246,7 @@ class MaquinaDialog(QDialog):
 
     def _criar_spin(self, suffix: str) -> QDoubleSpinBox:
         """Build a tariff spin box that shows ``suffix`` and an empty special value."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(2)
         spin.setRange(_SEM_VALOR, 9_999_999.0)
         spin.setSpecialValueText("")  # blank when "not set" (value == minimum)

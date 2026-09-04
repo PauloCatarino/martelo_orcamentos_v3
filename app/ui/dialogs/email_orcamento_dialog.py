@@ -17,7 +17,6 @@ from typing import Sequence
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -36,6 +35,7 @@ from PySide6.QtWidgets import (
 from app.domain.anexos_email import LIMITE_PADRAO_MB, medir_anexo, resumir_anexos
 from app.services import email_resposta_service as resposta_svc
 from app.ui import tema
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class EmailOrcamentoDialog(QDialog):
@@ -179,7 +179,7 @@ class EmailOrcamentoDialog(QDialog):
             "Desligue para enviar um email novo, como antes."
         )
 
-        self.combo_resposta = QComboBox()
+        self.combo_resposta = ComboSemScroll()
         self.combo_resposta.setToolTip(
             "Emails guardados na pasta do orçamento. Aparecem primeiro os que "
             "parecem um pedido de orçamento pelo assunto; depois, os mais "

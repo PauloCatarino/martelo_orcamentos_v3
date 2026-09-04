@@ -14,7 +14,6 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QGuiApplication
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
@@ -30,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 #: Como a caixa se apresenta quando aparece sozinha, de manha.
 APRESENTACAO = (
@@ -215,7 +215,7 @@ class ProducaoPhcSyncDialog(QDialog):
         barra.setSpacing(6)
 
         barra.addWidget(QLabel("Responsável:"))
-        self.responsavel_combo = QComboBox()
+        self.responsavel_combo = ComboSemScroll()
         self.responsavel_combo.setMinimumWidth(160)
         self.responsavel_combo.setToolTip(
             "Mostrar só as obras de um responsável."

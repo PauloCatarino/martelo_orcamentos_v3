@@ -22,7 +22,7 @@ def test_componente_dialog_uses_componente_type_options() -> None:
     source_names = DefPecaComponenteDialog.__init__.__code__.co_names
 
     assert "get_componente_type_options" in source_names
-    assert "QComboBox" in source_names
+    assert "ComboSemScroll" in source_names
 
 
 def test_componente_dialog_uses_regra_quantidade_options() -> None:

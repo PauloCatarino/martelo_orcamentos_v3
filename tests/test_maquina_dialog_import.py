@@ -58,7 +58,7 @@ def test_maquina_dialog_uses_combobox_for_tipo() -> None:
 
     source_names = MaquinaDialog.__init__.__code__.co_names
 
-    assert "QComboBox" in source_names
+    assert "ComboSemScroll" in source_names
 
 
 def test_maquina_dialog_spin_to_decimal() -> None:
@@ -91,7 +91,7 @@ def test_maquina_dialog_tem_tarifas_std_serie() -> None:
 
     # Units are shown as spin-box suffixes and the tariff section adapts to type.
     init = inspect.getsource(MaquinaDialog.__init__)
-    assert "QDoubleSpinBox" in MaquinaDialog._criar_spin.__code__.co_names
+    assert "SpinDuploSemScroll" in MaquinaDialog._criar_spin.__code__.co_names
     for sufixo in ("€/H", "€/ML", "€/lado", "mm", "€/peça"):
         assert sufixo in init
 

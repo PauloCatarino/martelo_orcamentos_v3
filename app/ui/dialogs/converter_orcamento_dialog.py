@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -26,6 +25,7 @@ from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_version
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 #: Quantos motivos se mostram quando a pesquisa não devolve nada.
@@ -99,7 +99,7 @@ class ConverterOrcamentoDialog(QDialog):
         # Phase 5: a version may have several PHC orders; the user picks the
         # one to convert (the principal order is pre-selected).
         self.encomenda_label = QLabel("Encomenda PHC a converter:")
-        self.encomenda_combo = QComboBox()
+        self.encomenda_combo = ComboSemScroll()
         self.encomenda_combo.setToolTip(
             "Encomenda PHC que dará origem ao processo de produção"
         )

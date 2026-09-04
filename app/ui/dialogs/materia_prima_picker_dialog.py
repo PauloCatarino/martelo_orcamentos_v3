@@ -29,6 +29,7 @@ from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.ui.widgets.table_item import criar_item_tabela
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class MateriaPrimaPickerDialog(QDialog):
@@ -93,8 +94,8 @@ class MateriaPrimaPickerDialog(QDialog):
         search_layout.addWidget(self.refresh_button)
 
         # Tipo / Família filters (pre-filled from the cost line when opened there).
-        self.tipo_filter = QComboBox()
-        self.familia_filter = QComboBox()
+        self.tipo_filter = ComboSemScroll()
+        self.familia_filter = ComboSemScroll()
         self.limpar_filtros_button = QPushButton("Limpar filtros")
         self.limpar_filtros_button.clicked.connect(self.limpar_filtros)
 

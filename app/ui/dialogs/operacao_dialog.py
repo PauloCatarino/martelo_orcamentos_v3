@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from app.domain.operacao_types import get_operacao_type_options, normalize_operacao_type
 from app.repositories.def_maquina_repository import DefMaquinaResumo
 from app.repositories.def_operacao_repository import DefOperacaoResumo
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 UNIDADE_OPCOES = ("PECA", "ML", "M2", "HORA", "MINUTO", "LOTE", "SETUP", "FIXO", "OUTRO")
 
@@ -69,15 +70,15 @@ class OperacaoDialog(QDialog):
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(60)
 
-        self.tipo_operacao_input = QComboBox()
+        self.tipo_operacao_input = ComboSemScroll()
         for code, label in get_operacao_type_options():
             self.tipo_operacao_input.addItem(label, code)
 
-        self.unidade_calculo_input = QComboBox()
+        self.unidade_calculo_input = ComboSemScroll()
         for opcao in UNIDADE_OPCOES:
             self.unidade_calculo_input.addItem(opcao, opcao)
 
-        self.maquina_input = QComboBox()
+        self.maquina_input = ComboSemScroll()
         self.maquina_input.addItem("(sem máquina)", None)
         for maquina in maquinas_disponiveis:
             self.maquina_input.addItem(f"{maquina.codigo} - {maquina.nome}", maquina.id)

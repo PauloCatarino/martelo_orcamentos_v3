@@ -39,6 +39,7 @@ from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_arvore_categorias,
     carregar_opcoes_categorias,
 )
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ class EditarModuloDialog(QDialog):
         self.descricao_input = QPlainTextEdit(dados.descricao or "")
         self.descricao_input.setMinimumHeight(50)
 
-        self.ambito_input = QComboBox()
+        self.ambito_input = ComboSemScroll()
         self.ambito_input.addItem("Utilizador (só meu)", AMBITO_UTILIZADOR)
         self.ambito_input.addItem("Global (todos)", AMBITO_GLOBAL)
         self._selecionar(self.ambito_input, normalize_modulo_ambito(dados.ambito))
@@ -100,7 +101,7 @@ class EditarModuloDialog(QDialog):
         # Subcategories available per top-level category.
         self._arvore_subcategorias = carregar_arvore_categorias()
 
-        self.categoria_input = QComboBox()
+        self.categoria_input = ComboSemScroll()
         for code, label in carregar_opcoes_categorias():
             self.categoria_input.addItem(label, code)
         categoria_atual = normalize_modulo_categoria(dados.categoria)
@@ -111,7 +112,7 @@ class EditarModuloDialog(QDialog):
             )
         self._selecionar(self.categoria_input, categoria_atual)
 
-        self.subcategoria_input = QComboBox()
+        self.subcategoria_input = ComboSemScroll()
         self.subcategoria_input.setToolTip(
             "Subcategoria (opcional) dentro da categoria escolhida. Geridas na "
             "Biblioteca de Módulos › Gerir Categorias."

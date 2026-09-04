@@ -38,6 +38,7 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.utils.formatters import format_quantity
 
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import SpinDuploSemScroll
 
 
 class MargensPadraoPage(QWidget):
@@ -476,7 +477,7 @@ class MargensPadraoPage(QWidget):
     @staticmethod
     def _criar_spin() -> QDoubleSpinBox:
         """Build one compact percent field for Standard and Cliente Final."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(2)
         spin.setRange(-100.0, 999.99)
         spin.setSuffix(" %")

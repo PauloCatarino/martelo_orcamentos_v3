@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QHBoxLayout,
     QHeaderView,
@@ -32,6 +31,7 @@ from app.services.def_modulo_categoria_service import (
 )
 from app.ui.widgets.estilo_tabela_orcamentos import estilo_arvore
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class GerirCategoriasModulosDialog(QDialog):
@@ -59,7 +59,7 @@ class GerirCategoriasModulosDialog(QDialog):
         self.nova_input.setToolTip("Nome da nova categoria/subcategoria de módulos")
         self.nova_input.returnPressed.connect(self._criar)
 
-        self.pai_combo = QComboBox()
+        self.pai_combo = ComboSemScroll()
         self.pai_combo.setToolTip(
             "Escolha a categoria-pai para criar uma subcategoria, ou "
             "'— Categoria de topo —' para criar uma categoria principal."

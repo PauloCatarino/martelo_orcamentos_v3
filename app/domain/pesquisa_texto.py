@@ -33,6 +33,12 @@ _PLURAIS: tuple[tuple[str, str], ...] = (
 #: Abaixo deste tamanho não se corta nada (evita estragar códigos e siglas).
 _MINIMO_RAIZ = 4
 
+#: A partir deste tamanho, um termo que não exista tal e qual ainda encontra
+#: as palavras que o CONTÊM: «877» encontra o orçamento «260877», «cancu»
+#: encontra «cancun». Abaixo disto exige-se a palavra inteira, senão uma ou
+#: duas letras devolviam a lista toda.
+_MINIMO_PARCIAL = 3
+
 
 def normalizar(valor: object) -> str:
     """Minúsculas, sem acentos e com a pontuação transformada em espaço."""
@@ -91,8 +97,35 @@ def expandir_termos(texto: object, sinonimos=None) -> list[frozenset[str]]:
 
 
 def corresponde(indice: frozenset[str], termos) -> bool:
-    """True quando a obra satisfaz todas as palavras escritas."""
-    return all(alternativas & indice for alternativas in termos)
+    """True quando a obra satisfaz todas as palavras escritas.
+
+    Cada palavra é procurada primeiro tal e qual (raiz igual a raiz, que é
+    barato) e só depois como pedaço de uma palavra maior. É o que faz «877»
+    encontrar o orçamento «260877»: raramente se escreve o número todo.
+    """
+    return all(
+        (alternativas & indice) or _corresponde_parcial(indice, alternativas)
+        for alternativas in termos
+    )
+
+
+def _corresponde_parcial(indice: frozenset[str], alternativas) -> bool:
+    """True quando alguma alternativa é pedaço de uma palavra indexada."""
+    procurar = [termo for termo in alternativas if len(termo) >= _MINIMO_PARCIAL]
+    if not procurar:
+        return False
+
+    return any(
+        termo in indexada for indexada in indice for termo in procurar
+    )
+
+
+def contem_parcial(vocabulario, palavra: str) -> bool:
+    """True quando a palavra escrita é pedaço de algo que existe mesmo."""
+    alvo = raiz(normalizar(palavra))
+    if len(alvo) < _MINIMO_PARCIAL:
+        return False
+    return any(alvo in existente for existente in vocabulario)
 
 
 def corresponde_texto(textos, texto: object, sinonimos=None) -> bool:
@@ -127,7 +160,9 @@ def sugerir_pesquisa(texto: object, vocabulario) -> str:
     sugestao: list[str] = []
     mudou = False
     for palavra in palavras:
-        if raiz(palavra) in vocabulario:
+        # Uma palavra que exista — inteira ou como pedaço de outra — não se
+        # corrige: senão «877» dava o disparate «Quis dizer 77?».
+        if raiz(palavra) in vocabulario or contem_parcial(vocabulario, palavra):
             sugestao.append(palavra)
             continue
         proxima = sugerir_termo(palavra, vocabulario)

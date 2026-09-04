@@ -11,7 +11,6 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QFileDialog,
     QGridLayout,
@@ -38,6 +37,7 @@ from app.services.lista_material_pdf_service import (
     normalize_pdf_identifiers,
     sync_pdf_document_registry,
 )
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class ListaMaterialPdfDialog(QDialog):
@@ -72,7 +72,7 @@ class ListaMaterialPdfDialog(QDialog):
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: #5c6570;")
 
-        self.preset_combo = QComboBox()
+        self.preset_combo = ComboSemScroll()
         self.preset_combo.setToolTip(
             "Aplicar uma seleção guardada apenas para este utilizador e cliente"
         )

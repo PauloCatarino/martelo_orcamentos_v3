@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -43,6 +42,7 @@ from app.ui.helpers.valueset_combo_helper import (
     obter_valor_chave_combo,
 )
 from app.ui.widgets.orla_peca_preview import OrlaPecaPreview
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -98,16 +98,16 @@ class NovaDefPecaDialog(QDialog):
         )
         self.descricao_input = QTextEdit()
         self.descricao_input.setFixedHeight(90)
-        self.tipo_peca_input = QComboBox()
+        self.tipo_peca_input = ComboSemScroll()
         for code, label in get_peca_type_options():
             self.tipo_peca_input.addItem(label, code)
-        self.natureza_input = QComboBox()
+        self.natureza_input = ComboSemScroll()
         for code, label in get_peca_natureza_options():
             self.natureza_input.addItem(label, code)
-        self.orientacao_input = QComboBox()
+        self.orientacao_input = ComboSemScroll()
         for code, label in get_peca_orientacao_options():
             self.orientacao_input.addItem(label, code)
-        self.funcao_input = QComboBox()
+        self.funcao_input = ComboSemScroll()
         self.funcao_input.setEditable(True)
         self.funcao_input.addItem("Selecionar origem…", None)
         for code, label in get_peca_funcao_options():
@@ -117,7 +117,7 @@ class NovaDefPecaDialog(QDialog):
             "Origem estrutural da peça. Nome, material, orlas, uniões e operações "
             "podem variar sem alterar esta origem. Pode também escrever uma origem nova."
         )
-        self.grupo_input = QComboBox()
+        self.grupo_input = ComboSemScroll()
         self.grupo_input.setEditable(True)
         for grupo in (
             "", "TETOS", "FUNDOS", "PRATELEIRAS FIXAS",
@@ -126,7 +126,7 @@ class NovaDefPecaDialog(QDialog):
             "SERVICOS", "PAINEIS SIMPLES", "PAINEIS ACABAMENTO",
         ):
             self.grupo_input.addItem(grupo)
-        self.subgrupo_input = QComboBox()
+        self.subgrupo_input = ComboSemScroll()
         self.subgrupo_input.setEditable(True)
         self.subgrupo_input.addItem("")
         for subgrupo in get_subgrupo_options(GRUPO_FERRAGENS):
@@ -139,7 +139,7 @@ class NovaDefPecaDialog(QDialog):
         )
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
-        self.chave_valueset_material_input = QComboBox()
+        self.chave_valueset_material_input = ComboSemScroll()
         self.sem_material_input = QCheckBox("Peça de serviço (sem material)")
         self.sem_material_input.setToolTip(
             "A peça não consome matéria-prima: o custo vem apenas das operações "
@@ -148,8 +148,8 @@ class NovaDefPecaDialog(QDialog):
         )
         self.sem_material_input.setEnabled(False)
         self.permite_acabamento_input = QCheckBox()
-        self.chave_valueset_acabamento_sup_input = QComboBox()
-        self.chave_valueset_acabamento_inf_input = QComboBox()
+        self.chave_valueset_acabamento_sup_input = ComboSemScroll()
+        self.chave_valueset_acabamento_inf_input = ComboSemScroll()
 
         carregar_chaves_valueset_combo(self.chave_valueset_material_input)
         self.sem_material_input.toggled.connect(self._update_sem_material_enabled)
@@ -165,10 +165,10 @@ class NovaDefPecaDialog(QDialog):
         self.permite_acabamento_input.toggled.connect(self._update_acabamento_enabled)
         self._update_acabamento_enabled()
 
-        self.orla_c1_input = QComboBox()
-        self.orla_c2_input = QComboBox()
-        self.orla_l1_input = QComboBox()
-        self.orla_l2_input = QComboBox()
+        self.orla_c1_input = ComboSemScroll()
+        self.orla_c2_input = ComboSemScroll()
+        self.orla_l1_input = ComboSemScroll()
+        self.orla_l2_input = ComboSemScroll()
         orla_combos = (
             self.orla_c1_input,
             self.orla_c2_input,

@@ -29,6 +29,7 @@ from app.services.lista_material_assistente_service import (
     MaterialRow,
     WorkbookAudit,
 )
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 SAFE_CONFIDENCE = 0.80
@@ -101,7 +102,7 @@ class ListaMaterialRevisaoDialog(QDialog):
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._apply_filters)
 
-        self.filter_combo = QComboBox()
+        self.filter_combo = ComboSemScroll()
         self.filter_combo.addItem("Todas as peças com propostas", "all")
         self.filter_combo.addItem("Só decisões pendentes", "pending")
         self.filter_combo.addItem("Só situações para confirmar", "blocking")
@@ -259,7 +260,7 @@ class ListaMaterialRevisaoDialog(QDialog):
             suggestion_indexes = self._suggestions_by_excel_row.get(
                 material_row.row_number, []
             )
-            action = QComboBox()
+            action = ComboSemScroll()
             action.addItem("Pendente", "pendente")
             action.addItem("Aceitar alterações / validar vazio", "aceitar")
             action.addItem("Manter valores atuais da peça", "rejeitar")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -16,6 +17,10 @@ from PySide6.QtWidgets import (
 
 from app.utils.formatters import format_currency
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+
+
+#: Teto por coluna ao abrir; o utilizador pode alargar à mão e fica guardado.
+_LARGURA_MAXIMA_COLUNA = 260
 
 
 class DiferencasValuesetCusteioDialog(QDialog):
@@ -52,6 +57,7 @@ class DiferencasValuesetCusteioDialog(QDialog):
         self.setWindowTitle("Diferenças entre o ValueSet e o Custeio")
         self.setModal(True)
         self.setMinimumSize(1100, 500)
+        self._dimensionar_ao_ecra()
 
         sugeridas = sum(1 for divergencia in self.divergencias if divergencia.sugerido)
         manuais = len(self.divergencias) - sugeridas
@@ -108,6 +114,22 @@ class DiferencasValuesetCusteioDialog(QDialog):
 
         self._preencher()
 
+    def _dimensionar_ao_ecra(self) -> None:
+        """Abrir o mais largo possível: são treze colunas lado a lado.
+
+        Vale a pena tapar a biblioteca de peças que está por baixo — quem está
+        a comparar materiais quer ver as colunas todas de uma vez.
+        """
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is None:
+            self.resize(1600, 700)
+            return
+
+        disponivel = ecra.availableGeometry()
+        largura = min(int(disponivel.width() * 0.96), 2400)
+        altura = min(int(disponivel.height() * 0.80), 1000)
+        self.resize(max(largura, 1100), max(altura, 500))
+
     def _preencher(self) -> None:
         """Fill one row per divergence, current value against ValueSet value."""
         self.table.setRowCount(len(self.divergencias))
@@ -144,6 +166,11 @@ class DiferencasValuesetCusteioDialog(QDialog):
                 self.table.setItem(row_index, offset + 1, QTableWidgetItem(value))
 
         self.table.resizeColumnsToContents()
+        # Sem teto, a "Descrição" e os dois materiais comem a largura toda e
+        # empurram as Ref LE — que são a coluna que interessa — para fora.
+        for coluna in range(self.table.columnCount()):
+            if self.table.columnWidth(coluna) > _LARGURA_MAXIMA_COLUNA:
+                self.table.setColumnWidth(coluna, _LARGURA_MAXIMA_COLUNA)
 
     def _definir_marcacao(self, marcar: bool) -> None:
         """Check or uncheck every row at once."""

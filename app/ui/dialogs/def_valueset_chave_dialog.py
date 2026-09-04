@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.repositories.def_valueset_chave_repository import DefValuesetChaveResumo
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 TIPO_OPCOES = (
     "MATERIAL",
@@ -83,11 +83,11 @@ class DefValuesetChaveDialog(QDialog):
         self.nome_input = QLineEdit()
         self.descricao_input = QLineEdit()
 
-        self.tipo_input = QComboBox()
+        self.tipo_input = ComboSemScroll()
         for tipo in TIPO_OPCOES:
             self.tipo_input.addItem(tipo, tipo)
 
-        self.grupo_input = QComboBox()
+        self.grupo_input = ComboSemScroll()
         self.grupo_input.setEditable(True)
         for grupo in GRUPO_OPCOES:
             self.grupo_input.addItem(grupo)

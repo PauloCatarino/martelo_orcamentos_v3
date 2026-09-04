@@ -15,7 +15,6 @@ from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -26,7 +25,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -41,6 +39,7 @@ from app.domain.custo_producao import escolher_tarifa, selecionar_escalao_area
 from app.domain.medidas import normalizar_numero
 from app.domain import metodo_calculo_types as metodo_types
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll, SpinSemScroll
 
 _D = Decimal
 
@@ -178,11 +177,11 @@ class SimuladorCncWidget(QWidget):
         self.comp_input.setToolTip("Comprimento real da peça (mm).")
         self.larg_input = QLineEdit("400")
         self.larg_input.setToolTip("Largura real da peça (mm).")
-        self.qt_input = QSpinBox()
+        self.qt_input = SpinSemScroll()
         self.qt_input.setRange(1, 99999)
         self.qt_input.setValue(1)
         self.qt_input.setToolTip("Quantidade total de peças.")
-        self.modo_input = QComboBox()
+        self.modo_input = ComboSemScroll()
         self.modo_input.addItem("STD (peça única)", "STD")
         self.modo_input.addItem("SÉRIE (lote)", "SERIE")
         self.modo_input.setToolTip(
@@ -211,9 +210,9 @@ class SimuladorCncWidget(QWidget):
 
         # --- Add-operation form ---------------------------------------------
         op_box = QGroupBox("Adicionar operação")
-        self.maquina_input = QComboBox()
+        self.maquina_input = ComboSemScroll()
         self.maquina_input.setToolTip("Máquina CNC ou de revestimento.")
-        self.metodo_input = QComboBox()
+        self.metodo_input = ComboSemScroll()
         self.metodo_input.setToolTip(
             "Métodos permitidos pela máquina escolhida (capacidades)."
         )
@@ -230,27 +229,27 @@ class SimuladorCncWidget(QWidget):
         self.min_unidade_input.setToolTip(
             "Minutos necessários por unidade ou por pocket."
         )
-        self.unidades_input = QSpinBox()
+        self.unidades_input = SpinSemScroll()
         self.unidades_input.setRange(1, 9999)
         self.unidades_input.setToolTip(
             "Número de unidades ou pockets executados em cada peça."
         )
-        self.furos_input = QSpinBox()
+        self.furos_input = SpinSemScroll()
         self.furos_input.setRange(1, 999)
         self.furos_input.setValue(3)
         self.furos_input.setToolTip("Número de furos executados em cada peça.")
-        self.rasgo_comp_input = QSpinBox()
+        self.rasgo_comp_input = SpinSemScroll()
         self.rasgo_comp_input.setRange(0, 99)
         self.rasgo_comp_input.setValue(1)
         self.rasgo_comp_input.setToolTip(
             "Número de rasgos que percorrem o comprimento da peça."
         )
-        self.rasgo_larg_input = QSpinBox()
+        self.rasgo_larg_input = SpinSemScroll()
         self.rasgo_larg_input.setRange(0, 99)
         self.rasgo_larg_input.setToolTip(
             "Número de rasgos que percorrem a largura da peça."
         )
-        self.faces_input = QComboBox()
+        self.faces_input = ComboSemScroll()
         self.faces_input.addItem("1 face", 1)
         self.faces_input.addItem("2 faces", 2)
         self.faces_input.setCurrentIndex(1)
@@ -407,7 +406,7 @@ class SimuladorCncWidget(QWidget):
     # ------------------------------------------------------------- internals
     @staticmethod
     def _spin(sufixo: str, minimo: int, maximo: int, decimais: int) -> QDoubleSpinBox:
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setRange(minimo, maximo)
         spin.setDecimals(decimais)
         spin.setSuffix(sufixo)

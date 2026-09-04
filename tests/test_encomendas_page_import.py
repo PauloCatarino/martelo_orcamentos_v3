@@ -50,7 +50,7 @@ def test_encomendas_phc_tab_headers_and_widgets() -> None:
     assert "Carregar Encomendas (PHC)" in source
     assert "Ano mínimo" in source
     assert "Máx. linhas" in source
-    assert "QSpinBox" in source
+    assert "SpinSemScroll" in source
     assert "NoEditTriggers" in source
     assert "SelectRows" in source
 

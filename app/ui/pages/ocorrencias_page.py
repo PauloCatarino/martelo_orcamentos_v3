@@ -14,7 +14,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -44,6 +43,7 @@ from app.ui.dialogs.ocorrencias_obra_dialog import CORES_FAMILIA, OcorrenciasObr
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 COLUNAS = ("Obra", "Cliente", "Nº", "Data", "Tipo", "Assunto", "Resp.", "Estado", "Fotos")
@@ -73,18 +73,18 @@ class OcorrenciasPage(QWidget):
         self.limpar_filtros_button = BotaoLimparFiltros()
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
-        self.ano_filtro = QComboBox()
+        self.ano_filtro = ComboSemScroll()
         self.ano_filtro.setToolTip("Ano das obras")
         self.ano_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
-        self.tipo_filtro = QComboBox()
+        self.tipo_filtro = ComboSemScroll()
         self.tipo_filtro.setToolTip("Filtrar por tipo de ticket")
         self.tipo_filtro.addItem("Tipo: todos", None)
         for tipo in tipos.TIPOS:
             self.tipo_filtro.addItem(tipo.rotulo, tipo.chave)
         self.tipo_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
-        self.estado_filtro = QComboBox()
+        self.estado_filtro = ComboSemScroll()
         self.estado_filtro.setToolTip(
             "Filtrar por estado. Por omissão mostra tudo — os resolvidos ficam "
             "à vista, com a cor da coluna Estado a distingui-los."
@@ -95,7 +95,7 @@ class OcorrenciasPage(QWidget):
             self.estado_filtro.addItem(estado.rotulo, estado.chave)
         self.estado_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 
-        self.responsavel_filtro = QComboBox()
+        self.responsavel_filtro = ComboSemScroll()
         self.responsavel_filtro.setToolTip("Filtrar por responsável")
         self.responsavel_filtro.currentIndexChanged.connect(lambda _i: self.carregar())
 

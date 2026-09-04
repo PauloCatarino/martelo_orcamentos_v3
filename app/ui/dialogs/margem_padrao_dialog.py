@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 from app.ui import tema
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 
 from dataclasses import dataclass
 from decimal import Decimal
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -56,7 +56,7 @@ class MargemPadraoDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(420)
 
-        self.entidade_combo = QComboBox()
+        self.entidade_combo = ComboSemScroll()
         for entidade_id, label in entidades:
             self.entidade_combo.addItem(label, entidade_id)
         self.entidade_combo.setToolTip(TOOLTIP_VALOR_INICIAL)
@@ -131,7 +131,7 @@ class MargemPadraoDialog(QDialog):
 
     def _criar_spin(self) -> QDoubleSpinBox:
         """Build one percent field."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(2)
         spin.setRange(-100.0, 999.99)
         spin.setSuffix(" %")

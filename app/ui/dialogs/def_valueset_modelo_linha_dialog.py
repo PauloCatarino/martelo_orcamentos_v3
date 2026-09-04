@@ -10,7 +10,6 @@ from decimal import Decimal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -52,6 +51,7 @@ from app.ui.helpers.valueset_combo_helper import (
     natureza_peca_da_chave,
     obter_valor_chave_combo,
 )
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 ORIGEM_DADOS_OPCOES = ("MATERIA_PRIMA", "LIVRE", "EDITADO_LOCALMENTE")
 
@@ -149,7 +149,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         )
         self.resize(620, max(780, min(altura_disponivel - 80, 1000)))
 
-        self.chave_input = QComboBox()
+        self.chave_input = ComboSemScroll()
         carregar_chaves_valueset_combo(
             self.chave_input,
             valor_atual=linha.chave if linha is not None else None,
@@ -196,7 +196,7 @@ class DefValuesetModeloLinhaDialog(QDialog):
         self.comp_mp_input = QLineEdit()
         self.larg_mp_input = QLineEdit()
         self.esp_mp_input = QLineEdit()
-        self.origem_dados_input = QComboBox()
+        self.origem_dados_input = ComboSemScroll()
         self.origem_dados_input.setEditable(True)
         for origem in ORIGEM_DADOS_OPCOES:
             self.origem_dados_input.addItem(origem)

@@ -14,13 +14,13 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QLabel,
-    QSpinBox,
     QVBoxLayout,
 )
 
 from app.repositories.def_maquina_escalao_area_repository import (
     DefMaquinaEscalaoAreaResumo,
 )
+from app.ui.widgets.combo_sem_scroll import SpinDuploSemScroll, SpinSemScroll
 
 # Spin-box sentinel for "not set" (kept as None when saving).
 _SEM_VALOR = -1.0
@@ -57,7 +57,7 @@ class EscalaoAreaDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(420)
 
-        self.nivel_input = QSpinBox()
+        self.nivel_input = SpinSemScroll()
         self.nivel_input.setRange(1, 9999)
         self.nivel_input.setValue(proximo_nivel)
 
@@ -107,7 +107,7 @@ class EscalaoAreaDialog(QDialog):
 
     def _criar_spin(self, suffix: str) -> QDoubleSpinBox:
         """Build a 2-decimal spin box that shows ``suffix`` and an empty special value."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(2)
         spin.setRange(_SEM_VALOR, 9_999_999.0)
         spin.setSpecialValueText("")  # blank when "not set" (value == minimum)

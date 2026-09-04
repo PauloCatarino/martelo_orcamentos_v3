@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
+from app.ui.widgets.combo_sem_scroll import SpinDuploSemScroll
 
 TOOLTIP_EXPRESSAO = (
     "Expressão que calcula a quantidade a partir das dimensões da peça "
@@ -182,7 +183,7 @@ class RegraQuantidadeDialog(QDialog):
     @staticmethod
     def _criar_spin(valor_inicial: int) -> QDoubleSpinBox:
         """Build one tester dimension field (mm / quantity)."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(0)
         spin.setRange(0, 100000)
         spin.setValue(valor_inicial)

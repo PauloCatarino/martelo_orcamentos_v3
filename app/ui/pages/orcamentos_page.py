@@ -71,6 +71,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     grupos_versoes,
 )
 from app.utils.formatters import format_currency, format_version
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 #: Prefixo do aviso mostrado quando a pesquisa não devolve nada.
@@ -208,9 +209,9 @@ class OrcamentosPage(QWidget):
         self.limpar_filtros_button = BotaoLimparFiltros()
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
-        self.estado_combo = QComboBox()
-        self.cliente_combo = QComboBox()
-        self.utilizador_combo = QComboBox()
+        self.estado_combo = ComboSemScroll()
+        self.cliente_combo = ComboSemScroll()
+        self.utilizador_combo = ComboSemScroll()
         for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
             combo.currentTextChanged.connect(self._render)
 

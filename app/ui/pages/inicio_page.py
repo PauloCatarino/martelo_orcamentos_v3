@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QComboBox,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -36,6 +35,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     configurar_tabela_orcamentos,
 )
 from app.utils.formatters import format_currency
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class InicioPage(QWidget):
@@ -75,11 +75,11 @@ class InicioPage(QWidget):
         self.pesquisa = CampoPesquisa(
             placeholder="Pesquisar orçamento, cliente, obra, referência ou descrição…"
         )
-        self.estado_combo = QComboBox()
+        self.estado_combo = ComboSemScroll()
         self.estado_combo.setToolTip("Filtra os indicadores e a lista de Orçamentos")
-        self.cliente_combo = QComboBox()
-        self.utilizador_combo = QComboBox()
-        self.periodo_combo = QComboBox()
+        self.cliente_combo = ComboSemScroll()
+        self.utilizador_combo = ComboSemScroll()
+        self.periodo_combo = ComboSemScroll()
         self.periodo_combo.setToolTip("Filtra Orçamentos pela data de criação")
         self.periodo_combo.addItems(["Todos", "Hoje", "Este mês", "Este ano"])
         self.relogio_label = QLabel("")

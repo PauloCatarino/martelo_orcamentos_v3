@@ -8,14 +8,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
     QLabel,
     QLineEdit,
-    QSpinBox,
     QVBoxLayout,
 )
 
@@ -23,6 +20,7 @@ from app.domain.custo_producao import calcular_custo_por_minutos, escolher_tarif
 from app.domain.producao_types import TIPO_PRODUCAO_SERIE, normalize_tipo_producao
 from app.repositories.def_maquina_repository import DefMaquinaResumo
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll, SpinSemScroll
 
 
 @dataclass(frozen=True)
@@ -73,7 +71,7 @@ class OperacaoManualDialog(QDialog):
             "Descrição que ficará visível na linha de custeio."
         )
 
-        self.maquina_input = QComboBox()
+        self.maquina_input = ComboSemScroll()
         self._custo_hora_por_maquina = {
             m.id: escolher_tarifa(
                 m.custo_hora, m.custo_hora_serie, self._usar_serie
@@ -92,7 +90,7 @@ class OperacaoManualDialog(QDialog):
             "do item (SERIE usa STD como fallback quando necessário)."
         )
 
-        self.tempo_input = QDoubleSpinBox()
+        self.tempo_input = SpinDuploSemScroll()
         self.tempo_input.setDecimals(2)
         self.tempo_input.setRange(0.0, 9_999_999.0)
         self.tempo_input.setSuffix(" min")
@@ -100,7 +98,7 @@ class OperacaoManualDialog(QDialog):
             "Minutos necessários para UMA unidade. Ex.: 0,1 min = 6 segundos."
         )
 
-        self.quantidade_input = QSpinBox()
+        self.quantidade_input = SpinSemScroll()
         self.quantidade_input.setRange(1, 9999)
         self.quantidade_input.setValue(1)
         self.quantidade_input.setToolTip(

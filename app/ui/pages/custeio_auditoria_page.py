@@ -26,6 +26,7 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui import tema
 from app.utils.formatters import format_currency
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class CusteioAuditoriaPage(QWidget):
@@ -57,11 +58,11 @@ class CusteioAuditoriaPage(QWidget):
         self.abrir_button = QPushButton("Abrir orçamento")
         self.abrir_button.clicked.connect(self.abrir_orcamento)
         self.abrir_button.setEnabled(False)
-        self.severidade_combo = QComboBox()
+        self.severidade_combo = ComboSemScroll()
         self.severidade_combo.addItems(["Todas", CRITICO, AVISO])
-        self.categoria_combo = QComboBox()
+        self.categoria_combo = ComboSemScroll()
         self.categoria_combo.addItem("Todas")
-        self.utilizador_combo = QComboBox()
+        self.utilizador_combo = ComboSemScroll()
         self.utilizador_combo.addItem("Todos")
         self.pesquisa = QLineEdit()
         self.pesquisa.setClearButtonEnabled(True)

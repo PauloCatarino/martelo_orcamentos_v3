@@ -10,7 +10,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -20,7 +19,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -38,6 +36,7 @@ from app.domain.margens_padrao_types import (
 from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.system_setting_service import SystemSettingService
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinSemScroll
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -105,7 +104,7 @@ class NovoOrcamentoDialog(QDialog):
         )
         self.antigo_checkbox.toggled.connect(self._toggle_modo_antigo)
 
-        self.ano_input = QSpinBox()
+        self.ano_input = SpinSemScroll()
         self.ano_input.setRange(2000, date.today().year)
         self.ano_input.setValue(date.today().year - 1)
         self.ano_input.setToolTip("Ano do orçamento antigo (ex.: 2025).")
@@ -189,10 +188,10 @@ class NovoOrcamentoDialog(QDialog):
         self.info_2_input = QTextEdit()
         self.info_2_input.setFixedHeight(60)
 
-        self.utilizador_combo = QComboBox()
+        self.utilizador_combo = ComboSemScroll()
         self._carregar_utilizadores()
 
-        self.margens_combo = QComboBox()
+        self.margens_combo = ComboSemScroll()
         self.margens_combo.setToolTip(self.MARGENS_TOOLTIP)
         self.margens_combo.addItem("Standard", AMBITO_STANDARD)
         self.margens_combo.addItem("Do cliente", AMBITO_CLIENTE)

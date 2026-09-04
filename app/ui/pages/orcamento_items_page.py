@@ -62,7 +62,7 @@ from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -372,7 +372,7 @@ class OrcamentoItemsPage(QWidget):
             "Soma do Preço Total dos items e dos suplementos globais do orçamento."
         )
 
-        self.objetivo_spin = QDoubleSpinBox()
+        self.objetivo_spin = SpinDuploSemScroll()
         self.objetivo_spin.setDecimals(2)
         self.objetivo_spin.setRange(0.0, 99_999_999.99)
         self.objetivo_spin.setSuffix(" €")
@@ -402,7 +402,7 @@ class OrcamentoItemsPage(QWidget):
         )
         self.repor_padrao_button.clicked.connect(self.repor_margens_padrao)
 
-        self.perfil_margens_combo = QComboBox()
+        self.perfil_margens_combo = ComboSemScroll()
         self.perfil_margens_combo.addItem("Standard", PERFIL_MARGENS_STANDARD)
         self.perfil_margens_combo.addItem("Cliente Final", PERFIL_MARGENS_CLIENTE_FINAL)
         self.perfil_margens_combo.addItem("Por Cliente", PERFIL_MARGENS_CLIENTE)
@@ -441,7 +441,7 @@ class OrcamentoItemsPage(QWidget):
 
     def _criar_spin_margem(self, tooltip: str) -> QDoubleSpinBox:
         """Build one percent field of the margins panel."""
-        spin = QDoubleSpinBox()
+        spin = SpinDuploSemScroll()
         spin.setDecimals(2)
         spin.setRange(-100.0, 999.99)
         spin.setSuffix(" %")

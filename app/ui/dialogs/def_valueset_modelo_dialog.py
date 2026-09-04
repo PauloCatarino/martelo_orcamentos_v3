@@ -8,7 +8,6 @@ from dataclasses import dataclass
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 TIPO_OPCOES = ("ROUPEIRO", "COZINHA", "MOVEL_WC", "GERAL", "OUTRO")
 AMBITO_OPCOES = ("UTILIZADOR", "GLOBAL")
@@ -63,13 +63,13 @@ class DefValuesetModeloDialog(QDialog):
         self.nome_input = QLineEdit()
         self.descricao_input = QLineEdit()
 
-        self.tipo_input = QComboBox()
+        self.tipo_input = ComboSemScroll()
         self.tipo_input.setEditable(True)
         for tipo in TIPO_OPCOES:
             self.tipo_input.addItem(tipo)
         self.tipo_input.setCurrentText("")
 
-        self.ambito_input = QComboBox()
+        self.ambito_input = ComboSemScroll()
         for ambito in AMBITO_OPCOES:
             self.ambito_input.addItem(ambito, ambito)
         self.ambito_input.currentTextChanged.connect(self._on_ambito_changed)

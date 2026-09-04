@@ -21,7 +21,6 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -57,6 +56,7 @@ from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_opcoes_categorias,
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -169,7 +169,7 @@ class GuardarModuloDialog(QDialog):
         )
         self.pesquisa_input.textChanged.connect(self._recarregar_tabelas)
 
-        self.categoria_filtro = QComboBox()
+        self.categoria_filtro = ComboSemScroll()
         self.categoria_filtro.addItem("Todas", None)
         for code, label in self._opcoes_categorias:
             self.categoria_filtro.addItem(label, code)
@@ -239,16 +239,16 @@ class GuardarModuloDialog(QDialog):
         self.descricao_input = QPlainTextEdit()
         self.descricao_input.setMinimumHeight(50)
 
-        self.ambito_input = QComboBox()
+        self.ambito_input = ComboSemScroll()
         self.ambito_input.addItem("Utilizador (só meu)", AMBITO_UTILIZADOR)
         self.ambito_input.addItem("Global (todos)", AMBITO_GLOBAL)
 
-        self.categoria_input = QComboBox()
+        self.categoria_input = ComboSemScroll()
         for code, label in self._opcoes_categorias:
             self.categoria_input.addItem(label, code)
         self._selecionar_categoria(OUTROS)
 
-        self.subcategoria_input = QComboBox()
+        self.subcategoria_input = ComboSemScroll()
         self.subcategoria_input.setToolTip(
             "Subcategoria (opcional) dentro da categoria escolhida."
         )

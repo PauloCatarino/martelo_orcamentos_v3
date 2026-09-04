@@ -27,6 +27,7 @@ from app.services.orcamento_suplemento_service import (
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.combo_sem_scroll import SpinDuploSemScroll, SpinSemScroll
 
 
 class OrcamentoSuplementosDialog(QDialog):
@@ -141,7 +142,7 @@ class OrcamentoSuplementosDialog(QDialog):
             for column, value in enumerate(values, start=1):
                 self.table.setItem(row, column, QTableWidgetItem(value))
 
-            quantidade = QSpinBox()
+            quantidade = SpinSemScroll()
             quantidade.setRange(1, 9999)
             quantidade.setValue(int(suplemento.quantidade))
             quantidade.setToolTip(
@@ -155,7 +156,7 @@ class OrcamentoSuplementosDialog(QDialog):
                 row, 7, QTableWidgetItem(format_currency(suplemento.valor_base))
             )
 
-            valor = QDoubleSpinBox()
+            valor = SpinDuploSemScroll()
             valor.setDecimals(2)
             valor.setRange(0, 999999.99)
             valor.setSuffix(" €")

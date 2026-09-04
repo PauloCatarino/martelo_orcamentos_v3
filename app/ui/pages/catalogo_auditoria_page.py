@@ -7,7 +7,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -34,6 +33,7 @@ from app.services.catalogo_auditoria_correcao_service import (
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class CatalogoAuditoriaPage(QWidget):
@@ -90,7 +90,7 @@ class CatalogoAuditoriaPage(QWidget):
             lambda: self.on_back() if self.on_back else None
         )
 
-        self.severidade_combo = QComboBox()
+        self.severidade_combo = ComboSemScroll()
         self.severidade_combo.addItem("Todas as severidades", None)
         self.severidade_combo.addItem("Erros", ERRO)
         self.severidade_combo.addItem("Avisos", AVISO)

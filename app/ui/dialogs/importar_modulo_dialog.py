@@ -15,7 +15,6 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -45,6 +44,7 @@ from app.ui.helpers.modulo_categoria_opcoes import (
     carregar_opcoes_categorias,
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class ImportarModuloDialog(QDialog):
@@ -129,13 +129,13 @@ class ImportarModuloDialog(QDialog):
         )
         self.pesquisa_input.textChanged.connect(self._recarregar_tabelas)
 
-        self.categoria_filtro = QComboBox()
+        self.categoria_filtro = ComboSemScroll()
         self.categoria_filtro.addItem("Todas", None)
         for code, label in self._opcoes_categorias:
             self.categoria_filtro.addItem(label, code)
         self.categoria_filtro.currentIndexChanged.connect(self._on_categoria_filtro_mudou)
 
-        self.subcategoria_filtro = QComboBox()
+        self.subcategoria_filtro = ComboSemScroll()
         self.subcategoria_filtro.setToolTip(
             "Filtrar por subcategoria da categoria escolhida"
         )

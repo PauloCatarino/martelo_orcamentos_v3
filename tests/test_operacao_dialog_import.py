@@ -51,7 +51,7 @@ def test_operacao_dialog_uses_operacao_type_options() -> None:
     source_names = OperacaoDialog.__init__.__code__.co_names
 
     assert "get_operacao_type_options" in source_names
-    assert "QComboBox" in source_names
+    assert "ComboSemScroll" in source_names
 
 
 def test_operacao_dialog_unidade_options() -> None:

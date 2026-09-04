@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.services.descricao_predefinida_service import DescricaoPredefinidaService
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 _VERDE = tema.TEXTO_OK
 
@@ -33,7 +34,7 @@ class _EditorDescricaoDialog(QDialog):
         self.setMinimumWidth(420)
         self.edit_texto = QLineEdit(texto)
         self.edit_texto.setPlaceholderText("Descrição")
-        self.combo_tipo = QComboBox()
+        self.combo_tipo = ComboSemScroll()
         self.combo_tipo.addItem("- Marcador", "-")
         self.combo_tipo.addItem("* Destaque verde", "*")
         if (tipo or "").strip() == "*":

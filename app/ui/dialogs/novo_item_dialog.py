@@ -10,7 +10,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from app.domain.item_types import OUTRO, get_item_type_options, normalize_item_type
 from app.domain.numeros import validar_decimal
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class NovoItemDialog(QDialog):
         self.setMinimumSize(560, 620)
 
         self.codigo_input = QLineEdit()
-        self.tipo_item_input = QComboBox()
+        self.tipo_item_input = ComboSemScroll()
         for code, label in get_item_type_options():
             self.tipo_item_input.addItem(label, code)
         self.item_input = QLineEdit()

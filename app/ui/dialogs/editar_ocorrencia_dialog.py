@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
 from app.domain import ocorrencia_tipos as tipos
 from app.ui import tema
 from app.ui.widgets.faixa_anexos import FaixaAnexos
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 
 
 class EditarOcorrenciaDialog(QDialog):
@@ -57,7 +57,7 @@ class EditarOcorrenciaDialog(QDialog):
         self.origem_combo = self._combo(tipos.ORIGENS, "De onde veio o problema")
         self.estado_combo = self._combo(tipos.ESTADOS, "Em que pé está este ticket")
 
-        self.responsavel_combo = QComboBox()
+        self.responsavel_combo = ComboSemScroll()
         self.responsavel_combo.setEditable(True)
         self.responsavel_combo.setToolTip(
             "Quem vai dar continuidade. Para enviar o ticket pelo Teams, a "
@@ -67,7 +67,7 @@ class EditarOcorrenciaDialog(QDialog):
         for membro in membros or ():
             self.responsavel_combo.addItem(membro.nome, int(membro.id))
 
-        self.custo_input = QDoubleSpinBox()
+        self.custo_input = SpinDuploSemScroll()
         self.custo_input.setRange(0.0, 999999.99)
         self.custo_input.setDecimals(2)
         self.custo_input.setSuffix(" €")
@@ -199,7 +199,7 @@ class EditarOcorrenciaDialog(QDialog):
     # ---- apoio -----------------------------------------------------------
     @staticmethod
     def _combo(itens, tooltip: str) -> QComboBox:
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.setToolTip(tooltip)
         for item in itens:
             combo.addItem(item.rotulo, item.chave)

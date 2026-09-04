@@ -13,7 +13,6 @@ from collections.abc import Sequence
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -62,6 +61,7 @@ from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estilo_tabela_orcamentos import estilo_arvore
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 class BibliotecaModulosPage(QWidget):
@@ -113,7 +113,7 @@ class BibliotecaModulosPage(QWidget):
         )
         self.pesquisa_input.pesquisa_mudou.connect(self._refill)
 
-        self.categoria_filtro = QComboBox()
+        self.categoria_filtro = ComboSemScroll()
         self.categoria_filtro.setToolTip("Filtrar os módulos por categoria")
         self.categoria_filtro.addItem("Todas", None)
         for code, label in get_modulo_categoria_options():

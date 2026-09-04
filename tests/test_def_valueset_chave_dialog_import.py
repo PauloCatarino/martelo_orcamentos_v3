@@ -73,7 +73,7 @@ def test_dialog_uses_combos_and_checkboxes() -> None:
 
     source_names = DefValuesetChaveDialog.__init__.__code__.co_names
 
-    assert "QComboBox" in source_names
+    assert "ComboSemScroll" in source_names
     assert "QCheckBox" in source_names
 
 

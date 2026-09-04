@@ -29,6 +29,7 @@ from app.ui.widgets.ordem_grupos_biblioteca import (
     obter_ordens_grupos,
     ordenar_grupos,
 )
+from app.ui.widgets.combo_sem_scroll import SpinSemScroll
 
 
 class PreferenciasBibliotecaPecasDialog(QDialog):
@@ -163,7 +164,7 @@ class PreferenciasBibliotecaPecasDialog(QDialog):
             parent = QTreeWidgetItem([grupo, "", ""])
             parent.setFlags(parent.flags() & ~Qt.ItemFlag.ItemIsUserCheckable)
             self.tree.addTopLevelItem(parent)
-            ordem = QSpinBox()
+            ordem = SpinSemScroll()
             ordem.setRange(1, 999)
             ordem.setValue(self._ordens_grupos[grupo])
             ordem.setToolTip("Posição deste grupo na biblioteca do custeio (1 aparece primeiro).")

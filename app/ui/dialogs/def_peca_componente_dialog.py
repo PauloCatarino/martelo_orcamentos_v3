@@ -13,14 +13,12 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -65,6 +63,7 @@ from app.domain.regra_quantidade_types import (
 from app.domain.regras_quantidade_expr import avaliar_regra_quantidade
 from app.repositories.def_peca_componente_repository import DefPecaComponenteResumo
 from app.repositories.def_peca_repository import DefPecaResumo
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll, SpinSemScroll
 
 
 TOOLTIP_REGRA_QUANTIDADE = (
@@ -127,7 +126,7 @@ class DefPecaComponenteDialog(QDialog):
         self.setMinimumWidth(460)
 
         # G3: one-step presets that fill the right fields for a common intent.
-        self.receita_input = QComboBox()
+        self.receita_input = ComboSemScroll()
         self.receita_input.addItem("— escolher receita —", None)
         for receita in get_receitas_associado():
             self.receita_input.addItem(receita.label, receita.key)
@@ -144,7 +143,7 @@ class DefPecaComponenteDialog(QDialog):
 
         # G4: deterministic copy suggestions from the SAME component (piece or
         # reference) already configured on other parent pieces.
-        self.sugestao_input = QComboBox()
+        self.sugestao_input = ComboSemScroll()
         self.sugestao_input.setToolTip(
             "Configurações deste componente já usadas noutras peças. Escolher "
             "uma copia os valores (quantidade, regra, zona, topos, fórmulas) "
@@ -154,7 +153,7 @@ class DefPecaComponenteDialog(QDialog):
             self._aplicar_sugestao_selecionada
         )
 
-        self.tipo_componente_input = QComboBox()
+        self.tipo_componente_input = ComboSemScroll()
         for code, label in get_componente_type_options():
             self.tipo_componente_input.addItem(label, code)
         self.tipo_componente_input.setToolTip(
@@ -162,7 +161,7 @@ class DefPecaComponenteDialog(QDialog):
             "Ferragem/Acessório: referência avulsa contada em UND/ML."
         )
 
-        self.peca_componente_input = QComboBox()
+        self.peca_componente_input = ComboSemScroll()
         for peca in pecas_disponiveis:
             self.peca_componente_input.addItem(f"{peca.codigo} - {peca.nome}", peca.id)
 
@@ -195,10 +194,10 @@ class DefPecaComponenteDialog(QDialog):
         ):
             entrada.setToolTip(formula_tooltip)
 
-        self.ordem_input = QSpinBox()
+        self.ordem_input = SpinSemScroll()
         self.ordem_input.setRange(1, 9999)
 
-        self.quantidade_input = QDoubleSpinBox()
+        self.quantidade_input = SpinDuploSemScroll()
         self.quantidade_input.setDecimals(3)
         self.quantidade_input.setRange(0.001, 1_000_000)
         self.quantidade_input.setValue(1)
@@ -208,7 +207,7 @@ class DefPecaComponenteDialog(QDialog):
             "estiver selecionada abaixo."
         )
 
-        self.regra_quantidade_input = QComboBox()
+        self.regra_quantidade_input = ComboSemScroll()
         for code, label in get_regra_quantidade_options():
             self.regra_quantidade_input.addItem(label, code)
         self.regra_quantidade_input.setToolTip(
@@ -218,7 +217,7 @@ class DefPecaComponenteDialog(QDialog):
         )
 
         # Configurable quantity rule (phase 8T.5.1): "— sem regra —" + active rules.
-        self.def_regra_quantidade_input = QComboBox()
+        self.def_regra_quantidade_input = ComboSemScroll()
         self.def_regra_quantidade_input.setToolTip(TOOLTIP_REGRA_QUANTIDADE)
         self.def_regra_quantidade_input.addItem("— sem regra —", None)
         for regra in self._regras_disponiveis:
@@ -226,7 +225,7 @@ class DefPecaComponenteDialog(QDialog):
                 f"{regra.codigo} — {regra.nome}", regra.id
             )
 
-        self.zona_aplicacao_input = QComboBox()
+        self.zona_aplicacao_input = ComboSemScroll()
         for code, label in get_zona_aplicacao_options():
             self.zona_aplicacao_input.addItem(label, code)
         self.zona_aplicacao_input.setToolTip(
@@ -234,7 +233,7 @@ class DefPecaComponenteDialog(QDialog):
             "específico (topo 1/topo 2), nos dois topos ou na face. Define os "
             "topos disponíveis para a quantidade por topo."
         )
-        self.dimensao_referencia_input = QComboBox()
+        self.dimensao_referencia_input = ComboSemScroll()
         for code, label in get_dimensao_referencia_options():
             self.dimensao_referencia_input.addItem(label, code)
         self.dimensao_referencia_input.setToolTip(
@@ -242,13 +241,13 @@ class DefPecaComponenteDialog(QDialog):
             "quantidade (ex.: uniões nos topos usam a medida do topo onde "
             "encaixam)."
         )
-        self.numero_topos_input = QSpinBox()
+        self.numero_topos_input = SpinSemScroll()
         self.numero_topos_input.setRange(0, 2)
         self.numero_topos_input.setToolTip(
             "0 = não aplicável; 1 = um topo; 2 = dois topos. "
             "Só multiplica quando a aplicação escolhida for 'Quantidade por topo'."
         )
-        self.modo_quantidade_input = QComboBox()
+        self.modo_quantidade_input = ComboSemScroll()
         for code, label in get_modo_quantidade_options():
             self.modo_quantidade_input.addItem(label, code)
         self.modo_quantidade_input.setToolTip(
@@ -256,7 +255,7 @@ class DefPecaComponenteDialog(QDialog):
             "Quantidade por topo: o resultado é multiplicado por 1 ou 2 topos."
         )
 
-        self.prioridade_valueset_input = QSpinBox()
+        self.prioridade_valueset_input = SpinSemScroll()
         self.prioridade_valueset_input.setRange(1, 999)
         self.prioridade_valueset_input.setValue(1)
         self.prioridade_valueset_input.setToolTip(

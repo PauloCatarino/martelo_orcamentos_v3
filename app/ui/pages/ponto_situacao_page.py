@@ -18,7 +18,6 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPageLayout, QPageSize, QPainter, QPdfWriter
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -57,6 +56,7 @@ from app.ui.dialogs.producao_precos_dialog import ProducaoPrecosDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 CORES_ESTADO = {
     "Desenho": "#2A78D6",
@@ -148,9 +148,9 @@ class PontoSituacaoPage(QWidget):
         self.limpar_filtros_button = BotaoLimparFiltros()
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
-        self.utilizador_combo = QComboBox()
-        self.cliente_combo = QComboBox()
-        self.estado_combo = QComboBox()
+        self.utilizador_combo = ComboSemScroll()
+        self.cliente_combo = ComboSemScroll()
+        self.estado_combo = ComboSemScroll()
         for combo in (self.utilizador_combo, self.cliente_combo, self.estado_combo):
             combo.currentTextChanged.connect(self._ao_mudar_filtros)
 

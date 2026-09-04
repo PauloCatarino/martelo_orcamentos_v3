@@ -11,13 +11,11 @@ from html import escape
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QLabel,
     QLineEdit,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -72,6 +70,7 @@ from app.domain.operacao_acao_types import (
 from app.repositories.def_operacao_repository import DefOperacaoResumo
 from app.repositories.def_peca_operacao_repository import DefPecaOperacaoResumo
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinSemScroll
 
 
 # Stored values are unchanged; only the visible labels are clearer for the user.
@@ -212,7 +211,7 @@ class DefPecaOperacaoDialog(QDialog):
             "border-radius: 4px; padding: 7px; color: #513b20;"
         )
 
-        self.operacao_input = QComboBox()
+        self.operacao_input = ComboSemScroll()
         for operacao in operacoes_disponiveis:
             self.operacao_input.addItem(f"{operacao.codigo} - {operacao.nome}", operacao.id)
         self.operacao_input.setToolTip(
@@ -222,21 +221,21 @@ class DefPecaOperacaoDialog(QDialog):
 
         # New CNC model: the method combo appears for CNC/coating operations
         # and only lists the methods the machine allows.
-        self.metodo_input = QComboBox()
+        self.metodo_input = ComboSemScroll()
         self.metodo_input.setToolTip(
             "Como esta operação é custeada: escalões de área, tempo, furação, "
             "rasgo ou revestimento. A lista mostra apenas os métodos que a "
             "máquina permite."
         )
 
-        self.ordem_input = QSpinBox()
+        self.ordem_input = SpinSemScroll()
         self.ordem_input.setRange(1, 9999)
         self.ordem_input.setValue(1)
         self.ordem_input.setToolTip(
             "Ordem de apresentação da operação na lista (não altera o custo)."
         )
 
-        self.acao_input = QComboBox()
+        self.acao_input = ComboSemScroll()
         for code, label in get_operacao_acao_options():
             self.acao_input.addItem(label, code)
         self.acao_input.setToolTip(
@@ -245,7 +244,7 @@ class DefPecaOperacaoDialog(QDialog):
         )
 
         # G3: one-step presets that fill the right fields for a common intent.
-        self.receita_input = QComboBox()
+        self.receita_input = ComboSemScroll()
         self.receita_input.addItem("— escolher receita —", None)
         for receita in get_receitas_operacao():
             self.receita_input.addItem(receita.label, receita.key)
@@ -262,7 +261,7 @@ class DefPecaOperacaoDialog(QDialog):
 
         # G4: deterministic copy suggestions from configurations that already
         # exist for the selected operation (other pieces / ValueSet lines).
-        self.sugestao_input = QComboBox()
+        self.sugestao_input = ComboSemScroll()
         self.sugestao_input.setToolTip(
             "Configurações já existentes desta operação noutras peças ou "
             "linhas ValueSet. Escolher uma copia os valores (regra, "
@@ -272,7 +271,7 @@ class DefPecaOperacaoDialog(QDialog):
             self._aplicar_sugestao_selecionada
         )
 
-        self.regra_calculo_input = QComboBox()
+        self.regra_calculo_input = ComboSemScroll()
         for code, label in get_regra_operacao_options():
             sufixo = "" if code == RASGO_CNC else " (informativa)"
             self.regra_calculo_input.addItem(f"{label}{sufixo}", code)
@@ -285,12 +284,12 @@ class DefPecaOperacaoDialog(QDialog):
 
         self.quantidade_base_input = QLineEdit()
         self.quantidade_base_input.setPlaceholderText("Normalmente 1")
-        self.rasgo_qt_comp_input = QSpinBox()
+        self.rasgo_qt_comp_input = SpinSemScroll()
         self.rasgo_qt_comp_input.setRange(0, 99)
         self.rasgo_qt_comp_input.setToolTip(
             "Quantos rasgos seguem o COMPRIMENTO da peça (cada um mede COMP)."
         )
-        self.rasgo_qt_larg_input = QSpinBox()
+        self.rasgo_qt_larg_input = SpinSemScroll()
         self.rasgo_qt_larg_input.setRange(0, 99)
         self.rasgo_qt_larg_input.setToolTip(
             "Quantos rasgos seguem a LARGURA da peça (cada um mede LARG)."
@@ -300,7 +299,7 @@ class DefPecaOperacaoDialog(QDialog):
         self.tempo_setup_input.setPlaceholderText("Ex.: 2 min (uma vez por linha)")
         self.tempo_por_unidade_input = QLineEdit()
         self.tempo_por_unidade_input.setPlaceholderText("Ex.: 0,1 min = 6 segundos")
-        self.unidade_tempo_input = QComboBox()
+        self.unidade_tempo_input = ComboSemScroll()
         for opcao in UNIDADE_TEMPO_OPCOES:
             self.unidade_tempo_input.addItem(UNIDADE_TEMPO_LABELS[opcao], opcao or None)
 
@@ -1492,7 +1491,7 @@ class SimuladorOperacaoDialog(QDialog):
             f"Operação: {operacao_texto}" if operacao_texto else "Operação"
         )
 
-        self.unidade_tempo_input = QComboBox()
+        self.unidade_tempo_input = ComboSemScroll()
         for opcao in UNIDADE_TEMPO_OPCOES:
             self.unidade_tempo_input.addItem(UNIDADE_TEMPO_LABELS[opcao], opcao or None)
 

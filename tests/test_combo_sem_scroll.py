@@ -1,7 +1,8 @@
-"""A roda do rato não pode trocar a opção de um dropdown dentro de uma tabela.
+"""A roda do rato não pode mudar valores só por passar por cima do campo.
 
 Passar o rato por cima da coluna "Mat. default" e rolar a lista trocava o
-material da peça sem ninguém dar por isso — e o preço do orçamento mudava.
+material da peça sem ninguém dar por isso — e o preço do orçamento mudava. A
+mesma regra vale para os campos de número e de data.
 """
 
 from __future__ import annotations
@@ -14,7 +15,12 @@ from PySide6.QtCore import QPoint, QPointF, Qt  # noqa: E402
 from PySide6.QtGui import QWheelEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication, QComboBox  # noqa: E402
 
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll  # noqa: E402
+from app.ui.widgets.combo_sem_scroll import (  # noqa: E402
+    ComboSemScroll,
+    DataSemScroll,
+    SpinDuploSemScroll,
+    SpinSemScroll,
+)
 
 
 @pytest.fixture(scope="module")
@@ -74,5 +80,47 @@ def test_com_a_lista_aberta_a_roda_volta_a_funcionar(app, monkeypatch) -> None:
     )
 
     combo.wheelEvent(_roda(combo))
+
+    assert len(recebidos) == 1
+
+
+def test_campo_de_numero_sem_foco_ignora_a_roda(app) -> None:
+    for classe, valor in ((SpinSemScroll, 5), (SpinDuploSemScroll, 5.0)):
+        campo = classe()
+        campo.setRange(0, 100)
+        campo.setValue(valor)
+
+        evento = _roda(campo)
+        campo.wheelEvent(evento)
+
+        assert campo.value() == valor
+        assert evento.isAccepted() is False
+
+
+def test_campo_de_data_sem_foco_ignora_a_roda(app) -> None:
+    campo = DataSemScroll()
+    antes = campo.date()
+
+    evento = _roda(campo)
+    campo.wheelEvent(evento)
+
+    assert campo.date() == antes
+    assert evento.isAccepted() is False
+
+
+def test_campo_de_numero_com_foco_volta_a_responder(app, monkeypatch) -> None:
+    from PySide6.QtWidgets import QSpinBox
+
+    campo = SpinSemScroll()
+    campo.setRange(0, 100)
+    campo.setValue(5)
+    monkeypatch.setattr(campo, "hasFocus", lambda: True)
+
+    recebidos = []
+    monkeypatch.setattr(
+        QSpinBox, "wheelEvent", lambda self, evento: recebidos.append(evento)
+    )
+
+    campo.wheelEvent(_roda(campo))
 
     assert len(recebidos) == 1

@@ -8,14 +8,12 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
-    QSpinBox,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -30,7 +28,7 @@ from app.services.pdf_imagem_service import documento_pdf
 from app.services.user_pref_service import UserPrefService
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinSemScroll
 
 
 _COL_SEL = 0
@@ -372,7 +370,7 @@ class ProducaoImpressaoDialog(QDialog):
             origem_item.setToolTip("Programa que gravou este PDF")
             self.tabela.setItem(linha, _COL_ORIGEM, origem_item)
 
-            quantidade = QSpinBox()
+            quantidade = SpinSemScroll()
             quantidade.setRange(1, 99)
             quantidade.setValue(int(documento.quantidade or 1))
             quantidade.setToolTip("Quantas cópias imprimir deste documento")

@@ -13,7 +13,6 @@ from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDateEdit,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -53,7 +52,7 @@ from app.repositories.def_materia_prima_repository import (
 )
 from app.ui import tema
 from app.utils.formatters import format_currency
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll, DataSemScroll
 
 SEM_VALOR = "\u2014"
 
@@ -275,7 +274,7 @@ class MateriaPrimaDialog(QDialog):
         self.descricao_input = QLineEdit()
         self.descricao_input.setToolTip("Descrição como aparece no orçamento.")
 
-        self.familia_input = QComboBox()
+        self.familia_input = ComboSemScroll()
         self.familia_input.addItem(SEM_VALOR, None)
         for familia in FAMILIAS_VALIDAS:
             self.familia_input.addItem(familia, familia)
@@ -288,13 +287,13 @@ class MateriaPrimaDialog(QDialog):
         self.tipo_input = QLineEdit()
         self.tipo_input.setToolTip("Tipo dentro da família (AGLOMERADO, CORREDICAS, …).")
 
-        self.unidade_input = QComboBox()
+        self.unidade_input = ComboSemScroll()
         self.unidade_input.addItem(SEM_VALOR, None)
         for unidade in UNIDADES_VALIDAS:
             self.unidade_input.addItem(unidade, unidade)
         self.unidade_input.setToolTip("M2 para placas e orlas, ML para barras, UND à unidade.")
 
-        self.tipo_preco_input = QComboBox()
+        self.tipo_preco_input = ComboSemScroll()
         for tipo_preco in TIPOS_PRECO_VALIDOS:
             self.tipo_preco_input.addItem(tipo_preco, tipo_preco)
         self.tipo_preco_input.setToolTip(
@@ -322,7 +321,7 @@ class MateriaPrimaDialog(QDialog):
             "É este o valor que os orçamentos usam."
         )
 
-        self.data_preco_input = QDateEdit()
+        self.data_preco_input = DataSemScroll()
         self.data_preco_input.setCalendarPopup(True)
         self.data_preco_input.setDisplayFormat("dd-MM-yyyy")
         self.data_preco_input.setSpecialValueText(SEM_VALOR)
@@ -349,7 +348,7 @@ class MateriaPrimaDialog(QDialog):
         self.orla_1_0_input.setToolTip("Ref LE da orla grossa correspondente (1,0 mm).")
 
         self.cor_input = QLineEdit()
-        self.fornecedor_input = QComboBox()
+        self.fornecedor_input = ComboSemScroll()
         self.fornecedor_input.addItem(SEM_VALOR, None)
         for fornecedor in self._fornecedores:
             self.fornecedor_input.addItem(fornecedor.nome, fornecedor.id)
