@@ -31,6 +31,7 @@ from app.services.permission_service import (
     permissions_for_user,
 )
 from app.ui import tema
+from app.ui.icones import decorar_botoes
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
@@ -292,7 +293,6 @@ class MainWindow(QMainWindow):
         self._page_containers: dict[str, QScrollArea] = {}
         self.orcamentos_page = OrcamentosPage(
             on_open_orcamento=self.open_orcamento_detail,
-            on_open_ajuda_criar_orcamento=lambda: self.abrir_guia_ajuda("criar_orcamento"),
         )
         self.ajuda_page = AjudaPage()
         self.inicio_page = InicioPage(
@@ -570,11 +570,6 @@ class MainWindow(QMainWindow):
         """Emit a logout request."""
         self.logout_requested.emit()
 
-    def abrir_guia_ajuda(self, guia_id: str) -> None:
-        """Abre um guia do Centro de Ajuda a partir de qualquer ecrã."""
-        if self.ajuda_page.abrir_guia(guia_id):
-            self.show_page("ajuda")
-
     def toggle_sidebar(self) -> None:
         """Hide/show the left navigation menu (phase 8V.2).
 
@@ -665,6 +660,12 @@ class MainWindow(QMainWindow):
 
     def _add_page(self, name: str, page: QWidget) -> None:
         """Add a page to the central workspace."""
+        # Os ícones dos botões saem do TEXTO de cada um (ver app/ui/icones.py).
+        # Fazer-se aqui, uma vez por página, é o que garante que a mesma ação
+        # tem a mesma cara em todo o programa — pô-los à mão em quase 400
+        # botões dava resultados diferentes conforme quem os fizesse, e os
+        # botões que nascessem depois ficavam de fora.
+        decorar_botoes(*page.findChildren(QPushButton))
         container = self._embrulhar_pagina(page)
         self._pages_by_name[name] = page
         self._page_containers[name] = container

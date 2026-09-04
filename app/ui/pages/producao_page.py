@@ -132,7 +132,7 @@ from app.ui.dialogs.producao_preparacao_dialog import ProducaoPreparacaoDialog
 from app.ui.dialogs.producao_supervisao_dialog import SupervisaoProducaoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
-from app.ui.icones import icone, icone_ficheiro
+from app.ui.icones import decorar_barra, icone, icone_ficheiro
 from app.ui.helpers.detalhe_obra_worker import (
     DetalheObraResolvido,
     DetalheObraWorker,
@@ -549,6 +549,9 @@ class ProducaoPage(QWidget):
         actions_layout.addWidget(self.atualizar_v2_button)
         actions_layout.addWidget(self.ia_martelo_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
 
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)

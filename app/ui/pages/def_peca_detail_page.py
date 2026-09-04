@@ -79,6 +79,7 @@ from app.ui.dialogs.def_peca_operacao_dialog import (
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_quantity
+from app.ui.icones import icone
 
 
 class DefPecaDetailPage(QWidget):
@@ -147,6 +148,10 @@ class DefPecaDetailPage(QWidget):
         self.detail_title.setObjectName("defPecaDetailTitle")
 
         self.back_button = QPushButton("Voltar \u00e0 lista")
+
+        self.back_button.setIcon(icone("acao_voltar"))
+
+        self.back_button.setToolTip("Voltar à lista, sem gravar o que estiver por gravar.")
         self.back_button.clicked.connect(self._handle_back)
         self.criar_revisao_button = QPushButton("Criar nova revisão")
         self.criar_revisao_button.clicked.connect(self.criar_nova_revisao)

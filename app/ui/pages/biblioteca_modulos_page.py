@@ -62,6 +62,7 @@ from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.estilo_tabela_orcamentos import estilo_arvore
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.icones import icone
 
 
 class BibliotecaModulosPage(QWidget):
@@ -158,6 +159,7 @@ class BibliotecaModulosPage(QWidget):
         self.atualizar_button.setToolTip("Recarregar a biblioteca")
         self.atualizar_button.clicked.connect(self.carregar)
         self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setIcon(icone("acao_voltar"))
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None

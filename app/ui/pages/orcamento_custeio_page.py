@@ -36,6 +36,7 @@ from app.ui import tema
 from app.ui.dialogs.orcamento_suplementos_dialog import OrcamentoSuplementosDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.icones import decorar_barra
 
 
 class OrcamentoCusteioPage(QWidget):
@@ -86,6 +87,9 @@ class OrcamentoCusteioPage(QWidget):
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.suplementos_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
 
         # Highlighted "updated at HH:MM:SS" banner above the table (Lança Encanto).
         self.banner = QLabel("")

@@ -17,7 +17,6 @@ ICONES_ESPERADOS = (
     "orcamento_abrir",
     "orcamento_editar",
     "orcamento_eliminar",
-    "ajuda",
     "atualizar",
     "pasta_abrir",
 )
@@ -53,7 +52,6 @@ def test_todos_os_botoes_da_barra_tem_dica() -> None:
     init = inspect.getsource(OrcamentosPage.__init__)
     for botao in (
         "new_button",
-        "help_create_button",
         "open_button",
         "edit_button",
         "delete_button",
@@ -61,3 +59,17 @@ def test_todos_os_botoes_da_barra_tem_dica() -> None:
         "refresh_button",
     ):
         assert f"self.{botao}.setToolTip(" in init, botao
+
+
+def test_o_rodape_separa_os_milhares_e_escreve_por_extenso() -> None:
+    """«236059,86 €» lê-se mal: é fácil trocar 236 mil por 23 mil."""
+    from app.utils.formatters import format_currency
+
+    assert format_currency("236059.86") == "236059,86 €"
+    assert format_currency("236059.86", milhares=True) == "236\u00a0059,86 €"
+
+    rodape = inspect.getsource(OrcamentosPage._atualizar_rodape)
+    assert "milhares=True" in rodape
+    assert "euros_por_extenso" in rodape
+    # Um orçamento não são "1 orçamentos".
+    assert "if contagem == 1" in rodape

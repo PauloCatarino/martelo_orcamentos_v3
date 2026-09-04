@@ -186,6 +186,7 @@ from app.ui.widgets.miniatura_estrutura import (
     resolver_funcao_estrutural,
     tem_previsao_estrutural,
 )
+from app.ui.icones import decorar_barra, icone
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import (
     format_currency,
@@ -655,6 +656,10 @@ class OrcamentoItemCusteioPage(QWidget):
         self.cabecalho = BarraCabecalho(self._titulo_cabecalho())
 
         self.back_button = QPushButton("Voltar aos Items")
+
+        self.back_button.setIcon(icone("acao_voltar"))
+
+        self.back_button.setToolTip("Voltar à lista de items deste orçamento.")
         self.back_button.clicked.connect(self._handle_back)
 
         self.refresh_button = QPushButton("Atualizar")
@@ -772,6 +777,9 @@ class OrcamentoItemCusteioPage(QWidget):
         actions_layout.addWidget(self.import_module_button)
         actions_layout.addWidget(self.guardar_modulo_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
         actions_layout.addWidget(self.preco_item_label)
 
         self.status_label = QLabel("")

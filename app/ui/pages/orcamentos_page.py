@@ -26,6 +26,7 @@ from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain import pesquisa_texto
+from app.domain.numero_extenso import euros_por_extenso
 from app.domain.orcamento_estados import ESTADOS_ORCAMENTO, deve_avisar_cliente_phc
 from app.domain.orcamentos_lista import (
     filtrar_orcamentos,
@@ -61,7 +62,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui.dialogs.ref_cliente_duplicada_dialog import RefClienteDuplicadaDialog
 from app.ui import tema
-from app.ui.icones import icone
+from app.ui.icones import decorar_barra, icone
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -141,12 +142,10 @@ class OrcamentosPage(QWidget):
     def __init__(
         self,
         on_open_orcamento: Callable[[OrcamentoResumo], None] | None = None,
-        on_open_ajuda_criar_orcamento: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
         self.on_open_orcamento = on_open_orcamento
-        self.on_open_ajuda_criar_orcamento = on_open_ajuda_criar_orcamento
         self._orcamentos_by_row: dict[int, OrcamentoResumo] = {}
         self._todos: list[OrcamentoResumo] = []
         self._sinonimos: dict[str, frozenset[str]] = {}
@@ -163,14 +162,6 @@ class OrcamentosPage(QWidget):
         self.new_button.setIcon(icone("orcamento_novo"))
         self.new_button.setToolTip("Criar um or\u00e7amento novo.")
         self.new_button.clicked.connect(self.abrir_novo_orcamento)
-
-        self.help_create_button = QPushButton("Como criar")
-        self.help_create_button.setIcon(icone("ajuda"))
-        self.help_create_button.setToolTip(
-            "Abrir o guia passo a passo para criar um orçamento V3 normal."
-        )
-        self.help_create_button.setEnabled(on_open_ajuda_criar_orcamento is not None)
-        self.help_create_button.clicked.connect(self._abrir_ajuda_criar_orcamento)
 
         self.open_button = QPushButton("Abrir Or\u00e7amento")
         self.open_button.setIcon(icone("orcamento_abrir"))
@@ -213,13 +204,15 @@ class OrcamentosPage(QWidget):
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.new_button)
-        actions_layout.addWidget(self.help_create_button)
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.delete_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
 
         self.campo_pesquisa = CampoPesquisa()
         self.campo_pesquisa.pesquisa_mudou.connect(self._render)
@@ -289,11 +282,6 @@ class OrcamentosPage(QWidget):
         self.setLayout(layout)
         self._carregar_sinonimos()
         self.carregar_orcamentos()
-
-    def _abrir_ajuda_criar_orcamento(self) -> None:
-        """Abre o guia contextual sem alterar a lista de orçamentos."""
-        if self.on_open_ajuda_criar_orcamento is not None:
-            self.on_open_ajuda_criar_orcamento()
 
     def carregar_orcamentos(self) -> None:
         """Load budget versions into the table."""
@@ -697,9 +685,18 @@ class OrcamentosPage(QWidget):
 
     def _atualizar_rodape(self, orcamentos: list[OrcamentoResumo]) -> None:
         contagem, total = resumo_lista(orcamentos)
-        self.footer_label.setText(
-            f"{contagem} or\u00e7amentos \u00b7 Total: {format_currency(total)}"
+        # Um total destes l\u00ea-se mal de relance: sem os milhares separados \u00e9
+        # f\u00e1cil trocar duzentos e trinta e seis mil por vinte e tr\u00eas mil, e por
+        # extenso n\u00e3o fica d\u00favida nenhuma.
+        palavra = "or\u00e7amento" if contagem == 1 else "or\u00e7amentos"
+        texto = (
+            f"{contagem} {palavra} \u00b7 Total: "
+            f"{format_currency(total, milhares=True)}"
         )
+        extenso = euros_por_extenso(total)
+        if extenso:
+            texto += f"  ({extenso})"
+        self.footer_label.setText(texto)
 
     def abrir_orcamento_selecionado(self) -> None:
         """Open the currently selected budget through the callback."""

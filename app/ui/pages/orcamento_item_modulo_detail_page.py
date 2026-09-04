@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QTa
 from app.repositories.orcamento_item_modulo_repository import OrcamentoItemModuloResumo
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_mm, format_quantity
+from app.ui.icones import icone
 
 
 class OrcamentoItemModuloDetailPage(QWidget):
@@ -35,6 +36,10 @@ class OrcamentoItemModuloDetailPage(QWidget):
         title.setObjectName("orcamentoItemModuloDetailTitle")
 
         back_button = QPushButton("Voltar aos M\u00f3dulos")
+
+        back_button.setIcon(icone("acao_voltar"))
+
+        back_button.setToolTip("Voltar ao ecrã anterior.")
         back_button.clicked.connect(self._handle_back)
 
         header_layout = QHBoxLayout()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -81,11 +81,31 @@ class MateriaPrimaPickerDialog(QDialog):
         self.search_input.setPlaceholderText(
             "Pesquisar por referência, descrição, tipo ou família..."
         )
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.setToolTip(
+            "A lista vai-se filtrando à medida que escreve. O X limpa a pesquisa."
+        )
         self.search_input.returnPressed.connect(self.pesquisar)
+        # Filtrar enquanto se escreve, como no resto do programa. Havia de
+        # carregar em Enter para ver alguma coisa, e quem não sabia disso ficava
+        # a olhar para a lista toda. Cada tecla adia a pesquisa uns milésimos —
+        # aqui a pesquisa vai à base de dados, e sem esta pausa fazia uma
+        # consulta por letra escrita.
+        self._temporizador_pesquisa = QTimer(self)
+        self._temporizador_pesquisa.setSingleShot(True)
+        self._temporizador_pesquisa.setInterval(250)
+        self._temporizador_pesquisa.timeout.connect(self.pesquisar)
+        self.search_input.textChanged.connect(
+            lambda _texto: self._temporizador_pesquisa.start()
+        )
 
         self.search_button = QPushButton("Pesquisar")
+        self.search_button.setToolTip("Procurar agora, sem esperar.")
         self.search_button.clicked.connect(self.pesquisar)
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setToolTip(
+            "Voltar a ler as matérias-primas da base de dados."
+        )
         self.refresh_button.clicked.connect(self.pesquisar)
 
         search_layout = QHBoxLayout()

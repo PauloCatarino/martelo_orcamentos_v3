@@ -32,6 +32,7 @@ from app.ui.pages.orcamento_item_modulo_detail_page import OrcamentoItemModuloDe
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_mm, format_quantity
+from app.ui.icones import decorar_barra, icone
 
 
 class OrcamentoItemModulosPage(QWidget):
@@ -72,6 +73,10 @@ class OrcamentoItemModulosPage(QWidget):
         title.setObjectName("orcamentoItemModulosTitle")
 
         self.back_button = QPushButton("Voltar aos Items")
+
+        self.back_button.setIcon(icone("acao_voltar"))
+
+        self.back_button.setToolTip("Voltar à lista de items deste orçamento.")
         self.back_button.clicked.connect(self._handle_back)
         self.back_button.setVisible(on_back is not None)
 
@@ -101,6 +106,9 @@ class OrcamentoItemModulosPage(QWidget):
         actions_layout.addWidget(self.remove_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoItemModulosStatus")

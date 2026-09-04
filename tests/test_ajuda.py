@@ -1,45 +1,50 @@
-"""Regressão do conteúdo e leitor do piloto Centro de Ajuda."""
+"""A página de Ajuda: em que versão estou, e já saiu uma mais recente.
+
+Aqui viveu um centro de guias narrados pelo motor de voz do Windows, com
+transcrição e uma ficha de recolha de comentários. Foi retirado em 2026-09-04 a
+pedido do Paulo — ninguém o usava. O que ficou é a única coisa que se consultava
+mesmo, e é isso que estes testes guardam.
+"""
 
 from __future__ import annotations
 
+import inspect
 import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from app.services.permission_service import DEFAULT_USER_PERMISSIONS
-from app.ui.ajuda import carregar_guias
-from app.ui.pages.ajuda_page import AjudaPage
+from app.services.permission_service import DEFAULT_USER_PERMISSIONS  # noqa: E402
+from app.ui.pages.ajuda_page import AjudaPage  # noqa: E402
 
 
 _app = QApplication.instance() or QApplication([])
 
 
-def test_guia_criar_orcamento_e_local_e_completo() -> None:
-    guias = carregar_guias()
-    guia = next(guia for guia in guias if guia.id == "criar_orcamento")
-
-    assert guia.versao == 1
-    assert len(guia.passos) == 7
-    assert all(passo.imagem.is_file() for passo in guia.passos)
-    assert all(len(passo.falas) == 2 for passo in guia.passos)
-    assert all({fala.narrador for fala in passo.falas} == {"Marta", "João"} for passo in guia.passos)
-
-
-def test_leitor_abre_guia_e_navega_com_narracao_local() -> None:
+def test_a_pagina_mostra_a_versao_instalada() -> None:
     pagina = AjudaPage()
 
-    assert pagina.abrir_guia("criar_orcamento") is True
-    assert pagina.progresso.text() == "Passo 1 de 7"
-    assert pagina.repetir_audio.isEnabled() is True
-    assert pagina.automatico_button.text() == "⏸ Pausar guia"
+    assert hasattr(pagina, "versao_label")
+    assert hasattr(pagina, "atualizar_versao_button")
+    assert hasattr(pagina, "verificar_versao_button")
+    # O botão de atualizar só aparece quando há mesmo versão nova.
+    assert pagina.atualizar_versao_button.isVisible() is False
 
-    pagina._mudar_passo(1)
-    assert pagina.progresso.text() == "Passo 2 de 7"
-    assert "João" in pagina.transcricao.toPlainText()
-    assert pagina.automatico_button.text() == "▶ Retomar automático"
-    assert pagina.abrir_guia("guia_inexistente") is False
+
+def test_o_guia_narrado_desapareceu() -> None:
+    """Sem isto, o leitor voltava sem ninguém dar por isso numa fusão."""
+    fonte = inspect.getsource(AjudaPage)
+
+    for vestigio in (
+        "QTextToSpeech",
+        "abrir_guia",
+        "_criar_leitor",
+        "narracao",
+        "transcricao",
+        "feedback",
+    ):
+        assert vestigio not in fonte, vestigio
 
 
 def test_ajuda_esta_ativa_por_predefinicao() -> None:

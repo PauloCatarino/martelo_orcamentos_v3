@@ -37,6 +37,7 @@ from app.services.imos_escrita import (
 )
 from app.services.system_setting_service import SystemSettingService
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.icones import icone
 
 
 class ImosLigacaoPage(QWidget):
@@ -111,6 +112,7 @@ class ImosLigacaoPage(QWidget):
         )
         self.arvore_button.clicked.connect(self.ver_arvore)
         self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setIcon(icone("acao_voltar"))
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None

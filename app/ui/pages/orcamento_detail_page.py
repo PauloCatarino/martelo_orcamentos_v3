@@ -38,6 +38,7 @@ from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
 from app.ui.widgets.breadcrumb import Breadcrumb
 from app.utils.formatters import format_currency, format_version
 from app.domain.tempo_atividade import formatar_tempo_ativo
+from app.ui.icones import icone
 
 
 class OrcamentoDetailPage(QWidget):
@@ -65,6 +66,10 @@ class OrcamentoDetailPage(QWidget):
         self.breadcrumb = Breadcrumb(self._build_breadcrumb_items())
 
         back_button = QPushButton("Voltar \u00e0 lista")
+
+        back_button.setIcon(icone("acao_voltar"))
+
+        back_button.setToolTip("Voltar à lista, sem gravar o que estiver por gravar.")
         back_button.clicked.connect(self._handle_back)
 
         # The breadcrumb already shows "Or\u00e7amento <c\u00f3digo>", so it doubles as the

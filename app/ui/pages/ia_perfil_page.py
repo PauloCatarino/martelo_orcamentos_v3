@@ -33,6 +33,7 @@ from app.services.ia_perfil_service import (
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.icones import icone
 
 
 #: Campos de texto de uma obra, sugeridos na coluna "onde aparece".
@@ -161,6 +162,9 @@ class IaPerfilPage(QWidget):
         self.eliminar_button.clicked.connect(self._eliminar)
 
         self.voltar_button = QPushButton("Voltar às Configurações")
+
+        self.voltar_button.setIcon(icone("acao_voltar"))
+
         self.voltar_button.setToolTip("Regressar ao menu Configurações")
         self.voltar_button.clicked.connect(lambda: self.on_back() if self.on_back else None)
         self.voltar_button.setVisible(on_back is not None)

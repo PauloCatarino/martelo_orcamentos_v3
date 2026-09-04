@@ -43,6 +43,7 @@ from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetail
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.estilo_tabela_orcamentos import configurar_tabela_orcamentos
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.icones import decorar_barra, icone
 
 
 class DefValuesetModelosPage(QWidget):
@@ -81,6 +82,7 @@ class DefValuesetModelosPage(QWidget):
             lambda _=0: self.carregar_modelos()
         )
         self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setIcon(icone("acao_voltar"))
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None
@@ -94,6 +96,9 @@ class DefValuesetModelosPage(QWidget):
         actions_layout.addWidget(self.mostrar_inativos_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
         actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")

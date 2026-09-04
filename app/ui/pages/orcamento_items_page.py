@@ -67,6 +67,7 @@ from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_mm, format_quantity
+from app.ui.icones import decorar_barra
 
 
 class OrcamentoItemsPage(QWidget):
@@ -228,6 +229,9 @@ class OrcamentoItemsPage(QWidget):
         actions_layout.addWidget(self.producao_std_button)
         actions_layout.addWidget(self.producao_serie_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
         # Ações de custeio/perfil movidas da linha das margens para aqui (à
         # direita), para a linha das margens não sair fora do ecrã.
         actions_layout.addWidget(self.atualizar_custos_button)

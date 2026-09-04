@@ -55,6 +55,7 @@ from app.ui.widgets.estilo_tabela_valueset import (
 )
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.icones import decorar_barra
 
 
 class OrcamentoValuesetPage(QWidget):
@@ -140,6 +141,9 @@ class OrcamentoValuesetPage(QWidget):
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("orcamentoValuesetStatus")

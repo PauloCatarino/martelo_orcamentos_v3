@@ -29,6 +29,7 @@ from app.ui.dialogs.regra_quantidade_dialog import (
 )
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.icones import icone
 
 
 class RegrasQuantidadePage(QWidget):
@@ -78,6 +79,7 @@ class RegrasQuantidadePage(QWidget):
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
         self.mostrar_inativas_check.stateChanged.connect(lambda _=0: self.carregar())
         self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setIcon(icone("acao_voltar"))
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None

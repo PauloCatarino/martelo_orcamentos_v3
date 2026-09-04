@@ -64,13 +64,26 @@ def format_medida_real(value: Any) -> str:
     return _format_decimal_trimmed(number.quantize(Decimal("0.1")))
 
 
-def format_currency(value: Any) -> str:
-    """Format a currency value for display."""
+def format_currency(value: Any, *, milhares: bool = False) -> str:
+    """Format a currency value for display.
+
+    ``milhares`` acrescenta o separador de milhares, como se escreve em
+    portugu\u00eas: ``236 059,86 \u20ac``. Fica desligado por omiss\u00e3o porque este
+    formatador serve tamb\u00e9m tabelas, PDFs e o Excel, onde a largura dos n\u00fameros
+    j\u00e1 est\u00e1 contada; liga-se onde o valor \u00e9 grande e se l\u00ea de relance, como o
+    total do rodap\u00e9 dos or\u00e7amentos.
+    """
     number = _to_decimal(value)
     if number is None:
         return ""
 
-    formatted = format(number.quantize(Decimal("0.01")), "f").replace(".", ",")
+    quantizado = number.quantize(Decimal("0.01"))
+    if milhares:
+        # Espa\u00e7o INQUEBR\u00c1VEL: com um espa\u00e7o normal a linha podia partir entre
+        # "236" e "059" e ficavam dois n\u00fameros diferentes no ecr\u00e3.
+        formatted = f"{quantizado:,.2f}".replace(",", "\u00a0").replace(".", ",")
+    else:
+        formatted = format(quantizado, "f").replace(".", ",")
     return f"{formatted} \u20ac"
 
 

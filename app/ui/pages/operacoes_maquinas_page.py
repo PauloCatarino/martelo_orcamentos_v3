@@ -43,6 +43,7 @@ from app.ui.widgets.simulador_cnc_widget import (
     carregar_maquinas_simulacao,
 )
 from app.utils.formatters import format_currency, format_quantity
+from app.ui.icones import decorar_barra, icone
 
 
 class OperacoesMaquinasPage(QWidget):
@@ -105,6 +106,7 @@ class OperacoesMaquinasPage(QWidget):
             lambda _state=0: self.carregar()
         )
         self.voltar_button = QPushButton("Voltar às Configurações")
+        self.voltar_button.setIcon(icone("acao_voltar"))
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None
@@ -114,6 +116,9 @@ class OperacoesMaquinasPage(QWidget):
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
         actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")

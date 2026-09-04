@@ -23,6 +23,7 @@ from app.domain.numeros import parse_decimal_humano
 from app.services.custeio_simplificado_tarifas_service import CusteioSimplificadoTarifasService
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.icones import icone
 
 # Só dígitos e UM separador decimal (ponto ou vírgula; a vírgula é convertida
 # em ponto ao guardar). Letras e caracteres especiais ficam bloqueados na
@@ -76,6 +77,7 @@ class CusteioSimplificadoTarifasPage(QWidget):
         self.table_grossa = self._criar_tabela(1, self.HEADERS_GROSSA, self.TOOLTIPS_GROSSA)
         actions = QHBoxLayout()
         back = QPushButton("Voltar às Configurações")
+        back.setIcon(icone("acao_voltar"))
         back.setToolTip("Regressar às Configurações sem guardar alterações pendentes.")
         back.clicked.connect(lambda: self.on_back() if self.on_back else None)
         save = QPushButton("Guardar tarifas")

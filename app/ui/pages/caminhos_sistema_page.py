@@ -24,6 +24,7 @@ from app.domain.pesquisa_texto import corresponde_texto, normalizar
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.icones import decorar_barra, icone
 
 
 def configuracao_corresponde(configuracao, procurado: str) -> bool:
@@ -84,6 +85,9 @@ class CaminhosSistemaPage(QWidget):
         self.refresh_button.clicked.connect(self.carregar_configuracoes)
 
         self.voltar_button = QPushButton("Voltar às Configurações")
+
+        self.voltar_button.setIcon(icone("acao_voltar"))
+
         self.voltar_button.setToolTip("Regressar ao menu Configurações.")
         self.voltar_button.clicked.connect(
             lambda: self.on_back() if self.on_back else None
@@ -93,6 +97,9 @@ class CaminhosSistemaPage(QWidget):
         actions_layout.addWidget(self.save_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
+        # mesma acao fica com a mesma cara em todas as paginas.
+        decorar_barra(actions_layout)
         actions_layout.addWidget(self.voltar_button)
 
         self.status_label = QLabel("")

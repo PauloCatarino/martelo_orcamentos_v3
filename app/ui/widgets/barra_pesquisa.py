@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
+from app.ui.icones import icone
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -83,6 +84,7 @@ class BotaoLimparFiltros(QPushButton):
 
     def __init__(self, parent=None, *, texto: str = "Limpar filtros") -> None:
         super().__init__(texto, parent)
+        self.setIcon(icone("acao_limpar"))
         self.setToolTip(
             "Repor a pesquisa e todos os filtros desta página (mostrar tudo)"
         )

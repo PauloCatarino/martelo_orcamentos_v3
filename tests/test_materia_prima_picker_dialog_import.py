@@ -134,3 +134,20 @@ def test_dialog_mostra_tipo_familia_e_orlas() -> None:
     assert "coresp_orla_1_0(materia)" in source
     # Desp % is shown from the imported desperdicio_percentagem.
     assert "desperdicio_percentagem" in source
+
+
+def test_a_lista_filtra_enquanto_se_escreve() -> None:
+    """Antes era preciso carregar em Enter, e quem não sabia ficava a olhar."""
+    import inspect
+
+    from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
+
+    init = inspect.getsource(MateriaPrimaPickerDialog.__init__)
+    assert "textChanged.connect" in init
+    assert "_temporizador_pesquisa" in init
+    # Com uma pausa: a pesquisa vai a` base de dados e sem isto fazia uma
+    # consulta por cada letra escrita.
+    assert "setSingleShot(True)" in init
+    assert "setInterval(250)" in init
+    # O Enter e o botao continuam a funcionar, para quem os usa.
+    assert "returnPressed.connect(self.pesquisar)" in init
