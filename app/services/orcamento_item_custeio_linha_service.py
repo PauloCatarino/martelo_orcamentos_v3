@@ -5286,6 +5286,13 @@ class OrcamentoItemCusteioLinhaService:
             tipo = normalize_custeio_linha_type(linha.tipo_linha)
             if tipo == DIVISAO_INDEPENDENTE:
                 self._importar_divisao_modulo(item_id, linha)
+            elif tipo == OPERACAO_MANUAL and linha.def_peca_id is None:
+                # Só a operação avulsa do «Inserir operação manual». A peça
+                # OPERACAO_MANUAL da biblioteca grava-se como tipo PECA e segue
+                # o caminho normal, com as operações no operacoes_json.
+                self._importar_operacao_manual_modulo(
+                    item_id, linha, avisos, mapa_linhas
+                )
             elif tipo == PECA_COMPOSTA:
                 componentes += self._importar_composta_modulo(
                     item_id, linha, filhos_por_pai_ordem, avisos, mapa_linhas
@@ -5511,6 +5518,66 @@ class OrcamentoItemCusteioLinhaService:
             editado_localmente=True,
             ativo=True,
         )
+
+    def _importar_operacao_manual_modulo(
+        self,
+        orcamento_item_id: int,
+        linha,
+        avisos: list[str],
+        mapa: dict[int, int] | None = None,
+    ) -> None:
+        """Recreate a manual-operation line from a module line.
+
+        Uma OPERACAO_MANUAL não tem peça nem operações de catálogo: o trabalho
+        são a máquina e os minutos por unidade guardados na própria linha. O
+        custo NÃO vem do módulo — recalcula-se com a tarifa atual da máquina, na
+        passagem seguinte da pipeline.
+
+        Um módulo guardado antes desta correção não traz esses dois campos: a
+        linha nasce a zero e fica com um aviso escrito nas observações, para o
+        «Atualizar» o trazer à frente em vez de o preço ficar em silêncio a 0 €.
+        """
+        descricao = (
+            linha.descricao_livre
+            or linha.descricao
+            or linha.codigo
+            or "Operação manual"
+        )
+        qt_und = self._qt_modulo(linha.qt_und, Decimal("1"))
+        minutos = normalizar_numero(getattr(linha, "minutos_unitarios", None))
+        maquina_id = getattr(linha, "def_maquina_id", None)
+
+        observacoes = None
+        if minutos is None or minutos <= 0 or maquina_id is None:
+            aviso = (
+                f"Operação manual «{descricao}»: tempo/máquina em falta. O módulo "
+                "foi guardado antes de o Martelo passar a levá-los. Preencha o "
+                "tempo na linha, senão esta montagem fica a custo zero."
+            )
+            self._adicionar_aviso(avisos, aviso)
+            observacoes = f"Operação manual: {aviso}"
+
+        criada = self.repository.create_linha(
+            orcamento_item_id=orcamento_item_id,
+            tipo_linha=OPERACAO_MANUAL,
+            codigo=linha.codigo,
+            descricao=descricao,
+            descricao_livre=descricao,
+            origem_tipo="MODULO",
+            def_maquina_id=maquina_id,
+            nivel=0,
+            qt_mod=self._qt_modulo(linha.qt_mod, Decimal("1")),
+            qt_und=qt_und,
+            quantidade=qt_und,
+            minutos_unitarios=minutos,
+            observacoes=observacoes,
+            editado_localmente=False,
+            ativo=True,
+        )
+        # Preencher já a máquina/tempo/custo, para a linha não aparecer a zero
+        # entre a importação e o próximo «Atualizar».
+        self._recalcular_operacao_manual(criada)
+        self._registar_linha_do_modulo(mapa, linha, criada)
 
     def _importar_peca_modulo(
         self,

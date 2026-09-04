@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -57,6 +58,9 @@ class DefModuloLinhaResumo:
     #: Ver DefModuloLinha.operacoes_json. Fica no fim e com valor por omissao
     #: para nao obrigar quem constroi o resumo a saber deste detalhe.
     operacoes_json: str | None = None
+    #: So' nas linhas OPERACAO_MANUAL (ver DefModuloLinha).
+    def_maquina_id: int | None = None
+    minutos_unitarios: Decimal | None = None
 
 
 class DefModuloRepository:
@@ -272,4 +276,6 @@ class DefModuloRepository:
             nivel=linha.nivel,
             ativo=linha.ativo,
             operacoes_json=getattr(linha, "operacoes_json", None),
+            def_maquina_id=getattr(linha, "def_maquina_id", None),
+            minutos_unitarios=getattr(linha, "minutos_unitarios", None),
         )

@@ -9,6 +9,7 @@ real-dimension snapshot — those re-resolve on import.
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -18,6 +19,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     func,
@@ -81,6 +83,14 @@ class DefModuloLinha(Base):
     #: continua a apanhar melhorias do catalogo. Preenchida, o modulo repoe
     #: exatamente o que estava afinado quando foi guardado.
     operacoes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: So' para as linhas OPERACAO_MANUAL: e' nestes dois campos que vive o
+    #: trabalho (nao ha' peca nem operacoes de catalogo). Sem eles, o modulo
+    #: importado trazia a linha com 0 minutos e 0 EUR, com o nome todo certo.
+    #: O custo NAO se guarda: recalcula-se com a tarifa atual da maquina.
+    def_maquina_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    minutos_unitarios: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 4), nullable=True
+    )
     linha_pai_ordem: Mapped[int | None] = mapped_column(Integer, nullable=True)
     nivel: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     ativo: Mapped[bool] = mapped_column(

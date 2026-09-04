@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
+    OPERACAO_MANUAL,
     PECA,
     PECA_COMPOSTA,
     normalize_custeio_linha_type,
@@ -72,6 +73,9 @@ class CriarDefModuloLinhaData:
     ativo: bool = True
     #: Ver DefModuloLinha.operacoes_json.
     operacoes_json: str | None = None
+    #: So' nas linhas OPERACAO_MANUAL: a maquina e os minutos por unidade.
+    def_maquina_id: int | None = None
+    minutos_unitarios: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -244,6 +248,8 @@ class DefModuloService:
                 nivel=linha.nivel,
                 ativo=linha.ativo,
                 operacoes_json=getattr(linha, "operacoes_json", None),
+                def_maquina_id=getattr(linha, "def_maquina_id", None),
+                minutos_unitarios=getattr(linha, "minutos_unitarios", None),
             )
 
     def guardar_de_linhas_custeio(
@@ -486,6 +492,17 @@ class DefModuloService:
             nivel=linha.nivel,
             ativo=True,
             operacoes_json=self._operacoes_locais_json(getattr(linha, "id", None)),
+            # Numa OPERACAO_MANUAL o trabalho vive nestes dois campos da propria
+            # linha (nao ha' peca nem operacoes de catalogo). Sem os levar, o
+            # modulo importado trazia a linha com 0 minutos e 0 EUR.
+            def_maquina_id=(
+                linha.def_maquina_id if linha.tipo_linha == OPERACAO_MANUAL else None
+            ),
+            minutos_unitarios=(
+                linha.minutos_unitarios
+                if linha.tipo_linha == OPERACAO_MANUAL
+                else None
+            ),
         )
 
     def _operacoes_locais_json(self, linha_id: int | None) -> str | None:
@@ -692,6 +709,8 @@ class DefModuloService:
                 nivel=linha.nivel,
                 ativo=linha.ativo,
                 operacoes_json=getattr(linha, "operacoes_json", None),
+                def_maquina_id=getattr(linha, "def_maquina_id", None),
+                minutos_unitarios=getattr(linha, "minutos_unitarios", None),
             )
             for linha in self.repository.list_linhas(modulo_id)
         ]
