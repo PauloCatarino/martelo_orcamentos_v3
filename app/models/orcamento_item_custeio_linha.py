@@ -312,6 +312,12 @@ class OrcamentoItemCusteioLinha(Base):
     material_editado_localmente: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
+    # Quem escreveu a quantidade foi uma PESSOA, não a regra. Só isto cala a
+    # regra de quantidade; o ``editado_localmente`` acima quer dizer outra
+    # coisa (o material foi trocado à mão) e chegou a calar a regra por engano.
+    quantidade_editada_localmente: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     # Snapshot of DefPeca.sem_material: a service-piece line costs only its
     # operations (no raw material / ValueSet), so the costing skips the material
     # and ValueSet warnings for it (phase 8S.3 follow-up).

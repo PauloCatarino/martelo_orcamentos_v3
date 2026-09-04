@@ -117,6 +117,7 @@ from app.services.def_operacao_service import DefOperacaoService
 from app.services.orcamento_item_service import OrcamentoItemService
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.services.custeio_supervisor import (
+    CRITICO,
     ORIGEM_OPERACOES,
     ORIGEM_RESOLVER_MATERIAL,
     PAGINA_MAQUINAS_TARIFAS,
@@ -1127,12 +1128,14 @@ class OrcamentoItemCusteioPage(QWidget):
     def atualizar_geral(self) -> None:
         """Main refresh: recompute measures and orlas, then reload the table."""
         excessos_material = []
+        avisos_observacoes = []
         try:
             with SessionLocal() as session:
                 service = OrcamentoItemCusteioLinhaService(session)
                 self._recalcular_item_completo(service)
                 linhas = service.listar_linhas_ativas_do_item(self.item_id)
                 excessos_material = self._recolher_excessos_material(linhas)
+                avisos_observacoes = self._recolher_avisos_observacoes(linhas)
         except EntradasCusteioInvalidas as error:
             self.carregar()
             self.status_label.setText(str(error))
@@ -1160,6 +1163,125 @@ class OrcamentoItemCusteioPage(QWidget):
                     f"Item atualizado com {len(excessos_material)} aviso(s) de "
                     "dimensão mantido(s)."
                 )
+
+        if avisos_observacoes:
+            self._avisar_observacoes_producao(avisos_observacoes)
+
+    # --- Avisos escritos na coluna "Observações produção" --------------------
+    #
+    # Essa coluna é a última da tabela e fica muito à direita: o utilizador tem
+    # de a ir procurar, e quando não o faz perde avisos que mexem no preço. Foi
+    # o que aconteceu no 260881_01 — a linha dos pés dizia lá que a regra da
+    # quantidade tinha sido ignorada, e ninguém viu. Agora o «Atualizar» traz
+    # esses avisos à frente.
+
+    @staticmethod
+    def _recolher_avisos_observacoes(linhas) -> list:
+        """Classificar as observações de produção que mexem no custo."""
+        avisos = []
+        for linha in linhas:
+            diagnosticos = diagnosticar_observacoes(linha.observacoes)
+            if diagnosticos:
+                avisos.append((linha, diagnosticos))
+        return avisos
+
+    def _avisar_observacoes_producao(self, avisos: list) -> None:
+        """Mostrar num só sítio o que ficou escrito nas observações de produção."""
+        graves = [
+            (linha, diagnosticos)
+            for linha, diagnosticos in avisos
+            if any(d.severidade == CRITICO for d in diagnosticos)
+        ]
+        blocos = [self._texto_aviso_observacao(item) for item in avisos]
+        limite_visivel = 8
+        texto_visivel = "\n\n".join(blocos[:limite_visivel])
+        if len(blocos) > limite_visivel:
+            texto_visivel += (
+                f"\n\n… e mais {len(blocos) - limite_visivel} linha(s). "
+                "Use Mostrar detalhes para ver todas."
+            )
+
+        box = QMessageBox(self)
+        box.setIcon(
+            QMessageBox.Icon.Warning if graves else QMessageBox.Icon.Information
+        )
+        box.setWindowTitle("Observações de produção")
+        resumo = (
+            f"{len(avisos)} linha(s) ficaram com observações de produção"
+        )
+        if graves:
+            resumo += f", {len(graves)} delas com erro grave"
+        box.setText(resumo + ".")
+        box.setInformativeText(
+            texto_visivel
+            + "\n\nEstas notas costumam ter impacto no preço — vale a pena "
+            "resolvê-las antes de enviar o orçamento."
+        )
+        if len(blocos) > limite_visivel:
+            box.setDetailedText("\n\n".join(blocos))
+
+        rever = box.addButton("Rever no Custeio", QMessageBox.ButtonRole.AcceptRole)
+        rever.setToolTip(
+            "Fecha o aviso e leva-te à primeira linha, já na coluna das observações."
+        )
+        continuar = box.addButton("Continuar", QMessageBox.ButtonRole.RejectRole)
+        continuar.setToolTip("Fecha o aviso e deixa tudo como está.")
+        box.setDefaultButton(rever)
+        box.exec()
+
+        if box.clickedButton() is not rever:
+            self.status_label.setText(
+                f"Item atualizado. {len(avisos)} linha(s) com observações de "
+                "produção por rever (coluna «Observações produção»)."
+            )
+            return
+
+        primeira = (graves or avisos)[0][0]
+        self._focar_observacoes_da_linha(primeira)
+
+    @staticmethod
+    def _texto_aviso_observacao(aviso) -> str:
+        """Formatar uma linha e as suas observações para o aviso conjunto."""
+        linha, diagnosticos = aviso
+        identificacao = (
+            getattr(linha, "def_peca_codigo", None)
+            or getattr(linha, "codigo", None)
+            or getattr(linha, "descricao", None)
+            or f"Linha {linha.id}"
+        )
+        cabecalho = f"• {get_custeio_linha_type_label(linha.tipo_linha)}: {identificacao}"
+        detalhes = [
+            f"  [{diagnostico.severidade}] {diagnostico.mensagem}"
+            for diagnostico in diagnosticos
+        ]
+        return "\n".join([cabecalho, *detalhes])
+
+    def _focar_observacoes_da_linha(self, linha) -> None:
+        """Selecionar a linha e trazer a coluna das observações para a vista."""
+        row = next(
+            (
+                atual_row
+                for atual_row, atual in self._custeio_by_row.items()
+                if atual.id == linha.id
+            ),
+            None,
+        )
+        if row is None:
+            return
+
+        try:
+            column = self.TABLE_HEADERS.index("Observações produção")
+        except ValueError:
+            column = self.table.columnCount() - 1
+
+        self.table.setCurrentCell(row, column)
+        item = self.table.item(row, column)
+        if item is not None:
+            self.table.scrollToItem(item)
+        self.status_label.setText(
+            "Observações de produção desta linha — resolva a origem e volte a "
+            "carregar em «Atualizar»."
+        )
 
     def atualizar_peca_da_biblioteca(self) -> None:
         """Refresh every selected library piece, including module-origin lines."""
@@ -4510,6 +4632,47 @@ class OrcamentoItemCusteioPage(QWidget):
 
         return self._custeio_by_row.get(row)
 
+    def _linhas_selecionadas(self) -> list[OrcamentoItemCusteioLinhaResumo]:
+        """Return the cost lines of every selected table row."""
+        rows = sorted(idx.row() for idx in self.table.selectionModel().selectedRows())
+        linhas = [
+            self._custeio_by_row[row] for row in rows if row in self._custeio_by_row
+        ]
+        if linhas:
+            return linhas
+
+        atual = self._get_linha_selecionada()
+        return [atual] if atual is not None else []
+
+    def repor_quantidade_da_regra_linhas(self) -> None:
+        """Give the quantity rule back the control of the selected lines."""
+        linhas = [
+            linha
+            for linha in self._linhas_selecionadas()
+            if getattr(linha, "quantidade_editada_localmente", False)
+        ]
+        if not linhas:
+            self.status_label.setText(
+                "Nenhuma das linhas selecionadas tem a quantidade escrita à mão."
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                repostas = service.repor_quantidade_da_regra(
+                    [linha.id for linha in linhas]
+                )
+        except (SQLAlchemyError, ValueError):
+            self.status_label.setText("Não foi possível repor a quantidade da regra.")
+            return
+
+        self.carregar()
+        self.status_label.setText(
+            f"{repostas} linha(s) voltaram a seguir a regra de quantidade. "
+            "Carregue em «Atualizar» para a regra recalcular."
+        )
+
     def _linha_aceita_material(self, linha: OrcamentoItemCusteioLinhaResumo) -> bool:
         """Return True when the line type can carry material (not division/composite)."""
         return linha.tipo_linha not in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR)
@@ -4765,6 +4928,20 @@ class OrcamentoItemCusteioPage(QWidget):
             menu.addAction(
                 "Editar operação manual...", self.editar_operacao_manual_linha
             )
+        menu.addSeparator()
+        acao_repor_qt = menu.addAction(
+            "Repor quantidade da regra", self.repor_quantidade_da_regra_linhas
+        )
+        acao_repor_qt.setToolTip(
+            "Devolve à regra o comando da quantidade desta linha. A quantidade "
+            "só muda na próxima passagem do «Atualizar»."
+        )
+        acao_repor_qt.setEnabled(
+            any(
+                getattr(linha, "quantidade_editada_localmente", False)
+                for linha in self._linhas_selecionadas()
+            )
+        )
         menu.addSeparator()
         menu.addAction("Inserir linha de separação", self.inserir_separador_linha)
         menu.addSeparator()

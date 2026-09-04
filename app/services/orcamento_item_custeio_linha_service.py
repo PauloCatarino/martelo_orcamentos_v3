@@ -1468,6 +1468,50 @@ class OrcamentoItemCusteioLinhaService:
             processadas=processadas, calculadas=calculadas, ignoradas=ignoradas
         )
 
+    def _quantidade_foi_escrita_a_mao(self, linha, qt_und_novo, qt_mod_novo) -> bool:
+        """True quando alguém mudou a quantidade de uma linha que tem regra."""
+        if self._regra_quantidade_da_linha(linha) is None:
+            return False
+
+        for atual, novo in (
+            (linha.qt_und, qt_und_novo),
+            (linha.qt_mod, qt_mod_novo),
+        ):
+            anterior = normalizar_numero(atual)
+            seguinte = normalizar_numero(novo)
+            if anterior is None and seguinte is None:
+                continue
+            if anterior is None or seguinte is None or anterior != seguinte:
+                return True
+        return False
+
+    def repor_quantidade_da_regra(self, linha_ids: list[int]) -> int:
+        """Devolver à regra o comando da quantidade das linhas indicadas.
+
+        Limpa a marca de "escrito à mão"; a quantidade em si só volta ao valor
+        da regra na passagem seguinte do «Atualizar Custos», que é quem a
+        calcula. Devolve quantas linhas ficaram outra vez pela regra.
+        """
+        repostas = 0
+        for linha_id in linha_ids:
+            linha = self.repository.get_by_id(linha_id)
+            if linha is None or not linha.quantidade_editada_localmente:
+                continue
+
+            nova_obs = self._mesclar_observacao(
+                linha.observacoes, "Regra de quantidade", None
+            )
+            self.repository.update_linha(
+                id=linha_id,
+                quantidade_editada_localmente=False,
+                observacoes=nova_obs,
+            )
+            repostas += 1
+
+        self.session.commit()
+
+        return repostas
+
     def _regra_quantidade_da_linha(self, linha):
         """Resolve the active quantity rule linked to a component line, or None."""
         expressao_snapshot = getattr(linha, "associado_regra_expressao", None)
@@ -1499,7 +1543,12 @@ class OrcamentoItemCusteioLinhaService:
         block's main piece / its dimensions are missing, or the rule could not
         be evaluated.
         """
-        if linha.editado_localmente:
+        if linha.quantidade_editada_localmente:
+            # NÃO usar aqui o ``editado_localmente``: essa bandeira quer dizer
+            # "o material desta linha foi trocado à mão". Enquanto isto olhou
+            # para ela, escolher outro material no dropdown "Mat. default"
+            # congelava a quantidade em silêncio — um fundo de 900×600 ficava
+            # com 1 pé em vez de 6 (260881_01, 2026-09-04).
             return None, (
                 f"Regra de quantidade {regra.codigo}: qt_und definido "
                 "manualmente (regra ignorada)."
@@ -2384,8 +2433,11 @@ class OrcamentoItemCusteioLinhaService:
             if not self._linha_recebe_operacoes(linha):
                 ignoradas += 1
                 continue
-            if linha.operacoes and linha.editado_localmente:
-                # Preserve a locally edited operations cell.
+            if linha.operacoes and self.linha_operacao_repository.has_any(linha.id):
+                # Operações afinadas à mão nesta linha (têm registo próprio):
+                # não se voltam a escrever por cima. Antes olhava-se para o
+                # ``editado_localmente``, e trocar o MATERIAL da linha também
+                # congelava aqui as operações, sem ninguém perceber porquê.
                 ignoradas += 1
                 continue
 
@@ -2749,7 +2801,11 @@ class OrcamentoItemCusteioLinhaService:
             if not self._linha_recebe_operacoes(linha):
                 ignoradas += 1
                 continue
-            if self._tempos_preenchidos(linha) and linha.editado_localmente:
+            if self._tempos_preenchidos(linha) and self.linha_operacao_repository.has_any(
+                linha.id
+            ):
+                # Ver a nota em aplicar_operacoes_do_item: o sinal de "mexido à
+                # mão" são as operações próprias da linha, não o material.
                 ignoradas += 1
                 continue
 
@@ -4416,6 +4472,13 @@ class OrcamentoItemCusteioLinhaService:
             # / aplicar_materia_prima_na_linha), so the ValueSet propagation can
             # tell which lines had their material overridden.
         }
+
+        # Numa linha governada por uma regra (pés de um fundo, dobradiças de uma
+        # porta), escrever a quantidade à mão é uma decisão: fica guardada, e a
+        # regra deixa de mandar nesta linha. Só isto — nunca uma troca de
+        # material — cala a regra.
+        if self._quantidade_foi_escrita_a_mao(linha, qt_und_final, qt_mod_final):
+            fields["quantidade_editada_localmente"] = True
         if descricao is not None:
             fields["descricao"] = self._normalizar_expressao(descricao) or "Divisão independente"
         if descricao_livre is not None:

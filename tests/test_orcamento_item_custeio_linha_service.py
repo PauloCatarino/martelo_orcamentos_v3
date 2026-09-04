@@ -170,6 +170,7 @@ def _resumo(**kwargs) -> OrcamentoItemCusteioLinhaResumo:
         "tempo_manual": None,
         "override_manual": False,
         "editado_localmente": False,
+        "quantidade_editada_localmente": False,
         "ativo": True,
         "observacoes": None,
     }
@@ -1589,7 +1590,7 @@ def _correr_regra(
             ordem=2,
             origem_id=10,
             qt_und=qt_und,
-            editado_localmente=editado,
+            quantidade_editada_localmente=editado,
         ),  # hardware component (e.g. PES) — has the quantity rule
     ]
     _FakeComponenteRepository.componentes_por_id = {10: _componente_com_regra(10, 100)}
@@ -4171,18 +4172,26 @@ def test_aplicar_operacoes_aceita_ferragem_e_ignora_divisao_composta(monkeypatch
     assert payload["maquina"] == "CNC_FUROS"
 
 
-def test_aplicar_operacoes_preserva_edicao_local(monkeypatch) -> None:
+def test_aplicar_operacoes_preserva_operacoes_proprias_da_linha(monkeypatch) -> None:
+    """Uma linha com operações afinadas à mão não volta a ser escrita por cima.
+
+    O sinal é ter operações PRÓPRIAS gravadas. Enquanto isto olhou para o
+    ``editado_localmente``, trocar o material da linha congelava aqui as
+    operações sem ninguém perceber porquê.
+    """
     service, _ = _service(monkeypatch)
     _FakePecaRepository.pecas = {1: _peca(id=1)}
     _FakePecaOperacaoRepository.ligacoes_por_peca = {1: [_ligacao_op(2)]}
     _FakeOperacaoRepository.operacoes = {2: _operacao("CORTE")}
+    _FakeLinhaOperacaoRepository.rows = [
+        SimpleNamespace(id=1, linha_id=1, ativo=True),
+    ]
     _FakeRepository.active_rows = [
         _resumo(
             id=1,
             tipo_linha="PECA",
             def_peca_id=1,
             operacoes="OP MANUAL",
-            editado_localmente=True,
         ),
     ]
 
@@ -4304,6 +4313,9 @@ def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
     _FakeOperacaoRepository.operacoes = {
         2: _operacao("CORTE_PAINEL", tipo_operacao="CORTE", unidade_calculo="PECA", tempo_base=Decimal("2")),
     }
+    _FakeLinhaOperacaoRepository.rows = [
+        SimpleNamespace(id=1, linha_id=1, ativo=True),
+    ]
     _FakeRepository.active_rows = [
         _resumo(
             id=1,
@@ -4311,7 +4323,6 @@ def test_recalcular_tempos_preserva_edicao_local(monkeypatch) -> None:
             def_peca_id=1,
             quantidade=Decimal("3"),
             tempo_corte=Decimal("99"),
-            editado_localmente=True,
         ),
     ]
 

@@ -101,6 +101,7 @@ class OrcamentoItemCusteioLinhaResumo:
     larg_real: Decimal | None = None
     esp_real: Decimal | None = None
     material_editado_localmente: bool = False
+    quantidade_editada_localmente: bool = False
     sem_material: bool = False
     minutos_unitarios: Decimal | None = None
     origem_material: str | None = None
@@ -436,6 +437,7 @@ class OrcamentoItemCusteioLinhaRepository:
             larg_real=linha.larg_real,
             esp_real=linha.esp_real,
             material_editado_localmente=linha.material_editado_localmente,
+            quantidade_editada_localmente=linha.quantidade_editada_localmente,
             sem_material=linha.sem_material,
             origem_material=linha.origem_material,
             created_at=linha.created_at,

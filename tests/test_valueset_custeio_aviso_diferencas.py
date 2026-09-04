@@ -122,3 +122,45 @@ def test_nenhum_widget_sensivel_a_roda_ficou_cru_na_interface() -> None:
                 crus.append(f"{caminho}: {widget}")
 
     assert crus == []
+
+
+def test_atualizar_traz_as_observacoes_de_producao_a_frente() -> None:
+    """A coluna «Observações produção» é a última: ninguém a vai ver sozinho."""
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for metodo in (
+        "_recolher_avisos_observacoes",
+        "_avisar_observacoes_producao",
+        "_texto_aviso_observacao",
+        "_focar_observacoes_da_linha",
+    ):
+        assert hasattr(OrcamentoItemCusteioPage, metodo)
+
+    atualizar = inspect.getsource(OrcamentoItemCusteioPage.atualizar_geral)
+    assert "_recolher_avisos_observacoes" in atualizar
+    assert "_avisar_observacoes_producao" in atualizar
+
+    recolher = inspect.getsource(
+        OrcamentoItemCusteioPage._recolher_avisos_observacoes
+    )
+    # Reaproveita o classificador do Supervisor em vez de inventar outro.
+    assert "diagnosticar_observacoes" in recolher
+
+    focar = inspect.getsource(OrcamentoItemCusteioPage._focar_observacoes_da_linha)
+    assert '"Observações produção"' in focar
+    assert "scrollToItem" in focar
+
+
+def test_menu_de_contexto_repoe_a_quantidade_da_regra() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    assert hasattr(OrcamentoItemCusteioPage, "repor_quantidade_da_regra_linhas")
+
+    menu = inspect.getsource(OrcamentoItemCusteioPage._menu_contexto_material)
+    assert "Repor quantidade da regra" in menu
+    assert "quantidade_editada_localmente" in menu
+
+    acao = inspect.getsource(
+        OrcamentoItemCusteioPage.repor_quantidade_da_regra_linhas
+    )
+    assert "repor_quantidade_da_regra" in acao
