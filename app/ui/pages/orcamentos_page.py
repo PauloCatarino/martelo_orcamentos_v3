@@ -61,6 +61,7 @@ from app.ui.dialogs.editar_orcamento_dialog import (
 from app.ui.dialogs.novo_orcamento_dialog import NovoOrcamentoDialog
 from app.ui.dialogs.ref_cliente_duplicada_dialog import RefClienteDuplicadaDialog
 from app.ui import tema
+from app.ui.icones import icone
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -159,9 +160,12 @@ class OrcamentosPage(QWidget):
         )
 
         self.new_button = QPushButton("Novo Or\u00e7amento")
+        self.new_button.setIcon(icone("orcamento_novo"))
+        self.new_button.setToolTip("Criar um or\u00e7amento novo.")
         self.new_button.clicked.connect(self.abrir_novo_orcamento)
 
-        self.help_create_button = QPushButton("? Como criar")
+        self.help_create_button = QPushButton("Como criar")
+        self.help_create_button.setIcon(icone("ajuda"))
         self.help_create_button.setToolTip(
             "Abrir o guia passo a passo para criar um orçamento V3 normal."
         )
@@ -169,9 +173,14 @@ class OrcamentosPage(QWidget):
         self.help_create_button.clicked.connect(self._abrir_ajuda_criar_orcamento)
 
         self.open_button = QPushButton("Abrir Or\u00e7amento")
+        self.open_button.setIcon(icone("orcamento_abrir"))
+        self.open_button.setToolTip(
+            "Abrir a vers\u00e3o selecionada (items, custeio, ValueSet e relat\u00f3rios)."
+        )
         self.open_button.clicked.connect(self.abrir_orcamento_selecionado)
 
         self.edit_button = QPushButton("Editar Or\u00e7amento")
+        self.edit_button.setIcon(icone("orcamento_editar"))
         self.edit_button.setToolTip(
             "Editar os dados gerais; inclui \"Duplicar para vers\u00e3o\u2026\" "
             "(cria uma nova vers\u00e3o com todo o conte\u00fado)."
@@ -179,18 +188,27 @@ class OrcamentosPage(QWidget):
         self.edit_button.clicked.connect(self.editar_orcamento_selecionado)
 
         self.delete_button = QPushButton("Eliminar Or\u00e7amento")
+        self.delete_button.setIcon(icone("orcamento_eliminar"))
         self.delete_button.setToolTip(
             "Eliminar a vers\u00e3o selecionada (e o or\u00e7amento se for a \u00faltima)."
         )
         self.delete_button.clicked.connect(self.eliminar_orcamento_selecionado)
 
-        self.create_folder_button = QPushButton("Criar Pasta do Or\u00e7amento")
-        self.create_folder_button.clicked.connect(self._criar_pasta_orcamento)
-
-        self.open_folder_button = QPushButton("Abrir Pasta do Or\u00e7amento")
+        # Um bot\u00e3o s\u00f3 para a pasta: abre-a, e se ainda n\u00e3o existir pergunta se a
+        # quer criar. Havia dois lado a lado \u2014 "Criar Pasta" e "Abrir Pasta" \u2014 e
+        # o primeiro s\u00f3 servia para o caso em que o segundo j\u00e1 perguntava na
+        # mesma.
+        self.open_folder_button = QPushButton("Pasta do Or\u00e7amento")
+        self.open_folder_button.setIcon(icone("pasta_abrir"))
+        self.open_folder_button.setToolTip(
+            "Abrir a pasta da vers\u00e3o selecionada. Se ainda n\u00e3o existir, "
+            "pergunta se a quer criar."
+        )
         self.open_folder_button.clicked.connect(self._abrir_pasta_orcamento)
 
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setIcon(icone("atualizar"))
+        self.refresh_button.setToolTip("Voltar a ler a lista de or\u00e7amentos.")
         self.refresh_button.clicked.connect(self.carregar_orcamentos)
 
         actions_layout = QHBoxLayout()
@@ -199,7 +217,6 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.open_button)
         actions_layout.addWidget(self.edit_button)
         actions_layout.addWidget(self.delete_button)
-        actions_layout.addWidget(self.create_folder_button)
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
@@ -920,59 +937,6 @@ class OrcamentosPage(QWidget):
         return (
             f"Eliminar s\u00f3 {alvo_bd} na BD?\n\n"
             "A pasta no servidor ser\u00e1 mantida."
-        )
-
-    def _criar_pasta_orcamento(self) -> None:
-        """Create the selected budget version folder if it does not exist."""
-        row = self.table.currentRow()
-        orcamento = self._orcamentos_by_row.get(row)
-
-        if row < 0 or orcamento is None:
-            self.status_label.setText("Selecione um or\u00e7amento para criar a pasta.")
-            return
-
-        try:
-            with SessionLocal() as session:
-                servico = OrcamentoExportService(session)
-                pasta = servico.resolver_pasta_versao(
-                    orcamento.orcamento_versao_id,
-                    criar=False,
-                )
-                if pasta is None:
-                    QMessageBox.warning(
-                        self,
-                        "Criar Pasta do Or\u00e7amento",
-                        "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
-                    )
-                    return
-                if pasta.exists():
-                    QMessageBox.information(
-                        self,
-                        "Criar Pasta do Or\u00e7amento",
-                        f"A pasta j\u00e1 existe:\n{pasta}",
-                    )
-                    return
-                pasta = servico.resolver_pasta_versao(
-                    orcamento.orcamento_versao_id,
-                    criar=True,
-                )
-        except SQLAlchemyError:
-            self.status_label.setText("N\u00e3o foi poss\u00edvel criar a pasta do or\u00e7amento.")
-            return
-
-        if pasta is None:
-            QMessageBox.warning(
-                self,
-                "Criar Pasta do Or\u00e7amento",
-                "Defina a 'Pasta base dos Orcamentos' em Configura\u00e7\u00f5es \u2192 Caminhos.",
-            )
-            return
-
-        self.status_label.setText(f"Pasta criada: {pasta}")
-        QMessageBox.information(
-            self,
-            "Criar Pasta do Or\u00e7amento",
-            f"Pasta criada:\n{pasta}",
         )
 
     def _abrir_pasta_orcamento(self) -> None:

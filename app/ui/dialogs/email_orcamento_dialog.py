@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Sequence
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -36,6 +37,7 @@ from app.domain.anexos_email import LIMITE_PADRAO_MB, medir_anexo, resumir_anexo
 from app.services import email_resposta_service as resposta_svc
 from app.ui import tema
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.corpo_email_edit import CorpoEmailEdit
 
 
 class EmailOrcamentoDialog(QDialog):
@@ -54,7 +56,8 @@ class EmailOrcamentoDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Enviar Orçamento por Email")
-        self.resize(820, 540)
+        self.setMinimumSize(900, 620)
+        self._dimensionar_ao_ecra()
         self._pasta_inicial = pasta_inicial or ""
         self._tamanho_max_mb = float(tamanho_max_mb or LIMITE_PADRAO_MB)
         self._emails_do_cliente = [str(caminho) for caminho in emails_do_cliente or ()]
@@ -81,12 +84,17 @@ class EmailOrcamentoDialog(QDialog):
         layout.addLayout(form)
 
         corpo_label = QLabel("Corpo do email:")
-        self.txt_corpo = QTextEdit()
-        self.txt_corpo.setAcceptRichText(True)
+        self.txt_corpo = CorpoEmailEdit()
         self.txt_corpo.setHtml(corpo or "")
-        self.txt_corpo.setToolTip("Corpo do email em HTML/rich text.")
+        self.txt_corpo.setToolTip(
+            "Corpo do email em HTML/rich text.\n"
+            "Pode colar uma imagem com Ctrl+V (um print de ecrã, uma foto): "
+            "vai dentro do email, junto ao texto."
+        )
         layout.addWidget(corpo_label)
-        layout.addWidget(self.txt_corpo, 1)
+        # O corpo é onde se escreve: fica com quase todo o espaço que sobra, e
+        # a lista de anexos com o pouco que precisa.
+        layout.addWidget(self.txt_corpo, 4)
 
         self.list_anexos = QListWidget()
         self.list_anexos.setToolTip(
@@ -132,6 +140,18 @@ class EmailOrcamentoDialog(QDialog):
 
         self._atualizar_tamanho()
         self._aplicar_resposta()
+
+    def _dimensionar_ao_ecra(self) -> None:
+        """Abrir grande: escreve-se aqui o email que o cliente vai ler."""
+        ecra = QGuiApplication.primaryScreen()
+        if ecra is None:
+            self.resize(1100, 760)
+            return
+
+        disponivel = ecra.availableGeometry()
+        largura = min(int(disponivel.width() * 0.72), 1400)
+        altura = min(int(disponivel.height() * 0.85), 1000)
+        self.resize(max(largura, 900), max(altura, 620))
 
     def destinatario(self) -> str:
         return self.ed_destinatario.text().strip()

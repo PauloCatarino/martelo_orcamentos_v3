@@ -249,7 +249,11 @@ def construir_corpo_email(
         f"{obra_ref_html}"
         "<p style='margin:0 0 12px;'><b>Total:</b> "
         f"<b style='font-size:18px;'>{format_currency(total)}</b>"
-        f"<span style='margin-left:8px;'>{AVISO_IVA}</span></p>"
+        # Os &nbsp; sao o que garante o espaco: o Qt, que desenha a
+        # pre-visualizacao na janela de envio, ignora o margin-left num <span>
+        # e colava o aviso ao valor ("2107,68 EURAcresce IVA..."). A margem
+        # fica na mesma, para os clientes de email a sério.
+        f"<span style='margin-left:12px;'>&nbsp;&nbsp;&nbsp;{AVISO_IVA}</span></p>"
         "<p style='margin:0 0 16px;'>Se tiver alguma dúvida ou necessitar de "
         "mais informação, não hesite em contactar-nos.</p>"
         "<p style='margin:0 0 4px;'>Com os melhores cumprimentos,</p>"
