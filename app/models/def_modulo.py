@@ -37,7 +37,15 @@ class DefModulo(Base):
 
     __tablename__ = "def_modulos"
     __table_args__ = (
-        UniqueConstraint("codigo", name="uq_def_modulos_codigo"),
+        # O codigo e' unico DENTRO do ambito (e, nos modulos de utilizador,
+        # dentro de cada utilizador): o mesmo modulo costuma existir na
+        # prateleira global e na de quem o usa, e antes era preciso inventar
+        # um codigo diferente para o segundo. Em MySQL dois NULL nao colidem,
+        # por isso os GLOBAIS (user_id NULL) sao guardados pelo servico.
+        UniqueConstraint(
+            "codigo", "ambito", "user_id", name="uq_def_modulos_codigo_ambito_user"
+        ),
+        Index("ix_def_modulos_codigo", "codigo"),
         Index("ix_def_modulos_ambito", "ambito"),
         Index("ix_def_modulos_categoria", "categoria"),
         Index("ix_def_modulos_subcategoria", "subcategoria"),

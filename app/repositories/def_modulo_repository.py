@@ -103,6 +103,36 @@ class DefModuloRepository:
 
         return self._to_modulo_resumo(modulo)
 
+    def get_por_codigo_no_ambito(
+        self,
+        codigo: str,
+        ambito: str,
+        user_id: int | None,
+        *,
+        excluir_id: int | None = None,
+    ) -> DefModuloResumo | None:
+        """Get the module with this code in the same shelf, if any.
+
+        A prateleira e' o ambito; nos modulos de utilizador e' o ambito MAIS o
+        dono. Serve para validar antes de gravar, ja' que o mesmo codigo pode
+        agora existir em prateleiras diferentes.
+        """
+        statement = select(DefModulo).where(
+            DefModulo.codigo == codigo, DefModulo.ambito == ambito
+        )
+        if user_id is None:
+            statement = statement.where(DefModulo.user_id.is_(None))
+        else:
+            statement = statement.where(DefModulo.user_id == user_id)
+        if excluir_id is not None:
+            statement = statement.where(DefModulo.id != excluir_id)
+
+        modulo = self.session.execute(statement).scalars().first()
+        if modulo is None:
+            return None
+
+        return self._to_modulo_resumo(modulo)
+
     def create_modulo(
         self,
         *,

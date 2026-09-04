@@ -1873,7 +1873,12 @@ class OrcamentoItemCusteioPage(QWidget):
         ]
 
     def _copiar_imagem_modulo(
-        self, origem: str | None, codigo: str
+        self,
+        origem: str | None,
+        codigo: str,
+        *,
+        ambito: str | None = None,
+        user_id=None,
     ) -> tuple[str | None, str | None]:
         """Copy the chosen image into the configured module-images folder.
 
@@ -1889,7 +1894,9 @@ class OrcamentoItemCusteioPage(QWidget):
                 )
         except SQLAlchemyError:
             pasta = None
-        resultado = copiar_imagem_para_pasta(origem, pasta, codigo)
+        resultado = copiar_imagem_para_pasta(
+            origem, pasta, codigo, ambito=ambito, user_id=user_id
+        )
         return resultado.caminho, resultado.aviso
 
     def guardar_como_modulo(self) -> None:
@@ -1919,7 +1926,10 @@ class OrcamentoItemCusteioPage(QWidget):
 
         def handle_save(dados: GuardarModuloDialogData) -> bool:
             imagem_path, aviso_imagem = self._copiar_imagem_modulo(
-                dados.imagem_path, dados.codigo
+                dados.imagem_path,
+                dados.codigo,
+                ambito=dados.ambito,
+                user_id=user_id,
             )
             try:
                 with SessionLocal() as session:

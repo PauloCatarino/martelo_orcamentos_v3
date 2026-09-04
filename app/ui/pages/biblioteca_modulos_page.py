@@ -199,7 +199,12 @@ class BibliotecaModulosPage(QWidget):
         return utilizador.id if utilizador is not None else None
 
     def _copiar_imagem_modulo(
-        self, origem: str | None, codigo: str
+        self,
+        origem: str | None,
+        codigo: str,
+        *,
+        ambito: str | None = None,
+        user_id=None,
     ) -> tuple[str | None, str | None]:
         """Copy the chosen image into the configured module-images folder.
 
@@ -214,7 +219,9 @@ class BibliotecaModulosPage(QWidget):
                 )
         except SQLAlchemyError:
             pasta = None
-        resultado = copiar_imagem_para_pasta(origem, pasta, codigo)
+        resultado = copiar_imagem_para_pasta(
+            origem, pasta, codigo, ambito=ambito, user_id=user_id
+        )
         return resultado.caminho, resultado.aviso
 
     def carregar(self) -> None:
@@ -514,7 +521,10 @@ class BibliotecaModulosPage(QWidget):
 
         def handle_save(dados: EditarModuloDialogData) -> bool:
             imagem_path, aviso_imagem = self._copiar_imagem_modulo(
-                dados.imagem_path, modulo.codigo
+                dados.imagem_path,
+                modulo.codigo,
+                ambito=dados.ambito,
+                user_id=modulo.user_id or self._user_id(),
             )
             try:
                 with SessionLocal() as session:
@@ -545,7 +555,10 @@ class BibliotecaModulosPage(QWidget):
             """Cria um módulo NOVO com estes dados e as linhas do original."""
             novo_codigo = dialog.codigo()
             imagem_path, aviso_imagem = self._copiar_imagem_modulo(
-                dados.imagem_path, novo_codigo
+                dados.imagem_path,
+                novo_codigo,
+                ambito=dados.ambito,
+                user_id=self._user_id(),
             )
             utilizador = app_session.current_user
             try:

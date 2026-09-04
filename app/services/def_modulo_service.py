@@ -199,8 +199,7 @@ class DefModuloService:
         user_id = data.user_id if ambito == AMBITO_UTILIZADOR else None
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
-        if self.repository.get_by_codigo(codigo) is not None:
-            raise ValueError(f"Já existe um módulo com o código {codigo}.")
+        self._validar_codigo_livre(codigo, ambito, user_id)
 
         modulo = self.repository.create_modulo(
             codigo=codigo,
@@ -637,6 +636,13 @@ class DefModuloService:
         if ambito == AMBITO_UTILIZADOR and user_id is None:
             raise ValueError("user_id é obrigatório no âmbito UTILIZADOR")
 
+        # Mudar o âmbito é mudar de prateleira: o código tem de estar livre lá.
+        atual = self.repository.get_by_id(modulo_id)
+        if atual is not None:
+            self._validar_codigo_livre(
+                atual.codigo, ambito, user_id, excluir_id=modulo_id
+            )
+
         result = self.repository.update_cabecalho(
             id=modulo_id,
             nome=nome,
@@ -771,6 +777,13 @@ class DefModuloService:
         if ambito == normalize_modulo_ambito(modulo.ambito):
             return modulo
 
+        self._validar_codigo_livre(
+            modulo.codigo,
+            ambito,
+            acting_user_id if ambito == AMBITO_UTILIZADOR else None,
+            excluir_id=modulo_id,
+        )
+
         if ambito == AMBITO_UTILIZADOR:
             if acting_user_id is None:
                 raise ValueError(
@@ -805,6 +818,35 @@ class DefModuloService:
             ]
 
         return filtrar_por_termo(modulos, termo)
+
+    def _validar_codigo_livre(
+        self,
+        codigo: str,
+        ambito: str,
+        user_id: int | None,
+        *,
+        excluir_id: int | None = None,
+    ) -> None:
+        """Recusar um código já usado NA MESMA prateleira.
+
+        O mesmo código pode existir no global e no de cada utilizador: é o
+        mesmo módulo em prateleiras diferentes, e nada no programa procura um
+        módulo pelo código (importar, substituir e eliminar vão pelo ``id``).
+        Dentro da mesma prateleira continua a ser proibido, senão duas linhas
+        iguais na lista tornam-se indistinguíveis.
+        """
+        existente = self.repository.get_por_codigo_no_ambito(
+            codigo, ambito, user_id, excluir_id=excluir_id
+        )
+        if existente is None:
+            return
+
+        onde = (
+            "nos módulos globais"
+            if ambito == AMBITO_GLOBAL
+            else "nos seus módulos"
+        )
+        raise ValueError(f"Já existe um módulo com o código {codigo} {onde}.")
 
     def _normalize_codigo(self, codigo: str | None) -> str:
         normalized = (codigo or "").strip().upper()

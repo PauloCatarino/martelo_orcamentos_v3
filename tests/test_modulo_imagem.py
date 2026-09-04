@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from app.domain.modulo_imagem import (
     caminho_para_file_url,
     copiar_imagem_para_pasta,
+    nome_ficheiro_imagem,
     sanitizar_codigo,
     tooltip_imagem_html,
 )
@@ -97,3 +99,45 @@ def test_tooltip_imagem_html() -> None:
     html = tooltip_imagem_html(r"C:\imagens\roupeiro.png", largura=320)
     assert html == '<img src="file:///C:/imagens/roupeiro.png" width="320">'
     assert tooltip_imagem_html(None) == ""
+
+
+def test_imagens_de_prateleiras_diferentes_nao_se_escrevem_por_cima(tmp_path) -> None:
+    """O mesmo código pode existir no global e no de cada utilizador."""
+    pasta = tmp_path / "imagens"
+    global_ = tmp_path / "global.png"
+    global_.write_bytes(b"global")
+    do_paulo = tmp_path / "paulo.png"
+    do_paulo.write_bytes(b"paulo")
+
+    r_global = copiar_imagem_para_pasta(
+        str(global_), str(pasta), "REMATES", ambito="GLOBAL", user_id=None
+    )
+    r_paulo = copiar_imagem_para_pasta(
+        str(do_paulo), str(pasta), "REMATES", ambito="UTILIZADOR", user_id=2
+    )
+
+    assert r_global.caminho != r_paulo.caminho
+    assert Path(r_global.caminho).read_bytes() == b"global"
+    assert Path(r_paulo.caminho).read_bytes() == b"paulo"
+
+
+def test_dois_utilizadores_com_o_mesmo_codigo_tem_imagens_proprias(tmp_path) -> None:
+    pasta = tmp_path / "imagens"
+    origem = tmp_path / "a.png"
+    origem.write_bytes(b"x")
+
+    do_paulo = copiar_imagem_para_pasta(
+        str(origem), str(pasta), "MODULO_COZINHA", ambito="UTILIZADOR", user_id=2
+    )
+    da_andreia = copiar_imagem_para_pasta(
+        str(origem), str(pasta), "MODULO_COZINHA", ambito="UTILIZADOR", user_id=4
+    )
+
+    assert do_paulo.caminho != da_andreia.caminho
+
+
+def test_nome_do_ficheiro_por_prateleira() -> None:
+    assert nome_ficheiro_imagem("REMATES", "GLOBAL", None) == "REMATES__GLOBAL"
+    assert nome_ficheiro_imagem("REMATES", "UTILIZADOR", 2) == "REMATES__U2"
+    # Sem âmbito conhecido mantém-se o nome antigo, para não partir o existente.
+    assert nome_ficheiro_imagem("REMATES", None, None) == "REMATES"

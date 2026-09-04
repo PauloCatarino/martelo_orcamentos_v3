@@ -32,10 +32,34 @@ def sanitizar_codigo(codigo: str | None) -> str:
     return seguro or "modulo"
 
 
+def nome_ficheiro_imagem(codigo: str | None, ambito: str | None, user_id) -> str:
+    """Nome de ficheiro único por módulo: código + prateleira.
+
+    O mesmo código pode existir no global e no de cada utilizador (é o mesmo
+    módulo em prateleiras diferentes). Se o ficheiro fosse só ``<codigo>``, a
+    segunda imagem escrevia por cima da primeira e os dois módulos passavam a
+    mostrar o mesmo desenho.
+    """
+    base = sanitizar_codigo(codigo)
+    prateleira = (ambito or "").strip().upper()
+    if prateleira == "GLOBAL" or user_id is None:
+        return f"{base}__GLOBAL" if prateleira == "GLOBAL" else base
+    return f"{base}__U{user_id}"
+
+
 def copiar_imagem_para_pasta(
-    origem: str | None, pasta: str | None, codigo: str
+    origem: str | None,
+    pasta: str | None,
+    codigo: str,
+    *,
+    ambito: str | None = None,
+    user_id=None,
 ) -> ResultadoImagem:
-    """Copy ``origem`` into ``pasta`` as ``<codigo>.<ext>``; return the new path.
+    """Copy ``origem`` into ``pasta``; return the new path.
+
+    O ficheiro leva o código do módulo mais a prateleira a que pertence (ver
+    :func:`nome_ficheiro_imagem`), porque o mesmo código pode existir no global
+    e no de cada utilizador.
 
     - No image chosen -> (None, None).
     - No folder configured -> keep the original path with a gentle warning.
@@ -65,7 +89,9 @@ def copiar_imagem_para_pasta(
         )
 
     extensao = os.path.splitext(origem)[1].lower() or ".png"
-    destino = os.path.join(pasta, f"{sanitizar_codigo(codigo)}{extensao}")
+    destino = os.path.join(
+        pasta, f"{nome_ficheiro_imagem(codigo, ambito, user_id)}{extensao}"
+    )
 
     try:
         os.makedirs(pasta, exist_ok=True)
