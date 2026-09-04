@@ -5298,9 +5298,24 @@ class OrcamentoItemCusteioLinhaService:
                     item_id, linha, filhos_por_pai_ordem, avisos, mapa_linhas
                 )
             else:
-                self._importar_peca_modulo(
+                criada = self._importar_peca_modulo(
                     item_id, linha, tipo, avisos, mapa_linhas
                 )
+                # Uma peça SIMPLES também pode levar associados por baixo (as
+                # uniões dos topos, os pés de um fundo). O módulo guarda-os, mas
+                # o importador só sabia descê-los numa peça composta e deixava-os
+                # cair sem dizer nada: o mesmo módulo voltava mais barato do que
+                # tinha saído (visto a 2026-09-04, -1,13 € num teste de 5 peças).
+                if criada is not None and filhos_por_pai_ordem.get(linha.ordem):
+                    componentes += self._importar_descendentes_composta_modulo(
+                        item_id,
+                        linha,
+                        criada.id,
+                        nivel=1,
+                        filhos_por_pai_ordem=filhos_por_pai_ordem,
+                        avisos=avisos,
+                        mapa=mapa_linhas,
+                    )
             criadas += 1
 
         # As operações vão no fim, com a árvore toda já criada: assim uma linha
@@ -5595,10 +5610,9 @@ class OrcamentoItemCusteioLinhaService:
         """
         peca = self._resolver_def_peca_modulo(linha)
         if peca is None:
-            self._importar_linha_modulo_sem_peca(
+            return self._importar_linha_modulo_sem_peca(
                 orcamento_item_id, linha, tipo, avisos, mapa
             )
-            return
 
         fields, aviso = self._build_peca_line_fields(
             orcamento_item_id,
@@ -5617,6 +5631,7 @@ class OrcamentoItemCusteioLinhaService:
         self._aplicar_estrutura_modulo(fields, linha)
         criada = self.repository.create_linha(**fields)
         self._registar_linha_do_modulo(mapa, linha, criada)
+        return criada
 
     def _importar_composta_modulo(
         self,
@@ -5974,6 +5989,7 @@ class OrcamentoItemCusteioLinhaService:
             ativo=True,
         )
         self._registar_linha_do_modulo(mapa, linha, criada)
+        return criada
 
     def _aplicar_estrutura_modulo(self, fields: dict, linha) -> None:
         """Overlay a module line's structural fields onto built piece fields.
