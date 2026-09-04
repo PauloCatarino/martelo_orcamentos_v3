@@ -94,8 +94,17 @@ class Falta:
 
 @dataclass
 class PlanoModulo:
-    """O que há a acrescentar num módulo."""
+    """O que há a acrescentar num módulo.
 
+    O ``modulo_id`` é que manda. Procurar o módulo pelo CÓDIGO seria um erro:
+    desde 2026-09-04 o mesmo código pode existir no global e no de cada
+    utilizador, e a reparação ia toda parar ao primeiro que aparecesse — o
+    global apanhava o dobro das linhas e o do utilizador ficava por reparar.
+    Aconteceu à primeira tentativa, nos módulos 1_MOD_2_PORTAS e
+    1_MOD_2_PORTAS_3GVTS.
+    """
+
+    modulo_id: int
     codigo: str
     ambito: str
     user_id: int | None
@@ -156,7 +165,10 @@ def _analisar(session, filtro_modulo: str | None) -> list[PlanoModulo]:
                 filhos[linha.linha_pai_ordem].append(linha)
 
         plano = PlanoModulo(
-            codigo=modulo.codigo, ambito=modulo.ambito, user_id=modulo.user_id
+            modulo_id=modulo.id,
+            codigo=modulo.codigo,
+            ambito=modulo.ambito,
+            user_id=modulo.user_id,
         )
         for linha in linhas:
             peca = pecas.get(linha.def_peca_id) or por_codigo.get(
@@ -219,11 +231,9 @@ def _analisar(session, filtro_modulo: str | None) -> list[PlanoModulo]:
     return planos
 
 
-def _aplicar(session, modulo_codigo: str, plano: PlanoModulo) -> int:
+def _aplicar(session, plano: PlanoModulo) -> int:
     """Acrescentar as linhas em falta e renumerar o módulo em profundidade."""
-    modulo = session.execute(
-        select(DefModulo).where(DefModulo.codigo == modulo_codigo)
-    ).scalars().first()
+    modulo = session.get(DefModulo, plano.modulo_id)
     if modulo is None:
         return 0
 
@@ -345,7 +355,7 @@ def main() -> int:
             planos = _analisar(session, args.modulo)
             if args.aplicar:
                 for plano in planos:
-                    _aplicar(session, plano.codigo, plano)
+                    _aplicar(session, plano)
                 session.commit()
     except SQLAlchemyError as error:
         print(f"Erro a falar com a base de dados: {error}")

@@ -114,7 +114,7 @@ def test_repoe_as_unioes_de_uma_peca_simples_que_ficou_sozinha(
         "SISTEMAS_UNIAO",
     ]
 
-    reparar_modulo._aplicar(session, "MOD_PARTIDO", planos[0])
+    reparar_modulo._aplicar(session, planos[0])
     session.flush()
 
     linhas = session.execute(
@@ -184,3 +184,46 @@ def test_nao_mexe_numa_composta_sem_filhos_guardados(
     )
 
     assert reparar_modulo._analisar(session, None) == []
+
+
+def test_modulos_com_o_mesmo_codigo_sao_reparados_cada_um_no_seu(
+    session: Session, catalogo
+) -> None:
+    """O mesmo código pode existir no global e no do utilizador.
+
+    À primeira tentativa a reparação procurava o módulo pelo CÓDIGO: os dois
+    planos caíam no mesmo módulo, que apanhava o dobro das linhas, e o outro
+    ficava por reparar. Aconteceu de verdade, no 1_MOD_2_PORTAS.
+    """
+    linha_teto = dict(
+        ordem=1,
+        tipo_linha="PECA",
+        def_peca_id=catalogo["teto"].id,
+        def_peca_codigo="TETO_2000",
+        qt_mod="1",
+        qt_und="1",
+        nivel=0,
+    )
+    global_ = _modulo(session, "MESMO_CODIGO", [dict(linha_teto)])
+    global_.ambito = "GLOBAL"
+    do_paulo = _modulo(session, "MESMO_CODIGO_U", [dict(linha_teto)])
+    do_paulo.codigo = "MESMO_CODIGO"
+    do_paulo.ambito = "UTILIZADOR"
+    do_paulo.user_id = 2
+    session.flush()
+
+    planos = reparar_modulo._analisar(session, None)
+    assert {p.modulo_id for p in planos} == {global_.id, do_paulo.id}
+
+    for plano in planos:
+        reparar_modulo._aplicar(session, plano)
+    session.flush()
+
+    for modulo in (global_, do_paulo):
+        linhas = session.execute(
+            select(DefModuloLinha).where(
+                DefModuloLinha.def_modulo_id == modulo.id
+            )
+        ).scalars().all()
+        unioes = [l for l in linhas if l.def_peca_codigo == "SISTEMAS_UNIAO"]
+        assert len(unioes) == 2, f"módulo {modulo.id} ficou com {len(unioes)}"
