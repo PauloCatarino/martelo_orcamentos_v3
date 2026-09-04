@@ -27,6 +27,7 @@ from app.models import (
     OrcamentoItemVariavel,
     OrcamentoTempoAtividade,
     OrcamentoValuesetLinha,
+    OrcamentoValuesetLinhaOperacao,
     OrcamentoVersao,
     OrcamentoVersaoEncomendaPhc,
     OrcamentoVersaoPlacaNaoStock,
@@ -469,6 +470,12 @@ class OrcamentoRepository:
             self.session.add(copia)
             self.session.flush()
             map_vsl_versao[linha.id] = copia.id
+            # Sem isto a nova versão nasce com o ValueSet do orçamento vazio de
+            # operações. Quando o item herda esse ValueSet, a herança apaga as
+            # operações que o item trazia e não repõe nenhuma: as ferragens
+            # ficam sem montagem/CNC e a versão duplicada sai MAIS BARATA do que
+            # a original (visto no 260877_02, 113 operações -> 0).
+            self._copiar_operacoes_valueset_linha_versao(linha.id, copia.id)
 
         placas_nao_stock = self.session.execute(
             select(OrcamentoVersaoPlacaNaoStock)
@@ -747,6 +754,36 @@ class OrcamentoRepository:
             telefone=cliente.telefone or cliente.telemovel,
             num_cliente=cliente.num_cliente_phc,
         )
+
+    def _copiar_operacoes_valueset_linha_versao(
+        self, origem_linha_id: int, nova_linha_id: int
+    ) -> None:
+        """Clone the variant operations of one budget-version ValueSet line.
+
+        Twin of :meth:`_copiar_operacoes_valueset_linha`, one level up. The
+        version ValueSet is what an item inherits from, so operations lost here
+        are lost in every item of the new version.
+        """
+        operacoes = self.session.execute(
+            select(OrcamentoValuesetLinhaOperacao)
+            .where(
+                OrcamentoValuesetLinhaOperacao.orcamento_valueset_linha_id
+                == origem_linha_id
+            )
+            .order_by(
+                OrcamentoValuesetLinhaOperacao.ordem.asc(),
+                OrcamentoValuesetLinhaOperacao.id.asc(),
+            )
+        ).scalars().all()
+        for operacao in operacoes:
+            dados = self._valores_para_copia(
+                operacao, exclui={"orcamento_valueset_linha_id"}
+            )
+            self.session.add(
+                OrcamentoValuesetLinhaOperacao(
+                    **dados, orcamento_valueset_linha_id=nova_linha_id
+                )
+            )
 
     def _copiar_operacoes_valueset_linha(
         self, origem_linha_id: int, nova_linha_id: int

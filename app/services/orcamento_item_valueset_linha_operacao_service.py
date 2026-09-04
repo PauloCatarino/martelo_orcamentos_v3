@@ -167,7 +167,17 @@ class OrcamentoItemValuesetLinhaOperacaoService:
         origem_ops can be any operation read model (model, budget or item level)
         sharing the def_operacao_id/ordem/regra_calculo/... shape. Does not
         commit: the caller controls the transaction boundary.
+
+        Uma origem VAZIA nunca apaga o que a linha já tem. Uma versão duplicada
+        com o ValueSet do orçamento sem operações apagava assim as operações que
+        o item trazia (montagem/CNC das ferragens) e a versão nova saía mais
+        barata do que a original. Quem quer mesmo tirar operações de uma linha
+        tira-as uma a uma, e isso continua a funcionar.
         """
+        origem_ops = list(origem_ops)
+        if not origem_ops:
+            return len(self.repository.list_by_linha(orcamento_item_valueset_linha_id))
+
         self.repository.delete_by_linha(orcamento_item_valueset_linha_id)
 
         total = 0

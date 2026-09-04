@@ -239,12 +239,30 @@ def test_copiar_operacoes_de_substitui_e_nao_faz_commit(monkeypatch) -> None:
     assert session.committed is False
 
 
-def test_copiar_operacoes_de_lista_vazia_so_limpa(monkeypatch) -> None:
+def test_copiar_operacoes_de_lista_vazia_nao_apaga_nada(monkeypatch) -> None:
+    """Uma origem vazia nunca leva as operações que a linha já tinha.
+
+    Era assim que uma versão duplicada (com o ValueSet do orçamento sem
+    operações) apagava a montagem/CNC das ferragens do item e saía mais barata
+    do que a original.
+    """
+    service, session = _service(monkeypatch)
+    _FakeRepository.existing_links = [_resumo(id=7), _resumo(id=8)]
+
+    total = service.copiar_operacoes_de([], 99)
+
+    assert total == 2
+    assert _FakeRepository.deleted_linha_ids == []
+    assert _FakeRepository.created_payloads == []
+    assert session.committed is False
+
+
+def test_copiar_operacoes_de_lista_vazia_em_linha_sem_operacoes(monkeypatch) -> None:
     service, session = _service(monkeypatch)
 
     total = service.copiar_operacoes_de([], 99)
 
     assert total == 0
-    assert _FakeRepository.deleted_linha_ids == [99]
+    assert _FakeRepository.deleted_linha_ids == []
     assert _FakeRepository.created_payloads == []
     assert session.committed is False

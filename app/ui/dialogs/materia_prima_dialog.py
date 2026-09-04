@@ -53,6 +53,7 @@ from app.repositories.def_materia_prima_repository import (
 )
 from app.ui import tema
 from app.utils.formatters import format_currency
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 SEM_VALOR = "\u2014"
 
@@ -605,7 +606,7 @@ class MateriaPrimaDialog(QDialog):
         linha = self.componentes_table.rowCount()
         self.componentes_table.insertRow(linha)
 
-        papel = QComboBox()
+        papel = ComboSemScroll()
         for valor in PAPEIS_COMPONENTE_VALIDOS:
             papel.addItem(valor, valor)
         papel.setCurrentText(

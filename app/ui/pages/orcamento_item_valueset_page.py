@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -67,6 +68,10 @@ from app.utils.formatters import format_currency, format_quantity
 
 class OrcamentoItemValuesetPage(QWidget):
     """Page listing the ValueSet lines of a budget item."""
+
+    #: Pedido para abrir o quadro com TODAS as diferenças ValueSet -> Custeio.
+    #: Quem trata é a página de custeio, que é dona do item e do recálculo.
+    pedido_rever_diferencas = Signal()
 
     _copied_snapshot: dict | None = None
     _copied_operacoes: list | None = None
@@ -136,11 +141,26 @@ class OrcamentoItemValuesetPage(QWidget):
         self.clear_button = QPushButton("Limpar Dados")
         self.clear_button.clicked.connect(self.limpar_dados)
         self.toggle_button = QPushButton("Ativar/Desativar")
+        self.toggle_button.setToolTip(
+            "Ativa ou desativa as linhas selecionadas. Para voltar a ativar uma "
+            "linha desativada, ligue primeiro 'Mostrar inativas'."
+        )
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.propagate_button = QPushButton("Atualizar Custeio")
+        self.propagate_button.setToolTip(
+            "Com uma linha selecionada, compara essa chave com o custeio.\n"
+            "Sem nada selecionado, mostra TODAS as diferenças entre o ValueSet "
+            "e o custeio deste item."
+        )
         self.propagate_button.clicked.connect(self.atualizar_custeio_da_linha)
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setToolTip("Volta a ler o ValueSet deste item da base de dados.")
         self.refresh_button.clicked.connect(self.carregar)
+        self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
+        self.mostrar_inativas_check.setToolTip(
+            "Mostra também as linhas desativadas, para as poder reativar."
+        )
+        self.mostrar_inativas_check.toggled.connect(lambda _estado: self.carregar())
 
         actions_layout = QHBoxLayout()
         actions_layout.addWidget(self.create_button)
@@ -153,6 +173,7 @@ class OrcamentoItemValuesetPage(QWidget):
         actions_layout.addWidget(self.toggle_button)
         actions_layout.addWidget(self.propagate_button)
         actions_layout.addWidget(self.refresh_button)
+        actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addStretch()
 
         self.status_label = QLabel("")
@@ -196,11 +217,17 @@ class OrcamentoItemValuesetPage(QWidget):
         self.table.setRowCount(0)
         self.status_label.clear()
 
+        mostrar_inativas = self.mostrar_inativas_check.isChecked()
         try:
             with SessionLocal() as session:
-                linhas = OrcamentoItemValuesetLinhaService(
-                    session
-                ).listar_linhas_ativas_do_item(self.orcamento_item_id)
+                valueset_service = OrcamentoItemValuesetLinhaService(session)
+                linhas = (
+                    valueset_service.listar_linhas_do_item(self.orcamento_item_id)
+                    if mostrar_inativas
+                    else valueset_service.listar_linhas_ativas_do_item(
+                        self.orcamento_item_id
+                    )
+                )
                 operacao_service = OrcamentoItemValuesetLinhaOperacaoService(session)
                 operacoes_codigos = {
                     operacao.id: operacao.codigo
@@ -721,10 +748,18 @@ class OrcamentoItemValuesetPage(QWidget):
             self.status_label.setText("Operações da linha atualizadas.")
 
     def atualizar_custeio_da_linha(self) -> None:
-        """Compare and propagate the selected ValueSet line into cost lines."""
+        """Compare and propagate the ValueSet into the cost lines.
+
+        Com uma linha selecionada, revê só essa chave. Sem nada selecionado,
+        pede o quadro com todas as diferenças do item — é o caminho prático
+        quando se trocaram vários materiais de uma vez.
+        """
         linha = self._get_selected_linha()
         if linha is None:
-            self.status_label.setText("Selecione uma linha.")
+            self.status_label.setText(
+                "A procurar diferenças entre o ValueSet e o custeio deste item..."
+            )
+            self.pedido_rever_diferencas.emit()
             return
 
         self._propagar_para_custeio(linha)

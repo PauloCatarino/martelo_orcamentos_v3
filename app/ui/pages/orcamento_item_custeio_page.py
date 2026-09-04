@@ -130,6 +130,9 @@ from app.services.custeio_supervisor import (
 from app.core import diario_bordo
 from app.core.session import app_session
 from app.ui.dialogs.custeio_supervisor_dialog import CusteioSupervisorDialog
+from app.ui.dialogs.diferencas_valueset_custeio_dialog import (
+    DiferencasValuesetCusteioDialog,
+)
 from app.ui.dialogs.custeio_linha_acabamento_dialog import CusteioLinhaAcabamentoDialog
 from app.ui.dialogs.guardar_modulo_dialog import (
     GuardarModuloDialog,
@@ -137,6 +140,8 @@ from app.ui.dialogs.guardar_modulo_dialog import (
 )
 from app.ui.dialogs.importar_modulo_dialog import ImportarModuloDialog
 from app.ui.dialogs.custeio_linha_material_dialog import CusteioLinhaMaterialDialog
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.dialogs.materia_prima_picker_dialog import MateriaPrimaPickerDialog
 from app.ui.dialogs.operacao_manual_dialog import OperacaoManualDialog
 from app.ui.dialogs.custeio_linha_operacoes_dialog import CusteioLinhaOperacoesDialog
@@ -879,6 +884,16 @@ class OrcamentoItemCusteioPage(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(custeio_tab, "Custeio")
         self.tabs.addTab(self.valueset_page, "ValueSet")
+        # Ao voltar do ValueSet para o Custeio, avisar se ficaram materiais por
+        # levar para as linhas. Guarda-se a assinatura do que o utilizador já
+        # dispensou, para não voltar a perguntar o mesmo a cada mudança de
+        # separador.
+        self._divergencias_dispensadas: frozenset | None = None
+        self._separador_anterior = self.tabs.currentIndex()
+        self.tabs.currentChanged.connect(self._on_separador_mudou)
+        self.valueset_page.pedido_rever_diferencas.connect(
+            lambda: self.rever_diferencas_valueset(forcar=True)
+        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(12, 12, 12, 12)
@@ -1277,6 +1292,116 @@ class OrcamentoItemCusteioPage(QWidget):
         QMessageBox.information(self, "Preencher ValueSet primeiro", mensagem)
         self._abrir_separador_valueset(mensagem)
         return True
+
+    # --- ValueSet -> Custeio: aviso ao voltar ao separador do custeio --------
+
+    def _on_separador_mudou(self, indice: int) -> None:
+        """Warn about pending ValueSet changes when coming back to Custeio."""
+        anterior = getattr(self, "_separador_anterior", indice)
+        self._separador_anterior = indice
+
+        veio_do_valueset = self.tabs.widget(anterior) is self.valueset_page
+        if not veio_do_valueset or self.tabs.widget(indice) is self.valueset_page:
+            return
+
+        QTimer.singleShot(0, self.rever_diferencas_valueset)
+
+    def rever_diferencas_valueset(self, *, forcar: bool = False) -> None:
+        """Ask about (and optionally apply) ValueSet/costing material differences.
+
+        ``forcar`` ignora o que o utilizador já dispensou e abre sempre o quadro
+        — é o que o botão do ValueSet usa.
+        """
+        try:
+            with SessionLocal() as session:
+                divergencias = OrcamentoItemCusteioLinhaService(
+                    session
+                ).listar_divergencias_valueset_do_item(self.item_id)
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd(
+                    "Não foi possível comparar o ValueSet com o custeio.", error
+                )
+            )
+            return
+
+        if not divergencias:
+            self._divergencias_dispensadas = None
+            if forcar:
+                self.status_label.setText(
+                    "O custeio já está de acordo com o ValueSet do item."
+                )
+            return
+
+        assinatura = frozenset(
+            (divergencia.linha_id, divergencia.valueset_linha_id)
+            for divergencia in divergencias
+        )
+        if not forcar:
+            if self._divergencias_dispensadas == assinatura:
+                return
+            if not self._perguntar_rever_diferencas(divergencias):
+                self._divergencias_dispensadas = assinatura
+                self.status_label.setText(
+                    f"{len(divergencias)} linha(s) continuam com material diferente "
+                    "do ValueSet. Use 'Atualizar Custeio' no separador ValueSet "
+                    "quando quiser rever."
+                )
+                return
+
+        dialog = DiferencasValuesetCusteioDialog(divergencias, parent=self)
+        if not dialog.exec() or not dialog.selecionadas:
+            self._divergencias_dispensadas = assinatura
+            return
+
+        try:
+            with SessionLocal() as session:
+                service = OrcamentoItemCusteioLinhaService(session)
+                atualizadas = service.aplicar_divergencias_valueset(dialog.selecionadas)
+                self._recalcular_item_completo(service)
+                OrcamentoItemService(session).recalcular_preco_item(self.item_id)
+                session.commit()
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd(
+                    "Não foi possível aplicar o ValueSet às linhas de custeio.", error
+                )
+            )
+            return
+        except (EntradasCusteioInvalidas, ValueError) as error:
+            self.status_label.setText(
+                f"Não foi possível aplicar o ValueSet às linhas: {error}"
+            )
+            return
+
+        self._divergencias_dispensadas = None
+        self.carregar()
+        self.status_label.setText(
+            f"{atualizadas} linha(s) de custeio atualizadas a partir do ValueSet "
+            "(custos recalculados)."
+        )
+
+    def _perguntar_rever_diferencas(self, divergencias: list) -> bool:
+        """Ask whether to open the differences table."""
+        sugeridas = sum(1 for divergencia in divergencias if divergencia.sugerido)
+        detalhe = (
+            f"{len(divergencias)} linha(s) de custeio têm material diferente do "
+            "ValueSet do item."
+        )
+        if sugeridas != len(divergencias):
+            detalhe += (
+                f" {sugeridas} seguem o ValueSet; as restantes têm material "
+                "escolhido à mão."
+            )
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Atualizar o custeio a partir do ValueSet?")
+        box.setText(detalhe)
+        box.setInformativeText("Quer ver as diferenças e escolher o que atualizar?")
+        ver_button = box.addButton("Ver diferenças", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Agora não", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is ver_button
 
     def importar_modulo(self) -> None:
         """Open the import dialog and append the chosen module to the costing."""
@@ -3060,7 +3185,7 @@ class OrcamentoItemCusteioPage(QWidget):
             or linha.tipo_linha != PECA
         ):
             return False
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.addItem("PUR", ORLAGEM_SIMPLIFICADA_PUR)
         combo.addItem("LASER", ORLAGEM_SIMPLIFICADA_LASER)
         combo.setCurrentIndex(
@@ -3123,7 +3248,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self, linha: OrcamentoItemCusteioLinhaResumo, opcoes: list
     ) -> QComboBox:
         """Build the per-line Mat. default combobox with the compatible options."""
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.setToolTip(self._tooltip_mat_default(linha))
 
         atual_id = self._opcao_atual_id(linha, opcoes)

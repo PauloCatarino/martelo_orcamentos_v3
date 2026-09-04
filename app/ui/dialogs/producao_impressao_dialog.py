@@ -30,6 +30,7 @@ from app.services.pdf_imagem_service import documento_pdf
 from app.services.user_pref_service import UserPrefService
 from app.ui import tema
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
 _COL_SEL = 0
@@ -380,13 +381,13 @@ class ProducaoImpressaoDialog(QDialog):
             )
             self.tabela.setCellWidget(linha, _COL_QT, quantidade)
 
-            papel = QComboBox()
+            papel = ComboSemScroll()
             papel.addItems(list(svc.PAPEIS))
             papel.setCurrentText(documento.papel)
             papel.setToolTip(self._dica_formato(documento))
             self.tabela.setCellWidget(linha, _COL_PAPEL, papel)
 
-            orientacao = QComboBox()
+            orientacao = ComboSemScroll()
             orientacao.addItems(list(svc.ORIENTACOES))
             orientacao.setCurrentText(documento.orientacao)
             orientacao.setToolTip(self._dica_formato(documento))
@@ -418,7 +419,7 @@ class ProducaoImpressaoDialog(QDialog):
             )
             self.tabela.setItem(linha, _COL_DUPLEX, duplex)
 
-            cor = QComboBox()
+            cor = ComboSemScroll()
             cor.addItems(["cor", "pb"])
             cor.setCurrentText(documento.cor)
             cor.setToolTip("Cor ou preto e branco")

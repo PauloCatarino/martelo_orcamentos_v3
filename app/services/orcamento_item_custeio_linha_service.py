@@ -565,6 +565,29 @@ class ExclusaoLoteResult:
 
 
 @dataclass(frozen=True)
+class DivergenciaValuesetCusteio:
+    """One costing line whose material no longer matches its ValueSet option.
+
+    Happens whenever someone changes a material in the item ValueSet (by hand,
+    or by importing a model) without pushing it down to the costing lines: the
+    ValueSet says Linho, the line keeps costing Branco.
+    """
+
+    linha: OrcamentoItemCusteioLinhaResumo
+    valueset_linha: OrcamentoItemValuesetLinhaResumo
+    campos: tuple[str, ...]
+    sugerido: bool
+
+    @property
+    def linha_id(self) -> int:
+        return self.linha.id
+
+    @property
+    def valueset_linha_id(self) -> int:
+        return self.valueset_linha.id
+
+
+@dataclass(frozen=True)
 class ErroEntradaCusteio:
     """One invalid user-controlled field in a costing line."""
 
@@ -1052,6 +1075,145 @@ class OrcamentoItemCusteioLinhaService:
                 continue
             if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
                 continue
+
+            self.repository.update_linha(id=custeio_id, **fields)
+            atualizadas += 1
+
+        self.session.commit()
+
+        return atualizadas
+
+    # Campos comparados entre a linha de custeio e a opção do ValueSet. São os
+    # mesmos que a propagação escreve (ver _build_valueset_material_fields):
+    # comparar outra coisa daria diferenças que o botão nunca resolveria.
+    CAMPOS_MATERIAL_COMPARADOS: tuple[tuple[str, str], ...] = (
+        ("ref_le", "Ref LE"),
+        ("descricao_no_orcamento", "Descrição orçamento"),
+        ("unidade", "Unidade"),
+        ("preco_liquido", "Preço líquido"),
+        ("desperdicio_percentagem", "Desperdício %"),
+        ("tipo_materia_prima", "Tipo"),
+        ("familia_materia_prima", "Família"),
+        ("coresp_orla_0_4", "Orla 0.4"),
+        ("coresp_orla_1_0", "Orla 1.0"),
+        ("preco_orla_0_4_m2", "Preço orla 0.4"),
+        ("preco_orla_1_0_m2", "Preço orla 1.0"),
+        ("comp_mp", "Comp MP"),
+        ("larg_mp", "Larg MP"),
+        ("esp_mp", "Esp MP"),
+        ("materia_prima_id", "Matéria-prima"),
+    )
+
+    def listar_divergencias_valueset_do_item(
+        self, orcamento_item_id: int
+    ) -> list[DivergenciaValuesetCusteio]:
+        """List costing lines whose material differs from their ValueSet option.
+
+        A linha é emparelhada com a opção que ela própria escolheu (chave +
+        mat_default), não com a opção por defeito da chave: assim, mudar o
+        material de uma opção no ValueSet aparece aqui, e uma linha que aponta
+        de propósito para outra opção não é arrastada para trás.
+
+        Linhas com material editado localmente entram na lista mas com
+        ``sugerido=False`` — aparecem ao utilizador desmarcadas, para ele poder
+        forçar a atualização se quiser, sem que isso aconteça por descuido.
+        """
+        opcoes = self.item_valueset_repository.list_active_by_orcamento_item(
+            orcamento_item_id
+        )
+        indice: dict[tuple[str, str], OrcamentoItemValuesetLinhaResumo] = {}
+        for opcao in opcoes:
+            chave = normalize_valueset_key(getattr(opcao, "chave", None))
+            codigo = self._normalizar_opcao_valueset(
+                opcao.codigo_opcao or opcao.nome_opcao
+            )
+            if not chave or codigo is None:
+                continue
+            indice.setdefault((chave, codigo), opcao)
+
+        divergencias: list[DivergenciaValuesetCusteio] = []
+        for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
+                continue
+            if self._linha_sem_material(linha):
+                continue
+
+            chave_opcao = self._chave_opcao_operacoes_variante(linha)
+            if chave_opcao is None:
+                continue
+            opcao = indice.get(chave_opcao)
+            if opcao is None:
+                # A opção que a linha escolheu já não existe no ValueSet. Não se
+                # adivinha um substituto: isso é escolha do utilizador.
+                continue
+
+            campos = self._campos_material_divergentes(linha, opcao)
+            if not campos:
+                continue
+
+            divergencias.append(
+                DivergenciaValuesetCusteio(
+                    linha=linha,
+                    valueset_linha=opcao,
+                    campos=campos,
+                    sugerido=not bool(linha.material_editado_localmente),
+                )
+            )
+
+        return divergencias
+
+    def _campos_material_divergentes(self, linha, vs_linha) -> tuple[str, ...]:
+        """Return the human names of the material fields that differ."""
+        diferentes: list[str] = []
+        for campo, etiqueta in self.CAMPOS_MATERIAL_COMPARADOS:
+            atual = getattr(linha, campo, None)
+            novo = getattr(vs_linha, campo, None)
+            if not self._mesmo_valor_material(atual, novo):
+                diferentes.append(etiqueta)
+        return tuple(diferentes)
+
+    @staticmethod
+    def _mesmo_valor_material(atual, novo) -> bool:
+        """Compare two material snapshot values, ignoring Decimal/str noise."""
+        if atual is None and novo is None:
+            return True
+        if atual is None or novo is None:
+            return False
+        if isinstance(atual, Decimal) or isinstance(novo, Decimal):
+            try:
+                return Decimal(str(atual)) == Decimal(str(novo))
+            except (ArithmeticError, TypeError, ValueError):
+                return str(atual) == str(novo)
+        if isinstance(atual, str) or isinstance(novo, str):
+            return str(atual).strip() == str(novo).strip()
+        return atual == novo
+
+    def aplicar_divergencias_valueset(
+        self, pares: list[tuple[int, int]]
+    ) -> int:
+        """Apply chosen (cost line, ValueSet option) pairs in one transaction.
+
+        ``pares`` são (id da linha de custeio, id da linha de ValueSet), tal
+        como saem de :meth:`listar_divergencias_valueset_do_item`. Devolve
+        quantas linhas foram escritas.
+        """
+        atualizadas = 0
+        cache: dict[int, dict] = {}
+
+        for custeio_id, valueset_id in pares:
+            linha = self.repository.get_by_id(custeio_id)
+            if linha is None:
+                continue
+            if linha.tipo_linha in (DIVISAO_INDEPENDENTE, PECA_COMPOSTA, SEPARADOR):
+                continue
+
+            fields = cache.get(valueset_id)
+            if fields is None:
+                vs_linha = self.item_valueset_repository.get_by_id(valueset_id)
+                if vs_linha is None:
+                    continue
+                fields = self._build_valueset_material_fields(vs_linha)
+                cache[valueset_id] = fields
 
             self.repository.update_linha(id=custeio_id, **fields)
             atualizadas += 1

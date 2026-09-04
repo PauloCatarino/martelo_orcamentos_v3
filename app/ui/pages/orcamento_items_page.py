@@ -62,6 +62,7 @@ from app.services.orcamento_service import OrcamentoService
 from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
 from app.ui.dialogs.novo_item_dialog import NovoItemDialog, NovoItemDialogData
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -1140,7 +1141,7 @@ class OrcamentoItemsPage(QWidget):
 
     def _criar_combo_producao(self, item: OrcamentoItemResumo) -> QComboBox:
         """Build the per-item production combo (Padrão / STD / SERIE)."""
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.setToolTip(self.PRODUCAO_ITEM_TOOLTIP)
         combo.addItem(f"Padrão ({self._tipo_producao_default})", None)
         combo.addItem(TIPO_PRODUCAO_STD, TIPO_PRODUCAO_STD)
@@ -1162,7 +1163,7 @@ class OrcamentoItemsPage(QWidget):
 
     def _criar_combo_custeio(self, item: OrcamentoItemResumo) -> QComboBox:
         """Build the independent Standard/Simplificado selector."""
-        combo = QComboBox()
+        combo = ComboSemScroll()
         combo.setToolTip(
             "Simplificado usa tarifas por escalão das peças deste item; "
             "STD/SERIE continua no campo Produção."
