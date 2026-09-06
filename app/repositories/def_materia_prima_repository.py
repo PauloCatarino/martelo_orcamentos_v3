@@ -113,7 +113,7 @@ class DefMateriaPrimaRepository:
     def pesquisar(
         self, termo: str | None = None, limite: int = 200
     ) -> list[DefMateriaPrimaResumo]:
-        """Search active raw materials by reference, description, type or family.
+        """Search active raw materials by reference, description, type, family or notes.
 
         An empty term lists the first ``limite`` active materials.
         """
@@ -128,6 +128,7 @@ class DefMateriaPrimaRepository:
                     DefMateriaPrima.referencia_fornecedor.ilike(like),
                     DefMateriaPrima.tipo_martelo.ilike(like),
                     DefMateriaPrima.familia_martelo.ilike(like),
+                    DefMateriaPrima.observacoes.ilike(like),
                 )
             )
 

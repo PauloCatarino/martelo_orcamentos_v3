@@ -1,6 +1,7 @@
 """Pesquisa IA - fontes: Materias-Primas do V3 (local) + PHC (artigos ST)."""
 
 from __future__ import annotations
+from app.domain.pesquisa_ia_resumo import resumo_fontes, comentario_html
 
 import re
 import unicodedata
@@ -8,6 +9,7 @@ import unicodedata
 from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -20,6 +22,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from pathlib import Path
+from app.ui.helpers.pesquisa_ia_fluxo import PesquisaIAFluxo, CicloPesquisa
+from app.domain.pesquisa_ia_consulta import corresponde, mesma_espessura, termos, observacoes_relevantes
+from app.services.system_setting_service import SystemSettingService
 
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
@@ -158,12 +165,15 @@ class _RespostaWorker(QObject):
         super().__init__()
         self._pergunta = pergunta
         self._contexto = contexto
+        self._engine = SessionLocal.kw.get("bind")
 
     def run(self) -> None:
         try:
-            with SessionLocal() as session:
+            with Session(bind=self._engine) as session:
                 servico = RespostaIAService(session)
                 for pedaco in servico.gerar_stream(self._pergunta, self._contexto):
+                    if QThread.currentThread().isInterruptionRequested():
+                        break
                     self.pedaco.emit(pedaco)
         except Exception as exc:  # noqa: BLE001
             self.falhou.emit(str(exc))
@@ -171,7 +181,7 @@ class _RespostaWorker(QObject):
         self.concluido.emit()
 
 
-class PesquisaIAPage(QWidget):
+class PesquisaIAPage(PesquisaIAFluxo, QWidget):
     V3_HEADERS = [
         "Ref LE",
         "Ref Forn",
@@ -373,52 +383,33 @@ class PesquisaIAPage(QWidget):
         layout.addWidget(self.tabelas_splitter, stretch=1)
         self.setLayout(layout)
 
-        self.carregar_v3()
+        self.preparar_fluxo(layout, toolbar, linha_fichas)
 
     def carregar_v3(self) -> None:
-        try:
-            with SessionLocal() as session:
-                self._v3 = DefMateriaPrimaService(session).listar_materias_primas()
-        except SQLAlchemyError:
-            self._v3 = []
-        self.aplicar_pesquisa()
+        self.ler_fonte("v3", lambda session: DefMateriaPrimaService(session).listar_materias_primas())
 
     def carregar_phc(self) -> None:
-        self.status_label.setText("A carregar do PHC...")
-        self.carregar_button.setEnabled(False)
-        try:
-            with SessionLocal() as session:
-                self._phc = query_phc_materiais(session)
-        except Exception as exc:  # noqa: BLE001
-            self.status_label.setText(f"N\u00e3o foi poss\u00edvel ler o PHC: {exc}")
-            self.carregar_button.setEnabled(True)
-            return
-        self.carregar_button.setEnabled(True)
-        self.aplicar_pesquisa()
+        self.ler_fonte("phc", query_phc_materiais)
 
     def carregar_referencias(self) -> None:
-        self.status_label.setText("A carregar refer\u00eancias de placas...")
-        self.referencias_button.setEnabled(False)
-        try:
-            with SessionLocal() as session:
-                self._referencias_todas = listar_referencias(session)
-        except Exception as exc:  # noqa: BLE001
-            self.referencias_button.setEnabled(True)
-            self.status_label.setText(
-                f"N\u00e3o foi poss\u00edvel ler o Excel de refer\u00eancias: {exc}"
-            )
-            return
-        self.referencias_button.setEnabled(True)
-        self.aplicar_pesquisa()
+        def ler(session):
+            pasta = SystemSettingService(session).obter_valor("pasta_pesquisa_profunda_ia", "") or ""
+            ficheiro = Path(pasta) / "12_Placas_Referencias_COMPLETO.xlsx"
+            stat = ficheiro.stat()
+            assinatura = (str(ficheiro), stat.st_mtime_ns, stat.st_size)
+            if self._cache_refs is None or self._cache_refs[0] != assinatura:
+                self._cache_refs = (assinatura, listar_referencias(session))
+            return self._cache_refs[1]
+        self.ler_fonte("placas", ler)
 
     def aplicar_pesquisa(self, _text: str | None = None) -> None:
         texto = self.campo_pesquisa.texto()
         if texto.strip():
             self._v3_filtrados = [
-                materia for materia in self._v3 if _v3_corresponde(materia, texto)
+                materia for materia in self._v3 if _v3_corresponde(materia, texto) and mesma_espessura(materia.espessura, texto, self.espessura_input.currentData())
             ]
             self._phc_filtrados = [
-                linha for linha in self._phc if _phc_corresponde(linha, texto)
+                linha for linha in self._phc if _phc_corresponde(linha, texto) and mesma_espessura(linha.get("Espessura"), texto, self.espessura_input.currentData())
             ]
             self._referencias_filtradas = [
                 referencia
@@ -426,8 +417,8 @@ class PesquisaIAPage(QWidget):
                 if _ref_corresponde(referencia, texto)
             ]
         else:
-            self._v3_filtrados = self._v3
-            self._phc_filtrados = self._phc
+            self._v3_filtrados = [m for m in self._v3 if mesma_espessura(m.espessura, texto, self.espessura_input.currentData())]
+            self._phc_filtrados = [r for r in self._phc if mesma_espessura(r.get("Espessura"), texto, self.espessura_input.currentData())]
             self._referencias_filtradas = self._referencias_todas
 
         if texto.strip() != self._texto_catalogos:
@@ -437,6 +428,7 @@ class PesquisaIAPage(QWidget):
         self._preencher_phc(self._phc_filtrados)
         self._preencher_referencias(self._referencias_filtradas)
         self._atualizar_status()
+        self.atualizar_resultados_unificados()
 
     def _esquecer_catalogos(self) -> None:
         """Deitar fora os catalogos da pergunta anterior.
@@ -452,6 +444,7 @@ class PesquisaIAPage(QWidget):
 
     def _mostrar_painel(self, painel: PainelRecolhivel) -> None:
         """Abrir um painel a partir da ficha que o conta."""
+        self.resultados_tabs.setCurrentWidget(painel)
         if not painel.esta_aberto():
             painel.abrir(True)
 
@@ -491,8 +484,8 @@ class PesquisaIAPage(QWidget):
             len(self._phc_filtrados),
             len(self._phc),
             texto_vazio=(
-                "Ainda não carregou os artigos do PHC — use "
-                "'Carregar/Atualizar (PHC)'."
+                "PHC ainda sem dados disponíveis — consulte o estado das fontes. "
+                "Atualizar fontes permite tentar novamente."
                 if not self._phc
                 else "Nenhum artigo do PHC corresponde à pesquisa."
             ),
@@ -501,8 +494,8 @@ class PesquisaIAPage(QWidget):
             len(self._referencias_filtradas),
             len(self._referencias_todas),
             texto_vazio=(
-                "Ainda não carregou as referências de placas — use "
-                "'Carregar referências (placas)'."
+                "Referências ainda sem dados disponíveis — consulte o estado das fontes. "
+                "Atualizar fontes permite tentar novamente."
                 if not self._referencias_todas
                 else (
                     "Nenhuma referência de placa corresponde à pesquisa. "
@@ -515,7 +508,7 @@ class PesquisaIAPage(QWidget):
             len(self._ultimos_catalogos),
             detalhe=f"{exatos} exactos" if exatos else "",
             texto_vazio=(
-                "Carregue em 'Pesquisar catálogos (IA)' para procurar nos "
+                "Escreva uma pesquisa para procurar automaticamente nos "
                 "catálogos e tabelas dos fornecedores."
             ),
         )
@@ -618,38 +611,25 @@ class PesquisaIAPage(QWidget):
     def pesquisar_catalogos(self) -> None:
         texto = self.campo_pesquisa.texto().strip()
         if not texto:
-            self.status_label.setText("Escreva algo para pesquisar nos cat\u00e1logos.")
             return
-        servico = self._servico_catalogos()
-        motivo = servico.motivo_indisponivel()
-        if motivo is not None:
-            # A mensagem vem do servico ja' escrita para quem a le': quem abre
-            # este menu no PC de trabalho nao corre comandos nem sabe o que e'
-            # um modulo Python. Antes dizia-se-lhe para correr um script.
-            self.status_label.setText(" ".join(motivo.split()))
-            return
-        self.status_label.setText("A pesquisar nos cat\u00e1logos (IA)...")
-        self.catalogos_button.setEnabled(False)
-        try:
-            resultados = servico.pesquisar(texto, top_n=30)
-        except Exception as exc:  # noqa: BLE001
-            self.status_label.setText(f"Erro na pesquisa de cat\u00e1logos: {exc}")
-            self.catalogos_button.setEnabled(True)
-            return
-        self.catalogos_button.setEnabled(True)
-        self._ultimos_catalogos = resultados
-        self._texto_catalogos = texto
-        self._preencher_catalogos(resultados)
-        self._atualizar_status()
-        exatos = sum(1 for resultado in resultados if resultado.exato)
-        detalhe = (
-            f" ({exatos} com o que pediu)"
-            if exatos
-            else " (nenhum com o texto exato — são aproximações)"
-        )
-        self.status_label.setText(
-            f'Cat\u00e1logos: {len(resultados)} resultados para "{texto}"{detalhe}.'
-        )
+        token = self.chave_consulta()
+        engine = SessionLocal.kw.get("bind")
+        def ler():
+            with Session(bind=engine) as session:
+                svc = SystemSettingService(session)
+                pasta = svc.obter_valor("pasta_embeddings_ia", "") or ""
+                modelo = svc.obter_valor("modelo_embeddings_ia", "") or ""
+                base = Path(pasta)
+                assinatura = (pasta, modelo, tuple((p.stat().st_mtime_ns, p.stat().st_size)
+                    for p in (base / "meta.jsonl", base / "embeddings.npy")))
+                if self._cache_cat is None or self._cache_cat[0] != assinatura:
+                    self._cache_cat = (assinatura, PesquisaCatalogosService(session))
+                servico = self._cache_cat[1]
+            motivo = servico.motivo_indisponivel()
+            if motivo:
+                raise RuntimeError(motivo)
+            return servico.pesquisar(texto, top_n=30)
+        self._iniciar_fonte("catalogos", ler, token)
 
     def _preencher_catalogos(self, resultados) -> None:
         self.catalogo_table.setRowCount(len(resultados))
@@ -689,6 +669,12 @@ class PesquisaIAPage(QWidget):
         if not pergunta:
             self.status_label.setText("Escreva uma pergunta no campo de pesquisa.")
             return
+        if not termos(pergunta):
+            self.status_label.setText("Indique uma referência, material ou fornecedor para preparar a resposta.")
+            return
+        if self._resposta_thread is not None:
+            self._resposta_pendente = self.chave_consulta()
+            return
         v3 = self._v3_filtrados[:8]
         phc = self._phc_filtrados[:8]
         refs = self._referencias_filtradas[:10]
@@ -697,13 +683,14 @@ class PesquisaIAPage(QWidget):
         # placas de outra cor, acessorios de outra familia. Entregues ao modelo
         # em pe' de igualdade, ele respondia sobre esses.
         exatos = [resultado for resultado in self._ultimos_catalogos if resultado.exato]
-        trechos = (exatos or self._ultimos_catalogos)[:8]
-        if not v3 and not phc and not refs and not trechos:
+        trechos = exatos[:8]
+        if not v3 and not phc and not refs and not trechos and not self._woodstore_filtrados:
             self.status_label.setText(
                 "Sem dados - pesquise primeiro (e carregue o PHC / cat\u00e1logos)."
             )
             return
 
+        self._resumo_html = resumo_fontes(self._v3_filtrados, self._phc_filtrados, self._woodstore_filtrados, self._referencias_filtradas, exatos, self.fontes_status.text())
         self._fontes = montar_fontes(v3, phc, refs, trechos)
 
         partes: list[str] = []
@@ -712,13 +699,16 @@ class PesquisaIAPage(QWidget):
             linhas_artigos.append(
                 f"- [V3] {(materia.ref_le or '').strip()}: "
                 f"{(materia.descricao or '').strip()} "
-                f"| fab. {(materia.fornecedor or '').strip()} "
+                f"| fornecedor {(materia.fornecedor or '').strip()} "
                 f"| pre\u00e7o l\u00edq {format_currency(materia.preco_liquido)} "
                 f"| {format_quantity(materia.comprimento)}x"
                 f"{format_quantity(materia.largura)}x"
                 f"{format_quantity(materia.espessura)} "
                 f"| orla 0.4 {(materia.coresp_orla_0_4 or '').strip()} "
-                f"| orla 1.0 {(materia.coresp_orla_1_0 or '').strip()}"
+                f"| orla 1.0 {(materia.coresp_orla_1_0 or '').strip()} "
+                f"| unidade {materia.unidade or ''} "
+                f"| data preço {_data_curta(getattr(materia, 'data_ultimo_preco', None))} "
+                f"| observações {observacoes_relevantes(materia.observacoes or '', pergunta)}"
             )
         for linha in phc:
             linhas_artigos.append(
@@ -730,7 +720,9 @@ class PesquisaIAPage(QWidget):
                 f"| \u00falt. venda {format_currency(linha.get('Preco_Ultimo'))} "
                 f"| {format_quantity(linha.get('Altura'))}x"
                 f"{format_quantity(linha.get('Largura'))}x"
-                f"{format_quantity(linha.get('Espessura'))}"
+                f"{format_quantity(linha.get('Espessura'))} "
+                f"| unidade {linha.get('Unidade', '')} | stock PHC {linha.get('Stock', '')} "
+                f"| data preço {linha.get('Data_Preco', '')}"
             )
         if linhas_artigos:
             partes.append(
@@ -768,50 +760,65 @@ class PesquisaIAPage(QWidget):
             ]
             partes.append("TRECHOS DE CAT\u00c1LOGOS:\n" + "\n".join(linhas))
 
+        wood = self._woodstore_filtrados[:12]
+        if wood:
+            partes.append("WOODSTORE (saldo calculado = contagem Lagen menos reservas; confirmar pacotes/divergências):\n" + "\n".join(
+                f"{r.get('Referencia')}: {r.get('Material')} | código {r.get('Codigo')} | dimensões {r.get('Comprimento')}x{r.get('Largura')}x{r.get('Espessura')} mm | Lagen {r.get('Quantidade')} | reservas {r.get('Reservadas')} | saldo {r.get('Disponivel')}"
+                for r in wood))
+            self._fontes += "\nWoodStore: " + " | ".join(str(r.get('Referencia')) for r in wood)
+        partes.append("ESTADO E MOMENTO DAS FONTES:\n" + self.fontes_status.text())
+        partes.append("O contexto é uma seleção limitada de resultados; não afirmar inexistência global de stock. Não misturar preço líquido V3, custo PHC e preço de catálogo. Preservar unidade, acabamento e espessura.")
         contexto = "\n\n".join(partes)
         self._iniciar_geracao(pergunta, contexto)
 
     def _iniciar_geracao(self, pergunta: str, contexto: str) -> None:
         if self._resposta_thread is not None:
             return
-        self.resposta_text.clear()
+        self._texto_llm = ""
+        self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html("A preparar comentário…"))
         self.painel_resposta.abrir(True)
         self.status_label.setText("A gerar resposta IA...")
         self.resposta_button.setEnabled(False)
 
-        self._resposta_thread = QThread(self)
+        self._consulta_resposta = self.chave_consulta()
+        self._resposta_thread = QThread(QApplication.instance())
         self._resposta_worker = _RespostaWorker(pergunta, contexto)
         self._resposta_worker.moveToThread(self._resposta_thread)
+        CicloPesquisa(self._resposta_thread, self._resposta_worker)
         self._resposta_thread.started.connect(self._resposta_worker.run)
-        self._resposta_worker.pedaco.connect(self._acrescentar_resposta)
-        self._resposta_worker.falhou.connect(self._resposta_falhou)
-        self._resposta_worker.concluido.connect(self._resposta_concluida)
-        self._resposta_worker.falhou.connect(self._resposta_thread.quit)
-        self._resposta_worker.concluido.connect(self._resposta_thread.quit)
-        self._resposta_thread.finished.connect(self._resposta_worker.deleteLater)
-        self._resposta_thread.finished.connect(self._resposta_thread.deleteLater)
-        self._resposta_thread.finished.connect(self._finalizar_geracao)
+        self._resposta_worker.pedaco.connect(self._receptor_pesquisa.pedaco, Qt.ConnectionType.QueuedConnection)
+        self._resposta_worker.falhou.connect(self._receptor_pesquisa.falhou, Qt.ConnectionType.QueuedConnection)
+        self._resposta_worker.concluido.connect(self._receptor_pesquisa.concluido, Qt.ConnectionType.QueuedConnection)
+        self._resposta_worker.falhou.connect(self._resposta_thread.quit, Qt.ConnectionType.DirectConnection)
+        self._resposta_worker.concluido.connect(self._resposta_thread.quit, Qt.ConnectionType.DirectConnection)
+        self._resposta_thread.finished.connect(self._receptor_pesquisa.finalizado, Qt.ConnectionType.QueuedConnection)
         self._resposta_thread.start()
 
     def _acrescentar_resposta(self, texto: str) -> None:
-        self.resposta_text.moveCursor(QTextCursor.MoveOperation.End)
-        self.resposta_text.insertPlainText(texto)
+        if self._consulta_resposta != self.chave_consulta():
+            return
+        self._texto_llm = getattr(self, "_texto_llm", "") + texto
+        self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html(self._texto_llm))
 
     def _resposta_falhou(self, mensagem: str) -> None:
+        if self._consulta_resposta != self.chave_consulta():
+            return
+        self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html("Comentário indisponível. Os dados das fontes permanecem acima."))
         self.status_label.setText(f"Erro a gerar resposta: {mensagem}")
 
     def _resposta_concluida(self) -> None:
-        if not self.resposta_text.toPlainText().strip():
-            self.resposta_text.setPlainText("(sem resposta)")
-        if self._fontes:
-            self.resposta_text.moveCursor(QTextCursor.MoveOperation.End)
-            self.resposta_text.insertPlainText(self._fontes)
+        if self._consulta_resposta != self.chave_consulta():
+            return
+        self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html(getattr(self, "_texto_llm", "") or "Sem comentário gerado."))
         self.status_label.setText("Resposta gerada.")
 
     def _finalizar_geracao(self) -> None:
         self._resposta_thread = None
         self._resposta_worker = None
         self.resposta_button.setEnabled(True)
+        if self._resposta_pendente == self.chave_consulta() and not self._jobs:
+            self._resposta_pendente = None
+            self.gerar_resposta()
 
 
 def _data_curta(valor) -> str:
@@ -834,7 +841,7 @@ def _normalizar(value: object) -> str:
 
 
 def _v3_corresponde(materia, texto: str) -> bool:
-    tokens = _normalizar(texto).split()
+    tokens = termos(texto)
     if not tokens:
         return True
     alvo = _normalizar(
@@ -843,17 +850,18 @@ def _v3_corresponde(materia, texto: str) -> bool:
                 getattr(materia, "ref_le", None) or "",
                 getattr(materia, "referencia_fornecedor", None) or "",
                 getattr(materia, "descricao", None) or "",
+                getattr(materia, "observacoes", None) or "",
                 getattr(materia, "fornecedor", None) or "",
                 getattr(materia, "coresp_orla_0_4", None) or "",
                 getattr(materia, "coresp_orla_1_0", None) or "",
             ]
         )
     )
-    return all(token in alvo for token in tokens)
+    return corresponde(alvo, texto)
 
 
 def _phc_corresponde(linha: dict, texto: str) -> bool:
-    tokens = _normalizar(texto).split()
+    tokens = termos(texto)
     if not tokens:
         return True
     alvo = _normalizar(
@@ -866,14 +874,15 @@ def _phc_corresponde(linha: dict, texto: str) -> bool:
                 "Familia",
                 "Fornecedor",
                 "Ref_Fornecedor",
+                "Observacoes",
             )
         )
     )
-    return all(token in alvo for token in tokens)
+    return corresponde(alvo, texto)
 
 
 def _ref_corresponde(referencia: LinhaReferencia, texto: str) -> bool:
-    tokens = _normalizar(texto).split()
+    tokens = termos(texto)
     if not tokens:
         return True
     alvo = _normalizar(
@@ -888,4 +897,4 @@ def _ref_corresponde(referencia: LinhaReferencia, texto: str) -> bool:
             ]
         )
     )
-    return all(token in alvo for token in tokens)
+    return corresponde(alvo, texto)

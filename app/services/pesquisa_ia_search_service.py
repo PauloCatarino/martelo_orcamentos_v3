@@ -11,6 +11,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.services.system_setting_service import SystemSettingService
+from app.domain.pesquisa_ia_consulta import termos
 
 EMBEDDINGS_FILENAME = "embeddings.npy"
 META_FILENAME = "meta.jsonl"
@@ -74,6 +75,8 @@ def e_referencia(token: str) -> bool:
     "Roble Kendal natural" -- nunca "carvalho".
     """
     if len(token) < 3:
+        return False
+    if re.fullmatch(r"\d+(?:mm|cm|m2)", token.lower()):
         return False
     return any(c.isdigit() for c in token) and any(c.isalpha() for c in token)
 
@@ -181,7 +184,7 @@ class PesquisaCatalogosService:
         q = modelo.encode([texto], normalize_embeddings=True).astype("float32")[0]
         score = self._matriz @ q
 
-        tokens = _normalizar(texto).split()
+        tokens = termos(texto)
         referencias = [token for token in tokens if e_referencia(token)]
         exatos: list[bool] = [False] * len(self._meta)
         if tokens:
@@ -193,14 +196,17 @@ class PesquisaCatalogosService:
             valores = []
             for posicao, meta in enumerate(self._meta):
                 alvo = _normalizar(meta.get("texto", ""))
+                palavras = set(alvo.split())
+                def presente(token):
+                    return token in palavras if e_referencia(token) else token in alvo
                 encontrado = sum(
-                    peso for token, peso in zip(tokens, pesos) if token in alvo
+                    peso for token, peso in zip(tokens, pesos) if presente(token)
                 )
                 # As referencias mandam: se foram pedidas, so' conta como certo
                 # o trecho que as tem todas. Sem referencias na pergunta, vale
                 # a exigencia antiga -- as palavras todas.
                 if referencias:
-                    exato = all(token in alvo for token in referencias)
+                    exato = all(presente(token) for token in referencias)
                 else:
                     exato = encontrado >= total
                 exatos[posicao] = exato

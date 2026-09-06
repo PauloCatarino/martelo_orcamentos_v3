@@ -100,6 +100,10 @@ STREAMLIT_SQL_PASSWORD_DEFAULT = "Lanca_ReadOnly_2026!"
 STREAMLIT_SQL_USER_DEFAULT_ANTIGO = "Lanca_Encanto_Stream"
 
 DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
+    SystemSettingSeed("woodstore_db_server", "WoodStore - Servidor SQL (só leitura)", "texto", "WoodStore", "10.101.50.1"),
+    SystemSettingSeed("woodstore_db_name", "WoodStore - Base de dados", "texto", "WoodStore", "lagerdb"),
+    SystemSettingSeed("woodstore_db_uid", "WoodStore - Utilizador de consulta", "texto", "WoodStore", ""),
+    SystemSettingSeed("woodstore_db_pwd", "WoodStore - Palavra-passe de consulta", "texto", "WoodStore", ""),
     SystemSettingSeed(
         "pasta_base_orcamentos",
         "Pasta base dos Orcamentos",

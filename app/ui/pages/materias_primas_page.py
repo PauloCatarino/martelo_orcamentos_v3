@@ -1156,6 +1156,7 @@ def materia_matches_search(materia: DefMateriaPrimaResumo, search_text: str) -> 
                 materia.familia_original_excel or "",
                 materia.unidade or "",
                 materia.fornecedor or "",
+                materia.observacoes or "",
             ]
         )
     )
