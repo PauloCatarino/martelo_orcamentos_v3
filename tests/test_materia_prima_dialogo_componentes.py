@@ -428,3 +428,23 @@ def test_a_celula_do_jogo_leva_a_dica_da_coluna() -> None:
         "Jogo de Uniões (iMos)"
     ]
     dialogo.deleteLater()
+
+
+def test_o_texto_de_apoio_manda_comecar_pelo_jogo() -> None:
+    # Enquanto o ecra so' falava em componentes, o caminho curto ficava
+    # escondido e ele preenchia as quatro colunas uma a uma.
+    dialogo = MateriaPrimaDialog()
+    aba = dialogo.abas.widget(1)
+
+    textos = [
+        w.text()
+        for w in aba.findChildren(type(dialogo.componentes_status))
+        if w.text()
+    ]
+    apoio = "\n".join(textos)
+
+    assert "CAMINHO CURTO" in apoio
+    assert "uma linha só com ele chega" in apoio
+    # Um jogo do iMos traz os parafusos de fixacao la' dentro.
+    assert "parafusos de fixação" in apoio
+    dialogo.deleteLater()

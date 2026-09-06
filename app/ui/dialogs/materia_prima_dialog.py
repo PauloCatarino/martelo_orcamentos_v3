@@ -537,13 +537,20 @@ class MateriaPrimaDialog(QDialog):
         """
         explicacao = QLabel(
             "Para as ferragens que o Martelo orça como um conjunto (dobradiça "
-            "de copo + calço, pé + base). Cada linha é um componente, com as "
-            "referências por onde ele aparece nas listas do iMos.\n"
+            "de copo + calço, pé + base). Este é o mapa entre o que o iMos "
+            "exporta desmontado e o conjunto que aqui tem um preço só.\n"
+            "O CAMINHO CURTO é preencher o «Jogo de Uniões (iMos)» numa linha "
+            "PRINCIPAL e mais nada: o jogo já é o conjunto inteiro do lado do "
+            "iMos, e uma linha só com ele chega. As outras colunas servem para "
+            "documentar o que lá está dentro.\n"
             "O PRINCIPAL é quem conta os conjuntos — pode haver mais do que um "
-            "(dois pés de alturas diferentes que valem o mesmo Ref LE). Os "
-            "SECUNDARIO só conferem, e podem repetir-se noutros conjuntos.\n"
+            "(os pés de alturas diferentes que valem o mesmo Ref LE, cada um "
+            "com o seu jogo). Os SECUNDARIO só conferem, e podem repetir-se "
+            "noutros conjuntos.\n"
             "O preço fica sempre nesta matéria-prima: isto é um mapa de "
-            "referências, não uma segunda forma de calcular o preço."
+            "referências, não uma segunda forma de calcular o preço. Repare "
+            "que um jogo do iMos costuma levar também os parafusos de fixação "
+            "— se quiser que contem, o preço aqui tem de os incluir."
         )
         explicacao.setWordWrap(True)
         explicacao.setStyleSheet(f"color: {tema.CASTANHO_MEDIO}; font-size: 11px;")
