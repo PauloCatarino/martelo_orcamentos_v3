@@ -28,6 +28,7 @@ def _componente(
     ref_phc: str = "",
     ref_fornecedor: str = "",
     quantidade: str = "1",
+    nome_jogo_imos: str = "",
 ) -> ComponenteResumo:
     return ComponenteResumo(
         id=id_,
@@ -35,6 +36,7 @@ def _componente(
         papel=papel,
         descricao=descricao,
         quantidade=Decimal(quantidade),
+        nome_jogo_imos=nome_jogo_imos or None,
         nome_imos=nome_imos,
         ref_phc=ref_phc or None,
         ref_fornecedor=ref_fornecedor or None,
@@ -53,6 +55,7 @@ COPO = _componente(
     "BL_DOB_RETA_75B1550_pontear",
     "FF00060",
     "75B1550    BLUM",
+    nome_jogo_imos="Dob_Recta_BL_75B1550_H0",
 )
 CALCO = _componente(
     2,
@@ -161,7 +164,7 @@ def test_sem_principal_nenhum_a_ficha_avisa() -> None:
 
 def test_quantidade_escrita_a_mao_e_lida_como_numero() -> None:
     dialogo = MateriaPrimaDialog(componentes=[CALCO])
-    dialogo.componentes_table.item(0, 2).setText("2,5")
+    dialogo.componentes_table.item(0, 3).setText("2,5")
 
     assert dialogo.componentes()[0].quantidade == Decimal("2.5")
     dialogo.deleteLater()
@@ -169,7 +172,7 @@ def test_quantidade_escrita_a_mao_e_lida_como_numero() -> None:
 
 def test_quantidade_em_branco_conta_como_uma() -> None:
     dialogo = MateriaPrimaDialog(componentes=[CALCO])
-    dialogo.componentes_table.item(0, 2).setText("")
+    dialogo.componentes_table.item(0, 3).setText("")
 
     assert dialogo.componentes()[0].quantidade == Decimal("1")
     dialogo.deleteLater()
@@ -178,7 +181,7 @@ def test_quantidade_em_branco_conta_como_uma() -> None:
 def test_celulas_vazias_viajam_como_none() -> None:
     dialogo = MateriaPrimaDialog()
     dialogo._acrescentar_componente()
-    dialogo.componentes_table.item(0, 3).setText("SO_O_NOME_IMOS")
+    dialogo.componentes_table.item(0, 4).setText("SO_O_NOME_IMOS")
 
     linha = dialogo.componentes()[0]
     assert linha.nome_imos == "SO_O_NOME_IMOS"
@@ -276,11 +279,11 @@ def test_cada_coluna_dos_componentes_diz_de_onde_vem() -> None:
 
 def test_a_dica_do_nome_imos_diz_que_e_o_nome_da_uniao() -> None:
     # Foi ele que reparou: o nome da uniao nunca muda, os parametros la'
-    # dentro mudam. E' por isso que e' a primeira chave.
-    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Nome iMos"]
+    # dentro mudam.
+    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Nome União (iMos)"]
 
-    assert "união" in dica
-    assert "nunca muda" in dica
+    assert "união" in dica.lower()
+    assert "nunca muda" in dica.lower()
 
 
 def test_a_dica_da_ref_fornecedor_diz_a_origem_e_que_pode_faltar() -> None:
@@ -363,4 +366,65 @@ def test_a_dica_do_campo_dos_dados_manda_deixar_vazio_num_conjunto() -> None:
 
     assert "CONJUNTO" in dica
     assert "vazio" in dica
+    dialogo.deleteLater()
+
+
+# --- O Jogo de Unioes: a 4.a chave, e a melhor -----------------------------
+
+
+def test_a_tabela_tem_a_coluna_do_jogo_de_unioes() -> None:
+    # Descoberto na base do iMos a 06-09-2026: a IDBPURCH tem
+    # CONNECTORSETNAME, que agrupa a dobradica + calco + batente + parafusos
+    # exactamente como o Martelo os orca numa linha so'.
+    assert MateriaPrimaDialog.COMPONENTES_HEADERS == [
+        "Papel",
+        "Jogo de Uniões (iMos)",
+        "Descrição",
+        "Qt/conj.",
+        "Nome União (iMos)",
+        "Ref PHC",
+        "Ref Fornecedor",
+    ]
+
+
+def test_a_dica_do_jogo_explica_onde_ele_esta_no_imos() -> None:
+    dica = MateriaPrimaDialog.COMPONENTES_DICAS["Jogo de Uniões (iMos)"]
+
+    assert "Jogos de uniões" in dica
+    assert "conjunto inteiro" in dica
+    # A regra que o servico faz cumprir tem de estar escrita no ecra.
+    assert "um jogo só pode pertencer a uma" in dica
+
+
+def test_o_jogo_e_lido_e_devolvido_pela_tabela() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO])
+
+    assert dialogo.componentes_table.item(0, 1).text() == "Dob_Recta_BL_75B1550_H0"
+    assert dialogo.componentes()[0].nome_jogo_imos == "Dob_Recta_BL_75B1550_H0"
+    dialogo.deleteLater()
+
+
+def test_uma_linha_so_com_o_jogo_ja_e_valida() -> None:
+    # Mapear pelo jogo dispensa preencher o componente: a linha do iMos traz
+    # o jogo, e e' isso que identifica o conjunto.
+    dialogo = MateriaPrimaDialog()
+    dialogo._acrescentar_componente()
+    dialogo.componentes_table.item(0, 1).setText("Pe_Axilo_H72_92_4pontear")
+
+    linha = dialogo.componentes()[0]
+
+    assert linha.nome_jogo_imos == "Pe_Axilo_H72_92_4pontear"
+    assert linha.nome_imos is None
+    assert linha.ref_phc is None
+    dialogo.deleteLater()
+
+
+def test_a_celula_do_jogo_leva_a_dica_da_coluna() -> None:
+    dialogo = MateriaPrimaDialog(componentes=[COPO])
+
+    celula = dialogo.componentes_table.item(0, 1)
+
+    assert celula.toolTip() == MateriaPrimaDialog.COMPONENTES_DICAS[
+        "Jogo de Uniões (iMos)"
+    ]
     dialogo.deleteLater()

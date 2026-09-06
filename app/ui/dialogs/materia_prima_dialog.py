@@ -106,23 +106,25 @@ class MateriaPrimaDialog(QDialog):
     escrito dentro de cada orçamento.
     """
 
-    #: As colunas do separador Componentes. As tres chaves da ponte ao iMos
+    #: As colunas do separador Componentes. As quatro chaves da ponte ao iMos
     #: aparecem pela ordem em que a importacao as tenta.
     COMPONENTES_HEADERS = [
         "Papel",
+        "Jogo de Uniões (iMos)",
         "Descrição",
         "Qt/conj.",
-        "Nome iMos",
+        "Nome União (iMos)",
         "Ref PHC",
         "Ref Fornecedor",
     ]
     COMPONENTES_LARGURAS = {
-        "Papel": 122,
-        "Descrição": 240,
-        "Qt/conj.": 70,
-        "Nome iMos": 230,
-        "Ref PHC": 90,
-        "Ref Fornecedor": 150,
+        "Papel": 118,
+        "Jogo de Uniões (iMos)": 210,
+        "Descrição": 220,
+        "Qt/conj.": 68,
+        "Nome União (iMos)": 210,
+        "Ref PHC": 88,
+        "Ref Fornecedor": 140,
     }
     #: De onde vem cada coluna. Sao seis campos parecidos, vindos de tres
     #: programas diferentes, e sem isto escrito nao ha' forma de adivinhar
@@ -131,7 +133,8 @@ class MateriaPrimaDialog(QDialog):
     COMPONENTES_DICAS = {
         "Papel": (
             "PRINCIPAL é quem conta os conjuntos — uma linha do iMos que bata "
-            "certo com um PRINCIPAL vale um conjunto inteiro.\n"
+            "certo com um PRINCIPAL vale um conjunto inteiro. É na linha "
+            "PRINCIPAL que se escreve o jogo de uniões.\n"
             "SECUNDARIO só confere que o componente lá está, e pode repetir-se "
             "noutros conjuntos (a mesma base serve vários pés)."
         ),
@@ -143,20 +146,35 @@ class MateriaPrimaDialog(QDialog):
             "Quantas unidades deste componente entram NUM conjunto.\n"
             "Pé + base: 1 e 1. Dobradiça com dois calços: o calço leva 2."
         ),
-        "Nome iMos": (
-            "O nome da UNIÃO no iMos — a chave principal.\n"
-            "É o único que nunca muda: os parâmetros lá dentro (descrição 1 e "
-            "2, fornecedor, referência do fornecedor) podem ser alterados, o "
+        "Jogo de Uniões (iMos)": (
+            "O JOGO DE UNIÕES do iMos — a melhor chave, e a primeira a "
+            "preencher.\n"
+            "No iMos está em Hardware and Machining · Jogos de uniões. Um "
+            "jogo é o conjunto inteiro — a dobradiça mais o calço, o batente "
+            "e os parafusos — que é exactamente o que o Martelo orça numa "
+            "linha só. Ex.: Dob_Recta_BL_75B1550_H0, "
+            "Pe_Axilo_H72_92_4pontear.\n"
+            "Uma matéria-prima pode reclamar vários jogos (os três pés "
+            "AXILO valem a mesma FER0058), mas um jogo só pode pertencer a "
+            "uma."
+        ),
+        "Nome União (iMos)": (
+            "O nome da UNIÃO no iMos — o componente sozinho, dentro do "
+            "jogo. É a 2.ª chave.\n"
+            "Nunca muda: os parâmetros lá dentro (descrição 1 e 2, "
+            "fornecedor, referência do fornecedor) podem ser alterados, o "
             "nome da união não.\n"
-            "Copie-o tal e qual do iMos, ex.: PE_AXILO_H72_92_63776352."
+            "Copie-o tal e qual do iMos, ex.: PE_AXILO_H72_92_63776352.\n"
+            "Atenção: o mesmo parafuso entra em vários jogos ao mesmo "
+            "tempo — por isso é que o jogo de uniões é a chave mais segura."
         ),
         "Ref PHC": (
-            "A referência do artigo no PHC — a 2.ª chave, usada quando o nome "
-            "da união não bate certo.\n"
+            "A referência do artigo no PHC — a 3.ª chave, usada quando nem o "
+            "jogo nem o nome da união batem certo.\n"
             "É o mesmo campo «Ref PHC» que já existe do lado do iMos."
         ),
         "Ref Fornecedor": (
-            "A referência do fornecedor — a 3.ª e última chave.\n"
+            "A referência do fornecedor — a 4.ª e última chave.\n"
             "Copie-a do campo «Ref do Fornecedor» do iMos, tal e qual. No PHC "
             "esse campo está por preencher em todos os artigos de ferragem, "
             "por isso não há lá nada a copiar.\n"
@@ -211,9 +229,9 @@ class MateriaPrimaDialog(QDialog):
             else "Nova matéria-prima"
         )
         self.setModal(True)
-        # Larga o suficiente para as seis colunas do separador Componentes
+        # Larga o suficiente para as sete colunas do separador Componentes
         # caberem sem se arrastar a barra: a "Ref Fornecedor" ficava de fora.
-        self.setMinimumSize(1120, 620)
+        self.setMinimumSize(1180, 620)
 
         self._criar_campos()
         self._ligar_calculo_do_preco()
@@ -616,9 +634,10 @@ class MateriaPrimaDialog(QDialog):
         self.componentes_table.setCellWidget(linha, 0, papel)
 
         if componente is None:
-            valores = ("", "1", "", "", "")
+            valores = ("", "", "1", "", "", "")
         else:
             valores = (
+                componente.nome_jogo_imos or "",
                 componente.descricao or "",
                 self._texto_decimal(componente.quantidade),
                 componente.nome_imos or "",
@@ -654,7 +673,7 @@ class MateriaPrimaDialog(QDialog):
         if not total:
             self.componentes_status.setText(
                 "Sem componentes. Uma ferragem simples não precisa de nenhum — "
-                "nesse caso basta escrever o nome do artigo do iMos no "
+                "nesse caso basta escrever o nome da união do iMos no "
                 "separador Dados."
             )
             return
@@ -696,15 +715,16 @@ class MateriaPrimaDialog(QDialog):
         """Os componentes tal como estão na tabela, prontos a gravar."""
         linhas: list[ComponenteDados] = []
         for linha in range(self.componentes_table.rowCount()):
-            quantidade = self._para_decimal(self._celula_componente(linha, 2))
+            quantidade = self._para_decimal(self._celula_componente(linha, 3))
             linhas.append(
                 ComponenteDados(
                     papel=self._papel_da_linha(linha),
-                    descricao=self._celula_componente(linha, 1) or None,
+                    nome_jogo_imos=self._celula_componente(linha, 1) or None,
+                    descricao=self._celula_componente(linha, 2) or None,
                     quantidade=quantidade if quantidade is not None else Decimal("1"),
-                    nome_imos=self._celula_componente(linha, 3) or None,
-                    ref_phc=self._celula_componente(linha, 4) or None,
-                    ref_fornecedor=self._celula_componente(linha, 5) or None,
+                    nome_imos=self._celula_componente(linha, 4) or None,
+                    ref_phc=self._celula_componente(linha, 5) or None,
+                    ref_fornecedor=self._celula_componente(linha, 6) or None,
                     ordem=linha + 1,
                 )
             )

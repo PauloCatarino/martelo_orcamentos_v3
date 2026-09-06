@@ -4,12 +4,14 @@ A regra que interessa é uma só, e é a que torna a contagem de uma obra
 possível: **uma referência só pode ser PRINCIPAL num conjunto**. Se a mesma
 dobradiça de copo fosse principal na ``FER0015`` e na ``FER0016``, ao ler uma
 obra ninguém saberia qual dos dois conjuntos contar — e o preço saía a dobrar
-ou a menos, sem aviso.
+ou a menos, sem aviso. A mesma regra vale para o **jogo de uniões** do iMos: um
+jogo só pode pertencer a uma matéria-prima.
 
 O contrário é permitido de propósito:
 
-- **vários principais no mesmo conjunto** são apelidos (os dois pés AXILO, de
-  alturas diferentes, que valem o mesmo Ref LE) e somam-se;
+- **vários principais no mesmo conjunto** são apelidos (os três pés AXILO, de
+  alturas diferentes, que valem o mesmo Ref LE) e somam-se — cada um com o seu
+  jogo de uniões;
 - **um secundário partilhado por muitos conjuntos** é o caso normal (o calço H0
   entra em várias dobradiças).
 """
@@ -120,9 +122,10 @@ class DefMateriaPrimaComponenteService:
     ) -> None:
         if not self._tem_chave(dados):
             raise ValueError(
-                "Um componente precisa de pelo menos uma referência — o nome do "
-                "artigo no iMos, a Ref PHC ou a referência do fornecedor. Sem "
-                "nenhuma delas nunca vai bater certo com a lista de uma obra."
+                "Um componente precisa de pelo menos uma referência — o jogo de "
+                "uniões do iMos, o nome da união, a Ref PHC ou a referência do "
+                "fornecedor. Sem nenhuma delas nunca vai bater certo com a "
+                "lista de uma obra."
             )
         if dados.quantidade is None or dados.quantidade <= 0:
             raise ValueError(
@@ -132,6 +135,7 @@ class DefMateriaPrimaComponenteService:
             return
 
         dono = self.repository.procurar_principal(
+            nome_jogo_imos=dados.nome_jogo_imos,
             nome_imos=dados.nome_imos,
             ref_phc=dados.ref_phc,
             ref_fornecedor=dados.ref_fornecedor,
@@ -174,6 +178,7 @@ class DefMateriaPrimaComponenteService:
         from app.domain.materia_prima_types import normalizar_ref_fornecedor
 
         for campo, valor in (
+            ("nome_jogo_imos", (dados.nome_jogo_imos or "").strip()),
             ("nome_imos", (dados.nome_imos or "").strip()),
             ("ref_phc", (dados.ref_phc or "").strip()),
             ("ref_fornecedor", normalizar_ref_fornecedor(dados.ref_fornecedor) or ""),

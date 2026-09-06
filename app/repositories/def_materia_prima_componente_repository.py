@@ -27,6 +27,7 @@ class ComponenteResumo:
     papel: str
     descricao: str | None
     quantidade: Decimal
+    nome_jogo_imos: str | None
     nome_imos: str | None
     ref_phc: str | None
     ref_fornecedor: str | None
@@ -49,6 +50,7 @@ class ComponenteDados:
     papel: str = PAPEL_SECUNDARIO
     descricao: str | None = None
     quantidade: Decimal = _UM
+    nome_jogo_imos: str | None = None
     nome_imos: str | None = None
     ref_phc: str | None = None
     ref_fornecedor: str | None = None
@@ -72,6 +74,7 @@ def _resumo(linha: DefMateriaPrimaComponente) -> ComponenteResumo:
         papel=linha.papel,
         descricao=linha.descricao,
         quantidade=linha.quantidade if linha.quantidade is not None else _UM,
+        nome_jogo_imos=linha.nome_jogo_imos,
         nome_imos=linha.nome_imos,
         ref_phc=linha.ref_phc,
         ref_fornecedor=linha.ref_fornecedor,
@@ -111,6 +114,7 @@ class DefMateriaPrimaComponenteRepository:
     def procurar_principal(
         self,
         *,
+        nome_jogo_imos: str | None = None,
         nome_imos: str | None = None,
         ref_phc: str | None = None,
         ref_fornecedor: str | None = None,
@@ -120,9 +124,14 @@ class DefMateriaPrimaComponenteRepository:
 
         É esta pergunta que impede a mesma referência de ser principal em dois
         conjuntos — aí a contagem de uma obra ficava ambígua e ninguém saberia
-        qual dos conjuntos tinha razão.
+        qual dos conjuntos tinha razão. Vale igual para o jogo de uniões: um
+        jogo do iMos só pode pertencer a uma matéria-prima.
         """
         condicoes = []
+        if _texto(nome_jogo_imos):
+            condicoes.append(
+                DefMateriaPrimaComponente.nome_jogo_imos == _texto(nome_jogo_imos)
+            )
         if _texto(nome_imos):
             condicoes.append(DefMateriaPrimaComponente.nome_imos == _texto(nome_imos))
         if _texto(ref_phc):
@@ -203,6 +212,7 @@ class DefMateriaPrimaComponenteRepository:
         linha.papel = dados.papel
         linha.descricao = _texto(dados.descricao)
         linha.quantidade = dados.quantidade if dados.quantidade is not None else _UM
+        linha.nome_jogo_imos = _texto(dados.nome_jogo_imos)
         linha.nome_imos = _texto(dados.nome_imos)
         linha.ref_phc = _texto(dados.ref_phc)
         linha.ref_fornecedor = _texto(dados.ref_fornecedor)

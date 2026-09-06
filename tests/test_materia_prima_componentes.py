@@ -43,6 +43,17 @@ def componentes(session) -> DefMateriaPrimaComponenteService:
     return DefMateriaPrimaComponenteService(session)
 
 
+@pytest.fixture()
+def fer_conjunto(catalogo):
+    """Um conjunto qualquer, para os testes do jogo de uniões."""
+    return _conjunto(catalogo, "DOBRADICA RECTA BLUMOTION + CALCO H0")
+
+
+@pytest.fixture()
+def outra_fer(catalogo):
+    return _conjunto(catalogo, "PE NIVELADOR AXILO + BASE")
+
+
 def _conjunto(catalogo: DefMateriaPrimaService, descricao: str):
     return catalogo.criar_materia_prima(
         CriarDefMateriaPrimaData(
@@ -362,3 +373,146 @@ def test_normalizar_ref_fornecedor_tira_a_marca_e_os_espacos() -> None:
     assert normalizar_ref_fornecedor("BLUM") is None
     assert normalizar_ref_fornecedor("   ") is None
     assert normalizar_ref_fornecedor(None) is None
+
+
+# --- O Jogo de Unioes do iMos (4.a chave) -----------------------------------
+#
+# Descoberto na base do iMos a 06-09-2026: a IDBPURCH tem CONNECTORSETNAME e
+# ja' agrupa a dobradica + calco + batente + parafusos num jogo -- exactamente
+# o que o Martelo orca numa linha so'. E' a chave mais segura, porque o mesmo
+# parafuso entra em varios jogos e por si so' nao identifica conjunto nenhum.
+
+
+def test_o_jogo_de_unioes_e_gravado_e_lido(session, fer_conjunto) -> None:
+    servico = DefMateriaPrimaComponenteService(session)
+
+    servico.guardar_lista(
+        fer_conjunto.id,
+        [
+            ComponenteDados(
+                papel=PAPEL_PRINCIPAL,
+                nome_jogo_imos="Dob_Recta_BL_75B1550_H0",
+                descricao="Dobradiça recta BLUMOTION",
+                nome_imos="BL_DOB_RETA_75B1550_pontear",
+                ref_phc="FF00060",
+            )
+        ],
+    )
+
+    guardado = servico.listar(fer_conjunto.id)[0]
+    assert guardado.nome_jogo_imos == "Dob_Recta_BL_75B1550_H0"
+
+
+def test_uma_linha_so_com_o_jogo_chega(session, fer_conjunto) -> None:
+    # Mapear pelo jogo dispensa repetir os componentes um a um.
+    servico = DefMateriaPrimaComponenteService(session)
+
+    servico.guardar_lista(
+        fer_conjunto.id,
+        [ComponenteDados(papel=PAPEL_PRINCIPAL, nome_jogo_imos="Pe_Axilo_H72_92_4pontear")],
+    )
+
+    assert servico.listar(fer_conjunto.id)[0].nome_jogo_imos == "Pe_Axilo_H72_92_4pontear"
+
+
+def test_o_mesmo_jogo_em_duas_materias_primas_e_recusado(
+    session, fer_conjunto, outra_fer
+) -> None:
+    # Se o mesmo jogo do iMos valesse duas Ref LE, ao ler uma obra ninguem
+    # saberia qual delas contar.
+    servico = DefMateriaPrimaComponenteService(session)
+    jogo = ComponenteDados(
+        papel=PAPEL_PRINCIPAL, nome_jogo_imos="Dob_Recta_BL_75B1550_H0"
+    )
+    servico.guardar_lista(fer_conjunto.id, [jogo])
+
+    with pytest.raises(ReferenciaJaUsadaError) as erro:
+        servico.guardar_lista(outra_fer.id, [jogo])
+
+    assert fer_conjunto.ref_le in str(erro.value)
+
+
+def test_varios_jogos_na_mesma_materia_prima_sao_apelidos(
+    session, fer_conjunto
+) -> None:
+    # Os tres pes AXILO sao tres jogos diferentes que valem a mesma FER0058.
+    servico = DefMateriaPrimaComponenteService(session)
+
+    servico.guardar_lista(
+        fer_conjunto.id,
+        [
+            ComponenteDados(
+                papel=PAPEL_PRINCIPAL, nome_jogo_imos="Pe_Axilo_H55_70_4pontear"
+            ),
+            ComponenteDados(
+                papel=PAPEL_PRINCIPAL, nome_jogo_imos="Pe_Axilo_H72_92_4pontear"
+            ),
+        ],
+    )
+
+    assert servico.contar_principais(fer_conjunto.id) == 2
+
+
+def test_o_mesmo_jogo_duas_vezes_na_mesma_ficha_e_recusado(
+    session, fer_conjunto
+) -> None:
+    servico = DefMateriaPrimaComponenteService(session)
+    jogo = ComponenteDados(
+        papel=PAPEL_PRINCIPAL, nome_jogo_imos="Pe_Axilo_H72_92_4pontear"
+    )
+
+    with pytest.raises(ReferenciaJaUsadaError) as erro:
+        servico.guardar_lista(fer_conjunto.id, [jogo, jogo])
+
+    assert "Pe_Axilo_H72_92_4pontear" in str(erro.value)
+
+
+def test_um_secundario_pode_repetir_o_jogo_noutro_conjunto(
+    session, fer_conjunto, outra_fer
+) -> None:
+    # So' o PRINCIPAL reclama a chave; o SECUNDARIO e' informativo.
+    servico = DefMateriaPrimaComponenteService(session)
+    servico.guardar_lista(
+        fer_conjunto.id,
+        [ComponenteDados(papel=PAPEL_PRINCIPAL, nome_jogo_imos="Engate_System_14mm")],
+    )
+
+    servico.guardar_lista(
+        outra_fer.id,
+        [
+            ComponenteDados(
+                papel=PAPEL_SECUNDARIO,
+                nome_jogo_imos="Engate_System_14mm",
+                nome_imos="ENGATE_14",
+            )
+        ],
+    )
+
+    assert servico.listar(outra_fer.id)[0].nome_jogo_imos == "Engate_System_14mm"
+
+
+def test_a_mensagem_de_falta_de_chave_fala_no_jogo(session, fer_conjunto) -> None:
+    servico = DefMateriaPrimaComponenteService(session)
+
+    with pytest.raises(ValueError) as erro:
+        servico.guardar_lista(
+            fer_conjunto.id, [ComponenteDados(descricao="uma linha sem nada")]
+        )
+
+    assert "jogo de uniões" in str(erro.value)
+
+
+def test_a_migracao_do_jogo_chama_os_grants() -> None:
+    from pathlib import Path
+
+    migracao = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20260906_109_jogo_de_unioes_do_imos.py"
+    )
+    fonte = migracao.read_text(encoding="utf-8")
+
+    assert "CALL martelo_aplicar_grants()" in fonte
+    assert 'down_revision: str | Sequence[str] | None = "20260904_108"' in fonte
+    assert "ix_def_mp_componentes_nome_jogo_imos" in fonte

@@ -51,6 +51,7 @@ class DefMateriaPrimaComponente(Base):
         # As três chaves da ponte ao iMos. Indexadas porque a importação de uma
         # obra procura por elas linha a linha.
         Index("ix_def_mp_componentes_nome_imos", "nome_imos"),
+        Index("ix_def_mp_componentes_nome_jogo_imos", "nome_jogo_imos"),
         Index("ix_def_mp_componentes_ref_phc", "ref_phc"),
         Index("ix_def_mp_componentes_ref_fornecedor", "ref_fornecedor_norm"),
         Index("ix_def_mp_componentes_ativo", "ativo"),
@@ -76,9 +77,15 @@ class DefMateriaPrimaComponente(Base):
         server_default="1",
     )
 
-    # --- As três chaves, por ordem de confiança ---------------------------
-    #: 1.ª: o nome do artigo no iMos (BL_DOB_RETA_75B1550_pontear). É a
-    #: identidade do artigo do lado do iMos e nunca vem vazia.
+    # --- As quatro chaves, por ordem de confiança -------------------------
+    #: 0.ª e a melhor: o JOGO DE UNIÕES do iMos (Dob_Recta_BL_75B1550_H0), o
+    #: `CONNECTORSETNAME` da `IDBPURCH`. É o conjunto inteiro — dobradiça,
+    #: calço, batente e parafusos — que é exactamente o que o Martelo orça
+    #: como uma linha só. As outras três identificam UM componente, e um
+    #: parafuso entra em vários jogos ao mesmo tempo.
+    nome_jogo_imos: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    #: 1.ª: o nome da UNIÃO no iMos (BL_DOB_RETA_75B1550_pontear). É a
+    #: identidade do componente do lado do iMos e nunca vem vazia.
     nome_imos: Mapped[str | None] = mapped_column(String(150), nullable=True)
     #: 2.ª: a Ref PHC (FF00060). O iMos já usa este nome no artigo-mestre.
     ref_phc: Mapped[str | None] = mapped_column(String(100), nullable=True)

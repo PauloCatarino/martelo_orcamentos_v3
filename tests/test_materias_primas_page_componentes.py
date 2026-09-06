@@ -208,9 +208,10 @@ def test_abrir_a_ficha_escrever_e_gravar_leva_os_componentes_a_base(
 
     ficha._acrescentar_componente()
     ficha.componentes_table.cellWidget(0, 0).setCurrentText(PAPEL_PRINCIPAL)
-    ficha.componentes_table.item(0, 1).setText("PE NIVELADOR AXILO 80MM")
-    ficha.componentes_table.item(0, 3).setText("PE_AXILO_H72_92_63776352")
-    ficha.componentes_table.item(0, 4).setText("FF01295")
+    ficha.componentes_table.item(0, 1).setText("Pe_Axilo_H72_92_4pontear")
+    ficha.componentes_table.item(0, 2).setText("PE NIVELADOR AXILO 80MM")
+    ficha.componentes_table.item(0, 4).setText("PE_AXILO_H72_92_63776352")
+    ficha.componentes_table.item(0, 5).setText("FF01295")
 
     ficha._validar_e_aceitar()
 
@@ -262,7 +263,7 @@ def test_um_erro_a_gravar_aparece_DENTRO_da_ficha(
 
     # Uma linha sem referência nenhuma: o serviço recusa.
     ficha._acrescentar_componente()
-    ficha.componentes_table.item(0, 1).setText("uma peça sem referência")
+    ficha.componentes_table.item(0, 2).setText("uma peça sem referência")
 
     ficha._validar_e_aceitar()
 
