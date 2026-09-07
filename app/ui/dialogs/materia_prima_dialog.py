@@ -41,7 +41,12 @@ from app.domain.materia_prima_types import (
     TIPOS_PRECO_VALIDOS,
     UNIDADES_VALIDAS,
 )
-from app.domain.numeros import formatar_percentagem
+from app.domain.numeros import (
+    formatar_percentagem,
+    parcelas_do_preco,
+    somar_parcelas,
+    tem_parcelas,
+)
 from app.repositories.def_materia_prima_componente_repository import (
     ComponenteDados,
     ComponenteResumo,
@@ -73,6 +78,8 @@ class MateriaPrimaDialogData:
     unidade: str | None
     tipo_preco: str
     preco_tabela: Decimal | None
+    #: O preço como foi escrito, quando é uma soma. Só memória.
+    preco_tabela_parcelas: str | None
     desconto: Decimal | None
     margem: Decimal | None
     preco_liquido: Decimal | None
@@ -332,7 +339,24 @@ class MateriaPrimaDialog(QDialog):
         self.tipo_preco_input.currentIndexChanged.connect(self._atualizar_estado_preco)
 
         self.preco_tabela_input = QLineEdit()
-        self.preco_tabela_input.setToolTip("Preço de tabela do fornecedor, antes do desconto.")
+        self.preco_tabela_input.setPlaceholderText("0,25   ou   0,25 + 0,15")
+        self.preco_tabela_input.setToolTip(
+            "Preço de tabela do fornecedor, antes do desconto.\n"
+            "Quando a ferragem é um conjunto de artigos, pode escrever as "
+            "parcelas somadas: «0,25 + 0,15». O total é o que conta para as "
+            "contas; as parcelas ficam guardadas para se perceber de onde "
+            "vem o preço."
+        )
+        # A soma ao lado do campo: sem ela, quem escreve uma soma nao
+        # ve' o total ate' fechar a ficha.
+        self.preco_tabela_soma_label = QLabel("")
+        self.preco_tabela_soma_label.setStyleSheet(
+            f"color: {tema.CASTANHO_MEDIO};"
+        )
+        self.preco_tabela_soma_label.setToolTip(
+            "O total das parcelas — é este o preço de tabela que fica "
+            "gravado."
+        )
         self.desconto_input = QLineEdit()
         self.desconto_input.setToolTip("Desconto do fornecedor, em percentagem (20 = 20%).")
         self.margem_input = QLineEdit()
@@ -477,7 +501,11 @@ class MateriaPrimaDialog(QDialog):
         esquerda.addRow("Tipo", self.tipo_input)
         esquerda.addRow("Unidade", self.unidade_input)
         esquerda.addRow("Tipo de preço", self.tipo_preco_input)
-        esquerda.addRow("Preço tabela", self.preco_tabela_input)
+        preco_com_soma = QHBoxLayout()
+        preco_com_soma.setContentsMargins(0, 0, 0, 0)
+        preco_com_soma.addWidget(self.preco_tabela_input, stretch=1)
+        preco_com_soma.addWidget(self.preco_tabela_soma_label)
+        esquerda.addRow("Preço tabela", preco_com_soma)
         esquerda.addRow("Desconto %", self.desconto_input)
         esquerda.addRow("Margem %", self.margem_input)
         esquerda.addRow("Preço líquido", self.preco_liquido_label)
@@ -863,7 +891,12 @@ class MateriaPrimaDialog(QDialog):
         self.tipo_input.setText(materia.tipo_original_excel or "")
         self._selecionar(self.unidade_input, materia.unidade)
         self._selecionar(self.tipo_preco_input, materia.tipo_preco)
-        self.preco_tabela_input.setText(self._texto_decimal(materia.preco_tabela))
+        # Se o preço foi escrito em parcelas, é assim que volta a
+        # aparecer — é esse o objectivo de o guardar.
+        self.preco_tabela_input.setText(
+            materia.preco_tabela_parcelas
+            or self._texto_decimal(materia.preco_tabela)
+        )
         self.desconto_input.setText(self._texto_decimal(materia.desconto))
         self.margem_input.setText(self._texto_decimal(materia.margem))
         self.desperdicio_input.setText(
@@ -920,13 +953,34 @@ class MateriaPrimaDialog(QDialog):
         self.data_preco_input.setEnabled(not livre)
         self._recalcular_preco_liquido()
 
+    def _preco_de_tabela(self) -> Decimal | None:
+        """O preço escrito no campo, somando as parcelas se as houver."""
+        try:
+            return somar_parcelas(self.preco_tabela_input.text())
+        except ValueError:
+            return None
+
+    def _mostrar_soma_das_parcelas(self) -> None:
+        """A soma ao lado do campo, só quando o preço vem em parcelas."""
+        try:
+            partes = parcelas_do_preco(self.preco_tabela_input.text())
+        except ValueError:
+            self.preco_tabela_soma_label.setText("?")
+            return
+        if len(partes) < 2:
+            self.preco_tabela_soma_label.clear()
+            return
+        total = sum(partes, Decimal(0))
+        self.preco_tabela_soma_label.setText(f"= {format_currency(total)}")
+
     def _recalcular_preco_liquido(self) -> None:
         """Preço líquido = tabela × (1 − desconto) × (1 + margem)."""
+        self._mostrar_soma_das_parcelas()
         if self.tipo_preco_input.currentData() == TIPO_PRECO_LIVRE:
             self.preco_liquido_label.setText("preço escrito no orçamento")
             return
 
-        preco = self._para_decimal(self.preco_tabela_input.text())
+        preco = self._preco_de_tabela()
         if preco is None:
             self.preco_liquido_label.setText(SEM_VALOR)
             return
@@ -953,7 +1007,8 @@ class MateriaPrimaDialog(QDialog):
             tipo=self._texto_ou_none(self.tipo_input.text()),
             unidade=self.unidade_input.currentData(),
             tipo_preco=self.tipo_preco_input.currentData() or TIPO_PRECO_TABELA,
-            preco_tabela=None if livre else self._para_decimal(self.preco_tabela_input.text()),
+            preco_tabela=None if livre else self._preco_de_tabela(),
+            preco_tabela_parcelas=None if livre else self._parcelas_escritas(),
             desconto=None if livre else self._para_decimal(self.desconto_input.text()),
             margem=None if livre else self._para_decimal(self.margem_input.text()),
             preco_liquido=None if livre else self._preco_liquido_calculado(),
@@ -1035,8 +1090,16 @@ class MateriaPrimaDialog(QDialog):
             self.set_error("Indique a Ref LE.")
             return
 
+        try:
+            parcelas_do_preco(self.preco_tabela_input.text())
+        except ValueError:
+            self.set_error(
+                "O preço de tabela não é um número válido. Pode escrever "
+                "um número («0,25») ou uma soma de parcelas («0,25 + 0,15»)."
+            )
+            return
+
         for campo, nome in (
-            (self.preco_tabela_input, "preço de tabela"),
             (self.desconto_input, "desconto"),
             (self.margem_input, "margem"),
             (self.desperdicio_input, "desperdício"),
@@ -1142,7 +1205,7 @@ class MateriaPrimaDialog(QDialog):
 
     def _preco_liquido_calculado(self) -> Decimal | None:
         """O mesmo cálculo que está no ecrã, para gravar."""
-        preco = self._para_decimal(self.preco_tabela_input.text())
+        preco = self._preco_de_tabela()
         if preco is None:
             return None
 
@@ -1205,6 +1268,20 @@ class MateriaPrimaDialog(QDialog):
 
         texto = f"{valor.normalize():f}" if valor == valor.to_integral_value() else f"{valor}"
         return texto.replace(".", ",")
+
+    def _parcelas_escritas(self) -> str | None:
+        """O texto do preço, mas só quando é mesmo uma soma.
+
+        Guardar «0,25» duas vezes não serve de nada; o que interessa
+        guardar é «0,25 + 0,15», que é o que não se adivinha do total.
+        """
+        escrito = self.preco_tabela_input.text().strip()
+        try:
+            if not tem_parcelas(escrito):
+                return None
+        except ValueError:
+            return None
+        return escrito
 
     def _para_decimal(self, texto: str) -> Decimal | None:
         """Texto do utilizador para Decimal, aceitando vírgula decimal."""

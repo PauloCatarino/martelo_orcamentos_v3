@@ -51,6 +51,9 @@ class CriarDefMateriaPrimaData:
     coresp_orla_1_0: str | None = None
     unidade: str | None = None
     preco_tabela: Decimal | None = None
+    #: O preço de tabela como foi ESCRITO, quando é uma soma de parcelas
+    #: («0,25 + 0,15»). Só memória: quem manda nas contas é o preco_tabela.
+    preco_tabela_parcelas: str | None = None
     desconto: Decimal | None = None
     margem: Decimal | None = None
     desperdicio_percentagem: Decimal | None = None
@@ -89,6 +92,9 @@ class EditarDefMateriaPrimaData:
     coresp_orla_1_0: str | None = None
     unidade: str | None = None
     preco_tabela: Decimal | None = None
+    #: O preço de tabela como foi ESCRITO, quando é uma soma de parcelas
+    #: («0,25 + 0,15»). Só memória: quem manda nas contas é o preco_tabela.
+    preco_tabela_parcelas: str | None = None
     desconto: Decimal | None = None
     margem: Decimal | None = None
     desperdicio_percentagem: Decimal | None = None
@@ -176,6 +182,7 @@ class DefMateriaPrimaService:
             coresp_orla_1_0=data.coresp_orla_1_0,
             unidade=data.unidade,
             preco_tabela=data.preco_tabela,
+            preco_tabela_parcelas=data.preco_tabela_parcelas,
             desconto=data.desconto,
             margem=data.margem,
             desperdicio_percentagem=data.desperdicio_percentagem,
@@ -232,6 +239,7 @@ class DefMateriaPrimaService:
             coresp_orla_1_0=data.coresp_orla_1_0,
             unidade=data.unidade,
             preco_tabela=data.preco_tabela,
+            preco_tabela_parcelas=data.preco_tabela_parcelas,
             desconto=data.desconto,
             margem=data.margem,
             desperdicio_percentagem=data.desperdicio_percentagem,

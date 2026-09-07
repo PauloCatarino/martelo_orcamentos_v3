@@ -760,6 +760,7 @@ class MateriasPrimasPage(QWidget):
             "coresp_orla_1_0": dados.coresp_orla_1_0,
             "unidade": dados.unidade,
             "preco_tabela": dados.preco_tabela,
+            "preco_tabela_parcelas": dados.preco_tabela_parcelas,
             "desconto": dados.desconto,
             "margem": dados.margem,
             "desperdicio_percentagem": dados.desperdicio_percentagem,

@@ -76,6 +76,7 @@ def _dados_da_ficha(materia):
         unidade="UND",
         tipo_preco=materia.tipo_preco,
         preco_tabela=materia.preco_tabela,
+        preco_tabela_parcelas=None,
         desconto=None,
         margem=None,
         preco_liquido=materia.preco_liquido,

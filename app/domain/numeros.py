@@ -107,3 +107,50 @@ def normalize_percentagem_humana(value: Decimal | None) -> Decimal | None:
         return value * Decimal(100)
 
     return value
+
+
+#: Uma ferragem é muitas vezes um conjunto de peças com preços diferentes — o
+#: suporte TRIS são dois artigos, o pé AXILO são três. O total é o que conta
+#: para as contas, mas escrever as parcelas deixa perceber de onde vem.
+SEPARADOR_PARCELAS = "+"
+
+
+def parcelas_do_preco(texto: str | None) -> list[Decimal]:
+    """As parcelas escritas num preço, pela ordem em que aparecem.
+
+    ``"0,25 + 0,15"`` dá ``[0.25, 0.15]``; um preço simples dá uma parcela só.
+    Levanta ``ValueError`` quando alguma parcela não é um número — a mesma
+    regra do ``parse_decimal_humano``, para o erro no ecrã ser o mesmo.
+    """
+    if texto is None:
+        return []
+
+    limpo = texto.strip()
+    if not limpo:
+        return []
+
+    partes = [p for p in limpo.split(SEPARADOR_PARCELAS)]
+    if any(not p.strip() for p in partes):
+        # "0,25+" ou "+0,25": falta uma parcela, não é um preço escrito.
+        raise ValueError("parcela vazia")
+
+    numeros: list[Decimal] = []
+    for parte in partes:
+        numero = parse_decimal_humano(parte)
+        if numero is None:
+            raise ValueError("parcela vazia")
+        numeros.append(numero)
+    return numeros
+
+
+def somar_parcelas(texto: str | None) -> Decimal | None:
+    """O total de um preço escrito em parcelas, ou ``None`` se estiver vazio."""
+    numeros = parcelas_do_preco(texto)
+    if not numeros:
+        return None
+    return sum(numeros, Decimal(0))
+
+
+def tem_parcelas(texto: str | None) -> bool:
+    """Se o preço foi escrito como uma soma e não como um número só."""
+    return len(parcelas_do_preco(texto)) > 1

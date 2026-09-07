@@ -43,6 +43,9 @@ class DefMateriaPrimaResumo:
     observacoes: str | None
     coresp_orla_0_4: str | None = None
     coresp_orla_1_0: str | None = None
+    #: O preço de tabela como foi ESCRITO, quando é uma soma («0,25 +
+    #: 0,15»). Só para se ler: o total está no preco_tabela.
+    preco_tabela_parcelas: str | None = None
     desperdicio_percentagem: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -170,6 +173,7 @@ class DefMateriaPrimaRepository:
         coresp_orla_1_0: str | None = None,
         unidade: str | None = None,
         preco_tabela: Decimal | None = None,
+        preco_tabela_parcelas: str | None = None,
         desconto: Decimal | None = None,
         margem: Decimal | None = None,
         desperdicio_percentagem: Decimal | None = None,
@@ -219,6 +223,7 @@ class DefMateriaPrimaRepository:
             coresp_orla_1_0=coresp_orla_1_0,
             unidade=unidade,
             preco_tabela=preco_tabela,
+            preco_tabela_parcelas=preco_tabela_parcelas,
             desconto=desconto,
             margem=margem,
             desperdicio_percentagem=desperdicio_percentagem,
@@ -251,6 +256,7 @@ class DefMateriaPrimaRepository:
         coresp_orla_1_0: str | None = None,
         unidade: str | None = None,
         preco_tabela: Decimal | None = None,
+        preco_tabela_parcelas: str | None = None,
         desconto: Decimal | None = None,
         margem: Decimal | None = None,
         desperdicio_percentagem: Decimal | None = None,
@@ -290,6 +296,7 @@ class DefMateriaPrimaRepository:
         materia.coresp_orla_1_0 = coresp_orla_1_0
         materia.unidade = unidade
         materia.preco_tabela = preco_tabela
+        materia.preco_tabela_parcelas = preco_tabela_parcelas
         materia.desconto = desconto
         materia.margem = margem
         materia.desperdicio_percentagem = desperdicio_percentagem
@@ -469,6 +476,7 @@ class DefMateriaPrimaRepository:
             desperdicio_percentagem=materia.desperdicio_percentagem,
             unidade=materia.unidade,
             preco_tabela=materia.preco_tabela,
+            preco_tabela_parcelas=materia.preco_tabela_parcelas,
             desconto=materia.desconto,
             margem=materia.margem,
             preco_liquido=materia.preco_liquido,

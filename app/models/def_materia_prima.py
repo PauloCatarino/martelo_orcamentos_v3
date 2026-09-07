@@ -58,6 +58,14 @@ class DefMateriaPrima(Base):
     coresp_orla_1_0: Mapped[str | None] = mapped_column(String(100), nullable=True)
     unidade: Mapped[str | None] = mapped_column(String(30), nullable=True)
     preco_tabela: Mapped[Decimal | None] = mapped_column(Numeric(14, 4), nullable=True)
+    #: O preço de tabela como foi ESCRITO, quando é uma soma de
+    #: parcelas («0,25 + 0,15»). Uma ferragem é muitas vezes um
+    #: conjunto de artigos, e daqui a uns meses ninguém se lembra de
+    #: onde veio o total. Fica vazia quando o preço é um número só.
+    #: **Não entra em conta nenhuma** — quem manda é o preco_tabela.
+    preco_tabela_parcelas: Mapped[str | None] = mapped_column(
+        String(200), nullable=True
+    )
     desconto: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     margem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     desperdicio_percentagem: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
