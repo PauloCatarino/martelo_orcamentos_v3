@@ -516,3 +516,100 @@ def test_a_migracao_do_jogo_chama_os_grants() -> None:
     assert "CALL martelo_aplicar_grants()" in fonte
     assert 'down_revision: str | Sequence[str] | None = "20260904_108"' in fonte
     assert "ix_def_mp_componentes_nome_jogo_imos" in fonte
+
+
+# --- O mesmo componente em varios jogos (FER0086, 07-09-2026) --------------
+#
+# O suporte de prateleira Rafix tem QUATRO jogos de unioes que so' diferem na
+# furacao (1F00, 3F32, 3F64, Mlf) e partilham o mesmo copo, FF00381. Ele
+# escreveu as quatro linhas e o Martelo recusou, porque a regra ainda olhava
+# para a Ref PHC de todas elas.
+
+
+def _rafix(furacao: str) -> ComponenteDados:
+    return ComponenteDados(
+        papel=PAPEL_PRINCIPAL,
+        nome_jogo_imos=f"Ligador_Rafix_RTA20_19mm_{furacao}",
+        descricao="Suporte Engate Copo 20mm",
+        # O copo e' o MESMO nos quatro jogos.
+        nome_imos="Cas_Rafix_20_R_26315705_19mm",
+        ref_phc="FF00381",
+        ref_fornecedor="8175121",
+    )
+
+
+def test_quatro_jogos_com_o_mesmo_componente_gravam(session, fer_conjunto) -> None:
+    servico = DefMateriaPrimaComponenteService(session)
+
+    servico.guardar_lista(
+        fer_conjunto.id,
+        [_rafix("1F00"), _rafix("3F32"), _rafix("3F64"), _rafix("Mlf")],
+    )
+
+    guardados = servico.listar(fer_conjunto.id)
+    assert [c.nome_jogo_imos for c in guardados] == [
+        "Ligador_Rafix_RTA20_19mm_1F00",
+        "Ligador_Rafix_RTA20_19mm_3F32",
+        "Ligador_Rafix_RTA20_19mm_3F64",
+        "Ligador_Rafix_RTA20_19mm_Mlf",
+    ]
+    assert servico.contar_principais(fer_conjunto.id) == 4
+
+
+def test_o_mesmo_jogo_repetido_continua_a_ser_recusado(
+    session, fer_conjunto
+) -> None:
+    # A regra que interessa nao se perdeu: o que nao pode e' o JOGO repetir-se.
+    servico = DefMateriaPrimaComponenteService(session)
+
+    with pytest.raises(ReferenciaJaUsadaError) as erro:
+        servico.guardar_lista(fer_conjunto.id, [_rafix("1F00"), _rafix("1F00")])
+
+    assert "Ligador_Rafix_RTA20_19mm_1F00" in str(erro.value)
+    assert "só pode aparecer uma vez" in str(erro.value)
+
+
+def test_sem_jogo_a_ref_phc_continua_a_identificar(session, fer_conjunto) -> None:
+    # Quem nao usa jogos fica exactamente como estava.
+    servico = DefMateriaPrimaComponenteService(session)
+    sem_jogo = ComponenteDados(papel=PAPEL_PRINCIPAL, ref_phc="FF00381")
+
+    with pytest.raises(ReferenciaJaUsadaError):
+        servico.guardar_lista(fer_conjunto.id, [sem_jogo, sem_jogo])
+
+
+def test_a_ref_phc_de_uma_linha_com_jogo_nao_choca_com_outro_conjunto(
+    session, fer_conjunto, outra_fer
+) -> None:
+    # O copo do Rafix e' documentacao na linha do jogo: pode aparecer noutra
+    # materia-prima sem ambiguidade nenhuma.
+    servico = DefMateriaPrimaComponenteService(session)
+    servico.guardar_lista(fer_conjunto.id, [_rafix("1F00")])
+
+    servico.guardar_lista(
+        outra_fer.id,
+        [
+            ComponenteDados(
+                papel=PAPEL_PRINCIPAL,
+                nome_jogo_imos="Ligador_Rafix_RTA20_19mm_3F32",
+                nome_imos="Cas_Rafix_20_R_26315705_19mm",
+                ref_phc="FF00381",
+            )
+        ],
+    )
+
+    assert servico.contar_principais(outra_fer.id) == 1
+
+
+def test_a_mensagem_ensina_a_usar_o_jogo_quando_ha_choque(
+    session, fer_conjunto
+) -> None:
+    servico = DefMateriaPrimaComponenteService(session)
+    linha = ComponenteDados(
+        papel=PAPEL_PRINCIPAL, nome_imos="Cas_Rafix_20_R_26315705_19mm"
+    )
+
+    with pytest.raises(ReferenciaJaUsadaError) as erro:
+        servico.guardar_lista(fer_conjunto.id, [linha, linha])
+
+    assert "Jogo de Uniões (iMos)" in str(erro.value)

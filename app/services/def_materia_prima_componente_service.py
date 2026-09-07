@@ -12,6 +12,10 @@ O contrário é permitido de propósito:
 - **vários principais no mesmo conjunto** são apelidos (os três pés AXILO, de
   alturas diferentes, que valem o mesmo Ref LE) e somam-se — cada um com o seu
   jogo de uniões;
+- **o mesmo componente em vários jogos** é o caso normal e não choca: o copo
+  do Rafix entra nas quatro variantes de furação, que só se distinguem pelo
+  jogo. Por isso uma linha com jogo identifica-se SÓ pelo jogo, e as outras
+  colunas passam a documentação;
 - **um secundário partilhado por muitos conjuntos** é o caso normal (o calço H0
   entra em várias dobradiças).
 """
@@ -134,11 +138,15 @@ class DefMateriaPrimaComponenteService:
         if dados.papel != PAPEL_PRINCIPAL:
             return
 
+        # Procurar exactamente pela chave desta linha, e nao por todas as
+        # colunas: com o jogo preenchido, a Ref PHC do componente e' so'
+        # documentacao e nao pode fazer chocar duas variantes do mesmo jogo.
+        chaves = dict(self._chaves(dados))
         dono = self.repository.procurar_principal(
-            nome_jogo_imos=dados.nome_jogo_imos,
-            nome_imos=dados.nome_imos,
-            ref_phc=dados.ref_phc,
-            ref_fornecedor=dados.ref_fornecedor,
+            nome_jogo_imos=chaves.get("nome_jogo_imos"),
+            nome_imos=chaves.get("nome_imos"),
+            ref_phc=chaves.get("ref_phc"),
+            ref_fornecedor=dados.ref_fornecedor if "ref_fornecedor" in chaves else None,
             excluir_id=componente_id,
         )
         if dono is None:
@@ -151,10 +159,14 @@ class DefMateriaPrimaComponenteService:
             return
 
         onde = self.repository.ref_le_do_conjunto(dono.materia_prima_id) or "outro conjunto"
+        oque = (
+            "Este jogo de uniões"
+            if (dados.nome_jogo_imos or "").strip()
+            else "Esta referência"
+        )
         raise ReferenciaJaUsadaError(
-            f"Esta referência já é o componente principal de «{onde}». "
-            "A mesma referência não pode identificar dois conjuntos — ao ler "
-            "uma obra não se saberia qual deles contar."
+            f"{oque} já identifica «{onde}». O mesmo não pode identificar dois "
+            "conjuntos — ao ler uma obra não se saberia qual deles contar."
         )
 
     def _validar_entre_si(self, linhas: list[ComponenteDados]) -> None:
@@ -166,19 +178,41 @@ class DefMateriaPrimaComponenteService:
             for campo, valor in self._chaves(linha):
                 anterior = vistas.get((campo, valor))
                 if anterior is not None:
+                    remedio = (
+                        "Cada jogo só pode aparecer uma vez."
+                        if campo == "nome_jogo_imos"
+                        else (
+                            "Escreva o «Jogo de Uniões (iMos)» em cada uma — é "
+                            "o jogo que as distingue — ou passe uma delas a "
+                            "secundária."
+                        )
+                    )
                     raise ReferenciaJaUsadaError(
                         f"As linhas {anterior} e {indice} são as duas principais "
-                        f"com a mesma referência ({valor}). Uma delas tem de ser "
-                        "secundária ou levar outra referência."
+                        f"com a mesma referência ({valor}). {remedio}"
                     )
                 vistas[(campo, valor)] = indice
 
     @staticmethod
     def _chaves(dados: ComponenteDados):
+        """As referências por que esta linha se identifica.
+
+        **Uma linha tem UMA chave, não quatro.** Quando traz o jogo de uniões,
+        é o jogo que identifica o conjunto e as outras colunas passam a ser
+        documentação do que lá está dentro.
+
+        Sem esta distinção, as quatro variantes do Rafix — que só diferem na
+        furação e partilham o mesmo copo FF00381 — chocavam umas com as
+        outras e a ficha não gravava.
+        """
         from app.domain.materia_prima_types import normalizar_ref_fornecedor
 
+        jogo = (dados.nome_jogo_imos or "").strip()
+        if jogo:
+            yield "nome_jogo_imos", jogo
+            return
+
         for campo, valor in (
-            ("nome_jogo_imos", (dados.nome_jogo_imos or "").strip()),
             ("nome_imos", (dados.nome_imos or "").strip()),
             ("ref_phc", (dados.ref_phc or "").strip()),
             ("ref_fornecedor", normalizar_ref_fornecedor(dados.ref_fornecedor) or ""),
