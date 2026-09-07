@@ -165,7 +165,13 @@ class OperacaoDialog(QDialog):
     def _load_operacao(self, operacao: DefOperacaoResumo) -> None:
         """Populate the form with an existing operation and lock the code."""
         self.codigo_input.setText(operacao.codigo)
+        # O codigo ja' esta' escrito nas pecas e nos orcamentos feitos.
         self.codigo_input.setReadOnly(True)
+        self.codigo_input.setStyleSheet(tema.ESTILO_CAMPO_BLOQUEADO)
+        self.codigo_input.setToolTip(
+            "O código de uma operação já criada não se pode alterar: está "
+            "escrito nas peças e nos orçamentos que a usam."
+        )
         self.nome_input.setText(operacao.nome)
         self.descricao_input.setPlainText(operacao.descricao or "")
         self._select_data(

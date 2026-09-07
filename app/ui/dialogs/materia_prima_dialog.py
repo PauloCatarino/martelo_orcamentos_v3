@@ -285,9 +285,19 @@ class MateriaPrimaDialog(QDialog):
     def _criar_campos(self) -> None:
         """Criar os campos do separador de dados."""
         self.ref_le_input = QLineEdit()
+        # Quem escreve aqui nao consegue gravar a alteracao: o campo
+        # aceitava as teclas e depois nao mudava nada.
+        self.ref_le_input.setReadOnly(True)
+        self.ref_le_input.setStyleSheet(tema.ESTILO_CAMPO_BLOQUEADO)
         self.ref_le_input.setToolTip(
-            "Referência interna. Se deixar vazio numa matéria-prima nova, é "
-            "atribuída automaticamente a partir da família (PLC, FER, ACB, ORL)."
+            "É o Martelo que atribui esta referência — não se pode "
+            "alterar.\n"
+            "Vem da família mais o número seguinte: PLC para placas, FER "
+            "para ferragens, ACB para acabamentos, ORL para orlas.\n"
+            "Fica copiada em cada linha dos orçamentos já feitos. Se "
+            "mudasse aqui, esses orçamentos passavam a apontar para uma "
+            "referência que não existe.\n"
+            "Numa matéria-prima nova aparece assim que escolher a família."
         )
         self.descricao_input = QLineEdit()
         self.descricao_input.setToolTip("Descrição como aparece no orçamento.")

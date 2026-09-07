@@ -37,6 +37,8 @@ OCRE_ESCURO = "#6D4B16"       # warning badge text
 AZUL_SUAVE = "#D8E7F3"        # sent badge background
 AZUL_ESCURO = "#244A63"       # sent badge text
 CINZA_SUAVE = "#E3E0DC"       # neutral badge background
+CAMPO_BLOQUEADO_FUNDO = "#EDEAE5"   # read-only field background
+CAMPO_BLOQUEADO_TEXTO = "#5A554E"   # read-only field text
 CINZA_ESCURO = "#4A4641"      # neutral badge text
 VERMELHO_SUAVE = "#E8C7C1"    # negative badge background
 VERMELHO_ESCURO = "#7A231C"   # negative badge text
@@ -337,3 +339,14 @@ ESTILO_CONTROLOS = (
 )
 
 ESTILO_GLOBAL = ESTILO_ABAS + "\n" + ESTILO_CONTROLOS + "\n" + ESTILO_VISTAS_DADOS
+
+
+#: Campos que o utilizador nao pode editar -- uma referencia que o
+#: proprio Martelo atribui, um codigo que ja' esta' em uso. Sem o
+#: sombreado o campo aceita as teclas e nao grava, e quem escreve fica
+#: a pensar que resultou.
+ESTILO_CAMPO_BLOQUEADO = (
+    f"background-color: {CAMPO_BLOQUEADO_FUNDO};"
+    f" color: {CAMPO_BLOQUEADO_TEXTO};"
+    f" border: 1px solid {CINZA_CASTANHO}; border-radius: 4px;"
+)

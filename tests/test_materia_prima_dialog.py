@@ -210,3 +210,56 @@ def test_fornecedor_sem_id_e_encontrado_pelo_nome() -> None:
 
     assert dialogo.fornecedor_input.currentText() == "B&F"
     assert dialogo.get_data().fornecedor_id == 9
+
+
+# --- A Ref LE nao se edita (07-09-2026) ------------------------------------
+#
+# Ele tentou mudar a Ref LE de uma materia-prima. O campo aceitava as teclas e
+# depois nao gravava nada -- que e' a pior das hipoteses, porque quem escreve
+# fica a pensar que resultou.
+
+
+def test_a_ref_le_nao_se_pode_escrever() -> None:
+    dialogo = MateriaPrimaDialog(_materia())
+
+    assert dialogo.ref_le_input.isReadOnly() is True
+    dialogo.deleteLater()
+
+
+def test_a_ref_le_esta_sombreada() -> None:
+    from app.ui import tema
+
+    dialogo = MateriaPrimaDialog(_materia())
+
+    assert dialogo.ref_le_input.styleSheet() == tema.ESTILO_CAMPO_BLOQUEADO
+    assert tema.CAMPO_BLOQUEADO_FUNDO in tema.ESTILO_CAMPO_BLOQUEADO
+    dialogo.deleteLater()
+
+
+def test_a_dica_da_ref_le_explica_porque_nao_se_altera() -> None:
+    dialogo = MateriaPrimaDialog(_materia())
+
+    dica = dialogo.ref_le_input.toolTip()
+
+    assert "não se pode alterar" in dica
+    # A razao tem de la' estar, nao so' a proibicao.
+    assert "orçamentos já feitos" in dica
+    assert "PLC" in dica and "FER" in dica
+    dialogo.deleteLater()
+
+
+def test_a_ref_le_continua_a_ser_lida_para_gravar() -> None:
+    # So' de leitura para quem escreve; o programa continua a le'-la.
+    dialogo = MateriaPrimaDialog(_materia())
+
+    assert dialogo.get_data().ref_le == _materia().ref_le
+    dialogo.deleteLater()
+
+
+def test_numa_materia_nova_a_ref_le_aparece_ao_escolher_a_familia() -> None:
+    dialogo = MateriaPrimaDialog(None, ref_le_sugerida=lambda familia: "FER0192")
+    dialogo.familia_input.setCurrentText("FERRAGENS")
+
+    assert "FER0192" in dialogo.ref_le_input.placeholderText()
+    assert dialogo.get_data().ref_le is None  # o servico e' que a atribui
+    dialogo.deleteLater()

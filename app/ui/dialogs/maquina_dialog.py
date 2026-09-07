@@ -382,7 +382,14 @@ class MaquinaDialog(QDialog):
     def _load_maquina(self, maquina: DefMaquinaResumo) -> None:
         """Populate the form with an existing machine and lock the code."""
         self.codigo_input.setText(maquina.codigo)
+        # O codigo ja' esta' escrito nas operacoes e nas linhas de
+        # custeio: muda-lo aqui deixava-as a apontar para o vazio.
         self.codigo_input.setReadOnly(True)
+        self.codigo_input.setStyleSheet(tema.ESTILO_CAMPO_BLOQUEADO)
+        self.codigo_input.setToolTip(
+            "O código de uma máquina já criada não se pode alterar: está "
+            "escrito nas operações e nas linhas de custeio que a usam."
+        )
         self.nome_input.setText(maquina.nome)
         self.descricao_input.setPlainText(maquina.descricao or "")
         self._select_tipo(maquina.tipo)

@@ -141,3 +141,35 @@ def test_maquina_dialog_blocks_codigo_on_edit() -> None:
     source = inspect.getsource(MaquinaDialog._load_maquina)
 
     assert "setReadOnly" in source
+
+
+def test_o_codigo_da_maquina_fica_bloqueado_e_sombreado() -> None:
+    # Mesma armadilha da Ref LE: era so' de leitura mas parecia editavel.
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from app.repositories.def_maquina_repository import DefMaquinaResumo
+    from app.ui import tema
+    from app.ui.dialogs.maquina_dialog import MaquinaDialog
+
+    QApplication.instance() or QApplication([])
+    dialogo = MaquinaDialog()
+    dialogo._load_maquina(
+        DefMaquinaResumo(
+            id=1,
+            codigo="CORTE",
+            nome="Seccionadora",
+            descricao=None,
+            tipo="CORTE",
+            custo_hora=None,
+            ativo=True,
+            observacoes=None,
+        )
+    )
+
+    assert dialogo.codigo_input.isReadOnly() is True
+    assert dialogo.codigo_input.styleSheet() == tema.ESTILO_CAMPO_BLOQUEADO
+    assert "não se pode alterar" in dialogo.codigo_input.toolTip()
+    dialogo.deleteLater()
