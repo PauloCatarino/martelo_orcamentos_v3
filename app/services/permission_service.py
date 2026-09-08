@@ -32,9 +32,15 @@ PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS = (
     "acao.propagar_operacoes_valueset_outros"
 )
 PERMISSAO_PUBLICAR_MODELO_VALUESET_GLOBAL = "acao.publicar_modelo_valueset_global"
+PERMISSAO_ANALISE_LISTA_MATERIAL = "acao.analise_lista_material"
+PERMISSAO_CUSTOS_LISTA_MATERIAL = "acao.custos_lista_material"
+PERMISSAO_CORRIGIR_LISTA_MATERIAL = "acao.corrigir_lista_material"
 
 ACAO_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
     (
+        (PERMISSAO_ANALISE_LISTA_MATERIAL, "Análise da Lista Material — aceder ao módulo"),
+        (PERMISSAO_CUSTOS_LISTA_MATERIAL, "Análise da Lista Material — consultar e guardar custos"),
+        (PERMISSAO_CORRIGIR_LISTA_MATERIAL, "Análise da Lista Material — aplicar correções"),
         (PERMISSAO_CRIAR_ENCOMENDA_IMOS, "Criar encomendas no iMos"),
         (
             PERMISSAO_PROPAGAR_OPERACOES_VALUESET_OUTROS,

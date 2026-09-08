@@ -48,6 +48,7 @@ htmlcov/
 
 # Build output
 build/
+tmp/
 dist/
 *.egg-info/
 

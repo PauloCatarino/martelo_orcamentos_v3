@@ -45,6 +45,7 @@ from app.models.producao import Producao
 from app.models.producao_ocorrencia import ProducaoOcorrencia
 from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
 from app.models.system_setting import SystemSetting
+from app.models.lista_material_custo_mapeamento import ListaMaterialCustoMapeamento
 from app.models.user import User
 from app.models.user_permission import UserPermission
 from app.models.user_pref import UserPref
@@ -108,6 +109,7 @@ __all__ = [
     "ProducaoOcorrencia",
     "ProducaoOcorrenciaAnexo",
     "SystemSetting",
+    "ListaMaterialCustoMapeamento",
     "User",
     "UserPermission",
     "UserPref",

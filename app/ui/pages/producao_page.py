@@ -82,6 +82,10 @@ from app.services.lista_material_assistente_service import (
     apply_workbook_decisions,
     prepare_workbook_for_assistant,
 )
+from app.services.analise_lista_material_service import import_hardware_cost
+from app.services.system_setting_service import SystemSettingService
+from app.services.permission_service import permissions_for_user, PERMISSAO_ANALISE_LISTA_MATERIAL
+from app.ui.dialogs.analise_lista_material_dialog import AnaliseListaMaterialDialog
 from app.services.producao_service import (
     ProducaoService,
     codigo_processo_com_cliente,
@@ -395,7 +399,7 @@ class ProducaoPage(QWidget):
         self.analisar_lista_material_action.setIcon(icone_ficheiro("icon_excel.ico"))
         self.analisar_lista_material_action.setToolTip(
             "Depois de Importar CSV IMOS e executar AUTOMATION no Excel, "
-            "guardar/fechar o livro e rever as sugestões antes do CUT-RITE"
+            "guardar/fechar o livro, validar materiais Woodstore e analisar custos de produção"
         )
         self.analisar_lista_material_action.triggered.connect(
             self._analisar_lista_material
@@ -596,12 +600,11 @@ class ProducaoPage(QWidget):
         self.vista_button.setFixedWidth(30)
         self.vista_button.clicked.connect(self._abrir_menu_vistas)
 
-        self.atrasadas_check = QCheckBox("só atrasadas")
-        self.atrasadas_check.setToolTip(
-            "Mostrar apenas obras com a data de entrega já passada "
-            "(obras arquivadas ou finalizadas não contam)"
+        self.minhas_check = QCheckBox("👤 As minhas obras")
+        self.minhas_check.setToolTip(
+            "Selecionar diretamente o responsável correspondente ao utilizador atual."
         )
-        self.atrasadas_check.toggled.connect(self._render)
+        self.minhas_check.toggled.connect(self._filtrar_minhas_obras)
 
         self.obras_ano_label = QLabel("")
         self.obras_ano_label.setObjectName("producaoObrasAno")
@@ -631,7 +634,7 @@ class ProducaoPage(QWidget):
         filters_layout.addWidget(self.cliente_combo)
         filters_layout.addWidget(QLabel("Responsável"))
         filters_layout.addWidget(self.responsavel_combo)
-        filters_layout.addWidget(self.atrasadas_check)
+        filters_layout.addWidget(self.minhas_check)
         filters_layout.addWidget(self.limpar_filtros_button)
         filters_layout.addStretch()
         filters_layout.addWidget(self.obras_ano_label)
@@ -1271,12 +1274,15 @@ class ProducaoPage(QWidget):
     def _render(self, *_args) -> None:
         """Re-apply the search and filters on the proxy model."""
         selected_id = self._selected_processo_id
+        previous = self.minhas_check.blockSignals(True)
+        self.minhas_check.setChecked(bool(self._meu_responsavel()) and self.responsavel_combo.currentText() == self._meu_responsavel())
+        self.minhas_check.blockSignals(previous)
         self.proxy.definir_filtros(
             texto=self.campo_pesquisa.texto(),
             estado=self._combo_valor(self.estado_combo),
             cliente=self._combo_valor(self.cliente_combo),
             responsavel=self._combo_valor(self.responsavel_combo),
-            so_atrasadas=self.atrasadas_check.isChecked(),
+            so_atrasadas=False,
             enc_phc=self.enc_phc_input.text(),
         )
         self.footer_label.setText(
@@ -1314,7 +1320,7 @@ class ProducaoPage(QWidget):
             self.estado_combo,
             self.cliente_combo,
             self.responsavel_combo,
-            self.atrasadas_check,
+            self.minhas_check,
         ]
         if not manter_vista:
             widgets.append(self.vista_combo)
@@ -1325,7 +1331,7 @@ class ProducaoPage(QWidget):
         for combo in (self.estado_combo, self.cliente_combo, self.responsavel_combo):
             if combo.count():
                 combo.setCurrentIndex(0)
-        self.atrasadas_check.setChecked(False)
+        self.minhas_check.setChecked(False)
         if not manter_vista and self.vista_combo.count():
             self.vista_combo.setCurrentIndex(0)
         for widget, estado_anterior in estados_sinais:
@@ -1343,6 +1349,28 @@ class ProducaoPage(QWidget):
         self._popular_combo(self.responsavel_combo, responsaveis)
         self._popular_responsaveis_form(responsaveis)
         self._atualizar_filtro_clientes()
+
+    def _meu_responsavel(self):
+        user = app_session.current_user
+        nome = str(getattr(user, 'nome', '') or '').strip()
+        username = str(getattr(user, 'username', '') or '').strip()
+        candidates = [nome, username, nome.split()[0] if nome else '']
+        for candidate in candidates:
+            matches = [self.responsavel_combo.itemText(i) for i in range(self.responsavel_combo.count())
+                       if candidate and self.responsavel_combo.itemText(i).casefold() == candidate.casefold()]
+            if len(matches) == 1:
+                return matches[0]
+        return ''
+
+    def _filtrar_minhas_obras(self, checked):
+        name = self._meu_responsavel() if checked else 'Todos'
+        if not name:
+            self.minhas_check.blockSignals(True)
+            self.minhas_check.setChecked(False)
+            self.minhas_check.blockSignals(False)
+            self.status_label.setText('Não foi encontrado um responsável correspondente ao utilizador atual.')
+            return
+        self.responsavel_combo.setCurrentText(name)
 
     def _on_responsavel_mudou(self, *_args) -> None:
         """Narrow the client list to the chosen Responsável, then re-render."""
@@ -1849,7 +1877,7 @@ class ProducaoPage(QWidget):
             self.estado_combo,
             self.cliente_combo,
             self.responsavel_combo,
-            self.atrasadas_check,
+            self.minhas_check,
         )
         estados_sinais = [(w, w.blockSignals(True)) for w in widgets]
         self.campo_pesquisa.definir_texto(vista.texto)
@@ -1858,7 +1886,7 @@ class ProducaoPage(QWidget):
         self._atualizar_filtro_clientes()
         self.estado_combo.setCurrentText(vista.estado)
         self.cliente_combo.setCurrentText(vista.cliente)
-        self.atrasadas_check.setChecked(vista.so_atrasadas)
+        self.minhas_check.setChecked(False)
         for widget, estado_anterior in estados_sinais:
             widget.blockSignals(estado_anterior)
 
@@ -1872,7 +1900,7 @@ class ProducaoPage(QWidget):
             estado=self.estado_combo.currentText() or "Todos",
             cliente=self.cliente_combo.currentText() or "Todos",
             responsavel=self.responsavel_combo.currentText() or "Todos",
-            so_atrasadas=self.atrasadas_check.isChecked(),
+            so_atrasadas=False,
             enc_phc=self.enc_phc_input.text().strip(),
         )
 
@@ -2576,7 +2604,8 @@ class ProducaoPage(QWidget):
             "este Excel as listas de ferragens exportadas pelo IMOS?\n\n"
             "São processados os ficheiros que o IMOS gerou para esta obra — "
             "2_List_Ferragens, 3_Resumo_Precos, 4_Etiqueta_Palete e "
-            "5_List_Ferragens_Integrador. Não é preciso terem sido gerados "
+            "5_List_Ferragens_Integrador. O V3 importa também o novo "
+            "5_Custo_Obra_Ferragens quando existir uma única fonte desta versão. Não é preciso terem sido gerados "
             "todos: a macro importa os que existirem e diz quais faltaram. "
             "Apresenta os passos e pede confirmação antes de substituir "
             "separadores existentes.",
@@ -2590,6 +2619,7 @@ class ProducaoPage(QWidget):
             QApplication.processEvents()
             try:
                 execute_import_listas_ferragens_macro(workbook_path)
+                self._importar_custo_ferragens(workbook_path)
                 self.status_label.setText(
                     "Listas de ferragens processadas; a preparar o Assistente."
                 )
@@ -2614,7 +2644,7 @@ class ProducaoPage(QWidget):
             self,
             "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",
             "A transformação inicial ficou concluída. Pretende abrir agora o "
-            "Assistente Lista Material para rever as otimizações sugeridas?",
+            "módulo Análise da Lista Material para validar materiais e consultar custos?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
@@ -2668,6 +2698,43 @@ class ProducaoPage(QWidget):
             )
 
     def _rever_lista_material_assistente(
+        self, processo: Producao, *, explicit: bool,
+    ) -> tuple[bool, int]:
+        try:
+            with SessionLocal() as session:
+                if not permissions_for_user(session, app_session.current_user).get(PERMISSAO_ANALISE_LISTA_MATERIAL):
+                    self.status_label.setText('Análise da Lista Material não atribuída a este utilizador. O envio para Cut-Rite continua disponível.')
+                    return False, 0
+                workbook = find_lista_material_workbook(
+                    Path(str(processo.pasta_servidor or '')),
+                    nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
+                )
+                folder = SystemSettingService(session).obter_valor('pasta_dados_cut_rite', '') or r'I:\Cutrite\V12-Data\Data'
+                dialog = AnaliseListaMaterialDialog(session, workbook_path=workbook,
+                    plan_name=self.nome_plano_corte_input.text().strip(), cutrite_folder=folder,
+                    user=app_session.current_user, parent=self)
+                dialog.exec()
+                return True, dialog.applied
+        except Exception as error:
+            QMessageBox.warning(self, 'Análise da Lista Material', str(error))
+            return False, 0
+
+    def _importar_custo_ferragens(self, workbook_path: Path) -> None:
+        nome = self.nome_enc_imos_ix_input.text().strip()
+        sources = sorted(Path(r'C:\IMOS_Output_Batches').glob(f'{nome}_5_Custo_Obra_Ferragens*.xlsx')) if nome else []
+        if not sources:
+            archived = workbook_path.parent / '5_Custo_Obra_Ferragens.xlsx'
+            if archived.is_file():
+                sources = [archived]
+        if len(sources) == 1:
+            try:
+                import_hardware_cost(workbook_path, sources[0])
+            except (ValueError, RuntimeError) as error:
+                QMessageBox.warning(self, 'Custos de ferragens IMOS', str(error))
+        elif len(sources) > 1:
+            QMessageBox.warning(self, 'Custos de ferragens IMOS', 'Existe mais de um ficheiro de custos para esta obra. Selecione a fonte no módulo de análise.')
+
+    def _rever_otimizacoes_lista_material_legado(
         self,
         processo: Producao,
         *,
@@ -2789,12 +2856,11 @@ class ProducaoPage(QWidget):
             return
         if applied:
             self.status_label.setText(
-                f"Lista Material analisada: {applied} alterações aplicadas; "
-                "Excel aberto para confirmação."
+                f"Lista Material analisada: {applied} alterações aplicadas."
             )
         else:
             self.status_label.setText(
-                "Lista Material analisada; Excel aberto para confirmação."
+                "Análise da Lista Material fechada. O envio para Cut-Rite continua disponível."
             )
 
     def _enviar_cutrite(self) -> None:

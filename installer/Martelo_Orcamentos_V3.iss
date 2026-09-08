@@ -9,6 +9,9 @@
 
 #define AppName "Martelo Orcamentos V3"
 #define AppExeName "Martelo_Orcamentos_V3.exe"
+#ifndef BuildDir
+  #define BuildDir "..\dist\Martelo_Orcamentos_V3"
+#endif
 
 #ifndef AppVersion
   #define AppVersion "0.9.0-beta"
@@ -60,11 +63,11 @@ Name: "desktopicon"; Description: "Criar atalho no Ambiente de Trabalho"; GroupD
 
 [Files]
 ; Binarios e dependencias do PyInstaller (menos o .env, tratado a` parte)
-Source: "..\dist\Martelo_Orcamentos_V3\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".env;*.log"
+Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: ".env;*.log"
 
 ; .env - instalar apenas se nao existir, para nao apagar ajustes locais
-#if FileExists("..\dist\Martelo_Orcamentos_V3\.env")
-Source: "..\dist\Martelo_Orcamentos_V3\.env"; DestDir: "{app}"; Flags: onlyifdoesntexist
+#if FileExists(BuildDir + "\.env")
+Source: "{#BuildDir}\.env"; DestDir: "{app}"; Flags: onlyifdoesntexist
 #endif
 
 [Icons]

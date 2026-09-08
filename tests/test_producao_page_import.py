@@ -113,11 +113,14 @@ def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) 
         def _rever_lista_material_assistente(self, *_args, **_kwargs):
             events.append("assistente")
 
+        def _importar_custo_ferragens(self, _path):
+            events.append("custo_ferragens")
+
     ProducaoPage._oferecer_fluxo_inicial_lista_material(
         _Page(), object(), workbook_path
     )
 
-    assert events == ["csv", "automation", "ferragens", "assistente"]
+    assert events == ["csv", "automation", "ferragens", "custo_ferragens", "assistente"]
 
 
 def test_producao_page_imports_and_headers() -> None:
@@ -254,15 +257,9 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     )
     review_source = inspect.getsource(ProducaoPage._rever_lista_material_assistente)
     send_source = inspect.getsource(ProducaoPage._enviar_cutrite)
-    assert "prepare_workbook_for_assistant" in review_source
-    assert "resolve_work_config" in review_source
-    assert "ListaMaterialRevisaoDialog" in review_source
-    assert "except SQLAlchemyError as learning_error" in review_source
-    assert "session.rollback()" in review_source
-    assert "As alterações foram aplicadas e guardadas no Excel" in review_source
-    assert "if explicit:" in review_source
-    assert "QDesktopServices.openUrl" in review_source
-    assert "QUrl.fromLocalFile(str(workbook_path))" in review_source
+    assert "AnaliseListaMaterialDialog" in review_source
+    assert "PERMISSAO_ANALISE_LISTA_MATERIAL" in review_source
+    assert "prepare_workbook_for_assistant" not in review_source
     assert "self._rever_lista_material_assistente" not in send_source
     assert "self._cutrite_worker" in send_source
     assert '"Eliminar"' in init_source
@@ -274,7 +271,7 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     assert "self.table.setSortingEnabled(True)" in init_source
     assert "COLUNA_ORDEM_ENTRADA" in init_source
     assert "QTableWidget" not in inspect.getsource(ProducaoPage)
-    assert "self.atrasadas_check" in init_source
+    assert "self.minhas_check" in init_source
     assert "self.vista_combo" in init_source
     assert "setToolTip" in init_source
     assert "Gravar as alterações da obra selecionada" in init_source
