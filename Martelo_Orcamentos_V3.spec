@@ -2,9 +2,9 @@
 """Empacotamento do Martelo Orcamentos V3 com PyInstaller.
 
 Perfis (variavel de ambiente MARTELO_BUILD_PROFILE):
-  lean (por omissao) -- SEM a pesquisa por IA (torch/sentence-transformers).
+  lean               -- SEM a pesquisa por IA (torch/sentence-transformers).
                         Executavel muito mais pequeno e rapido de gerar.
-  full               -- inclui tudo, incluindo o ML da pesquisa por IA.
+  full (por omissao)  -- inclui tudo, incluindo o ML da pesquisa por IA.
 
 A pesquisa por IA e' importada preguicosamente na app, por isso no perfil
 lean tudo o resto funciona; so' essa funcionalidade fica indisponivel.
@@ -16,8 +16,12 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files
 
 ROOT = Path(".").resolve()
+# Ferramentas auxiliares do agente incluem ICU/CRT privados no PATH. Não podem
+# substituir as DLLs do Windows/Qt quando o PyInstaller resolve dependências.
+os.environ['PATH'] = os.pathsep.join(p for p in os.environ.get('PATH', '').split(os.pathsep)
+                                   if 'codex-runtimes' not in p.lower())
 ICON = ROOT / "icons" / "icon_le.ico"
-BUILD_PROFILE = os.getenv("MARTELO_BUILD_PROFILE", "lean").strip().lower() or "lean"
+BUILD_PROFILE = os.getenv("MARTELO_BUILD_PROFILE", "full").strip().lower() or "full"
 
 if BUILD_PROFILE not in {"full", "lean"}:
     raise ValueError(f"Perfil de build invalido: {BUILD_PROFILE}")
@@ -99,7 +103,7 @@ a = Analysis(
     # `dateutil` pode ser carregado a tempo. Sem ele os graficos dos Dashboards
     # nao abrem no executavel e a pagina diz "Instale matplotlib", que e'
     # mentira. Ver o proprio ficheiro para a explicacao inteira.
-    runtime_hooks=[str(ROOT / "deploy" / "rthook_dateutil.py")],
+    runtime_hooks=[str(ROOT / "deploy" / "rthook_msvc.py"), str(ROOT / "deploy" / "rthook_dateutil.py")],
     excludes=excludes,
     noarchive=False,
     optimize=0,

@@ -8,7 +8,7 @@ Passos:
 Uso:
     .venv\\Scripts\\python.exe build_beta.py --producao --installer  # VERSAO OFICIAL
     .venv\\Scripts\\python.exe build_beta.py --installer             # beta (testes)
-    .venv\\Scripts\\python.exe build_beta.py --profile full          # inclui a IA (grande)
+    .venv\\Scripts\\python.exe build_beta.py --profile lean          # opcional: exclui a pesquisa IA
 
 O que muda entre oficial e beta e' SO' o ficheiro .env que vai dentro do
 instalador -- `deploy\\.env.producao` (base oficial, sem rotulo na janela) ou
@@ -264,7 +264,7 @@ def _instalador(versao: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--installer", action="store_true", help="tambem gerar o instalador")
-    ap.add_argument("--profile", choices=["lean", "full"], default="lean")
+    ap.add_argument("--profile", choices=["lean", "full"], default="full")
     ap.add_argument(
         "--substituir",
         action="store_true",
