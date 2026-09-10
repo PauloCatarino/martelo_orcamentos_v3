@@ -8,6 +8,7 @@ quando ha' onze -- nao tem nada a ver com widgets.
 from __future__ import annotations
 
 from app.domain.pesquisa_ia_consulta import (
+    grupo_ou_tipo,
     referencia_com_acabamento,
     valor_de_referencia,
 )
@@ -46,3 +47,22 @@ def test_sem_precos_diz_que_nao_ha():
 def test_a_barra_do_acabamento_so_aparece_quando_ha_acabamento():
     assert referencia_com_acabamento("W908", "SM") == "W908/SM"
     assert referencia_com_acabamento("22.8000", "") == "22.8000"
+
+
+def test_uma_placa_diz_o_grupo_de_preco():
+    assert grupo_ou_tipo("Grupo 0", "Eurodekor Tableros de partículas") == "Grupo 0"
+
+
+def test_uma_ferragem_sem_grupo_diz_a_familia_do_catalogo():
+    """O Casa Trend não preenche o grupo, e a célula ficava vazia à toa."""
+    assert grupo_ou_tipo("", "Casa Banho Tulhas Roupa") == "Casa Banho Tulhas Roupa"
+
+
+def test_sem_grupo_nem_tipo_fica_vazio():
+    """A Emuca não tem coluna nenhuma disso — vazio é a verdade."""
+    assert grupo_ou_tipo("", "") == ""
+    assert grupo_ou_tipo(None, None) == ""
+
+
+def test_um_grupo_so_de_espacos_nao_conta_como_grupo():
+    assert grupo_ou_tipo("   ", "Casa Banho Tulhas Roupa") == "Casa Banho Tulhas Roupa"
