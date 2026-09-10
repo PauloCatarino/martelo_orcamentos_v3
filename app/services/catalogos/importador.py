@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import String, select
 from sqlalchemy.orm import Session
 
 from app.models.catalogos import (
@@ -100,10 +100,43 @@ class ResultadoImportacao:
         )
 
 
+#: Limites de comprimento das colunas de texto, lidos do próprio modelo.
+LIMITES: dict[str, int] = {
+    coluna.name: coluna.type.length
+    for coluna in FornArtigo.__table__.columns
+    if isinstance(coluna.type, String) and coluna.type.length
+}
+
+
+class ValorGrandeDemais(ValueError):
+    """Um campo não cabe na coluna.
+
+    Vale a pena ter exceção própria: sem ela isto chegava como um ``DataError``
+    do MySQL a meio de dezassete mil linhas, sem dizer que artigo nem que
+    campo. É sempre um erro do adaptador — a coluna certa para um texto
+    comprido é a ``descricao`` ou os ``atributos``, que não têm limite.
+    """
+
+
 def _valores(artigo: ArtigoCatalogo, tabela: TabelaCatalogo) -> dict[str, object]:
     """Os campos do modelo a partir da forma do adaptador."""
     valores = {campo: getattr(artigo, campo) for campo in CAMPOS_ATUALIZAVEIS}
     valores["fabricante"] = artigo.fabricante or tabela.fabricante
+
+    for campo, limite in LIMITES.items():
+        valor = valores.get(campo)
+        if isinstance(valor, str) and len(valor) > limite:
+            raise ValorGrandeDemais(
+                f"{tabela.fornecedor} · {tabela.nome}: o campo {campo!r} do "
+                f"artigo {artigo.chave_natural!r} tem {len(valor)} caracteres "
+                f"e a coluna aceita {limite}: {valor[:80]!r}…"
+            )
+    if len(artigo.chave_natural) > LIMITES.get("chave_natural", 300):
+        raise ValorGrandeDemais(
+            f"{tabela.fornecedor} · {tabela.nome}: a chave natural tem "
+            f"{len(artigo.chave_natural)} caracteres e a coluna aceita "
+            f"{LIMITES['chave_natural']}: {artigo.chave_natural[:80]!r}…"
+        )
     return valores
 
 
