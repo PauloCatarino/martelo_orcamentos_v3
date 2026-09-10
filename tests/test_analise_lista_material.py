@@ -1,3 +1,5 @@
+import json
+from datetime import datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -147,3 +149,47 @@ def test_read_workbook_retains_width_and_quantities(tmp_path):
     assert lines[0]['width'] == '22'
     assert lines[0]['quantity'] == '100'
     assert len(warnings) == 1
+
+
+def test_o_snapshot_mais_recente_nao_depende_do_relogio(tmp_path, monkeypatch):
+    """Dois snapshots no mesmo tique do relógio: vale o segundo, sempre.
+
+    O relógio do Windows anda aos saltos de cerca de um milissegundo, por isso
+    duas gravações seguidas ficam com o mesmo carimbo no nome. Aqui o relógio
+    é congelado de propósito, para o empate ser garantido em vez de sair uma
+    vez em cada dez — e o que se exige é que a análise reabra com os preços
+    novos, não com os antigos.
+    """
+    class _RelogioParado:
+        @staticmethod
+        def now():
+            return datetime(2026, 9, 10, 22, 40, 7, 449717)
+
+    monkeypatch.setattr(svc, 'datetime', _RelogioParado)
+    path = tmp_path / 'Lista_Material_0722_01_26_JF_VIVA.xlsx'
+    path.write_text('book')
+
+    for preco in ('2', '3', '4'):
+        svc.save_snapshot(path, {'version': '0722_01_26_JF_VIVA',
+                                 'prices': {'x': {'net': preco}}})
+
+    nomes = sorted(p.name for p in (path.parent / 'Analise_Lista_Material').glob('*.json'))
+    assert len(nomes) == 3
+    assert len({n.split('_')[3] for n in nomes}) == 3, "o contador tem de ser unico"
+    assert svc.latest_snapshot(path, '0722_01_26_JF_VIVA')['prices']['x']['net'] == '4'
+
+
+def test_um_snapshot_do_formato_antigo_nunca_ganha_ao_novo(tmp_path):
+    """Quem já tem a pasta cheia não pode ver o histórico trocado."""
+    path = tmp_path / 'Lista_Material_0722_01_26_JF_VIVA.xlsx'
+    path.write_text('book')
+    pasta = path.parent / 'Analise_Lista_Material'
+    pasta.mkdir()
+    antigo = pasta / '20260910_224007_449717_ff999999.json'
+    antigo.write_text(json.dumps({'version': '0722_01_26_JF_VIVA',
+                                 'workbook': path.name,
+                                 'prices': {'x': {'net': '2'}}}), encoding='utf-8')
+
+    svc.save_snapshot(path, {'version': '0722_01_26_JF_VIVA', 'prices': {'x': {'net': '3'}}})
+
+    assert svc.latest_snapshot(path, '0722_01_26_JF_VIVA')['prices']['x']['net'] == '3'

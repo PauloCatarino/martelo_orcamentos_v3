@@ -55,3 +55,37 @@ def observacoes_relevantes(observacoes: str, texto: str) -> str:
     partes = [p.strip() for p in (observacoes or "").split("|")]
     relevantes = [p for p in partes if corresponde(p, texto)] if refs else partes
     return " | ".join(relevantes)[:1800]
+
+
+def valor_de_referencia(precos: dict[str, str], espessura=None) -> str:
+    """O preço a mostrar na vista geral, de uma referência que tem vários.
+
+    Uma referência de placa traz uma coluna de preço por espessura; uma
+    ferragem traz um preço só. Na tabela «Todas» há **uma** célula para o
+    valor, e o que lá estava era o grupo de preço — que para as 9 827 ferragens
+    era a palavra «Grupo» e mais nada.
+
+    A regra, por ordem: a espessura que a pesquisa pediu; o preço único, quando
+    só há um; e senão o intervalo, do mais fino ao mais grosso, que é o que
+    responde a «quanto custa isto, mais ou menos» sem inventar uma espessura
+    que ninguém pediu.
+    """
+    if not precos:
+        return "sem preço"
+    if espessura is not None:
+        etiqueta = f"{int(espessura)}mm" if float(espessura).is_integer() else f"{espessura}mm"
+        if etiqueta in precos:
+            return precos[etiqueta]
+    valores = list(precos.values())
+    if len(valores) == 1:
+        return valores[0]
+    return f"{valores[0]} a {valores[-1]}"
+
+
+def referencia_com_acabamento(referencia: str, acabamento: str) -> str:
+    """``W908/SM`` para uma placa, ``22.8000`` para uma dobradiça.
+
+    Sem isto, as ferragens — que não têm acabamento — apareciam todas com uma
+    barra pendurada no fim.
+    """
+    return f"{referencia}/{acabamento}" if acabamento else referencia
