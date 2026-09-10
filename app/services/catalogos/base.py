@@ -33,6 +33,15 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 
+#: Tipos de referência alternativa. Os mesmos valores do ``FornArtigoAlias``,
+#: repetidos aqui para um adaptador não ter de importar modelos: o que ele
+#: devolve é uma forma de dados, não linhas de base.
+ALIAS_EAN = "EAN"
+ALIAS_FABRICANTE = "FABRICANTE"
+ALIAS_ANTIGA = "ANTIGA"
+ALIAS_CLIENTE = "CLIENTE"
+
+
 class FormatoInesperado(RuntimeError):
     """O ficheiro não tem a forma que o adaptador esperava.
 
@@ -204,23 +213,54 @@ def hash_conteudo(linhas: Iterable[Sequence[object]]) -> str:
     return digest.hexdigest()
 
 
+#: Como os fornecedores escrevem as datas nas notas dos separadores.
+_DATA_ISO = re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})")
+_DATA_PT = re.compile(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})")
+_MESES = {
+    "janeiro": 1, "fevereiro": 2, "marco": 3, "abril": 4, "maio": 5,
+    "junho": 6, "julho": 7, "agosto": 8, "setembro": 9, "outubro": 10,
+    "novembro": 11, "dezembro": 12,
+}
+_MES_ANO = re.compile(rf"\b({'|'.join(_MESES)})\b(?:\s+de)?\s+(\d{{4}})")
+
+
 def primeira_data(textos: Iterable[str]) -> date | None:
     """A primeira data que aparecer nas notas de uma tabela.
 
-    As notas do separador dizem coisas como «atualizada a partir do PDF BF-82
-    2026/04/20 (substitui tabela anterior de 2026/03/12)». A primeira é a desta
-    tabela; a segunda é a da que ela substituiu — daí ficar-se pela primeira.
+    As notas dizem coisas como «atualizada a partir do PDF BF-82 2026/04/20
+    (substitui tabela anterior de 2026/03/12)». A primeira é a desta tabela; a
+    segunda é a da que ela substituiu — daí ficar-se pela primeira.
+
+    Aceita três feitios, e por esta ordem: ``2026/04/20`` (o único sem
+    ambiguidade, e por isso o primeiro), ``20/04/2026``, e ``Abril de 2026`` —
+    que é como a FIWARE e a Somapil datam as tabelas delas. Um mês sem dia
+    conta como o dia 1: é o que a tabela diz, e inventar outro dia era pior.
     """
-    padrao = re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})")
-    for linha in textos:
-        achado = padrao.search(linha or "")
-        if not achado:
-            continue
-        ano, mes, dia = (int(p) for p in achado.groups())
-        try:
-            return date(ano, mes, dia)
-        except ValueError:
-            continue
+    linhas = list(textos)
+
+    for linha in linhas:
+        achado = _DATA_ISO.search(linha or "")
+        if achado:
+            ano, mes, dia = (int(p) for p in achado.groups())
+            try:
+                return date(ano, mes, dia)
+            except ValueError:
+                pass
+
+    for linha in linhas:
+        achado = _DATA_PT.search(linha or "")
+        if achado:
+            dia, mes, ano = (int(p) for p in achado.groups())
+            try:
+                return date(ano, mes, dia)
+            except ValueError:
+                pass
+
+    for linha in linhas:
+        achado = _MES_ANO.search(normalizar(linha))
+        if achado:
+            return date(int(achado.group(2)), _MESES[achado.group(1)], 1)
+
     return None
 
 

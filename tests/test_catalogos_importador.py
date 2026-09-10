@@ -25,7 +25,11 @@ from app.models.catalogos import (
     FornTabelaPreco,
 )
 from app.services.catalogos.base import ArtigoCatalogo, TabelaCatalogo
-from app.services.catalogos.importador import importar, importar_tabelas
+from app.services.catalogos.importador import (
+    ValorGrandeDemais,
+    importar,
+    importar_tabelas,
+)
 
 
 @pytest.fixture()
@@ -358,6 +362,26 @@ def test_importar_varias_tabelas_de_uma_vez(session: Session) -> None:
 
     assert [r.artigos_novos for r in resultados] == [1, 1]
     assert _contar(session, FornTabelaPreco) == 2
+
+
+def test_um_campo_grande_demais_da_erro_que_se_percebe(session: Session) -> None:
+    """Sem isto vinha um DataError do MySQL a meio de dezassete mil linhas.
+
+    Foi mesmo o que quase aconteceu: a «Página PDF» do BLUM chega a 70
+    caracteres e a coluna ``pagina`` aceita 20.
+    """
+    with pytest.raises(ValorGrandeDemais) as erro:
+        importar(session, _tabela(_artigo(pagina="5 | 6 | 12 | 13 | 15 | 16 | 17 | 18")))
+
+    mensagem = str(erro.value)
+    assert "'pagina'" in mensagem
+    assert "F037|ST76|PB STD|8mm" in mensagem
+    assert "aceita 20" in mensagem
+
+
+def test_uma_chave_natural_grande_demais_tambem(session: Session) -> None:
+    with pytest.raises(ValorGrandeDemais, match="chave natural"):
+        importar(session, _tabela(_artigo(chave_natural="x" * 301)))
 
 
 def test_o_resumo_diz_o_que_aconteceu(session: Session) -> None:

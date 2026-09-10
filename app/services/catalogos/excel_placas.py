@@ -1,21 +1,19 @@
-"""Ler um separador de placas em que as espessuras são colunas.
+"""Separadores de placas em que as espessuras são colunas — e o unpivot.
 
 Quase todos os fornecedores de placas escrevem a tabela da mesma maneira: uma
 linha por decorativo e, à direita, um par de colunas por espessura —
 ``Esp 19mm`` a dizer se existe e ``Preço Tabela 19mm`` a dizer quanto custa. O
-Stock_B&F_Finsa leva isso a quarenta colunas.
+``Stock_B&F_Finsa`` leva isso a quarenta colunas; a Innovus dispensa a coluna
+``Esp`` e deixa que a célula de preço vazia diga que aquela espessura não
+existe.
 
-Este módulo é a parte que não muda de fornecedor para fornecedor: encontra o
-cabeçalho, descobre que pares de espessura existem, e faz o **unpivot** —
-transforma cada par numa linha própria. É o que permite perguntar «quanto custa
-o 19 mm em qualquer fornecedor» em vez de procurar coluna a coluna. O
-``egger.py`` (e depois o Sonae/Innovus e a Finsa) só decide o que fazer com as
-colunas da esquerda.
+Este módulo faz o **unpivot**: transforma cada par numa linha própria. É o que
+permite perguntar «quanto custa o 19 mm em qualquer fornecedor» em vez de
+procurar coluna a coluna. O ``egger.py``, o ``innovus.py`` e o ``finsa.py`` só
+decidem o que fazer com as colunas da esquerda.
 
-O cabeçalho é reconhecido por qualquer célula que contenha ``refer`` já sem
-acentos — ``Referência``, ``REFERENCIA``, ``Ref.`` e ``Ref`` entram todas. E
-quando não se encontra, isto **rebenta**: era exatamente aqui que o leitor
-antigo devolvia zero linhas sem dizer nada.
+A parte de abrir o ficheiro e encontrar o cabeçalho está no ``excel.py``, que
+as ferragens também usam.
 """
 
 from __future__ import annotations
@@ -26,13 +24,19 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import load_workbook
+from app.services.catalogos import excel
+from app.services.catalogos.base import FormatoInesperado, normalizar, numero
+from app.services.catalogos.excel import FolhaExcel, valor
 
-from app.services.catalogos.base import FormatoInesperado, normalizar, numero, texto
-
-#: Até onde se procura o cabeçalho. Os separadores põem título e notas em cima
-#: (o do Egger usa três linhas); doze dá folga sem chegar aos dados.
-LINHAS_PARA_CABECALHO = 12
+__all__ = [
+    "FolhaPlacas",
+    "FormatoInesperado",
+    "ParEspessura",
+    "PrecoEspessura",
+    "desdobrar",
+    "ler_folha",
+    "valor",
+]
 
 #: Reconhece «Esp 19mm», «Espessura 19 mm», «19mm».
 _ESPESSURA = re.compile(r"(\d+(?:[.,]\d+)?)\s*mm")
@@ -46,7 +50,7 @@ _EXISTE = {"sim", "s", "x", "1", "true", "yes", "ok", "disponivel"}
 _NAO_EXISTE = {"nao", "n", "0", "false", "no", "-", ""}
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ParEspessura:
     """Um par ``Esp NNmm`` / ``Preço Tabela NNmm`` do cabeçalho."""
 
@@ -57,56 +61,11 @@ class ParEspessura:
     coluna_flag: int | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class FolhaPlacas:
-    """Um separador já arrumado: notas, cabeçalho, linhas e espessuras."""
+@dataclass(frozen=True)
+class FolhaPlacas(FolhaExcel):
+    """Um separador de placas, com os pares de espessura já mapeados."""
 
-    nome: str
-    #: As linhas acima do cabeçalho — título, data da tabela, critérios.
-    notas: tuple[str, ...]
-    cabecalho: tuple[str, ...]
-    #: Só as linhas com conteúdo, tal como vieram (sem unpivot).
-    linhas: tuple[tuple[object, ...], ...]
-    espessuras: tuple[ParEspessura, ...]
-    #: Cabeçalho normalizado -> índice, para o ``coluna()``.
-    indices: dict[str, int]
-
-    def coluna(self, *nomes: str) -> int | None:
-        """O índice da coluna que corresponde ao primeiro nome que encaixar.
-
-        Tenta a igualdade antes da inclusão, e por essa ordem para todos os
-        nomes: senão procurar por ``"st"`` apanhava um ``Stock`` que estivesse
-        mais à esquerda em vez da coluna ``ST``.
-        """
-        for comparar in (
-            lambda alvo, cabeca: alvo == cabeca,
-            lambda alvo, cabeca: alvo in cabeca,
-        ):
-            for nome in nomes:
-                alvo = normalizar(nome)
-                if not alvo:
-                    continue
-                for cabeca, indice in self.indices.items():
-                    if comparar(alvo, cabeca):
-                        return indice
-        return None
-
-    def exigir_coluna(self, *nomes: str) -> int:
-        """Como ``coluna()``, mas rebenta em vez de devolver ``None``."""
-        indice = self.coluna(*nomes)
-        if indice is None:
-            raise FormatoInesperado(
-                f"{self.nome}: não há coluna para {' / '.join(nomes)}. "
-                f"O cabeçalho tem: {', '.join(self.cabecalho)}"
-            )
-        return indice
-
-
-def _e_cabecalho(valores: Sequence[object]) -> bool:
-    preenchidas = [v for v in valores if texto(v) is not None]
-    if len(preenchidas) < 4:
-        return False
-    return any("refer" in normalizar(v) for v in valores)
+    espessuras: tuple[ParEspessura, ...] = ()
 
 
 def _mapear_espessuras(cabecalho: Sequence[str]) -> tuple[ParEspessura, ...]:
@@ -138,84 +97,27 @@ def _mapear_espessuras(cabecalho: Sequence[str]) -> tuple[ParEspessura, ...]:
 
 
 def ler_folha(caminho: Path | str, nome_folha: str) -> FolhaPlacas:
-    """Lê um separador de placas e devolve-o arrumado.
+    """Lê um separador de placas e devolve-o com as espessuras mapeadas.
 
-    Levanta ``FormatoInesperado`` se o separador não existir, se não houver
-    cabeçalho reconhecível, se não houver pares de espessura ou se não sobrar
-    linha nenhuma com conteúdo.
+    Levanta ``FormatoInesperado`` pelas razões do ``excel.ler_folha`` e ainda
+    quando não há pares de espessura nenhuns — sinal de que o separador não é
+    deste feitio, ou de que o cabeçalho mudou de palavra.
     """
-    caminho = Path(caminho)
-    if not caminho.exists():
-        raise FormatoInesperado(f"ficheiro não encontrado: {caminho}")
-
-    workbook = load_workbook(caminho, read_only=True, data_only=True)
-    try:
-        if nome_folha not in workbook.sheetnames:
-            raise FormatoInesperado(
-                f"o separador {nome_folha!r} não existe em {caminho.name}. "
-                f"Existem: {', '.join(workbook.sheetnames)}"
-            )
-        worksheet = workbook[nome_folha]
-        todas = [tuple(linha) for linha in worksheet.iter_rows(values_only=True)]
-    finally:
-        workbook.close()
-
-    indice_cabecalho: int | None = None
-    for i, linha in enumerate(todas[:LINHAS_PARA_CABECALHO]):
-        if _e_cabecalho(linha):
-            indice_cabecalho = i
-            break
-
-    if indice_cabecalho is None:
-        raise FormatoInesperado(
-            f"{nome_folha}: não se encontrou o cabeçalho nas primeiras "
-            f"{LINHAS_PARA_CABECALHO} linhas (nenhuma célula com 'refer')"
-        )
-
-    cabecalho = tuple(texto(c) or "" for c in todas[indice_cabecalho])
-    notas = tuple(
-        nota
-        for linha in todas[:indice_cabecalho]
-        for nota in (texto(linha[0] if linha else None),)
-        if nota
-    )
-
-    indices: dict[str, int] = {}
-    for indice, cabeca in enumerate(cabecalho):
-        norm = normalizar(cabeca)
-        if norm:
-            indices.setdefault(norm, indice)
-
-    espessuras = _mapear_espessuras(cabecalho)
+    lida = excel.ler_folha(caminho, nome_folha)
+    espessuras = _mapear_espessuras(lida.cabecalho)
     if not espessuras:
         raise FormatoInesperado(
             f"{nome_folha}: nenhuma coluna de preço com espessura em mm. "
-            f"O cabeçalho tem: {', '.join(cabecalho)}"
+            f"O cabeçalho tem: {', '.join(lida.cabecalho)}"
         )
-
-    linhas = tuple(
-        linha
-        for linha in todas[indice_cabecalho + 1 :]
-        if any(texto(c) is not None for c in linha)
-    )
-    if not linhas:
-        raise FormatoInesperado(f"{nome_folha}: cabeçalho encontrado mas zero linhas")
-
     return FolhaPlacas(
-        nome=nome_folha,
-        notas=notas,
-        cabecalho=cabecalho,
-        linhas=linhas,
+        nome=lida.nome,
+        notas=lida.notas,
+        cabecalho=lida.cabecalho,
+        linhas=lida.linhas,
+        indices=lida.indices,
         espessuras=espessuras,
-        indices=indices,
     )
-
-
-def valor(linha: Sequence[object], indice: int | None) -> object:
-    """A célula, ou ``None`` se a coluna não existe ou a linha é mais curta."""
-    if indice is None or indice >= len(linha):
-        return None
-    return linha[indice]
 
 
 @dataclass(frozen=True, slots=True)

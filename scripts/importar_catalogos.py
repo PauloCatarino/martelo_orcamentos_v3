@@ -22,13 +22,16 @@ import argparse
 from pathlib import Path
 
 from app.db.session import SessionLocal
-from app.services.catalogos import egger, finsa, importador, innovus
+from app.services.catalogos import egger, ferragens, finsa, importador, innovus
 from app.services.catalogos.base import FormatoInesperado, TabelaCatalogo
 from app.services.placas_referencias_service import FICHEIRO_REFERENCIAS
 from app.services.system_setting_service import SystemSettingService
 
-#: Adaptadores disponíveis, pela ordem em que foram escritos — que é a do
-#: dinheiro: o Egger é o que mais se gasta, a Finsa o que menos.
+#: Adaptadores disponíveis. Os três primeiros são de **placas**, pela ordem do
+#: dinheiro: o Egger é o que mais se gasta, a Finsa o que menos. O
+#: ``ferragens`` é de quem vende o resto — Emuca, Casa Trend, FIWARE e o BLUM
+#: da Somapil — e faz os quatro de uma vez, porque só mudam os nomes das
+#: colunas.
 #:
 #: Os três separadores de **disponibilidade** de Innovus
 #: (``Stock_Somapil_Innovus``, ``Stock_J.Pinto_Leitao_Innovus``,
@@ -41,6 +44,7 @@ ADAPTADORES = {
     "egger": egger.ler_tabelas,
     "innovus": innovus.ler_tabelas,
     "finsa": finsa.ler_tabelas,
+    "ferragens": ferragens.ler_tabelas,
 }
 
 
