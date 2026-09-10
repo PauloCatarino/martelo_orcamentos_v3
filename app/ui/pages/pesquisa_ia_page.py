@@ -1,7 +1,7 @@
 """Pesquisa IA - fontes: Materias-Primas do V3 (local) + PHC (artigos ST)."""
 
 from __future__ import annotations
-from app.domain.pesquisa_ia_resumo import resumo_fontes, comentario_html
+from app.domain.pesquisa_ia_resumo import resumo_fontes, comentario_html, comparar_fornecedores
 
 import re
 import unicodedata
@@ -300,10 +300,13 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             "Grupo",
             "Tipo Produto",
             "Fornecedor",
-            *ESPESSURAS,
             # As ferragens nao tem espessura: o preco delas vinha do Excel e
-            # nao tinha coluna nenhuma onde aparecer.
+            # nao tinha coluna nenhuma onde aparecer. Vem ANTES das espessuras
+            # porque, numa dobradica, as dez colunas de espessura estao todas
+            # vazias -- e o preco ficava escondido a dez colunas de distancia,
+            # onde ninguem ia la'.
             CHAVE_PRECO_UNITARIO,
+            *ESPESSURAS,
         ]
         self.referencias_table, _ = _nova_tabela(
             cols_ref, "pesquisa_ia_referencias", esticar_ultima=True
@@ -610,8 +613,8 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
                 referencia.tipo,
                 referencia.fornecedor,
             ]
-            precos = [referencia.precos.get(espessura, "") for espessura in ESPESSURAS]
-            precos.append(referencia.precos.get(CHAVE_PRECO_UNITARIO, ""))
+            precos = [referencia.precos.get(CHAVE_PRECO_UNITARIO, "")]
+            precos += [referencia.precos.get(espessura, "") for espessura in ESPESSURAS]
             self._escrever_linha(self.referencias_table, row_index, base + precos)
 
     def _servico_catalogos(self) -> PesquisaCatalogosService:
@@ -740,6 +743,18 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             partes.append(
                 "ARTIGOS (mat\u00e9rias-primas V3/PHC):\n"
                 + "\n".join(linhas_artigos)
+            )
+
+        # Entregue ja' feita: um modelo pequeno perguntado por \u00abquanto custa\u00bb
+        # responde com o primeiro preco que lhe aparece a` frente. O W908 em
+        # 19 mm custa 8,74 EUR na WoodSide e 9,32 EUR na Balbino & Faustino, e
+        # a resposta dizia 9,32 sem mencionar a outra.
+        comparacoes = comparar_fornecedores(self._referencias_filtradas)
+        if comparacoes:
+            partes.append(
+                "COMPARA\u00c7\u00c3O ENTRE FORNECEDORES (j\u00e1 calculada; usar tal "
+                "e qual, do mais barato para o mais caro):\n"
+                + "\n".join(f"- {frase}" for frase in comparacoes[:10])
             )
 
         if refs:
