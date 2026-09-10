@@ -10,9 +10,15 @@ def main() -> int:
     with SessionLocal() as session:
         resultado = indexar(session, progresso=print)
     print(
-        f"OK - ficheiros: {resultado.ficheiros}, chunks: {resultado.chunks}, "
-        f"erros: {resultado.erros}. Indice em: {resultado.pasta_indice}"
+        f"OK - artigos da base: {resultado.artigos}, ficheiros: "
+        f"{resultado.ficheiros}, chunks: {resultado.chunks}, erros: "
+        f"{resultado.erros}. Indice em: {resultado.pasta_indice}"
     )
+    # Nada fica de fora em silencio: quem correr isto tem de poder discordar.
+    if resultado.ignorados:
+        print(f"\nNao foram lidos {len(resultado.ignorados)} ficheiros:")
+        for nome, razao in resultado.ignorados:
+            print(f"  - {nome}: {razao}")
     return 0
 
 

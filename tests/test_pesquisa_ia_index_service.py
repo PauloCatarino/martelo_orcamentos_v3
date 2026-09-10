@@ -51,34 +51,27 @@ def test_config_usa_settings_e_fallback_do_modelo(monkeypatch) -> None:
     )
 
 
-def test_chunks_excel_linha_por_linha(tmp_path) -> None:
-    caminho = tmp_path / "catalogo.xlsx"
-    _criar_excel(caminho)
-
-    chunks = list(service_module._chunks_excel(caminho))
-
-    assert chunks == [
-        (
-            "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm",
-            {"folha": "Catalogo", "linha": 3},
-        ),
-    ]
+#: O trecho que o `_chunks_pdf` de mentira devolve por cada PDF.
+TRECHO = "Ref: ABC | Descricao: Dobradica | Preco: 12.5"
 
 
-def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch) -> None:
-    catalogos = tmp_path / "catalogos"
-    fornecedor = catalogos / "FornecedorA"
-    fornecedor.mkdir(parents=True)
-    _criar_excel(fornecedor / "catalogo.xlsx")
-    indice = tmp_path / "indice"
+def _criar_pdf(caminho: Path) -> None:
+    """Um PDF de mentira: quem o le' e' um duplo, so' o nome conta."""
+    caminho.write_bytes(b"%PDF-1.4 fake")
 
+
+def _fingir(monkeypatch, catalogos: Path, indice: Path, esperado: int | None = None):
+    """Poe de pe' tudo o que o indexador precisa e nao deve ser testado aqui."""
     monkeypatch.setattr(
         service_module,
         "_config",
         lambda _session: (str(catalogos), str(indice), "modelo-teste"),
     )
-    # A base entra por aqui; este teste é sobre os ficheiros da pasta.
+    # A base tem os seus proprios testes; estes sao sobre a pasta.
     monkeypatch.setattr(service_module, "listar_artigos", lambda _session: [])
+    monkeypatch.setattr(
+        service_module, "_chunks_pdf", lambda caminho: iter([(TRECHO, {"pagina": 1})])
+    )
 
     class _FakeVetores:
         def astype(self, _dtype: str):
@@ -89,18 +82,32 @@ def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch)
             self.nome = nome
 
         def encode(self, textos, **kwargs):  # noqa: ANN001
-            assert textos == [
-                "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm"
-            ]
+            if esperado is not None:
+                assert textos == [TRECHO] * esperado
             assert kwargs["normalize_embeddings"] is True
             return _FakeVetores()
 
-    fake_numpy = SimpleNamespace(
-        save=lambda caminho, _vetores: Path(caminho).write_bytes(b"fake-npy")
+    monkeypatch.setitem(
+        sys.modules,
+        "numpy",
+        SimpleNamespace(
+            save=lambda caminho, _v: Path(caminho).write_bytes(b"fake-npy")
+        ),
     )
-    fake_sentence_transformers = SimpleNamespace(SentenceTransformer=_FakeModelo)
-    monkeypatch.setitem(sys.modules, "numpy", fake_numpy)
-    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_sentence_transformers)
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=_FakeModelo),
+    )
+
+
+def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch) -> None:
+    catalogos = tmp_path / "catalogos"
+    fornecedor = catalogos / "FornecedorA"
+    fornecedor.mkdir(parents=True)
+    _criar_pdf(fornecedor / "catalogo.pdf")
+    indice = tmp_path / "indice"
+    _fingir(monkeypatch, catalogos, indice, esperado=1)
 
     mensagens: list[str] = []
     resultado = service_module.indexar(object(), progresso=mensagens.append)
@@ -114,15 +121,13 @@ def test_indexar_grava_embeddings_e_meta_sem_deps_pesadas(tmp_path, monkeypatch)
 
     linhas_meta = [
         json.loads(linha)
-        for linha in (indice / service_module.META_FILENAME).read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for linha in (indice / service_module.META_FILENAME)
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
-    assert linhas_meta[0]["ficheiro"] == "catalogo.xlsx"
+    assert linhas_meta[0]["ficheiro"] == "catalogo.pdf"
     assert linhas_meta[0]["fornecedor"] == "FornecedorA"
-    assert linhas_meta[0]["texto"] == (
-        "Ref: ABC | Descricao: Dobradi\u00e7a | Preco: 12.5 | Espessura: 8 mm"
-    )
+    assert linhas_meta[0]["texto"] == TRECHO
     assert any("modelo-teste" in mensagem for mensagem in mensagens)
 
 
@@ -133,42 +138,40 @@ def test_o_ficheiro_que_virou_base_nao_e_indexado_outra_vez(
     catalogos = tmp_path / "catalogos"
     catalogos.mkdir()
     _criar_excel(catalogos / service_module.FICHEIRO_REFERENCIAS)
-    _criar_excel(catalogos / "outro_fornecedor.xlsx")
-
-    monkeypatch.setattr(
-        service_module,
-        "_config",
-        lambda _session: (str(catalogos), str(tmp_path / "indice"), "modelo-teste"),
-    )
-    monkeypatch.setattr(service_module, "listar_artigos", lambda _session: [])
-
-    class _FakeVetores:
-        def astype(self, _dtype: str):
-            return self
-
-    class _FakeModelo:
-        def __init__(self, nome: str) -> None:
-            self.nome = nome
-
-        def encode(self, textos, **kwargs):  # noqa: ANN001
-            assert len(textos) == 1
-            return _FakeVetores()
-
-    monkeypatch.setitem(
-        sys.modules,
-        "numpy",
-        SimpleNamespace(save=lambda caminho, _v: Path(caminho).write_bytes(b"x")),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "sentence_transformers",
-        SimpleNamespace(SentenceTransformer=_FakeModelo),
-    )
+    _criar_pdf(catalogos / "catalogo_de_fornecedor.pdf")
+    _fingir(monkeypatch, catalogos, tmp_path / "indice", esperado=1)
 
     resultado = service_module.indexar(object())
 
     assert resultado.ficheiros == 1
     assert resultado.chunks == 1
+    assert ("12_Placas_Referencias_COMPLETO.xlsx", "ja' entrou pela base") in [
+        (nome, razao) for nome, razao in resultado.ignorados
+    ]
+
+
+def test_um_excel_sem_adaptador_fica_de_fora_mas_e_nomeado(
+    tmp_path, monkeypatch
+) -> None:
+    """Uma folha de precos em bruto enchia o indice sem o melhorar.
+
+    Uma tabela de ferragens de 2021 fazia sozinha 10 032 dos 49 330 trechos.
+    Fica de fora — mas **dita em voz alta**: um ficheiro que desaparece do
+    indice sem ninguem dizer nada e' a falha que este projeto passa a vida a
+    evitar.
+    """
+    catalogos = tmp_path / "catalogos"
+    catalogos.mkdir()
+    _criar_excel(catalogos / "Tabela_de_ferragens_2021.xlsx")
+    _criar_pdf(catalogos / "catalogo.pdf")
+    _fingir(monkeypatch, catalogos, tmp_path / "indice", esperado=1)
+
+    resultado = service_module.indexar(object())
+
+    assert resultado.ficheiros == 1
+    nomes = {nome: razao for nome, razao in resultado.ignorados}
+    assert "Tabela_de_ferragens_2021.xlsx" in nomes
+    assert "sem adaptador" in nomes["Tabela_de_ferragens_2021.xlsx"]
 
 
 def test_as_copias_de_seguranca_ficam_de_fora(tmp_path, monkeypatch) -> None:
@@ -176,43 +179,17 @@ def test_as_copias_de_seguranca_ficam_de_fora(tmp_path, monkeypatch) -> None:
     catalogos = tmp_path / "catalogos"
     backups = catalogos / "_backups"
     backups.mkdir(parents=True)
-    _criar_excel(catalogos / "tabela_do_fornecedor.xlsx")
-    _criar_excel(backups / "tabela_do_fornecedor_20260910.xlsx")
-
-    monkeypatch.setattr(
-        service_module,
-        "_config",
-        lambda _session: (str(catalogos), str(tmp_path / "indice"), "modelo-teste"),
-    )
-    monkeypatch.setattr(service_module, "listar_artigos", lambda _session: [])
-
-    class _FakeVetores:
-        def astype(self, _dtype: str):
-            return self
-
-    class _FakeModelo:
-        def __init__(self, nome: str) -> None:
-            self.nome = nome
-
-        def encode(self, textos, **kwargs):  # noqa: ANN001
-            assert len(textos) == 1
-            return _FakeVetores()
-
-    monkeypatch.setitem(
-        sys.modules,
-        "numpy",
-        SimpleNamespace(save=lambda caminho, _v: Path(caminho).write_bytes(b"x")),
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "sentence_transformers",
-        SimpleNamespace(SentenceTransformer=_FakeModelo),
-    )
+    _criar_pdf(catalogos / "tabela_do_fornecedor.pdf")
+    _criar_pdf(backups / "tabela_do_fornecedor_20260910.pdf")
+    _fingir(monkeypatch, catalogos, tmp_path / "indice", esperado=1)
 
     resultado = service_module.indexar(object())
 
     assert resultado.ficheiros == 1
     assert resultado.chunks == 1
+    # Uma copia de seguranca nao e' um ficheiro «ignorado» a assinalar: e' uma
+    # pasta inteira que nao conta, e enche-la de avisos so' dava ruido.
+    assert resultado.ignorados == ()
 
 
 def test_a_frase_de_um_artigo_diz_a_espessura_e_o_preco() -> None:

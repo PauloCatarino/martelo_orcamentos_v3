@@ -8,8 +8,14 @@ O indice tem duas origens, e a diferenca entre elas e' o que a Fase 3 mudou:
   espessura, com dez colunas, virava uma frase que nao dizia a que espessura
   pertencia cada numero. Uma pergunta como <<quanto custa o U702 em 19mm>>
   nao tinha como ser respondida.
-* **Os ficheiros da pasta** -- os PDFs dos fornecedores e os Excel que ainda
-  nao tem adaptador. Continuam a ser lidos como eram.
+* **Os PDFs da pasta** -- os catalogos dos fornecedores, que ninguem vai
+  transcrever para tabela nenhuma. Continuam a ser lidos pagina a pagina.
+
+**Excel em bruto ja' nao entra.** Uma folha de precos sem adaptador dava um
+trecho por linha e enchia o indice sem o melhorar: uma tabela de ferragens de
+2021 fazia sozinha 10 032 dos 49 330 trechos, treze vezes o que davam os
+oitenta e cinco PDFs juntos. Um Excel que interesse escreve-se um adaptador
+para ele -- e entao entra pela base, com o preco e a espessura arrumados.
 
 O ``12_Placas_Referencias_COMPLETO.xlsx`` fica **de fora** da varredura da
 pasta: e' dele que a base foi feita, e indexa-lo outra vez punha cada artigo no
@@ -24,7 +30,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.services.catalogos import exportador
@@ -35,7 +40,19 @@ from app.services.system_setting_service import SystemSettingService
 
 EMBEDDINGS_FILENAME = "embeddings.npy"
 META_FILENAME = "meta.jsonl"
-EXTENSOES = (".xlsx", ".xlsm", ".pdf")
+#: O que se le' da pasta. **So' PDFs**, e de proposito.
+#:
+#: Um Excel de precos sem adaptador entra em bruto -- uma linha, um trecho --
+#: e enche o indice sem o melhorar. Uma tabela de ferragens de 2021 fazia
+#: sozinha 10 032 dos 49 330 trechos, treze vezes o que davam os oitenta e
+#: cinco PDFs juntos, e competia com os artigos bons das mesmas ferragens que
+#: agora vem da base. Um Excel que interesse **escreve-se um adaptador para
+#: ele** e entra pela porta da frente, como a Emuca ou o BLUM.
+EXTENSOES = (".pdf",)
+
+#: As extensoes que outrora entravam e hoje ficam de fora -- para o indexador
+#: as poder nomear em vez de as ignorar em silencio.
+EXTENSOES_IGNORADAS = (".xlsx", ".xlsm")
 
 #: Pastas da árvore dos catálogos que não são catálogos.
 #:
@@ -57,6 +74,10 @@ class ResultadoIndexacao:
     pasta_indice: str
     #: Quantas frases vieram da base, das ``chunks`` todas.
     artigos: int = 0
+    #: Ficheiros que a varredura encontrou e nao leu, com a razao. Nada aqui se
+    #: ignora em silencio: quem correr o indexador tem de poder ver o que ficou
+    #: de fora e discordar.
+    ignorados: tuple[tuple[str, str], ...] = ()
 
 
 def _config(session: Session) -> tuple[str, str, str]:
@@ -158,34 +179,6 @@ def _chunks_base(session: Session) -> Iterator[tuple[str, dict]]:
         }
 
 
-def _chunks_excel(caminho: Path) -> Iterator[tuple[str, dict]]:
-    wb = load_workbook(caminho, read_only=True, data_only=True)
-    try:
-        for folha in wb.sheetnames:
-            ws = wb[folha]
-            cabecalho: list[str] | None = None
-            for i, row in enumerate(ws.iter_rows(values_only=True), start=1):
-                valores = [
-                    "" if celula is None else str(celula).strip() for celula in row
-                ]
-                nao_vazias = [valor for valor in valores if valor]
-                if not nao_vazias:
-                    continue
-                if cabecalho is None:
-                    if len(nao_vazias) >= 4:
-                        cabecalho = valores
-                    continue
-                partes = [
-                    f"{coluna}: {valor}" if coluna else valor
-                    for coluna, valor in zip(cabecalho, valores)
-                    if valor
-                ]
-                if partes:
-                    yield " | ".join(partes), {"folha": folha, "linha": i}
-    finally:
-        wb.close()
-
-
 def _chunks_pdf(caminho: Path) -> Iterator[tuple[str, dict]]:
     from io import BytesIO
 
@@ -234,21 +227,26 @@ def indexar(
     if progresso:
         progresso(f"Base de catalogos: {artigos} artigos")
 
+    ignorados: list[tuple[str, str]] = []
     for caminho in sorted(base.rglob("*")):
-        if not caminho.is_file() or caminho.suffix.lower() not in EXTENSOES:
-            continue
-        if caminho.name == FICHEIRO_REFERENCIAS:
-            # Ja' entrou pela base, em melhor forma. Ver a docstring do modulo.
+        if not caminho.is_file():
             continue
         if any(parte in PASTAS_IGNORADAS for parte in caminho.parts):
             continue
+        if caminho.name == FICHEIRO_REFERENCIAS:
+            # Ja' entrou pela base, em melhor forma. Ver a docstring do modulo.
+            ignorados.append((caminho.name, "ja' entrou pela base"))
+            continue
+        if caminho.suffix.lower() in EXTENSOES_IGNORADAS:
+            ignorados.append(
+                (caminho.name, "Excel sem adaptador: entrava em bruto e enchia o indice")
+            )
+            continue
+        if caminho.suffix.lower() not in EXTENSOES:
+            continue
         fornecedor = caminho.parent.name
         try:
-            gerador = (
-                _chunks_excel(caminho)
-                if caminho.suffix.lower() in (".xlsx", ".xlsm")
-                else _chunks_pdf(caminho)
-            )
+            gerador = _chunks_pdf(caminho)
             for texto, extra in gerador:
                 textos.append(texto)
                 metadados.append(
@@ -290,4 +288,5 @@ def indexar(
         erros=erros,
         pasta_indice=str(destino),
         artigos=artigos,
+        ignorados=tuple(ignorados),
     )
