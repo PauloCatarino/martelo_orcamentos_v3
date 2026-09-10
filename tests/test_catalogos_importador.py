@@ -282,6 +282,59 @@ def test_o_fornecedor_de_outra_marca_nao_e_desativado(session: Session) -> None:
     assert all(t.ativa for t in session.scalars(select(FornTabelaPreco)).all())
 
 
+def test_duas_tabelas_da_mesma_marca_nao_se_desativam_uma_a_outra(
+    session: Session,
+) -> None:
+    """A B&F vende Innovus em duas tabelas ao mesmo tempo: Brancos e Decorativos.
+
+    Enquanto a regra foi «fornecedor + fabricante», importar a segunda desligava
+    a primeira e metade dos preços de Innovus deixava de ser a que vale. O que
+    identifica a tabela é o trio com o **nome** — e é por isso que o nome que o
+    adaptador dá não leva o ano.
+    """
+    importar(
+        session,
+        _tabela(fabricante="Innovus", nome="Innovus Brancos E05", hash_="b" * 64),
+    )
+    session.commit()
+
+    resultado = importar(
+        session,
+        _tabela(fabricante="Innovus", nome="Innovus Decorativos E05", hash_="d" * 64),
+    )
+    session.commit()
+
+    assert resultado.tabelas_desativadas == 0
+    tabelas = session.scalars(select(FornTabelaPreco)).all()
+    assert len(tabelas) == 2
+    assert all(t.ativa for t in tabelas)
+
+
+def test_a_versao_nova_da_mesma_tabela_desativa_a_antiga(session: Session) -> None:
+    importar(
+        session,
+        _tabela(fabricante="Innovus", nome="Innovus Brancos E05", hash_="b" * 64),
+    )
+    session.commit()
+
+    resultado = importar(
+        session,
+        _tabela(
+            fabricante="Innovus",
+            nome="Innovus Brancos E05",
+            hash_="b2" + "0" * 62,
+            data_tabela=date(2027, 1, 15),
+        ),
+    )
+    session.commit()
+
+    assert resultado.tabelas_desativadas == 1
+    tabelas = session.scalars(
+        select(FornTabelaPreco).order_by(FornTabelaPreco.id)
+    ).all()
+    assert [t.ativa for t in tabelas] == [False, True]
+
+
 def test_chave_natural_repetida_no_ficheiro_avisa_e_entra_uma_vez(
     session: Session,
 ) -> None:

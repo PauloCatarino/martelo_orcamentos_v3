@@ -16,14 +16,20 @@ O que este adaptador decide:
   entrar: o ``W908`` existe em ``SM`` e em ``ST7``, com o mesmo preço mas
   acabamentos diferentes, e são duas linhas na tabela do fornecedor. Sem o ST,
   a segunda apagava a primeira na reimportação.
-* **O substrato sai do «Tipo Produto».** Hoje as duas folhas só têm Eurodekor
-  revestido em aglomerado de partículas, e as duas escrevem-no de maneira
-  diferente («E1E05» numa, «El E05» na outra — o OCR do PDF). Classificar por
-  palavras em vez de comparar o texto todo é o que faz as duas assentarem no
-  mesmo ``PB STD``. Um tipo de produto que não se reconheça **não** é
-  adivinhado: fica sem substrato e sai um aviso.
+* **O substrato sai do «Tipo Produto»**, pelo vocabulário partilhado do
+  ``substratos.py``. Hoje as duas folhas só têm Eurodekor revestido em
+  aglomerado de partículas, e as duas escrevem-no de maneira diferente
+  («E1E05» numa, «El E05» na outra — o OCR do PDF); as duas assentam no mesmo
+  ``PB STD``, que é o mesmo código que a Innovus e a Finsa usam para o mesmo
+  núcleo. Um tipo de produto que não se reconheça **não** é adivinhado: fica
+  sem substrato e sai um aviso.
+* **O nome de origem não entra na chave**, ao contrário do que acontece na
+  Innovus e na Finsa. Aqui as duas folhas têm um único tipo de produto: pô-lo
+  na chave não distinguia nada e só a tornava mais frágil.
 * **A data e o código da tabela saem das notas do separador**, não do nome do
-  ficheiro nem de uma constante que envelhece aqui dentro.
+  ficheiro nem de uma constante que envelhece aqui dentro. O ``nome`` da
+  tabela, esse, **não leva o ano**: é ele que identifica a tabela de uma
+  versão para a outra — ver ``importador.py``.
 """
 
 from __future__ import annotations
@@ -32,7 +38,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.services.catalogos import excel_placas
+from app.services.catalogos import excel_placas, substratos
 from app.services.catalogos.base import (
     ArtigoCatalogo,
     TabelaCatalogo,
@@ -74,29 +80,6 @@ FOLHAS: tuple[FolhaEgger, ...] = (
         nome="EGGER WoodSide",
     ),
 )
-
-
-def _substrato(tipo_produto: str | None) -> str | None:
-    """O núcleo da placa, a partir do texto do «Tipo Produto».
-
-    Devolve ``None`` quando não reconhece — quem chama transforma isso num
-    aviso. Adivinhar um substrato errado é pior do que não ter nenhum: é dele
-    que depende comparar o 19 mm de um fornecedor com o de outro.
-    """
-    if tipo_produto is None:
-        return None
-    norm = normalizar(tipo_produto)
-    hidrofugo = any(
-        marca in norm for marca in ("hidrofug", "hydro", "humidade", " p3", "p5")
-    )
-
-    if "compacto" in norm or "compact" in norm:
-        return "COMPACTO"
-    if "mdf" in norm or "fibras" in norm:
-        return "MDF HID" if hidrofugo else "MDF STD"
-    if "particula" in norm or "aglomerado" in norm or "eurodekor" in norm:
-        return "PB HID" if hidrofugo else "PB STD"
-    return None
 
 
 def _descricao(
@@ -188,7 +171,7 @@ def ler_folha(caminho: Path | str, folha: FolhaEgger) -> TabelaCatalogo:
         ):
             fornecedores_estranhos.add(fornecedor_linha)
 
-        substrato = _substrato(tipo_produto)
+        substrato = substratos.canonico(tipo_produto)
         if substrato is None and tipo_produto is not None:
             tipos_desconhecidos.add(tipo_produto)
 
@@ -224,7 +207,9 @@ def ler_folha(caminho: Path | str, folha: FolhaEgger) -> TabelaCatalogo:
                     atributos={
                         "folha": folha.folha,
                         "st": st,
-                        "tipo_produto": tipo_produto,
+                        # Nome uniforme nos três adaptadores: o que o
+                        # fornecedor escreveu, antes de virar código canónico.
+                        "substrato_origem": tipo_produto,
                         "espessura": medida.etiqueta,
                     },
                     observacoes=observacoes,
@@ -256,12 +241,11 @@ def ler_folha(caminho: Path | str, folha: FolhaEgger) -> TabelaCatalogo:
             avisos.append(f"(e mais {se_faltam} avisos do mesmo tipo)")
 
     data_tabela = primeira_data(lida.notas)
-    ano = f" {data_tabela.year}" if data_tabela else ""
 
     return TabelaCatalogo(
         fornecedor=folha.fornecedor,
         fabricante=FABRICANTE,
-        nome=f"{folha.nome}{ano}",
+        nome=folha.nome,
         referencia_tabela=primeira_referencia_tabela(lida.notas),
         data_tabela=data_tabela,
         ficheiro_origem=f"{Path(caminho).name}#{folha.folha}",

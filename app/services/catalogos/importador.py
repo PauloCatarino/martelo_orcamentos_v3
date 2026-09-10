@@ -14,8 +14,13 @@ e grava. O que sabe é como não fazer estragos ao repetir:
 * **Os preços são acrescentados, nunca reescritos.** Uma linha por preço
   observado, ligada à tabela que o trouxe. É isso que responde a «quanto subiu
   este perfil desde a tabela de 2024».
-* **A tabela anterior do mesmo fornecedor e fabricante deixa de ser a que
-  vale** (``ativa = False``), mas fica cá. Nada se apaga.
+* **A versão anterior da mesma tabela deixa de ser a que vale**
+  (``ativa = False``), mas fica cá. Nada se apaga. «A mesma tabela» é o trio
+  fornecedor + fabricante + nome, e é por isso que o ``nome`` que o adaptador
+  dá **não leva o ano**: o ano está na ``data_tabela``, e um nome que mudasse
+  todos os anos deixava as versões antigas ativas para sempre. A Balbino &
+  Faustino vende três tabelas ao mesmo tempo — EGGER, Innovus Brancos e Innovus
+  Decorativos — e nenhuma delas pode desativar as outras.
 
 Nada aqui toca em ``def_materias_primas`` — ver ``app/db/catalogos.py``.
 
@@ -142,11 +147,12 @@ def importar(
             observacoes = f"{observacoes}\n{nota}" if observacoes else nota
             resultado.avisos.append(nota)
 
-    # A anterior do mesmo fornecedor e fabricante deixa de ser a que vale.
+    # A versão anterior da mesma tabela deixa de ser a que vale — e só ela.
     anteriores = session.scalars(
         select(FornTabelaPreco).where(
             FornTabelaPreco.fornecedor == tabela.fornecedor,
             FornTabelaPreco.fabricante == tabela.fabricante,
+            FornTabelaPreco.nome == tabela.nome,
             FornTabelaPreco.ativa.is_(True),
         )
     ).all()

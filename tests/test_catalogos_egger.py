@@ -216,14 +216,6 @@ def test_tipo_de_produto_desconhecido_avisa_e_nao_adivinha(tmp_path: Path) -> No
     assert all(a.chave_natural.startswith("F037|ST76|") for a in tabela.artigos)
 
 
-def test_mdf_e_hidrofugo_nao_se_confundem_com_aglomerado() -> None:
-    assert egger._substrato("Eurodekor MDF revestido") == "MDF STD"
-    assert egger._substrato("MDF hidrófugo P5") == "MDF HID"
-    assert egger._substrato("Tableros de partículas hidrófugo P3") == "PB HID"
-    assert egger._substrato("Painel compacto") == "COMPACTO"
-    assert egger._substrato(None) is None
-
-
 # ---------------------------------------------------------------------------
 # A cabeça da tabela
 # ---------------------------------------------------------------------------
@@ -238,7 +230,9 @@ def test_data_e_codigo_saem_das_notas_do_separador(tmp_path: Path) -> None:
 
     assert tabela.data_tabela == date(2026, 4, 20)
     assert tabela.referencia_tabela == "BF-82"
-    assert tabela.nome == "EGGER Balbino & Faustino 2026"
+    # O nome não leva o ano de propósito: é ele que identifica a tabela de uma
+    # versão para a outra, e o ano está na data_tabela.
+    assert tabela.nome == "EGGER Balbino & Faustino"
     assert tabela.fabricante == "EGGER"
     assert tabela.fornecedor == "Balbino & Faustino"
     assert tabela.unidade_preco == "M2"
