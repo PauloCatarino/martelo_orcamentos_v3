@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from app.domain.pesquisa_ia_resumo import comparar_fornecedores
 from app.ui.pages.pesquisa_ia_page import montar_fontes
 
 
@@ -83,3 +84,55 @@ def test_referencias_vazias_nao_entram() -> None:
     texto = montar_fontes([_materia("")], [{"Ref": None}], [], [])
 
     assert texto == ""
+
+
+# ---------------------------------------------------------------------------
+# A quem se compra mais barato
+# ---------------------------------------------------------------------------
+
+
+def _ref(referencia, fornecedor, folha, precos):
+    return SimpleNamespace(referencia=referencia, fornecedor=fornecedor, folha=folha,
+                           st_acab="", nome_design="", grupo="", tipo="", precos=precos)
+
+
+def test_a_mesma_referencia_em_dois_fornecedores_da_o_mais_barato_primeiro():
+    """A pergunta que motivou o projeto todo, respondida por conta.
+
+    Um modelo pequeno perguntado por «quanto custa o W908 em 19mm» responde
+    com o primeiro preço que lhe aparece à frente — e respondeu 9,32 €, sem
+    dizer que a WoodSide tem o mesmo a 8,74 €.
+    """
+    linhas = [
+        _ref("W908", "Balbino & Faustino", "Stock_B&F_Egger", {"8mm": "6,73 €", "19mm": "9,32 €"}),
+        _ref("W908", "WoodSide", "Stock_WoodSide_Egger", {"8mm": "6,19 €", "19mm": "8,74 €"}),
+    ]
+
+    frases = comparar_fornecedores(linhas)
+
+    assert len(frases) == 2
+    de_19 = next(f for f in frases if "19mm" in f)
+    assert de_19.index("8,74") < de_19.index("9,32"), "o mais barato vem primeiro"
+    assert "WoodSide" in de_19 and "Balbino & Faustino" in de_19
+    assert "diferença de 0,58" in de_19
+
+
+def test_o_mesmo_preco_em_dois_fornecedores_nao_e_comparacao():
+    """Sem diferença não há nada a decidir — e a lista tem de ficar curta."""
+    linhas = [
+        _ref("W908", "A", "F1", {"19mm": "9,32 €"}),
+        _ref("W908", "B", "F2", {"19mm": "9,32 €"}),
+    ]
+    assert comparar_fornecedores(linhas) == []
+
+
+def test_uma_referencia_num_fornecedor_so_nao_gera_comparacao():
+    assert comparar_fornecedores([_ref("W908", "A", "F1", {"19mm": "9,32 €"})]) == []
+
+
+def test_um_preco_ilegivel_nao_rebenta_a_comparacao():
+    linhas = [
+        _ref("X", "A", "F1", {"19mm": "sob consulta"}),
+        _ref("X", "B", "F2", {"19mm": "9,32 €"}),
+    ]
+    assert comparar_fornecedores(linhas) == []
