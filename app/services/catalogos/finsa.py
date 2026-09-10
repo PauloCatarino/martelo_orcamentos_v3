@@ -193,7 +193,11 @@ def ler_folha(caminho: Path | str, folha: FolhaFinsa) -> TabelaCatalogo:
     }
     if ambiguas:
         exemplos = "; ".join(
-            f"{ref} {acab} {subs} → {' / '.join(sorted(d for d in designs if d))}"
+            # Uma seta «→» nao existe na cp1252, que e' o que uma consola
+            # Windows por omissao usa: o print do aviso rebentava com
+            # UnicodeEncodeError e levava a importacao inteira com ele, ANTES
+            # de escrever seja o que for. Aqui vale mais o ASCII.
+            f"{ref} {acab} {subs} -> {' / '.join(sorted(d for d in designs if d))}"
             for (ref, acab, subs), designs in sorted(ambiguas.items())[:3]
         )
         avisos.append(
