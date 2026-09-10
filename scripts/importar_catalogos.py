@@ -1,7 +1,8 @@
 """Importa as tabelas de preços dos fornecedores para ``martelo_catalogos``.
 
     python -m scripts.importar_catalogos --fornecedor egger
-    python -m scripts.importar_catalogos --fornecedor egger --ver
+    python -m scripts.importar_catalogos --fornecedor innovus --ver
+    python -m scripts.importar_catalogos --fornecedor finsa
     python -m scripts.importar_catalogos --fornecedor egger --ficheiro C:\\tmp\\tabela.xlsx
 
 Sem ``--ficheiro`` vai buscar o ``12_Placas_Referencias_COMPLETO.xlsx`` à pasta
@@ -21,15 +22,25 @@ import argparse
 from pathlib import Path
 
 from app.db.session import SessionLocal
-from app.services.catalogos import egger, importador
+from app.services.catalogos import egger, finsa, importador, innovus
 from app.services.catalogos.base import FormatoInesperado, TabelaCatalogo
 from app.services.placas_referencias_service import FICHEIRO_REFERENCIAS
 from app.services.system_setting_service import SystemSettingService
 
-#: Adaptadores disponíveis. A Fase 2 fez o Egger primeiro por ser o que mais se
-#: gasta; o Sonae/Innovus e a Finsa entram aqui pela mesma porta.
+#: Adaptadores disponíveis, pela ordem em que foram escritos — que é a do
+#: dinheiro: o Egger é o que mais se gasta, a Finsa o que menos.
+#:
+#: Os três separadores de **disponibilidade** de Innovus
+#: (``Stock_Somapil_Innovus``, ``Stock_J.Pinto_Leitao_Innovus``,
+#: ``Stock_WoodSide_Innovus``) não estão aqui: não têm preço nenhum e são uma
+#: matriz de formato × espessura, com o substrato numa banda por cima das
+#: colunas — banda que o separador da Somapil não tem, o que torna cinco das
+#: suas colunas indistinguíveis umas das outras. Enquanto isso não for
+#: resolvido na origem, não há maneira honesta de os ler.
 ADAPTADORES = {
     "egger": egger.ler_tabelas,
+    "innovus": innovus.ler_tabelas,
+    "finsa": finsa.ler_tabelas,
 }
 
 

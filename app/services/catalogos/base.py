@@ -230,7 +230,10 @@ def primeira_referencia_tabela(textos: Iterable[str]) -> str | None:
     Muitos não escrevem nenhum, e é por isso que devolve ``None`` sem se
     queixar em vez de inventar um.
     """
-    padrao = re.compile(r"\b([A-Z]{2,4}-\d{1,4}[A-Z]?)\b")
+    # Uma letra chega: a Innovus chama «T-04» e «T-17» às tabelas dela, e com
+    # duas letras no mínimo ficavam ambas sem código. As letras têm de estar
+    # coladas ao hífen, senão um «WoodSide - 2026» passava por código.
+    padrao = re.compile(r"\b([A-Z]{1,4}-\d{1,4}[A-Z]?)\b")
     for linha in textos:
         achado = padrao.search(linha or "")
         if achado:
