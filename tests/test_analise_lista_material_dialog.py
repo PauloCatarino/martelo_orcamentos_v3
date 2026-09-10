@@ -129,3 +129,23 @@ def test_streamlit_hours_saved_and_reloaded_without_network(app, workbook, sessi
     assert reopened.production['last_query_error']=='Falha de consulta'
     assert reopened.events_table.rowCount()==1
     reopened.close()
+
+
+def test_dialogo_abre_sem_a_base_dos_catalogos(app, workbook, session, monkeypatch):
+    """Sem a base martelo_catalogos, o diálogo abre a avisar — não rebenta.
+
+    As referências passaram a vir da base (Fase 3). Se ela não existir ou não
+    estiver acessível, o erro subia até ao QMessageBox e o diálogo abria com um
+    aviso modal por cima; num teste sem ninguém para carregar em OK, ficava lá
+    para sempre. A degradação tem de ser a mesma de quando faltava o Excel: uma
+    linha de aviso e a associação manual à mão.
+    """
+    monkeypatch.setattr(ui, 'query_woodstore', lambda _: [])
+    dialog = ui.AnaliseListaMaterialDialog(
+        session, workbook_path=workbook, plan_name='0722_01_01_26_JF_VIVA',
+        cutrite_folder=workbook.parent,
+        user=SimpleNamespace(role='admin', username='Teste'),
+    )
+    assert dialog.references == []
+    assert any('Catálogo dos fornecedores indisponível' in aviso
+               for aviso in dialog.warnings)

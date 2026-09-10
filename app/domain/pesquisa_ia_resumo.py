@@ -23,8 +23,17 @@ def resumo_fontes(v3, phc, wood, placas, catalogos, estado=""):
         f"{r.get('Referencia')} — {r.get('Material')} | {r.get('Comprimento')} × {r.get('Largura')} × {r.get('Espessura')} mm: quantidade (Lagen) {r.get('Quantidade')}; reservas {r.get('Reservadas')}; saldo calculado {r.get('Disponivel')}."
         for r in wood])
     out+='<p>WoodStore: saldo por registo e dimensões. Um artigo sem saldo não elimina os restos disponíveis noutros registos. Saldos negativos exigem confirmação.</p>'
-    out+=secao(4,"REFERÊNCIAS DE PLACAS",[
-        f"{r.referencia}/{r.st_acab} — grupo {r.grupo}; {r.fornecedor or r.folha}; " + "; ".join(f"{e}: {p}" for e,p in r.precos.items()) + f". Origem: {r.folha}."
+    out+=secao(4,"REFERÊNCIAS DE CATÁLOGOS",[
+        # Uma ferragem nao tem acabamento nem grupo de preco: se estes campos
+        # entrassem sempre, metade das linhas comecava por "22.8000/ — grupo ".
+        "".join([
+            r.referencia,
+            f"/{r.st_acab}" if r.st_acab else "",
+            f" — grupo {r.grupo}" if r.grupo else "",
+            f"; {r.fornecedor or r.folha}; ",
+            "; ".join(f"{e}: {p}" for e,p in r.precos.items()) or "sem preço na tabela",
+            f". Origem: {r.folha}.",
+        ])
         for r in placas])
     out+=secao(5,"CATÁLOGOS",[f"{r.ficheiro} — {r.local}: {r.trecho[:700]}" for r in catalogos if r.exato])
     return out+"<p><small>"+texto(estado)+"</small></p>"

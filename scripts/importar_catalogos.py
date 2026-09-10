@@ -139,6 +139,15 @@ def main(argv: list[str] | None = None) -> int:
                 f"     ({resultado.tabelas_desativadas} tabela(s) anterior(es) "
                 "deixaram de ser as ativas; nada foi apagado)"
             )
+
+    # O ecrã das referências lê da base e fica logo certo. A pesquisa por IA
+    # não: responde a partir de um índice gravado em ficheiro, e sem isto
+    # continua a citar os preços da tabela anterior com toda a confiança.
+    if any(not resultado.repetida for resultado in resultados):
+        print(
+            "\nEntrou tabela nova. Para a Pesquisa IA responder com estes "
+            "preços:\n  python -m scripts.indexar_pesquisa_ia"
+        )
     return 0
 
 

@@ -39,7 +39,7 @@ def test_lista_as_origens_de_cada_tabela() -> None:
     assert texto.startswith("\n\nFontes:\n")
     assert "• Matérias-primas V3: PLC0019 | PLC0021" in texto
     assert "• PHC: FO01283" in texto
-    assert "• Referências de placas: H3170 (Ref_EGGER)" in texto
+    assert "• Referências de catálogos: H3170 (Ref_EGGER)" in texto
     assert "• 12_Placas.xlsx (Folha Stock_Somapil / linha 7)" in texto
 
 
@@ -57,7 +57,7 @@ def test_a_mesma_referencia_em_varias_folhas_mostra_todas() -> None:
     )
 
     assert (
-        "• Referências de placas: H3170 "
+        "• Referências de catálogos: H3170 "
         "(Ref_EGGER | Stock_B&F_Egger | Stock_WoodSide_Egger)" in texto
     )
 
