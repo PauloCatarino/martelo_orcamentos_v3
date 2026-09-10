@@ -15,6 +15,7 @@ from app.services.system_setting_service import SystemSettingService
 from app.services.woodstore_service import query_woodstore, estado_stock
 from app.domain.pesquisa_ia_consulta import (
     corresponde,
+    grupo_ou_tipo,
     mesma_espessura,
     observacoes_relevantes,
     referencia_com_acabamento,
@@ -449,7 +450,8 @@ class PesquisaIAFluxo:
             # que se procura, nao aparecia em lado nenhum.
             linhas.append(("Tabelas", referencia_com_acabamento(r.referencia, r.st_acab),
                            r.nome_design, valor_de_referencia(r.precos, esp),
-                           r.grupo, r.folha, self.painel_referencias))
+                           grupo_ou_tipo(r.grupo, r.tipo), r.folha,
+                           self.painel_referencias))
         for r in self._ultimos_catalogos:
             linhas.append(("Catálogos", r.ficheiro, r.trecho[:240], "Exato" if r.exato else "Aproximação", r.fornecedor, r.local, self.painel_catalogos))
         for r in self._woodstore_filtrados:

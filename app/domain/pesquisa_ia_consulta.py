@@ -89,3 +89,22 @@ def referencia_com_acabamento(referencia: str, acabamento: str) -> str:
     barra pendurada no fim.
     """
     return f"{referencia}/{acabamento}" if acabamento else referencia
+
+
+def grupo_ou_tipo(grupo: str, tipo: str) -> str:
+    """O que a coluna «Tipo / unidade» diz de uma linha de catálogo.
+
+    A coluna responde a «que espécie de coisa é esta», e cada família de
+    artigos responde com o que tem:
+
+    * uma **placa** responde com o grupo de preço — ``Grupo 0`` —, que é curto,
+      e é por ele que se encontra a matéria-prima correspondente no V3;
+    * uma **ferragem** não tem grupo nenhum, e responde com a família do
+      catálogo — ``Casa Banho Tulhas Roupa``.
+
+    O Casa Trend não preenche a coluna do grupo, e por isso as suas cinco mil
+    linhas apareciam com a célula vazia, quando a folha tinha ali um nome para
+    dar. Onde nem grupo nem tipo existem — a Emuca não tem coluna nenhuma
+    disso — fica vazio, que é a verdade.
+    """
+    return (grupo or "").strip() or (tipo or "").strip()
