@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import sys
+from contextlib import suppress
+
 from app.db.session import SessionLocal
 from app.services.pesquisa_ia_index_service import indexar
 
 
 def main() -> int:
+    # A consola do Windows escreve em cp1252 e ha' nomes de ficheiro no
+    # servidor que ela nao sabe escrever. Isto nao pode matar uma indexacao de
+    # tres minutos que ja' esta' feita: o que nao couber sai como "?".
+    for fluxo in (sys.stdout, sys.stderr):
+        with suppress(Exception):
+            fluxo.reconfigure(errors="replace")
+
     with SessionLocal() as session:
         resultado = indexar(session, progresso=print)
     print(
