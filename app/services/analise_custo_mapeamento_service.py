@@ -137,6 +137,20 @@ def egger_references(line, references):
             and contained(r.referencia) and contained(r.st_acab)]
 
 
+def numero_do_grupo(bruto):
+    """O número do grupo de preço, venha ele como ``7`` ou como ``Grupo 7``.
+
+    A folha do Egger escreve as duas formas conforme o separador, e desde que
+    as referências passaram a vir da base (Fase 3) chega sempre a forma por
+    extenso. A descrição da matéria-prima diz «AGL MLM EGGER GRUPO 7», e a
+    procura é montada com este número: com o texto por extenso o padrão ficava
+    ``GRUPO Grupo 7`` e **nenhuma placa era encontrada** — sem erro nenhum,
+    apenas a associação automática a deixar de funcionar.
+    """
+    encontrado = re.search(r'\d+', str(bruto or ''))
+    return encontrado.group(0) if encontrado else ''
+
+
 def egger_candidates(line, catalog, references):
     refs = egger_references(line, references)
     family = svc.material_traits(line['name'])[2]
@@ -144,7 +158,7 @@ def egger_candidates(line, catalog, references):
              or (family == 'MDF' and 'MDF' in r.tipo.upper())]
     if typed:
         refs = typed
-    groups = {str(r.grupo).strip() for r in refs if r.grupo}
+    groups = {numero_do_grupo(r.grupo) for r in refs if numero_do_grupo(r.grupo)}
     if len(groups) != 1:
         return [], ''
     group = next(iter(groups))

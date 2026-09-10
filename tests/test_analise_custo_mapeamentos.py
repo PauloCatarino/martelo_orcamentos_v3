@@ -80,6 +80,10 @@ def test_egger_group_requires_exact_decor_finish_and_nominal_thickness():
     catalog=[mp(1,'19','7'),mp(2,'8','7'),mp(3,'19','8')]
     assert maps.resolve_price(line,catalog,{},[ref])['id'] == 1
     assert maps.resolve_price({**line,'name':line['name'].replace('ST12','ST10')},catalog,{},[ref]) is None
+    # A base escreve "Grupo 7" onde o Excel escrevia "7". Sem isto a associação
+    # automática do EGGER deixava de encontrar seja o que for, em silêncio.
+    da_base = LinhaReferencia('Stock_B&F_Egger','H1365','ST12','Carvalho','Grupo 7','Tableros partículas','Balbino & Faustino',{})
+    assert maps.resolve_price(line,catalog,{},[da_base])['id'] == 1
 
 
 def test_component_never_applies_parent_kit_price_to_each_child():

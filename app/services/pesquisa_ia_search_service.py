@@ -225,7 +225,13 @@ class PesquisaCatalogosService:
         resultados: list[ResultadoCatalogo] = []
         for i in ordem:
             meta = self._meta[int(i)]
-            if meta.get("folha") is not None:
+            # Os artigos vindos da base ja' trazem o sitio escrito ("EGGER
+            # WoodSide - 19mm"); os chunks de ficheiro dizem folha/linha ou
+            # pagina. O indice antigo nao tem "local" nenhum, e continua a
+            # funcionar pelos ramos de baixo.
+            if meta.get("local"):
+                local = str(meta["local"])
+            elif meta.get("folha") is not None:
                 local = f"Folha {meta.get('folha')} / linha {meta.get('linha')}"
             else:
                 local = f"P\u00e1gina {meta.get('pagina')}"

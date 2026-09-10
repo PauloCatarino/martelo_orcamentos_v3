@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QFileDialog, QLabel, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget, QInputDialog, QSplitter,
 )
+from sqlalchemy.exc import SQLAlchemyError
+
 from app.services import analise_lista_material_service as svc
 from app.services import analise_custo_mapeamento_service as maps
 from app.services import tempos_lista_material_service as times
@@ -329,8 +331,14 @@ class AnaliseListaMaterialDialog(QDialog):
         reference_warning = ''
         try:
             self.references = listar_referencias(self.session)
-        except (RuntimeError, OSError, ValueError) as exc:
-            reference_warning = 'Catálogo de grupos EGGER indisponível; associação manual disponível.'
+        # SQLAlchemyError entrou aqui quando as referências passaram a vir da
+        # base martelo_catalogos: se a base não existir ou não estiver
+        # acessível, isto tem de degradar como sempre degradou quando faltava o
+        # Excel. Sem isto o erro subia até ao QMessageBox e o diálogo abria com
+        # um aviso modal por cima, em vez de abrir com uma linha de estado.
+        except (RuntimeError, OSError, ValueError, SQLAlchemyError):
+            reference_warning = ('Catálogo dos fornecedores indisponível; '
+                                 'associação manual disponível.')
         try:
             self.plans, self.warnings = svc.discover_plans(self.cutrite_folder, self.plan_name)
         except (OSError, ValueError) as exc:

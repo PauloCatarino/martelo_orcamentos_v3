@@ -1,31 +1,49 @@
-"""Read the curated board references Excel file for Pesquisa IA."""
+"""As referências de placas que a Pesquisa IA mostra.
+
+Desde a Fase 3 estas linhas vêm da base ``martelo_catalogos`` e já não do
+``12_Placas_Referencias_COMPLETO.xlsx``. A porta é a mesma — quem chama continua
+a pedir ``listar_referencias(session)`` — e a forma da linha também, para que o
+ecrã e o diálogo da lista de material não tivessem de mudar.
+
+O leitor do Excel **fica cá**, em ``listar_referencias_do_excel``. Serve para
+duas coisas: comparar as duas origens (``scripts/comparar_referencias.py``) e
+ter para onde voltar se alguma coisa correr mal. Não é usado por omissão.
+"""
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
+from app.services.catalogos.consulta import (
+    CHAVE_PRECO_UNITARIO,
+    LinhaReferencia,
+    esta_vazia,
+)
+from app.services.catalogos.consulta import listar_referencias as _listar_da_base
 from app.services.system_setting_service import SystemSettingService
 from app.utils.formatters import format_currency
 
 FICHEIRO_REFERENCIAS = "12_Placas_Referencias_COMPLETO.xlsx"
 
+#: Origens possíveis, para o script de comparação e para quem quiser voltar
+#: atrás sem editar código.
+ORIGEM_BASE = "base"
+ORIGEM_EXCEL = "excel"
 
-@dataclass(frozen=True)
-class LinhaReferencia:
-    folha: str
-    referencia: str
-    st_acab: str
-    nome_design: str
-    grupo: str
-    tipo: str
-    fornecedor: str
-    precos: dict[str, str]
+__all__ = [
+    "CHAVE_PRECO_UNITARIO",
+    "FICHEIRO_REFERENCIAS",
+    "LinhaReferencia",
+    "ORIGEM_BASE",
+    "ORIGEM_EXCEL",
+    "listar_referencias",
+    "listar_referencias_do_excel",
+]
 
 
 def _norm(value: object) -> str:
@@ -77,7 +95,8 @@ def _precos(cabecalho: list[object], valores: list[object]) -> dict[str, str]:
     return out
 
 
-def listar_referencias(session: Session) -> list[LinhaReferencia]:
+def listar_referencias_do_excel(session: Session) -> list[LinhaReferencia]:
+    """A leitura antiga, separador a separador, direta do Excel curado."""
     base = (
         SystemSettingService(session).obter_valor("pasta_pesquisa_profunda_ia", "")
         or ""
@@ -128,3 +147,25 @@ def listar_referencias(session: Session) -> list[LinhaReferencia]:
         workbook.close()
 
     return linhas
+
+
+def listar_referencias(
+    session: Session, *, origem: str = ORIGEM_BASE
+) -> list[LinhaReferencia]:
+    """As referências de catálogo, da base por omissão.
+
+    Se a base estiver vazia isto **falha em vez de ler o Excel às escondidas**:
+    uma tabela com metade dos artigos e nenhum aviso é pior do que uma tabela
+    que não abre. Quem quiser mesmo o Excel pede-o por ``origem``.
+    """
+    if origem == ORIGEM_EXCEL:
+        return listar_referencias_do_excel(session)
+    if origem != ORIGEM_BASE:
+        raise ValueError(f"Origem desconhecida: {origem!r}")
+    if esta_vazia(session):
+        raise RuntimeError(
+            "A base de catalogos esta vazia. Corra "
+            "'python -m scripts.importar_catalogos --fornecedor todos' para a "
+            "encher a partir do Excel."
+        )
+    return _listar_da_base(session)

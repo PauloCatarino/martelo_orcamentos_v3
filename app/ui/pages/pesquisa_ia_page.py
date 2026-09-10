@@ -30,6 +30,7 @@ from app.services.system_setting_service import SystemSettingService
 
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
+from app.services.catalogos.consulta import CHAVE_PRECO_UNITARIO, assinatura_catalogos
 from app.services.def_materia_prima_service import DefMateriaPrimaService
 from app.services.phc_materiais_service import query_phc_materiais
 from app.services.placas_referencias_service import LinhaReferencia, listar_referencias
@@ -134,7 +135,7 @@ def montar_fontes(v3, phc, refs, trechos) -> str:
             f"{nome} ({' | '.join(folhas)})" if folhas else nome
             for nome, folhas in folhas_por_referencia.items()
         ]
-        linhas.append("Referências de placas: " + " | ".join(partes))
+        linhas.append("Referências de catálogos: " + " | ".join(partes))
 
     locais_por_ficheiro: dict[str, list[str]] = {}
     for resultado in trechos:
@@ -248,9 +249,12 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         self.catalogos_button = QPushButton("Pesquisar cat\u00e1logos (IA)")
         self.catalogos_button.clicked.connect(self.pesquisar_catalogos)
         self.catalogos_button.setToolTip("Pesquisar catálogos externos com IA")
-        self.referencias_button = QPushButton("Carregar refer\u00eancias (placas)")
+        self.referencias_button = QPushButton("Carregar refer\u00eancias (cat\u00e1logos)")
         self.referencias_button.clicked.connect(self.carregar_referencias)
-        self.referencias_button.setToolTip("Carregar referências de placas do Excel")
+        self.referencias_button.setToolTip(
+            "Carregar as referências dos catálogos de fornecedores (placas e "
+            "ferragens) da base martelo_catalogos"
+        )
         self.resposta_button = QPushButton("Gerar resposta IA")
         self.resposta_button.clicked.connect(self.gerar_resposta)
         self.resposta_button.setToolTip("Gerar uma resposta IA a partir dos resultados")
@@ -297,6 +301,9 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             "Tipo Produto",
             "Fornecedor",
             *ESPESSURAS,
+            # As ferragens nao tem espessura: o preco delas vinha do Excel e
+            # nao tinha coluna nenhuma onde aparecer.
+            CHAVE_PRECO_UNITARIO,
         ]
         self.referencias_table, _ = _nova_tabela(
             cols_ref, "pesquisa_ia_referencias", esticar_ultima=True
@@ -329,7 +336,8 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
             "Artigos PHC (Ferragens, Madeiras, Orlas)", self.phc_table
         )
         self.painel_referencias = PainelRecolhivel(
-            "Refer\u00eancias de placas (cat\u00e1logo curado)", self.referencias_table
+            "Refer\u00eancias dos cat\u00e1logos de fornecedores (placas e ferragens)",
+            self.referencias_table,
         )
         self.painel_catalogos = PainelRecolhivel(
             "Cat\u00e1logos (documentos) \u2014 duplo-clique abre o ficheiro",
@@ -392,13 +400,16 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         self.ler_fonte("phc", query_phc_materiais)
 
     def carregar_referencias(self) -> None:
+        """As referencias dos catalogos, da base ``martelo_catalogos``.
+
+        A cache era a data do ficheiro Excel; passou a ser um carimbo da base,
+        que muda a cada importacao. Sem isto ficava-se a olhar para os precos
+        antigos depois de importar uma tabela nova.
+        """
         def ler(session):
-            pasta = SystemSettingService(session).obter_valor("pasta_pesquisa_profunda_ia", "") or ""
-            ficheiro = Path(pasta) / "12_Placas_Referencias_COMPLETO.xlsx"
-            stat = ficheiro.stat()
-            assinatura = (str(ficheiro), stat.st_mtime_ns, stat.st_size)
-            if self._cache_refs is None or self._cache_refs[0] != assinatura:
-                self._cache_refs = (assinatura, listar_referencias(session))
+            carimbo = assinatura_catalogos(session)
+            if self._cache_refs is None or self._cache_refs[0] != carimbo:
+                self._cache_refs = (carimbo, listar_referencias(session))
             return self._cache_refs[1]
         self.ler_fonte("placas", ler)
 
@@ -518,7 +529,7 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         )
         self.fichas["phc"].setText(f"Artigos PHC   {len(self._phc_filtrados)}")
         self.fichas["placas"].setText(
-            f"Referências de placas   {len(self._referencias_filtradas)}"
+            f"Referências de catálogos   {len(self._referencias_filtradas)}"
         )
         self.fichas["catalogos"].setText(
             f"Catálogos   {len(self._ultimos_catalogos)}"
@@ -600,6 +611,7 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
                 referencia.fornecedor,
             ]
             precos = [referencia.precos.get(espessura, "") for espessura in ESPESSURAS]
+            precos.append(referencia.precos.get(CHAVE_PRECO_UNITARIO, ""))
             self._escrever_linha(self.referencias_table, row_index, base + precos)
 
     def _servico_catalogos(self) -> PesquisaCatalogosService:
