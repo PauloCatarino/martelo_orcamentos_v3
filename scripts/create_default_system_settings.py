@@ -65,9 +65,15 @@ PASTA_BASE_DADOS_ORCAMENTO_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"
     r"\Base_Dados_Orcamento"
 )
+#: A pasta foi renomeada no servidor e isto ficou a apontar para o nome antigo
+#: -- "Tabela e Catalogos_Fornecedores" em vez de "Fornecedores_Tabela e
+#: Catalogos". So' afeta instalacoes NOVAS, porque o script preenche vazios e
+#: nao sobrepoe o que ja' esta' definido; mas nessas a Pesquisa IA e a
+#: importacao de catalogos apontavam para uma pasta que nao existe, ate' alguem
+#: reparar e corrigir a mao nas Definicoes. Confirmada a 10-set-2026.
 PASTA_PESQUISA_PROFUNDA_IA_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Compras"
-    r"\Tabela e Catalogos_Fornecedores\Tabelas Preços\Pesquisa_Profunda_IA"
+    r"\Fornecedores_Tabela e Catalogos\Tabelas Preços\Pesquisa_Profunda_IA"
 )
 PASTA_EMBEDDINGS_IA_DEFAULT = (
     r"\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos"

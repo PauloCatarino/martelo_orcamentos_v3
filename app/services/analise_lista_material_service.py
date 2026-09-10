@@ -468,11 +468,37 @@ def exact_price(line, catalog):
     return price_record(matches[0]) if len(matches) == 1 else None
 
 
+def _sequencia_do_snapshot(ficheiro):
+    """O contador do nome, ou -1 se o nome for do formato antigo."""
+    partes = Path(ficheiro).stem.split('_')
+    if len(partes) >= 5 and len(partes[3]) == 6 and partes[3].isdigit():
+        return int(partes[3])
+    return -1
+
+
+def _ordem_do_snapshot(ficheiro):
+    """Instante primeiro; dentro do mesmo instante, o contador.
+
+    O relógio do Windows anda aos saltos: vinte mil leituras seguidas de
+    `datetime.now()` dão quarenta valores distintos. Dois snapshots gravados um
+    a seguir ao outro ficam com o MESMO carimbo no nome — e enquanto o
+    desempate era o `uuid` do fim, era aleatório. Metade das vezes
+    `latest_snapshot` devolvia o snapshot ANTIGO, e a análise reabria com os
+    preços velhos sem ninguém dar por isso.
+    """
+    partes = Path(ficheiro).stem.split('_')
+    return ('_'.join(partes[:3]), _sequencia_do_snapshot(ficheiro), Path(ficheiro).name)
+
+
 def save_snapshot(path, data):
     path = writable_workbook(path)
     folder = path.parent / 'Analise_Lista_Material'
     folder.mkdir(exist_ok=True)
-    destination = folder / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{uuid4().hex[:8]}.json"
+    # O contador é por pasta e só sobe. O uuid fica, mas passa a ser o que era
+    # para ser: garantia de que dois processos não escolhem o mesmo nome —
+    # nunca o critério de qual é o mais recente.
+    sequencia = max((_sequencia_do_snapshot(f) for f in folder.glob('*.json')), default=0) + 1
+    destination = folder / f"{datetime.now():%Y%m%d_%H%M%S_%f}_{sequencia:06d}_{uuid4().hex[:8]}.json"
     payload = {**data, 'workbook': path.name, 'saved_at': datetime.now().isoformat(timespec='seconds')}
     with destination.open('x', encoding='utf-8') as stream:
         json.dump(payload, stream, ensure_ascii=False, indent=2)
@@ -480,7 +506,8 @@ def save_snapshot(path, data):
 
 
 def latest_snapshot(path, version):
-    for f in sorted((Path(path).parent / 'Analise_Lista_Material').glob('*.json'), reverse=True):
+    pasta = Path(path).parent / 'Analise_Lista_Material'
+    for f in sorted(pasta.glob('*.json'), key=_ordem_do_snapshot, reverse=True):
         data = json.loads(f.read_text(encoding='utf-8'))
         if data.get('version') == version and data.get('workbook') == Path(path).name:
             return data

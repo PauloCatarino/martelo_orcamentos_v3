@@ -13,7 +13,13 @@ from app.db.session import SessionLocal
 from app.services.user_pref_service import UserPrefService
 from app.services.system_setting_service import SystemSettingService
 from app.services.woodstore_service import query_woodstore, estado_stock
-from app.domain.pesquisa_ia_consulta import corresponde, mesma_espessura, observacoes_relevantes
+from app.domain.pesquisa_ia_consulta import (
+    corresponde,
+    mesma_espessura,
+    observacoes_relevantes,
+    referencia_com_acabamento,
+    valor_de_referencia,
+)
 from app.utils.formatters import format_currency
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
@@ -130,7 +136,7 @@ class PesquisaIAFluxo:
             app.aboutToQuit.connect(aguardar_pesquisas)
             app._pesquisa_shutdown = True
         self.carregar_button.setText("Atualizar fontes")
-        self.carregar_button.setToolTip("Atualizar V3, PHC, placas, índice dos catálogos e stock WoodStore por leitura.")
+        self.carregar_button.setToolTip("Atualizar V3, PHC, tabelas dos fornecedores, índice dos catálogos e stock WoodStore por leitura.")
         self.carregar_button.clicked.disconnect()
         self.carregar_button.clicked.connect(self.atualizar_fontes)
         self.catalogos_button.hide()
@@ -179,7 +185,7 @@ class PesquisaIAFluxo:
         self.todas_table.cellDoubleClicked.connect(self.ver_origem_resultado)
         self.resultados_tabs.addTab(self.todas_table, "Todas")
         for nome, painel in (("V3", self.painel_v3), ("PHC", self.painel_phc),
-                            ("Placas", self.painel_referencias), ("Catálogos", self.painel_catalogos)):
+                            ("Tabelas", self.painel_referencias), ("Catálogos", self.painel_catalogos)):
             self.resultados_tabs.addTab(painel, nome)
         self.woodstore_table = QTableWidget(0, 10)
         self.woodstore_table.setHorizontalHeaderLabels(["Ident / referência", "Comprimento", "Largura", "Espessura", "Material", "Código", "Quantidade (Lagen)", "Reservadas", "Saldo calculado", "Estado"])
@@ -437,7 +443,13 @@ class PesquisaIAFluxo:
         for r in self._phc_filtrados:
             linhas.append(("PHC", r.get("Ref"), r.get("Descricao"), format_currency(r.get("Preco_Custo")), f"Custo / {r.get('Unidade', '')}", str(r.get("Data_Preco") or ""), self.painel_phc))
         for r in self._referencias_filtradas:
-            linhas.append(("Placas", r.referencia + "/" + r.st_acab, r.nome_design, "Grupo " + r.grupo, r.fornecedor, r.folha, self.painel_referencias))
+            # A coluna do valor tinha aqui o grupo de preco. Numa placa isso
+            # ainda dizia alguma coisa; nas 9 827 ferragens que entraram com a
+            # Fase 3 dizia so' "Grupo " -- e o preco delas, que existe e e' o
+            # que se procura, nao aparecia em lado nenhum.
+            linhas.append(("Tabelas", referencia_com_acabamento(r.referencia, r.st_acab),
+                           r.nome_design, valor_de_referencia(r.precos, esp),
+                           r.grupo, r.folha, self.painel_referencias))
         for r in self._ultimos_catalogos:
             linhas.append(("Catálogos", r.ficheiro, r.trecho[:240], "Exato" if r.exato else "Aproximação", r.fornecedor, r.local, self.painel_catalogos))
         for r in self._woodstore_filtrados:
@@ -454,7 +466,7 @@ class PesquisaIAFluxo:
         self.todas_table.setToolTip("Duplo clique para ver a origem. A vista geral apresenta até 300 resultados; os separadores mostram cada fonte completa. Refine a pesquisa para encontrar o artigo.")
         self.resultados_tabs.setTabText(5, f"WoodStore ({len(self._woodstore_filtrados)})")
         for index, nome, quantidade in ((1,"V3",len(self._v3_filtrados)),(2,"PHC",len(self._phc_filtrados)),
-                (3,"Placas",len(self._referencias_filtradas)),(4,"Catálogos",len(self._ultimos_catalogos))):
+                (3,"Tabelas",len(self._referencias_filtradas)),(4,"Catálogos",len(self._ultimos_catalogos))):
             self.resultados_tabs.setTabText(index,f"{nome} ({quantidade})")
 
     def ver_origem_resultado(self, row, _column):
