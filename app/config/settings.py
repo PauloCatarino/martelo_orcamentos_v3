@@ -53,6 +53,9 @@ class Settings:
         self.DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
         self.DB_PORT = int(os.getenv("DB_PORT", "3306"))
         self.DB_NAME = os.getenv("DB_NAME", "martelo_orcamentos_v3")
+        # Base dos catalogos de fornecedores, no mesmo servidor MySQL. Fica
+        # separada dos orcamentos de proposito -- ver app/db/catalogos.py.
+        self.DB_CATALOGOS_NAME = os.getenv("DB_CATALOGOS_NAME", "martelo_catalogos")
         self.DB_USER = os.getenv("DB_USER", "martelo_v3")
         self.DB_PASSWORD = os.getenv("DB_PASSWORD", "")
         self.DB_CHARSET = os.getenv("DB_CHARSET", "utf8mb4")
@@ -66,6 +69,7 @@ class Settings:
         self.db_host = self.DB_HOST
         self.db_port = self.DB_PORT
         self.db_name = self.DB_NAME
+        self.db_catalogos_name = self.DB_CATALOGOS_NAME
         self.db_user = self.DB_USER
         self.db_password = self.DB_PASSWORD
         self.db_charset = self.DB_CHARSET

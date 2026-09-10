@@ -14,8 +14,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config.settings import settings  # noqa: E402
-from app.db.base import target_metadata  # noqa: E402
+from app.db.base import target_metadata as metadata_orcamentos  # noqa: E402
+from app.db.catalogos import catalogos_metadata  # noqa: E402
 import app.models  # noqa: F401, E402
+import app.models.catalogos  # noqa: F401, E402
+
+# Duas bases no mesmo servidor: os orcamentos e os catalogos de fornecedores.
+# Sao metadados separados de proposito (ver app/db/catalogos.py), mas a cadeia
+# de migracoes e' uma so' -- um `alembic upgrade head` poe as duas em dia.
+target_metadata = [metadata_orcamentos, catalogos_metadata]
 
 
 config = context.config
