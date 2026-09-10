@@ -255,3 +255,27 @@ def test_um_artigo_sem_preco_diz_sob_consulta() -> None:
     )
 
     assert "Preco: sob consulta" in service_module._frase(artigo)
+
+
+def test_o_nome_ignorado_sai_em_forma_composta(tmp_path, monkeypatch) -> None:
+    """O Windows escreve `Preços` com o cedilha à parte, e a cp1252 não o tem.
+
+    Bastava imprimir o nome para a indexação rebentar **depois** de ter feito o
+    trabalho todo — o que parece uma falha e não é. Em NFC o `ç` é um caractere
+    só, e esse a consola escreve.
+    """
+    catalogos = tmp_path / "catalogos"
+    catalogos.mkdir()
+    decomposto = "Tabela Prec\u0327os 2021.xlsx"
+    _criar_excel(catalogos / decomposto)
+    _criar_pdf(catalogos / "catalogo.pdf")
+    _fingir(monkeypatch, catalogos, tmp_path / "indice", esperado=1)
+
+    resultado = service_module.indexar(object())
+
+    nomes = [nome for nome, _ in resultado.ignorados]
+    assert "Tabela Pre\u00e7os 2021.xlsx" in nomes
+    assert decomposto not in nomes
+    # E o que sai tem de caber numa consola cp1252.
+    for nome in nomes:
+        nome.encode("cp1252")

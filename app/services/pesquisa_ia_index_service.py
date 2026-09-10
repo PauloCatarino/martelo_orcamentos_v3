@@ -25,6 +25,7 @@ indice duas vezes, uma delas na versao pior.
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from decimal import Decimal
@@ -227,6 +228,16 @@ def indexar(
     if progresso:
         progresso(f"Base de catalogos: {artigos} artigos")
 
+    def _nome(caminho: Path) -> str:
+        """O nome do ficheiro em forma composta.
+
+        O Windows devolve `Preços` com o cedilha em separado (`c` + U+0327), e
+        essa forma **nao existe na cp1252** de uma consola: bastava imprimir o
+        nome para a corrida rebentar depois de ja' ter feito o trabalho todo.
+        Em NFC o `ç` e' um caractere so', e esse cabe.
+        """
+        return unicodedata.normalize("NFC", caminho.name)
+
     ignorados: list[tuple[str, str]] = []
     for caminho in sorted(base.rglob("*")):
         if not caminho.is_file():
@@ -235,11 +246,11 @@ def indexar(
             continue
         if caminho.name == FICHEIRO_REFERENCIAS:
             # Ja' entrou pela base, em melhor forma. Ver a docstring do modulo.
-            ignorados.append((caminho.name, "ja' entrou pela base"))
+            ignorados.append((_nome(caminho), "ja' entrou pela base"))
             continue
         if caminho.suffix.lower() in EXTENSOES_IGNORADAS:
             ignorados.append(
-                (caminho.name, "Excel sem adaptador: entrava em bruto e enchia o indice")
+                (_nome(caminho), "Excel sem adaptador: entrava em bruto e enchia o indice")
             )
             continue
         if caminho.suffix.lower() not in EXTENSOES:
