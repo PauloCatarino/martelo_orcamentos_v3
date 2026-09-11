@@ -191,7 +191,7 @@ Ainda **sem** distribuir nada aos colegas:
 
 1. Entregar a cada pessoa **só a linha dela** do `contas_martelo.txt`
 2. **Apagar o `contas_martelo.txt`**
-3. Reconstruir o instalador: `.venv\Scripts\python.exe build_beta.py --installer`
+3. Reconstruir o instalador: `.venv\Scripts\python.exe build.py --installer`
    (o `.env` novo já não leva credenciais; o build recusa-se a empacotar um que
    as tenha)
 

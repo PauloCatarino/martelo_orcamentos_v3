@@ -2,7 +2,7 @@
 
 **O numero NAO se edita aqui: edita-se em `app/config/versao.py`.**
 
-Este ficheiro existe porque o `build_beta.py` e o instalador o procuram na raiz
+Este ficheiro existe porque o `build.py` e o instalador o procuram na raiz
 desde o inicio. O numero em si vive dentro do pacote da aplicacao, para o
 executavel o encontrar pelo caminho da app — e para haver um so' numero, o
 mesmo no instalador, no diario de bordo e no "Reportar problema".

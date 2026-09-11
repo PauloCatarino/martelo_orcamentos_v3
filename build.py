@@ -6,18 +6,23 @@ Passos:
   3. (--installer) Inno Setup gera  installer\\Output\\Setup_Martelo_V3_<versao>.exe
 
 Uso:
-    .venv\\Scripts\\python.exe build_beta.py --producao --installer  # VERSAO OFICIAL
-    .venv\\Scripts\\python.exe build_beta.py --installer             # beta (testes)
-    .venv\\Scripts\\python.exe build_beta.py --profile lean          # opcional: exclui a pesquisa IA
+    .venv\\Scripts\\python.exe build.py --installer             # a versao a serio
+    .venv\\Scripts\\python.exe build.py --profile lean          # opcional: exclui a pesquisa IA
 
-O que muda entre oficial e beta e' SO' o ficheiro .env que vai dentro do
-instalador -- `deploy\\.env.producao` (base oficial, sem rotulo na janela) ou
-`deploy\\.env.beta` (base de testes). O executavel e' exatamente o mesmo.
+So' ha' UMA versao. O instalador leva sempre o `deploy\\.env.producao`,
+que aponta a aplicacao para a base oficial `martelo_v3`.
+
+Ate' 2026-09-11 havia um segundo modo, "beta", que punha no instalador um
+`.env` a apontar para a base de testes `martelo_v3_beta`. Essa base foi
+eliminada, e o modo era o comportamento POR OMISSAO: quem se esquecesse do
+`--producao` gerava um instalador que instalava e nao ligava a lado nenhum.
+Por isso o ficheiro deixou de se chamar `build_beta.py` e o modo saiu -- o
+nome mentia sobre o que isto faz, e a omissao era uma armadilha.
 
 Pre-requisitos:
   - PyInstaller instalado no .venv
-  - deploy\\.env.producao (ou deploy\\.env.beta) criado a partir do .exemplo ao
-    lado; nao leva credenciais nenhumas -- cada pessoa entra com a sua conta
+  - deploy\\.env.producao criado a partir do .exemplo ao lado; nao leva
+    credenciais nenhumas -- cada pessoa entra com a sua conta
   - Para --installer: Inno Setup 6 (ISCC.exe)
 """
 
@@ -33,7 +38,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist" / "Martelo_Orcamentos_V3"
-ENV_BETA = ROOT / "deploy" / ".env.beta"
 ENV_PRODUCAO = ROOT / "deploy" / ".env.producao"
 SPEC = ROOT / "Martelo_Orcamentos_V3.spec"
 ISS = ROOT / "installer" / "Martelo_Orcamentos_V3.iss"
@@ -271,16 +275,14 @@ def main() -> None:
         help="deixar reescrever um instalador com uma versao que ja' existe "
              "(so' para repetir um build que falhou a meio)",
     )
-    ap.add_argument(
-        "--producao",
-        action="store_true",
-        help="versao OFICIAL: leva o deploy\\.env.producao (base oficial) "
-             "em vez do .env.beta",
-    )
+    # Aceite e ignorado: era obrigatoria ate' 2026-09-11 e esta' escrita nos
+    # guioes e na memoria muscular. Agora nao ha' alternativa nenhuma, mas os
+    # comandos antigos continuam a funcionar em vez de rebentar no argparse.
+    ap.add_argument("--producao", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
 
-    env_origem = ENV_PRODUCAO if args.producao else ENV_BETA
-    destino = "OFICIAL" if args.producao else "beta (testes)"
+    env_origem = ENV_PRODUCAO
+    destino = "OFICIAL"
 
     versao = _versao()
     print(f"Martelo V3  versao {versao}  [{destino}]  (perfil {args.profile})")

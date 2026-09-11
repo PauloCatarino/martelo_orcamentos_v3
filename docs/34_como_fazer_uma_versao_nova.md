@@ -60,7 +60,7 @@ voltar atrás.
 **5. Gerar o instalador.**
 
 ```
-.venv\Scripts\python.exe build_beta.py --producao --installer --profile full
+.venv\Scripts\python.exe build.py --installer --profile full
 ```
 
 Sai `installer\Output\Setup_Martelo_V3_<versão>.exe`.

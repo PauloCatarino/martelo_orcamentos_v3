@@ -1,7 +1,7 @@
 ; Inno Setup - Martelo Orcamentos V3 (beta)
 ; Requisitos:
-;   1) Gerar o build PyInstaller primeiro (build_beta.py) -> dist\Martelo_Orcamentos_V3\
-;   2) Compilar este .iss (ISCC.exe), normalmente via build_beta.py --installer
+;   1) Gerar o build PyInstaller primeiro (build.py) -> dist\Martelo_Orcamentos_V3\
+;   2) Compilar este .iss (ISCC.exe), normalmente via build.py --installer
 ;
 ; A versao e a password (opcional) sao passadas na linha de comando:
 ;   ISCC.exe Martelo_Orcamentos_V3.iss /DAppVersion=0.9.0-beta

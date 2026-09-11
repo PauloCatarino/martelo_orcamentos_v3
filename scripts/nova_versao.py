@@ -98,7 +98,7 @@ def main() -> None:
     print("A seguir:")
     print("  1. .venv\\Scripts\\python.exe -m pytest -q")
     print("  2. git add -A  &&  git commit  &&  git push")
-    print("  3. .venv\\Scripts\\python.exe build_beta.py --producao "
+    print("  3. .venv\\Scripts\\python.exe build.py "
           "--installer --profile full")
     print()
     print(f"   Sai:  installer\\Output\\Setup_Martelo_V3_{nova}.exe")
