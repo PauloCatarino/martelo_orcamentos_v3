@@ -10,8 +10,8 @@ def test_nova_versao_processo_dialog_imports_expected_widgets() -> None:
 
     source = inspect.getsource(NovaVersaoProcessoDialog)
 
-    assert "Sugestão Obra" in source
-    assert "Sugestão CUT-RITE" in source
+    assert "Sugestão Modelo" in source
+    assert "Sugestão Versão" in source
     assert "QIntValidator" in source
     assert "QTimer" in source
     assert "QTreeWidget" in source

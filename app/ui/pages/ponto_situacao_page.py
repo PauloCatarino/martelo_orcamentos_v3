@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPageLayout, QPageSize, QPainter, QPdfWriter
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QFrame,
     QGroupBox,
@@ -151,6 +152,11 @@ class PontoSituacaoPage(QWidget):
         self.utilizador_combo = ComboSemScroll()
         self.cliente_combo = ComboSemScroll()
         self.estado_combo = ComboSemScroll()
+        self.minhas_check = QCheckBox("👤 As minhas obras")
+        self.minhas_check.setToolTip(
+            "Filtrar as obras do utilizador atual no Resumo e no Estado de Produção."
+        )
+        self.minhas_check.toggled.connect(self._filtrar_minhas_obras)
         for combo in (self.utilizador_combo, self.cliente_combo, self.estado_combo):
             combo.currentTextChanged.connect(self._ao_mudar_filtros)
 
@@ -185,6 +191,7 @@ class PontoSituacaoPage(QWidget):
         toolbar.addWidget(self.cliente_combo)
         toolbar.addWidget(QLabel("Utilizador"))
         toolbar.addWidget(self.utilizador_combo)
+        toolbar.addWidget(self.minhas_check)
         toolbar.addWidget(self.limpar_filtros_button)
         toolbar.addWidget(self.atualizar_button)
         toolbar.addWidget(self.exportar_pdf_button)
@@ -376,6 +383,7 @@ class PontoSituacaoPage(QWidget):
             "Enc PHC",
             "Enc Streamlit",
             "Ref Cliente",
+            "Descrição da Produção",
             "Responsável",
             "Estado",
             "Preço",
@@ -409,6 +417,7 @@ class PontoSituacaoPage(QWidget):
             "Enc PHC": 80,
             "Enc Streamlit": 100,
             "Ref Cliente": 110,
+            "Descrição da Produção": 280,
             "Responsável": 90,
             "Estado": 90,
             "Preço": 100,
@@ -419,7 +428,7 @@ class PontoSituacaoPage(QWidget):
 
         # Restaura larguras guardadas (por máquina) por cima das base e persiste
         # ao arrastar; só atua em colunas Interactive (acima).
-        ligar_persistencia_larguras(table, "ponto_situacao_estado")
+        ligar_persistencia_larguras(table, "ponto_situacao_estado_descricao")
         return table
 
     def _ao_mudar_tab(self, index) -> None:
@@ -438,8 +447,37 @@ class PontoSituacaoPage(QWidget):
 
     def _ao_mudar_filtros(self, *_args) -> None:
         """Filtros mudaram: recarrega o dashboard e trata do separador Estado."""
+        self._sincronizar_minhas_obras()
         self._carregar()
         self._pos_filtros()
+
+    def _meu_responsavel(self) -> str:
+        user = app_session.current_user
+        nome = str(getattr(user, "nome", "") or "").strip()
+        username = str(getattr(user, "username", "") or "").strip()
+        for candidate in (nome, username, nome.split()[0] if nome else ""):
+            matches = [self.utilizador_combo.itemText(i)
+                       for i in range(1, self.utilizador_combo.count())
+                       if candidate and self.utilizador_combo.itemText(i).casefold() == candidate.casefold()]
+            if len(matches) == 1:
+                return matches[0]
+        return ""
+
+    def _sincronizar_minhas_obras(self) -> None:
+        meu = self._meu_responsavel()
+        previous = self.minhas_check.blockSignals(True)
+        self.minhas_check.setChecked(bool(meu) and self.utilizador_combo.currentText() == meu)
+        self.minhas_check.blockSignals(previous)
+
+    def _filtrar_minhas_obras(self, checked: bool) -> None:
+        name = self._meu_responsavel() if checked else "Todos"
+        if not name:
+            self._sincronizar_minhas_obras()
+            self.atualizado_label.setText(
+                "Não foi encontrado um responsável correspondente ao utilizador atual."
+            )
+            return
+        self.utilizador_combo.setCurrentText(name)
 
     def _pos_filtros(self) -> None:
         # Se o separador ativo for o de Estado, recarrega; senão invalida para
@@ -557,6 +595,7 @@ class PontoSituacaoPage(QWidget):
                 obra.enc_phc,
                 obra.enc_streamlit,
                 obra.ref_cliente,
+                obra.descricao_producao,
                 obra.responsavel,
                 obra.estado_local,
             )
@@ -1024,6 +1063,7 @@ class PontoSituacaoPage(QWidget):
                 combo.setCurrentIndex(0)
         for widget, estado_anterior in estados_sinais:
             widget.blockSignals(estado_anterior)
+        self._sincronizar_minhas_obras()
         self._carregar()
         self._pos_filtros()
 
@@ -1043,6 +1083,7 @@ class PontoSituacaoPage(QWidget):
                 [valor for valor, _qt in dados.por_estado],
             ),
         )
+        self._sincronizar_minhas_obras()
 
     def _substituir(self, box, widget) -> None:
         while box.count():

@@ -29,6 +29,36 @@ DEFAULT_STREAMLIT_TRUSTED = False
 DEFAULT_STREAMLIT_TRUST_CERT = True
 
 
+def query_modelos_versoes(session: Session, *, ano, num_enc_phc) -> set[tuple[str, str]]:
+    """Read occupied model/version pairs, including records without folders."""
+    numero = str(num_enc_phc or "").strip()
+    if not re.fullmatch(r"_?\d+", numero) or not re.fullmatch(r"\d{4}", str(ano)):
+        raise ValueError("Ano ou número de encomenda inválido para consultar o Streamlit.")
+    tabela = "dbo.CadernoEncargos_" if numero.startswith("_") else "dbo.CadernoEncargos"
+    query = (
+        "SELECT DISTINCT bd_modelo, bd_versao "
+        f"FROM {tabela} "
+        f"WHERE TRY_CONVERT(INT, bd_ano) = {int(ano)} "
+        "AND TRY_CONVERT(INT, REPLACE(LTRIM(RTRIM(CAST(bd_n_encomenda AS VARCHAR(50)))), '_', '')) "
+        f"= {int(numero.lstrip('_'))}"
+    )
+    assert_select_only(query)
+    try:
+        rows = run_select(build_connection_string(load_streamlit_config(session)), query)
+        keys = set()
+        for row in rows:
+            modelo, versao = int(str(row["bd_modelo"]).strip()), int(str(row["bd_versao"]).strip())
+            if not (1 <= modelo <= 99 and 1 <= versao <= 99):
+                raise ValueError("Modelo/versão fora do intervalo permitido.")
+            keys.add((f"{modelo:02d}", f"{versao:02d}"))
+        return keys
+    except Exception as error:
+        raise ValueError(
+            "Não foi possível validar os modelos/versões na base de dados do Streamlit. "
+            "A criação foi bloqueada para evitar duplicados. Verifique a ligação e tente novamente."
+        ) from error
+
+
 class StreamlitConfig(TypedDict):
     server: str
     database: str

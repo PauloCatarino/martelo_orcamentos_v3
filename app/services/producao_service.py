@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.clientes_simplex import validar_simplex
 from app.domain.datas import normalizar_data
+from app.services.streamlit_sql_service import query_modelos_versoes
 from app.domain import pesquisa_texto
 from app.domain.prazos_producao import estado_prazo
 from app.models.cliente import Cliente
@@ -782,6 +783,10 @@ def preparar_nova_versao(
         processo.num_enc_phc,
         folder_tree,
     )
+    streamlit_keys = query_modelos_versoes(
+        session, ano=processo.ano, num_enc_phc=processo.num_enc_phc,
+    )
+    existing_keys |= streamlit_keys
 
     versao_obra_atual = _two_digit(processo.versao_obra)
     sug_cutrite = (
@@ -816,6 +821,7 @@ def preparar_nova_versao(
     return {
         "processo_atual": processo,
         "existing_keys": existing_keys,
+        "streamlit_keys": streamlit_keys,
         "folder_root": folder_root,
         "folder_tree": folder_tree,
         "sug_cutrite": sug_cutrite,
@@ -839,12 +845,28 @@ def criar_nova_versao(
 
     ver_obra = _two_digit(versao_obra)
     ver_plano = _two_digit(versao_plano)
+    if not all(str(v).strip().isdigit() and 1 <= int(str(v).strip()) <= 99
+               for v in (versao_obra, versao_plano)):
+        raise ValueError("Modelo e Versão devem estar entre 01 e 99.")
     if (ver_obra, ver_plano) in listar_versoes_processo(
         session,
         ano=origem.ano,
         num_enc_phc=origem.num_enc_phc,
     ):
         raise ValueError("Ja existe um processo com esta versao.")
+
+    if (ver_obra, ver_plano) in query_modelos_versoes(
+        session, ano=origem.ano, num_enc_phc=origem.num_enc_phc,
+    ):
+        raise ValueError(
+            f"O Modelo {ver_obra} / Versão {ver_plano} já existe no Streamlit, "
+            "mesmo que a pasta ainda não esteja criada. Não foi criado outro processo."
+        )
+    _, folder_tree = listar_pastas_enc_arvore(
+        session, ano=origem.ano, num_enc_phc=origem.num_enc_phc, tipo_pasta=origem.tipo_pasta,
+    )
+    if (ver_obra, ver_plano) in _existing_keys_from_folder_tree(origem.num_enc_phc, folder_tree):
+        raise ValueError("O Modelo/Versão já existe nas pastas do servidor.")
 
     codigo_processo = codigo_processo_com_cliente(
         origem.ano,
@@ -889,6 +911,8 @@ def criar_nova_versao(
         qt_artigos=origem.qt_artigos,
         responsavel=origem.responsavel,
         tipo_pasta=origem.tipo_pasta,
+        data_inicio=origem.data_inicio,
+        data_entrega=origem.data_entrega,
         created_by_id=current_user_id,
     )
 
@@ -906,7 +930,7 @@ def criar_nova_versao(
             nome_cliente=novo.nome_cliente,
             ref_cliente=novo.ref_cliente,
         )
-        criar_pasta_versao(caminho)
+        criar_pasta_versao(caminho, exist_ok=False)
         novo.pasta_servidor = str(caminho)
 
     session.add(novo)

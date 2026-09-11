@@ -133,8 +133,8 @@ def test_producao_page_imports_and_headers() -> None:
         "Responsável",
         "Processo",
         "Nº Enc PHC",
-        "V. Obra",
-        "V. CutRite",
+        "Modelo",
+        "Versão",
         "Cliente",
         "Ref Cliente",
         "Obra",
@@ -206,8 +206,8 @@ def test_producao_page_init_uses_expected_widgets() -> None:
         "self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)"
         in init_source
     )
-    assert '"Nova Versão"' in init_source
-    assert "Criar nova versão de obra/CUT-RITE do processo selecionado" in init_source
+    assert '"Novo Modelo/Versão"' in init_source
+    assert "Criar um novo Modelo/Versão do processo selecionado" in init_source
     assert '"Lista Material_IMOS"' in init_source
     assert "self.lista_material_button" in init_source
     assert 'self.lista_material_button.setIcon(icone_ficheiro("icon_excel.ico"))' in init_source
@@ -500,7 +500,7 @@ def test_detalhe_obra_segue_a_ordem_do_mockup() -> None:
     linhas_esperadas = [
         ["Processo", "Nome Plano CUT-RITE", "Nome Enc IMOS IX"],
         ["Cliente", "Cliente simplex", "Nº Cliente PHC"],
-        ["Nº Enc PHC", "V. Obra", "V. CutRite", "Ano"],
+        ["Nº Enc PHC", "Modelo", "Versão", "Ano"],
         ["Nº Orçamento", "V. Orç", "Qt artigos", "Preço total"],
         ["Estado", "Responsável"],
         ["Ref Cliente", "Obra", "Localização"],
@@ -603,7 +603,7 @@ def test_tratar_encomenda_existente_chama_nova_versao_da_mais_recente(monkeypatc
 
         def addButton(self, text, role):
             chamadas.setdefault("buttons", []).append((text, role))
-            if text == "Nova Versão":
+            if text == "Novo Modelo/Versão":
                 return nova_versao_button
             return FakeButton()
 
@@ -646,5 +646,5 @@ def test_tratar_encomenda_existente_chama_nova_versao_da_mais_recente(monkeypatc
 
     assert chamadas["title"] == "Encomenda já existe"
     assert "26.1134_01_01_CLIENTE" in chamadas["informative"]
-    assert "Nova Versão" in [text for text, _role in chamadas["buttons"]]
+    assert "Novo Modelo/Versão" in [text for text, _role in chamadas["buttons"]]
     assert executadas == [2]

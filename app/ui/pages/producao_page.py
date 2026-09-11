@@ -378,9 +378,9 @@ class ProducaoPage(QWidget):
         )
         self.novo_processo_button.clicked.connect(self._novo_processo)
 
-        self.nova_versao_button = QPushButton("Nova Versão")
+        self.nova_versao_button = QPushButton("Novo Modelo/Versão")
         self.nova_versao_button.setToolTip(
-            "Criar nova versão de obra/CUT-RITE do processo selecionado"
+            "Criar um novo Modelo/Versão do processo selecionado"
         )
         self.nova_versao_button.clicked.connect(self._nova_versao)
 
@@ -790,8 +790,8 @@ class ProducaoPage(QWidget):
             ],
             [
                 ("Nº Enc PHC", self.num_enc_phc_input, 1),
-                ("V. Obra", self.versao_obra_input, 1),
-                ("V. CutRite", self.versao_plano_input, 1),
+                ("Modelo", self.versao_obra_input, 1),
+                ("Versão", self.versao_plano_input, 1),
                 ("Ano", self.ano_input, 1),
             ],
             [
@@ -1091,7 +1091,7 @@ class ProducaoPage(QWidget):
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO};"
         )
         self.pasta_obra_input.setToolTip(
-            "Caminho da pasta desta versão da obra — pode selecionar e copiar (Ctrl+C)"
+            "Caminho da pasta deste Modelo/Versão — pode selecionar e copiar (Ctrl+C)"
         )
 
         self.abrir_pasta_campo_button = QPushButton("Abrir")
@@ -1218,8 +1218,8 @@ class ProducaoPage(QWidget):
     def _aplicar_tooltips_editaveis(self) -> None:
         self.ano_input.setToolTip("Ano do processo")
         self.num_enc_phc_input.setToolTip("Número da encomenda PHC")
-        self.versao_obra_input.setToolTip("Versão da obra")
-        self.versao_plano_input.setToolTip("Versão CUT-RITE")
+        self.versao_obra_input.setToolTip("Modelo")
+        self.versao_plano_input.setToolTip("Versão")
         self.cliente_input.setToolTip("Cliente original do processo (fixo)")
         self.cliente_simplex_input.setToolTip(
             "Nome simplex original usado nos nomes derivados (fixo)"
@@ -3213,7 +3213,7 @@ class ProducaoPage(QWidget):
             with SessionLocal() as session:
                 preparado = preparar_nova_versao(session, processo_id=processo_id)
         except ValueError as error:
-            QMessageBox.warning(self, "Nova Versão", str(error))
+            QMessageBox.warning(self, "Novo Modelo/Versão", str(error))
             return
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível preparar a nova versão.")
@@ -3227,6 +3227,7 @@ class ProducaoPage(QWidget):
             versao_obra_sug_obra=sug_obra[0],
             versao_plano_sug_obra=sug_obra[1],
             existing_keys=preparado["existing_keys"],
+            streamlit_keys=preparado.get("streamlit_keys", set()),
             folder_root=preparado["folder_root"],
             folder_tree=preparado["folder_tree"],
             parent=self,
@@ -3254,10 +3255,10 @@ class ProducaoPage(QWidget):
                 novo_id = novo.id
                 codigo = novo.codigo_processo
         except ValueError as error:
-            QMessageBox.warning(self, "Nova Versão", str(error))
+            QMessageBox.warning(self, "Novo Modelo/Versão", str(error))
             return
         except OSError as error:
-            QMessageBox.warning(self, "Nova Versão", str(error))
+            QMessageBox.warning(self, "Novo Modelo/Versão", str(error))
             return
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível criar a nova versão.")
@@ -3394,8 +3395,8 @@ class ProducaoPage(QWidget):
         obrigatorios = (
             ("ano", "Ano"),
             ("num_enc_phc", "Nº Enc PHC"),
-            ("versao_obra", "V. Obra"),
-            ("versao_plano", "V. CutRite"),
+            ("versao_obra", "Modelo"),
+            ("versao_plano", "Versão"),
         )
         for campo, label in obrigatorios:
             if not str(data.get(campo) or "").strip():
@@ -3941,10 +3942,10 @@ class ProducaoPage(QWidget):
             f"(Ano {dados.get('ano')}, Nº Enc {dados.get('num_enc_phc')})."
         )
         box.setInformativeText(
-            f"{linhas}\n\nQuer criar uma NOVA VERSÃO (da Obra ou de CUT-RITE) "
+            f"{linhas}\n\nQuer criar uma novo Modelo/Versão "
             "a partir da existente?"
         )
-        nova_versao_btn = box.addButton("Nova Versão", QMessageBox.ButtonRole.AcceptRole)
+        nova_versao_btn = box.addButton("Novo Modelo/Versão", QMessageBox.ButtonRole.AcceptRole)
         box.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         box.exec()
         if box.clickedButton() is not nova_versao_btn:

@@ -20,6 +20,7 @@ def _processo(
     preco_total=None,
     responsavel: str | None = "Ana",
     ref_cliente: str | None = None,
+    descricao_producao: str | None = None,
 ) -> Producao:
     return Producao(
         id=id,
@@ -33,6 +34,7 @@ def _processo(
         tipo_pasta=tipo_pasta,
         nome_cliente=f"Cliente {id}",
         ref_cliente=ref_cliente,
+        descricao_producao=descricao_producao,
         preco_total=preco_total,
     )
 
@@ -83,6 +85,7 @@ def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> No
             num_enc_phc="1001",
             tipo_pasta="Encomenda de Cliente",
             ref_cliente="REF-A",
+            descricao_producao="4 ARMÁRIOS\n2 AT",
         )
     )
     session.commit()
@@ -109,6 +112,7 @@ def test_encomenda_normal_duas_linhas_media_agregada(session, monkeypatch) -> No
     assert obra.enc_phc == "1001"
     assert obra.enc_streamlit == ""
     assert obra.ref_cliente == "REF-A"
+    assert obra.descricao_producao == "4 ARMÁRIOS\n2 AT"
     # Sem preço externo no mock -> None; a fonte do preço reflete o tipo.
     assert obra.preco_externo is None
     assert obra.fonte_preco == "PHC"

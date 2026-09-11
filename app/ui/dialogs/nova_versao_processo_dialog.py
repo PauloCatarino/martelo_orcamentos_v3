@@ -32,12 +32,13 @@ class NovaVersaoProcessoDialog(QDialog):
         versao_obra_sug_obra: str,
         versao_plano_sug_obra: str,
         existing_keys: set[tuple[str, str]] | None = None,
+        streamlit_keys: set[tuple[str, str]] | None = None,
         folder_root: str | None = None,
         folder_tree: dict[str, dict[str, list[str]]] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Nova Versão")
+        self.setWindowTitle("Novo Modelo/Versão")
         self.resize(620, 520)
 
         self._sug_cutrite = (
@@ -52,28 +53,30 @@ class NovaVersaoProcessoDialog(QDialog):
             (self._norm_two_digits(vv), self._norm_two_digits(pp))
             for vv, pp in (existing_keys or set())
         }
+        self._streamlit_keys = streamlit_keys or set()
+        self._existing_keys |= self._streamlit_keys
 
         intro = QLabel(
-            "Escolha a versão de obra e a versão CUT-RITE para o novo processo."
+            "Escolha o Modelo e a Versão para o novo processo."
         )
         intro.setWordWrap(True)
 
-        self.btn_sug_cutrite = QPushButton("Sugestão CUT-RITE")
+        self.btn_sug_cutrite = QPushButton("Sugestão Versão")
         self.btn_sug_cutrite.setToolTip(
-            "Usar a próxima versão CUT-RITE dentro da obra atual"
+            "Usar a próxima Versão dentro do Modelo atual"
         )
         self.btn_sug_cutrite.clicked.connect(
             lambda: self._apply(*self._sug_cutrite)
         )
-        self.btn_sug_obra = QPushButton("Sugestão Obra")
+        self.btn_sug_obra = QPushButton("Sugestão Modelo")
         self.btn_sug_obra.setToolTip(
-            "Usar a próxima versão de obra, começando no CUT-RITE 01"
+            "Usar o próximo Modelo, começando na Versão 01"
         )
         self.btn_sug_obra.clicked.connect(lambda: self._apply(*self._sug_obra))
 
         suggestions_layout = QHBoxLayout()
-        suggestions_layout.addWidget(self.btn_sug_cutrite)
         suggestions_layout.addWidget(self.btn_sug_obra)
+        suggestions_layout.addWidget(self.btn_sug_cutrite)
         suggestions_layout.addStretch()
 
         self.ed_ver_obra = QLineEdit()
@@ -81,7 +84,7 @@ class NovaVersaoProcessoDialog(QDialog):
         self.ed_ver_obra.setFixedWidth(70)
         self.ed_ver_obra.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.ed_ver_obra.setValidator(QIntValidator(1, 99, self))
-        self.ed_ver_obra.setToolTip("Versão da obra (01 a 99)")
+        self.ed_ver_obra.setToolTip("MODELO no IMOX IX (01 a 99)")
 
         self.ed_ver_plano = QLineEdit()
         self.ed_ver_plano.setMaxLength(2)
@@ -104,7 +107,7 @@ class NovaVersaoProcessoDialog(QDialog):
         ]
 
         form = QFormLayout()
-        form.addRow("Versão obra", self.ed_ver_obra)
+        form.addRow("MODELO no IMOX IX", self.ed_ver_obra)
         form.addRow("Versão CUT-RITE", self.ed_ver_plano)
 
         self.warning_label = QLabel("")
@@ -124,6 +127,16 @@ class NovaVersaoProcessoDialog(QDialog):
         self.tree.setHeaderHidden(True)
         folder_layout.addWidget(self.tree, stretch=1)
         self._populate_tree(folder_tree or {})
+        if self._streamlit_keys:
+            registos = QTreeWidgetItem(["Registos no Streamlit (com ou sem pasta)"])
+            self.tree.addTopLevelItem(registos)
+            for modelo in sorted({m for m, _ in self._streamlit_keys}):
+                item = QTreeWidgetItem([f"Modelo {modelo}"])
+                registos.addChild(item)
+                for m, versao in sorted(self._streamlit_keys):
+                    if m == modelo:
+                        item.addChild(QTreeWidgetItem([f"Versão {versao}"]))
+            self.tree.expandAll()
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
@@ -131,6 +144,8 @@ class NovaVersaoProcessoDialog(QDialog):
         )
         self.ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         self.ok_button.setText("Criar")
+        self.ok_button.setToolTip("Criar o Modelo/Versão após nova validação dos registos e pastas.")
+        self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setToolTip("Fechar sem criar.")
         self.button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(
             "Cancelar"
         )
@@ -212,24 +227,29 @@ class NovaVersaoProcessoDialog(QDialog):
     def _refresh_status(self) -> None:
         vv, pp = self.values()
         duplicate = bool(vv and pp and (vv, pp) in self._existing_keys)
-        if duplicate:
+        if (vv, pp) in self._streamlit_keys:
+            self.warning_label.setText(
+                f"O Modelo {vv} / Versão {pp} já existe no Streamlit, mesmo que não tenha pasta."
+            )
+        elif duplicate:
             self.warning_label.setText(
                 f"A versão {vv}/{pp} já existe na BD ou nas pastas do servidor."
             )
         else:
             self.warning_label.clear()
-        self.ok_button.setEnabled(bool(vv and pp) and not duplicate)
+        valid = self.ed_ver_obra.hasAcceptableInput() and self.ed_ver_plano.hasAcceptableInput()
+        self.ok_button.setEnabled(valid and not duplicate)
 
     def _on_accept(self) -> None:
         self._format_inputs()
         vv, pp = self.values()
-        if not vv or not pp:
-            QMessageBox.warning(self, "Nova Versão", "Preencha as duas versões.")
+        if not (self.ed_ver_obra.hasAcceptableInput() and self.ed_ver_plano.hasAcceptableInput()):
+            QMessageBox.warning(self, "Novo Modelo/Versão", "Preencha o Modelo e a Versão.")
             return
         if (vv, pp) in self._existing_keys:
             QMessageBox.warning(
                 self,
-                "Nova Versão",
+                "Novo Modelo/Versão",
                 f"A versão {vv}/{pp} já existe.",
             )
             return

@@ -220,7 +220,7 @@ def test_construir_corpo_email_escapa_campos_e_inclui_total() -> None:
     assert "orcamento &amp; teste.pdf" in corpo
     assert "Cozinha &amp; Sala &lt;A&gt;" in corpo
     assert "REF &amp; &lt;9&gt;" in corpo
-    assert "1234,50 €" in corpo
+    assert "1\u00a0234,50 €" in corpo
     assert "{{assinatura}}" in corpo
 
 

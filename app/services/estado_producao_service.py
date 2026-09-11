@@ -96,6 +96,7 @@ class EstadoProducaoObra:
     estado: EstadoProducao     # resultado do PD1
     encontrado: bool           # houve linhas no Streamlit p/ esta encomenda
     concluido_sem_preco: bool  # 100% mas sem preço externo (ver método)
+    descricao_producao: str = ""
 
 
 def _build_query(*, especial: bool, anos: list[str]) -> str:
@@ -245,6 +246,7 @@ def estado_producao_por_processo(
                 enc_phc=enc_phc,
                 enc_streamlit=enc_streamlit,
                 ref_cliente=ref_cliente,
+                descricao_producao=(processo.descricao_producao or "").strip(),
                 responsavel=(processo.responsavel or "").strip(),
                 estado_local=(processo.estado or "").strip(),
                 fonte=fonte,

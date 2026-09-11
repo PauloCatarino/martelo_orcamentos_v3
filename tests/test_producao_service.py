@@ -305,6 +305,7 @@ def test_preparar_nova_versao_sugere_cutrite_e_obra(session, monkeypatch) -> Non
         lambda *args, **kwargs: set(),
     )
 
+    monkeypatch.setattr(service_module, "query_modelos_versoes", lambda *a, **kw: set())
     preparado = service_module.preparar_nova_versao(session, processo_id=1)
 
     assert preparado["existing_keys"] == {("01", "01")}
@@ -364,7 +365,7 @@ def test_criar_nova_versao_recusa_duplicado_db(session) -> None:
         )
 
 
-def test_criar_nova_versao_streamlit_mantem_underline_no_codigo(session) -> None:
+def test_criar_nova_versao_streamlit_mantem_underline_no_codigo(session, monkeypatch) -> None:
     from app.services.producao_service import criar_nova_versao
 
     session.add(
@@ -381,6 +382,8 @@ def test_criar_nova_versao_streamlit_mantem_underline_no_codigo(session) -> None
     processo1.nome_cliente_simplex = "TIAGO_LOPES"
     session.commit()
 
+    monkeypatch.setattr("app.services.producao_service.query_modelos_versoes", lambda *a, **kw: set())
+    monkeypatch.setattr("app.services.producao_service.listar_pastas_enc_arvore", lambda *a, **kw: ("root", {}))
     processo2 = criar_nova_versao(
         session,
         processo_id=1,

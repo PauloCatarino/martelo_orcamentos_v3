@@ -732,9 +732,9 @@ def caminho_versao_de_processo_existente(
     )
 
 
-def criar_pasta_versao(caminho: Path) -> Path:
+def criar_pasta_versao(caminho: Path, *, exist_ok: bool = True) -> Path:
     try:
-        caminho.mkdir(parents=True, exist_ok=True)
+        caminho.mkdir(parents=True, exist_ok=exist_ok)
     except OSError as exc:
         raise OSError(f"Falha ao criar pasta de producao: {caminho} ({exc})") from exc
     return caminho

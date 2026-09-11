@@ -91,13 +91,13 @@ COLUNAS_PRODUCAO: list[ColunaProducao] = [
     ),
     ColunaProducao(
         "versao_obra",
-        "V. Obra",
+        "Modelo",
         True,
         lambda p: getattr(p, "versao_obra", None) or "",
     ),
     ColunaProducao(
         "versao_cutrite",
-        "V. CutRite",
+        "Versão",
         True,
         lambda p: getattr(p, "versao_plano", None) or "",
     ),

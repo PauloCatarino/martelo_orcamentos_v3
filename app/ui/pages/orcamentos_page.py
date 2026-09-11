@@ -9,6 +9,7 @@ from datetime import datetime
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QHBoxLayout,
     QHeaderView,
@@ -222,6 +223,9 @@ class OrcamentosPage(QWidget):
         self.estado_combo = ComboSemScroll()
         self.cliente_combo = ComboSemScroll()
         self.utilizador_combo = ComboSemScroll()
+        self.minhas_check = QCheckBox("👤 Os Meus Orçamentos")
+        self.minhas_check.setToolTip("Mostrar os orçamentos do utilizador atual.")
+        self.minhas_check.toggled.connect(self._filtrar_meus_orcamentos)
         for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
             combo.currentTextChanged.connect(self._render)
 
@@ -233,6 +237,7 @@ class OrcamentosPage(QWidget):
         filters_layout.addWidget(self.cliente_combo)
         filters_layout.addWidget(QLabel("Utilizador"))
         filters_layout.addWidget(self.utilizador_combo)
+        filters_layout.addWidget(self.minhas_check)
         filters_layout.addWidget(self.limpar_filtros_button)
         filters_layout.addStretch()
 
@@ -305,6 +310,10 @@ class OrcamentosPage(QWidget):
     def _render(self, *_args) -> None:
         """Render the in-memory list using the current search and filters."""
         versao_selecionada = self._versao_id_selecionada()
+        previous = self.minhas_check.blockSignals(True)
+        meu = self._meu_utilizador()
+        self.minhas_check.setChecked(bool(meu) and self.utilizador_combo.currentText() == meu)
+        self.minhas_check.blockSignals(previous)
         filtrados = filtrar_orcamentos(
             self._todos,
             texto=self.campo_pesquisa.texto(),
@@ -322,6 +331,31 @@ class OrcamentosPage(QWidget):
         self._atualizar_rodape(filtrados)
         self._sugerir_pesquisa_proxima(len(filtrados))
         self._selecionar_versao(versao_selecionada)
+
+    def _meu_utilizador(self) -> str:
+        user = app_session.current_user
+        user_id = getattr(user, "id", None)
+        nomes = {o.utilizador for o in self._todos
+                 if user_id is not None and o.utilizador_id == user_id and o.utilizador}
+        nome = str(getattr(user, "nome", "") or "").strip()
+        candidates = list(nomes) if len(nomes) == 1 else []
+        candidates += [str(getattr(user, "username", "") or ""), nome, nome.split()[0] if nome else ""]
+        for candidate in candidates:
+            for i in range(1, self.utilizador_combo.count()):
+                value = self.utilizador_combo.itemText(i)
+                if candidate and value.casefold() == candidate.casefold():
+                    return value
+        return ""
+
+    def _filtrar_meus_orcamentos(self, checked: bool) -> None:
+        name = self._meu_utilizador() if checked else "Todos"
+        if not name:
+            previous = self.minhas_check.blockSignals(True)
+            self.minhas_check.setChecked(False)
+            self.minhas_check.blockSignals(previous)
+            self.status_label.setText("Não foi encontrado um utilizador correspondente ao utilizador atual.")
+            return
+        self.utilizador_combo.setCurrentText(name)
 
     def _on_header_clicked(self, coluna: int) -> None:
         """Sort by the clicked column, toggling direction on repeated clicks."""
