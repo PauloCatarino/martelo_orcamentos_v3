@@ -12,6 +12,9 @@ sem ninguém carregar em nada, seria pior do que o problema que resolve.
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,3 +106,77 @@ class AtualizacaoService:
             pasta=pasta,
             ha_atualizacao=ha_versao_mais_recente(instalada, mais_recente.versao),
         )
+
+
+class InstaladorIndisponivel(RuntimeError):
+    """Nao foi possivel deixar o instalador pronto a correr neste PC."""
+
+
+def _e_caminho_de_rede(caminho: Path) -> bool:
+    r"""``\SERVER_LE\...`` ou uma letra de unidade mapeada a um servidor."""
+    texto = str(caminho)
+    if texto.startswith("\\\\") or texto.startswith("//"):
+        return True
+    letra = os.path.splitdrive(texto)[0]
+    if len(letra) == 2 and letra.endswith(":"):
+        try:
+            import ctypes
+
+            DRIVE_REMOTE = 4
+            return ctypes.windll.kernel32.GetDriveTypeW(letra + "\\") == DRIVE_REMOTE
+        except Exception:
+            return False
+    return False
+
+
+def preparar_instalador_local(caminho: Path) -> Path:
+    r"""Devolver um caminho LOCAL para o instalador, copiando-o se for preciso.
+
+    PORQUE E' QUE ISTO EXISTE
+    -------------------------
+    Desde que a empresa passou a exigir uma conta de administrador propria para
+    instalar (setembro de 2026), abrir o instalador diretamente de
+    ``\SERVER_LE\...`` deixou de funcionar. O UAC eleva para a conta
+    ``ADMIN_<pessoa>``, o instalador passa a correr COM ESSA CONTA, e essa
+    conta nao tem sessao autenticada no servidor de ficheiros. O servidor
+    recusa-a e o Windows mostra ``ShellExecuteEx falhou; codigo 1385``, que nao
+    explica nada a ninguem -- e o Martelo, que ja' se tinha fechado, nao estava
+    la' para traduzir.
+
+    A volta e' a que o Paulo descobriu a testar a mao: copiar primeiro para o
+    PC (com a conta normal, que TEM acesso ao servidor) e so' depois abrir. O
+    UAC pede a password na mesma -- isto nao contorna permissao nenhuma; o que
+    muda e' que o processo elevado deixa de precisar da rede.
+    """
+    if not _e_caminho_de_rede(caminho):
+        return caminho
+
+    if not caminho.exists():
+        raise InstaladorIndisponivel(
+            "O instalador nao esta' onde devia:\n" + str(caminho)
+        )
+
+    destino_pasta = Path(tempfile.gettempdir()) / "Martelo_Atualizacao"
+    destino = destino_pasta / caminho.name
+    try:
+        tamanho = caminho.stat().st_size
+        destino_pasta.mkdir(parents=True, exist_ok=True)
+        livre = shutil.disk_usage(destino_pasta).free
+        if livre < tamanho * 1.1:
+            raise InstaladorIndisponivel(
+                "Nao ha' espaco neste PC para copiar o instalador.\n"
+                "Precisa de {} MB e so' ha' {} MB livres.".format(
+                    tamanho // (1024 * 1024), livre // (1024 * 1024)
+                )
+            )
+        # Se ficou inteiro de uma tentativa anterior, nao voltar a copiar 200 MB.
+        if not (destino.exists() and destino.stat().st_size == tamanho):
+            shutil.copy2(caminho, destino)
+    except InstaladorIndisponivel:
+        raise
+    except OSError as erro:
+        raise InstaladorIndisponivel(
+            "Nao foi possivel copiar o instalador para este PC.\n\n"
+            "De:   {}\nPara: {}\n\n{}".format(caminho, destino, erro)
+        ) from erro
+    return destino

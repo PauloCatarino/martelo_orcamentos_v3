@@ -15,6 +15,7 @@ import os
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
+    QApplication,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -25,6 +26,10 @@ from PySide6.QtWidgets import (
 )
 
 from app.config.versao import version_completa
+from app.services.atualizacao_service import (
+    InstaladorIndisponivel,
+    preparar_instalador_local,
+)
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 
@@ -166,19 +171,38 @@ class AjudaPage(QWidget):
         if resposta != QMessageBox.StandardButton.Yes:
             return
 
+        # Copiar para o PC ANTES de abrir. O instalador esta' numa pasta de
+        # rede, e desde que instalar passou a pedir a conta ADMIN_<pessoa> o
+        # UAC eleva para ESSA conta -- que nao tem sessao no servidor de
+        # ficheiros. Abrir direto da rede dava "ShellExecuteEx falhou; codigo
+        # 1385", com o Martelo ja' fechado e ninguem para explicar porque'.
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            caminho = preparar_instalador_local(estado.caminho_instalador)
+        except InstaladorIndisponivel as erro:
+            QMessageBox.critical(self, "Atualizar o Martelo", str(erro))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+
         try:
             # ``startfile`` abre o instalador como o Windows o abriria a partir
-            # do Explorador: com o utilizador normal, e o UAC a pedir permissão
-            # quando for preciso. Se o abríssemos de dentro do Martelo de outra
-            # maneira, o instalador herdava o que o Martelo é — e é isso que
+            # do Explorador: com o utilizador normal, e o UAC a pedir permissao
+            # quando for preciso. Se o abrissemos de dentro do Martelo de outra
+            # maneira, o instalador herdava o que o Martelo e' -- e e' isso que
             # deixa o Outlook sem falar com o Martelo depois de instalar.
-            os.startfile(str(estado.caminho_instalador))  # noqa: S606
+            os.startfile(str(caminho))  # noqa: S606
         except OSError as erro:
+            # So' se chega aqui com o Martelo ainda aberto: nada de fechar a
+            # aplicacao em cima de um erro que a pessoa ainda nao leu.
             QMessageBox.critical(
                 self,
                 "Atualizar o Martelo",
                 "Não foi possível abrir o instalador:\n"
-                f"{estado.caminho_instalador}\n\n{erro}",
+                f"{caminho}\n\n{erro}\n\n"
+                "Se a mensagem falar em «1385», o Windows recusou a conta de "
+                "administrador. O instalador já está copiado para este PC, "
+                "no caminho acima: instale-o a partir daí.",
             )
             return
 
