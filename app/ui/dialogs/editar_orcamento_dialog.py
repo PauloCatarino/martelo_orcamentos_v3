@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -23,7 +24,10 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
-from app.domain.orcamento_estados import ESTADOS_ORCAMENTO
+from app.domain.orcamento_estados import (
+    ESTADOS_ORCAMENTO,
+    estado_apos_encomenda_phc,
+)
 from app.repositories.cliente_repository import ClienteListaResumo
 from app.repositories.user_repository import UserRepository
 from app.services.orcamento_encomenda_phc_service import EncomendaPhcInput
@@ -87,6 +91,9 @@ class EditarOrcamentoDialog(QDialog):
         self.header_label.setObjectName("editarOrcamentoHeader")
         self.header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
 
+        # Posto a True quando a pessoa responde Nao a` sugestao de Adjudicado:
+        # perguntar outra vez a cada encomenda que juntasse seria chatice.
+        self._nao_sugerir_adjudicado = False
         self.cliente_nome_label = QLabel("\u2014")
         self.cliente_simplex_label = QLabel("\u2014")
         self.cliente_email_label = QLabel("\u2014")
@@ -345,6 +352,40 @@ class EditarOrcamentoDialog(QDialog):
         )
         self._redesenhar_encomendas(encomendas, selecionar=numero)
         self.nova_encomenda_input.clear()
+        self._sugerir_adjudicado(numero)
+
+    def _sugerir_adjudicado(self, numero: str) -> None:
+        """Lembrar que uma encomenda PHC costuma querer dizer Adjudicado.
+
+        Quem poe a encomenda esta' a registar que o cliente encomendou, mas o
+        estado ficava no que estivesse -- quase sempre "Enviado" -- porque
+        ninguem se lembrava de o ir mudar. Depois os mapas diziam que havia
+        orcamentos por fechar que ja' estavam ganhos.
+
+        Pergunta, nao decide: a resposta por omissao e' Sim porque e' o caso
+        normal, mas quem quiser deixar o estado como esta' carrega em Nao e o
+        Martelo nao volta a insistir enquanto a janela estiver aberta.
+        """
+        if self._nao_sugerir_adjudicado:
+            return
+        novo = estado_apos_encomenda_phc(self.estado_combo.currentText())
+        if novo is None or self.estado_combo.findText(novo) < 0:
+            return
+        resposta = QMessageBox.question(
+            self,
+            "Estado do or\u00e7amento",
+            f"Juntou a encomenda PHC {numero}, o que costuma querer dizer que "
+            "o cliente adjudicou.\n\n"
+            f"Quer mudar o estado de \u00ab{self.estado_combo.currentText()}\u00bb "
+            f"para \u00ab{novo}\u00bb?\n\n"
+            "S\u00f3 fica gravado quando carregar em Guardar.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if resposta == QMessageBox.StandardButton.Yes:
+            self.estado_combo.setCurrentText(novo)
+        else:
+            self._nao_sugerir_adjudicado = True
 
     def _remover_encomenda(self) -> None:
         item = self.encomendas_list.currentItem()

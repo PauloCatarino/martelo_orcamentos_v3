@@ -48,3 +48,31 @@ def deve_avisar_cliente_phc(
         and novo_estado == ESTADO_ADJUDICADO
         and (estado_anterior or "") != ESTADO_ADJUDICADO
     )
+
+
+#: Estados em que a chegada de uma encomenda PHC NAO deve sugerir nada. Ou ja'
+#: esta' adjudicado, ou alguem fechou o orcamento de proposito e quem manda e'
+#: essa decisao -- a sugestao seria a pedir para a desfazer sem pensar.
+ESTADOS_SEM_SUGESTAO_PHC: frozenset[str] = frozenset(
+    {ESTADO_ADJUDICADO, "Cancelado", "Sem Interesse"}
+)
+
+
+def estado_apos_encomenda_phc(estado_atual: str | None) -> str | None:
+    """O estado a SUGERIR quando se junta uma encomenda PHC ao orcamento.
+
+    Devolve ``None`` quando nao ha' nada a sugerir.
+
+    Uma encomenda PHC quer dizer que o cliente encomendou, ou seja, que o
+    trabalho foi ganho -- mas o estado ficava no que estivesse ("Enviado", as
+    mais das vezes) porque ninguem se lembrava de o mudar a` mao. Dai' a
+    sugestao.
+
+    **Sugerir, nunca decidir.** Quem mudou o estado para Cancelado ou Sem
+    Interesse fe-lo de proposito; nesses casos o Martelo cala-se, em vez de
+    convidar a desfazer uma decisao que alguem tomou. E em Adjudicado nao ha'
+    nada a fazer.
+    """
+    if (estado_atual or "").strip() in ESTADOS_SEM_SUGESTAO_PHC:
+        return None
+    return ESTADO_ADJUDICADO
