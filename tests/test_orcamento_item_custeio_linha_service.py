@@ -3321,6 +3321,42 @@ def test_recalcular_ml_com_comp_real(monkeypatch) -> None:
     assert "observacoes" not in payload
 
 
+@pytest.mark.parametrize("comprimento", [Decimal("583.333"), Decimal("1166.667"), Decimal("800")])
+def test_ml_recalcula_consumo_guardado_apos_mudar_dimensao(monkeypatch, comprimento):
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [_resumo(
+        id=1, tipo_linha="FERRAGEM", unidade="ML", comp="LM",
+        comp_real=comprimento, consumo_ml_unitario=Decimal("0.5833"),
+        quantidade=Decimal("2"), preco_liquido=Decimal("1.32"),
+        desperdicio_percentagem=Decimal("15"),
+    )]
+    service.recalcular_custos_ml_do_item(30)
+    payload = _FakeRepository.updated_payload
+    assert payload["consumo_ml_unitario"] == comprimento / 1000
+    assert payload["custo_ferragem"] == comprimento / 1000 * 2 * Decimal("1.32") * Decimal("1.15")
+
+
+def test_regra_varao_constante_sem_peca_irma(monkeypatch):
+    service, _ = _service(monkeypatch)
+    _bloco_so_de_ferragens(Decimal("1166.667"))
+    varao = _FakeRepository.active_rows[1]
+    regra = _regra_q("VARAO_SPP", "1")
+    quantidade, aviso = service._qt_und_pela_regra(varao, regra, _FakeRepository.active_rows)
+    assert (quantidade, aviso) == (Decimal("1"), None)
+    assert service._peca_principal_do_bloco(varao, _FakeRepository.active_rows).id == varao.id
+    # Constants do not require measures at all.
+    sem_medidas = _resumo(id=8, tipo_linha="FERRAGEM", linha_pai_id=1)
+    assert service._qt_und_pela_regra(sem_medidas, regra, [sem_medidas]) == (Decimal("1"), None)
+
+
+@pytest.mark.parametrize("comprimento,esperado", [("1100", 0), ("1100.001", 1), ("1000", 0)])
+def test_suporte_central_limiar_exato(monkeypatch, comprimento, esperado):
+    service, _ = _service(monkeypatch)
+    _bloco_so_de_ferragens(Decimal(comprimento))
+    service.aplicar_regras_quantidade_do_item(30)
+    assert _FakeRepository.updated_payload["qt_und"] == esperado
+
+
 def test_custo_ferragem_preenche_para_und_e_ml(monkeypatch) -> None:
     # PART A.1: in the Atualizar order (ferragens UND, then ML) a UND line keeps
     # its hardware cost and an ML line ends with its ML cost — never None.

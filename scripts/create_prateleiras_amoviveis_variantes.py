@@ -67,7 +67,7 @@ CHAVE_MATERIAL_PRATELEIRAS = "MATERIAL_PRATELEIRAS"
 CODIGO_PRAT_AMOV_2111 = "PRAT_AMOV[2111]"
 CODIGO_SUPORTE_PRATELEIRA = "SUPORTE_PRATELEIRA"
 CODIGO_VARAO = "VARAO"
-CODIGO_SUPORTE_VARAO = "SUPORTE_VARAO"
+CODIGO_SUPORTE_VARAO = "SUPORTE_LATERAL_VARAO"
 
 REGRA_SUPORTE_PRATELEIRA = "SUPORTE_PRATELEIRA"
 REGRA_VARAO = "VARAO_SPP"
@@ -188,8 +188,14 @@ CONJUNTOS: tuple[ConjuntoSeed, ...] = (
                 formula_comp="LM",
             ),
             ComponenteSeed(
-                codigo_peca=CODIGO_SUPORTE_VARAO,
+                codigo_peca="SUPORTE_CENTRAL_VARAO",
                 ordem=4,
+                descricao="Suporte central quando o varao ultrapassa 1100 mm",
+                codigo_regra_quantidade="SUPORTE_VARAO_CENTRAL",
+            ),
+            ComponenteSeed(
+                codigo_peca=CODIGO_SUPORTE_VARAO,
+                ordem=5,
                 descricao="Terminais de varao (2 por varao)",
                 codigo_regra_quantidade=REGRA_SUPORTE_TERMINAL_VARAO,
             ),

@@ -1555,7 +1555,7 @@ class OrcamentoItemCusteioLinhaService:
             )
 
         principal = self._peca_principal_do_bloco(linha, linhas)
-        if principal is None:
+        if principal is None and avaliar_regra_quantidade(regra.expressao, {})[1] is not None:
             return None, (
                 f"Regra de quantidade {regra.codigo} não calculada: dimensões "
                 "da peça principal em falta."
@@ -1566,7 +1566,7 @@ class OrcamentoItemCusteioLinhaService:
         )
         medida_topo = self._medida_topo_principal(
             principal, dimensao_referencia
-        )
+        ) if principal is not None else None
         if (
             "MEDIDA_TOPO" in (regra.expressao or "").upper()
             and normalizar_numero(medida_topo) is None
@@ -1576,10 +1576,10 @@ class OrcamentoItemCusteioLinhaService:
                 "medida do topo em falta."
             )
         contexto = {
-            "COMP": principal.comp_real,
-            "LARG": principal.larg_real,
-            "ESP": principal.esp_real,
-            "QT_PAI": principal.qt_und,
+            "COMP": getattr(principal, "comp_real", None),
+            "LARG": getattr(principal, "larg_real", None),
+            "ESP": getattr(principal, "esp_real", None),
+            "QT_PAI": getattr(principal, "qt_und", None),
             "MEDIDA_TOPO": medida_topo,
             "NUM_TOPOS": numero_topos,
         }
@@ -1667,6 +1667,9 @@ class OrcamentoItemCusteioLinhaService:
         candidatas = self._irmas_com_medidas(linha, linhas, apenas_pecas=True)
         if not candidatas:
             candidatas = self._irmas_com_medidas(linha, linhas, apenas_pecas=False)
+        # In hardware-only assemblies the measured rod can be its own reference.
+        if not candidatas and linha.tipo_linha == FERRAGEM and linha.comp_real is not None:
+            return linha
         if not candidatas:
             return None
 
@@ -1943,8 +1946,9 @@ class OrcamentoItemCusteioLinhaService:
     def recalcular_custos_ml_do_item(self, orcamento_item_id: int) -> CustoMlResult:
         """Recompute linear-metre consumption and cost for an item's ML lines.
 
-        SPP ML und = manual ``consumo_ml_unitario`` else ``comp_real/1000`` else
-        ``larg_real/1000``; SPP ML total = SPP ML und * qt_total; the cost is
+        SPP ML und follows ``comp_real/1000`` or ``larg_real/1000`` on each run.
+        Stored consumption is only a legacy fallback without dimensions/formulas.
+        SPP ML total = SPP ML und * qt_total; the cost is
         ``consumo_ml_total * preco_liquido * (1 + desp)`` and is stored in
         ``custo_ferragem`` (same column as UND). Non-ML lines, divisions and
         composite-parent lines are skipped. Does not change measures, ValueSet,
@@ -1964,7 +1968,11 @@ class OrcamentoItemCusteioLinhaService:
 
             eh_ml, consumo_unitario, consumo_total, custo, aviso = calcular_custo_ml(
                 linha.unidade,
-                linha.consumo_ml_unitario,
+                # This read-only column stores the previous computed result.
+                # Reuse it only for legacy lines without dimensional formulas;
+                # otherwise a dimension change must recalculate the consumption.
+                None if (linha.comp_real is not None or linha.larg_real is not None
+                         or linha.comp or linha.larg) else linha.consumo_ml_unitario,
                 linha.comp_real,
                 linha.larg_real,
                 linha.quantidade,

@@ -151,6 +151,35 @@ def test_seed_e_idempotente(session) -> None:
     assert len(_associados(session)) == 3
 
 
+def test_corrigir_prateleiras_preserva_outros_associados_e_nao_duplica(session):
+    from scripts.corrigir_suportes_prateleiras import CONJUNTOS, corrigir
+    _criar_catalogo(session)
+    configurar_varao_suportes(session)
+    varao, central, lateral = _associados(session)
+    antigos = []
+    for codigo in CONJUNTOS:
+        pai = DefPeca(codigo=codigo, nome=codigo, tipo_peca=COMPOSTA,
+                      natureza=CONJUNTO, orientacao=NEUTRA, ativo=True)
+        session.add(pai)
+        session.flush()
+        errado = DefPecaComponente(def_peca_pai_id=pai.id, tipo_componente=PECA,
+            def_peca_componente_id=central.def_peca_componente_id, ordem=3,
+            quantidade=Decimal("1"), def_regra_quantidade_id=lateral.def_regra_quantidade_id)
+        session.add(errado)
+        antigos.append(errado)
+    session.flush()
+    ids = [c.id for c in antigos]
+    corrigir(session)
+    assert [c.id for c in antigos] == ids
+    assert all(c.def_regra_quantidade_id == central.def_regra_quantidade_id for c in antigos)
+    assert corrigir(session) == []
+    for codigo in CONJUNTOS:
+        pai = session.scalars(select(DefPeca).where(DefPeca.codigo == codigo)).one()
+        rows = list(session.scalars(select(DefPecaComponente).where(DefPecaComponente.def_peca_pai_id == pai.id)))
+        assert len(rows) == 3
+        assert {r.def_peca_componente_id for r in rows} == {varao.def_peca_componente_id, central.def_peca_componente_id, lateral.def_peca_componente_id}
+
+
 def test_seed_avisa_quando_falta_uma_peca(session) -> None:
     _criar_catalogo(session)
     peca = session.execute(
