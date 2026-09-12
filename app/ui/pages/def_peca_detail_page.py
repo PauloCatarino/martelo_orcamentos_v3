@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 from app.db.session import SessionLocal
 from app.domain.componente_types import get_componente_type_label
@@ -538,8 +539,9 @@ class DefPecaDetailPage(QWidget):
         ajuda = QLabel(
             "Fórmulas do cabeçalho: H/L/P são dimensões do item e HM/LM/PM da "
             "divisão ativa. As transformações dos associados podem também usar "
-            "PAI_COMP, PAI_LARG e PAI_ESP. Nesta fase as regras são apenas guardadas "
-            "no catálogo; a aplicação ao custeio entra na fase seguinte."
+            "PAI_COMP, PAI_LARG e PAI_ESP. Calhas horizontais: Comp = LM-40; "
+            "puxadores: configurar a fórmula do comprimento vertical. A seleção "
+            "compara Comp real com Comp MP do ValueSet, sem alterar a unidade do preço."
         )
         ajuda.setWordWrap(True)
         layout.addWidget(ajuda)
@@ -554,12 +556,21 @@ class DefPecaDetailPage(QWidget):
             self.formula_esp_input,
         ):
             input_widget.setMaximumWidth(620)
+            input_widget.setToolTip("Fórmula dimensional em mm. Ex.: LM-40 ou HM-50. Atualize a peça da biblioteca para aplicar a linhas existentes.")
         form.addRow("Comp do cabeçalho", self.formula_comp_input)
         form.addRow("Larg do cabeçalho", self.formula_larg_input)
         form.addRow("Esp do cabeçalho", self.formula_esp_input)
+        self.selecao_perfil_combo = ComboSemScroll()
+        self.selecao_perfil_combo.addItem("Automática para calhas sup/inf e puxadores de correr", "AUTO")
+        self.selecao_perfil_combo.addItem("Selecionar perfil pelo comprimento", "COMPRIMENTO")
+        self.selecao_perfil_combo.addItem("Sem seleção por comprimento", "DESLIGADO")
+        self.selecao_perfil_combo.setCurrentIndex(self.selecao_perfil_combo.findData(self.peca.selecao_perfil))
+        self.selecao_perfil_combo.setToolTip("Recomenda o menor perfil que cobre Comp real. Mantém os curtos visíveis. Uma única opção adequada é aplicada automaticamente ao atualizar o item; escolhas manuais são preservadas. AUTO exclui H/U.")
+        form.addRow("Seleção do perfil", self.selecao_perfil_combo)
         layout.addLayout(form)
 
         self.guardar_formulas_button = QPushButton("Guardar fórmulas do cabeçalho")
+        self.guardar_formulas_button.setToolTip("Guardar as fórmulas e a regra de seleção do perfil desta definição de peça.")
         self.guardar_formulas_button.clicked.connect(self.guardar_formulas_dimensionais)
         self.guardar_formulas_button.setMaximumWidth(280)
         self.formulas_status_label = QLabel("")
@@ -604,11 +615,12 @@ class DefPecaDetailPage(QWidget):
                     formula_comp=self.formula_comp_input.text(),
                     formula_larg=self.formula_larg_input.text(),
                     formula_esp=self.formula_esp_input.text(),
+                    selecao_perfil=self.selecao_perfil_combo.currentData(),
                 )
         except (SQLAlchemyError, ValueError) as error:
             self.formulas_status_label.setText(str(error))
             return
-        self.formulas_status_label.setText("Fórmulas do cabeçalho guardadas.")
+        self.formulas_status_label.setText("Fórmulas e seleção do perfil guardadas. Atualize o custeio para analisar os perfis.")
 
     def _componentes_visiveis(self) -> list[DefPecaComponenteResumo]:
         """Os associados a mostrar: só os ativos, salvo pedido em contrário.

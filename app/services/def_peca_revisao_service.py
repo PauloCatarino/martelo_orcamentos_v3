@@ -51,6 +51,7 @@ class DefPecaRevisaoService:
         "orientacao",
         "funcao",
         "formula_comp",
+        "selecao_perfil",
         "formula_larg",
         "formula_esp",
         "orla_c1",

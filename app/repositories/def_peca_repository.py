@@ -33,6 +33,7 @@ class DefPecaResumo:
     orientacao: str = "NEUTRA"
     funcao: str | None = None
     formula_comp: str | None = None
+    selecao_perfil: str = "AUTO"
     formula_larg: str | None = None
     formula_esp: str | None = None
     orla_c1: int = 0
@@ -240,6 +241,7 @@ class DefPecaRepository:
         formula_comp: str | None,
         formula_larg: str | None,
         formula_esp: str | None,
+        selecao_perfil: str | None = None,
     ) -> DefPecaResumo:
         peca = self.session.get(DefPeca, id)
         if peca is None:
@@ -247,6 +249,8 @@ class DefPecaRepository:
         peca.formula_comp = formula_comp
         peca.formula_larg = formula_larg
         peca.formula_esp = formula_esp
+        if selecao_perfil is not None:
+            peca.selecao_perfil = selecao_perfil
         self.session.flush()
         return self._to_resumo(peca)
 
@@ -279,6 +283,7 @@ class DefPecaRepository:
             orientacao=peca.orientacao,
             funcao=peca.funcao,
             formula_comp=peca.formula_comp,
+            selecao_perfil=peca.selecao_perfil,
             formula_larg=peca.formula_larg,
             formula_esp=peca.formula_esp,
             ativo=peca.ativo,

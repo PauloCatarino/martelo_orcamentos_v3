@@ -2,6 +2,29 @@
 
 from __future__ import annotations
 
+import pytest
+
+
+@pytest.mark.parametrize("mensagem", [
+    "Perfil de correr: confirme o material em Mat. default; opções ordenadas pelo comprimento.",
+    "Perfil de correr: material atual — 1800 mm · CURTA: faltam 160 mm. Selecione em Mat. default.",
+    "Perfil de correr: material atual — Comprimento comercial desconhecido. Selecione em Mat. default.",
+])
+def test_atualizar_recolhe_avisos_de_perfis_e_mantem_mensagem(mensagem):
+    from types import SimpleNamespace
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    linha = SimpleNamespace(id=1, tipo_linha="FERRAGEM", def_peca_codigo="CALHA_SUP_SISTEMA_CORRER", observacoes=mensagem)
+    avisos = OrcamentoItemCusteioPage._recolher_avisos_observacoes([linha])
+    assert len(avisos) == 1
+    diagnostico = avisos[0][1][0]
+    assert diagnostico.severidade == AVISO
+    assert diagnostico.categoria == "Perfil de correr"
+    assert "Mat. default" in diagnostico.sugestao
+    assert mensagem in OrcamentoItemCusteioPage._texto_aviso_observacao(avisos[0])
+    linha.observacoes = None
+    assert OrcamentoItemCusteioPage._recolher_avisos_observacoes([linha]) == []
+
 from app.services.custeio_auditoria_service import AVISO, CRITICO
 from app.services.custeio_supervisor import (
     ORIGEM_OPERACOES,

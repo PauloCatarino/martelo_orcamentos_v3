@@ -281,8 +281,11 @@ class DefPecaService:
 
         nova_peca = self.criar_peca(data)
         self._copiar_operacoes_e_componentes(original_id, nova_peca.id)
-
-        return nova_peca
+        return self.atualizar_formulas_dimensionais(
+            nova_peca.id, formula_comp=nova_peca.formula_comp,
+            formula_larg=nova_peca.formula_larg, formula_esp=nova_peca.formula_esp,
+            selecao_perfil=original.selecao_perfil,
+        )
 
     def _copiar_operacoes_e_componentes(self, original_id: int, nova_peca_id: int) -> None:
         """Copy operation and component links from one piece to another."""
@@ -368,6 +371,7 @@ class DefPecaService:
         formula_comp: str | None,
         formula_larg: str | None,
         formula_esp: str | None,
+        selecao_perfil: str | None = None,
     ) -> DefPecaResumo:
         formulas = self._normalizar_formulas(
             CriarDefPecaData(
@@ -378,7 +382,13 @@ class DefPecaService:
                 formula_esp=formula_esp,
             )
         )
-        result = self.repository.update_formulas_dimensionais(id, **formulas)
+        if selecao_perfil is not None:
+            from app.domain.perfis_correr import MODOS
+            if selecao_perfil not in MODOS:
+                raise ValueError("Regra de seleção de perfil inválida.")
+        result = self.repository.update_formulas_dimensionais(
+            id, **formulas, selecao_perfil=selecao_perfil
+        )
         self.session.commit()
         return result
 

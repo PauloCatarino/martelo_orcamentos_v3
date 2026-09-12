@@ -99,6 +99,10 @@ class DiagnosticoLinha:
 
 # Porquê do alerta, por categoria (o que o utilizador ganha em perceber).
 _PORQUE = {
+    "Perfil de correr": (
+        "A opção do perfil precisa de validação: o comprimento comercial pode "
+        "não servir a medida necessária, mesmo com um custo já calculado."
+    ),
     "Material": (
         "O custeio da matéria-prima precisa da área da peça e do preço líquido; "
         "falta um deles, por isso o Custo MP fica a zero e o preço sai por baixo."
@@ -135,6 +139,7 @@ _PORQUE = {
 
 # Sugestão de correção, por categoria (o passo concreto a dar).
 _SUGESTAO = {
+    "Perfil de correr": "Revalidar a opção em Mat. default: conferir comprimento, sobra/falta, unidade e preço do perfil.",
     "Material": "Escolher a matéria-prima correta ou corrigir o preço líquido; depois recalcular o item.",
     "Orlagem": "Validar orlas, máquina e tarifas de orlagem; depois recalcular.",
     "CNC": "Validar operação, máquina, geometria, tempo e tarifa CNC; depois recalcular.",

@@ -15,6 +15,11 @@ from types import SimpleNamespace
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from app.domain.perfis_correr import (
+    usa_selecao_comprimento, ordenar_perfis, comprimento_positivo, descricao_comprimento,
+    unidade_perfil_und,
+)
+
 from app.domain.custeio_linha_types import (
     DIVISAO_INDEPENDENTE,
     FERRAGEM,
@@ -1287,9 +1292,67 @@ class OrcamentoItemCusteioLinhaService:
             return []
 
         opcoes = self.opcoes_valueset_do_item(orcamento_item_id)
-        return opcoes_valueset_compativeis(
+        compativeis = opcoes_valueset_compativeis(
             linha.chave_valueset, opcoes, self.tipos_das_chaves()
         )
+        peca = self.peca_repository.get_by_id(linha.def_peca_id) if linha.def_peca_id else None
+        if usa_selecao_comprimento(linha, getattr(peca, "selecao_perfil", "AUTO")):
+            return ordenar_perfis(compativeis, linha.comp_real)
+        return compativeis
+
+    def analisar_perfis_do_item(self, orcamento_item_id: int) -> int:
+        """Select a sole fitting option; flag choices without replacing local edits."""
+        from app.models import DefPeca
+
+        linhas = self.repository.list_active_by_orcamento_item(orcamento_item_id)
+        ids = {l.def_peca_id for l in linhas if l.def_peca_id}
+        modos = dict(self.session.execute(
+            select(DefPeca.id, DefPeca.selecao_perfil).where(DefPeca.id.in_(ids))
+        ).all()) if ids else {}
+        opcoes = self.opcoes_valueset_do_item(orcamento_item_id)
+        aplicadas = 0
+        for linha in linhas:
+            # Os avisos SOMAM-SE: um perfil pode estar curto E com a unidade
+            # errada, e antes so' sobrevivia o ultimo — perdia-se o "faltam X mm",
+            # que e' o unico que diz o que fazer. Todos comecam pelo mesmo prefixo,
+            # para o `_mesclar_observacao` os apagar a todos na passagem seguinte.
+            avisos: list[str] = []
+            fields = {}
+            if usa_selecao_comprimento(linha, modos.get(linha.def_peca_id, "AUTO")):
+                candidatas = [o for o in opcoes if normalize_valueset_key(o.chave) == normalize_valueset_key(linha.chave_valueset)]
+                candidatas = ordenar_perfis(candidatas, linha.comp_real)
+                necessario = comprimento_positivo(linha.comp_real)
+                if necessario is None:
+                    avisos.append("Perfil de correr: comprimento necessário inválido; reveja Comp.")
+                elif not candidatas:
+                    avisos.append("Perfil de correr: material sem opções no ValueSet desta chave.")
+                else:
+                    unica = candidatas[0] if len(candidatas) == 1 else None
+                    comp = comprimento_positivo(getattr(unica, "comp_mp", None))
+                    unidade_und = unidade_perfil_und(getattr(unica, "unidade", None))
+                    if not linha.material_editado_localmente and unica and comp and comp >= necessario and unidade_und:
+                        fields.update(self._build_valueset_material_fields(unica))
+                        fields["origem_material"] = "VALUESET_PERFIL_AUTO"
+                        if any(getattr(linha, campo, None) != valor for campo, valor in fields.items()):
+                            aplicadas += 1
+                    elif not linha.material_editado_localmente:
+                        avisos.append("Perfil de correr: confirme o material em Mat. default; opções ordenadas pelo comprimento.")
+                    comp_atual = fields.get("comp_mp", linha.comp_mp)
+                    if comprimento_positivo(comp_atual) is None or comprimento_positivo(comp_atual) < necessario:
+                        detalhe = descricao_comprimento(comp_atual, necessario)
+                        avisos.append(f"Perfil de correr: material atual — {detalhe}. Selecione em Mat. default.")
+                    unidade = fields.get("unidade", linha.unidade)
+                    if not unidade_perfil_und(unidade):
+                        avisos.append("Perfil de correr: confirme unidade e preço do material; calhas sup/inf e puxadores devem ser UND.")
+            observacoes = self._mesclar_observacao(
+                linha.observacoes, "Perfil de correr:", chr(10).join(avisos) or None
+            )
+            if observacoes != linha.observacoes:
+                fields["observacoes"] = observacoes
+            if fields:
+                self.repository.update_linha(id=linha.id, **fields)
+        self.session.commit()
+        return aplicadas
 
     def aplicar_opcao_valueset_na_linha(
         self, custeio_linha_id: int, valueset_linha_id: int
@@ -2055,6 +2118,8 @@ class OrcamentoItemCusteioLinhaService:
         # à pressa no código que calcula os preços.
         self.garantir_entradas_validas_do_item(orcamento_item_id)
         self.recalcular_medidas_do_item(orcamento_item_id)
+        if self.analisar_perfis_do_item(orcamento_item_id):
+            self.recalcular_medidas_do_item(orcamento_item_id)
         self.aplicar_regras_quantidade_do_item(orcamento_item_id)
         self.recalcular_quantidades_do_item(orcamento_item_id)
         self.aplicar_acabamentos_do_item(orcamento_item_id)

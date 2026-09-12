@@ -375,6 +375,11 @@ def classificar_observacoes_producao(texto: str | None) -> list[tuple[str, str, 
         normalizada = mensagem.casefold()
         if not mensagem:
             continue
+        if normalizada.startswith("perfil de correr:"):
+            # São lembretes de validação mesmo sem os marcadores genéricos
+            # (por exemplo, "confirme" em vez de "confirmar").
+            resultado.append(("Perfil de correr", AVISO, mensagem))
+            continue
         if any(marcador in normalizada for marcador in marcadores_criticos):
             severidade = CRITICO
         elif any(marcador in normalizada for marcador in marcadores_aviso):
@@ -405,6 +410,7 @@ def classificar_observacoes_producao(texto: str | None) -> list[tuple[str, str, 
 
 def _acao_observacao(categoria: str) -> str:
     acoes = {
+        "Perfil de correr": "Revalidar a opção em Mat. default, comparando o comprimento necessário com o comprimento comercial do perfil.",
         "Material": "Completar material, ValueSet e preço líquido; depois recalcular o item.",
         "Orlagem": "Validar orlas, máquina e tarifas de orlagem; depois recalcular.",
         "CNC": "Validar operação, máquina, geometria, tempo e tarifa CNC; depois recalcular.",

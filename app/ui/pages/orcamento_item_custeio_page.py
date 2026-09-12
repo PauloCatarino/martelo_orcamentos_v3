@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.domain.perfis_correr import usa_selecao_comprimento, ordenar_perfis, descricao_comprimento, comprimento_positivo
+
 import re
 from collections.abc import Callable
 from dataclasses import replace
@@ -953,6 +955,10 @@ class OrcamentoItemCusteioPage(QWidget):
                     self.item_id
                 )
                 self._chave_tipos = custeio_service.tipos_das_chaves()
+                self._modos_perfil = {
+                    peca.id: peca.selecao_perfil
+                    for peca in DefPecaService(session).listar_pecas()
+                }
                 self._carregar_tarifas_maquinas(session)
                 self._funcoes_estruturais_por_peca = {
                     peca.id: peca.funcao
@@ -3390,15 +3396,31 @@ class OrcamentoItemCusteioPage(QWidget):
         """Build the per-line Mat. default combobox with the compatible options."""
         combo = ComboSemScroll()
         combo.setToolTip(self._tooltip_mat_default(linha))
-
+        perfil = usa_selecao_comprimento(
+            linha, getattr(self, "_modos_perfil", {}).get(linha.def_peca_id, "AUTO")
+        )
+        if perfil:
+            opcoes = ordenar_perfis(opcoes, linha.comp_real)
         atual_id = self._opcao_atual_id(linha, opcoes)
-        if atual_id is None:
+        confirmar = perfil and not linha.material_editado_localmente and (
+            linha.origem_material != "VALUESET_PERFIL_AUTO" or len(opcoes) != 1
+        )
+        if confirmar:
+            combo.addItem(f"Confirmar perfil · atual: {linha.mat_default or '—'}", None)
+        elif atual_id is None:
             # Current material is not one of the options: keep it visible (no-op).
             combo.addItem(f"(atual) {linha.mat_default or '—'}", None)
-        for opcao in opcoes:
-            combo.addItem(self._label_opcao_material(opcao), opcao.id)
+        for posicao, opcao in enumerate(opcoes):
+            label = self._label_opcao_material(opcao)
+            if perfil:
+                comp = comprimento_positivo(opcao.comp_mp)
+                alvo = comprimento_positivo(linha.comp_real)
+                prefixo = "Recomendada · " if posicao == 0 and comp and alvo and comp >= alvo else ""
+                label = f"{prefixo}{opcao.ref_materia_prima or '—'} · {label} · {descricao_comprimento(opcao.comp_mp, linha.comp_real)} · {opcao.unidade or 'unidade desconhecida'}"
+            combo.addItem(label, opcao.id)
+            combo.setItemData(combo.count() - 1, label, Qt.ItemDataRole.ToolTipRole)
 
-        indice = combo.findData(atual_id) if atual_id is not None else 0
+        indice = combo.findData(atual_id) if atual_id is not None and not confirmar else 0
         if indice >= 0:
             combo.setCurrentIndex(indice)
         # Connect AFTER selecting, so the initial set does not fire the handler.
@@ -3438,12 +3460,20 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _tooltip_mat_default(self, linha: OrcamentoItemCusteioLinhaResumo) -> str:
         """Tooltip for the Mat. default cell: the rule + the current option."""
-        return (
+        texto = (
             "Material da linha a partir do ValueSet do item.\n"
             "Placas (MATERIAL): troca entre quaisquer materiais; "
             "Ferragens/sistemas: só a mesma família (mesma chave).\n"
             f"Opção atual: {linha.mat_default or '—'}"
         )
+        if usa_selecao_comprimento(linha, getattr(self, "_modos_perfil", {}).get(linha.def_peca_id, "AUTO")):
+            texto += (
+                f"\nComprimento necessário: {linha.comp_real or 'por definir'} mm.\n"
+                + descricao_comprimento(linha.comp_mp, linha.comp_real)
+                + "\nEscolha o menor perfil que cubra a medida. Os perfis curtos continuam disponíveis para decisão."
+                + "\nPreço por unidade comercial (UND); a sobra não reduz o preço da barra."
+            )
+        return texto
 
     def _on_material_combo_changed(self, linha_id: int, combo: QComboBox) -> None:
         """Apply the chosen ValueSet option to the line and recompute the costs."""
