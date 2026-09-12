@@ -1,6 +1,6 @@
 # 35 — Navegador de chaves nos Modelos ValueSet
 
-Estado: **Peças 1 e 2 entregues** (12-set-2026). Decisões já fechadas com o Paulo.
+Estado: **Peças 1, 2 e 3 entregues** (12-set-2026). Decisões já fechadas com o Paulo.
 
 ---
 
@@ -131,12 +131,41 @@ Fica por alinhar, se ele quiser: a própria linha 48 ainda tem
 `descricao_no_orcamento` = "SUPORTE VARAO ROUPEIRO F233" — sem o "LATERAL". É o
 texto que sai no orçamento ao cliente.
 
-### Peça 3
-Renomear chave com propagação explícita e escolha de alcance
-(default: só catálogos, sem orçamentos).
+### Peça 3 — FEITA (12-set-2026)
+`app/services/def_valueset_chave_renomeacao_service.py` +
+`app/ui/dialogs/renomear_chave_valueset_dialog.py`, ligados ao "Editar Chave"
+de `def_valueset_chaves_page.py`.
 
-### Peça 4
-Sincronizar chaves num modelo + copiar uma chave para vários modelos.
+Mudar o **código** deixa de ser uma edição e passa a ser uma **renomeação**:
+abre uma janela que conta, tabela a tabela, quem usa a chave, e pergunta o
+alcance antes de gravar. Alterar nome/grupo/ordem/tipo continua a ser edição
+normal, e mudar só espaços ou caixa não conta como renomeação.
+
+**O alcance, e porquê.** Medido na base real:
+
+| chave | catálogos | orçamentos |
+|---|---:|---:|
+| `FERRAGEM_VARAO` | 24 | 849 |
+| `FERRAGEM_SUPORTE_LATERAL_VARAO` | 17 | 576 |
+| `MATERIAL_COSTAS` | 30 | 539 |
+
+Os catálogos são a configuração viva — é aí que renomear resolve o problema.
+Os orçamentos são o registo do que foi vendido, com preços e descrições
+congelados, e são ~20× mais linhas. Por isso ficam **de fora por omissão**, com
+uma caixa que tem de ser ligada de propósito.
+
+A operação é **tudo ou nada** (uma transação): ficar a meio seria exatamente a
+situação que isto veio resolver.
+
+Guião: `docs/GUIAO_TESTE_RENOMEAR_CHAVE_VALUESET.md`.
+
+### Peça 4 — a seguir
+Sincronizar chaves num modelo + copiar uma chave para vários modelos. É o que
+dá resposta ao aviso `VALUESET_MODELO_CHAVES_EM_FALTA` da Peça 2.
+
+Nota do Paulo (12-set-2026): o `ROUPEIRO_INOV_POSITIVA` era um modelo de teste,
+provavelmente não volta a ser editado — **fica como está**. Não vale a pena
+desenhar a Peça 4 à volta dele.
 
 ---
 
