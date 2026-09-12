@@ -229,12 +229,16 @@ def test_page_import_modelo_verifica_precos_explicitamente() -> None:
 def test_page_formats_percentages() -> None:
     from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
 
-    source = inspect.getsource(OrcamentoValuesetPage._preencher)
+    source = inspect.getsource(OrcamentoValuesetPage._escrever_linha)
+    corrido = inspect.getsource(OrcamentoValuesetPage._preencher_corrido)
+    com_faixas = inspect.getsource(OrcamentoValuesetPage._preencher_com_faixas)
 
     assert "formatar_percentagem" in source
-    assert "preparar_linhas_valueset" in source
     assert "aplicar_estilo_item_valueset" in source
     assert "texto_chave_valueset" in source
+    # Os dois modos de desenho passam pelo mesmo helper visual partilhado.
+    assert "preparar_linhas_valueset" in corrido
+    assert "preparar_linhas_valueset" in com_faixas
 
 
 def test_page_valueset_visual_helper_e_menu_colunas() -> None:
@@ -292,8 +296,11 @@ def test_page_carrega_coluna_operacoes() -> None:
     assert "OrcamentoValuesetLinhaOperacaoService" in carregar
     assert "_operacoes_por_linha" in carregar
 
-    preencher = inspect.getsource(OrcamentoValuesetPage._preencher)
-    assert "_operacoes_por_linha" in preencher
+    # Uma consulta para todas as linhas, e nao uma por linha (N+1).
+    assert "listar_operacoes_ativas_de_linhas" in carregar
+    assert "_operacoes_por_linha" in inspect.getsource(
+        OrcamentoValuesetPage._escrever_linha
+    )
 
 
 def test_page_edit_lida_com_operacoes_alteradas() -> None:
@@ -331,3 +338,68 @@ def test_page_colunas_redimensionaveis_com_seed() -> None:
     preencher = inspect.getsource(OrcamentoValuesetPage._preencher)
     assert "resizeColumnsToContents" in preencher
     assert "_larguras_iniciais_aplicadas" in preencher
+
+
+# --- Navegador de chaves, faixas de grupo e filtro das editadas --------------
+
+
+def test_page_tem_navegador_chips_e_pesquisa() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    init = inspect.getsource(OrcamentoValuesetPage.__init__)
+
+    assert "NavegadorChavesValueset" in init
+    assert "mostrar_editadas=True" in init  # aqui a marca ✎ é o que mais conta
+    assert "CampoPesquisa" in init
+    assert "BotaoLimparFiltros" in init
+    assert "QSplitter" in init
+    assert "ligar_persistencia_splitter" in init
+    assert "self.navegador.chips" in init
+    # O navegador manda repintar quando o filtro muda.
+    assert "filtro_mudou.connect(self._aplicar_filtros)" in init
+
+
+def test_faixas_sao_so_de_grupo() -> None:
+    """~70 chaves para ~100 linhas: faixas de chave quase duplicavam o ecrã."""
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    fonte = inspect.getsource(OrcamentoValuesetPage._preencher_com_faixas)
+
+    assert "escrever_faixa_grupo" in fonte
+    assert "agrupar_contiguo" in fonte
+    # Não reordena: as faixas seguem a ordem que a tabela já tem.
+    assert "ordenar=False" in fonte
+
+
+def test_faixa_nao_e_linha_de_dados() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    duplo = inspect.getsource(OrcamentoValuesetPage._handle_double_click)
+    menu = inspect.getsource(OrcamentoValuesetPage._abrir_menu_contexto)
+    clique = inspect.getsource(OrcamentoValuesetPage._handle_click_celula)
+
+    assert "_faixas_by_row" in duplo
+    assert "_faixas_by_row" in menu
+    assert "alternar_grupo_fechado" in clique
+
+
+def test_estado_conta_as_linhas_afinadas_a_mao() -> None:
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    fonte = inspect.getsource(OrcamentoValuesetPage._aplicar_filtros)
+
+    assert "editado_localmente" in fonte
+    assert "afinada(s) à mão" in fonte
+    assert "sufixo_estado" in fonte
+
+
+def test_pesquisa_e_inativas_ficam_fora_do_navegador() -> None:
+    """As contagens dos chips são as da pesquisa, não as do grupo escolhido."""
+    from app.ui.pages.orcamento_valueset_page import OrcamentoValuesetPage
+
+    fonte = inspect.getsource(OrcamentoValuesetPage._linhas_pesquisadas)
+    aplicar = inspect.getsource(OrcamentoValuesetPage._aplicar_filtros)
+
+    assert "mostrar_inativas_check" in fonte
+    assert "filtrar_linhas_valueset_modelo" in fonte
+    assert "self.navegador.atualizar(pesquisadas)" in aplicar

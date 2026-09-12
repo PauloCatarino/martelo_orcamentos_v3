@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -77,6 +78,12 @@ class OrcamentoValuesetLinhaOperacaoService:
     ) -> list[OrcamentoValuesetLinhaOperacaoResumo]:
         """List active operations linked to one budget version ValueSet line."""
         return self.repository.list_active_by_linha(orcamento_valueset_linha_id)
+
+    def listar_operacoes_ativas_de_linhas(
+        self, linha_ids: Sequence[int]
+    ) -> dict[int, list[OrcamentoValuesetLinhaOperacaoResumo]]:
+        """Active operations of several budget ValueSet lines, in one query."""
+        return self.repository.list_active_by_linhas(linha_ids)
 
     def obter_por_id(self, id: int) -> OrcamentoValuesetLinhaOperacaoResumo | None:
         """Get one budget version ValueSet line operation link by id."""
