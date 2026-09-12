@@ -365,3 +365,92 @@ def test_modo_so_acrescentar_e_o_de_partida(cenario) -> None:
     contexto = service.preparar_contexto(cenario["origem"], [VARAO], cenario["paulo"])
 
     assert contexto.modo == SO_ACRESCENTAR
+
+
+# --- A marca ✎ é do utilizador, não da cópia ---------------------------------
+#
+# O "editado localmente" foi feito para assinalar o que o Paulo mexeu à mão numa
+# linha. Uma linha que veio inteira de outro modelo não foi mexida à mão por
+# ninguém: pôr-lhe a marca dizia o contrário da verdade, e ele confirmou isso
+# depois de ver o resultado no ecrã.
+
+
+def test_linha_criada_pela_copia_nao_leva_a_marca(cenario) -> None:
+    service, session = cenario["service"], cenario["session"]
+    contexto = service.preparar_contexto(cenario["origem"], [VARAO], cenario["paulo"])
+
+    service.executar(contexto, [cenario["meu"]], cenario["paulo"])
+
+    nova = (
+        session.query(DefValuesetModeloLinha)
+        .filter_by(def_valueset_modelo_id=cenario["meu"], codigo_opcao="VARAO_B")
+        .one()
+    )
+    assert nova.editado_localmente is False
+
+
+def test_linha_atualizada_pela_copia_nao_leva_a_marca(cenario) -> None:
+    service, session = cenario["service"], cenario["session"]
+    contexto = service.preparar_contexto(
+        cenario["origem"], [VARAO], cenario["paulo"], modo=ACRESCENTAR_E_ATUALIZAR
+    )
+
+    service.executar(contexto, [cenario["meu"]], cenario["paulo"])
+
+    atualizada = (
+        session.query(DefValuesetModeloLinha)
+        .filter_by(def_valueset_modelo_id=cenario["meu"], codigo_opcao="VARAO_A")
+        .one()
+    )
+    assert atualizada.preco_tabela == 10  # veio mesmo da origem
+    assert atualizada.editado_localmente is False
+    assert atualizada.origem_dados != "EDITADO_LOCALMENTE"
+
+
+def test_marca_anterior_do_utilizador_sai_quando_a_linha_e_reposta(cenario) -> None:
+    """Se a linha volta a ser a do modelo, já não há edição local nenhuma."""
+    service, session = cenario["service"], cenario["session"]
+    marcada = (
+        session.query(DefValuesetModeloLinha)
+        .filter_by(def_valueset_modelo_id=cenario["meu"], codigo_opcao="VARAO_A")
+        .one()
+    )
+    marcada.editado_localmente = True
+    marcada.origem_dados = "EDITADO_LOCALMENTE"
+    session.commit()
+
+    contexto = service.preparar_contexto(
+        cenario["origem"], [VARAO], cenario["paulo"], modo=ACRESCENTAR_E_ATUALIZAR
+    )
+    service.executar(contexto, [cenario["meu"]], cenario["paulo"])
+
+    session.expire_all()
+    assert marcada.editado_localmente is False
+
+
+def test_colar_dados_a_mao_continua_a_marcar(cenario) -> None:
+    """O caminho do utilizador não muda: Ctrl+V numa linha marca-a."""
+    session = cenario["session"]
+    from app.services.def_valueset_modelo_linha_service import (
+        DefValuesetModeloLinhaService,
+    )
+
+    service = DefValuesetModeloLinhaService(session)
+    origem = (
+        session.query(DefValuesetModeloLinha)
+        .filter_by(def_valueset_modelo_id=cenario["origem"], codigo_opcao="VARAO_A")
+        .one()
+    )
+    destino = (
+        session.query(DefValuesetModeloLinha)
+        .filter_by(def_valueset_modelo_id=cenario["meu"], codigo_opcao="SO_MEU")
+        .one()
+    )
+
+    service.aplicar_snapshot_linha(
+        destino.id, service.copiar_snapshot_linha(origem.id)
+    )
+
+    session.expire_all()
+    assert destino.editado_localmente is True
+    assert destino.origem_dados == "EDITADO_LOCALMENTE"

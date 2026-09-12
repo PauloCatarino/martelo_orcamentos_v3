@@ -185,9 +185,21 @@ class DefValuesetModeloLinhaService:
         return snapshot
 
     def aplicar_snapshot_linha(
-        self, id: int, snapshot: dict, *, commit: bool = True
+        self,
+        id: int,
+        snapshot: dict,
+        *,
+        commit: bool = True,
+        marcar_editado: bool = True,
     ) -> DefValuesetModeloLinhaResumo:
-        """Replace material content while preserving the destination identity."""
+        """Replace material content while preserving the destination identity.
+
+        ``marcar_editado=False`` para quando o conteúdo novo vem de um modelo e
+        não da mão de alguém — é o caso da cópia de chaves entre modelos. A
+        marca ✎ foi feita para assinalar o que o utilizador mexeu à mão; pô-la
+        numa linha que veio inteira de outro modelo dizia o contrário da
+        verdade.
+        """
         linha = self.repository.get_by_id(id)
         if linha is None:
             raise ValueError("linha nao encontrada")
@@ -201,8 +213,14 @@ class DefValuesetModeloLinhaService:
             fields["desconto_percentagem"],
             fields["preco_liquido"],
         )
-        fields["origem_dados"] = "EDITADO_LOCALMENTE"
-        fields["editado_localmente"] = True
+        if marcar_editado:
+            fields["origem_dados"] = "EDITADO_LOCALMENTE"
+            fields["editado_localmente"] = True
+        else:
+            # A linha passou a ser o que o modelo de origem diz: não há edição
+            # local nenhuma para assinalar, nem sequer uma anterior.
+            fields["origem_dados"] = snapshot.get("origem_dados")
+            fields["editado_localmente"] = False
 
         result = self.repository.update(id=id, **fields)
         if commit:

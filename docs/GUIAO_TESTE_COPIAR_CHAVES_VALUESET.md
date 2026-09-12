@@ -145,9 +145,16 @@ Apague ou desative o `TESTE_COPIA` quando acabar.
 
 ---
 
-## Uma nota sobre a marca ✎
+## 9. A marca ✎ continua a ser só sua
 
-As linhas **atualizadas** por esta cópia ficam com a marca de
-*"editado localmente"* (✎), porque deixaram de corresponder ao que estava no
-modelo. As linhas **criadas** não ficam. Se preferir que a atualização não
-ponha essa marca, diga.
+A marca de *"editado localmente"* (✎) serve para assinalar o que **você** mexeu
+à mão numa linha. Uma linha que veio inteira de outro modelo não foi mexida à
+mão por ninguém.
+
+**Confirme:** depois de copiar (em qualquer dos dois modos), nenhuma linha do
+destino fica com ✎ — nem as criadas nem as atualizadas. E se uma linha do
+destino **já tinha** a marca e foi reposta pela cópia, a marca **sai**: ela
+deixou de ter edição local nenhuma.
+
+O que **não** pode ter mudado: **Colar Dados** (Ctrl+V) numa linha, à mão,
+continua a pôr a marca. É esse o seu propósito.

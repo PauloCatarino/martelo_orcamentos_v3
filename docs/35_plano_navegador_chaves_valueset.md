@@ -186,10 +186,13 @@ A identidade de uma linha é `(modelo, chave, código da opção)` — é por el
 se decide o que é criar e o que é atualizar, e é o que torna a operação
 idempotente: correr duas vezes não duplica nada.
 
-Efeito lateral conhecido: as linhas **atualizadas** ficam com a marca
-`editado_localmente` (✎), porque reutilizam o `aplicar_snapshot_linha`. É
-defensável (a linha deixou de corresponder ao que lá estava), mas está por
-confirmar com ele.
+**A marca ✎ é do utilizador, não da cópia** (decidido com ele a 12-set-2026,
+depois de ver o resultado no ecrã). O `aplicar_snapshot_linha` passou a aceitar
+`marcar_editado=False`, e a cópia usa-o: nem as linhas criadas nem as
+atualizadas ficam com `editado_localmente`, e uma marca anterior **sai** quando
+a linha é reposta pelo modelo de origem. O `origem_dados` viaja com o conteúdo
+em vez de virar "EDITADO_LOCALMENTE". O **Colar Dados** (Ctrl+V) à mão continua
+a marcar — é esse o propósito da bandeira.
 
 Guião: `docs/GUIAO_TESTE_COPIAR_CHAVES_VALUESET.md`.
 
