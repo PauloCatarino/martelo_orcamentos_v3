@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -80,6 +81,42 @@ class DefValuesetModeloLinhaOperacaoRepository:
         ligacoes = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(ligacao) for ligacao in ligacoes]
+
+    def list_active_by_linhas(
+        self, linha_ids: Sequence[int]
+    ) -> dict[int, list[DefValuesetModeloLinhaOperacaoResumo]]:
+        """Active operations of several lines, in one query.
+
+        A página do modelo mostra as operações de todas as linhas ao mesmo
+        tempo: uma consulta por linha eram ~100 idas à base de cada vez que a
+        tabela recarregava.
+        """
+        por_linha: dict[int, list[DefValuesetModeloLinhaOperacaoResumo]] = {
+            linha_id: [] for linha_id in linha_ids
+        }
+        if not por_linha:
+            return por_linha
+
+        statement = (
+            select(DefValuesetModeloLinhaOperacao)
+            .where(
+                DefValuesetModeloLinhaOperacao.def_valueset_modelo_linha_id.in_(
+                    list(por_linha)
+                ),
+                DefValuesetModeloLinhaOperacao.ativo.is_(True),
+            )
+            .order_by(
+                DefValuesetModeloLinhaOperacao.def_valueset_modelo_linha_id.asc(),
+                DefValuesetModeloLinhaOperacao.ordem.asc(),
+                DefValuesetModeloLinhaOperacao.id.asc(),
+            )
+        )
+        for ligacao in self.session.execute(statement).scalars().all():
+            por_linha[ligacao.def_valueset_modelo_linha_id].append(
+                self._to_resumo(ligacao)
+            )
+
+        return por_linha
 
     def get_by_id(self, id: int) -> DefValuesetModeloLinhaOperacaoResumo | None:
         """Get one ValueSet model line operation link by id."""

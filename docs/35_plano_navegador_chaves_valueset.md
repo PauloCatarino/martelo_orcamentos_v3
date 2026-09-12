@@ -1,0 +1,113 @@
+# 35 — Navegador de chaves nos Modelos ValueSet
+
+Estado: **Peça 1 em curso** (12-set-2026). Decisões já fechadas com o Paulo.
+
+---
+
+## Objetivo
+
+Remodelar a página **Configurações → Modelos ValueSet → (modelo)**
+(`app/ui/pages/def_valueset_modelo_detail_page.py`), hoje uma tabela plana de
+~100 linhas × 17 colunas onde é difícil localizar uma chave. Vai crescer para ~200.
+
+---
+
+## O que já foi analisado (não repetir)
+
+- As chaves aparecem misturadas porque `agrupar_linhas_por_chave` ordena por
+  `linha.chave` como **string** — `def_valueset_modelo_linha_service.py:315`.
+- `def_valueset_chaves` **já tem** `tipo`/`grupo`/`ordem` preenchidos nas 80 chaves,
+  0 sem grupo. Agrupar **não precisa de migração**: basta LEFT JOIN por
+  `codigo = chave`. No ROUP_STD (id 4, 95 linhas): MATERIAIS 27, FERRAGENS 46,
+  SISTEMAS_CORRER 9, ILUMINACAO 7, ORLAS 2, ACABAMENTOS 2.
+- O código da chave é **texto solto em 7 tabelas, sem FK nenhuma**:
+  `def_valueset_chaves.codigo` (o vocabulário), `def_valueset_modelo_linhas.chave`,
+  `orcamento_valueset_linhas.chave`, `orcamento_item_valueset_linhas.chave`,
+  `def_pecas.chave_valueset_material` / `_acabamento_sup` / `_acabamento_inf`,
+  `def_modulo_linhas.chave_valueset`, `orcamento_item_custeio_linhas.chave_valueset`.
+- `editar_chave` (`def_valueset_chave_service.py:108`) muda o `codigo` **sem propagar**.
+- **Sintoma silencioso:** `valueset_compat.py:68` — uma linha de custeio do tipo
+  FERRAGEM só vê opções com a MESMA chave; `chave_tipos` vem de
+  `def_valueset_chaves` (`orcamento_item_custeio_linha_service.py:1268`).
+  Chave órfã → tipo `None` → `return []` → dropdown "Mat. default" **vazio**,
+  sem erro nem log.
+- Limita o estrago: o combo de chave da Nova Linha **não é editável**
+  (`def_valueset_modelo_linha_dialog.py:152`) — não se inventam chaves a escrever.
+- `CatalogoAuditoriaService` já valida `def_peca.chave_valueset_material`
+  (`catalogo_auditoria_service.py:243`) mas **não** valida as chaves dos modelos
+  ValueSet nem de `def_modulo_linhas`.
+
+### FERRAGEM_SUPORTE_VARAO — alcance real (medido em 12-set-2026)
+
+`FERRAGEM_SUPORTE_VARAO` já não existe no vocabulário. O vocabulário tem hoje
+`FERRAGEM_VARAO` (id 14), `FERRAGEM_SUPORTE_LATERAL_VARAO` (id 15) e
+`FERRAGEM_SUPORTE_CENTRAL_VARAO` (id 68).
+
+Na base **real** (`martelo_v3`) sobrevive em **1 sítio só**:
+
+| tabela | ocorrências |
+|---|---|
+| `def_valueset_modelo_linhas.chave` | **1** (linha 48) |
+| `orcamento_valueset_linhas.chave` | 0 |
+| `orcamento_item_valueset_linhas.chave` | 0 |
+| `def_modulo_linhas.chave_valueset` | 0 |
+| `orcamento_item_custeio_linhas.chave_valueset` | 0 |
+| `def_pecas.chave_valueset_*` | 0 |
+
+A linha 48: modelo **Roupeiro standard** (id 2, âmbito UTILIZADOR),
+`nome_opcao` = "Suporte varão standard", `ref_le` = FER0089,
+`descricao_no_orcamento` = "SUPORTE VARAO ROUPEIRO F233",
+prioridade 1, ordem 14, ativo.
+
+As 6 + 12 ocorrências em orçamentos que tinham sido contadas antes estão na base
+**dev** (`martelo_v3_dev`), não na real. As peças/associados já foram migrados a 11/09.
+
+---
+
+## Decisões do Paulo
+
+- Clique numa chave = **filtra**. Manter os cabeçalhos de grupo na tabela.
+- "Agrupar por chave" passa a **grupo → ordem da chave → prioridade**
+  (continua a pedir confirmação, porque reescreve a coluna `ordem`).
+- Entrega **faseada**: ele testa cada fase antes da seguinte.
+- SUPORTE_VARAO: corrigir em modelos ValueSet, peças e módulos.
+  **Orçamentos já feitos ficam intactos.**
+- Reimportação de modelo com chave renomeada (duplicados): **não tratar agora**.
+  Orçamentos antigos morrem como estão, servem para visualização.
+- **Não** adicionar FK às 7 tabelas — risco alto, benefício já dado pela auditoria.
+
+---
+
+## Plano
+
+### Peça 1 (agora)
+Navegador de chaves à esquerda (`QTreeWidget` + `QSplitter`, padrão de
+`biblioteca_modulos_page.py`, com `estado_splitter.py`), chips de grupo,
+cabeçalhos de grupo/chave colapsáveis na tabela, novo "Agrupar por chave",
+e corrigir o **N+1** em `carregar_linhas`
+(`def_valueset_modelo_detail_page.py:301` — faz 1 query por linha para as
+operações; trocar por `IN(...)` único).
+
+**Cuidado:** `estilo_tabela_valueset.py` é partilhado com `orcamento_valueset_page`
+e `orcamento_item_valueset_page` — alterações só **aditivas**. As setas ↑↓ já
+recebem `ids_visiveis` (linha 348), já funcionam filtradas. Manter
+`ligar_persistencia_larguras` e `ligar_menu_colunas`. Chaves órfãs → grupo "Sem grupo".
+
+Testes: `test_valueset_modelo_detail_page_setas.py`,
+`test_valueset_modelo_linha_ordenacao.py`, `test_estilo_tabela_valueset.py`,
+`test_valueset_modelo_pesquisa.py` + suite completa.
+
+### Peça 2
+Auditoria alargada: chave de modelo inexistente no vocabulário; idem em
+`def_modulo_linhas`; chave ativa que falta a um modelo.
+
+### Peça 3
+Renomear chave com propagação explícita e escolha de alcance
+(default: só catálogos, sem orçamentos).
+
+### Peça 4
+Sincronizar chaves num modelo + copiar uma chave para vários modelos.
+
+---
+
+O mockup validado está em `tmp/mockup_valueset/mockup_valueset.html`.

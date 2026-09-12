@@ -8,9 +8,16 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.domain.valueset_navegador_chaves import (
+    metas_por_codigo,
+    ordenar_linhas_por_grupo_e_chave,
+)
 from app.domain.valueset_precos import calcular_preco_liquido
 from app.domain.valueset_opcoes import base_codigo_opcao
 from app.domain.valueset_types import normalize_valueset_key
+from app.repositories.def_valueset_chave_repository import (
+    DefValuesetChaveRepository,
+)
 from app.repositories.def_valueset_modelo_linha_repository import (
     DefValuesetModeloLinhaRepository,
     DefValuesetModeloLinhaResumo,
@@ -309,17 +316,22 @@ class DefValuesetModeloLinhaService:
     def agrupar_linhas_por_chave(self, modelo_id: int) -> int:
         """Rearrange every line of one model by key. Returns lines renumbered.
 
-        The safety net for the arrows: it puts the list back into the
-        alphabetical arrangement by key, best priority first inside each key.
+        The safety net for the arrows: it puts the list back into the order the
+        key navigator shows — group, then the key's own order inside the group,
+        best priority first inside each key.
+
+        Ordenar pelo *código* da chave (alfabético) espalhava assuntos do mesmo
+        grupo: ``FERRAGEM_VARAO`` ficava longe de
+        ``FERRAGEM_SUPORTE_LATERAL_VARAO``. O vocabulário
+        (``def_valueset_chaves``) já diz o grupo e a ordem de cada chave, e é
+        isso que se segue aqui. Chave que o vocabulário já não conhece cai no
+        fim, em "Sem grupo", à vista de quem arruma.
         """
-        linhas = sorted(
-            self.repository.list_by_modelo(modelo_id),
-            key=lambda linha: (
-                linha.chave,
-                linha.prioridade is None,
-                linha.prioridade or 0,
-                linha.id,
-            ),
+        metas = metas_por_codigo(
+            DefValuesetChaveRepository(self.session).list_all()
+        )
+        linhas = ordenar_linhas_por_grupo_e_chave(
+            self.repository.list_by_modelo(modelo_id), metas
         )
         if not linhas:
             return 0
