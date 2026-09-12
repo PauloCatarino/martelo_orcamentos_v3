@@ -240,9 +240,19 @@ class OrcamentoValuesetPage(QWidget):
         self.table.customContextMenuRequested.connect(self._abrir_menu_contexto)
         self._instalar_atalhos_clipboard()
         # Restaura larguras guardadas; se restaurou, salta o seed por conteúdo.
-        if ligar_persistencia_larguras(self.table, "valueset_orcamento"):
+        # guardar_ordem: ele pediu para poder arrastar as colunas — as mais
+        # importantes para a esquerda, as outras para o fim. Sao 17 a 23
+        # colunas e nao cabem todas no ecra.
+        if ligar_persistencia_larguras(
+            self.table, "valueset_orcamento", guardar_ordem=True
+        ):
             self._larguras_iniciais_aplicadas = True
         configurar_tabela_valueset(self.table, "valueset_orcamento")
+        # A faixa de grupo escreve-se na coluna que estiver mais a`
+        # esquerda; se ele arrastar os cabecalhos, tem de mudar de sitio.
+        self.table.horizontalHeader().sectionMoved.connect(
+            lambda *_a: self._aplicar_filtros()
+        )
         self.table.cellClicked.connect(self._handle_click_celula)
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
