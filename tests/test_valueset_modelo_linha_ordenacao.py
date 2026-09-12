@@ -35,10 +35,34 @@ class _FakeRepository:
         return max((linha.ordem for linha in self.linhas), default=0) + 1
 
 
+class _FakeChaveRepository:
+    """O vocabulario das chaves: grupo e ordem de cada uma."""
+
+    def __init__(self, _session):
+        pass
+
+    def list_all(self):
+        return [
+            SimpleNamespace(
+                codigo="MATERIAL_COSTAS", nome="Costas", grupo="MATERIAIS", ordem=1
+            ),
+            SimpleNamespace(
+                codigo="FERRAGEM_VARAO", nome="Varao", grupo="FERRAGENS", ordem=1
+            ),
+            SimpleNamespace(
+                codigo="ACABAMENTO_FACE_SUP", nome="Face superior",
+                grupo="ACABAMENTOS", ordem=1,
+            ),
+        ]
+
+
 @pytest.fixture()
 def service(monkeypatch):
     monkeypatch.setattr(
         service_module, "DefValuesetModeloLinhaRepository", _FakeRepository
+    )
+    monkeypatch.setattr(
+        service_module, "DefValuesetChaveRepository", _FakeChaveRepository
     )
     _FakeRepository.linhas = [
         _linha(1, chave="MATERIAL_COSTAS", ordem=1),
@@ -127,8 +151,10 @@ def test_agrupar_por_chave_arruma_tudo(service) -> None:
     total = service.agrupar_linhas_por_chave(10)
 
     assert total == 4
-    # Alfabético por chave e, dentro da chave, a melhor prioridade primeiro.
-    assert _ordem_atual(service) == [4, 2, 3, 1]
+    # Pela ordem de leitura do vocabulário (materiais, ferragens, acabamentos)
+    # e, dentro de cada chave, a melhor prioridade primeiro. NÃO alfabético:
+    # alfabético punha ACABAMENTO_FACE_SUP em primeiro.
+    assert _ordem_atual(service) == [1, 2, 3, 4]
 
 
 def test_linha_nova_vai_para_o_fim(service, monkeypatch) -> None:
@@ -163,7 +189,13 @@ def test_tabela_do_modelo_mostra_a_ordem_do_utilizador() -> None:
 
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
-    fonte = inspect.getsource(DefValuesetModeloDetailPage._preencher)
+    corrido = inspect.getsource(DefValuesetModeloDetailPage._preencher_corrido)
+    com_faixas = inspect.getsource(
+        DefValuesetModeloDetailPage._preencher_com_cabecalhos
+    )
 
     # Sem isto, a camada visual reagrupava por chave e as setas não se viam.
-    assert "ordenar=False" in fonte
+    assert "ordenar=False" in corrido
+    assert "ordenar=False" in com_faixas
+    # E as faixas também não podem reordenar: seguem a ordem que lá está.
+    assert "agrupar_linhas_contiguas" in com_faixas

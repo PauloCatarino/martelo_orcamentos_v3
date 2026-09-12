@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -76,6 +77,12 @@ class DefValuesetModeloLinhaOperacaoService:
     ) -> list[DefValuesetModeloLinhaOperacaoResumo]:
         """List active operations linked to one ValueSet model line."""
         return self.repository.list_active_by_linha(def_valueset_modelo_linha_id)
+
+    def listar_operacoes_ativas_de_linhas(
+        self, linha_ids: Sequence[int]
+    ) -> dict[int, list[DefValuesetModeloLinhaOperacaoResumo]]:
+        """Active operations of several ValueSet model lines, in one query."""
+        return self.repository.list_active_by_linhas(linha_ids)
 
     def obter_por_id(self, id: int) -> DefValuesetModeloLinhaOperacaoResumo | None:
         """Get one ValueSet model line operation link by id."""

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import QItemSelectionModel, Qt
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -15,8 +15,11 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,6 +29,15 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.numeros import formatar_percentagem
 from app.domain.valueset_modelo_pesquisa import filtrar_linhas_valueset_modelo
+from app.domain.valueset_navegador_chaves import (
+    MetaChave,
+    agrupar_linhas,
+    agrupar_linhas_contiguas,
+    metas_por_codigo,
+    normalizar_chave,
+    rotulo_grupo,
+)
+from app.services.def_valueset_chave_service import DefValuesetChaveService
 from app.repositories.def_valueset_modelo_linha_repository import DefValuesetModeloLinhaResumo
 from app.repositories.def_valueset_modelo_repository import DefValuesetModeloResumo
 from app.services.def_operacao_service import DefOperacaoService
@@ -61,8 +73,16 @@ from app.ui.helpers.valueset_precos import (
     atualizacoes_de_divergencias,
     detetar_divergencias_valueset,
 )
+from app.ui.tema import (
+    BEGE_AREIA,
+    CASTANHO_ESCURO,
+    CINZA_CASTANHO,
+    CINZA_ESCURO,
+)
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
-from app.ui.widgets.barra_pesquisa import CampoPesquisa
+from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
+from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
+from app.ui.widgets.estilo_tabela_orcamentos import estilo_arvore
 from app.ui.widgets.estilo_tabela_valueset import (
     aplicar_estilo_item_valueset,
     configurar_tabela_valueset,
@@ -120,6 +140,18 @@ class DefValuesetModeloDetailPage(QWidget):
         self._linhas_by_row: dict[int, DefValuesetModeloLinhaResumo] = {}
         self._todas_linhas: list[DefValuesetModeloLinhaResumo] = []
         self._operacoes_por_linha: dict[int, str] = {}
+        # Vocabulário das chaves (nome, grupo, ordem): é o que dá o navegador.
+        self._metas_chaves: dict[str, MetaChave] = {}
+        # Filtro em curso vindo do navegador / dos chips de grupo.
+        self._grupo_selecionado: str | None = None
+        self._chave_selecionada: str | None = None
+        # O grupo veio a reboque de uma chave (e sai com ela), ou foi escolhido?
+        self._grupo_implicito = False
+        # Cabeçalhos fechados na tabela, e a que linha corresponde cada um.
+        self._grupos_fechados: set[str] = set()
+        self._chaves_fechadas: set[str] = set()
+        self._cabecalhos_by_row: dict[int, tuple[str, str]] = {}
+        self._botoes_chips: list[QPushButton] = []
 
         self.cabecalho = BarraCabecalho(
             f"Modelo ValueSet: {modelo.nome}",
@@ -187,8 +219,9 @@ class DefValuesetModeloDetailPage(QWidget):
         self.descer_button.clicked.connect(lambda: self.mover_linha(para_cima=False))
         self.agrupar_button = QPushButton("Agrupar por chave")
         self.agrupar_button.setToolTip(
-            "Voltar a arrumar todas as linhas por chave (e por prioridade dentro "
-            "de cada chave), desfazendo a ordenação feita com as setas."
+            "Voltar a arrumar todas as linhas pela ordem do navegador: grupo, "
+            "depois a chave, depois a prioridade. Desfaz a ordenação feita com "
+            "as setas."
         )
         self.agrupar_button.clicked.connect(self.agrupar_por_chave)
         self.mostrar_inativas_check = QCheckBox("Mostrar inativas")
@@ -199,6 +232,12 @@ class DefValuesetModeloDetailPage(QWidget):
         self.refresh_button.clicked.connect(self.carregar_linhas)
         self.check_prices_button = QPushButton("Verificar preços…")
         self.check_prices_button.clicked.connect(self.verificar_precos)
+        self.toggle_navegador_button = QPushButton("Ocultar navegador")
+        self.toggle_navegador_button.setToolTip(
+            "Esconder ou mostrar a lista de chaves à esquerda, para dar toda a "
+            "largura à tabela."
+        )
+        self.toggle_navegador_button.clicked.connect(self.alternar_navegador)
         self.back_button = QPushButton("Voltar à lista")
         self.back_button.setIcon(icone("acao_voltar"))
         self.back_button.setToolTip("Voltar à lista, sem gravar o que estiver por gravar.")
@@ -217,6 +256,7 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout.addWidget(self.mostrar_inativas_check)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addWidget(self.check_prices_button)
+        actions_layout.addWidget(self.toggle_navegador_button)
         actions_layout.addStretch()
         # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
         # mesma acao fica com a mesma cara em todas as paginas.
@@ -234,6 +274,36 @@ class DefValuesetModeloDetailPage(QWidget):
             "Use espaços ou % para combinar termos."
         )
         self.pesquisa_input.pesquisa_mudou.connect(self._aplicar_filtro_linhas)
+
+        self.cabecalhos_grupo_check = QCheckBox("Cabeçalhos de grupo na tabela")
+        self.cabecalhos_grupo_check.setChecked(True)
+        self.cabecalhos_grupo_check.setToolTip(
+            "Separar as linhas por grupo e por chave, com uma faixa por cima de "
+            "cada bloco. Desligue para ver a tabela corrida."
+        )
+        self.cabecalhos_grupo_check.stateChanged.connect(
+            lambda _=0: self._aplicar_filtro_linhas()
+        )
+        self.limpar_filtros_button = BotaoLimparFiltros()
+        self.limpar_filtros_button.setToolTip(
+            "Repor a pesquisa, o grupo e a chave escolhidos e voltar a abrir "
+            "todos os blocos."
+        )
+        self.limpar_filtros_button.clicked.connect(self.limpar_filtros)
+
+        filtros_layout = QHBoxLayout()
+        filtros_layout.setSpacing(8)
+        filtros_layout.addWidget(self.pesquisa_input)
+        filtros_layout.addWidget(self.cabecalhos_grupo_check)
+        filtros_layout.addWidget(self.limpar_filtros_button)
+        filtros_layout.addStretch()
+
+        # Chips de grupo: atalho para o grupo todo, sem passar pela árvore.
+        self.chips_layout = QHBoxLayout()
+        self.chips_layout.setSpacing(4)
+        self.chips_layout.setContentsMargins(0, 0, 0, 0)
+        self.chips_widget = QWidget()
+        self.chips_widget.setLayout(self.chips_layout)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModeloDetailStatus")
@@ -257,6 +327,18 @@ class DefValuesetModeloDetailPage(QWidget):
         if ligar_persistencia_larguras(self.table, "valueset_modelo"):
             self._larguras_iniciais_aplicadas = True
         configurar_tabela_valueset(self.table, "valueset_modelo")
+        self.table.cellClicked.connect(self._handle_click_celula)
+
+        self.navegador = self._criar_navegador()
+
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.addWidget(self.navegador)
+        self.splitter.addWidget(self.table)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        if not ligar_persistencia_splitter(self.splitter, "valueset_modelo_chaves"):
+            self.splitter.setSizes([260, 900])
 
         layout = QVBoxLayout()
         layout.setContentsMargins(18, 18, 18, 18)
@@ -264,12 +346,53 @@ class DefValuesetModeloDetailPage(QWidget):
         layout.addWidget(self.cabecalho)
         layout.addLayout(info_layout)
         layout.addLayout(actions_layout)
-        layout.addWidget(self.pesquisa_input)
+        layout.addLayout(filtros_layout)
+        layout.addWidget(self.chips_widget)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.table, stretch=1)
+        layout.addWidget(self.splitter, stretch=1)
 
         self.setLayout(layout)
         self.carregar_linhas()
+
+    def _criar_navegador(self) -> QWidget:
+        """Painel esquerdo: os grupos e as chaves deste modelo."""
+        titulo = QLabel("Navegador de chaves")
+        fonte = titulo.font()
+        fonte.setBold(True)
+        titulo.setFont(fonte)
+        titulo.setToolTip(
+            "As chaves deste modelo, arrumadas pelo grupo do vocabulário. "
+            "Clique numa chave para filtrar a tabela; clique outra vez para "
+            "mostrar tudo."
+        )
+
+        self.arvore_chaves = QTreeWidget()
+        self.arvore_chaves.setColumnCount(2)
+        self.arvore_chaves.setHeaderLabels(["Chave", "Linhas"])
+        self.arvore_chaves.setRootIsDecorated(True)
+        self.arvore_chaves.setAlternatingRowColors(True)
+        self.arvore_chaves.setSelectionMode(
+            QTreeWidget.SelectionMode.SingleSelection
+        )
+        self.arvore_chaves.setStyleSheet(estilo_arvore())
+        self.arvore_chaves.setToolTip(
+            "Clique numa chave para filtrar a tabela por ela; clique num grupo "
+            "para filtrar o grupo inteiro."
+        )
+        cabecalho = self.arvore_chaves.header()
+        cabecalho.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        cabecalho.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        cabecalho.setStretchLastSection(False)
+        self.arvore_chaves.itemClicked.connect(self._handle_clique_navegador)
+
+        painel = QWidget()
+        painel_layout = QVBoxLayout()
+        painel_layout.setContentsMargins(0, 0, 0, 0)
+        painel_layout.setSpacing(6)
+        painel_layout.addWidget(titulo)
+        painel_layout.addWidget(self.arvore_chaves, stretch=1)
+        painel.setLayout(painel_layout)
+        return painel
 
     def carregar_linhas(self) -> None:
         """Load the model lines into the table."""
@@ -284,23 +407,31 @@ class DefValuesetModeloDetailPage(QWidget):
                 linhas = DefValuesetModeloLinhaService(session).listar_linhas_do_modelo(
                     self.modelo.id
                 )
-                operacao_service = DefValuesetModeloLinhaOperacaoService(session)
                 operacoes = {
                     operacao.id: operacao.codigo
                     for operacao in DefOperacaoService(session).listar_operacoes()
                 }
-                self._operacoes_por_linha = {}
-                for linha in linhas:
-                    ligacoes = operacao_service.listar_operacoes_ativas_da_linha(
-                        linha.id
-                    )
-                    self._operacoes_por_linha[linha.id] = "; ".join(
-                        operacoes.get(ligacao.def_operacao_id, f"#{ligacao.def_operacao_id}")
+                # Uma consulta para as operações de todas as linhas: com ~100
+                # linhas, uma consulta por linha fazia a página demorar a abrir.
+                ligacoes_por_linha = DefValuesetModeloLinhaOperacaoService(
+                    session
+                ).listar_operacoes_ativas_de_linhas([linha.id for linha in linhas])
+                self._operacoes_por_linha = {
+                    linha_id: "; ".join(
+                        operacoes.get(
+                            ligacao.def_operacao_id, f"#{ligacao.def_operacao_id}"
+                        )
                         for ligacao in ligacoes
                     )
+                    for linha_id, ligacoes in ligacoes_por_linha.items()
+                }
+                self._metas_chaves = metas_por_codigo(
+                    DefValuesetChaveService(session).listar_chaves()
+                )
         except SQLAlchemyError as error:
             self._todas_linhas = []
             self._operacoes_por_linha = {}
+            self._metas_chaves = {}
             self.status_label.setText(
                 mensagem_erro_bd("Nao foi possivel carregar as linhas do modelo.", error)
             )
@@ -311,24 +442,207 @@ class DefValuesetModeloDetailPage(QWidget):
 
     def _aplicar_filtro_linhas(self, _texto: str = "") -> None:
         """Filtra em memória as linhas e operações do modelo atual."""
+        pesquisadas = self._linhas_pesquisadas()
+        linhas = [
+            linha for linha in pesquisadas if self._passa_no_navegador(linha)
+        ]
+
+        self._desenhar_chips(pesquisadas)
+        self._desenhar_navegador(pesquisadas)
+        self._preencher(linhas)
+
+        if not linhas:
+            if self._ha_filtro_ativo():
+                self.status_label.setText(
+                    "Nenhuma linha corresponde à pesquisa ou aos filtros."
+                )
+            else:
+                self.status_label.setText("Sem linhas neste modelo.")
+        else:
+            self.status_label.setText(
+                f"Linhas encontradas: {len(linhas)}.{self._sufixo_filtros()}"
+            )
+            self._avisar_prioridades_repetidas(linhas)
+
+    def _linhas_pesquisadas(self) -> list[DefValuesetModeloLinhaResumo]:
+        """As linhas que passam o "mostrar inativas" e a caixa de pesquisa.
+
+        É esta a base dos chips e do navegador: as contagens que eles mostram
+        são as da pesquisa, e não mudam por se estar a ver só um grupo.
+        """
         linhas = self._todas_linhas
         if not self.mostrar_inativas_check.isChecked():
             linhas = [linha for linha in linhas if linha.ativo]
-        linhas = filtrar_linhas_valueset_modelo(
+        return filtrar_linhas_valueset_modelo(
             linhas,
             self.pesquisa_input.texto(),
             self._operacoes_por_linha,
         )
-        self._preencher(linhas)
 
-        if not linhas:
-            if self.pesquisa_input.texto().strip():
-                self.status_label.setText("Nenhuma linha corresponde à pesquisa.")
-            else:
-                self.status_label.setText("Sem linhas neste modelo.")
+    def _passa_no_navegador(self, linha: DefValuesetModeloLinhaResumo) -> bool:
+        """Diz se a linha sobrevive ao grupo/chave escolhidos à esquerda."""
+        meta = self._meta_da_linha(linha)
+        if self._grupo_selecionado is not None and meta.grupo != self._grupo_selecionado:
+            return False
+        if (
+            self._chave_selecionada is not None
+            and meta.codigo != self._chave_selecionada
+        ):
+            return False
+        return True
+
+    def _meta_da_linha(self, linha: DefValuesetModeloLinhaResumo) -> MetaChave:
+        """O que o vocabulário sabe da chave desta linha (órfã: "Sem grupo")."""
+        codigo = normalizar_chave(getattr(linha, "chave", None))
+        meta = self._metas_chaves.get(codigo)
+        if meta is not None:
+            return meta
+        return MetaChave(codigo=codigo, nome=codigo)
+
+    def _ha_filtro_ativo(self) -> bool:
+        """Há pesquisa escrita ou grupo/chave escolhidos?"""
+        return bool(
+            self.pesquisa_input.texto().strip()
+            or self._grupo_selecionado is not None
+            or self._chave_selecionada is not None
+        )
+
+    def _sufixo_filtros(self) -> str:
+        """Diz na linha de estado que grupo/chave estão a filtrar."""
+        partes = []
+        if self._grupo_selecionado is not None:
+            partes.append(f"grupo: {rotulo_grupo(self._grupo_selecionado)}")
+        if self._chave_selecionada is not None:
+            partes.append(f"chave: {self._chave_selecionada}")
+        if not partes:
+            return ""
+        return "  ·  " + "  ·  ".join(partes)
+
+    def limpar_filtros(self) -> None:
+        """Repor a pesquisa, o grupo, a chave e os blocos fechados."""
+        self._grupo_selecionado = None
+        self._grupo_implicito = False
+        self._chave_selecionada = None
+        self._grupos_fechados.clear()
+        self._chaves_fechadas.clear()
+        self.pesquisa_input.limpar()
+        self._aplicar_filtro_linhas()
+
+    def alternar_navegador(self) -> None:
+        """Esconder/mostrar o painel das chaves, para dar largura à tabela."""
+        visivel = not self.navegador.isVisible()
+        self.navegador.setVisible(visivel)
+        self.toggle_navegador_button.setText(
+            "Ocultar navegador" if visivel else "Mostrar navegador"
+        )
+
+    def _desenhar_chips(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
+        """Um botão por grupo com a contagem, mais "Todos"."""
+        for botao in self._botoes_chips:
+            self.chips_layout.removeWidget(botao)
+            botao.deleteLater()
+        self._botoes_chips = []
+
+        grupos = agrupar_linhas(linhas, self._metas_chaves)
+        entradas: list[tuple[str | None, str, int]] = [
+            (None, "Todos", len(linhas))
+        ]
+        entradas.extend(
+            (grupo.codigo, grupo.rotulo, grupo.total) for grupo in grupos
+        )
+
+        for codigo, rotulo, total in entradas:
+            botao = QPushButton(f"{rotulo}  ({total})")
+            botao.setCheckable(True)
+            botao.setChecked(self._grupo_selecionado == codigo)
+            botao.setToolTip(
+                "Mostrar todas as chaves do modelo."
+                if codigo is None
+                else f"Mostrar só as chaves do grupo {rotulo}."
+            )
+            botao.clicked.connect(
+                lambda _checked=False, alvo=codigo: self._escolher_grupo(alvo)
+            )
+            self.chips_layout.addWidget(botao)
+            self._botoes_chips.append(botao)
+
+        self.chips_layout.addStretch()
+
+    def _escolher_grupo(self, codigo: str | None) -> None:
+        """Filtrar por um grupo (ou desligar o filtro, se já era esse)."""
+        if codigo is None or self._grupo_selecionado == codigo:
+            self._grupo_selecionado = None
         else:
-            self.status_label.setText(f"Linhas encontradas: {len(linhas)}.")
-            self._avisar_prioridades_repetidas(linhas)
+            self._grupo_selecionado = codigo
+        self._grupo_implicito = False
+        self._chave_selecionada = None
+        self._aplicar_filtro_linhas()
+
+    def _desenhar_navegador(
+        self, linhas: list[DefValuesetModeloLinhaResumo]
+    ) -> None:
+        """Reconstruir a árvore de grupos e chaves do painel esquerdo."""
+        arvore = getattr(self, "arvore_chaves", None)
+        if arvore is None:
+            return
+
+        arvore.blockSignals(True)
+        arvore.clear()
+        for grupo in agrupar_linhas(linhas, self._metas_chaves):
+            no_grupo = QTreeWidgetItem([grupo.rotulo, str(grupo.total)])
+            fonte = no_grupo.font(0)
+            fonte.setBold(True)
+            no_grupo.setFont(0, fonte)
+            no_grupo.setForeground(0, QBrush(QColor(CASTANHO_ESCURO)))
+            no_grupo.setData(0, Qt.ItemDataRole.UserRole, ("grupo", grupo.codigo))
+            no_grupo.setToolTip(0, f"Filtrar pelo grupo {grupo.rotulo}.")
+            arvore.addTopLevelItem(no_grupo)
+
+            for chave in grupo.chaves:
+                no_chave = QTreeWidgetItem([chave.nome, str(chave.total)])
+                no_chave.setData(
+                    0, Qt.ItemDataRole.UserRole, ("chave", chave.codigo)
+                )
+                no_chave.setToolTip(
+                    0,
+                    f"{chave.codigo} — {chave.total} opção(ões). "
+                    "Clique para filtrar a tabela por esta chave.",
+                )
+                if chave.codigo == self._chave_selecionada:
+                    fonte_chave = no_chave.font(0)
+                    fonte_chave.setBold(True)
+                    no_chave.setFont(0, fonte_chave)
+                no_grupo.addChild(no_chave)
+
+            no_grupo.setExpanded(grupo.codigo not in self._grupos_fechados)
+        arvore.blockSignals(False)
+
+    def _handle_clique_navegador(self, item: QTreeWidgetItem, _coluna: int) -> None:
+        """Clicar numa chave filtra a tabela; clicar num grupo filtra o grupo."""
+        dados = item.data(0, Qt.ItemDataRole.UserRole)
+        if not dados:
+            return
+
+        tipo, codigo = dados
+        if tipo == "grupo":
+            self._escolher_grupo(codigo)
+            return
+
+        if self._chave_selecionada == codigo:
+            self._chave_selecionada = None
+            # O grupo só ficou escolhido para acompanhar a chave: sai com ela,
+            # senão o segundo clique deixava metade do filtro para trás.
+            if self._grupo_implicito:
+                self._grupo_selecionado = None
+                self._grupo_implicito = False
+        else:
+            self._chave_selecionada = codigo
+            pai = item.parent()
+            dados_pai = pai.data(0, Qt.ItemDataRole.UserRole) if pai else None
+            if dados_pai and self._grupo_selecionado != dados_pai[1]:
+                self._grupo_selecionado = dados_pai[1]
+                self._grupo_implicito = True
+        self._aplicar_filtro_linhas()
 
     def mover_linha(self, *, para_cima: bool) -> None:
         """Move the selected line(s) one position up or down."""
@@ -407,8 +721,9 @@ class DefValuesetModeloDetailPage(QWidget):
         confirm = QMessageBox.question(
             self,
             "Confirmar",
-            "Voltar a arrumar todas as linhas por chave? A ordenação que fez "
-            "com as setas é substituída.",
+            "Voltar a arrumar todas as linhas pela ordem do navegador "
+            "(grupo, chave, prioridade)? A ordenação que fez com as setas é "
+            "substituída.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -426,7 +741,9 @@ class DefValuesetModeloDetailPage(QWidget):
             return
 
         self.carregar_linhas()
-        self.status_label.setText(f"{total} linhas arrumadas por chave.")
+        self.status_label.setText(
+            f"{total} linhas arrumadas por grupo e por chave."
+        )
 
     def verificar_precos(self) -> None:
         """Explicitly check model line prices against the material catalog."""
@@ -555,48 +872,144 @@ class DefValuesetModeloDetailPage(QWidget):
     def _preencher(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Fill the table with model lines."""
         self._linhas_by_row = {}
-        # As linhas já vêm na ordem que o utilizador arrumou (coluna Ordem);
-        # re-ordenar aqui por chave desfazia o trabalho das setas.
-        estados = preparar_linhas_valueset(linhas, ordenar=False)
-        self.table.setRowCount(len(estados))
+        self._cabecalhos_by_row = {}
+        self.table.clearSpans()
 
-        for row_index, estado in enumerate(estados):
-            linha = estado.linha
-            self._linhas_by_row[row_index] = linha
-            values = [
-                texto_chave_valueset(estado),
-                texto_opcao_valueset(
-                    estado, linha.nome_opcao or linha.codigo_opcao or ""
-                ),
-                linha.ref_le or "",
-                linha.descricao_no_orcamento or "",
-                linha.unidade or "",
-                format_currency(linha.preco_tabela),
-                formatar_percentagem(linha.margem_percentagem),
-                formatar_percentagem(linha.desconto_percentagem),
-                format_currency(linha.preco_liquido),
-                formatar_percentagem(linha.desperdicio_percentagem),
-                linha.tipo_materia_prima or "",
-                linha.familia_materia_prima or "",
-                texto_prioridade_valueset(estado),
-                str(linha.ordem),
-                texto_editado_valueset(estado),
-                texto_ativo_valueset(estado),
-                self._operacoes_por_linha.get(linha.id, ""),
-            ]
-
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                aplicar_estilo_item_valueset(
-                    item, self.LINHA_HEADERS[column_index], estado
-                )
-                self.table.setItem(row_index, column_index, item)
+        if self.cabecalhos_grupo_check.isChecked():
+            self._preencher_com_cabecalhos(linhas)
+        else:
+            self._preencher_corrido(linhas)
 
         # Seed sensible initial widths once (content-based); after that the
         # columns stay Interactive and keep the user's manual sizes on reload.
         if not self._larguras_iniciais_aplicadas and linhas:
             self.table.resizeColumnsToContents()
             self._larguras_iniciais_aplicadas = True
+
+    def _preencher_corrido(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
+        """A tabela como sempre foi: uma linha por linha, sem faixas."""
+        # As linhas já vêm na ordem que o utilizador arrumou (coluna Ordem);
+        # re-ordenar aqui por chave desfazia o trabalho das setas.
+        estados = preparar_linhas_valueset(linhas, ordenar=False)
+        self.table.setRowCount(len(estados))
+        for row_index, estado in enumerate(estados):
+            self._escrever_linha(row_index, estado)
+
+    def _preencher_com_cabecalhos(
+        self, linhas: list[DefValuesetModeloLinhaResumo]
+    ) -> None:
+        """A tabela com uma faixa por grupo e outra por chave.
+
+        As faixas de chave fecham e abrem com um clique: num modelo de ~200
+        linhas, dá para fechar o que já está tratado e trabalhar só no resto.
+
+        As faixas seguem a ordem que está na coluna ``Ordem`` — não reordenam
+        nada. Se reordenassem, a seta "para cima" mandava a linha para um sítio
+        diferente daquele que se vê. Para pôr tudo junto pela ordem do
+        navegador é o botão "Agrupar por chave" que serve.
+        """
+        grupos = agrupar_linhas_contiguas(linhas, self._metas_chaves)
+        self.table.setRowCount(0)
+        row_index = 0
+
+        for grupo in grupos:
+            fechado = grupo.codigo in self._grupos_fechados
+            self.table.insertRow(row_index)
+            self._escrever_cabecalho(
+                row_index,
+                texto=(
+                    f"{'▸' if fechado else '▾'} {grupo.rotulo.upper()} — "
+                    f"{grupo.total} linha(s)"
+                ),
+                tooltip="Clique para fechar ou abrir este grupo.",
+                dados=("grupo", grupo.codigo),
+                fundo=BEGE_AREIA,
+                cor_texto=CASTANHO_ESCURO,
+            )
+            row_index += 1
+            if fechado:
+                continue
+
+            for chave in grupo.chaves:
+                chave_fechada = chave.codigo in self._chaves_fechadas
+                self.table.insertRow(row_index)
+                self._escrever_cabecalho(
+                    row_index,
+                    texto=(
+                        f"{'▸' if chave_fechada else '▾'} {chave.nome} · "
+                        f"{chave.codigo} · {chave.total} opção(ões)"
+                    ),
+                    tooltip="Clique para fechar ou abrir esta chave.",
+                    dados=("chave", chave.codigo),
+                    fundo=CINZA_CASTANHO,
+                    cor_texto=CINZA_ESCURO,
+                )
+                row_index += 1
+                if chave_fechada:
+                    continue
+
+                for estado in preparar_linhas_valueset(chave.linhas, ordenar=False):
+                    self.table.insertRow(row_index)
+                    self._escrever_linha(row_index, estado)
+                    row_index += 1
+
+    def _escrever_cabecalho(
+        self,
+        row_index: int,
+        *,
+        texto: str,
+        tooltip: str,
+        dados: tuple[str, str],
+        fundo: str,
+        cor_texto: str,
+    ) -> None:
+        """Escreve uma faixa que atravessa a tabela toda."""
+        item = QTableWidgetItem(texto)
+        # Faixa: não é uma linha de dados, por isso não entra na seleção nem
+        # nas setas — só responde ao clique que a fecha e abre.
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        item.setBackground(QBrush(QColor(fundo)))
+        item.setForeground(QBrush(QColor(cor_texto)))
+        item.setToolTip(tooltip)
+        fonte = item.font()
+        fonte.setBold(True)
+        item.setFont(fonte)
+        self.table.setItem(row_index, 0, item)
+        self.table.setSpan(row_index, 0, 1, len(self.LINHA_HEADERS))
+        self._cabecalhos_by_row[row_index] = dados
+
+    def _escrever_linha(self, row_index: int, estado) -> None:
+        """Escreve uma linha de dados do modelo."""
+        linha = estado.linha
+        self._linhas_by_row[row_index] = linha
+        values = [
+            texto_chave_valueset(estado),
+            texto_opcao_valueset(
+                estado, linha.nome_opcao or linha.codigo_opcao or ""
+            ),
+            linha.ref_le or "",
+            linha.descricao_no_orcamento or "",
+            linha.unidade or "",
+            format_currency(linha.preco_tabela),
+            formatar_percentagem(linha.margem_percentagem),
+            formatar_percentagem(linha.desconto_percentagem),
+            format_currency(linha.preco_liquido),
+            formatar_percentagem(linha.desperdicio_percentagem),
+            linha.tipo_materia_prima or "",
+            linha.familia_materia_prima or "",
+            texto_prioridade_valueset(estado),
+            str(linha.ordem),
+            texto_editado_valueset(estado),
+            texto_ativo_valueset(estado),
+            self._operacoes_por_linha.get(linha.id, ""),
+        ]
+
+        for column_index, value in enumerate(values):
+            item = QTableWidgetItem(value)
+            aplicar_estilo_item_valueset(
+                item, self.LINHA_HEADERS[column_index], estado
+            )
+            self.table.setItem(row_index, column_index, item)
 
     def abrir_nova_linha(self) -> None:
         """Open the dialog to create a new model line."""
@@ -709,6 +1122,8 @@ class DefValuesetModeloDetailPage(QWidget):
     def _abrir_menu_contexto(self, pos) -> None:
         """Show the model-line actions on right click."""
         item = self.table.itemAt(pos)
+        if item is not None and item.row() in self._cabecalhos_by_row:
+            return  # faixa de grupo/chave: não há linha sobre que agir
         if item is not None:
             selected_rows = {
                 index.row() for index in self.table.selectionModel().selectedRows()
@@ -1018,8 +1433,31 @@ class DefValuesetModeloDetailPage(QWidget):
 
         return self._linhas_by_row.get(row)
 
+    def _handle_click_celula(self, row: int, _column: int) -> None:
+        """Um clique numa faixa fecha ou abre o bloco dela."""
+        self._alternar_cabecalho(row)
+
+    def _alternar_cabecalho(self, row: int) -> bool:
+        """Fecha/abre o bloco da faixa nesta linha. Diz se era mesmo uma faixa."""
+        dados = self._cabecalhos_by_row.get(row)
+        if dados is None:
+            return False
+
+        tipo, codigo = dados
+        fechados = self._grupos_fechados if tipo == "grupo" else self._chaves_fechadas
+        if codigo in fechados:
+            fechados.discard(codigo)
+        else:
+            fechados.add(codigo)
+        self._aplicar_filtro_linhas()
+        return True
+
     def _handle_double_click(self, row: int, _column: int) -> None:
         """Edit a line when the user double-clicks its row."""
+        # Duplo clique numa faixa é só o segundo clique a fechar e a reabrir o
+        # bloco — não há linha nenhuma para editar.
+        if row in self._cabecalhos_by_row:
+            return
         self.table.selectRow(row)
         self.abrir_editar_linha()
 

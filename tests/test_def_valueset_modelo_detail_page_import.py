@@ -36,12 +36,12 @@ def test_detalhe_do_modelo_tem_pesquisa_dinamica_de_linhas() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
     init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
-    filtrar = inspect.getsource(DefValuesetModeloDetailPage._aplicar_filtro_linhas)
+    pesquisadas = inspect.getsource(DefValuesetModeloDetailPage._linhas_pesquisadas)
     assert "CampoPesquisa" in init
     assert "pesquisa_mudou.connect(self._aplicar_filtro_linhas)" in init
     assert "setToolTip" in init
-    assert "filtrar_linhas_valueset_modelo" in filtrar
-    assert "_operacoes_por_linha" in filtrar
+    assert "filtrar_linhas_valueset_modelo" in pesquisadas
+    assert "_operacoes_por_linha" in pesquisadas
 
 
 def test_page_line_headers() -> None:
@@ -155,8 +155,10 @@ def test_page_uses_line_service_and_dialog() -> None:
     assert "DefValuesetModeloLinhaService" in carregar
     assert "listar_linhas_do_modelo" in carregar
     assert "DefValuesetModeloLinhaOperacaoService" in carregar
-    assert "listar_operacoes_ativas_da_linha" in carregar
+    # Uma consulta para todas as linhas, e nao uma por linha (N+1).
+    assert "listar_operacoes_ativas_de_linhas" in carregar
     assert "DefOperacaoService" in carregar
+    assert "DefValuesetChaveService" in carregar
 
     verificar = inspect.getsource(DefValuesetModeloDetailPage.verificar_precos)
     assert "AtualizarPrecosValuesetDialog" in verificar
@@ -194,13 +196,19 @@ def test_page_edit_line_has_save_as_create_flow() -> None:
 def test_page_formats_percentages() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
-    source = inspect.getsource(DefValuesetModeloDetailPage._preencher)
+    source = inspect.getsource(DefValuesetModeloDetailPage._escrever_linha)
+    corrido = inspect.getsource(DefValuesetModeloDetailPage._preencher_corrido)
+    com_faixas = inspect.getsource(
+        DefValuesetModeloDetailPage._preencher_com_cabecalhos
+    )
 
     assert "formatar_percentagem" in source
     assert "_operacoes_por_linha" in source
-    assert "preparar_linhas_valueset" in source
     assert "aplicar_estilo_item_valueset" in source
     assert "texto_chave_valueset" in source
+    # Os dois modos de desenho passam pelo mesmo helper visual partilhado.
+    assert "preparar_linhas_valueset" in corrido
+    assert "preparar_linhas_valueset" in com_faixas
 
 
 def test_page_valueset_visual_helper_e_menu_colunas() -> None:
@@ -229,6 +237,6 @@ def test_linhas_modelo_ocultam_inativas_por_defeito() -> None:
     from app.ui.pages.def_valueset_modelo_detail_page import DefValuesetModeloDetailPage
 
     init = inspect.getsource(DefValuesetModeloDetailPage.__init__)
-    filtrar = inspect.getsource(DefValuesetModeloDetailPage._aplicar_filtro_linhas)
+    pesquisadas = inspect.getsource(DefValuesetModeloDetailPage._linhas_pesquisadas)
     assert "mostrar_inativas_check" in init
-    assert "if linha.ativo" in filtrar
+    assert "if linha.ativo" in pesquisadas
