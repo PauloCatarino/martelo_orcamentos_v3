@@ -502,6 +502,105 @@ class CatalogoAuditoriaService:
                         navegacao_tipo="VALUESET_MODELO", navegacao_id=getattr(modelo, "id", None),
                     )
 
+        # ValueSet model keys against the vocabulary.
+        #
+        # Uma chave de modelo que o vocabulário não conheça não dá erro nenhum
+        # em lado nenhum: em ``valueset_compat`` o tipo da chave vem a None, a
+        # lista de opções volta vazia, e o dropdown "Mat. default" do custeio
+        # fica em branco — sem mensagem e sem registo. É por isso que isto é um
+        # ERRO e não um aviso.
+        chaves_por_modelo: dict[int, set[str]] = {}
+        chaves_orfas: dict[tuple[int, str], int] = {}
+        chaves_inativas: dict[tuple[int, str], int] = {}
+        for linha in dados.linhas_valueset:
+            modelo_id = getattr(linha, "def_valueset_modelo_id", None)
+            modelo = modelos.get(modelo_id)
+            if modelo is not None and not getattr(modelo, "ativo", True):
+                continue
+            if not getattr(linha, "ativo", True):
+                continue
+            chave = cls._norm(getattr(linha, "chave", None))
+            if not chave:
+                continue
+            chaves_por_modelo.setdefault(modelo_id, set()).add(chave)
+            registo = chaves.get(chave)
+            if registo is None:
+                chaves_orfas[(modelo_id, chave)] = (
+                    chaves_orfas.get((modelo_id, chave), 0) + 1
+                )
+            elif not getattr(registo, "ativo", True):
+                chaves_inativas[(modelo_id, chave)] = (
+                    chaves_inativas.get((modelo_id, chave), 0) + 1
+                )
+
+        for (modelo_id, chave), total_linhas in sorted(chaves_orfas.items()):
+            modelo = modelos.get(modelo_id)
+            add(
+                ERRO, "VALUESET_MODELO_CHAVE_INEXISTENTE", "ValueSet",
+                "Modelo ValueSet", modelo, getattr(modelo, "codigo", modelo_id),
+                f"A chave {chave} não existe no vocabulário ({total_linhas} linha(s)).",
+                "No custeio a lista de materiais desta chave vem vazia, sem erro "
+                "nem registo — a linha fica sem material e ninguém dá por isso.",
+                "Corrigir a chave da linha para uma do vocabulário, ou criar a "
+                "chave em Configurações > Chaves ValueSet.",
+                navegacao_tipo="VALUESET_MODELO", navegacao_id=modelo_id,
+            )
+
+        for (modelo_id, chave), total_linhas in sorted(chaves_inativas.items()):
+            modelo = modelos.get(modelo_id)
+            add(
+                AVISO, "VALUESET_MODELO_CHAVE_INATIVA", "ValueSet",
+                "Modelo ValueSet", modelo, getattr(modelo, "codigo", modelo_id),
+                f"A chave {chave} está inativa no vocabulário ({total_linhas} linha(s)).",
+                "Orçamentos novos podem deixar de resolver o material desta chave.",
+                "Reativar a chave, ou passar estas linhas para uma chave ativa.",
+                navegacao_tipo="VALUESET_MODELO", navegacao_id=modelo_id,
+            )
+
+        # Keys a model is missing compared with its siblings of the same type.
+        #
+        # Comparar com o vocabulário INTEIRO não serve: um roupeiro não precisa
+        # das chaves de cozinha, e davam dezenas de avisos inúteis. O que diz
+        # mesmo alguma coisa é a chave que todos os OUTROS modelos do mesmo
+        # tipo têm e só este não tem. Vai um item por modelo, e não um por
+        # chave, senão um modelo atrasado enchia o relatório sozinho.
+        modelos_ativos = [m for m in dados.modelos_valueset if getattr(m, "ativo", True)]
+        por_tipo: dict[str, list] = {}
+        for modelo in modelos_ativos:
+            por_tipo.setdefault(cls._norm(getattr(modelo, "tipo", None)), []).append(
+                modelo
+            )
+
+        for irmaos in por_tipo.values():
+            if len(irmaos) < 2:
+                continue  # sozinho no tipo: não há com que comparar
+            for modelo in irmaos:
+                outros = [
+                    chaves_por_modelo.get(o.id, set())
+                    for o in irmaos
+                    if o.id != modelo.id
+                ]
+                if not outros or not all(outros):
+                    continue
+                comuns = set.intersection(*outros)
+                em_falta = sorted(comuns - chaves_por_modelo.get(modelo.id, set()))
+                if not em_falta:
+                    continue
+                amostra = ", ".join(em_falta[:5])
+                if len(em_falta) > 5:
+                    amostra += f" (e mais {len(em_falta) - 5})"
+                add(
+                    AVISO, "VALUESET_MODELO_CHAVES_EM_FALTA", "ValueSet",
+                    "Modelo ValueSet", modelo, getattr(modelo, "codigo", ""),
+                    f"Faltam {len(em_falta)} chaves que todos os outros modelos "
+                    f"do tipo {getattr(modelo, 'tipo', '') or '(sem tipo)'} têm: {amostra}.",
+                    "Um orçamento feito com este modelo não resolve essas chaves: "
+                    "as peças que dependem delas ficam sem material e sem preço.",
+                    "Comparar com um modelo irmão e acrescentar as chaves que "
+                    "faltam, ou confirmar que este modelo é mesmo mais curto.",
+                    navegacao_tipo="VALUESET_MODELO", navegacao_id=modelo.id,
+                )
+
         # ValueSet actions: make every replacement visible for review.
         for ligacao in dados.operacoes_valueset:
             if not getattr(ligacao, "ativo", True):
@@ -591,6 +690,34 @@ class CatalogoAuditoriaService:
                     f"A referência {codigo_guardado} não corresponde a uma peça atual.",
                     "A linha será importada sem ligação completa à biblioteca.",
                     "Associar uma peça existente ou remover a linha obsoleta do módulo.",
+                    navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
+                )
+
+            # O módulo guarda a chave ValueSet da linha. Se a chave for
+            # renomeada, o módulo continua com a antiga e cala-se: quem o
+            # importar recebe uma linha sem material.
+            chave_modulo = cls._norm(getattr(linha, "chave_valueset", None))
+            if not chave_modulo:
+                continue
+            registo = chaves.get(chave_modulo)
+            if registo is None:
+                add(
+                    ERRO, "MODULO_CHAVE_VALUESET_INEXISTENTE", "Módulos",
+                    "Linha de módulo", linha, referencia_linha,
+                    f"A chave ValueSet {chave_modulo} não existe no vocabulário.",
+                    "Ao importar o módulo, a linha fica sem material e sem preço, "
+                    "sem mensagem nenhuma.",
+                    "Corrigir a chave da linha do módulo, ou criar a chave em "
+                    "Configurações > Chaves ValueSet.",
+                    navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
+                )
+            elif not getattr(registo, "ativo", True):
+                add(
+                    AVISO, "MODULO_CHAVE_VALUESET_INATIVA", "Módulos",
+                    "Linha de módulo", linha, referencia_linha,
+                    f"A chave ValueSet {chave_modulo} está inativa.",
+                    "O módulo pode deixar de resolver o material desta linha.",
+                    "Reativar a chave ou apontar a linha para uma chave ativa.",
                     navegacao_tipo="MODULO", navegacao_id=getattr(modulo, "id", None),
                 )
 
