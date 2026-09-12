@@ -124,8 +124,15 @@ class DefValuesetModeloLinhaDialog(QDialog):
         parent=None,
         on_save: Callable[[DefValuesetModeloLinhaDialogData], bool] | None = None,
         on_save_as: Callable[[DefValuesetModeloLinhaDialogData], bool] | None = None,
+        sugestao_filtros: (
+            Callable[[str | None], tuple[str | None, str | None]] | None
+        ) = None,
     ) -> None:
         super().__init__(parent)
+
+        # Com que Tipo/Familia abrir o catalogo de materias-primas quando a
+        # linha ainda nao tem snapshot. E' a pagina que sabe as linhas irmas.
+        self._sugestao_filtros = sugestao_filtros
 
         self.linha = linha
         self.on_save = on_save
@@ -486,9 +493,30 @@ class DefValuesetModeloLinhaDialog(QDialog):
 
     def abrir_picker_materia_prima(self) -> None:
         """Open the raw material picker and copy the selection into the line."""
-        picker = MateriaPrimaPickerDialog(parent=self)
+        tipo, familia = self._filtros_sugeridos()
+        picker = MateriaPrimaPickerDialog(
+            parent=self, initial_tipo=tipo, initial_familia=familia
+        )
         if picker.exec() and picker.selected_materia is not None:
             self._preencher_de_materia_prima(picker.selected_materia)
+
+    def _filtros_sugeridos(self) -> tuple[str | None, str | None]:
+        """Tipo/Familia com que abrir o catalogo, para nao dar as ~1400 de uma vez.
+
+        Numa linha ja' preenchida sao os da propria linha. Numa linha nova ainda
+        nao ha' snapshot nenhum, e entao pergunta-se a` pagina o que usam as
+        outras opcoes da mesma chave. Cada um resolve-se por si: uma linha pode
+        ter familia e nao ter tipo.
+        """
+        tipo = (self.tipo_mp_input.text() or "").strip() or None
+        familia = (self.familia_mp_input.text() or "").strip() or None
+        if (tipo and familia) or self._sugestao_filtros is None:
+            return tipo, familia
+
+        sugerido_tipo, sugerida_familia = self._sugestao_filtros(
+            obter_valor_chave_combo(self.chave_input)
+        )
+        return tipo or sugerido_tipo, familia or sugerida_familia
 
     def _abrir_picker_orla(self, espessura: str) -> None:
         """Select one ORL reference and snapshot its EUR/m² price."""

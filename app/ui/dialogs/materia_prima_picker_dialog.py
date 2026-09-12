@@ -115,8 +115,19 @@ class MateriaPrimaPickerDialog(QDialog):
 
         # Tipo / Família filters (pre-filled from the cost line when opened there).
         self.tipo_filter = ComboSemScroll()
+        self.tipo_filter.setToolTip(
+            "Tipo de material. Vem pre'-preenchido com o da linha; mude-o ou ponha "
+            "(Todos) para ver o catalogo inteiro."
+        )
         self.familia_filter = ComboSemScroll()
+        self.familia_filter.setToolTip(
+            "Familia do material. Vem pre'-preenchida com a da linha; mude-a ou ponha "
+            "(Todos) para ver o catalogo inteiro."
+        )
         self.limpar_filtros_button = QPushButton("Limpar filtros")
+        self.limpar_filtros_button.setToolTip(
+            "Poe os dois filtros em (Todos) e mostra o catalogo completo."
+        )
         self.limpar_filtros_button.clicked.connect(self.limpar_filtros)
 
         filtros_layout = QHBoxLayout()
@@ -202,7 +213,12 @@ class MateriaPrimaPickerDialog(QDialog):
         self._aplicando_filtros = False
 
     def _definir_filtro_inicial(self, combo: QComboBox, valor: str | None) -> None:
-        """Pre-select a combo value (tolerant of case/plural), adding it if missing."""
+        """Pre-select a combo value (tolerant of case/plural), if it still exists.
+
+        Um filtro que o catalogo ja' nao tem abriria a janela com a lista vazia,
+        e quem a abriu nem percebia porque'. Nesse caso fica em "(Todos)": ve'-se
+        tudo, que e' o que havia antes de haver pre'-filtro nenhum.
+        """
         if not valor:
             return
 
@@ -210,7 +226,6 @@ class MateriaPrimaPickerDialog(QDialog):
         if not valor_norm:
             return
 
-        self._aplicando_filtros = True
         alvo = valor_norm.upper()
         indice = -1
         for i in range(combo.count()):
@@ -221,11 +236,11 @@ class MateriaPrimaPickerDialog(QDialog):
                 indice = i
                 break
 
-        if indice >= 0:
-            combo.setCurrentIndex(indice)
-        else:
-            combo.addItem(valor_norm, valor_norm)
-            combo.setCurrentIndex(combo.count() - 1)
+        if indice < 0:
+            return
+
+        self._aplicando_filtros = True
+        combo.setCurrentIndex(indice)
         self._aplicando_filtros = False
 
     def _on_filtro_changed(self, _index: int) -> None:

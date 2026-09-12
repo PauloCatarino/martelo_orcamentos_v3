@@ -77,6 +77,9 @@ from app.ui.widgets.navegador_chaves_valueset import (
 )
 from app.utils.formatters import format_currency, format_quantity
 from app.ui.icones import decorar_barra
+from app.domain.valueset_prefiltro_materia_prima import (
+    sugerir_tipo_familia_da_chave,
+)
 
 
 class OrcamentoItemValuesetPage(QWidget):
@@ -856,7 +859,11 @@ class OrcamentoItemValuesetPage(QWidget):
                 return False
             return True
 
-        dialog = OrcamentoItemValuesetLinhaDialog(parent=self, on_save=handle_save)
+        dialog = OrcamentoItemValuesetLinhaDialog(
+            parent=self,
+            on_save=handle_save,
+            sugestao_filtros=self._sugerir_filtros_materia_prima,
+        )
         if dialog.exec() and criada is not None:
             self.carregar()
             prioridade = criada.prioridade if criada.prioridade is not None else "vazia"
@@ -957,6 +964,7 @@ class OrcamentoItemValuesetPage(QWidget):
             parent=self,
             on_save=handle_save,
             on_save_as=handle_save_as,
+            sugestao_filtros=self._sugerir_filtros_materia_prima,
         )
         if dialog.exec() and saved:
             self.carregar()
@@ -1365,3 +1373,13 @@ class OrcamentoItemValuesetPage(QWidget):
                 + ", ".join(chaves)
                 + ". O desempate é pelo id da linha."
             )
+
+    def _sugerir_filtros_materia_prima(
+        self, chave: str | None
+    ) -> tuple[str | None, str | None]:
+        """Tipo/Familia a propor no catalogo para uma linha nova desta chave.
+
+        As outras opcoes da mesma chave dizem que gene'ro de material e' — sem
+        isto, acrescentar uma ferragem abria as ~1400 materias-primas todas.
+        """
+        return sugerir_tipo_familia_da_chave(self._todas_linhas, chave)
