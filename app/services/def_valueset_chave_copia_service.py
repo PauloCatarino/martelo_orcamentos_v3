@@ -354,10 +354,15 @@ class DefValuesetChaveCopiaService:
                 elif modo == ACRESCENTAR_E_ATUALIZAR and not self._iguais(
                     linha, destino
                 ):
+                    snapshot = self.linha_service.copiar_snapshot_linha(linha.id)
+                    # A proveniência viaja com o conteúdo, e a marca ✎ não se
+                    # põe: ela é para assinalar o que o utilizador mexeu à mão.
+                    snapshot["origem_dados"] = linha.origem_dados
                     self.linha_service.aplicar_snapshot_linha(
                         destino.id,
-                        self.linha_service.copiar_snapshot_linha(linha.id),
+                        snapshot,
                         commit=False,
+                        marcar_editado=False,
                     )
                     operacoes += self.operacao_service.substituir_operacoes_de(
                         self.operacao_service.listar_operacoes_da_linha(linha.id),
