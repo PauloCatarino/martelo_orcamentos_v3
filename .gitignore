@@ -73,4 +73,6 @@ Thumbs.db
 # .claude/settings.json e .claude/hooks/ SAO para commitar.
 .claude/settings.local.json
 .claude/worktrees/
+# Servidores de pre'-visualizacao: apontam para pastas locais de cada PC.
+.claude/launch.json
 
