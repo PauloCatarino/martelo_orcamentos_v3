@@ -118,7 +118,9 @@ class DefValuesetModeloLinhaOperacaoService:
 
         return result
 
-    def copiar_operacoes_entre_linhas(self, origem_id: int, destino_id: int) -> int:
+    def copiar_operacoes_entre_linhas(
+        self, origem_id: int, destino_id: int, *, commit: bool = True
+    ) -> int:
         """Copy every operation of one line onto another. Returns how many.
 
         Used by "Gravar como…": a variant copied from another one has to bring
@@ -146,7 +148,7 @@ class DefValuesetModeloLinhaOperacaoService:
             )
             copiadas += 1
 
-        if copiadas:
+        if copiadas and commit:
             self.session.commit()
 
         return copiadas

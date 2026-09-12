@@ -54,10 +54,14 @@ from app.services.def_valueset_modelo_linha_service import (
     DefValuesetModeloLinhaService,
     EditarDefValuesetModeloLinhaData,
 )
+from app.services.def_valueset_chave_copia_service import (
+    DefValuesetChaveCopiaService,
+)
 from app.services.def_valueset_operacao_propagacao_service import (
     DefValuesetOperacaoPropagacaoService,
 )
 from app.ui.dialogs.atualizar_precos_valueset_dialog import AtualizarPrecosValuesetDialog
+from app.ui.dialogs.copiar_chaves_valueset_dialog import CopiarChavesValuesetDialog
 from app.ui.dialogs.def_valueset_modelo_dialog import DefValuesetModeloDialog
 from app.ui.dialogs.def_valueset_modelo_linha_dialog import DefValuesetModeloLinhaDialog
 from app.ui.dialogs.propagar_operacoes_valueset_modelo_dialog import (
@@ -204,6 +208,12 @@ class DefValuesetModeloDetailPage(QWidget):
             "Selecionar outras linhas com a mesma chave e Ref LE e substituir as operações."
         )
         self.propagate_operations_button.clicked.connect(self.propagar_operacoes)
+        self.copiar_chaves_button = QPushButton("Copiar Chaves…")
+        self.copiar_chaves_button.setToolTip(
+            "Levar chaves inteiras deste modelo para outros modelos. Mostra "
+            "primeiro quantas linhas seriam criadas em cada um; nada é apagado."
+        )
+        self.copiar_chaves_button.clicked.connect(self.copiar_chaves_para_modelos)
         self.toggle_button = QPushButton("Ativar/Desativar")
         self.toggle_button.clicked.connect(self.alternar_linha_ativa)
         self.subir_button = QPushButton("↑")
@@ -255,7 +265,12 @@ class DefValuesetModeloDetailPage(QWidget):
         actions_layout.setSpacing(4)
         grupos_de_botoes = [
             [self.new_button, self.edit_button, self.toggle_button],
-            [self.copy_button, self.paste_button, self.propagate_operations_button],
+            [
+                self.copy_button,
+                self.paste_button,
+                self.propagate_operations_button,
+                self.copiar_chaves_button,
+            ],
             [self.subir_button, self.descer_button, self.agrupar_button],
             [self.refresh_button, self.check_prices_button],
         ]
@@ -1218,6 +1233,74 @@ class DefValuesetModeloDetailPage(QWidget):
             f"{resultado.substituidas} substituída(s), "
             f"{resultado.adicionadas} adicionada(s) e "
             f"{resultado.desativadas} desativada(s)."
+        )
+
+    def copiar_chaves_para_modelos(self) -> None:
+        """Levar chaves inteiras deste modelo para outros modelos."""
+        try:
+            with SessionLocal() as session:
+                chaves = DefValuesetChaveCopiaService(session).listar_chaves_do_modelo(
+                    self.modelo.id
+                )
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível ler as chaves do modelo.", error)
+            )
+            return
+
+        if not chaves:
+            self.status_label.setText("Este modelo não tem chaves para copiar.")
+            return
+
+        def recalcular(chaves_escolhidas, modo):
+            """A conta refaz-se a cada mudança, sempre com dados frescos."""
+            with SessionLocal() as session:
+                return DefValuesetChaveCopiaService(session).preparar_contexto(
+                    self.modelo.id,
+                    chaves_escolhidas,
+                    app_session.current_user,
+                    modo=modo,
+                )
+
+        # Se houver uma chave a filtrar a tabela, é essa que o utilizador tem
+        # à frente — vai já marcada.
+        iniciais = [self._chave_selecionada] if self._chave_selecionada else []
+        dialog = CopiarChavesValuesetDialog(
+            self.modelo.codigo,
+            chaves,
+            recalcular,
+            chaves_iniciais=iniciais,
+            parent=self,
+        )
+        if not dialog.exec():
+            self.status_label.setText("Cópia cancelada; nenhum modelo foi alterado.")
+            return
+
+        contexto = dialog.contexto
+        destinos = dialog.destinos_escolhidos
+        if contexto is None or not destinos:
+            self.status_label.setText("Nenhum modelo foi escolhido.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                resultado = DefValuesetChaveCopiaService(session).executar(
+                    contexto, destinos, app_session.current_user
+                )
+        except (ValueError, PermissionError) as error:
+            self.status_label.setText(str(error))
+            return
+        except SQLAlchemyError as error:
+            self.status_label.setText(
+                mensagem_erro_bd("Não foi possível copiar as chaves.", error)
+            )
+            return
+
+        self.status_label.setText(
+            f"{resultado.linhas_criadas} linha(s) criadas e "
+            f"{resultado.linhas_atualizadas} atualizadas em "
+            f"{resultado.modelos_afetados} modelo(s), com "
+            f"{resultado.operacoes_copiadas} operação(ões)."
         )
 
     def _abrir_dialog_criar_linha(

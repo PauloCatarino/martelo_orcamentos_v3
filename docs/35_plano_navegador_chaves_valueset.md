@@ -1,6 +1,6 @@
 # 35 — Navegador de chaves nos Modelos ValueSet
 
-Estado: **Peças 1, 2 e 3 entregues** (12-set-2026). Decisões já fechadas com o Paulo.
+Estado: **CICLO FECHADO — Peças 1 a 4 entregues** (12-set-2026). Falta o teste dele.
 
 ---
 
@@ -159,13 +159,45 @@ situação que isto veio resolver.
 
 Guião: `docs/GUIAO_TESTE_RENOMEAR_CHAVE_VALUESET.md`.
 
-### Peça 4 — a seguir
-Sincronizar chaves num modelo + copiar uma chave para vários modelos. É o que
-dá resposta ao aviso `VALUESET_MODELO_CHAVES_EM_FALTA` da Peça 2.
+### Peça 4 — FEITA (12-set-2026)
+`app/services/def_valueset_chave_copia_service.py` +
+`app/ui/dialogs/copiar_chaves_valueset_dialog.py`, com o botão
+**"Copiar Chaves…"** na página de detalhe do modelo.
 
-Nota do Paulo (12-set-2026): o `ROUPEIRO_INOV_POSITIVA` era um modelo de teste,
-provavelmente não volta a ser editado — **fica como está**. Não vale a pena
-desenhar a Peça 4 à volta dele.
+Leva chaves inteiras de um modelo para outros, com pré-visualização por modelo
+antes de escrever seja o que for. As operações viajam com a linha.
+
+**Duas regras que não se negoceiam:**
+
+1. **Nunca apaga nem desativa nada no destino.** Uma opção que só exista lá pode
+   ter sido posta de propósito por quem é dono do modelo, e não cabe a uma cópia
+   em massa decidir que ela sobra. Ela aparece na coluna "Só no destino" e fica.
+2. **Respeita o dono** — mesma regra da propagação de operações: o modelo
+   próprio é sempre seu; global ou de outra pessoa exige
+   `acao.propagar_operacoes_valueset_outros`. Hoje têm-na: admin, paulo,
+   Andreia, Catia.
+
+Dois modos, com o menos destrutivo por omissão:
+- `SO_ACRESCENTAR` — cria o que falta, não toca no que já lá está;
+- `ACRESCENTAR_E_ATUALIZAR` — além disso, põe as opções comuns iguais às da
+  origem (material, preços, prioridade e operações).
+
+A identidade de uma linha é `(modelo, chave, código da opção)` — é por ela que
+se decide o que é criar e o que é atualizar, e é o que torna a operação
+idempotente: correr duas vezes não duplica nada.
+
+Efeito lateral conhecido: as linhas **atualizadas** ficam com a marca
+`editado_localmente` (✎), porque reutilizam o `aplicar_snapshot_linha`. É
+defensável (a linha deixou de corresponder ao que lá estava), mas está por
+confirmar com ele.
+
+Guião: `docs/GUIAO_TESTE_COPIAR_CHAVES_VALUESET.md`.
+
+**Contexto do INOV_POSITIVA:** era um modelo de teste do utilizador `admin`, do
+início do desenvolvimento, já não usado por ninguém. O Paulo desativou-o a
+12-set-2026, e com isso o aviso `VALUESET_MODELO_CHAVES_EM_FALTA` deixou de
+aparecer (a auditoria ignora modelos inativos). A Peça 4 fica na mesma útil para
+o caso normal: chave nova que tem de ir para todos os modelos.
 
 ---
 
