@@ -9,6 +9,7 @@ from PySide6.QtGui import QBrush, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -243,31 +244,37 @@ class DefValuesetModeloDetailPage(QWidget):
         self.back_button.setToolTip("Voltar à lista, sem gravar o que estiver por gravar.")
         self.back_button.clicked.connect(self._handle_back)
 
+        # Os botões vão por famílias, separados por uma barra vertical: mexer
+        # na linha, copiar conteúdo, ordenar, ir à base, e mudar a vista. Antes
+        # estavam todos seguidos e era preciso ler os nomes um a um para achar
+        # o que se queria.
+        self.mostrar_inativas_check.setToolTip(
+            "Mostrar também as linhas desativadas deste modelo."
+        )
         actions_layout = QHBoxLayout()
-        actions_layout.addWidget(self.new_button)
-        actions_layout.addWidget(self.edit_button)
-        actions_layout.addWidget(self.copy_button)
-        actions_layout.addWidget(self.paste_button)
-        actions_layout.addWidget(self.propagate_operations_button)
-        actions_layout.addWidget(self.toggle_button)
-        actions_layout.addWidget(self.subir_button)
-        actions_layout.addWidget(self.descer_button)
-        actions_layout.addWidget(self.agrupar_button)
-        actions_layout.addWidget(self.mostrar_inativas_check)
-        actions_layout.addWidget(self.refresh_button)
-        actions_layout.addWidget(self.check_prices_button)
-        actions_layout.addWidget(self.toggle_navegador_button)
-        actions_layout.addStretch()
+        actions_layout.setSpacing(4)
+        grupos_de_botoes = [
+            [self.new_button, self.edit_button, self.toggle_button],
+            [self.copy_button, self.paste_button, self.propagate_operations_button],
+            [self.subir_button, self.descer_button, self.agrupar_button],
+            [self.refresh_button, self.check_prices_button],
+        ]
+        for indice, grupo in enumerate(grupos_de_botoes):
+            for botao in grupo:
+                actions_layout.addWidget(botao)
+            if indice < len(grupos_de_botoes) - 1:
+                actions_layout.addWidget(self._separador_vertical())
         # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
         # mesma acao fica com a mesma cara em todas as paginas.
         decorar_barra(actions_layout)
+        actions_layout.addStretch()
         actions_layout.addWidget(self.back_button)
 
         self.pesquisa_input = CampoPesquisa(
             placeholder=(
                 "Pesquisar chave, opção, referência, descrição, tipo, família ou operação…"
             ),
-            largura_max=620,
+            largura_max=380,
         )
         self.pesquisa_input.setToolTip(
             "Filtra as linhas deste modelo à medida que escreve. "
@@ -291,19 +298,25 @@ class DefValuesetModeloDetailPage(QWidget):
         )
         self.limpar_filtros_button.clicked.connect(self.limpar_filtros)
 
-        filtros_layout = QHBoxLayout()
-        filtros_layout.setSpacing(8)
-        filtros_layout.addWidget(self.pesquisa_input)
-        filtros_layout.addWidget(self.cabecalhos_grupo_check)
-        filtros_layout.addWidget(self.limpar_filtros_button)
-        filtros_layout.addStretch()
-
         # Chips de grupo: atalho para o grupo todo, sem passar pela árvore.
+        # Vão na mesma linha da pesquisa — ocupavam uma linha inteira só para
+        # eles, e é altura que faz falta às colunas da tabela.
         self.chips_layout = QHBoxLayout()
         self.chips_layout.setSpacing(4)
         self.chips_layout.setContentsMargins(0, 0, 0, 0)
         self.chips_widget = QWidget()
         self.chips_widget.setLayout(self.chips_layout)
+
+        filtros_layout = QHBoxLayout()
+        filtros_layout.setSpacing(6)
+        filtros_layout.addWidget(self.pesquisa_input)
+        filtros_layout.addWidget(self.limpar_filtros_button)
+        filtros_layout.addWidget(self._separador_vertical())
+        filtros_layout.addWidget(self.mostrar_inativas_check)
+        filtros_layout.addWidget(self.cabecalhos_grupo_check)
+        filtros_layout.addWidget(self.toggle_navegador_button)
+        filtros_layout.addWidget(self._separador_vertical())
+        filtros_layout.addWidget(self.chips_widget, stretch=1)
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("defValuesetModeloDetailStatus")
@@ -341,18 +354,27 @@ class DefValuesetModeloDetailPage(QWidget):
             self.splitter.setSizes([260, 900])
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        # Margens e espaçamento apertados de propósito: cada linha que se poupa
+        # aqui em cima é uma linha de tabela que se vê lá em baixo.
+        layout.setContentsMargins(18, 12, 18, 12)
+        layout.setSpacing(7)
         layout.addWidget(self.cabecalho)
         layout.addLayout(info_layout)
         layout.addLayout(actions_layout)
         layout.addLayout(filtros_layout)
-        layout.addWidget(self.chips_widget)
         layout.addWidget(self.status_label)
         layout.addWidget(self.splitter, stretch=1)
 
         self.setLayout(layout)
         self.carregar_linhas()
+
+    def _separador_vertical(self) -> QFrame:
+        """Barra fina que separa duas famílias de botões na mesma linha."""
+        separador = QFrame()
+        separador.setFrameShape(QFrame.Shape.VLine)
+        separador.setFrameShadow(QFrame.Shadow.Plain)
+        separador.setStyleSheet(f"color: {CINZA_CASTANHO};")
+        return separador
 
     def _criar_navegador(self) -> QWidget:
         """Painel esquerdo: os grupos e as chaves deste modelo."""
@@ -538,9 +560,14 @@ class DefValuesetModeloDetailPage(QWidget):
 
     def _desenhar_chips(self, linhas: list[DefValuesetModeloLinhaResumo]) -> None:
         """Um botão por grupo com a contagem, mais "Todos"."""
-        for botao in self._botoes_chips:
-            self.chips_layout.removeWidget(botao)
-            botao.deleteLater()
+        # Esvaziar o layout INTEIRO, e não só os botões: o espaçador do fim
+        # também é um item, e deixá-lo lá empurrava os chips mais para a
+        # direita a cada redesenho, até irem parar ao canto.
+        while self.chips_layout.count():
+            item = self.chips_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
         self._botoes_chips = []
 
         grupos = agrupar_linhas(linhas, self._metas_chaves)
