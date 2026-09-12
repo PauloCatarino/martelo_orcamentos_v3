@@ -211,9 +211,14 @@ class DefValuesetModeloLinhaService:
         return result
 
     def criar_linha(
-        self, data: CriarDefValuesetModeloLinhaData
+        self, data: CriarDefValuesetModeloLinhaData, *, commit: bool = True
     ) -> DefValuesetModeloLinhaResumo:
-        """Create one reusable ValueSet model line, at the end of the list."""
+        """Create one reusable ValueSet model line, at the end of the list.
+
+        ``commit=False`` deixa a gravação para quem chamou: a cópia de chaves
+        para vários modelos tem de ser tudo ou nada, e um commit por linha
+        deixava metade do trabalho feito se algo falhasse a meio.
+        """
         fields = self._build_fields(data)
         self._validate_opcao_unica(
             modelo_id=fields["def_valueset_modelo_id"],
@@ -229,7 +234,8 @@ class DefValuesetModeloLinhaService:
             )
 
         result = self.repository.create(**fields)
-        self.session.commit()
+        if commit:
+            self.session.commit()
 
         return result
 
