@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -80,6 +81,39 @@ class OrcamentoValuesetLinhaOperacaoRepository:
         ligacoes = self.session.execute(statement).scalars().all()
 
         return [self._to_resumo(ligacao) for ligacao in ligacoes]
+
+    def list_active_by_linhas(
+        self, linha_ids: Sequence[int]
+    ) -> dict[int, list[OrcamentoValuesetLinhaOperacaoResumo]]:
+        """Active operations of several lines, in one query.
+
+        A tabela mostra as operações de ~100 linhas ao mesmo tempo: uma
+        consulta por linha eram 100 idas à base de cada vez que recarregava.
+        """
+        por_linha: dict[int, list[OrcamentoValuesetLinhaOperacaoResumo]] = {
+            linha_id: [] for linha_id in linha_ids
+        }
+        if not por_linha:
+            return por_linha
+
+        statement = (
+            select(OrcamentoValuesetLinhaOperacao)
+            .where(
+                OrcamentoValuesetLinhaOperacao.orcamento_valueset_linha_id.in_(list(por_linha)),
+                OrcamentoValuesetLinhaOperacao.ativo.is_(True),
+            )
+            .order_by(
+                OrcamentoValuesetLinhaOperacao.orcamento_valueset_linha_id.asc(),
+                OrcamentoValuesetLinhaOperacao.ordem.asc(),
+                OrcamentoValuesetLinhaOperacao.id.asc(),
+            )
+        )
+        for ligacao in self.session.execute(statement).scalars().all():
+            por_linha[ligacao.orcamento_valueset_linha_id].append(
+                self._to_resumo(ligacao)
+            )
+
+        return por_linha
 
     def get_by_id(self, id: int) -> OrcamentoValuesetLinhaOperacaoResumo | None:
         """Get one budget version ValueSet line operation link by id."""
