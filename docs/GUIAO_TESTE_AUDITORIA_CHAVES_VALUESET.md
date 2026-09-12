@@ -1,5 +1,10 @@
 # Guião de teste — Peça 2: a auditoria passa a ver as chaves ValueSet
 
+> **Para testar, use antes o [guião completo](GUIAO_TESTE_VALUESET_COMPLETO.md)**,
+> que junta os seis guiões pela ordem por que convém percorrê-los.
+> Corresponde a: Sessão D1.
+> Este ficheiro fica como o detalhe da ronda em que foi escrito.
+
 Versão de 12-set-2026. **A auditoria nunca escreve nada** — só lê e relata.
 
 ---
