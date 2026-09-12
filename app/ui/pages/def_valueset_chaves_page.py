@@ -24,7 +24,13 @@ from app.services.def_valueset_chave_service import (
     DefValuesetChaveService,
     EditarDefValuesetChaveData,
 )
+from app.services.def_valueset_chave_renomeacao_service import (
+    DefValuesetChaveRenomeacaoService,
+)
 from app.ui.dialogs.def_valueset_chave_dialog import DefValuesetChaveDialog
+from app.ui.dialogs.renomear_chave_valueset_dialog import (
+    RenomearChaveValuesetDialog,
+)
 from app.ui.helpers.erros import mensagem_erro_bd
 from app.ui.tema import (
     CINZA_ESCURO,
@@ -215,9 +221,20 @@ class DefValuesetChavesPage(QWidget):
 
         saved = False
         saved_as = False
+        mensagem_renomeacao = ""
 
         def handle_save(form_data) -> bool:
-            nonlocal saved
+            nonlocal saved, mensagem_renomeacao
+
+            # Mudar o código é uma renomeação, não uma edição: o código está
+            # escrito como texto em sete tabelas e quem ficar com o antigo
+            # cala-se. Antes de gravar, mostra-se quem usa e pergunta-se o
+            # alcance.
+            if self._codigo_mudou(chave.codigo, form_data.codigo):
+                resultado = self._renomear_chave(chave, form_data.codigo, dialog)
+                if resultado is None:
+                    return False
+                mensagem_renomeacao = self._mensagem_renomeacao(resultado)
 
             try:
                 with SessionLocal() as session:
@@ -278,10 +295,76 @@ class DefValuesetChavesPage(QWidget):
         )
         if dialog.exec() and saved:
             self.carregar()
-            self.status_label.setText("Chave ValueSet atualizada.")
+            self.status_label.setText(
+                mensagem_renomeacao or "Chave ValueSet atualizada."
+            )
         elif saved_as:
             self.carregar()
             self.status_label.setText("Chave ValueSet gravada como nova.")
+
+    @staticmethod
+    def _codigo_mudou(codigo_atual: str | None, codigo_novo: str | None) -> bool:
+        """Diz se o código foi mesmo alterado (sem contar espaços nem caixa)."""
+        return (
+            DefValuesetChaveRenomeacaoService._normalizar(codigo_novo)
+            != DefValuesetChaveRenomeacaoService._normalizar(codigo_atual)
+        )
+
+    def _renomear_chave(self, chave, codigo_novo: str, dialog):
+        """Mostrar quem usa a chave, pedir o alcance e propagar.
+
+        Devolve o resultado, ou ``None`` se o utilizador desistiu ou algo
+        correu mal — nesse caso o diálogo de edição fica aberto com o erro.
+        """
+        try:
+            with SessionLocal() as session:
+                ocorrencias = DefValuesetChaveRenomeacaoService(
+                    session
+                ).contar_utilizacoes(chave.codigo)
+        except SQLAlchemyError as error:
+            dialog.set_error(
+                mensagem_erro_bd("Não foi possível ver quem usa esta chave.", error)
+            )
+            return None
+
+        codigo_limpo = DefValuesetChaveRenomeacaoService._normalizar(codigo_novo)
+        confirmacao = RenomearChaveValuesetDialog(
+            ocorrencias, codigo_limpo, parent=self
+        )
+        if not confirmacao.exec():
+            dialog.set_error("Renomeação cancelada; nada foi alterado.")
+            return None
+
+        try:
+            with SessionLocal() as session:
+                return DefValuesetChaveRenomeacaoService(session).renomear(
+                    chave.id,
+                    codigo_limpo,
+                    incluir_orcamentos=confirmacao.incluir_orcamentos,
+                )
+        except ValueError as error:
+            dialog.set_error(self._error_message(error))
+            return None
+        except SQLAlchemyError as error:
+            dialog.set_error(
+                mensagem_erro_bd("Não foi possível renomear a chave.", error)
+            )
+            return None
+
+    @staticmethod
+    def _mensagem_renomeacao(resultado) -> str:
+        """Contar ao utilizador o que a renomeação mudou, em número de linhas."""
+        mensagem = (
+            f"Chave {resultado.codigo_antigo} renomeada para "
+            f"{resultado.codigo_novo}: {resultado.catalogos_atualizados} "
+            "linha(s) de catálogo atualizadas"
+        )
+        if resultado.incluiu_orcamentos:
+            return (
+                f"{mensagem} e {resultado.orcamentos_atualizados} de orçamentos "
+                "já feitos."
+            )
+        return f"{mensagem}. Os orçamentos já feitos ficaram como estavam."
 
     def alternar_chave_ativa(self) -> None:
         """Toggle the active state of the selected ValueSet key after confirmation."""
