@@ -1,6 +1,6 @@
 # 35 — Navegador de chaves nos Modelos ValueSet
 
-Estado: **Peça 1 em curso** (12-set-2026). Decisões já fechadas com o Paulo.
+Estado: **Peças 1 e 2 entregues** (12-set-2026). Decisões já fechadas com o Paulo.
 
 ---
 
@@ -97,9 +97,39 @@ Testes: `test_valueset_modelo_detail_page_setas.py`,
 `test_valueset_modelo_linha_ordenacao.py`, `test_estilo_tabela_valueset.py`,
 `test_valueset_modelo_pesquisa.py` + suite completa.
 
-### Peça 2
-Auditoria alargada: chave de modelo inexistente no vocabulário; idem em
-`def_modulo_linhas`; chave ativa que falta a um modelo.
+### Peça 2 — FEITA (12-set-2026)
+Auditoria alargada, em `catalogo_auditoria_service.py`. Cinco testes novos:
+
+| código | severidade | o que apanha |
+|---|---|---|
+| `VALUESET_MODELO_CHAVE_INEXISTENTE` | ERRO | chave de linha de modelo fora do vocabulário |
+| `VALUESET_MODELO_CHAVE_INATIVA` | AVISO | chave existe mas está desativada |
+| `MODULO_CHAVE_VALUESET_INEXISTENTE` | ERRO | `def_modulo_linhas.chave_valueset` órfã |
+| `MODULO_CHAVE_VALUESET_INATIVA` | AVISO | idem, mas só desativada |
+| `VALUESET_MODELO_CHAVES_EM_FALTA` | AVISO | chaves que TODOS os irmãos do mesmo tipo têm |
+
+Decisões de desenho, medidas na base real antes de escrever:
+- **Um item por (modelo, chave)**, não um por linha — 6 linhas da mesma chave
+  órfã dão 1 ocorrência que diz "6 linha(s)".
+- **Chaves em falta comparam-se com os irmãos do mesmo tipo**, não com o
+  vocabulário inteiro. Com o vocabulário inteiro dava **121 avisos**; assim dá
+  **1**. Um modelo sozinho no seu tipo não é comparado com nada, e uma chave que
+  só um irmão tem não conta como falta.
+- **Um item por modelo** nas chaves em falta, não um por chave: o
+  ROUPEIRO_INOV_POSITIVA sozinho enchia o relatório com 40.
+
+Guião: `docs/GUIAO_TESTE_AUDITORIA_CHAVES_VALUESET.md`.
+
+### FERRAGEM_SUPORTE_VARAO — resolvido (12-set-2026)
+A `def_materias_primas` FER0089 passou a chamar-se
+"SUPORTE **LATERAL** VARAO ROUPEIRO F233" (o Paulo alinhou os nomes das
+matérias-primas). A linha 48 passou de `FERRAGEM_SUPORTE_VARAO` para
+`FERRAGEM_SUPORTE_LATERAL_VARAO`. Já não há chaves órfãs em modelos na base real.
+
+Fica por alinhar, se ele quiser: a própria linha 48 ainda tem
+`nome_opcao` = "Suporte varão standard" e
+`descricao_no_orcamento` = "SUPORTE VARAO ROUPEIRO F233" — sem o "LATERAL". É o
+texto que sai no orçamento ao cliente.
 
 ### Peça 3
 Renomear chave com propagação explícita e escolha de alcance
