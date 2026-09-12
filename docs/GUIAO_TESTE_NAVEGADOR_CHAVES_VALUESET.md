@@ -1,5 +1,10 @@
 # Guião de teste — Navegador de chaves nos Modelos ValueSet (Peça 1)
 
+> **Para testar, use antes o [guião completo](GUIAO_TESTE_VALUESET_COMPLETO.md)**,
+> que junta os seis guiões pela ordem por que convém percorrê-los.
+> Corresponde a: Sessões A1 e B1.
+> Este ficheiro fica como o detalhe da ronda em que foi escrito.
+
 Versão: branch `claude/valueset-modelo-page-redesign-7c7291`, 12-set-2026.
 Nada nesta peça altera dados de orçamentos. As únicas escritas na base são as
 que já existiam: o botão "Agrupar por chave" (que reescreve a coluna `Ordem`) e

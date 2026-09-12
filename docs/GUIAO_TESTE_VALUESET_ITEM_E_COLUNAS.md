@@ -1,5 +1,10 @@
 # Guião de teste — ValueSet do Item + colunas arrastáveis
 
+> **Para testar, use antes o [guião completo](GUIAO_TESTE_VALUESET_COMPLETO.md)**,
+> que junta os seis guiões pela ordem por que convém percorrê-los.
+> Corresponde a: Sessões A3, B3 e C.
+> Este ficheiro fica como o detalhe da ronda em que foi escrito.
+
 Versão de 12-set-2026. **Nada aqui muda dados nem custeio** — é apresentação,
 filtros e a ordem das colunas.
 

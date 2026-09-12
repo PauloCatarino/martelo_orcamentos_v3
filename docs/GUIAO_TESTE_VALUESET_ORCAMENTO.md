@@ -1,5 +1,10 @@
 # Guião de teste — ValueSet do Orçamento com navegador de chaves
 
+> **Para testar, use antes o [guião completo](GUIAO_TESTE_VALUESET_COMPLETO.md)**,
+> que junta os seis guiões pela ordem por que convém percorrê-los.
+> Corresponde a: Sessões A2 e B2.
+> Este ficheiro fica como o detalhe da ronda em que foi escrito.
+
 Versão de 12-set-2026. **Nada aqui muda dados nem custeio** — é apresentação e
 filtros. As escritas continuam a ser as de sempre (Importar, Nova, Editar,
 Colar, Limpar, Ativar/Desativar).

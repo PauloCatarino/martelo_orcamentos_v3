@@ -1,5 +1,10 @@
 # Guião de teste — Peça 3: renomear uma chave ValueSet leva atrás quem a usa
 
+> **Para testar, use antes o [guião completo](GUIAO_TESTE_VALUESET_COMPLETO.md)**,
+> que junta os seis guiões pela ordem por que convém percorrê-los.
+> Corresponde a: Sessão D2.
+> Este ficheiro fica como o detalhe da ronda em que foi escrito.
+
 Versão de 12-set-2026.
 
 ---
