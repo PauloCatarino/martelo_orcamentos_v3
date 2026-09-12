@@ -423,6 +423,7 @@ class ClipboardLinhaCusteio:
 
     fields: dict
     indice_pai: int | None = None
+    operacoes_locais: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -4771,6 +4772,8 @@ class OrcamentoItemCusteioLinhaService:
         "associado_dimensao_referencia", "associado_numero_topos",
         "associado_valueset_prioridade",
         "operacoes_snapshot_json",
+        "def_operacao_id", "def_maquina_id", "minutos_unitarios", "tempo_manual",
+        "maquina", "override_manual", "quantidade_editada_localmente",
         "materia_prima_id", "ref_materia_prima", "descricao_materia_prima",
         "ref_le", "descricao_no_orcamento", "unidade", "preco_liquido",
         "desperdicio_percentagem", "tipo_materia_prima", "familia_materia_prima",
@@ -4812,7 +4815,17 @@ class OrcamentoItemCusteioLinhaService:
                 else None
             )
             snapshot.append(
-                ClipboardLinhaCusteio(fields=fields, indice_pai=indice_pai)
+                ClipboardLinhaCusteio(
+                    fields=fields, indice_pai=indice_pai,
+                    operacoes_locais=tuple(
+                        {
+                            coluna.name: getattr(op, coluna.name)
+                            for coluna in op.__table__.columns
+                            if coluna.name not in {"id", "linha_id", "created_at", "updated_at"}
+                        }
+                        for op in self.linha_operacao_repository.list_all(linha.id)
+                    ),
+                )
             )
 
         return ClipboardCusteio(
@@ -4871,6 +4884,8 @@ class OrcamentoItemCusteioLinhaService:
             )
             self._resolver_material_colagem(item_id, fields)
             nova = self.repository.create_linha(**fields)
+            for operacao in snap.operacoes_locais:
+                self.linha_operacao_repository.create(linha_id=nova.id, **operacao)
             mapa_ids[indice] = nova.id
             novos_ids.append(nova.id)
 

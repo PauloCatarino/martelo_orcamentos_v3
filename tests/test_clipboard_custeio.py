@@ -214,6 +214,47 @@ def test_cortar_move_linha_origem_eliminada_apos_colar(session) -> None:
     assert _linhas(session, item_id)[1].valueset_prioridade == 3
 
 
+def test_clipboard_preserva_operacoes_locais_inativas_e_snapshot_no_momento_da_copia(session):
+    item_id = _criar_item(session)
+    origem = _criar_linha(session, item_id, operacoes_snapshot_json="[]")
+    service = OrcamentoItemCusteioLinhaService(session)
+    repo = service.linha_operacao_repository
+    ativa = repo.create(linha_id=origem.id, codigo="MONTAGEM", nome="Montagem editada",
+                       tempo_por_unidade_minutos=Decimal("17"), ativo=True)
+    repo.create(linha_id=origem.id, codigo="RETIRADA", nome="Operação desativada", ativo=False)
+    clip = service.construir_clipboard(item_id, [origem.id], "COPIAR")
+    repo.update(ativa.id, tempo_por_unidade_minutos=Decimal("99"))
+    destino = _criar_item(session, ordem=2)
+    service.colar_clipboard(destino, clip)
+    copia = _linhas(session, destino)[0]
+    ops = repo.list_all(copia.id)
+    assert len(ops) == 2
+    assert ops[0].tempo_por_unidade_minutos == Decimal("17")
+    assert ops[0].id != ativa.id
+    assert ops[1].ativo is False
+    assert len(service._pares_operacao_ligacao_da_linha(copia, {})) == 1
+    repo.update(ops[0].id, tempo_por_unidade_minutos=Decimal("23"))
+    assert repo.get_by_id(ativa.id).tempo_por_unidade_minutos == Decimal("99")
+
+
+def test_clipboard_operacao_manual_preserva_tempo_maquina_e_custo(session):
+    from app.models import DefMaquina
+    item_id = _criar_item(session)
+    maquina = DefMaquina(codigo="MANUAL", nome="Montagem", custo_hora=Decimal("60"))
+    session.add(maquina)
+    session.flush()
+    service = OrcamentoItemCusteioLinhaService(session)
+    origem = service.inserir_operacao_manual(item_id, "Montagem portas", maquina.id, 17, 2)
+    clip = service.construir_clipboard(item_id, [origem.id], "COPIAR")
+    service.colar_clipboard(item_id, clip, origem.id)
+    service.recalcular_item_completo(item_id)
+    copia = _linhas(session, item_id)[1]
+    assert copia.def_maquina_id == maquina.id
+    assert copia.minutos_unitarios == Decimal("17")
+    assert copia.tempo_manual == Decimal("34")
+    assert copia.custo_producao == Decimal("34")
+
+
 def test_colar_entre_items_recalcula_no_destino(session) -> None:
     origem_id = _criar_item(session, altura="3000", largura="1000", profundidade="600")
     destino_id = _criar_item(
