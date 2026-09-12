@@ -182,3 +182,59 @@ def test_agrupar_contiguo_nao_reordena(navegador) -> None:
     grupos = navegador.agrupar_contiguo(baralhadas)
 
     assert [g.codigo for g in grupos] == ["FERRAGENS", "MATERIAIS", "FERRAGENS"]
+
+
+def test_a_faixa_escreve_se_na_coluna_mais_a_esquerda(_app) -> None:
+    """Com colunas arrastáveis, a faixa não pode usar ``setSpan``.
+
+    O span do Qt junta colunas pela ordem lógica. Bastava o utilizador mover a
+    primeira coluna para a faixa deixar de atravessar a tabela e passar a
+    começar a meio — medido: de 499 px para 299 px numa tabela de 5 colunas.
+    """
+    from PySide6.QtWidgets import QTableWidget
+
+    from app.ui.widgets.navegador_chaves_valueset import escrever_faixa_grupo
+
+    tabela = QTableWidget(1, 5)
+    tabela.setHorizontalHeaderLabels([f"C{i}" for i in range(5)])
+    tabela.horizontalHeader().setSectionsMovable(True)
+
+    escrever_faixa_grupo(tabela, 0, texto="▾ MATERIAIS — 27", colunas=5)
+
+    # Todas as células são pintadas; o texto vai na primeira.
+    assert tabela.item(0, 0).text() == "▾ MATERIAIS — 27"
+    assert all(tabela.item(0, c).text() == "" for c in range(1, 5))
+    # E nenhuma delas entra na seleção.
+    assert all(
+        tabela.item(0, c).flags() == Qt_ItemIsEnabled() for c in range(5)
+    )
+
+    # O utilizador arrasta a primeira coluna para o meio.
+    tabela.horizontalHeader().moveSection(0, 3)
+    escrever_faixa_grupo(tabela, 0, texto="▾ MATERIAIS — 27", colunas=5)
+
+    coluna_esquerda = tabela.horizontalHeader().logicalIndex(0)
+    assert coluna_esquerda != 0  # já não é a coluna original
+    assert tabela.item(0, coluna_esquerda).text() == "▾ MATERIAIS — 27"
+    assert tabela.item(0, 0).text() == ""
+
+
+def Qt_ItemIsEnabled():
+    from PySide6.QtCore import Qt
+
+    return Qt.ItemFlag.ItemIsEnabled
+
+
+def test_a_faixa_leva_o_texto_todo_no_tooltip(_app) -> None:
+    """A coluna da esquerda pode ser estreita e cortar o texto."""
+    from PySide6.QtWidgets import QTableWidget
+
+    from app.ui.widgets.navegador_chaves_valueset import escrever_faixa_grupo
+
+    tabela = QTableWidget(1, 3)
+    escrever_faixa_grupo(
+        tabela, 0, texto="▾ MATERIAIS — 27 linha(s) · ✎ 16 afinada(s)", colunas=3
+    )
+
+    for coluna in range(3):
+        assert "16 afinada(s)" in tabela.item(0, coluna).toolTip()

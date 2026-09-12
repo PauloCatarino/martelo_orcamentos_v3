@@ -75,7 +75,9 @@ def test_page_uses_service() -> None:
 
     carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
     assert "OrcamentoItemValuesetLinhaService" in carregar
-    assert "listar_linhas_ativas_do_item" in carregar
+    # As linhas vem TODAS da base; o "mostrar inativas" filtra em memoria, como
+    # nas outras paginas de ValueSet.
+    assert "listar_linhas_do_item" in carregar
 
 
 def test_page_import_modelo_uses_dialog_and_service() -> None:
@@ -147,12 +149,16 @@ def test_page_import_modelo_verifica_precos_e_pode_atualizar_custeio() -> None:
 def test_page_formats_percentages() -> None:
     from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
 
-    source = inspect.getsource(OrcamentoItemValuesetPage._preencher)
+    source = inspect.getsource(OrcamentoItemValuesetPage._escrever_linha)
+    corrido = inspect.getsource(OrcamentoItemValuesetPage._preencher_corrido)
+    com_faixas = inspect.getsource(OrcamentoItemValuesetPage._preencher_com_faixas)
 
     assert "formatar_percentagem" in source
-    assert "preparar_linhas_valueset" in source
     assert "aplicar_estilo_item_valueset" in source
     assert "texto_chave_valueset" in source
+    # Os dois modos de desenho passam pelo mesmo helper visual partilhado.
+    assert "preparar_linhas_valueset" in corrido
+    assert "preparar_linhas_valueset" in com_faixas
 
 
 def test_page_valueset_visual_helper_e_menu_colunas() -> None:
@@ -363,8 +369,11 @@ def test_page_carrega_coluna_operacoes() -> None:
     assert "OrcamentoItemValuesetLinhaOperacaoService" in carregar
     assert "_operacoes_por_linha" in carregar
 
-    preencher = inspect.getsource(OrcamentoItemValuesetPage._preencher)
-    assert "_operacoes_por_linha" in preencher
+    # Uma consulta para todas as linhas, e nao uma por linha (N+1).
+    assert "listar_operacoes_ativas_de_linhas" in carregar
+    assert "_operacoes_por_linha" in inspect.getsource(
+        OrcamentoItemValuesetPage._escrever_linha
+    )
 
 
 def test_page_edit_lida_com_operacoes_alteradas() -> None:
@@ -402,3 +411,75 @@ def test_page_colunas_redimensionaveis_com_seed() -> None:
     preencher = inspect.getsource(OrcamentoItemValuesetPage._preencher)
     assert "resizeColumnsToContents" in preencher
     assert "_larguras_iniciais_aplicadas" in preencher
+
+
+# --- Navegador de chaves, faixas de grupo e colunas arrastáveis --------------
+
+
+def test_page_tem_navegador_chips_e_pesquisa() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+
+    assert "NavegadorChavesValueset" in init
+    assert "mostrar_editadas=True" in init  # aqui a marca ✎ é o que mais conta
+    assert "CampoPesquisa" in init
+    assert "BotaoLimparFiltros" in init
+    assert "QSplitter" in init
+    assert "ligar_persistencia_splitter" in init
+    assert "filtro_mudou.connect(self._aplicar_filtros)" in init
+
+
+def test_colunas_podem_ser_arrastadas_e_a_ordem_fica_guardada() -> None:
+    """São 23 colunas e não cabem no ecrã: ele quer as importantes à esquerda."""
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+
+    assert "guardar_ordem=True" in init
+    # A faixa escreve-se na coluna mais à esquerda: se a ordem muda, repinta.
+    assert "sectionMoved.connect" in init
+
+
+def test_faixas_sao_so_de_grupo_e_nao_reordenam() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    fonte = inspect.getsource(OrcamentoItemValuesetPage._preencher_com_faixas)
+
+    assert "escrever_faixa_grupo" in fonte
+    assert "agrupar_contiguo" in fonte
+    assert "ordenar=False" in fonte
+
+
+def test_faixa_nao_e_linha_de_dados() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    duplo = inspect.getsource(OrcamentoItemValuesetPage._handle_double_click)
+    menu = inspect.getsource(OrcamentoItemValuesetPage._abrir_menu_contexto)
+    clique = inspect.getsource(OrcamentoItemValuesetPage._handle_click_celula)
+
+    assert "_faixas_by_row" in duplo
+    assert "_faixas_by_row" in menu
+    assert "alternar_grupo_fechado" in clique
+
+
+def test_estado_conta_as_linhas_afinadas_a_mao() -> None:
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    fonte = inspect.getsource(OrcamentoItemValuesetPage._aplicar_filtros)
+
+    assert "editado_localmente" in fonte
+    assert "afinada(s) à mão neste item" in fonte
+    assert "sufixo_estado" in fonte
+
+
+def test_os_botoes_proprios_do_item_ficam_todos() -> None:
+    """Criar a partir do Orçamento e Atualizar Custeio não se perderam."""
+    from app.ui.pages.orcamento_item_valueset_page import OrcamentoItemValuesetPage
+
+    init = inspect.getsource(OrcamentoItemValuesetPage.__init__)
+
+    assert "self.create_button" in init
+    assert "self.propagate_button" in init
+    assert "Criar a partir do Orçamento" in init
+    assert "Atualizar Custeio" in init

@@ -17,10 +17,11 @@ def test_pagina_valueset_mostra_linhas_inativas_a_pedido() -> None:
     assert "mostrar_inativas_check" in init
     assert "Mostrar inativas" in init
 
+    # O visto filtra em memoria: as linhas ja' vem todas da base.
+    pesquisadas = inspect.getsource(OrcamentoItemValuesetPage._linhas_pesquisadas)
+    assert "mostrar_inativas_check.isChecked()" in pesquisadas
     carregar = inspect.getsource(OrcamentoItemValuesetPage.carregar)
-    assert "mostrar_inativas_check.isChecked()" in carregar
     assert "listar_linhas_do_item" in carregar
-    assert "listar_linhas_ativas_do_item" in carregar
 
 
 def test_botao_atualizar_custeio_sem_selecao_pede_o_quadro_todo() -> None:

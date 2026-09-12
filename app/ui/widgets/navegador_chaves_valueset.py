@@ -374,16 +374,27 @@ def escrever_faixa_grupo(
     Só de **grupo**, e não de chave: nestas tabelas há ~70 chaves para ~100
     linhas, e uma faixa por chave quase duplicava o que está no ecrã para não
     ganhar quase nada.
+
+    Não se usa ``setSpan``. O span do Qt junta colunas pela ordem **lógica**, e
+    estas tabelas deixam o utilizador arrastar os cabeçalhos: bastava ele mover
+    a primeira coluna para a faixa deixar de atravessar a tabela e passar a
+    começar a meio. Em vez disso pinta-se **célula a célula**, e o texto vai na
+    coluna que estiver mais à esquerda nesse momento — seja ela qual for.
     """
-    item = QTableWidgetItem(texto)
-    # Faixa: não é uma linha de dados, por isso não entra na seleção — só
-    # responde ao clique que a fecha e abre.
-    item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-    item.setBackground(QBrush(QColor(BEGE_AREIA)))
-    item.setForeground(QBrush(QColor(CASTANHO_ESCURO)))
-    item.setToolTip(tooltip)
-    fonte = item.font()
-    fonte.setBold(True)
-    item.setFont(fonte)
-    table.setItem(row, 0, item)
-    table.setSpan(row, 0, 1, colunas)
+    cabecalho = table.horizontalHeader()
+    # A coluna que está à esquerda AGORA, e não a que foi criada em primeiro.
+    coluna_do_texto = cabecalho.logicalIndex(0) if cabecalho.count() else 0
+
+    for coluna in range(colunas):
+        item = QTableWidgetItem(texto if coluna == coluna_do_texto else "")
+        # Faixa: não é uma linha de dados, por isso não entra na seleção — só
+        # responde ao clique que a fecha e abre.
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        item.setBackground(QBrush(QColor(BEGE_AREIA)))
+        item.setForeground(QBrush(QColor(CASTANHO_ESCURO)))
+        item.setToolTip(texto + chr(10) + tooltip)
+        if coluna == coluna_do_texto:
+            fonte = item.font()
+            fonte.setBold(True)
+            item.setFont(fonte)
+        table.setItem(row, coluna, item)
