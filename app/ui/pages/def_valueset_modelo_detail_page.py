@@ -101,6 +101,9 @@ from app.ui.widgets.estilo_tabela_valueset import (
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.utils.formatters import format_currency
 from app.ui.icones import decorar_barra, icone
+from app.domain.valueset_prefiltro_materia_prima import (
+    sugerir_tipo_familia_da_chave,
+)
 
 
 class DefValuesetModeloDetailPage(QWidget):
@@ -1338,7 +1341,11 @@ class DefValuesetModeloDetailPage(QWidget):
             saved = True
             return True
 
-        dialog = DefValuesetModeloLinhaDialog(parent=self, on_save=handle_save)
+        dialog = DefValuesetModeloLinhaDialog(
+            parent=self,
+            on_save=handle_save,
+            sugestao_filtros=self._sugerir_filtros_materia_prima,
+        )
         if dialog.exec() and saved:
             self.carregar_linhas()
             self.status_label.setText(success_message)
@@ -1495,6 +1502,7 @@ class DefValuesetModeloDetailPage(QWidget):
             parent=self,
             on_save=handle_save,
             on_save_as=handle_save_as,
+            sugestao_filtros=self._sugerir_filtros_materia_prima,
         )
         if dialog.exec() and saved:
             self.carregar_linhas()
@@ -1642,3 +1650,13 @@ class DefValuesetModeloDetailPage(QWidget):
                 + ", ".join(chaves)
                 + ". O desempate é pelo id da linha."
             )
+
+    def _sugerir_filtros_materia_prima(
+        self, chave: str | None
+    ) -> tuple[str | None, str | None]:
+        """Tipo/Familia a propor no catalogo para uma linha nova desta chave.
+
+        As outras opcoes da mesma chave dizem que gene'ro de material e' — sem
+        isto, acrescentar uma ferragem abria as ~1400 materias-primas todas.
+        """
+        return sugerir_tipo_familia_da_chave(self._todas_linhas, chave)
