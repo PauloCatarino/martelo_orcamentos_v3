@@ -3219,6 +3219,16 @@ class ProducaoPage(QWidget):
             self.status_label.setText("Não foi possível preparar a nova versão.")
             return
 
+        aviso_pastas = preparado.get("aviso_pastas")
+        if aviso_pastas:
+            # Sem ler as pastas, o diálogo dizia "sem pastas existentes" e só
+            # no fim, ao criar, é que aparecia o erro do Windows.
+            QMessageBox.warning(self, "Novo Modelo/Versão", aviso_pastas)
+            self.status_label.setText(
+                "Sem acesso às pastas do servidor — o Modelo/Versão não foi criado."
+            )
+            return
+
         sug_cutrite = preparado["sug_cutrite"]
         sug_obra = preparado["sug_obra"]
         dialog = NovaVersaoProcessoDialog(
@@ -3824,7 +3834,11 @@ class ProducaoPage(QWidget):
                 criar_pasta_versao(destino)
                 processo.pasta_servidor = str(destino)
                 session.commit()
-        except (SQLAlchemyError, OSError) as error:
+        except OSError as error:
+            # A mensagem já vem explicada (conta recusada, sem permissão...).
+            QMessageBox.warning(self, titulo, str(error))
+            return ""
+        except SQLAlchemyError as error:
             QMessageBox.warning(
                 self, titulo, f"Não foi possível criar a pasta:\n\n{error}"
             )

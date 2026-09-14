@@ -24,6 +24,7 @@ from app.services.producao_pastas_service import (
     caminho_versao_de_processo,
     caminho_versao_para_criar,
     criar_pasta_versao,
+    verificar_acesso_pastas_servidor,
     eliminar_pasta_versao,
     listar_pastas_enc_arvore,
     sugerir_proxima_versao_obra,
@@ -698,6 +699,12 @@ def criar_processo_externo(
     if criar_pasta:
         # Se a encomenda já tem pastas no servidor (criadas por outro sistema
         # ou à mão), a obra entra nelas em vez de abrir uma árvore paralela.
+        # Sem acesso ao servidor não se sabe que pastas existem: parar já.
+        aviso_pastas = verificar_acesso_pastas_servidor(
+            session, ano=processo.ano, tipo_pasta=processo.tipo_pasta
+        )
+        if aviso_pastas:
+            raise ValueError(aviso_pastas)
         caminho = caminho_versao_para_criar(
             session,
             ano=processo.ano,
@@ -768,6 +775,9 @@ def preparar_nova_versao(
     if processo is None:
         raise ValueError("Processo de producao nao encontrado.")
 
+    aviso_pastas = verificar_acesso_pastas_servidor(
+        session, ano=processo.ano, tipo_pasta=processo.tipo_pasta
+    )
     folder_root, folder_tree = listar_pastas_enc_arvore(
         session,
         ano=processo.ano,
@@ -824,6 +834,7 @@ def preparar_nova_versao(
         "streamlit_keys": streamlit_keys,
         "folder_root": folder_root,
         "folder_tree": folder_tree,
+        "aviso_pastas": aviso_pastas,
         "sug_cutrite": sug_cutrite,
         "sug_obra": sug_obra,
     }
@@ -862,6 +873,14 @@ def criar_nova_versao(
             f"O Modelo {ver_obra} / Versão {ver_plano} já existe no Streamlit, "
             "mesmo que a pasta ainda não esteja criada. Não foi criado outro processo."
         )
+    if criar_pasta:
+        # Sem acesso ao servidor a lista de pastas vem vazia e a verificação
+        # abaixo deixava passar um Modelo/Versão que já tem pasta.
+        aviso_pastas = verificar_acesso_pastas_servidor(
+            session, ano=origem.ano, tipo_pasta=origem.tipo_pasta
+        )
+        if aviso_pastas:
+            raise ValueError(aviso_pastas)
     _, folder_tree = listar_pastas_enc_arvore(
         session, ano=origem.ano, num_enc_phc=origem.num_enc_phc, tipo_pasta=origem.tipo_pasta,
     )

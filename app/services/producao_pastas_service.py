@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 import shutil
@@ -732,11 +733,101 @@ def caminho_versao_de_processo_existente(
     )
 
 
+# Codigos do Windows que chegam nos OSError quando se toca no servidor.
+_WINERROR_ACESSO_NEGADO = 5
+_WINERROR_SESSAO_RECUSADA = 1385  # ERROR_LOGON_TYPE_NOT_GRANTED
+_WINERRORS_SERVIDOR_SEM_RESPOSTA = {53, 64, 67, 1231}
+
+
+def _conta_windows_em_uso() -> str:
+    return (os.getenv("USERNAME") or "").strip() or "?"
+
+
+def explicar_erro_pasta_servidor(
+    exc: OSError, caminho, *, acao: str = "criar a pasta"
+) -> str:
+    r"""Traduzir para portugues o erro do Windows ao mexer nas pastas do servidor.
+
+    O caso que motivou isto (setembro de 2026, PC do Bruno): o Martelo tinha
+    ficado a correr com a conta ``ADMIN_<pessoa>`` por ter sido instalado com
+    "Executar como administrador". Essa conta nao tem sessao no servidor, e o
+    Novo Modelo/Versao mostrava ``[WinError 1385] Falha de inicio de sessao``
+    -- que ninguem percebia. A solucao e' so' reabrir pelo atalho normal.
+    """
+    winerror = getattr(exc, "winerror", None)
+    conta = _conta_windows_em_uso()
+    if winerror == _WINERROR_SESSAO_RECUSADA:
+        return (
+            f"Não foi possível {acao} no servidor: o Windows recusou a conta com "
+            f"que o Martelo está a correr neste PC («{conta}»). (erro 1385)\n\n"
+            "Isto acontece quando o Martelo foi aberto como administrador — por "
+            "exemplo no fim de uma instalação feita com botão direito → "
+            "«Executar como administrador». Fica então a correr com a conta "
+            "ADMIN_<pessoa>, que não tem acesso às pastas do servidor.\n\n"
+            "Como resolver: feche o Martelo e volte a abri-lo pelo atalho normal "
+            "(duplo clique, sem botão direito).\n\n"
+            f"Pasta: {caminho}"
+        )
+    if winerror == _WINERROR_ACESSO_NEGADO or isinstance(exc, PermissionError):
+        return (
+            f"Não foi possível {acao} no servidor: a conta do Windows «{conta}» "
+            "não tem permissão nesta pasta.\n\n"
+            "Peça a quem gere o servidor para dar acesso a esta conta.\n\n"
+            f"Pasta: {caminho}"
+        )
+    if winerror in _WINERRORS_SERVIDOR_SEM_RESPOSTA:
+        return (
+            f"Não foi possível {acao}: o servidor não responde.\n\n"
+            "Verifique se este PC tem rede e se o servidor está ligado.\n\n"
+            f"Pasta: {caminho}\n({exc})"
+        )
+    return f"Não foi possível {acao} no servidor:\n{caminho}\n\n{exc}"
+
+
+def verificar_acesso_pastas_servidor(
+    session: Session,
+    *,
+    ano: str | int,
+    tipo_pasta: Optional[str],
+    base_dir: str | Path | None = None,
+) -> Optional[str]:
+    """None quando as pastas de producao se deixam ler; senao, a explicacao.
+
+    A listagem das pastas (``listar_pastas_enc_arvore``) engole os erros e
+    devolve vazio, para que um servidor lento nao parta os menus. So' que um
+    "vazio" por falta de acesso passava por "esta encomenda ainda nao tem
+    pastas": as verificacoes de duplicados nao travavam nada e o erro so'
+    aparecia no fim, ao criar a pasta. Isto separa os dois casos.
+
+    Uma pasta do ano ou do tipo que ainda nao exista nao e' problema (cria-se);
+    so' conta como falha quando nem a pasta base de producao se deixa ler.
+    """
+    base = Path(_normalizar_path_windows(_resolve_base_dir(session, base_dir)))
+    root = _producao_root_dir(session, ano=ano, tipo_pasta=tipo_pasta, base_dir=base_dir)
+    for pasta in (root, base):
+        try:
+            with os.scandir(pasta) as entradas:
+                next(entradas, None)
+            return None
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            return explicar_erro_pasta_servidor(
+                exc, pasta, acao="ler as pastas de produção"
+            )
+    return (
+        "Não foi possível encontrar a pasta de produção no servidor:\n"
+        f"{base}\n\n"
+        "O servidor pode estar desligado ou este PC sem rede — ou o caminho em "
+        "Configurações → Caminhos do Sistema está errado."
+    )
+
+
 def criar_pasta_versao(caminho: Path, *, exist_ok: bool = True) -> Path:
     try:
         caminho.mkdir(parents=True, exist_ok=exist_ok)
     except OSError as exc:
-        raise OSError(f"Falha ao criar pasta de producao: {caminho} ({exc})") from exc
+        raise OSError(explicar_erro_pasta_servidor(exc, caminho)) from exc
     return caminho
 
 

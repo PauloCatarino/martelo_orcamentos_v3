@@ -15,6 +15,7 @@ def origem(session, monkeypatch):
     session.add(proc)
     session.commit()
     monkeypatch.setattr(svc, "listar_pastas_enc_arvore", lambda *a, **k: ("root", {}))
+    monkeypatch.setattr(svc, "verificar_acesso_pastas_servidor", lambda *a, **k: None)
     monkeypatch.setattr(svc, "sugerir_proxima_versao_obra", lambda *a, **k: "02")
     monkeypatch.setattr(svc, "sugerir_proxima_versao_plano", lambda *a, **k: "02")
     return proc

@@ -306,8 +306,12 @@ def test_preparar_nova_versao_sugere_cutrite_e_obra(session, monkeypatch) -> Non
     )
 
     monkeypatch.setattr(service_module, "query_modelos_versoes", lambda *a, **kw: set())
+    monkeypatch.setattr(
+        service_module, "verificar_acesso_pastas_servidor", lambda *a, **kw: None
+    )
     preparado = service_module.preparar_nova_versao(session, processo_id=1)
 
+    assert preparado["aviso_pastas"] is None
     assert preparado["existing_keys"] == {("01", "01")}
     assert preparado["sug_cutrite"] == ("01", "02")
     assert preparado["sug_obra"] == ("02", "01")
@@ -606,3 +610,49 @@ def test_criar_processo_externo_cria_pasta_e_guarda_caminho(
     assert processo.responsavel == "Utilizador Martelo"
     assert processo.data_inicio == "25-06-2026"
     assert processo.data_entrega == "10-08-2026"
+
+
+def test_criar_nova_versao_sem_acesso_ao_servidor_para_antes_de_criar(session, monkeypatch) -> None:
+    """Caso real (PC do Bruno): a lista de pastas vinha vazia por falta de acesso."""
+    from app.services import producao_service as service_module
+
+    session.add(_processo_producao())
+    session.commit()
+    monkeypatch.setattr(service_module, "query_modelos_versoes", lambda *a, **kw: set())
+    monkeypatch.setattr(
+        service_module, "listar_pastas_enc_arvore", lambda *a, **kw: ("root", {})
+    )
+    monkeypatch.setattr(
+        service_module,
+        "verificar_acesso_pastas_servidor",
+        lambda *a, **kw: "o Windows recusou a conta (erro 1385)",
+    )
+    monkeypatch.setattr(
+        service_module, "criar_pasta_versao", lambda *a, **kw: pytest.fail("Não criar pasta")
+    )
+
+    with pytest.raises(ValueError, match="1385"):
+        service_module.criar_nova_versao(
+            session, processo_id=1, versao_obra="02", versao_plano="01", criar_pasta=True
+        )
+    assert len(session.query(Producao).all()) == 1
+
+
+def test_preparar_nova_versao_leva_o_aviso_de_acesso_as_pastas(session, monkeypatch) -> None:
+    from app.services import producao_service as service_module
+
+    session.add(_processo_producao())
+    session.commit()
+    monkeypatch.setattr(service_module, "query_modelos_versoes", lambda *a, **kw: set())
+    monkeypatch.setattr(
+        service_module, "listar_pastas_enc_arvore", lambda *a, **kw: ("root", {})
+    )
+    monkeypatch.setattr(service_module, "sugerir_proxima_versao_obra", lambda *a, **kw: "02")
+    monkeypatch.setattr(service_module, "sugerir_proxima_versao_plano", lambda *a, **kw: "02")
+    monkeypatch.setattr(
+        service_module, "verificar_acesso_pastas_servidor", lambda *a, **kw: "sem acesso"
+    )
+
+    preparado = service_module.preparar_nova_versao(session, processo_id=1)
+
+    assert preparado["aviso_pastas"] == "sem acesso"

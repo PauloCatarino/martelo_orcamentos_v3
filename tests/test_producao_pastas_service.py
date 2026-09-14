@@ -532,3 +532,81 @@ def test_eliminar_pasta_versao_remove_pais_vazios_dentro_da_base(
     assert not seg2.exists()
     assert not seg1.exists()
     assert (base / "2026" / "Encomenda de Cliente").is_dir()
+
+
+# ---- erros do servidor explicados em portugues ------------------------------
+def _erro_windows(winerror: int, texto: str = "erro") -> OSError:
+    exc = OSError(22, texto, None, winerror)
+    if getattr(exc, "winerror", None) != winerror:  # fora do Windows
+        exc.winerror = winerror
+    return exc
+
+
+def test_erro_1385_explica_a_conta_e_manda_abrir_pelo_atalho(monkeypatch) -> None:
+    from app.services.producao_pastas_service import explicar_erro_pasta_servidor
+
+    monkeypatch.setenv("USERNAME", "ADMIN_Bruno")
+    texto = explicar_erro_pasta_servidor(
+        _erro_windows(1385, "Falha de início de sessão"), r"\SERVER_LE\x\0977_02_01"
+    )
+
+    assert "1385" in texto
+    assert "ADMIN_Bruno" in texto
+    assert "atalho normal" in texto
+    assert r"\SERVER_LE\x\0977_02_01" in texto
+    assert "WinError" not in texto
+
+
+def test_erro_sem_permissao_e_erro_desconhecido(monkeypatch) -> None:
+    from app.services.producao_pastas_service import explicar_erro_pasta_servidor
+
+    monkeypatch.setenv("USERNAME", "Bruno")
+    sem_permissao = explicar_erro_pasta_servidor(PermissionError(13, "Acesso negado"), "P")
+    assert "não tem permissão" in sem_permissao and "Bruno" in sem_permissao
+
+    desconhecido = explicar_erro_pasta_servidor(_erro_windows(999, "coisa rara"), "P")
+    assert "coisa rara" in desconhecido
+
+
+def test_criar_pasta_versao_devolve_a_mensagem_explicada(monkeypatch, tmp_path) -> None:
+    from pathlib import Path
+
+    from app.services.producao_pastas_service import criar_pasta_versao
+
+    def _recusa(self, *a, **kw):
+        raise _erro_windows(1385)
+
+    monkeypatch.setattr(Path, "mkdir", _recusa)
+    with pytest.raises(OSError, match="atalho normal"):
+        criar_pasta_versao(tmp_path / "0977_02_01", exist_ok=False)
+
+
+def test_verificar_acesso_pastas_ok_mesmo_sem_pasta_do_ano(monkeypatch, tmp_path) -> None:
+    from app.services.producao_pastas_service import verificar_acesso_pastas_servidor
+
+    _usar_base(monkeypatch, tmp_path)
+    assert verificar_acesso_pastas_servidor(None, ano="2026", tipo_pasta=None) is None
+
+    (tmp_path / "2026" / "Encomenda de Cliente").mkdir(parents=True)
+    assert verificar_acesso_pastas_servidor(None, ano="2026", tipo_pasta=None) is None
+
+
+def test_verificar_acesso_pastas_sem_base_diz_que_nao_encontra(monkeypatch, tmp_path) -> None:
+    from app.services.producao_pastas_service import verificar_acesso_pastas_servidor
+
+    _usar_base(monkeypatch, tmp_path / "nao_existe")
+    aviso = verificar_acesso_pastas_servidor(None, ano="2026", tipo_pasta=None)
+    assert aviso and "Não foi possível encontrar" in aviso
+
+
+def test_verificar_acesso_pastas_conta_recusada(monkeypatch, tmp_path) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    _usar_base(monkeypatch, tmp_path)
+
+    def _recusa(_caminho):
+        raise _erro_windows(1385)
+
+    monkeypatch.setattr(pastas_module.os, "scandir", _recusa)
+    aviso = pastas_module.verificar_acesso_pastas_servidor(None, ano="2026", tipo_pasta=None)
+    assert aviso and "1385" in aviso and "ler as pastas de produção" in aviso
