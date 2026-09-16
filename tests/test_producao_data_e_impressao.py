@@ -188,3 +188,96 @@ def test_a_altura_escolhida_fica_guardada_por_utilizador() -> None:
     assert "self._user_id" in guardar
     # Não vale a pena estragar uma impressão por não se conseguir gravar isto.
     assert "except" in guardar
+
+
+# ----- 3b. A divisória vê-se e a folha cresce mesmo (2026-09-16) -----
+# Ele pediu a divisória sem saber que já lá estava: a pega era invisível e,
+# arrastando-a, a imagem ficava do mesmo tamanho.
+
+
+@pytest.fixture
+def dialogo_impressao(monkeypatch, tmp_path):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.services import producao_impressao_service as svc
+    from app.ui.dialogs import producao_impressao_dialog as modulo
+
+    def sem_base(*_args, **_kwargs):
+        raise SQLAlchemyError("sem base nos testes")
+
+    documento = svc.DocumentoImpressao(
+        caminho=tmp_path / "1_Producao_CE.pdf",
+        nome="1_Producao_CE.pdf",
+        categoria="CADERNO ENCARGOS",
+        prioridade=0,
+        origem="Streamlit",
+        papel_ficheiro="A4",
+        orientacao_ficheiro="Vertical",
+        resumo_paginas="1 página",
+        papel=svc.DO_PDF,
+        orientacao=svc.DO_PDF,
+        quantidade=1,
+    )
+    monkeypatch.setattr(modulo, "SessionLocal", sem_base)
+    monkeypatch.setattr(modulo.svc, "listar_documentos", lambda *a, **k: [documento])
+
+    desenhos: list[tuple[int, int]] = []
+
+    def primeira_pagina(self, _caminho):
+        from PySide6.QtGui import QPixmap
+
+        alvo = self.imagem_label.size()
+        desenhos.append((alvo.width(), alvo.height()))
+        return QPixmap(alvo.width(), alvo.height())
+
+    monkeypatch.setattr(modulo.ProducaoImpressaoDialog, "_primeira_pagina", primeira_pagina)
+
+    dialogo = modulo.ProducaoImpressaoDialog(
+        codigo_processo="26.1582_01_01_JF_VIVA",
+        pasta_obra=str(tmp_path),
+        nome_enc_imos="",
+        nome_plano_cut_rite="",
+        user_id=1,
+    )
+    dialogo.setWindowState(Qt.WindowState.WindowNoState)
+    dialogo.resize(1400, 900)
+    dialogo.show()
+    _app.processEvents()
+    yield dialogo, desenhos
+    dialogo.close()
+
+
+def test_a_pega_da_divisoria_ve_se(dialogo_impressao) -> None:
+    dialogo, _ = dialogo_impressao
+    assert dialogo.divisoria.handleWidth() >= 8
+    assert "QSplitter::handle" in dialogo.divisoria.styleSheet()
+    pega = dialogo.divisoria.handle(1)
+    assert pega.cursor().shape() == Qt.CursorShape.SplitVCursor
+    assert pega.toolTip()
+
+
+def test_arrastar_a_lista_para_baixo_redesenha_a_folha_maior(dialogo_impressao) -> None:
+    import time
+
+    dialogo, desenhos = dialogo_impressao
+    total = sum(dialogo.divisoria.sizes())
+    dialogo.divisoria.setSizes([200, total - 200])
+    _app.processEvents()
+    dialogo._redesenhar_timer.timeout.emit()
+    altura_pequena = dialogo.imagem_label.height()
+
+    dialogo.divisoria.setSizes([total - 250, 250])
+    _app.processEvents()
+    assert dialogo._redesenhar_timer.isActive()
+    fim = time.monotonic() + 2
+    while dialogo._redesenhar_timer.isActive() and time.monotonic() < fim:
+        _app.processEvents()
+        time.sleep(0.02)
+
+    assert dialogo.imagem_label.height() > altura_pequena + 200
+    # A última folha desenhada foi à medida nova, não à antiga.
+    assert desenhos[-1][1] == dialogo.imagem_label.height()
+    # E a imagem não prende o rótulo: a divisória consegue voltar a subir.
+    dialogo.divisoria.setSizes([200, total - 200])
+    _app.processEvents()
+    assert dialogo.imagem_label.height() < altura_pequena + 50

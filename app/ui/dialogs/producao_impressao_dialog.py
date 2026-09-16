@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -127,6 +128,19 @@ class ProducaoImpressaoDialog(QDialog):
         self.imagem_label = QLabel("Selecione um documento na lista.")
         self.imagem_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.imagem_label.setMinimumSize(480, 200)
+        # Sem isto o QLabel fica do tamanho da última imagem desenhada e não
+        # deixa a divisória voltar a subir.
+        self.imagem_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
+        self.imagem_label.installEventFilter(self)
+        # Quando a área muda de tamanho (arrastar a divisória, maximizar), a
+        # folha volta a ser desenhada à nova medida — senão arrastar a lista
+        # para baixo dava só mais fundo bege à volta da mesma imagem pequena.
+        self._redesenhar_timer = QTimer(self)
+        self._redesenhar_timer.setSingleShot(True)
+        self._redesenhar_timer.setInterval(120)
+        self._redesenhar_timer.timeout.connect(self._redesenhar_pre_visualizacao)
         self.imagem_label.setStyleSheet(
             f"QLabel {{ border: 1px solid {tema.CINZA_CASTANHO}; "
             f"background-color: {tema.BEGE_AREIA}; color: {tema.CASTANHO_ESCURO}; }}"
@@ -139,7 +153,9 @@ class ProducaoImpressaoDialog(QDialog):
 
         topo = QHBoxLayout()
         topo.addLayout(cabecalho_esquerda, stretch=1)
-        topo.addWidget(pre_visualizacao)
+        # A pré-visualização também ganha largura, para a folha poder crescer
+        # quando se dá mais altura (uma folha deitada precisa de largura).
+        topo.addWidget(pre_visualizacao, stretch=2)
 
         self.tabela = QTableWidget(0, len(_CABECALHOS))
         self.tabela.setHorizontalHeaderLabels(_CABECALHOS)
@@ -239,6 +255,23 @@ class ProducaoImpressaoDialog(QDialog):
         self.divisoria.addWidget(topo_widget)
         self.divisoria.addWidget(lista_widget)
         self.divisoria.setChildrenCollapsible(False)
+        # A linha tem de se VER: com a pega por defeito (fina e da cor do
+        # fundo) ninguém dava por ela e parecia que não havia divisória.
+        self.divisoria.setHandleWidth(10)
+        self.divisoria.setStyleSheet(
+            "QSplitter::handle:vertical {"
+            f" background-color: {tema.CINZA_CASTANHO};"
+            f" border-top: 1px solid {tema.CASTANHO_MEDIO};"
+            f" border-bottom: 1px solid {tema.CASTANHO_MEDIO};"
+            " margin: 2px 0px; }"
+            "QSplitter::handle:vertical:hover {"
+            f" background-color: {tema.CASTANHO_MEDIO}; }}"
+        )
+        self.divisoria.handle(1).setCursor(Qt.CursorShape.SplitVCursor)
+        self.divisoria.handle(1).setToolTip(
+            "Arraste para cima ou para baixo: a lista encolhe e a "
+            "pré-visualização cresce (fica guardado para a próxima vez)"
+        )
         self.divisoria.setStretchFactor(0, 0)
         self.divisoria.setStretchFactor(1, 1)
         self.divisoria.splitterMoved.connect(self._guardar_alturas)
@@ -285,6 +318,18 @@ class ProducaoImpressaoDialog(QDialog):
         altura = self._altura_guardada()
         disponivel = self.divisoria.height() or self.height()
         self.divisoria.setSizes([altura, max(200, disponivel - altura)])
+
+    def eventFilter(self, objeto, evento) -> bool:  # noqa: N802 (Qt override)
+        if objeto is self.imagem_label and evento.type() == QEvent.Type.Resize:
+            self._redesenhar_timer.start()
+        return super().eventFilter(objeto, evento)
+
+    def _redesenhar_pre_visualizacao(self) -> None:
+        """Voltar a desenhar a folha que está à vista, à medida atual."""
+        if self._documento_pre_visto is None:
+            return
+        self._documento_pre_visto = None
+        self._mostrar_pre_visualizacao()
 
     def _guardar_alturas(self, *_args) -> None:
         """Guardar a altura assim que o utilizador larga a divisória.
