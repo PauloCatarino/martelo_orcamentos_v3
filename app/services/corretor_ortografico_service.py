@@ -24,6 +24,8 @@ from app.domain.ortografia import (
     chave_dicionario,
     deve_verificar,
     formas_a_tentar,
+    sem_acentos,
+    sigla_curta,
 )
 
 logger = logging.getLogger(__name__)
@@ -225,10 +227,22 @@ class Corretor:
                     self._verificador.correta(forma)  # type: ignore[union-attr]
                     for forma in formas_a_tentar(palavra)
                 )
+                if not resultado and sigla_curta(palavra):
+                    resultado = not self._so_falta_acento(palavra)
             except Exception:  # noqa: BLE001 - nunca sublinhar por avaria
                 resultado = True
             self._cache[palavra] = resultado
             return resultado
+
+    def _so_falta_acento(self, palavra: str) -> bool:
+        """NAO → NÃO sim; MLM, AGL, PUX (siglas) não."""
+        alvo = palavra.upper()
+        return any(
+            sugestao.upper() != alvo and sem_acentos(sugestao).upper() == alvo
+            for sugestao in self._verificador.sugestoes(  # type: ignore[union-attr]
+                palavra.lower()
+            )
+        )
 
     def sugestoes(self, palavra: str) -> list[str]:
         if not self.disponivel:

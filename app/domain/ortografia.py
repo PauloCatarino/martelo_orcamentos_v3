@@ -10,8 +10,9 @@ Regras (pedido do Paulo, 16-09-2026):
 - um bloco com algarismos, ``_``, ``/``, barra invertida, ``@``, ``.`` ou ``#`` no meio
   é um código, e não se verifica;
 - palavras com 1 ou 2 letras não se verificam;
-- siglas em MAIÚSCULAS até 3 letras (``MLM``, ``AGL``, ``PUX``) não se
-  verificam;
+- palavras em MAIÚSCULAS até 3 letras são quase sempre siglas (``MLM``,
+  ``AGL``, ``PUX``) e só ficam sublinhadas quando lhes falta um acento
+  (``NAO`` → ``NÃO``, ``MAO`` → ``MÃO``) — ver ``sigla_curta``;
 - palavras com maiúsculas a meio (``iMos``, ``CutRite``) são nomes de programas;
 - as restantes palavras em MAIÚSCULAS **verificam-se**: o corretor do Windows
   ignora-as por defeito, e nas descrições quase tudo está em maiúsculas.
@@ -20,6 +21,7 @@ Regras (pedido do Paulo, 16-09-2026):
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 #: Um bloco é tudo o que está entre espaços.
@@ -78,11 +80,21 @@ def deve_verificar(palavra: str) -> bool:
     if letras < TAMANHO_MINIMO:
         return False
     if palavra.isupper():
-        return letras > TAMANHO_MAXIMO_SIGLA
+        return True
     # iMos, CutRite, McDonald: maiúsculas depois da primeira letra.
     if any(c.isupper() for c in palavra[1:]):
         return False
     return True
+
+
+def sigla_curta(palavra: str) -> bool:
+    """MAIÚSCULAS com 3 letras ou menos: sigla, a não ser que falte um acento."""
+    return palavra.isupper() and sum(1 for c in palavra if c.isalpha()) <= TAMANHO_MAXIMO_SIGLA
+
+
+def sem_acentos(texto: str) -> str:
+    decomposto = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in decomposto if unicodedata.category(c) != "Mn")
 
 
 def chave_dicionario(palavra: str) -> str:

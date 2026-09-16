@@ -37,7 +37,11 @@ class _VerificadorFalso:
         return palavra.isupper() or palavra in self.CONHECIDAS
 
     def sugestoes(self, palavra: str) -> list[str]:
-        return {"montajem": ["montagem", "montagens"]}.get(palavra.lower(), [])
+        return {
+            "montajem": ["montagem", "montagens"],
+            "nao": ["não", "ano"],
+            "mlm": ["mim", "mal"],
+        }.get(palavra.lower(), [])
 
 
 def _corretor(dicionario=(), gravadas=None) -> Corretor:
@@ -72,10 +76,6 @@ def _textos(texto: str) -> list[str]:
         "geral@jfviva.com",
         "www.lancaencanto.pt",
         "\\\\SERVER_LE\\obras",
-        "MLM",
-        "AGL",
-        "PUX",
-        "MDF",
         "iMos",
         "CutRite",
         "de",
@@ -112,6 +112,19 @@ def test_maiusculas_sao_verificadas_em_minusculas() -> None:
 
     assert corretor.correta("MONTAJEM") is False
     assert corretor.correta("ROUPEIRO") is True
+
+
+@pytest.mark.parametrize("sigla", ["MLM", "AGL", "PUX", "MDF", "LE"])
+def test_siglas_curtas_nao_ficam_sublinhadas(sigla: str) -> None:
+    assert _corretor().correta(sigla) is True
+
+
+def test_palavra_curta_sem_acento_fica_sublinhada() -> None:
+    """NÃO COBRAR escreve-se muitas vezes NAO COBRAR."""
+    corretor = _corretor()
+
+    assert corretor.correta("NAO") is False
+    assert corretor.sugestoes("NAO")[0] == "NÃO"
 
 
 def test_nome_proprio_em_maiusculas_nao_fica_sublinhado() -> None:
@@ -325,3 +338,6 @@ def test_windows_apanha_os_erros_das_descricoes() -> None:
     assert corretor.correta("ROUPEIRO") is True
     assert corretor.correta("dobradiças") is True
     assert "DOBRADIÇAS" in corretor.sugestoes("DOBRADICAS")
+    assert corretor.correta("NAO") is False
+    for sigla in ("MLM", "AGL", "PUX", "MDF", "ABS", "PVC"):
+        assert corretor.correta(sigla) is True, sigla
