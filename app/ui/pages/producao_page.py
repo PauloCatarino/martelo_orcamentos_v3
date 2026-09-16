@@ -3568,6 +3568,7 @@ class ProducaoPage(QWidget):
         dialogo = EmailOrcamentoDialog(
             self,
             destinatario=envio.destino,
+            cc=envio.cc,
             assunto=envio.assunto,
             corpo=envio.corpo_html,
             anexos=list(envio.anexos),

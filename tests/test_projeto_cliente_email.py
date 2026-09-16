@@ -148,8 +148,10 @@ def test_preparar_usa_o_email_de_projeto_do_cliente(session, obra, monkeypatch) 
         session, obra.id, utilizador="Paulo", agora=datetime(2026, 7, 31, 15, 42)
     )
 
-    # Nunca o email do PHC: esse serve para faturação e afins.
+    # A coluna de envio do projeto ganha ao email geral do PHC.
     assert envio.destino == "projetos@jfviva.pt"
+    # A produção vai sempre em cópia.
+    assert envio.cc == "producao@lancaencanto.pt"
     assert "Processo: 26.1357_01_01_JF_VIVA" in envio.assunto
     assert "31-07-2026" in envio.corpo_html
     assert "16-09-2026" in envio.corpo_html
@@ -158,6 +160,7 @@ def test_preparar_usa_o_email_de_projeto_do_cliente(session, obra, monkeypatch) 
 def test_cliente_sem_email_avisa_mas_nao_bloqueia(session, obra, monkeypatch) -> None:
     obra_cliente = session.get(Cliente, obra.cliente_id)
     obra_cliente.email_projeto_producao = ""
+    obra_cliente.email = ""
     session.commit()
     monkeypatch.setattr(svc, "_pasta_da_obra", lambda *_a, **_k: None)
     monkeypatch.setattr(svc, "_imagem_da_obra", lambda *_a, **_k: "")
@@ -262,3 +265,47 @@ def test_reenviar_avisa_e_atualiza_a_data(session, obra, monkeypatch) -> None:
 
     assert obra.projeto_cliente_enviado_em == datetime(2026, 8, 5, 9, 0)
     assert obra.projeto_cliente_email == "outro@jfviva.pt"
+
+
+# ---- destinatário (pedido do Paulo, 16-09-2026) -------------------------------
+def _sem_pasta_nem_imagem(monkeypatch) -> None:
+    monkeypatch.setattr(svc, "_pasta_da_obra", lambda *_a, **_k: None)
+    monkeypatch.setattr(svc, "_imagem_da_obra", lambda *_a, **_k: "")
+
+
+def test_sem_email_de_projeto_usa_o_email_do_phc(session, obra, monkeypatch) -> None:
+    obra_cliente = session.get(Cliente, obra.cliente_id)
+    obra_cliente.email_projeto_producao = "   "
+    session.commit()
+    _sem_pasta_nem_imagem(monkeypatch)
+
+    envio = svc.preparar_envio(session, obra.id)
+
+    assert envio.destino == "geral@jfviva.pt"
+    assert not any("não tem email" in aviso for aviso in envio.avisos)
+
+
+def test_obra_sem_cliente_id_encontra_o_cliente_pelo_numero_phc(
+    session, obra, monkeypatch
+) -> None:
+    """Caso real: a 26.1572 (Novo Processo) abria com o destinatário vazio."""
+    obra_cliente = session.get(Cliente, obra.cliente_id)
+    obra_cliente.num_cliente_phc = "35"
+    obra.cliente_id = None
+    obra.num_cliente_phc = "35"
+    session.commit()
+    _sem_pasta_nem_imagem(monkeypatch)
+
+    envio = svc.preparar_envio(session, obra.id)
+
+    assert envio.destino == "projetos@jfviva.pt"
+    assert envio.cc == "producao@lancaencanto.pt"
+
+
+def test_o_dialogo_recebe_o_cc_por_defeito() -> None:
+    import inspect
+
+    from app.ui.pages.producao_page import ProducaoPage
+
+    fonte = inspect.getsource(ProducaoPage)
+    assert "cc=envio.cc" in fonte

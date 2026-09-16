@@ -11,9 +11,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.domain.assistente_obra import saudacao_por_hora
+from app.domain.clientes_emails import emails_envio_projeto_producao
 from app.domain.projeto_cliente_email import (
     ProjetoParaCliente,
     assunto_projeto_producao,
@@ -32,6 +34,9 @@ from app.services.producao_service import gerar_nome_enc_imos_ix
 #: Anexo por defeito: o PDF do projeto de produção, que existe para isto mesmo.
 ANEXO_PROJETO = "2_Projeto_Producao.pdf"
 
+#: Cópia por defeito: a produção fica sempre a saber o que foi dito ao cliente.
+CC_PROJETO = "producao@lancaencanto.pt"
+
 
 @dataclass(frozen=True)
 class EnvioProjetoCliente:
@@ -41,6 +46,7 @@ class EnvioProjetoCliente:
     destino: str
     assunto: str
     corpo_html: str
+    cc: str = CC_PROJETO
     anexos: tuple[str, ...] = ()
     imagem_path: str = ""
     pasta_obra: str = ""
@@ -73,8 +79,8 @@ def preparar_envio(
     destino = _email_do_cliente(cliente)
     if not destino:
         avisos.append(
-            "A ficha do cliente não tem email de envio do projeto de produção. "
-            "Escreva o destinatário à mão antes de enviar."
+            "A ficha do cliente não tem email (nem o de envio do projeto de "
+            "produção, nem o do PHC). Escreva o destinatário à mão antes de enviar."
         )
 
     pasta = _pasta_da_obra(session, processo)
@@ -166,15 +172,34 @@ def _data(valor: object) -> str:
 
 
 def _cliente_da_obra(session: Session, processo) -> Cliente | None:
+    """A ficha do cliente da obra.
+
+    As obras criadas sem orçamento (Novo Processo, vindas do V2) ficavam sem
+    ``cliente_id`` — 106 das 682 a 16-09-2026 — e o destinatário aparecia vazio
+    "só às vezes". Nessas vai-se pelo Nº Cliente PHC, que a obra tem sempre.
+    """
     cliente_id = getattr(processo, "cliente_id", None)
-    return session.get(Cliente, cliente_id) if cliente_id else None
+    if cliente_id:
+        cliente = session.get(Cliente, cliente_id)
+        if cliente is not None:
+            return cliente
+    return cliente_por_num_phc(session, getattr(processo, "num_cliente_phc", None))
+
+
+def cliente_por_num_phc(session: Session, num_cliente_phc: object) -> Cliente | None:
+    numero = _texto(num_cliente_phc)
+    if not numero:
+        return None
+    return session.scalars(
+        select(Cliente).where(Cliente.num_cliente_phc == numero).limit(1)
+    ).first()
 
 
 def _email_do_cliente(cliente: Cliente | None) -> str:
-    """Só a coluna de envio do projeto: o email do PHC serve para outra coisa."""
+    """O email de envio do projeto; se estiver vazio, o email do PHC."""
     if cliente is None:
         return ""
-    return _texto(getattr(cliente, "email_projeto_producao", ""))
+    return emails_envio_projeto_producao(cliente)
 
 
 def _pasta_da_obra(session: Session, processo) -> Path | None:

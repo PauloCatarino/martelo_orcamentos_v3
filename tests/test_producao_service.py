@@ -656,3 +656,29 @@ def test_preparar_nova_versao_leva_o_aviso_de_acesso_as_pastas(session, monkeypa
     preparado = service_module.preparar_nova_versao(session, processo_id=1)
 
     assert preparado["aviso_pastas"] == "sem acesso"
+
+
+def test_criar_processo_externo_liga_a_ficha_do_cliente(session) -> None:
+    """Sem a ligação, o aviso ao cliente não encontrava os emails dele."""
+    from app.models.cliente import Cliente
+    from app.services.producao_service import criar_processo_externo
+
+    cliente = Cliente(nome="MÓVEIS J.F. VIVA", nome_simplex="JF_VIVA", num_cliente_phc="35")
+    session.add(cliente)
+    session.commit()
+
+    processo = criar_processo_externo(
+        session,
+        dados={
+            "source": "phc",
+            "ano": "2026",
+            "num_enc_phc": "1572",
+            "nome_cliente": "MÓVEIS J.F. VIVA",
+            "nome_cliente_simplex": "JF_VIVA",
+            "num_cliente_phc": "35",
+        },
+        criar_pasta=False,
+        created_by_id=None,
+    )
+
+    assert processo.cliente_id == cliente.id

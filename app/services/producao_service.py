@@ -696,6 +696,15 @@ def criar_processo_externo(
         created_by_id=created_by_id,
     )
 
+    # Ligar já à ficha do cliente: sem isto o aviso ao cliente não encontrava
+    # os emails dele (as obras sem orçamento ficavam todas sem cliente_id).
+    if processo.num_cliente_phc:
+        processo.cliente_id = session.scalar(
+            select(Cliente.id)
+            .where(Cliente.num_cliente_phc == processo.num_cliente_phc)
+            .limit(1)
+        )
+
     if criar_pasta:
         # Se a encomenda já tem pastas no servidor (criadas por outro sistema
         # ou à mão), a obra entra nelas em vez de abrir uma árvore paralela.
