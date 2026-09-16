@@ -62,6 +62,7 @@ from app.services.relatorio_producao_service import (
     gerar_ocorrencias_pdf,
 )
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 from app.ui.dialogs.ia_martelo_dialog import IaMarteloDialog
 from app.services.cutrite_service import (
     execute_cutrite_import,
@@ -1026,6 +1027,7 @@ class ProducaoPage(QWidget):
         text_edit = QTextEdit()
         text_edit.setAcceptRichText(False)
         text_edit.setMinimumHeight(66)
+        ligar_corretor(text_edit)
         return text_edit
 
     def _criar_painel_imagem(self) -> QWidget:

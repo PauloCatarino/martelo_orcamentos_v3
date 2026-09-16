@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from app.domain import ocorrencia_tipos as tipos
 from app.ui import tema
 from app.ui.widgets.faixa_anexos import FaixaAnexos
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 
 
@@ -75,6 +76,7 @@ class EditarOcorrenciaDialog(QDialog):
         self.custo_input.setToolTip("Custo estimado, se souber. Fica em branco a zero.")
 
         self.texto_input = QTextEdit()
+        ligar_corretor(self.texto_input)
         self.texto_input.setAcceptRichText(False)
         self.texto_input.setMinimumHeight(140)
         self.texto_input.setPlaceholderText(

@@ -24,6 +24,7 @@ from app.models.def_valueset_modelo import DefValuesetModelo
 from app.models.def_valueset_modelo_linha import DefValuesetModeloLinha
 from app.models.def_valueset_modelo_linha_operacao import DefValuesetModeloLinhaOperacao
 from app.models.descricao_predefinida import DescricaoPredefinida
+from app.models.dicionario_palavra import DicionarioPalavra
 from app.models.orcamento import Orcamento
 from app.models.orcamento_item import OrcamentoItem
 from app.models.orcamento_item_custeio_linha import OrcamentoItemCusteioLinha
@@ -89,6 +90,7 @@ __all__ = [
     "DefValuesetModeloLinha",
     "DefValuesetModeloLinhaOperacao",
     "DescricaoPredefinida",
+    "DicionarioPalavra",
     "Orcamento",
     "OrcamentoItem",
     "OrcamentoItemCusteioLinha",

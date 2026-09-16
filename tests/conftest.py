@@ -54,3 +54,17 @@ def session():
             yield db
     finally:
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _corretor_ortografico_desligado():
+    """Os diálogos ligam o corretor do Windows e leem o dicionário da base.
+
+    Nos testes isso seria lento e dependia do PC; cada teste do corretor
+    instala o seu próprio (``definir_corretor``).
+    """
+    from app.services.corretor_ortografico_service import Corretor, definir_corretor
+
+    definir_corretor(Corretor(None, carregar_dicionario=list))
+    yield
+    definir_corretor(None)

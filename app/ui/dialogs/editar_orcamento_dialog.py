@@ -32,6 +32,7 @@ from app.repositories.cliente_repository import ClienteListaResumo
 from app.repositories.user_repository import UserRepository
 from app.services.orcamento_encomenda_phc_service import EncomendaPhcInput
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,7 @@ class EditarOrcamentoDialog(QDialog):
         self._carregar_utilizadores()
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
+        ligar_corretor(self.descricao_input)
         self.descricao_input.setFixedHeight(90)
         self.localizacao_input = QLineEdit()
         self.ref_cliente_input = QLineEdit()
@@ -181,8 +183,10 @@ class EditarOrcamentoDialog(QDialog):
         self.encomendas_group.setLayout(encomendas_layout)
 
         self.info_1_input = QTextEdit()
+        ligar_corretor(self.info_1_input)
         self.info_1_input.setFixedHeight(60)
         self.info_2_input = QTextEdit()
+        ligar_corretor(self.info_2_input)
         self.info_2_input.setFixedHeight(60)
 
         # Pre-fill from the received data.

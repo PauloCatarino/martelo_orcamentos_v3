@@ -37,6 +37,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.system_setting_service import SystemSettingService
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinSemScroll
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -136,6 +137,7 @@ class NovoOrcamentoDialog(QDialog):
 
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
+        ligar_corretor(self.descricao_input)
         self.descricao_input.setFixedHeight(90)
         self.localizacao_input = QLineEdit()
         self.ref_cliente_input = QLineEdit()
@@ -184,8 +186,10 @@ class NovoOrcamentoDialog(QDialog):
         phc_layout.addWidget(self.proposta_phc_label, stretch=1)
         phc_layout.addWidget(self.criar_phc_button)
         self.info_1_input = QTextEdit()
+        ligar_corretor(self.info_1_input)
         self.info_1_input.setFixedHeight(60)
         self.info_2_input = QTextEdit()
+        ligar_corretor(self.info_2_input)
         self.info_2_input.setFixedHeight(60)
 
         self.utilizador_combo = ComboSemScroll()

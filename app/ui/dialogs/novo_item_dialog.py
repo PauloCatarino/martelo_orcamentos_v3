@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from app.domain.item_types import OUTRO, get_item_type_options, normalize_item_type
 from app.domain.numeros import validar_decimal
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class NovoItemDialog(QDialog):
             self.tipo_item_input.addItem(label, code)
         self.item_input = QLineEdit()
         self.descricao_input = QTextEdit()
+        ligar_corretor(self.descricao_input)
         self.descricao_input.setMinimumHeight(140)
         self.descricoes_button = QPushButton("Descrições pré-definidas…")
         # Sem isto o Qt trata-o como botão "por omissão" enquanto tem o foco, e

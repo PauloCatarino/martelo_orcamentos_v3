@@ -38,6 +38,7 @@ from app.services import email_resposta_service as resposta_svc
 from app.ui import tema
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.widgets.corpo_email_edit import CorpoEmailEdit
+from app.ui.widgets.corretor_ortografico import ligar_corretor
 
 
 class EmailOrcamentoDialog(QDialog):
@@ -85,6 +86,7 @@ class EmailOrcamentoDialog(QDialog):
 
         corpo_label = QLabel("Corpo do email:")
         self.txt_corpo = CorpoEmailEdit()
+        ligar_corretor(self.txt_corpo)
         self.txt_corpo.setHtml(corpo or "")
         self.txt_corpo.setToolTip(
             "Corpo do email em HTML/rich text.\n"
