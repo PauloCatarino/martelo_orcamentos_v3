@@ -29,7 +29,7 @@ def test_orcamentos_page_duplicar_versao_movido_para_editar() -> None:
     assert hasattr(OrcamentosPage, "_duplicar_versao_com_dados")
     assert not hasattr(OrcamentosPage, "duplicar_versao_selecionada")
 
-    editar_source = inspect.getsource(OrcamentosPage.editar_orcamento_selecionado)
+    editar_source = inspect.getsource(OrcamentosPage._editar_orcamento)
     assert "duplicar_versao_requested" in editar_source
     assert "get_proxima_versao" in editar_source
 

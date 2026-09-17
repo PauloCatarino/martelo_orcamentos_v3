@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.orcamento_estados import (
+    ESTADO_ADJUDICADO,
     ESTADOS_ORCAMENTO,
     estado_apos_encomenda_phc,
 )
@@ -76,8 +77,12 @@ class EditarOrcamentoDialog(QDialog):
         dados: EditarOrcamentoDialogData | None = None,
         *,
         contexto: EditarOrcamentoContexto | None = None,
+        exigir_encomenda_se_adjudicado: bool = False,
     ) -> None:
         super().__init__(parent)
+        # Aberto pelo seletor de Estado da lista para adjudicar: não deixa
+        # gravar Adjudicado sem o nº da encomenda PHC.
+        self._exigir_encomenda_se_adjudicado = exigir_encomenda_se_adjudicado
 
         self.setWindowTitle("Editar Orçamento")
         self.setModal(True)
@@ -461,8 +466,35 @@ class EditarOrcamentoDialog(QDialog):
         self._cliente_id = cliente.id
         self._atualizar_painel_cliente(cliente)
 
+    def preparar_adjudicacao(self) -> None:
+        """Pôr o estado em Adjudicado e o cursor no nº da encomenda PHC."""
+        self._nao_sugerir_adjudicado = True
+        self.estado_combo.setCurrentText(ESTADO_ADJUDICADO)
+        self.error_label.setText(
+            "Para adjudicar, escreva o nº da encomenda PHC e carregue em "
+            "Adicionar (ou Enter) antes de Guardar."
+        )
+        self.nova_encomenda_input.setFocus()
+
     def _validate_and_accept(self) -> None:
         """Accept edits; all fields in this dialog are optional."""
+        # Um número escrito e esquecido sem carregar em Adicionar conta na
+        # mesma -- era o erro mais provável de quem vem adjudicar à pressa.
+        if self.nova_encomenda_input.text().strip():
+            self._adicionar_encomenda()
+            if self.nova_encomenda_input.text().strip():
+                return  # repetido: o erro já está à vista
+        if (
+            self._exigir_encomenda_se_adjudicado
+            and self.estado_combo.currentText() == ESTADO_ADJUDICADO
+            and not self._encomendas_atuais()
+        ):
+            self.error_label.setText(
+                "Um orçamento adjudicado precisa do nº da encomenda PHC. "
+                "Escreva-o em «Encomendas PHC» ou escolha outro estado."
+            )
+            self.nova_encomenda_input.setFocus()
+            return
         self.duplicar_versao_requested = False
         self.accept()
 

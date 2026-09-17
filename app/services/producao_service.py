@@ -20,6 +20,7 @@ from app.models.producao import Producao
 from app.services.orcamento_encomenda_phc_service import (
     OrcamentoEncomendaPhcService,
 )
+from app.services.producao_atalho_orcamento_service import criar_atalho_orcamento
 from app.services.producao_pastas_service import (
     caminho_versao_de_processo,
     caminho_versao_para_criar,
@@ -727,6 +728,7 @@ def criar_processo_externo(
         )
         criar_pasta_versao(caminho)
         processo.pasta_servidor = str(caminho)
+        criar_atalho_orcamento(session, processo, caminho)
 
     session.add(processo)
     session.commit()
@@ -960,6 +962,7 @@ def criar_nova_versao(
         )
         criar_pasta_versao(caminho, exist_ok=False)
         novo.pasta_servidor = str(caminho)
+        criar_atalho_orcamento(session, novo, caminho)
 
     session.add(novo)
     session.commit()

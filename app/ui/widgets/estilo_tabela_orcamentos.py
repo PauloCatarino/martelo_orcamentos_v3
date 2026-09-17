@@ -7,7 +7,12 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QTableWidget
+from PySide6.QtWidgets import (
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QTableWidget,
+)
 
 from app.ui import tema
 
@@ -32,6 +37,47 @@ class FundoLinhaDelegate(QStyledItemDelegate):
         ):
             painter.fillRect(option.rect, cor)
         super().paint(painter, option, index)
+
+
+class EstadoSeletorDelegate(FundoLinhaDelegate):
+    """Célula de Estado com uma seta ▾, para se ver que abre um seletor.
+
+    O seletor em si é um menu aberto pela página ao clicar na célula: assim a
+    tabela não leva centenas de combos e a cor do estado mantém-se.
+    """
+
+    LARGURA_SETA = 16
+
+    def paint(self, painter, option, index):  # noqa: D102 - Qt override
+        cor_linha = index.data(FUNDO_LINHA_ROLE)
+        if isinstance(cor_linha, QColor) and not (
+            option.state & QStyle.StateFlag.State_Selected
+        ):
+            painter.fillRect(option.rect, cor_linha)
+        # 1) fundo da célula inteira (zebra/seleção), sem texto;
+        # 2) o texto centrado no espaço à esquerda da seta -- sem isto
+        #    «Falta Orçamentar» ficava por baixo dela.
+        widget = option.widget
+        estilo = widget.style() if widget is not None else None
+        fundo = QStyleOptionViewItem(option)
+        self.initStyleOption(fundo, index)
+        fundo.text = ""
+        if estilo is not None:
+            estilo.drawControl(QStyle.ControlElement.CE_ItemViewItem, fundo, painter, widget)
+        texto = QStyleOptionViewItem(option)
+        texto.rect = option.rect.adjusted(0, 0, -self.LARGURA_SETA, 0)
+        QStyledItemDelegate.paint(self, painter, texto, index)
+        painter.save()
+        cor = index.data(Qt.ItemDataRole.ForegroundRole)
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.setPen(QColor("#FFFFFF"))
+        elif cor is not None:
+            painter.setPen(cor.color() if hasattr(cor, "color") else QColor(cor))
+        seta = option.rect.adjusted(0, 0, -6, 0)
+        painter.drawText(
+            seta, int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter), "▾"
+        )
+        painter.restore()
 
 
 def grupos_versoes(orcamento_ids: Sequence[int]) -> dict[int, int]:

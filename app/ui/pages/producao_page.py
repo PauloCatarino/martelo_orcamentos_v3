@@ -107,6 +107,7 @@ from app.services.producao_v2_sync_service import (
     aplicar_selecao,
     comparar_v2_com_v3,
 )
+from app.services.producao_atalho_orcamento_service import criar_atalho_orcamento
 from app.services.producao_pastas_service import (
     arvore_pastas_processo,
     caminho_versao_de_processo,
@@ -3850,6 +3851,8 @@ class ProducaoPage(QWidget):
                 criar_pasta_versao(destino)
                 processo.pasta_servidor = str(destino)
                 session.commit()
+                # O caminho de volta ao orçamento, na pasta principal da obra.
+                criar_atalho_orcamento(session, processo, destino)
         except OSError as error:
             # A mensagem já vem explicada (conta recusada, sem permissão...).
             QMessageBox.warning(self, titulo, str(error))

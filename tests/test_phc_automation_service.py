@@ -55,13 +55,13 @@ def test_plano_escreve_num_cliente_com_4_digitos():
 
 
 def test_construir_designacao_com_ref():
-    assert construir_designacao("2510008") == "Obra: 2510008"
+    assert construir_designacao("2510008") == "OBRA: 2510008"
 
 
 def test_construir_designacao_sem_ref():
-    assert construir_designacao("") == "Obra:"
-    assert construir_designacao(None) == "Obra:"
-    assert construir_designacao("  ") == "Obra:"
+    assert construir_designacao("") == "OBRA:"
+    assert construir_designacao(None) == "OBRA:"
+    assert construir_designacao("  ") == "OBRA:"
 
 
 def _textos(plano):

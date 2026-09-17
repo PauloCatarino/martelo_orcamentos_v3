@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -28,7 +29,11 @@ from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain import pesquisa_texto
 from app.domain.numero_extenso import euros_por_extenso
-from app.domain.orcamento_estados import ESTADOS_ORCAMENTO, deve_avisar_cliente_phc
+from app.domain.orcamento_estados import (
+    ESTADO_ADJUDICADO,
+    ESTADOS_ORCAMENTO,
+    deve_avisar_cliente_phc,
+)
 from app.domain.orcamentos_lista import (
     filtrar_orcamentos,
     ordenar_orcamentos,
@@ -69,6 +74,7 @@ from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.estilo_tabela_orcamentos import (
     FUNDO_LINHA_ROLE,
+    EstadoSeletorDelegate,
     aplicar_estilo_linha_orcamento,
     configurar_tabela_orcamentos,
     grupos_versoes,
@@ -105,7 +111,7 @@ class OrcamentosPage(QWidget):
         "Ano": 60,
         "N\u00ba Or\u00e7amento": 105,
         "Vers\u00e3o": 70,
-        "Estado": 115,
+        "Estado": 135,
         "Enc PHC": 85,
         "Cliente": 190,
         "Ref. Cliente": 110,
@@ -267,6 +273,12 @@ class OrcamentosPage(QWidget):
         self.table.cellDoubleClicked.connect(self._handle_row_double_click)
         ligar_persistencia_larguras(self.table, "orcamentos")
         configurar_tabela_orcamentos(self.table)
+        # O estado muda-se ali mesmo, com um clique na célula (seletor).
+        self._coluna_estado = self.TABLE_HEADERS.index("Estado")
+        self.table.setItemDelegateForColumn(
+            self._coluna_estado, EstadoSeletorDelegate(self.table)
+        )
+        self.table.cellClicked.connect(self._on_cell_clicked)
 
         self.footer_label = QLabel("")
         self.footer_label.setObjectName("orcamentosFooter")
@@ -671,6 +683,11 @@ class OrcamentosPage(QWidget):
                     )
                 if header == "Estado":
                     self._aplicar_badge_estado(item, orcamento.estado)
+                    item.setToolTip(
+                        f"{orcamento.estado}\nClique para mudar o estado. "
+                        "Adjudicado abre o Editar Orçamento para pedir o "
+                        "nº da encomenda PHC."
+                    )
                 if header == "Preço Total" and orcamento.tem_preco_manual:
                     item.setBackground(QColor(tema.OCRE_SUAVE))
                     item.setForeground(QColor(tema.OCRE_ESCURO))
@@ -1022,6 +1039,82 @@ class OrcamentosPage(QWidget):
 
     def editar_orcamento_selecionado(self) -> None:
         """Edit the general data of the currently selected budget."""
+        self._editar_orcamento()
+
+    # ------------------------------------------------ seletor de estado
+
+    def _on_cell_clicked(self, row: int, column: int) -> None:
+        if column == self._coluna_estado:
+            self._abrir_seletor_estado(row)
+
+    def _abrir_seletor_estado(self, row: int) -> None:
+        """Menu com os estados, aberto por baixo da célula clicada."""
+        orcamento = self._orcamentos_by_row.get(row)
+        item = self.table.item(row, self._coluna_estado)
+        if orcamento is None or item is None:
+            return
+        menu = QMenu(self)
+        for estado in ESTADOS_ORCAMENTO:
+            acao = menu.addAction(estado)
+            acao.setCheckable(True)
+            acao.setChecked(estado == orcamento.estado)
+        rect = self.table.visualItemRect(item)
+        escolhida = menu.exec(self.table.viewport().mapToGlobal(rect.bottomLeft()))
+        if escolhida is None:
+            return
+        self.mudar_estado(row, escolhida.text())
+
+    def mudar_estado(self, row: int, novo_estado: str) -> None:
+        """Aplicar o estado escolhido no seletor da lista."""
+        orcamento = self._orcamentos_by_row.get(row)
+        if orcamento is None or novo_estado == orcamento.estado:
+            return
+        self.table.selectRow(row)
+        diario_bordo.registar_acao(
+            "Mudar estado na lista de orçamentos",
+            f"{orcamento.codigo_versao}: {orcamento.estado} -> {novo_estado}",
+        )
+
+        if novo_estado == ESTADO_ADJUDICADO:
+            QMessageBox.information(
+                self,
+                "Adjudicar orçamento",
+                f"Para passar o orçamento {orcamento.codigo_versao} a "
+                "«Adjudicado» é preciso o nº da encomenda PHC.\n\n"
+                "Vai abrir o Editar Orçamento: escreva o nº em "
+                "«Encomendas PHC» e carregue em Guardar.",
+            )
+            self._editar_orcamento(adjudicar=True)
+            return
+
+        if orcamento.estado == ESTADO_ADJUDICADO:
+            resposta = QMessageBox.question(
+                self,
+                "Mudar estado",
+                f"O orçamento {orcamento.codigo_versao} está Adjudicado.\n\n"
+                f"Quer mesmo passar a «{novo_estado}»?",
+            )
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            with SessionLocal() as session:
+                OrcamentoService(session).alterar_estado(
+                    orcamento.orcamento_versao_id, novo_estado
+                )
+        except (SQLAlchemyError, ValueError) as erro:
+            self.status_label.setText(f"Não foi possível mudar o estado: {erro}")
+            return
+
+        posicao = self.table.verticalScrollBar().value()
+        self.carregar_orcamentos()
+        self.table.verticalScrollBar().setValue(posicao)
+        self.status_label.setText(
+            f"Orçamento {orcamento.codigo_versao}: estado passou a «{novo_estado}»."
+        )
+
+    def _editar_orcamento(self, *, adjudicar: bool = False) -> None:
+        """Abrir o Editar Orçamento; com ``adjudicar`` vem pronto a adjudicar."""
         row = self.table.currentRow()
         orcamento = self._orcamentos_by_row.get(row)
 
@@ -1079,7 +1172,10 @@ class OrcamentosPage(QWidget):
                 cliente=cliente_atual,
                 proxima_versao=proxima_versao,
             ),
+            exigir_encomenda_se_adjudicado=adjudicar,
         )
+        if adjudicar:
+            dialog.preparar_adjudicacao()
 
         if not dialog.exec():
             return

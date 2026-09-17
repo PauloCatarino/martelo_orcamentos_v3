@@ -16,6 +16,7 @@ from app.domain.margens_padrao_types import (
     normalize_ambito,
 )
 from app.domain.orcamento_estados import (
+    ESTADO_ADJUDICADO,
     ESTADOS_ORCAMENTO,
     estado_apos_envio,
 )
@@ -285,6 +286,35 @@ class OrcamentoService:
             and utilizador_result
             and cliente_result
         )
+
+    def alterar_estado(self, orcamento_versao_id: int, novo_estado: str) -> bool:
+        """Mudar só o estado, a partir do seletor da lista de Orçamentos.
+
+        Fica no histórico como qualquer outra mudança. **Adjudicado não passa
+        por aqui**: precisa do nº da encomenda PHC, e isso escreve-se no
+        Editar Orçamento -- a lista abre-o em vez de chamar este método.
+        """
+        if novo_estado not in ESTADOS_ORCAMENTO:
+            raise ValueError("Estado inválido.")
+        if novo_estado == ESTADO_ADJUDICADO:
+            raise ValueError(
+                "Para adjudicar é preciso o nº da encomenda PHC: use o "
+                "Editar Orçamento."
+            )
+        versao = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        if versao is None:
+            return False
+        anterior = versao.estado
+        if anterior == novo_estado:
+            return False
+        self.repository.update_estado(orcamento_versao_id, novo_estado)
+        OrcamentoHistoricoService(self.session).registar(
+            orcamento_versao_id,
+            "estado",
+            f"Estado: {anterior} → {novo_estado} (lista de orçamentos)",
+        )
+        self.session.commit()
+        return True
 
     def marcar_como_enviado(self, orcamento_versao_id: int) -> str | None:
         """Passar o orçamento a "Enviado" depois de seguir para o cliente.

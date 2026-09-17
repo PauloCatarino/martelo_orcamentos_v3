@@ -77,7 +77,7 @@ def formatar_codigo_v3(ano: int, numero: int) -> str:
 
 
 def designacao_sugerida(ref_cliente: str | None) -> str:
-    """Designação inicial: ``Obra: <ref>`` com ref, vazio sem ela.
+    """Designação inicial: ``OBRA: <ref>`` com ref, vazio sem ela.
 
     Com ref. cliente há uma convenção clara (é o que o Paulo escreve à mão);
     sem ref não há nada sensato a sugerir, e o utilizador escreve o que

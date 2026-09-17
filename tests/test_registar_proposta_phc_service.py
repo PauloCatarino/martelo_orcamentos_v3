@@ -44,7 +44,7 @@ def test_codigo_v3_distingue_o_mesmo_numero_em_anos_diferentes():
 
 
 def test_designacao_sugerida_com_ref():
-    assert designacao_sugerida("2510008") == "Obra: 2510008"
+    assert designacao_sugerida("2510008") == "OBRA: 2510008"
 
 
 def test_designacao_sugerida_sem_ref_fica_vazia():

@@ -156,11 +156,11 @@ class NovoOrcamentoDialog(QDialog):
 
         self.designacao_phc_input = QLineEdit()
         self.designacao_phc_input.setPlaceholderText(
-            "linha a escrever na Designação da proposta (ex.: Obra: 2510008)"
+            "linha a escrever na Designação da proposta (ex.: OBRA: 2510008)"
         )
         self.designacao_phc_input.setToolTip(
             "Texto da primeira linha da proposta no PHC. Com Ref. cliente "
-            "preenchida sugere 'Obra: <ref>'; sem ela fica vazio para "
+            "preenchida sugere 'OBRA: <ref>'; sem ela fica vazio para "
             "escreveres o que precisares."
         )
         self.designacao_phc_input.textEdited.connect(

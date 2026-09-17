@@ -4,7 +4,7 @@ Cria a *proposta base* de um orçamento conduzindo a janela do PHC pelo
 teclado — exatamente os passos que o utilizador faz à mão:
 
     ALT+N  ->  nº de cliente PHC + ENTER  ->  TAB x2  ->  ref. cliente
-    ->  TAB x8  ->  linha de designação "Obra: <ref>"  ->  Gravar
+    ->  TAB x8  ->  linha de designação "OBRA: <ref>"  ->  Gravar
 
 **Não** toca na base de dados do PHC — só na interface. O número que o PHC
 atribui à proposta é lido de volta (best-effort) para depois ser mapeado no
@@ -168,9 +168,9 @@ class PhcPropostaResultado:
 
 
 def construir_designacao(ref_cliente: str | None) -> str:
-    """Linha de designação por omissão: ``Obra: <ref_cliente>``."""
+    """Linha de designação por omissão: ``OBRA: <ref_cliente>`` (em maiúsculas)."""
     ref = (ref_cliente or "").strip()
-    return f"Obra: {ref}" if ref else "Obra:"
+    return f"OBRA: {ref}" if ref else "OBRA:"
 
 
 def formatar_num_cliente_phc(num_cliente_phc: str | None) -> str:
