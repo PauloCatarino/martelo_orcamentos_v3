@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.datas import normalizar_data
 from app.services.user_pref_service import UserPrefService
-from app.utils.formatters import format_currency
+from app.utils.formatters import format_eur
 
 
 @dataclass(frozen=True)
@@ -136,7 +136,7 @@ COLUNAS_PRODUCAO: list[ColunaProducao] = [
         "preco",
         "Preço",
         True,
-        lambda p: format_currency(getattr(p, "preco_total", None)),
+        lambda p: format_eur(getattr(p, "preco_total", None)),
     ),
     ColunaProducao(
         "descricao_producao",

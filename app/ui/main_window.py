@@ -771,6 +771,13 @@ class MainWindow(QMainWindow):
         permission_key = self._PAGE_PERMISSION.get(name)
         if permission_key is not None and not self._permissions.get(permission_key, False):
             return
+        atual = self.pages.currentWidget()
+        pagina_nova = self._pages_by_name.get(name)
+        pode_sair = getattr(atual, "pode_sair", None)
+        if atual is not pagina_nova and callable(pode_sair) and not pode_sair():
+            # Alterações por gravar e o utilizador escolheu Cancelar.
+            self._destacar_nav(self._nome_da_pagina(atual))
+            return
         if name == "inicio" and hasattr(self, "inicio_page"):
             self.inicio_page.carregar()
         elif name == "orcamentos_dashboard" and hasattr(self, "orcamentos_dashboard_page"):
@@ -808,7 +815,17 @@ class MainWindow(QMainWindow):
                 orcamento_versao_id, total_segundos
             )
 
+    def _nome_da_pagina(self, pagina) -> str:
+        for nome, widget in self._pages_by_name.items():
+            if widget is pagina:
+                return nome
+        return ""
+
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        pode_sair = getattr(self.pages.currentWidget(), "pode_sair", None)
+        if callable(pode_sair) and not pode_sair():
+            event.ignore()
+            return
         tracker = getattr(self, "_tempo_orcamento_tracker", None)
         if tracker is not None:
             tracker.encerrar()

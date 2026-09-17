@@ -34,7 +34,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     aplicar_estilo_linha_orcamento,
     configurar_tabela_orcamentos,
 )
-from app.utils.formatters import format_currency
+from app.utils.formatters import format_eur
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
@@ -222,13 +222,13 @@ class InicioPage(QWidget):
             self.status_label.setText("Não foi possível carregar o painel inicial.")
             return
 
-        self._set_card("em_curso", dados.em_curso, f"Valor: {format_currency(dados.valor_em_curso)}")
-        self._set_card("adjudicados", dados.adjudicados, f"Valor: {format_currency(dados.valor_adjudicado)}")
+        self._set_card("em_curso", dados.em_curso, f"Valor: {format_eur(dados.valor_em_curso)}")
+        self._set_card("adjudicados", dados.adjudicados, f"Valor: {format_eur(dados.valor_adjudicado)}")
         self._set_card("falta", dados.falta_orcamentar, "Orçamentos que precisam de conclusão")
         alertas_custeio = auditoria_custeio.criticos if auditoria_custeio else 0
         detalhe_alertas = f"{dados.sem_total} sem total · {dados.com_preco_manual} manuais · {alertas_custeio} críticos de custeio"
         if auditoria_custeio and auditoria_custeio.impacto_conhecido:
-            detalhe_alertas += f" · {format_currency(auditoria_custeio.impacto_conhecido)} conhecidos"
+            detalhe_alertas += f" · {format_eur(auditoria_custeio.impacto_conhecido)} conhecidos"
         self._set_card("alertas", dados.sem_total + dados.com_preco_manual + alertas_custeio, detalhe_alertas)
         self._set_card(
             "tempo_medio",
@@ -240,7 +240,7 @@ class InicioPage(QWidget):
             self._set_card("atrasadas", producao.atrasadas if producao else "—", "Prazo de entrega ultrapassado" if producao else "Fonte indisponível")
             self._set_card("desenho", producao.em_desenho if producao else "—", "Em preparação técnica" if producao else "Fonte indisponível")
             self._set_card("finalizadas", producao.finalizadas if producao else "—", "Trabalhos terminados" if producao else "Fonte indisponível")
-            self._set_card("valor_producao", format_currency(producao.valor_aberto) if producao else "—", "Valor dos trabalhos ainda abertos" if producao else "Fonte indisponível")
+            self._set_card("valor_producao", format_eur(producao.valor_aberto) if producao else "—", "Valor dos trabalhos ainda abertos" if producao else "Fonte indisponível")
             self._set_card("sem_preco_producao", producao.sem_preco if producao else "—", "Trabalhos abertos sem preço" if producao else "Fonte indisponível")
         self._preencher_recentes(dados.recentes)
         self._preencher_avisos(dados.avisos)
@@ -310,7 +310,7 @@ class InicioPage(QWidget):
                 orcamento.ref_cliente or "", orcamento.enc_phc or "",
                 orcamento.obra or "", orcamento.descricao or "",
                 orcamento.created_at.strftime("%d/%m/%Y"),
-                format_currency(orcamento.preco_total),
+                format_eur(orcamento.preco_total),
                 formatar_tempo_ativo(orcamento.tempo_ativo_segundos),
                 orcamento.utilizador or "",
             ]

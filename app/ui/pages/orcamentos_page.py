@@ -73,7 +73,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     configurar_tabela_orcamentos,
     grupos_versoes,
 )
-from app.utils.formatters import format_currency, format_version
+from app.utils.formatters import format_eur, format_version
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
@@ -642,7 +642,7 @@ class OrcamentosPage(QWidget):
                 orcamento.localizacao or "",
                 orcamento.descricao or "",
                 self._format_date(orcamento.created_at),
-                format_currency(orcamento.preco_total),
+                format_eur(orcamento.preco_total),
                 orcamento.utilizador or "",
                 orcamento.info_1 or "",
                 orcamento.info_2 or "",
@@ -725,7 +725,7 @@ class OrcamentosPage(QWidget):
         palavra = "or\u00e7amento" if contagem == 1 else "or\u00e7amentos"
         texto = (
             f"{contagem} {palavra} \u00b7 Total: "
-            f"{format_currency(total, milhares=True)}"
+            f"{format_eur(total)}"
         )
         extenso = euros_por_extenso(total)
         if extenso:

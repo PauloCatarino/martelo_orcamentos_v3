@@ -121,6 +121,7 @@ from app.services.producao_preparacao_service import (
 )
 from app.services.projeto_cliente_service import preparar_envio, registar_envio
 from app.ui import tema
+from app.utils.formatters import format_numero_pt
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
@@ -347,6 +348,12 @@ class ProducaoPage(QWidget):
         self._ia_dialog: IaMarteloDialog | None = None
         self._dirty = False
         self._a_preencher_form = False
+        #: O que os campos tinham quando a obra foi carregada. "Há alterações"
+        #: é comparar com isto — e não "houve um sinal de texto alterado", que
+        #: disparava sem ninguém escrever (o sublinhado do corretor, por ex.).
+        self._form_original: tuple = ()
+        self._a_filtrar = False
+        self._a_perguntar_gravar = False
         self._cliente_id: int | None = None
         self._imagem_path: str | None = None
         self._imagem_preview_pixmap_original: QPixmap | None = None
@@ -998,7 +1005,7 @@ class ProducaoPage(QWidget):
 
         self.preco_total_input.setStyleSheet("")
         if valor is not None:
-            self.preco_total_input.setText(f"{valor:.2f}")
+            self.preco_total_input.setText(format_numero_pt(valor))
 
     def _campo_data(self) -> QDateEdit:
         """Date field with calendar popup; empty is the minimum date."""
@@ -1279,14 +1286,18 @@ class ProducaoPage(QWidget):
         previous = self.minhas_check.blockSignals(True)
         self.minhas_check.setChecked(bool(self._meu_responsavel()) and self.responsavel_combo.currentText() == self._meu_responsavel())
         self.minhas_check.blockSignals(previous)
-        self.proxy.definir_filtros(
-            texto=self.campo_pesquisa.texto(),
-            estado=self._combo_valor(self.estado_combo),
-            cliente=self._combo_valor(self.cliente_combo),
-            responsavel=self._combo_valor(self.responsavel_combo),
-            so_atrasadas=False,
-            enc_phc=self.enc_phc_input.text(),
-        )
+        self._a_filtrar = True
+        try:
+            self.proxy.definir_filtros(
+                texto=self.campo_pesquisa.texto(),
+                estado=self._combo_valor(self.estado_combo),
+                cliente=self._combo_valor(self.cliente_combo),
+                responsavel=self._combo_valor(self.responsavel_combo),
+                so_atrasadas=False,
+                enc_phc=self.enc_phc_input.text(),
+            )
+        finally:
+            self._a_filtrar = False
         self.footer_label.setText(
             f"{self.proxy.rowCount()} de {self.modelo.rowCount()}"
         )
@@ -1487,12 +1498,7 @@ class ProducaoPage(QWidget):
         Temporary transition feature: V2 is read-only and nothing is written
         into V3 without an explicit selection.
         """
-        if self._dirty:
-            QMessageBox.warning(
-                self,
-                "Atualizar dados V2",
-                "Grave ou descarte primeiro as alterações da obra selecionada.",
-            )
+        if not self._resolver_alteracoes_pendentes():
             return
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -2053,6 +2059,9 @@ class ProducaoPage(QWidget):
             return
 
         if self._dirty:
+            # A obra em edição saiu da lista com o filtro: não deixar outra
+            # linha realçada, senão parecia que era essa a obra do formulário.
+            self._limpar_selecao_tabela()
             return
 
         primeiro = self._processo_na_linha_visivel(0)
@@ -2070,19 +2079,26 @@ class ProducaoPage(QWidget):
         if self._selected_processo_id == processo.id:
             return
 
-        if self._dirty:
-            resposta = QMessageBox.question(
-                self,
-                "Alterações por gravar",
-                "Há alterações por gravar. Descartar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if resposta != QMessageBox.StandardButton.Yes:
-                if self._selected_processo_id is not None:
-                    self._selecionar_processo_id(self._selected_processo_id)
+        if self._a_filtrar or self._a_perguntar_gravar:
+            # Pesquisar/filtrar mexe na seleção da tabela sozinho: isso não é
+            # o utilizador a escolher outra obra, e não se pergunta nada.
+            return
+
+        if self.tem_alteracoes_por_gravar():
+            self._a_perguntar_gravar = True
+            try:
+                resposta = self._perguntar_gravar()
+            finally:
+                self._a_perguntar_gravar = False
+            if resposta == "cancelar":
+                self._voltar_a_obra_do_formulario()
                 return
-            self._set_dirty(False)
+            if resposta == "gravar":
+                # Gravar recarrega a lista, que abre logo a obra clicada.
+                if not self._gravar_obra(selecionar_id=processo.id):
+                    self._voltar_a_obra_do_formulario()
+                return
+        self._set_dirty(False)
 
         self._fill_form(processo)
 
@@ -3011,17 +3027,8 @@ class ProducaoPage(QWidget):
             self.status_label.setText("Selecione um processo para eliminar.")
             return
 
-        if self._dirty:
-            resposta = QMessageBox.question(
-                self,
-                "Alterações por gravar",
-                "Há alterações por gravar. Descartar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if resposta != QMessageBox.StandardButton.Yes:
-                return
-            self._set_dirty(False)
+        if not self._resolver_alteracoes_pendentes():
+            return
 
         escolha = self._escolher_modo_eliminacao(processo)
         if escolha is None:
@@ -3196,17 +3203,8 @@ class ProducaoPage(QWidget):
             self.status_label.setText("Selecione um processo para criar nova versão.")
             return
 
-        if self._dirty:
-            resposta = QMessageBox.question(
-                self,
-                "Alterações por gravar",
-                "Há alterações por gravar. Descartar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if resposta != QMessageBox.StandardButton.Yes:
-                return
-            self._set_dirty(False)
+        if not self._resolver_alteracoes_pendentes():
+            return
 
         self._executar_nova_versao(processo_id=processo.id)
 
@@ -3280,12 +3278,21 @@ class ProducaoPage(QWidget):
         self.status_label.setText(f"Versão {codigo} criada (+ pasta).")
 
     def _processo_selecionado(self) -> Producao | None:
-        processo = self._processo_na_linha_visivel(self.table.currentIndex().row())
-        if processo is not None:
-            return processo
+        """A obra que está no formulário (sem nenhuma, a da linha atual).
+
+        Durante a mudança de linha a tabela já aponta para a obra clicada,
+        mas a que se grava é a que está no formulário.
+        """
         if self._selected_processo_id is not None:
-            return self._processo_visivel_por_id(self._selected_processo_id)
-        return None
+            processo = self._processo_visivel_por_id(self._selected_processo_id)
+            if processo is None:
+                processo = next(
+                    (p for p in self._todos if p.id == self._selected_processo_id),
+                    None,
+                )
+            if processo is not None:
+                return processo
+        return self._processo_na_linha_visivel(self.table.currentIndex().row())
 
     def _fill_form(self, proc: Producao) -> None:
         """Fill detail widgets from one production process without marking dirty."""
@@ -3304,7 +3311,7 @@ class ProducaoPage(QWidget):
             self.num_cliente_phc_input.setText(self._format_value(proc.num_cliente_phc))
             self.num_orcamento_input.setText(self._format_value(proc.num_orcamento))
             self.versao_orc_input.setText(self._format_value(proc.versao_orc))
-            self.preco_total_input.setText(self._format_value(proc.preco_total))
+            self.preco_total_input.setText(format_numero_pt(proc.preco_total))
             self.qt_artigos_input.setText(self._format_value(proc.qt_artigos))
 
             self._set_combo_text(self.estado_form_combo, proc.estado)
@@ -3336,6 +3343,7 @@ class ProducaoPage(QWidget):
         finally:
             self._restaurar_sinais_form(estados)
             self._a_preencher_form = False
+        self._form_original = self._estado_form()
         self._set_dirty(False)
 
     def _clear_form(self) -> None:
@@ -3359,6 +3367,7 @@ class ProducaoPage(QWidget):
             self._atualizar_botao_ocorrencias(None)
         finally:
             self._restaurar_sinais_form(estados)
+        self._form_original = self._estado_form()
         self._set_dirty(False)
 
     def _collect_form(self) -> dict:
@@ -3638,25 +3647,33 @@ class ProducaoPage(QWidget):
 
     def _save(self) -> None:
         """Persist the selected production process edits."""
+        self._gravar_obra()
+
+    def _gravar_obra(self, *, selecionar_id: int | None = None) -> bool:
+        """Gravar a obra do formulário. Devolve True se ficou gravada.
+
+        ``selecionar_id`` é a obra a abrir a seguir (ao mudar de linha, a que
+        se clicou); por omissão continua a mesma.
+        """
         if self._selected_processo_id is None:
             self.status_label.setText("Selecione uma obra de produção.")
-            return
+            return False
 
         try:
             data = self._collect_form()
         except ValueError as error:
             QMessageBox.warning(self, "Guardar produção", str(error))
-            return
+            return False
         if not self._validar_obrigatorios_para_gravar(data):
-            return
+            return False
         if data["estado"] not in ESTADOS_PRODUCAO:
             self.status_label.setText("Estado de produção inválido.")
-            return
+            return False
         if data["tipo_pasta"] not in TIPOS_PASTA_PRODUCAO:
             self.status_label.setText("Tipo de pasta inválido.")
-            return
+            return False
         if not self._supervisionar_mudanca_para_producao(data["estado"]):
-            return
+            return False
         # Guardado ANTES de gravar: depois de gravar, a obra já está em
         # Produção e deixaria de se saber que foi agora que ela lá entrou.
         processo_atual = self._processo_selecionado()
@@ -3680,31 +3697,25 @@ class ProducaoPage(QWidget):
                 )
         except ValueError as error:
             QMessageBox.warning(self, "Guardar produção", str(error))
-            return
+            return False
         except SQLAlchemyError:
             self.status_label.setText("Não foi possível guardar a produção.")
-            return
+            return False
 
         self._set_dirty(False)
-        self.carregar_processos(selecionar_id=proc_id)
+        self.carregar_processos(
+            selecionar_id=proc_id if selecionar_id is None else selecionar_id
+        )
         self.status_label.setText("Produção guardada.")
         diario_bordo.registar_acao("Gravou a obra", f"estado={data['estado']}")
         if entrou_em_producao:
             self._avisar_cliente_do_projeto(proc_id)
+        return True
 
     def _converter_orcamento(self) -> None:
         """Open the conversion dialog and create the selected production process."""
-        if self._dirty:
-            resposta = QMessageBox.question(
-                self,
-                "Alterações por gravar",
-                "Há alterações por gravar. Descartar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if resposta != QMessageBox.StandardButton.Yes:
-                return
-            self._set_dirty(False)
+        if not self._resolver_alteracoes_pendentes():
+            return
 
         dialog = ConverterOrcamentoDialog(self)
         if not dialog.exec():
@@ -3851,17 +3862,8 @@ class ProducaoPage(QWidget):
         return str(destino)
 
     def _novo_processo(self) -> None:
-        if self._dirty:
-            resposta = QMessageBox.question(
-                self,
-                "Alterações por gravar",
-                "Há alterações por gravar. Descartar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if resposta != QMessageBox.StandardButton.Yes:
-                return
-            self._set_dirty(False)
+        if not self._resolver_alteracoes_pendentes():
+            return
 
         dialog = NovoProcessoDialog(self)
         if not dialog.exec():
@@ -3977,7 +3979,90 @@ class ProducaoPage(QWidget):
     def _on_user_edit(self, *_args) -> None:
         if self._a_preencher_form or self._selected_processo_id is None:
             return
-        self._set_dirty(True)
+        # Escrever e apagar o que se escreveu volta a "sem alterações".
+        self._set_dirty(self.tem_alteracoes_por_gravar())
+
+    def _estado_form(self) -> tuple:
+        """Os valores dos campos editáveis, para comparar com os carregados."""
+        valores: list[object] = []
+        for widget in self._editable_widgets:
+            if widget is self.preco_total_input:
+                try:
+                    valores.append(self._decimal_or_none(widget.text()))
+                except ValueError:
+                    valores.append(widget.text().strip())
+            elif isinstance(widget, QLineEdit):
+                valores.append(widget.text().strip())
+            elif isinstance(widget, QTextEdit):
+                valores.append(widget.toPlainText().rstrip())
+            elif isinstance(widget, QDateEdit):
+                valores.append(widget.date().toString("yyyy-MM-dd"))
+            elif isinstance(widget, QComboBox):
+                valores.append(widget.currentText().strip())
+        return tuple(valores)
+
+    def tem_alteracoes_por_gravar(self) -> bool:
+        return (
+            self._selected_processo_id is not None
+            and self._estado_form() != self._form_original
+        )
+
+    def _perguntar_gravar(self) -> str:
+        """Devolve "gravar", "descartar" ou "cancelar"."""
+        processo = self._processo_selecionado()
+        codigo = getattr(processo, "codigo_processo", "") or "selecionada"
+        caixa = QMessageBox(self)
+        caixa.setIcon(QMessageBox.Icon.Question)
+        caixa.setWindowTitle("Alterações por gravar")
+        caixa.setText(f"A obra {codigo} tem alterações por gravar.")
+        caixa.setInformativeText("Quer gravar as alterações?")
+        sim = caixa.addButton("Sim", QMessageBox.ButtonRole.YesRole)
+        sim.setToolTip("Gravar as alterações e continuar")
+        nao = caixa.addButton("Não", QMessageBox.ButtonRole.NoRole)
+        nao.setToolTip("Continuar sem gravar — as alterações perdem-se")
+        cancelar = caixa.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        cancelar.setToolTip("Ficar nesta obra, com as alterações")
+        caixa.setDefaultButton(sim)
+        caixa.setEscapeButton(cancelar)
+        caixa.exec()
+        clicado = caixa.clickedButton()
+        if clicado is sim:
+            return "gravar"
+        if clicado is nao:
+            return "descartar"
+        return "cancelar"
+
+    def _resolver_alteracoes_pendentes(self) -> bool:
+        """Perguntar se grava antes de outra ação. True = pode seguir."""
+        if not self.tem_alteracoes_por_gravar():
+            self._set_dirty(False)
+            return True
+        resposta = self._perguntar_gravar()
+        if resposta == "cancelar":
+            return False
+        if resposta == "gravar":
+            return self._gravar_obra()
+        processo = self._processo_selecionado()
+        self._set_dirty(False)
+        if processo is not None:
+            self._fill_form(processo)  # repor o que estava gravado
+        return True
+
+    def pode_sair(self) -> bool:
+        """A janela principal pergunta isto antes de mudar de menu."""
+        return self._resolver_alteracoes_pendentes()
+
+    def _limpar_selecao_tabela(self) -> None:
+        selecao = self.table.selectionModel()
+        estado_sinais = selecao.blockSignals(True)
+        self.table.clearSelection()
+        selecao.blockSignals(estado_sinais)
+
+    def _voltar_a_obra_do_formulario(self) -> None:
+        if self._selected_processo_id is None:
+            return
+        if not self._selecionar_processo_id(self._selected_processo_id):
+            self._limpar_selecao_tabela()
 
     def _on_campo_derivado_editado(self, *_args) -> None:
         self._atualizar_campos_derivados()

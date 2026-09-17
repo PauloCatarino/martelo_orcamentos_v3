@@ -78,7 +78,7 @@ from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.widgets.relatorio_dashboards import DashboardsWidget
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import (
-    format_currency,
+    format_eur,
     format_mm,
     format_quantity,
     format_quantity_2,
@@ -1539,8 +1539,8 @@ class OrcamentoRelatoriosPage(QWidget):
                 format_mm(item.profundidade),
                 item.unidade or "",
                 format_quantity(item.quantidade),
-                format_currency(item.preco_unitario),
-                format_currency(item.preco_total),
+                format_eur(item.preco_unitario),
+                format_eur(item.preco_total),
             ]
             for col, texto in enumerate(valores):
                 celula = criar_item_tabela(texto)
@@ -1555,9 +1555,9 @@ class OrcamentoRelatoriosPage(QWidget):
         totais = calcular_totais_relatorio(items, self._iva_pct)
         self.total_label.setText(
             f"Total Qt: {format_quantity(totais.total_qt)}    |    "
-            f"Subtotal: {format_currency(totais.subtotal)}    |    "
-            f"IVA ({format_quantity(totais.iva_pct)}%): {format_currency(totais.iva)}"
-            f"    |    Total Geral: {format_currency(totais.total_geral)}"
+            f"Subtotal: {format_eur(totais.subtotal)}    |    "
+            f"IVA ({format_quantity(totais.iva_pct)}%): {format_eur(totais.iva)}"
+            f"    |    Total Geral: {format_eur(totais.total_geral)}"
         )
 
     def _preencher_consumos(self, resumo) -> None:
@@ -1588,7 +1588,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 valores = {
                     "Ref": placa.ref_le or "",
                     "Descrição": placa.descricao_no_orcamento or "",
-                    "P.Liq": format_currency(placa.pliq),
+                    "P.Liq": format_eur(placa.pliq),
                     "Und": placa.unidade or "",
                     "Desp %": self._fmt_pct(placa.desp),
                     "Comp": self._fmt_mm(placa.comp_mp),
@@ -1598,9 +1598,9 @@ class OrcamentoRelatoriosPage(QWidget):
                     "Área": self._fmt_m2(placa.area_placa),
                     "m² Usad": self._fmt_m2(placa.m2_consumidos),
                     "m² Peças": self._fmt_m2(placa.m2_total_pecas),
-                    "C.MP Tot": format_currency(placa.custo_mp_total),
-                    "C.Placa Usad": format_currency(placa.custo_placa_inteira),
-                    "Custo no Orç.": format_currency(placa.custo_no_orcamento),
+                    "C.MP Tot": format_eur(placa.custo_mp_total),
+                    "C.Placa Usad": format_eur(placa.custo_placa_inteira),
+                    "Custo no Orç.": format_eur(placa.custo_no_orcamento),
                 }
                 for col, header in enumerate(self.PLACAS_HEADERS):
                     if col == coluna_nao_stock:
@@ -1625,7 +1625,7 @@ class OrcamentoRelatoriosPage(QWidget):
             self._carregando_placas = False
 
         self.agravamento_label.setText(
-            f"Agravamento total por Não-Stock: {format_currency(agravamento_total)}"
+            f"Agravamento total por Não-Stock: {format_eur(agravamento_total)}"
             if placas
             else ""
         )
@@ -1640,9 +1640,9 @@ class OrcamentoRelatoriosPage(QWidget):
         return (
             "Não Stock: placa comprada de propósito para a obra. Quando ativo, o "
             "orçamento usa o custo de placa inteira em vez do % desperdício.\n"
-            f"Agravamento desta placa: +{format_currency(agravamento)} "
-            f"({format_currency(placa.custo_placa_inteira)} − "
-            f"{format_currency(placa.custo_mp_total)})."
+            f"Agravamento desta placa: +{format_eur(agravamento)} "
+            f"({format_eur(placa.custo_placa_inteira)} − "
+            f"{format_eur(placa.custo_mp_total)})."
         )
 
     def _on_placa_item_changed(self, item) -> None:
@@ -1686,7 +1686,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 self._fmt_mm(orla.espessura),
                 self._fmt_mm(orla.largura),
                 self._fmt_ml(orla.ml_total),
-                format_currency(orla.custo_total),
+                format_eur(orla.custo_total),
             ]
             for col, texto in enumerate(valores):
                 self.orlas_table.setItem(row, col, criar_item_tabela(texto))
@@ -1704,13 +1704,13 @@ class OrcamentoRelatoriosPage(QWidget):
             valores = [
                 ferragem.ref_le or "",
                 ferragem.descricao_no_orcamento or "",
-                format_currency(ferragem.pliq),
+                format_eur(ferragem.pliq),
                 ferragem.unidade or "",
                 self._fmt_pct(ferragem.desp),
                 self._fmt_qt(ferragem.qt_total),
                 self._fmt_ml(ferragem.ml),
-                format_currency(custo_und),
-                format_currency(ferragem.custo_total),
+                format_eur(custo_und),
+                format_eur(ferragem.custo_total),
             ]
             for col, texto in enumerate(valores):
                 self.ferragens_table.setItem(row, col, criar_item_tabela(texto))
@@ -1722,7 +1722,7 @@ class OrcamentoRelatoriosPage(QWidget):
             self.maquinas_table.insertRow(row)
             valores = [
                 maquina.centro,
-                format_currency(maquina.custo_total),
+                format_eur(maquina.custo_total),
                 self._fmt_ml(maquina.ml_corte) if maquina.ml_corte else "",
                 self._fmt_ml(maquina.ml_orlado) if maquina.ml_orlado else "",
                 self._fmt_qt(maquina.num_pecas) if maquina.num_pecas else "",
@@ -1747,7 +1747,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 self._fmt_qt(operacao.tempo_setup),
                 self._fmt_qt(operacao.tempo_cnc),
                 self._fmt_qt(outros_tempos),
-                format_currency(operacao.custo_total),
+                format_eur(operacao.custo_total),
             ]
             for col, texto in enumerate(valores):
                 self.operacoes_detalhe_table.setItem(
@@ -1775,13 +1775,13 @@ class OrcamentoRelatoriosPage(QWidget):
                 resumo.escalao,
                 format_quantity(resumo.pecas_finas),
                 format_quantity(resumo.pecas_grossas),
-                format_currency(resumo.custo_corte),
-                format_currency(resumo.custo_orlagem),
+                format_eur(resumo.custo_corte),
+                format_eur(resumo.custo_orlagem),
                 "Sim" if resumo.urgente else "Não",
-                format_currency(resumo.custo_urgencia) if resumo.urgente else "—",
+                format_eur(resumo.custo_urgencia) if resumo.urgente else "—",
                 "Sim" if resumo.sem_excel else "Não",
-                format_currency(resumo.custo_sem_excel) if resumo.sem_excel else "—",
-                format_currency(resumo.total_simplificado),
+                format_eur(resumo.custo_sem_excel) if resumo.sem_excel else "—",
+                format_eur(resumo.total_simplificado),
             )
             for col, texto in enumerate(valores):
                 item = criar_item_tabela(texto)
@@ -1791,7 +1791,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 self.simplificado_table.setItem(row, col, item)
         self.simplificado_resumo.setText(
             f"Itens Simplificado: {len(resumos)}  |  Peças: {format_quantity(total_pecas)}  |  "
-            f"Custo simplificado (por unidade de item): {format_currency(total_custo)}"
+            f"Custo simplificado (por unidade de item): {format_eur(total_custo)}"
         )
 
     def _preencher_operacoes_linhas(self, linhas) -> None:
@@ -1825,7 +1825,7 @@ class OrcamentoRelatoriosPage(QWidget):
                 format_quantity(linha.tempo_unidade_min),
                 linha.unidade_tempo,
                 format_quantity(linha.tempo_atribuido_min),
-                format_currency(linha.custo_atribuido),
+                format_eur(linha.custo_atribuido),
                 linha.diagnostico,
             )
             for col, texto in enumerate(valores):
@@ -1839,7 +1839,7 @@ class OrcamentoRelatoriosPage(QWidget):
         self.operacoes_linhas_resumo.setText(
             f"Linhas do relatório: {len(linhas)}  |  Sem operações: {sem_operacoes}  |  "
             f"Máquinas: {len(maquinas)}  |  Custo de produção atribuído: "
-            f"{format_currency(custo_total)}"
+            f"{format_eur(custo_total)}"
         )
 
     # ----- Formatting helpers -----

@@ -68,7 +68,7 @@ def format_currency(value: Any, *, milhares: bool = False) -> str:
     """Format a currency value for display.
 
     ``milhares`` acrescenta o separador de milhares, como se escreve em
-    portugu\u00eas: ``236 059,86 \u20ac``. Fica desligado por omiss\u00e3o porque este
+    portugu\u00eas: ``236.059,86 \u20ac``. Fica desligado por omiss\u00e3o porque este
     formatador serve tamb\u00e9m tabelas, PDFs e o Excel, onde a largura dos n\u00fameros
     j\u00e1 est\u00e1 contada; liga-se onde o valor \u00e9 grande e se l\u00ea de relance, como o
     total do rodap\u00e9 dos or\u00e7amentos.
@@ -79,12 +79,29 @@ def format_currency(value: Any, *, milhares: bool = False) -> str:
 
     quantizado = number.quantize(Decimal("0.01"))
     if milhares:
-        # Espa\u00e7o INQUEBR\u00c1VEL: com um espa\u00e7o normal a linha podia partir entre
-        # "236" e "059" e ficavam dois n\u00fameros diferentes no ecr\u00e3.
-        formatted = f"{quantizado:,.2f}".replace(",", "\u00a0").replace(".", ",")
+        formatted = format_numero_pt(quantizado)
     else:
         formatted = format(quantizado, "f").replace(".", ",")
     return f"{formatted} \u20ac"
+
+
+def format_eur(value: Any) -> str:
+    """Um pre\u00e7o para o ECR\u00c3: ``2.484,55 \u20ac``.
+
+    Pedido do Paulo (17-09-2026): ``2484,55 \u20ac`` l\u00ea-se mal de relance nos menus
+    de Or\u00e7amentos, Produ\u00e7\u00e3o e no Painel Inicial. PDFs e Excel continuam com o
+    ``format_currency`` simples, porque l\u00e1 a largura das colunas est\u00e1 contada.
+    """
+    return format_currency(value, milhares=True)
+
+
+def format_numero_pt(value: Any) -> str:
+    """``2484.55`` \u2192 ``2.484,55``: ponto nos milhares, v\u00edrgula nas d\u00e9cimas."""
+    number = _to_decimal(value)
+    if number is None:
+        return ""
+    texto = f"{number.quantize(Decimal('0.01')):,.2f}"  # 2,484.55
+    return texto.translate({ord(","): ".", ord("."): ","})
 
 
 def format_version(numero_versao: Any) -> str:

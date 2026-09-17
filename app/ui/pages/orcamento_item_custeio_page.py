@@ -191,7 +191,7 @@ from app.ui.widgets.miniatura_estrutura import (
 from app.ui.icones import decorar_barra, icone
 from app.ui.widgets.table_item import criar_item_tabela
 from app.utils.formatters import (
-    format_currency,
+    format_eur,
     format_medida_real,
     format_mm,
     format_quantity,
@@ -1012,9 +1012,9 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         self.preco_item_label.setText(
-            f"Custo produzido: {format_currency(resultado.custo_produzido)}"
-            f"   |   Preço unitário: {format_currency(resultado.preco_unitario)}"
-            f"   |   Preço total (×qt): {format_currency(resultado.preco_total)}"
+            f"Custo produzido: {format_eur(resultado.custo_produzido)}"
+            f"   |   Preço unitário: {format_eur(resultado.preco_unitario)}"
+            f"   |   Preço total (×qt): {format_eur(resultado.preco_total)}"
         )
         self.preco_item_label.setToolTip(
             self._tooltip_preco_item(resultado, margens, blocos)
@@ -1033,17 +1033,17 @@ class OrcamentoItemCusteioPage(QWidget):
             return (formatar_percentagem(valor) or "0%").replace(".", ",")
 
         substituicao = (
-            f"= [{format_currency(blocos.bloco_mp)}×(1+{pct(margens.margem_mp_pct)}) + "
-            f"{format_currency(blocos.bloco_producao)}×"
+            f"= [{format_eur(blocos.bloco_mp)}×(1+{pct(margens.margem_mp_pct)}) + "
+            f"{format_eur(blocos.bloco_producao)}×"
             f"(1+{pct(margens.margem_mao_obra_pct)}) + "
-            f"{format_currency(blocos.bloco_acabamento)}×"
+            f"{format_eur(blocos.bloco_acabamento)}×"
             f"(1+{pct(margens.margem_acabamentos_pct)})] "
             f"× (1+{pct(margens.custos_administrativos_pct)} admin) "
             f"× (1+{pct(margens.margem_lucro_pct)} lucro) "
-            f"+ ajuste {format_currency(self.item.ajuste_eur)} "
-            f"→ unitário {format_currency(resultado.preco_unitario)} × qt "
+            f"+ ajuste {format_eur(self.item.ajuste_eur)} "
+            f"→ unitário {format_eur(resultado.preco_unitario)} × qt "
             f"{format_quantity(self.item.quantidade)} = "
-            f"{format_currency(resultado.preco_total)}"
+            f"{format_eur(resultado.preco_total)}"
         )
         return self._tooltip_3(
             "Preço de referência do item, calculado dos blocos de custo com as "
@@ -2565,7 +2565,7 @@ class OrcamentoItemCusteioPage(QWidget):
         ferr = f"{resumo.n_ferragens} " + (
             "ferragem" if resumo.n_ferragens == 1 else "ferragens"
         )
-        return f"{pecas} · {ferr} · {format_currency(resumo.custo_total)}"
+        return f"{pecas} · {ferr} · {format_eur(resumo.custo_total)}"
 
     def _marcar_ferragem_auto(self, row: int) -> None:
         """Tag a rule-filled hardware line with an 'auto' marker on its name."""
@@ -3441,7 +3441,7 @@ class OrcamentoItemCusteioPage(QWidget):
             or opcao.descricao
             or codigo
         )
-        preco = format_currency(opcao.preco_liquido)
+        preco = format_eur(opcao.preco_liquido)
         return f"{opcao.chave} · {descricao} · Pliq {preco or '—'}"
 
     @staticmethod
@@ -3616,8 +3616,8 @@ class OrcamentoItemCusteioPage(QWidget):
                 "ao preço do material, acrescido do desperdício.",
                 "Custo MP = Área × QT × preço × (1 + desp)",
                 f"= {format_quantity(linha.area_m2)} m² × {format_quantity(qt)} × "
-                f"{format_currency(linha.preco_liquido)} × {format_quantity(fator)} = "
-                f"{format_currency(linha.custo_mp)}",
+                f"{format_eur(linha.preco_liquido)} × {format_quantity(fator)} = "
+                f"{format_eur(linha.custo_mp)}",
             )
         if header == "Custo ferragem" and linha.custo_ferragem is not None:
             if eh_unidade_ml(linha.unidade):
@@ -3625,15 +3625,15 @@ class OrcamentoItemCusteioPage(QWidget):
                     "Ferragem ao metro linear (SPP).",
                     "SPP ML total × preço × (1 + desp)",
                     f"= {format_quantity(linha.consumo_ml_total)} × "
-                    f"{format_currency(linha.preco_liquido)} × "
+                    f"{format_eur(linha.preco_liquido)} × "
                     f"{format_quantity(fator)} = "
-                    f"{format_currency(linha.custo_ferragem)}",
+                    f"{format_eur(linha.custo_ferragem)}",
                 )
             return self._tooltip_3(
                 "Ferragem à unidade.",
                 "Qt total × preço × (1 + desp)",
-                f"= {format_quantity(qt)} × {format_currency(linha.preco_liquido)} × "
-                f"{format_quantity(fator)} = {format_currency(linha.custo_ferragem)}",
+                f"= {format_quantity(qt)} × {format_eur(linha.preco_liquido)} × "
+                f"{format_quantity(fator)} = {format_eur(linha.custo_ferragem)}",
             )
         if header == "Custo orla fina" and linha.custo_orla_fina is not None:
             return self._tooltip_3(
@@ -3641,7 +3641,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 "de m² pela largura da fita).",
                 "Custo orla fina = ML orla fina × preço/ml",
                 f"= {format_quantity(linha.ml_orla_fina)} ml → "
-                f"{format_currency(linha.custo_orla_fina)}",
+                f"{format_eur(linha.custo_orla_fina)}",
             )
         if header == "Custo orla grossa" and linha.custo_orla_grossa is not None:
             return self._tooltip_3(
@@ -3649,15 +3649,15 @@ class OrcamentoItemCusteioPage(QWidget):
                 "(convertido de m² pela largura da fita).",
                 "Custo orla grossa = ML orla grossa × preço/ml",
                 f"= {format_quantity(linha.ml_orla_grossa)} ml → "
-                f"{format_currency(linha.custo_orla_grossa)}",
+                f"{format_eur(linha.custo_orla_grossa)}",
             )
         if header == "Custo orlas" and linha.custo_orlas is not None:
             return self._tooltip_3(
                 "Custo total de orlas: soma das orlas fina e grossa da peça.",
                 "Custo orlas = orla fina + orla grossa",
-                f"= {format_currency(linha.custo_orla_fina)} + "
-                f"{format_currency(linha.custo_orla_grossa)} = "
-                f"{format_currency(linha.custo_orlas)}",
+                f"= {format_eur(linha.custo_orla_fina)} + "
+                f"{format_eur(linha.custo_orla_grossa)} = "
+                f"{format_eur(linha.custo_orlas)}",
             )
         if header == "Custo acabamento" and linha.custo_acabamento is not None:
             return self._tooltip_3(
@@ -3666,7 +3666,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 "Custo acabamento = Σ faces (área acab. × preço × (1 + desp))",
                 f"= sup {format_quantity(linha.area_acabamento_sup)} m² + "
                 f"inf {format_quantity(linha.area_acabamento_inf)} m² → "
-                f"{format_currency(linha.custo_acabamento)}",
+                f"{format_eur(linha.custo_acabamento)}",
             )
         if header == "Custo corte" and linha.custo_corte is not None:
             preco, setup = self._tarifas_ml_valores_tooltip(linha, ("CORTE",))
@@ -3706,7 +3706,7 @@ class OrcamentoItemCusteioPage(QWidget):
             escalao = self._descricao_escalao_cnc_tooltip(linha)
             substituicao_cnc = (
                 f"= área {format_quantity(linha.area_m2)} m² × QT "
-                f"{format_quantity(qt)} → {format_currency(linha.custo_cnc)}"
+                f"{format_quantity(qt)} → {format_eur(linha.custo_cnc)}"
             )
             if escalao:
                 substituicao_cnc = f"{escalao}\n{substituicao_cnc}"
@@ -3725,23 +3725,23 @@ class OrcamentoItemCusteioPage(QWidget):
             fator = self._fator_serie_aplicado(linha)
             custo_revestimento = getattr(linha, "custo_revestimento", None)
             parciais = (
-                f"{format_currency(linha.custo_corte)} + "
-                f"{format_currency(linha.custo_orlagem)} + "
-                f"{format_currency(linha.custo_cnc)} + "
+                f"{format_eur(linha.custo_corte)} + "
+                f"{format_eur(linha.custo_orlagem)} + "
+                f"{format_eur(linha.custo_cnc)} + "
                 + (
-                    f"{format_currency(custo_revestimento)} + "
+                    f"{format_eur(custo_revestimento)} + "
                     if custo_revestimento is not None
                     else ""
                 )
-                + f"{format_currency(linha.custo_montagem_manual)}"
+                + f"{format_eur(linha.custo_montagem_manual)}"
             )
             if fator is not None:
                 substituicao = (
                     f"= ({parciais}) × fator {format_quantity(fator)} = "
-                    f"{format_currency(linha.custo_producao)}"
+                    f"{format_eur(linha.custo_producao)}"
                 )
             else:
-                substituicao = f"= {parciais} = {format_currency(linha.custo_producao)}"
+                substituicao = f"= {parciais} = {format_eur(linha.custo_producao)}"
             return self._tooltip_3(
                 "Custo de produção da peça: soma dos custos de corte, orlagem, CNC, "
                 "revestimento e montagem/manual, multiplicada pelo fator série "
@@ -3820,12 +3820,12 @@ class OrcamentoItemCusteioPage(QWidget):
                 "acabamento e produção, descontando os custos marcados em Excluir.",
                 "Custo total = MP + ferragem + orlas + acabamento + produção "
                 "(− excluídos)",
-                f"= MP {format_currency(linha.custo_mp)} + "
-                f"ferragem {format_currency(linha.custo_ferragem)} + "
-                f"orlas {format_currency(linha.custo_orlas)} + "
-                f"acab {format_currency(linha.custo_acabamento)} + "
-                f"prod {format_currency(linha.custo_producao)} = "
-                f"{format_currency(linha.custo_total)}",
+                f"= MP {format_eur(linha.custo_mp)} + "
+                f"ferragem {format_eur(linha.custo_ferragem)} + "
+                f"orlas {format_eur(linha.custo_orlas)} + "
+                f"acab {format_eur(linha.custo_acabamento)} + "
+                f"prod {format_eur(linha.custo_producao)} = "
+                f"{format_eur(linha.custo_total)}",
             )
 
         return None
@@ -3915,7 +3915,7 @@ class OrcamentoItemCusteioPage(QWidget):
         if perimetro is None or preco is None:
             return (
                 f"= {format_quantity(perimetro)} ml × {format_quantity(qt)} → "
-                f"{format_currency(total)}"
+                f"{format_eur(total)}"
             )
 
         qt_calc = qt if qt is not None else Decimal("1")
@@ -3925,7 +3925,7 @@ class OrcamentoItemCusteioPage(QWidget):
             f"{format_quantity(qt_calc)} × {format_quantity(preco)} €/ML)"
         )
         if setup is None:
-            return f"{formula}\n= {format_currency(total)}"
+            return f"{formula}\n= {format_eur(total)}"
 
         parcela_setup = qt_calc * setup
         formula += (
@@ -3934,8 +3934,8 @@ class OrcamentoItemCusteioPage(QWidget):
         )
         return (
             f"{formula}\n"
-            f"= {format_currency(parcela_ml)} + {format_currency(parcela_setup)}\n"
-            f"= {format_currency(total)}"
+            f"= {format_eur(parcela_ml)} + {format_eur(parcela_setup)}\n"
+            f"= {format_eur(total)}"
         )
 
     def _substituicao_custo_orlagem_lados(
@@ -3944,11 +3944,11 @@ class OrcamentoItemCusteioPage(QWidget):
         """Build the substituted edge-side production-cost breakdown."""
         total = linha.custo_orlagem
         if preco_curto is None or preco_longo is None:
-            return f"= {format_currency(total)}"
+            return f"= {format_eur(total)}"
 
         digitos = digitos_orla(getattr(linha, "codigo_orlas", None))
         if digitos is None or all(digito == 0 for digito in digitos):
-            return f"= sem lados orlados → {format_currency(total)}"
+            return f"= sem lados orlados → {format_eur(total)}"
 
         qt_calc = qt if qt is not None else Decimal("1")
         comp = normalizar_numero(getattr(linha, "comp_real", None))
@@ -3959,14 +3959,14 @@ class OrcamentoItemCusteioPage(QWidget):
             if digito not in (ORLA_FINA, ORLA_GROSSA):
                 continue
             if medida is None:
-                return f"= dados de medida em falta → {format_currency(total)}"
+                return f"= dados de medida em falta → {format_eur(total)}"
             if medida <= limite:
                 curto += 1
             else:
                 longo += 1
 
         if curto == 0 and longo == 0:
-            return f"= sem lados orlados → {format_currency(total)}"
+            return f"= sem lados orlados → {format_eur(total)}"
 
         parcela_curto = Decimal(curto) * preco_curto
         parcela_longo = Decimal(longo) * preco_longo
@@ -4045,11 +4045,11 @@ class OrcamentoItemCusteioPage(QWidget):
             return None
         if usar_serie and fallback:
             return (
-                f"tarifa STD {format_currency(valor)}{unidade} "
+                f"tarifa STD {format_eur(valor)}{unidade} "
                 "(SERIE não definida — fallback)"
             )
         tipo = TIPO_PRODUCAO_SERIE if usar_serie else TIPO_PRODUCAO_STD
-        return f"tarifa {tipo} {format_currency(valor)}{unidade}"
+        return f"tarifa {tipo} {format_eur(valor)}{unidade}"
 
     def _tarifa_ml_tooltip(self, linha, tipos: tuple) -> str | None:
         """Tariff note (€/ML) of the line's cut machine, or None."""
@@ -4146,7 +4146,7 @@ class OrcamentoItemCusteioPage(QWidget):
     @staticmethod
     def _format_euro_compacto(valor) -> str:
         """Format currency without the UI space before the euro sign."""
-        return format_currency(valor).replace(" €", "€")
+        return format_eur(valor).replace(" €", "€")
 
     def _tooltip_cnc_tempo(
         self, linha: OrcamentoItemCusteioLinhaResumo, qt
@@ -4165,7 +4165,7 @@ class OrcamentoItemCusteioPage(QWidget):
         if tempo_variavel is None:
             formula = "Custo CNC = (tempo / 60) × custo/hora da máquina"
             substituicao = (
-                f"= tempo / 60 × custo/hora = {format_currency(custo)}"
+                f"= tempo / 60 × custo/hora = {format_eur(custo)}"
             )
         elif setup:
             formula = "Custo CNC = (setup + tempo por peça × QT) / 60 × custo/hora"
@@ -4175,9 +4175,9 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"= ({format_quantity(setup)} setup + "
                 f"{format_quantity(minutos_por_peca)} min/peça × QT "
                 f"{format_quantity(qt_calc)}) / 60 × "
-                f"{format_currency(custo_hora)}/h\n"
+                f"{format_eur(custo_hora)}/h\n"
                 f"= {format_quantity(tempo_total)} min / 60 × "
-                f"{format_quantity(custo_hora)} = {format_currency(custo)}"
+                f"{format_quantity(custo_hora)} = {format_eur(custo)}"
             )
         else:
             formula = "Custo CNC = (tempo / 60) × custo/hora da máquina"
@@ -4187,7 +4187,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 f"= {format_quantity(minutos_por_peca)} min/peça × QT "
                 f"{format_quantity(qt_calc)} = {format_quantity(tempo_variavel)} min\n"
                 f"= {format_quantity(tempo_variavel)} / 60 × "
-                f"{format_currency(custo_hora)} = {format_currency(custo)}"
+                f"{format_eur(custo_hora)} = {format_eur(custo)}"
             )
 
         return self._tooltip_3(
@@ -4215,7 +4215,7 @@ class OrcamentoItemCusteioPage(QWidget):
                 "Custo = minutos × QT / 60 × custo/hora",
                 self._com_tarifa(
                     f"= {format_quantity(minutos)} × {format_quantity(qt)} / 60 × "
-                    f"{format_currency(custo_hora)} = {format_currency(custo)}",
+                    f"{format_eur(custo_hora)} = {format_eur(custo)}",
                     self._tarifa_hora_tooltip(linha),
                 ),
             )
@@ -4232,7 +4232,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Custo mont./manual = (tempo / 60) × custo/hora da máquina",
             self._com_tarifa(
                 f"= {format_quantity(tempo_total)} min / 60 × "
-                f"{format_currency(custo_hora)} = {format_currency(custo)}",
+                f"{format_eur(custo_hora)} = {format_eur(custo)}",
                 self._tarifa_hora_tooltip(linha),
             ),
         )
@@ -5411,7 +5411,7 @@ class OrcamentoItemCusteioPage(QWidget):
             "Ref LE": linha.ref_le or "",
             "Descrição no orçamento": linha.descricao_no_orcamento or "",
             "Unidade": linha.unidade or "",
-            "Preço líquido": format_currency(linha.preco_liquido),
+            "Preço líquido": format_eur(linha.preco_liquido),
             "Desp %": formatar_percentagem(linha.desperdicio_percentagem),
             "Tipo MP": linha.tipo_materia_prima or "",
             "Família": linha.familia_materia_prima or "",
@@ -5425,16 +5425,16 @@ class OrcamentoItemCusteioPage(QWidget):
             "Orla 1.0": linha.coresp_orla_1_0 or "",
             "ML orla fina": self._format_medida3(linha.ml_orla_fina),
             "ML orla grossa": self._format_medida3(linha.ml_orla_grossa),
-            "Custo orla fina": format_currency(linha.custo_orla_fina),
-            "Custo orla grossa": format_currency(linha.custo_orla_grossa),
-            "Custo orlas": format_currency(linha.custo_orlas),
+            "Custo orla fina": format_eur(linha.custo_orla_fina),
+            "Custo orla grossa": format_eur(linha.custo_orla_grossa),
+            "Custo orlas": format_eur(linha.custo_orlas),
             "Acab. face sup": linha.acabamento_face_sup or "",
             "Acab. face inf": linha.acabamento_face_inf or "",
             "Área acab. sup": self._format_medida3(linha.area_acabamento_sup),
             "Área acab. inf": self._format_medida3(linha.area_acabamento_inf),
-            "Custo MP": format_currency(linha.custo_mp),
-            "Custo ferragem": format_currency(linha.custo_ferragem),
-            "Custo acabamento": format_currency(linha.custo_acabamento),
+            "Custo MP": format_eur(linha.custo_mp),
+            "Custo ferragem": format_eur(linha.custo_ferragem),
+            "Custo acabamento": format_eur(linha.custo_acabamento),
             "Máquina": linha.maquina or "",
             "Operações": linha.operacoes or "",
             "Tipo produção": linha.tipo_producao or "",
@@ -5445,20 +5445,20 @@ class OrcamentoItemCusteioPage(QWidget):
             "Tempo montagem": format_quantity(linha.tempo_montagem),
             "Tempo manual": format_quantity(linha.tempo_manual),
             "Tempo setup": format_quantity(linha.tempo_setup),
-            "Custo corte": format_currency(linha.custo_corte),
+            "Custo corte": format_eur(linha.custo_corte),
             "Orlagem simp.": (
                 linha.tipo_orlagem_simplificado
                 if self.item.modalidade_custeio == MODALIDADE_CUSTEIO_SIMPLIFICADO
                 else ""
             ),
-            "Custo orlagem": format_currency(linha.custo_orlagem),
-            "Custo CNC": format_currency(linha.custo_cnc),
-            "Custo mont./manual": format_currency(linha.custo_montagem_manual),
-            "Custo produção": format_currency(linha.custo_producao),
+            "Custo orlagem": format_eur(linha.custo_orlagem),
+            "Custo CNC": format_eur(linha.custo_cnc),
+            "Custo mont./manual": format_eur(linha.custo_montagem_manual),
+            "Custo produção": format_eur(linha.custo_producao),
             "Observações produção": linha.observacoes or "",
-            "Custo total": format_currency(linha.custo_total),
+            "Custo total": format_eur(linha.custo_total),
             "Margem %": formatar_percentagem(linha.margem_percentagem),
-            "Preço total": format_currency(linha.preco_total),
+            "Preço total": format_eur(linha.preco_total),
             "Origem": linha.origem_tipo or "",
             "Editado localmente": self._format_bool(linha.editado_localmente),
             "Ativo": self._format_bool(linha.ativo),

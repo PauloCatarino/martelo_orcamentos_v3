@@ -35,7 +35,7 @@ from app.services.relatorio_consumos_service import RelatorioConsumosService
 from app.ui import tema
 from app.ui.dialogs.orcamento_suplementos_dialog import OrcamentoSuplementosDialog
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
-from app.utils.formatters import format_currency, format_quantity
+from app.utils.formatters import format_eur, format_quantity
 from app.ui.icones import decorar_barra
 
 
@@ -263,8 +263,8 @@ class OrcamentoCusteioPage(QWidget):
                 suplemento.descricao,
                 format_quantity(suplemento.esp),
                 suplemento.suplemento_ref_le,
-                format_currency(suplemento.valor_base),
-                format_currency(suplemento.valor_local),
+                format_eur(suplemento.valor_base),
+                format_eur(suplemento.valor_local),
                 format_quantity(suplemento.quantidade),
                 self._format_bool(suplemento.editado_localmente),
                 suplemento.nota_cliente,
@@ -277,7 +277,7 @@ class OrcamentoCusteioPage(QWidget):
         self.suplementos_table.setVisible(bool(ativos))
         if ativos:
             self.suplementos_total_label.setText(
-                f"Valor global fixo dos suplementos: {format_currency(preco_total)}"
+                f"Valor global fixo dos suplementos: {format_eur(preco_total)}"
                 "    |    Sem margens adicionais"
             )
         else:
@@ -308,10 +308,10 @@ class OrcamentoCusteioPage(QWidget):
                 format_quantity(linha.area_m2),
                 format_quantity(linha.ml_orla_fina),
                 format_quantity(linha.ml_orla_grossa),
-                format_currency(linha.custo_unitario),
-                format_currency(linha.custo_total),
-                format_currency(linha.preco_unitario),
-                format_currency(linha.preco_total),
+                format_eur(linha.custo_unitario),
+                format_eur(linha.custo_total),
+                format_eur(linha.preco_unitario),
+                format_eur(linha.preco_total),
                 self._format_bool(linha.editado_localmente),
                 self._format_bool(linha.ativo),
             ]

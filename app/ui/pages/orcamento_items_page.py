@@ -66,7 +66,7 @@ from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinDuploSemScroll
 from app.ui.widgets.breadcrumb import Breadcrumb, BreadcrumbItem
 from app.ui.widgets.descricao_delegate import DescricaoItemDelegate
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
-from app.utils.formatters import format_currency, format_mm, format_quantity
+from app.utils.formatters import format_eur, format_mm, format_quantity
 from app.ui.icones import decorar_barra
 
 
@@ -482,7 +482,7 @@ class OrcamentoItemsPage(QWidget):
             (item.preco_total for item in items if item.preco_total is not None),
             Decimal("0"),
         )
-        self.soma_preco_label.setText(f"Soma Preço Final: {format_currency(soma)}")
+        self.soma_preco_label.setText(f"Soma Preço Final: {format_eur(soma)}")
         # Seed the target field with the current total (the button reads it on
         # demand; nothing is applied just by loading).
         self.objetivo_spin.setValue(float(soma))
@@ -654,8 +654,8 @@ class OrcamentoItemsPage(QWidget):
                 self,
                 "Objetivo não atingível",
                 "Objetivo não atingível: o mínimo possível com margem de lucro "
-                f"0,1% é {format_currency(resultado.minimo_possivel)} "
-                f"(objetivo: {format_currency(objetivo)}).\n\n"
+                f"0,1% é {format_eur(resultado.minimo_possivel)} "
+                f"(objetivo: {format_eur(objetivo)}).\n\n"
                 "As margens foram colocadas nos mínimos. Aplicar?",
                 QMessageBox.StandardButton.Apply | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
@@ -690,12 +690,12 @@ class OrcamentoItemsPage(QWidget):
         soma_final: Decimal,
     ) -> str:
         """Build the status message after applying a price-target resolution."""
-        soma = format_currency(soma_final)
+        soma = format_eur(soma_final)
         if not resultado.atingido:
             return (
                 "Objetivo não atingível: mínimo possível "
-                f"{format_currency(resultado.minimo_possivel)} "
-                f"(objetivo {format_currency(objetivo)}). Margens nos mínimos; "
+                f"{format_eur(resultado.minimo_possivel)} "
+                f"(objetivo {format_eur(objetivo)}). Margens nos mínimos; "
                 f"soma final {soma}."
             )
         if resultado.consome_lucro:
@@ -898,13 +898,13 @@ class OrcamentoItemsPage(QWidget):
                     format_mm(item.profundidade),
                     format_quantity(item.quantidade),
                     item.unidade or "",
-                    format_currency(item.preco_unitario),
-                    format_currency(item.preco_total),
-                    format_currency(item.ajuste_eur),
-                    format_currency(blocos.custo_produzido) if blocos else "",
-                    format_currency(blocos.bloco_mp) if blocos else "",
-                    format_currency(blocos.bloco_producao) if blocos else "",
-                    format_currency(blocos.bloco_acabamento) if blocos else "",
+                    format_eur(item.preco_unitario),
+                    format_eur(item.preco_total),
+                    format_eur(item.ajuste_eur),
+                    format_eur(blocos.custo_produzido) if blocos else "",
+                    format_eur(blocos.bloco_mp) if blocos else "",
+                    format_eur(blocos.bloco_producao) if blocos else "",
+                    format_eur(blocos.bloco_acabamento) if blocos else "",
                     self._format_percentagem(
                         margem_lucro_efetiva_pct(
                             item.preco_unitario,

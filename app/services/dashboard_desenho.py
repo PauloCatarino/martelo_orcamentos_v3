@@ -16,7 +16,7 @@ Sem Qt aqui: só matplotlib. Quem chama trata do canvas (ecrã) ou do
 from __future__ import annotations
 
 from app.ui import tema
-from app.utils.formatters import format_currency
+from app.utils.formatters import format_eur
 
 #: Cores das barras (1.ª e 2.ª série).
 COR_BARRA_1 = tema.CASTANHO_MEDIO
@@ -68,7 +68,7 @@ def altura_grafico(grafico) -> float:
 
 def _texto_valor(valor: float, unidade: str) -> str:
     if unidade == "€":
-        return format_currency(valor)
+        return format_eur(valor)
     texto = f"{valor:,.2f}".replace(",", " ").replace(".", ",")
     return f"{texto} {unidade}".strip()
 
@@ -187,7 +187,7 @@ def desenhar_pizza(figura, grafico) -> None:
     """Desenha um ``GraficoPizza`` numa figura já limpa, com legenda por baixo."""
     eixo = figura.add_subplot(111)
     eixo.set_title(
-        f"{grafico.titulo}\nTotal de venda: {format_currency(grafico.total_venda)}",
+        f"{grafico.titulo}\nTotal de venda: {format_eur(grafico.total_venda)}",
         color=tema.CASTANHO_ESCURO,
         fontsize=10,
     )
@@ -222,7 +222,7 @@ def desenhar_pizza(figura, grafico) -> None:
         fatias,
         [
             f"{f.nome} — {_texto_pct(_pct_desenhada(f.euros, total_desenhado))}"
-            f" — {format_currency(f.euros)}"
+            f" — {format_eur(f.euros)}"
             for f in grafico.fatias
         ],
         loc="upper center",

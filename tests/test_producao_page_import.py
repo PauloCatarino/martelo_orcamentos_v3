@@ -154,7 +154,7 @@ def test_gravar_supervisiona_a_passagem_a_producao() -> None:
     """Mudar o estado para Produção passa primeiro pelo supervisor."""
     from app.ui.pages.producao_page import ProducaoPage
 
-    save_source = inspect.getsource(ProducaoPage._save)
+    save_source = inspect.getsource(ProducaoPage._gravar_obra)
     supervisao_source = inspect.getsource(
         ProducaoPage._supervisionar_mudanca_para_producao
     )
@@ -431,7 +431,8 @@ def test_producao_page_detail_editing_hooks() -> None:
     assert "self._imagem_path" in source
     assert "Estado da obra em produção" in source
     assert "Pasta de destino no servidor" in source
-    assert "Há alterações por gravar. Descartar?" in source
+    assert "Quer gravar as alterações?" in source
+    assert "_resolver_alteracoes_pendentes" in source
     assert producao_page.TIPOS_PASTA_PRODUCAO == (
         "Encomenda de Cliente",
         "Encomenda de Cliente Final",

@@ -68,7 +68,7 @@ def test_a_mudanca_de_estado_continua_a_respeitar_a_preferencia() -> None:
     # A entrada automática (gravar a obra já em Produção) não passa
     # `automatico`, por isso fica no True e continua a calar-se se a opção
     # estiver desligada.
-    fonte = inspect.getsource(ProducaoPage._save)
+    fonte = inspect.getsource(ProducaoPage._gravar_obra)
 
     assert "if entrou_em_producao:" in fonte
     assert "self._avisar_cliente_do_projeto(proc_id)" in fonte

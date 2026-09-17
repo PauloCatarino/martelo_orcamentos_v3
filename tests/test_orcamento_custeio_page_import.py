@@ -76,4 +76,4 @@ def test_orcamento_custeio_page_formats_lines() -> None:
     source = inspect.getsource(OrcamentoCusteioPage._preencher)
 
     assert "get_custeio_linha_type_label" in source
-    assert "format_currency" in source
+    assert "format_eur" in source

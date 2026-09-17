@@ -24,7 +24,7 @@ from app.services.producao_service import (
 from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
-from app.utils.formatters import format_currency, format_version
+from app.utils.formatters import format_eur, format_version
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
@@ -198,7 +198,7 @@ class ConverterOrcamentoDialog(QDialog):
                 format_version(item["numero_versao"]),
                 item["cliente_nome"],
                 enc_display,
-                format_currency(item["preco_total"]),
+                format_eur(item["preco_total"]),
                 "✓" if not erros else erros[0],
             ]
             for column_index, value in enumerate(values):
