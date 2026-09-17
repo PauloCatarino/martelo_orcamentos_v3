@@ -372,3 +372,25 @@ def test_cabecalho_sem_uma_unica_linha_rebenta(tmp_path: Path) -> None:
 def test_ficheiro_que_nao_existe_rebenta(tmp_path: Path) -> None:
     with pytest.raises(FormatoInesperado, match="não encontrado"):
         egger.ler_folha(tmp_path / "nao_existe.xlsx", _folha())
+
+
+# ---- código da tabela escrito à mão (WoodSide, 17-09-2026) --------------------
+
+
+def test_codigo_explicito_nas_notas_ganha_ao_padrao() -> None:
+    """A WoodSide chama às tabelas pelo nome da linha de produto."""
+    from app.services.catalogos.base import primeira_referencia_tabela
+
+    notas = [
+        "Tabela de Produtos EGGER WoodSide - 2026",
+        "Base atualizada a partir do PDF Eurodekor WoodSide 2026/04/20. Código: EURODEKOR.",
+    ]
+    assert primeira_referencia_tabela(notas) == "EURODEKOR"
+    assert primeira_referencia_tabela(["código da tabela: eurodekor"]) == "EURODEKOR"
+
+
+def test_sem_codigo_explicito_continua_o_padrao_de_sempre() -> None:
+    from app.services.catalogos.base import primeira_referencia_tabela
+
+    assert primeira_referencia_tabela(["Base a partir do PDF BF-82 2026/09/16"]) == "BF-82"
+    assert primeira_referencia_tabela(["Tabela de Produtos EGGER WoodSide - 2026"]) is None

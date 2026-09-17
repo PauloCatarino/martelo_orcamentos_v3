@@ -269,7 +269,20 @@ def primeira_referencia_tabela(textos: Iterable[str]) -> str | None:
 
     Muitos não escrevem nenhum, e é por isso que devolve ``None`` sem se
     queixar em vez de inventar um.
+
+    Quem mantém o Excel pode dizê-lo explicitamente numa nota — ``Código:
+    EURODEKOR`` — e isso ganha a tudo. A WoodSide identifica as tabelas pelo
+    nome da linha de produto (o PDF chama-se «Eurodekor 2026.04.20»), que não
+    tem o formato letras-hífen-número dos outros fornecedores.
     """
+    explicito = re.compile(r"\bc[oó]digo(?: da tabela)?\s*:\s*([A-Za-z0-9][\w.\-]{0,59})", re.IGNORECASE)
+    textos = list(textos)
+    for linha in textos:
+        achado = explicito.search(linha or "")
+        if achado:
+            # O ponto final da frase não faz parte do código.
+            return achado.group(1).rstrip(".-").upper()
+
     # Uma letra chega: a Innovus chama «T-04» e «T-17» às tabelas dela, e com
     # duas letras no mínimo ficavam ambas sem código. As letras têm de estar
     # coladas ao hífen, senão um «WoodSide - 2026» passava por código.
