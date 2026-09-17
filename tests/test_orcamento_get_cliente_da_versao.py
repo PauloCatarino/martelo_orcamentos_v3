@@ -37,5 +37,45 @@ def test_get_cliente_da_versao(session) -> None:
     assert resumo.num_cliente == "C-001"
 
 
+def test_email_do_orcamento_usa_o_email_envio_orcamentos(session) -> None:
+    """O MÓVEIS J.F. VIVA tinha «Email envio orçamentos» = geral@jfviva.com,
+    mas o email do orçamento saía para os dois endereços do PHC: o resumo do
+    cliente não trazia o campo e a prioridade caía sempre no PHC."""
+    from app.domain.clientes_emails import emails_envio_orcamentos
+
+    cliente = Cliente(
+        nome="MÓVEIS J.F. VIVA", num_cliente_phc="35",
+        email="geral@jfviva.com; paulo.sousa@jfviva.com",
+        email_orcamentos="geral@jfviva.com",
+    )
+    sem_escolha = Cliente(
+        nome="SÓ PHC", num_cliente_phc="36", email="phc@cliente.pt",
+    )
+    sem_nada = Cliente(nome="SEM EMAIL", num_cliente_phc="37")
+    session.add_all([cliente, sem_escolha, sem_nada])
+    session.flush()
+    versoes = []
+    for numero, c in enumerate((cliente, sem_escolha, sem_nada), start=1):
+        orcamento = Orcamento(ano=2026, num_orcamento=f"000{numero}", cliente_id=c.id)
+        session.add(orcamento)
+        session.flush()
+        versao = OrcamentoVersao(
+            orcamento_id=orcamento.id, numero_versao=1,
+            codigo_versao=f"000{numero}_01", estado="ATIVO",
+        )
+        session.add(versao)
+        session.flush()
+        versoes.append(versao.id)
+    session.commit()
+
+    service = OrcamentoService(session)
+    destinos = [
+        emails_envio_orcamentos(service.get_cliente_da_versao(versao_id))
+        for versao_id in versoes
+    ]
+
+    assert destinos == ["geral@jfviva.com", "phc@cliente.pt", ""]
+
+
 def test_get_cliente_da_versao_inexistente(session) -> None:
     assert OrcamentoService(session).get_cliente_da_versao(9999) is None

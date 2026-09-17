@@ -84,6 +84,10 @@ class ClienteResumo:
     email: str | None
     telefone: str | None
     num_cliente: str | None
+    # Escolhidos no menu Clientes; sem eles o envio do orçamento caía sempre
+    # no email geral do PHC (ver app/domain/clientes_emails.py).
+    email_orcamentos: str | None = None
+    email_projeto_producao: str | None = None
 
 
 @dataclass(frozen=True)
@@ -753,6 +757,8 @@ class OrcamentoRepository:
             email=cliente.email,
             telefone=cliente.telefone or cliente.telemovel,
             num_cliente=cliente.num_cliente_phc,
+            email_orcamentos=cliente.email_orcamentos,
+            email_projeto_producao=cliente.email_projeto_producao,
         )
 
     def _copiar_operacoes_valueset_linha_versao(
