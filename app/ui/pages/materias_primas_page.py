@@ -30,6 +30,7 @@ from app.domain.materia_prima_types import (
     TIPO_PRECO_LIVRE,
     preco_desatualizado,
     preco_em_falta,
+    tipos_por_familia,
 )
 from app.domain.numeros import formatar_percentagem, normalize_percentagem_humana
 from app.repositories.def_materia_prima_repository import DefMateriaPrimaResumo
@@ -464,6 +465,7 @@ class MateriasPrimasPage(QWidget):
             fornecedores=self._listar_fornecedores() or [],
             pasta_imagens=self._pasta_das_imagens(),
             componentes=componentes,
+            tipos_existentes=tipos_por_familia(self._materias_primas),
         )
         dialogo.exec()
 

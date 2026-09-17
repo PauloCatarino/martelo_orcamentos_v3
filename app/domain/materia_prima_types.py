@@ -163,3 +163,49 @@ def normalizar_ref_fornecedor(valor: str | None) -> str | None:
     palavras = [p for p in limpo.split(" ") if p not in MARCAS_NA_REF_FORNECEDOR]
     limpo = " ".join(palavras).strip()
     return limpo or None
+
+
+def _chave_tipo(texto: str) -> str:
+    """Comparar tipos sem olhar a maiúsculas, acentos nem espaços a mais."""
+    import unicodedata
+
+    decomposto = unicodedata.normalize("NFKD", " ".join(texto.split()).casefold())
+    return "".join(c for c in decomposto if not unicodedata.combining(c))
+
+
+def tipos_por_familia(materias) -> dict[str, list[str]]:
+    """Os tipos já usados, arrumados por família (para o seletor da ficha).
+
+    A chave ``""`` junta os tipos de todas as famílias -- é a lista que se
+    mostra enquanto a família ainda não foi escolhida.
+    """
+    por_familia: dict[str, set[str]] = {"": set()}
+    for materia in materias:
+        tipo = " ".join((getattr(materia, "tipo_original_excel", None) or "").split())
+        if not tipo:
+            continue
+        familia = (getattr(materia, "familia_original_excel", None) or "").strip()
+        por_familia[""].add(tipo)
+        if familia:
+            por_familia.setdefault(familia, set()).add(tipo)
+    return {
+        familia: sorted(tipos, key=_chave_tipo)
+        for familia, tipos in por_familia.items()
+    }
+
+
+def normalizar_tipo(texto: str | None, existentes) -> str | None:
+    """O tipo a gravar: o que já existe, se for o mesmo escrito de outra forma.
+
+    O campo aceita tipos novos, mas «fechaduras» ou «Fechaduras » não podem
+    nascer ao lado de FECHADURAS -- os filtros e o Excel partiam-se em dois.
+    Um tipo novo a sério grava-se em MAIÚSCULAS, como os que já lá estão.
+    """
+    limpo = " ".join((texto or "").split())
+    if not limpo:
+        return None
+    chave = _chave_tipo(limpo)
+    for existente in existentes:
+        if _chave_tipo(existente) == chave:
+            return existente
+    return limpo.upper()

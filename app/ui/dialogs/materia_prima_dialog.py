@@ -40,6 +40,7 @@ from app.domain.materia_prima_types import (
     TIPO_PRECO_TABELA,
     TIPOS_PRECO_VALIDOS,
     UNIDADES_VALIDAS,
+    normalizar_tipo,
 )
 from app.domain.numeros import (
     formatar_percentagem,
@@ -216,8 +217,11 @@ class MateriaPrimaDialog(QDialog):
         fornecedores: list | None = None,
         pasta_imagens: str | None = None,
         componentes: list[ComponenteResumo] | None = None,
+        tipos_existentes: dict[str, list[str]] | None = None,
     ) -> None:
         super().__init__(parent)
+        # Família -> tipos já usados; a chave "" tem os de todas as famílias.
+        self._tipos_existentes = tipos_existentes or {}
 
         self.materia = materia
         self.on_save = on_save
@@ -319,8 +323,23 @@ class MateriaPrimaDialog(QDialog):
         )
         self.familia_input.currentIndexChanged.connect(self._sugerir_ref_le)
 
-        self.tipo_input = QLineEdit()
-        self.tipo_input.setToolTip("Tipo dentro da família (AGLOMERADO, CORREDICAS, …).")
+        # Escolhe-se da lista dos tipos que a família já usa, ou escreve-se um
+        # novo. Antes era texto livre, e cada um escrevia à sua maneira.
+        self.tipo_input = ComboSemScroll()
+        self.tipo_input.setEditable(True)
+        self.tipo_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.tipo_input.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.tipo_input.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        self.tipo_input.lineEdit().setPlaceholderText("Escolha ou escreva um tipo novo")
+        self.tipo_input.setToolTip(
+            "Tipo dentro da família (AGLOMERADO, CORREDICAS, FECHADURAS, …).\n"
+            "A lista mostra os tipos que esta família já usa.\n"
+            "Se não houver o que precisa, escreva um novo: grava-se em "
+            "MAIÚSCULAS. Se escrever um que já existe de outra forma "
+            "(«fechaduras»), fica o que já existe."
+        )
+        self._preencher_tipos()
+        self.familia_input.currentIndexChanged.connect(self._preencher_tipos)
 
         self.unidade_input = ComboSemScroll()
         self.unidade_input.addItem(SEM_VALOR, None)
@@ -883,12 +902,32 @@ class MateriaPrimaDialog(QDialog):
         sinal = "+" if variacao > 0 else ""
         return f"{sinal}{variacao:.1f}%".replace(".", ",")
 
+    def _tipos_da_familia(self) -> list[str]:
+        # Sem família escolhida mostram-se todos; com família, só os dela
+        # (a ORLA não tem nenhum e não deve ver os tipos das FERRAGENS).
+        familia = self.familia_input.currentData() or ""
+        return list(self._tipos_existentes.get(familia, []))
+
+    def _preencher_tipos(self, *_args) -> None:
+        """Trocar a lista para os tipos da família escolhida, sem perder o escrito."""
+        escrito = self.tipo_input.currentText()
+        self.tipo_input.blockSignals(True)
+        self.tipo_input.clear()
+        self.tipo_input.addItems(self._tipos_da_familia())
+        self.tipo_input.setCurrentIndex(-1)
+        self.tipo_input.setCurrentText(escrito)
+        self.tipo_input.blockSignals(False)
+
+    def _tipo_escrito(self) -> str | None:
+        todos = self._tipos_existentes.get("", [])
+        return normalizar_tipo(self.tipo_input.currentText(), [*self._tipos_da_familia(), *todos])
+
     def _carregar(self, materia: DefMateriaPrimaResumo) -> None:
         """Levar os valores do material para os campos."""
         self.ref_le_input.setText(materia.ref_le or "")
         self.descricao_input.setText(materia.descricao)
         self._selecionar(self.familia_input, materia.familia_original_excel)
-        self.tipo_input.setText(materia.tipo_original_excel or "")
+        self.tipo_input.setCurrentText(materia.tipo_original_excel or "")
         self._selecionar(self.unidade_input, materia.unidade)
         self._selecionar(self.tipo_preco_input, materia.tipo_preco)
         # Se o preço foi escrito em parcelas, é assim que volta a
@@ -1004,7 +1043,7 @@ class MateriaPrimaDialog(QDialog):
             descricao=self.descricao_input.text().strip(),
             ref_le=self._texto_ou_none(self.ref_le_input.text()),
             familia=self.familia_input.currentData(),
-            tipo=self._texto_ou_none(self.tipo_input.text()),
+            tipo=self._tipo_escrito(),
             unidade=self.unidade_input.currentData(),
             tipo_preco=self.tipo_preco_input.currentData() or TIPO_PRECO_TABELA,
             preco_tabela=None if livre else self._preco_de_tabela(),

@@ -263,3 +263,58 @@ def test_numa_materia_nova_a_ref_le_aparece_ao_escolher_a_familia() -> None:
     assert "FER0192" in dialogo.ref_le_input.placeholderText()
     assert dialogo.get_data().ref_le is None  # o servico e' que a atribui
     dialogo.deleteLater()
+
+
+def test_tipo_e_um_seletor_com_os_tipos_da_familia() -> None:
+    """O Tipo era texto livre: cada um escrevia à sua maneira e nasciam
+    tipos repetidos. Agora escolhe-se da lista da família, ou escreve-se um novo."""
+    tipos = {
+        "": ["AGLOMERADO", "FECHADURAS", "PES"],
+        "PLACAS": ["AGLOMERADO"],
+        "FERRAGENS": ["FECHADURAS", "PES"],
+    }
+    dialogo = MateriaPrimaDialog(_materia(), tipos_existentes=tipos)
+
+    lista = [dialogo.tipo_input.itemText(i) for i in range(dialogo.tipo_input.count())]
+    assert lista == ["AGLOMERADO"]
+    assert dialogo.tipo_input.currentText() == "AGLOMERADO"
+
+    dialogo.familia_input.setCurrentIndex(dialogo.familia_input.findData("FERRAGENS"))
+    lista = [dialogo.tipo_input.itemText(i) for i in range(dialogo.tipo_input.count())]
+    assert lista == ["FECHADURAS", "PES"]
+    # Mudar de família não apaga o que estava escrito.
+    assert dialogo.tipo_input.currentText() == "AGLOMERADO"
+
+    dialogo.tipo_input.setCurrentText(" fechaduras ")
+    assert dialogo.get_data().tipo == "FECHADURAS"
+
+    dialogo.tipo_input.setCurrentText("puxadores gola")
+    assert dialogo.get_data().tipo == "PUXADORES GOLA"
+
+    dialogo.tipo_input.setCurrentText("  ")
+    assert dialogo.get_data().tipo is None
+
+    # Uma família sem tipos não mostra os das outras.
+    dialogo.familia_input.setCurrentIndex(dialogo.familia_input.findData("ORLA"))
+    assert dialogo.tipo_input.count() == 0
+
+
+def test_tipos_por_familia_e_normalizar_tipo() -> None:
+    from types import SimpleNamespace
+
+    from app.domain.materia_prima_types import normalizar_tipo, tipos_por_familia
+
+    materias = [
+        SimpleNamespace(familia_original_excel="FERRAGENS", tipo_original_excel="PES"),
+        SimpleNamespace(familia_original_excel="FERRAGENS", tipo_original_excel="DOBRADIÇAS"),
+        SimpleNamespace(familia_original_excel="PLACAS", tipo_original_excel="MDF"),
+        SimpleNamespace(familia_original_excel="ORLA", tipo_original_excel=None),
+    ]
+    tipos = tipos_por_familia(materias)
+    assert tipos["FERRAGENS"] == ["DOBRADIÇAS", "PES"]
+    assert tipos[""] == ["DOBRADIÇAS", "MDF", "PES"]
+    assert "ORLA" not in tipos
+
+    assert normalizar_tipo("dobradicas", tipos[""]) == "DOBRADIÇAS"
+    assert normalizar_tipo("novo  tipo", tipos[""]) == "NOVO TIPO"
+    assert normalizar_tipo(None, tipos[""]) is None
