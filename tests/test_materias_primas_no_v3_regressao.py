@@ -361,3 +361,54 @@ def test_repositorio_conta_a_partir_do_maior_numero_existente(session) -> None:
 
     assert repositorio.ultimo_numero_ref_le("PLC") == 120
     assert repositorio.ultimo_numero_ref_le("FER") == 0
+
+
+def test_corrigir_a_descricao_com_liquido_de_mais_casas_nao_repete_historico(service) -> None:
+    """PLC0122 (17-09-2026): 6,81 × 0,70 × 1,05 = 5,00535, a base guarda 5,0054.
+
+    O formulário manda o líquido com todas as casas; comparado com o gravado
+    parecia outro preço e o Histórico ganhava uma linha repetida.
+    """
+    materia = _criar(
+        service,
+        descricao="AGL MLM BRANCOW908/ST7  08MM",
+        preco_tabela=Decimal("6.81"),
+        desconto=Decimal("30"),
+        margem=Decimal("5"),
+        preco_liquido=Decimal("5.00535"),
+    )
+
+    service.editar_materia_prima(
+        materia.id,
+        EditarDefMateriaPrimaData(
+            descricao="AGL MLM BRANCO W980/ST7  08MM",
+            ref_le=materia.ref_le,
+            familia_original_excel="PLACAS",
+            unidade="M2",
+            preco_tabela=Decimal("6.81"),
+            desconto=Decimal("30"),
+            margem=Decimal("5"),
+            preco_liquido=Decimal("5.00535"),
+        ),
+    )
+
+    assert len(service.historico_precos(materia.id)) == 1
+
+
+def test_mudar_o_liquido_a_quarta_casa_continua_a_contar(service) -> None:
+    materia = _criar(service, preco_liquido=Decimal("25.5800"))
+
+    service.editar_materia_prima(
+        materia.id,
+        EditarDefMateriaPrimaData(
+            descricao=materia.descricao,
+            ref_le=materia.ref_le,
+            familia_original_excel="PLACAS",
+            unidade="M2",
+            preco_tabela=Decimal("31.20"),
+            desconto=Decimal("18"),
+            preco_liquido=Decimal("25.5801"),
+        ),
+    )
+
+    assert len(service.historico_precos(materia.id)) == 2

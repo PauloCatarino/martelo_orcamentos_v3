@@ -118,6 +118,21 @@ class EditarDefMateriaPrimaData:
     fornecedor_id: int | None = None
 
 
+def _mesmo_valor_gravado(anterior: Decimal | None, atual: Decimal | None) -> bool:
+    """Se dois valores ficam iguais depois de gravados (4 casas decimais).
+
+    O formulário recalcula o preço líquido com todas as casas — 6,81 × 0,70 ×
+    1,05 = 5,00535 — e a base guarda 5,0054. Comparados assim eram diferentes,
+    e corrigir só a DESCRIÇÃO de um material escrevia no Histórico uma linha
+    nova com o mesmo preço (PLC0122 do Paulo, 17-09-2026).
+    """
+    if anterior is None or atual is None:
+        return anterior is None and atual is None
+    # Diferença abaixo da 4.ª casa, e não "arredondado igual": cada base
+    # arredonda a sua maneira (o MySQL dá 5,0054, o SQLite 5,0053).
+    return abs(Decimal(anterior) - Decimal(atual)) < Decimal("0.0001")
+
+
 class DefMateriaPrimaService:
     """Application service for DefMateriaPrima workflows."""
 
@@ -346,7 +361,8 @@ class DefMateriaPrimaService:
         """Escrever no histórico quando o preço muda (ou quando o material nasce)."""
         campos = ("preco_tabela", "desconto", "margem", "preco_liquido")
         if anterior is not None and all(
-            getattr(anterior, campo) == getattr(atual, campo) for campo in campos
+            _mesmo_valor_gravado(getattr(anterior, campo), getattr(atual, campo))
+            for campo in campos
         ):
             return
 
