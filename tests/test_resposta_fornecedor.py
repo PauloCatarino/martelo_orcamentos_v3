@@ -326,3 +326,128 @@ def test_dialogo_nao_aplica_linhas_que_nao_sao_aplicaveis() -> None:
 
     assert aplicadas == []
     assert "nada marcado" in dialogo.status_label.text()
+
+
+# ------------------------------------------- resposta da B&F (17-09-2026)
+
+
+def _proposta_para(materia, preco_novo):
+    catalogo = {"PLC0052": SimpleNamespace(id=materia.id, ref_le="PLC0052",
+                                           descricao=materia.descricao,
+                                           preco_tabela=materia.preco_tabela,
+                                           desconto=materia.desconto, margem=None,
+                                           referencia_fornecedor=None)}
+    return ler_respostas(CABECALHOS, [_linha(preco_novo=preco_novo)], catalogo)
+
+
+def test_aplicar_nao_apaga_link_imagem_nem_nome_imos(session, service) -> None:
+    """A edição grava a ficha inteira: o que não se passava perdia-se."""
+    from app.services.def_materia_prima_service import EditarDefMateriaPrimaData
+
+    materia = _material_no_catalogo(session)
+    servico = DefMateriaPrimaService(session)
+    atual = servico.obter_por_id(materia.id)
+    servico.editar_materia_prima(
+        materia.id,
+        EditarDefMateriaPrimaData(
+            descricao=atual.descricao,
+            ref_le=atual.ref_le,
+            familia_original_excel=atual.familia_original_excel,
+            unidade=atual.unidade,
+            preco_tabela=atual.preco_tabela,
+            desconto=atual.desconto,
+            preco_liquido=atual.preco_liquido,
+            data_ultimo_preco=atual.data_ultimo_preco,
+            link="https://www.egger.com/h3395",
+            imagem_ficheiro="H3395_ST12.jpg",
+            nome_imos="EGGER_H3395_ST12_19",
+        ),
+    )
+
+    assert service.aplicar(_proposta_para(materia, 31.2), hoje=HOJE).atualizadas == 1
+
+    guardada = servico.obter_por_id(materia.id)
+    assert guardada.preco_tabela == Decimal("31.2")
+    assert guardada.link == "https://www.egger.com/h3395"
+    assert guardada.imagem_ficheiro == "H3395_ST12.jpg"
+    assert guardada.nome_imos == "EGGER_H3395_ST12_19"
+
+
+def test_preco_em_parcelas_so_fica_se_o_preco_nao_mudar(session, service) -> None:
+    from app.services.resposta_fornecedor_service import _dados_atualizados
+
+    materia = SimpleNamespace(
+        **{**DefMateriaPrimaService(session).obter_por_id(
+            _material_no_catalogo(session).id
+        ).__dict__, "preco_tabela_parcelas": "25 + 5"}
+    )
+    mesma = SimpleNamespace(preco_novo=Decimal("30.00"), desconto_novo=None,
+                            nova_designacao=None, nova_referencia=None)
+    outra = SimpleNamespace(preco_novo=Decimal("31.20"), desconto_novo=None,
+                            nova_designacao=None, nova_referencia=None)
+
+    assert _dados_atualizados(materia, mesma, HOJE).preco_tabela_parcelas == "25 + 5"
+    assert _dados_atualizados(materia, outra, HOJE).preco_tabela_parcelas is None
+
+
+@pytest.fixture()
+def pagina_mp(session, monkeypatch):
+    import app.ui.pages.materias_primas_page as modulo
+
+    class SessaoFixa:
+        def __call__(self):
+            return self
+
+        def __enter__(self):
+            return session
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(modulo, "SessionLocal", SessaoFixa())
+    mensagens: list[tuple[str, str]] = []
+    for tipo in ("information", "warning", "critical"):
+        monkeypatch.setattr(
+            modulo.QMessageBox, tipo,
+            staticmethod(lambda _p, _t, texto, *a, _tipo=tipo, **k: mensagens.append((_tipo, texto))),
+        )
+    registos: list[tuple[str, str]] = []
+    monkeypatch.setattr(modulo.diario_bordo, "registar_acao",
+                        lambda acao, detalhe="": registos.append((acao, str(detalhe))))
+    monkeypatch.setattr(modulo.diario_bordo, "registar_erro",
+                        lambda titulo, mensagem="", **k: registos.append((titulo, str(mensagem))))
+    return modulo.MateriasPrimasPage(), mensagens, registos
+
+
+def test_erro_ao_gravar_aparece_a_frente_e_fica_no_diario(session, pagina_mp, monkeypatch) -> None:
+    """Antes o erro ia para a barra da página, escondida atrás da janela."""
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import resposta_fornecedor_service as modulo_servico
+
+    pagina, mensagens, registos = pagina_mp
+    materia = _material_no_catalogo(session)
+
+    def rebenta(self, propostas, hoje=None):
+        raise OperationalError("UPDATE", {}, Exception("(1142) UPDATE command denied"))
+
+    monkeypatch.setattr(modulo_servico.RespostaFornecedorService, "aplicar", rebenta)
+
+    assert pagina._aplicar_resposta(_proposta_para(materia, 31.2)) is False
+    assert mensagens and mensagens[0][0] == "critical"
+    assert "NÃO foram gravados" in mensagens[0][1]
+    assert "1142" in mensagens[0][1]
+    assert any("Aplicar a resposta" in titulo and "1142" in texto for titulo, texto in registos)
+
+
+def test_gravar_com_sucesso_confirma_e_regista(session, pagina_mp) -> None:
+    pagina, mensagens, registos = pagina_mp
+    materia = _material_no_catalogo(session)
+
+    assert pagina._aplicar_resposta(_proposta_para(materia, 31.2)) is True
+    assert mensagens[0][0] == "information"
+    assert "1 preços atualizados" in mensagens[0][1]
+    assert "Histórico" in mensagens[0][1]
+    assert ("Aplicou a resposta do fornecedor", "1 preços atualizados.") in registos
+    historico = DefMateriaPrimaService(session).historico_precos(materia.id)
+    assert historico[0].origem == "FORNECEDOR"

@@ -3703,11 +3703,13 @@ class ProducaoPage(QWidget):
             return False
 
         self._set_dirty(False)
+        # Registar ANTES de recarregar: recarregar pode abrir outra obra (a que
+        # se clicou) e o diário ficava com o nome dessa em vez da gravada.
+        diario_bordo.registar_acao("Gravou a obra", f"estado={data['estado']}")
         self.carregar_processos(
             selecionar_id=proc_id if selecionar_id is None else selecionar_id
         )
         self.status_label.setText("Produção guardada.")
-        diario_bordo.registar_acao("Gravou a obra", f"estado={data['estado']}")
         if entrou_em_producao:
             self._avisar_cliente_do_projeto(proc_id)
         return True

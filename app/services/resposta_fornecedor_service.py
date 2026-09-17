@@ -208,6 +208,14 @@ def _dados_atualizados(materia, proposta: PropostaPreco, hoje: date):
             * (Decimal(1) + (margem or Decimal(0)) / Decimal(100))
         )
 
+    # O preço escrito em parcelas («0,25 + 0,15») só continua a valer se o
+    # preço não mudou; com um preço novo deixava de bater certo com ele.
+    parcelas = (
+        materia.preco_tabela_parcelas
+        if preco_tabela == materia.preco_tabela
+        else None
+    )
+
     return EditarDefMateriaPrimaData(
         descricao=proposta.nova_designacao or materia.descricao,
         ref_le=materia.ref_le,
@@ -220,6 +228,7 @@ def _dados_atualizados(materia, proposta: PropostaPreco, hoje: date):
         coresp_orla_1_0=materia.coresp_orla_1_0,
         unidade=materia.unidade,
         preco_tabela=preco_tabela,
+        preco_tabela_parcelas=parcelas,
         desconto=desconto,
         margem=margem,
         desperdicio_percentagem=materia.desperdicio_percentagem,
@@ -235,6 +244,11 @@ def _dados_atualizados(materia, proposta: PropostaPreco, hoje: date):
         cor=materia.cor,
         nome_fabricante=materia.nome_fabricante,
         ref_phc=materia.ref_phc,
+        # Sem estes três, aplicar a resposta do fornecedor APAGAVA o link, a
+        # imagem e o nome iMos da ficha (a edição grava todos os campos).
+        link=materia.link,
+        imagem_ficheiro=materia.imagem_ficheiro,
+        nome_imos=materia.nome_imos,
         ativo=materia.ativo,
         observacoes=materia.observacoes,
         origem_dados=ORIGEM_PRECO_FORNECEDOR,

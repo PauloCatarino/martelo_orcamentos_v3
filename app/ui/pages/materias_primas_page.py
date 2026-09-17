@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QHBoxLayout,
     QHeaderView,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.db.session import SessionLocal
 from app.domain.materia_prima_types import (
     MESES_PRECO_DESATUALIZADO,
@@ -594,6 +596,10 @@ class MateriasPrimasPage(QWidget):
             )
             return
 
+        diario_bordo.registar_acao(
+            "Leu a resposta do fornecedor",
+            f"{caminho} — {len(leitura.propostas)} linhas",
+        )
         dialogo = RespostaFornecedorDialog(
             list(leitura.propostas),
             caminho=caminho,
@@ -624,15 +630,32 @@ class MateriasPrimasPage(QWidget):
             return None
 
     def _aplicar_resposta(self, propostas: list) -> bool:
-        """Gravar no catálogo as linhas que o utilizador aprovou."""
+        """Gravar no catálogo as linhas que o utilizador aprovou.
+
+        Tudo o que aqui acontece é dito numa mensagem À FRENTE da janela da
+        resposta. Antes, o resultado ia só para a barra desta página, escondida
+        atrás da janela: um erro ao gravar passava despercebido, a janela ficava
+        aberta como se estivesse tudo bem, e os preços não mudavam (17-09-2026,
+        resposta da B&F).
+        """
         from app.services.resposta_fornecedor_service import RespostaFornecedorService
 
+        janela = QApplication.activeWindow() or self
         try:
             with SessionLocal() as session:
                 resultado = RespostaFornecedorService(session).aplicar(propostas)
-        except SQLAlchemyError as error:
-            print(f"[Materias-Primas] Erro ao aplicar a resposta: {error}")
+        except Exception as error:  # noqa: BLE001 - tem de ser dito, seja qual for
+            diario_bordo.registar_erro(
+                "Aplicar a resposta do fornecedor", str(error), erro=error
+            )
             self.status_label.setText("Não foi possível aplicar os preços.")
+            QMessageBox.critical(
+                janela,
+                "Resposta do fornecedor",
+                "Os preços NÃO foram gravados.\n\n"
+                f"{error}\n\n"
+                "Use «Reportar problema» para enviar este erro.",
+            )
             return False
 
         self.carregar_materias_primas()
@@ -641,7 +664,25 @@ class MateriasPrimasPage(QWidget):
             partes.append(f"{resultado.desativadas} materiais desativados")
         if resultado.erros:
             partes.append(f"{len(resultado.erros)} com erro")
-        self.status_label.setText(" · ".join(partes) + ".")
+        resumo = " · ".join(partes) + "."
+        self.status_label.setText(resumo)
+        diario_bordo.registar_acao("Aplicou a resposta do fornecedor", resumo)
+        for erro in resultado.erros:
+            diario_bordo.registar_erro("Aplicar a resposta do fornecedor", erro)
+
+        mensagem = resumo
+        if resultado.atualizadas:
+            mensagem += (
+                "\n\nO preço antigo e o novo ficam no separador Histórico de "
+                "cada matéria-prima."
+            )
+        if resultado.erros:
+            mensagem += "\n\nNão foram gravadas:\n" + "\n".join(
+                f"• {erro}" for erro in resultado.erros[:15]
+            )
+            QMessageBox.warning(janela, "Resposta do fornecedor", mensagem)
+        else:
+            QMessageBox.information(janela, "Resposta do fornecedor", mensagem)
         return True
 
     def _listar_fornecedores(self):
