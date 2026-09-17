@@ -133,3 +133,23 @@ def test_sem_procedimentos_continua_como_antes(session, monkeypatch) -> None:
 
     utilizador = session.query(User).filter_by(username="ana").one()
     assert utilizador.password_hash  # o hash ainda e' quem manda
+
+
+def test_password_minima_e_a_mesma_das_contas_mysql() -> None:
+    """Criar um utilizador novo pedia 8 caracteres e as contas MySQL 6.
+
+    As contas vieram todas do V2 com 6; o Ruben Pereira, criado de raiz no V3,
+    era o único a quem se exigia mais. Agora há uma regra só.
+    """
+    import inspect
+
+    from app.services import user_admin_service
+    from app.services.mysql_contas_service import MINIMO_PASSWORD
+
+    assert MINIMO_PASSWORD == 6
+    fonte = inspect.getsource(user_admin_service)
+    assert "8 caracteres" not in fonte
+
+    with pytest.raises(ValueError, match="6 caracteres"):
+        user_admin_service._validar_password("12345")
+    user_admin_service._validar_password("123456")

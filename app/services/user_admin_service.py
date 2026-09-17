@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.domain.departamentos import normalizar_departamento
 from app.models import User
 from app.services import mysql_contas_service
+from app.services.mysql_contas_service import MINIMO_PASSWORD
 from app.services.permission_service import (
     DEFAULT_USER_PERMISSIONS,
     PERMISSOES_EDITAVEIS,
@@ -51,6 +52,19 @@ def list_managed_users(session: Session) -> list[ManagedUser]:
     ]
 
 
+def _validar_password(password: str) -> None:
+    """O mínimo é o mesmo das contas MySQL (6): ver MINIMO_PASSWORD.
+
+    Aqui pedia-se 8 e do outro lado 6. As contas antigas vieram do V2 com 6
+    caracteres, e uma conta nova ficava com uma regra diferente das dos
+    colegas sem razão nenhuma -- foi o que apanhou o Ruben Pereira.
+    """
+    if len(str(password or "")) < MINIMO_PASSWORD:
+        raise ValueError(
+            f"A palavra-passe deve ter pelo menos {MINIMO_PASSWORD} caracteres."
+        )
+
+
 def create_user(
     session: Session,
     *,
@@ -65,8 +79,7 @@ def create_user(
     email = email.strip().lower()
     if not username or not nome or not email or not password:
         raise ValueError("Preencha todos os campos.")
-    if len(password) < 8:
-        raise ValueError("A palavra-passe deve ter pelo menos 8 caracteres.")
+    _validar_password(password)
     if "@" not in email:
         raise ValueError("Introduza um email válido.")
     duplicate = session.execute(
@@ -155,8 +168,7 @@ def reset_password(session: Session, user_id: int, password: str) -> None:
         )
         return
 
-    if len(password) < 8:
-        raise ValueError("A palavra-passe deve ter pelo menos 8 caracteres.")
+    _validar_password(password)
     user.password_hash = pwd_context.hash(password)
     session.commit()
 

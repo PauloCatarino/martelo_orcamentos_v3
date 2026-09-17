@@ -29,6 +29,7 @@ from app.services.user_admin_service import (
     reset_password,
     update_user_access,
 )
+from app.services.mysql_contas_service import MINIMO_PASSWORD
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.icones import icone
@@ -59,8 +60,14 @@ class NewUserDialog(QDialog):
         self.departamento = _combo_departamentos()
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText(f"mínimo {MINIMO_PASSWORD} caracteres")
+        self.password.setToolTip(
+            f"Palavra-passe da pessoa: pelo menos {MINIMO_PASSWORD} caracteres, "
+            "como as contas que vieram do Martelo V2."
+        )
         self.confirm = QLineEdit()
         self.confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self.confirm.setToolTip("Escreva outra vez a mesma palavra-passe.")
         form.addRow("Username", self.username)
         form.addRow("Nome", self.nome)
         form.addRow("Email", self.email)
@@ -222,7 +229,7 @@ class UserManagementPage(QWidget):
         password, accepted = QInputDialog.getText(
             self,
             "Redefinir palavra-passe",
-            "Nova palavra-passe (mínimo 6 caracteres):",
+            f"Nova palavra-passe (mínimo {MINIMO_PASSWORD} caracteres):",
             QLineEdit.EchoMode.Password,
         )
         if not accepted:
