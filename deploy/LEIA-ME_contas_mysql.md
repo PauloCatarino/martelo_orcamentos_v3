@@ -261,3 +261,30 @@ utilizador) — ela trata da conta na base de dados sozinha.
 **Passar isto para a base principal.** O mesmo guião, trocando
 `martelo_v3_beta` pelo nome da base principal em todos os sítios. Só depois de a
 beta estar rodada.
+
+---
+
+## Avaria conhecida: «execute command denied … martelo_criar_utilizador»
+
+Ao criar uma pessoa nova pela app aparece:
+
+```
+Nao foi possivel criar a conta na base de dados: execute command denied to
+user 'admin'@'%' for routine 'martelo_v3.martelo_criar_utilizador'
+```
+
+Quer dizer que a conta com que entrou no Martelo **não tem o perfil
+`martelo_admin` ativo** nesta base — ou nunca lho deram, ou o perfil ficou por
+ativar (`SET DEFAULT ROLE`), ou os `GRANT EXECUTE` foram dados na beta (que já
+foi eliminada) e nunca na base principal.
+
+Correr, **como root**, uma vez:
+
+```powershell
+mysql -h 127.0.0.1 -u root -p martelo_v3 < deploy\mysql_corrigir_admin_contas.sql
+```
+
+Repõe os `GRANT EXECUTE` dos procedimentos e dá o perfil de administrador à
+conta indicada lá dentro (`SET @conta = 'admin';`). No fim mostra duas grelhas
+de conferência. Depois é preciso **fechar e voltar a abrir o Martelo**: o
+perfil é escolhido quando a ligação nasce.

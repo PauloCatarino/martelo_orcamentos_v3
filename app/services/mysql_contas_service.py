@@ -141,10 +141,39 @@ def _chamar(session: Session, sql: str, parametros: dict, *, falhou: str) -> Non
         raise ContaMySQLError(f"{falhou}: {_mensagem(exc)}") from exc
 
 
+#: Ficheiro que repoe os direitos de quem administra as contas.
+FICHEIRO_CORRIGIR_ADMIN = "deploy/mysql_corrigir_admin_contas.sql"
+
+
+def explicar_execute_denied(mensagem: str) -> str | None:
+    """Traduz o "execute command denied" do MySQL para o que ha' a fazer.
+
+    A mensagem crua ("execute command denied to user 'admin'@'%' for routine
+    'martelo_v3.martelo_criar_utilizador'") nao diz nada a quem esta' a criar
+    um utilizador. Quer dizer sempre a mesma coisa: a conta ligou-se sem o
+    perfil `martelo_admin` -- ou nao lho deram, ou o perfil ficou por ativar
+    (o DEFAULT ROLE), ou os EXECUTE foram dados noutra base.
+    """
+    texto = str(mensagem or "")
+    if "execute command denied" not in texto.casefold():
+        return None
+    return (
+        "a conta com que entrou na base de dados nao tem perfil de "
+        "administrador (martelo_admin), e so' esse perfil pode criar contas.\n\n"
+        f"O administrador do servidor tem de correr, como root, o "
+        f"{FICHEIRO_CORRIGIR_ADMIN}; depois feche e abra o Martelo.\n\n"
+        f"Detalhe do servidor: {texto}"
+    )
+
+
 def _mensagem(exc: SQLAlchemyError) -> str:
     original = getattr(exc, "orig", None)
     args = getattr(original, "args", ()) or ()
+    bruta = ""
     for arg in args:
         if isinstance(arg, str) and arg.strip():
-            return arg.strip()
-    return str(original or exc).strip()
+            bruta = arg.strip()
+            break
+    if not bruta:
+        bruta = str(original or exc).strip()
+    return explicar_execute_denied(bruta) or bruta

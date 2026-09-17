@@ -153,3 +153,27 @@ def test_password_minima_e_a_mesma_das_contas_mysql() -> None:
     with pytest.raises(ValueError, match="6 caracteres"):
         user_admin_service._validar_password("12345")
     user_admin_service._validar_password("123456")
+
+
+def test_execute_denied_explica_o_que_fazer() -> None:
+    """A conta 'admin' sem perfil martelo_admin dava só o erro cru do MySQL.
+
+    Aconteceu a 17-09-2026 ao criar o «Ruben Pereira»: «execute command denied
+    to user 'admin'@'%' for routine 'martelo_v3.martelo_criar_utilizador'».
+    """
+    from app.services.mysql_contas_service import (
+        FICHEIRO_CORRIGIR_ADMIN,
+        explicar_execute_denied,
+    )
+
+    bruta = (
+        "(1370, \"execute command denied to user 'admin'@'%' for routine "
+        "'martelo_v3.martelo_criar_utilizador'\")"
+    )
+    explicada = explicar_execute_denied(bruta)
+    assert explicada is not None
+    assert "martelo_admin" in explicada
+    assert FICHEIRO_CORRIGIR_ADMIN in explicada
+    assert bruta in explicada  # o detalhe do servidor não se perde
+
+    assert explicar_execute_denied("Nome de utilizador invalido.") is None
