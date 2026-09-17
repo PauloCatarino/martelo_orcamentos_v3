@@ -371,7 +371,16 @@ class OrcamentoItemsPage(QWidget):
             "Custos administrativos: multiplicam a soma dos blocos com margem."
         )
 
-        self.soma_preco_label = QLabel("Soma Preço Final: 0,00 €")
+        # O total do orçamento é o número que o utilizador procura primeiro:
+        # legenda normal, valor grande e a negrito, dentro de uma caixa bege.
+        self.soma_preco_label = QLabel()
+        self.soma_preco_label.setTextFormat(Qt.TextFormat.RichText)
+        self.soma_preco_label.setStyleSheet(
+            f"QLabel {{ background-color: {tema.BEGE_AREIA};"
+            f" border: 1px solid {tema.CASTANHO_MEDIO}; border-radius: 4px;"
+            " padding: 2px 10px; }"
+        )
+        self._mostrar_soma_preco(Decimal("0"))
         self.soma_preco_label.setToolTip(
             "Soma do Preço Total dos items e dos suplementos globais do orçamento."
         )
@@ -482,10 +491,18 @@ class OrcamentoItemsPage(QWidget):
             (item.preco_total for item in items if item.preco_total is not None),
             Decimal("0"),
         )
-        self.soma_preco_label.setText(f"Soma Preço Final: {format_eur(soma)}")
+        self._mostrar_soma_preco(soma)
         # Seed the target field with the current total (the button reads it on
         # demand; nothing is applied just by loading).
         self.objetivo_spin.setValue(float(soma))
+
+    def _mostrar_soma_preco(self, soma: Decimal) -> None:
+        """Write the final sum with the price in large bold type."""
+        self.soma_preco_label.setText(
+            f'<span style="color:{tema.CASTANHO_ESCURO};">Soma Preço Final:</span>'
+            f'&nbsp;<span style="font-size:15pt; font-weight:700;'
+            f' color:{tema.CASTANHO_ESCURO};">{format_eur(soma)}</span>'
+        )
 
     def _margens_do_painel(self) -> MargensOrcamento:
         """Read the margins panel into a MargensOrcamento (Decimal, 2 dp)."""
