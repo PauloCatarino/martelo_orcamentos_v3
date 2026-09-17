@@ -83,3 +83,16 @@ def test_options_list_all_types_in_order() -> None:
         SEPARADOR,
         OUTRO,
     ]
+
+
+def test_quantidade_zero_pela_regra() -> None:
+    from decimal import Decimal
+
+    from app.domain.custeio_linha_types import quantidade_zero_pela_regra
+
+    regra = "1 if COMP > 1100 else 0"
+    assert quantidade_zero_pela_regra(Decimal("0"), regra, False)
+    assert not quantidade_zero_pela_regra(Decimal("1"), regra, False)
+    assert not quantidade_zero_pela_regra(Decimal("0"), None, False)
+    assert not quantidade_zero_pela_regra(Decimal("0"), "  ", False)
+    assert not quantidade_zero_pela_regra(Decimal("0"), regra, True)

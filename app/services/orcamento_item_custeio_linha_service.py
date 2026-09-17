@@ -29,6 +29,7 @@ from app.domain.custeio_linha_types import (
     PECA_COMPOSTA,
     SEPARADOR,
     normalize_custeio_linha_type,
+    quantidade_zero_pela_regra,
 )
 from app.domain.medidas import (
     avaliar_medida,
@@ -3092,7 +3093,22 @@ class OrcamentoItemCusteioLinhaService:
             maquinas = sorted(
                 {operacao.maquina for operacao in operacoes if operacao.maquina}
             )
-            if not operacoes:
+            if quantidade_zero_pela_regra(
+                linha.quantidade,
+                linha.associado_regra_expressao,
+                bool(linha.quantidade_editada_localmente),
+            ):
+                # A regra decidiu que esta linha nao e' precisa neste item
+                # (ex.: suporte central num varao curto). Custo 0 EUR e' o
+                # resultado certo; avisar so' punha o utilizador a procurar
+                # um erro que nao existe.
+                estado = "NÃO APLICÁVEL"
+                regra = (linha.associado_regra_expressao or "").strip()
+                diagnostico = (
+                    f"Quantidade 0 pela regra ({regra}): não é precisa neste "
+                    "item, por isso o custo 0 € está correto."
+                )
+            elif not operacoes:
                 estado = "ATENÇÃO"
                 diagnostico = (
                     "Ferragem sem operações: confirmar se falta CNC/furação ou "
@@ -3127,7 +3143,7 @@ class OrcamentoItemCusteioLinhaService:
                     diagnostico=diagnostico,
                 )
             )
-        prioridade = {"ATENÇÃO": 0, "VERIFICAR": 1, "OK": 2}
+        prioridade = {"ATENÇÃO": 0, "VERIFICAR": 1, "OK": 2, "NÃO APLICÁVEL": 3}
         return sorted(
             resultado,
             key=lambda item: (prioridade.get(item.estado, 9), item.ordem, item.codigo),

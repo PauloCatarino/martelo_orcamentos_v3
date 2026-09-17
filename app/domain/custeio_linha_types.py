@@ -52,6 +52,25 @@ def get_custeio_linha_type_options() -> tuple[tuple[str, str], ...]:
     return tuple(CUSTEIO_LINHA_TYPE_LABELS.items())
 
 
+def quantidade_zero_pela_regra(
+    quantidade: object,
+    regra_expressao: str | None,
+    quantidade_editada_localmente: bool,
+) -> bool:
+    """A linha tem quantidade 0 porque a REGRA decidiu que nao e' precisa?
+
+    Ex.: o suporte central do varao so' entra com ``1 if COMP > 1100 else 0``.
+    Num varao curto a regra da' 0 e o custo 0 EUR esta' certo -- nao e' erro.
+    Uma quantidade 0 escrita a' mao, ou sem regra, continua a ser suspeita.
+    """
+    if quantidade_editada_localmente or not (regra_expressao or "").strip():
+        return False
+    try:
+        return float(quantidade) == 0  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+
+
 def normalize_custeio_linha_type(tipo: str | None) -> str:
     """Normalize a cost line type code, falling back to OUTRO."""
     if not tipo:

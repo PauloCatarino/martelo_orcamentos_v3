@@ -44,6 +44,9 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
         "Resolver",
     )
 
+    # "NÃO APLICÁVEL" (quantidade 0 pela regra) nao conta nem tem "Resolver".
+    ESTADOS_A_VERIFICAR = ("ATENÇÃO", "VERIFICAR")
+
     def __init__(
         self,
         linhas: list[AuditoriaOperacaoLinhaResumo],
@@ -68,7 +71,9 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
             "Abra uma linha para consultar ou corrigir as operações localmente."
         )
         nota.setWordWrap(True)
-        atencoes = sum(linha.estado != "OK" for linha in linhas)
+        atencoes = sum(
+            linha.estado in self.ESTADOS_A_VERIFICAR for linha in linhas
+        )
         sem_operacoes = sum(linha.operacoes_efetivas == 0 for linha in linhas)
         resumo = QLabel(
             f"Linhas analisadas: {len(linhas)}  |  A verificar: {atencoes}  |  "
@@ -130,6 +135,7 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
             "ATENÇÃO": QColor("#F8D7DA"),
             "VERIFICAR": QColor("#FFF3CD"),
             "OK": QColor("#D4EDDA"),
+            "NÃO APLICÁVEL": QColor("#E3E0DC"),
         }
         for row, linha in enumerate(linhas):
             self._linhas_by_row[row] = linha
@@ -151,7 +157,7 @@ class CusteioOperacoesAuditoriaDialog(QDialog):
                     item.setBackground(cores.get(linha.estado, QColor("white")))
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table.setItem(row, column, item)
-            if linha.estado != "OK":
+            if linha.estado in self.ESTADOS_A_VERIFICAR:
                 self._colocar_botao_resolver(row, linha)
         self.table.resizeRowsToContents()
 

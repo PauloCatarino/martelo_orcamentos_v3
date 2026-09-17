@@ -4088,6 +4088,49 @@ def test_auditoria_operacoes_destaca_sem_operacoes_e_custo_zero(monkeypatch) -> 
     assert resultado[1].operacoes_efetivas == 1
 
 
+def test_auditoria_operacoes_quantidade_zero_pela_regra_nao_e_alerta(monkeypatch) -> None:
+    """Suporte central do varao: num varao curto a regra da' 0 e o custo 0 EUR
+    esta' certo. O Paulo via "VERIFICAR" + "Resolver" num erro que nao existia."""
+    service, _ = _service(monkeypatch)
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=40,
+            tipo_linha="FERRAGEM",
+            def_peca_id=4,
+            codigo="SUPORTE_CENTRAL_VARAO",
+            quantidade=Decimal("0"),
+            qt_und=Decimal("0"),
+            associado_regra_expressao="1 if COMP > 1100 else 0",
+            custo_producao=Decimal("0"),
+        ),
+        # A mesma quantidade 0 escrita a' mao continua a ser verificada.
+        _resumo(
+            id=41,
+            tipo_linha="FERRAGEM",
+            def_peca_id=4,
+            codigo="SUPORTE_MANUAL",
+            quantidade=Decimal("0"),
+            associado_regra_expressao="1 if COMP > 1100 else 0",
+            quantidade_editada_localmente=True,
+            custo_producao=Decimal("0"),
+        ),
+    ]
+    _FakePecaOperacaoRepository.ligacoes_por_peca = {4: [_ligacao_op(14)]}
+    _FakeOperacaoRepository.operacoes = {
+        14: _operacao("EMBALAMENTO", id=14, tipo_operacao="MANUAL")
+    }
+
+    resultado = service.auditar_operacoes_do_item(10)
+
+    por_codigo = {linha.codigo: linha for linha in resultado}
+    assert por_codigo["SUPORTE_MANUAL"].estado == "VERIFICAR"
+    suporte = por_codigo["SUPORTE_CENTRAL_VARAO"]
+    assert suporte.estado == "NÃO APLICÁVEL"
+    assert "1 if COMP > 1100 else 0" in suporte.diagnostico
+    assert "0 € está correto" in suporte.diagnostico
+    assert resultado[-1].codigo == "SUPORTE_CENTRAL_VARAO"
+
+
 def test_auditoria_operacoes_marca_ok_e_ignora_divisoes(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     _FakeRepository.active_rows = [

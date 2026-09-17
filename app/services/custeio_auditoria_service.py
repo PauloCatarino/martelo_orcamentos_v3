@@ -8,7 +8,13 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.custeio_linha_types import DIVISAO_INDEPENDENTE, OPERACAO_MANUAL, PECA, SEPARADOR
+from app.domain.custeio_linha_types import (
+    DIVISAO_INDEPENDENTE,
+    OPERACAO_MANUAL,
+    PECA,
+    SEPARADOR,
+    quantidade_zero_pela_regra,
+)
 from app.models import Cliente, Orcamento, OrcamentoItem, OrcamentoItemCusteioLinha, OrcamentoVersao, User
 
 CRITICO = "CRÍTICO"
@@ -58,6 +64,8 @@ class LinhaAuditoriaDados:
     excluir_ferragem: bool = False
     excluir_producao: bool = False
     excluir_acabamento: bool = False
+    # Quantidade 0 decidida pela regra (ex.: suporte central num varao curto).
+    quantidade_zero_pela_regra: bool = False
 
 
 @dataclass(frozen=True)
@@ -184,6 +192,11 @@ class CusteioAuditoriaService:
                 excluir_ferragem=linha.excluir_ferragem,
                 excluir_producao=linha.excluir_producao,
                 excluir_acabamento=linha.excluir_acabamento,
+                quantidade_zero_pela_regra=quantidade_zero_pela_regra(
+                    linha.quantidade,
+                    linha.associado_regra_expressao,
+                    bool(linha.quantidade_editada_localmente),
+                ),
             ))
         return auditar_linhas(dados)
 
@@ -211,7 +224,8 @@ def auditar_linhas(linhas: list[LinhaAuditoriaDados]) -> CusteioAuditoriaResulta
         ops = linha.operacoes.upper()
         obs = linha.observacoes.casefold()
         if linha.tipo_linha not in {SEPARADOR, DIVISAO_INDEPENDENTE} and (
-            linha.quantidade <= 0 or (linha.qt_mod is not None and linha.qt_mod <= 0) or (
+            (linha.quantidade <= 0 and not linha.quantidade_zero_pela_regra)
+            or (linha.qt_mod is not None and linha.qt_mod <= 0) or (
             linha.qt_und is not None and linha.qt_und < 0
         )):
             add(

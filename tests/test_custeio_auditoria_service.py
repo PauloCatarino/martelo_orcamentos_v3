@@ -79,6 +79,30 @@ def test_valida_quantidade_dimensoes_desperdicio_e_tempo() -> None:
     assert {"QUANTIDADE_INVALIDA", "DIMENSOES_PECA_EM_FALTA", "DESPERDICIO_ELEVADO", "TEMPO_NEGATIVO"} <= testes
 
 
+def test_quantidade_zero_pela_regra_nao_e_erro() -> None:
+    """Suporte central do varao num varao curto: a regra da' 0, nao e' erro.
+
+    No 260912_01 os 7 CRITICOS da auditoria eram todos este caso.
+    """
+    resultado = auditar_linhas([_linha(
+        linha_codigo="SUPORTE_CENTRAL_VARAO",
+        quantidade=Decimal("0"), qt_mod=Decimal("1"), qt_und=Decimal("0"),
+        quantidade_zero_pela_regra=True,
+    )])
+
+    assert resultado.total == 0
+
+
+def test_quantidade_zero_sem_regra_continua_a_ser_erro() -> None:
+    resultado = auditar_linhas([_linha(
+        quantidade=Decimal("0"), qt_mod=Decimal("0"),
+        quantidade_zero_pela_regra=True,
+    )])
+
+    # O QT modulo a 0 nao vem da regra: continua a ser apanhado.
+    assert "QUANTIDADE_INVALIDA" in {i.codigo_teste for i in resultado.itens}
+
+
 def test_peca_de_servico_sem_medidas_nao_e_erro() -> None:
     """Uma OPERACAO_MANUAL de CNC custa tempo de máquina, não metros quadrados.
 
