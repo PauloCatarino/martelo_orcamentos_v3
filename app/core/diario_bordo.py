@@ -13,6 +13,7 @@ traceback completo. Nunca passwords nem ligações à base de dados.
 
 from __future__ import annotations
 
+import faulthandler
 import logging
 import os
 import platform
@@ -232,6 +233,93 @@ def instalar_apanhador_de_erros() -> None:
     threading.excepthook = _thread_excepthook
 
 
+# ---- crashes que matam o processo -------------------------------------------
+#: Quando o Qt ou o Python rebentam "por baixo" (violação de acesso), o processo
+#: morre de uma vez: não há excepção, o excepthook não corre e o diário fica
+#: sem nada. O ``faulthandler`` do Python escreve NESSE instante, direto no
+#: ficheiro, em que linha do código estava cada thread. Foi o que faltou a
+#: 18-09-2026, quando o Martelo se fechou sozinho três vezes no 260932_01.
+NOME_CRASH = "crash_martelo.log"
+PADRAO_CRASH_GUARDADO = "crash_martelo_*.log"
+MARCA_SAIDA_NORMAL = "=== saída normal ==="
+_MARCAS_CRASH = ("Windows fatal exception", "Fatal Python error")
+
+_ficheiro_crash = None
+
+
+def caminho_crash() -> Path:
+    return (_caminho_em_uso or caminho_diario()).with_name(NOME_CRASH)
+
+
+def resumo_crash(texto: str, *, maximo_linhas: int = 120) -> str | None:
+    """O relatório do faulthandler, se a sessão acabou num crash; senão None.
+
+    Uma sessão que chegou ao fim marca-se com :data:`MARCA_SAIDA_NORMAL`; se a
+    marca lá está, qualquer aviso interno que tenha ficado escrito não conta.
+    """
+    if not texto or MARCA_SAIDA_NORMAL in texto:
+        return None
+    linhas = texto.splitlines()
+    inicio = next(
+        (i for i, linha in enumerate(linhas) if linha.startswith(_MARCAS_CRASH)),
+        None,
+    )
+    if inicio is None:
+        return None
+    return "\n".join(linhas[inicio : inicio + maximo_linhas]).strip()
+
+
+def instalar_registo_de_crash() -> str | None:
+    """Ligar o faulthandler e trazer para o diário o crash da sessão anterior.
+
+    Devolve o relatório desse crash (ou None) -- para quem quiser avisar.
+    """
+    global _ficheiro_crash
+    caminho = caminho_crash()
+    anterior = None
+    try:
+        anterior = resumo_crash(caminho.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        anterior = None
+    if anterior:
+        _LOGGER.error(
+            "O Martelo fechou-se sozinho na sessão anterior (crash sem mensagem). "
+            "Onde estava cada parte do programa:\n%s",
+            anterior,
+        )
+        try:
+            guardado = caminho.with_name(
+                f"crash_martelo_{time.strftime('%Y%m%d_%H%M%S')}.log"
+            )
+            caminho.replace(guardado)
+        except OSError:
+            pass
+
+    try:
+        ficheiro = open(caminho, "w", encoding="utf-8")  # noqa: SIM115 - fica aberto de propósito
+        ficheiro.write(
+            f"=== arranque {time.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"(PID {os.getpid()}) ===\n"
+        )
+        ficheiro.flush()
+        faulthandler.enable(file=ficheiro, all_threads=True)
+        _ficheiro_crash = ficheiro
+    except (OSError, RuntimeError, ValueError):
+        _LOGGER.warning("Não foi possível ligar o registo de crashes em %s", caminho)
+    return anterior
+
+
+def marcar_saida_normal() -> None:
+    """A sessão acabou bem: o próximo arranque não a conta como crash."""
+    if _ficheiro_crash is None:
+        return
+    try:
+        _ficheiro_crash.write(f"{MARCA_SAIDA_NORMAL}\n")
+        _ficheiro_crash.flush()
+    except (OSError, ValueError):
+        pass
+
+
 # ---- limpeza automática -----------------------------------------------------
 #: Guardamos um mês de história: chega para investigar e não deixa lixo no PC.
 DIAS_A_GUARDAR = 30
@@ -259,6 +347,10 @@ def limpar_registos_antigos(
     ]
     try:
         candidatos.extend(Path(tempfile.gettempdir()).glob(PADRAO_RELATORIOS))
+    except OSError:
+        pass
+    try:
+        candidatos.extend(atual.parent.glob(PADRAO_CRASH_GUARDADO))
     except OSError:
         pass
 

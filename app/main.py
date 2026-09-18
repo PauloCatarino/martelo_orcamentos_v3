@@ -65,6 +65,9 @@ def main() -> int:
     # ninguém tratou — sem isto, um erro no PC de um utilizador não deixa rasto.
     diario_bordo.instalar_apanhador_de_erros()
     diario_bordo.registar_arranque(VERSAO_APLICACAO)
+    # E os crashes que matam o processo sem mensagem nenhuma (Qt/Python a
+    # rebentar por baixo): ficam num ficheiro e passam para o diário a seguir.
+    diario_bordo.instalar_registo_de_crash()
     # Arrumar a casa sozinho: o registo guarda um mês e o resto é apagado.
     diario_bordo.limpar_registos_antigos()
     # Silencia o ruído benigno do Qt no terminal (falsos "Could not parse
@@ -119,6 +122,7 @@ def main() -> int:
         if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
             app_session.clear_current_user()
             desligar()
+            diario_bordo.marcar_saida_normal()
             return 0
 
         app_session.set_current_user(login_window.authenticated_user)
@@ -172,6 +176,7 @@ def main() -> int:
         app_session.clear_current_user()
         desligar()
         diario_bordo.registar_acao("Martelo fechado")
+        diario_bordo.marcar_saida_normal()
         return 0
 
 
