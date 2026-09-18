@@ -7,7 +7,7 @@ vão para as colunas do iMos, incluindo o que teve de ser cortado.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
@@ -467,7 +467,10 @@ class ImosEncomendaDialog(QDialog):
             texto = texto[:limite]
 
         self._textos[coluna] = texto
-        self._recarregar()
+        # Fora do sinal: o recarregar volta a encher esta mesma tabela e
+        # destruía a célula que o Qt ainda está a escrever (fecho sem mensagem,
+        # como o do Enter no custeio a 18-09-2026).
+        QTimer.singleShot(0, self._recarregar)
 
     # ------------------------------------------------------------------
     # Criação

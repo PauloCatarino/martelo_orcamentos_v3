@@ -73,3 +73,28 @@ def test_um_crash_verdadeiro_fica_registado_e_passa_para_o_diario(tmp_path) -> N
             diario_bordo._ficheiro_crash.close()
         diario_bordo._caminho_em_uso = anterior_caminho
         diario_bordo._ficheiro_crash = anterior_ficheiro
+
+
+def test_resumo_ignora_avisos_do_outlook_e_mostra_o_ultimo_crash() -> None:
+    """A 18-09 o ficheiro tinha 173 avisos 0x8001010e (Outlook a anexar) antes
+    do crash verdadeiro; o relatório tem de mostrar o que matou o processo."""
+    aviso = (
+        "Windows fatal exception: code 0x8001010e\n\n"
+        "Thread 0x5f70 (most recent call first):\n"
+        '  File "email_orcamento_dialog.py", line 284 in _adicionar_anexos\n'
+    )
+    crash = (
+        "Windows fatal exception: access violation\n\n"
+        "Current thread 0x5f70 (most recent call first):\n"
+        '  File "orcamento_item_custeio_page.py", line 2918 in _preencher_linha\n'
+    )
+    texto = "=== arranque ===\n" + aviso * 5 + crash
+
+    resumo = diario_bordo.resumo_crash(texto)
+    assert resumo.startswith("Windows fatal exception: access violation")
+    assert "_preencher_linha" in resumo
+    assert "_adicionar_anexos" not in resumo
+
+    # Só avisos tratados e a sessão sem saída normal (ex.: morto pelo Gestor
+    # de Tarefas): não se inventa um crash.
+    assert diario_bordo.resumo_crash("=== arranque ===\n" + aviso * 3) is None

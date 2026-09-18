@@ -260,13 +260,24 @@ def resumo_crash(texto: str, *, maximo_linhas: int = 120) -> str | None:
     if not texto or MARCA_SAIDA_NORMAL in texto:
         return None
     linhas = texto.splitlines()
-    inicio = next(
-        (i for i, linha in enumerate(linhas) if linha.startswith(_MARCAS_CRASH)),
-        None,
-    )
+    # O que matou o processo é o ÚLTIMO relatório. Antes dele pode haver
+    # dezenas de avisos que o Windows tratou sozinho -- os do Outlook ao
+    # anexar ficheiros (``code 0x8001010e``) apareceram 173 vezes a 18-09.
+    inicio = None
+    for indice, linha in enumerate(linhas):
+        if linha.startswith(_MARCAS_CRASH) and not _e_aviso_tratado(linha):
+            inicio = indice
     if inicio is None:
         return None
     return "\n".join(linhas[inicio : inicio + maximo_linhas]).strip()
+
+
+def _e_aviso_tratado(linha: str) -> bool:
+    """Excepções de COM (``code 0x800…``): o Windows lança-as e trata-as.
+
+    O ``faulthandler`` escreve-as na mesma, mas não matam o programa.
+    """
+    return "code 0x800" in linha.casefold()
 
 
 def instalar_registo_de_crash() -> str | None:

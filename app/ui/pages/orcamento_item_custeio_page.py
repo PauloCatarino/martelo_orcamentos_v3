@@ -836,7 +836,7 @@ class OrcamentoItemCusteioPage(QWidget):
         # Small thumbnails in the "Módulo" column (phase 8U.4).
         self.table.setIconSize(QSize(self._TAMANHO_MINIATURA_MODULO, self._TAMANHO_MINIATURA_MODULO))
         self._larguras_iniciais_aplicadas = False
-        self.table.cellChanged.connect(self._on_cell_changed)
+        self.table.cellChanged.connect(self._on_cell_changed_sinal)
         self.table.cellClicked.connect(self._on_cell_clicked_composta)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_modulo)
         self.table.itemSelectionChanged.connect(self._atualizar_botao_biblioteca)
@@ -4335,6 +4335,24 @@ class OrcamentoItemCusteioPage(QWidget):
             f"{label} = {origem}",
             f"= {format_mm(real)}",
         )
+
+    def _on_cell_changed_sinal(self, row: int, column: int) -> None:
+        """Adiar o tratamento da célula editada para fora do sinal do Qt.
+
+        O ``cellChanged`` dispara QUANDO o Qt está a escrever o valor dentro da
+        célula (o editor a fazer commit, o Enter do fluxo rápido, o visto de
+        uma exclusão). Gravar e redesenhar a linha ali mesmo substituía a
+        célula que o Qt ainda tinha nas mãos: memória libertada em uso, e o
+        Martelo fechava-se sem mensagem nenhuma. Apanhado pelo registo de
+        crashes a 18-09-2026 (Enter numa medida do 260932_01) --
+        ``_preencher_linha`` -> ``setItem`` dentro do ``commitData``.
+
+        As mudanças feitas pelo próprio programa (tabela a carregar) continuam a
+        ser ignoradas já aqui, enquanto a bandeira ainda diz a verdade.
+        """
+        if self._carregando_tabela:
+            return
+        QTimer.singleShot(0, lambda r=row, c=column: self._on_cell_changed(r, c))
 
     def _on_cell_changed(self, row: int, column: int) -> None:
         """Save an edited quantity/measure cell and recompute the line."""

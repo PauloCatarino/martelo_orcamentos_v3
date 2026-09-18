@@ -17,7 +17,7 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -1673,7 +1673,10 @@ class OrcamentoRelatoriosPage(QWidget):
 
         # O custo de placa inteira só entra nas linhas depois da pipeline, por
         # isso este visto é dos poucos sítios da página que TEM de recalcular.
-        self.recalcular_e_carregar()
+        # Fora do sinal: o recarregar volta a encher esta tabela e destruía o
+        # próprio visto que o Qt ainda está a marcar (fecho sem mensagem, como
+        # o do Enter no custeio a 18-09-2026).
+        QTimer.singleShot(0, self.recalcular_e_carregar)
 
     def _preencher_orlas(self, orlas) -> None:
         self.orlas_table.setRowCount(0)
