@@ -234,7 +234,7 @@ def test_documento_listagem_acabamentos_no_centro_de_exportacao(tmp_path) -> Non
     # Último grupo: fica na caixa do canto inferior direito do Centro.
     assert documento.order == max(document.order for document in DEFAULT_DOCUMENTS)
     assert document_filename(documento, "0621_06_26_WERNAGEN") == (
-        "2_Lacagem_0621_06_26_WERNAGEN.pdf"
+        "3_Lacagem_0621_06_26_WERNAGEN.pdf"
     )
     states = {s.document.identifier: s for s in inspect_pdf_documents(path)}
     assert states[ACABAMENTOS_DOCUMENT_ID].available is True

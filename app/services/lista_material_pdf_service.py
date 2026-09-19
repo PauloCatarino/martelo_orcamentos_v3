@@ -128,7 +128,7 @@ DEFAULT_DOCUMENTS = (
         "Listagem Acabamentos",
         "Acabamentos",
         (FOLHA_LACAGEM,),
-        "2_Lacagem_{nome_enc_imos}.pdf",
+        "3_Lacagem_{nome_enc_imos}.pdf",
         90,
     ),
 )
