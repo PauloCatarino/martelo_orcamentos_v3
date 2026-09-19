@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -89,6 +89,10 @@ AVISO_SEM_RESULTADOS = "Sem resultados para"
 
 class OrcamentosPage(QWidget):
     """Structural budgets page without data access yet."""
+
+    #: Emitido depois de (re)carregar a lista; o Assistente dos Orçamentos usa-o
+    #: para mostrar logo a mensagem de um orçamento que acabou de mudar.
+    orcamentos_recarregados = Signal()
 
     TABLE_HEADERS = [
         "Ano",
@@ -324,6 +328,7 @@ class OrcamentosPage(QWidget):
         self._todos = list(orcamentos)
         self._atualizar_filtros()
         self._render()
+        self.orcamentos_recarregados.emit()
 
         if not self._todos:
             self.status_label.setText("Sem orcamentos para mostrar.")

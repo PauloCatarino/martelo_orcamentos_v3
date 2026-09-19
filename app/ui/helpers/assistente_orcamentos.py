@@ -1,4 +1,4 @@
-"""Assistente dos Orçamentos: relógio das 8h30 e as ações da janela.
+"""Assistente dos Orçamentos: relógio das 8h30, mensagens e ações da janela.
 
 Só existe para quem tem o acesso «Assistente dos Orçamentos». Todos os dias
 úteis, a partir das 8h30 (ou quando o Martelo abrir depois disso), abre a
@@ -9,6 +9,7 @@ thread própria, ao contrário dos avisos do PHC.
 
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -23,6 +24,10 @@ from app.domain.clientes_emails import emails_envio_orcamentos
 from app.domain.export_paths import subpasta_versao
 from app.services.assistente_orcamentos_service import AssistenteOrcamentosService
 from app.services.email_resposta_service import procurar_emails_do_cliente
+from app.services.mensagens_orcamentos_service import (
+    MensagensOrcamentosService,
+    ler_historico_v2,
+)
 from app.services.email_service import (
     carregar_email_config,
     enviar_email,
@@ -32,11 +37,17 @@ from app.services.orcamento_export_service import OrcamentoExportService
 from app.services.orcamento_historico_service import OrcamentoHistoricoService
 from app.ui.dialogs.assistente_orcamentos_dialog import AssistenteOrcamentosDialog
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
+from app.ui.dialogs.mensagem_orcamento_dialog import MensagemOrcamentoDialog
 
 #: O relógio só pergunta «já são horas?»; o resumo é uma vez por dia.
 INTERVALO_RELOGIO_MS = 10 * 60 * 1000
 #: Antes dos avisos do PHC (60 s), para não abrirem duas janelas ao mesmo tempo.
 ATRASO_ARRANQUE_MS = 30 * 1000
+#: As mensagens de (Não) Adjudicado de quando se esteve fora vêm logo a seguir
+#: a abrir o Martelo.
+ATRASO_MENSAGENS_MS = 5 * 1000
+#: Se entretanto houver muitas, mostram-se só as mais recentes.
+MAX_MENSAGENS = 3
 
 
 class AssistenteOrcamentos(QObject):
@@ -46,6 +57,7 @@ class AssistenteOrcamentos(QObject):
         *,
         user_id: int | None,
         nome: str = "",
+        username: str = "",
         ativo: bool = False,
         pagina_orcamentos=None,
         mostrar_pagina=None,
@@ -54,6 +66,11 @@ class AssistenteOrcamentos(QObject):
         self._janela = janela
         self._user_id = user_id
         self._nome = nome
+        self._username = username
+        self._a_mostrar_mensagens = False
+        #: Histórico do Arquivo V2, lido uma vez numa thread (rede/conta podem
+        #: falhar ou demorar; sem ele as mensagens usam só o V3).
+        self._historico_v2: list | None = None
         self._ativo = bool(ativo and user_id is not None)
         self._pagina = pagina_orcamentos
         self._mostrar_pagina = mostrar_pagina
@@ -65,16 +82,68 @@ class AssistenteOrcamentos(QObject):
         if self._ativo:
             self._relogio.start()
             QTimer.singleShot(ATRASO_ARRANQUE_MS, self.verificar_se_e_hora)
+            QTimer.singleShot(ATRASO_MENSAGENS_MS, self.verificar_mensagens)
+            threading.Thread(target=self._carregar_v2, daemon=True).start()
+            if pagina_orcamentos is not None and hasattr(
+                pagina_orcamentos, "orcamentos_recarregados"
+            ):
+                # Depois de mudar um estado a lista recarrega: é a deixa para a
+                # mensagem aparecer logo, sem esperar pelo relógio.
+                pagina_orcamentos.orcamentos_recarregados.connect(
+                    lambda: QTimer.singleShot(300, self.verificar_mensagens)
+                )
 
     @property
     def ativo(self) -> bool:
         return self._ativo
+
+    def _carregar_v2(self) -> None:
+        try:
+            self._historico_v2 = ler_historico_v2()
+        except Exception as erro:  # noqa: BLE001 - sem V2 as mensagens usam o V3
+            diario_bordo.registar_erro(f"Assistente dos Orçamentos: Arquivo V2: {erro}")
+            self._historico_v2 = []
+
+    # ---- mensagens de Adjudicado / Não Adjudicado -----------------------
+    @Slot()
+    def verificar_mensagens(self) -> None:
+        if not self._ativo or self._a_mostrar_mensagens:
+            return
+        self._a_mostrar_mensagens = True
+        try:
+            try:
+                with SessionLocal() as session:
+                    servico = MensagensOrcamentosService(session)
+                    eventos = servico.eventos_novos(self._user_id)[-MAX_MENSAGENS:]
+                    mensagens = [
+                        servico.compor(
+                            evento,
+                            user_id=self._user_id,
+                            username=self._username,
+                            nome=self._nome,
+                            historico_v2_linhas=self._historico_v2,
+                        )
+                        for evento in eventos
+                    ]
+            except Exception as erro:  # noqa: BLE001
+                diario_bordo.registar_erro(f"Assistente dos Orçamentos (mensagens): {erro}")
+                return
+            for mensagem in mensagens:
+                if mensagem is None:
+                    continue
+                diario_bordo.registar_acao(
+                    "Assistente dos Orçamentos — mensagem", mensagem.estado
+                )
+                MensagemOrcamentoDialog(mensagem, self._janela).exec()
+        finally:
+            self._a_mostrar_mensagens = False
 
     # ---- agenda ----------------------------------------------------------
     @Slot()
     def verificar_se_e_hora(self) -> None:
         if not self._ativo:
             return
+        self.verificar_mensagens()
         agora = datetime.now()
         try:
             with SessionLocal() as session:

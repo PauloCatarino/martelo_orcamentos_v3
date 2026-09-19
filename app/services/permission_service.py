@@ -269,9 +269,10 @@ DESCRICOES_ACESSOS: OrderedDict[str, DescricaoAcesso] = OrderedDict(
                 "quando há orçamentos enviados há mais de 30 dias sem resposta ou "
                 "em «Falta Orçamentar» há mais de 15 dias, e prepara o email de "
                 "seguimento ao cliente. Também abre no botão «🔨 Assistente» da "
-                "lista de Orçamentos (precisa do menu Orçamentos). Nunca envia "
-                "nada sozinho. As mensagens de Adjudicado/Não Adjudicado chegam "
-                "numa próxima versão.",
+                "lista de Orçamentos (precisa do menu Orçamentos). Quando um "
+                "orçamento seu passa a Adjudicado ou Não Adjudicado, mostra uma "
+                "mensagem (sempre positiva) com o histórico do cliente. Nunca "
+                "envia nada sozinho.",
                 "Orçamentação.",
             ),
         ),

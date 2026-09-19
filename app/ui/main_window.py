@@ -475,6 +475,11 @@ class MainWindow(QMainWindow):
                 if self.authenticated_user is not None
                 else ""
             ),
+            username=(
+                self.authenticated_user.username
+                if self.authenticated_user is not None
+                else ""
+            ),
             ativo=self._permissions.get(PERMISSAO_ASSISTENTE_ORCAMENTOS, False)
             and self._permissions.get("menu.orcamentos", False),
             pagina_orcamentos=self.orcamentos_page,
