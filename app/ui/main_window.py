@@ -26,6 +26,7 @@ from app.repositories.orcamento_repository import OrcamentoResumo
 from app.services.orcamento_service import OrcamentoService
 from app.services.permission_service import (
     DEFAULT_USER_PERMISSIONS,
+    PERMISSAO_ASSISTENTE_ORCAMENTOS,
     PERMISSOES_EDITAVEIS,
     is_admin,
     permissions_for_user,
@@ -34,6 +35,7 @@ from app.ui import tema
 from app.ui.icones import decorar_botoes
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
+from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.pages import (
     AjudaPage,
@@ -459,6 +461,27 @@ class MainWindow(QMainWindow):
         self._verificador_estados_phc.estados_atualizados.connect(
             self.producao_page.carregar_processos
         )
+        # Resumo diário (dias úteis, 8h30) dos orçamentos parados da pessoa.
+        # Só com o acesso «Assistente dos Orçamentos», que o admin dá.
+        self._assistente_orcamentos = AssistenteOrcamentos(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            nome=(
+                self.authenticated_user.nome
+                if self.authenticated_user is not None
+                else ""
+            ),
+            ativo=self._permissions.get(PERMISSAO_ASSISTENTE_ORCAMENTOS, False)
+            and self._permissions.get("menu.orcamentos", False),
+            pagina_orcamentos=self.orcamentos_page,
+            mostrar_pagina=self.show_page,
+        )
+        if self._assistente_orcamentos.ativo:
+            self.orcamentos_page.ativar_assistente(self._assistente_orcamentos.abrir)
         self.show_page("inicio")
 
     def _primeiro_nome_do_utilizador(self) -> str:

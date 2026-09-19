@@ -217,6 +217,15 @@ class OrcamentosPage(QWidget):
         actions_layout.addWidget(self.open_folder_button)
         actions_layout.addWidget(self.refresh_button)
         actions_layout.addStretch()
+        # Só aparece a quem tem o acesso «Assistente dos Orçamentos»: é a
+        # janela principal que o liga (ver ``ativar_assistente``).
+        self.assistente_button = QPushButton("🔨 Assistente")
+        self.assistente_button.setToolTip(
+            "Os seus orçamentos parados: enviados há mais de 30 dias sem "
+            "resposta e em «Falta Orçamentar» há mais de 15 dias."
+        )
+        self.assistente_button.setVisible(False)
+        actions_layout.addWidget(self.assistente_button)
         # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
         # mesma acao fica com a mesma cara em todas as paginas.
         decorar_barra(actions_layout)
@@ -417,6 +426,29 @@ class OrcamentosPage(QWidget):
             )
         else:
             self.status_label.setText(f"{AVISO_SEM_RESULTADOS} «{texto}».")
+
+    def ativar_assistente(self, abrir: Callable[[], None]) -> None:
+        """Mostra o botão do Assistente dos Orçamentos e liga-o."""
+        self.assistente_button.clicked.connect(lambda: abrir())
+        self.assistente_button.setVisible(True)
+
+    def mostrar_versao(self, versao_id: int) -> bool:
+        """Seleciona uma versão na lista, limpando os filtros se a esconderem."""
+        if not any(
+            o.orcamento_versao_id == versao_id for o in self._orcamentos_by_row.values()
+        ):
+            self._limpar_filtros()
+            if not any(
+                o.orcamento_versao_id == versao_id
+                for o in self._orcamentos_by_row.values()
+            ):
+                self.carregar_orcamentos()
+        self._selecionar_versao(versao_id)
+        orcamento = self._orcamentos_by_row.get(self.table.currentRow())
+        if orcamento is None or orcamento.orcamento_versao_id != versao_id:
+            return False
+        self.table.scrollToItem(self.table.item(self.table.currentRow(), 0))
+        return True
 
     def _versao_id_selecionada(self) -> int | None:
         """PK da versão na linha selecionada (para manter a seleção)."""

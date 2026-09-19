@@ -265,11 +265,13 @@ DESCRICOES_ACESSOS: OrderedDict[str, DescricaoAcesso] = OrderedDict(
                 "Orçamentos — assistente",
                 "Assistente\nOrçamentos",
                 "Janela do assistente dos Orçamentos, só com os orçamentos da "
-                "própria pessoa: resumo diário (dias úteis, a partir das 8h30) dos "
-                "enviados há mais de 30 dias sem resposta e dos que estão em «Falta "
-                "Orçamentar» há mais de 15 dias, e uma mensagem quando um orçamento "
-                "seu passa a Adjudicado ou Não Adjudicado. Nunca envia nada "
-                "sozinho. EM PREPARAÇÃO: por agora ainda não aparece nada.",
+                "própria pessoa: abre sozinha nos dias úteis, a partir das 8h30, "
+                "quando há orçamentos enviados há mais de 30 dias sem resposta ou "
+                "em «Falta Orçamentar» há mais de 15 dias, e prepara o email de "
+                "seguimento ao cliente. Também abre no botão «🔨 Assistente» da "
+                "lista de Orçamentos (precisa do menu Orçamentos). Nunca envia "
+                "nada sozinho. As mensagens de Adjudicado/Não Adjudicado chegam "
+                "numa próxima versão.",
                 "Orçamentação.",
             ),
         ),
