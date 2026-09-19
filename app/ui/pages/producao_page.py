@@ -2704,6 +2704,7 @@ class ProducaoPage(QWidget):
                     production_id=processo.id,
                     user_id=user_id,
                     client=client,
+                    obra_nome=str(getattr(processo, "codigo_processo", "") or ""),
                     parent=self,
                 )
                 dialog.exec()

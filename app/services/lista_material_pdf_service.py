@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -18,6 +19,13 @@ from sqlalchemy.orm import Session
 from app.models.lista_material_assistente import (
     ListaMaterialPdfDocumento,
     ListaMaterialPdfPreset,
+)
+from app.services.lista_material_acabamentos_service import (
+    FOLHA_LACAGEM,
+    AnaliseAcabamentos,
+    abrir_em_calculo_manual,
+    analisar_acabamentos,
+    preparar_separador_lacagem,
 )
 
 
@@ -115,7 +123,18 @@ DEFAULT_DOCUMENTS = (
         "Relatorio_Geral.pdf",
         80,
     ),
+    PdfDocument(
+        "listagem_acabamentos",
+        "Listagem Acabamentos",
+        "Acabamentos",
+        (FOLHA_LACAGEM,),
+        "2_Lacagem_{nome_enc_imos}.pdf",
+        90,
+    ),
 )
+
+# Só as peças com Tipo_Lacagem saem; o separador é preparado antes de exportar.
+ACABAMENTOS_DOCUMENT_ID = "listagem_acabamentos"
 
 RETIRED_DOCUMENT_IDS = frozenset(
     {"caderno_encargos", "rosto", "ferragens", "purch", "spp", "listagem_cutrite"}
@@ -162,7 +181,17 @@ def sync_pdf_document_registry(session: Session) -> int:
     return changed
 
 
-def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
+def _estado_acabamentos(
+    document: PdfDocument, analise: AnaliseAcabamentos
+) -> PdfDocumentState:
+    if not analise.disponivel:
+        return PdfDocumentState(document, False, analise.motivo)
+    return PdfDocumentState(document, True, analise.motivo, document.sheets)
+
+
+def inspect_pdf_documents(
+    workbook_path: Path, *, analise_acabamentos: AnaliseAcabamentos | None = None
+) -> list[PdfDocumentState]:
     workbook = load_workbook(Path(workbook_path), read_only=True, data_only=True)
     try:
         sheets = set(workbook.sheetnames)
@@ -170,6 +199,21 @@ def inspect_pdf_documents(workbook_path: Path) -> list[PdfDocumentState]:
         for document in sorted(DEFAULT_DOCUMENTS, key=lambda item: item.order):
             if document.unavailable_reason:
                 result.append(PdfDocumentState(document, False, document.unavailable_reason))
+                continue
+            if document.identifier == ACABAMENTOS_DOCUMENT_ID:
+                if analise_acabamentos is None:
+                    try:
+                        analise_acabamentos = analisar_acabamentos(workbook_path)
+                    except Exception as exc:
+                        result.append(
+                            PdfDocumentState(
+                                document,
+                                False,
+                                f"Não foi possível ler o separador {FOLHA_LACAGEM}: {exc}",
+                            )
+                        )
+                        continue
+                result.append(_estado_acabamentos(document, analise_acabamentos))
                 continue
 
             export_sheets: list[str] = []
@@ -365,9 +409,16 @@ def export_pdf_documents(
     package_name: str = "Documentacao_Producao.pdf",
     progress_callback: Callable[[str, int, int], None] | None = None,
     conflict_resolver: Callable[[tuple[Path, ...]], bool] | None = None,
+    obra_nome: str = "",
 ) -> PdfExportResult:
     selected_ids = normalize_pdf_identifiers(identifiers)
-    states = {state.document.identifier: state for state in inspect_pdf_documents(workbook_path)}
+    analise = None
+    if ACABAMENTOS_DOCUMENT_ID in selected_ids:
+        analise = analisar_acabamentos(workbook_path)
+    states = {
+        state.document.identifier: state
+        for state in inspect_pdf_documents(workbook_path, analise_acabamentos=analise)
+    }
     selected = [
         states[item.identifier]
         for item in DEFAULT_DOCUMENTS
@@ -381,7 +432,9 @@ def export_pdf_documents(
         raise ValueError("Selecione pelo menos um documento disponível.")
 
     nome_enc_imos = ""
-    if any("{nome_enc_imos}" in state.document.filename for state in selected):
+    if analise is not None or any(
+        "{nome_enc_imos}" in state.document.filename for state in selected
+    ):
         nome_enc_imos = read_nome_enc_imos_ix(workbook_path)
 
     destination = Path(destination)
@@ -422,7 +475,34 @@ def export_pdf_documents(
             excel.AutomationSecurity = 3
         except Exception:
             pass
+        if analise is not None:
+            abrir_em_calculo_manual(excel)
         workbook = excel.Workbooks.Open(str(Path(workbook_path).resolve()), ReadOnly=True)
+        package_sheets = _unique_sheet_names(selected)
+        if analise is not None and analise.plano is not None:
+            if progress_callback:
+                progress_callback("A preparar a Listagem Acabamentos…", 0, 1)
+            try:
+                visiveis = preparar_separador_lacagem(
+                    excel,
+                    workbook,
+                    analise.plano,
+                    obra=obra_nome or nome_enc_imos,
+                    dia=date.today(),
+                )
+                if visiveis != len(analise.pecas):
+                    errors.append(
+                        f"Listagem Acabamentos: o PDF tem {visiveis} linha(s) "
+                        f"mas a LISTAGEM_CUT_RITE tem {len(analise.pecas)} peça(s) "
+                        "com Tipo_Lacagem. Confirme o separador Lacagem."
+                    )
+            except Exception as exc:
+                # As outras listas saem na mesma; esta fica de fora.
+                errors.append(f"Listagem Acabamentos: {exc}")
+                planned = [item for item in planned if item[2] != (FOLHA_LACAGEM,)]
+                package_sheets = tuple(
+                    folha for folha in package_sheets if folha != FOLHA_LACAGEM
+                )
         total = max(len(planned), 1)
         if export_separate:
             for index, (rotulo, filename, folhas) in enumerate(planned, start=1):
@@ -435,14 +515,12 @@ def export_pdf_documents(
                     outputs.append(output)
                 except Exception as exc:
                     errors.append(f"{rotulo}: {exc}")
-        if create_package:
+        if create_package and package_sheets:
             if progress_callback:
                 progress_callback("A criar o pacote combinado…", total, total)
             package = resolve_output_path(destination, package_name, overwrite=overwrite)
             _remover_ficheiro_a_substituir(package, overwrite)
-            _export_sheets_to_pdf(
-                excel, workbook, _unique_sheet_names(selected), package
-            )
+            _export_sheets_to_pdf(excel, workbook, package_sheets, package)
         if progress_callback:
             progress_callback("Exportação concluída.", total, total)
     finally:

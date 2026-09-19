@@ -29,7 +29,12 @@ from sqlalchemy.orm import Session
 
 from app.models.lista_material_assistente import ListaMaterialPdfExportacao
 
+from app.services.lista_material_acabamentos_service import (
+    AnaliseAcabamentos,
+    analisar_acabamentos,
+)
 from app.services.lista_material_pdf_service import (
+    ACABAMENTOS_DOCUMENT_ID,
     PdfExportCancelled,
     PdfPresetService,
     export_pdf_documents,
@@ -49,6 +54,7 @@ class ListaMaterialPdfDialog(QDialog):
         production_id: int,
         user_id: int,
         client: str,
+        obra_nome: str = "",
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -57,9 +63,13 @@ class ListaMaterialPdfDialog(QDialog):
         self.production_id = int(production_id)
         self.user_id = int(user_id)
         self.client = client
+        self.obra_nome = str(obra_nome or "").strip()
         self.preset_service = PdfPresetService(session)
         sync_pdf_document_registry(session)
-        self.states = inspect_pdf_documents(self.workbook_path)
+        self.analise_acabamentos = self._analisar_acabamentos()
+        self.states = inspect_pdf_documents(
+            self.workbook_path, analise_acabamentos=self.analise_acabamentos
+        )
         self.checks: dict[str, QCheckBox] = {}
         self._last_result = None
 
@@ -127,6 +137,17 @@ class ListaMaterialPdfDialog(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setWidget(documents_widget)
 
+        # Peças com acabamento nas Notas mas sem Tipo_Lacagem ficam fora do
+        # PDF da lacagem: avisa-se logo ao abrir, antes de alguém exportar.
+        self.aviso_acabamentos = QLabel()
+        self.aviso_acabamentos.setWordWrap(True)
+        self.aviso_acabamentos.setStyleSheet(
+            "color: #8a4b00; background: #fff4e0; border: 1px solid #f0c27a; "
+            "border-radius: 4px; padding: 6px;"
+        )
+        self.aviso_acabamentos.setVisible(False)
+        self._mostrar_aviso_acabamentos()
+
         select_all = QPushButton("Selecionar tudo disponível")
         select_all.setToolTip("Marcar todos os documentos que têm dados neste livro")
         select_all.clicked.connect(lambda: self._select_all(True))
@@ -191,6 +212,7 @@ class ListaMaterialPdfDialog(QDialog):
         layout.addLayout(preset_row)
         layout.addLayout(select_row)
         layout.addWidget(scroll, 1)
+        layout.addWidget(self.aviso_acabamentos)
         layout.addLayout(destination_row)
         layout.addLayout(options)
         layout.addWidget(self.status_label)
@@ -198,6 +220,72 @@ class ListaMaterialPdfDialog(QDialog):
         layout.addLayout(action_row)
 
         self._reload_presets(apply_default=True)
+
+    def _analisar_acabamentos(self) -> AnaliseAcabamentos | None:
+        try:
+            return analisar_acabamentos(self.workbook_path)
+        except Exception:
+            # O visto fica indisponível com a razão; o resto do Centro abre.
+            return None
+
+    def _mostrar_aviso_acabamentos(self) -> None:
+        analise = self.analise_acabamentos
+        avisos = analise.avisos() if analise is not None else []
+        if not avisos:
+            self.aviso_acabamentos.setVisible(False)
+            return
+        partes = []
+        if analise.sem_tipo:
+            partes.append(
+                f"{len(analise.sem_tipo)} peça(s) com acabamento escrito nas "
+                "Notas/Observações sem Tipo_Lacagem"
+            )
+        if analise.tipo_invalido:
+            partes.append(
+                f"{len(analise.tipo_invalido)} peça(s) com um Tipo_Lacagem fora da lista"
+            )
+        if analise.cabecalho_em_falta:
+            partes.append(
+                "cabeçalho da Lacagem por preencher ("
+                + ", ".join(analise.cabecalho_em_falta)
+                + ")"
+            )
+        self.aviso_acabamentos.setText(
+            "Atenção — Listagem Acabamentos: " + "; ".join(partes) + ". "
+            "Passe o rato por cima para ver quais."
+        )
+        self.aviso_acabamentos.setToolTip(
+            "\n".join(avisos)
+            + "\n\nComplete a coluna Tipo_Lacagem na LISTAGEM_CUT_RITE, grave o "
+            "Excel e volte a abrir o Centro de Exportação."
+        )
+        self.aviso_acabamentos.setVisible(True)
+
+    def _confirmar_acabamentos(self) -> bool:
+        """Relê o Excel e pergunta se há peças que ficariam fora do PDF."""
+        analise = self._analisar_acabamentos()
+        if analise is not None:
+            self.analise_acabamentos = analise
+            self._mostrar_aviso_acabamentos()
+        avisos = analise.avisos() if analise is not None else []
+        if not avisos:
+            return True
+        detalhe = "\n".join(avisos[:18])
+        if len(avisos) > 18:
+            detalhe += f"\n(e mais {len(avisos) - 18} linha(s))"
+        box = QMessageBox(self)
+        box.setWindowTitle("Listagem Acabamentos")
+        box.setIcon(QMessageBox.Warning)
+        box.setText("Há peças que parecem levar acabamento mas não vão sair no PDF.")
+        box.setInformativeText(
+            f"{detalhe}\n\nPreencha a coluna Tipo_Lacagem no separador "
+            "LISTAGEM_CUT_RITE, grave o Excel e volte a exportar."
+        )
+        voltar = box.addButton("Voltar e corrigir", QMessageBox.RejectRole)
+        box.addButton("Exportar assim mesmo", QMessageBox.AcceptRole)
+        box.setDefaultButton(voltar)
+        box.exec()
+        return box.clickedButton() not in (voltar, None)
 
     def _reload_presets(
         self, *, select_id: int | None = None, apply_default: bool = False
@@ -303,6 +391,11 @@ class ListaMaterialPdfDialog(QDialog):
         if not self.separate_check.isChecked() and not self.package_check.isChecked():
             self.status_label.setText("Ative ficheiros separados, pacote combinado, ou ambos.")
             return
+        if ACABAMENTOS_DOCUMENT_ID in self._selected_ids() and not self._confirmar_acabamentos():
+            self.status_label.setText(
+                "Exportação cancelada para completar o Tipo_Lacagem no Excel."
+            )
+            return
         try:
             self._last_result = export_pdf_documents(
                 self.workbook_path,
@@ -312,6 +405,7 @@ class ListaMaterialPdfDialog(QDialog):
                 create_package=self.package_check.isChecked(),
                 progress_callback=self._on_progress,
                 conflict_resolver=self._confirmar_substituicao,
+                obra_nome=self.obra_nome,
             )
         except PdfExportCancelled:
             self.progress.setValue(0)
