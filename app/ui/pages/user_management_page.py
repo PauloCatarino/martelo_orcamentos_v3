@@ -8,12 +8,15 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -22,7 +25,11 @@ from PySide6.QtWidgets import (
 
 from app.db.session import SessionLocal
 from app.domain.departamentos import DEPARTAMENTOS
-from app.services.permission_service import PERMISSOES_EDITAVEIS
+from app.services.permission_service import (
+    DESCRICOES_ACESSOS,
+    PERMISSOES_EDITAVEIS,
+    nasce_ligado,
+)
 from app.services.user_admin_service import (
     create_user,
     list_managed_users,
@@ -33,6 +40,18 @@ from app.services.mysql_contas_service import MINIMO_PASSWORD
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.icones import icone
+
+
+def dica_acesso(chave: str) -> str:
+    """Texto da dica do título da coluna: o mesmo que está no quadro."""
+    descricao = DESCRICOES_ACESSOS[chave]
+    conta_nova = "vem ligado" if nasce_ligado(chave) else "vem desligado"
+    return (
+        f"{descricao.grupo} — {PERMISSOES_EDITAVEIS[chave]}\n\n"
+        f"{descricao.o_que_faz}\n\n"
+        f"Para quem: {descricao.para_quem}\n"
+        f"Numa conta nova: {conta_nova}."
+    )
 
 
 def _combo_departamentos(valor: str = "") -> QComboBox:
@@ -95,18 +114,43 @@ class UserManagementPage(QWidget):
             "Utilizadores e acessos",
             [
                 "O administrador pode criar contas, ativá-las ou desativá-las e "
-                "definir os menus apresentados a cada utilizador."
+                "definir os menus apresentados a cada utilizador.",
+                "Não sabe o que é um acesso? Passe o rato pelo título da coluna "
+                "ou clique na coluna: o quadro «O que é cada acesso» explica-o.",
             ],
         )
         self.table = QTableWidget()
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setColumnCount(len(self.FIXED_COLUMNS) + len(PERMISSOES_EDITAVEIS))
-        self.table.setHorizontalHeaderLabels(
-            [*self.FIXED_COLUMNS, *PERMISSOES_EDITAVEIS.values()]
+        self.table.setHorizontalHeaderLabels(list(self.FIXED_COLUMNS))
+        for coluna, chave in enumerate(PERMISSOES_EDITAVEIS, start=len(self.FIXED_COLUMNS)):
+            titulo = QTableWidgetItem(DESCRICOES_ACESSOS[chave].titulo_curto)
+            titulo.setToolTip(dica_acesso(chave))
+            self.table.setHorizontalHeaderItem(coluna, titulo)
+        self.table.currentCellChanged.connect(
+            lambda _linha, coluna, *_: self._mostrar_descricao(coluna)
         )
+        self.table.horizontalHeader().sectionClicked.connect(self._mostrar_descricao)
+
+        self.descricoes = self._criar_quadro_descricoes()
+        caixa_descricoes = QGroupBox("O que é cada acesso")
+        caixa_descricoes.setToolTip(
+            "Explicação de cada coluna da grelha de cima. Clique numa coluna da "
+            "grelha para a encontrar aqui."
+        )
+        caixa_layout = QVBoxLayout(caixa_descricoes)
+        caixa_layout.setContentsMargins(8, 8, 8, 8)
+        caixa_layout.addWidget(self.descricoes)
+        self.divisor = QSplitter(Qt.Orientation.Vertical)
+        self.divisor.setChildrenCollapsible(False)
+        self.divisor.addWidget(self.table)
+        self.divisor.addWidget(caixa_descricoes)
+        self.divisor.setStretchFactor(0, 1)
+        self.divisor.setStretchFactor(1, 1)
 
         self.new_button = QPushButton("Novo utilizador")
+        self.new_button.setToolTip("Criar uma conta nova (nasce como utilizador normal).")
         self.new_button.clicked.connect(self._new_user)
         self.password_button = QPushButton("Redefinir palavra-passe")
         self.password_button.setToolTip(
@@ -117,8 +161,13 @@ class UserManagementPage(QWidget):
         # esta página é só do administrador, e cada um tem de conseguir mudar
         # a sua sem depender dele.
         self.save_button = QPushButton("Gravar acessos")
+        self.save_button.setToolTip(
+            "Gravar os vistos e departamentos de todas as linhas. Cada pessoa "
+            "vê as alterações no próximo login."
+        )
         self.save_button.clicked.connect(self._save)
         self.reload_button = QPushButton("Recarregar")
+        self.reload_button.setToolTip("Voltar a ler da base de dados, descartando o que não foi gravado.")
         self.reload_button.clicked.connect(self.carregar)
         self.voltar_button = QPushButton("Voltar às Configurações")
         self.voltar_button.setIcon(icone("acao_voltar"))
@@ -145,8 +194,63 @@ class UserManagementPage(QWidget):
         layout.addLayout(buttons)
         # Linha de acompanhamento logo abaixo dos botões, como nos outros menus.
         layout.addWidget(self.status_label)
-        layout.addWidget(self.table, 1)
+        layout.addWidget(self.divisor, 1)
         self.carregar()
+
+    COLUNAS_DESCRICAO = ("Grupo", "Acesso", "O que dá", "Para quem", "Conta nova")
+
+    def _criar_quadro_descricoes(self) -> QTableWidget:
+        quadro = QTableWidget(len(DESCRICOES_ACESSOS), len(self.COLUNAS_DESCRICAO))
+        quadro.setHorizontalHeaderLabels(list(self.COLUNAS_DESCRICAO))
+        quadro.setObjectName("quadroDescricoesAcessos")
+        quadro.setAlternatingRowColors(True)
+        quadro.setWordWrap(True)
+        quadro.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        quadro.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        quadro.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        quadro.verticalHeader().setVisible(False)
+        for linha, (chave, descricao) in enumerate(DESCRICOES_ACESSOS.items()):
+            valores = (
+                descricao.grupo,
+                PERMISSOES_EDITAVEIS[chave],
+                descricao.o_que_faz,
+                descricao.para_quem,
+                "Ligado" if nasce_ligado(chave) else "Desligado",
+            )
+            for coluna, valor in enumerate(valores):
+                item = QTableWidgetItem(valor)
+                item.setData(Qt.ItemDataRole.UserRole, chave)
+                item.setToolTip(dica_acesso(chave))
+                quadro.setItem(linha, coluna, item)
+        cabecalho = quadro.horizontalHeader()
+        for coluna in (0, 1, 3, 4):
+            cabecalho.setSectionResizeMode(coluna, QHeaderView.ResizeMode.Interactive)
+        cabecalho.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        quadro.setColumnWidth(0, 170)
+        quadro.setColumnWidth(1, 250)
+        quadro.setColumnWidth(3, 230)
+        quadro.setColumnWidth(4, 90)
+        # A altura das linhas depende da largura da coluna «O que dá», que só
+        # se conhece com a janela aberta: recalcula-se sempre que ela muda.
+        cabecalho.sectionResized.connect(lambda *_: quadro.resizeRowsToContents())
+        return quadro
+
+    def showEvent(self, event) -> None:  # noqa: N802 - nome do Qt
+        super().showEvent(event)
+        self.descricoes.resizeRowsToContents()
+
+    def _mostrar_descricao(self, coluna: int) -> None:
+        """Clicar numa coluna de acesso da grelha salta para a explicação."""
+        indice = coluna - len(self.FIXED_COLUMNS)
+        if indice < 0 or indice >= len(PERMISSOES_EDITAVEIS):
+            return
+        chave = list(PERMISSOES_EDITAVEIS)[indice]
+        linha = list(DESCRICOES_ACESSOS).index(chave)
+        self.descricoes.selectRow(linha)
+        self.descricoes.scrollToItem(self.descricoes.item(linha, 0))
+        self.status_label.setText(
+            f"{PERMISSOES_EDITAVEIS[chave]}: {DESCRICOES_ACESSOS[chave].o_que_faz}"
+        )
 
     @staticmethod
     def _check_item(checked: bool, enabled: bool = True) -> QTableWidgetItem:
@@ -187,6 +291,8 @@ class UserManagementPage(QWidget):
                     self._check_item(user.permissions[key], not is_admin),
                 )
         self.table.resizeColumnsToContents()
+        self.table.resizeRowsToContents()
+        self.descricoes.resizeRowsToContents()
         self.status_label.setText(
             f"{len(users)} utilizador(es). Escolha o departamento, marque os "
             "menus visíveis e clique em Gravar acessos para aplicar."
