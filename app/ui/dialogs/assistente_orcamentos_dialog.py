@@ -203,6 +203,8 @@ class AssistenteOrcamentosDialog(QDialog):
         layout.addLayout(fundo)
 
         self.recarregar()
+        # Sem nada parado fica pequena; com lista, do tamanho das tabelas.
+        self.adjustSize()
 
     # ---- construção ------------------------------------------------------
     def _grupo(self, titulo: str, colunas: tuple[str, ...]):
