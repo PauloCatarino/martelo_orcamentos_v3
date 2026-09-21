@@ -33,6 +33,8 @@ from app.services.permission_service import (
 from app.services.woodstore_service import query_woodstore
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.dialogs.procedimentos_lista_material_widget import ProcedimentosListaMaterialWidget
+from app.ui.dialogs.mapear_ferragens_dialog import MapearFerragensDialog
+from app.services import custo_ferragens_service as custo_ferragens
 
 
 class _TimesWorker(QThread):
@@ -120,6 +122,11 @@ class AnaliseListaMaterialDialog(QDialog):
         if self.permissions.get(PERMISSAO_CUSTOS_LISTA_MATERIAL):
             cost = QWidget()
             cl = QVBoxLayout(cost)
+            # Rigor do custo: provisório até a obra fechar e tudo estar apurado.
+            self.rigor_label = QLabel()
+            self.rigor_label.setWordWrap(True)
+            self.rigor_label.setTextFormat(Qt.TextFormat.RichText)
+            cl.addWidget(self.rigor_label)
             self.cost_summary = QLabel()
             self.cost_summary.setWordWrap(True)
             cl.addWidget(self.cost_summary)
@@ -128,6 +135,9 @@ class AnaliseListaMaterialDialog(QDialog):
             if self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL):
                 self._button(row, 'Importar custo de ferragens…', self._import_hardware,
                              'Usar primeiro o separador do Excel. Se faltar, procurar o ficheiro na obra e depois na pasta IMOS; pedir seleção se necessário.')
+            self._button(row, 'Mapear ferragens passo a passo…', self._map_hardware,
+                         'Percorrer uma a uma as ferragens sem preço do V3: associar à matéria-prima V3 '
+                         '(fica para as próximas obras), usar o preço PHC ou o preço IMOS provisório.')
             self._button(row, 'Associar matéria-prima V3…', self._associate,
                          'Associar a linha selecionada e memorizar a correspondência de custo no V3 para próximas obras.')
             self._button(row, 'Atualizar preços do V3', self._update_prices,
@@ -559,10 +569,50 @@ class AnaliseListaMaterialDialog(QDialog):
         # A reanálise mantém os preços guardados; a atualização é uma ação distinta.
         self.prices = {line['key']: previous.get(line['key']) or previous.get(line.get('legacy_key', '')) or
                        (None if line['kind'] == 'Produção' else maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components)) for line in self.lines}
+        self._fill_hardware_prices()
         if snapshot and (snapshot.get('workbook_hash') != self.workbook_hash or snapshot.get('plans') != self.plans):
             self.warnings.append('Fontes alteradas desde a análise guardada; quantidades relidas e preços guardados mantidos.')
         self._render_costs()
         self._render_times()
+
+    def _fill_hardware_prices(self, *, refresh=False):
+        """Ferragens sem preço V3: 2.º PHC (só leitura), 3.º IMOS provisório."""
+        pending = [line for line in self.lines if line['kind'] in custo_ferragens.CATEGORIAS_FERRAGENS
+                   and (refresh or not self.prices.get(line['key']))
+                   and custo_ferragens.fonte(self.prices.get(line['key'])) != custo_ferragens.FONTE_V3]
+        if not pending:
+            return
+        if refresh or not getattr(self, 'phc', None):
+            self.phc = {}
+            try:
+                self.phc = custo_ferragens.ler_precos_phc(self.session, [l.get('ref_phc') for l in pending])
+            except Exception:
+                self.warnings.append('PHC sem ligação: preços PHC não consultados (fica o preço IMOS provisório).')
+        for line in pending:
+            chosen = self.prices.get(line['key'])
+            if chosen and chosen.get('escolha_manual'):
+                continue
+            self.prices[line['key']] = custo_ferragens.resolver_ferragem(line, None, self.phc)
+
+    def _map_hardware(self):
+        try:
+            self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
+            pending = [line for line in self.lines if line['kind'] in custo_ferragens.CATEGORIAS_FERRAGENS
+                       and custo_ferragens.fonte(self.prices.get(line['key'])) != custo_ferragens.FONTE_V3]
+            if not pending:
+                self.status.setText('Todas as ferragens já têm preço do V3.')
+                return
+            dialog = MapearFerragensDialog(
+                pending, self.prices, self.mp_catalog, getattr(self, 'phc', {}), self.references,
+                on_v3=lambda line, mp: maps.save_mapping(self.session, line, mp, self.user.username),
+                parent=self)
+            dialog.exec()
+            self.mappings = maps.load_mappings(self.session)
+            self._render_costs()
+            self.status.setText(f'{dialog.changed} ferragens decididas. Guarde a análise para fixar os preços desta obra.')
+        except Exception as exc:
+            self.session.rollback()
+            self._error(exc)
 
     def _query_times(self):
         try:
@@ -668,7 +718,14 @@ class AnaliseListaMaterialDialog(QDialog):
             rows = [line for line in self.lines if line['kind'] == kind]
             costs = [svc.calculate_cost(line, self.prices.get(line['key']))[0] for line in rows]
             categories.append(f"{kind}: {len(rows)} linhas, {sum((v for v in costs if v is not None), svc.Decimal(0)):.2f} €")
-        self.cost_summary.setText(f'Custo conhecido: {total:.2f} € · {pending} linhas pendentes · placas usadas: {board_area:.2f} m² · versão {self.version}\n'
+        state = custo_ferragens.estado_do_custo(self.obra_info.get('estado', ''), self.lines, self.prices,
+                                                self.plans, self.production)
+        self.cost_state = state
+        self.rigor_label.setText(
+            f"<b>{state.titulo}</b><br>" + '<br>'.join(('✓ ' if ok else '✗ ') + text for ok, text in state.pontos))
+        self.rigor_label.setStyleSheet('background:#e7f6ea;padding:6px;color:#1f2328;' if state.final
+                                       else 'background:#fff4d6;padding:6px;color:#1f2328;')
+        self.cost_summary.setText(f'Custo {"final" if state.final else "provisório"}: {total:.2f} € · {pending} linhas pendentes · placas usadas: {board_area:.2f} m² · versão {self.version}\n'
                                  + ' · '.join(categories) + '\n' +
                                  f"Planos incluídos: {', '.join(p['name'] for p in self.plans) or 'nenhum'}\n" + '\n'.join(self.warnings))
         for col, width in enumerate((85, 300, 85, 65, 60, 85, 45, 400, 100, 100, 330)):
@@ -750,10 +807,12 @@ class AnaliseListaMaterialDialog(QDialog):
                     self.prices[line['key']] = times.machine_price(machine) if machine else times.match_machine(line, machine_catalog)
                 elif price and price.get('component_id'):
                     self.prices[line['key']] = maps.component_price(line, self.mp_catalog, self.components)
-                elif price:
+                elif price and price.get('id') is not None:
                     self.prices[line['key']] = svc.price_record(by_id[price['id']]) if price['id'] in by_id else None
                 else:
+                    # Sem id = preço PHC/IMOS ou nenhum: o V3 volta a ter prioridade.
                     self.prices[line['key']] = maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components)
+            self._fill_hardware_prices(refresh=True)
             self._render_costs()
             self.status.setText('Preços atuais recolhidos. Guarde uma nova análise para os registar; o histórico mantém-se.')
         except Exception as exc:
@@ -783,7 +842,8 @@ class AnaliseListaMaterialDialog(QDialog):
                 self.workbook_hash = svc.fingerprint(self.path)
             destination = svc.save_snapshot(self.path, {'version': self.version, 'user': self.user.username,
                 'workbook_hash': self.workbook_hash, 'plans': self.plans, 'lines': self.lines,
-                'prices': self.prices, 'warnings': self.warnings, 'production': self.production, 'complete': False})
+                'prices': self.prices, 'warnings': self.warnings, 'production': self.production,
+                'complete': bool(getattr(self, 'cost_state', None) and self.cost_state.final)})
             self.status.setText(f'Análise guardada com preços e pendências: {destination.name}' + (f' · Relatório no Excel: {report_name}' if report_name else ''))
         except Exception as exc:
             self._error(exc)

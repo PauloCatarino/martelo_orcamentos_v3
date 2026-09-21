@@ -566,6 +566,7 @@ class ListaMaterialAssistantService:
                     short_length=Decimal("2050"),
                 )
             )
+            result.extend(bar_edge_colour_suggestions(rows, "REMATE_TETO", config))
             result.extend(self._remate_lacquer_conflicts(rows, config))
         if config.modules.get("rodape_frente", True):
             result.extend(
@@ -579,6 +580,7 @@ class ListaMaterialAssistantService:
                     short_length=Decimal("2070"),
                 )
             )
+            result.extend(bar_edge_colour_suggestions(rows, "RODAPE_FRENTE", config))
         return result
 
     def _cnc_suggestions(
@@ -1164,10 +1166,70 @@ RULE_GROUPS = (
     ("notas", "Notas: lacagem, puxador, CNC e «NÃO LACAR»"),
     ("barra_vista_vertical", "Vista Vertical: juntar em barras"),
     ("barra_remate_teto", "Remate Teto: barras normalizadas"),
+    ("barra_orla_cor", "Remate/Rodapé: orla da cor do material"),
     ("remate_teto_lacagem", "Remate Teto: não lacar (JF_VIVA)"),
     ("barra_rodape_frente", "Rodapé Frente: barras normalizadas"),
     ("orla_em_massa", "Substituição de orla"),
 )
+
+
+def bar_edge_colour_suggestions(
+    rows: Iterable[MaterialRow], description_key: str, config: AssistantConfig
+) -> list[AssistantSuggestion]:
+    """Remate Teto / Rodapé Frente: orla fina da cor do próprio material.
+
+    Rodapé em LINHO leva PVC_0.4_LINHO; se fosse branco, PVC_0.4_BRANCO (Paulo,
+    21-09-2026). Nas obras 1568/1562/1582 as orlas ESQ/DIR passaram para a cor
+    do material e CIMA/BAIXO ficaram vazias. Uma orla LACAR só se troca na
+    JF_VIVA, onde os remates nunca são lacados; noutros clientes pode ser mesmo
+    para lacar.
+    """
+    rows = list(rows)
+    vocabulary = {
+        edge.upper(): edge
+        for row in rows
+        for edge in row.edges.values()
+        if edge and "CNC" not in edge.upper()
+    }
+    lacquer_ok = client_key(config.client) == "JF_VIVA"
+    result: list[AssistantSuggestion] = []
+    for row in rows:
+        if description_key not in normalize_text(row.description):
+            continue
+        target = ""
+        for token in re.split(r"[_/\s]+", row.material.upper()):
+            candidate = vocabulary.get(f"PVC_0.4_{token}")
+            if token and candidate:
+                target = candidate
+                break
+        if not target:
+            continue
+        for side in EDGE_FIELDS:
+            edge = row.edges.get(side, "")
+            if not edge or "CNC" in edge.upper():
+                continue
+            if "LACAR" in edge.upper() and not lacquer_ok:
+                continue
+            wanted = target if side in ("Orla ESQ", "Orla DIR") else ""
+            if edge == wanted:
+                continue
+            result.append(
+                AssistantSuggestion(
+                    source_id=row.source_id,
+                    row_number=row.row_number,
+                    field=side,
+                    original=edge,
+                    suggested=wanted,
+                    reason=(
+                        f"{row.description}: orla da cor do material ({target}) à frente e "
+                        "atrás; em cima e em baixo sem orla."
+                    ),
+                    confidence=0.85,
+                    kind="barra_orla_cor",
+                    allow_blank=not wanted,
+                )
+            )
+    return result
 
 
 def rule_group(kind: str) -> str:

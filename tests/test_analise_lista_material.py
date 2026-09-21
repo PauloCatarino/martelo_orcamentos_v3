@@ -74,14 +74,17 @@ def test_cost_units_missing_prices_and_no_second_waste():
     assert svc.calculate_cost(line, {'net': '0', 'unit': 'ml'}) == (Decimal(0), 'Preço líquido zero — confirmar')
 
 
-def test_hardware_includes_hidden_hardware_but_not_imos_prices():
+def test_hardware_includes_hidden_hardware_and_keeps_imos_price_apart():
+    """Desde 21-09-2026 o preço IMOS é a 3.ª opção (provisória): guarda-se à parte,
+    nunca como preço líquido do V3."""
     rows = [('Nome iMos (Nome Uniao)', 'Ref PHC', 'Qt', 'Un', 'Na lista', '€ / un'),
             ('CAVILHA', 'FF00001', 30, 'un', 'fora', 99),
             ('TOTAL', '', 999, '', '', '')]
     result = svc.hardware_rows(rows)
     assert len(result) == 1
     assert result[0]['quantity'] == '30'
-    assert '99' not in str(result)
+    assert result[0]['imos_price'] == '99'
+    assert 'net' not in result[0]
 
 
 def test_purchased_parts_without_imos_name_are_not_lost_and_reordering_keeps_key():

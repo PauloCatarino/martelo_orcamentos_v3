@@ -423,7 +423,10 @@ def hardware_rows(rows):
             result[key] = cost_line(category, key, name, quantity, item_unit, ref_phc=ref, description=description,
                 length=str(val('Comp') or ''), width=str(val('Larg') or ''), thickness=str(val('Esp') or ''),
                 union_name=str(val('Nome iMos (Nome Uniao)') or ''), union_set=str(val('Jogo de Unioes (iMos)') or ''),
-                supplier_ref=str(val('Ref Fornecedor') or ''), legacy_key=legacy_key)
+                supplier_ref=str(val('Ref Fornecedor') or ''), legacy_key=legacy_key,
+                # Preço do IMOS: só referência, 3.ª opção e sempre provisório.
+                imos_price=str(number(val('€ / un')) or '') if number(val('€ / un')) is not None else '',
+                supplier=str(val('Fornecedor') or ''))
     if headers is None:
         raise ValueError('Cabeçalhos do custo de ferragens não reconhecidos.')
     return list(result.values())

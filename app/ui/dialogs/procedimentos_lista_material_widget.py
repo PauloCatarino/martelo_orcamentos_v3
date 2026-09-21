@@ -33,7 +33,10 @@ from app.services.lista_material_assistente_service import (
 from app.services.permission_service import PERMISSAO_CORRIGIR_LISTA_MATERIAL
 from app.services.warehouse_board_catalog import WoodstoreBoardCatalogProvider
 from app.ui.dialogs.lista_material_assistente_dialog import ListaMaterialAssistenteDialog
-from app.ui.dialogs.lista_material_revisao_dialog import ListaMaterialRevisaoDialog
+from app.services.lista_material_grelha_service import (
+    GrelhaListagem, aplicar_grelha, colunas_com_formula,
+)
+from app.ui.dialogs.grelha_listagem_dialog import GrelhaListagemDialog
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 MODULE_LABELS = {
@@ -137,8 +140,10 @@ class ProcedimentosListaMaterialWidget(QWidget):
 
         bottom = QHBoxLayout()
         self.review_button = self._button(
-            bottom, "Rever peça a peça…", self._review,
-            "Abrir as propostas das regras marcadas, peça a peça, para aceitar, editar ou manter.")
+            bottom, "Rever / editar a listagem…", self._review,
+            "Abrir a LISTAGEM_CUT_RITE numa grelha tipo Excel, com as propostas das regras marcadas "
+            "já pintadas: filtrar colunas, copiar/colar linhas antes ou depois, eliminar, limpar. "
+            "O Excel só recebe o que mudou.")
         self.apply_button = self._button(
             bottom, "Aplicar regras marcadas", self._apply,
             "Aceitar em bloco as propostas seguras das regras marcadas. As que precisam de "
@@ -262,7 +267,7 @@ class ProcedimentosListaMaterialWidget(QWidget):
                 item.setToolTip(value if col != 5 else first.reason)
                 self.table.setItem(i, col, item)
         has = bool(self.groups)
-        self.review_button.setEnabled(has)
+        self.review_button.setEnabled(bool(self.rows))
         self.apply_button.setEnabled(has and self.can_fix)
         self.bulk_button.setEnabled(bool(self.rows) and self.can_fix)
         self.status.setText(
@@ -306,24 +311,38 @@ class ProcedimentosListaMaterialWidget(QWidget):
     def _review(self):
         try:
             selected = self._selected()
-            suggestions = tuple(s for label, group in self.groups if label in selected for s in group)
-            if not suggestions:
-                self.status.setText("Marque pelo menos uma regra para rever.")
-                return
-            audit = WorkbookAudit(
-                workbook_path=self.path, rows=tuple(self.rows), suggestions=suggestions,
-                blocking=tuple(s for s in suggestions if s.blocking),
-                board_catalog_message=self.config.board_catalog_message, columns=self.columns)
-            review = ListaMaterialRevisaoDialog(audit, self)
-            if review.exec() != QDialog.DialogCode.Accepted:
+            suggestions = [s for label, group in self.groups if label in selected for s in group]
+            grelha = GrelhaListagem(self.columns, self.rows, suggestions,
+                                    colunas_com_formula(self.path))
+            dialog = GrelhaListagemDialog(grelha, self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
             if not self.can_fix:
                 raise ValueError("O administrador não atribuiu a permissão para corrigir a Lista Material.")
-            applied = self._write(review.decisions())
-            self.status.setText(f"{applied} alterações aplicadas peça a peça.")
+            cells, removed, new = grelha.summary()
+            if not (cells or removed or new):
+                self.status.setText("Nada a levar ao Excel.")
+                return
+            self._check_unchanged()
+            backup = svc.backup_path(svc.writable_workbook(self.path), "antes_grelha")
+            shutil.copy2(self.path, backup)
+            self.status.setText("A aplicar a grelha no Excel…")
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            QApplication.processEvents()
+            try:
+                written, deleted, inserted = aplicar_grelha(
+                    self.path, grelha, expected_hash=self.analysed_hash,
+                    user_name=getattr(self.user, "username", "") or "Martelo")
+            finally:
+                QApplication.restoreOverrideCursor()
+            self._learn(grelha.decisions())
+            self.on_applied()
+            self.analyse()
+            self.status.setText(f"Excel atualizado: {written} células, {deleted} linhas eliminadas, "
+                                f"{inserted} linhas novas. Cópia anterior em Analise_Lista_Material\\Copias.")
         except Exception as error:
             self.session.rollback()
-            QMessageBox.warning(self, "Rever peça a peça", str(error))
+            QMessageBox.warning(self, "Rever / editar a listagem", str(error))
 
     def _write(self, decisions) -> int:
         if not self.can_fix:

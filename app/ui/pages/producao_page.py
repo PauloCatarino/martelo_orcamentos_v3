@@ -2744,6 +2744,7 @@ class ProducaoPage(QWidget):
                         'responsavel': self.responsavel_form_combo.currentText().strip(),
                         'enc_phc': self.num_enc_phc_input.text().strip(),
                         'producao_id': processo.id,
+                        'estado': str(getattr(processo, 'estado', '') or ''),
                         'cliente_simplex': self.cliente_simplex_input.text().strip(),
                         'descricao_producao': self.descricao_producao_text.toPlainText().strip(),
                     },

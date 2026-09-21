@@ -322,3 +322,36 @@ acerta-se na configuração) e notas próprias da obra («MONTADO», «NICHO ABE
    «Para confirmar», que o bloco não aplica).
 7. Se o Excel foi mexido depois de analisar, aplicar recusa: «O Excel mudou desde a
    análise. Volte a analisar antes de aplicar.»
+
+## Grelha tipo Excel + F4 (21-09-2026) — editar a listagem; custo V3 → PHC → IMOS
+
+**Grelha «Rever / editar a listagem»** (separador Procedimentos da listagem)
+1. Obra `26.1568_01_01_JF_VIVA` (ou outra lowcost) → Análise → **Procedimentos da
+   listagem** → **Analisar procedimentos** → **Rever / editar a listagem…**.
+2. A listagem inteira aparece com as propostas das regras marcadas já pintadas
+   (amarelo); vermelho = confirmar; linhas a remover riscadas a cinzento.
+3. Clicar no cabeçalho **Descricao** → desmarcar tudo → marcar `Costa` → **OK**: só
+   ficam as costas e o cabeçalho mostra «Descricao ▼». **Limpar filtros** repõe.
+4. Selecionar uma linha → **Ctrl+C** → **Ctrl+V** (cola depois) ou **Ctrl+Shift+V**
+   (cola antes): aparece uma linha verde «nova». **Ctrl+-** elimina; **Delete** limpa
+   as células; **Ctrl+R** repõe a linha como está no Excel. Botão direito tem o mesmo.
+5. Colunas com fórmula (Cliente, Ref_Cliente, Processo, ID, Esp.Mat, Esp.Final,
+   Grafico Orlas) não se editam: o Excel calcula-as, também nas linhas coladas.
+6. **Aplicar no Excel** → a barra de estado diz quantas células, linhas eliminadas e
+   novas. Cópia antes em `Analise_Lista_Material\Copias\..._antes_grelha_...`.
+   Ensaio numa cópia da 1568: 278 células, 69 eliminadas, 1 colada em 19 s.
+
+**F4 — custo (separador Custo de produção (parcial))**
+7. Obra `26.1610_01_01_JF_VIVA` → Análise → **Custo de produção (parcial)**. No topo
+   (amarelo): «Custo PROVISÓRIO…» com ✓/✗: obra Producao ✗; Placas sem plano de
+   corte ✗; Orlas 8 de 8 ✓; «Ferragens: V3 9 · PHC 13 · IMOS provisório 2 · sem preço
+   2» ✗; Tempos ainda não consultados ✗.
+8. Na tabela, a coluna de estado diz a fonte: «2.ª opção PHC (custo): PHC 2.59 € / un»,
+   «PHC 1.267 € por 100 → 0.01267 € / un», «Preço IMOS — PROVISÓRIO».
+9. A cavilha `FC00304` está ao QUILO no PHC: não entra pelo PHC (fica IMOS 0,01 €).
+10. **Mapear ferragens passo a passo…**: «1 de N», dados da ferragem e três botões —
+    «1.º Associar à matéria-prima V3…» (fica memorizado), «2.º Usar PHC: … €» (com
+    «— CONFIRMAR» quando a unidade não é UN), «3.º Usar IMOS (provisório)». Saltar /
+    Anterior / Fechar. Depois **Guardar análise de custos**.
+11. Com a obra Finalizada/Arquivada, plano de corte, tudo com preço V3/PHC e os oito
+    setores concluídos, o quadro fica verde: «Custo FINAL da obra — tudo apurado.»
