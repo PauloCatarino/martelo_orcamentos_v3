@@ -114,7 +114,8 @@ def compact_handle(value: str) -> str:
     text = " ".join(str(value or "").strip().split())
     text = re.sub(r"(?i)^puxador\s*", "", text).strip(" :-")
     text = re.sub(r"(?i)^pux\s*", "", text).strip(" :-")
-    return f"Pux {text}".strip() if text else ""
+    # Nas listas finais as notas vão em maiúsculas («PUX TIC-TAC»).
+    return f"PUX {text}".upper().strip() if text else ""
 
 
 def _remove_note_fragments(value: str, fragments: Iterable[str]) -> tuple[str, bool]:
@@ -138,6 +139,27 @@ def _remove_note_fragments(value: str, fragments: Iterable[str]) -> tuple[str, b
         if cleaned:
             cleaned_parts.append(cleaned)
     return "; ".join(cleaned_parts), changed
+
+
+_PISO_NO_ARTIGO = re.compile(r"_(?:P(\d+)|(RC))_([A-Z]+)$")
+
+
+def localizacao_do_artigo(article: str) -> str:
+    """«RP_13_P1_F» → «PISO 1º - F»; «RP_B_05_RC_ESQ» → «RES DO CHAO ESQUERDO».
+
+    Nas obras de prédios (lowcost) o artigo IMOS traz o piso e a fração, e a
+    nota da costa diz onde o roupeiro vai. Era escrita à mão costa a costa.
+    """
+    match = _PISO_NO_ARTIGO.search(str(article or "").strip().upper())
+    if not match:
+        return ""
+    floor = f"PISO {match.group(1)}º" if match.group(1) else "RES DO CHAO"
+    side = match.group(3)
+    if side.startswith("ESQ"):
+        return f"{floor} ESQUERDO"
+    if side.startswith("DIR"):
+        return f"{floor} DIREITO"
+    return f"{floor} - {side}"
 
 
 def _description_is(value: str, keys: Iterable[str]) -> bool:
@@ -515,11 +537,19 @@ class ListaMaterialAssistantService:
         config: AssistantConfig,
     ) -> list[AssistantSuggestion]:
         rows = list(rows)
+        # As relações placa–orla guardam o nome NORMALIZADO (PVC_0_4_LINHO).
+        # Escrito no Excel dava uma orla que não existe; volta-se ao nome real
+        # a partir das orlas que aparecem na própria lista.
+        self._edge_names = {
+            normalize_text(edge): edge
+            for row in rows
+            for edge in row.edges.values()
+            if edge and "CNC" not in normalize_text(edge)
+        }
         result: list[AssistantSuggestion] = []
         if config.modules.get("cnc_fresar", True):
             for row in rows:
                 result.extend(self._cnc_suggestions(row, config))
-            result.extend(self._teto_fundo_edge_suggestions(rows))
         if config.modules.get("notas", True):
             result.extend(self._note_suggestions(rows, config))
         if config.modules.get("vista_vertical", True):
@@ -619,7 +649,11 @@ class ListaMaterialAssistantService:
                 blocking = False
             else:
                 known = self._known_edges(row.material, config)
-                proposed = known[0] if len(known) == 1 else ""
+                proposed = (
+                    getattr(self, "_edge_names", {}).get(normalize_text(known[0]), "")
+                    if len(known) == 1
+                    else ""
+                )
                 if proposed:
                     reason = "CNC_FRESAR foi separado como operação; única relação placa–orla aprovada no histórico."
                     confidence = 0.82
@@ -683,6 +717,30 @@ class ListaMaterialAssistantService:
                 "CNC_FRESAR" in normalize_text(edge)
                 for edge in row.edges.values()
             )
+            location = (
+                localizacao_do_artigo(row.article)
+                if description_key.startswith("COSTA")
+                else ""
+            )
+            if location:
+                # Costa de obra de prédio: a nota é o piso/fração.
+                if normalize_text(location) not in normalize_text(row.notes):
+                    # Sem «-> CNC»: na obra 1568 só 1 de 9 costas com CNC o levava.
+                    note = location
+                    base = row.notes.strip()
+                    result.append(
+                        AssistantSuggestion(
+                            source_id=row.source_id,
+                            row_number=row.row_number,
+                            field="Notas",
+                            original=row.notes,
+                            suggested=f"{base}; {note}" if base else note,
+                            reason=f"Piso/fração tirado do artigo {row.article}.",
+                            confidence=0.95,
+                            kind="notas_localizacao",
+                        )
+                    )
+                continue
             if description_key in LATERAL_DESCRIPTIONS and has_cnc:
                 if row.notes.strip():
                     result.append(
@@ -747,7 +805,7 @@ class ListaMaterialAssistantService:
                 )
                 if removed_lacquer:
                     reasons.append("nota de lacagem compactada")
-                finish_note = "Lacar 1 Face"
+                finish_note = "LACAR 1 FACE"
                 if handle:
                     finish_note += f" + {handle}"
                 additions.append(finish_note)
@@ -767,7 +825,7 @@ class ListaMaterialAssistantService:
                 and material_key == LACQUER_BOARD_KEY
                 and "NAO_LACAR" not in normalize_text(base_notes)
             ):
-                additions.append("Não Lacar")
+                additions.append("NÃO LACAR")
                 reasons.append("Remate Teto B3002/MA nasce como não lacar")
             if not additions and not (removed_handle or removed_legacy_cnc):
                 continue
@@ -1100,41 +1158,109 @@ class ListaMaterialAssistantService:
         self._edge_relation_cache[relation_key] = row
 
 
+RULE_GROUPS = (
+    ("cnc_fresar", "CNC_FRESAR: tirar da orla (a operação passa para as Notas)"),
+    ("notas_localizacao", "Notas das costas: piso/fração do artigo"),
+    ("notas", "Notas: lacagem, puxador, CNC e «NÃO LACAR»"),
+    ("barra_vista_vertical", "Vista Vertical: juntar em barras"),
+    ("barra_remate_teto", "Remate Teto: barras normalizadas"),
+    ("remate_teto_lacagem", "Remate Teto: não lacar (JF_VIVA)"),
+    ("barra_rodape_frente", "Rodapé Frente: barras normalizadas"),
+    ("orla_em_massa", "Substituição de orla"),
+)
+
+
+def rule_group(kind: str) -> str:
+    """O grupo (regra) a que pertence uma sugestão, para decidir em bloco."""
+    for prefix, label in RULE_GROUPS:
+        if kind.startswith(prefix):
+            return label
+    return kind
+
+
+def edge_replacement_suggestions(
+    rows: Iterable[MaterialRow],
+    *,
+    origem: str,
+    destino: str,
+    lados: Iterable[str] = EDGE_FIELDS,
+    descricoes: Iterable[str] | None = None,
+) -> list[AssistantSuggestion]:
+    """Trocar uma orla por outra em toda a obra (p. ex. PVC_0.4_LINHO → PVC_1.0_LINHO).
+
+    Na obra 1562 isto foi feito à mão em cerca de 400 células.
+    """
+    origem, destino = str(origem or "").strip(), str(destino or "").strip()
+    if not origem or origem == destino:
+        return []
+    lados = tuple(lados)
+    wanted = None if descricoes is None else {normalize_text(d) for d in descricoes}
+    result = []
+    for row in rows:
+        if wanted is not None and normalize_text(row.description) not in wanted:
+            continue
+        for side in lados:
+            if row.edges.get(side, "") != origem:
+                continue
+            result.append(
+                AssistantSuggestion(
+                    source_id=row.source_id,
+                    row_number=row.row_number,
+                    field=side,
+                    original=origem,
+                    suggested=destino,
+                    reason=f"Substituição pedida: {origem} → {destino or '(vazio)'}.",
+                    confidence=1.0,
+                    kind="orla_em_massa",
+                    allow_blank=not destino,
+                )
+            )
+    return result
+
+
 def read_material_table(workbook_path: Path) -> tuple[tuple[str, ...], list[MaterialRow]]:
+    # Lê a folha linha a linha: com read_only=True, `sheet.cell(r, c)` volta a
+    # percorrer a folha desde o início a cada chamada. Numa obra lowcost com
+    # 744 linhas a leitura antiga levava minutos.
     workbook = load_workbook(Path(workbook_path), data_only=True, read_only=True)
     try:
         if SHEET_CUTRITE not in workbook.sheetnames:
             raise ValueError(f"Folha {SHEET_CUTRITE} não encontrada.")
         sheet = workbook[SHEET_CUTRITE]
-        ordered_headers = tuple(
-            str(sheet.cell(2, column).value or "").strip()
-            for column in range(1, sheet.max_column + 1)
-            if str(sheet.cell(2, column).value or "").strip()
-        )
-        headers = {
-            str(sheet.cell(2, column).value or "").strip(): column
-            for column in range(1, sheet.max_column + 1)
-            if str(sheet.cell(2, column).value or "").strip()
-        }
+        all_rows = sheet.iter_rows(min_row=2, values_only=True)
+        header_row = next(all_rows, ())
+        headers: dict[str, int] = {}
+        for index, value in enumerate(header_row):
+            name = str(value or "").strip()
+            if name:
+                headers[name] = index
+        ordered_headers = tuple(headers)
         required = ("Descricao", "Material", "Comp", "Larg", "Qt", "Notas")
         missing = [name for name in required if name not in headers]
         if missing:
             raise ValueError("Cabeçalhos em falta na LISTAGEM_CUT_RITE: " + ", ".join(missing))
+
         rows: list[MaterialRow] = []
-        for number in range(3, sheet.max_row + 1):
-            description = sheet.cell(number, headers["Descricao"]).value
-            material = sheet.cell(number, headers["Material"]).value
+        for number, raw in enumerate(all_rows, start=3):
+            def cell(name: str, default_index: int | None = None):
+                index = headers.get(name, default_index)
+                if index is None or index >= len(raw):
+                    return None
+                return raw[index]
+
+            description = cell("Descricao")
+            material = cell("Material")
             if description in (None, "") and material in (None, ""):
                 continue
             source_value = None
             for key in ("SourceID", "ID"):
                 if key in headers:
-                    source_value = sheet.cell(number, headers[key]).value
+                    source_value = cell(key)
                     if source_value not in (None, ""):
                         break
             source_id = str(source_value or f"ROW-{number}")
             edges = {
-                name: str(sheet.cell(number, headers[name]).value or "")
+                name: str(cell(name) or "")
                 for name in EDGE_FIELDS
                 if name in headers
             }
@@ -1144,21 +1270,24 @@ def read_material_table(workbook_path: Path) -> tuple[tuple[str, ...], list[Mate
                     source_id=source_id,
                     description=str(description or ""),
                     material=str(material or ""),
-                    length=_decimal(sheet.cell(number, headers["Comp"]).value),
-                    width=_decimal(sheet.cell(number, headers["Larg"]).value),
-                    quantity=_decimal(sheet.cell(number, headers["Qt"]).value),
-                    article=str(sheet.cell(number, headers.get("Artigo", 1)).value or ""),
-                    notes=str(sheet.cell(number, headers["Notas"]).value or ""),
+                    length=_decimal(cell("Comp")),
+                    width=_decimal(cell("Larg")),
+                    quantity=_decimal(cell("Qt")),
+                    article=str(cell("Artigo", 0) or ""),
+                    notes=str(cell("Notas") or ""),
                     edges=edges,
-                    values={
-                        header: str(sheet.cell(number, headers[header]).value or "")
-                        for header in ordered_headers
-                    },
+                    values={header: str(cell(header) or "") for header in ordered_headers},
                 )
             )
         return ordered_headers, rows
     finally:
         workbook.close()
+
+
+def _fingerprint(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def read_material_rows(workbook_path: Path) -> list[MaterialRow]:
@@ -1315,8 +1444,13 @@ def apply_workbook_decisions(
     decisions: Iterable[AssistantDecision],
     *,
     user_name: str,
+    expected_hash: str | None = None,
 ) -> int:
-    """Aplica apenas decisões humanas explícitas através do próprio Excel."""
+    """Aplica apenas decisões humanas explícitas através do próprio Excel.
+
+    As sugestões apontam para números de linha: se o Excel mudou desde a
+    análise (`expected_hash`), as linhas podem ter andado e recusa-se aplicar.
+    """
     decisions = list(decisions)
     applicable = [
         item
@@ -1332,6 +1466,10 @@ def apply_workbook_decisions(
     try:
         excel = win32_client.DispatchEx("Excel.Application")
         excel_com.preparar_excel(excel)
+        if expected_hash and _fingerprint(workbook_path) != expected_hash:
+            raise RuntimeError(
+                "O Excel mudou desde a análise. Volte a analisar antes de aplicar."
+            )
         workbook = excel.Workbooks.Open(str(Path(workbook_path).resolve()), ReadOnly=False)
         if workbook.ReadOnly:
             raise RuntimeError("O Excel está aberto ou bloqueado; feche-o antes de aplicar as decisões.")
@@ -1384,10 +1522,19 @@ def apply_workbook_decisions(
         applied = 0
         rows_to_delete: set[int] = set()
         applicable_ids = {id(item) for item in applicable}
+        # As folhas de registo escrevem-se em bloco no fim: célula a célula
+        # eram ~20 chamadas ao Excel por decisão, e uma obra lowcost chega às
+        # 800 decisões.
+        suggestion_block: list[tuple] = []
+        validation_block: list[tuple] = []
+        log_block: list[tuple] = []
+        marked_rows: set[int] = set()
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for decision in decisions:
             suggestion = decision.suggestion
             value = decision.value if decision.action == "editar" else suggestion.suggested
-            if suggestion.row_number:
+            if suggestion.row_number and suggestion.row_number not in marked_rows:
+                marked_rows.add(suggestion.row_number)
                 sheet.Cells.Item(
                     suggestion.row_number, header_map["SourceID"]
                 ).Value2 = suggestion.source_id
@@ -1403,7 +1550,7 @@ def apply_workbook_decisions(
                     sheet.Cells.Item(suggestion.row_number, column).Value2 = value
                     applied += 1
 
-            suggestion_values = (
+            suggestion_block.append((
                 "BLOQUEIO" if suggestion.blocking else "PROPOSTA",
                 suggestion.source_id,
                 SHEET_CUTRITE,
@@ -1414,13 +1561,9 @@ def apply_workbook_decisions(
                 suggestion.reason,
                 suggestion.confidence,
                 decision.action,
-            )
-            for column, cell_value in enumerate(suggestion_values, start=1):
-                suggestions_sheet.Cells.Item(suggestion_row, column).Value2 = cell_value
-            suggestion_row += 1
-
+            ))
             if suggestion.field in EDGE_FIELDS:
-                validation_values = (
+                validation_block.append((
                     "BLOQUEIO" if suggestion.blocking else "REVISTO",
                     suggestion.source_id,
                     suggestion.kind,
@@ -1428,20 +1571,27 @@ def apply_workbook_decisions(
                     value,
                     decision.action,
                     suggestion.reason,
-                )
-                for column, cell_value in enumerate(validation_values, start=1):
-                    validation.Cells.Item(validation_row, column).Value2 = cell_value
-                validation_row += 1
+                ))
+            log_block.append((
+                now, user_name, decision.action, suggestion.source_id,
+                suggestion.field, suggestion.original, value, suggestion.reason,
+            ))
 
-            log.Cells.Item(log_row, 1).Value2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log.Cells.Item(log_row, 2).Value2 = user_name
-            log.Cells.Item(log_row, 3).Value2 = decision.action
-            log.Cells.Item(log_row, 4).Value2 = suggestion.source_id
-            log.Cells.Item(log_row, 5).Value2 = suggestion.field
-            log.Cells.Item(log_row, 6).Value2 = suggestion.original
-            log.Cells.Item(log_row, 7).Value2 = value
-            log.Cells.Item(log_row, 8).Value2 = suggestion.reason
-            log_row += 1
+        def _write_block(target, first_row: int, block: list[tuple]) -> None:
+            if not block:
+                return
+            width = len(block[0])
+            area = target.Range(
+                target.Cells(first_row, 1), target.Cells(first_row + len(block) - 1, width)
+            )
+            area.NumberFormat = "@"
+            area.Value = tuple(
+                tuple("" if item is None else str(item) for item in line) for line in block
+            )
+
+        _write_block(suggestions_sheet, suggestion_row, suggestion_block)
+        _write_block(validation, validation_row, validation_block)
+        _write_block(log, log_row, log_block)
         for row_number in sorted(rows_to_delete, reverse=True):
             sheet.Rows.Item(row_number).Delete()
         excel_com.recalcular(excel)

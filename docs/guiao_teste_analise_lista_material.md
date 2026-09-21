@@ -291,3 +291,34 @@ Obra de teste: **26.1610_01_01_JF_VIVA**. «Matérias usados» desta obra:
 9. Troca de referência: numa obra cuja «Matérias usados» diga, p. ex., `M6307` e a
    lista traga `…M6305…`, a verificação fica cor de laranja («referência
    parecida: confirmar…») e o combo oferece o código do Woodstore com M6307.
+
+## F3 (21-09-2026) — separador «Procedimentos da listagem» (obras lowcost)
+
+O analisador dos procedimentos manuais estava sem chamada desde a 1.0.15. Volta
+dentro da Análise, decidido por regra. Medido nas obras 1568/1562/1582: na 1568,
+das 496 alterações feitas à mão, depois de aplicar as regras sobram 171 células
+diferentes — quase todas o texto da nota CNC («RECORTE L» vs «CNC RECORTE L»,
+acerta-se na configuração) e notas próprias da obra («MONTADO», «NICHO ABERTO»).
+
+1. **Produção** → selecionar uma obra lowcost com a Lista Material acabada de gerar
+   (passos 1 a 3) → passo 4 (ou **Funções** → **Analisar/Completar Lista Material…**)
+   → separador **Procedimentos da listagem**.
+2. **Configuração da obra…** abre o antigo assistente (puxador, nota CNC_FRESAR,
+   exceções, regras ativas, «Guardar como minhas preferências para este cliente»).
+   A linha por cima dos botões resume o que ficou escolhido.
+3. **Analisar procedimentos**: aparece uma linha por regra, com nº de alterações,
+   peças, «Para confirmar» e um exemplo. Regras: CNC_FRESAR; Notas das costas
+   (piso/fração do artigo: `RP_13_P1_F` → `PISO 1º - F`, `RP_B_05_RC_ESQ` →
+   `RES DO CHAO ESQUERDO`); Notas de lacagem/puxador («LACAR 1 FACE + PUX TIC-TAC»,
+   «NÃO LACAR»); Vista Vertical, Remate Teto e Rodapé Frente em barras.
+4. **Substituir orla em massa…**: escolher `PVC_0.4_LINHO` → escrever `PVC_1.0_LINHO`,
+   desmarcar lados/peças; a janela mostra «N células em M peças». **Propor
+   substituição** acrescenta a linha «Substituição de orla: PVC_0.4_LINHO →
+   PVC_1.0_LINHO».
+5. Desmarcar as regras que não quer → **Aplicar regras marcadas** → confirmar.
+   Com centenas de células demora ~1 minuto (cursor de espera). Fica a cópia
+   `..._antes_procedimentos_....xlsm` em `Analise_Lista_Material\Copias`.
+6. **Rever peça a peça…** abre a revisão antiga só com as regras marcadas (inclui as
+   «Para confirmar», que o bloco não aplica).
+7. Se o Excel foi mexido depois de analisar, aplicar recusa: «O Excel mudou desde a
+   análise. Volte a analisar antes de aplicar.»

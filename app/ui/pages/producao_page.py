@@ -87,8 +87,6 @@ from app.services.lista_material_imos_service import (
 )
 from app.services.lista_material_assistente_service import (
     ListaMaterialAssistantService,
-    apply_workbook_decisions,
-    prepare_workbook_for_assistant,
 )
 from app.services.analise_lista_material_service import import_hardware_cost
 from app.services.system_setting_service import SystemSettingService
@@ -133,11 +131,7 @@ from app.utils.formatters import format_numero_pt
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
 from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
-from app.ui.dialogs.lista_material_assistente_dialog import (
-    ListaMaterialAssistenteDialog,
-)
 from app.ui.dialogs.lista_material_pdf_dialog import ListaMaterialPdfDialog
-from app.ui.dialogs.lista_material_revisao_dialog import ListaMaterialRevisaoDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
 from app.ui.dialogs.novo_processo_dialog import NovoProcessoDialog
 from app.ui.dialogs.ocorrencias_obra_dialog import OcorrenciasObraDialog
@@ -2749,6 +2743,9 @@ class ProducaoPage(QWidget):
                         'cliente': self.cliente_input.text().strip(),
                         'responsavel': self.responsavel_form_combo.currentText().strip(),
                         'enc_phc': self.num_enc_phc_input.text().strip(),
+                        'producao_id': processo.id,
+                        'cliente_simplex': self.cliente_simplex_input.text().strip(),
+                        'descricao_producao': self.descricao_producao_text.toPlainText().strip(),
                     },
                     parent=self)
                 dialog.exec()
@@ -2771,111 +2768,6 @@ class ProducaoPage(QWidget):
                 QMessageBox.warning(self, 'Custos de ferragens IMOS', str(error))
         elif len(sources) > 1:
             QMessageBox.warning(self, 'Custos de ferragens IMOS', 'Existe mais de um ficheiro de custos para esta obra. Selecione a fonte no módulo de análise.')
-
-    def _rever_otimizacoes_lista_material_legado(
-        self,
-        processo: Producao,
-        *,
-        explicit: bool,
-    ) -> tuple[bool, int]:
-        """Analisa a tabela criada por AUTOMATION e aplica só decisões humanas."""
-        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
-        nome_enc = self.nome_enc_imos_ix_input.text().strip()
-        user_id = int(getattr(app_session.current_user, "id", 0) or 0)
-        user_name = str(
-            getattr(app_session.current_user, "username", "") or "Utilizador"
-        )
-        client = (
-            self.cliente_simplex_input.text().strip()
-            or self.cliente_input.text().strip()
-        )
-        try:
-            workbook_path = find_lista_material_workbook(
-                Path(pasta_servidor), nome_enc_imos=nome_enc
-            )
-            with SessionLocal() as session:
-                assistant_service = ListaMaterialAssistantService(
-                    session,
-                    board_catalog=WoodstoreBoardCatalogProvider(
-                        lambda: query_woodstore(session)
-                    ),
-                )
-                assistant_config = assistant_service.resolve_work_config(
-                    production_id=processo.id,
-                    user_id=user_id,
-                    client=client,
-                    production_description=(
-                        self.descricao_producao_text.toPlainText().strip()
-                    ),
-                )
-                prepare_workbook_for_assistant(
-                    workbook_path,
-                    config=assistant_config,
-                    user_name=user_name,
-                )
-                audit = assistant_service.audit_workbook(
-                    workbook_path, config=assistant_config
-                )
-                execution = assistant_service.record_audit(
-                    production_id=processo.id,
-                    user_id=user_id,
-                    audit=audit,
-                    kind="analise_manual" if explicit else "pre_cutrite",
-                )
-                if not audit.suggestions:
-                    return True, 0
-                review = ListaMaterialRevisaoDialog(audit, self)
-                if review.exec() != QDialog.DialogCode.Accepted:
-                    self.status_label.setText(
-                        "Análise da Lista Material cancelada sem alterar o Excel."
-                    )
-                    return False, 0
-                decisions = review.decisions()
-                applied = apply_workbook_decisions(
-                    workbook_path,
-                    decisions,
-                    user_name=user_name,
-                )
-                try:
-                    assistant_service.record_decisions(
-                        execution_id=execution.id,
-                        decisions=decisions,
-                        rows=audit.rows,
-                        config=assistant_config,
-                    )
-                except SQLAlchemyError as learning_error:
-                    session.rollback()
-                    QMessageBox.warning(
-                        self,
-                        "Aprendizagem da Lista Material",
-                        "As alterações foram aplicadas e guardadas no Excel, "
-                        "mas não foi possível atualizar o histórico de "
-                        "aprendizagem. Pode continuar a trabalhar no ficheiro."
-                        f"\n\nDetalhe: {learning_error}",
-                    )
-                if explicit:
-                    opened = QDesktopServices.openUrl(
-                        QUrl.fromLocalFile(str(workbook_path))
-                    )
-                    if not opened:
-                        QMessageBox.warning(
-                            self,
-                            "Abrir Lista Material",
-                            "As alterações foram guardadas, mas o Windows não "
-                            "conseguiu abrir automaticamente o Excel.\n\n"
-                            f"Ficheiro:\n{workbook_path}",
-                        )
-                return True, applied
-        except (ValueError, RuntimeError, SQLAlchemyError) as error:
-            QMessageBox.warning(
-                self,
-                "Analisar/Completar Lista Material",
-                "Não foi possível analisar a Lista Material. Confirme que já "
-                "executou Importar CSV IMOS e AUTOMATION e que guardou e fechou "
-                "o Excel.\n\n"
-                f"Detalhe: {error}",
-            )
-            return False, 0
 
     def _analisar_lista_material(self) -> None:
         processo = self._processo_selecionado()

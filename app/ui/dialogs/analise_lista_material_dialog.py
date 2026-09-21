@@ -32,6 +32,7 @@ from app.services.permission_service import (
 )
 from app.services.woodstore_service import query_woodstore
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.dialogs.procedimentos_lista_material_widget import ProcedimentosListaMaterialWidget
 
 
 class _TimesWorker(QThread):
@@ -108,6 +109,12 @@ class AnaliseListaMaterialDialog(QDialog):
         material_actions.addStretch()
         ml.addLayout(material_actions)
         self.tabs.addTab(materials, 'Materiais Woodstore')
+        # Procedimentos manuais da LISTAGEM_CUT_RITE (analisador religado na F3).
+        self.procedures = ProcedimentosListaMaterialWidget(
+            session, user=user, permissions=self.permissions, workbook_path=self.path,
+            obra_info=self.obra_info, catalog_provider=lambda: self.catalog,
+            on_applied=self._reload, parent=self)
+        self.tabs.addTab(self.procedures, 'Procedimentos da listagem')
         self.cost_table = self._table(['Categoria', 'Artigo / material', 'Comp', 'Larg', 'Esp', 'Quantidade', 'Un.', 'Referência V3 — descrição', 'Preço líquido', 'Custo €', 'Estado / data do preço'])
         self.cost_table.cellClicked.connect(lambda row, col: self._associate() if col == 7 else None)
         if self.permissions.get(PERMISSAO_CUSTOS_LISTA_MATERIAL):

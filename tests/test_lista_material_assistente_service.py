@@ -54,7 +54,8 @@ def test_normalizacao_e_puxador_sao_conservadores() -> None:
     assert normalize_text("Rodapé Frente") == "RODAPE_FRENTE"
     assert extract_handle("Portas com puxador J H1030; restante normal") == "puxador J H1030"
     assert extract_handle("sem indicação") == ""
-    assert compact_handle("PUXADOR 'J' H1030") == "Pux 'J' H1030"
+    assert compact_handle("PUXADOR 'J' H1030") == "PUX 'J' H1030"
+    assert compact_handle("tic-tac") == "PUX TIC-TAC"
 
 
 def test_perfil_respeita_precedencia_e_jf_viva_desativa_lacagem(session) -> None:
@@ -241,7 +242,7 @@ def test_notas_porta_juntam_lacagem_e_puxador_curto_com_excecao(session) -> None
     suggestions = ListaMaterialAssistantService(session).analyze_rows([row], config=config)
     note = next(item for item in suggestions if item.kind == "notas_assistente")
 
-    assert note.suggested == "PISO 1; Lacar 1 Face + Pux J H1030"
+    assert note.suggested == "PISO 1; LACAR 1 FACE + PUX J H1030"
     assert "orla LACAR" in note.reason
 
 
@@ -261,7 +262,7 @@ def test_puxador_nao_e_aplicado_a_lateral_costa_teto_ou_fundo(session) -> None:
     )
     notes = [item for item in suggestions if item.kind == "notas_assistente"]
     assert [(item.row_number, item.suggested) for item in notes] == [
-        (7, "Pux 'J' H1030")
+        (7, "PUX 'J' H1030")
     ]
 
 
@@ -295,7 +296,7 @@ def test_puxador_antigo_e_removido_de_pecas_nao_elegiveis(session) -> None:
     assert notes[3].suggested == ""
     assert notes[3].allow_blank is True
     assert notes[4].suggested == "CNC_FRESAR"
-    assert notes[5].suggested == "Pux 'J' H1030"
+    assert notes[5].suggested == "PUX 'J' H1030"
 
 
 def test_frente_gaveta_so_recebe_puxador_quando_tem_lacagem(session) -> None:
@@ -313,10 +314,12 @@ def test_frente_gaveta_so_recebe_puxador_quando_tem_lacagem(session) -> None:
     notes = [item for item in suggestions if item.kind == "notas_assistente"]
     assert len(notes) == 1
     assert notes[0].row_number == 4
-    assert notes[0].suggested == "Lacar 1 Face + Pux J H1030"
+    assert notes[0].suggested == "LACAR 1 FACE + PUX J H1030"
 
 
-def test_teto_fundo_limpam_orlas_nao_aplicaveis_e_preservam_cnc_nas_notas(session) -> None:
+def test_teto_fundo_so_limpa_o_cnc_e_mantem_as_outras_orlas(session) -> None:
+    """A regra «Teto/Fundo: só Orla ESQ» saiu (21-09-2026): foi sempre editada
+    ou contrariada — nas obras 1568/1562 as outras orlas ficaram ou mudaram de cor."""
     row = _row(
         description="Teto",
         edges={
@@ -330,8 +333,8 @@ def test_teto_fundo_limpam_orlas_nao_aplicaveis_e_preservam_cnc_nas_notas(sessio
         [row], config=AssistantConfig(user_id=7, client="JF_VIVA")
     )
     cleared = [item for item in suggestions if item.field in {"Orla DIR", "Orla CIMA", "Orla BAIXO"}]
-    assert {item.field for item in cleared} == {"Orla DIR", "Orla CIMA", "Orla BAIXO"}
-    assert all(item.suggested == "" and item.allow_blank for item in cleared)
+    assert [item.field for item in cleared] == ["Orla CIMA"]
+    assert cleared[0].suggested == "" and cleared[0].allow_blank
     note = next(item for item in suggestions if item.field == "Notas")
     assert note.suggested == "CNC_FRESAR"
 
@@ -427,7 +430,7 @@ def test_remate_teto_b3002_nasce_com_nota_nao_lacar(session) -> None:
         [row], config=AssistantConfig(user_id=7, client="JF_VIVA")
     )
     note = next(item for item in suggestions if item.field == "Notas")
-    assert note.suggested == "Não Lacar"
+    assert note.suggested == "NÃO LACAR"
 
 
 def test_vista_vertical_agrupa_qt_comp_e_remove_duplicados(session) -> None:

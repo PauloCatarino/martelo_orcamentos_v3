@@ -42,7 +42,7 @@ def test_no_stock_still_suggested_but_never_preselected(app, workbook, session, 
         assert [(combo.itemData(i) or {}).get('acao') for i in (3, 4, 5)] == [
             'criar_woodstore', 'temporario', 'fora_cutrite']
         assert combo.currentData() is None
-        assert dialog.tabs.count() == 3
+        assert dialog.tabs.count() == 4
         assert dialog.analysis_ready
         dialog._save()
         assert len(list((workbook.parent / 'Analise_Lista_Material').glob('*.json'))) == 1
@@ -57,7 +57,7 @@ def test_permissions_hide_costs_and_disable_corrections(app, workbook, session, 
         plan_name='0722_01_01_26_JF_VIVA', cutrite_folder=workbook.parent,
         user=SimpleNamespace(username='Teste'))
     try:
-        assert dialog.tabs.count() == 1
+        assert dialog.tabs.count() == 2
         assert not dialog.apply_button.isEnabled()
         assert 'Não foi possível validar' == dialog.material_table.item(0, 2).text()
     finally:
