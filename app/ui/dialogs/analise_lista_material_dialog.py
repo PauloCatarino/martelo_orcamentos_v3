@@ -5,7 +5,10 @@ from collections import Counter
 from pathlib import Path
 import json
 from app.services.user_pref_service import UserPrefService
-from PySide6.QtCore import QThread, Signal, Qt
+from datetime import datetime
+import re
+from PySide6.QtCore import QThread, Signal, Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices
 
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QHeaderView,
@@ -14,7 +17,10 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.domain import referencias_placa as refs
 from app.services import analise_lista_material_service as svc
+from app.services import lista_material_decisoes_service as decisoes
+from app.services import pedido_material_woodstore_pdf as pedido_pdf
 from app.services import analise_custo_mapeamento_service as maps
 from app.services import tempos_lista_material_service as times
 from app.services import streamlit_sql_service as streamlit
@@ -48,8 +54,13 @@ class _TimesWorker(QThread):
 
 
 class AnaliseListaMaterialDialog(QDialog):
-    def __init__(self, session, *, workbook_path, plan_name, cutrite_folder, user, parent=None):
+    def __init__(self, session, *, workbook_path, plan_name, cutrite_folder, user,
+                 materiais_usados='', obra_info=None, parent=None):
         super().__init__(parent)
+        # Texto livre do campo «Matérias usados» da obra: comparação superficial.
+        self.materiais_usados = str(materiais_usados or '')
+        self.obra_info = dict(obra_info or {})
+        self.temp_names = {}
         self.session, self.user = session, user
         self.permissions = permissions_for_user(session, user)
         if not self.permissions.get(PERMISSAO_ANALISE_LISTA_MATERIAL):
@@ -79,11 +90,23 @@ class AnaliseListaMaterialDialog(QDialog):
         materials = QWidget()
         ml = QVBoxLayout(materials)
         note = QLabel('Sem stock é válido. As diferenças são avisos e nunca bloqueiam o envio para Cut-Rite.\n'
-                      'Escolha uma referência para corrigir todas as peças com esse código, apenas nesta obra.')
+                      'Material sem código no Woodstore não é cortado: escolha um código existente, ou decida '
+                      '«Pedir criação no Woodstore», «Nome temporário» ou «Fora do Cut-Rite». '
+                      'A referência (B3768, M6305…) é comparada com as «Matérias usados» da obra.')
         note.setWordWrap(True)
         ml.addWidget(note)
-        self.material_table = self._table(['Material no Excel', 'Peças / linhas', 'Estado Woodstore', 'Referência proposta — selecionar', 'Motivo / características', 'Materialcode encontrado', 'Esp. nominal'])
+        self.material_summary = QLabel('')
+        self.material_summary.setWordWrap(True)
+        ml.addWidget(self.material_summary)
+        self.material_table = self._table(['Material no Excel', 'Peças / linhas', 'Estado Woodstore', 'Decisão / referência proposta', 'Motivo / características', 'Materialcode encontrado', 'Esp. nominal', 'Verificação da referência'])
         ml.addWidget(self.material_table)
+        material_actions = QHBoxLayout()
+        self.pedido_button = self._button(
+            material_actions, 'Pedido de criação no Woodstore (PDF)…', self._pedido_pdf,
+            'Gerar o PDF para as compras com os materiais marcados «Pedir criação no Woodstore»: '
+            'nome, espessura, peças, orlas e os materiais parecidos que já existem.')
+        material_actions.addStretch()
+        ml.addLayout(material_actions)
         self.tabs.addTab(materials, 'Materiais Woodstore')
         self.cost_table = self._table(['Categoria', 'Artigo / material', 'Comp', 'Larg', 'Esp', 'Quantidade', 'Un.', 'Referência V3 — descrição', 'Preço líquido', 'Custo €', 'Estado / data do preço'])
         self.cost_table.cellClicked.connect(lambda row, col: self._associate() if col == 7 else None)
@@ -249,7 +272,13 @@ class AnaliseListaMaterialDialog(QDialog):
             self.apply_button.setEnabled(False)
             self._error(exc)
 
+    # Cores das linhas: iguais em claro e escuro porque o texto é escuro.
+    _COR_POR_DECIDIR = QColor('#F6D3CE')
+    _COR_ALERTA = QColor('#F9DDA8')
+    _COR_AVISO = QColor('#FFF3CF')
+
     def _materials(self, rows):
+        self.rows = rows
         counts = Counter(r.material for r in rows)
         pieces = Counter()
         thicknesses = {}
@@ -263,57 +292,222 @@ class AnaliseListaMaterialDialog(QDialog):
                 esp = svc.nominal_thickness(row.values.get('Esp'))
             if esp is not None:
                 thicknesses.setdefault(row.material, set()).add(esp)
-        codes = {str(r.get('Codigo') or '').strip() for r in self.catalog}
+        codes = {str(r.get('Codigo') or '').strip() for r in self.catalog} - {''}
+        code_list = sorted(codes)
+        self.decisions = decisoes.ler(self.path)
         self.choices = {}
+        self.temp_names = {}
+        validated = missing = decided = alerts = 0
+        can_fix = self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL, False)
         self.material_table.setRowCount(len(counts))
         for i, (material, count) in enumerate(sorted(counts.items())):
-            state = 'Código igual — validado' if material in codes else 'Não encontrado — confirmar/criar com administrador Woodstore'
+            found = material in codes and not self.woodstore_error
+            decision = self.decisions.get(material) if not found else None
             if self.woodstore_error:
                 state = 'Não foi possível validar'
+            elif found:
+                state = 'Código igual — validado'
+                validated += 1
+            elif decision:
+                state = 'Sem código no Woodstore — decidido: ' + decisoes.descricao(decision)
+                missing += 1
+                decided += 1
+            else:
+                state = 'Não encontrado — decidir: criar no Woodstore, nome temporário ou fora do Cut-Rite'
+                missing += 1
             for col, text in enumerate((material, f'{pieces[material]} / {count}', state)):
                 item = QTableWidgetItem(str(text))
                 item.setToolTip(str(text))
                 self.material_table.setItem(i, col, item)
-            combo = ComboSemScroll()
-            combo.setToolTip('Manter o nome atual ou selecionar uma alternativa. Nunca se aplica automaticamente.')
-            combo.addItem('Manter material atual', None)
             values = thicknesses.get(material, set())
-            self.material_table.setItem(i, 5, QTableWidgetItem(material if material in codes and not self.woodstore_error else '—'))
+            self.material_table.setItem(i, 5, QTableWidgetItem(material if found else '—'))
             self.material_table.setItem(i, 6, QTableWidgetItem(' / '.join(str(v) for v in sorted(values))))
-            candidates = svc.material_candidates(material, self.catalog, next(iter(values)) if len(values) == 1 else None)
-            if material not in codes and not self.woodstore_error and len(values) <= 1:
-                for candidate in candidates:
-                    combo.addItem(candidate['code'], candidate)
-            combo.setEnabled(self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL, False) and not self.woodstore_error)
-            reason = QTableWidgetItem('Espessuras diferentes no mesmo código — confirmar no Excel' if len(values) > 1 else
-                ('Excel = Materialcode Woodstore. Não necessita correção; stock não condiciona.' if material in codes and not self.woodstore_error else 'Sem alteração selecionada'))
-            reason.setToolTip(reason.text())
+
+            # Verificação da referência: contra «Matérias usados» (alerta) e
+            # contra o Woodstore (só informação: há refs parecidas a mais).
+            check = refs.comparar_com_materiais_usados(material, self.materiais_usados)
+            nearby = refs.vizinhas_no_woodstore(material, code_list) if code_list else []
+            check_text = check.mensagem
+            if nearby:
+                check_text += ' · Parecidas no Woodstore: ' + ', '.join(
+                    ' '.join(sorted(refs.referencias(c))) for c in nearby[:3])
+            check_item = QTableWidgetItem(check_text)
+            check_item.setToolTip(check.mensagem + (
+                '\n\nMesma espessura, ref parecida no Woodstore (confirmar que escolheu a certa):\n  '
+                + '\n  '.join(nearby) if nearby else ''))
+            if check.nivel == refs.ALERTA:
+                alerts += 1
+                check_item.setBackground(self._COR_ALERTA)
+            elif check.nivel == refs.AVISO:
+                check_item.setBackground(self._COR_AVISO)
+            self.material_table.setItem(i, 7, check_item)
+
+            combo = ComboSemScroll()
+            combo.setToolTip('Manter o nome atual, trocar por um código do Woodstore ou decidir o que '
+                             'fazer a um material sem código. Nunca se aplica automaticamente.')
+            combo.addItem('Manter material atual', None)
+            single = next(iter(values)) if len(values) == 1 else None
+            offered = set()
+            if not found and not self.woodstore_error and len(values) <= 1:
+                for code in refs.mesma_referencia_no_woodstore(material, code_list):
+                    combo.addItem(code, {'code': code, 'reason': 'Mesma referência e espessura no Woodstore — '
+                                         'pode ser só o nome escrito de outra forma.'})
+                    offered.add(code)
+                for candidate in svc.material_candidates(material, self.catalog, single):
+                    if candidate['code'] not in offered:
+                        combo.addItem(candidate['code'], candidate)
+                        offered.add(candidate['code'])
+            if check.sugeridas and not self.woodstore_error:
+                # A ref das «Matérias usados» é parecida: oferecer esses códigos.
+                for code in code_list:
+                    if code in offered or code == material:
+                        continue
+                    same_thickness = refs.espessura(code) in (None, refs.espessura(material))
+                    if same_thickness and refs.referencias(code) & set(check.sugeridas):
+                        combo.addItem(code, {'code': code, 'reason': 'Ref indicada nas «Matérias usados» da obra.'})
+                        offered.add(code)
+            if not found and not self.woodstore_error:
+                combo.insertSeparator(combo.count())
+                for action in (decisoes.CRIAR_WOODSTORE, decisoes.TEMPORARIO, decisoes.FORA_CUTRITE):
+                    label = decisoes.ROTULOS[action] + ('…' if action == decisoes.TEMPORARIO else '')
+                    combo.addItem(label, {'acao': action, 'reason': decisoes.EXPLICACOES[action]})
+                # O nome temporário já está no Excel: não se volta a escolher.
+                if decision and decision['acao'] != decisoes.TEMPORARIO:
+                    for index in range(combo.count()):
+                        if (combo.itemData(index) or {}).get('acao') == decision['acao']:
+                            combo.setCurrentIndex(index)
+                            break
+            combo.setEnabled(can_fix and not self.woodstore_error)
+            if len(values) > 1:
+                reason_text = 'Espessuras diferentes no mesmo código — confirmar no Excel'
+            elif found:
+                reason_text = 'Excel = Materialcode Woodstore. Não necessita correção; stock não condiciona.'
+            elif decision:
+                reason_text = decisoes.EXPLICACOES[decision['acao']]
+            else:
+                reason_text = 'Sem alteração selecionada'
+            reason = QTableWidgetItem(reason_text)
+            reason.setToolTip(reason_text)
             self.material_table.setItem(i, 4, reason)
-            def describe(_, c=combo, item=reason):
-                text = (c.currentData() or {}).get('reason', 'Sem alteração selecionada')
-                item.setText(text)
-                item.setToolTip(text)
-            combo.currentIndexChanged.connect(describe)
+            combo.currentIndexChanged.connect(
+                lambda _, c=combo, item=reason, m=material: self._choice_changed(m, c, item))
             self.material_table.setCellWidget(i, 3, combo)
             self.choices[material] = combo
+            if not found and not decision and not self.woodstore_error:
+                for col in (0, 1, 2, 5, 6):
+                    self.material_table.item(i, col).setBackground(self._COR_POR_DECIDIR)
         # Colocar a prova da correspondência junto ao material de origem.
         header = self.material_table.horizontalHeader()
         header.moveSection(header.visualIndex(5), 1)
         header.moveSection(header.visualIndex(6), 2)
-        for col, width in enumerate((280, 95, 200, 280, 340, 280, 85)):
+        header.moveSection(header.visualIndex(7), 5)
+        for col, width in enumerate((280, 95, 260, 300, 340, 280, 85, 420)):
             if not self.material_table.property('layout_ready'):
                 self.material_table.setColumnWidth(col, width)
         self.material_table.setProperty('layout_ready', True)
-        self.apply_button.setEnabled(self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL, False) and not self.woodstore_error)
+        self.apply_button.setEnabled(can_fix and not self.woodstore_error)
+        self._summarise_materials(len(counts), validated, missing, decided, alerts, list(counts))
+
+    def _summarise_materials(self, total, validated, missing, decided, alerts, materials):
+        if self.woodstore_error:
+            text = f'{total} materiais — Woodstore indisponível: {self.woodstore_error}'
+        else:
+            text = f'{total} materiais: {validated} validados no Woodstore'
+            if missing:
+                text += f', {missing} sem código ({decided} já decididos, {missing - decided} por decidir)'
+            if alerts:
+                text += f', {alerts} com referência a confirmar'
+            text += '.'
+        forgotten = refs.referencias_esquecidas(materials, self.materiais_usados)
+        if forgotten:
+            text += (f"\n«Matérias usados» refere {', '.join(forgotten)}, mas nenhuma peça da lista "
+                     'usa essa referência — confirmar.')
+        if not self.materiais_usados.strip():
+            text += '\nO campo «Matérias usados» da obra está vazio: as referências não foram comparadas.'
+        self.material_summary.setText(text)
+
+    def _choice_changed(self, material, combo, item):
+        data = combo.currentData() or {}
+        text = data.get('reason', 'Sem alteração selecionada')
+        if data.get('acao') == decisoes.TEMPORARIO:
+            suggestion = self.temp_names.get(material) or (
+                'TEMP_' + re.sub(r'[^A-Z0-9]+', '_', material.upper()).strip('_'))
+            name, ok = QInputDialog.getText(
+                self, 'Nome temporário',
+                f'Nome temporário para «{material}» (só esta obra).\n'
+                'Crie-o também no Cut-Rite para as peças serem cortadas:', text=suggestion)
+            name = name.strip()
+            if not ok or not name:
+                self.temp_names.pop(material, None)
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)
+                combo.blockSignals(False)
+                text = 'Sem alteração selecionada'
+            else:
+                self.temp_names[material] = name
+                text = f'Nome temporário: {name}. ' + decisoes.EXPLICACOES[decisoes.TEMPORARIO]
+        item.setText(text)
+        item.setToolTip(text)
 
     def _apply(self):
         try:
             self._allowed(PERMISSAO_CORRIGIR_LISTA_MATERIAL)
-            changes = {key: combo.currentData()['code'] for key, combo in self.choices.items() if combo.currentData()}
-            count = svc.apply_material_codes(self.path, self.workbook_hash, changes, self.user.username)
+            changes, new_decisions = {}, {}
+            for material, combo in self.choices.items():
+                data = combo.currentData()
+                if not data:
+                    continue
+                if data.get('code'):
+                    changes[material] = data['code']
+                elif data.get('acao') == decisoes.TEMPORARIO:
+                    name = self.temp_names.get(material)
+                    if name and name != material:
+                        changes[material] = name
+                        new_decisions[name] = {'acao': decisoes.TEMPORARIO, 'original': material}
+                elif data.get('acao'):
+                    if (self.decisions.get(material) or {}).get('acao') != data['acao']:
+                        new_decisions[material] = {'acao': data['acao']}
+            count = svc.apply_material_codes(self.path, self.workbook_hash, changes, self.user.username) if changes else 0
+            if new_decisions:
+                decisoes.gravar(self.path, new_decisions, utilizador=self.user.username)
             self.applied += count
             self._reload()
-            self.status.setText(f'{count} células Material corrigidas. Cópia anterior e log preservados. Custos por revalidar se a otimização mudou.')
+            self.status.setText(
+                f'{count} células Material corrigidas, {len(new_decisions)} decisões registadas. '
+                'Cópia anterior e log preservados. Custos por revalidar se a otimização mudou.')
+        except Exception as exc:
+            self._error(exc)
+
+    def _pedido_pdf(self):
+        try:
+            self._allowed_module()
+            wanted = [m for m, combo in self.choices.items()
+                      if (combo.currentData() or {}).get('acao') == decisoes.CRIAR_WOODSTORE
+                      or (self.decisions.get(m) or {}).get('acao') == decisoes.CRIAR_WOODSTORE]
+            if not wanted:
+                self.status.setText('Escolha «Pedir criação no Woodstore» num material sem código antes de gerar o pedido.')
+                return
+            codes = sorted({str(r.get('Codigo') or '').strip() for r in self.catalog} - {''})
+            materials = []
+            for material in sorted(wanted):
+                rows = [r.values for r in self.rows if r.material == material]
+                similar = refs.mesma_referencia_no_woodstore(material, codes)
+                similar += [c['code'] for c in svc.material_candidates(material, self.catalog, refs.espessura(material))
+                            if c['code'] not in similar]
+                materials.append(pedido_pdf.resumir_material(material, rows, similar[:5]))
+            destination = self.path.parent / f'Pedido_Material_Woodstore_{self.version}.pdf'
+            info = {'plano': self.plan_name, **self.obra_info}
+            pedido_pdf.gerar_pedido_pdf(destination, obra=info, materiais=materials,
+                                        gerado_em=datetime.now().strftime('%d-%m-%Y %H:%M'),
+                                        pedido_por=getattr(self.user, 'username', '') or 'Martelo')
+            # Gerar o pedido é decidir: não voltar a avisar no envio para o Cut-Rite.
+            if self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL):
+                pending = {m: {'acao': decisoes.CRIAR_WOODSTORE} for m in wanted
+                           if (self.decisions.get(m) or {}).get('acao') != decisoes.CRIAR_WOODSTORE}
+                if pending:
+                    self.decisions = decisoes.gravar(self.path, pending, utilizador=self.user.username)
+            self.status.setText(f'Pedido gerado: {destination}')
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(destination)))
         except Exception as exc:
             self._error(exc)
 

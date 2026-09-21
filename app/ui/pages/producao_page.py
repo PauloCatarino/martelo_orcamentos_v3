@@ -72,6 +72,7 @@ from app.services.cutrite_service import (
     prepare_cutrite_resumo_pdf,
 )
 from app.services import verificacao_pre_cutrite_service as verificacao_cutrite
+from app.services import lista_material_decisoes_service as decisoes_materiais
 from app.services.lista_material_excel_com import (
     reparar_formulas as reparar_formulas_lista_material,
 )
@@ -2368,18 +2369,16 @@ class ProducaoPage(QWidget):
                         lambda: query_woodstore(session)
                     ),
                 )
+                # O assistente já não abre aqui: ao criar o Excel o Martelo
+                # ainda não sabe se a obra tem portas, CNC_FRESAR ou remates,
+                # e as perguntas não serviam de nada. Usam-se em silêncio as
+                # preferências guardadas para o utilizador/cliente; a
+                # configuração passa a ser feita onde tem efeito, na Análise.
                 assistant_config = assistant_service.resolve_config(
                     user_id=user_id,
                     client=values["NOME_CLIENTE_SIMPLEX"] or values["NOME_CLIENTE"],
                     production_description=values["DESCRICAO_PRODUCAO"],
                 )
-                assistant_dialog = ListaMaterialAssistenteDialog(assistant_config, self)
-                if assistant_dialog.exec() != QDialog.DialogCode.Accepted:
-                    self.status_label.setText("Criação da Lista Material cancelada.")
-                    return
-                assistant_config = assistant_dialog.config()
-                if assistant_dialog.save_as_defaults():
-                    assistant_service.save_profile_defaults(assistant_config)
         except SQLAlchemyError as error:
             QMessageBox.critical(
                 self,
@@ -2743,7 +2742,15 @@ class ProducaoPage(QWidget):
                 folder = SystemSettingService(session).obter_valor('pasta_dados_cut_rite', '') or r'I:\Cutrite\V12-Data\Data'
                 dialog = AnaliseListaMaterialDialog(session, workbook_path=workbook,
                     plan_name=self.nome_plano_corte_input.text().strip(), cutrite_folder=folder,
-                    user=app_session.current_user, parent=self)
+                    user=app_session.current_user,
+                    materiais_usados=self.materias_usados_text.toPlainText(),
+                    obra_info={
+                        'processo': str(getattr(processo, 'codigo_processo', '') or ''),
+                        'cliente': self.cliente_input.text().strip(),
+                        'responsavel': self.responsavel_form_combo.currentText().strip(),
+                        'enc_phc': self.num_enc_phc_input.text().strip(),
+                    },
+                    parent=self)
                 dialog.exec()
                 return True, dialog.applied
         except Exception as error:
@@ -2971,6 +2978,10 @@ class ProducaoPage(QWidget):
                 # próprio caminho (a macro do livro) e mensagens de erro.
                 return True
             codigos, aviso = None, ""
+            decididos = {
+                material: decisoes_materiais.descricao(decisao)
+                for material, decisao in decisoes_materiais.ler(workbook).items()
+            }
             try:
                 with SessionLocal() as session:
                     codigos = {
@@ -2983,14 +2994,15 @@ class ProducaoPage(QWidget):
                     f"verificados. ({error})"
                 )
             resultado = verificacao_cutrite.verificar(
-                linhas, codigos, woodstore_aviso=aviso
+                linhas, codigos, woodstore_aviso=aviso, decisoes=decididos
             )
         finally:
             QApplication.restoreOverrideCursor()
 
         if resultado.tudo_certo:
             self.status_label.setText(
-                "Verificação feita: todos os materiais existem no Woodstore."
+                verificacao_cutrite.resumo_decididos(resultado)
+                or "Verificação feita: todos os materiais existem no Woodstore."
             )
             return True
         if not resultado.materiais_em_falta and not resultado.colunas_com_erro:
@@ -3047,7 +3059,7 @@ class ProducaoPage(QWidget):
                 return False
             QApplication.restoreOverrideCursor()
             resultado = verificacao_cutrite.verificar(
-                linhas, codigos, woodstore_aviso=aviso
+                linhas, codigos, woodstore_aviso=aviso, decisoes=decididos
             )
             if not resultado.colunas_com_erro:
                 self.status_label.setText("Lista Material recalculada e gravada.")

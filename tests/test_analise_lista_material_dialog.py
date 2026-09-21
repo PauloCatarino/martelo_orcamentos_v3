@@ -36,7 +36,11 @@ def test_no_stock_still_suggested_but_never_preselected(app, workbook, session, 
         plan_name='0722_01_01_26_JF_VIVA', cutrite_folder=workbook.parent, user=user)
     try:
         combo = dialog.choices['AGL_MLM_BRANCO_19M']
-        assert combo.count() == 2
+        # Manter + 1 candidato + separador + 3 decisões para material sem código.
+        assert combo.count() == 6
+        assert combo.itemData(1)['code'] == 'AGL_MLM_BRANCO_19MM'
+        assert [(combo.itemData(i) or {}).get('acao') for i in (3, 4, 5)] == [
+            'criar_woodstore', 'temporario', 'fora_cutrite']
         assert combo.currentData() is None
         assert dialog.tabs.count() == 3
         assert dialog.analysis_ready

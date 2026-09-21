@@ -49,9 +49,17 @@ class ColunaComErro:
     exemplo: str
 
 
+@dataclass(frozen=True)
+class MaterialDecidido:
+    material: str
+    pecas: int
+    decisao: str  # texto para o utilizador
+
+
 @dataclass
 class VerificacaoPreCutRite:
     materiais_em_falta: list[MaterialEmFalta] = field(default_factory=list)
+    materiais_decididos: list[MaterialDecidido] = field(default_factory=list)
     colunas_com_erro: list[ColunaComErro] = field(default_factory=list)
     woodstore_verificado: bool = True
     woodstore_aviso: str = ""
@@ -112,8 +120,14 @@ def verificar(
     codigos_woodstore: set[str] | None,
     *,
     woodstore_aviso: str = "",
+    decisoes: dict[str, str] | None = None,
 ) -> VerificacaoPreCutRite:
-    """`codigos_woodstore=None` quer dizer que não foi possível ler o Woodstore."""
+    """`codigos_woodstore=None` quer dizer que não foi possível ler o Woodstore.
+
+    `decisoes` = {material: texto da decisão} tomadas na Análise da Lista
+    Material; esses materiais já não são surpresa e não fazem aparecer o aviso.
+    """
+    decisoes = decisoes or {}
     resultado = VerificacaoPreCutRite()
 
     erros: dict[str, list[str]] = {}
@@ -154,8 +168,23 @@ def verificar(
             tuple(sorted(descricoes.get(material, ()))),
         )
         for material in sorted(contagem)
+        if material not in decisoes
+    ]
+    resultado.materiais_decididos = [
+        MaterialDecidido(material, pecas[material], decisoes[material])
+        for material in sorted(contagem)
+        if material in decisoes
     ]
     return resultado
+
+
+def resumo_decididos(resultado: VerificacaoPreCutRite) -> str:
+    """Uma linha para a barra de estado: o que fica fora deste plano, já decidido."""
+    if not resultado.materiais_decididos:
+        return ""
+    total = sum(m.pecas for m in resultado.materiais_decididos)
+    nomes = "; ".join(f"{m.material}: {m.decisao}" for m in resultado.materiais_decididos)
+    return f"{total} peça(s) sem material no Woodstore, já decididas na Análise — {nomes}."
 
 
 def texto_do_aviso(resultado: VerificacaoPreCutRite, *, pode_reparar: bool = True) -> str:

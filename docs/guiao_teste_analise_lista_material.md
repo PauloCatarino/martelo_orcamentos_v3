@@ -256,3 +256,38 @@ Processo quando o Martelo importou as ferragens com as macros desligadas.
 7. Na **Análise da Lista Material**, «Importar custo de ferragens…», «Aplicar
    materiais selecionados» e «Inserir relatório no Excel» já não deixam `#NAME?`
    na LISTAGEM_CUT_RITE.
+
+## F1 + F2 (21-09-2026) — assistente fora do arranque; materiais: referências, decisões e pedido às compras
+
+Obra de teste: **26.1610_01_01_JF_VIVA**. «Matérias usados» desta obra:
+`AGL_MLM_LINHO_CANCUN_10/16/19MM`, `MDF_HID_BRANCO_B3002/MA_19MM`, `AGL_MLM_BRANCO_B3768/SC_12/19MM`.
+
+**F1 — o assistente já não abre ao criar a Lista Material**
+1. **Produção** → selecionar uma obra com Nome Enc IMOS IX → **Lista Material_IMOS**.
+   Aparece logo «Lista Material criada — passo 1 de 4» (ou a pergunta «já existe»),
+   sem o «Assistente Lista Material — configuração da obra». As preferências
+   guardadas para o cliente continuam a ir para a folha ASSISTENTE do Excel.
+
+**F2 — separador Materiais Woodstore**
+2. **Produção** → selecionar `26.1610_01_01_JF_VIVA` → **Funções** → **Analisar/Completar
+   Lista Material** (ou o passo 4 de 4). Separador **Materiais Woodstore**.
+3. Por cima da tabela: «7 materiais: 6 validados no Woodstore, 1 sem código (0 já
+   decididos, 1 por decidir).»
+4. Coluna **Verificação da referência**: `Ref B3768 consta nas «Matérias usados».`,
+   `CANCUN LINHO consta…`, `Ref B3002 consta…`; no Tampo: `Não aparece nas
+   «Matérias usados» da obra — confirmar.` (fundo amarelo).
+5. A linha do `Tampo PostForming_30mm` está a rosa. Na coluna **Decisão / referência
+   proposta** escolher **Fora do Cut-Rite (comprado / cortado à parte)** →
+   **Aplicar materiais selecionados**. O estado passa a «Sem código no Woodstore —
+   decidido: Fora do Cut-Rite…» e o resumo a «1 já decididos, 0 por decidir».
+6. Fechar → **CUT-RITE** → **Enviar CUT-RITE**: o aviso do Tampo já NÃO aparece; a
+   barra de estado diz «1 peça(s) sem material no Woodstore, já decididas na Análise…».
+7. Pedido às compras: voltar à Análise, no Tampo escolher **Pedir criação no
+   Woodstore** → botão **Pedido de criação no Woodstore (PDF)…**. Abre
+   `Pedido_Material_Woodstore_1610_01_26_JF_VIVA.pdf` (pasta da obra) com nome,
+   espessura nominal 30, 1 peça 1475 × 620, 0,91 m², orla PVC_1.0_BRANCO.
+8. **Nome temporário…**: pede o nome (sugere `TEMP_TAMPO_POSTFORMING_30MM`); ao
+   aplicar, a coluna Material do Excel passa a esse nome e fica registado.
+9. Troca de referência: numa obra cuja «Matérias usados» diga, p. ex., `M6307` e a
+   lista traga `…M6305…`, a verificação fica cor de laranja («referência
+   parecida: confirmar…») e o combo oferece o código do Woodstore com M6307.
