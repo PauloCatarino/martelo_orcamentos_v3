@@ -216,6 +216,8 @@ class GrelhaListagemDialog(QDialog):
              "Apagar o conteúdo das células selecionadas (só colunas editáveis)."),
             ("restore", "Repor original", "Ctrl+R", self.restore_rows,
              "Voltar a linha ao que está no Excel (desfaz propostas, edições e remoção)."),
+            ("undo", "Anular", "Ctrl+Z", self.undo, "Desfazer a última operação (colar, eliminar, limpar, editar…)."),
+            ("redo", "Refazer", "Ctrl+Y", self.redo, "Refazer a operação anulada."),
         ):
             action = QAction(text, self)
             action.setShortcut(QKeySequence(shortcut))
@@ -312,9 +314,23 @@ class GrelhaListagemDialog(QDialog):
             self.grelha.restore_rows(rows)
             self.model.refresh()
 
+    def undo(self):
+        if self.grelha.undo():
+            self.model.refresh()
+            self._message("Operação anulada.")
+        else:
+            self._message("Nada para anular.")
+
+    def redo(self):
+        if self.grelha.redo():
+            self.model.refresh()
+            self._message("Operação refeita.")
+
     def _context_menu(self, pos):
         menu = QMenu(self)
-        for key in ("copy", "paste_before", "paste_after", "delete", "clear", "restore"):
+        for key in ("undo", "redo", "copy", "paste_before", "paste_after", "delete", "clear", "restore"):
+            if key == "copy":
+                menu.addSeparator()
             menu.addAction(self.actions[key])
         menu.exec(self.view.viewport().mapToGlobal(pos))
 

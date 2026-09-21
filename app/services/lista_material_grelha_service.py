@@ -97,6 +97,46 @@ class GrelhaListagem:
                 line.proposals[suggestion.field] = suggestion
                 line.values[suggestion.field] = str(suggestion.suggested or "")
         self.clipboard: list[dict[str, str]] = []
+        self._undo: list[list[LinhaGrelha]] = []
+        self._redo: list[list[LinhaGrelha]] = []
+
+    # ---- anular / refazer (Ctrl+Z / Ctrl+Y) --------------------------------
+    # Pedido do Paulo ao testar (21-09-2026): colou uma linha e não conseguiu
+    # voltar atrás. Cada operação guarda antes uma fotografia da grelha.
+
+    LIMITE_ANULAR = 100
+
+    def _fotografia(self) -> list[LinhaGrelha]:
+        return [
+            LinhaGrelha(line.original_row, line.original, dict(line.values), line.removed,
+                        line.proposals, line.delete_proposal, set(line.confirm))
+            for line in self.rows
+        ]
+
+    def checkpoint(self) -> None:
+        self._undo.append(self._fotografia())
+        del self._undo[:-self.LIMITE_ANULAR]
+        self._redo.clear()
+
+    def can_undo(self) -> bool:
+        return bool(self._undo)
+
+    def can_redo(self) -> bool:
+        return bool(self._redo)
+
+    def undo(self) -> bool:
+        if not self._undo:
+            return False
+        self._redo.append(self._fotografia())
+        self.rows = self._undo.pop()
+        return True
+
+    def redo(self) -> bool:
+        if not self._redo:
+            return False
+        self._undo.append(self._fotografia())
+        self.rows = self._redo.pop()
+        return True
 
     # ---- consultas -----------------------------------------------------------
 
@@ -138,10 +178,15 @@ class GrelhaListagem:
 
     # ---- operações tipo Excel ----------------------------------------------
 
-    def set_value(self, index: int, column: str, value: str) -> bool:
+    def set_value(self, index: int, column: str, value: str, *, checkpoint: bool = True) -> bool:
         if not self.editable(column) or self.rows[index].removed:
             return False
-        self.rows[index].values[column] = str(value or "").strip()
+        value = str(value or "").strip()
+        if self.rows[index].values.get(column, "") == value:
+            return True
+        if checkpoint:
+            self.checkpoint()
+        self.rows[index].values[column] = value
         return True
 
     def copy_rows(self, indexes) -> list[dict[str, str]]:
@@ -155,6 +200,7 @@ class GrelhaListagem:
             return []
         position = index + 1 if after else index
         position = max(0, min(position, len(self.rows)))
+        self.checkpoint()
         new_lines = []
         for values in source:
             fresh = {col: values.get(col, "") for col in self.columns}
@@ -167,6 +213,9 @@ class GrelhaListagem:
         return list(range(position, position + len(new_lines)))
 
     def delete_rows(self, indexes) -> None:
+        if not indexes:
+            return
+        self.checkpoint()
         for i in sorted(set(indexes), reverse=True):
             if self.rows[i].is_new:
                 del self.rows[i]
@@ -174,13 +223,19 @@ class GrelhaListagem:
                 self.rows[i].removed = True
 
     def clear_cells(self, cells) -> int:
-        cleared = 0
+        cells = [(i, c) for i, c in cells if self.editable(c) and not self.rows[i].removed
+                 and self.rows[i].values.get(c, "")]
+        if not cells:
+            return 0
+        self.checkpoint()   # uma só fotografia: Ctrl+Z desfaz a limpeza toda
         for index, column in cells:
-            if self.set_value(index, column, ""):
-                cleared += 1
-        return cleared
+            self.set_value(index, column, "", checkpoint=False)
+        return len(cells)
 
     def restore_rows(self, indexes) -> None:
+        if not indexes:
+            return
+        self.checkpoint()
         for i in sorted(set(indexes), reverse=True):
             line = self.rows[i]
             if line.is_new:

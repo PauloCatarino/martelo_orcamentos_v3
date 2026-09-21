@@ -334,7 +334,7 @@ acerta-se na configuração) e notas próprias da obra («MONTADO», «NICHO ABE
    ficam as costas e o cabeçalho mostra «Descricao ▼». **Limpar filtros** repõe.
 4. Selecionar uma linha → **Ctrl+C** → **Ctrl+V** (cola depois) ou **Ctrl+Shift+V**
    (cola antes): aparece uma linha verde «nova». **Ctrl+-** elimina; **Delete** limpa
-   as células; **Ctrl+R** repõe a linha como está no Excel. Botão direito tem o mesmo.
+   as células; **Ctrl+R** repõe a linha como está no Excel; **Ctrl+Z** anula a última operação e **Ctrl+Y** refaz. Botão direito tem o mesmo.
 5. Colunas com fórmula (Cliente, Ref_Cliente, Processo, ID, Esp.Mat, Esp.Final,
    Grafico Orlas) não se editam: o Excel calcula-as, também nas linhas coladas.
 6. **Aplicar no Excel** → a barra de estado diz quantas células, linhas eliminadas e

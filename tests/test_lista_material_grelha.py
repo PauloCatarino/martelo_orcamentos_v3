@@ -123,3 +123,41 @@ def test_dialogo_filtra_como_o_excel(app, grelha):
         assert "1 células, 1 linhas eliminadas, 0 linhas novas" in dialogo.summary.text()
     finally:
         dialogo.close()
+
+
+def test_ctrl_z_desfaz_colar_eliminar_limpar_e_editar(grelha):
+    """Pedido do Paulo (21-09-2026): colou uma linha e não conseguiu voltar atrás."""
+    antes = [(r.original_row, dict(r.values), r.removed) for r in grelha.rows]
+    assert not grelha.can_undo()
+    grelha.copy_rows([1])
+    grelha.paste_rows(1, after=True)
+    assert len(grelha.rows) == 5
+    assert grelha.undo() and len(grelha.rows) == 4
+    assert grelha.redo() and len(grelha.rows) == 5
+    assert grelha.undo()
+    grelha.delete_rows([0])
+    grelha.clear_cells([(1, "Notas"), (1, "Descricao"), (2, "Descricao")])   # uma operação
+    grelha.set_value(3, "Notas", "RECORTE L")
+    grelha.set_value(3, "Notas", "RECORTE L")        # igual: não conta
+    for _ in range(3):
+        assert grelha.undo()
+    assert [(r.original_row, dict(r.values), r.removed) for r in grelha.rows] == antes
+    assert not grelha.undo()
+    # Uma operação nova depois de anular apaga o «refazer».
+    grelha.delete_rows([1])
+    assert not grelha.can_redo()
+
+
+def test_dialogo_ctrl_z(app, grelha):
+    dialogo = GrelhaListagemDialog(grelha)
+    try:
+        assert dialogo.actions["undo"].shortcut().toString() == "Ctrl+Z"
+        grelha.copy_rows([0])
+        dialogo.view.setCurrentIndex(dialogo.proxy.index(0, 2))
+        dialogo.paste(after=True)
+        assert dialogo.model.rowCount() == 5
+        dialogo.undo()
+        assert dialogo.model.rowCount() == 4
+        assert "anulada" in dialogo.summary.text()
+    finally:
+        dialogo.close()
