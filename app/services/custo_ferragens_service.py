@@ -151,7 +151,7 @@ def estado_do_custo(estado_obra: str, lines, prices, plans, production) -> Estad
 
     hardware = [l for l in lines if l["kind"] in CATEGORIAS_FERRAGENS]
     if hardware:
-        contagem = {FONTE_V3: 0, FONTE_PHC: 0, FONTE_IMOS: 0, "": 0}
+        contagem = {FONTE_V3: 0, FONTE_PHC: 0, FONTE_IMOS: 0, "EXCLUIDO": 0, "": 0}
         confirmar = 0
         for line in hardware:
             price = prices.get(line["key"])
@@ -160,6 +160,8 @@ def estado_do_custo(estado_obra: str, lines, prices, plans, production) -> Estad
         ok = contagem[FONTE_IMOS] == 0 and contagem[""] == 0 and confirmar == 0
         texto = (f"Ferragens: V3 {contagem[FONTE_V3]} · PHC {contagem[FONTE_PHC]} · "
                  f"IMOS provisório {contagem[FONTE_IMOS]} · sem preço {contagem['']}")
+        if contagem["EXCLUIDO"]:
+            texto += f" · não contabilizadas {contagem['EXCLUIDO']}"
         if confirmar:
             texto += f" · {confirmar} com unidade a confirmar"
         pontos.append((ok, texto))
@@ -176,3 +178,164 @@ def estado_do_custo(estado_obra: str, lines, prices, plans, production) -> Estad
               "Custo PROVISÓRIO — o custo com rigor fica fechado quando a obra estiver "
               "Finalizada/Arquivada e todos os pontos abaixo estiverem ✓.")
     return EstadoCusto(final, titulo, pontos)
+
+
+# ---- Origem: os separadores 1_FERRAGENS / 2_PURCH / 3_SPP do Excel -----------
+#
+# Pedido do Paulo (21-09-2026): a análise das ferragens tem de partir destes
+# separadores, e não do 5_Custo_Obra_Ferragens que vem do IMOS. Nem tudo vem
+# certo do IMOS e o utilizador corrige-os à mão em cada obra (na 1610 apagou o
+# 2_PURCH, que era uma máquina de lavar que não se contabiliza). Só entra o que
+# lá estiver. Do 5_Custo aproveita-se apenas o preço IMOS (3.ª opção) e as
+# linhas «Na lista = fora» — as cavilhas que a máquina põe e que não aparecem
+# na lista, mas contam para o custo.
+
+import unicodedata as _unicodedata
+
+SEPARADORES = (("1_FERRAGENS", "Ferragens"), ("2_PURCH", "Comprados"), ("3_SPP", "SPP"))
+FONTE_EXCLUIDO = "EXCLUIDO"
+_MM = re.compile(r"\[(\d+(?:[.,]\d+)?)\s*mm\]", re.I)
+
+
+def _cabecalho(valor) -> str:
+    texto = " ".join(str(valor or "").split()).casefold()
+    return "".join(c for c in _unicodedata.normalize("NFKD", texto) if not _unicodedata.combining(c))
+
+
+def _ref(valor) -> str:
+    ref = str(valor or "").strip().upper()
+    return ref if REF_PHC.match(ref) else ""
+
+
+def _primeira_linha(texto) -> str:
+    return str(texto or "").strip().splitlines()[0].strip() if str(texto or "").strip() else ""
+
+
+def _tabela(sheet):
+    """(cabeçalhos normalizados → índice, linhas de dados) a partir do cabeçalho com «Qt.»."""
+    headers, data = None, []
+    for row in sheet.iter_rows(values_only=True):
+        if headers is None:
+            names = [_cabecalho(v) for v in row]
+            if any(n.startswith("qt") for n in names) and (
+                    "ref phc" in names or "acessorio #" in names):
+                headers = {n: i for i, n in enumerate(names) if n}
+            continue
+        data.append(row)
+    return headers, data
+
+
+def _valor(row, headers, *names):
+    for name in names:
+        index = headers.get(name)
+        if index is not None and index < len(row) and row[index] not in (None, ""):
+            return row[index]
+    return None
+
+
+def _qt(row, headers):
+    for name, index in headers.items():
+        if name.startswith("qt") and index < len(row):
+            return _numero(row[index])
+    return None
+
+
+def linhas_dos_separadores(book) -> tuple[list[dict], list[str]]:
+    """Linhas de custo das ferragens a partir dos separadores editados do Excel."""
+    from app.services.analise_lista_material_service import cost_line, hardware_rows
+
+    avisos: list[str] = []
+    imos_por_ref: dict[tuple[str, str], str] = {}
+    imos_por_desc: dict[tuple[str, str], str] = {}
+    fora: list[dict] = []
+    custo_sheets = [s for s in book.worksheets if "custo_obra_ferragens" in s.title.lower()]
+    if len(custo_sheets) == 1:
+        try:
+            for linha in hardware_rows(custo_sheets[0].values):
+                ref = _ref(linha.get("ref_phc"))
+                if ref and linha.get("imos_price"):
+                    imos_por_ref.setdefault((linha["kind"], ref), linha["imos_price"])
+                desc = _cabecalho(_primeira_linha(linha.get("description")))
+                if desc and linha.get("imos_price"):
+                    imos_por_desc.setdefault((linha["kind"], desc), linha["imos_price"])
+                if str(linha.get("in_list") or "").strip().casefold() == "fora":
+                    fora.append({**linha, "source_sheet": "5_Custo_Obra_Ferragens (fora da lista)"})
+        except ValueError:
+            avisos.append("5_Custo_Obra_Ferragens ilegível: sem preço IMOS de referência.")
+
+    if not custo_sheets:
+        avisos.append("Sem 5_Custo_Obra_Ferragens: sem preço IMOS de referência nem as cavilhas "
+                      "«fora da lista» (importe as listas de ferragens do IMOS — passo 3).")
+    agrupadas: dict[str, dict] = {}
+    usados = []
+    for sheet_name, kind in SEPARADORES:
+        if sheet_name not in book.sheetnames:
+            continue
+        headers, rows = _tabela(book[sheet_name])
+        if not headers:
+            avisos.append(f"{sheet_name}: cabeçalho não reconhecido; separador ignorado.")
+            continue
+        count = 0
+        for row in rows:
+            qt = _qt(row, headers)
+            if qt is None or qt <= 0:
+                continue
+            count += 1
+            artigo = str(_valor(row, headers, "artg.") or "").strip()
+            if kind == "Comprados":
+                nome = str(_valor(row, headers, "acessorio #") or "").strip()
+                medidas = str(_valor(row, headers, "comp x larg x esp") or "").strip()
+                nome = nome or f"Objeto comprado {medidas}".strip()
+                ref, descricao, unit, quantidade = "", nome, "un", qt
+                chave = f"ferragem:{kind}:{nome.upper()}:{medidas}"
+                extra = {"length": medidas}
+            else:
+                descricao = str(_valor(row, headers, "descricao 1", "descricao") or "").strip()
+                nome = _primeira_linha(descricao) or "Artigo sem descrição"
+                ref = _ref(_valor(row, headers, "ref phc"))
+                if kind == "SPP":
+                    comp = _numero(str(_valor(row, headers, "comp.", "comp") or "").strip())
+                    if comp is None:
+                        achado = _MM.search(descricao)
+                        comp = _numero(achado.group(1)) if achado else None
+                    if comp is None:
+                        avisos.append(f"3_SPP: «{nome}» sem comprimento; linha ignorada.")
+                        continue
+                    unit, quantidade = "ml", qt * comp / Decimal(1000)
+                else:
+                    unit, quantidade = "un", qt
+                chave = f"ferragem:{kind}:{ref or nome.upper()}:{unit}"
+                extra = {}
+            linha = agrupadas.get(chave)
+            if linha is None:
+                linha = cost_line(
+                    kind, chave, nome, quantidade, unit, ref_phc=ref, description=descricao,
+                    supplier_ref=str(_valor(row, headers, "ref fornecedor") or "").strip(),
+                    # Pela Ref PHC; sem ref (ex. «Canto Rodape»), pela descrição.
+                    imos_price=(imos_por_ref.get((kind, ref), "") if ref else "")
+                    or imos_por_desc.get((kind, _cabecalho(nome)), ""),
+                    source_sheet=sheet_name, articles=artigo, union_name="", union_set="", **extra)
+                agrupadas[chave] = linha
+            else:
+                linha["quantity"] = str(Decimal(linha["quantity"]) + quantidade)
+                if artigo and artigo not in linha["articles"].split(", "):
+                    linha["articles"] = ", ".join(x for x in (linha["articles"], artigo) if x)
+        if count:
+            usados.append(f"{sheet_name} ({count})")
+    if not usados:
+        avisos.append("Sem separadores 1_FERRAGENS / 2_PURCH / 3_SPP com dados: ferragens sem custo "
+                      "nesta obra (a origem das ferragens são esses separadores do Excel).")
+    else:
+        avisos.append("Ferragens a partir de " + ", ".join(usados)
+                      + (f" + {len(fora)} fora da lista (cavilhas)" if fora else "") + ".")
+    for linha in agrupadas.values():
+        linha["quantity"] = format(Decimal(linha["quantity"]).quantize(Decimal("0.001")).normalize(), "f")
+    return list(agrupadas.values()) + (fora if usados else []), avisos
+
+
+def preco_excluido(line: dict) -> dict:
+    return {
+        "id": None, "ref": line.get("ref_phc") or "", "description": line.get("description") or line["name"],
+        "unit": line.get("unit") or "un", "net": "0", "date": "", "fonte": FONTE_EXCLUIDO, "confirmar": "",
+        "mapping_source": "Não contabilizado nesta obra (cliente / só representação no IMOS)",
+    }

@@ -355,3 +355,26 @@ acerta-se na configuração) e notas próprias da obra («MONTADO», «NICHO ABE
     Anterior / Fechar. Depois **Guardar análise de custos**.
 11. Com a obra Finalizada/Arquivada, plano de corte, tudo com preço V3/PHC e os oito
     setores concluídos, o quadro fica verde: «Custo FINAL da obra — tudo apurado.»
+
+## Ferragens a partir dos separadores do Excel (21-09-2026)
+
+A origem das ferragens do custo passa a ser **1_FERRAGENS, 2_PURCH e 3_SPP** (os que
+existirem com dados), porque são corrigidos à mão em cada obra. Do
+5_Custo_Obra_Ferragens (IMOS) só vêm o preço IMOS de referência e as cavilhas
+«Na lista = fora».
+
+1. Obra `26.1610_01_01_JF_VIVA` (o 2_PURCH da máquina de lavar já foi apagado) →
+   Análise → **Custo de produção (parcial)**. Nas pendências/avisos: «Ferragens a partir
+   de 1_FERRAGENS (21), 3_SPP (10) + 1 fora da lista (cavilhas).»
+2. A máquina de lavar já não aparece. O varão aparece em ml (8,927 ml = soma de
+   quantidade × comprimento das peças do 3_SPP). O suporte de prateleira FF00043 soma as
+   duas linhas (148).
+3. O TIC-TAC FF00132 fica com preço V3 (associação antiga reaproveitada pela Ref PHC).
+4. **Mapear ferragens passo a passo…**: o nome mostra de onde vem, p. ex.
+   «[1_FERRAGENS · RP_A_05(b)]». Para o Calçeiro (sem Ref PHC) ou um acessório só de
+   representação / do cliente → **Não contabilizar nesta obra** (custo 0, conta como
+   resolvido). O «Canto Rodape» fica com o preço IMOS (1,10 €) achado pela descrição.
+5. Editar o Excel (p. ex. mudar a quantidade de uma ferragem em 1_FERRAGENS), gravar,
+   fechar → **Reanalisar ficheiros**: a quantidade nova entra e o preço escolhido mantém-se.
+6. Numa obra sem nenhum dos três separadores: «Sem separadores 1_FERRAGENS / 2_PURCH /
+   3_SPP com dados: ferragens sem custo nesta obra».

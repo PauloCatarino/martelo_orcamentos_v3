@@ -151,7 +151,9 @@ def test_read_workbook_retains_width_and_quantities(tmp_path):
     lines, warnings = svc.workbook_cost_lines(path)
     assert lines[0]['width'] == '22'
     assert lines[0]['quantity'] == '100'
-    assert len(warnings) == 1
+    # Sem 1_FERRAGENS / 2_PURCH / 3_SPP não há ferragens (e diz-se porquê).
+    assert not [l for l in lines if l['kind'] != 'Orlas']
+    assert any('1_FERRAGENS / 2_PURCH / 3_SPP' in w for w in warnings)
 
 
 def test_o_snapshot_mais_recente_nao_depende_do_relogio(tmp_path, monkeypatch):

@@ -24,6 +24,11 @@ PREFIX = 'lm_custo_mapa_'
 
 
 def mapping_identity(line):
+    if line.get('source_sheet') and line['kind'] not in ('Placas', 'Orlas'):
+        # Ferragens dos separadores do Excel: a Ref PHC é o que se mantém quando o
+        # utilizador corrige a descrição ou a quantidade.
+        return [line['kind'], 'REF', str(line.get('ref_phc') or line['name']).strip().upper(),
+                svc.unit(line['unit'])]
     identity = [line['kind'], line['name'].strip().upper(), svc.unit(line['unit'])]
     if line['kind'] == 'Orlas':
         identity += [str(line.get('board') or '').upper(), str(line.get('width') or ''), str(line.get('thickness') or '')]
@@ -170,8 +175,19 @@ def egger_candidates(line, catalog, references):
     return candidates, f"EGGER {refs[0].referencia}/{refs[0].st_acab} — grupo {group}, {thickness} mm"
 
 
+def _legacy_by_ref(line, mappings):
+    """Associações antigas (feitas pelo nome IMOS) reaproveitadas pela mesma Ref PHC."""
+    ref = str(line.get('ref_phc') or '').strip().upper()
+    if not ref or not line.get('source_sheet'):
+        return None
+    found = {m['mp_id'] for m in mappings.values()
+             if m.get('identity') and m['identity'][0] == line['kind']
+             and str(m['identity'][-1]).strip().upper() == ref}
+    return {'mp_id': found.pop()} if len(found) == 1 else None
+
+
 def resolve_price(line, catalog, mappings, references=(), components=()):
-    mapped = mappings.get(mapping_key(line))
+    mapped = mappings.get(mapping_key(line)) or _legacy_by_ref(line, mappings)
     if mapped:
         matches = [mp for mp in catalog if mp.id == mapped['mp_id']]
         if len(matches) == 1:

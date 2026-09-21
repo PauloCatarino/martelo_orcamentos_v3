@@ -328,13 +328,13 @@ def workbook_cost_lines(path):
                 result.append(cost_line('Orlas', f'orla:{material}:{name}:{size}', name, number(val('ML_QT')), 'ml', width=str(edge_width(size) or ''), thickness=edge_thickness(name), board=material, size=size, source='ResumoOrlas'))
         else:
             warnings.append('ResumoOrlas em falta; custo de orlas por apurar.')
-        sheets = [s for s in book if 'custo_obra_ferragens' in s.title.lower()]
-        if not sheets:
-            warnings.append('Novo separador Custo_Obra_Ferragens em falta.')
-        elif len(sheets) > 1:
-            warnings.append('Vários separadores de custos de ferragens; não foram somados.')
-        else:
-            result.extend(hardware_rows(sheets[0].values))
+        # Desde 21-09-2026 as ferragens vêm dos separadores 1_FERRAGENS / 2_PURCH /
+        # 3_SPP, que o utilizador corrige à mão; o 5_Custo_Obra_Ferragens (IMOS) só
+        # dá o preço IMOS de referência e as cavilhas «fora da lista».
+        from app.services.custo_ferragens_service import linhas_dos_separadores
+        hardware, hardware_warnings = linhas_dos_separadores(book)
+        result.extend(hardware)
+        warnings.extend(hardware_warnings)
     finally:
         book.close()
     if not any(r['kind'] == 'Orlas' for r in result):
@@ -426,7 +426,7 @@ def hardware_rows(rows):
                 supplier_ref=str(val('Ref Fornecedor') or ''), legacy_key=legacy_key,
                 # Preço do IMOS: só referência, 3.ª opção e sempre provisório.
                 imos_price=str(number(val('€ / un')) or '') if number(val('€ / un')) is not None else '',
-                supplier=str(val('Fornecedor') or ''))
+                supplier=str(val('Fornecedor') or ''), in_list=str(val('Na lista') or ''))
     if headers is None:
         raise ValueError('Cabeçalhos do custo de ferragens não reconhecidos.')
     return list(result.values())

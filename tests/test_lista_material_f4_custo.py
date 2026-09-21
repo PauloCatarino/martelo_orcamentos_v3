@@ -110,6 +110,13 @@ def workbook(tmp_path):
     s.append(["BL_DOB", "", "Dobradiça", "FF00060", "75B1550 BLUM", "BLUM", "", "", "", "", 95, "un", "2,47", 234.65])
     s.append(["PRF", "", "Parafuso", "FF00036", "", "HAFELE", "", "", "", "", 400, "un", "0,03", 12])
     s.append(["CANTO", "", "Canto", "??  (?)", "", "ARTIMOL", "", "", "", "", 1, "un", "1,10", 1.1])
+    # A origem das ferragens é o 1_FERRAGENS (editado à mão), não o 5_Custo.
+    f = w.create_sheet("1_FERRAGENS")
+    f.append(["Listagem Ferragem"])
+    f.append(["Imagem\n", "Ref PHC", None, "Ref Fornecedor", "Descrição 1", None, None, "Qt.", "UN", "Artg.\n"])
+    f.append([None, "FF00060", None, "75B1550 BLUM", "Dobradiça\nCOR -> nickle", None, None, 95, "\n", "RP_A_03"])
+    f.append([None, "FF00036", None, "016.10.699", "Parafuso", None, None, 400, "\n", "RP_A_04"])
+    f.append([None, "??", None, "??", "Canto", None, None, 1, "\n", "LV_A_01"])
     w.save(path)
     return path
 
@@ -126,7 +133,7 @@ def test_analise_preenche_phc_e_imos_e_diz_que_e_provisorio(app, session, workbo
     dialog = _dialog(session, workbook, monkeypatch)
     try:
         fontes = {l["name"]: custo.fonte(dialog.prices.get(l["key"])) for l in dialog.lines if l["kind"] == "Ferragens"}
-        assert fontes == {"BL_DOB": "PHC", "PRF": "PHC", "CANTO": "IMOS"}
+        assert fontes == {"Dobradiça": "PHC", "Parafuso": "PHC", "Canto": "IMOS"}
         assert "PROVISÓRIO" in dialog.rigor_label.text()
         assert "Ferragens: V3 0 · PHC 2 · IMOS provisório 1" in dialog.rigor_label.text()
         dialog._update_prices()   # não pode perder os preços PHC/IMOS (não têm id)
@@ -153,3 +160,83 @@ def test_passo_a_passo_usa_phc_imos_e_salta(app, session, workbook, monkeypatch)
         assert all(p["escolha_manual"] for p in prices.values())
     finally:
         dialog.close()
+
+
+# ---- Origem nos separadores 1_FERRAGENS / 2_PURCH / 3_SPP (pedido de 21-09-2026) ----
+
+def _livro_separadores(com_purch=True, com_custo=True):
+    w = Workbook()
+    f = w.active
+    f.title = "1_FERRAGENS"
+    f.append(["Listagem Ferragem"])
+    f.append(["Imagem\n", "Ref PHC", None, "Ref Fornecedor", "Descrição 1", None, None, "Qt.", "UN", "Artg.\n"])
+    f.append([None, "FF00043", None, "80395.07", "Suporte Prateleira", None, None, 128, "\n", "LV_A_02"])
+    f.append([None, "FF00043 ", None, "80395.07", "Suporte Prateleira", None, None, 20, "\n", "RP_A_01"])
+    f.append([None, "80593813", None, "Calçeiro", "Calçeiro Extraivel 11 | 805.93.813", None, None, 1, "\n", "RP_A_05(b)"])
+    s = w.create_sheet("3_SPP")
+    s.append(["Listagem Ferragem"])
+    s.append(["Imagem", "Ref PHC", None, "Ref Fornecedor", "Descrição 1", None, None, "Qt.\n", None, None, "Comp.", None, "Artg."])
+    s.append([None, "FF00412     ", None, "", "Varao Oval 30X15\nCOR -> Aluminio\n[990 mm]x[15 mm]x[30 mm]", None, None, 2, None, None, "989\n", None, "RP_A_04"])
+    s.append([None, "FF00412", None, "", "Varao Oval 30X15\n[468 mm]x[15 mm]x[30 mm]", None, None, 1, None, None, None, None, "RP_A_01"])
+    if com_purch:
+        p = w.create_sheet("2_PURCH")
+        p.append(["Listagem Ferragem"])
+        p.append(["Imagem", None, "Acessorio #", "Comp X Larg X Esp", None, None, None, None, "Qt.", None, "Artg."])
+        p.append([None, None, "", "600 X 610 X 860", None, None, None, None, 1, None, "13"])
+    if com_custo:
+        c = w.create_sheet("5_Custo_Obra_Ferragens")
+        c.append(["Nome iMos (Nome Uniao)", "Jogo de Unioes (iMos)", "Descricao", "Ref PHC", "Ref Fornecedor",
+                  "Fornecedor", "Na lista", "Comp", "Larg", "Esp", "Qt", "Un", "€ / un", "€"])
+        c.append(["FERRAGENS"])
+        c.append(["SUP", "", "Suporte Prateleira", "FF00043", "", "EMUCA", "", "", "", "", 999, "un", "0,15", 0])
+        c.append(["CAVILHA_08p1X30_COLA", "", "Cavilha 8 X 30", "FC00304", "", "ARTIMOL", "fora", "", "", "", 606, "un", "0,01", 6.06])
+        c.append(["MAQ", "", "Maquina lavar", "  (?)", "", "", "", "", "", "", 2, "un", "0", 0])
+    return w
+
+
+def test_ferragens_saem_dos_separadores_editados():
+    linhas, avisos = custo.linhas_dos_separadores(_livro_separadores())
+    por_nome = {l["name"]: l for l in linhas}
+    suporte = por_nome["Suporte Prateleira"]
+    # A mesma Ref PHC em duas linhas soma; a quantidade é a do separador (148), não a do IMOS (999).
+    assert suporte["quantity"] == "148" and suporte["source_sheet"] == "1_FERRAGENS"
+    assert suporte["imos_price"] == "0.15" and suporte["articles"] == "LV_A_02, RP_A_01"
+    # SPP em metros: 2 × 989 mm + 1 × 468 mm (do texto, quando falta o Comp.).
+    assert por_nome["Varao Oval 30X15"]["quantity"] == "2.446" and por_nome["Varao Oval 30X15"]["unit"] == "ml"
+    assert por_nome["Calçeiro Extraivel 11 | 805.93.813"]["ref_phc"] == ""   # 80593813 não é Ref PHC
+    assert por_nome["Objeto comprado 600 X 610 X 860"]["kind"] == "Comprados"
+    # As cavilhas «fora da lista» contam; a máquina do 5_Custo nunca entra por lá.
+    assert por_nome["CAVILHA_08p1X30_COLA"]["quantity"] == "606"
+    assert "MAQ" not in por_nome and "Maquina lavar" not in por_nome
+    assert any("1_FERRAGENS (3), 2_PURCH (1), 3_SPP (2)" in a for a in avisos)
+
+
+def test_2_purch_apagado_deixa_de_contar_e_sem_separadores_nao_ha_ferragens():
+    linhas, _ = custo.linhas_dos_separadores(_livro_separadores(com_purch=False))
+    assert not [l for l in linhas if l["kind"] == "Comprados"]
+    vazio = Workbook()
+    linhas, avisos = custo.linhas_dos_separadores(vazio)
+    assert linhas == [] and any("ferragens sem custo" in a for a in avisos)
+    _, avisos = custo.linhas_dos_separadores(_livro_separadores(com_custo=False))
+    assert any("Sem 5_Custo_Obra_Ferragens" in a for a in avisos)
+
+
+def test_mapeamentos_antigos_reaproveitados_pela_ref_phc():
+    from app.services import analise_custo_mapeamento_service as maps
+    linha = svc.cost_line("Ferragens", "ferragem:Ferragens:FF00132:un", "MAELGA TIC-TAC", 22, "un",
+                          ref_phc="FF00132", source_sheet="1_FERRAGENS")
+    assert maps.mapping_identity(linha) == ["Ferragens", "REF", "FF00132", "un"]
+    antigo = {"k": {"identity": ["Ferragens", "FECHO_TIC_TAC", "un", "X", "FF00132"], "mp_id": 5}}
+    mp = SimpleNamespace(id=5, ref_le="FER1", ref_phc="", nome_imos="", descricao="Tic-tac",
+                         unidade="un", preco_liquido=Decimal("2"))
+    price = maps.resolve_price(linha, [mp], antigo)
+    assert price["id"] == 5 and price["net"] == "2"
+
+
+def test_nao_contabilizar_conta_como_resolvido():
+    linha = _line("FF09999")
+    precos = {linha["key"]: custo.preco_excluido(linha)}
+    assert svc.calculate_cost(linha, precos[linha["key"]])[0] == 0
+    estado = custo.estado_do_custo("Finalizado", [linha], precos, _plan(), {"sectors": [{"state": "Concluído"}]})
+    assert estado.final
+    assert any("não contabilizadas 1" in texto for _, texto in estado.pontos)

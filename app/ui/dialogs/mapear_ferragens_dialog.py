@@ -60,7 +60,11 @@ class MapearFerragensDialog(QDialog):
         self.imos_button = QPushButton()
         self.imos_button.setToolTip("Usar o preço do IMOS só nesta obra; fica marcado como provisório.")
         self.imos_button.clicked.connect(self._use_imos)
-        for button in (self.v3_button, self.phc_button, self.imos_button):
+        self.skip_cost_button = QPushButton("Não contabilizar nesta obra")
+        self.skip_cost_button.setToolTip(
+            "Acessório só para representação no IMOS, ou fornecido pelo cliente: custo 0 nesta obra.")
+        self.skip_cost_button.clicked.connect(lambda: self._set(custo.preco_excluido(self.line)))
+        for button in (self.v3_button, self.phc_button, self.imos_button, self.skip_cost_button):
             options.addWidget(button)
         layout.addLayout(options)
         self.note = QLabel()
@@ -95,7 +99,10 @@ class MapearFerragensDialog(QDialog):
         line = self.line
         price = self.prices.get(line["key"])
         self.progress.setText(f"{self.index + 1} de {len(self.lines)} — {line['kind']}")
-        self.fields["name"].setText(line.get("union_name") or line["name"])
+        self.fields["name"].setText(
+            (line.get("union_name") or line["name"])
+            + (f"   [{line['source_sheet']}" + (f" · {line['articles']}" if line.get("articles") else "") + "]"
+               if line.get("source_sheet") else ""))
         self.fields["description"].setText(line.get("description") or "—")
         self.fields["ref_phc"].setText(line.get("ref_phc") or "—")
         self.fields["supplier"].setText(" · ".join(x for x in (line.get("supplier"), line.get("supplier_ref")) if x) or "—")

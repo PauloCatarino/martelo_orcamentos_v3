@@ -134,7 +134,8 @@ class AnaliseListaMaterialDialog(QDialog):
             row = QHBoxLayout()
             if self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL):
                 self._button(row, 'Importar custo de ferragens…', self._import_hardware,
-                             'Usar primeiro o separador do Excel. Se faltar, procurar o ficheiro na obra e depois na pasta IMOS; pedir seleção se necessário.')
+                             'Trazer o 5_Custo_Obra_Ferragens do IMOS: dá só o preço IMOS de referência e as cavilhas '
+                             '«fora da lista». As ferragens contadas são as dos separadores 1_FERRAGENS, 2_PURCH e 3_SPP.')
             self._button(row, 'Mapear ferragens passo a passo…', self._map_hardware,
                          'Percorrer uma a uma as ferragens sem preço do V3: associar à matéria-prima V3 '
                          '(fica para as próximas obras), usar o preço PHC ou o preço IMOS provisório.')
