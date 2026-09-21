@@ -71,6 +71,12 @@ from app.services.cutrite_service import (
     prepare_cutrite_import,
     prepare_cutrite_resumo_pdf,
 )
+from app.services import verificacao_pre_cutrite_service as verificacao_cutrite
+from app.services.lista_material_excel_com import (
+    reparar_formulas as reparar_formulas_lista_material,
+)
+from app.services.woodstore_service import query_woodstore
+from app.services.warehouse_board_catalog import WoodstoreBoardCatalogProvider
 from app.services.lista_material_imos_service import (
     execute_automation_cutrite_macro,
     execute_import_csv_imos_macro,
@@ -2356,7 +2362,12 @@ class ProducaoPage(QWidget):
         user_id = int(getattr(app_session.current_user, "id", 0) or 0)
         try:
             with SessionLocal() as session:
-                assistant_service = ListaMaterialAssistantService(session)
+                assistant_service = ListaMaterialAssistantService(
+                    session,
+                    board_catalog=WoodstoreBoardCatalogProvider(
+                        lambda: query_woodstore(session)
+                    ),
+                )
                 assistant_config = assistant_service.resolve_config(
                     user_id=user_id,
                     client=values["NOME_CLIENTE_SIMPLEX"] or values["NOME_CLIENTE"],
@@ -2776,7 +2787,12 @@ class ProducaoPage(QWidget):
                 Path(pasta_servidor), nome_enc_imos=nome_enc
             )
             with SessionLocal() as session:
-                assistant_service = ListaMaterialAssistantService(session)
+                assistant_service = ListaMaterialAssistantService(
+                    session,
+                    board_catalog=WoodstoreBoardCatalogProvider(
+                        lambda: query_woodstore(session)
+                    ),
+                )
                 assistant_config = assistant_service.resolve_work_config(
                     production_id=processo.id,
                     user_id=user_id,
@@ -2904,6 +2920,9 @@ class ProducaoPage(QWidget):
             )
             return
 
+        if not self._verificar_antes_do_cutrite(pasta_servidor, nome_enc):
+            return
+
         self._cutrite_dialog = CutRiteProgressDialog(self)
         self._cutrite_dialog.add_step("A iniciar o envio para o CUT-RITE.")
         self._cutrite_dialog.show()
@@ -2927,6 +2946,138 @@ class ProducaoPage(QWidget):
         self._cutrite_thread.finished.connect(self._cutrite_thread.deleteLater)
         self._cutrite_thread.finished.connect(self._finalizar_cutrite)
         self._cutrite_thread.start()
+
+    def _verificar_antes_do_cutrite(self, pasta_servidor: str, nome_enc: str) -> bool:
+        """Avisar do que o Cut-Rite não vai cortar ou vai receber estragado.
+
+        Nunca bloqueia: o utilizador decide. Devolve True para continuar.
+        """
+        try:
+            workbook = find_lista_material_workbook(
+                Path(pasta_servidor), nome_enc_imos=nome_enc
+            )
+        except ValueError:
+            # O próprio envio explica o que falta; não repetir aqui.
+            return True
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText("A verificar a Lista Material antes do CUT-RITE…")
+        QApplication.processEvents()
+        try:
+            try:
+                linhas = verificacao_cutrite.ler_linhas(workbook)
+            except Exception:
+                # Ficheiro bloqueado ou fora do formato: o envio tem o seu
+                # próprio caminho (a macro do livro) e mensagens de erro.
+                return True
+            codigos, aviso = None, ""
+            try:
+                with SessionLocal() as session:
+                    codigos = {
+                        str(r.get("Codigo") or "").strip()
+                        for r in query_woodstore(session)
+                    }
+            except Exception as error:
+                aviso = (
+                    "Não foi possível ler o Woodstore; os materiais não foram "
+                    f"verificados. ({error})"
+                )
+            resultado = verificacao_cutrite.verificar(
+                linhas, codigos, woodstore_aviso=aviso
+            )
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if resultado.tudo_certo:
+            self.status_label.setText(
+                "Verificação feita: todos os materiais existem no Woodstore."
+            )
+            return True
+        if not resultado.materiais_em_falta and not resultado.colunas_com_erro:
+            self.status_label.setText(resultado.woodstore_aviso)
+            return True
+
+        while True:
+            dialogo = QMessageBox(self)
+            dialogo.setWindowTitle("Enviar CUT-RITE — verificação")
+            dialogo.setIcon(QMessageBox.Icon.Warning)
+            dialogo.setText(verificacao_cutrite.texto_do_aviso(resultado))
+            reparar_button = None
+            if resultado.colunas_com_erro:
+                reparar_button = dialogo.addButton(
+                    "Reparar e enviar", QMessageBox.ButtonRole.AcceptRole
+                )
+                reparar_button.setToolTip(
+                    "Abrir a Lista Material com as macros, recalcular e gravar; "
+                    "depois continuar o envio."
+                )
+            enviar_button = dialogo.addButton(
+                "Enviar assim", QMessageBox.ButtonRole.DestructiveRole
+            )
+            enviar_button.setToolTip(
+                "Enviar a lista como está. As peças sem material no Woodstore "
+                "não são cortadas neste plano."
+            )
+            cancelar_button = dialogo.addButton(
+                "Cancelar", QMessageBox.ButtonRole.RejectRole
+            )
+            cancelar_button.setToolTip("Não enviar; corrigir primeiro a Lista Material.")
+            dialogo.setDefaultButton(reparar_button or cancelar_button)
+            dialogo.exec()
+            escolhido = dialogo.clickedButton()
+            if escolhido is enviar_button:
+                return True
+            if escolhido is not reparar_button or reparar_button is None:
+                self.status_label.setText("Envio para o CUT-RITE cancelado.")
+                return False
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            self.status_label.setText("A recalcular a Lista Material com as macros…")
+            QApplication.processEvents()
+            try:
+                reparar_formulas_lista_material(workbook)
+                linhas = verificacao_cutrite.ler_linhas(workbook)
+            except Exception as error:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.warning(
+                    self,
+                    "Enviar CUT-RITE",
+                    f"Não foi possível reparar a Lista Material.\n\nDetalhe: {error}",
+                )
+                return False
+            QApplication.restoreOverrideCursor()
+            resultado = verificacao_cutrite.verificar(
+                linhas, codigos, woodstore_aviso=aviso
+            )
+            if not resultado.colunas_com_erro:
+                self.status_label.setText("Lista Material recalculada e gravada.")
+                if not resultado.materiais_em_falta:
+                    return True
+                # Já reparada; falta só decidir sobre os materiais.
+                continue
+            QMessageBox.warning(
+                self,
+                "Enviar CUT-RITE",
+                "Depois de recalcular, estas colunas continuam com erro. "
+                "Abra a Lista Material no Excel, confirme que as macros estão "
+                "ativas e veja a fórmula dessas colunas.",
+            )
+            # Reparar outra vez não adianta: só resta enviar assim ou cancelar.
+            return self._confirmar_envio_com_erros(resultado)
+
+    def _confirmar_envio_com_erros(self, resultado) -> bool:
+        resposta = QMessageBox.question(
+            self,
+            "Enviar CUT-RITE — verificação",
+            verificacao_cutrite.texto_do_aviso(resultado, pode_reparar=False)
+            + "\n\nEnviar mesmo assim?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta == QMessageBox.StandardButton.Yes:
+            return True
+        self.status_label.setText("Envio para o CUT-RITE cancelado.")
+        return False
 
     def _cutrite_concluido(self, destino: str) -> None:
         if self._cutrite_dialog is not None:

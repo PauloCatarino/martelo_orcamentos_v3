@@ -228,3 +228,31 @@ da base; apenas reiniciar o executável não cria a nova tabela.
 
 O total continua parcial: horas lançadas por pessoas não equivalem necessariamente
 ao tempo de ocupação da máquina. O módulo não inventa tempos para os completar.
+
+## F0 (21-09-2026) — Excel sem #NAME?, verificação antes do Cut-Rite, Woodstore real
+
+Obra de teste: **26.1610_01_01_JF_VIVA** (Nº Enc PHC 1610, Nome Plano CUT-RITE
+`1610_01_01_26_JF_VIVA`). O Excel desta obra ficou com `#NAME?` em Ref_Cliente e
+Processo quando o Martelo importou as ferragens com as macros desligadas.
+
+1. **Produção** → Pesquisar `1610` → selecionar a linha `26.1610_01_01_JF_VIVA`
+   → botão **CUT-RITE** → **Enviar CUT-RITE**.
+2. Antes de abrir o Cut-Rite aparece **«Enviar CUT-RITE — verificação»** com:
+   - `Tampo PostForming_30mm — 1 peça(s) em 1 linha(s) (Tampo)` em
+     «MATERIAL QUE NÃO EXISTE NO WOODSTORE»;
+   - `Ref_Cliente: #NAME? em 223 linha(s)` e `Processo: #NAME? em 223 linha(s)`.
+3. Carregar em **Reparar e enviar** (com o Excel da obra FECHADO). O Martelo
+   recalcula e grava a lista; volta a mostrar o aviso só com o Tampo PostForming.
+   Carregar em **Enviar assim** para seguir, ou **Cancelar** para parar.
+4. Abrir o Excel da obra → folha LISTAGEM_CUT_RITE: colunas Ref_Cliente = `2607010`
+   e Processo = `1610_01_01_26` (já não `#NAME?`).
+5. Numa obra com todos os materiais no Woodstore e sem erros, o envio segue
+   direto e a linha de estado diz «Verificação feita: todos os materiais existem
+   no Woodstore.».
+6. **Lista Material_IMOS** numa obra → o «Assistente Lista Material — configuração
+   da obra» mostra, em verde, «Woodstore ligado (só leitura): N placas, M
+   materiais.» em vez de «Ligação ao armazém/HOMAG ainda não configurada».
+   Sem rede, a faixa fica amarela e diz «Woodstore sem ligação neste momento…».
+7. Na **Análise da Lista Material**, «Importar custo de ferragens…», «Aplicar
+   materiais selecionados» e «Inserir relatório no Excel» já não deixam `#NAME?`
+   na LISTAGEM_CUT_RITE.

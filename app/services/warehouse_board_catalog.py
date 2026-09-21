@@ -84,6 +84,73 @@ class WarehouseBoardCatalogProvider:
         return list(self._select_boards())
 
 
+def _decimal_ou_nada(valor) -> Decimal | None:
+    try:
+        return Decimal(str(valor)) if valor not in (None, "") else None
+    except (ArithmeticError, ValueError):
+        return None
+
+
+def board_from_woodstore(linha: dict) -> BoardRecord:
+    """Uma linha da consulta do Woodstore (`woodstore_service.STOCK_SQL`)."""
+    return BoardRecord(
+        external_id=str(linha.get("Referencia") or "").strip(),
+        code=str(linha.get("Codigo") or "").strip(),
+        description=str(linha.get("Material") or "").strip(),
+        length=_decimal_ou_nada(linha.get("Comprimento")),
+        width=_decimal_ou_nada(linha.get("Largura")),
+        thickness=_decimal_ou_nada(linha.get("Espessura")),
+        stock=_decimal_ou_nada(linha.get("Quantidade")),
+        reserved=_decimal_ou_nada(linha.get("Reservadas")),
+        available=_decimal_ou_nada(linha.get("Disponivel")),
+    )
+
+
+class WoodstoreBoardCatalogProvider:
+    """O catálogo de placas lido do Woodstore (HOMAG), só de leitura.
+
+    O assistente dizia sempre «Ligação ao armazém/HOMAG ainda não configurada»
+    porque só conhecia o `UnavailableBoardCatalogProvider` — mesmo quando a
+    Análise da Lista Material já lia o Woodstore sem problemas. Este lê pela
+    mesma consulta da Análise, uma vez, e diz o que aconteceu de facto.
+    """
+
+    def __init__(self, read_rows: Callable[[], Iterable[dict]]):
+        self._read_rows = read_rows
+        self._boards: list[BoardRecord] | None = None
+        self._error = ""
+
+    def _load(self) -> None:
+        if self._boards is not None or self._error:
+            return
+        try:
+            self._boards = [board_from_woodstore(linha) for linha in self._read_rows()]
+        except Exception as error:  # rede, credenciais, consulta recusada
+            self._error = str(error) or "Woodstore sem ligação."
+
+    def status(self) -> BoardCatalogStatus:
+        self._load()
+        if self._boards is None:
+            return BoardCatalogStatus(
+                False,
+                "Woodstore sem ligação neste momento: "
+                f"{self._error} Os materiais são validados na Análise da "
+                "Lista Material, quando houver ligação.",
+                "Woodstore",
+            )
+        codigos = {board.code for board in self._boards if board.code}
+        return BoardCatalogStatus(
+            True,
+            f"Woodstore ligado (só leitura): {len(self._boards)} placas, "
+            f"{len(codigos)} materiais.",
+            "Woodstore",
+        )
+
+    def list_boards(self) -> list[BoardRecord]:
+        self._load()
+        return list(self._boards or [])
+
+
 def sync_board_snapshot(
     session: Session, provider: BoardCatalogProvider
 ) -> int:

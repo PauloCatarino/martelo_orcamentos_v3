@@ -23,6 +23,8 @@ from types import SimpleNamespace
 
 from openpyxl import load_workbook
 
+from app.services import lista_material_excel_com as excel_com
+
 
 def nominal_thickness(value):
     value = number(value)
@@ -200,7 +202,7 @@ def material_candidates(original, catalog, thickness=None):
 
 
 def apply_material_codes(path, expected_hash, replacements, user_name):
-    """Só altera Material e acrescenta log; macros/eventos desativados."""
+    """Só altera Material e acrescenta log; eventos desativados, fórmulas recalculadas."""
     path = writable_workbook(path)
     if fingerprint(path) != expected_hash:
         raise ValueError("O Excel mudou desde a análise. Volte a analisar antes de aplicar.")
@@ -209,9 +211,7 @@ def apply_material_codes(path, expected_hash, replacements, user_name):
     excel = importlib.import_module("win32com.client").DispatchEx("Excel.Application")
     book = None
     try:
-        excel.Visible = False
-        excel.AutomationSecurity = 3
-        excel.EnableEvents = False
+        excel_com.preparar_excel(excel)
         book = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
         if book.ReadOnly:
             raise ValueError("Guarde e feche o Excel antes de aplicar as correções.")
@@ -246,6 +246,7 @@ def apply_material_codes(path, expected_hash, replacements, user_name):
             log.Range(f'A{log_row}:E{log_row}').NumberFormat = '@'
             log.Range(f"A{log_row}:E{log_row}").Value = ((datetime.now().isoformat(timespec='seconds'), user_name, r, old, new),)
             log_row += 1
+        excel_com.recalcular(excel)
         book.Save()
         return len(changes)
     finally:
@@ -522,9 +523,7 @@ def export_cost_report(path, expected_hash, version, lines, prices, warnings, *,
     excel = importlib.import_module('win32com.client').DispatchEx('Excel.Application')
     book = None
     try:
-        excel.Visible = False
-        excel.AutomationSecurity = 3
-        excel.EnableEvents = False
+        excel_com.preparar_excel(excel)
         book = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
         if book.ReadOnly or fingerprint(path) != expected_hash:
             raise ValueError('Feche o Excel e reanalise antes de inserir o relatório.')
@@ -623,6 +622,7 @@ def export_cost_report(path, expected_hash, version, lines, prices, warnings, *,
         sheet.PageSetup.PrintTitleRows = f'${header_row}:${header_row}'
         sheet.PageSetup.PrintArea = f'A1:N{last}'
         sheet.Calculate()
+        excel_com.recalcular(excel)
         book.Save()
         return name
     finally:
@@ -690,9 +690,7 @@ def import_hardware_cost(path, source):
     excel = importlib.import_module('win32com.client').DispatchEx('Excel.Application')
     book = src = None
     try:
-        excel.Visible = False
-        excel.AutomationSecurity = 3
-        excel.EnableEvents = False
+        excel_com.preparar_excel(excel)
         book = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
         if book.ReadOnly:
             raise ValueError('Feche o Excel antes de importar os custos de ferragens.')
@@ -701,7 +699,8 @@ def import_hardware_cost(path, source):
             book.SaveCopyAs(str(backup_path(path, 'antes_ferragens')))
             src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
             book.Worksheets.Item(book.Worksheets.Count).Name = '5_Custo_Obra_Ferragens'
-            book.Save()
+            excel_com.recalcular(excel)
+        book.Save()
     finally:
         if src is not None:
             src.Close(False)

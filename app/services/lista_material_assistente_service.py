@@ -32,6 +32,7 @@ from app.models.lista_material_assistente import (
     ListaMaterialRelacaoOrla,
     ListaMaterialSugestao,
 )
+from app.services import lista_material_excel_com as excel_com
 from app.services.warehouse_board_catalog import (
     BoardRecord,
     BoardCatalogProvider,
@@ -1184,12 +1185,7 @@ def prepare_workbook_for_assistant(
     workbook = None
     try:
         excel = win32_client.DispatchEx("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        try:
-            excel.AutomationSecurity = 3
-        except Exception:
-            pass
+        excel_com.preparar_excel(excel)
         workbook = excel.Workbooks.Open(str(path.resolve()), ReadOnly=False)
         if workbook.ReadOnly:
             raise RuntimeError(
@@ -1304,6 +1300,7 @@ def prepare_workbook_for_assistant(
             log.Cells.Item(log_row, 2).Value2 = user_name
             log.Cells.Item(log_row, 3).Value2 = "Tabela preparada para análise"
             log.Cells.Item(log_row, 8).Value2 = f"{assigned} SourceID atribuídos após AUTOMATION."
+        excel_com.recalcular(excel)
         workbook.Save()
         return assigned
     finally:
@@ -1334,12 +1331,7 @@ def apply_workbook_decisions(
     workbook = None
     try:
         excel = win32_client.DispatchEx("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        try:
-            excel.AutomationSecurity = 3
-        except Exception:
-            pass
+        excel_com.preparar_excel(excel)
         workbook = excel.Workbooks.Open(str(Path(workbook_path).resolve()), ReadOnly=False)
         if workbook.ReadOnly:
             raise RuntimeError("O Excel está aberto ou bloqueado; feche-o antes de aplicar as decisões.")
@@ -1452,6 +1444,7 @@ def apply_workbook_decisions(
             log_row += 1
         for row_number in sorted(rows_to_delete, reverse=True):
             sheet.Rows.Item(row_number).Delete()
+        excel_com.recalcular(excel)
         workbook.Save()
         return applied
     finally:
