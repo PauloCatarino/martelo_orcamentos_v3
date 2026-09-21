@@ -184,6 +184,19 @@ class AssistenteOrcamentos(QObject):
             diario_bordo.registar_erro(f"Assistente dos Orçamentos: {erro}")
             return regra.ResumoDiario()
 
+    def resumo_mensal(self):
+        """«O seu trabalho»: o mês da pessoa (V3 + Arquivo V2, se já foi lido)."""
+        try:
+            with SessionLocal() as session:
+                return MensagensOrcamentosService(session).resumo_mensal(
+                    user_id=self._user_id,
+                    username=self._username,
+                    historico_v2_linhas=self._historico_v2,
+                )
+        except Exception as erro:  # noqa: BLE001
+            diario_bordo.registar_erro(f"Assistente dos Orçamentos (mês): {erro}")
+            return None
+
     def adiar(self, versao_id: int) -> date | None:
         try:
             with SessionLocal() as session:

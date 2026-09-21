@@ -11,7 +11,7 @@ seguir a recarregar a lista de Orçamentos).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -50,6 +50,7 @@ def historico_v3(resumos: list[OrcamentoResumo]) -> list[regra.OrcamentoHistoric
             valor=r.preco_total,
             utilizador=r.utilizador or "",
             origem="V3",
+            mes=r.created_at.month if r.created_at else 0,
         )
         for r in resumos
     ]
@@ -80,6 +81,7 @@ def historico_v2(linhas, numeros_v3: set[str]) -> list[regra.OrcamentoHistorico]
                 valor=valor,
                 utilizador=getattr(linha, "utilizador", "") or "",
                 origem="V2",
+                mes=regra.mes_de(getattr(linha, "data", None)),
             )
         )
     return resultado
@@ -149,6 +151,28 @@ class MensagensOrcamentosService:
             eventos[versao_id] = EventoEstado(evento_id, versao_id, alvo, quando, quem)
         return sorted(eventos.values(), key=lambda e: e.evento_id)
 
+    def resumo_mensal(
+        self,
+        *,
+        user_id: int,
+        username: str,
+        historico_v2_linhas: list | None = None,
+        hoje: date | None = None,
+    ) -> regra.ResumoMensal:
+        """«O seu trabalho»: o mês da própria pessoa, com V3 + Arquivo V2."""
+        dia = hoje or date.today()
+        resumos = OrcamentoService(self.session).list_orcamentos()
+        historico = historico_v3(resumos)
+        if historico_v2_linhas:
+            historico += historico_v2(historico_v2_linhas, {h.numero for h in historico})
+        return regra.resumo_mensal(
+            historico,
+            username,
+            ano=dia.year,
+            mes=dia.month,
+            adjudicados_no_mes=self.adjudicados_no_mes(user_id, dia),
+        )
+
     # ---- compor ----------------------------------------------------------
     def compor(
         self,
@@ -185,9 +209,17 @@ class MensagensOrcamentosService:
             dias_decisao=self._dias_decisao(evento),
             mudado_por=mudado_por,
         )
-        cliente = regra.resumo_cliente(historico, orcamento.cliente)
+        dia = hoje or date.today()
+        cliente = regra.resumo_cliente(
+            historico, orcamento.cliente, excluir_numero=orcamento.numero
+        )
         utilizador = regra.resumo_utilizador(
-            historico, username, ano, excluir_numero=orcamento.numero
+            historico,
+            username,
+            ano,
+            excluir_numero=orcamento.numero,
+            adjudicados_mes=self.adjudicados_no_mes(user_id, dia),
+            mes=dia.month,
         )
         ultima = self.prefs.obter_valor(user_id, CHAVE_ULTIMA_FRASE) or ""
         mensagem = regra.compor_mensagem(
@@ -200,6 +232,40 @@ class MensagensOrcamentosService:
         )
         self.prefs.guardar_valor(user_id, CHAVE_ULTIMA_FRASE, mensagem.frase)
         return mensagem
+
+    def adjudicados_no_mes(self, user_id: int, dia: date) -> int:
+        """Orçamentos meus que passaram a Adjudicado neste mês.
+
+        Vem do histórico de estados (só existe no V3), por isso conta a data em
+        que o cliente disse que sim, e não a data do orçamento.
+        """
+        from app.models.orcamento_versao import OrcamentoVersao
+
+        inicio = dia.replace(day=1)
+        fim = (inicio + timedelta(days=32)).replace(day=1)
+        linhas = self.session.execute(
+            select(
+                OrcamentoVersaoEvento.orcamento_versao_id,
+                OrcamentoVersaoEvento.descricao,
+            )
+            .join(
+                OrcamentoVersao,
+                OrcamentoVersao.id == OrcamentoVersaoEvento.orcamento_versao_id,
+            )
+            .where(
+                OrcamentoVersaoEvento.tipo == "estado",
+                OrcamentoVersaoEvento.created_at >= inicio,
+                OrcamentoVersaoEvento.created_at < fim,
+                OrcamentoVersao.created_by_id == int(user_id),
+            )
+        ).all()
+        return len(
+            {
+                versao_id
+                for versao_id, descricao in linhas
+                if estado_alvo(descricao) == regra.ADJUDICADO
+            }
+        )
 
     def _dias_decisao(self, evento: EventoEstado) -> int | None:
         envios = self.session.execute(

@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.domain import assistente_orcamentos as regra
+from app.domain.mensagens_orcamentos import frases_do_mes
+from app.ui.widgets.grafico_meses import GraficoMeses
 from app.utils.formatters import format_eur
 
 #: Estados que se podem escolher a partir de um orçamento enviado sem resposta.
@@ -36,6 +38,8 @@ ESTADO_SEM_INTERESSE = "Sem Interesse"
 
 class ControladorAssistente(Protocol):
     def resumo(self) -> regra.ResumoDiario: ...
+
+    def resumo_mensal(self): ...
 
     def adiar(self, versao_id: int): ...
 
@@ -179,6 +183,20 @@ class AssistenteOrcamentosDialog(QDialog):
         linha.addStretch()
         self.caixa_falta.layout().addLayout(linha)
 
+        # «O seu trabalho»: o próprio a ver o seu mês, mesmo quando não há
+        # nada parado para tratar.
+        self.caixa_mes = QGroupBox("O seu trabalho")
+        self.caixa_mes.setToolTip(
+            "Os seus orçamentos por mês de criação, e quantos já foram "
+            "adjudicados. Só os seus."
+        )
+        self.frases_mes = QLabel()
+        self.frases_mes.setWordWrap(True)
+        self.grafico_meses = GraficoMeses()
+        mes_layout = QVBoxLayout(self.caixa_mes)
+        mes_layout.addWidget(self.frases_mes)
+        mes_layout.addWidget(self.grafico_meses)
+
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
         self.status_label.setStyleSheet("color: #5c6570;")
@@ -199,6 +217,7 @@ class AssistenteOrcamentosDialog(QDialog):
         layout.addWidget(self.frase)
         layout.addWidget(self.caixa_sem_resposta)
         layout.addWidget(self.caixa_falta)
+        layout.addWidget(self.caixa_mes)
         layout.addStretch()
         layout.addLayout(fundo)
 
@@ -240,6 +259,7 @@ class AssistenteOrcamentosDialog(QDialog):
 
     # ---- dados -----------------------------------------------------------
     def recarregar(self) -> None:
+        self._mostrar_mes()
         resumo = self.controlador.resumo()
         self.frase.setText(frase_do_resumo(resumo))
         self._preencher(
@@ -256,6 +276,16 @@ class AssistenteOrcamentosDialog(QDialog):
             self.mais_falta,
             resumo.falta_orcamentar,
         )
+
+    def _mostrar_mes(self) -> None:
+        obter = getattr(self.controlador, "resumo_mensal", None)
+        resumo = obter() if callable(obter) else None
+        if resumo is None or resumo.vazio:
+            self.caixa_mes.setVisible(False)
+            return
+        self.frases_mes.setText("\n".join(frases_do_mes(resumo)))
+        self.grafico_meses.definir(resumo.meses)
+        self.caixa_mes.setVisible(True)
 
     def _preencher(self, tipo, caixa, tabela, mais, lembretes) -> None:
         visiveis = list(lembretes[: regra.MAX_LINHAS])
