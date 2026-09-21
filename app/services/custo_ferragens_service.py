@@ -161,7 +161,7 @@ def estado_do_custo(estado_obra: str, lines, prices, plans, production) -> Estad
         texto = (f"Ferragens: V3 {contagem[FONTE_V3]} · PHC {contagem[FONTE_PHC]} · "
                  f"IMOS provisório {contagem[FONTE_IMOS]} · sem preço {contagem['']}")
         if contagem["EXCLUIDO"]:
-            texto += f" · não contabilizadas {contagem['EXCLUIDO']}"
+            texto += f" · não consideradas nesta obra {contagem['EXCLUIDO']}"
         if confirmar:
             texto += f" · {confirmar} com unidade a confirmar"
         pontos.append((ok, texto))
@@ -248,6 +248,7 @@ def linhas_dos_separadores(book) -> tuple[list[dict], list[str]]:
     imos_por_ref: dict[tuple[str, str], str] = {}
     imos_por_desc: dict[tuple[str, str], str] = {}
     fora: list[dict] = []
+    imos_linhas: list[dict] = []
     custo_sheets = [s for s in book.worksheets if "custo_obra_ferragens" in s.title.lower()]
     if len(custo_sheets) == 1:
         try:
@@ -260,6 +261,8 @@ def linhas_dos_separadores(book) -> tuple[list[dict], list[str]]:
                     imos_por_desc.setdefault((linha["kind"], desc), linha["imos_price"])
                 if str(linha.get("in_list") or "").strip().casefold() == "fora":
                     fora.append({**linha, "source_sheet": "5_Custo_Obra_Ferragens (fora da lista)"})
+                else:
+                    imos_linhas.append(linha)
         except ValueError:
             avisos.append("5_Custo_Obra_Ferragens ilegível: sem preço IMOS de referência.")
 
@@ -328,6 +331,8 @@ def linhas_dos_separadores(book) -> tuple[list[dict], list[str]]:
     else:
         avisos.append("Ferragens a partir de " + ", ".join(usados)
                       + (f" + {len(fora)} fora da lista (cavilhas)" if fora else "") + ".")
+    if usados and custo_sheets:
+        avisos.extend(conciliar_com_imos(list(agrupadas.values()), imos_linhas, fora))
     for linha in agrupadas.values():
         linha["quantity"] = format(Decimal(linha["quantity"]).quantize(Decimal("0.001")).normalize(), "f")
     return list(agrupadas.values()) + (fora if usados else []), avisos
@@ -337,5 +342,43 @@ def preco_excluido(line: dict) -> dict:
     return {
         "id": None, "ref": line.get("ref_phc") or "", "description": line.get("description") or line["name"],
         "unit": line.get("unit") or "un", "net": "0", "date": "", "fonte": FONTE_EXCLUIDO, "confirmar": "",
-        "mapping_source": "Não contabilizado nesta obra (cliente / só representação no IMOS)",
+        "mapping_source": "Não considerada nesta obra (cliente / só representação no IMOS)",
     }
+
+
+def _identidade(linha: dict) -> str:
+    """Como se reconhece a mesma ferragem nos separadores e no 5_Custo do IMOS."""
+    ref = _ref(linha.get("ref_phc"))
+    if ref:
+        return f"{linha['kind']}:{ref}"
+    if linha["kind"] == "Comprados":
+        medidas = [_numero(str(v).split("-")[0]) for v in (linha.get("length"), linha.get("width"), linha.get("thickness"))]
+        if all(m is not None for m in medidas):
+            return "Comprados:" + "X".join(format(m.normalize(), "f") for m in medidas)
+        texto = str(linha.get("length") or "")
+        numeros = re.findall(r"\d+(?:[.,]\d+)?", texto)
+        if len(numeros) == 3:
+            return "Comprados:" + "X".join(format(_numero(n).normalize(), "f") for n in numeros)
+    return f"{linha['kind']}:{_cabecalho(_primeira_linha(linha.get('description') or linha.get('name')))}"
+
+
+def conciliar_com_imos(dos_separadores: list[dict], do_imos: list[dict], fora: list[dict]) -> list[str]:
+    """O mapeamento entre o que o IMOS exportou e o que ficou nos separadores do Excel.
+
+    Os separadores mandam (são corrigidos à mão). Isto só diz o que mudou, para
+    ninguém ficar a pensar que uma ferragem «desapareceu» do custo por engano.
+    """
+    nossos = {_identidade(l) for l in dos_separadores}
+    imos = {_identidade(l): l for l in do_imos}
+    retirados = [imos[k]["name"] for k in imos if k not in nossos]
+    acrescentados = [l["name"] for l in dos_separadores if _identidade(l) not in imos]
+    avisos = []
+    if retirados:
+        avisos.append("No IMOS mas não nos separadores (retirado à mão, não conta): " + ", ".join(sorted(retirados)))
+    if acrescentados:
+        avisos.append("Nos separadores mas não no IMOS (acrescentado ou mudado à mão, conta): "
+                      + ", ".join(sorted(acrescentados)))
+    if fora:
+        avisos.append("Fora da lista mas contam (a máquina aplica-as ao furar): "
+                      + ", ".join(sorted(l["name"] for l in fora)))
+    return avisos

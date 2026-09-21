@@ -239,4 +239,50 @@ def test_nao_contabilizar_conta_como_resolvido():
     assert svc.calculate_cost(linha, precos[linha["key"]])[0] == 0
     estado = custo.estado_do_custo("Finalizado", [linha], precos, _plan(), {"sectors": [{"state": "Concluído"}]})
     assert estado.final
-    assert any("não contabilizadas 1" in texto for _, texto in estado.pontos)
+    assert any("não consideradas nesta obra 1" in texto for _, texto in estado.pontos)
+
+
+def test_conciliacao_com_o_imos_diz_o_que_foi_retirado_acrescentado_e_fora():
+    linhas, avisos = custo.linhas_dos_separadores(_livro_separadores(com_purch=False))
+    texto = " | ".join(avisos)
+    assert "retirado à mão, não conta): MAQ" in texto            # máquina de lavar
+    assert "Fora da lista mas contam" in texto and "CAVILHA_08p1X30_COLA" in texto
+    # O calceiro não está no 5_Custo deste livro: foi acrescentado à mão.
+    assert "acrescentado ou mudado à mão, conta): " in texto and "Calçeiro" in texto
+
+
+def test_nao_considerar_nesta_obra_nao_mexe_no_preco_nem_no_mapeamento(app, session, workbook, monkeypatch):
+    dialog = _dialog(session, workbook, monkeypatch)
+    try:
+        linha = next(l for l in dialog.lines if l["name"] == "Dobradiça")
+        preco = dict(dialog.prices[linha["key"]])
+        antes = dialog.cost_summary.text()
+        row = dialog.lines.index(linha)
+        dialog.cost_table.selectRow(row)
+        dialog._toggle_excluded()
+        assert linha["key"] in dialog.excluded
+        assert dialog.prices[linha["key"]] == preco                 # o preço fica
+        assert dialog._effective_prices()[linha["key"]]["net"] == "0"
+        assert "NÃO CONSIDERADA NESTA OBRA" in dialog.cost_table.item(row, 10).text()
+        assert "não consideradas nesta obra 1" in dialog.rigor_label.text()
+        assert antes != dialog.cost_summary.text()
+        dialog._save()
+        dialog._reload()                                            # fica gravado na análise desta obra
+        assert linha["key"] in dialog.excluded
+        dialog.cost_table.selectRow(row)
+        dialog._toggle_excluded()                                   # e volta a contar
+        assert linha["key"] not in dialog.excluded
+    finally:
+        dialog.close()
+
+
+def test_passo_a_passo_nao_considerar_nesta_obra(app, session, workbook, monkeypatch):
+    dialog = _dialog(session, workbook, monkeypatch)
+    try:
+        pending = [l for l in dialog.lines if l["kind"] == "Ferragens"]
+        prices, excluded = {}, set()
+        wizard = MapearFerragensDialog(pending, prices, [], dialog.phc, on_v3=lambda *_: None, excluded=excluded)
+        wizard._exclude()
+        assert excluded == {pending[0]["key"]} and prices == {}
+    finally:
+        dialog.close()

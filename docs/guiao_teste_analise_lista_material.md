@@ -378,3 +378,17 @@ existirem com dados), porque são corrigidos à mão em cada obra. Do
    fechar → **Reanalisar ficheiros**: a quantidade nova entra e o preço escolhido mantém-se.
 6. Numa obra sem nenhum dos três separadores: «Sem separadores 1_FERRAGENS / 2_PURCH /
    3_SPP com dados: ferragens sem custo nesta obra».
+
+### Conciliação com o IMOS e «Não considerar nesta obra» (21-09-2026)
+
+7. Na 1610, por baixo do resumo de custos aparecem três linhas de conciliação:
+   «No IMOS mas não nos separadores (retirado à mão, não conta): MAQ_LAVAR_ROUPA»,
+   «Fora da lista mas contam (a máquina aplica-as ao furar): CAVILHA_08p1X30_COLA» e,
+   quando houver, «Nos separadores mas não no IMOS (acrescentado ou mudado à mão, conta)».
+8. Selecionar a linha do Calçeiro (ou várias, com Ctrl) → **Não considerar nesta obra /
+   voltar a considerar**: fica cinzenta, «NÃO CONSIDERADA NESTA OBRA», o total desce e o
+   quadro diz «não consideradas nesta obra 1». O preço e o mapeamento V3/PHC não mudam.
+   **Guardar análise de custos** → fechar e reabrir: continua fora. Carregar outra vez
+   no botão volta a pô-la no custo.
+9. No passo a passo, **Não considerar nesta obra** faz o mesmo e passa à seguinte.
+10. O Canto Rodapé (sem Ref PHC) fica com o preço IMOS de 1,10 € (3.ª opção).

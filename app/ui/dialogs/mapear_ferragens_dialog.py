@@ -25,8 +25,10 @@ def _eur(value) -> str:
 
 
 class MapearFerragensDialog(QDialog):
-    def __init__(self, lines, prices, catalog, phc, references=(), *, on_v3, parent=None):
+    def __init__(self, lines, prices, catalog, phc, references=(), *, on_v3, excluded=None, parent=None):
         super().__init__(parent)
+        # Tirar do custo DESTA obra não mexe no preço nem no mapeamento.
+        self.excluded = excluded if excluded is not None else set()
         self.lines, self.prices, self.catalog = list(lines), prices, catalog
         self.phc, self.references, self.on_v3 = phc or {}, references, on_v3
         self.index = 0
@@ -60,10 +62,11 @@ class MapearFerragensDialog(QDialog):
         self.imos_button = QPushButton()
         self.imos_button.setToolTip("Usar o preço do IMOS só nesta obra; fica marcado como provisório.")
         self.imos_button.clicked.connect(self._use_imos)
-        self.skip_cost_button = QPushButton("Não contabilizar nesta obra")
+        self.skip_cost_button = QPushButton("Não considerar nesta obra")
         self.skip_cost_button.setToolTip(
-            "Acessório só para representação no IMOS, ou fornecido pelo cliente: custo 0 nesta obra.")
-        self.skip_cost_button.clicked.connect(lambda: self._set(custo.preco_excluido(self.line)))
+            "Acessório só para representação no IMOS, ou comprado pelo cliente: fora do custo desta "
+            "obra. O preço e o mapeamento ficam para as outras obras.")
+        self.skip_cost_button.clicked.connect(self._exclude)
         for button in (self.v3_button, self.phc_button, self.imos_button, self.skip_cost_button):
             options.addWidget(button)
         layout.addLayout(options)
@@ -143,6 +146,11 @@ class MapearFerragensDialog(QDialog):
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected:
             self.on_v3(self.line, dialog.selected)
             self._set({**svc.price_record(dialog.selected), "mapping_source": "Mapeamento manual guardado no V3"})
+
+    def _exclude(self):
+        self.excluded.add(self.line["key"])
+        self.changed += 1
+        self._go(1)
 
     def _use_phc(self):
         price = self._phc_price()

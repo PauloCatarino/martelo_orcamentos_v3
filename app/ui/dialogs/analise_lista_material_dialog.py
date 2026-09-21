@@ -77,6 +77,9 @@ class AnaliseListaMaterialDialog(QDialog):
         self.applied = 0
         self.catalog = []
         self.prices = {}
+        # Linhas que o utilizador tirou do custo DESTA obra (ex.: calceiro que o
+        # cliente compra). O preço e o mapeamento ficam como estão para as outras.
+        self.excluded = set()
         self.production = {}
         self.times_worker = None
         self.lines, self.plans, self.warnings = [], [], []
@@ -119,6 +122,7 @@ class AnaliseListaMaterialDialog(QDialog):
         self.tabs.addTab(self.procedures, 'Procedimentos da listagem')
         self.cost_table = self._table(['Categoria', 'Artigo / material', 'Comp', 'Larg', 'Esp', 'Quantidade', 'Un.', 'Referência V3 — descrição', 'Preço líquido', 'Custo €', 'Estado / data do preço'])
         self.cost_table.cellClicked.connect(lambda row, col: self._associate() if col == 7 else None)
+        self.cost_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         if self.permissions.get(PERMISSAO_CUSTOS_LISTA_MATERIAL):
             cost = QWidget()
             cl = QVBoxLayout(cost)
@@ -139,6 +143,9 @@ class AnaliseListaMaterialDialog(QDialog):
             self._button(row, 'Mapear ferragens passo a passo…', self._map_hardware,
                          'Percorrer uma a uma as ferragens sem preço do V3: associar à matéria-prima V3 '
                          '(fica para as próximas obras), usar o preço PHC ou o preço IMOS provisório.')
+            self._button(row, 'Não considerar nesta obra / voltar a considerar', self._toggle_excluded,
+                         'Tirar do custo desta obra as linhas selecionadas (p. ex. um acessório que o cliente '
+                         'compra), ou voltar a pô-las. O preço e o mapeamento V3/PHC ficam para as outras obras.')
             self._button(row, 'Associar matéria-prima V3…', self._associate,
                          'Associar a linha selecionada e memorizar a correspondência de custo no V3 para próximas obras.')
             self._button(row, 'Atualizar preços do V3', self._update_prices,
@@ -567,6 +574,7 @@ class AnaliseListaMaterialDialog(QDialog):
         self.lines += self.production.get('lines', [])
         self.warnings.append('Produção parcial: consulte o separador Tempos por setor para verificar horas, estados e tarifas.')
         previous = snapshot.get('prices', {})
+        self.excluded = set(snapshot.get('excluded', []))
         # A reanálise mantém os preços guardados; a atualização é uma ação distinta.
         self.prices = {line['key']: previous.get(line['key']) or previous.get(line.get('legacy_key', '')) or
                        (None if line['kind'] == 'Produção' else maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components)) for line in self.lines}
@@ -599,12 +607,14 @@ class AnaliseListaMaterialDialog(QDialog):
         try:
             self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
             pending = [line for line in self.lines if line['kind'] in custo_ferragens.CATEGORIAS_FERRAGENS
+                       and line['key'] not in self.excluded
                        and custo_ferragens.fonte(self.prices.get(line['key'])) != custo_ferragens.FONTE_V3]
             if not pending:
-                self.status.setText('Todas as ferragens já têm preço do V3.')
+                self.status.setText('Todas as ferragens consideradas já têm preço do V3.')
                 return
             dialog = MapearFerragensDialog(
                 pending, self.prices, self.mp_catalog, getattr(self, 'phc', {}), self.references,
+                excluded=self.excluded,
                 on_v3=lambda line, mp: maps.save_mapping(self.session, line, mp, self.user.username),
                 parent=self)
             dialog.exec()
@@ -693,12 +703,33 @@ class AnaliseListaMaterialDialog(QDialog):
             return
         super().closeEvent(event)
 
+    def _effective_prices(self):
+        """Os preços que contam: as linhas não consideradas nesta obra valem 0."""
+        return {line['key']: custo_ferragens.preco_excluido(line) if line['key'] in self.excluded
+                else self.prices.get(line['key']) for line in self.lines}
+
+    def _toggle_excluded(self):
+        rows = sorted({i.row() for i in self.cost_table.selectionModel().selectedRows()}
+                      or ({self.cost_table.currentRow()} - {-1}))
+        if not rows:
+            self.status.setText('Selecione as linhas a tirar ou a voltar a pôr no custo desta obra.')
+            return
+        for row in rows:
+            key = self.lines[row]['key']
+            self.excluded.symmetric_difference_update({key})
+        self._render_costs()
+        self.status.setText(f'{len(rows)} linha(s) alterada(s). Guarde a análise para fixar nesta obra; '
+                            'os mapeamentos não mudam.')
+
     def _render_costs(self):
         self.cost_table.setRowCount(len(self.lines))
         total, pending = svc.Decimal(0), 0
+        effective = self._effective_prices()
         for i, line in enumerate(self.lines):
-            price = self.prices.get(line['key'])
+            price = effective.get(line['key'])
             cost, state = svc.calculate_cost(line, price)
+            if line['key'] in self.excluded:
+                state = 'NÃO CONSIDERADA NESTA OBRA'
             if cost is None:
                 pending += 1
             else:
@@ -712,14 +743,16 @@ class AnaliseListaMaterialDialog(QDialog):
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setToolTip(str(value) + (f"\nPlaca: {line['board']}" if col == 1 and line.get('board') else ''))
+                if line['key'] in self.excluded:
+                    item.setForeground(QColor('#8a8f98'))
                 self.cost_table.setItem(i, col, item)
         board_area = sum((svc.Decimal(p['total']) for p in self.plans), svc.Decimal(0))
         categories = []
         for kind in ('Placas','Orlas','Ferragens','SPP','Comprados','Produção'):
             rows = [line for line in self.lines if line['kind'] == kind]
-            costs = [svc.calculate_cost(line, self.prices.get(line['key']))[0] for line in rows]
+            costs = [svc.calculate_cost(line, effective.get(line['key']))[0] for line in rows]
             categories.append(f"{kind}: {len(rows)} linhas, {sum((v for v in costs if v is not None), svc.Decimal(0)):.2f} €")
-        state = custo_ferragens.estado_do_custo(self.obra_info.get('estado', ''), self.lines, self.prices,
+        state = custo_ferragens.estado_do_custo(self.obra_info.get('estado', ''), self.lines, effective,
                                                 self.plans, self.production)
         self.cost_state = state
         self.rigor_label.setText(
@@ -839,11 +872,12 @@ class AnaliseListaMaterialDialog(QDialog):
             report_name = ''
             if write_report:
                 self._allowed(PERMISSAO_CORRIGIR_LISTA_MATERIAL)
-                report_name = svc.export_cost_report(self.path, self.workbook_hash, self.version, self.lines, self.prices, self.warnings, production=self.production)
+                report_name = svc.export_cost_report(self.path, self.workbook_hash, self.version, self.lines, self._effective_prices(), self.warnings, production=self.production)
                 self.workbook_hash = svc.fingerprint(self.path)
             destination = svc.save_snapshot(self.path, {'version': self.version, 'user': self.user.username,
                 'workbook_hash': self.workbook_hash, 'plans': self.plans, 'lines': self.lines,
-                'prices': self.prices, 'warnings': self.warnings, 'production': self.production,
+                'prices': self.prices, 'excluded': sorted(self.excluded),
+                'warnings': self.warnings, 'production': self.production,
                 'complete': bool(getattr(self, 'cost_state', None) and self.cost_state.final)})
             self.status.setText(f'Análise guardada com preços e pendências: {destination.name}' + (f' · Relatório no Excel: {report_name}' if report_name else ''))
         except Exception as exc:
