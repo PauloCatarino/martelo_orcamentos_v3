@@ -261,7 +261,7 @@ def inspect_pdf_documents(
                     f"Sai o separador {export_sheets[0]} (o mais recente), em A3 ao baixo."
                     if available
                     else "Ainda não há separador de custo neste Excel: na Análise da Lista "
-                    "Material use «Exportar custo para o Excel»."
+                    "Material, separador Custo de produção, use «Inserir relatório no Excel»."
                 )
             elif len(document.sheets) == 1:
                 folha = document.sheets[0]
@@ -409,14 +409,29 @@ def _remover_ficheiro_a_substituir(output: Path, overwrite: bool) -> None:
         ) from exc
 
 
-def _pagina_a3_ao_baixo(sheet) -> None:
-    """A3 horizontal, uma página de largura (o livro está aberto só para leitura)."""
+def pagina_a3_ao_baixo(sheet) -> None:
+    """A3 horizontal, margens mínimas, uma página de largura e rodapé.
+
+    Rodapé: data à esquerda, nome do separador ao centro, «1/1» à direita.
+    Serve ao criar o separador de custo e ao exportar (os separadores antigos
+    ficam iguais aos novos no PDF; o livro está aberto só para leitura).
+    """
     setup = sheet.PageSetup
     try:
         setup.PaperSize = XL_PAPER_A3
     except Exception:
         pass  # impressora predefinida sem A3: sai no papel dela, mas ao baixo
     setup.Orientation = XL_LANDSCAPE
+    pt = 72 / 2.54                      # pontos por centímetro
+    setup.LeftMargin = setup.RightMargin = setup.TopMargin = 0.5 * pt
+    setup.BottomMargin = 0.9 * pt       # espaço para o rodapé
+    setup.HeaderMargin = 0
+    setup.FooterMargin = 0.3 * pt
+    setup.CenterHorizontally = False
+    setup.LeftHeader = setup.CenterHeader = setup.RightHeader = ""
+    setup.LeftFooter = "&D"
+    setup.CenterFooter = "&A"
+    setup.RightFooter = "&P/&N"
     setup.Zoom = False
     setup.FitToPagesWide = 1
     setup.FitToPagesTall = False
@@ -429,7 +444,7 @@ def _export_sheets_to_pdf(
         raise ValueError("Não existem separadores com dados para exportar.")
     for sheet_name in sheet_names:
         if sheet_name.startswith(PREFIXO_CUSTO_V3):
-            _pagina_a3_ao_baixo(workbook.Worksheets.Item(sheet_name))
+            pagina_a3_ao_baixo(workbook.Worksheets.Item(sheet_name))
     if len(sheet_names) == 1:
         workbook.Worksheets.Item(sheet_names[0]).ExportAsFixedFormat(0, str(output))
         return

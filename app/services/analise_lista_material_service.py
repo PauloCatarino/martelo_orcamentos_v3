@@ -733,15 +733,9 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
             sheet.Rows(r).RowHeight = 30
             last = r
         sheet.Range(f'A{event_header}:{fim}{event_header}').Font.Bold = True
+    from app.services.lista_material_pdf_service import pagina_a3_ao_baixo
+    pagina_a3_ao_baixo(sheet)
     setup = sheet.PageSetup
-    try:
-        setup.PaperSize = 8          # A3
-    except Exception:
-        pass                         # impressora sem A3: fica o papel dela, ao baixo
-    setup.Orientation = 2
-    setup.Zoom = False
-    setup.FitToPagesWide = 1
-    setup.FitToPagesTall = False
     setup.PrintTitleRows = f'${header_row}:${header_row}'
     setup.PrintArea = f'A1:{fim}{last}'
 
