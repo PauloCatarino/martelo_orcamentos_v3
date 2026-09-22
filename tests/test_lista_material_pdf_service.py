@@ -347,3 +347,36 @@ def test_registo_desativa_documentos_retirados_do_centro(session) -> None:
         identificador="listagem_cutrite"
     ).one()
     assert retired.ativo is False
+
+
+def test_relatorio_geral_e_o_separador_de_custo_mais_recente_em_a3(tmp_path) -> None:
+    from app.services.lista_material_pdf_service import folha_mais_recente, _pagina_a3_ao_baixo
+
+    nomes = ["RELATORIO", "Custo_V3_260921_101500_abc", "Custo_V3_260922_153903_715", "LISTAGEM"]
+    assert folha_mais_recente(nomes, "Custo_V3_*") == "Custo_V3_260922_153903_715"
+    assert folha_mais_recente(nomes, "RELATORIO") == "RELATORIO"
+    assert folha_mais_recente(["RELATORIO"], "Custo_V3_*") is None
+
+    livro = Workbook()
+    livro.active.title = "RELATORIO"
+    livro.active["A1"] = "antigo"
+    caminho = tmp_path / "sem_custo.xlsx"
+    livro.save(caminho)
+    estado = {s.document.identifier: s for s in inspect_pdf_documents(caminho)}["relatorio"]
+    assert not estado.available and "Exportar custo" in estado.reason
+
+    for nome in ("Custo_V3_260921_101500_abc", "Custo_V3_260922_153903_715"):
+        livro.create_sheet(nome)["A1"] = "Custo de produção (parcial)"
+    livro.save(caminho)
+    estado = {s.document.identifier: s for s in inspect_pdf_documents(caminho)}["relatorio"]
+    assert estado.available and estado.export_sheets == ("Custo_V3_260922_153903_715",)
+    assert document_filename(estado.document) == "5_Custo_Obra_Relatorio.pdf"
+
+    class _Setup:
+        pass
+
+    class _Sheet:
+        PageSetup = _Setup()
+
+    _pagina_a3_ao_baixo(_Sheet())
+    assert (_Sheet.PageSetup.PaperSize, _Sheet.PageSetup.Orientation, _Sheet.PageSetup.FitToPagesWide) == (8, 2, 1)

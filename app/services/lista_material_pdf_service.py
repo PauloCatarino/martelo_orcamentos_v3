@@ -60,6 +60,19 @@ class PdfExportResult:
     errors: tuple[str, ...]
 
 
+# Separadores com data no nome: «Custo_V3_*» quer dizer o mais recente.
+PREFIXO_CUSTO_V3 = "Custo_V3_"
+XL_PAPER_A3, XL_LANDSCAPE = 8, 2
+
+
+def folha_mais_recente(sheetnames: Iterable[str], pattern: str) -> str | None:
+    """«Custo_V3_*» → o Custo_V3_<aammdd_hhmmss>_xxx mais recente (o nome traz a data)."""
+    if not pattern.endswith("*"):
+        return pattern if pattern in sheetnames else None
+    candidatas = [name for name in sheetnames if name.startswith(pattern[:-1])]
+    return max(candidatas) if candidatas else None
+
+
 DEFAULT_DOCUMENTS = (
     PdfDocument(
         "lista_ferragens",
@@ -116,11 +129,14 @@ DEFAULT_DOCUMENTS = (
         60,
     ),
     PdfDocument(
+        # Pedido do Paulo (22-09-2026): o relatório geral da obra é o separador
+        # de custo que a Análise da Lista Material exporta (Custo_V3_<data>),
+        # o mais recente, em A3 ao baixo — tem muita informação e fica na obra.
         "relatorio",
         "Relatório geral",
         "Relatórios gerais",
-        ("RELATORIO",),
-        "Relatorio_Geral.pdf",
+        (PREFIXO_CUSTO_V3 + "*",),
+        "5_Custo_Obra_Relatorio.pdf",
         80,
     ),
     PdfDocument(
@@ -218,9 +234,10 @@ def inspect_pdf_documents(
 
             export_sheets: list[str] = []
             unavailable_sheets: list[str] = []
-            for sheet_name in document.sheets:
-                if sheet_name not in sheets:
-                    unavailable_sheets.append(sheet_name)
+            for pattern in document.sheets:
+                sheet_name = folha_mais_recente(sheets, pattern)
+                if sheet_name is None:
+                    unavailable_sheets.append(pattern)
                     continue
                 sheet = workbook[sheet_name]
                 has_data = any(
@@ -239,7 +256,14 @@ def inspect_pdf_documents(
                     unavailable_sheets.append(sheet_name)
 
             available = bool(export_sheets)
-            if len(document.sheets) == 1:
+            if len(document.sheets) == 1 and document.sheets[0].endswith("*"):
+                reason = (
+                    f"Sai o separador {export_sheets[0]} (o mais recente), em A3 ao baixo."
+                    if available
+                    else "Ainda não há separador de custo neste Excel: na Análise da Lista "
+                    "Material use «Exportar custo para o Excel»."
+                )
+            elif len(document.sheets) == 1:
                 folha = document.sheets[0]
                 reason = (
                     f"O separador {folha} existe e tem dados."
@@ -385,11 +409,27 @@ def _remover_ficheiro_a_substituir(output: Path, overwrite: bool) -> None:
         ) from exc
 
 
+def _pagina_a3_ao_baixo(sheet) -> None:
+    """A3 horizontal, uma página de largura (o livro está aberto só para leitura)."""
+    setup = sheet.PageSetup
+    try:
+        setup.PaperSize = XL_PAPER_A3
+    except Exception:
+        pass  # impressora predefinida sem A3: sai no papel dela, mas ao baixo
+    setup.Orientation = XL_LANDSCAPE
+    setup.Zoom = False
+    setup.FitToPagesWide = 1
+    setup.FitToPagesTall = False
+
+
 def _export_sheets_to_pdf(
     excel, workbook, sheet_names: tuple[str, ...], output: Path
 ) -> None:
     if not sheet_names:
         raise ValueError("Não existem separadores com dados para exportar.")
+    for sheet_name in sheet_names:
+        if sheet_name.startswith(PREFIXO_CUSTO_V3):
+            _pagina_a3_ao_baixo(workbook.Worksheets.Item(sheet_name))
     if len(sheet_names) == 1:
         workbook.Worksheets.Item(sheet_names[0]).ExportAsFixedFormat(0, str(output))
         return

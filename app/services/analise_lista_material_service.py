@@ -524,6 +524,228 @@ def latest_snapshot(path, version):
     return {}
 
 
+# ---- Separador Custo_V3 (pedido do Paulo, 22-09-2026) ------------------------
+#
+# O separador é para AJUSTAR à mão: alterar quantidades e preços, tirar linhas
+# (Incluir = N ou apagar a linha), inserir linhas novas — e os totais acertam.
+# As linhas são uma Tabela do Excel para as fórmulas acompanharem as linhas
+# inseridas. Margem por categoria e um coeficiente de segurança (em %) sobre o
+# total já com as margens dão o TOTAL FINAL.
+
+CATEGORIAS_CUSTO = ('Placas', 'Orlas', 'Ferragens', 'SPP', 'Comprados', 'Produção')
+MARGENS_CUSTO = {'Placas': 0, 'Orlas': 0.10, 'Ferragens': 0.15, 'SPP': 0.15, 'Comprados': 0.10, 'Produção': 0.12}
+COEFICIENTE_CUSTO = 0.10
+COR_CABECALHO = 0xD9EAD3     # o verde que o separador sempre teve (BGR)
+COR_TOTAL_FINAL = 0xB5D5A9
+COR_ENTRADA = 0xCCF2FF       # amarelo claro: células para alterar à mão
+COLUNAS_CUSTO = ('Categoria', 'Artigo / material', 'Comp (mm)', 'Larg (mm)', 'Esp (mm)', 'Quantidade', 'Un.',
+                 'Ref_LE — Descrição V3', 'Preço líquido', 'Un. preço', 'Fator', 'Incluir (S/N)', 'Custo €',
+                 'Estado', 'Data do preço')
+ULTIMA_COLUNA = 'O'
+
+
+def _texto_formula(texto):
+    return '"' + str(texto).replace('"', '""') + '"'
+
+
+def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, production):
+    fim = ULTIMA_COLUNA
+    sheet.Range(f'A1:{fim}1').Merge()
+    sheet.Cells(1, 1).Value2 = 'Custo de produção (parcial) — ' + version
+    sheet.Range(f'A2:{fim}2').Merge()
+    sheet.Cells(2, 1).Value2 = (
+        ('Preços e tarifas V3 guardados nesta análise. Consulta Streamlit: ' + production['queried_at'] if production
+         else 'Preços líquidos V3 guardados nesta análise. Produção pendente de horas reais Streamlit.')
+        + ' Células amarelas alteráveis (quantidade, preço, fator, Incluir, margens, coeficiente): os totais '
+        'recalculam; também se podem apagar ou inserir linhas na tabela.')
+
+    from app.services.tempos_lista_material_service import SECTORS
+    sectors = (production or {}).get('sectors', [{'sector': k, 'name': v[0], 'hours': None, 'estimated': None,
+                                                  'state': 'Tempos não consultados'} for k, v in SECTORS.items()])
+    linha_setores = 15
+    linha_avisos = linha_setores + len(sectors) + 2
+    header_row = linha_avisos + 2
+    first, last = header_row + 1, header_row + max(1, len(lines))
+    tabela = 'TabCusto_' + sheet.Name[len('Custo_V3_'):]
+
+    # --- Resumo por categoria, margens e coeficiente -------------------------
+    sheet.Range('A4:E4').Value = (('Categoria', 'Custo conhecido €', 'Linhas sem custo', 'Margem %',
+                                   'Custo c/ margem €'),)
+    for r, category in enumerate(CATEGORIAS_CUSTO, 5):
+        sheet.Cells(r, 1).Value2 = category
+        sheet.Cells(r, 4).Value2 = MARGENS_CUSTO[category]
+        sheet.Cells(r, 5).Formula = f'=B{r}*(1+D{r})'
+    sheet.Cells(11, 1).Value2 = 'Total conhecido (parcial)'
+    sheet.Cells(11, 2).Formula = '=SUM(B5:B10)'
+    sheet.Cells(11, 3).Formula = '=SUM(C5:C10)'
+    sheet.Cells(11, 4).Formula = '=IF(B11=0,0,E11/B11-1)'
+    sheet.Cells(11, 5).Formula = '=SUM(E5:E10)'
+    sheet.Range('A12:C12').Merge()
+    sheet.Cells(12, 1).Value2 = 'Coeficiente de segurança («cagaço») — % sobre o total c/ margens'
+    sheet.Cells(12, 4).Value2 = COEFICIENTE_CUSTO
+    sheet.Cells(12, 5).Formula = '=E11*D12'
+    sheet.Range('A13:D13').Merge()
+    sheet.Cells(13, 1).Value2 = 'TOTAL FINAL (custo + margens + coeficiente)'
+    sheet.Cells(13, 5).Formula = '=E11+E12'
+    sheet.Range('B5:B11').NumberFormat = '0.00'
+    sheet.Range('E5:E13').NumberFormat = '0.00 €'
+    sheet.Range('C5:C11').NumberFormat = '0'
+    sheet.Range('D5:D12').NumberFormat = '0%'
+    sheet.Range('D11').NumberFormat = '0.0%'
+    sheet.Range('A4:E4').WrapText = True
+    for area in ('A4:E4', 'A11:E11', 'A12:E12'):
+        sheet.Range(area).Font.Bold = True
+        sheet.Range(area).Interior.Color = COR_CABECALHO
+    for area in ('D5:D10', 'D12'):
+        sheet.Range(area).Interior.Color = COR_ENTRADA
+    sheet.Range('A13:E13').Font.Bold = True
+    sheet.Range('A13:E13').Font.Size = 13
+    sheet.Range('A13:E13').Interior.Color = COR_TOTAL_FINAL
+    sheet.Range('A4:E13').Borders.LineStyle = 1
+
+    # --- Tempos por setor ------------------------------------------------------
+    sheet.Range(f'A{linha_setores}:E{linha_setores}').Value = (
+        ('Setor', 'Horas registadas', 'Horas estimadas', 'Custo conhecido €', 'Estado'),)
+    sheet.Range(f'E{linha_setores}:{fim}{linha_setores}').Merge()
+    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').WrapText = True
+    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').Font.Bold = True
+    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').Interior.Color = COR_CABECALHO
+    sheet.Rows(linha_setores).RowHeight = 32
+    for r, entry in enumerate(sectors, linha_setores + 1):
+        costs = [calculate_cost(l, prices.get(l['key']))[0] for l in lines if l.get('sector') == entry['sector']]
+        values = (entry['name'], float(entry['hours']) if entry['hours'] is not None else None,
+                  float(entry['estimated']) if entry['estimated'] is not None else None,
+                  float(sum((c for c in costs if c is not None), Decimal(0))) if any(c is not None for c in costs) else None,
+                  entry['state'])
+        sheet.Range(f'A{r}:E{r}').Value = (values,)
+        sheet.Range(f'E{r}:{fim}{r}').Merge()
+    sheet.Range(f'B{linha_setores + 1}:D{linha_setores + len(sectors)}').NumberFormat = '0.00'
+    sheet.Range(f'A{linha_avisos}:{fim}{linha_avisos}').Merge()
+    sheet.Cells(linha_avisos, 1).Value2 = ' | '.join(
+        warnings + (production or {}).get('warnings', [])
+        + ([production['last_query_error']] if production and production.get('last_query_error') else []))[:32000]
+    sheet.Range(f'A{linha_avisos}:{fim}{linha_avisos}').WrapText = True
+    sheet.Rows(linha_avisos).RowHeight = 42
+
+    # --- Linhas: Tabela do Excel com fórmulas -----------------------------------
+    sheet.Range(f'A{header_row}:{fim}{header_row}').Value = (COLUNAS_CUSTO,)
+    estados = []
+    geral = sheet.Cells(1, 40).NumberFormat   # «Geral» na língua do Excel instalado
+    for r, line in enumerate(lines, first):
+        price = prices.get(line['key']) or {}
+        cost, state = calculate_cost(line, price or None)
+        factor = Decimal(1)
+        if line['kind'] == 'Orlas' and unit(price.get('unit')) == 'm2':
+            factor = (number(line.get('width')) or Decimal(0)) / 1000
+        estados.append((r, state))
+        values = [line['kind'], line['name'], line.get('length', ''), line.get('width', ''), line.get('thickness', ''),
+                  float(number(line['quantity'])) if number(line['quantity']) is not None else None, line['unit'],
+                  ' — '.join(str(price.get(k) or '') for k in ('ref', 'description')) if price else '',
+                  float(number(price.get('net'))) if number(price.get('net')) is not None else None,
+                  price.get('unit', ''), float(factor), 'S', None, None, price.get('date', '')]
+        # Texto externo é sempre texto, nunca uma fórmula do ficheiro de origem.
+        for area in (f'A{r}:E{r}', f'G{r}:H{r}', f'J{r}', f'L{r}', f'O{r}'):
+            sheet.Range(area).NumberFormat = '@'
+        for column, formato in ((6, '0.00'), (9, '0.00###'), (11, '0.000'), (13, '0.00')):
+            sheet.Cells(r, column).NumberFormat = formato
+        sheet.Range(f'A{r}:{fim}{r}').Value = (tuple(values),)
+        for column in (3, 4, 5, 6, 9, 11):
+            numeric = number(values[column - 1])
+            if numeric is not None:
+                if column in (3, 4, 5):
+                    sheet.Cells(r, column).NumberFormat = geral
+                sheet.Cells(r, column).Value2 = float(numeric)
+        # Sem custo mas com preço (unidades por compatibilizar, largura em falta...):
+        # o fator fica vazio e a linha dá 0 € até alguém o acertar à mão.
+        if cost is None and number(price.get('net')) is not None:
+            sheet.Cells(r, 11).Value2 = None
+    tab = sheet.ListObjects.Add(1, sheet.Range(f'A{header_row}:{fim}{last}'), None, 1)
+    tab.Name = tabela
+    tab.TableStyle = ''
+    tab.ListColumns('Custo €').DataBodyRange.Formula = (
+        '=IF([@[Incluir (S/N)]]="N",0,N([@Quantidade])*N([@[Preço líquido]])*N([@Fator]))')
+    # O Estado é diferente em cada linha (guarda o motivo de não haver custo). Escrito
+    # linha a linha, o Excel copiava cada fórmula para a coluna inteira da Tabela.
+    autocorrect = sheet.Application.AutoCorrect
+    preencher = autocorrect.AutoFillFormulasInLists
+    autocorrect.AutoFillFormulasInLists = False
+    try:
+        for r, state in estados:
+            sem_custo = state if state != 'Calculado' else 'Sem custo — confirmar preço'
+            sheet.Cells(r, 14).Formula = (f'=IF(L{r}="N","Fora da conta (Incluir = N)",IF(M{r}=0,'
+                                          f'{_texto_formula(sem_custo)},"Calculado"))')
+    finally:
+        autocorrect.AutoFillFormulasInLists = preencher
+    tab.ShowTotals = True
+    tab.ListColumns('Custo €').TotalsCalculation = 1       # soma
+    tab.TotalsRowRange.Cells(1, 1).Value2 = 'Total das linhas'
+    for r, category in enumerate(CATEGORIAS_CUSTO, 5):
+        sheet.Cells(r, 2).Formula = f'=SUMIFS({tabela}[Custo €],{tabela}[Categoria],A{r})'
+        sheet.Cells(r, 3).Formula = (f'=COUNTIFS({tabela}[Categoria],A{r},{tabela}[Incluir (S/N)],"S",'
+                                     f'{tabela}[Custo €],0)')
+    corpo = tab.DataBodyRange
+    incluir = tab.ListColumns('Incluir (S/N)').DataBodyRange
+    incluir.Validation.Delete()
+    incluir.Validation.Add(3, 1, 1, 'S,N')
+    incluir.HorizontalAlignment = -4108
+    for coluna in ('Quantidade', 'Preço líquido', 'Fator', 'Incluir (S/N)'):
+        tab.ListColumns(coluna).DataBodyRange.Interior.Color = COR_ENTRADA
+    for coluna, formato in (('Quantidade', '0.00'), ('Preço líquido', '0.00###'), ('Fator', '0.000'),
+                            ('Custo €', '0.00')):
+        tab.ListColumns(coluna).DataBodyRange.NumberFormat = formato
+    tab.TotalsRowRange.Cells(1, 13).NumberFormat = '0.00'
+    tab.ListColumns('Data do preço').TotalsCalculation = 0   # sem a contagem que o Excel põe
+    tab.HeaderRowRange.Font.Bold = True
+    tab.HeaderRowRange.Interior.Color = COR_CABECALHO
+    tab.HeaderRowRange.WrapText = True
+    tab.TotalsRowRange.Font.Bold = True
+    tab.TotalsRowRange.Interior.Color = COR_CABECALHO
+    tab.Range.Borders.LineStyle = 1
+    # Riscado quando Incluir = N (continua visível para se ver o que foi tirado).
+    riscado = corpo.FormatConditions.Add(2, None, f'=$L{first}="N"')
+    riscado.Font.Strikethrough = True
+    riscado.Font.Color = 0x9A9A9A
+
+    sheet.Range(f'A1:{fim}1').Font.Size = 16
+    sheet.Range(f'A1:{fim}1').Font.Bold = True
+    for col, width in (('A', 20), ('B', 48), ('C', 13), ('D', 13), ('E', 11), ('F', 13), ('G', 8), ('H', 60),
+                       ('I', 14), ('J', 10), ('K', 10), ('L', 9), ('M', 15), ('N', 40), ('O', 23)):
+        sheet.Columns(col).ColumnWidth = width
+    sheet.Range(f'A2:{fim}2').WrapText = True
+    sheet.Rows(2).RowHeight = 30
+
+    last = header_row + tab.ListRows.Count + 1   # linha dos totais da tabela
+    if production and production.get('events'):
+        event_header = last + 3
+        event_rows = [('Data', 'Setor', 'Máquina', 'Pessoa / login', 'Horas', 'Chave Streamlit', 'Plano')]
+        event_rows += [(e.get('data_registo'), e['setor'], e.get('maquina'), e.get('responsavel'), e['horas'],
+                        e['bd_key'], e.get('bd_plano_corte')) for e in production['events']]
+        for r, values in enumerate(event_rows, event_header):
+            for (start, end), value in zip(((1, 1), (2, 2), (3, 4), (5, 7), (8, 8), (9, 11), (12, 15)), values):
+                area = sheet.Range(sheet.Cells(r, start), sheet.Cells(r, end))
+                area.Merge()
+                area.NumberFormat = '@'
+                sheet.Cells(r, start).Value2 = value
+                if r > event_header and start == 8 and number(value) is not None:
+                    area.NumberFormat = '0.00'
+                    sheet.Cells(r, start).Value2 = float(number(value))
+                area.WrapText = True
+            sheet.Rows(r).RowHeight = 30
+            last = r
+        sheet.Range(f'A{event_header}:{fim}{event_header}').Font.Bold = True
+    setup = sheet.PageSetup
+    try:
+        setup.PaperSize = 8          # A3
+    except Exception:
+        pass                         # impressora sem A3: fica o papel dela, ao baixo
+    setup.Orientation = 2
+    setup.Zoom = False
+    setup.FitToPagesWide = 1
+    setup.FitToPagesTall = False
+    setup.PrintTitleRows = f'${header_row}:${header_row}'
+    setup.PrintArea = f'A1:{fim}{last}'
+
+
 def export_cost_report(path, expected_hash, version, lines, prices, warnings, *, production=None):
     """Novo relatório nativo por análise; não substitui folhas editadas pelo utilizador."""
     path = writable_workbook(path)
@@ -540,96 +762,7 @@ def export_cost_report(path, expected_hash, version, lines, prices, warnings, *,
         sheet = book.Worksheets.Add(After=book.Worksheets.Item(book.Worksheets.Count))
         sheet.Name = 'Custo_V3_' + datetime.now().strftime('%y%m%d_%H%M%S') + '_' + uuid4().hex[:3]
         name = sheet.Name
-        sheet.Range('A1:N1').Merge()
-        sheet.Cells(1, 1).Value2 = 'Custo de produção (parcial) — ' + version
-        sheet.Range('A2:N2').Merge()
-        sheet.Cells(2, 1).Value2 = ('Preços e tarifas V3 guardados nesta análise. Consulta Streamlit: ' + production['queried_at'] if production else 'Preços líquidos V3 guardados nesta análise. Produção pendente de horas reais Streamlit.')
-        sheet.Range('A4:C4').Value = (('Categoria', 'Custo conhecido €', 'Pendências'),)
-        categories = ('Placas', 'Orlas', 'Ferragens', 'SPP', 'Comprados', 'Produção')
-        header_row = 26
-        first, last = header_row + 1, header_row + max(1, len(lines))
-        for r, category in enumerate(categories, 5):
-            sheet.Cells(r, 1).Value2 = category
-            sheet.Cells(r, 2).Formula = f'=SUMIF(A{first}:A{last},A{r},L{first}:L{last})'
-            sheet.Cells(r, 3).Value2 = sum(1 for line in lines if line['kind'] == category and calculate_cost(line, prices.get(line['key']))[0] is None)
-        sheet.Cells(11, 1).Value2 = 'Total conhecido (parcial)'
-        sheet.Cells(11, 2).Formula = '=SUM(B5:B10)'
-        sheet.Cells(11, 3).Formula = '=SUM(C5:C10)'
-        sheet.Range('A12:E12').Value = (('Setor', 'Horas registadas', 'Horas estimadas', 'Custo conhecido €', 'Estado'),)
-        sheet.Range('E12:N12').Merge()
-        sheet.Range('A12:N12').WrapText = True
-        sheet.Rows(12).RowHeight = 32
-        from app.services.tempos_lista_material_service import SECTORS
-        sectors = (production or {}).get('sectors', [{'sector': k, 'name': v[0], 'hours': None, 'estimated': None, 'state': 'Tempos não consultados'} for k,v in SECTORS.items()])
-        for r, entry in enumerate(sectors, 13):
-            costs = [calculate_cost(l, prices.get(l['key']))[0] for l in lines if l.get('sector') == entry['sector']]
-            values = (entry['name'], float(entry['hours']) if entry['hours'] is not None else None,
-                      float(entry['estimated']) if entry['estimated'] is not None else None,
-                      float(sum((c for c in costs if c is not None), Decimal(0))) if any(c is not None for c in costs) else None,
-                      entry['state'])
-            sheet.Range(f'A{r}:E{r}').Value = (values,)
-            sheet.Range(f'E{r}:N{r}').Merge()
-        sheet.Range('A23:N23').Merge()
-        sheet.Cells(23, 1).Value2 = ' | '.join(warnings + (production or {}).get('warnings', []) + ([production['last_query_error']] if production and production.get('last_query_error') else []))[:32000]
-        headers = ('Categoria','Artigo / material','Comp (mm)','Larg (mm)','Esp (mm)','Quantidade','Un.',
-                   'Ref_LE — Descrição V3','Preço líquido','Un. preço','Fator','Custo €','Estado','Data do preço')
-        sheet.Range(f'A{header_row}:N{header_row}').Value = (headers,)
-        for r, line in enumerate(lines, first):
-            price = prices.get(line['key']) or {}
-            cost, state = calculate_cost(line, price or None)
-            factor = Decimal(1)
-            if line['kind'] == 'Orlas' and unit(price.get('unit')) == 'm2':
-                factor = (number(line.get('width')) or Decimal(0)) / 1000
-            values = [line['kind'], line['name'], line.get('length',''), line.get('width',''), line.get('thickness',''),
-                      float(number(line['quantity'])) if number(line['quantity']) is not None else None, line['unit'],
-                      ' — '.join(str(price.get(k) or '') for k in ('ref','description')) if price else '',
-                      float(number(price.get('net'))) if number(price.get('net')) is not None else None,
-                      price.get('unit',''), float(factor), None, state, price.get('date','')]
-            # Texto externo é sempre texto, nunca uma fórmula do ficheiro de origem.
-            sheet.Range(f'A{r}:N{r}').NumberFormat = '@'
-            sheet.Range(f'A{r}:N{r}').Value = (tuple(values),)
-            for column in (3,4,5,6,9,11,12):
-                numeric = number(values[column-1])
-                if numeric is not None:
-                    sheet.Cells(r,column).Value2 = float(numeric)
-                sheet.Cells(r,column).NumberFormat = '0.00' if column in (6,9,11) else '0.00'
-            if cost is not None:
-                sheet.Cells(r,12).Formula = f'=F{r}*I{r}*K{r}'
-        sheet.Range('A1:N1').Font.Size = 16
-        sheet.Range('A1:N1').Font.Bold = True
-        for area in ('A4:C4', f'A{header_row}:N{header_row}', 'A11:C11', 'A12:E12'):
-            sheet.Range(area).Font.Bold = True
-            sheet.Range(area).Interior.Color = 0xD9EAD3
-        sheet.Range('B5:B11').NumberFormat = '0.00'
-        sheet.Range('B13:D20').NumberFormat = '0.00'
-        for col, width in (('A',20),('B',48),('C',13),('D',13),('E',11),('F',13),('G',8),('H',60),('I',14),('J',10),('K',10),('L',15),('M',40),('N',23)):
-            sheet.Columns(col).ColumnWidth = width
-        sheet.Range('A2:N2').WrapText = True
-        sheet.Range('A23:N23').WrapText = True
-        sheet.Rows(23).RowHeight = 42
-        if production and production.get('events'):
-            event_header = last + 3
-            event_rows = [('Data','Setor','Máquina','Pessoa / login','Horas','Chave Streamlit','Plano')]
-            event_rows += [(e.get('data_registo'),e['setor'],e.get('maquina'),e.get('responsavel'),e['horas'],e['bd_key'],e.get('bd_plano_corte')) for e in production['events']]
-            for r, values in enumerate(event_rows, event_header):
-                for (start, end), value in zip(((1,1),(2,2),(3,4),(5,7),(8,8),(9,11),(12,14)), values):
-                    area = sheet.Range(sheet.Cells(r,start),sheet.Cells(r,end))
-                    area.Merge()
-                    area.NumberFormat = '@'
-                    sheet.Cells(r,start).Value2 = value
-                    if r > event_header and start == 8 and number(value) is not None:
-                        area.NumberFormat = '0.00'
-                        sheet.Cells(r,start).Value2 = float(number(value))
-                    area.WrapText = True
-                sheet.Rows(r).RowHeight = 30
-                last = r
-            sheet.Range(f'A{event_header}:N{event_header}').Font.Bold = True
-        sheet.PageSetup.Orientation = 2
-        sheet.PageSetup.Zoom = False
-        sheet.PageSetup.FitToPagesWide = 1
-        sheet.PageSetup.FitToPagesTall = False
-        sheet.PageSetup.PrintTitleRows = f'${header_row}:${header_row}'
-        sheet.PageSetup.PrintArea = f'A1:N{last}'
+        _escrever_relatorio_custo(sheet, version, lines, prices, warnings, production)
         sheet.Calculate()
         excel_com.recalcular(excel)
         book.Save()
