@@ -57,6 +57,51 @@ def ler_precos_phc(session: Session, refs) -> dict[str, dict]:
     return {str(row.get("Ref") or "").strip().upper(): row for row in rows}
 
 
+# A ref do fornecedor é texto livre: só entra na consulta se tiver só letras,
+# números e « ._/-» (nada de plicas nem SQL).
+REF_FORNECEDOR_SEGURA = re.compile(r"^[A-Z0-9][A-Z0-9 ._/-]{1,49}$")
+CHAVE_FORNECEDOR = "FORN:"
+
+
+def ref_fornecedor(valor) -> str:
+    """A ref do fornecedor limpa como nas Matérias-Primas («174H7100E    BLUM» → «174H7100E»)."""
+    from app.domain.materia_prima_types import normalizar_ref_fornecedor
+    ref = normalizar_ref_fornecedor(str(valor or "")) or ""
+    return ref if REF_FORNECEDOR_SEGURA.match(ref) else ""
+
+
+def ler_precos_phc_por_ref_fornecedor(session: Session, refs) -> dict[str, dict]:
+    """Artigos do PHC pela ref do fornecedor (campo ``forref``). SÓ LEITURA.
+
+    Só conta quando UM artigo ativo tem essa ref: se houver dois, não se
+    adivinha qual. Chave: ``FORN:<ref>``, para não se misturar com as Ref PHC.
+    """
+    wanted = sorted({r for r in (ref_fornecedor(v) for v in refs) if r})
+    if not wanted:
+        return {}
+    lista = ", ".join(f"'{ref}'" for ref in wanted)
+    query = (
+        "SELECT ref AS Ref, design AS Descricao, epcusto AS Preco_Custo, "
+        "epvultimo AS Preco_Ultimo, unidade AS Unidade, forref AS Ref_Fornecedor, "
+        "CONVERT(VARCHAR(10), udata, 104) AS Data_Preco "
+        f"FROM ST WITH (NOLOCK) WHERE inactivo = 0 AND UPPER(LTRIM(RTRIM(forref))) IN ({lista})"
+    )
+    rows = run_select(build_connection_string(load_phc_config(session)), query)
+    por_ref: dict[str, list[dict]] = {}
+    for row in rows:
+        por_ref.setdefault(ref_fornecedor(row.get("Ref_Fornecedor")), []).append(row)
+    return {CHAVE_FORNECEDOR + ref: linhas[0] for ref, linhas in por_ref.items() if ref and len(linhas) == 1}
+
+
+def artigo_phc_da_linha(line: dict, phc: dict[str, dict]) -> dict | None:
+    """Pela Ref PHC; nos objetos comprados sem ela, pela ref do fornecedor."""
+    artigo = phc.get(str(line.get("ref_phc") or "").strip().upper())
+    if artigo is None and line.get("kind") == "Comprados":
+        forn = ref_fornecedor(line.get("supplier_ref"))
+        artigo = phc.get(CHAVE_FORNECEDOR + forn) if forn else None
+    return artigo
+
+
 def preco_phc(line: dict, artigo: dict | None) -> dict | None:
     """Preço por unidade da linha, a partir do artigo PHC; None se não houver preço."""
     if not artigo:
@@ -116,8 +161,7 @@ def resolver_ferragem(line: dict, preco_v3: dict | None, phc: dict[str, dict]) -
         return preco_v3
     if line["kind"] not in CATEGORIAS_FERRAGENS:
         return None
-    ref = str(line.get("ref_phc") or "").strip().upper()
-    via_phc = preco_phc(line, phc.get(ref))
+    via_phc = preco_phc(line, artigo_phc_da_linha(line, phc))
     if via_phc and not via_phc["confirmar"]:
         return via_phc
     # PHC por confirmar nunca entra sozinho: fica o IMOS provisório (ou nada).
@@ -289,7 +333,9 @@ def linhas_dos_separadores(book) -> tuple[list[dict], list[str]]:
                 nome = str(_valor(row, headers, "acessorio #") or "").strip()
                 medidas = str(_valor(row, headers, "comp x larg x esp") or "").strip()
                 nome = nome or f"Objeto comprado {medidas}".strip()
-                ref, descricao, unit, quantidade = "", nome, "un", qt
+                # Desde 22-09-2026 a lista do IMOS traz Ref PHC / Ref Fornecedor da união
+                # (o Paulo vai-as preenchendo no Element Manager). Sem elas, fica como antes.
+                ref, descricao, unit, quantidade = _ref(_valor(row, headers, "ref phc")), nome, "un", qt
                 chave = f"ferragem:{kind}:{nome.upper()}:{medidas}"
                 extra = {"length": medidas}
             else:
@@ -349,7 +395,9 @@ def preco_excluido(line: dict) -> dict:
 def _identidade(linha: dict) -> str:
     """Como se reconhece a mesma ferragem nos separadores e no 5_Custo do IMOS."""
     ref = _ref(linha.get("ref_phc"))
-    if ref:
+    # Comprados: as medidas primeiro. A Ref PHC do 2_PURCH vem da união e o
+    # 5_Custo do IMOS não a traz, por isso pela ref nunca se encontravam.
+    if ref and linha["kind"] != "Comprados":
         return f"{linha['kind']}:{ref}"
     if linha["kind"] == "Comprados":
         medidas = [_numero(str(v).split("-")[0]) for v in (linha.get("length"), linha.get("width"), linha.get("thickness"))]
@@ -359,6 +407,8 @@ def _identidade(linha: dict) -> str:
         numeros = re.findall(r"\d+(?:[.,]\d+)?", texto)
         if len(numeros) == 3:
             return "Comprados:" + "X".join(format(_numero(n).normalize(), "f") for n in numeros)
+    if ref:
+        return f"{linha['kind']}:{ref}"
     return f"{linha['kind']}:{_cabecalho(_primeira_linha(linha.get('description') or linha.get('name')))}"
 
 

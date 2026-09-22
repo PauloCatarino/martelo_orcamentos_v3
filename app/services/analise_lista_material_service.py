@@ -469,6 +469,12 @@ def exact_price(line, catalog):
             matches.append(mp)
         elif mp.nome_imos and mp.nome_imos == line['name']:
             matches.append(mp)
+    if not matches and line.get('kind') == 'Comprados' and line.get('supplier_ref'):
+        # Objetos comprados: a ref do fornecedor que o Paulo põe na união do IMOS.
+        from app.domain.materia_prima_types import normalizar_ref_fornecedor
+        forn = normalizar_ref_fornecedor(line['supplier_ref'])
+        matches = [mp for mp in catalog if forn and
+                   normalizar_ref_fornecedor(getattr(mp, 'referencia_fornecedor', None)) == forn]
     return price_record(matches[0]) if len(matches) == 1 else None
 
 

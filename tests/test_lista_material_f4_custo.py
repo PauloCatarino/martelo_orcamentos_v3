@@ -286,3 +286,69 @@ def test_passo_a_passo_nao_considerar_nesta_obra(app, session, workbook, monkeyp
         assert excluded == {pending[0]["key"]} and prices == {}
     finally:
         dialog.close()
+
+
+# ---- 2_PURCH com Ref PHC / Ref Fornecedor (pedido de 22-09-2026) ----
+
+def _livro_purch_com_refs():
+    w = Workbook()
+    p = w.active
+    p.title = "2_PURCH"
+    p.append(["Listagem Ferragem"])
+    p.append(["Imagem", "Ref PHC", "Ref\nFornecedor", "Acessorio #", "Comp X Larg X Esp", "Qt.", "Artg."])
+    p.append([None, "FF04206", "MYC38718014", "Tulha Menage Confor Modulo 600", "558 X 568 X 721", 1, "MOD_INF_TULHA_600"])
+    p.append([None, "REF_ PHC ??", "002IP.15.CC", "CESTO_SIGE_002IP.15.CC_INFINITY_PLUS", "550 X 162 X 741", 1, "MB_01_CESTO"])
+    p.append([None, "REF_ PHC ??", "002IP.15.CC", "CESTO_SIGE_002IP.15.CC_INFINITY_PLUS", "500 X 110 X 520", 1, "29"])
+    p.append([None, None, None, "MAQ_LAVAR_ROUPA", "600 X 610 X 860", 1, "MAQ_LAVAR_ROUPA"])
+    c = w.create_sheet("5_Custo_Obra_Ferragens")
+    c.append(["Nome iMos (Nome Uniao)", "Jogo de Unioes (iMos)", "Descricao", "Ref PHC", "Ref Fornecedor",
+              "Fornecedor", "Na lista", "Comp", "Larg", "Esp", "Qt", "Un", "€ / un", "€"])
+    c.append(["PURCHASED PARTS"])
+    c.append(["TULHA_600", "", "Tulha", "", "", "", "", "558", "568", "721", 1, "un", "0", 0])
+    c.append(["CESTO", "", "Cesto", "", "", "", "", "550", "162", "741", 1, "un", "0", 0])
+    c.append(["CESTO", "", "Cesto", "", "", "", "", "500", "110", "520", 1, "un", "0", 0])
+    c.append(["MAQ", "", "Maquina", "", "", "", "", "600", "610", "860", 1, "un", "0", 0])
+    return w
+
+
+def test_2_purch_le_as_refs_e_cada_objeto_continua_na_sua_linha():
+    linhas, avisos = custo.linhas_dos_separadores(_livro_purch_com_refs())
+    comprados = [l for l in linhas if l["kind"] == "Comprados"]
+    assert len(comprados) == 4                     # os dois cestos de medidas diferentes não se juntam
+    tulha = next(l for l in comprados if l["name"].startswith("Tulha"))
+    assert tulha["ref_phc"] == "FF04206" and tulha["supplier_ref"] == "MYC38718014"
+    cesto = next(l for l in comprados if l["name"].startswith("CESTO"))
+    assert cesto["ref_phc"] == "" and cesto["supplier_ref"] == "002IP.15.CC"   # «REF_ PHC ??» não é ref
+    # O 5_Custo do IMOS não traz as refs da união: a conciliação continua pelas medidas
+    # (a tulha tem Ref PHC no 2_PURCH e nenhuma no 5_Custo, e não pode aparecer como mudada).
+    texto = " | ".join(avisos)
+    assert "Tulha" not in texto and "TULHA_600" not in texto and "MAQ" not in texto
+
+
+def test_2_purch_antigo_sem_colunas_de_ref_continua_a_ler():
+    linhas, _ = custo.linhas_dos_separadores(_livro_separadores())
+    comprado = next(l for l in linhas if l["kind"] == "Comprados")
+    assert comprado["ref_phc"] == "" and comprado["supplier_ref"] == ""
+
+
+def test_comprado_sem_ref_phc_vai_ao_phc_e_ao_v3_pela_ref_do_fornecedor(monkeypatch):
+    linha = svc.cost_line("Comprados", "c1", "Cesto", 1, "un", supplier_ref=" 002ip.15.cc ")
+    consultas = []
+    monkeypatch.setattr(custo, "load_phc_config", lambda session: {})
+    monkeypatch.setattr(custo, "build_connection_string", lambda cfg: "x")
+    monkeypatch.setattr(custo, "run_select", lambda conn, q: consultas.append(q) or [
+        {"Ref": "FF09001", "Descricao": "CESTO CASATREND", "Preco_Custo": 115, "Unidade": "UN",
+         "Ref_Fornecedor": "002IP.15.CC"},
+        {"Ref": "FF09002", "Ref_Fornecedor": "DUPLICADA"}, {"Ref": "FF09003", "Ref_Fornecedor": "DUPLICADA"}])
+    phc = custo.ler_precos_phc_por_ref_fornecedor(None, [" 002ip.15.cc ", "DUPLICADA", "x'; DROP", None])
+    # Texto livre com plicas nunca chega à consulta; duas fichas com a mesma ref não se adivinham.
+    assert "'002IP.15.CC'" in consultas[0] and "DROP" not in consultas[0]
+    assert list(phc) == ["FORN:002IP.15.CC"]
+    assert custo.resolver_ferragem(linha, None, phc)["net"] == "115"
+    # Só nos objetos comprados: uma ferragem continua a ir só pela Ref PHC.
+    assert custo.resolver_ferragem({**linha, "kind": "Ferragens"}, None, phc) is None
+    # V3: a ref do fornecedor das Matérias-Primas, só quando não há Ref PHC nem nome IMOS.
+    mp = SimpleNamespace(id=9, ref_le="LE9", ref_phc="", nome_imos="", referencia_fornecedor="002IP.15.CC",
+                         descricao="Cesto", unidade="un", preco_liquido=Decimal("98"))
+    assert svc.exact_price(linha, [mp])["id"] == 9
+    assert svc.exact_price({**linha, "kind": "Ferragens"}, [mp]) is None

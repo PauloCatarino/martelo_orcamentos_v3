@@ -96,7 +96,7 @@ class MapearFerragensDialog(QDialog):
         return self.lines[self.index]
 
     def _phc_price(self):
-        return custo.preco_phc(self.line, self.phc.get(str(self.line.get("ref_phc") or "").strip().upper()))
+        return custo.preco_phc(self.line, custo.artigo_phc_da_linha(self.line, self.phc))
 
     def _show(self):
         line = self.line

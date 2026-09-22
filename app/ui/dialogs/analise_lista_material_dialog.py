@@ -595,6 +595,10 @@ class AnaliseListaMaterialDialog(QDialog):
             self.phc = {}
             try:
                 self.phc = custo_ferragens.ler_precos_phc(self.session, [l.get('ref_phc') for l in pending])
+                # Objetos comprados sem Ref PHC: procura-se pela ref do fornecedor.
+                sem_ref = [l.get('supplier_ref') for l in pending if l['kind'] == 'Comprados'
+                           and not custo_ferragens.refs_validas([l.get('ref_phc')])]
+                self.phc.update(custo_ferragens.ler_precos_phc_por_ref_fornecedor(self.session, sem_ref))
             except Exception:
                 self.warnings.append('PHC sem ligação: preços PHC não consultados (fica o preço IMOS provisório).')
         for line in pending:
