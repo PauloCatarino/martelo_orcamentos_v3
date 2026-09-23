@@ -17,6 +17,7 @@ import faulthandler
 import logging
 import os
 import platform
+import re
 import sys
 import tempfile
 import threading
@@ -280,6 +281,49 @@ def _e_aviso_tratado(linha: str) -> bool:
     return "code 0x800" in linha.casefold()
 
 
+def _pid_do_registo(texto: str) -> int | None:
+    """O PID escrito na linha ``=== arranque ... (PID 1234) ===``."""
+    encontrado = re.search(r"\(PID (\d+)\)", texto.split("\n", 1)[0])
+    return int(encontrado.group(1)) if encontrado else None
+
+
+def _processo_vivo(pid: int) -> bool:
+    """Se o processo ``pid`` ainda está a correr neste PC."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        # PROCESS_QUERY_LIMITED_INFORMATION; STILL_ACTIVE = 259.
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return False
+        try:
+            codigo = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(codigo)):
+                return False
+            return codigo.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def outro_martelo_aberto(texto: str) -> bool:
+    """O ficheiro é de OUTRO Martelo que ainda está aberto neste PC.
+
+    Quem abre o Martelo duas vezes (duplo clique repetido) não pode ler o
+    ficheiro do primeiro como se fosse um crash -- ele só ainda não acabou --
+    nem escrever-lhe por cima, senão perde-se o relatório se ELE rebentar.
+    """
+    pid = _pid_do_registo(texto)
+    return pid is not None and pid != os.getpid() and _processo_vivo(pid)
+
+
 def instalar_registo_de_crash() -> str | None:
     """Ligar o faulthandler e trazer para o diário o crash da sessão anterior.
 
@@ -289,9 +333,15 @@ def instalar_registo_de_crash() -> str | None:
     caminho = caminho_crash()
     anterior = None
     try:
-        anterior = resumo_crash(caminho.read_text(encoding="utf-8", errors="replace"))
+        texto = caminho.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        anterior = None
+        texto = ""
+    if outro_martelo_aberto(texto):
+        # Esta segunda janela escreve num ficheiro só dela (limpo ao fim de
+        # um mês, como as cópias de crashes).
+        caminho = caminho.with_name(f"crash_martelo_pid{os.getpid()}.log")
+    else:
+        anterior = resumo_crash(texto)
     if anterior:
         _LOGGER.error(
             "O Martelo fechou-se sozinho na sessão anterior (crash sem mensagem). "

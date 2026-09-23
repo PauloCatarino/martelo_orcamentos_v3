@@ -75,6 +75,42 @@ def test_um_crash_verdadeiro_fica_registado_e_passa_para_o_diario(tmp_path) -> N
         diario_bordo._ficheiro_crash = anterior_ficheiro
 
 
+def test_segundo_martelo_aberto_nao_inventa_crash_nem_escreve_por_cima(tmp_path) -> None:
+    """Duplo clique repetido: o 1º Martelo ainda corre e o ficheiro é dele."""
+    diario = tmp_path / "diario_martelo.log"
+    ficheiro_do_primeiro = tmp_path / diario_bordo.NOME_CRASH
+    primeiro = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"]
+    )
+    try:
+        conteudo = f"=== arranque 2026-09-23 09:00:00 (PID {primeiro.pid}) ===\n"
+        ficheiro_do_primeiro.write_text(conteudo, encoding="utf-8")
+        assert diario_bordo.outro_martelo_aberto(conteudo)
+
+        anterior_caminho = diario_bordo._caminho_em_uso
+        anterior_ficheiro = diario_bordo._ficheiro_crash
+        try:
+            diario_bordo._caminho_em_uso = diario
+            assert diario_bordo.instalar_registo_de_crash() is None
+            # O ficheiro do primeiro ficou intacto; o segundo tem o seu.
+            assert ficheiro_do_primeiro.read_text(encoding="utf-8") == conteudo
+            assert list(tmp_path.glob("crash_martelo_pid*.log"))
+        finally:
+            import faulthandler
+
+            faulthandler.disable()
+            if diario_bordo._ficheiro_crash is not None:
+                diario_bordo._ficheiro_crash.close()
+            diario_bordo._caminho_em_uso = anterior_caminho
+            diario_bordo._ficheiro_crash = anterior_ficheiro
+    finally:
+        primeiro.kill()
+        primeiro.wait(timeout=30)
+
+    # Depois de o primeiro fechar, o mesmo ficheiro volta a contar.
+    assert not diario_bordo.outro_martelo_aberto(conteudo)
+
+
 def test_resumo_ignora_avisos_do_outlook_e_mostra_o_ultimo_crash() -> None:
     """A 18-09 o ficheiro tinha 173 avisos 0x8001010e (Outlook a anexar) antes
     do crash verdadeiro; o relatório tem de mostrar o que matou o processo."""
