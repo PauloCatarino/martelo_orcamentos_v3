@@ -32,9 +32,12 @@ from pathlib import Path
 # --- Configuração (afinável sem mexer na lógica) ---------------------------
 
 # A "Dossiers Internos" é uma janela-filha (MDI) DENTRO da janela principal do
-# PHC. Por isso ligamo-nos à janela principal ("PHC CS Corporate") e enviamos
-# as teclas para o dossier ativo (a proposta que o utilizador tem aberta).
-PHC_MAIN_WINDOW_TITLE_RE = r".*PHC CS Corporate.*"
+# PHC. Por isso ligamo-nos à janela principal e enviamos as teclas para o
+# dossier ativo (a proposta que o utilizador tem aberta).
+# Em 23-09-2026 o PHC foi atualizado e o título passou de "PHC CS Corporate"
+# para "Lança Encanto, Lda - Cegid PHC Evolution (Premium) 202601" (processo
+# phcevolution.exe). A estrutura por dentro manteve-se; aceitam-se os dois.
+PHC_MAIN_WINDOW_TITLE_RE = r".*(PHC CS Corporate|Cegid PHC Evolution).*"
 PHC_WINDOW_TITLE_RE = r".*Dossiers Internos.*"
 
 # Nº de TABs entre campos, contados a partir dos passos manuais do Paulo.
@@ -495,7 +498,7 @@ class PhcAutomationService:
 
         raise PhcAutomationError(
             "Não encontrei a janela do PHC aberta.\n\n"
-            "Confirma que o PHC (PHC CS Corporate) está aberto, com a janela "
+            "Confirma que o PHC (Cegid PHC Evolution) está aberto, com a janela "
             "Dossiers Internos → 'Proposta' ativa, e tenta de novo."
         )
 

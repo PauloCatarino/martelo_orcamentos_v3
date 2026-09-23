@@ -351,3 +351,26 @@ def test_plano_mantem_pausa_curta_depois_da_ref_cliente():
     pausa = plano[indice_ref + 1]
     assert isinstance(pausa, PassoPausa)
     assert pausa.segundos == PAUSA_CURTA
+
+
+@pytest.mark.parametrize(
+    "titulo",
+    [
+        "PHC CS Corporate",
+        "Lança Encanto, Lda - Cegid PHC Evolution (Premium) 202601 ",
+    ],
+)
+def test_titulo_da_janela_principal_aceita_phc_antigo_e_novo(titulo):
+    import re
+
+    from app.services.phc_automation_service import PHC_MAIN_WINDOW_TITLE_RE
+
+    assert re.fullmatch(PHC_MAIN_WINDOW_TITLE_RE, titulo)
+
+
+def test_titulo_da_janela_principal_nao_apanha_janelas_do_martelo():
+    import re
+
+    from app.services.phc_automation_service import PHC_MAIN_WINDOW_TITLE_RE
+
+    assert not re.search(PHC_MAIN_WINDOW_TITLE_RE, "Erro na automação do PHC")
