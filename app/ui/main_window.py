@@ -588,6 +588,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Palavra-passe", str(exc))
             return
 
+        # Se o login está memorizado neste PC, passa a ser com a nova — senão,
+        # amanhã o Martelo tentava entrar sozinho com a antiga.
+        from app.core import login_memorizado
+
+        username = getattr(self.authenticated_user, "username", "") or ""
+        if login_memorizado.e_de(username):
+            login_memorizado.gravar(username, nova)
+
         QMessageBox.information(
             self,
             "Palavra-passe",

@@ -117,9 +117,17 @@ def main() -> int:
     desligar()
 
     introducao_mostrada = False
+    # Só ao abrir o Martelo: depois de uma "mudança de utilizador" a janela de
+    # login aparece sempre — foi para isso que a pessoa saiu.
+    entrar_sozinho = True
     while True:
         login_window = LoginWindow()
-        if login_window.exec() != QDialog.DialogCode.Accepted or login_window.authenticated_user is None:
+        memorizado = entrar_sozinho and login_window.entrar_memorizado()
+        entrar_sozinho = False
+        if not memorizado and (
+            login_window.exec() != QDialog.DialogCode.Accepted
+            or login_window.authenticated_user is None
+        ):
             app_session.clear_current_user()
             desligar()
             diario_bordo.marcar_saida_normal()
@@ -130,7 +138,9 @@ def main() -> int:
             getattr(login_window.authenticated_user, "username", None)
             or getattr(login_window.authenticated_user, "nome", None)
         )
-        diario_bordo.registar_acao("Sessão iniciada")
+        diario_bordo.registar_acao(
+            "Sessão iniciada", "login memorizado neste PC" if memorizado else ""
+        )
 
         logout_requested = False
 
