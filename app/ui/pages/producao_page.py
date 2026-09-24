@@ -90,7 +90,11 @@ from app.services.lista_material_assistente_service import (
 )
 from app.services.analise_lista_material_service import import_hardware_cost
 from app.services.system_setting_service import SystemSettingService
-from app.services.permission_service import permissions_for_user, PERMISSAO_ANALISE_LISTA_MATERIAL
+from app.services.permission_service import (
+    PERMISSAO_ANALISE_LISTA_MATERIAL,
+    is_admin,
+    permissions_for_user,
+)
 from app.ui.dialogs.analise_lista_material_dialog import AnaliseListaMaterialDialog
 from app.services.producao_service import (
     ProducaoService,
@@ -1274,6 +1278,7 @@ class ProducaoPage(QWidget):
         self._todos = list(processos)
         self._invalidar_cache_detalhe()
         self.modelo.definir_processos(self._todos)
+        self.modelo.definir_tempos(self._ler_tempos_ativos(self._todos))
         if selecionar_id is not None:
             self._selected_processo_id = selecionar_id
         self._atualizar_filtros()
@@ -1281,6 +1286,24 @@ class ProducaoPage(QWidget):
 
         if not self._todos:
             self.status_label.setText("Sem processos de produção para mostrar.")
+
+    @staticmethod
+    def _e_admin() -> bool:
+        return is_admin(app_session.current_user)
+
+    def _ler_tempos_ativos(self, processos) -> dict:
+        """Tempo no iMos/Excel por obra — só lido da base para o administrador."""
+        if not self._e_admin():
+            return {}
+        from app.services.producao_tempo_atividade_service import (
+            ProducaoTempoAtividadeService,
+        )
+
+        try:
+            with SessionLocal() as session:
+                return ProducaoTempoAtividadeService(session).tempos_por_obra(processos)
+        except Exception:  # noqa: BLE001 - as colunas de tempo são acessórias
+            return {}
 
     def _render(self, *_args) -> None:
         """Re-apply the search and filters on the proxy model."""
@@ -1483,8 +1506,12 @@ class ProducaoPage(QWidget):
         visiveis = set(self._colunas_visiveis)
         self._aplicando_config_colunas = True
         try:
+            admin = self._e_admin()
             for column_index, coluna in enumerate(COLUNAS_PRODUCAO):
-                self.table.setColumnHidden(column_index, coluna.key not in visiveis)
+                self.table.setColumnHidden(
+                    column_index,
+                    coluna.key not in visiveis or (coluna.so_admin and not admin),
+                )
                 largura = self._larguras_colunas.get(
                     coluna.key,
                     LARGURAS_DEFAULT_PRODUCAO.get(coluna.key, 100),
@@ -1588,7 +1615,10 @@ class ProducaoPage(QWidget):
         menu.addSeparator()
 
         visiveis = set(self._colunas_visiveis)
+        admin = self._e_admin()
         for coluna in COLUNAS_PRODUCAO:
+            if coluna.so_admin and not admin:
+                continue
             acao = menu.addAction(coluna.titulo)
             acao.setCheckable(True)
             acao.setChecked(coluna.key in visiveis)

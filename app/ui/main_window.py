@@ -37,6 +37,7 @@ from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
+from app.ui.tempo_programas_tracker import TempoProgramasTracker
 from app.ui.pages import (
     AjudaPage,
     BibliotecaModulosPage,
@@ -430,6 +431,16 @@ class MainWindow(QMainWindow):
         )
         self._tempo_orcamento_tracker.tempoAtualizado.connect(
             self._atualizar_tempo_orcamento_visivel
+        )
+        # Tempo ativo no iMos e na Lista Material, por obra (só o admin o vê,
+        # na Produção). Mede com o Martelo aberto, mesmo minimizado.
+        self._tempo_programas_tracker = TempoProgramasTracker(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
         )
         # Aviso diário (dias úteis, a partir das 09h00) quando o PHC tem
         # clientes novos ou editados. Só para quem tem o menu Clientes.
@@ -862,9 +873,10 @@ class MainWindow(QMainWindow):
         if callable(pode_sair) and not pode_sair():
             event.ignore()
             return
-        tracker = getattr(self, "_tempo_orcamento_tracker", None)
-        if tracker is not None:
-            tracker.encerrar()
+        for nome in ("_tempo_orcamento_tracker", "_tempo_programas_tracker"):
+            tracker = getattr(self, nome, None)
+            if tracker is not None:
+                tracker.encerrar()
         super().closeEvent(event)
 
     def _destacar_nav(self, name: str) -> None:

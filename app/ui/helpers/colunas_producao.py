@@ -21,6 +21,8 @@ class ColunaProducao:
     titulo: str
     visivel_default: bool
     valor: Callable[[Any], str]
+    #: Só o administrador a vê (nem aparece no menu das colunas dos outros).
+    so_admin: bool = False
 
 
 def _texto(valor: object) -> str:
@@ -146,6 +148,10 @@ COLUNAS_PRODUCAO: list[ColunaProducao] = [
     ),
     ColunaProducao("imos", "Enc. iMos", True, _encomenda_imos),
     ColunaProducao("projeto_cliente", "Projeto Cliente", True, _projeto_cliente),
+    # Tempo ativo no iMos e na Lista Material. O texto vem do modelo, que
+    # recebe os tempos à parte — e só quando quem está a ver é administrador.
+    ColunaProducao("tempo_desenho", "Tempo desenho", True, lambda p: "", so_admin=True),
+    ColunaProducao("tempo_excel", "Tempo Excel", True, lambda p: "", so_admin=True),
     ColunaProducao(
         "localizacao",
         "Localização",
@@ -181,6 +187,8 @@ LARGURAS_DEFAULT_PRODUCAO: dict[str, int] = {
     "descricao_producao": 220,
     "imos": 110,
     "projeto_cliente": 120,
+    "tempo_desenho": 110,
+    "tempo_excel": 100,
     "localizacao": 150,
     "tipo_pasta": 170,
 }

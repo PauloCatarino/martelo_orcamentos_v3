@@ -145,6 +145,8 @@ def test_producao_page_imports_and_headers() -> None:
         "Descrição Produção",
         "Enc. iMos",
         "Projeto Cliente",
+        "Tempo desenho",
+        "Tempo Excel",
         "Localização",
         "Tipo Pasta",
     ]

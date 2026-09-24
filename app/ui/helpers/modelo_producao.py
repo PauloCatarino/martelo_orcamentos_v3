@@ -16,6 +16,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.prazos_producao import estado_prazo
+from app.domain.tempo_atividade import formatar_tempo_ativo
+from app.domain.tempo_programas import PROGRAMA_EXCEL, PROGRAMA_IMOS
 from app.models.user import User
 from app.services.producao_service import (
     indice_pesquisa,
@@ -39,8 +41,13 @@ COLUNAS_CENTRADAS = frozenset(
         "data_inicio",
         "data_entrega",
         "qt_artigos",
+        "tempo_desenho",
+        "tempo_excel",
     }
 )
+
+#: Colunas de tempo ativo → programa medido.
+COLUNAS_TEMPO = {"tempo_desenho": PROGRAMA_IMOS, "tempo_excel": PROGRAMA_EXCEL}
 
 #: Colunas alinhadas à direita (valores numéricos).
 COLUNAS_DIREITA = frozenset({"preco"})
@@ -66,6 +73,9 @@ class ProducaoTableModel(QAbstractTableModel):
         # Nome de quem criou cada encomenda no iMos, por id: a dica é pedida
         # linha a linha e não vale a pena repetir a consulta.
         self._autores: dict = {}
+        # Tempo ativo por obra (id → TempoObra). Vazio para quem não é admin:
+        # a página nem o chega a ler da base.
+        self._tempos: dict = {}
 
     # ---- dados -----------------------------------------------------------
     def definir_processos(self, processos) -> None:
@@ -77,6 +87,32 @@ class ProducaoTableModel(QAbstractTableModel):
         # a cada tecla escrita na pesquisa.
         self._indices = [indice_pesquisa(p) for p in self._processos]
         self.endResetModel()
+
+    def definir_tempos(self, tempos) -> None:
+        """Tempo ativo no iMos/Excel por id de obra (só para o administrador)."""
+        self._tempos = dict(tempos or {})
+        colunas = [
+            i for i, c in enumerate(COLUNAS_PRODUCAO) if c.key in COLUNAS_TEMPO
+        ]
+        if self._processos and colunas:
+            self.dataChanged.emit(
+                self.index(0, min(colunas)),
+                self.index(len(self._processos) - 1, max(colunas)),
+            )
+
+    def segundos_tempo(self, processo, key: str) -> int:
+        tempo = self._tempos.get(getattr(processo, "id", None))
+        return tempo.segundos(COLUNAS_TEMPO[key]) if tempo is not None else 0
+
+    def _texto_tempo(self, processo, key: str) -> str:
+        segundos = self.segundos_tempo(processo, key)
+        if segundos <= 0:
+            return ""
+        texto = formatar_tempo_ativo(segundos)
+        tempo = self._tempos.get(getattr(processo, "id", None))
+        # Partilhado com outro plano da mesma encomenda iMos: o mesmo tempo
+        # aparece nas duas linhas, e o ⚠ diz que não é para somar.
+        return f"{texto} ⚠" if tempo is not None and tempo.partilhado_com else texto
 
     def indice(self, row: int):
         """Root index of one source row, or None."""
@@ -127,6 +163,13 @@ class ProducaoTableModel(QAbstractTableModel):
             return coluna.titulo
         if role == Qt.ItemDataRole.ToolTipRole and coluna.key == "criada_em":
             return "Data em que a obra foi criada nesta lista"
+        if role == Qt.ItemDataRole.ToolTipRole and coluna.key in COLUNAS_TEMPO:
+            programa = "no iMos" if coluna.key == "tempo_desenho" else "na Lista Material (Excel)"
+            return (
+                f"Tempo ativo {programa}. Só visível para administradores.\n"
+                "Conta com o Martelo aberto nesse PC e com rato/teclado nos "
+                "últimos 5 minutos; obras abertas e paradas não contam."
+            )
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
@@ -143,8 +186,12 @@ class ProducaoTableModel(QAbstractTableModel):
         if role == self.ROLE_PROCESSO_ID:
             return getattr(processo, "id", None)
         if role == self.ROLE_ORDENACAO:
+            if coluna.key in COLUNAS_TEMPO:
+                return self.segundos_tempo(processo, coluna.key)
             return self._chave_ordenacao(processo, coluna)
         if role == Qt.ItemDataRole.DisplayRole:
+            if coluna.key in COLUNAS_TEMPO:
+                return self._texto_tempo(processo, coluna.key)
             return coluna.valor(processo)
         if role == Qt.ItemDataRole.TextAlignmentRole:
             return self._alinhamento(coluna)
@@ -206,7 +253,36 @@ class ProducaoTableModel(QAbstractTableModel):
             return self._dica_imos(processo)
         if coluna.key == "projeto_cliente":
             return self._dica_projeto_cliente(processo)
+        if coluna.key in COLUNAS_TEMPO:
+            return self._dica_tempo(processo, coluna.key)
         return coluna.valor(processo)
+
+    def _dica_tempo(self, processo, key: str) -> str:
+        """Quanto foi de cada pessoa, e com que outras obras é partilhado."""
+        tempo = self._tempos.get(getattr(processo, "id", None))
+        segundos = self.segundos_tempo(processo, key)
+        if tempo is None or segundos <= 0:
+            return "Sem tempo registado nesta obra."
+
+        indice = 0 if key == "tempo_desenho" else 1
+        onde = "no iMos (desenho)" if indice == 0 else "na Lista Material (Excel)"
+        linhas = [f"Tempo ativo {onde}: {formatar_tempo_ativo(segundos)}"]
+        pessoas = sorted(
+            ((nome, valores[indice]) for nome, valores in tempo.por_pessoa.items()),
+            key=lambda par: -par[1],
+        )
+        linhas += [
+            f"  • {nome}: {formatar_tempo_ativo(valor)}"
+            for nome, valor in pessoas
+            if valor > 0
+        ]
+        if tempo.partilhado_com:
+            linhas.append(
+                "⚠ Partilhado com "
+                + ", ".join(tempo.partilhado_com)
+                + " — a mesma encomenda no iMos, por isso o mesmo tempo."
+            )
+        return "\n".join(linhas)
 
     def _dica_projeto_cliente(self, processo) -> str:
         """Detalhe do aviso ao cliente: a coluna só tem espaço para o envelope."""

@@ -43,6 +43,7 @@ from app.models.orcamento_versao_placa_nao_stock import OrcamentoVersaoPlacaNaoS
 from app.models.orcamento_valueset_linha import OrcamentoValuesetLinha
 from app.models.orcamento_valueset_linha_operacao import OrcamentoValuesetLinhaOperacao
 from app.models.producao import Producao
+from app.models.producao_tempo_atividade import ProducaoTempoAtividade
 from app.models.producao_ocorrencia import ProducaoOcorrencia
 from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
 from app.models.system_setting import SystemSetting
@@ -108,6 +109,7 @@ __all__ = [
     "OrcamentoValuesetLinhaOperacao",
     "IaPerfilEntrada",
     "Producao",
+    "ProducaoTempoAtividade",
     "ProducaoOcorrencia",
     "ProducaoOcorrenciaAnexo",
     "SystemSetting",
