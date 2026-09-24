@@ -80,6 +80,8 @@ class OperacoesMaquinasPage(QWidget):
         "€/lado STD",
         "€/lado SERIE",
         "Ativo",
+        # No fim, para não baralhar as larguras já guardadas das outras colunas.
+        "Nomes no Streamlit",
     ]
 
     def __init__(self, on_back=None) -> None:
@@ -131,6 +133,14 @@ class OperacoesMaquinasPage(QWidget):
         self.maquinas_table = self._create_table(self.MAQUINAS_HEADERS)
         ligar_persistencia_larguras(self.operacoes_table, "operacoes")
         ligar_persistencia_larguras(self.maquinas_table, "maquinas")
+        # O que a Análise da Lista Material usa para o custo da produção.
+        for coluna, dica in (
+            ("Custo/hora STD", "€/h da máquina. É este valor que entra no quadro dos tempos do custo "
+                               "de produção da Lista Material (horas do Streamlit × €/h)."),
+            ("Nomes no Streamlit", "Como a máquina aparece nos tempos do Streamlit (ex.: ABD, V310, Stock). "
+                                   "Liga as horas reais de cada obra a este €/h. Mudar em «Editar Máquina»."),
+        ):
+            self.maquinas_table.horizontalHeaderItem(self.MAQUINAS_HEADERS.index(coluna)).setToolTip(dica)
 
         self.simulador_widget = SimuladorCncWidget()
 
@@ -277,6 +287,7 @@ class OperacoesMaquinasPage(QWidget):
                     maquina.preco_lado_curto_serie, maquina.preco_lado_longo_serie
                 ),
                 self._format_bool(maquina.ativo),
+                maquina.nomes_streamlit or "",
             ]
 
             for column_index, value in enumerate(values):
@@ -510,6 +521,13 @@ class OperacoesMaquinasPage(QWidget):
         self.toggle_maquina_button = QPushButton("Ativar/Desativar")
         self.toggle_maquina_button.clicked.connect(self.alternar_maquina_ativa)
         self.escaloes_maquina_button = QPushButton("Escalões de área (CNC)…")
+        self.nova_maquina_button.setToolTip("Criar uma máquina ou centro de trabalho com as suas tarifas.")
+        self.editar_maquina_button.setToolTip(
+            "Alterar a máquina selecionada (também com duplo clique): tarifas, custo/hora e os "
+            "«Nomes no Streamlit» usados no custo de produção da Lista Material."
+        )
+        self.toggle_maquina_button.setToolTip("Desativar ou voltar a ativar a máquina selecionada.")
+        self.escaloes_maquina_button.setToolTip("Gerir os escalões de área (€/peça) da máquina CNC selecionada.")
         self.escaloes_maquina_button.clicked.connect(self.abrir_escaloes_maquina)
 
         buttons_layout = QHBoxLayout()

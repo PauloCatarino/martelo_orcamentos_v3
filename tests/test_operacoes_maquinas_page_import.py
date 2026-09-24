@@ -55,6 +55,7 @@ def test_maquinas_headers() -> None:
         "€/lado STD",
         "€/lado SERIE",
         "Ativo",
+        "Nomes no Streamlit",
     ]
 
 
