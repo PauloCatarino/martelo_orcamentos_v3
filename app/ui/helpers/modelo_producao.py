@@ -108,7 +108,8 @@ class ProducaoTableModel(QAbstractTableModel):
         segundos = self.segundos_tempo(processo, key)
         if segundos <= 0:
             return ""
-        texto = formatar_tempo_ativo(segundos)
+        # Uns segundos arredondavam para "0 min", que parece "nada".
+        texto = formatar_tempo_ativo(segundos) if segundos >= 60 else "< 1 min"
         tempo = self._tempos.get(getattr(processo, "id", None))
         # Partilhado com outro plano da mesma encomenda iMos: o mesmo tempo
         # aparece nas duas linhas, e o ⚠ diz que não é para somar.
