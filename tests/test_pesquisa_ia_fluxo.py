@@ -179,6 +179,32 @@ def test_streaming_e_finalizacao_sao_recebidos_na_thread_qt(page, monkeypatch):
     assert all(thread == page.thread() for _, thread in chamadas)
 
 
+def test_falha_da_resposta_fica_no_diario_e_no_comentario(page, monkeypatch):
+    """PC do Pedro, 23-09: o "Reportar problema" chegou sem a razão do erro."""
+    from app.ui.pages import pesquisa_ia_page as mod
+    avisos = []
+    monkeypatch.setattr(mod.diario_bordo, "registar_aviso", lambda *a: avisos.append(a))
+    page._consulta_resposta = page.chave_consulta()
+
+    page._resposta_falhou("O Ollama está neste PC, mas não respondeu em 180 segundos.")
+
+    assert avisos == [("Pesquisa IA — gerar resposta", "O Ollama está neste PC, mas não respondeu em 180 segundos.")]
+    assert "não respondeu em 180 segundos" in page.resposta_text.toPlainText()
+    assert "comentário IA" in page.status_label.text()
+
+
+def test_falha_de_pergunta_antiga_tambem_fica_no_diario(page, monkeypatch):
+    from app.ui.pages import pesquisa_ia_page as mod
+    avisos = []
+    monkeypatch.setattr(mod.diario_bordo, "registar_aviso", lambda *a: avisos.append(a))
+    page._consulta_resposta = ("outra pergunta",)
+
+    page._resposta_falhou("erro")
+
+    assert len(avisos) == 1
+    assert "erro" not in page.resposta_text.toPlainText()
+
+
 def test_origem_resultado_e_disposicoes(page):
     page._woodstore=[{"Referencia":"X1","Material":"H1145/ST10","Espessura":19,"Disponivel":1}]
     page.aplicar_pesquisa()

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pathlib import Path
+from app.core import diario_bordo
 from app.ui.helpers.pesquisa_ia_fluxo import PesquisaIAFluxo, CicloPesquisa
 from app.domain.pesquisa_ia_consulta import corresponde, mesma_espessura, termos, observacoes_relevantes
 from app.services.system_setting_service import SystemSettingService
@@ -828,10 +829,21 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html(self._texto_llm))
 
     def _resposta_falhou(self, mensagem: str) -> None:
+        # Antes de qualquer saída: o "Reportar problema" só leva o diário, e
+        # a 23-09 (PC do Pedro) a razão ficou no ecrã e não chegou a ninguém.
+        diario_bordo.registar_aviso("Pesquisa IA — gerar resposta", mensagem)
         if self._consulta_resposta != self.chave_consulta():
             return
-        self.resposta_text.setHtml(getattr(self, "_resumo_html", "") + comentario_html("Comentário indisponível. Os dados das fontes permanecem acima."))
-        self.status_label.setText(f"Erro a gerar resposta: {mensagem}")
+        self.resposta_text.setHtml(
+            getattr(self, "_resumo_html", "")
+            + comentario_html(
+                "Comentário indisponível. Os dados das fontes permanecem acima."
+                f"\n\n{mensagem}"
+            )
+        )
+        self.status_label.setText(
+            "Erro a gerar resposta IA — a explicação está no comentário IA."
+        )
 
     def _resposta_concluida(self) -> None:
         if self._consulta_resposta != self.chave_consulta():

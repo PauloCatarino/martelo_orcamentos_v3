@@ -97,9 +97,6 @@ class RespostaIAService:
                 "Defina 'Modelo local IA para resposta' (ex.: llama3.1) "
                 "e tenha o Ollama a correr."
             )
-        import json
-        import urllib.request
-
         payload = {
             "model": self._modelo_local,
             "messages": [
@@ -111,16 +108,9 @@ class RespostaIAService:
         }
         req = ollama_local.pedido_chat(payload)
         with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
-            for linha in resp:
-                linha = linha.strip()
-                if not linha:
-                    continue
-                dados = json.loads(linha.decode("utf-8"))
-                pedaco = dados.get("message", {}).get("content") or ""
-                if pedaco:
-                    yield pedaco
-                if dados.get("done"):
-                    break
+            yield from ollama_local.pedacos_chat(
+                resp, timeout=180, modelo=self._modelo_local
+            )
 
     def _openai(self, prompt: str) -> str:
         try:

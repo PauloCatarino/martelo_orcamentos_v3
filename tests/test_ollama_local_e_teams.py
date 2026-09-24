@@ -99,6 +99,109 @@ def test_outras_falhas_nao_se_disfarcam_de_ollama_em_falta() -> None:
     assert not isinstance(erro, ollama_local.ModeloNaoInstalado)
 
 
+# ----- 1b. PC do Pedro (23-09-2026): demora e erros do próprio Ollama -----
+
+
+@pytest.mark.parametrize(
+    "erro",
+    [TimeoutError("timed out"), urllib.error.URLError(TimeoutError("timed out"))],
+)
+def test_demora_nao_se_disfarca_de_ollama_por_instalar(erro) -> None:
+    """O Ollama acabado de instalar demora a carregar o modelo; não está em falta."""
+    explicado = ollama_local.explicar_falha(erro, "llama3.2", 180)
+
+    assert isinstance(explicado, ollama_local.OllamaLento)
+    assert not isinstance(explicado, ollama_local.OllamaIndisponivel)
+    texto = str(explicado)
+    assert "está neste PC" in texto
+    assert "180 segundos" in texto
+    assert "llama3.2" in texto
+    assert "timed out" in texto
+
+
+def _http_500(corpo: bytes) -> urllib.error.HTTPError:
+    import io
+
+    return urllib.error.HTTPError(
+        ollama_local.URL_CHAT, 500, "Internal Server Error", hdrs=None,
+        fp=io.BytesIO(corpo),
+    )
+
+
+def test_falta_de_memoria_diz_o_que_fazer() -> None:
+    erro = _http_500(
+        b'{"error":"model requires more system memory (5.6 GiB) '
+        b'than is available (3.1 GiB)"}'
+    )
+
+    explicado = ollama_local.explicar_falha(erro, "llama3.2")
+
+    assert isinstance(explicado, ollama_local.OllamaRespondeuErro)
+    texto = str(explicado)
+    assert "memória livre" in texto and "llama3.2" in texto
+    # A frase do próprio Ollama não se perde.
+    assert "5.6 GiB" in texto
+
+
+def test_outro_erro_do_ollama_mostra_o_que_ele_disse() -> None:
+    erro = _http_500(b'{"error":"llama runner process has terminated"}')
+
+    texto = str(ollama_local.explicar_falha(erro, "llama3.2"))
+
+    assert "llama runner process has terminated" in texto
+    assert "HTTP Error 500" not in texto
+
+
+class _RespostaFalsa:
+    def __init__(self, linhas, falha: Exception | None = None) -> None:
+        self._linhas = linhas
+        self._falha = falha
+
+    def __iter__(self):
+        yield from self._linhas
+        if self._falha:
+            raise self._falha
+
+
+def test_streaming_devolve_os_pedacos_de_texto() -> None:
+    resp = _RespostaFalsa([
+        b'{"message":{"content":"Ol"},"done":false}\n',
+        b"\n",
+        b'{"message":{"content":"\xc3\xa1"},"done":false}\n',
+        b'{"message":{"content":""},"done":true}\n',
+        b'{"message":{"content":"depois do fim"}}\n',
+    ])
+
+    assert list(ollama_local.pedacos_chat(resp, timeout=180)) == ["Ol", "á"]
+
+
+def test_erro_a_meio_do_streaming_nao_passa_em_silencio() -> None:
+    resp = _RespostaFalsa([
+        b'{"message":{"content":"Ol"},"done":false}\n',
+        b'{"error":"model requires more system memory than is available"}\n',
+    ])
+
+    with pytest.raises(ollama_local.OllamaRespondeuErro, match="memória livre"):
+        list(ollama_local.pedacos_chat(resp, timeout=180, modelo="llama3.2"))
+
+
+def test_demora_a_meio_do_streaming_e_explicada() -> None:
+    resp = _RespostaFalsa(
+        [b'{"message":{"content":"Ol"},"done":false}\n'],
+        falha=TimeoutError("timed out"),
+    )
+
+    with pytest.raises(ollama_local.OllamaLento, match="180 segundos"):
+        list(ollama_local.pedacos_chat(resp, timeout=180, modelo="llama3.2"))
+
+
+def test_resposta_da_pesquisa_ia_usa_o_leitor_de_streaming() -> None:
+    from app.services.pesquisa_ia_resposta_service import RespostaIAService
+
+    fonte = inspect.getsource(RespostaIAService._local_stream)
+    assert "ollama_local.pedacos_chat" in fonte
+
+
 def test_listar_modelos_nao_rebenta_sem_ollama(monkeypatch) -> None:
     def _falha(*_a, **_k):
         raise _recusada()
