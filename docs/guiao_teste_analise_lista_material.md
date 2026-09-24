@@ -392,3 +392,30 @@ existirem com dados), porque são corrigidos à mão em cada obra. Do
    no botão volta a pô-la no custo.
 9. No passo a passo, **Não considerar nesta obra** faz o mesmo e passa à seguinte.
 10. O Canto Rodapé (sem Ref PHC) fica com o preço IMOS de 1,10 € (3.ª opção).
+
+## Custo de produção: separadoras e produção nos Tempos por setor (24-09-2026)
+
+Obra de referência: **1357_01_26_JF_VIVA** (Arquivada, 12 setores/máquinas com horas).
+Migração 116 (`def_maquinas.nomes_streamlit`) aplicada à dev e à real.
+
+1. **Configurações › Operações / Máquinas › Máquinas**: editar **CNC_ABD** → campo novo
+   **Nomes no Streamlit** = `ABD` → Guardar. Editar **CNC_VERTICAL** → `V310`. As máquinas
+   de tipo CORTE e ORLAGEM passam a mostrar o **Custo/hora STD** (80 e 90 €/h).
+2. Produção → obra 1357 → Lista Material → **Análise** → separador **Custo de produção
+   (parcial)**: pela ordem Placas | Orlas | Ferragens | (Comprados) | SPP, com uma linha
+   baixa acastanhada entre categorias; **nenhuma linha de Produção**. O filtro já não tem
+   «Produção». O resumo diz «Produção (Tempos por setor): … €» e o total da obra inclui-a.
+3. Separador **Tempos por setor**: uma linha por setor/máquina (CNC tem ABD, H600, V310),
+   com €/h e Custo €. Corte (HKL 300) = 4,00 h × 80 = 320,00 €. As linhas sem máquina no
+   Martelo (Stock, Preparação, H600, Expedição…) ficam a rosa: «Sem máquina V3 para …».
+4. Selecionar a linha **H600** → **Associar máquina V3…** (ou clicar na coluna «Máquina V3»)
+   → escolher uma máquina → o €/h e o custo aparecem, e o nome `H600` fica escrito nos
+   «Nomes no Streamlit» dessa máquina (confirmar no passo 1). Na próxima obra liga sozinho.
+5. **Guardar análise de custos** → **Inserir relatório no Excel** → abrir o Excel, separador
+   **Custo_V3_…**: quadro dos tempos com Setor | Máquina | Horas | Horas estimadas | €/h |
+   Custo € | Máquina V3 | Estado; horas e €/h a amarelo. Linhas sem €/h a rosa com
+   «Sem €/h no Martelo — criar a máquina ou juntar «…» aos «Nomes no Streamlit»».
+6. No Excel, escrever 1,5 na coluna Horas do **Stock** e 20 no €/h → o Custo € dá 30,00,
+   o «Total produção», a linha **Produção** do resumo (B10) e o **TOTAL FINAL** sobem.
+7. Na tabela das linhas do Excel: sem linhas de Produção; linha vazia acastanhada entre
+   categorias; «Total das linhas» = só materiais.

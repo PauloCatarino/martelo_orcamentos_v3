@@ -44,6 +44,7 @@ class DefMaquinaResumo:
     preco_furo_serie: Decimal | None = None
     preco_m2_face_std: Decimal | None = None
     preco_m2_face_serie: Decimal | None = None
+    nomes_streamlit: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -119,6 +120,7 @@ class DefMaquinaRepository:
         preco_m2_face_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
+        nomes_streamlit: str | None = None,
     ) -> DefMaquinaResumo:
         """Create one machine."""
         maquina = DefMaquina(
@@ -149,6 +151,7 @@ class DefMaquinaRepository:
             preco_m2_face_serie=preco_m2_face_serie,
             ativo=ativo,
             observacoes=observacoes,
+            nomes_streamlit=nomes_streamlit,
         )
         self.session.add(maquina)
         self.session.flush()
@@ -186,6 +189,7 @@ class DefMaquinaRepository:
         preco_m2_face_serie: Decimal | None = None,
         ativo: bool = True,
         observacoes: str | None = None,
+        nomes_streamlit: str | None = None,
     ) -> DefMaquinaResumo:
         """Update one machine."""
         maquina = self.session.get(DefMaquina, id)
@@ -219,6 +223,7 @@ class DefMaquinaRepository:
         maquina.preco_m2_face_serie = preco_m2_face_serie
         maquina.ativo = ativo
         maquina.observacoes = observacoes
+        maquina.nomes_streamlit = nomes_streamlit
         self.session.flush()
 
         return self._to_resumo(maquina)
@@ -276,6 +281,7 @@ class DefMaquinaRepository:
             preco_m2_face_serie=maquina.preco_m2_face_serie,
             ativo=maquina.ativo,
             observacoes=maquina.observacoes,
+            nomes_streamlit=maquina.nomes_streamlit,
             created_at=maquina.created_at,
             updated_at=maquina.updated_at,
         )

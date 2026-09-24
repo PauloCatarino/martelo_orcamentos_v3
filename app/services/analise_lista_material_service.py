@@ -532,12 +532,37 @@ def latest_snapshot(path, version):
 # inseridas. Margem por categoria e um coeficiente de segurança (em %) sobre o
 # total já com as margens dão o TOTAL FINAL.
 
-CATEGORIAS_CUSTO = ('Placas', 'Orlas', 'Ferragens', 'SPP', 'Comprados', 'Produção')
+# Ordem pedida pelo Paulo (24-09-2026): placas | orlas | ferragens | purch | spp.
+# A Produção não entra na tabela das linhas: vive no quadro dos tempos por setor.
+CATEGORIAS_MATERIAIS = ('Placas', 'Orlas', 'Ferragens', 'Comprados', 'SPP')
+CATEGORIAS_CUSTO = CATEGORIAS_MATERIAIS + ('Produção',)
 MARGENS_CUSTO = {'Placas': 0, 'Orlas': 0.10, 'Ferragens': 0.15, 'SPP': 0.15, 'Comprados': 0.10, 'Produção': 0.12}
 COEFICIENTE_CUSTO = 0.10
 COR_CABECALHO = 0xD9EAD3     # o verde que o separador sempre teve (BGR)
 COR_TOTAL_FINAL = 0xB5D5A9
 COR_ENTRADA = 0xCCF2FF       # amarelo claro: células para alterar à mão
+COR_SEPARADOR = 0xC9D3DD     # linha vazia entre categorias, num tom acastanhado
+COR_SEM_TARIFA = 0xCED3F6    # rosado: falta o €/h no Martelo
+
+
+def linhas_por_categoria(lines):
+    """As linhas de material pela ordem das categorias, com None entre elas.
+
+    O None é a linha separadora (vazia e de outra cor) no Martelo e no Excel.
+    A Produção fica de fora; uma categoria desconhecida vai para o fim.
+    """
+    ordem = list(CATEGORIAS_MATERIAIS)
+    for line in lines:
+        if line['kind'] not in ordem and line['kind'] != 'Produção':
+            ordem.append(line['kind'])
+    result = []
+    for kind in ordem:
+        grupo = [line for line in lines if line['kind'] == kind]
+        if grupo:
+            if result:
+                result.append(None)
+            result.extend(grupo)
+    return result
 COLUNAS_CUSTO = ('Categoria', 'Artigo / material', 'Comp (mm)', 'Larg (mm)', 'Esp (mm)', 'Quantidade', 'Un.',
                  'Ref_LE — Descrição V3', 'Preço líquido', 'Un. preço', 'Fator', 'Incluir (S/N)', 'Custo €',
                  'Estado', 'Data do preço')
@@ -549,23 +574,31 @@ def _texto_formula(texto):
 
 
 def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, production):
+    from app.services import tempos_lista_material_service as tempos
+
     fim = ULTIMA_COLUNA
     sheet.Range(f'A1:{fim}1').Merge()
     sheet.Cells(1, 1).Value2 = 'Custo de produção (parcial) — ' + version
     sheet.Range(f'A2:{fim}2').Merge()
     sheet.Cells(2, 1).Value2 = (
         ('Preços e tarifas V3 guardados nesta análise. Consulta Streamlit: ' + production['queried_at'] if production
-         else 'Preços líquidos V3 guardados nesta análise. Produção pendente de horas reais Streamlit.')
-        + ' Células amarelas alteráveis (quantidade, preço, fator, Incluir, margens, coeficiente): os totais '
-        'recalculam; também se podem apagar ou inserir linhas na tabela.')
+         else 'Preços líquidos V3 guardados nesta análise. Tempos Streamlit ainda não consultados.')
+        + ' Células amarelas alteráveis (quantidade, preço, fator, Incluir, horas, €/h, margens, coeficiente): '
+        'os totais recalculam; também se podem apagar ou inserir linhas na tabela.')
 
-    from app.services.tempos_lista_material_service import SECTORS
-    sectors = (production or {}).get('sectors', [{'sector': k, 'name': v[0], 'hours': None, 'estimated': None,
-                                                  'state': 'Tempos não consultados'} for k, v in SECTORS.items()])
+    # Produção: uma linha por setor/máquina, com o €/h do Martelo sempre à vista.
+    producao = tempos.completar_setores([l for l in lines if l['kind'] == 'Produção'],
+                                        (production or {}).get('sectors'))
+    materiais = linhas_por_categoria(lines)
+    estado_setor = {s['sector']: s for s in (production or {}).get('sectors', [])}
+
     linha_setores = 15
-    linha_avisos = linha_setores + len(sectors) + 2
+    primeira_hora = linha_setores + 1
+    ultima_hora = linha_setores + len(producao)
+    linha_total_horas = ultima_hora + 1
+    linha_avisos = linha_total_horas + 2
     header_row = linha_avisos + 2
-    first, last = header_row + 1, header_row + max(1, len(lines))
+    first, last = header_row + 1, header_row + max(1, len(materiais))
     tabela = 'TabCusto_' + sheet.Name[len('Custo_V3_'):]
 
     # --- Resumo por categoria, margens e coeficiente -------------------------
@@ -603,23 +636,65 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     sheet.Range('A13:E13').Interior.Color = COR_TOTAL_FINAL
     sheet.Range('A4:E13').Borders.LineStyle = 1
 
-    # --- Tempos por setor ------------------------------------------------------
-    sheet.Range(f'A{linha_setores}:E{linha_setores}').Value = (
-        ('Setor', 'Horas registadas', 'Horas estimadas', 'Custo conhecido €', 'Estado'),)
-    sheet.Range(f'E{linha_setores}:{fim}{linha_setores}').Merge()
-    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').WrapText = True
-    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').Font.Bold = True
-    sheet.Range(f'A{linha_setores}:{fim}{linha_setores}').Interior.Color = COR_CABECALHO
+    # --- Tempos por setor: horas × €/h do Martelo -------------------------------
+    # Pedido do Paulo (24-09-2026): o €/h vem SEMPRE preenchido do V3, haja ou não
+    # horas no Streamlit, para se poderem escrever as horas à mão e o custo sair.
+    sheet.Range(f'A{linha_setores}:I{linha_setores}').Value = (
+        ('Setor', 'Máquina / centro (Streamlit)', 'Horas registadas', 'Horas estimadas', '€/h (V3)',
+         'Custo €', 'Máquina V3 — tarifa (Configurações › Operações / Máquinas)', None, 'Estado'),)
+    sheet.Range(f'G{linha_setores}:H{linha_setores}').Merge()
+    sheet.Range(f'I{linha_setores}:{fim}{linha_setores}').Merge()
+    cabecalho_horas = sheet.Range(f'A{linha_setores}:{fim}{linha_setores}')
+    cabecalho_horas.WrapText = True
+    cabecalho_horas.Font.Bold = True
+    cabecalho_horas.Interior.Color = COR_CABECALHO
     sheet.Rows(linha_setores).RowHeight = 32
-    for r, entry in enumerate(sectors, linha_setores + 1):
-        costs = [calculate_cost(l, prices.get(l['key']))[0] for l in lines if l.get('sector') == entry['sector']]
-        values = (entry['name'], float(entry['hours']) if entry['hours'] is not None else None,
-                  float(entry['estimated']) if entry['estimated'] is not None else None,
-                  float(sum((c for c in costs if c is not None), Decimal(0))) if any(c is not None for c in costs) else None,
-                  entry['state'])
-        sheet.Range(f'A{r}:E{r}').Value = (values,)
-        sheet.Range(f'E{r}:{fim}{r}').Merge()
-    sheet.Range(f'B{linha_setores + 1}:D{linha_setores + len(sectors)}').NumberFormat = '0.00'
+    setores_vistos = set()
+    sem_tarifa = []
+    for r, line in enumerate(producao, primeira_hora):
+        stage = line.get('sector')
+        label = tempos.SECTORS[stage][0] if stage in tempos.SECTORS else line['name']
+        entry = estado_setor.get(stage, {})
+        price = prices.get(line['key'])
+        tarifa, tem_tarifa = tempos.descrever_tarifa(line, price, curto=True)
+        estimado = number(entry.get('estimated')) if stage not in setores_vistos else None
+        setores_vistos.add(stage)
+        horas, euros_hora = number(line.get('quantity')), number((price or {}).get('net'))
+        for area in (f'A{r}:B{r}', f'G{r}', f'I{r}'):
+            sheet.Range(area).NumberFormat = '@'
+        sheet.Range(f'A{r}:I{r}').Value = ((
+            label, line.get('machine') or '—',
+            float(horas) if horas is not None else None,
+            float(estimado) if estimado is not None else None,
+            float(euros_hora) if euros_hora is not None else None,
+            None, tarifa, None,
+            entry.get('state') or ('Tempos não consultados' if not production else 'Estado por confirmar')),)
+        sheet.Cells(r, 6).Formula = f'=N(C{r})*N(E{r})'
+        sheet.Range(f'G{r}:H{r}').Merge()
+        sheet.Range(f'I{r}:{fim}{r}').Merge()
+        if not tem_tarifa:
+            sem_tarifa.append(r)
+    sheet.Range(f'A{linha_total_horas}:B{linha_total_horas}').Merge()
+    sheet.Cells(linha_total_horas, 1).Value2 = 'Total produção'
+    for coluna in ('C', 'D', 'F'):
+        sheet.Range(f'{coluna}{linha_total_horas}').Formula = (
+            f'=SUM({coluna}{primeira_hora}:{coluna}{ultima_hora})')
+    sheet.Range(f'G{linha_total_horas}:H{linha_total_horas}').Merge()
+    sheet.Range(f'I{linha_total_horas}:{fim}{linha_total_horas}').Merge()
+    horas_area = sheet.Range(f'A{primeira_hora}:{fim}{linha_total_horas}')
+    horas_area.VerticalAlignment = -4108
+    sheet.Range(f'C{primeira_hora}:F{linha_total_horas}').NumberFormat = '0.00'
+    for coluna in ('C', 'E'):
+        sheet.Range(f'{coluna}{primeira_hora}:{coluna}{ultima_hora}').Interior.Color = COR_ENTRADA
+    for r in sem_tarifa:
+        sheet.Range(f'G{r}:H{r}').Interior.Color = COR_SEM_TARIFA
+        sheet.Range(f'G{r}:H{r}').WrapText = True
+        sheet.Rows(r).RowHeight = 30   # célula unida não ajusta a altura sozinha
+    total_horas = sheet.Range(f'A{linha_total_horas}:{fim}{linha_total_horas}')
+    total_horas.Font.Bold = True
+    total_horas.Interior.Color = COR_CABECALHO
+    sheet.Range(f'A{linha_setores}:{fim}{linha_total_horas}').Borders.LineStyle = 1
+
     sheet.Range(f'A{linha_avisos}:{fim}{linha_avisos}').Merge()
     sheet.Cells(linha_avisos, 1).Value2 = ' | '.join(
         warnings + (production or {}).get('warnings', [])
@@ -630,8 +705,12 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     # --- Linhas: Tabela do Excel com fórmulas -----------------------------------
     sheet.Range(f'A{header_row}:{fim}{header_row}').Value = (COLUNAS_CUSTO,)
     estados = []
+    separadores = []
     geral = sheet.Cells(1, 40).NumberFormat   # «Geral» na língua do Excel instalado
-    for r, line in enumerate(lines, first):
+    for r, line in enumerate(materiais, first):
+        if line is None:
+            separadores.append(r)
+            continue
         price = prices.get(line['key']) or {}
         cost, state = calculate_cost(line, price or None)
         factor = Decimal(1)
@@ -680,6 +759,12 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     tab.ListColumns('Custo €').TotalsCalculation = 1       # soma
     tab.TotalsRowRange.Cells(1, 1).Value2 = 'Total das linhas'
     for r, category in enumerate(CATEGORIAS_CUSTO, 5):
+        if category == 'Produção':
+            # A produção soma o quadro dos tempos (horas × €/h), não a Tabela.
+            sheet.Cells(r, 2).Formula = f'=F{linha_total_horas}'
+            sheet.Cells(r, 3).Formula = (f'=COUNTIFS(F{primeira_hora}:F{ultima_hora},0,'
+                                         f'I{primeira_hora}:I{ultima_hora},"<>Não aplicável")')
+            continue
         sheet.Cells(r, 2).Formula = f'=SUMIFS({tabela}[Custo €],{tabela}[Categoria],A{r})'
         sheet.Cells(r, 3).Formula = (f'=COUNTIFS({tabela}[Categoria],A{r},{tabela}[Incluir (S/N)],"S",'
                                      f'{tabela}[Custo €],0)')
@@ -693,6 +778,14 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     for coluna, formato in (('Quantidade', '0.00'), ('Preço líquido', '0.00###'), ('Fator', '0.000'),
                             ('Custo €', '0.00')):
         tab.ListColumns(coluna).DataBodyRange.NumberFormat = formato
+    # Linha vazia e de outra cor entre categorias (pedido do Paulo, 24-09-2026). O
+    # 0 que a fórmula do custo dá nela fica escondido.
+    for r in separadores:
+        faixa = sheet.Range(f'A{r}:{fim}{r}')
+        faixa.Interior.Color = COR_SEPARADOR
+        faixa.NumberFormat = ';;;'
+        faixa.Validation.Delete()
+        sheet.Rows(r).RowHeight = 8
     tab.TotalsRowRange.Cells(1, 13).NumberFormat = '0.00'
     tab.ListColumns('Data do preço').TotalsCalculation = 0   # sem a contagem que o Excel põe
     tab.HeaderRowRange.Font.Bold = True
@@ -718,8 +811,9 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     if production and production.get('events'):
         event_header = last + 3
         event_rows = [('Data', 'Setor', 'Máquina', 'Pessoa / login', 'Horas', 'Chave Streamlit', 'Plano')]
-        event_rows += [(e.get('data_registo'), e['setor'], e.get('maquina'), e.get('responsavel'), e['horas'],
-                        e['bd_key'], e.get('bd_plano_corte')) for e in production['events']]
+        # Data ao minuto: com segundos e milésimos não cabia e partia cada linha em duas.
+        event_rows += [(str(e.get('data_registo') or '')[:16], e['setor'], e.get('maquina'), e.get('responsavel'),
+                        e['horas'], e['bd_key'], e.get('bd_plano_corte')) for e in production['events']]
         for r, values in enumerate(event_rows, event_header):
             for (start, end), value in zip(((1, 1), (2, 2), (3, 4), (5, 7), (8, 8), (9, 11), (12, 15)), values):
                 area = sheet.Range(sheet.Cells(r, start), sheet.Cells(r, end))
@@ -729,10 +823,9 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
                 if r > event_header and start == 8 and number(value) is not None:
                     area.NumberFormat = '0.00'
                     sheet.Cells(r, start).Value2 = float(number(value))
-                area.WrapText = True
-            sheet.Rows(r).RowHeight = 30
             last = r
         sheet.Range(f'A{event_header}:{fim}{event_header}').Font.Bold = True
+        sheet.Range(f'A{event_header}:{fim}{event_header}').Interior.Color = COR_CABECALHO
     from app.services.lista_material_pdf_service import pagina_a3_ao_baixo
     pagina_a3_ao_baixo(sheet)
     setup = sheet.PageSetup

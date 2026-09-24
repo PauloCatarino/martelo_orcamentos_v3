@@ -2,12 +2,41 @@
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.models import DefMaquina
 from app.repositories.def_maquina_repository import DefMaquinaRepository, DefMaquinaResumo
+
+#: Tamanho da coluna ``def_maquinas.nomes_streamlit``.
+TAMANHO_NOMES_STREAMLIT = 255
+
+
+def chave_nome_streamlit(nome: str | None) -> str:
+    """«HKL 300», «hkl300» e «HKL-300» são a mesma máquina: só letras e algarismos."""
+    sem_acentos = unicodedata.normalize("NFD", str(nome or "").casefold())
+    return "".join(c for c in sem_acentos if c.isalnum() and not unicodedata.combining(c))
+
+
+def separar_nomes_streamlit(texto: str | None) -> list[str]:
+    """Os nomes escritos no campo, pela ordem, sem repetidos nem vazios."""
+    nomes: list[str] = []
+    vistos: set[str] = set()
+    for parte in re.split(r"[,;\n]+", str(texto or "")):
+        nome = " ".join(parte.split())
+        chave = chave_nome_streamlit(nome)
+        if chave and chave not in vistos:
+            vistos.add(chave)
+            nomes.append(nome)
+    return nomes
+
+
+def normalizar_nomes_streamlit(texto: str | None) -> str | None:
+    return ", ".join(separar_nomes_streamlit(texto)) or None
 
 
 @dataclass(frozen=True)
@@ -41,6 +70,7 @@ class CriarDefMaquinaData:
     preco_m2_face_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
+    nomes_streamlit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,6 +104,7 @@ class EditarDefMaquinaData:
     preco_m2_face_serie: Decimal | None = None
     ativo: bool = True
     observacoes: str | None = None
+    nomes_streamlit: str | None = None
 
 
 class DefMaquinaService:
@@ -137,6 +168,7 @@ class DefMaquinaService:
             preco_m2_face_serie=data.preco_m2_face_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
+            nomes_streamlit=normalizar_nomes_streamlit(data.nomes_streamlit),
         )
         self.session.commit()
 
@@ -177,6 +209,7 @@ class DefMaquinaService:
             preco_m2_face_serie=data.preco_m2_face_serie,
             ativo=data.ativo,
             observacoes=data.observacoes,
+            nomes_streamlit=normalizar_nomes_streamlit(data.nomes_streamlit),
         )
         self.session.commit()
 
@@ -197,6 +230,37 @@ class DefMaquinaService:
             self.session.commit()
 
         return activated
+
+    def memorizar_nome_streamlit(self, id: int, nome: str) -> list[str]:
+        """Ligar um nome do Streamlit a esta máquina, para as obras seguintes.
+
+        Um nome só serve uma máquina: se outra o tinha, perde-o (a escolha mais
+        recente ganha). Devolve os códigos das máquinas a que foi tirado.
+        """
+        chave = chave_nome_streamlit(nome)
+        maquina = self.session.get(DefMaquina, id)
+        if maquina is None or not chave:
+            raise ValueError("Máquina ou nome do Streamlit em falta.")
+        retirado_de: list[str] = []
+        for outra in self.session.query(DefMaquina).filter(DefMaquina.id != id):
+            nomes = separar_nomes_streamlit(outra.nomes_streamlit)
+            restantes = [n for n in nomes if chave_nome_streamlit(n) != chave]
+            if len(restantes) != len(nomes):
+                outra.nomes_streamlit = ", ".join(restantes) or None
+                retirado_de.append(outra.codigo)
+        nomes = separar_nomes_streamlit(maquina.nomes_streamlit)
+        if all(chave_nome_streamlit(n) != chave for n in nomes):
+            nomes.append(" ".join(str(nome).split()))
+        texto = ", ".join(nomes)
+        if len(texto) > TAMANHO_NOMES_STREAMLIT:
+            self.session.rollback()
+            raise ValueError(
+                f"A máquina {maquina.codigo} já tem nomes do Streamlit a mais: limpe-os em "
+                "Configurações › Operações / Máquinas antes de juntar outro."
+            )
+        maquina.nomes_streamlit = texto
+        self.session.commit()
+        return retirado_de
 
     def _normalize_codigo(self, codigo: str | None, required: bool = True) -> str | None:
         normalized = (codigo or "").strip().upper()

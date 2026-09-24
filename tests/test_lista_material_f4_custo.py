@@ -257,7 +257,7 @@ def test_nao_considerar_nesta_obra_nao_mexe_no_preco_nem_no_mapeamento(app, sess
         linha = next(l for l in dialog.lines if l["name"] == "Dobradiça")
         preco = dict(dialog.prices[linha["key"]])
         antes = dialog.cost_summary.text()
-        row = dialog.lines.index(linha)
+        row = dialog._cost_row_of(linha)
         dialog.cost_table.selectRow(row)
         dialog._toggle_excluded()
         assert linha["key"] in dialog.excluded

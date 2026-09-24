@@ -210,6 +210,13 @@ def estado_do_custo(estado_obra: str, lines, prices, plans, production) -> Estad
             texto += f" · {confirmar} com unidade a confirmar"
         pontos.append((ok, texto))
 
+    # Cada linha de horas precisa do €/h do V3 (as de 0 h, setores não aplicáveis, não).
+    producao = [l for l in lines if l["kind"] == "Produção" and _numero(l.get("quantity")) != 0]
+    if producao:
+        ok = sum(1 for l in producao if _numero((prices.get(l["key"]) or {}).get("net")) is not None)
+        pontos.append((ok == len(producao), f"Tarifas de produção: {ok} de {len(producao)} linhas com €/h do V3"
+                       + ("" if ok == len(producao) else " — ver o separador Tempos por setor")))
+
     sectors = (production or {}).get("sectors") or []
     # «Não aplicável» (estado N no Streamlit) conta como fechado; «Concluído» com horas também.
     closed = sum(1 for s in sectors if s.get("state") in ("Concluído", "Não aplicável"))

@@ -83,6 +83,10 @@ class DefMaquina(Base):
     )
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     observacoes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Nomes com que a máquina aparece nos tempos do Streamlit (HKL 300, Orla 2…),
+    # separados por vírgulas. A Análise da Lista Material liga por aqui as horas
+    # reais de cada obra ao custo/hora desta máquina.
+    nomes_streamlit: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

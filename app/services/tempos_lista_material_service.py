@@ -13,6 +13,10 @@ from sqlalchemy import select
 from app.models.def_maquina import DefMaquina
 from app.services import streamlit_sql_service as st
 from app.services.analise_lista_material_service import number, cost_line
+from app.services.def_maquina_service import chave_nome_streamlit, separar_nomes_streamlit
+
+#: Onde se definem as máquinas e o custo/hora (o Martelo é a referência).
+MENU_MAQUINAS = 'Configurações › Operações / Máquinas'
 
 SECTORS = {
     'stock': ('Stock', 'bd_stock_ok', None),
@@ -131,6 +135,7 @@ def summarize(headers, history, year, order, model):
                                        str(minutes / 60), 'h', sector=stage, machine=machine))
         if invalid[stage] or (not totals[stage] and not na):
             lines.append(cost_line('Produção', f'{stage}|pendente', f'{label} — horas por apurar', None, 'h', sector=stage, machine=''))
+    lines = completar_setores(lines, sectors)
     return {'year': int(year), 'order': str(order), 'model': str(model),
             'queried_at': datetime.now().isoformat(timespec='seconds'),
             'versions': sorted(str(r.get('bd_versao') or '') for r in headers),
@@ -138,18 +143,91 @@ def summarize(headers, history, year, order, model):
             'warnings': list(dict.fromkeys(warnings)), 'complete': False}
 
 
+def completar_setores(lines, sectors=None):
+    """Pelo menos uma linha por setor, pela ordem dos setores.
+
+    O quadro dos tempos no Excel tem de ter sempre o €/h de cada setor, haja
+    ou não horas no Streamlit: o utilizador pode escrever as horas à mão.
+    Setor «Não aplicável» sem horas fica a 0; os outros ficam por apurar.
+    """
+    estados = {s['sector']: s.get('state') for s in (sectors or [])}
+    result = list(lines)
+    for stage, (label, _, _) in SECTORS.items():
+        if any(l.get('sector') == stage for l in result):
+            continue
+        na = estados.get(stage) == 'Não aplicável'
+        result.append(cost_line('Produção', f'{stage}|pendente',
+                                f'{label} — não aplicável' if na else f'{label} — horas por apurar',
+                                '0' if na else None, 'h', sector=stage, machine=''))
+    ordem = list(SECTORS)
+    return sorted(result, key=lambda l: ordem.index(l['sector']) if l.get('sector') in ordem else len(ordem))
+
+
 def machines(session):
-    columns = (DefMaquina.id, DefMaquina.codigo, DefMaquina.nome, DefMaquina.tipo, DefMaquina.custo_hora)
+    columns = (DefMaquina.id, DefMaquina.codigo, DefMaquina.nome, DefMaquina.tipo, DefMaquina.custo_hora,
+               DefMaquina.nomes_streamlit)
     return [dict(row._mapping) for row in session.execute(select(*columns).where(DefMaquina.ativo.is_(True)))]
 
 
-def machine_price(machine):
+def machine_price(machine, origem='Custo/hora máquina V3 (STD)'):
     return {'id': machine['id'], 'machine_id': machine['id'], 'ref': machine['codigo'],
             'description': machine['nome'], 'unit': 'h',
             'net': str(machine['custo_hora']) if machine['custo_hora'] is not None else None,
-            'date': datetime.now().isoformat(timespec='seconds'), 'mapping_source': 'Custo/hora máquina V3 (STD)'}
+            'date': datetime.now().isoformat(timespec='seconds'), 'mapping_source': origem}
+
+
+def _chaves_da_maquina(machine):
+    """Por onde uma máquina V3 é reconhecida: código, nome e «Nomes no Streamlit»."""
+    nomes = [machine.get('codigo'), machine.get('nome'), *separar_nomes_streamlit(machine.get('nomes_streamlit'))]
+    chaves = {chave_nome_streamlit(n) for n in nomes}
+    # «Embalamento» no V3 é o setor «Embalagem» do Streamlit (idem «Orla»).
+    chaves |= {chave_nome_streamlit(sector(n)) for n in nomes if n}
+    return chaves - {''}
+
+
+def procurar_maquina(line, catalog):
+    """A máquina V3 de uma linha de horas: (máquina, como) ou (None, porquê).
+
+    Primeiro pelo nome da máquina no Streamlit (HKL 300, ABD…), depois pelo
+    setor (Corte, Montagem…). Um nome em duas máquinas não escolhe nenhuma.
+    """
+    tentativas = []
+    machine = ' '.join(str(line.get('machine') or '').split())
+    if machine:
+        tentativas.append(('pelo nome', machine))
+    if line.get('sector') in SECTORS:
+        tentativas.append(('pelo setor', SECTORS[line['sector']][0]))
+    for como, nome in tentativas:
+        chave = chave_nome_streamlit(nome)
+        found = [m for m in catalog if chave and chave in _chaves_da_maquina(m)]
+        if len(found) == 1:
+            return found[0], f'{como} «{nome}»'
+        if len(found) > 1:
+            codigos = ', '.join(sorted(str(m['codigo']) for m in found))
+            return None, (f'«{nome}» serve várias máquinas V3 ({codigos}) — deixar o nome só numa, em '
+                          f'{MENU_MAQUINAS}')
+    alvo = machine or (SECTORS[line['sector']][0] if line.get('sector') in SECTORS else 'esta linha')
+    return None, (f'Sem máquina V3 para «{alvo}» — criar a máquina ou juntar «{alvo}» aos «Nomes no Streamlit» '
+                  f'em {MENU_MAQUINAS}')
 
 
 def match_machine(line, catalog):
-    matches = [m for m in catalog if norm(line.get('machine')) and norm(line['machine']) in (norm(m['codigo']), norm(m['nome']))]
-    return machine_price(matches[0]) if len(matches) == 1 else None
+    machine, como = procurar_maquina(line, catalog)
+    return machine_price(machine, f'Custo/hora máquina V3 (STD), {como}') if machine else None
+
+
+def descrever_tarifa(line, price, catalog=None, *, curto=False):
+    """(texto, tem €/h) para a coluna «Máquina V3» do quadro dos tempos.
+
+    ``curto``: sem o caminho do menu (no Excel está no cabeçalho da coluna).
+    """
+    onde = '' if curto else f' em {MENU_MAQUINAS}'
+    if price:
+        codigo = ' — '.join(str(price.get(k) or '') for k in ('ref', 'description') if price.get(k))
+        if number(price.get('net')) is None:
+            return (f'{codigo}: sem custo/hora — preencher{onde}', False)
+        return (codigo, True)
+    if catalog is not None and not curto:
+        return (procurar_maquina(line, catalog)[1], False)
+    alvo = line.get('machine') or (SECTORS[line['sector']][0] if line.get('sector') in SECTORS else '')
+    return (f'Sem €/h no Martelo — criar a máquina ou juntar «{alvo}» aos «Nomes no Streamlit»{onde}', False)

@@ -70,6 +70,7 @@ class MaquinaDialogData:
     preco_furo_serie: Decimal | None = None
     preco_m2_face_std: Decimal | None = None
     preco_m2_face_serie: Decimal | None = None
+    nomes_streamlit: str | None = None
 
 
 class MaquinaDialog(QDialog):
@@ -105,11 +106,24 @@ class MaquinaDialog(QDialog):
         for opcao in TIPO_OPCOES:
             self.tipo_input.addItem(opcao, opcao)
         self.observacoes_input = QLineEdit()
+        self.nomes_streamlit_input = QLineEdit()
+        self.nomes_streamlit_input.setMaxLength(255)
+        self.nomes_streamlit_input.setPlaceholderText("ex.: HKL 300, Orla 1, Orla 2")
+        self.nomes_streamlit_input.setToolTip(
+            "Nomes com que esta máquina aparece nos tempos do Streamlit, separados "
+            "por vírgulas.\nA Análise da Lista Material usa-os para pôr o custo/hora "
+            "desta máquina nas horas reais de cada obra.\nTambém serve o nome do "
+            "setor (Stock, Preparação, Expedição…) quando a máquina é o setor inteiro."
+        )
         self.ativo_input = QCheckBox()
         self.ativo_input.setChecked(True)
 
         # Tariff inputs (unit shown as suffix; Decimal kept on save).
         self.custo_hora_input = self._criar_spin(" €/H")
+        self.custo_hora_input.setToolTip(
+            "Custo/hora STD da máquina. É também o €/h das horas reais do Streamlit "
+            "no custo de produção da Lista Material (separador «Tempos por setor»)."
+        )
         self.custo_hora_serie_input = self._criar_spin(" €/H")
         self.preco_ml_std_input = self._criar_spin(" €/ML")
         self.preco_ml_serie_input = self._criar_spin(" €/ML")
@@ -214,6 +228,7 @@ class MaquinaDialog(QDialog):
 
         form_final = QFormLayout()
         form_final.addRow("Observações", self.observacoes_input)
+        form_final.addRow("Nomes no Streamlit", self.nomes_streamlit_input)
         form_final.addRow("Ativo", self.ativo_input)
 
         self.button_box = QDialogButtonBox(
@@ -323,9 +338,12 @@ class MaquinaDialog(QDialog):
         """Show only the tariff fields that apply to the selected machine type."""
         tipo = (self.tipo_input.currentData() or "").upper()
         mostrar_revestimento = tipo == "REVESTIMENTO"
+        # O custo/hora aparece também no corte e na orlagem: os orçamentos usam o
+        # €/ML e o €/lado, mas o custo de produção da Lista Material paga as horas
+        # reais do Streamlit a este €/h (pedido do Paulo, 24-09-2026).
         if tipo == "CORTE":
             mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
-                False,
+                True,
                 True,
                 False,
                 True,
@@ -333,7 +351,7 @@ class MaquinaDialog(QDialog):
             )
         elif tipo == "ORLAGEM":
             mostrar_hora, mostrar_ml, mostrar_orlagem, mostrar_setup, mostrar_cnc = (
-                False,
+                True,
                 False,
                 True,
                 True,
@@ -419,6 +437,7 @@ class MaquinaDialog(QDialog):
         self._set_spin(self.custo_setup_peca_std_input, maquina.custo_setup_peca_std)
         self._set_spin(self.custo_setup_peca_serie_input, maquina.custo_setup_peca_serie)
         self.observacoes_input.setText(maquina.observacoes or "")
+        self.nomes_streamlit_input.setText(maquina.nomes_streamlit or "")
         self.ativo_input.setChecked(maquina.ativo)
 
     def _select_tipo(self, tipo: str | None) -> None:
@@ -474,6 +493,7 @@ class MaquinaDialog(QDialog):
             ),
             observacoes=self._empty_to_none(self.observacoes_input.text()),
             ativo=self.ativo_input.isChecked(),
+            nomes_streamlit=self._empty_to_none(self.nomes_streamlit_input.text()),
         )
 
     def _validate_and_accept(self) -> None:

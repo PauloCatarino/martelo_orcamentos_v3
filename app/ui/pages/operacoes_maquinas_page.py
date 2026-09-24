@@ -577,6 +577,7 @@ class OperacoesMaquinasPage(QWidget):
                             preco_m2_face_serie=form_data.preco_m2_face_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
+                            nomes_streamlit=form_data.nomes_streamlit,
                         )
                     )
             except IntegrityError:
@@ -641,6 +642,7 @@ class OperacoesMaquinasPage(QWidget):
                             preco_m2_face_serie=form_data.preco_m2_face_serie,
                             ativo=form_data.ativo,
                             observacoes=form_data.observacoes,
+                            nomes_streamlit=form_data.nomes_streamlit,
                         ),
                     )
             except IntegrityError:

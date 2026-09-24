@@ -12,6 +12,10 @@ def event(id, key, minutes, stage='corte', **extra):
     return {'id': id, 'bd_key': key, 'tempo_gasto_minutos': minutes, 'operacao': stage, 'maquina': 'HPP300', **extra}
 
 
+def _corte(result):
+    return next(l for l in result['lines'] if l['sector'] == 'corte')
+
+
 def test_queries_select_only_model_scoped_and_special_separate():
     for order in ('0722', '_0058', '-058', 'A013'):
         queries = t.queries(2026, order, '01')
@@ -32,7 +36,7 @@ def test_versions_sum_without_rounding_or_multiplying_events():
     assert cutting['hours'] == '2.0'
     assert len(result['events']) == 2
     assert result['versions'] == ['01','02']
-    assert result['lines'][0]['quantity'] == '2.0'
+    assert _corte(result)['quantity'] == '2.0'
 
 
 def test_all_eight_sectors_aliases_invalid_not_zero():
@@ -47,8 +51,10 @@ def test_all_eight_sectors_aliases_invalid_not_zero():
 
 def test_not_applicable_and_no_history_distinguished():
     result = t.summarize([header('v1',bd_corte_ok='100',bd_montagem_ok='0',bd_existe_montagem='0')],[],2026,'722','01')
-    assert len(result['lines']) == 1
-    assert result['lines'][0]['sector'] == 'corte'
+    # Uma linha por setor: o corte por apurar, os não aplicáveis a 0 h.
+    assert len(result['lines']) == 8
+    assert _corte(result)['quantity'] is None
+    assert all(l['quantity'] == '0' and 'não aplicável' in l['name'] for l in result['lines'] if l['sector'] != 'corte')
     assert next(s for s in result['sectors'] if s['sector']=='montagem')['state'] == 'Não aplicável'
     missing = t.summarize([],[],2026,'722','01')
     assert len(missing['lines']) == 8
@@ -61,7 +67,7 @@ def test_duplicate_join_keys_fail_closed_but_identical_sessions_count():
     with pytest.raises(ValueError):
         t.summarize([header('v1')],[event(1,'v1',60),event(1,'v1',60)],2026,'722','01')
     result=t.summarize([header('v1')],[event(1,'v1',60),event(2,'v1',60)],2026,'722','01')
-    assert result['lines'][0]['quantity']=='2'
+    assert _corte(result)['quantity']=='2'
 
 
 def test_machine_price_exact_only_snapshot_and_unknown_rate():

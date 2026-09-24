@@ -35,6 +35,7 @@ from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.dialogs.procedimentos_lista_material_widget import ProcedimentosListaMaterialWidget
 from app.ui.dialogs.mapear_ferragens_dialog import MapearFerragensDialog
 from app.services import custo_ferragens_service as custo_ferragens
+from app.services.def_maquina_service import DefMaquinaService
 
 
 class _TimesWorker(QThread):
@@ -121,7 +122,11 @@ class AnaliseListaMaterialDialog(QDialog):
             on_applied=self._reload, parent=self)
         self.tabs.addTab(self.procedures, 'Procedimentos da listagem')
         self.cost_table = self._table(['Categoria', 'Artigo / material', 'Comp', 'Larg', 'Esp', 'Quantidade', 'Un.', 'Referência V3 — descrição', 'Preço líquido', 'Custo €', 'Estado / data do preço'])
-        self.cost_table.cellClicked.connect(lambda row, col: self._associate() if col == 7 else None)
+        # Linha da tabela → linha de custo; None é a separadora entre categorias.
+        self._cost_rows = []
+        self.cost_table.verticalHeader().setMinimumSectionSize(6)   # a separadora é baixa
+        self.cost_table.cellClicked.connect(
+            lambda row, col: self._associate() if col == 7 and self._line_at(row) else None)
         self.cost_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         if self.permissions.get(PERMISSAO_CUSTOS_LISTA_MATERIAL):
             cost = QWidget()
@@ -158,7 +163,7 @@ class AnaliseListaMaterialDialog(QDialog):
                          'Acrescentar um relatório de custos por categoria à Lista Material, com fórmulas e pendências de produção.')
             export.setEnabled(self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL, False))
             self.category_filter = ComboSemScroll()
-            self.category_filter.addItems(['Todas', 'Placas', 'Orlas', 'Ferragens', 'SPP', 'Comprados', 'Produção'])
+            self.category_filter.addItems(['Todas', *svc.CATEGORIAS_MATERIAIS])
             self.category_filter.setToolTip('Filtrar as linhas de custo por categoria; os totais mantêm toda a obra.')
             self.category_filter.currentTextChanged.connect(self._filter_costs)
             report.addWidget(self.category_filter)
@@ -169,7 +174,15 @@ class AnaliseListaMaterialDialog(QDialog):
             self.times_summary = QLabel('Consultar os oito setores: encomenda + modelo Streamlit = encomenda + versão Martelo. Soma todas as versões do modelo no Streamlit.')
             self.times_summary.setWordWrap(True)
             pl.addWidget(self.times_summary)
-            self.times_table = self._table(['Setor', 'Horas registadas', 'Horas estimadas', 'Desvio h', 'Estado'])
+            # O custo da produção vive aqui (e não no separador do custo): horas de
+            # cada setor/máquina × €/h da máquina definida no Martelo.
+            self.times_table = self._table(['Setor', 'Máquina (Streamlit)', 'Horas registadas', 'Horas estimadas',
+                                            'Desvio h', '€/h', 'Custo €', 'Máquina V3 — tarifa', 'Estado'])
+            self.times_table.setToolTip('Horas de cada setor e máquina do Streamlit × €/h da máquina definida em '
+                                        f'{times.MENU_MAQUINAS}. Clique na coluna «Máquina V3» para escolher outra.')
+            self._times_rows = []
+            self.times_table.cellClicked.connect(
+                lambda row, col: self._associate_machine() if col == self._COLUNA_TARIFA else None)
             self.times_splitter = QSplitter(Qt.Orientation.Vertical)
             self.times_splitter.setChildrenCollapsible(False)
             self.times_splitter.setToolTip('Arraste a divisória para ajustar a altura das tabelas.')
@@ -180,6 +193,9 @@ class AnaliseListaMaterialDialog(QDialog):
             actions_times = QHBoxLayout()
             self.times_button = self._button(actions_times, 'Consultar / atualizar tempos Streamlit', self._query_times,
                 'Consultar apenas este ano, encomenda e modelo. Substitui os tempos desta análise; mantém as tarifas guardadas.')
+            self._button(actions_times, 'Associar máquina V3…', self._associate_machine,
+                         'Escolher a máquina do Martelo (e o seu €/h) para a linha selecionada. O nome do Streamlit '
+                         f'fica memorizado nessa máquina ({times.MENU_MAQUINAS}) para as próximas obras.')
             pl.addLayout(actions_times)
             self.times_status = QLabel('Tempos ainda não consultados. Horas por pessoa são lançamentos, não duração automática da máquina.')
             self.times_status.setWordWrap(True)
@@ -571,18 +587,30 @@ class AnaliseListaMaterialDialog(QDialog):
         self.lines = svc.board_cost_lines(self.plans) + extra
         snapshot = svc.latest_snapshot(self.path, self.version)
         self.production = snapshot.get('production', {})
-        self.lines += self.production.get('lines', [])
-        self.warnings.append('Produção parcial: consulte o separador Tempos por setor para verificar horas, estados e tarifas.')
+        # Uma linha por setor mesmo sem consulta: o €/h do Martelo vê-se sempre.
+        self.lines += times.completar_setores(self.production.get('lines', []), self.production.get('sectors'))
+        self.warnings.append('Produção: horas e €/h no separador Tempos por setor.')
         previous = snapshot.get('prices', {})
         self.excluded = set(snapshot.get('excluded', []))
+        self.machine_catalog = self._machine_catalog()
         # A reanálise mantém os preços guardados; a atualização é uma ação distinta.
         self.prices = {line['key']: previous.get(line['key']) or previous.get(line.get('legacy_key', '')) or
-                       (None if line['kind'] == 'Produção' else maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components)) for line in self.lines}
+                       (times.match_machine(line, self.machine_catalog) if line['kind'] == 'Produção'
+                        else maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components))
+                       for line in self.lines}
         self._fill_hardware_prices()
         if snapshot and (snapshot.get('workbook_hash') != self.workbook_hash or snapshot.get('plans') != self.plans):
             self.warnings.append('Fontes alteradas desde a análise guardada; quantidades relidas e preços guardados mantidos.')
         self._render_costs()
-        self._render_times()
+
+    def _machine_catalog(self):
+        """Máquinas ativas do Martelo com o €/h; vazio se a base não responder."""
+        try:
+            return times.machines(self.session)
+        except Exception:
+            self.session.rollback()
+            self.warnings.append('Não foi possível ler as máquinas do Martelo; €/h da produção por apurar.')
+            return []
 
     def _fill_hardware_prices(self, *, refresh=False):
         """Ferragens sem preço V3: 2.º PHC (só leitura), 3.º IMOS provisório."""
@@ -656,41 +684,88 @@ class AnaliseListaMaterialDialog(QDialog):
             try:
                 catalog = times.machines(self.session)
             except Exception:
+                self.session.rollback()
                 catalog = []
                 data['warnings'].append('Não foi possível ler as tarifas de máquinas V3; horas disponíveis, custo por apurar.')
+            self.machine_catalog = catalog
             self.production = data
+            data['lines'] = times.completar_setores(data['lines'], data.get('sectors'))
             self.lines = [line for line in self.lines if line['kind'] != 'Produção'] + data['lines']
             for line in data['lines']:
                 self.prices[line['key']] = self.prices.get(line['key']) or times.match_machine(line, catalog)
-            self._render_times()
             self._render_costs()
             self.times_status.setText('Consulta concluída. Guarde a análise para registar tempos e tarifas. ' + ' | '.join(data['warnings']))
         except Exception as exc:
             self._error(exc)
 
+    _COLUNA_TARIFA = 7   # «Máquina V3 — tarifa» no separador Tempos por setor
+
     def _render_times(self):
-        data = self.production
-        if not data:
+        if not hasattr(self, 'times_table'):
             return
-        self.times_summary.setText(f"Encomenda {data['order']} · modelo {data['model']} · ano {data['year']} · versões Streamlit: {', '.join(data['versions']) or 'nenhuma'}\nConsulta: {data['queried_at']}. Horas somadas por lançamento; custo parcial até confirmar as pendências.")
-        self.times_table.setRowCount(len(data['sectors']))
-        for r, s in enumerate(data['sectors']):
-            real, estimated = svc.number(s['hours']), svc.number(s['estimated'])
-            values = (s['name'], f'{real:.2f}', f'{estimated:.2f}' if estimated is not None else 'Não disponível',
-                      f'{real-estimated:.2f}' if estimated is not None else '—', s['state'])
+        data = self.production or {}
+        effective = self._effective_prices()
+        self._times_rows = [line for line in self.lines if line['kind'] == 'Produção']
+        sectors = {s['sector']: s for s in data.get('sectors', [])}
+        total_hours, total_cost, missing = svc.Decimal(0), svc.Decimal(0), 0
+        seen = set()
+        self.times_table.setRowCount(len(self._times_rows))
+        for r, line in enumerate(self._times_rows):
+            stage = line.get('sector')
+            entry = sectors.get(stage, {})
+            price = effective.get(line['key'])
+            hours = svc.number(line.get('quantity'))
+            cost = svc.calculate_cost(line, price)[0]
+            tariff, has_tariff = times.descrever_tarifa(line, price, getattr(self, 'machine_catalog', None))
+            first_of_sector = stage not in seen
+            seen.add(stage)
+            estimated = svc.number(entry.get('estimated')) if first_of_sector else None
+            sector_hours = svc.number(entry.get('hours'))
+            if estimated is not None:
+                estimate_text = f'{estimated:.2f}'
+                deviation = f'{sector_hours - estimated:.2f}' if sector_hours is not None else '—'
+            else:
+                estimate_text = ('Não disponível' if first_of_sector and data else '')
+                deviation = '—' if first_of_sector else ''
+            total_hours += hours or 0
+            total_cost += cost or 0
+            if hours != 0 and not has_tariff:
+                missing += 1
+            label = times.SECTORS[stage][0] if stage in times.SECTORS else line['name']
+            values = (label if first_of_sector else '', line.get('machine') or '—',
+                      f'{hours:.2f}' if hours is not None else 'Por apurar', estimate_text, deviation,
+                      self._decimal((price or {}).get('net')) if (price or {}).get('net') is not None else '—',
+                      f'{cost:.2f}' if cost is not None else '—', tariff,
+                      entry.get('state') or ('Tempos não consultados' if not data else 'Estado por confirmar'))
             for c, value in enumerate(values):
-                self.times_table.setItem(r, c, QTableWidgetItem(value))
-        self.events_table.setRowCount(len(data['events']))
-        for r, e in enumerate(data['events']):
+                item = QTableWidgetItem(str(value))
+                item.setToolTip(str(value))
+                if c == self._COLUNA_TARIFA and not has_tariff and hours != 0:
+                    item.setBackground(self._COR_POR_DECIDIR)
+                    item.setToolTip(str(value) + '\n\nClique para escolher a máquina do Martelo.')
+                self.times_table.setItem(r, c, item)
+        consulta = (f"Encomenda {data['order']} · modelo {data['model']} · ano {data['year']} · versões Streamlit: "
+                    f"{', '.join(data['versions']) or 'nenhuma'} · consulta {data['queried_at']}" if data
+                    else 'Tempos Streamlit ainda não consultados — as horas podem ser escritas à mão no Excel.')
+        self.times_summary.setText(
+            f'{consulta}\nProdução: {total_hours:.2f} h registadas · {total_cost:.2f} € ao €/h das máquinas do Martelo'
+            + (f' · {missing} linha(s) sem €/h — associe a máquina ou crie-a em {times.MENU_MAQUINAS}'
+               if missing else ''))
+        events = data.get('events', [])
+        self.events_table.setRowCount(len(events))
+        for r, e in enumerate(events):
             for c, value in enumerate((e.get('data_registo'), e['setor'], e.get('maquina'), e.get('responsavel'),
                                        self._decimal(e['horas']) if e['horas'] is not None else 'Inválido', e['bd_key'], e.get('bd_plano_corte'))):
                 item = QTableWidgetItem(str(value or ''))
                 item.setToolTip(item.text())
                 self.events_table.setItem(r, c, item)
         for table in (self.times_table, self.events_table):
-            if not table.property('layout_ready'):
+            if not table.property('layout_ready') and table.rowCount():
                 table.resizeColumnsToContents()
                 table.setProperty('layout_ready', True)
+                if table is self.times_table:
+                    # A mensagem «sem €/h» é comprida: lê-se inteira na dica.
+                    table.setColumnWidth(self._COLUNA_TARIFA, min(table.columnWidth(self._COLUNA_TARIFA), 460))
         if data.get('last_query_error'):
             self.times_status.setText(data['last_query_error'] + ' A mostrar a consulta guardada de ' + data['queried_at'])
 
@@ -712,24 +787,50 @@ class AnaliseListaMaterialDialog(QDialog):
         return {line['key']: custo_ferragens.preco_excluido(line) if line['key'] in self.excluded
                 else self.prices.get(line['key']) for line in self.lines}
 
+    def _line_at(self, row):
+        """A linha de custo desta linha da tabela (None na separadora)."""
+        return self._cost_rows[row] if 0 <= row < len(self._cost_rows) else None
+
+    def _cost_row_of(self, line):
+        return next((i for i, other in enumerate(self._cost_rows) if other is line), -1)
+
     def _toggle_excluded(self):
         rows = sorted({i.row() for i in self.cost_table.selectionModel().selectedRows()}
                       or ({self.cost_table.currentRow()} - {-1}))
-        if not rows:
+        lines = [line for line in (self._line_at(row) for row in rows) if line is not None]
+        if not lines:
             self.status.setText('Selecione as linhas a tirar ou a voltar a pôr no custo desta obra.')
             return
-        for row in rows:
-            key = self.lines[row]['key']
-            self.excluded.symmetric_difference_update({key})
+        for line in lines:
+            self.excluded.symmetric_difference_update({line['key']})
         self._render_costs()
-        self.status.setText(f'{len(rows)} linha(s) alterada(s). Guarde a análise para fixar nesta obra; '
+        self.status.setText(f'{len(lines)} linha(s) alterada(s). Guarde a análise para fixar nesta obra; '
                             'os mapeamentos não mudam.')
 
+    # Linha vazia entre categorias (pedido do Paulo, 24-09-2026), num tom acastanhado.
+    _COR_SEPARADOR = QColor('#DDD3C9')
+
     def _render_costs(self):
-        self.cost_table.setRowCount(len(self.lines))
+        # A produção não entra aqui: as horas × €/h estão no separador Tempos por setor.
+        self._cost_rows = svc.linhas_por_categoria(self.lines)
+        self.cost_table.clearSelection()
+        self.cost_table.setRowCount(len(self._cost_rows))
         total, pending = svc.Decimal(0), 0
         effective = self._effective_prices()
-        for i, line in enumerate(self.lines):
+        altura = self.cost_table.verticalHeader().defaultSectionSize()
+        numeros = []
+        for i, line in enumerate(self._cost_rows):
+            if line is None:
+                numeros.append('')
+                for col in range(self.cost_table.columnCount()):
+                    item = QTableWidgetItem('')
+                    item.setFlags(Qt.ItemFlag.NoItemFlags)
+                    item.setBackground(self._COR_SEPARADOR)
+                    self.cost_table.setItem(i, col, item)
+                self.cost_table.setRowHeight(i, 8)
+                continue
+            numeros.append(str(len(numeros) - numeros.count('') + 1))
+            self.cost_table.setRowHeight(i, altura)
             price = effective.get(line['key'])
             cost, state = svc.calculate_cost(line, price)
             if line['key'] in self.excluded:
@@ -750,12 +851,22 @@ class AnaliseListaMaterialDialog(QDialog):
                 if line['key'] in self.excluded:
                     item.setForeground(QColor('#8a8f98'))
                 self.cost_table.setItem(i, col, item)
+        self.cost_table.setVerticalHeaderLabels(numeros)
+        # Totais da obra: materiais + produção (esta vem do separador dos tempos).
+        production_cost = svc.Decimal(0)
+        for line in self.lines:
+            if line['kind'] == 'Produção':
+                cost = svc.calculate_cost(line, effective.get(line['key']))[0]
+                if cost is not None:
+                    total += cost
+                    production_cost += cost
         board_area = sum((svc.Decimal(p['total']) for p in self.plans), svc.Decimal(0))
         categories = []
-        for kind in ('Placas','Orlas','Ferragens','SPP','Comprados','Produção'):
+        for kind in svc.CATEGORIAS_MATERIAIS:
             rows = [line for line in self.lines if line['kind'] == kind]
             costs = [svc.calculate_cost(line, effective.get(line['key']))[0] for line in rows]
             categories.append(f"{kind}: {len(rows)} linhas, {sum((v for v in costs if v is not None), svc.Decimal(0)):.2f} €")
+        categories.append(f'Produção (Tempos por setor): {production_cost:.2f} €')
         state = custo_ferragens.estado_do_custo(self.obra_info.get('estado', ''), self.lines, effective,
                                                 self.plans, self.production)
         self.cost_state = state
@@ -763,7 +874,7 @@ class AnaliseListaMaterialDialog(QDialog):
             f"<b>{state.titulo}</b><br>" + '<br>'.join(('✓ ' if ok else '✗ ') + text for ok, text in state.pontos))
         self.rigor_label.setStyleSheet('background:#e7f6ea;padding:6px;color:#1f2328;' if state.final
                                        else 'background:#fff4d6;padding:6px;color:#1f2328;')
-        self.cost_summary.setText(f'Custo {"final" if state.final else "provisório"}: {total:.2f} € · {pending} linhas pendentes · placas usadas: {board_area:.2f} m² · versão {self.version}\n'
+        self.cost_summary.setText(f'Custo {"final" if state.final else "provisório"}: {total:.2f} € · {pending} linhas de material pendentes · placas usadas: {board_area:.2f} m² · versão {self.version}\n'
                                  + ' · '.join(categories) + '\n' +
                                  f"Planos incluídos: {', '.join(p['name'] for p in self.plans) or 'nenhum'}\n" + '\n'.join(self.warnings))
         for col, width in enumerate((85, 300, 85, 65, 60, 85, 45, 400, 100, 100, 330)):
@@ -771,35 +882,64 @@ class AnaliseListaMaterialDialog(QDialog):
                 self.cost_table.setColumnWidth(col, width)
         self.cost_table.setProperty('layout_ready', True)
         self._filter_costs()
+        self._render_times()
 
     def _filter_costs(self, *_):
         category = self.category_filter.currentText()
-        for i, line in enumerate(self.lines):
-            self.cost_table.setRowHidden(i, category != 'Todas' and line['kind'] != category)
+        for i, line in enumerate(self._cost_rows):
+            # Com uma categoria só, as separadoras não fazem falta.
+            self.cost_table.setRowHidden(i, category != 'Todas' and (line is None or line['kind'] != category))
 
     def _associate(self):
         try:
             self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
-            row = self.cost_table.currentRow()
-            if row < 0:
+            line = self._line_at(self.cost_table.currentRow())
+            if line is None:
                 self.status.setText('Selecione uma linha de custo.')
                 return
-            if self.lines[row]['kind'] == 'Produção':
-                catalog = times.machines(self.session)
-                labels = ['Selecionar máquina / centro de trabalho…'] + [f"{m['codigo']} — {m['nome']} · {m['custo_hora'] if m['custo_hora'] is not None else 'Por apurar'} €/h" for m in catalog]
-                choice, ok = QInputDialog.getItem(self, 'Associar tarifa de produção V3', 'Máquina / centro de trabalho (custo/hora STD):', labels, 0, False)
-                if ok and choice in labels[1:]:
-                    self.prices[self.lines[row]['key']] = times.machine_price(catalog[labels.index(choice)-1])
-                    self._render_costs()
-                    self.status.setText('Tarifa associada nesta obra. Guarde a análise para fixar o custo/hora.')
-                return
-            dialog = AssociarCustoMateriaPrimaDialog(self.lines[row], self.mp_catalog, self.references, self)
+            dialog = AssociarCustoMateriaPrimaDialog(line, self.mp_catalog, self.references, self)
             if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected:
-                maps.save_mapping(self.session, self.lines[row], dialog.selected, self.user.username)
+                maps.save_mapping(self.session, line, dialog.selected, self.user.username)
                 self.mappings = maps.load_mappings(self.session)
-                self.prices[self.lines[row]['key']] = {**svc.price_record(dialog.selected), 'mapping_source': 'Mapeamento manual guardado no V3'}
+                self.prices[line['key']] = {**svc.price_record(dialog.selected), 'mapping_source': 'Mapeamento manual guardado no V3'}
                 self._render_costs()
                 self.status.setText('Correspondência memorizada no V3 para próximas obras. Guarde a análise para fixar o preço desta obra.')
+        except Exception as exc:
+            self.session.rollback()
+            self._error(exc)
+
+    def _associate_machine(self, *_):
+        """Escolher a máquina do Martelo de uma linha de horas e memorizar o nome."""
+        try:
+            self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
+            row = self.times_table.currentRow()
+            if not 0 <= row < len(self._times_rows):
+                self.times_status.setText('Selecione uma linha de horas no separador Tempos por setor.')
+                return
+            line = self._times_rows[row]
+            catalog = times.machines(self.session)
+            if not catalog:
+                raise ValueError(f'Não há máquinas ativas no Martelo: crie-as em {times.MENU_MAQUINAS}.')
+            labels = [f"{m['codigo']} — {m['nome']} · "
+                      f"{m['custo_hora'] if m['custo_hora'] is not None else 'sem custo/hora'} €/h" for m in catalog]
+            nome = line.get('machine') or times.SECTORS.get(line.get('sector'), (line['name'],))[0]
+            atual = (self.prices.get(line['key']) or {}).get('machine_id')
+            inicial = next((i for i, m in enumerate(catalog) if m['id'] == atual), 0)
+            choice, ok = QInputDialog.getItem(
+                self, 'Associar máquina V3',
+                f'Máquina do Martelo para «{nome}» ({line["name"]}).\n'
+                f'O nome fica memorizado nessa máquina para as próximas obras.', labels, inicial, False)
+            if not ok or choice not in labels:
+                return
+            machine = catalog[labels.index(choice)]
+            retirado = DefMaquinaService(self.session).memorizar_nome_streamlit(machine['id'], nome)
+            self.machine_catalog = times.machines(self.session)
+            self.prices[line['key']] = times.machine_price(machine, f'Custo/hora máquina V3 (STD), escolhida para «{nome}»')
+            self._render_costs()
+            self.times_status.setText(
+                f'«{nome}» ligado a {machine["codigo"]} e memorizado em {times.MENU_MAQUINAS} (Nomes no Streamlit)'
+                + (f'; saiu de {", ".join(retirado)}' if retirado else '')
+                + '. Guarde a análise para fixar o €/h nesta obra.')
         except Exception as exc:
             self.session.rollback()
             self._error(exc)
@@ -838,6 +978,7 @@ class AnaliseListaMaterialDialog(QDialog):
                 self.components = []
             by_id = {mp.id: mp for mp in self.mp_catalog}
             machine_catalog = times.machines(self.session) if any(l['kind'] == 'Produção' for l in self.lines) else []
+            self.machine_catalog = machine_catalog
             for line in self.lines:
                 price = self.prices.get(line['key'])
                 if line['kind'] == 'Produção':
