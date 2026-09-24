@@ -87,6 +87,72 @@ def designacao_sugerida(ref_cliente: str | None) -> str:
     return construir_designacao(ref) if ref else ""
 
 
+def aviso_guardar_sem_proposta(
+    *,
+    ano: int,
+    numero_martelo: str | None,
+    proxima_phc: int | None,
+    pode_criar_no_phc: bool = True,
+) -> str:
+    """O que dizer a quem carrega em «Guardar» sem ter criado a proposta no PHC.
+
+    Já aconteceu: guardar direto dá ao orçamento o número seguinte do Martelo,
+    que o PHC não conhece. Se a proposta não for depois criada no PHC com esse
+    mesmo número, os dois desalinham e os orçamentos seguintes deixam de bater
+    com as propostas.
+    """
+    partes = [
+        "A ordem certa é:\n"
+        "   1.º «Criar proposta no PHC…» — é o PHC que dá o número;\n"
+        "   2.º «Guardar» — o orçamento fica com esse mesmo número."
+    ]
+    if not pode_criar_no_phc:
+        partes.append(
+            "Este cliente não tem nº de cliente no PHC, por isso a proposta "
+            "não pode ser criada daqui — só à mão, no PHC."
+        )
+
+    numero_txt = f": {numero_martelo}" if numero_martelo else ""
+    partes.append(
+        "Se guardar agora, sem proposta, o Martelo dá a este orçamento o "
+        f"número seguinte da lista dele{numero_txt}."
+    )
+
+    codigo_phc = formatar_codigo_v3(ano, proxima_phc) if proxima_phc else None
+    if codigo_phc is None:
+        partes.append("Não consegui ler o PHC para comparar os números.")
+    elif codigo_phc == numero_martelo:
+        partes.append(
+            f"Neste momento a próxima proposta do PHC também seria a "
+            f"{proxima_phc} — mas basta alguém criar uma proposta no PHC antes "
+            "de si para deixar de ser."
+        )
+    else:
+        partes.append(
+            f"⚠️ Neste momento os números JÁ NÃO BATEM: a próxima proposta do "
+            f"PHC seria a {proxima_phc} (→ {codigo_phc}), e o Martelo vai dar "
+            f"{numero_martelo or 'outro número'}."
+        )
+
+    obrano = _obrano_do_codigo(ano, numero_martelo)
+    alvo = f" com o número {obrano}" if obrano else " com o mesmo número"
+    partes.append(
+        "Se guardar assim, tem de confirmar À MÃO, no PHC, que a proposta "
+        f"deste orçamento fica{alvo}. Se não ficar, os números do Martelo e do "
+        "PHC desalinham, e os orçamentos seguintes deixam de bater com as "
+        "propostas."
+    )
+    return "\n\n".join(partes)
+
+
+def _obrano_do_codigo(ano: int, codigo: str | None) -> int | None:
+    """``260961`` → ``961`` (o inverso de ``formatar_codigo_v3``), se for desse ano."""
+    texto = str(codigo or "").strip()
+    if len(texto) != 6 or not texto.isdigit() or texto[:2] != f"{int(ano) % 100:02d}":
+        return None
+    return int(texto[2:])
+
+
 def registar_proposta_no_phc(
     session: Session,
     *,

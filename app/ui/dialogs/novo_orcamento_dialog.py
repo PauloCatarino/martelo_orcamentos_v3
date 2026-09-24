@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.margens_padrao_types import (
@@ -167,11 +168,14 @@ class NovoOrcamentoDialog(QDialog):
             self._marcar_designacao_phc_manual
         )
 
-        self.criar_phc_button = QPushButton("Criar proposta no PHC…")
+        # Numerado: é o primeiro passo. Guardar primeiro dá ao orçamento um
+        # número que o PHC não conhece (ver _confirmar_sem_proposta_phc).
+        self.criar_phc_button = QPushButton("1.º Criar proposta no PHC…")
         self.criar_phc_button.setToolTip(
-            "Cria a proposta no PHC (cliente + ref. cliente + linha de "
-            "designação) e usa o número que o PHC atribuir como número deste "
-            "orçamento. Requer o PHC aberto em Dossiers Internos → Proposta."
+            "PRIMEIRO PASSO. Cria a proposta no PHC (cliente + ref. cliente + "
+            "linha de designação) e usa o número que o PHC atribuir como número "
+            "deste orçamento. Depois carregue em «Guardar».\n"
+            "Requer o PHC aberto em Dossiers Internos → Proposta."
         )
         self.criar_phc_button.clicked.connect(self._criar_proposta_phc)
 
@@ -185,6 +189,7 @@ class NovoOrcamentoDialog(QDialog):
         phc_layout.setContentsMargins(0, 0, 0, 0)
         phc_layout.addWidget(self.proposta_phc_label, stretch=1)
         phc_layout.addWidget(self.criar_phc_button)
+        self._phc_widget = phc_widget
         self.info_1_input = QTextEdit()
         ligar_corretor(self.info_1_input)
         self.info_1_input.setFixedHeight(60)
@@ -496,6 +501,20 @@ class NovoOrcamentoDialog(QDialog):
         self._form_layout.setRowVisible(self.ano_input, checked)
         self._form_layout.setRowVisible(self.num_orcamento_input, checked)
         self._form_layout.setRowVisible(self._pasta_widget, checked)
+        # Num orçamento antigo o número é escrito à mão: não há PHC primeiro.
+        self._form_layout.setRowVisible(self._phc_widget, not checked)
+        self._form_layout.setRowVisible(self.designacao_phc_input, not checked)
+        guardar = self.button_box.button(QDialogButtonBox.StandardButton.Save)
+        if checked:
+            guardar.setText("Guardar")
+            guardar.setToolTip("Registar o orçamento antigo no Martelo.")
+        else:
+            guardar.setText("2.º Guardar")
+            guardar.setToolTip(
+                "SEGUNDO PASSO. Cria o orçamento no Martelo.\n"
+                "Carregue primeiro em «1.º Criar proposta no PHC…», para o "
+                "orçamento ficar com o número que o PHC atribuir."
+            )
         self.error_label.setText("")
         self.adjustSize()
 
@@ -664,6 +683,13 @@ class NovoOrcamentoDialog(QDialog):
             self.error_label.setText("Escolha um cliente.")
             return
 
+        if (
+            not data.manual
+            and not self._proposta_phc
+            and not self._confirmar_sem_proposta_phc()
+        ):
+            return
+
         if data.manual:
             if not data.num_orcamento:
                 self.error_label.setText(
@@ -682,6 +708,101 @@ class NovoOrcamentoDialog(QDialog):
                 return
 
         self.accept()
+
+    # -- «Guardar» sem proposta no PHC ------------------------------------
+
+    def _confirmar_sem_proposta_phc(self) -> bool:
+        """Avisar antes de guardar sem a proposta; ``True`` = guardar mesmo assim.
+
+        Guardar primeiro dá ao orçamento o número seguinte do Martelo, que o
+        PHC não conhece. Já aconteceu alguém esquecer-se da proposta, e os
+        números dos dois deixarem de bater nos orçamentos seguintes.
+        """
+        from app.services.registar_proposta_phc_service import (
+            aviso_guardar_sem_proposta,
+        )
+
+        ano = date.today().year
+        numero_martelo, proxima_phc = self._numeros_em_jogo(ano)
+        pode_criar = self.criar_phc_button.isEnabled()
+        texto = aviso_guardar_sem_proposta(
+            ano=ano,
+            numero_martelo=numero_martelo,
+            proxima_phc=proxima_phc,
+            pode_criar_no_phc=pode_criar,
+        )
+        if not self._perguntar_guardar_sem_proposta(texto, pode_criar):
+            self._apontar_para_criar_phc(pode_criar)
+            return False
+
+        diario_bordo.registar_aviso(
+            "Novo orçamento guardado SEM proposta no PHC",
+            f"número Martelo {numero_martelo or '?'}; "
+            f"próxima proposta PHC {proxima_phc or '?'}",
+        )
+        return True
+
+    def _numeros_em_jogo(self, ano: int) -> tuple[str | None, int | None]:
+        """(número que o Martelo vai dar, próxima proposta do PHC) — se der."""
+        from PySide6.QtGui import QGuiApplication
+
+        from app.repositories.orcamento_repository import OrcamentoRepository
+        from app.services.phc_propostas_service import ler_max_obrano
+
+        numero_martelo: str | None = None
+        proxima_phc: int | None = None
+        # Ler o PHC demora uns 2 segundos.
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                try:
+                    numero_martelo = OrcamentoRepository(
+                        session
+                    ).get_next_num_orcamento(ano)
+                except Exception:  # noqa: BLE001 - o aviso sai na mesma
+                    numero_martelo = None
+                try:
+                    proxima_phc = ler_max_obrano(session, ano=ano) + 1
+                except Exception:  # noqa: BLE001 - PHC fora de alcance
+                    proxima_phc = None
+        except Exception:  # noqa: BLE001 - sem ligação: aviso sem números
+            pass
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+        return numero_martelo, proxima_phc
+
+    def _perguntar_guardar_sem_proposta(self, texto: str, pode_criar: bool) -> bool:
+        """A pergunta em si; «voltar» é o que acontece por omissão (e no Esc)."""
+        caixa = QMessageBox(self)
+        caixa.setIcon(QMessageBox.Icon.Warning)
+        caixa.setWindowTitle("Primeiro a proposta no PHC")
+        caixa.setText(texto)
+        voltar = caixa.addButton(
+            "Voltar e criar a proposta no PHC" if pode_criar else "Voltar",
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        guardar = caixa.addButton(
+            "Guardar sem proposta", QMessageBox.ButtonRole.AcceptRole
+        )
+        caixa.setDefaultButton(voltar)
+        caixa.setEscapeButton(voltar)
+        caixa.exec()
+        return caixa.clickedButton() is guardar
+
+    def _apontar_para_criar_phc(self, pode_criar: bool) -> None:
+        """De volta à janela: mostrar qual é o passo que falta."""
+        self.error_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
+        if pode_criar:
+            self.error_label.setText(
+                "Carregue primeiro em «1.º Criar proposta no PHC…» e só depois "
+                "em «Guardar»."
+            )
+            self.criar_phc_button.setFocus()
+        else:
+            self.error_label.setText(
+                "Este cliente não tem nº de cliente no PHC: crie a proposta à "
+                "mão no PHC, ou escolha o cliente certo."
+            )
 
     def _empty_to_none(self, value: str) -> str | None:
         """Normalize empty text input."""
