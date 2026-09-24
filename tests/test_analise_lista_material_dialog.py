@@ -121,7 +121,7 @@ def test_streamlit_hours_saved_and_reloaded_without_network(app, workbook, sessi
     data = ui.times.summarize([{'bd_key':'2026_0722_01_01','bd_versao':'01'}],
         [{'id':1,'bd_key':'2026_0722_01_01','operacao':'corte','maquina':'HPP300','tempo_gasto_minutos':90}],2026,'0722','01')
     dialog._receive_times(data)
-    assert dialog.times_table.rowCount()==8
+    assert dialog.times_table.rowCount()==10   # desenho + Cut-Rite + 8 setores
     line=next(l for l in dialog.lines if l.get('machine')=='HPP300')
     assert ui.svc.calculate_cost(line,dialog.prices[line['key']])[0]==60
     dialog._save()

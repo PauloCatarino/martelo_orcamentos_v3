@@ -171,7 +171,7 @@ class AnaliseListaMaterialDialog(QDialog):
             self.tabs.addTab(cost, 'Custo de produção (parcial)')
             production_tab = QWidget()
             pl = QVBoxLayout(production_tab)
-            self.times_summary = QLabel('Consultar os oito setores: encomenda + modelo Streamlit = encomenda + versão Martelo. Soma todas as versões do modelo no Streamlit.')
+            self.times_summary = QLabel('Consultar o desenho, o plano de corte e os oito setores: encomenda + modelo Streamlit = encomenda + versão Martelo. Soma todas as versões do modelo no Streamlit.')
             self.times_summary.setWordWrap(True)
             pl.addWidget(self.times_summary)
             # O custo da produção vive aqui (e não no separador do custo): horas de
@@ -731,7 +731,7 @@ class AnaliseListaMaterialDialog(QDialog):
             total_cost += cost or 0
             if hours != 0 and not has_tariff:
                 missing += 1
-            label = times.SECTORS[stage][0] if stage in times.SECTORS else line['name']
+            label = times.ROTULOS.get(stage, line['name'])
             values = (label if first_of_sector else '', line.get('machine') or '—',
                       f'{hours:.2f}' if hours is not None else 'Por apurar', estimate_text, deviation,
                       self._decimal((price or {}).get('net')) if (price or {}).get('net') is not None else '—',
@@ -922,7 +922,7 @@ class AnaliseListaMaterialDialog(QDialog):
                 raise ValueError(f'Não há máquinas ativas no Martelo: crie-as em {times.MENU_MAQUINAS}.')
             labels = [f"{m['codigo']} — {m['nome']} · "
                       f"{m['custo_hora'] if m['custo_hora'] is not None else 'sem custo/hora'} €/h" for m in catalog]
-            nome = line.get('machine') or times.SECTORS.get(line.get('sector'), (line['name'],))[0]
+            nome = line.get('machine') or times.ROTULOS.get(line.get('sector'), line['name'])
             atual = (self.prices.get(line['key']) or {}).get('machine_id')
             inicial = next((i for i, m in enumerate(catalog) if m['id'] == atual), 0)
             choice, ok = QInputDialog.getItem(

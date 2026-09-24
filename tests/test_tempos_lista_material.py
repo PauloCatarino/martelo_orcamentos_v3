@@ -43,21 +43,23 @@ def test_all_eight_sectors_aliases_invalid_not_zero():
     history = [event(i,'v1',60,stage) for i,stage in enumerate(t.SECTORS)]
     history += [event(9,'v1','oops','orla'), event(10,'v1',-1,'cnc'),event(11,'v1',60,'CADERNO ENCARGOS')]
     result = t.summarize([header('v1')],history,2026,'722','01')
-    assert len(result['sectors']) == 8
-    assert all(Decimal(s['hours'])==1 for s in result['sectors'])
-    assert len([l for l in result['lines'] if l['quantity'] is None]) == 2
+    oito = [s for s in result['sectors'] if s['sector'] in t.SECTORS]
+    assert len(oito) == 8 and len(result['sectors']) == 10     # + desenho e Cut-Rite
+    assert all(Decimal(s['hours'])==1 for s in oito)
+    assert len([l for l in result['lines'] if l['quantity'] is None and l['sector'] in t.SECTORS]) == 2
     assert len(result['events']) == 10
 
 
 def test_not_applicable_and_no_history_distinguished():
     result = t.summarize([header('v1',bd_corte_ok='100',bd_montagem_ok='0',bd_existe_montagem='0')],[],2026,'722','01')
     # Uma linha por setor: o corte por apurar, os não aplicáveis a 0 h.
-    assert len(result['lines']) == 8
+    assert len(result['lines']) == 10
     assert _corte(result)['quantity'] is None
-    assert all(l['quantity'] == '0' and 'não aplicável' in l['name'] for l in result['lines'] if l['sector'] != 'corte')
+    assert all(l['quantity'] == '0' and 'não aplicável' in l['name'] for l in result['lines']
+               if l['sector'] in t.SECTORS and l['sector'] != 'corte')
     assert next(s for s in result['sectors'] if s['sector']=='montagem')['state'] == 'Não aplicável'
     missing = t.summarize([],[],2026,'722','01')
-    assert len(missing['lines']) == 8
+    assert len(missing['lines']) == 10
     assert all(s['state']=='Obra/modelo não encontrado' for s in missing['sectors'])
 
 
@@ -86,3 +88,33 @@ def test_estimates_sum_known_versions_not_missing_as_zero():
     result=t.summarize([header('v1',bd_tempo_corte_minutos=60),header('v2','02',bd_tempo_corte_minutos=120)],[],2026,'722','01')
     assert next(s for s in result['sectors'] if s['sector']=='corte')['estimated']=='3'
     assert next(s for s in result['sectors'] if s['sector']=='stock')['estimated'] is None
+
+
+def test_desenho_e_cut_rite_vem_do_caderno_de_encargos():
+    """1357: 6 h de desenho e 10 min de plano de corte, concluídos a 31-07."""
+    for q in t.queries(2026, '1357', '01')[:1]:
+        assert 'ce.bd_desenho_horas' in q and 'ce.bd_corte_minutos' in q and 'ce.bd_corte_finalizado' in q
+    feito = header('v1', bd_desenho_horas=6, bd_desenho_finalizado='2026-07-31',
+                   bd_corte_minutos=10, bd_corte_finalizado='2026-07-31')
+    result = t.summarize([feito], [], 2026, '1357', '01')
+    assert [l['sector'] for l in result['lines']][:2] == ['desenho', 'plano_corte']   # primeiro, antes da produção
+    desenho, cut_rite = result['lines'][:2]
+    assert (desenho['key'], desenho['machine'], Decimal(desenho['quantity'])) == ('desenho|Desenho', 'Desenho', 6)
+    assert (cut_rite['key'], cut_rite['machine']) == ('plano_corte|Cut-Rite', 'Cut-Rite')
+    assert Decimal(cut_rite['quantity']) * 60 == 10
+    estados = {s['sector']: s['state'] for s in result['sectors']}
+    assert estados['desenho'] == estados['plano_corte'] == 'Concluído'
+    # No Streamlit o campo nasce a 0: sem data de fim é «por apurar», não 0 h.
+    aberto = t.summarize([header('v1', bd_desenho_horas=0, bd_desenho_finalizado='          ')], [], 2026, '1357', '01')
+    assert aberto['lines'][0]['quantity'] is None
+    assert next(s for s in aberto['sectors'] if s['sector'] == 'desenho')['state'] == 'Em curso / estado por confirmar'
+    # Duas versões do mesmo modelo somam-se.
+    duas = t.summarize([feito, {**feito, 'bd_key': 'v2', 'bd_versao': '02', 'bd_desenho_horas': 2}], [], 2026, '1357', '01')
+    assert Decimal(duas['lines'][0]['quantity']) == 8
+
+
+def test_analise_antiga_ganha_as_linhas_do_desenho_e_do_cut_rite():
+    antigas = [t.cost_line('Produção', 'corte|HKL 300', 'Corte — HKL 300', '4', 'h', sector='corte', machine='HKL 300')]
+    linhas = t.completar_setores(antigas, [])
+    assert [l['sector'] for l in linhas] == list(t.ROTULOS)
+    assert linhas[0]['key'] == 'desenho|Desenho' and linhas[0]['quantity'] is None

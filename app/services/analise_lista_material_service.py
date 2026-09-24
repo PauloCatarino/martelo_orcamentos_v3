@@ -653,7 +653,7 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     sem_tarifa = []
     for r, line in enumerate(producao, primeira_hora):
         stage = line.get('sector')
-        label = tempos.SECTORS[stage][0] if stage in tempos.SECTORS else line['name']
+        label = tempos.ROTULOS.get(stage, line['name'])
         entry = estado_setor.get(stage, {})
         price = prices.get(line['key'])
         tarifa, tem_tarifa = tempos.descrever_tarifa(line, price, curto=True)

@@ -81,7 +81,7 @@ def test_sem_maquina_ou_com_nome_repetido_diz_para_ir_as_definicoes():
 def test_cada_setor_tem_sempre_uma_linha_pela_ordem_dos_setores():
     linhas = t.completar_setores([_linha('cnc', 'ABD'), _linha('corte', 'HKL 300')],
                                  [{'sector': 'montagem', 'state': 'Não aplicável'}])
-    assert [l['sector'] for l in linhas] == list(t.SECTORS)
+    assert [l['sector'] for l in linhas] == list(t.ROTULOS)
     montagem = next(l for l in linhas if l['sector'] == 'montagem')
     assert montagem['quantity'] == '0' and 'não aplicável' in montagem['name']
     stock = next(l for l in linhas if l['sector'] == 'stock')
@@ -189,11 +189,11 @@ def test_tabela_do_custo_separa_categorias_e_nao_tem_producao(app, session, work
 def test_tempos_por_setor_tem_euro_hora_e_associar_memoriza(app, session, workbook, monkeypatch):
     dialog = _dialog(session, workbook, monkeypatch)
     try:
-        # Sem consulta: os 8 setores já aparecem, com o €/h que o Martelo tiver.
-        assert dialog.times_table.rowCount() == 8
+        # Sem consulta: desenho, Cut-Rite e os 8 setores já aparecem, com o €/h do Martelo.
+        assert dialog.times_table.rowCount() == 10
         dialog._receive_times(_consulta())
         rows = {(l['sector'], l['machine']): i for i, l in enumerate(dialog._times_rows)}
-        assert dialog.times_table.rowCount() == 9     # CNC tem duas máquinas
+        assert dialog.times_table.rowCount() == 11    # CNC tem duas máquinas
         corte = rows[('corte', 'HKL 300')]
         assert dialog.times_table.item(corte, 5).text() == '80.00'
         assert dialog.times_table.item(corte, 6).text() == '320.00'

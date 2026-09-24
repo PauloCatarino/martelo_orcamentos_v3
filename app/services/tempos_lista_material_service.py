@@ -29,6 +29,18 @@ SECTORS = {
     'expedicao': ('Expedição', 'bd_expedicao_ok', 'bd_tempo_expedicao_minutos'),
 }
 
+# Antes da produção (pedido do Paulo, 24-09-2026): o desenho da obra no iMos e o
+# plano de corte no Cut-Rite com a Lista Material. Não são lançamentos: são um
+# valor por modelo no CadernoEncargos, com a data em que ficaram concluídos.
+# setor: (rótulo, «máquina» no quadro, coluna, divisor para horas, coluna da data)
+PREPARACAO_CE = {
+    'desenho': ('Preparação (Desenho)', 'Desenho', 'bd_desenho_horas', 1, 'bd_desenho_finalizado'),
+    'plano_corte': ('Preparação (Cut-Rite)', 'Cut-Rite', 'bd_corte_minutos', 60, 'bd_corte_finalizado'),
+}
+
+#: Todos os setores do custo de produção, pela ordem do trabalho.
+ROTULOS = {**{k: v[0] for k, v in PREPARACAO_CE.items()}, **{k: v[0] for k, v in SECTORS.items()}}
+
 
 def norm(value):
     return ''.join(c for c in unicodedata.normalize('NFD', str(value or '').strip().lower())
@@ -59,6 +71,7 @@ def queries(year, order, model):
     where = f"TRY_CONVERT(int,ce.bd_ano)={year} AND TRY_CONVERT(int,ce.bd_modelo)={model} AND {predicate}"
     fields = ['ce.bd_key', 'ce.bd_modelo', 'ce.bd_versao', 'ce.bd_existe_montagem', 'tp.bd_producao_serie']
     fields += [f'tp.{v}' for _, state, estimate in SECTORS.values() for v in (state, estimate) if v]
+    fields += [f'ce.{v}' for _, _, column, _, done in PREPARACAO_CE.values() for v in (column, done)]
     headers = f"SELECT {','.join(fields)} FROM dbo.CadernoEncargos{suffix} ce LEFT JOIN dbo.TemposProducao{suffix} tp ON tp.bd_key=ce.bd_key WHERE {where}"
     history = (f"SELECT h.id,h.bd_key,h.operacao,h.maquina,h.responsavel,h.tempo_gasto_minutos,"
                f"h.percentagem_feita,CONVERT(varchar(23),h.data_registo,121) AS data_registo,h.bd_plano_corte "
@@ -107,7 +120,7 @@ def summarize(headers, history, year, order, model):
                 grouped[(stage, str(row.get('maquina') or '').strip())] += minutes
         events.append({**row, 'setor': SECTORS[stage][0],
                        'horas': str(minutes / 60) if minutes is not None and minutes >= 0 else None})
-    lines, sectors = [], []
+    lines, sectors = _preparacao_do_caderno(headers)
     for stage, (label, state_column, estimate_column) in SECTORS.items():
         states = [str(r.get(state_column) if r.get(state_column) is not None else '').strip().upper() for r in headers]
         na = bool(states) and all(s == 'N' for s in states)
@@ -143,8 +156,46 @@ def summarize(headers, history, year, order, model):
             'warnings': list(dict.fromkeys(warnings)), 'complete': False}
 
 
+def _preparacao_do_caderno(headers):
+    """Linhas e estados do desenho e do plano de corte (CadernoEncargos).
+
+    Soma as versões do modelo, como os lançamentos. Um 0 sem data de fim é
+    «por apurar»: no Streamlit o campo nasce a 0.
+    """
+    lines, sectors = [], []
+    for stage, (label, machine, column, divisor, done_column) in PREPARACAO_CE.items():
+        values = [number(r.get(column)) for r in headers]
+        valid = [v for v in values if v is not None and v >= 0]
+        hours = sum(valid, Decimal(0)) / divisor if valid else Decimal(0)
+        done = bool(headers) and all(str(r.get(done_column) or '').strip() for r in headers)
+        if not headers:
+            state = 'Obra/modelo não encontrado'
+        elif len(valid) != len(values):
+            state = 'Valor inválido no Caderno de Encargos — confirmar'
+        elif done:
+            state = 'Concluído' if hours else 'Concluído sem horas — confirmar'
+        else:
+            state = 'Em curso / estado por confirmar'
+        sectors.append({'sector': stage, 'name': label, 'hours': str(hours), 'estimated': None,
+                        'state': state, 'invalid': len(values) - len(valid)})
+        lines.append(cost_line('Produção', f'{stage}|{machine}', f'{label} — {machine}',
+                               str(hours) if hours else None, 'h', sector=stage, machine=machine))
+    return lines, sectors
+
+
+def _linha_sem_horas(stage, na=False):
+    if stage in PREPARACAO_CE:
+        label, machine = PREPARACAO_CE[stage][:2]
+        return cost_line('Produção', f'{stage}|{machine}', f'{label} — {machine}', None, 'h',
+                         sector=stage, machine=machine)
+    label = ROTULOS[stage]
+    return cost_line('Produção', f'{stage}|pendente',
+                     f'{label} — não aplicável' if na else f'{label} — horas por apurar',
+                     '0' if na else None, 'h', sector=stage, machine='')
+
+
 def completar_setores(lines, sectors=None):
-    """Pelo menos uma linha por setor, pela ordem dos setores.
+    """Pelo menos uma linha por setor, pela ordem do trabalho.
 
     O quadro dos tempos no Excel tem de ter sempre o €/h de cada setor, haja
     ou não horas no Streamlit: o utilizador pode escrever as horas à mão.
@@ -152,14 +203,10 @@ def completar_setores(lines, sectors=None):
     """
     estados = {s['sector']: s.get('state') for s in (sectors or [])}
     result = list(lines)
-    for stage, (label, _, _) in SECTORS.items():
-        if any(l.get('sector') == stage for l in result):
-            continue
-        na = estados.get(stage) == 'Não aplicável'
-        result.append(cost_line('Produção', f'{stage}|pendente',
-                                f'{label} — não aplicável' if na else f'{label} — horas por apurar',
-                                '0' if na else None, 'h', sector=stage, machine=''))
-    ordem = list(SECTORS)
+    for stage in ROTULOS:
+        if not any(l.get('sector') == stage for l in result):
+            result.append(_linha_sem_horas(stage, estados.get(stage) == 'Não aplicável'))
+    ordem = list(ROTULOS)
     return sorted(result, key=lambda l: ordem.index(l['sector']) if l.get('sector') in ordem else len(ordem))
 
 
@@ -195,8 +242,8 @@ def procurar_maquina(line, catalog):
     machine = ' '.join(str(line.get('machine') or '').split())
     if machine:
         tentativas.append(('pelo nome', machine))
-    if line.get('sector') in SECTORS:
-        tentativas.append(('pelo setor', SECTORS[line['sector']][0]))
+    if line.get('sector') in ROTULOS:
+        tentativas.append(('pelo setor', ROTULOS[line['sector']]))
     for como, nome in tentativas:
         chave = chave_nome_streamlit(nome)
         found = [m for m in catalog if chave and chave in _chaves_da_maquina(m)]
@@ -206,7 +253,7 @@ def procurar_maquina(line, catalog):
             codigos = ', '.join(sorted(str(m['codigo']) for m in found))
             return None, (f'«{nome}» serve várias máquinas V3 ({codigos}) — deixar o nome só numa, em '
                           f'{MENU_MAQUINAS}')
-    alvo = machine or (SECTORS[line['sector']][0] if line.get('sector') in SECTORS else 'esta linha')
+    alvo = machine or ROTULOS.get(line.get('sector'), 'esta linha')
     return None, (f'Sem máquina V3 para «{alvo}» — criar a máquina ou juntar «{alvo}» aos «Nomes no Streamlit» '
                   f'em {MENU_MAQUINAS}')
 
@@ -229,5 +276,5 @@ def descrever_tarifa(line, price, catalog=None, *, curto=False):
         return (codigo, True)
     if catalog is not None and not curto:
         return (procurar_maquina(line, catalog)[1], False)
-    alvo = line.get('machine') or (SECTORS[line['sector']][0] if line.get('sector') in SECTORS else '')
+    alvo = line.get('machine') or ROTULOS.get(line.get('sector'), '')
     return (f'Sem €/h no Martelo — criar a máquina ou juntar «{alvo}» aos «Nomes no Streamlit»{onde}', False)

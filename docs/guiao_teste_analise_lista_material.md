@@ -419,3 +419,8 @@ Migração 116 (`def_maquinas.nomes_streamlit`) aplicada à dev e à real.
    o «Total produção», a linha **Produção** do resumo (B10) e o **TOTAL FINAL** sobem.
 7. Na tabela das linhas do Excel: sem linhas de Produção; linha vazia acastanhada entre
    categorias; «Total das linhas» = só materiais.
+8. (24-09, 2.ª ronda) **Consultar / atualizar tempos Streamlit** na 1357: as duas primeiras
+   linhas são **Preparação (Desenho)** = 6,00 h (`bd_desenho_horas`) e **Preparação
+   (Cut-Rite)** = 0,17 h (`bd_corte_minutos` = 10 min), ambas «Concluído» (data 31-07).
+   Sem máquina com os nomes `Desenho` / `Cut-Rite` ficam a rosa; depois de os pôr numa
+   máquina → **Atualizar preços do V3** → o €/h e o custo aparecem.
