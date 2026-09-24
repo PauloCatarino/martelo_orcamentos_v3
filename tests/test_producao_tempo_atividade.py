@@ -357,16 +357,16 @@ def test_texto_ordenacao_e_dica_das_colunas(monkeypatch) -> None:
     assert modelo.index(0, col_excel).data() == "10 min ⚠"
     assert modelo.index(1, col).data() == ""
     assert modelo.index(0, col).data(ProducaoTableModel.ROLE_ORDENACAO) == 3900
-
-    # Uns segundos não aparecem como "0 min" (visto no teste do Paulo).
-    modelo.definir_tempos({2: TempoObra(excel=20, por_pessoa={"Admin": [0, 20]})})
-    assert modelo.index(1, col_excel).data() == "< 1 min"
     dica = modelo.index(0, col).data(Qt.ItemDataRole.ToolTipRole)
     assert "Pedro: 55 min" in dica and "Paulo: 10 min" in dica
     assert "Partilhado com 26.1211_01_02_STHINK" in dica
     assert "Só visível para administradores" in modelo.headerData(
         col, Qt.Orientation.Horizontal, Qt.ItemDataRole.ToolTipRole
     )
+
+    # Uns segundos não aparecem como "0 min" (visto no teste do Paulo).
+    modelo.definir_tempos({2: TempoObra(excel=20, por_pessoa={"Admin": [0, 20]})})
+    assert modelo.index(1, col_excel).data() == "< 1 min"
 
 
 def test_colunas_de_tempo_sao_so_do_admin() -> None:
