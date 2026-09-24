@@ -202,6 +202,57 @@ def test_resposta_da_pesquisa_ia_usa_o_leitor_de_streaming() -> None:
     assert "ollama_local.pedacos_chat" in fonte
 
 
+# ----- 1c. Pedidos cortados pelo início (registo do Ollama do Paulo, 24-09) -----
+
+
+def test_pedido_pequeno_tem_espaco_folgado() -> None:
+    # Acima dos 4096 do Ollama por omissão, que cortava 45 de 125 pedidos reais
+    # quase no limite.
+    assert ollama_local.contexto_para("instruções", "pergunta curta") == 8192
+
+
+def test_o_maior_pedido_real_cabe_inteiro_com_a_resposta() -> None:
+    # 6807 tokens a ~2,4 caracteres cada: o maior pedido visto no registo.
+    texto = "x" * int(6807 * 2.42)
+
+    num_ctx = ollama_local.contexto_para(texto)
+
+    assert num_ctx >= 6807 + ollama_local.TOKENS_RESPOSTA
+    assert num_ctx in ollama_local.CONTEXTOS
+
+
+def test_contexto_nao_cresce_sem_limite() -> None:
+    assert ollama_local.contexto_para("x" * 1_000_000) == max(ollama_local.CONTEXTOS)
+
+
+@pytest.mark.parametrize("metodo", ["_local", "_local_stream"])
+def test_pesquisa_ia_pede_o_contexto_a_medida(monkeypatch, metodo) -> None:
+    import json
+
+    from app.services.pesquisa_ia_resposta_service import RespostaIAService
+
+    enviados = []
+
+    def _abrir(req, **_k):
+        enviados.append(json.loads(req.data.decode("utf-8")))
+        raise RuntimeError("parar aqui")
+
+    monkeypatch.setattr(ollama_local, "abrir", _abrir)
+    servico = RespostaIAService.__new__(RespostaIAService)
+    servico._modelo_local = "llama3.2"
+    prompt = "Contexto fornecido:\n" + "V3 | H3170 ST12 | 24,50 €\n" * 700
+
+    with pytest.raises(RuntimeError, match="parar aqui"):
+        resultado = getattr(servico, metodo)(prompt)
+        list(resultado) if metodo == "_local_stream" else resultado
+
+    num_ctx = enviados[0]["options"]["num_ctx"]
+    assert num_ctx == ollama_local.contexto_para(
+        enviados[0]["messages"][0]["content"], prompt
+    )
+    assert num_ctx > 4096
+
+
 def test_listar_modelos_nao_rebenta_sem_ollama(monkeypatch) -> None:
     def _falha(*_a, **_k):
         raise _recusada()

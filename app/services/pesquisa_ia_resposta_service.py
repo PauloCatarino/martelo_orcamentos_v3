@@ -84,7 +84,11 @@ class RespostaIAService:
                 {"role": "user", "content": prompt},
             ],
             "stream": False,
-            "options": {"temperature": 0, "seed": 42},
+            "options": {
+                "temperature": 0,
+                "seed": 42,
+                "num_ctx": ollama_local.contexto_para(SYSTEM, prompt),
+            },
         }
         req = ollama_local.pedido_chat(payload)
         with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:
@@ -104,7 +108,11 @@ class RespostaIAService:
                 {"role": "user", "content": prompt},
             ],
             "stream": True,
-            "options": {"temperature": 0, "seed": 42},
+            "options": {
+                "temperature": 0,
+                "seed": 42,
+                "num_ctx": ollama_local.contexto_para(SYSTEM, prompt),
+            },
         }
         req = ollama_local.pedido_chat(payload)
         with ollama_local.abrir(req, timeout=180, modelo=self._modelo_local) as resp:

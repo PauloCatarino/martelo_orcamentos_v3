@@ -35,6 +35,28 @@ URL_BASE = "http://localhost:11434"
 URL_CHAT = f"{URL_BASE}/api/chat"
 URL_MODELOS = f"{URL_BASE}/api/tags"
 
+#: Espaço (em tokens) guardado para a resposta do modelo.
+TOKENS_RESPOSTA = 1024
+#: O texto que o Martelo manda (referências, preços, medidas) dá ~2,4
+#: caracteres por token — medido a 24-09-2026. Conta-se por baixo, para sobrar.
+CARACTERES_POR_TOKEN = 2.2
+CONTEXTOS = (8192, 16384)
+
+
+def contexto_para(*textos: str) -> int:
+    """O ``num_ctx`` onde cabem o pedido inteiro e a resposta.
+
+    Sem ele vale o "Context length" do Ollama de cada PC (4096 por omissão), e
+    um pedido maior é cortado para metade **pelo início** — onde estão as
+    instruções do Martelo. Visto no registo do Ollama do Paulo: pedidos da
+    Pesquisa IA com 4241 e 6807 tokens reduzidos a 2050, sem aviso nenhum.
+    """
+    tokens = sum(len(t) for t in textos) / CARACTERES_POR_TOKEN + TOKENS_RESPOSTA
+    for tamanho in CONTEXTOS:
+        if tokens <= tamanho:
+            return tamanho
+    return CONTEXTOS[-1]
+
 
 class OllamaIndisponivel(RuntimeError):
     """O Ollama não está a responder neste computador."""
