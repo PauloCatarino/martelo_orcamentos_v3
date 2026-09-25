@@ -80,15 +80,35 @@ def _make_service(monkeypatch) -> tuple[ClienteTemporarioService, _FakeSession]:
     return ClienteTemporarioService(session), session
 
 
-def test_criar_gera_simplex_a_partir_do_nome(monkeypatch) -> None:
+def test_criar_exige_o_simplex_escrito_e_nao_o_tira_do_nome(monkeypatch) -> None:
+    """Pedido do Paulo (25-09-2026): o Simplex é obrigatório, mesmo nos temporários."""
     service, session = _make_service(monkeypatch)
 
-    resumo = service.criar(DadosClienteTemporario(nome="  Joao Silva  "))
+    for vazio in (None, "", "   ", " _ "):
+        with pytest.raises(ValueError, match="Escreva o Simplex"):
+            service.criar(DadosClienteTemporario(nome="  Joao Silva  ", nome_simplex=vazio))
 
-    assert _FakeRepository.created_payload["nome"] == "Joao Silva"
-    assert _FakeRepository.created_payload["nome_simplex"] == "JOAO_SILVA"
-    assert resumo.nome_simplex == "JOAO_SILVA"
-    assert session.commits == 1
+    assert _FakeRepository.created_payload is None
+    assert session.commits == 0
+
+
+def test_editar_exige_o_simplex(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    with pytest.raises(ValueError, match="Escreva o Simplex"):
+        service.editar(5, DadosClienteTemporario(nome="Cliente Beta"))
+
+    assert _FakeRepository.updated_payload is None
+    assert session.commits == 0
+
+
+def test_criar_recusa_simplex_com_mais_de_19(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    with pytest.raises(ValueError, match="máximo 19"):
+        service.criar(DadosClienteTemporario(nome="Joao", nome_simplex="X" * 20))
+
+    assert session.commits == 0
 
 
 def test_criar_normaliza_simplex_indicado(monkeypatch) -> None:
@@ -127,6 +147,7 @@ def test_editar_reenvia_id_e_faz_commit(monkeypatch) -> None:
         5,
         DadosClienteTemporario(
             nome=" Cliente Beta ",
+            nome_simplex="BETA",
             email=" beta@example.test ",
             telefone=" 210000000 ",
         ),

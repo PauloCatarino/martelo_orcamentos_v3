@@ -139,10 +139,11 @@ class ClientesPage(QWidget):
         form_layout = QGridLayout()
         self.ed_nome = QLineEdit()
         self.ed_simplex = QLineEdit()
-        self.ed_simplex.setPlaceholderText("Gerado do nome se vazio (máx. 19 caracteres)")
+        self.ed_simplex.setPlaceholderText("Obrigatório (máx. 19 caracteres)")
         self.ed_simplex.setToolTip(
-            "Nome abreviado do cliente — dá o nome à pasta da obra, ao plano "
-            "CUT-RITE e à encomenda iMos. Máximo 19 caracteres."
+            "Nome abreviado do cliente — OBRIGATÓRIO. Dá o nome à pasta do "
+            "orçamento, à pasta da obra, ao plano CUT-RITE e à encomenda iMos. "
+            "Máximo 19 caracteres; espaços passam a _ e tudo fica em maiúsculas."
         )
         self.ed_num_phc = QLineEdit()
         self.ed_telefone = QLineEdit()
@@ -585,6 +586,9 @@ class ClientesPage(QWidget):
             novo_id = resumo.id
         except ValueError as exc:
             QMessageBox.warning(self, "Dados em falta", str(exc))
+            if "Simplex" in str(exc):
+                self.status_label.setText("Falta o Simplex (nome abreviado) do cliente.")
+                self.ed_simplex.setFocus()
             return
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel guardar o cliente.")

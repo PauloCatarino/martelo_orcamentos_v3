@@ -87,6 +87,25 @@ da obra, no plano CUT-RITE e na encomenda iMos.
   nenhum na base real, mas a regra deixa-os passar.
 - **Outras listas de clientes** (as que não servem para escolher o cliente de um
   orçamento) continuam a deixar escolher qualquer cliente.
-- **Clientes temporários:** o Simplex continua a ser **sugerido a partir do nome**
-  quando fica em branco e o nome tem até 19 caracteres. Com um nome maior, o
-  «Guardar» pede para escrever o Simplex à mão.
+## 6. Clientes temporários — o Simplex passa a ser obrigatório
+
+O Simplex já não é tirado do nome: quem cria ou edita o cliente tem de o
+escrever.
+
+1. **Clientes › Clientes Temporários › «Novo»**.
+2. O campo **Simplex** mostra, em cinzento, «Obrigatório (máx. 19 caracteres)».
+3. Escreva só o Nome (ex.: `Joao Silva`) e carregue em **«Guardar»**.
+   **Esperado:**
+   - aparece o aviso **«Dados em falta»**, que começa por «Escreva o Simplex (nome
+     abreviado do cliente, máximo 19 caracteres)»;
+   - o cursor fica no campo Simplex;
+   - a linha de estado diz «Falta o Simplex (nome abreviado) do cliente.»;
+   - o cliente **não** é gravado.
+4. Escreva `js mob` no Simplex e carregue em **«Guardar»**. **Esperado:** o cliente
+   fica gravado com o Simplex **`JS_MOB`** (em maiúsculas e com `_` no lugar dos
+   espaços).
+5. Escreva 20 caracteres no Simplex e carregue em **«Guardar»**. **Esperado:** o
+   aviso «O Simplex tem 20 caracteres (máximo 19)».
+6. Edite um temporário que já existe, apague o Simplex e carregue em
+   **«Guardar»**. **Esperado:** o mesmo aviso do passo 3, e o cliente fica como
+   estava.
