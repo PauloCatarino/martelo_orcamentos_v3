@@ -6,6 +6,20 @@ from app.services import analise_custo_mapeamento_service as maps
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
 
+def _norm(text):
+    return ''.join(c for c in unicodedata.normalize('NFKD', text.casefold()) if not unicodedata.combining(c))
+
+
+def filtrar_materias_primas(catalog, family, text, recommended_ids=()):
+    """As matérias-primas da família com todas as palavras, as recomendadas primeiro."""
+    terms = _norm(text).split()
+    found = [mp for mp in catalog if (family == 'Todas' or maps.category(mp) == family)
+             and all(term in _norm(' '.join(str(getattr(mp, f, '') or '') for f in
+                 ('ref_le', 'ref_phc', 'descricao', 'fornecedor', 'referencia_fornecedor', 'nome_imos')))
+                 for term in terms)]
+    return sorted(found, key=lambda mp: (mp.id not in recommended_ids, mp.ref_le or '', mp.descricao))
+
+
 class AssociarCustoMateriaPrimaDialog(QDialog):
     def __init__(self, line, catalog, references=(), parent=None):
         super().__init__(parent)
@@ -65,14 +79,8 @@ class AssociarCustoMateriaPrimaDialog(QDialog):
         self._filter()
 
     def _filter(self, *_):
-        def norm(text):
-            return ''.join(c for c in unicodedata.normalize('NFKD', text.casefold()) if not unicodedata.combining(c))
-        terms = norm(self.search.text()).split()
-        family = self.family.currentText()
-        self.filtered = [mp for mp in self.catalog if (family == 'Todas' or maps.category(mp) == family)
-            and all(term in norm(' '.join(str(getattr(mp, f, '') or '') for f in
-                ('ref_le','ref_phc','descricao','fornecedor','referencia_fornecedor','nome_imos'))) for term in terms)]
-        self.filtered.sort(key=lambda mp: (mp.id not in self.recommended_ids, mp.ref_le or '', mp.descricao))
+        self.filtered = filtrar_materias_primas(self.catalog, self.family.currentText(), self.search.text(),
+                                                self.recommended_ids)
         self.table.setRowCount(len(self.filtered))
         self.table.clearSelection()
         self.table.setCurrentCell(-1,-1)

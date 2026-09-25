@@ -7,8 +7,8 @@ import json
 from app.services.user_pref_service import UserPrefService
 from datetime import datetime
 import re
-from PySide6.QtCore import QThread, Signal, Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import QThread, QTimer, Signal, Qt, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 
 from PySide6.QtWidgets import (
     QApplication, QDialog, QHBoxLayout, QHeaderView,
@@ -26,6 +26,7 @@ from app.services import tempos_lista_material_service as times
 from app.services import streamlit_sql_service as streamlit
 from app.services.placas_referencias_service import listar_referencias
 from app.ui.dialogs.associar_custo_materia_prima_dialog import AssociarCustoMateriaPrimaDialog
+from app.ui.dialogs.acrescentar_linha_custo_dialog import AcrescentarLinhaCustoDialog
 from app.services.permission_service import (
     permissions_for_user, PERMISSAO_ANALISE_LISTA_MATERIAL,
     PERMISSAO_CUSTOS_LISTA_MATERIAL, PERMISSAO_CORRIGIR_LISTA_MATERIAL,
@@ -81,6 +82,10 @@ class AnaliseListaMaterialDialog(QDialog):
         # Linhas que o utilizador tirou do custo DESTA obra (ex.: calceiro que o
         # cliente compra). O preço e o mapeamento ficam como estão para as outras.
         self.excluded = set()
+        # Linhas eliminadas nesta obra (as que vêm do Excel/Cut-Rite; as acrescentadas
+        # à mão, ao eliminar, desaparecem de vez).
+        self.removed = set()
+        self.removed_lines = []
         self.production = {}
         self.times_worker = None
         self.lines, self.plans, self.warnings = [], [], []
@@ -128,6 +133,14 @@ class AnaliseListaMaterialDialog(QDialog):
         self.cost_table.cellClicked.connect(
             lambda row, col: self._associate() if col == 7 and self._line_at(row) else None)
         self.cost_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        # Só a quantidade e o preço das linhas acrescentadas à mão se editam aqui
+        # (as outras vêm do Excel e do Cut-Rite); cada célula decide pelas flags.
+        self.cost_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked
+                                        | QTableWidget.EditTrigger.EditKeyPressed)
+        self.cost_table.itemChanged.connect(self._cost_item_changed)
+        atalho = QShortcut(QKeySequence(QKeySequence.StandardKey.Delete), self.cost_table)
+        atalho.setContext(Qt.ShortcutContext.WidgetShortcut)
+        atalho.activated.connect(self._remove_lines)
         if self.permissions.get(PERMISSAO_CUSTOS_LISTA_MATERIAL):
             cost = QWidget()
             cl = QVBoxLayout(cost)
@@ -159,6 +172,15 @@ class AnaliseListaMaterialDialog(QDialog):
                          'Guardar uma nova análise com os preços, fontes e pendências, preservando as anteriores.')
             cl.addLayout(row)
             report = QHBoxLayout()
+            self._button(report, 'Acrescentar linha…', self._add_line,
+                         'Juntar ao custo desta obra uma linha a partir das Matérias-Primas do V3 (p. ex. ferragens '
+                         'gastas a mais do que as que vêm do IMOS). Quantidade e preço editam-se com duplo clique.')
+            self._button(report, 'Eliminar linhas', self._remove_lines,
+                         'Tirar da tabela e do custo desta obra as linhas selecionadas (também com a tecla Delete). '
+                         'As acrescentadas à mão desaparecem; as do Excel/Cut-Rite podem voltar com «Repor eliminadas».')
+            self.restore_button = self._button(
+                report, 'Repor eliminadas', self._restore_removed,
+                'Voltar a pôr no custo as linhas do Excel/Cut-Rite que foram eliminadas nesta obra.')
             export = self._button(report, 'Inserir relatório no Excel', lambda: self._save(write_report=True),
                          'Acrescentar um relatório de custos por categoria à Lista Material, com fórmulas e pendências de produção.')
             export.setEnabled(self.permissions.get(PERMISSAO_CORRIGIR_LISTA_MATERIAL, False))
@@ -586,6 +608,8 @@ class AnaliseListaMaterialDialog(QDialog):
             self.warnings.append(reference_warning)
         self.lines = svc.board_cost_lines(self.plans) + extra
         snapshot = svc.latest_snapshot(self.path, self.version)
+        # As linhas acrescentadas à mão só existem na análise guardada.
+        self.lines += [dict(line) for line in snapshot.get('manual_lines', [])]
         self.production = snapshot.get('production', {})
         # Uma linha por setor mesmo sem consulta: o €/h do Martelo vê-se sempre.
         self.lines += times.completar_setores(self.production.get('lines', []), self.production.get('sectors'))
@@ -598,6 +622,10 @@ class AnaliseListaMaterialDialog(QDialog):
                        (times.match_machine(line, self.machine_catalog) if line['kind'] == 'Produção'
                         else maps.resolve_price(line, self.mp_catalog, self.mappings, self.references, self.components))
                        for line in self.lines}
+        # Eliminadas nesta obra: saem do custo e da tabela, mas podem voltar.
+        self.removed = set(snapshot.get('removed', []))
+        self.removed_lines = [line for line in self.lines if line['key'] in self.removed]
+        self.lines = [line for line in self.lines if line['key'] not in self.removed]
         self._fill_hardware_prices()
         if snapshot and (snapshot.get('workbook_hash') != self.workbook_hash or snapshot.get('plans') != self.plans):
             self.warnings.append('Fontes alteradas desde a análise guardada; quantidades relidas e preços guardados mantidos.')
@@ -810,7 +838,19 @@ class AnaliseListaMaterialDialog(QDialog):
     # Linha vazia entre categorias (pedido do Paulo, 24-09-2026), num tom acastanhado.
     _COR_SEPARADOR = QColor('#DDD3C9')
 
+    # Colunas da tabela do custo que se editam nas linhas acrescentadas à mão.
+    _COL_QUANTIDADE, _COL_PRECO = 5, 8
+    _COR_EDITAVEL = QColor('#FFF2CC')   # o amarelo das células alteráveis no Excel
+
     def _render_costs(self):
+        # Escrever as células não é uma edição do utilizador: sem itemChanged.
+        self.cost_table.blockSignals(True)
+        try:
+            self._render_costs_sem_sinais()
+        finally:
+            self.cost_table.blockSignals(False)
+
+    def _render_costs_sem_sinais(self):
         # A produção não entra aqui: as horas × €/h estão no separador Tempos por setor.
         self._cost_rows = svc.linhas_por_categoria(self.lines)
         self.cost_table.clearSelection()
@@ -841,6 +881,9 @@ class AnaliseListaMaterialDialog(QDialog):
                 total += cost
             detail = line['name'] + (f" ({line.get('size')})" if line.get('size') else '')
             ref = ' — '.join(str((price or {}).get(k) or '') for k in ('ref','description')) if price else 'Clique para associar…'
+            manual = bool(line.get('manual'))
+            if manual:
+                state += f" · acrescentada à mão{' por ' + line['added_by'] if line.get('added_by') else ''}"
             values = (line['kind'], detail, self._decimal(line.get('length','')), self._decimal(line.get('width','')), self._decimal(line.get('thickness','')),
                       self._decimal(line['quantity']) if line['quantity'] is not None else 'Por apurar', line['unit'], ref,
                       self._decimal((price or {}).get('net', 'Por apurar')), f'{cost:.2f}' if cost is not None else 'Por apurar',
@@ -848,6 +891,13 @@ class AnaliseListaMaterialDialog(QDialog):
             for col, value in enumerate(values):
                 item = QTableWidgetItem(str(value))
                 item.setToolTip(str(value) + (f"\nPlaca: {line['board']}" if col == 1 and line.get('board') else ''))
+                if manual and col in (self._COL_QUANTIDADE, self._COL_PRECO):
+                    item.setBackground(self._COR_EDITAVEL)
+                    item.setToolTip(f'{value}\nDuplo clique para alterar (só nesta obra).')
+                    # O texto mostrado: se voltar igual, não foi alterado.
+                    item.setData(Qt.ItemDataRole.UserRole, str(value))
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 if line['key'] in self.excluded:
                     item.setForeground(QColor('#8a8f98'))
                 self.cost_table.setItem(i, col, item)
@@ -874,8 +924,16 @@ class AnaliseListaMaterialDialog(QDialog):
             f"<b>{state.titulo}</b><br>" + '<br>'.join(('✓ ' if ok else '✗ ') + text for ok, text in state.pontos))
         self.rigor_label.setStyleSheet('background:#e7f6ea;padding:6px;color:#1f2328;' if state.final
                                        else 'background:#fff4d6;padding:6px;color:#1f2328;')
+        manuais = sum(1 for line in self.lines if line.get('manual'))
+        mao = ' · '.join(texto for n, texto in (
+            (manuais, f'{manuais} linha(s) acrescentada(s) à mão'),
+            (len(self.removed_lines), f'{len(self.removed_lines)} eliminada(s) nesta obra')) if n)
+        if hasattr(self, 'restore_button'):
+            self.restore_button.setEnabled(bool(self.removed_lines))
+            self.restore_button.setText(f'Repor eliminadas ({len(self.removed_lines)})' if self.removed_lines
+                                        else 'Repor eliminadas')
         self.cost_summary.setText(f'Custo {"final" if state.final else "provisório"}: {total:.2f} € · {pending} linhas de material pendentes · placas usadas: {board_area:.2f} m² · versão {self.version}\n'
-                                 + ' · '.join(categories) + '\n' +
+                                 + ' · '.join(categories) + (f'\n{mao}' if mao else '') + '\n' +
                                  f"Planos incluídos: {', '.join(p['name'] for p in self.plans) or 'nenhum'}\n" + '\n'.join(self.warnings))
         for col, width in enumerate((85, 300, 85, 65, 60, 85, 45, 400, 100, 100, 330)):
             if not self.cost_table.property('layout_ready'):
@@ -890,12 +948,126 @@ class AnaliseListaMaterialDialog(QDialog):
             # Com uma categoria só, as separadoras não fazem falta.
             self.cost_table.setRowHidden(i, category != 'Todas' and (line is None or line['kind'] != category))
 
+    # ---- Linhas acrescentadas à mão e eliminadas (pedido do Paulo, 25-09-2026) ----
+
+    def _cost_item_changed(self, item):
+        line = self._line_at(item.row())
+        column = item.column()
+        if not line or not line.get('manual') or column not in (self._COL_QUANTIDADE, self._COL_PRECO):
+            return
+        texto = item.text().strip()
+        if texto == item.data(Qt.ItemDataRole.UserRole):
+            return
+        # Nunca redesenhar a tabela dentro do commit do editor: foi isso que fechou
+        # o Martelo sozinho no custeio (18-09-2026). Aplica-se a seguir.
+        QTimer.singleShot(0, lambda: self._aplicar_edicao(line, column, texto))
+
+    def _aplicar_edicao(self, line, column, texto):
+        valor = svc.number(texto)
+        if valor is None or valor < 0:
+            self.status.setText(f'«{texto}» não é um número válido (0 ou mais, p. ex. 12 ou 0,45). Nada mudou.')
+        elif column == self._COL_QUANTIDADE:
+            line['quantity'] = str(valor)
+            self.status.setText(f'Quantidade de «{line["name"]}» = {valor}. Guarde a análise para fixar nesta obra.')
+        else:
+            self.prices[line['key']] = svc.preco_escrito_a_mao(self.prices.get(line['key']), valor)
+            self.status.setText(f'Preço de «{line["name"]}» = {valor} € — só nesta obra; «Atualizar preços do V3» '
+                                'não lhe mexe. Guarde a análise para o fixar.')
+        self._render_costs()
+
+    def _selected_lines(self):
+        rows = sorted({i.row() for i in self.cost_table.selectionModel().selectedRows()}
+                      or ({self.cost_table.currentRow()} - {-1}))
+        return [line for line in (self._line_at(row) for row in rows) if line is not None]
+
+    def _add_line(self, *_):
+        try:
+            self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
+            filtro = self.category_filter.currentText()
+            atual = self._line_at(self.cost_table.currentRow())
+            categoria = filtro if filtro != 'Todas' else (atual['kind'] if atual else 'Ferragens')
+            dialog = AcrescentarLinhaCustoDialog(self.mp_catalog, categoria=categoria,
+                                                 utilizador=getattr(self.user, 'username', ''), parent=self)
+            if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.line:
+                return
+            self.lines.append(dialog.line)
+            self.prices[dialog.line['key']] = dialog.price
+            self._render_costs()
+            row = self._cost_row_of(dialog.line)
+            if row >= 0:
+                self.cost_table.selectRow(row)
+                self.cost_table.scrollToItem(self.cost_table.item(row, 0))
+            self.status.setText(f'Linha «{dialog.line["name"]}» acrescentada em {dialog.line["kind"]}. Quantidade e '
+                                'preço alteram-se com duplo clique; guarde a análise para a fixar nesta obra.')
+        except Exception as exc:
+            self._error(exc)
+
+    def _remove_lines(self, *_):
+        try:
+            self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
+            lines = self._selected_lines()
+            if not lines:
+                self.status.setText('Selecione as linhas a eliminar do custo desta obra.')
+                return
+            manuais = [line for line in lines if line.get('manual')]
+            avisos = []
+            if manuais:
+                avisos.append(f'{len(manuais)} acrescentada(s) à mão desaparece(m) de vez.')
+            if len(lines) > len(manuais):
+                avisos.append(f'{len(lines) - len(manuais)} do Excel/Cut-Rite fica(m) guardada(s) como eliminada(s) '
+                              'e pode(m) voltar com «Repor eliminadas».')
+            resposta = QMessageBox.question(
+                self, 'Eliminar linhas do custo',
+                f'Eliminar {len(lines)} linha(s) do custo desta obra?\n\n' + '\n'.join(avisos),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if resposta != QMessageBox.StandardButton.Yes:
+                return
+            keys = {line['key'] for line in lines}
+            self.lines = [line for line in self.lines if line['key'] not in keys]
+            for line in lines:
+                if not line.get('manual'):
+                    self.removed.add(line['key'])
+                    self.removed_lines.append(line)
+            self._render_costs()
+            self.status.setText(f'{len(lines)} linha(s) eliminada(s) do custo. Guarde a análise para fixar nesta obra.')
+        except Exception as exc:
+            self._error(exc)
+
+    def _restore_removed(self, *_):
+        try:
+            self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
+            if not self.removed_lines:
+                self.status.setText('Não há linhas eliminadas nesta obra.')
+                return
+            quantas = len(self.removed_lines)
+            self.lines += self.removed_lines
+            self.removed_lines, self.removed = [], set()
+            self._render_costs()
+            self.status.setText(f'{quantas} linha(s) de volta ao custo. Guarde a análise para fixar nesta obra.')
+        except Exception as exc:
+            self._error(exc)
+
+    def _avisos_feitos_a_mao(self):
+        """O que o relatório do Excel tem de dizer sobre as mudanças à mão."""
+        avisos = []
+        manuais = [line['name'] for line in self.lines if line.get('manual')]
+        if manuais:
+            avisos.append(f'Acrescentadas à mão nesta obra ({len(manuais)}): ' + '; '.join(manuais))
+        if self.removed_lines:
+            avisos.append(f'Eliminadas nesta obra ({len(self.removed_lines)}): '
+                          + '; '.join(line['name'] for line in self.removed_lines))
+        return avisos
+
     def _associate(self):
         try:
             self._allowed(PERMISSAO_CUSTOS_LISTA_MATERIAL)
             line = self._line_at(self.cost_table.currentRow())
             if line is None:
                 self.status.setText('Selecione uma linha de custo.')
+                return
+            if line.get('manual'):
+                self.status.setText('Linha acrescentada à mão: para outra matéria-prima, elimine-a e acrescente outra. '
+                                    'A quantidade e o preço mudam-se com duplo clique.')
                 return
             dialog = AssociarCustoMateriaPrimaDialog(line, self.mp_catalog, self.references, self)
             if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected:
@@ -981,6 +1153,13 @@ class AnaliseListaMaterialDialog(QDialog):
             self.machine_catalog = machine_catalog
             for line in self.lines:
                 price = self.prices.get(line['key'])
+                if price and price.get('preco_manual'):
+                    continue   # preço escrito à mão nesta obra: o V3 não lhe mexe
+                if line.get('manual'):
+                    mp = by_id.get((price or {}).get('id'))
+                    if mp is not None:
+                        self.prices[line['key']] = {**svc.price_record(mp), 'mapping_source': svc.ORIGEM_MANUAL}
+                    continue
                 if line['kind'] == 'Produção':
                     machine = next((m for m in machine_catalog if m['id'] == (price or {}).get('machine_id')), None)
                     self.prices[line['key']] = times.machine_price(machine) if machine else times.match_machine(line, machine_catalog)
@@ -1017,11 +1196,16 @@ class AnaliseListaMaterialDialog(QDialog):
             report_name = ''
             if write_report:
                 self._allowed(PERMISSAO_CORRIGIR_LISTA_MATERIAL)
-                report_name = svc.export_cost_report(self.path, self.workbook_hash, self.version, self.lines, self._effective_prices(), self.warnings, production=self.production)
+                report_name = svc.export_cost_report(self.path, self.workbook_hash, self.version, self.lines,
+                                                     self._effective_prices(),
+                                                     self.warnings + self._avisos_feitos_a_mao(),
+                                                     production=self.production)
                 self.workbook_hash = svc.fingerprint(self.path)
             destination = svc.save_snapshot(self.path, {'version': self.version, 'user': self.user.username,
                 'workbook_hash': self.workbook_hash, 'plans': self.plans, 'lines': self.lines,
                 'prices': self.prices, 'excluded': sorted(self.excluded),
+                'manual_lines': [line for line in self.lines if line.get('manual')],
+                'removed': sorted(line['key'] for line in self.removed_lines),
                 'warnings': self.warnings, 'production': self.production,
                 'complete': bool(getattr(self, 'cost_state', None) and self.cost_state.final)})
             self.status.setText(f'Análise guardada com preços e pendências: {destination.name}' + (f' · Relatório no Excel: {report_name}' if report_name else ''))

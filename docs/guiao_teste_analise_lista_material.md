@@ -424,3 +424,23 @@ Migração 116 (`def_maquinas.nomes_streamlit`) aplicada à dev e à real.
    (Cut-Rite)** = 0,17 h (`bd_corte_minutos` = 10 min), ambas «Concluído» (data 31-07).
    Sem máquina com os nomes `Desenho` / `Cut-Rite` ficam a rosa; depois de os pôr numa
    máquina → **Atualizar preços do V3** → o €/h e o custo aparecem.
+
+## Acrescentar e eliminar linhas no custo (25-09-2026)
+
+Obra de referência: **1357_01_26_JF_VIVA**, separador **Custo de produção (parcial)**.
+
+1. Filtro «Ferragens» (ou selecionar uma ferragem) → **Acrescentar linha…** → a categoria
+   vem já «Ferragens»; pesquisar `corred` → escolher **FER0005 CORRED. EXTR. TOTAL** → o
+   preço 6,105 € vem do V3 → Quantidade 4 → **Acrescentar ao custo**. A linha aparece no
+   fim das Ferragens com 24,42 €, a Quantidade e o Preço a amarelo e o Estado
+   «acrescentada à mão por …». O resumo diz «1 linha(s) acrescentada(s) à mão».
+2. Duplo clique na Quantidade → 6 → Enter: o custo passa a 36,63 €. Duplo clique no Preço →
+   5,5 → o custo passa a 33,00 € e o estado diz «preço escrito à mão».
+   **Atualizar preços do V3** não mexe nesse preço.
+3. Selecionar uma ferragem do Excel (ex.: Batente Colar) → **Eliminar linhas** (ou a tecla
+   Delete) → confirmar: sai da tabela e do total; o botão passa a **Repor eliminadas (1)**.
+4. **Guardar análise de custos** → **Reanalisar ficheiros**: a linha acrescentada continua
+   (com 6 e 5,5 €) e a eliminada continua fora. **Repor eliminadas** volta a pô-la.
+5. **Inserir relatório no Excel**: a linha à mão está na Tabela com o Estado «Calculado —
+   acrescentada à mão»; a eliminada não aparece; a linha de avisos diz o que foi
+   acrescentado e eliminado nesta obra.

@@ -462,6 +462,35 @@ def price_record(mp):
             'date': datetime.now().isoformat(timespec='seconds')}
 
 
+# ---- Linhas acrescentadas à mão (pedido do Paulo, 25-09-2026) -----------------
+#
+# A obra gasta muitas vezes mais ferragens do que as que vêm do IMOS. A linha
+# nova parte de uma matéria-prima do V3; a quantidade e o preço ficam como o
+# utilizador os escrever, só nesta obra (guardados na análise).
+
+ORIGEM_MANUAL = 'Linha acrescentada à mão'
+
+
+def linha_manual(kind, mp, quantidade, preco=None, *, utilizador=''):
+    """(linha, preço) de uma linha nova do custo, a partir da matéria-prima ``mp``."""
+    line = cost_line(kind, 'manual:' + uuid4().hex[:12], str(mp.descricao or mp.ref_le or 'Artigo'),
+                     quantidade, unit(mp.unidade) or 'un', manual=True,
+                     ref_phc=str(mp.ref_phc or ''), description=str(mp.descricao or ''),
+                     source=ORIGEM_MANUAL, added_by=str(utilizador or ''),
+                     added_at=datetime.now().isoformat(timespec='seconds'))
+    price = {**price_record(mp), 'mapping_source': ORIGEM_MANUAL}
+    if preco is not None and number(preco) != number(price.get('net')):
+        price = preco_escrito_a_mao(price, preco)
+    return line, price
+
+
+def preco_escrito_a_mao(price, valor):
+    """O preço mudado à mão nesta obra: «Atualizar preços do V3» não lhe toca."""
+    return {**(price or {}), 'net': str(number(valor)), 'preco_manual': True,
+            'date': datetime.now().isoformat(timespec='seconds'),
+            'mapping_source': ORIGEM_MANUAL + ' · preço escrito à mão'}
+
+
 def exact_price(line, catalog):
     matches = []
     for mp in catalog:
@@ -716,7 +745,7 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
         factor = Decimal(1)
         if line['kind'] == 'Orlas' and unit(price.get('unit')) == 'm2':
             factor = (number(line.get('width')) or Decimal(0)) / 1000
-        estados.append((r, state))
+        estados.append((r, state, bool(line.get('manual'))))
         values = [line['kind'], line['name'], line.get('length', ''), line.get('width', ''), line.get('thickness', ''),
                   float(number(line['quantity'])) if number(line['quantity']) is not None else None, line['unit'],
                   ' — '.join(str(price.get(k) or '') for k in ('ref', 'description')) if price else '',
@@ -749,10 +778,11 @@ def _escrever_relatorio_custo(sheet, version, lines, prices, warnings, productio
     preencher = autocorrect.AutoFillFormulasInLists
     autocorrect.AutoFillFormulasInLists = False
     try:
-        for r, state in estados:
+        for r, state, manual in estados:
             sem_custo = state if state != 'Calculado' else 'Sem custo — confirmar preço'
+            calculado = 'Calculado — acrescentada à mão' if manual else 'Calculado'
             sheet.Cells(r, 14).Formula = (f'=IF(L{r}="N","Fora da conta (Incluir = N)",IF(M{r}=0,'
-                                          f'{_texto_formula(sem_custo)},"Calculado"))')
+                                          f'{_texto_formula(sem_custo)},{_texto_formula(calculado)}))')
     finally:
         autocorrect.AutoFillFormulasInLists = preencher
     tab.ShowTotals = True
