@@ -7,6 +7,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.domain.clientes_simplex import erro_simplex_orcamento
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
     AMBITO_CLIENTE_FINAL,
@@ -26,6 +27,8 @@ from app.domain.ref_cliente_semelhanca import (
     chave_ref,
     comparar as comparar_ref_cliente,
 )
+from app.models.cliente import Cliente
+from app.models.orcamento import Orcamento
 from app.models.orcamento_versao import OrcamentoVersao
 from app.repositories.def_margem_padrao_repository import DefMargemPadraoRepository
 from app.repositories.orcamento_repository import (
@@ -154,6 +157,31 @@ class OrcamentoService:
         )
         return correspondencias
 
+    def _exigir_simplex(
+        self, cliente_id: int | None, *, orcamento_id: int | None = None
+    ) -> None:
+        """Recusar um cliente sem nome abreviado: é ele que dá o nome à pasta.
+
+        Ao editar só conta se o cliente muda — um orçamento que já tinha este
+        cliente não fica preso por isto.
+        """
+        if cliente_id is None:
+            return
+        if orcamento_id is not None:
+            orcamento = self.session.get(Orcamento, orcamento_id)
+            if orcamento is not None and orcamento.cliente_id == cliente_id:
+                return
+        cliente = self.session.get(Cliente, cliente_id)
+        if cliente is None:
+            return  # o repositório dá o seu próprio erro
+        erro = erro_simplex_orcamento(
+            cliente.nome_simplex,
+            nome_cliente=cliente.nome,
+            temporario=bool(cliente.is_temporary),
+        )
+        if erro:
+            raise ValueError(erro)
+
     def get_cliente_da_versao(
         self, orcamento_versao_id: int
     ) -> ClienteResumo | None:
@@ -166,6 +194,7 @@ class OrcamentoService:
 
         if data.cliente_id is None:
             raise ValueError("cliente_id is required")
+        self._exigir_simplex(data.cliente_id)
 
         ano = data.ano or date.today().year
         num_manual = (data.num_orcamento or "").strip()
@@ -223,6 +252,7 @@ class OrcamentoService:
 
         versao_atual = self.session.get(OrcamentoVersao, orcamento_versao_id)
         estado_anterior = versao_atual.estado if versao_atual is not None else None
+        self._exigir_simplex(data.cliente_id, orcamento_id=orcamento_id)
 
         result = self.repository.update_orcamento(
             orcamento_id,
@@ -377,6 +407,11 @@ class OrcamentoService:
         the shared ref./customer). The source version is left untouched; the
         new version starts at the initial status and without PHC orders.
         """
+        origem = self.session.get(OrcamentoVersao, orcamento_versao_id)
+        self._exigir_simplex(
+            data.cliente_id,
+            orcamento_id=origem.orcamento_id if origem is not None else None,
+        )
         result = self.repository.duplicar_versao_profunda(
             orcamento_versao_id, created_by_id=created_by_id
         )

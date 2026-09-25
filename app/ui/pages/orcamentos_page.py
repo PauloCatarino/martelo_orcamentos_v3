@@ -826,7 +826,11 @@ class OrcamentosPage(QWidget):
                     ),
                     created_by_id=created_by_id,
                 )
-        except (SQLAlchemyError, ValueError):
+        except ValueError as erro:
+            QMessageBox.warning(self, "Duplicar para versão", str(erro))
+            self.status_label.setText("Nao foi possivel duplicar o orcamento.")
+            return
+        except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel duplicar o orcamento.")
             return
 
@@ -1251,7 +1255,12 @@ class OrcamentosPage(QWidget):
                     updated_by_id=updated_by_id,
                     orcamento_versao_id=orcamento.orcamento_versao_id,
                 )
-        except (SQLAlchemyError, ValueError):
+        except ValueError as erro:
+            # Ex.: cliente novo sem nome abreviado — dizer porquê e onde corrigir.
+            QMessageBox.warning(self, "Editar Orçamento", str(erro))
+            self.status_label.setText("Nao foi possivel atualizar o orcamento.")
+            return
+        except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel atualizar o orcamento.")
             return
 

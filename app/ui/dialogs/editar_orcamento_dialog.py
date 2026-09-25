@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
+from app.domain.clientes_simplex import erro_simplex_orcamento
 from app.domain.orcamento_estados import (
     ESTADO_ADJUDICADO,
     ESTADOS_ORCAMENTO,
@@ -106,6 +107,11 @@ class EditarOrcamentoDialog(QDialog):
         self.cliente_telefone_label = QLabel("\u2014")
         self.cliente_tipo_label = QLabel("\u2014")
         self.trocar_cliente_button = QPushButton("Trocar cliente\u2026")
+        self.trocar_cliente_button.setToolTip(
+            "Associar o orçamento (todas as versões) a outro cliente. O novo "
+            "cliente tem de ter nome abreviado (Simplex): é ele que dá o nome "
+            "à pasta do orçamento no servidor."
+        )
         self.trocar_cliente_button.clicked.connect(self._trocar_cliente)
 
         cliente_form = QFormLayout()
@@ -447,6 +453,24 @@ class EditarOrcamentoDialog(QDialog):
 
         self.cliente_nome_label.setText(cliente.nome or "\u2014")
         self.cliente_simplex_label.setText(cliente.nome_simplex or "\u2014")
+        # Sem nome abreviado a pasta sai com o nome completo: v\u00ea-se aqui a ocre.
+        erro = erro_simplex_orcamento(
+            cliente.nome_simplex,
+            nome_cliente=cliente.nome,
+            temporario=bool(cliente.is_temporary),
+        )
+        if erro:
+            if not (cliente.nome_simplex or "").strip():
+                self.cliente_simplex_label.setText("(vazio \u2014 por corrigir)")
+            self.cliente_simplex_label.setStyleSheet(
+                f"color: {tema.OCRE_ESCURO}; background: {tema.OCRE_SUAVE};"
+            )
+            self.cliente_simplex_label.setToolTip(erro)
+        else:
+            self.cliente_simplex_label.setStyleSheet("")
+            self.cliente_simplex_label.setToolTip(
+                "Nome abreviado do cliente: d\u00e1 o nome \u00e0 pasta do or\u00e7amento."
+            )
         self.cliente_email_label.setText(cliente.email or "\u2014")
         self.cliente_telefone_label.setText(
             cliente.telefone or cliente.telemovel or "\u2014"
@@ -458,7 +482,8 @@ class EditarOrcamentoDialog(QDialog):
     def _trocar_cliente(self) -> None:
         from app.ui.dialogs.selecionar_cliente_dialog import SelecionarClienteDialog
 
-        dialog = SelecionarClienteDialog(self)
+        # O cliente novo tem de ter nome abreviado: é ele que dá o nome à pasta.
+        dialog = SelecionarClienteDialog(self, exigir_simplex=True)
         if not dialog.exec() or dialog.selected_cliente is None:
             return
 

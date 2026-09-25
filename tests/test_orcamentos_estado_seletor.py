@@ -27,7 +27,7 @@ _app = QApplication.instance() or QApplication([])
 
 
 def _versao(session) -> int:
-    cliente = Cliente(nome="Cliente X", is_temporary=False)
+    cliente = Cliente(nome_simplex="ABREV", nome="Cliente X", is_temporary=False)
     session.add(cliente)
     session.flush()
     service = OrcamentoService(session)

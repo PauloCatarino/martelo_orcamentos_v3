@@ -28,7 +28,7 @@ from app.services.orcamento_service import (
 
 
 def _criar_versao(session, *, enc_phc: str | None = None) -> int:
-    cliente = Cliente(nome="Cliente X", is_temporary=True)
+    cliente = Cliente(nome_simplex="ABREV", nome="Cliente X", is_temporary=True)
     session.add(cliente)
     session.flush()
     service = OrcamentoService(session)

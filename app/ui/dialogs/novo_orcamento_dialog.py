@@ -28,6 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
+from app.domain.clientes_simplex import erro_simplex_orcamento
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
     AMBITO_CLIENTE_FINAL,
@@ -89,8 +90,15 @@ class NovoOrcamentoDialog(QDialog):
         # cliente genérico do PHC e é o nome que a identifica.
         self._cliente_nome: str = ""
         self._cliente_temporario: bool = False
+        # Mensagem quando o cliente escolhido não tem nome abreviado válido.
+        self._erro_simplex: str | None = None
         self.cliente_label = QLabel("\u2014 nenhum cliente escolhido \u2014")
         self.escolher_cliente_button = QPushButton("Escolher cliente\u2026")
+        self.escolher_cliente_button.setToolTip(
+            "Escolher o cliente (PHC ou tempor\u00e1rio). Tem de ter nome abreviado "
+            "(Simplex, m\u00e1x. 19 caracteres): \u00e9 ele que d\u00e1 o nome \u00e0 pasta do "
+            "or\u00e7amento no servidor."
+        )
         self.escolher_cliente_button.clicked.connect(self._escolher_cliente)
         cliente_widget = QWidget()
         cliente_layout = QHBoxLayout(cliente_widget)
@@ -570,17 +578,25 @@ class NovoOrcamentoDialog(QDialog):
     def _escolher_cliente(self) -> None:
         from app.ui.dialogs.selecionar_cliente_dialog import SelecionarClienteDialog
 
-        dialog = SelecionarClienteDialog(self)
+        # O cliente tem de ter nome abreviado: é ele que dá o nome à pasta.
+        dialog = SelecionarClienteDialog(self, exigir_simplex=True)
         if not dialog.exec() or dialog.selected_cliente is None:
             return
 
         cliente = dialog.selected_cliente
+        self._erro_simplex = erro_simplex_orcamento(
+            cliente.nome_simplex,
+            nome_cliente=cliente.nome,
+            temporario=bool(cliente.is_temporary),
+        )
         self._cliente_id = cliente.id
         self._num_cliente_phc = (cliente.num_cliente_phc or "").strip() or None
         self._cliente_nome = (cliente.nome or "").strip()
         self._cliente_temporario = bool(cliente.is_temporary)
         tipo = "Tempor\u00e1rio" if cliente.is_temporary else "PHC"
-        self.cliente_label.setText(f"{cliente.nome} ({tipo})")
+        self.cliente_label.setText(
+            f"{cliente.nome} ({tipo}) — abreviado: {cliente.nome_simplex}"
+        )
         self._atualizar_criar_phc_disponivel()
         self._atualizar_opcao_margens_cliente()
 
@@ -681,6 +697,13 @@ class NovoOrcamentoDialog(QDialog):
 
         if data.cliente_id is None:
             self.error_label.setText("Escolha um cliente.")
+            return
+        if self._erro_simplex:
+            self.error_label.setText(
+                "O cliente não tem nome abreviado (Simplex) — corrija-o ou "
+                "escolha outro cliente."
+            )
+            QMessageBox.warning(self, "Cliente sem nome abreviado", self._erro_simplex)
             return
 
         if (

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QVBoxLayout,
@@ -15,7 +17,12 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db.session import SessionLocal
 from app.domain.clientes_lista import filtrar_clientes
+from app.domain.clientes_simplex import (
+    erro_simplex_orcamento,
+    simplex_demasiado_longo,
+)
 from app.repositories.cliente_repository import ClienteListaResumo, ClienteRepository
+from app.ui import tema
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.table_item import criar_item_tabela
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
@@ -26,13 +33,24 @@ class SelecionarClienteDialog(QDialog):
 
     TABLE_HEADERS = ["Tipo", "Nome", "Simplex", "Email", "Telefone", "Telem\u00f3vel"]
 
-    def __init__(self, parent=None, *, apenas_phc: bool = False) -> None:
+    COL_SIMPLEX = 2
+
+    def __init__(
+        self,
+        parent=None,
+        *,
+        apenas_phc: bool = False,
+        exigir_simplex: bool = False,
+    ) -> None:
+        """``exigir_simplex``: o cliente vai para um orçamento, por isso tem de
+        ter nome abreviado — é ele que dá o nome à pasta no servidor."""
         super().__init__(parent)
 
         self.selected_cliente: ClienteListaResumo | None = None
         self._todos: list[ClienteListaResumo] = []
         self._linhas: list[ClienteListaResumo] = []
         self._apenas_phc = apenas_phc
+        self._exigir_simplex = exigir_simplex
 
         self.setWindowTitle("Selecionar Cliente")
         self.setModal(True)
@@ -59,8 +77,18 @@ class SelecionarClienteDialog(QDialog):
         self.table.cellDoubleClicked.connect(self._handle_double_click)
 
         self.select_button = QPushButton("Selecionar")
+        self.select_button.setToolTip(
+            "Escolher o cliente da linha selecionada (ou duplo-clique na linha)."
+            + (
+                "\nClientes sem nome abreviado (Simplex a ocre) ou com mais de "
+                "19 caracteres (a vermelho) não podem ir para um orçamento."
+                if exigir_simplex
+                else ""
+            )
+        )
         self.select_button.clicked.connect(self._selecionar)
         self.cancel_button = QPushButton("Cancelar")
+        self.cancel_button.setToolTip("Fechar sem escolher cliente.")
         self.cancel_button.clicked.connect(self.reject)
 
         search_layout = QHBoxLayout()
@@ -115,7 +143,38 @@ class SelecionarClienteDialog(QDialog):
                 cliente.telemovel or "",
             ]
             for column_index, value in enumerate(values):
-                self.table.setItem(row_index, column_index, criar_item_tabela(value))
+                item = criar_item_tabela(value)
+                if column_index == self.COL_SIMPLEX:
+                    self._marcar_simplex(item, cliente)
+                self.table.setItem(row_index, column_index, item)
+
+        if self._exigir_simplex and self._todos:
+            self.status_label.setText(
+                "O cliente tem de ter nome abreviado (Simplex): é ele que dá o "
+                "nome à pasta do orçamento. A ocre/vermelho = por corrigir."
+            )
+
+    @staticmethod
+    def _erro_simplex(cliente: ClienteListaResumo) -> str | None:
+        return erro_simplex_orcamento(
+            cliente.nome_simplex,
+            nome_cliente=cliente.nome,
+            temporario=bool(cliente.is_temporary),
+        )
+
+    def _marcar_simplex(self, item, cliente: ClienteListaResumo) -> None:
+        """Ocre = sem nome abreviado; vermelho = mais de 19 caracteres."""
+        erro = self._erro_simplex(cliente)
+        if erro is None:
+            return
+        if simplex_demasiado_longo(cliente.nome_simplex):
+            item.setBackground(QColor(tema.VERMELHO_SUAVE))
+            item.setForeground(QColor(tema.VERMELHO_ESCURO))
+        else:
+            item.setBackground(QColor(tema.OCRE_SUAVE))
+            item.setForeground(QColor(tema.OCRE_ESCURO))
+            item.setText("(vazio)" if cliente.is_temporary else "(vazio no PHC)")
+        item.setToolTip(erro)
 
     def _get_selected(self) -> ClienteListaResumo | None:
         row = self.table.currentRow()
@@ -128,6 +187,15 @@ class SelecionarClienteDialog(QDialog):
         cliente = self._get_selected()
         if cliente is None:
             self.status_label.setText("Selecione um cliente.")
+            return
+
+        erro = self._erro_simplex(cliente) if self._exigir_simplex else None
+        if erro:
+            self.status_label.setText(
+                f"«{cliente.nome}» não tem nome abreviado válido — escolha outro "
+                "ou corrija-o primeiro."
+            )
+            QMessageBox.warning(self, "Cliente sem nome abreviado", erro)
             return
 
         self.selected_cliente = cliente

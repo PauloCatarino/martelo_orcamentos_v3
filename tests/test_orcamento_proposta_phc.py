@@ -21,7 +21,7 @@ from app.services.orcamento_service import (
 
 @pytest.fixture()
 def cliente(session: Session) -> Cliente:
-    registo = Cliente(nome="MÓVEIS J.F. VIVA", num_cliente_phc="35")
+    registo = Cliente(nome_simplex="ABREV", nome="MÓVEIS J.F. VIVA", num_cliente_phc="35")
     session.add(registo)
     session.flush()
     return registo

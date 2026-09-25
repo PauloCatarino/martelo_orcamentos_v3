@@ -18,7 +18,7 @@ from app.services.orcamento_service import (
 
 def _criar_orcamento(session) -> tuple[int, int]:
     """Create a simple budget and return its orcamento_id and version id."""
-    cliente = Cliente(nome="Cliente X", is_temporary=True)
+    cliente = Cliente(nome_simplex="ABREV", nome="Cliente X", is_temporary=True)
     session.add(cliente)
     session.flush()
 
@@ -153,7 +153,7 @@ def test_editar_orcamento_aceita_obra_vazia(session) -> None:
 
 
 def test_editar_orcamento_troca_o_cliente(session) -> None:
-    outro = Cliente(nome="Cliente Y", is_temporary=True)
+    outro = Cliente(nome_simplex="ABREV", nome="Cliente Y", is_temporary=True)
     session.add(outro)
     session.flush()
 
@@ -247,8 +247,8 @@ def test_lista_marca_orcamento_com_preco_manual(session) -> None:
 
 
 def test_find_by_ref_cliente_pesquisa_trim_case_insensitive(session) -> None:
-    cliente_a = Cliente(nome="Cliente A", is_temporary=True)
-    cliente_b = Cliente(nome="Cliente B", is_temporary=True)
+    cliente_a = Cliente(nome_simplex="ABREV", nome="Cliente A", is_temporary=True)
+    cliente_b = Cliente(nome_simplex="ABREV", nome="Cliente B", is_temporary=True)
     session.add_all([cliente_a, cliente_b])
     session.flush()
     cliente_a_id = cliente_a.id

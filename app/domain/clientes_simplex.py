@@ -75,3 +75,50 @@ def validar_simplex(
         )
 
     return None
+
+
+#: Onde se corrige o nome abreviado, conforme o tipo de cliente.
+CORRIGIR_SIMPLEX_PHC = (
+    "No PHC, abra a ficha do cliente e preencha o nome abreviado (campo NOME2). "
+    "Depois, no Martelo: Clientes › separador «Clientes PHC» › «Atualizar PHC»."
+)
+CORRIGIR_SIMPLEX_TEMPORARIO = (
+    "No Martelo: Clientes › separador «Clientes Temporários», escolha o cliente, "
+    "escreva o Simplex e carregue em «Guardar»."
+)
+
+
+def erro_simplex_orcamento(
+    simplex: str | None,
+    *,
+    nome_cliente: str | None = None,
+    temporario: bool = False,
+) -> str | None:
+    """Porque é que este cliente não pode ir para um orçamento, ou None se pode.
+
+    O orçamento é onde a pasta ``{num}_{SIMPLEX}`` nasce: sem nome abreviado a
+    pasta sai com o nome completo do cliente (``A48_-_SISTEMAS_DE_SEGURANÇA_LDA``)
+    e a encomenda iMos, mais à frente, é recusada. Vale para os dois tipos de
+    cliente; só muda o sítio onde se corrige.
+    """
+    cliente = str(nome_cliente or "").strip()
+    quem = f"O cliente «{cliente}»" if cliente else "O cliente escolhido"
+    texto = str(simplex or "").strip()
+    if not texto:
+        problema = f"{quem} não tem nome abreviado (Simplex)."
+    elif simplex_demasiado_longo(texto):
+        problema = (
+            f"{quem} tem o nome abreviado com {len(texto)} caracteres "
+            f"(máximo {MAX_SIMPLEX}):\n{texto}"
+        )
+    else:
+        return None
+
+    corrigir = CORRIGIR_SIMPLEX_TEMPORARIO if temporario else CORRIGIR_SIMPLEX_PHC
+    return (
+        f"{problema}\n\n"
+        "É o nome abreviado que dá o nome à pasta do orçamento no servidor "
+        "(NNNNNN_ABREVIADO), à pasta da obra, ao plano CUT-RITE e à encomenda "
+        "iMos — por isso o orçamento não pode ficar com este cliente.\n\n"
+        f"Como corrigir: {corrigir}"
+    )
