@@ -610,3 +610,95 @@ def test_verificar_acesso_pastas_conta_recusada(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(pastas_module.os, "scandir", _recusa)
     aviso = pastas_module.verificar_acesso_pastas_servidor(None, ano="2026", tipo_pasta=None)
     assert aviso and "1385" in aviso and "ler as pastas de produção" in aviso
+
+
+# ---- garantir_pasta_servidor (obra 26.1538, setembro de 2026) ----------------
+
+
+def _obra_1538(session, **campos):
+    from app.models.producao import Producao
+
+    dados = {
+        "id": 674,
+        "codigo_processo": "26.1538_01_01_TIAGO_REIS",
+        "ano": "2026",
+        "num_enc_phc": "1538",
+        "versao_obra": "01",
+        "versao_plano": "01",
+        "tipo_pasta": "Encomenda de Cliente",
+        "nome_cliente": "TIAGO JOÃO MARTINS REIS",
+        "nome_cliente_simplex": "TIAGO_REIS",
+        "pasta_servidor": None,
+    }
+    dados.update(campos)
+    processo = Producao(**dados)
+    session.add(processo)
+    session.commit()
+    return processo
+
+
+def _pasta_1538(base):
+    pasta = (
+        base
+        / "2026"
+        / "Encomenda de Cliente"
+        / "1538_TIAGO_REIS"
+        / "1538_01_TIAGO_REIS"
+        / "1538_01_01_TIAGO_REIS"
+    )
+    pasta.mkdir(parents=True)
+    return pasta
+
+
+def test_garantir_pasta_grava_a_pasta_que_ja_existe_no_servidor(
+    session, tmp_path, monkeypatch
+) -> None:
+    from app.models.producao import Producao
+    from app.services.producao_pastas_service import garantir_pasta_servidor
+
+    _usar_base(monkeypatch, tmp_path)
+    pasta = _pasta_1538(tmp_path)
+    processo = _obra_1538(session)
+
+    # A pasta foi criada por outra ferramenta antes da conversão: a obra não
+    # tinha o caminho gravado e a Lista Material dizia «Pasta em falta».
+    assert garantir_pasta_servidor(session, processo) == str(pasta)
+
+    session.expire_all()
+    assert session.get(Producao, 674).pasta_servidor == str(pasta)
+
+
+def test_garantir_pasta_nunca_troca_um_caminho_ja_gravado(
+    session, tmp_path, monkeypatch
+) -> None:
+    from app.services.producao_pastas_service import garantir_pasta_servidor
+
+    _usar_base(monkeypatch, tmp_path)
+    _pasta_1538(tmp_path)
+    processo = _obra_1538(session, pasta_servidor=r"\OUTRO\sitio\1538")
+
+    assert garantir_pasta_servidor(session, processo) == r"\OUTRO\sitio\1538"
+    assert processo.pasta_servidor == r"\OUTRO\sitio\1538"
+
+
+def test_garantir_pasta_sem_pasta_no_servidor_devolve_vazio(
+    session, tmp_path, monkeypatch
+) -> None:
+    from app.services.producao_pastas_service import garantir_pasta_servidor
+
+    _usar_base(monkeypatch, tmp_path)
+    (tmp_path / "2026" / "Encomenda de Cliente").mkdir(parents=True)
+    processo = _obra_1538(session)
+
+    assert garantir_pasta_servidor(session, processo) == ""
+    assert processo.pasta_servidor is None
+
+
+def test_aviso_de_pasta_em_falta_ja_nao_manda_criar_processo_nem_versao() -> None:
+    from app.services.producao_pastas_service import AVISO_PASTA_OBRA_EM_FALTA
+
+    # Com a obra já criada, o «Novo Processo» recusava e a «Nova Versão»
+    # abria uma 02: o caminho certo é o «Abrir» da Pasta da obra.
+    assert "Novo Processo" not in AVISO_PASTA_OBRA_EM_FALTA
+    assert "Nova Versao" not in AVISO_PASTA_OBRA_EM_FALTA
+    assert "«Abrir»" in AVISO_PASTA_OBRA_EM_FALTA

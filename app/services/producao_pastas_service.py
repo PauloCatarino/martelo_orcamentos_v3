@@ -733,6 +733,39 @@ def caminho_versao_de_processo_existente(
     )
 
 
+#: Aviso dos botoes que precisam da pasta da obra (Lista Material, CUT-RITE...).
+#: O antigo mandava usar «Novo Processo / Nova Versao», que com a obra ja
+#: criada recusava ou abria uma versao 02.
+AVISO_PASTA_OBRA_EM_FALTA = (
+    "Não encontrei a pasta desta obra no servidor.\n\n"
+    "Carregue em «Abrir», ao lado da «Pasta da obra», para a criar com o "
+    "nome certo, e volte a tentar."
+)
+
+
+def garantir_pasta_servidor(session: Session, processo: Producao) -> str:
+    """Pasta gravada na obra; se faltar, grava a que ja existe no servidor.
+
+    A ``pasta_servidor`` so era gravada quando era o Martelo a criar a pasta.
+    Se outra ferramenta (ou alguem a mao) a tinha criado antes do «Converter
+    Orcamento», a obra ficava sem caminho: o ecra mostrava a pasta, mas a
+    Lista Material, o CUT-RITE e o resumo PDF diziam «Pasta do processo em
+    falta» (obra 26.1538, setembro de 2026).
+
+    So preenche quando esta vazia -- um caminho ja gravado nunca e' trocado.
+    Devolve "" quando nao ha pasta gravada nem encontrada no servidor.
+    """
+    guardada = str(getattr(processo, "pasta_servidor", "") or "").strip()
+    if guardada:
+        return guardada
+    encontrada = caminho_versao_de_processo_existente(session, processo)
+    if encontrada is None:
+        return ""
+    processo.pasta_servidor = str(encontrada)
+    session.commit()
+    return processo.pasta_servidor
+
+
 # Codigos do Windows que chegam nos OSError quando se toca no servidor.
 _WINERROR_ACESSO_NEGADO = 5
 _WINERROR_SESSAO_RECUSADA = 1385  # ERROR_LOGON_TYPE_NOT_GRANTED

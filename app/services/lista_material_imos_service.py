@@ -15,6 +15,10 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.producao import Producao
+from app.services.producao_pastas_service import (
+    AVISO_PASTA_OBRA_EM_FALTA,
+    garantir_pasta_servidor,
+)
 from app.services.system_setting_service import SystemSettingService
 
 KEY_PASTA_BASE_DADOS_ORCAMENTO = "pasta_base_dados_orcamento"
@@ -44,12 +48,9 @@ def prepare_lista_material_imos(
     if processo is None:
         raise ValueError("Processo de producao nao encontrado.")
 
-    pasta_txt = str(getattr(processo, "pasta_servidor", "") or "").strip()
+    pasta_txt = garantir_pasta_servidor(session, processo)
     if not pasta_txt:
-        raise ValueError(
-            "Pasta do processo em falta.\n\n"
-            "Crie a pasta do processo (Novo Processo / Nova Versao) antes de gerar a Lista Material."
-        )
+        raise ValueError(AVISO_PASTA_OBRA_EM_FALTA)
     folder_path = Path(pasta_txt)
     if not folder_path.exists() or not folder_path.is_dir():
         raise ValueError(f"Pasta do processo nao encontrada:\n{folder_path}")

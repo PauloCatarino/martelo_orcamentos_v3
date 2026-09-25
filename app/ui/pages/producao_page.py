@@ -118,11 +118,13 @@ from app.services.producao_v2_sync_service import (
 )
 from app.services.producao_atalho_orcamento_service import criar_atalho_orcamento
 from app.services.producao_pastas_service import (
+    AVISO_PASTA_OBRA_EM_FALTA,
     arvore_pastas_processo,
     caminho_versao_de_processo,
     caminho_versao_de_processo_existente,
     caminho_versao_para_criar,
     criar_pasta_versao,
+    garantir_pasta_servidor,
     preview_conteudo_pasta,
 )
 from app.services.producao_preparacao_service import (
@@ -2326,6 +2328,38 @@ class ProducaoPage(QWidget):
         self.status_label.setText(f"Pasta criada: {criado}")
         return Path(criado)
 
+    def _pasta_servidor_da_obra(self, processo: Producao) -> str:
+        """Pasta gravada na obra; se faltar, grava a que já existe no servidor.
+
+        Os botões que trabalham na pasta (Lista Material, CUT-RITE, resumo
+        PDF, análise, documentação) liam só o caminho gravado, e uma obra com
+        a pasta à vista no ecrã era recusada. Ver ``garantir_pasta_servidor``.
+        Devolve "" quando não há pasta nenhuma.
+        """
+        guardada = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        if guardada:
+            return guardada
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    return ""
+                caminho = garantir_pasta_servidor(session, processo_db)
+        except (SQLAlchemyError, OSError, ValueError) as error:
+            diario_bordo.registar_aviso(
+                "Não foi possível ligar a pasta da obra", str(error)
+            )
+            return ""
+        finally:
+            QApplication.restoreOverrideCursor()
+        if caminho:
+            # A obra em memória também fica a saber: os passos seguintes
+            # (análise da lista, CUT-RITE) voltam a ler o caminho daqui.
+            processo.pasta_servidor = caminho
+            diario_bordo.registar_acao("Ligou a pasta que já existia à obra", caminho)
+        return caminho
+
     def _lista_material_imos(self) -> None:
         processo = self._processo_selecionado()
         if processo is None:
@@ -2335,6 +2369,12 @@ class ProducaoPage(QWidget):
         nome_enc = self.nome_enc_imos_ix_input.text().strip()
         if not nome_enc:
             QMessageBox.warning(self, "Lista Material IMOS", "Nome Enc IMOS IX em falta.")
+            return
+
+        # Obra sem caminho gravado mas com a pasta no servidor: fica ligada já,
+        # para a análise que se oferece no fim também a encontrar.
+        if not self._pasta_servidor_da_obra(processo):
+            QMessageBox.warning(self, "Lista Material IMOS", AVISO_PASTA_OBRA_EM_FALTA)
             return
 
         values = {
@@ -2719,7 +2759,11 @@ class ProducaoPage(QWidget):
         if processo is None:
             self.status_label.setText("Selecione um processo para exportar documentação.")
             return
-        folder = Path(str(getattr(processo, "pasta_servidor", "") or "").strip())
+        pasta_servidor = self._pasta_servidor_da_obra(processo)
+        if not pasta_servidor:
+            QMessageBox.warning(self, "Exportar documentação", AVISO_PASTA_OBRA_EM_FALTA)
+            return
+        folder = Path(pasta_servidor)
         try:
             workbook = find_lista_material_workbook(
                 folder,
@@ -2760,7 +2804,7 @@ class ProducaoPage(QWidget):
                     self.status_label.setText('Análise da Lista Material não atribuída a este utilizador. O envio para Cut-Rite continua disponível.')
                     return False, 0
                 workbook = find_lista_material_workbook(
-                    Path(str(processo.pasta_servidor or '')),
+                    Path(self._pasta_servidor_da_obra(processo)),
                     nome_enc_imos=self.nome_enc_imos_ix_input.text().strip(),
                 )
                 folder = SystemSettingService(session).obter_valor('pasta_dados_cut_rite', '') or r'I:\Cutrite\V12-Data\Data'
@@ -2807,12 +2851,11 @@ class ProducaoPage(QWidget):
                 "Selecione um processo para analisar a Lista Material."
             )
             return
-        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
-        if not pasta_servidor:
+        if not self._pasta_servidor_da_obra(processo):
             QMessageBox.warning(
                 self,
                 "Analisar/Completar Lista Material",
-                "Pasta do processo em falta.",
+                AVISO_PASTA_OBRA_EM_FALTA,
             )
             return
         completed, applied = self._rever_lista_material_assistente(
@@ -2841,13 +2884,9 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Enviar CUT-RITE", "Nome Plano CUT-RITE em falta.")
             return
 
-        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        pasta_servidor = self._pasta_servidor_da_obra(processo)
         if not pasta_servidor:
-            QMessageBox.warning(
-                self,
-                "Enviar CUT-RITE",
-                "Pasta do processo em falta. Crie a pasta antes de enviar ao CUT-RITE.",
-            )
+            QMessageBox.warning(self, "Enviar CUT-RITE", AVISO_PASTA_OBRA_EM_FALTA)
             return
 
         if not self._verificar_antes_do_cutrite(pasta_servidor, nome_enc):
@@ -3050,13 +3089,9 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Exportar PDF CUT-RITE", "Nome Plano CUT-RITE em falta.")
             return
 
-        pasta_servidor = str(getattr(processo, "pasta_servidor", "") or "").strip()
+        pasta_servidor = self._pasta_servidor_da_obra(processo)
         if not pasta_servidor:
-            QMessageBox.warning(
-                self,
-                "Exportar PDF CUT-RITE",
-                "Pasta do processo em falta. Crie a pasta antes de exportar o resumo.",
-            )
+            QMessageBox.warning(self, "Exportar PDF CUT-RITE", AVISO_PASTA_OBRA_EM_FALTA)
             return
 
         diario_bordo.registar_acao("Exportar PDF CUT-RITE", nome_plano)
@@ -3858,7 +3893,8 @@ class ProducaoPage(QWidget):
 
         pasta = self._perguntar_criar_pasta_obra(processo_id, "Converter Orçamento")
         if pasta:
-            resumo += f"\n\nPasta criada no servidor:\n{pasta}"
+            # Criada agora ou já existente: em ambos os casos fica na obra.
+            resumo += f"\n\nPasta da obra no servidor:\n{pasta}"
         QMessageBox.information(self, "Converter Orçamento", resumo)
 
     @staticmethod
@@ -3883,12 +3919,16 @@ class ProducaoPage(QWidget):
         return "\n".join(linhas)
 
     def _perguntar_criar_pasta_obra(self, processo_id: int, titulo: str) -> str:
-        """Perguntar se quer criar já a pasta da obra; devolve o caminho criado.
+        """Perguntar se quer criar já a pasta da obra; devolve o caminho dela.
 
         O «Novo Processo» cria a pasta sozinho. Aqui pergunta-se primeiro,
         porque a conversão pode ser feita muito antes de a obra arrancar — mas
         o resultado é o mesmo: a obra fica com a pasta no servidor.
+
+        Se a pasta já existir, não se pergunta nada: fica gravada na obra e o
+        caminho é devolvido na mesma. Devolve "" quando não fica pasta nenhuma.
         """
+        ligada = ""
         # Procurar as pastas no servidor pode demorar com a rede lenta.
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
@@ -3896,19 +3936,29 @@ class ProducaoPage(QWidget):
                 processo = session.get(Producao, processo_id)
                 if processo is None:
                     return ""
-                if caminho_versao_de_processo_existente(session, processo) is not None:
-                    return ""
-                destino = caminho_versao_para_criar(
-                    session,
-                    ano=processo.ano,
-                    tipo_pasta=processo.tipo_pasta,
-                    num_enc_phc=processo.num_enc_phc,
-                    versao_obra=processo.versao_obra,
-                    versao_plano=processo.versao_plano,
-                    nome_simplex=processo.nome_cliente_simplex,
-                    nome_cliente=processo.nome_cliente,
-                    ref_cliente=processo.ref_cliente,
-                )
+                existente = caminho_versao_de_processo_existente(session, processo)
+                if existente is not None:
+                    # Pasta criada antes da conversão (à mão ou por outra
+                    # ferramenta). Antes saía-se daqui calado e a obra ficava
+                    # sem caminho gravado: a Lista Material e o CUT-RITE
+                    # recusavam-se com a pasta à vista (obra 26.1538).
+                    if not str(processo.pasta_servidor or "").strip():
+                        processo.pasta_servidor = str(existente)
+                        session.commit()
+                    criar_atalho_orcamento(session, processo, existente)
+                    ligada = str(existente)
+                else:
+                    destino = caminho_versao_para_criar(
+                        session,
+                        ano=processo.ano,
+                        tipo_pasta=processo.tipo_pasta,
+                        num_enc_phc=processo.num_enc_phc,
+                        versao_obra=processo.versao_obra,
+                        versao_plano=processo.versao_plano,
+                        nome_simplex=processo.nome_cliente_simplex,
+                        nome_cliente=processo.nome_cliente,
+                        ref_cliente=processo.ref_cliente,
+                    )
         except (SQLAlchemyError, OSError, ValueError) as error:
             QMessageBox.warning(
                 self, titulo, f"Não foi possível preparar a pasta da obra:\n\n{error}"
@@ -3916,6 +3966,10 @@ class ProducaoPage(QWidget):
             return ""
         finally:
             QApplication.restoreOverrideCursor()
+
+        if ligada:
+            self._invalidar_cache_detalhe()
+            return ligada
 
         resposta = QMessageBox.question(
             self,

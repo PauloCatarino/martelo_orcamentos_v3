@@ -98,3 +98,35 @@ def test_pasta_do_orcamento_pelo_numero_quando_nao_ha_ligacao(monkeypatch) -> No
     pasta = svc.pasta_do_orcamento(None, _processo())
     assert pasta == Path("Orc/2026/260906_CICOMOL")
     assert pedidos == [{"ano": 2026, "num_orcamento": "260906"}]
+
+
+def test_nao_duplica_o_atalho_que_outra_ferramenta_ja_criou(tmp_path, monkeypatch) -> None:
+    versao, orcamento = _arvore(tmp_path)
+    monkeypatch.setattr(svc, "pasta_do_orcamento", lambda _s, _p: orcamento)
+    principal = svc.pasta_principal_da_obra(versao)
+    # Como na obra 1538: a pasta nasceu noutra ferramenta, com este atalho.
+    existente = principal / "ATALHO_260906_CICOMOL.lnk"
+    existente.write_text("lnk")
+    (principal / "ATALHO_2609061_OUTRA.lnk").write_text("lnk")  # outro nº
+    criados: list[Path] = []
+
+    atalho = svc.criar_atalho_orcamento(
+        None, _processo(), versao, criar_lnk=lambda a, _d: criados.append(a)
+    )
+
+    assert atalho == existente
+    assert criados == []
+
+
+def test_atalho_de_outro_orcamento_nao_conta(tmp_path, monkeypatch) -> None:
+    versao, orcamento = _arvore(tmp_path)
+    monkeypatch.setattr(svc, "pasta_do_orcamento", lambda _s, _p: orcamento)
+    principal = svc.pasta_principal_da_obra(versao)
+    (principal / "ATALHO_2609061_OUTRA.lnk").write_text("lnk")
+    criados: list[Path] = []
+
+    svc.criar_atalho_orcamento(
+        None, _processo(), versao, criar_lnk=lambda a, _d: criados.append(a)
+    )
+
+    assert criados == [principal / "260906_CICOMOL - Atalho.lnk"]

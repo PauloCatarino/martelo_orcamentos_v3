@@ -12,7 +12,8 @@ Regras:
   Martelo e o Paulo ainda não decidiu o que fazer com elas;
 * o atalho vai para a pasta **principal** da obra (``1597_CICOMOL``), não para
   a pasta da versão, e aponta para a pasta **principal** do orçamento;
-* se já existir, não se mexe; se a pasta do orçamento não for encontrada, não
+* se já existir -- o do Martelo, ou outro ``.lnk`` com o nº do orçamento no
+  nome --, não se mexe; se a pasta do orçamento não for encontrada, não
   se cria nada. Um atalho que falha **nunca** impede a criação da pasta da
   obra -- é uma comodidade, não um passo obrigatório.
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import re
 
 from sqlalchemy.orm import Session
 
@@ -45,6 +47,23 @@ def e_encomenda_de_cliente(num_enc_phc: object, tipo_pasta: object = None) -> bo
 def nome_atalho(pasta_orcamento: Path) -> str:
     """``260906_CICOMOL`` -> ``260906_CICOMOL - Atalho.lnk`` (como o Paulo fazia)."""
     return f"{pasta_orcamento.name}{SUFIXO_ATALHO}"
+
+
+def atalho_ja_existente(pasta_obra: Path, pasta_orcamento: Path) -> Path | None:
+    """Um atalho com o nº deste orçamento que já esteja na pasta da obra.
+
+    Há obras cujas pastas nascem noutra ferramenta, já com um atalho
+    ``ATALHO_260877_TIAGO_REIS.lnk``. Pôr lá também o do Martelo deixava dois
+    atalhos para o mesmo orçamento.
+    """
+    numero = pasta_orcamento.name.split("_", 1)[0]
+    if not numero.isdigit():
+        return None
+    mesmo_numero = re.compile(rf"(?<!\d){numero}(?!\d)")
+    for atalho in sorted(pasta_obra.glob("*.lnk")):
+        if mesmo_numero.search(atalho.stem):
+            return atalho
+    return None
 
 
 def pasta_principal_da_obra(pasta_versao: Path) -> Path:
@@ -122,6 +141,9 @@ def criar_atalho_orcamento(
         atalho = pasta_obra / nome_atalho(pasta_orc)
         if atalho.exists():
             return atalho
+        outro = atalho_ja_existente(pasta_obra, pasta_orc)
+        if outro is not None:
+            return outro
         (criar_lnk or _criar_lnk_windows)(atalho, pasta_orc)
         diario_bordo.registar_acao(
             "Atalho do orçamento na pasta da obra", f"{atalho} -> {pasta_orc}"

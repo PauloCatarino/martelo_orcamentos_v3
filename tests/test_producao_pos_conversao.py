@@ -109,3 +109,39 @@ def test_criar_pasta_guarda_o_caminho_na_obra() -> None:
     assert "criar_pasta_versao(destino)" in fonte
     assert "processo.pasta_servidor = str(destino)" in fonte
     assert "session.commit()" in fonte
+
+
+def test_conversao_com_pasta_ja_existente_grava_o_caminho_na_obra() -> None:
+    fonte = inspect.getsource(ProducaoPage._perguntar_criar_pasta_obra)
+
+    # Obra 26.1538: a pasta existia (outra ferramenta) e a conversão saía
+    # calada, sem gravar o caminho — a Lista Material recusava-se depois.
+    ramo = fonte[fonte.index("if existente is not None:"):fonte.index("else:")]
+    assert "processo.pasta_servidor = str(existente)" in ramo
+    assert "session.commit()" in ramo
+    assert "criar_atalho_orcamento(" in ramo
+    assert 'return ""' not in ramo
+
+
+def test_botoes_que_trabalham_na_pasta_ligam_a_pasta_que_ja_existe() -> None:
+    for metodo in (
+        ProducaoPage._lista_material_imos,
+        ProducaoPage._analisar_lista_material,
+        ProducaoPage._enviar_cutrite,
+        ProducaoPage._exportar_resumo_pdf,
+        ProducaoPage._abrir_exportar_documentacao,
+        ProducaoPage._rever_lista_material_assistente,
+    ):
+        fonte = inspect.getsource(metodo)
+        assert "_pasta_servidor_da_obra(processo)" in fonte, metodo.__name__
+        # Ler só a coluna gravada era o que recusava a obra 1538.
+        assert 'getattr(processo, "pasta_servidor"' not in fonte, metodo.__name__
+        assert "processo.pasta_servidor or" not in fonte, metodo.__name__
+
+
+def test_pasta_da_obra_liga_e_lembra_o_caminho() -> None:
+    fonte = inspect.getsource(ProducaoPage._pasta_servidor_da_obra)
+
+    assert "garantir_pasta_servidor(session, processo_db)" in fonte
+    # A obra em memória fica a saber, para a análise que vem a seguir.
+    assert "processo.pasta_servidor = caminho" in fonte

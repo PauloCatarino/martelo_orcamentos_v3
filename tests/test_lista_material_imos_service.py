@@ -108,6 +108,89 @@ def test_prepare_lista_material_imos_valida_pasta_e_template(session, tmp_path) 
         )
 
 
+def test_prepare_lista_material_liga_a_pasta_que_ja_existe(
+    session, tmp_path, monkeypatch
+) -> None:
+    """Obra 26.1538: pasta criada antes da conversão, sem caminho na obra."""
+    import app.services.producao_pastas_service as pastas_module
+
+    servidor = tmp_path / "Dep_Producao"
+    monkeypatch.setattr(
+        pastas_module, "_resolve_base_dir", lambda _s, _b=None: str(servidor)
+    )
+    pasta = (
+        servidor
+        / "2026"
+        / "Encomenda de Cliente"
+        / "1538_TIAGO_REIS"
+        / "1538_01_TIAGO_REIS"
+        / "1538_01_01_TIAGO_REIS"
+    )
+    pasta.mkdir(parents=True)
+    base = tmp_path / "base"
+    base.mkdir()
+    (base / TEMPLATE_FILENAME).write_text("template", encoding="utf-8")
+    session.add(
+        Producao(
+            id=674,
+            codigo_processo="26.1538_01_01_TIAGO_REIS",
+            ano="2026",
+            num_enc_phc="1538",
+            versao_obra="01",
+            versao_plano="01",
+            tipo_pasta="Encomenda de Cliente",
+            nome_cliente="TIAGO JOÃO MARTINS REIS",
+            nome_cliente_simplex="TIAGO_REIS",
+            pasta_servidor=None,
+        )
+    )
+    SystemSettingRepository(session).upsert_setting(
+        chave="pasta_base_dados_orcamento", valor=str(base)
+    )
+    session.commit()
+
+    context = prepare_lista_material_imos(
+        session,
+        processo_id=674,
+        nome_enc_imos="1538_01_26_TIAGO_REIS",
+        values={},
+    )
+
+    assert context.folder_path == pasta
+    assert context.output_path == pasta / "Lista_Material_1538_01_26_TIAGO_REIS.xlsm"
+    # E fica gravada: a próxima vez já não precisa de a procurar.
+    session.expire_all()
+    assert session.get(Producao, 674).pasta_servidor == str(pasta)
+
+
+def test_prepare_lista_material_sem_pasta_nenhuma_diz_como_a_criar(
+    session, tmp_path, monkeypatch
+) -> None:
+    import app.services.producao_pastas_service as pastas_module
+
+    monkeypatch.setattr(
+        pastas_module, "_resolve_base_dir", lambda _s, _b=None: str(tmp_path)
+    )
+    session.add(
+        Producao(
+            id=1,
+            codigo_processo="26.1134_01_01_CLIENTE",
+            ano="2026",
+            num_enc_phc="1134",
+            versao_obra="01",
+            versao_plano="01",
+            nome_cliente_simplex="CLIENTE",
+            pasta_servidor=None,
+        )
+    )
+    session.commit()
+
+    with pytest.raises(ValueError, match="«Abrir»"):
+        prepare_lista_material_imos(
+            session, processo_id=1, nome_enc_imos="1134", values={}
+        )
+
+
 def test_execute_lista_material_imos_invoca_powershell(monkeypatch, tmp_path) -> None:
     capturado: dict[str, object] = {}
 
