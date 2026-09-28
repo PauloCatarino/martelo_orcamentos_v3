@@ -9,10 +9,45 @@ from app.domain.medidas import (
     calcular_area_m2,
     calcular_perimetro_ml,
     construir_contexto_item,
+    mensagem_variaveis_sem_valor,
     normalizar_numero,
     normalizar_variaveis_medida,
     validar_expressao_medida,
+    variaveis_sem_valor,
 )
+
+
+def test_variaveis_sem_valor_item_sem_medidas() -> None:
+    contexto = construir_contexto_item(None, None, None)
+
+    assert variaveis_sem_valor("H", contexto) == ["H"]
+    assert variaveis_sem_valor("(H-50)/2+L+h", contexto) == ["H", "L"]
+    # Números e nomes desconhecidos não são "variável sem valor".
+    assert variaveis_sem_valor("2590", contexto) == []
+    assert variaveis_sem_valor("XPTO", contexto) == []
+    assert variaveis_sem_valor(None, contexto) == []
+
+
+def test_variaveis_sem_valor_so_as_que_faltam() -> None:
+    contexto = construir_contexto_item(Decimal("2590"), None, Decimal("0"))
+
+    # H tem valor; L está vazio; P = 0 não serve de medida.
+    assert variaveis_sem_valor("H+L+P", contexto) == ["L", "P"]
+    # HM sem divisão acima (fora do contexto) também não tem valor.
+    assert variaveis_sem_valor("HM-50", contexto) == ["HM"]
+    assert variaveis_sem_valor("HM", {**contexto, "HM": Decimal("850")}) == []
+
+
+def test_mensagem_variaveis_sem_valor_diz_o_que_falta_e_o_que_fazer() -> None:
+    item = mensagem_variaveis_sem_valor("Largura", ["L"])
+    assert item.startswith("Largura: não dá para calcular")
+    assert "L não tem valor (o item não tem Largura)" in item
+    assert "Escreva a medida à mão, em números" in item
+    assert "separador Items" in item
+
+    divisao = mensagem_variaveis_sem_valor("Comprimento", ["HM"])
+    assert "HM não tem valor (a Divisão independente acima" in divisao
+    assert "medidas da Divisão independente acima" in divisao
 
 
 def test_validar_formula_dimensional_cabecalho_normaliza_variaveis() -> None:

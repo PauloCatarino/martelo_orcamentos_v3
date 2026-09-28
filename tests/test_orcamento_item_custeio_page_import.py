@@ -1006,6 +1006,80 @@ def test_custeio_page_assinala_erros_e_bloqueia_preco() -> None:
     assert "EntradasCusteioInvalidas" in atualizar
 
 
+def test_custeio_page_pintar_celulas_nao_regrava_a_linha() -> None:
+    # setBackground/setToolTip disparam o cellChanged do Qt: a pintura tem de
+    # correr com a bandeira de carregamento, senão parecia uma edição.
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    for metodo in ("_aplicar_erros_entrada", "_aplicar_avisos_medidas"):
+        source = inspect.getsource(getattr(OrcamentoItemCusteioPage, metodo))
+        assert "self._carregando_tabela = True" in source, metodo
+        assert "self._carregando_tabela = anterior" in source, metodo
+
+
+def test_custeio_page_item_sem_medidas_avisa_e_assinala() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    carregar = inspect.getsource(OrcamentoItemCusteioPage.carregar)
+    assert "medidas_sem_valor_do_item" in carregar
+    assert "_aplicar_avisos_medidas" in carregar
+    assert "_resumo_avisos_medidas" in carregar
+
+    divisao = inspect.getsource(OrcamentoItemCusteioPage.inserir_divisao)
+    assert "_item_sem_medidas_relevante" in divisao
+    assert "QMessageBox.information" in divisao
+    assert "Item sem medidas" in divisao
+
+    cabecalho = inspect.getsource(OrcamentoItemCusteioPage._update_item_info)
+    assert "Item sem medidas" in cabecalho
+    assert "setToolTip" in cabecalho
+
+    celula = inspect.getsource(OrcamentoItemCusteioPage._on_cell_changed)
+    assert "_atualizar_avisos_da_linha" in celula
+
+
+def test_custeio_page_dimensoes_em_falta_do_item() -> None:
+    from app.ui.pages.orcamento_item_custeio_page import OrcamentoItemCusteioPage
+
+    def _pagina(altura, largura, profundidade, modalidade="STANDARD"):
+        pagina = SimpleNamespace(
+            item=SimpleNamespace(
+                altura=altura,
+                largura=largura,
+                profundidade=profundidade,
+                modalidade_custeio=modalidade,
+            )
+        )
+        pagina._dimensoes_em_falta_do_item = (
+            lambda: OrcamentoItemCusteioPage._dimensoes_em_falta_do_item(pagina)
+        )
+        return pagina
+
+    sem_medidas = _pagina(None, None, None)
+    assert OrcamentoItemCusteioPage._dimensoes_em_falta_do_item(sem_medidas) == [
+        "H",
+        "L",
+        "P",
+    ]
+    assert OrcamentoItemCusteioPage._item_sem_medidas_relevante(sem_medidas) == [
+        "H",
+        "L",
+        "P",
+    ]
+
+    so_prof = _pagina(Decimal("2590"), Decimal("850"), Decimal("0"))
+    assert OrcamentoItemCusteioPage._dimensoes_em_falta_do_item(so_prof) == ["P"]
+
+    completo = _pagina(Decimal("2590"), Decimal("850"), Decimal("560"))
+    assert OrcamentoItemCusteioPage._dimensoes_em_falta_do_item(completo) == []
+
+    # No Simplificado as variáveis estão suprimidas: item vazio é o normal.
+    from app.domain.custeio_simplificado import MODALIDADE_CUSTEIO_SIMPLIFICADO
+
+    simplificado = _pagina(None, None, None, MODALIDADE_CUSTEIO_SIMPLIFICADO)
+    assert OrcamentoItemCusteioPage._item_sem_medidas_relevante(simplificado) == []
+
+
 def test_custeio_page_menu_operacao_manual() -> None:
     import inspect
 

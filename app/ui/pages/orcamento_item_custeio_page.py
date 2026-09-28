@@ -645,6 +645,9 @@ class OrcamentoItemCusteioPage(QWidget):
         # Line id under the floating "✕ delete" button (hover over a hardware row).
         self._x_ferragem_target_id: int | None = None
         self._erros_entrada: list[ErroEntradaCusteio] = []
+        # Medidas válidas mas sem valor (H/L/P de um item sem medidas, HM/LM/PM
+        # de uma divisão ainda por preencher): assinaladas a âmbar, sem bloquear.
+        self._avisos_medidas: list[ErroEntradaCusteio] = []
         self._quantidades_por_linha: dict[int, ResultadoQuantidade] = {}
         self._valueset_opcoes: list = []
         self._chave_tipos: dict[str, str | None] = {}
@@ -949,6 +952,9 @@ class OrcamentoItemCusteioPage(QWidget):
                     self.item_id
                 )
                 erros_entrada = custeio_service.validar_entradas_do_item(self.item_id)
+                avisos_medidas = custeio_service.medidas_sem_valor_do_item(
+                    self.item_id
+                )
                 # Cache the item ValueSet options + key types once, for the
                 # per-row 'Mat. default' dropdown (filtered by compatibility).
                 self._valueset_opcoes = custeio_service.opcoes_valueset_do_item(
@@ -975,6 +981,8 @@ class OrcamentoItemCusteioPage(QWidget):
         self._atualizar_modalidade_custeio()
         self._preencher_tabela(linhas)
         self._erros_entrada = erros_entrada
+        self._avisos_medidas = avisos_medidas
+        self._aplicar_avisos_medidas()
         self._aplicar_erros_entrada()
 
         if self._erros_entrada:
@@ -988,6 +996,8 @@ class OrcamentoItemCusteioPage(QWidget):
             self.status_label.setText(self._resumo_erros_entrada())
         else:
             self._atualizar_caixa_preco()
+            if self._avisos_medidas:
+                self.status_label.setText(self._resumo_avisos_medidas())
 
         if not linhas:
             self.status_label.setText("Sem linhas de custeio para este item.")
@@ -1393,7 +1403,32 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         self.carregar()
-        self.status_label.setText("Divisão independente inserida.")
+        em_falta = self._item_sem_medidas_relevante()
+        if not em_falta:
+            self.status_label.setText("Divisão independente inserida.")
+            return
+
+        # Proteção: num item sem medidas a divisão nasce com H/L/P, que aqui não
+        # têm valor. Avisar logo, em vez de o utilizador dar com as peças a 0 €.
+        variaveis = ", ".join(em_falta)
+        celulas = " / ".join(
+            {"H": "Comp", "L": "Larg", "P": "Esp"}[variavel] for variavel in em_falta
+        )
+        self.status_label.setText(
+            f"Divisão independente inserida — o item não tem medidas ({variaveis} "
+            f"sem valor): edite manualmente {celulas} da divisão."
+        )
+        QMessageBox.information(
+            self,
+            "Item sem medidas",
+            "Este item não tem Altura / Largura / Prof. preenchidas, por isso "
+            f"as variáveis {variaveis} não têm valor e não permitem cálculos.\n\n"
+            "Edite manualmente as medidas da Divisão independente: escreva em "
+            f"números {celulas} (ex.: 2590 / 850 / 20). As células por "
+            "preencher estão assinaladas a âmbar.\n\n"
+            "As peças que inserir abaixo da divisão usam esses valores "
+            "(HM / LM / PM).",
+        )
 
     # --- Import a saved module into the item (phase 8U.2) ---------------------
 
@@ -2404,15 +2439,33 @@ class OrcamentoItemCusteioPage(QWidget):
 
     def _update_item_info(self) -> None:
         """Atualiza a barra de cabeçalho (nome do item + dims) e o breadcrumb."""
-        self.cabecalho.definir(
-            self._titulo_cabecalho(),
-            [
-                f"Altura: {format_mm(self.item.altura)}",
-                f"Largura: {format_mm(self.item.largura)}",
-                f"Prof: {format_mm(self.item.profundidade)}",
-                f"Qtd: {format_quantity(self.item.quantidade)}",
-            ],
-        )
+        campos = [
+            f"Altura: {format_mm(self.item.altura)}",
+            f"Largura: {format_mm(self.item.largura)}",
+            f"Prof: {format_mm(self.item.profundidade)}",
+            f"Qtd: {format_quantity(self.item.quantidade)}",
+        ]
+        # Item sem medidas (ex.: pedido de peças soltas): H/L/P não têm valor e
+        # não dão para calcular. O cabeçalho di-lo logo, e a dica explica o que
+        # fazer em vez de o utilizador descobrir pelo erro.
+        em_falta = self._item_sem_medidas_relevante()
+        if em_falta:
+            campos.append(
+                f"⚠ Item sem medidas: {'/'.join(em_falta)} sem valor — "
+                "edite as medidas à mão"
+            )
+            self.cabecalho.setToolTip(
+                "O item não tem Altura/Largura/Prof. preenchidas, por isso as "
+                f"variáveis {', '.join(em_falta)} não têm valor e não permitem "
+                "cálculos.\nEscreva as medidas à mão, em números, na Divisão "
+                "independente (Comp / Larg / Esp, ex.: 2590 / 850 / 20) ou em "
+                "cada peça. As peças abaixo da divisão usam esses valores "
+                "(HM / LM / PM).\nEm alternativa, preencha as medidas do item "
+                "no separador Items."
+            )
+        else:
+            self.cabecalho.setToolTip("")
+        self.cabecalho.definir(self._titulo_cabecalho(), campos)
         self.breadcrumb.set_items(self._build_breadcrumb_items())
 
     def _preencher_tabela(self, linhas: list[OrcamentoItemCusteioLinhaResumo]) -> None:
@@ -2838,20 +2891,136 @@ class OrcamentoItemCusteioPage(QWidget):
         fundo_erro = QColor("#FDE2E1")
         texto_erro = QColor("#A11A1A")
 
-        for erro in self._erros_entrada:
-            row = row_por_linha_id.get(erro.linha_id)
-            coluna = coluna_por_nome.get(erro.campo)
-            if row is None or coluna is None:
-                continue
-            item = self.table.item(row, coluna)
-            if item is None:
-                continue
-            item.setBackground(fundo_erro)
-            item.setForeground(texto_erro)
-            tooltip_atual = item.toolTip().strip()
-            item.setToolTip(
-                f"{tooltip_atual}\n\n{erro.mensagem}" if tooltip_atual else erro.mensagem
+        # Como nos avisos: pintar dispara o cellChanged, que regravava a linha.
+        anterior = self._carregando_tabela
+        self._carregando_tabela = True
+        try:
+            for erro in self._erros_entrada:
+                row = row_por_linha_id.get(erro.linha_id)
+                coluna = coluna_por_nome.get(erro.campo)
+                if row is None or coluna is None:
+                    continue
+                item = self.table.item(row, coluna)
+                if item is None:
+                    continue
+                item.setBackground(fundo_erro)
+                item.setForeground(texto_erro)
+                tooltip_atual = item.toolTip().strip()
+                item.setToolTip(
+                    f"{tooltip_atual}\n\n{erro.mensagem}"
+                    if tooltip_atual
+                    else erro.mensagem
+                )
+        finally:
+            self._carregando_tabela = anterior
+
+    def _aplicar_avisos_medidas(self, linha_id: int | None = None) -> None:
+        """Paint amber the Comp/Larg/Esp cells whose variable has no value.
+
+        Typical case: an item of loose pieces created without Altura/Largura/
+        Prof, where the Divisão independente still says H/L/P. The cell keeps
+        its text, but the user sees where the numbers must be written by hand
+        and the tooltip says why. ``linha_id`` limits the repaint to one line
+        (after an inline edit, which redraws only that row).
+        """
+        if not self._avisos_medidas:
+            return
+
+        row_por_linha_id = {
+            linha.id: row for row, linha in self._custeio_by_row.items()
+        }
+        coluna_por_nome = {
+            header: indice for indice, header in enumerate(self.TABLE_HEADERS)
+        }
+        fundo_aviso = QColor(tema.OCRE_SUAVE)
+        texto_aviso = QColor(tema.OCRE_ESCURO)
+
+        # Pintar uma célula também dispara o cellChanged do Qt: sem a bandeira,
+        # cada aviso pintado voltava a gravar a linha como se fosse uma edição.
+        anterior = self._carregando_tabela
+        self._carregando_tabela = True
+        try:
+            for aviso in self._avisos_medidas:
+                if linha_id is not None and aviso.linha_id != linha_id:
+                    continue
+                row = row_por_linha_id.get(aviso.linha_id)
+                coluna = coluna_por_nome.get(aviso.campo)
+                if row is None or coluna is None:
+                    continue
+                item = self.table.item(row, coluna)
+                if item is None:
+                    continue
+                item.setBackground(fundo_aviso)
+                item.setForeground(texto_aviso)
+                tooltip_atual = item.toolTip().strip()
+                item.setToolTip(
+                    f"{tooltip_atual}\n\n{aviso.mensagem}"
+                    if tooltip_atual
+                    else aviso.mensagem
+                )
+        finally:
+            self._carregando_tabela = anterior
+
+    def _atualizar_avisos_da_linha(self, linha_id: int) -> None:
+        """Re-read the measure warnings and repaint one line after an inline edit.
+
+        The edit redraws only its row, which wipes the amber of the cells that
+        still have no value (e.g. Larg = L after writing 2590 in Comp).
+        """
+        try:
+            with SessionLocal() as session:
+                self._avisos_medidas = OrcamentoItemCusteioLinhaService(
+                    session
+                ).medidas_sem_valor_do_item(self.item_id)
+        except (SQLAlchemyError, ValueError):
+            return  # só um realce: nunca falhar a edição por causa dele
+        self._aplicar_avisos_medidas(linha_id)
+
+    def _resumo_avisos_medidas(self) -> str:
+        """Supervisor line when some measures cannot be computed (no value)."""
+        total = len(self._avisos_medidas)
+        if self._dimensoes_em_falta_do_item():
+            return (
+                f"Atenção: {total} medida(s) sem valor (a âmbar) — o item não tem "
+                "medidas, por isso H/L/P não permitem cálculos. Edite manualmente "
+                "as medidas da Divisão independente (ex.: 2590 / 850 / 20)."
             )
+        return (
+            f"Atenção: {total} medida(s) sem valor (a âmbar). Passe o rato por "
+            "cima da célula para ver o que falta."
+        )
+
+    def _dimensoes_em_falta_do_item(self) -> list[str]:
+        """Item variables without value: H/L/P whose Altura/Largura/Prof is empty.
+
+        Zero counts as empty (a measure has to be greater than zero). Returns
+        e.g. ["H", "L", "P"] for an item of loose pieces created without
+        measures, and [] when the item has all three.
+        """
+        item = getattr(self, "item", None)
+        if item is None:
+            return []
+        em_falta = []
+        for variavel, valor in (
+            ("H", item.altura),
+            ("L", item.largura),
+            ("P", item.profundidade),
+        ):
+            numero = normalizar_numero(valor)
+            if numero is None or numero <= 0:
+                em_falta.append(variavel)
+        return em_falta
+
+    def _item_sem_medidas_relevante(self) -> list[str]:
+        """Missing H/L/P, but only where the variables matter (not Simplificado).
+
+        In Custeio Simplificado the variables are suppressed on purpose (the
+        pieces are always written in numbers), so an empty item is normal there
+        and warning about it would only be noise.
+        """
+        if getattr(self.item, "modalidade_custeio", None) == MODALIDADE_CUSTEIO_SIMPLIFICADO:
+            return []
+        return self._dimensoes_em_falta_do_item()
 
     def _resumo_erros_entrada(self) -> str:
         """Compact validation summary for the page status area."""
@@ -4433,6 +4602,7 @@ class OrcamentoItemCusteioPage(QWidget):
             # Avoid a recursive cellChanged loop: restore only this row while
             # the table signal guard is active.
             self._atualizar_linha_visivel(row, linha)
+            self._aplicar_avisos_medidas(linha.id)
             self.status_label.setText(str(error))
             return
         except SQLAlchemyError:
@@ -4454,6 +4624,15 @@ class OrcamentoItemCusteioPage(QWidget):
 
         if resumo is not None:
             self._atualizar_linha_visivel(row, resumo)
+            self._atualizar_avisos_da_linha(resumo.id)
+        if resumo is not None and any(
+            aviso.linha_id == resumo.id for aviso in self._avisos_medidas
+        ):
+            self.status_label.setText(
+                "Linha atualizada. Ainda há medidas sem valor nesta linha (a "
+                "âmbar): escreva-as em números. Use Atualizar para recalcular custos."
+            )
+            return
         self.status_label.setText(
             "Linha atualizada (medidas). Use Atualizar para recalcular custos."
         )

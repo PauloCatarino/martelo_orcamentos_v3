@@ -37,9 +37,11 @@ from app.domain.medidas import (
     calcular_perimetro_ml,
     construir_contexto_item,
     expressao_usa_variaveis,
+    mensagem_variaveis_sem_valor,
     normalizar_numero,
     normalizar_variaveis_medida,
     validar_expressao_medida,
+    variaveis_sem_valor,
 )
 from app.domain.acabamentos import (
     SEM_ACABAMENTO,
@@ -2194,6 +2196,27 @@ class OrcamentoItemCusteioLinhaService:
         read-only and can therefore be used while loading the page to highlight
         legacy or imported bad data before any financial calculation runs.
         """
+        erros, _avisos = self._percorrer_entradas_do_item(orcamento_item_id)
+        return erros
+
+    def medidas_sem_valor_do_item(
+        self, orcamento_item_id: int
+    ) -> list[ErroEntradaCusteio]:
+        """Measures that are valid but cannot be computed: a variable has no value.
+
+        The usual case is an item of loose pieces created without
+        Altura/Largura/Prof: the Divisão independente keeps "H/L/P" and every
+        line below that uses HM/LM/PM gets nothing. Not an error (the price is
+        not blocked, as before) - a warning so the page can show the user which
+        cells to write by hand. Read-only.
+        """
+        _erros, avisos = self._percorrer_entradas_do_item(orcamento_item_id)
+        return avisos
+
+    def _percorrer_entradas_do_item(
+        self, orcamento_item_id: int
+    ) -> tuple[list[ErroEntradaCusteio], list[ErroEntradaCusteio]]:
+        """Walk the item lines in display order: (invalid inputs, measures without value)."""
         item = self.session.get(OrcamentoItem, orcamento_item_id)
         if item is None:
             raise ValueError("item nao encontrado")
@@ -2204,6 +2227,7 @@ class OrcamentoItemCusteioLinhaService:
         contexto_local: dict = {}
         medidas_calculadas: dict[int, dict] = {}
         erros: list[ErroEntradaCusteio] = []
+        avisos: list[ErroEntradaCusteio] = []
 
         for linha in self.repository.list_active_by_orcamento_item(orcamento_item_id):
             if linha.tipo_linha == SEPARADOR:
@@ -2233,7 +2257,7 @@ class OrcamentoItemCusteioLinhaService:
                 valor = getattr(linha, atributo)
                 obrigatoria = linha.tipo_linha == DIVISAO_INDEPENDENTE
                 try:
-                    _texto, resultado = validar_expressao_medida(
+                    texto, resultado = validar_expressao_medida(
                         valor,
                         contexto,
                         campo=rotulo,
@@ -2241,6 +2265,21 @@ class OrcamentoItemCusteioLinhaService:
                         permitir_variaveis_sem_valor=True,
                     )
                     resultados[atributo] = resultado
+                    em_falta = (
+                        variaveis_sem_valor(texto, contexto)
+                        if texto is not None and resultado is None
+                        else []
+                    )
+                    if em_falta:
+                        avisos.append(
+                            ErroEntradaCusteio(
+                                linha_id=linha.id,
+                                campo=campo,
+                                mensagem=mensagem_variaveis_sem_valor(
+                                    rotulo, em_falta
+                                ),
+                            )
+                        )
                 except ValueError as error:
                     resultados[atributo] = None
                     erros.append(
@@ -2263,7 +2302,7 @@ class OrcamentoItemCusteioLinhaService:
                 "esp_real": resultados.get("esp"),
             }
 
-        return erros
+        return erros, avisos
 
     def garantir_entradas_validas_do_item(self, orcamento_item_id: int) -> None:
         """Raise before costing when any editable input is invalid."""
@@ -4527,14 +4566,14 @@ class OrcamentoItemCusteioLinhaService:
                         "Excel (Ctrl+V na coluna Comp)."
                     )
 
-        comp_texto, comp_real = validar_expressao_medida(
-            comp, contexto, campo="Comprimento"
+        comp_texto, comp_real = self._validar_medida_editada(
+            linha, "comp", comp, contexto, "Comprimento"
         )
-        larg_texto, larg_real = validar_expressao_medida(
-            larg, contexto, campo="Largura"
+        larg_texto, larg_real = self._validar_medida_editada(
+            linha, "larg", larg, contexto, "Largura"
         )
-        esp_texto, esp_real = validar_expressao_medida(
-            esp, contexto, campo="Espessura"
+        esp_texto, esp_real = self._validar_medida_editada(
+            linha, "esp", esp, contexto, "Espessura"
         )
 
         qt_mod_final = self._validar_quantidade_editada(
@@ -5140,6 +5179,39 @@ class OrcamentoItemCusteioLinhaService:
             limite = "maior ou igual a zero" if permitir_zero else "maior que zero"
             raise ValueError(f"{campo} inválida: o valor tem de ser {limite}.")
         return numero
+
+    @staticmethod
+    def _validar_medida_editada(
+        linha, atributo: str, valor, contexto: dict, campo: str
+    ) -> tuple[str | None, Decimal | None]:
+        """Validate one measure of an inline edit of the line.
+
+        Only what the user actually changed is held to the strict rule. A
+        measure left as it was may keep a variable without value - the "H/L/P"
+        of a Divisão independente in an item without Altura/Largura/Prof - and
+        must not stop the user from writing the numbers one cell at a time
+        (writing Comp used to fail with "Largura inválida" because of the "L"
+        still in the next cell). A changed measure that uses a variable without
+        value is refused with a message that says so, instead of the generic
+        syntax hint.
+        """
+
+        def _texto(medida) -> str:
+            return normalizar_variaveis_medida(str(medida).strip()) if medida is not None else ""
+
+        inalterada = _texto(valor) == _texto(getattr(linha, atributo, None))
+        try:
+            return validar_expressao_medida(
+                valor,
+                contexto,
+                campo=campo,
+                permitir_variaveis_sem_valor=inalterada,
+            )
+        except ValueError:
+            em_falta = variaveis_sem_valor(_texto(valor), contexto)
+            if em_falta:
+                raise ValueError(mensagem_variaveis_sem_valor(campo, em_falta)) from None
+            raise
 
     def _contexto_medidas_ate_linha(self, linha, item) -> dict:
         """Build global plus active HM/LM/PM context at one line's position."""

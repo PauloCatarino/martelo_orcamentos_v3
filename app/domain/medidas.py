@@ -169,6 +169,75 @@ def validar_formula_dimensional(
     return texto
 
 
+def variaveis_sem_valor(texto, contexto: dict | None = None) -> list[str]:
+    """Known variables used in ``texto`` that have no usable value in ``contexto``.
+
+    "Known" means an item alias (H/L/P...), a division variable (HM/LM/PM), a
+    parent variable (PAI_*) or any name present in the context. A value that is
+    missing, empty or not greater than zero counts as "no value": an item
+    without Altura gives H = None, and a division whose Comp is still "H" gives
+    HM = None to the lines below it. Unknown names are left out on purpose -
+    those are a syntax problem, not a missing measure. Order of first use is
+    kept and each name appears once.
+    """
+    if not isinstance(texto, str):
+        return []
+
+    valores = {str(chave).upper(): valor for chave, valor in (contexto or {}).items()}
+    conhecidas = (
+        set(VARIAVEIS_ITEM) | set(VARIAVEIS_LOCAIS) | set(VARIAVEIS_PAI) | set(valores)
+    )
+    em_falta: list[str] = []
+    for token in _TOKEN_VARIAVEL.findall(texto):
+        nome = token.upper()
+        if nome not in conhecidas or nome in em_falta:
+            continue
+        numero = normalizar_numero(valores.get(nome))
+        if numero is None or numero <= 0:
+            em_falta.append(nome)
+    return em_falta
+
+
+# De onde viria o valor de cada variável, para o aviso dizer o que falta.
+_ORIGEM_VARIAVEL = {
+    "H": "o item não tem Altura",
+    "COMP": "o item não tem Altura",
+    "ALTURA": "o item não tem Altura",
+    "ALTURA_COMP": "o item não tem Altura",
+    "L": "o item não tem Largura",
+    "LARG": "o item não tem Largura",
+    "P": "o item não tem Profundidade",
+    "PROF": "o item não tem Profundidade",
+    "PROFUNDIDADE": "o item não tem Profundidade",
+    "HM": "a Divisão independente acima não tem o Comp em números",
+    "LM": "a Divisão independente acima não tem a Larg em números",
+    "PM": "a Divisão independente acima não tem a Esp em números",
+    "PAI_COMP": "a peça-mãe ainda não tem o comprimento calculado",
+    "PAI_LARG": "a peça-mãe ainda não tem a largura calculada",
+    "PAI_ESP": "a peça-mãe ainda não tem a espessura calculada",
+}
+
+
+def mensagem_variaveis_sem_valor(campo: str, variaveis) -> str:
+    """Plain-language message for a measure that uses variables without value.
+
+    Says which variable is empty and where its value should have come from,
+    and what to do instead: write the number by hand (the usual case of an
+    item of loose pieces, created without Altura/Largura/Prof).
+    """
+    variaveis = list(variaveis)
+    motivos = "; ".join(
+        f"{nome} não tem valor ({_ORIGEM_VARIAVEL.get(nome, 'sem valor no contexto')})"
+        for nome in variaveis
+    )
+    conselho = "Escreva a medida à mão, em números (ex.: 2590)"
+    if any(nome in VARIAVEIS_ITEM for nome in variaveis):
+        conselho += ", ou preencha Altura/Largura/Prof. do item no separador Items"
+    elif any(nome in VARIAVEIS_LOCAIS for nome in variaveis):
+        conselho += ", ou escreva em números as medidas da Divisão independente acima"
+    return f"{campo}: não dá para calcular — {motivos}. {conselho}."
+
+
 def _expressao_valida_com_placeholders(texto: str, contexto: dict) -> bool:
     """Distinguish known variables without values from an invalid expression.
 

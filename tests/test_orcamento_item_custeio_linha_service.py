@@ -2201,6 +2201,163 @@ def test_edicao_rapida_resolve_contexto_local_da_divisao(monkeypatch) -> None:
     assert primeiro_payload["esp_real"] == Decimal("20")
 
 
+def _item_sem_medidas() -> SimpleNamespace:
+    """Item de peças soltas (ex.: 260973_01, pedido adicional): sem H/L/P."""
+    return SimpleNamespace(altura=None, largura=None, profundidade=None)
+
+
+def test_divisao_item_sem_medidas_aceita_comp_escrito_a_mao(monkeypatch) -> None:
+    # Escrever 2590 no Comp falhava com "Largura inválida": a linha era toda
+    # revalidada e o "L" que ficou na célula ao lado não tem valor.
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    divisao = _resumo(
+        id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="L", esp="P"
+    )
+    _FakeRepository.active_rows = [divisao]
+
+    service.atualizar_medidas_linha(
+        1, qt_mod="1", qt_und="1", comp="2590", larg="L", esp="P",
+        propagar_item=False,
+    )
+
+    payload = _FakeRepository.updated_payloads[0]
+    assert payload["comp"] == "2590"
+    assert payload["comp_real"] == Decimal("2590")
+    # O que não foi mexido fica como estava, sem valor, à espera da vez dele.
+    assert payload["larg"] == "L"
+    assert payload["larg_real"] is None
+    assert payload["esp"] == "P"
+    assert payload["esp_real"] is None
+    assert payload["area_m2"] is None
+
+
+def test_divisao_item_sem_medidas_aceita_qt_mod_e_descricao(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    divisao = _resumo(
+        id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="L", esp="P"
+    )
+    _FakeRepository.active_rows = [divisao]
+
+    service.atualizar_medidas_linha(
+        1, qt_mod="3", qt_und="1", comp="H", larg="L", esp="P",
+        descricao="Roupeiro quarto", propagar_item=False,
+    )
+
+    payload = _FakeRepository.updated_payloads[0]
+    assert payload["qt_mod"] == Decimal("3")
+    assert payload["descricao"] == "Roupeiro quarto"
+
+
+def test_item_sem_medidas_recusa_variavel_nova_com_mensagem_clara(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    divisao = _resumo(
+        id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="2590", larg="850", esp="20"
+    )
+    _FakeRepository.active_rows = [divisao]
+
+    with pytest.raises(ValueError) as erro:
+        service.atualizar_medidas_linha(
+            1, qt_mod="1", qt_und="1", comp="H", larg="850", esp="20",
+            propagar_item=False,
+        )
+
+    mensagem = str(erro.value)
+    assert "Comprimento: não dá para calcular" in mensagem
+    assert "H não tem valor (o item não tem Altura)" in mensagem
+    assert "Escreva a medida à mão" in mensagem
+    assert _FakeRepository.updated_payloads == []
+
+
+def test_peca_abaixo_de_divisao_sem_valor_explica_hm(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    divisao = _resumo(
+        id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="850", esp="20"
+    )
+    peca = _resumo(id=2, tipo_linha="PECA", comp="700", larg="LM", esp="PM")
+    _FakeRepository.active_rows = [divisao, peca]
+
+    with pytest.raises(ValueError, match="HM não tem valor .a Divisão independente"):
+        service.atualizar_medidas_linha(
+            2, qt_mod="1", qt_und="1", comp="HM-50", larg="LM", esp="PM",
+            propagar_item=False,
+        )
+
+
+def test_edicao_com_sintaxe_errada_mantem_aviso_generico(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    peca = _resumo(id=2, tipo_linha="PECA", comp="700", larg="400", esp="19")
+    _FakeRepository.active_rows = [peca]
+
+    with pytest.raises(ValueError, match="Comprimento inválida: use números"):
+        service.atualizar_medidas_linha(
+            2, qt_mod="1", qt_und="1", comp="70x0", larg="400", esp="19",
+            propagar_item=False,
+        )
+
+
+def test_divisao_com_medidas_escritas_serve_as_pecas_abaixo(monkeypatch) -> None:
+    # O caminho que o Paulo queria: item sem medidas, divisão escrita à mão,
+    # peças abaixo em HM/LM/PM.
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="2590", larg="850", esp="20"
+        ),
+        _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM-40", esp="PM"),
+    ]
+
+    service.recalcular_medidas_do_item(30)
+
+    payloads = {p["id"]: p for p in _FakeRepository.updated_payloads}
+    assert payloads[2]["comp_real"] == Decimal("2590")
+    assert payloads[2]["larg_real"] == Decimal("810")
+    assert payloads[2]["esp_real"] == Decimal("20")
+    assert service.medidas_sem_valor_do_item(30) == []
+
+
+def test_medidas_sem_valor_do_item_assinala_o_que_falta(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = _item_sem_medidas()
+    _FakeRepository.active_rows = [
+        _resumo(
+            id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="2590", larg="L", esp="P"
+        ),
+        _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM", esp="19"),
+    ]
+
+    avisos = service.medidas_sem_valor_do_item(30)
+
+    assert {(aviso.linha_id, aviso.campo) for aviso in avisos} == {
+        (1, "Larg"),
+        (1, "Esp"),
+        (2, "Larg"),
+    }
+    por_campo = {(aviso.linha_id, aviso.campo): aviso.mensagem for aviso in avisos}
+    assert "L não tem valor (o item não tem Largura)" in por_campo[(1, "Larg")]
+    assert "LM não tem valor" in por_campo[(2, "Larg")]
+    # Não bloqueia: continua a não ser um erro de entrada.
+    assert service.validar_entradas_do_item(30) == []
+
+
+def test_medidas_sem_valor_do_item_vazio_quando_o_item_tem_medidas(monkeypatch) -> None:
+    service, _ = _service(monkeypatch)
+    service.session.item = SimpleNamespace(
+        altura=Decimal("2750"), largura=Decimal("1830"), profundidade=Decimal("560")
+    )
+    _FakeRepository.active_rows = [
+        _resumo(id=1, tipo_linha="DIVISAO_INDEPENDENTE", comp="H", larg="L", esp="P"),
+        _resumo(id=2, tipo_linha="PECA", comp="HM", larg="LM", esp="PM"),
+    ]
+
+    assert service.medidas_sem_valor_do_item(30) == []
+
+
 def test_validar_entradas_item_aceita_expressoes_com_contexto_local(monkeypatch) -> None:
     service, _ = _service(monkeypatch)
     service.session.item = SimpleNamespace(
