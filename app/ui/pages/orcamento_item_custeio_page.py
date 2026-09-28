@@ -906,7 +906,7 @@ class OrcamentoItemCusteioPage(QWidget):
         self._separador_anterior = self.tabs.currentIndex()
         self.tabs.currentChanged.connect(self._on_separador_mudou)
         self.valueset_page.pedido_rever_diferencas.connect(
-            lambda: self.rever_diferencas_valueset(forcar=True)
+            self._on_pedido_rever_diferencas
         )
 
         layout = QVBoxLayout()
@@ -1476,6 +1476,20 @@ class OrcamentoItemCusteioPage(QWidget):
             return
 
         QTimer.singleShot(0, self.rever_diferencas_valueset)
+
+    def _on_pedido_rever_diferencas(self) -> None:
+        """Adiar o quadro pedido pelo botão do ValueSet para fora do clique.
+
+        O «Atualizar Custeio» sem linha selecionada emite o sinal a meio do
+        clique do botão; rever as diferenças ali mesmo abria o quadro modal e
+        redesenhava a tabela do custeio (escondida, noutro separador) antes de
+        o Qt acabar o clique. A 28-09-2026 o Martelo fechou-se sem mensagem
+        assim (260954_02, RP_08): ``setCellWidget`` em
+        ``_montar_combo_material`` <- ``carregar`` <- ``rever_diferencas_valueset``
+        <- ``atualizar_custeio_da_linha``. Passa a correr como o caminho do
+        separador, que já era adiado e nunca falhou.
+        """
+        QTimer.singleShot(0, lambda: self.rever_diferencas_valueset(forcar=True))
 
     def rever_diferencas_valueset(self, *, forcar: bool = False) -> None:
         """Ask about (and optionally apply) ValueSet/costing material differences.
