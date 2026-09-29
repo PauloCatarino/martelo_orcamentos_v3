@@ -28,8 +28,10 @@ MODELO_SERVIDOR = Path(
 PASTA_VBA = Path(__file__).resolve().parent / "vba"
 #: Os dois módulos do fluxo IMOS. O `RenomeiaListagensImos_13` é o ponto de
 #: entrada (macro `ImportarListasFerragensIMOS_14`, a que a app chama) e usa o
-#: `Import_List_Ferr_Etiq_11` para as ferragens e a etiqueta.
-MODULOS = ("Import_List_Ferr_Etiq_11", "RenomeiaListagensImos_13")
+#: `Import_List_Ferr_Etiq_11` para as ferragens e a etiqueta. O `modulo`
+#: (CUT-RITE) entrou a 29-09-2026: tinha uma macro em falta e o projeto VBA
+#: não compilava.
+MODULOS = ("Import_List_Ferr_Etiq_11", "RenomeiaListagensImos_13", "modulo")
 
 
 def criar_copia_seguranca(modelo: Path) -> Path:
@@ -82,6 +84,8 @@ def _marcadores(origem: Path) -> tuple[str, ...]:
             "idxFerr",
             # Listagem do IMOS ou do Martelo: vale a mais recente (29-09-2026).
             "IMOS14_GuardarAnterior",
+            "IMOS14_Curto",
+            "Sub AplicarPincelFormatacao_CutRite",
         )
         if marcador in texto
     )

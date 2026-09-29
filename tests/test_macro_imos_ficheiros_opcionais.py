@@ -137,8 +137,32 @@ def test_a_mensagem_mostra_de_quando_e_cada_listagem() -> None:
 
     assert "IMOS14_DataFicheiro(ficheiroFerragens)" in codigo
     assert "Listagens prontas na pasta da obra (geradas no IMOS ou no Martelo)." in codigo
-    assert "Ficam os da pasta da obra, por serem mais recentes:" in codigo
+    assert '"Ficam os da obra (mais recentes; os do IMOS foram para " & _' in codigo
     assert 'IMOS14_Versao = "2026-09-29"' in codigo
+
+
+def test_a_pergunta_de_importar_nunca_fica_cortada() -> None:
+    """O MsgBox corta perto dos 1024 caracteres; a pergunta tem de caber."""
+    codigo = _codigo(MODULO_13)
+    inicio = codigo.index("resposta = MsgBox( _\n        IMOS14_Curto(")
+    pergunta = codigo.index('"Pretende importar agora para os separadores do Excel?"', inicio)
+
+    assert "IMOS14_TextoMovimento(movidos, substituidos, existentes, erros), 880)" in codigo[inicio:pergunta]
+    assert "Private Function IMOS14_Curto(" in codigo
+
+
+def test_o_modulo_cutrite_ja_compila() -> None:
+    """A CopiarParaListaCutRite_5 chamava uma macro que não existia no modelo."""
+    codigo = (VBA / "modulo.bas").read_text(encoding="cp1252")
+
+    assert "Call AplicarPincelFormatacao_CutRite" in codigo
+    assert "Private Sub AplicarPincelFormatacao_CutRite()" in codigo
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "atualizar_macros_modelo_lista_material.py"
+    ).read_text(encoding="utf-8")
+    assert '"RenomeiaListagensImos_13", "modulo")' in script
 
 
 def test_o_modulo_13_continua_em_ascii_e_crlf() -> None:

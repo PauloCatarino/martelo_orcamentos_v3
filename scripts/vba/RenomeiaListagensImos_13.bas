@@ -130,12 +130,13 @@ Public Sub ImportarListasFerragensIMOS_14()
                      "Nao existem (nem do IMOS nem do Martelo), nao ha' nada a importar deles:" & emFalta
     End If
 
+    ' O MsgBox corta a mensagem perto dos 1024 caracteres: a pergunta vai
+    ' sempre no fim e o resto e' encurtado se for preciso.
     resposta = MsgBox( _
-        "Listagens prontas na pasta da obra (geradas no IMOS ou no Martelo)." & vbCrLf & vbCrLf & _
-        "Vai importar:" & aImportar & _
-        avisoFalta & vbCrLf & _
-        IMOS14_TextoMovimento(movidos, substituidos, existentes, erros) & vbCrLf & _
-        "Pretende importar agora para os separadores do Excel?", _
+        IMOS14_Curto("Listagens prontas na pasta da obra (geradas no IMOS ou no Martelo)." & _
+                     vbCrLf & vbCrLf & "Vai importar:" & aImportar & avisoFalta & vbCrLf & _
+                     IMOS14_TextoMovimento(movidos, substituidos, existentes, erros), 880) & _
+        vbCrLf & vbCrLf & "Pretende importar agora para os separadores do Excel?", _
         vbQuestion + vbYesNo + vbDefaultButton2, "Importar listas IMOS")
 
     If resposta <> vbYes Then GoTo Saida
@@ -272,8 +273,7 @@ Private Sub IMOS14_MoverTipo(ByVal prefixoObra As String, ByVal tipo As String, 
             Else
                 resultado = IMOS14_MoverUmFicheiro(CStr(caminho), destino, detalhe)
                 If resultado = "MOVIDO" Then
-                    substituidos = substituidos & vbCrLf & "- " & nomeDestino & _
-                                   " (a anterior ficou em " & IMOS14_PASTA_ANTERIORES & ")"
+                    substituidos = substituidos & vbCrLf & "- " & nomeDestino
                 Else
                     ' Nunca deixar a obra sem a listagem: a anterior volta.
                     On Error Resume Next
@@ -289,8 +289,7 @@ Private Sub IMOS14_MoverTipo(ByVal prefixoObra As String, ByVal tipo As String, 
             ' anteriores, para nao voltar a aparecer.
             guardada = IMOS14_GuardarAnterior(CStr(caminho), pastaDestino, detalhe)
             If Len(guardada) > 0 Then
-                existentes = existentes & vbCrLf & "- " & nomeDestino & _
-                             " (a do IMOS era mais antiga e ficou em " & IMOS14_PASTA_ANTERIORES & ")"
+                existentes = existentes & vbCrLf & "- " & nomeDestino
             Else
                 erros = erros & vbCrLf & "- " & nomeOrigem & ": " & detalhe
             End If
@@ -341,6 +340,15 @@ Private Function IMOS14_GuardarAnterior(ByVal caminho As String, ByVal pastaObra
 TrataErro:
     detalhe = CStr(Err.Number) & " - " & Err.Description
     IMOS14_GuardarAnterior = ""
+End Function
+
+Private Function IMOS14_Curto(ByVal texto As String, ByVal maximo As Long) As String
+    ' Encurta um texto para caber num MsgBox, deixando espaco para a pergunta.
+    If Len(texto) <= maximo Then
+        IMOS14_Curto = texto
+    Else
+        IMOS14_Curto = Left$(texto, maximo) & vbCrLf & "(...)"
+    End If
 End Function
 
 Private Function IMOS14_DataFicheiro(ByVal caminho As String) As String
@@ -486,11 +494,13 @@ Private Function IMOS14_TextoMovimento(ByVal movidos As String, ByVal substituid
     End If
     If Len(substituidos) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _
-                                "Trazidos do IMOS por serem mais recentes do que os da obra:" & substituidos
+                                "Trazidos do IMOS (mais recentes; os da obra foram para " & _
+                                IMOS14_PASTA_ANTERIORES & "):" & substituidos
     End If
     If Len(existentes) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _
-                                "Ficam os da pasta da obra, por serem mais recentes:" & existentes
+                                "Ficam os da obra (mais recentes; os do IMOS foram para " & _
+                                IMOS14_PASTA_ANTERIORES & "):" & existentes
     End If
     If Len(erros) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _

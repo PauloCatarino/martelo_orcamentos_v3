@@ -192,6 +192,27 @@ Sub CopiarParaListaCutRite_5()
 
 End Sub
 
+' Reaplica a alternancia de linhas (zebra) na Tabela_Cut_Rite.
+' A CopiarParaListaCutRite_5 chamava esta macro, mas ela nao existia no
+' modelo e o projeto VBA nao compilava (Depurar > Compilar dava "Sub or
+' Function not defined"). Faz o mesmo que o botao AUTOMATION faz hoje
+' (ReaplicarVisual_CutRite, no modCutRite_Mapeamento): tira o preenchimento
+' fixo das linhas e repoe o estilo da tabela com linhas alternadas.
+Private Sub AplicarPincelFormatacao_CutRite()
+    Dim lo As ListObject
+
+    On Error Resume Next
+    Set lo = ThisWorkbook.Sheets("LISTAGEM_CUT_RITE").ListObjects("Tabela_Cut_Rite")
+    If lo Is Nothing Then Exit Sub
+    If lo.DataBodyRange Is Nothing Then Exit Sub
+
+    lo.DataBodyRange.Interior.pattern = xlNone
+    lo.DataBodyRange.Interior.ColorIndex = xlColorIndexNone
+    lo.TableStyle = "TableStyleMedium1"
+    lo.ShowTableStyleRowStripes = True
+    On Error GoTo 0
+End Sub
+
 ' Lista estilos de tabela (imprimir no Immediate Window) - útil para escolher nome de estilo correcto
 Sub ListTableStyles()
     Dim t As TableStyle
