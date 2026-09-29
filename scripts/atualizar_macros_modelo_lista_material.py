@@ -76,7 +76,13 @@ def _marcadores(origem: Path) -> tuple[str, ...]:
     texto = origem.read_text(encoding="cp1252")
     return tuple(
         marcador
-        for marcador in ("IMOS_IndiceFolhaPorNome", "IMOS_NomeBaseFolha", "idxFerr")
+        for marcador in (
+            "IMOS_IndiceFolhaPorNome",
+            "IMOS_NomeBaseFolha",
+            "idxFerr",
+            # Listagem do IMOS ou do Martelo: vale a mais recente (29-09-2026).
+            "IMOS14_GuardarAnterior",
+        )
         if marcador in texto
     )
 

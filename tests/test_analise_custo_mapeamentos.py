@@ -133,3 +133,35 @@ def test_hardware_dimensions_and_games_are_not_lost():
     assert lines[0]['length']=='511-2438'
     assert lines[0]['width']=='45' and lines[0]['thickness']=='21'
     assert lines[0]['union_set']=='JOGO1'
+
+
+def _mtime(path, segundos):
+    import os
+    os.utime(path, (segundos, segundos))
+
+
+def test_hardware_source_newest_wins_between_job_and_imos(tmp_path):
+    """Gerada no Martelo na obra, ou corrigida no iMos depois: vale a mais recente."""
+    job=tmp_path/'job';job.mkdir()
+    output=tmp_path/'imos';output.mkdir()
+    path=job/'Lista_Material_0722_01_26_JF_VIVA.xlsm'
+    local=job/'5_Custo_Obra_Ferragens.xlsx';local.write_bytes(b'obra')
+    imos=output/'0722_01_26_JF_VIVA_5_Custo_Obra_Ferragens_V1.xlsx';imos.write_bytes(b'imos')
+    _mtime(local,1_000_000);_mtime(imos,2_000_000)
+    assert svc.hardware_sources(path,'0722_01_26_JF_VIVA',output)==[imos]
+    _mtime(local,3_000_000)
+    assert svc.hardware_sources(path,'0722_01_26_JF_VIVA',output)==[local]
+    _mtime(imos,3_000_000)  # empate: fica a da obra
+    assert svc.hardware_sources(path,'0722_01_26_JF_VIVA',output)==[local]
+
+
+def test_newer_source_replaces_job_file_and_keeps_the_old_one(tmp_path):
+    job=tmp_path/'obra';job.mkdir()
+    book=job/'Lista_Material_0722_01_26_JF_VIVA.xlsm';book.write_bytes(b'book')
+    destination=job/svc.HARDWARE_FILENAME;destination.write_bytes(b'old')
+    incoming=tmp_path/'0722_01_26_JF_VIVA_5_Custo_Obra_Ferragens_V1.xlsx';incoming.write_bytes(b'new')
+    _mtime(destination,1_000_000);_mtime(incoming,2_000_000)
+    result=svc.archive_hardware_file(book,incoming)
+    assert result.read_bytes()==b'new' and not incoming.exists()
+    kept=list((job/'Listas_IMOS_anteriores').iterdir())
+    assert [p.read_bytes() for p in kept]==[b'old']

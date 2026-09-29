@@ -9,9 +9,12 @@ Private Const IMOS14_FERRAGENS As String = "2_List_Ferragens"
 Private Const IMOS14_RESUMO As String = "3_Resumo_Precos"
 Private Const IMOS14_ETIQUETA As String = "4_Etiqueta_Palete"
 Private Const IMOS14_INTEGRADOR As String = "5_List_Ferragens_Integrador"
+' Onde ficam as listagens substituidas (dentro da pasta da obra). O Martelo
+' usa a mesma pasta quando gera as listagens sem o IMOS.
+Private Const IMOS14_PASTA_ANTERIORES As String = "Listas_IMOS_anteriores"
 
 Public Function IMOS14_Versao() As String
-    IMOS14_Versao = "2026-08-23"
+    IMOS14_Versao = "2026-09-29"
 End Function
 
 Public Sub RenomeiaNomesListaImosCopiaParaPstaObra_13()
@@ -23,6 +26,7 @@ Public Sub ImportarListasFerragensIMOS_14()
     Dim pastaDestino As String
     Dim prefixoObra As String
     Dim movidos As String
+    Dim substituidos As String
     Dim existentes As String
     Dim erros As String
     Dim emFalta As String
@@ -67,13 +71,13 @@ Public Sub ImportarListasFerragensIMOS_14()
     End If
     If Right$(prefixoObra, 1) <> "_" Then prefixoObra = prefixoObra & "_"
 
-    Application.StatusBar = "[2/6] A mover e validar as quatro listagens do IMOS..."
+    Application.StatusBar = "[2/6] A trazer do IMOS as listagens mais recentes..."
     DoEvents
 
-    IMOS14_MoverTipo prefixoObra, IMOS14_FERRAGENS, pastaDestino, movidos, existentes, erros
-    IMOS14_MoverTipo prefixoObra, IMOS14_RESUMO, pastaDestino, movidos, existentes, erros
-    IMOS14_MoverTipo prefixoObra, IMOS14_ETIQUETA, pastaDestino, movidos, existentes, erros
-    IMOS14_MoverTipo prefixoObra, IMOS14_INTEGRADOR, pastaDestino, movidos, existentes, erros
+    IMOS14_MoverTipo prefixoObra, IMOS14_FERRAGENS, pastaDestino, movidos, substituidos, existentes, erros
+    IMOS14_MoverTipo prefixoObra, IMOS14_RESUMO, pastaDestino, movidos, substituidos, existentes, erros
+    IMOS14_MoverTipo prefixoObra, IMOS14_ETIQUETA, pastaDestino, movidos, substituidos, existentes, erros
+    IMOS14_MoverTipo prefixoObra, IMOS14_INTEGRADOR, pastaDestino, movidos, substituidos, existentes, erros
 
     Application.StatusBar = "[3/6] A confirmar os ficheiros na pasta da obra..."
     DoEvents
@@ -93,7 +97,7 @@ Public Sub ImportarListasFerragensIMOS_14()
         MsgBox "Nao foram encontrados ficheiros desta obra, nem na pasta IMOS nem na pasta da obra." & _
                vbCrLf & vbCrLf & "Prefixo procurado: " & prefixoObra & vbCrLf & _
                "Origem: " & IMOS14_PASTA_ORIGEM & vbCrLf & _
-               "Destino: " & pastaDestino & IMOS14_TextoMovimento(movidos, existentes, erros), _
+               "Destino: " & pastaDestino & IMOS14_TextoMovimento(movidos, substituidos, existentes, erros), _
                vbExclamation, "Importar listas IMOS"
         GoTo Saida
     End If
@@ -104,29 +108,33 @@ Public Sub ImportarListasFerragensIMOS_14()
     ' por importar. Agora importa-se o que existe e diz-se o que faltou.
     aImportar = ""
     If Len(ficheiroFerragens) > 0 Then
-        aImportar = aImportar & vbCrLf & "- 2_List_Ferragens -> 1_FERRAGENS / 2_PURCH / 3_SPP"
+        aImportar = aImportar & vbCrLf & "- 2_List_Ferragens -> 1_FERRAGENS / 2_PURCH / 3_SPP" & _
+                    IMOS14_DataFicheiro(ficheiroFerragens)
     End If
     If Len(ficheiroResumo) > 0 Then
-        aImportar = aImportar & vbCrLf & "- 3_Resumo_Precos -> 4_Resumo_Global_Precos"
+        aImportar = aImportar & vbCrLf & "- 3_Resumo_Precos -> 4_Resumo_Global_Precos" & _
+                    IMOS14_DataFicheiro(ficheiroResumo)
     End If
     If Len(ficheiroEtiqueta) > 0 Then
-        aImportar = aImportar & vbCrLf & "- 4_Etiqueta_Palete -> 5_ETIQUETA_PALETE"
+        aImportar = aImportar & vbCrLf & "- 4_Etiqueta_Palete -> 5_ETIQUETA_PALETE" & _
+                    IMOS14_DataFicheiro(ficheiroEtiqueta)
     End If
     If Len(ficheiroIntegrador) > 0 Then
-        aImportar = aImportar & vbCrLf & "- 5_List_Ferragens_Integrador -> 5_List_Ferragens_Integrador"
+        aImportar = aImportar & vbCrLf & "- 5_List_Ferragens_Integrador -> 5_List_Ferragens_Integrador" & _
+                    IMOS14_DataFicheiro(ficheiroIntegrador)
     End If
 
     avisoFalta = ""
     If Len(emFalta) > 0 Then
         avisoFalta = vbCrLf & vbCrLf & _
-                     "O IMOS nao gerou estes (nao ha' nada a importar deles):" & emFalta
+                     "Nao existem (nem do IMOS nem do Martelo), nao ha' nada a importar deles:" & emFalta
     End If
 
     resposta = MsgBox( _
-        "Ficheiros do IMOS prontos na pasta da obra." & vbCrLf & vbCrLf & _
+        "Listagens prontas na pasta da obra (geradas no IMOS ou no Martelo)." & vbCrLf & vbCrLf & _
         "Vai importar:" & aImportar & _
         avisoFalta & vbCrLf & _
-        IMOS14_TextoMovimento(movidos, existentes, erros) & vbCrLf & _
+        IMOS14_TextoMovimento(movidos, substituidos, existentes, erros) & vbCrLf & _
         "Pretende importar agora para os separadores do Excel?", _
         vbQuestion + vbYesNo + vbDefaultButton2, "Importar listas IMOS")
 
@@ -211,7 +219,8 @@ End Sub
 
 Private Sub IMOS14_MoverTipo(ByVal prefixoObra As String, ByVal tipo As String, _
                              ByVal pastaDestino As String, ByRef movidos As String, _
-                             ByRef existentes As String, ByRef erros As String)
+                             ByRef substituidos As String, ByRef existentes As String, _
+                             ByRef erros As String)
     Dim fso As Object
     Dim pasta As Object
     Dim ficheiro As Object
@@ -219,8 +228,10 @@ Private Sub IMOS14_MoverTipo(ByVal prefixoObra As String, ByVal tipo As String, 
     Dim caminho As Variant
     Dim nomeOrigem As String
     Dim nomeDestino As String
+    Dim destino As String
     Dim resultado As String
     Dim detalhe As String
+    Dim guardada As String
 
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set candidatos = New Collection
@@ -234,22 +245,114 @@ Private Sub IMOS14_MoverTipo(ByVal prefixoObra As String, ByVal tipo As String, 
         End If
     Next ficheiro
 
+    ' A listagem pode vir do IMOS (C:\IMOS_Output_Batches) ou ter sido gerada
+    ' pelo Martelo diretamente na pasta da obra. Vale a MAIS RECENTE, que e' a
+    ' da ultima gravacao do desenho; a outra passa para Listas_IMOS_anteriores
+    ' com a data em que tinha sido gerada. Antes a da obra nunca era
+    ' substituida e uma listagem corrigida no IMOS ficava por importar.
     For Each caminho In candidatos
         nomeOrigem = fso.GetFileName(CStr(caminho))
         nomeDestino = Mid$(nomeOrigem, Len(prefixoObra) + 1)
-        resultado = IMOS14_MoverUmFicheiro(CStr(caminho), pastaDestino & nomeDestino, detalhe)
+        destino = pastaDestino & nomeDestino
+        detalhe = ""
 
-        Select Case resultado
-            Case "MOVIDO"
+        If Not fso.FileExists(destino) Then
+            resultado = IMOS14_MoverUmFicheiro(CStr(caminho), destino, detalhe)
+            If resultado = "MOVIDO" Then
                 movidos = movidos & vbCrLf & "- " & nomeDestino
-            Case "EXISTE"
-                existentes = existentes & vbCrLf & "- " & nomeDestino & _
-                            " (nao substituido; a origem foi mantida)"
-            Case Else
+            Else
                 erros = erros & vbCrLf & "- " & nomeOrigem & ": " & detalhe
-        End Select
+            End If
+
+        ElseIf fso.GetFile(CStr(caminho)).DateLastModified > fso.GetFile(destino).DateLastModified Then
+            ' A do IMOS e' mais recente: a da obra vai para as anteriores.
+            guardada = IMOS14_GuardarAnterior(destino, pastaDestino, detalhe)
+            If Len(guardada) = 0 Then
+                erros = erros & vbCrLf & "- " & nomeDestino & " (esta' aberta?): " & detalhe
+            Else
+                resultado = IMOS14_MoverUmFicheiro(CStr(caminho), destino, detalhe)
+                If resultado = "MOVIDO" Then
+                    substituidos = substituidos & vbCrLf & "- " & nomeDestino & _
+                                   " (a anterior ficou em " & IMOS14_PASTA_ANTERIORES & ")"
+                Else
+                    ' Nunca deixar a obra sem a listagem: a anterior volta.
+                    On Error Resume Next
+                    If Not fso.FileExists(destino) Then Name guardada As destino
+                    On Error GoTo 0
+                    erros = erros & vbCrLf & "- " & nomeOrigem & ": " & detalhe
+                End If
+            End If
+
+        Else
+            ' A da obra e' mais recente (por exemplo, gerada no Martelo): a do
+            ' IMOS nao e' importada e sai de C:\IMOS_Output_Batches para as
+            ' anteriores, para nao voltar a aparecer.
+            guardada = IMOS14_GuardarAnterior(CStr(caminho), pastaDestino, detalhe)
+            If Len(guardada) > 0 Then
+                existentes = existentes & vbCrLf & "- " & nomeDestino & _
+                             " (a do IMOS era mais antiga e ficou em " & IMOS14_PASTA_ANTERIORES & ")"
+            Else
+                erros = erros & vbCrLf & "- " & nomeOrigem & ": " & detalhe
+            End If
+        End If
     Next caminho
 End Sub
+
+Private Function IMOS14_GuardarAnterior(ByVal caminho As String, ByVal pastaObra As String, _
+                                        ByRef detalhe As String) As String
+    ' Mover (nunca apagar) uma listagem para Listas_IMOS_anteriores, com a data
+    ' em que tinha sido gerada no nome. Devolve o caminho novo, ou "" se falhou.
+    Dim fso As Object
+    Dim pastaAnteriores As String
+    Dim base As String
+    Dim extensao As String
+    Dim destino As String
+    Dim repetido As Long
+
+    On Error GoTo TrataErro
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    pastaAnteriores = pastaObra & IMOS14_PASTA_ANTERIORES & "\"
+    If Not fso.FolderExists(pastaAnteriores) Then fso.CreateFolder pastaAnteriores
+
+    base = fso.GetBaseName(caminho) & "_" & _
+           Format$(fso.GetFile(caminho).DateLastModified, "yyyymmdd_hhnnss")
+    extensao = "." & fso.GetExtensionName(caminho)
+    destino = pastaAnteriores & base & extensao
+    repetido = 2
+    Do While fso.FileExists(destino)
+        destino = pastaAnteriores & base & "_" & CStr(repetido) & extensao
+        repetido = repetido + 1
+    Loop
+
+    If LCase$(Left$(caminho, 2)) = LCase$(Left$(destino, 2)) Then
+        Name caminho As destino
+    Else
+        ' Entre discos (C: -> servidor): copia, confirma e so' depois tira.
+        FileCopy caminho, destino
+        If FileLen(caminho) <> FileLen(destino) Then
+            Err.Raise vbObjectError + 1404, "IMOS14_GuardarAnterior", _
+                      "A copia nao ficou com o mesmo tamanho da origem."
+        End If
+        Kill caminho
+    End If
+    IMOS14_GuardarAnterior = destino
+    Exit Function
+
+TrataErro:
+    detalhe = CStr(Err.Number) & " - " & Err.Description
+    IMOS14_GuardarAnterior = ""
+End Function
+
+Private Function IMOS14_DataFicheiro(ByVal caminho As String) As String
+    ' "  [gerada 29-09-2026 11:08]", para se ver de quando e' cada listagem.
+    Dim fso As Object
+    On Error GoTo Fim
+    If Len(caminho) = 0 Then Exit Function
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    IMOS14_DataFicheiro = "  [gerada " & _
+        Format$(fso.GetFile(caminho).DateLastModified, "dd-mm-yyyy hh:nn") & "]"
+Fim:
+End Function
 
 Private Function IMOS14_MoverUmFicheiro(ByVal origem As String, ByVal destino As String, _
                                         ByRef detalhe As String) As String
@@ -375,15 +478,19 @@ Private Function IMOS14_FolhaExiste(ByVal wb As Workbook, ByVal nomeFolha As Str
     On Error GoTo 0
 End Function
 
-Private Function IMOS14_TextoMovimento(ByVal movidos As String, ByVal existentes As String, _
-                                       ByVal erros As String) As String
+Private Function IMOS14_TextoMovimento(ByVal movidos As String, ByVal substituidos As String, _
+                                       ByVal existentes As String, ByVal erros As String) As String
     If Len(movidos) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _
-                                "Movidos para a pasta da obra:" & movidos
+                                "Trazidos do IMOS para a pasta da obra:" & movidos
+    End If
+    If Len(substituidos) > 0 Then
+        IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _
+                                "Trazidos do IMOS por serem mais recentes do que os da obra:" & substituidos
     End If
     If Len(existentes) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _
-                                "Ja existentes no destino:" & existentes
+                                "Ficam os da pasta da obra, por serem mais recentes:" & existentes
     End If
     If Len(erros) > 0 Then
         IMOS14_TextoMovimento = IMOS14_TextoMovimento & vbCrLf & vbCrLf & _

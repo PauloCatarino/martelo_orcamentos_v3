@@ -116,11 +116,26 @@ def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) 
         def _importar_custo_ferragens(self, _path):
             events.append("custo_ferragens")
 
+        # No passo 3 abre-se primeiro a janela que gera as listas no Martelo.
+        def _gerar_listas_imos(self, _processo, *, depois_importa=False):
+            assert depois_importa
+            events.append("gerar_listas")
+            return 4
+
+        _importar_listas_ferragens = ProducaoPage._importar_listas_ferragens
+
     ProducaoPage._oferecer_fluxo_inicial_lista_material(
         _Page(), object(), workbook_path
     )
 
-    assert events == ["csv", "automation", "ferragens", "custo_ferragens", "assistente"]
+    assert events == [
+        "csv",
+        "automation",
+        "gerar_listas",
+        "ferragens",
+        "custo_ferragens",
+        "assistente",
+    ]
 
 
 def test_producao_page_imports_and_headers() -> None:
@@ -220,7 +235,10 @@ def test_producao_page_init_uses_expected_widgets() -> None:
     )
     assert "execute_import_csv_imos_macro" in workflow_source
     assert "execute_automation_cutrite_macro" in workflow_source
-    assert "execute_import_listas_ferragens_macro" in workflow_source
+    assert "self._importar_listas_ferragens(workbook_path)" in workflow_source
+    assert "execute_import_listas_ferragens_macro" in inspect.getsource(
+        ProducaoPage._importar_listas_ferragens
+    )
     assert "passo 1 de 4" in workflow_source
     assert "passo 2 de 4" in workflow_source
     assert "passo 3 de 4" in workflow_source

@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from openpyxl import load_workbook
 
 from app.services import lista_material_excel_com as excel_com
+from app.services.imos_listas_service import guardar_anterior
 
 
 def nominal_thickness(value):
@@ -294,15 +295,23 @@ def hardware_sheet_names(path):
 
 
 def hardware_sources(path, version, output_folder=Path(r'C:\IMOS_Output_Batches')):
-    """Only this job/version; never search ORIGINAL or other subfolders."""
+    """Only this job/version; never search ORIGINAL or other subfolders.
+
+    A lista pode estar na pasta da obra (gerada pelo Martelo ou já trazida do
+    iMos) e haver outra do iMos em C:\\IMOS_Output_Batches. Vale a MAIS
+    RECENTE: é a que saiu da última gravação do desenho. Antes ganhava sempre a
+    da obra, e uma lista corrigida no iMos ficava por importar.
+    """
     folder = Path(path).parent
-    local = sorted({p for p in folder.glob(f'{version}_5_Custo_Obra_Ferragens*.xlsx') if p.is_file()})
     canonical = folder / '5_Custo_Obra_Ferragens.xlsx'
+    candidates = {p for p in folder.glob(f'{version}_5_Custo_Obra_Ferragens*.xlsx') if p.is_file()}
+    candidates |= {p for p in Path(output_folder).glob(f'{version}_5_Custo_Obra_Ferragens*.xlsx') if p.is_file()}
     if canonical.is_file():
-        local.insert(0, canonical)
-    if local:
-        return local
-    return sorted(p for p in Path(output_folder).glob(f'{version}_5_Custo_Obra_Ferragens*.xlsx') if p.is_file())
+        candidates.add(canonical)
+    if not candidates:
+        return []
+    # Empate na data: fica a da obra, que já é a que a Lista Material conhece.
+    return [max(candidates, key=lambda p: (p.stat().st_mtime, p == canonical))]
 
 
 def workbook_cost_lines(path):
@@ -906,13 +915,16 @@ def archive_hardware_file(path, source):
     if source == destination:
         return destination
     original_hash = fingerprint(source)
-    if destination.exists():
-        if fingerprint(destination) != original_hash:
-            raise ValueError('A obra já tem 5_Custo_Obra_Ferragens.xlsx diferente. Ambos os ficheiros foram preservados.')
-    elif source.parent == destination.parent:
-        source.rename(destination)
-        return destination
-    else:
+    if destination.exists() and fingerprint(destination) != original_hash:
+        # A mais recente é a da última gravação do desenho; a da obra, se for
+        # mais antiga, passa para Listas_IMOS_anteriores (não se perde).
+        if source.stat().st_mtime <= destination.stat().st_mtime:
+            raise ValueError('A obra já tem 5_Custo_Obra_Ferragens.xlsx diferente e mais recente. Ambos os ficheiros foram preservados.')
+        guardar_anterior(destination)
+    if not destination.exists():
+        if source.parent == destination.parent:
+            source.rename(destination)
+            return destination
         with source.open('rb') as incoming, destination.open('xb') as outgoing:
             shutil.copyfileobj(incoming, outgoing)
         shutil.copystat(source, destination)
@@ -922,28 +934,55 @@ def archive_hardware_file(path, source):
     return destination
 
 
-def import_hardware_cost(path, source):
-    """Importa o separador e só depois transfere a fonte para o nome normalizado."""
+def _hardware_source_rows(source):
+    book_source = load_workbook(source, read_only=True, data_only=True)
+    try:
+        if len(book_source.sheetnames) != 1:
+            raise ValueError('O ficheiro de custos deve ter um único separador.')
+        return hardware_rows(book_source.active.values)
+    finally:
+        book_source.close()
+
+
+def hardware_sheet_differs(path, source):
+    """A Lista Material já tem o separador de custos e é diferente desta lista?"""
+    incoming_rows = _hardware_source_rows(source)
+    current = load_workbook(writable_workbook(path), read_only=True, data_only=True)
+    try:
+        existing = [s for s in current if 'custo_obra_ferragens' in s.title.lower()]
+        return len(existing) == 1 and hardware_rows(existing[0].values) != incoming_rows
+    finally:
+        current.close()
+
+
+def import_hardware_cost(path, source, *, substituir=False):
+    """Importa o separador e só depois transfere a fonte para o nome normalizado.
+
+    Com ``substituir`` (o utilizador confirmou), um separador diferente é
+    trocado pela lista nova — é o caso de quem corrige o desenho no iMos e
+    volta a gerar. Antes de mexer grava-se sempre uma cópia do Excel.
+    """
     path = writable_workbook(path)
     source = Path(source).resolve()
     version_name = path.stem.removeprefix('Lista_Material_')
     if not source.name.startswith(version_name + '_5_Custo_Obra_Ferragens') and source != path.parent / HARDWARE_FILENAME:
         raise ValueError('O ficheiro de ferragens não corresponde à versão desta Lista Material.')
     destination = path.parent / HARDWARE_FILENAME
-    if destination.exists() and fingerprint(destination) != fingerprint(source):
-        raise ValueError('A obra já tem um ficheiro de custos diferente. Os ficheiros foram preservados.')
-    book_source = load_workbook(source, read_only=True, data_only=True)
-    try:
-        if len(book_source.sheetnames) != 1:
-            raise ValueError('O ficheiro de custos deve ter um único separador.')
-        incoming_rows = hardware_rows(book_source.active.values)
-    finally:
-        book_source.close()
+    if (destination.exists() and destination != source
+            and fingerprint(destination) != fingerprint(source)
+            and source.stat().st_mtime <= destination.stat().st_mtime):
+        raise ValueError('A obra já tem um ficheiro de custos diferente e mais recente. Os ficheiros foram preservados.')
+    incoming_rows = _hardware_source_rows(source)
+    replace = False
     current = load_workbook(path, read_only=True, data_only=True)
     try:
         existing = [s for s in current if 'custo_obra_ferragens' in s.title.lower()]
-        if len(existing) > 1 or (existing and hardware_rows(existing[0].values) != incoming_rows):
-            raise ValueError('O separador existente difere da fonte. Foi preservado e a fonte não foi removida.')
+        if len(existing) > 1:
+            raise ValueError('Existem vários separadores de custos de ferragens. Foram preservados e a fonte não foi removida.')
+        if existing and hardware_rows(existing[0].values) != incoming_rows:
+            if not substituir:
+                raise ValueError('O separador existente difere da fonte. Foi preservado e a fonte não foi removida.')
+            replace = True
     finally:
         current.close()
     excel = importlib.import_module('win32com.client').DispatchEx('Excel.Application')
@@ -953,11 +992,23 @@ def import_hardware_cost(path, source):
         book = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
         if book.ReadOnly:
             raise ValueError('Feche o Excel antes de importar os custos de ferragens.')
-        if not any('custo_obra_ferragens' in str(s.Name).lower() for s in book.Worksheets):
+        existentes = [s for s in book.Worksheets if 'custo_obra_ferragens' in str(s.Name).lower()]
+        if replace or not existentes:
             src = excel.Workbooks.Open(str(source), UpdateLinks=0, ReadOnly=True)
             book.SaveCopyAs(str(backup_path(path, 'antes_ferragens')))
-            src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
-            book.Worksheets.Item(book.Worksheets.Count).Name = '5_Custo_Obra_Ferragens'
+            if replace:
+                # Mesmo sítio no livro; a cópia de segurança acabou de ser gravada.
+                position = existentes[0].Index
+                existentes[0].Delete()
+                if position <= book.Worksheets.Count:
+                    src.Worksheets.Item(1).Copy(Before=book.Worksheets.Item(position))
+                else:
+                    src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
+                    position = book.Worksheets.Count
+                book.Worksheets.Item(position).Name = '5_Custo_Obra_Ferragens'
+            else:
+                src.Worksheets.Item(1).Copy(After=book.Worksheets.Item(book.Worksheets.Count))
+                book.Worksheets.Item(book.Worksheets.Count).Name = '5_Custo_Obra_Ferragens'
             excel_com.recalcular(excel)
         book.Save()
     finally:

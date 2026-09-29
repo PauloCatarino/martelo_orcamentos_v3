@@ -84,8 +84,68 @@ def test_as_mensagens_dizem_o_que_entrou_e_o_que_faltou() -> None:
     codigo = _codigo(MODULO_13)
 
     assert "Vai importar:" in codigo
-    assert "O IMOS nao gerou estes" in codigo
+    assert "Nao existem (nem do IMOS nem do Martelo)" in codigo
     assert "Ficheiros relacionados com os respetivos separadores:" in codigo
+
+
+# ---- listagens geradas no IMOS ou no Martelo: vale a mais recente ---------
+
+
+def _mover_tipo(codigo: str) -> str:
+    inicio = codigo.index("Private Sub IMOS14_MoverTipo(")
+    return codigo[inicio : codigo.index("End Sub", inicio)]
+
+
+def test_a_listagem_mais_recente_substitui_a_da_obra() -> None:
+    """Antes a da obra nunca era substituída: a corrigida no IMOS ficava parada."""
+    mover = _mover_tipo(_codigo(MODULO_13))
+
+    assert '"EXISTE"' not in mover
+    assert (
+        "ElseIf fso.GetFile(CStr(caminho)).DateLastModified > "
+        "fso.GetFile(destino).DateLastModified Then" in mover
+    )
+    # A da obra vai para as anteriores ANTES de a nova entrar.
+    assert mover.index("IMOS14_GuardarAnterior(destino, pastaDestino, detalhe)") < mover.index(
+        'substituidos = substituidos & vbCrLf & "- " & nomeDestino'
+    )
+    # Se a nova não entrar, a anterior volta: a obra nunca fica sem listagem.
+    assert "If Not fso.FileExists(destino) Then Name guardada As destino" in mover
+
+
+def test_a_do_imos_mais_antiga_nao_e_importada_nem_se_perde() -> None:
+    mover = _mover_tipo(_codigo(MODULO_13))
+
+    assert "IMOS14_GuardarAnterior(CStr(caminho), pastaDestino, detalhe)" in mover
+
+
+def test_as_anteriores_sao_movidas_e_nunca_apagadas() -> None:
+    codigo = _codigo(MODULO_13)
+    inicio = codigo.index("Private Function IMOS14_GuardarAnterior(")
+    guardar = codigo[inicio : codigo.index("End Function", inicio)]
+
+    assert 'Private Const IMOS14_PASTA_ANTERIORES As String = "Listas_IMOS_anteriores"' in codigo
+    assert "Name caminho As destino" in guardar
+    # Entre discos copia, confirma o tamanho e só depois tira a origem.
+    assert guardar.index("FileCopy caminho, destino") < guardar.index("Kill caminho")
+    assert "If FileLen(caminho) <> FileLen(destino) Then" in guardar
+    assert 'Format$(fso.GetFile(caminho).DateLastModified, "yyyymmdd_hhnnss")' in guardar
+
+
+def test_a_mensagem_mostra_de_quando_e_cada_listagem() -> None:
+    codigo = _codigo(MODULO_13)
+
+    assert "IMOS14_DataFicheiro(ficheiroFerragens)" in codigo
+    assert "Listagens prontas na pasta da obra (geradas no IMOS ou no Martelo)." in codigo
+    assert "Ficam os da pasta da obra, por serem mais recentes:" in codigo
+    assert 'IMOS14_Versao = "2026-09-29"' in codigo
+
+
+def test_o_modulo_13_continua_em_ascii_e_crlf() -> None:
+    """O Excel lê o .bas em cp1252; um acento fora do sítio parte a macro."""
+    dados = MODULO_13.read_bytes()
+    assert all(b < 128 for b in dados)
+    assert dados.count(b"\r\n") == dados.count(b"\n")
 
 
 # ---- o módulo das ferragens e da etiqueta (macro 11) -----------------------

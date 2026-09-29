@@ -88,7 +88,11 @@ from app.services.lista_material_imos_service import (
 from app.services.lista_material_assistente_service import (
     ListaMaterialAssistantService,
 )
-from app.services.analise_lista_material_service import import_hardware_cost
+from app.services.analise_lista_material_service import (
+    hardware_sheet_differs,
+    hardware_sources,
+    import_hardware_cost,
+)
 from app.services.system_setting_service import SystemSettingService
 from app.services.permission_service import (
     PERMISSAO_ANALISE_LISTA_MATERIAL,
@@ -136,6 +140,7 @@ from app.ui import tema
 from app.utils.formatters import format_numero_pt
 from app.ui.dialogs.converter_orcamento_dialog import ConverterOrcamentoDialog
 from app.ui.dialogs.cutrite_progress_dialog import CutRiteProgressDialog
+from app.ui.dialogs.gerar_listas_imos_dialog import GerarListasImosDialog
 from app.ui.dialogs.imos_encomenda_dialog import ImosEncomendaDialog
 from app.ui.dialogs.lista_material_pdf_dialog import ListaMaterialPdfDialog
 from app.ui.dialogs.nova_versao_processo_dialog import NovaVersaoProcessoDialog
@@ -421,6 +426,18 @@ class ProducaoPage(QWidget):
             self._analisar_lista_material
         )
 
+        # As listas de ferragens que se exportavam do iMos, geradas pelo
+        # Martelo com os mesmos .rdl e diretamente para a pasta da obra.
+        self.gerar_listas_imos_action = QAction("Gerar listas iMOS (ferragens)…", self)
+        self.gerar_listas_imos_action.setIcon(icone_ficheiro("icon_imos_2025.ico"))
+        self.gerar_listas_imos_action.setToolTip(
+            "Gerar sem abrir o iMos as listas 2_List_Ferragens, 3_Resumo_Precos, "
+            "4_Etiqueta_Palete e 5_Custo_Obra_Ferragens, a partir da última "
+            "gravação do desenho, diretamente para a pasta da obra. Mostra se as "
+            "que lá estão já saíram da última gravação."
+        )
+        self.gerar_listas_imos_action.triggered.connect(self._abrir_gerar_listas_imos)
+
         self.enviar_cutrite_action = QAction(
             icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
         )
@@ -502,6 +519,7 @@ class ProducaoPage(QWidget):
 
         self.funcoes_menu = QMenu(self)
         self.funcoes_menu.setToolTipsVisible(True)
+        self.funcoes_menu.addAction(self.gerar_listas_imos_action)
         self.funcoes_menu.addAction(self.analisar_lista_material_action)
         self.funcoes_menu.addSeparator()
         self.funcoes_menu.addAction(self.preparacao_action)
@@ -512,8 +530,9 @@ class ProducaoPage(QWidget):
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
-            "Funções sobre a obra e a respetiva pasta: analisar a Lista Material, "
-            "preparar a produção, imprimir, avisar o cliente e criar a encomenda no iMos"
+            "Funções sobre a obra e a respetiva pasta: gerar as listas de "
+            "ferragens do iMos, analisar a Lista Material, preparar a produção, "
+            "imprimir, avisar o cliente e criar a encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -2693,40 +2712,22 @@ class ProducaoPage(QWidget):
         importar_listas = QMessageBox.question(
             self,
             "Listas de ferragens IMOS — passo 3 de 4",
-            "A LISTAGEM_CUT_RITE foi preenchida. Pretende importar agora para "
-            "este Excel as listas de ferragens exportadas pelo IMOS?\n\n"
-            "São processados os ficheiros que o IMOS gerou para esta obra — "
-            "2_List_Ferragens, 3_Resumo_Precos, 4_Etiqueta_Palete e "
-            "5_List_Ferragens_Integrador. O V3 importa também o novo "
-            "5_Custo_Obra_Ferragens quando existir uma única fonte desta versão. Não é preciso terem sido gerados "
-            "todos: a macro importa os que existirem e diz quais faltaram. "
-            "Apresenta os passos e pede confirmação antes de substituir "
-            "separadores existentes.",
+            "A LISTAGEM_CUT_RITE foi preenchida. Pretende trazer agora para "
+            "este Excel as listas de ferragens?\n\n"
+            "Abre-se primeiro a janela «Gerar listas iMOS»: mostra se as listas "
+            "da pasta da obra saíram da última gravação do desenho e gera-as no "
+            "Martelo, sem abrir o iMos (2_List_Ferragens, 3_Resumo_Precos, "
+            "4_Etiqueta_Palete e 5_Custo_Obra_Ferragens). Se já as gerou no "
+            "iMos, basta fechar a janela. Ao fechar, a macro importa as que "
+            "existirem e pede confirmação antes de substituir separadores.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
         if importar_listas == QMessageBox.StandardButton.Yes:
-            self.status_label.setText(
-                "A importar as listas de ferragens do IMOS para o Excel..."
-            )
-            QApplication.processEvents()
-            try:
-                execute_import_listas_ferragens_macro(workbook_path)
-                self._importar_custo_ferragens(workbook_path)
+            self._gerar_listas_imos(processo, depois_importa=True)
+            if self._importar_listas_ferragens(workbook_path):
                 self.status_label.setText(
                     "Listas de ferragens processadas; a preparar o Assistente."
-                )
-            except Exception as error:  # Excel COM / macro VBA
-                self.status_label.setText(
-                    "A importação das listas de ferragens não foi concluída."
-                )
-                QMessageBox.warning(
-                    self,
-                    "Importar listas de ferragens IMOS",
-                    "Não foi possível concluir a importação das listas. "
-                    "Pode continuar sem usar o Assistente ou repetir mais tarde "
-                    "através do botão do Excel.\n\n"
-                    f"Detalhe: {error}",
                 )
         else:
             self.status_label.setText(
@@ -2829,20 +2830,140 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, 'Análise da Lista Material', str(error))
             return False, 0
 
+    # ---- Listas de ferragens do iMos --------------------------------------
+
+    def _abrir_gerar_listas_imos(self) -> None:
+        """Funções > Gerar listas iMOS: gerar e, se houver Lista Material, importar."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText(
+                "Selecione uma obra para gerar as listas de ferragens do iMos."
+            )
+            return
+        geradas = self._gerar_listas_imos(processo)
+        if not geradas:
+            return
+
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        pasta = Path(self._pasta_servidor_da_obra(processo))
+        try:
+            workbook_path = find_lista_material_workbook(pasta, nome_enc_imos=nome_enc)
+        except ValueError:
+            self.status_label.setText(
+                f"{geradas} lista(s) gerada(s) na pasta da obra. Ainda não há "
+                "Lista Material para as receber: crie-a em «Lista Material_IMOS»."
+            )
+            return
+
+        resposta = QMessageBox.question(
+            self,
+            "Importar listas de ferragens",
+            f"{geradas} lista(s) gerada(s) na pasta da obra.\n\n"
+            f"Pretende importá-las agora para a Lista Material?\n{workbook_path.name}\n\n"
+            "A macro do Excel pede confirmação antes de substituir separadores. "
+            "Feche primeiro a Lista Material se a tiver aberta.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            self.status_label.setText(
+                f"{geradas} lista(s) gerada(s) na pasta da obra. Pode importá-las "
+                "mais tarde pelo botão do Excel."
+            )
+            return
+        if self._importar_listas_ferragens(workbook_path):
+            self.status_label.setText("Listas de ferragens importadas para a Lista Material.")
+
+    def _gerar_listas_imos(self, processo: Producao, *, depois_importa: bool = False) -> int:
+        """Abre a janela das listas do iMos; devolve quantas foram geradas."""
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        if not nome_enc:
+            QMessageBox.warning(
+                self,
+                "Gerar listas iMOS",
+                "Nome Enc IMOS IX em falta: é por ele que o Martelo encontra a "
+                "encomenda no iMos.",
+            )
+            return 0
+        pasta = self._pasta_servidor_da_obra(processo)
+        if not pasta:
+            QMessageBox.warning(self, "Gerar listas iMOS", AVISO_PASTA_OBRA_EM_FALTA)
+            return 0
+
+        dialog = GerarListasImosDialog(
+            codigo_processo=str(getattr(processo, "codigo_processo", "") or ""),
+            nome_enc=nome_enc,
+            pasta_obra=pasta,
+            dir_id=getattr(processo, "imos_dir_id", None),
+            depois_importa=depois_importa,
+            parent=self,
+        )
+        dialog.exec()
+        if dialog.listas_geradas:
+            diario_bordo.registar_acao(
+                "Gerou listas de ferragens do iMos no Martelo",
+                f"{nome_enc}: {dialog.listas_geradas} lista(s) em {pasta}",
+            )
+        return dialog.listas_geradas
+
+    def _importar_listas_ferragens(self, workbook_path: Path) -> bool:
+        """A macro do Excel traz as listas da pasta da obra; depois o custo."""
+        self.status_label.setText(
+            "A importar as listas de ferragens para o Excel..."
+        )
+        QApplication.processEvents()
+        try:
+            execute_import_listas_ferragens_macro(workbook_path)
+            self._importar_custo_ferragens(workbook_path)
+        except Exception as error:  # Excel COM / macro VBA
+            self.status_label.setText(
+                "A importação das listas de ferragens não foi concluída."
+            )
+            QMessageBox.warning(
+                self,
+                "Importar listas de ferragens IMOS",
+                "Não foi possível concluir a importação das listas. "
+                "Pode continuar sem usar o Assistente ou repetir mais tarde "
+                "através do botão do Excel.\n\n"
+                f"Detalhe: {error}",
+            )
+            return False
+        return True
+
     def _importar_custo_ferragens(self, workbook_path: Path) -> None:
+        """Traz o 5_Custo_Obra_Ferragens para a Lista Material.
+
+        Pode haver o da pasta da obra (gerado pelo Martelo) e um do iMos em
+        C:\\IMOS_Output_Batches: vale o mais recente. Se a Lista Material já
+        tiver o separador e ele for diferente, pergunta antes de o substituir
+        (é o caso de quem corrige o desenho e volta a gerar as listas).
+        """
         nome = self.nome_enc_imos_ix_input.text().strip()
-        sources = sorted(Path(r'C:\IMOS_Output_Batches').glob(f'{nome}_5_Custo_Obra_Ferragens*.xlsx')) if nome else []
+        versao = nome or workbook_path.stem.removeprefix("Lista_Material_")
+        sources = hardware_sources(workbook_path, versao)
         if not sources:
-            archived = workbook_path.parent / '5_Custo_Obra_Ferragens.xlsx'
-            if archived.is_file():
-                sources = [archived]
-        if len(sources) == 1:
-            try:
-                import_hardware_cost(workbook_path, sources[0])
-            except (ValueError, RuntimeError) as error:
-                QMessageBox.warning(self, 'Custos de ferragens IMOS', str(error))
-        elif len(sources) > 1:
-            QMessageBox.warning(self, 'Custos de ferragens IMOS', 'Existe mais de um ficheiro de custos para esta obra. Selecione a fonte no módulo de análise.')
+            return
+        source = sources[0]
+        try:
+            substituir = False
+            if hardware_sheet_differs(workbook_path, source):
+                data = datetime.fromtimestamp(source.stat().st_mtime).strftime("%d-%m-%Y %H:%M")
+                resposta = QMessageBox.question(
+                    self,
+                    "Custos de ferragens IMOS",
+                    "O separador 5_Custo_Obra_Ferragens da Lista Material é "
+                    f"diferente da lista mais recente ({source.name}, de {data}).\n\n"
+                    "Substituir o separador pela lista mais recente? Antes de "
+                    "mudar, o Martelo guarda uma cópia do Excel.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if resposta != QMessageBox.StandardButton.Yes:
+                    return
+                substituir = True
+            import_hardware_cost(workbook_path, source, substituir=substituir)
+        except (ValueError, RuntimeError, OSError) as error:
+            QMessageBox.warning(self, 'Custos de ferragens IMOS', str(error))
 
     def _analisar_lista_material(self) -> None:
         processo = self._processo_selecionado()
