@@ -736,8 +736,24 @@ class ResultadoMotor:
     erro: str = ""
 
 
-# Avisos do motor que não dizem nada a quem usa o Martelo.
-_AVISOS_IGNORADOS = ("rsWarningFetchingExternalImages",)
+# Avisos do motor que não dizem nada a quem usa o Martelo. O segundo é o eco
+# de uma imagem em falta (o primeiro aviso já diz qual é).
+_AVISOS_IGNORADOS = ("rsWarningFetchingExternalImages", "rsInvalidExternalImageProperty")
+
+
+def _aviso_em_portugues(codigo: str, mensagem: str) -> str:
+    """O aviso do motor como se diz a quem usa o Martelo ("" = não interessa)."""
+    if codigo in _AVISOS_IGNORADOS:
+        return ""
+    # O logotipo do Resumo vem de uma pasta do iMos que o Martelo não conhece;
+    # a lista vai ser descontinuada, por isso não se avisa.
+    if "Logo" in mensagem:
+        return ""
+    if codigo == "rsInvalidImageReference":
+        caminho = re.search(r"'([^']+\.(?:png|jpe?g|bmp|gif))'", mensagem, flags=re.I)
+        if caminho:
+            return f"Imagem não encontrada: {caminho.group(1)}"
+    return mensagem
 
 
 def correr_motor(
@@ -775,10 +791,9 @@ def correr_motor(
             except ValueError:
                 pass
         elif campos[0] == "AVISO" and len(campos) >= 3:
-            # O logotipo do Resumo vem de uma pasta do iMos que o Martelo não
-            # conhece; a lista vai ser substituída, por isso não se avisa.
-            if campos[1] not in _AVISOS_IGNORADOS and "Logo" not in campos[2]:
-                resultado.avisos.append(campos[2])
+            aviso = _aviso_em_portugues(campos[1], campos[2])
+            if aviso and aviso not in resultado.avisos:
+                resultado.avisos.append(aviso)
         elif campos[0] == "ERRO" and len(campos) >= 3:
             erros.append(campos[2])
     if not resultado.ok or not saida.is_file():

@@ -574,3 +574,20 @@ def test_marca_fica_em_xml_valido_mesmo_sem_o_prefixo_dc(tmp_path) -> None:
     marca, gravacao = svc.ler_marca(livro)
     assert marca.endswith(" & <teste>")
     assert gravacao == datetime(2026, 9, 22, 12, 25, 30)
+
+
+def test_imagem_em_falta_e_dita_em_portugues_numa_linha() -> None:
+    """O motor dá dois avisos em inglês por cada imagem que não encontra."""
+    primeiro = svc._aviso_em_portugues(
+        "rsInvalidImageReference",
+        "The ImageData for the image 'Image2' is invalid. Details: Não foi possível "
+        r"localizar o ficheiro 'I:\Library\LOGO_CLIENTE\468.png'.",
+    )
+    segundo = svc._aviso_em_portugues(
+        "rsInvalidExternalImageProperty",
+        "The value of the ImageData property for the image 'Image2' is '', which is not a valid ImageData.",
+    )
+    assert primeiro == r"Imagem não encontrada: I:\Library\LOGO_CLIENTE\468.png"
+    assert segundo == ""
+    assert svc._aviso_em_portugues("rsInvalidImageReference", "image 'Logo' is invalid") == ""
+    assert svc._aviso_em_portugues("rsOutro", "Outro aviso") == "Outro aviso"
