@@ -2833,28 +2833,31 @@ class ProducaoPage(QWidget):
     # ---- Listas de ferragens do iMos --------------------------------------
 
     def _abrir_gerar_listas_imos(self) -> None:
-        """Funções > Gerar listas iMOS: gerar e, se houver Lista Material, importar."""
+        """Funções > Gerar listas iMOS: gerar e/ou importar para a Lista Material."""
         processo = self._processo_selecionado()
         if processo is None:
             self.status_label.setText(
                 "Selecione uma obra para gerar as listas de ferragens do iMos."
             )
             return
-        geradas = self._gerar_listas_imos(processo)
+        aberta = self._gerar_listas_imos(processo)
+        if aberta is None:
+            return
+        dialog, workbook_path = aberta
+        if dialog.importou:
+            self.status_label.setText("Listas de ferragens importadas para a Lista Material.")
+            return
+        geradas = dialog.listas_geradas
         if not geradas:
             return
-
-        nome_enc = self.nome_enc_imos_ix_input.text().strip()
-        pasta = Path(self._pasta_servidor_da_obra(processo))
-        try:
-            workbook_path = find_lista_material_workbook(pasta, nome_enc_imos=nome_enc)
-        except ValueError:
+        if workbook_path is None:
             self.status_label.setText(
                 f"{geradas} lista(s) gerada(s) na pasta da obra. Ainda não há "
                 "Lista Material para as receber: crie-a em «Lista Material_IMOS»."
             )
             return
 
+        # Gerou e fechou sem carregar em «Importar»: pergunta-se na mesma.
         resposta = QMessageBox.question(
             self,
             "Importar listas de ferragens",
@@ -2868,14 +2871,21 @@ class ProducaoPage(QWidget):
         if resposta != QMessageBox.StandardButton.Yes:
             self.status_label.setText(
                 f"{geradas} lista(s) gerada(s) na pasta da obra. Pode importá-las "
-                "mais tarde pelo botão do Excel."
+                "mais tarde em Funções > Gerar listas iMOS ou pelo botão do Excel."
             )
             return
         if self._importar_listas_ferragens(workbook_path):
             self.status_label.setText("Listas de ferragens importadas para a Lista Material.")
 
-    def _gerar_listas_imos(self, processo: Producao, *, depois_importa: bool = False) -> int:
-        """Abre a janela das listas do iMos; devolve quantas foram geradas."""
+    def _gerar_listas_imos(
+        self, processo: Producao, *, depois_importa: bool = False
+    ) -> tuple[GerarListasImosDialog, Path | None] | None:
+        """Abre a janela das listas do iMos; devolve (janela, Lista Material).
+
+        Fora do passo 3 a janela recebe a Lista Material da obra, para o botão
+        «Importar para a Lista Material» — que serve também para as listas
+        geradas no iMos, sem gerar nada no Martelo.
+        """
         nome_enc = self.nome_enc_imos_ix_input.text().strip()
         if not nome_enc:
             QMessageBox.warning(
@@ -2884,11 +2894,30 @@ class ProducaoPage(QWidget):
                 "Nome Enc IMOS IX em falta: é por ele que o Martelo encontra a "
                 "encomenda no iMos.",
             )
-            return 0
+            return None
         pasta = self._pasta_servidor_da_obra(processo)
         if not pasta:
             QMessageBox.warning(self, "Gerar listas iMOS", AVISO_PASTA_OBRA_EM_FALTA)
-            return 0
+            return None
+
+        workbook_path: Path | None = None
+        importar = None
+        indisponivel = ""
+        if not depois_importa:
+            try:
+                workbook_path = find_lista_material_workbook(Path(pasta), nome_enc_imos=nome_enc)
+            except ValueError as erro:
+                indisponivel = (
+                    "Ainda não há Lista Material nesta obra para receber as listas: "
+                    "crie-a em «Lista Material_IMOS»."
+                    if "nenhum" in str(erro)
+                    else str(erro)
+                )
+            else:
+                livro = workbook_path
+
+                def importar() -> bool:
+                    return self._importar_listas_ferragens(livro)
 
         dialog = GerarListasImosDialog(
             codigo_processo=str(getattr(processo, "codigo_processo", "") or ""),
@@ -2896,6 +2925,8 @@ class ProducaoPage(QWidget):
             pasta_obra=pasta,
             dir_id=getattr(processo, "imos_dir_id", None),
             depois_importa=depois_importa,
+            importar=importar,
+            importar_indisponivel=indisponivel,
             parent=self,
         )
         dialog.exec()
@@ -2904,7 +2935,12 @@ class ProducaoPage(QWidget):
                 "Gerou listas de ferragens do iMos no Martelo",
                 f"{nome_enc}: {dialog.listas_geradas} lista(s) em {pasta}",
             )
-        return dialog.listas_geradas
+        if dialog.importou:
+            diario_bordo.registar_acao(
+                "Importou as listas de ferragens para a Lista Material",
+                str(workbook_path),
+            )
+        return dialog, workbook_path
 
     def _importar_listas_ferragens(self, workbook_path: Path) -> bool:
         """A macro do Excel traz as listas da pasta da obra; depois o custo."""

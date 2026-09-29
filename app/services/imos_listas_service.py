@@ -75,6 +75,8 @@ class ListaImos:
     ficheiro_rdl: str
     titulo: str
     descricao: str
+    # Vem marcada na janela? O Resumo não: vai ser descontinuado (29-09-2026).
+    marcada_por_defeito: bool = True
 
     @property
     def nome_ficheiro(self) -> str:
@@ -94,7 +96,8 @@ LISTAS_IMOS: tuple[ListaImos, ...] = (
         "4_Resumo_Custos_Encomenda.rdl",
         "Resumo de preços",
         "Resumo global de preços do iMos (separador 4_Resumo_Global_Precos). "
-        "Vai ser substituída pela 5_Custo_Obra_Ferragens.",
+        "Vai ser descontinuada: para custos vale a 5_Custo_Obra_Ferragens.",
+        marcada_por_defeito=False,
     ),
     ListaImos(
         "4_Etiqueta_Palete",

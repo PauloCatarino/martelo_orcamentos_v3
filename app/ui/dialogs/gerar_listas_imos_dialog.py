@@ -9,6 +9,7 @@ da obra (as anteriores ficam em ``Listas_IMOS_anteriores``).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QThread, QTimer, QUrl, Qt, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QFont
@@ -114,6 +115,8 @@ class GerarListasImosDialog(QDialog):
         pasta_obra: str | Path,
         dir_id: int | None = None,
         depois_importa: bool = False,
+        importar: Callable[[], bool] | None = None,
+        importar_indisponivel: str = "",
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -121,11 +124,16 @@ class GerarListasImosDialog(QDialog):
         self._nome_enc = str(nome_enc or "").strip()
         self._pasta_obra = Path(pasta_obra)
         self._dir_id = dir_id
+        self._importar = importar
+        self._depois_importa = depois_importa
         self._config: ConfigListasImos | None = None
         self._encomenda: EncomendaImos | None = None
         self._estados: list[EstadoLista] = []
         self._trabalho: _TrabalhoGeracao | None = None
+        self._a_preencher = False
         self.resultado: ResultadoGeracao | None = None
+        #: As listas já foram importadas para a Lista Material nesta janela.
+        self.importou = False
 
         self.setWindowTitle("Gerar listas iMOS (ferragens)")
         self.setModal(True)
@@ -199,7 +207,9 @@ class GerarListasImosDialog(QDialog):
         for linha, lista in enumerate(LISTAS_IMOS):
             item = QTableWidgetItem(lista.chave)
             item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked)
+            item.setCheckState(
+                Qt.CheckState.Checked if lista.marcada_por_defeito else Qt.CheckState.Unchecked
+            )
             item.setToolTip(f"{lista.titulo} — relatório {lista.ficheiro_rdl}")
             self.tabela.setItem(linha, 0, item)
             descricao = QTableWidgetItem(lista.descricao)
@@ -208,6 +218,8 @@ class GerarListasImosDialog(QDialog):
             self.tabela.setItem(linha, 2, QTableWidgetItem("—"))
             self.tabela.setItem(linha, 3, QTableWidgetItem("—"))
         self.tabela.resizeRowsToContents()
+        # Marcar/desmarcar muda o que o supervisor tem a dizer.
+        self.tabela.itemChanged.connect(self._ao_mudar_marca)
 
         # --- botões e supervisor -------------------------------------------
         self.todas_button = QPushButton("Marcar todas")
@@ -230,6 +242,26 @@ class GerarListasImosDialog(QDialog):
         self.gerar_button.clicked.connect(self._gerar)
         self.gerar_button.setEnabled(False)
 
+        # Importa o que estiver na pasta da obra (gerado agora, antes, ou pelo
+        # iMos) — não é preciso gerar primeiro.
+        self.importar_button = QPushButton("Importar para a Lista Material")
+        self.importar_button.clicked.connect(self._importar_para_lista_material)
+        if importar is not None:
+            self.importar_button.setToolTip(
+                "Trazer para a Lista Material as listas que estão na pasta da obra "
+                "(geradas aqui ou no iMos) e o 5_Custo_Obra_Ferragens. Vale sempre "
+                "a mais recente; o Excel pede confirmação antes de substituir "
+                "separadores. Feche primeiro a Lista Material se a tiver aberta."
+            )
+        else:
+            self.importar_button.setEnabled(False)
+            self.importar_button.setToolTip(
+                importar_indisponivel or "Não há Lista Material para receber as listas."
+            )
+        # Quando a janela é aberta no passo 3 da Lista Material, a importação
+        # acontece ao fechar: o botão aqui duplicava-a.
+        self.importar_button.setVisible(not depois_importa)
+
         self.pasta_button = QPushButton("Abrir pasta da obra")
         self.pasta_button.setToolTip("Abrir no Explorador a pasta da obra.")
         self.pasta_button.clicked.connect(self._abrir_pasta)
@@ -239,13 +271,19 @@ class GerarListasImosDialog(QDialog):
         self.fechar_button.clicked.connect(self.accept)
 
         barra = QHBoxLayout()
-        for botao in (self.todas_button, self.atualizar_button, self.gerar_button, self.pasta_button):
+        for botao in (
+            self.todas_button,
+            self.atualizar_button,
+            self.gerar_button,
+            self.importar_button,
+            self.pasta_button,
+        ):
             barra.addWidget(botao)
         barra.addStretch(1)
         barra.addWidget(self.fechar_button)
         decorar_botoes(
             self.todas_button, self.atualizar_button, self.gerar_button,
-            self.pasta_button, self.fechar_button,
+            self.importar_button, self.pasta_button, self.fechar_button,
         )
 
         self.progresso = QProgressBar()
@@ -323,6 +361,13 @@ class GerarListasImosDialog(QDialog):
             self._estados = []
             self._supervisor(f"Não consegui ler a pasta da obra: {erro}", tema.TEXTO_ERRO)
             return
+        self._a_preencher = True
+        try:
+            self._escrever_estados()
+        finally:
+            self._a_preencher = False
+
+    def _escrever_estados(self) -> None:
         for linha, estado in enumerate(self._estados):
             if estado.caminho is None:
                 na_pasta = "—"
@@ -340,25 +385,43 @@ class GerarListasImosDialog(QDialog):
             self.tabela.setItem(linha, 3, item_situacao)
         self.tabela.resizeRowsToContents()
 
+    def _ao_mudar_marca(self, item) -> None:
+        if self._a_preencher or item is None or item.column() != 0 or self._encomenda is None:
+            return
+        self._supervisor_estado()
+
     def _supervisor_estado(self) -> None:
-        desatualizadas = [e.lista.chave for e in self._estados if e.situacao == SITUACAO_DESATUALIZADA]
-        em_falta = [e.lista.chave for e in self._estados if e.situacao == SITUACAO_EM_FALTA]
+        # Só contam as listas marcadas: o Resumo, que já não se usa, vem
+        # desmarcado e não deve pedir para ser gerado.
+        marcadas = {lista.chave for lista in self._listas_marcadas()}
+        estados = [e for e in self._estados if e.lista.chave in marcadas]
+        desatualizadas = [e.lista.chave for e in estados if e.situacao == SITUACAO_DESATUALIZADA]
+        em_falta = [e.lista.chave for e in estados if e.situacao == SITUACAO_EM_FALTA]
         aviso = self._encomenda.aviso if self._encomenda else ""
-        if desatualizadas:
+        if not estados:
+            texto = "Marque as listas a gerar."
+            cor = tema.TEXTO_AVISO
+        elif desatualizadas:
             texto = (
                 "O desenho foi gravado no iMos depois de gerar: "
                 + ", ".join(desatualizadas)
-                + ". Marque-as e carregue em «Gerar listas marcadas»."
+                + ". Carregue em «Gerar listas marcadas»."
             )
             cor = tema.TEXTO_AVISO
-        elif em_falta and len(em_falta) == len(self._estados):
-            texto = "Ainda não há listas nesta obra. Marque as que precisa e carregue em «Gerar listas marcadas»."
+        elif len(em_falta) == len(estados):
+            texto = (
+                "As listas marcadas ainda não estão na pasta da obra. Carregue em "
+                "«Gerar listas marcadas»."
+            )
             cor = tema.TEXTO_NORMAL
         elif em_falta:
-            texto = "Faltam na pasta da obra: " + ", ".join(em_falta) + ". As restantes estão atualizadas."
+            texto = (
+                "Faltam na pasta da obra: " + ", ".join(em_falta)
+                + ". As restantes marcadas estão atualizadas."
+            )
             cor = tema.TEXTO_NORMAL
         else:
-            texto = "Todas as listas da pasta da obra saíram da última gravação do desenho."
+            texto = "As listas marcadas que estão na pasta da obra saíram da última gravação do desenho."
             cor = tema.TEXTO_OK
         if aviso:
             texto = f"{aviso} {texto}"
@@ -389,11 +452,44 @@ class GerarListasImosDialog(QDialog):
         self._trabalho.falhou.connect(self._ao_falhar)
         self._trabalho.start()
 
-    def _a_trabalhar(self, ativo: bool) -> None:
+    def _a_trabalhar(self, ativo: bool, *, progresso: bool = True) -> None:
         for botao in (self.todas_button, self.atualizar_button, self.gerar_button, self.fechar_button):
             botao.setEnabled(not ativo)
+        self.importar_button.setEnabled(not ativo and self._importar is not None)
         self.tabela.setEnabled(not ativo)
-        self.progresso.setVisible(ativo)
+        self.progresso.setVisible(ativo and progresso)
+
+    def _importar_para_lista_material(self) -> None:
+        """Importa para a Lista Material o que estiver na pasta da obra."""
+        if self._importar is None or self._a_gerar():
+            return
+        self._a_trabalhar(True, progresso=False)
+        self._supervisor(
+            "A importar para a Lista Material… responda às perguntas do Excel "
+            "(abre-se à frente desta janela)."
+        )
+        QApplication.processEvents()
+        try:
+            importou = bool(self._importar())
+        except Exception as erro:  # noqa: BLE001 - Excel/macro: dizer porquê
+            importou = False
+            self._supervisor(f"A importação não foi concluída: {erro}", tema.TEXTO_ERRO)
+        finally:
+            self._a_trabalhar(False)
+        # A macro pode ter trazido listas do iMos para a pasta da obra.
+        self._preencher_estados()
+        if importou:
+            self.importou = True
+            self._supervisor(
+                "Listas importadas para a Lista Material. Confirme os separadores "
+                "no Excel e guarde.",
+                tema.TEXTO_OK,
+            )
+        elif "não foi concluída" not in self.status_label.text():
+            self._supervisor(
+                "A importação não foi concluída — veja a mensagem que apareceu.",
+                tema.TEXTO_ERRO,
+            )
 
     def _ao_progresso(self, feitas: int, total: int, texto: str) -> None:
         self.progresso.setMaximum(max(total, 1))
@@ -428,10 +524,14 @@ class GerarListasImosDialog(QDialog):
                 tema.TEXTO_ERRO,
             )
         else:
+            proximo = (
+                "Já pode importá-las com «Importar para a Lista Material»."
+                if not self._depois_importa and self._importar is not None
+                else "Já pode importá-las para a Lista Material."
+            )
             self._supervisor(
                 f"{len(geradas)} lista(s) gerada(s) a partir da gravação de "
-                f"{_data(resultado.encomenda.ultima_gravacao)}. Já pode importá-las "
-                "para a Lista Material.",
+                f"{_data(resultado.encomenda.ultima_gravacao)}. {proximo}",
                 tema.TEXTO_OK,
             )
         texto = "\n".join(linhas)
