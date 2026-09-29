@@ -187,10 +187,15 @@ class GerarListasImosDialog(QDialog):
         )
         cabecalho = self.tabela.horizontalHeader()
         cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        cabecalho.setStretchLastSection(True)
-        for coluna, largura in enumerate((210, 330, 190)):
+        # A Situação ocupa o resto da largura (é a coluna que mais se lê).
+        cabecalho.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        for coluna, largura in enumerate((200, 380, 190)):
             self.tabela.setColumnWidth(coluna, largura)
-        ligar_persistencia_larguras(self.tabela, "dialog_gerar_listas_imos")
+        # Sem forçar: as três primeiras ficam ajustáveis e guardadas, a
+        # Situação continua a esticar.
+        ligar_persistencia_larguras(
+            self.tabela, "dialog_gerar_listas_imos", forcar_interativas=False
+        )
         for linha, lista in enumerate(LISTAS_IMOS):
             item = QTableWidgetItem(lista.chave)
             item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
