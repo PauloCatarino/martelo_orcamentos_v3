@@ -74,10 +74,55 @@ def writable_workbook(path: Path) -> Path:
     return path
 
 
+# Medido no Excel a 30-09-2026: grava e abre caminhos até 255 caracteres; com
+# 256 dá «Não foi possível executar o método SaveCopyAs da classe Workbook».
+LIMITE_CAMINHO_EXCEL = 255
+LIMITE_CAMINHO_WINDOWS = 259
+
+
 def backup_path(path, label):
+    """Caminho da cópia de segurança, dentro do limite do Excel sempre que cabe.
+
+    O nome antigo repetia a lista inteira e na obra 1637_01_01_LINHAS_DIREITAS
+    dava 256 caracteres. Agora sai o «Lista_Material_» (a pasta já diz a obra)
+    e o resto do nome só se corta se não couber — há pastas com várias listas.
+    """
     folder = path.parent / 'Analise_Lista_Material' / 'Copias'
     folder.mkdir(parents=True, exist_ok=True)
-    return folder / f'{path.stem}_{label}_{uuid4().hex[:12]}{path.suffix}'
+    fim = f'_{label}_{datetime.now():%Y%m%d_%H%M%S}_{uuid4().hex[:4]}{path.suffix}'
+    cabe = LIMITE_CAMINHO_EXCEL - len(str(folder)) - 1 - len(fim)
+    lista = path.stem.removeprefix('Lista_Material_')[:max(cabe, 0)].rstrip(' ._-')
+    return folder / (lista + fim if lista else fim.lstrip('_'))
+
+
+def copia_de_seguranca(path, label, expected_hash=None):
+    """Grava em Copias o Excel tal como está no disco, antes de o Martelo lhe mexer.
+
+    Copia-a o Windows, não o Excel (``SaveCopyAs``, que recusa caminhos acima de
+    255 caracteres). Pode ser com o livro aberto pelo Martelo: o disco só muda
+    no ``Save``. Nunca escreve por cima de outra cópia.
+    """
+    path = Path(path)
+    destination = None
+    try:
+        destination = backup_path(path, label)
+        with path.open('rb') as incoming, destination.open('xb') as outgoing:
+            shutil.copyfileobj(incoming, outgoing)
+        shutil.copystat(path, destination)
+    except OSError as error:
+        tried = str(destination or path.parent / 'Analise_Lista_Material' / 'Copias')
+        if len(tried) > LIMITE_CAMINHO_WINDOWS:
+            raise ValueError(
+                'O caminho da pasta da obra é demasiado comprido: a cópia de segurança do Excel '
+                f'ficaria com {len(tried)} caracteres e o Windows só aceita {LIMITE_CAMINHO_WINDOWS}. '
+                'Sem cópia o Martelo não mexe no Excel: nada foi alterado.') from error
+        raise ValueError(
+            'Não foi possível gravar a cópia de segurança do Excel em Analise_Lista_Material\\Copias '
+            f'({error.strerror or error}). Sem cópia o Martelo não mexe no Excel: nada foi alterado.'
+        ) from error
+    if expected_hash is not None and fingerprint(destination) != expected_hash:
+        raise ValueError('O Excel mudou entretanto. Reanalise antes de continuar: nada foi alterado.')
+    return destination
 
 
 @dataclass(frozen=True)
@@ -232,8 +277,7 @@ def apply_material_codes(path, expected_hash, replacements, user_name):
                 changes.append((r, old, new))
         if not changes:
             return 0
-        backup = backup_path(path, 'antes_analise')
-        book.SaveCopyAs(str(backup))
+        copia_de_seguranca(path, 'antes_analise', expected_hash)
         try:
             log = book.Worksheets.Item("LOG_MATERIAIS_V3")
         except Exception:
@@ -884,7 +928,7 @@ def export_cost_report(path, expected_hash, version, lines, prices, warnings, *,
         book = excel.Workbooks.Open(str(path), UpdateLinks=0, ReadOnly=False)
         if book.ReadOnly or fingerprint(path) != expected_hash:
             raise ValueError('Feche o Excel e reanalise antes de inserir o relatório.')
-        book.SaveCopyAs(str(backup_path(path, 'antes_relatorio')))
+        copia_de_seguranca(path, 'antes_relatorio', expected_hash)
         sheet = book.Worksheets.Add(After=book.Worksheets.Item(book.Worksheets.Count))
         sheet.Name = 'Custo_V3_' + datetime.now().strftime('%y%m%d_%H%M%S') + '_' + uuid4().hex[:3]
         name = sheet.Name
@@ -995,7 +1039,7 @@ def import_hardware_cost(path, source, *, substituir=False):
         existentes = [s for s in book.Worksheets if 'custo_obra_ferragens' in str(s.Name).lower()]
         if replace or not existentes:
             src = excel.Workbooks.Open(str(source), UpdateLinks=0, ReadOnly=True)
-            book.SaveCopyAs(str(backup_path(path, 'antes_ferragens')))
+            copia_de_seguranca(path, 'antes_ferragens')
             if replace:
                 # Mesmo sítio no livro; a cópia de segurança acabou de ser gravada.
                 position = existentes[0].Index

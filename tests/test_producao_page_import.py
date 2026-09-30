@@ -138,6 +138,82 @@ def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) 
     ]
 
 
+def _pagina_listas_ferragens(monkeypatch, tmp_path, *, macro=None, custo=None):
+    """Passo 3 com a macro e o custo a fingir; devolve (página, avisos)."""
+    from app.ui.pages import producao_page
+    from app.ui.pages.producao_page import ProducaoPage
+
+    avisos: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        producao_page.QMessageBox,
+        "warning",
+        staticmethod(lambda _parent, titulo, texto, *_a: avisos.append((titulo, texto))),
+    )
+    monkeypatch.setattr(
+        producao_page, "execute_import_listas_ferragens_macro", macro or (lambda _path: None)
+    )
+    fonte = tmp_path / "5_Custo_Obra_Ferragens.xlsx"
+    monkeypatch.setattr(producao_page, "hardware_sources", lambda *_a: [fonte])
+    monkeypatch.setattr(producao_page, "hardware_sheet_differs", lambda *_a: False)
+    monkeypatch.setattr(producao_page, "import_hardware_cost", custo or (lambda *_a, **_k: fonte))
+
+    class _Texto:
+        text = ""
+
+        def setText(self, text: str) -> None:
+            self.text = text
+
+    class _Page:
+        status_label = _Texto()
+        nome_enc_imos_ix_input = type("_Campo", (), {"text": lambda self: "1637_01_26_LINHAS_DIREITAS"})()
+        _importar_listas_ferragens = ProducaoPage._importar_listas_ferragens
+        _importar_custo_ferragens = ProducaoPage._importar_custo_ferragens
+
+    return _Page(), avisos
+
+
+def test_passo_3_diz_que_as_listas_entraram_quando_so_o_custo_falha(monkeypatch, tmp_path) -> None:
+    """Obra 1637 (30-09-2026): a cópia do Excel falhou no custo das ferragens e o
+    aviso dizia que a importação das listas não tinha sido concluída."""
+    erro_excel = Exception(
+        -2147352567, "Ocorreu uma exceção.",
+        (0, "Microsoft Excel", "Não foi possível executar o método SaveCopyAs da classe Workbook",
+         "xlmain11.chm", 0, -2146827284), None,
+    )
+
+    def custo_falha(*_a, **_k):
+        raise erro_excel
+
+    page, avisos = _pagina_listas_ferragens(monkeypatch, tmp_path, custo=custo_falha)
+    assert page._importar_listas_ferragens(tmp_path / "Lista_Material_x.xlsm") is True
+    [(titulo, texto)] = avisos
+    assert titulo == "Custos de ferragens IMOS"
+    assert "As listas de ferragens entraram no Excel" in texto
+    assert "5_Custo_Obra_Ferragens.xlsx continua na pasta" in texto
+    assert "«Importar custo de ferragens…»" in texto
+    assert "Microsoft Excel: Não foi possível executar o método SaveCopyAs" in texto
+    assert "-2146827284" not in texto
+    assert "custo das ferragens ficou por importar" in page.status_label.text
+
+
+def test_passo_3_falha_da_macro_continua_a_dizer_que_as_listas_nao_entraram(
+    monkeypatch, tmp_path
+) -> None:
+    def macro_falha(_path):
+        raise RuntimeError("Macro não encontrada")
+
+    chamadas: list[str] = []
+    page, avisos = _pagina_listas_ferragens(
+        monkeypatch, tmp_path, macro=macro_falha,
+        custo=lambda *_a, **_k: chamadas.append("custo"),
+    )
+    assert page._importar_listas_ferragens(tmp_path / "Lista_Material_x.xlsm") is False
+    [(titulo, texto)] = avisos
+    assert titulo == "Importar listas de ferragens IMOS"
+    assert "Não foi possível concluir a importação das listas" in texto
+    assert chamadas == []  # sem listas não se tenta o custo
+
+
 def test_producao_page_imports_and_headers() -> None:
     from app.ui.pages.producao_page import ProducaoPage
 

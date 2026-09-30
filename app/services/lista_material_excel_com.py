@@ -32,6 +32,22 @@ def preparar_excel(excel) -> None:
     excel.EnableEvents = False
 
 
+def descrever_erro(error: BaseException) -> str:
+    """O texto do erro que o Excel deu, sem o tuplo de códigos do COM.
+
+    ``(-2147352567, 'Ocorreu uma exceção.', (0, 'Microsoft Excel', 'Não foi
+    possível...', 'xlmain11.chm', 0, -2146827284), None)`` passa a
+    «Microsoft Excel: Não foi possível...». Os outros erros ficam como estão.
+    """
+    args = getattr(error, "args", ())
+    detalhe = args[2] if len(args) > 2 else None
+    if isinstance(detalhe, tuple) and len(detalhe) > 2 and detalhe[2]:
+        origem = str(detalhe[1] or "").strip()
+        texto = str(detalhe[2]).strip()
+        return f"{origem}: {texto}" if origem else texto
+    return str(error)
+
+
 def recalcular(excel) -> None:
     """Recalcular o livro todo antes de gravar, para a cache ficar certa."""
     try:

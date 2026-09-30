@@ -12,7 +12,6 @@ Nada se aplica sem decisão; antes de aplicar fica uma cópia do Excel.
 """
 from __future__ import annotations
 
-import shutil
 from collections import Counter
 from pathlib import Path
 
@@ -324,8 +323,7 @@ class ProcedimentosListaMaterialWidget(QWidget):
                 self.status.setText("Nada a levar ao Excel.")
                 return
             self._check_unchanged()
-            backup = svc.backup_path(svc.writable_workbook(self.path), "antes_grelha")
-            shutil.copy2(self.path, backup)
+            svc.copia_de_seguranca(svc.writable_workbook(self.path), "antes_grelha", self.analysed_hash)
             self.status.setText("A aplicar a grelha no Excel…")
             QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             QApplication.processEvents()
@@ -348,8 +346,7 @@ class ProcedimentosListaMaterialWidget(QWidget):
         if not self.can_fix:
             raise ValueError("O administrador não atribuiu a permissão para corrigir a Lista Material.")
         self._check_unchanged()
-        backup = svc.backup_path(svc.writable_workbook(self.path), "antes_procedimentos")
-        shutil.copy2(self.path, backup)
+        svc.copia_de_seguranca(svc.writable_workbook(self.path), "antes_procedimentos", self.analysed_hash)
         # Numa obra lowcost são centenas de células: ~45 s no Excel real (1568).
         self.status.setText(f"A aplicar {len(decisions)} alterações no Excel… pode demorar um minuto.")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)

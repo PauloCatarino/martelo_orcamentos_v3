@@ -74,6 +74,7 @@ from app.services.cutrite_service import (
 from app.services import verificacao_pre_cutrite_service as verificacao_cutrite
 from app.services import lista_material_decisoes_service as decisoes_materiais
 from app.services.lista_material_excel_com import (
+    descrever_erro,
     reparar_formulas as reparar_formulas_lista_material,
 )
 from app.services.woodstore_service import query_woodstore
@@ -2950,7 +2951,6 @@ class ProducaoPage(QWidget):
         QApplication.processEvents()
         try:
             execute_import_listas_ferragens_macro(workbook_path)
-            self._importar_custo_ferragens(workbook_path)
         except Exception as error:  # Excel COM / macro VBA
             self.status_label.setText(
                 "A importação das listas de ferragens não foi concluída."
@@ -2961,9 +2961,13 @@ class ProducaoPage(QWidget):
                 "Não foi possível concluir a importação das listas. "
                 "Pode continuar sem usar o Assistente ou repetir mais tarde "
                 "através do botão do Excel.\n\n"
-                f"Detalhe: {error}",
+                f"Detalhe: {descrever_erro(error)}",
             )
             return False
+        # As listas já estão no Excel: o que falhar daqui para a frente é só o
+        # custo, e diz-se assim (obra 1637, 30-09-2026: o aviso dava a entender
+        # que as listas não tinham entrado).
+        self._importar_custo_ferragens(workbook_path)
         return True
 
     def _importar_custo_ferragens(self, workbook_path: Path) -> None:
@@ -2998,8 +3002,20 @@ class ProducaoPage(QWidget):
                     return
                 substituir = True
             import_hardware_cost(workbook_path, source, substituir=substituir)
-        except (ValueError, RuntimeError, OSError) as error:
-            QMessageBox.warning(self, 'Custos de ferragens IMOS', str(error))
+        except Exception as error:  # também os erros do Excel por COM
+            self.status_label.setText(
+                "Listas de ferragens importadas; o custo das ferragens ficou por importar."
+            )
+            QMessageBox.warning(
+                self,
+                "Custos de ferragens IMOS",
+                "As listas de ferragens entraram no Excel. Só o custo das ferragens "
+                "(separador 5_Custo_Obra_Ferragens) não foi importado; o ficheiro "
+                f"{source.name} continua na pasta.\n\n"
+                "Pode importá-lo mais tarde em Análise da Lista Material, separador "
+                "«Custo de produção (parcial)», botão «Importar custo de ferragens…».\n\n"
+                f"Detalhe: {descrever_erro(error)}",
+            )
 
     def _analisar_lista_material(self) -> None:
         processo = self._processo_selecionado()

@@ -20,6 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.domain import referencias_placa as refs
 from app.services import analise_lista_material_service as svc
 from app.services import lista_material_decisoes_service as decisoes
+from app.services.lista_material_excel_com import descrever_erro
 from app.services import pedido_material_woodstore_pdf as pedido_pdf
 from app.services import analise_custo_mapeamento_service as maps
 from app.services import tempos_lista_material_service as times
@@ -299,8 +300,9 @@ class AnaliseListaMaterialDialog(QDialog):
             raise ValueError('Sem acesso ao módulo Análise da Lista Material.')
 
     def _error(self, error):
-        self.status.setText(str(error))
-        QMessageBox.warning(self, 'Análise da Lista Material', str(error))
+        texto = descrever_erro(error)
+        self.status.setText(texto)
+        QMessageBox.warning(self, 'Análise da Lista Material', texto)
 
     def _reload(self):
         if self.times_worker and self.times_worker.isRunning():
