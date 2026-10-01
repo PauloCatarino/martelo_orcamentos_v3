@@ -80,7 +80,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     grupos_versoes,
 )
 from app.utils.formatters import format_eur, format_version
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboPesquisavel, ComboSemScroll
 
 
 #: Prefixo do aviso mostrado quando a pesquisa não devolve nada.
@@ -240,13 +240,15 @@ class OrcamentosPage(QWidget):
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.estado_combo = ComboSemScroll()
-        self.cliente_combo = ComboSemScroll()
+        self.cliente_combo = ComboPesquisavel()
         self.utilizador_combo = ComboSemScroll()
         self.minhas_check = QCheckBox("👤 Os Meus Orçamentos")
         self.minhas_check.setToolTip("Mostrar os orçamentos do utilizador atual.")
         self.minhas_check.toggled.connect(self._filtrar_meus_orcamentos)
-        for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo):
+        for combo in (self.estado_combo, self.utilizador_combo):
             combo.currentTextChanged.connect(self._render)
+        # Campo onde se escreve: só filtra quando se escolhe um cliente.
+        self.cliente_combo.currentIndexChanged.connect(self._render)
 
         filters_layout = QHBoxLayout()
         filters_layout.addWidget(self.campo_pesquisa)

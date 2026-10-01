@@ -57,7 +57,7 @@ from app.ui.dialogs.producao_precos_dialog import ProducaoPrecosDialog
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboPesquisavel, ComboSemScroll
 
 CORES_ESTADO = {
     "Desenho": "#2A78D6",
@@ -150,15 +150,17 @@ class PontoSituacaoPage(QWidget):
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.utilizador_combo = ComboSemScroll()
-        self.cliente_combo = ComboSemScroll()
+        self.cliente_combo = ComboPesquisavel()
         self.estado_combo = ComboSemScroll()
         self.minhas_check = QCheckBox("👤 As minhas obras")
         self.minhas_check.setToolTip(
             "Filtrar as obras do utilizador atual no Resumo e no Estado de Produção."
         )
         self.minhas_check.toggled.connect(self._filtrar_minhas_obras)
-        for combo in (self.utilizador_combo, self.cliente_combo, self.estado_combo):
+        for combo in (self.utilizador_combo, self.estado_combo):
             combo.currentTextChanged.connect(self._ao_mudar_filtros)
+        # Campo onde se escreve: só filtra quando se escolhe um cliente.
+        self.cliente_combo.currentIndexChanged.connect(self._ao_mudar_filtros)
 
         self.atualizar_button = QPushButton("Atualizar")
         self.atualizar_button.setToolTip("Recalcular o dashboard")

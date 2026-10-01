@@ -52,7 +52,9 @@ def modelo():
                 id=1,
                 codigo_processo="26.1001_01_01_A",
                 created_at=datetime(2026, 6, 1, 9, 0),
-                data_entrega="30-09-2026",
+                # Entrega no futuro, longe: era "30-09-2026" e a 01-10-2026 a
+                # obra passou a contar como atrasada e o teste a falhar.
+                data_entrega="30-09-2099",
                 preco_total=Decimal("100.00"),
             ),
             _obra(
@@ -98,9 +100,9 @@ def test_ordem_de_entrada_usa_created_at_e_id(modelo) -> None:
 
 def test_datas_e_precos_ordenam_por_valor_nao_por_texto(modelo) -> None:
     col_entrega = _coluna("data_entrega")
-    chave_2026 = modelo.index(0, col_entrega).data(ProducaoTableModel.ROLE_ORDENACAO)
+    chave_2099 = modelo.index(0, col_entrega).data(ProducaoTableModel.ROLE_ORDENACAO)
     chave_2020 = modelo.index(1, col_entrega).data(ProducaoTableModel.ROLE_ORDENACAO)
-    assert chave_2020 < chave_2026
+    assert chave_2020 < chave_2099
 
     col_preco = _coluna("preco")
     chave_100 = modelo.index(0, col_preco).data(ProducaoTableModel.ROLE_ORDENACAO)

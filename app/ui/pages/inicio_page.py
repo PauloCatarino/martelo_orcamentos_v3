@@ -35,7 +35,7 @@ from app.ui.widgets.estilo_tabela_orcamentos import (
     configurar_tabela_orcamentos,
 )
 from app.utils.formatters import format_eur
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboPesquisavel, ComboSemScroll
 
 
 class InicioPage(QWidget):
@@ -77,7 +77,7 @@ class InicioPage(QWidget):
         )
         self.estado_combo = ComboSemScroll()
         self.estado_combo.setToolTip("Filtra os indicadores e a lista de Orçamentos")
-        self.cliente_combo = ComboSemScroll()
+        self.cliente_combo = ComboPesquisavel()
         self.utilizador_combo = ComboSemScroll()
         self.periodo_combo = ComboSemScroll()
         self.periodo_combo.setToolTip("Filtra Orçamentos pela data de criação")
@@ -87,9 +87,10 @@ class InicioPage(QWidget):
             f"color: {tema.CASTANHO_ESCURO}; font-weight: bold; padding: 4px 8px;"
         )
         self.pesquisa.pesquisa_mudou.connect(lambda _="": self.carregar())
-        for combo in (self.estado_combo, self.cliente_combo, self.utilizador_combo,
-                      self.periodo_combo):
+        for combo in (self.estado_combo, self.utilizador_combo, self.periodo_combo):
             combo.currentTextChanged.connect(lambda _="": self.carregar())
+        # Campo onde se escreve: só filtra quando se escolhe um cliente.
+        self.cliente_combo.currentIndexChanged.connect(lambda _=0: self.carregar())
         filtros = QHBoxLayout()
         filtros.addWidget(self.pesquisa, stretch=2)
         for titulo_filtro, combo in (

@@ -175,7 +175,7 @@ from app.ui.helpers.vistas_producao import (
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import BotaoLimparFiltros, CampoPesquisa
 from app.ui.widgets.estado_splitter import ligar_persistencia_splitter
-from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.widgets.combo_sem_scroll import ComboPesquisavel, ComboSemScroll
 
 
 TIPOS_PASTA_PRODUCAO = (
@@ -615,13 +615,15 @@ class ProducaoPage(QWidget):
         self.limpar_filtros_button.clicked.connect(self._limpar_filtros)
 
         self.estado_combo = ComboSemScroll()
-        self.cliente_combo = ComboSemScroll()
+        self.cliente_combo = ComboPesquisavel()
         self.responsavel_combo = ComboSemScroll()
         self.cliente_combo.setToolTip(
-            "Só mostra os clientes com obras do responsável escolhido"
+            "Só mostra os clientes com obras do responsável escolhido. "
+            + ComboPesquisavel.DICA
         )
-        for combo in (self.estado_combo, self.cliente_combo):
-            combo.currentTextChanged.connect(self._render)
+        self.estado_combo.currentTextChanged.connect(self._render)
+        # Campo onde se escreve: só filtra quando se escolhe um cliente.
+        self.cliente_combo.currentIndexChanged.connect(self._render)
         self.responsavel_combo.currentTextChanged.connect(self._on_responsavel_mudou)
 
         self.vista_combo = ComboSemScroll()

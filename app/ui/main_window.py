@@ -36,6 +36,7 @@ from app.ui.icones import decorar_botoes
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
+from app.ui.helpers.aviso_atualizacao import AvisoAtualizacao
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.tempo_programas_tracker import TempoProgramasTracker
 from app.ui.pages import (
@@ -498,6 +499,14 @@ class MainWindow(QMainWindow):
         )
         if self._assistente_orcamentos.ativo:
             self.orcamentos_page.ativar_assistente(self._assistente_orcamentos.abrir)
+        # Aviso da manhã (dias úteis, a partir das 9h30, uma vez por dia neste
+        # PC): há uma versão nova do Martelo no servidor? Só no Martelo
+        # instalado; nunca instala sem a pessoa carregar no botão.
+        self._aviso_atualizacao = AvisoAtualizacao(
+            self,
+            pode_fechar=self.pode_fechar_tudo,
+            trabalho_aberto=self._trabalho_aberto,
+        )
         self.show_page("inicio")
 
     def _primeiro_nome_do_utilizador(self) -> str:
@@ -818,7 +827,7 @@ class MainWindow(QMainWindow):
         permission_key = self._PAGE_PERMISSION.get(name)
         if permission_key is not None and not self._permissions.get(permission_key, False):
             return
-        atual = self.pages.currentWidget()
+        atual = self._pagina_atual()
         pagina_nova = self._pages_by_name.get(name)
         pode_sair = getattr(atual, "pode_sair", None)
         if atual is not pagina_nova and callable(pode_sair) and not pode_sair():
@@ -868,8 +877,40 @@ class MainWindow(QMainWindow):
                 return nome
         return ""
 
+    def _pagina_atual(self) -> QWidget | None:
+        """A página que está à frente.
+
+        Cada página vive dentro de uma ``QScrollArea`` (ver ``_embrulhar_pagina``):
+        perguntar o ``pode_sair`` ao ``currentWidget()`` era perguntá-lo à caixa
+        de deslocamento, que não o tem — e o «Quer gravar?» ao mudar de menu ou
+        ao fechar o Martelo nunca aparecia (de 17-09 a 01-10-2026).
+        """
+        atual = self.pages.currentWidget()
+        if isinstance(atual, QScrollArea):
+            return atual.widget()
+        return atual
+
+    def pode_fechar_tudo(self) -> bool:
+        """Antes de instalar uma versão nova: cada menu com alterações pergunta.
+
+        Não só o que está à frente — quem carrega em «Atualizar agora…» está na
+        Ajuda, e uma obra por gravar na Produção perdia-se sem aviso.
+        """
+        for pagina in list(self._pages_by_name.values()):
+            pode_sair = getattr(pagina, "pode_sair", None)
+            if callable(pode_sair) and not pode_sair():
+                return False
+        return True
+
+    def _trabalho_aberto(self) -> str:
+        """Para o aviso de versão nova: «no orçamento 260954_01», se for o caso."""
+        pagina = self._pagina_atual()
+        if isinstance(pagina, OrcamentoDetailPage):
+            return f"no orçamento {pagina.orcamento.codigo_versao}"
+        return ""
+
     def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
-        pode_sair = getattr(self.pages.currentWidget(), "pode_sair", None)
+        pode_sair = getattr(self._pagina_atual(), "pode_sair", None)
         if callable(pode_sair) and not pode_sair():
             event.ignore()
             return
