@@ -35,6 +35,15 @@ IMOS_DIR_ID_ORDER = 120
 IMOS_TIPO_RAIZ = 1000032
 IMOS_TIPO_PASTA = 1000001
 IMOS_TIPO_ENCOMENDA = 173
+# Os outros dois tipos de encomenda que o iX Organizer também abre no iX CAD
+# (`OrderContentViewModel.LoadOrderInAcad`), cada um com o seu aviso antes.
+IMOS_TIPO_ENCOMENDA_REFERENCIA = 673
+IMOS_TIPO_ENCOMENDA_EM_PRODUCAO = 999987
+IMOS_TIPOS_ENCOMENDA_ABRIVEIS = (
+    IMOS_TIPO_ENCOMENDA,
+    IMOS_TIPO_ENCOMENDA_REFERENCIA,
+    IMOS_TIPO_ENCOMENDA_EM_PRODUCAO,
+)
 
 # `IMORDFOLDER.NAME` e `PROADMIN.NAME` são ambos nvarchar(30).
 IMOS_NOME_MAX = 30
@@ -367,6 +376,42 @@ def procurar_encomendas_por_nome(cfg: ImosConfig, nome: str) -> list[NoImos]:
         "ORDER BY DIR_ID"
     )
     return [_no_de_linha(row) for row in run_imos_select(cfg, query)]
+
+
+def procurar_encomenda_para_abrir(
+    cfg: ImosConfig, nome: str, *, dir_id: int | None = None
+) -> NoImos | None:
+    """A encomenda que o iX CAD pode abrir, ou ``None`` se não existir no iMos.
+
+    Nem todas as encomendas são criadas pelo Martelo: as feitas à mão no
+    Organizer só se encontram pelo nome. Quando o Martelo a criou, o DIR_ID
+    gravado vale primeiro, porque continua certo mesmo que alguém lhe mude o
+    nome no Organizer — e a pasta do desenho segue o nome que lá estiver.
+    Uma só consulta: cada uma abre um PowerShell e custa cerca de um segundo.
+    """
+    condicoes = [f"NAME = {_literal_nome(nome)}"] if nome else []
+    if dir_id:
+        condicoes.append(f"DIR_ID = {int(dir_id)}")
+    if not condicoes:
+        return None
+
+    tipos = ", ".join(str(tipo) for tipo in IMOS_TIPOS_ENCOMENDA_ABRIVEIS)
+    query = (
+        "SELECT DIR_ID, NAME, TYPE, PARENT_ID FROM dbo.IMORDFOLDER WITH (NOLOCK) "
+        f"WHERE TYPE IN ({tipos}) AND ({' OR '.join(condicoes)}) "
+        "ORDER BY DIR_ID"
+    )
+    nos = [_no_de_linha(row) for row in run_imos_select(cfg, query)]
+    if dir_id:
+        for no in nos:
+            if no.dir_id == int(dir_id):
+                return no
+    # A coluna NAME compara sem distinguir maiúsculas (collation CI_AS).
+    alvo = str(nome or "").casefold()
+    for no in nos:
+        if no.nome.casefold() == alvo:
+            return no
+    return None
 
 
 def caminho_do_no(cfg: ImosConfig, dir_id: int, *, limite: int = 12) -> str:

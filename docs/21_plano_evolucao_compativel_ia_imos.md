@@ -448,3 +448,67 @@ observação na base real. Fica apenas, para quando houver necessidade:
   escrita e não durante. Despriorizado por decisão do utilizador: cada pessoa
   cria as suas encomendas e a coincidência é improvável. Se um dia deixar de
   ser, a defesa passa por reverificar dentro da transação.
+
+## Fase E2 — abrir a obra no iX CAD a partir da Produção
+
+Pedido do utilizador a 2 de outubro de 2026: abrir a obra no iX CAD sem passar
+pelo iX Organizer, como o botão «Abrir iX CAD» do Organizer. Abrir uma obra no
+iX não é abrir o `.dwg`: tem de vir com as propriedades do próprio iMos.
+
+### Como o Organizer faz (lido no programa da imos AG)
+
+`OrganizerControl.dll` › `OrderContentViewModel.OpenCAD/LoadOrderInAcad`, com o
+canal de `imosLibrary.dll` › `MMF_IPC_Client`. Igual no iX 2023 e no 2025.
+
+- O iX CAD aberto deixa um canal à escuta: o evento
+  `IMOS_MMF_IPC_SERVER_LOCK` e a memória partilhada `IMOS_MMF_IPC_SERVER`
+  (512 000 bytes). O servidor está no `imosr25.arx`.
+- O Organizer escreve em UTF-16 `<IMOS_COMMAND>imosopendwg "<Imorder>\<obra>\<obra>.dwg"`,
+  liga o evento, espera 600 ms e desliga-o. O `ImosOpenDwg` é um comando do
+  iMos (`Imos2000Open`/`Imos2000New`), não uma abertura simples de ficheiro.
+- Com o iX CAD fechado, arranca `ACADPATH` + `ACADPARAM` (`/nologo`) em
+  `ACADWORKDIR` e espera até 30 s pelo canal; depois 1,5 s + 0,5 s e pede a obra.
+  Os caminhos estão no registo: `HKLM\SOFTWARE\imos AG\IMOSACT\<versão>\Install`
+  (16 = 2023, 17 = 2025). O `I:\IMOS.INI` ainda aponta o `ACADPATH` para o 2023.
+- Antes de abrir avisa nas encomendas de referência (`TYPE` 673) e nas que estão
+  em produção (999987). A normal é 173.
+- A pasta dos desenhos é plana: `I:\Factory\Imorder\<obra>\<obra>.DWG`, seja
+  qual for a pasta da encomenda na árvore do Organizer.
+
+A automação COM do AutoCAD (`AutoCAD.Application.25` → `imos.exe /Automation`)
+não serve: o iX CAD é um AutoCAD OEM com essa porta fechada — o objeto da
+aplicação não aparece e os documentos devolvem erro a tudo.
+
+Teste real a 2 de outubro, com o utilizador a observar: a 1702 abriu no iX CAD
+já aberto, num separador novo, 0,4 s depois do pedido, com as propriedades do
+iMos (painel IX ELEMENTS preenchido) e a tranca `.dwl` em nome dele.
+
+### O que o utilizador vê
+
+Produção › Funções › **Abrir no iX CAD**, ou o botão dentro do campo
+«Nome Enc IMOS IX». Pela ordem:
+
+1. Confirma no iMos, numa só consulta de leitura, que a encomenda existe
+   (pelo DIR_ID gravado pelo Martelo ou pelo nome — nem todos criam a encomenda
+   a partir do Martelo). Se não existir, não abre e diz porquê.
+2. Se a obra já está aberta no iX CAD deste PC (título dos separadores), só
+   passa o iX CAD para a frente.
+3. Pergunta antes de abrir quando há avisos: referência, em produção, aberta
+   noutro PC (lido no `.dwl`) ou obra ainda sem desenho.
+4. Com o iX CAD aberto, envia o pedido; com ele fechado, pergunta se o deve
+   abrir, arranca-o e pede a obra quando o canal aparecer (até 3 minutos). A
+   linha de estado vai dizendo o que se passa.
+5. Martelo elevado como administrador: não arranca o iX CAD (abria com a conta
+   de administrador, sem o `I:`) e explica como resolver.
+
+### Regra de leitura preservada
+
+O Martelo continua a só ler o iMos (`imos_sql`, `SELECT` com
+`ApplicationIntent=ReadOnly`). Quem abre e grava o desenho é o iX CAD. O código
+está em `app/services/imos_cad_service.py` e `app/ui/helpers/abrir_ix_cad.py`.
+
+### Limite conhecido
+
+É uma interface interna e não documentada da imos AG: uma versão nova do iX
+pode mudá-la. Se o canal deixar de responder, o Martelo diz que não conseguiu
+em vez de falhar em silêncio.

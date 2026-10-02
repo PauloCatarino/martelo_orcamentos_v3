@@ -95,6 +95,8 @@ from app.services.analise_lista_material_service import (
     import_hardware_cost,
 )
 from app.services.system_setting_service import SystemSettingService
+from app.services.imos_imagem_service import KEY_PASTA_BASE_IMORDER
+from app.services.imos_sql import load_imos_config
 from app.services.permission_service import (
     PERMISSAO_ANALISE_LISTA_MATERIAL,
     is_admin,
@@ -153,6 +155,7 @@ from app.ui.dialogs.producao_supervisao_dialog import SupervisaoProducaoDialog
 from app.ui.dialogs.pastas_processo_dialog import PastasProcessoDialog
 from app.ui.dialogs.producao_v2_sync_dialog import ProducaoV2SyncDialog
 from app.ui.icones import decorar_barra, icone, icone_ficheiro
+from app.ui.helpers.abrir_ix_cad import AbridorIxCad
 from app.ui.helpers.detalhe_obra_worker import (
     DetalheObraResolvido,
     DetalheObraWorker,
@@ -518,8 +521,22 @@ class ProducaoPage(QWidget):
             self._abrir_criar_encomenda_imos
         )
 
+        # O mesmo que o «Abrir iX CAD» do iX Organizer: abre a obra com as
+        # propriedades do iMos, não só o ficheiro .dwg. Também está no botão
+        # dentro do campo «Nome Enc IMOS IX».
+        self.abrir_ix_cad_action = QAction("Abrir no iX CAD", self)
+        self.abrir_ix_cad_action.setIcon(icone_ficheiro("icon_imos_2025.ico"))
+        self.abrir_ix_cad_action.setToolTip(
+            "Abrir esta obra no iX CAD, como o «Abrir iX CAD» do Organizer. "
+            "Confirma primeiro que a encomenda existe no iMos; se o iX CAD "
+            "estiver fechado, o Martelo pergunta se o deve abrir."
+        )
+        self.abrir_ix_cad_action.triggered.connect(self._abrir_no_ix_cad)
+        self._abridor_ix_cad: AbridorIxCad | None = None
+
         self.funcoes_menu = QMenu(self)
         self.funcoes_menu.setToolTipsVisible(True)
+        self.funcoes_menu.addAction(self.abrir_ix_cad_action)
         self.funcoes_menu.addAction(self.gerar_listas_imos_action)
         self.funcoes_menu.addAction(self.analisar_lista_material_action)
         self.funcoes_menu.addSeparator()
@@ -531,9 +548,10 @@ class ProducaoPage(QWidget):
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
-            "Funções sobre a obra e a respetiva pasta: gerar as listas de "
-            "ferragens do iMos, analisar a Lista Material, preparar a produção, "
-            "imprimir, avisar o cliente e criar a encomenda no iMos"
+            "Funções sobre a obra e a respetiva pasta: abrir a obra no iX CAD, "
+            "gerar as listas de ferragens do iMos, analisar a Lista Material, "
+            "preparar a produção, imprimir, avisar o cliente e criar a "
+            "encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -770,7 +788,11 @@ class ProducaoPage(QWidget):
         )
         self.nome_enc_imos_ix_input = self._readonly_line()
         self.nome_enc_imos_ix_input.setToolTip(
-            "Nome da encomenda IMOS iX derivado do processo"
+            "Nome da encomenda IMOS iX derivado do processo. O botão à direita "
+            "abre a obra no iX CAD."
+        )
+        self.nome_enc_imos_ix_input.addAction(
+            self.abrir_ix_cad_action, QLineEdit.ActionPosition.TrailingPosition
         )
         self.ano_input = QLineEdit()
         self.num_enc_phc_input = QLineEdit()
@@ -2217,6 +2239,36 @@ class ProducaoPage(QWidget):
             self.status_label.setText(
                 f"Encomenda criada no iMos para {processo.codigo_processo}."
             )
+
+    def _abrir_no_ix_cad(self) -> None:
+        """Funções > Abrir no iX CAD: a obra selecionada, como no Organizer."""
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para a abrir no iX CAD.")
+            return
+
+        try:
+            with SessionLocal() as session:
+                processo_db = session.get(Producao, processo.id)
+                if processo_db is None:
+                    raise ValueError("Processo de produção não encontrado.")
+                dir_id = processo_db.imos_dir_id
+                cfg = load_imos_config(session)
+                pasta_imorder = SystemSettingService(session).obter_valor(
+                    KEY_PASTA_BASE_IMORDER, ""
+                )
+        except (SQLAlchemyError, ValueError) as error:
+            QMessageBox.warning(self, "Abrir no iX CAD", str(error))
+            return
+
+        if self._abridor_ix_cad is None:
+            self._abridor_ix_cad = AbridorIxCad(self, self.status_label.setText)
+        self._abridor_ix_cad.abrir(
+            nome=self.nome_enc_imos_ix_input.text().strip(),
+            dir_id=dir_id,
+            cfg=cfg,
+            pasta_imorder_martelo=pasta_imorder,
+        )
 
     def _abrir_impressao(self) -> None:
         """Open the print manager for the selected obra folder."""
