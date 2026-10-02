@@ -16,7 +16,14 @@ continuam todos a funcionar.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QSortFilterProxyModel, Qt, QTimer
-from PySide6.QtWidgets import QComboBox, QCompleter, QDateEdit, QDoubleSpinBox, QSpinBox
+from PySide6.QtWidgets import (
+    QComboBox,
+    QCompleter,
+    QDateEdit,
+    QDoubleSpinBox,
+    QSpinBox,
+    QTimeEdit,
+)
 
 from app.domain.pesquisa_texto import normalizar
 
@@ -218,3 +225,7 @@ class SpinDuploSemScroll(_SemRodaSemFoco, QDoubleSpinBox):
 
 class DataSemScroll(_SemRodaSemFoco, QDateEdit):
     """Campo de data que só responde à roda quando tem o foco."""
+
+
+class HoraSemScroll(_SemRodaSemFoco, QTimeEdit):
+    """Campo de hora que só responde à roda quando tem o foco."""

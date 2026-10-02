@@ -118,7 +118,13 @@ def test_nenhum_widget_sensivel_a_roda_ficou_cru_na_interface() -> None:
         if caminho.name == "combo_sem_scroll.py":
             continue
         fonte = caminho.read_text(encoding="utf-8")
-        for widget in ("QComboBox()", "QSpinBox()", "QDoubleSpinBox()", "QDateEdit()"):
+        for widget in (
+            "QComboBox()",
+            "QSpinBox()",
+            "QDoubleSpinBox()",
+            "QDateEdit()",
+            "QTimeEdit()",
+        ):
             if widget in fonte:
                 crus.append(f"{caminho}: {widget}")
 

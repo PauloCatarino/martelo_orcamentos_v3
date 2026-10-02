@@ -30,6 +30,7 @@ from app.ui.pages.ocorrencias_page import OcorrenciasPage
 from app.ui.pages.ponto_situacao_page import PontoSituacaoPage
 from app.ui.pages.producao_page import ProducaoPage
 from app.ui.pages.regras_quantidade_page import RegrasQuantidadePage
+from app.ui.pages.registo_horas_page import RegistoHorasPage
 from app.ui.pages.user_management_page import UserManagementPage
 
 __all__ = [
@@ -63,5 +64,6 @@ __all__ = [
     "PontoSituacaoPage",
     "ProducaoPage",
     "RegrasQuantidadePage",
+    "RegistoHorasPage",
     "UserManagementPage",
 ]

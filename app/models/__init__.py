@@ -46,6 +46,7 @@ from app.models.producao import Producao
 from app.models.producao_tempo_atividade import ProducaoTempoAtividade
 from app.models.producao_ocorrencia import ProducaoOcorrencia
 from app.models.producao_ocorrencia_anexo import ProducaoOcorrenciaAnexo
+from app.models.registo_horas import RegistoHorasDia, RegistoHorasEnvio
 from app.models.system_setting import SystemSetting
 from app.models.lista_material_custo_mapeamento import ListaMaterialCustoMapeamento
 from app.models.user import User
@@ -112,6 +113,8 @@ __all__ = [
     "ProducaoTempoAtividade",
     "ProducaoOcorrencia",
     "ProducaoOcorrenciaAnexo",
+    "RegistoHorasDia",
+    "RegistoHorasEnvio",
     "SystemSetting",
     "ListaMaterialCustoMapeamento",
     "User",

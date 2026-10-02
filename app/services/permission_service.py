@@ -21,9 +21,14 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
         ("menu.producao", "Produção"),
         ("menu.encomendas_phc", "Encomendas PHC"),
         ("menu.ponto_situacao", "Ponto de Situação"),
+        ("menu.registo_horas", "Registo de Horas"),
         ("menu.configuracoes", "Configurações técnicas"),
     )
 )
+
+#: Menus que nascem DESLIGADOS numa conta nova: o admin liga-os a quem precisa.
+#: O Registo de Horas é pessoal: só o usa quem não regista no ponto da empresa.
+MENUS_DESLIGADOS_POR_DEFEITO = frozenset({"menu.configuracoes", "menu.registo_horas"})
 
 # Permissões de AÇÃO, ao contrário das de menu: não escondem um menu, travam
 # uma operação concreta. Nascem desligadas — dá-se a quem precisa, em vez de
@@ -68,7 +73,7 @@ LEGACY_FEATURE_KEYS = (
 )
 
 DEFAULT_USER_PERMISSIONS = {
-    **{key: key != "menu.configuracoes" for key in MENU_PERMISSIONS},
+    **{key: key not in MENUS_DESLIGADOS_POR_DEFEITO for key in MENU_PERMISSIONS},
     **{key: False for key in ACAO_PERMISSIONS},
 }
 
@@ -177,6 +182,21 @@ DESCRICOES_ACESSOS: OrderedDict[str, DescricaoAcesso] = OrderedDict(
                 "atrasadas e o botão para sincronizar com o PHC as obras de toda a "
                 "gente.",
                 "Produção e Direção.",
+            ),
+        ),
+        (
+            "menu.registo_horas",
+            DescricaoAcesso(
+                "Menus",
+                "Registo de\nHoras",
+                "Folha de horas pessoal: cada pessoa regista as suas horas (normais "
+                "e extra, fins de semana, feriados, férias e folgas), recebe um "
+                "lembrete quando ficam dias por registar e, no dia 2 de cada mês "
+                "às 9h20, confirma o envio das horas do mês anterior à "
+                "contabilidade. Cada pessoa só vê as suas; o administrador vê as "
+                "de todos.",
+                "Quem não regista no relógio de ponto da empresa (teletrabalho, "
+                "horas extra feitas em casa).",
             ),
         ),
         (

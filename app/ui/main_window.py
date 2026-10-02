@@ -37,6 +37,7 @@ from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.helpers.aviso_atualizacao import AvisoAtualizacao
+from app.ui.helpers.registo_horas_avisos import AvisosRegistoHoras
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.tempo_programas_tracker import TempoProgramasTracker
 from app.ui.pages import (
@@ -66,6 +67,7 @@ from app.ui.pages import (
     PontoSituacaoPage,
     ProducaoPage,
     RegrasQuantidadePage,
+    RegistoHorasPage,
     UserManagementPage,
 )
 
@@ -113,6 +115,7 @@ class MainWindow(QMainWindow):
         "encomendas_phc": "producao",
         "ponto_situacao": "producao",
         "ocorrencias": "producao",
+        "registo_horas": "registo_horas",
     }
 
     _PAGE_PERMISSION = {
@@ -130,6 +133,7 @@ class MainWindow(QMainWindow):
         "ponto_situacao": "menu.ponto_situacao",
         # As ocorrências vivem dentro da Produção: quem vê obras vê os tickets.
         "ocorrencias": "menu.producao",
+        "registo_horas": "menu.registo_horas",
         "configuracoes": "menu.configuracoes",
         "pecas": "menu.configuracoes",
         "caminhos_sistema": "menu.configuracoes",
@@ -280,6 +284,7 @@ class MainWindow(QMainWindow):
         _criar_item("Encomendas PHC", "encomendas_phc", parent=item_producao)
         _criar_item("Ponto Situa\u00e7\u00e3o", "ponto_situacao", parent=item_producao)
         _criar_item("Ocorr\u00eancias", "ocorrencias", parent=item_producao)
+        _criar_item("Registo de Horas", "registo_horas")
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
         item_producao.setExpanded(True)
@@ -361,6 +366,17 @@ class MainWindow(QMainWindow):
         self.encomendas_page = EncomendasPage()
         self.ponto_situacao_page = PontoSituacaoPage()
         self.ocorrencias_page = OcorrenciasPage()
+        # Só se cria para quem tem o menu: sem ele, nem se lê a base.
+        self.registo_horas_page = (
+            RegistoHorasPage(
+                user_id=self.authenticated_user.id if self.authenticated_user else None,
+                nome=self.authenticated_user.nome if self.authenticated_user else "",
+                email=self.authenticated_user.email if self.authenticated_user else "",
+                admin=is_admin(self.authenticated_user),
+            )
+            if self._permissions.get("menu.registo_horas", False)
+            else None
+        )
         self.user_management_page = (
             UserManagementPage(on_back=lambda: self.show_page("configuracoes"))
             if is_admin(authenticated_user)
@@ -409,6 +425,8 @@ class MainWindow(QMainWindow):
         self._add_page("encomendas_phc", self.encomendas_page)
         self._add_page("ponto_situacao", self.ponto_situacao_page)
         self._add_page("ocorrencias", self.ocorrencias_page)
+        if self.registo_horas_page is not None:
+            self._add_page("registo_horas", self.registo_horas_page)
         self._add_page("configuracoes", self.configuracoes_page)
         if self.user_management_page is not None:
             self._add_page("user_management", self.user_management_page)
@@ -507,7 +525,38 @@ class MainWindow(QMainWindow):
             pode_fechar=self.pode_fechar_tudo,
             trabalho_aberto=self._trabalho_aberto,
         )
+        # Registo de Horas: lembrete dos dias por registar e envio do mês à
+        # contabilidade (dia 2, 9h20). O administrador vê as folhas de todos
+        # mas não regista horas: não recebe estes avisos.
+        self._avisos_registo_horas = AvisosRegistoHoras(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            nome=(
+                self.authenticated_user.nome
+                if self.authenticated_user is not None
+                else ""
+            ),
+            email=(
+                self.authenticated_user.email
+                if self.authenticated_user is not None
+                else ""
+            ),
+            ativo=self.registo_horas_page is not None
+            and not is_admin(self.authenticated_user),
+            abrir_dia=self._abrir_registo_horas,
+        )
         self.show_page("inicio")
+
+    def _abrir_registo_horas(self, dia, editar: bool = False) -> None:
+        """Os avisos do Registo de Horas levam a pessoa ao dia em causa."""
+        if self.registo_horas_page is None:
+            return
+        self.show_page("registo_horas")
+        self.registo_horas_page.mostrar_dia(dia, editar=editar)
 
     def _primeiro_nome_do_utilizador(self) -> str:
         """O nome por que as obras estão assinadas na coluna Responsável."""
@@ -549,6 +598,7 @@ class MainWindow(QMainWindow):
             "encomendas_phc": "menu.encomendas_phc",
             "ponto_situacao": "menu.ponto_situacao",
             "ocorrencias": "menu.producao",
+            "registo_horas": "menu.registo_horas",
             "configuracoes": "menu.configuracoes",
         }
         for page_name, permission_key in nav_permissions.items():
@@ -842,6 +892,10 @@ class MainWindow(QMainWindow):
             self.custeio_auditoria_page.carregar()
         elif name == "arquivo_v2" and hasattr(self, "arquivo_v2_page"):
             self.arquivo_v2_page.carregar()
+        elif name == "registo_horas" and getattr(self, "registo_horas_page", None) is not None:
+            self.registo_horas_page.carregar()
+        if name not in self._page_indexes:
+            return
         page_index = self._page_indexes[name]
         self.pages.setCurrentIndex(page_index)
         self._sincronizar_tempo_orcamento(name)
