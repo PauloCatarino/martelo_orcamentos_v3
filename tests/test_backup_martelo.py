@@ -132,6 +132,35 @@ def test_nao_toca_nas_copias_de_outra_base(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Para onde vai a segunda copia
+# ---------------------------------------------------------------------------
+
+def test_a_segunda_copia_vai_para_a_pasta_de_backups_do_servidor() -> None:
+    """Desde 04-10-2026 vive junto dos outros backups da empresa."""
+    assert backup.PASTA_SERVIDOR == Path(r"\\SERVER_LE\Backup\Backup_Martelo_V3")
+    assert backup.ler_argumentos([]).copia == backup.PASTA_SERVIDOR
+
+
+def test_a_pasta_antiga_dentro_de_base_dados_orcamento_deixou_de_ser_usada() -> None:
+    assert "Base_Dados_Orcamento" not in str(backup.PASTA_SERVIDOR)
+
+
+def test_sem_copia_fica_so_no_pc() -> None:
+    assert backup.ler_argumentos(["--sem-copia"]).copia is None
+
+
+def test_copia_pode_ir_para_outro_sitio(tmp_path: Path) -> None:
+    assert backup.ler_argumentos(["--copia", str(tmp_path)]).copia == tmp_path
+
+
+def test_o_instalador_da_tarefa_usa_a_mesma_pasta_do_servidor() -> None:
+    """Se um mudar e o outro nao, a tarefa agendada volta a escrever no sitio velho."""
+    instalador = (RAIZ / "scripts" / "instalar_backup_agendado.ps1").read_text(encoding="utf-8")
+    assert f'[string]$Copia = "{backup.PASTA_SERVIDOR}"' in instalador
+    assert "Base_Dados_Orcamento" not in instalador
+
+
+# ---------------------------------------------------------------------------
 # Uma copia estragada nunca passa por boa
 # ---------------------------------------------------------------------------
 

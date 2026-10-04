@@ -398,7 +398,8 @@ Falta:
   1. Fazer-lhe uma copia de seguranca ANTES de a por a trabalhar:
        .venv\\Scripts\\python.exe scripts\\backup_martelo.py --base {args.destino}
   2. Passar a copia diaria para esta base:
-       scripts\\instalar_backup_agendado.ps1 -Base {args.destino} -Copia "<pasta no servidor>"
+       scripts\\instalar_backup_agendado.ps1 -Base {args.destino}
+     (a segunda copia vai para \\\\SERVER_LE\\Backup\\Backup_Martelo_V3)
   3. Apontar o .env da versao oficial para ela: no deploy\\.env.producao,
      DB_NAME={args.destino} e APP_ENV=production.
 """)

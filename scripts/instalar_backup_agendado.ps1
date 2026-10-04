@@ -11,8 +11,9 @@
     PowerShell aberta COMO ADMINISTRADOR.
 
 .EXAMPLE
-    # O caso normal: copia local + copia no servidor, todos os dias a`s 03:00
-    .\instalar_backup_agendado.ps1 -Base martelo_v3 -Copia "\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Backups_Martelo"
+    # O caso normal: copia local + copia no servidor (\\SERVER_LE\Backup\Backup_Martelo_V3),
+    # todos os dias a`s 03:00
+    .\instalar_backup_agendado.ps1 -Base martelo_v3
 
 .EXAMPLE
     # Ver o que ia fazer, sem criar nada
@@ -32,7 +33,8 @@ param(
     [string]$Pasta = "",
 
     # Segunda pasta, no servidor. E' ESTA que salva de um disco morto.
-    [string]$Copia = "",
+    # A mesma que o scripts\backup_martelo.py usa por omissao (PASTA_SERVIDOR).
+    [string]$Copia = "\\SERVER_LE\Backup\Backup_Martelo_V3",
 
     # Hora a que corre, todos os dias.
     [string]$Hora = "03:00",

@@ -12,7 +12,7 @@ O QUE FAZ, POR ESTA ORDEM
   1. mysqldump da base (estrutura + dados + PROCEDIMENTOS)
   2. comprime para .sql.gz
   3. VERIFICA a copia: tem o carimbo de fim, tem as tabelas todas, abre
-  4. copia para o segundo sitio (o servidor), se estiver configurado
+  4. copia para o segundo sitio: o servidor, em \\\\SERVER_LE\\Backup\\Backup_Martelo_V3
   5. deita fora as antigas pela regra: 14 diarias, 8 semanais, 12 mensais
 
 Se qualquer um dos passos 1-3 falhar, nao apaga nada e devolve erro.
@@ -21,7 +21,8 @@ COMO SE USA
 -----------
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --base martelo_v3
-    .venv\\Scripts\\python.exe scripts\\backup_martelo.py --copia "\\\\SERVER_LE\\...\\Backups_Martelo"
+    .venv\\Scripts\\python.exe scripts\\backup_martelo.py --copia "\\\\outro\\sitio"
+    .venv\\Scripts\\python.exe scripts\\backup_martelo.py --sem-copia
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --listar
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --testar-restauro
 
@@ -58,6 +59,11 @@ MYSQLDUMP_CANDIDATOS = (
     Path(r"C:\Program Files (x86)\MySQL\MySQL Server 8.0\bin\mysqldump.exe"),
     Path(r"C:\xampp\mysql\bin\mysqldump.exe"),
 )
+
+#: Segundo sitio das copias: a pasta de backups do servidor, ao lado das do
+#: iMos, do Streamlit e dos PCs. E' esta que salva de um disco morto no PC
+#: onde vive a base. (Ate' 04-10-2026 era dentro de Base_Dados_Orcamento.)
+PASTA_SERVIDOR = Path(r"\\SERVER_LE\Backup\Backup_Martelo_V3")
 
 #: Quantas copias guardar de cada escalao.
 DIARIAS = 14
@@ -544,12 +550,15 @@ def escrever_estado(pasta: Path, texto: str) -> None:
         pass
 
 
-def main() -> int:
+def ler_argumentos(argv: list[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Copia de seguranca do Martelo V3")
     ap.add_argument("--base", default=settings.DB_NAME, help="base a copiar")
     ap.add_argument("--pasta", type=Path, default=None, help="pasta local das copias")
-    ap.add_argument("--copia", type=Path, default=None,
-                    help="segunda pasta (servidor) -- e' esta que salva de um disco morto")
+    ap.add_argument("--copia", type=Path, default=PASTA_SERVIDOR,
+                    help="segunda pasta (servidor) -- e' esta que salva de um disco "
+                         f"morto. Por omissao: {PASTA_SERVIDOR}")
+    ap.add_argument("--sem-copia", action="store_true",
+                    help="nao levar a copia ao servidor (fica so' no PC)")
     ap.add_argument("--mysqldump", type=Path, default=None)
     ap.add_argument("--listar", action="store_true", help="mostrar as copias e sair")
     ap.add_argument("--testar-restauro", action="store_true",
@@ -559,7 +568,14 @@ def main() -> int:
     ap.add_argument("--sem-procedimentos", action="store_true",
                     help="copia SEM os procedimentos (so' para emergencia -- a base "
                          "restaurada fica sem o martelo_aplicar_grants)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.sem_copia:
+        args.copia = None
+    return args
+
+
+def main() -> int:
+    args = ler_argumentos()
 
     pasta = args.pasta or pasta_local_por_omissao()
     pasta.mkdir(parents=True, exist_ok=True)
@@ -623,7 +639,7 @@ def main() -> int:
             else:
                 log(f"      AVISO: nao consegui copiar para {args.copia}")
         else:
-            log("      AVISO: sem segundo sitio (--copia).")
+            log("      AVISO: sem segundo sitio (--sem-copia).")
             log("             Uma copia que vive no mesmo disco que a base nao")
             log("             protege de nada quando e' o disco que morre.")
 
