@@ -73,10 +73,24 @@ por utilizador e os dados na base do Martelo.
   ValueSet); na base de dados as contas normais leem e escrevem todas as
   tabelas de trabalho.
 
+## Estado (04-10-2026)
+
+Testado pelo Paulo na **base real** (VS Code → «Martelo V3 — BASE REAL
+(martelo_v3)»): acesso ligado ao paulo e ao Pedro, histórico importado (321
+dias da app antiga + 2 registados no Martelo); os 12 meses batem certo com a
+app antiga. Cópia da base antiga em
+`Documentos\Registo de Horas\copia_app_antiga_horarios_2026-10-04.sql`.
+Falta: a versão nova (para o Pedro) e o Paulo desinstalar o XAMPP do PC dele.
+
+**Ao desinstalar o XAMPP:** os serviços do Windows `Apache2.4` e `mysql`
+(porta 3307) são do XAMPP; o **`MySQL80`** (porta 3306) é a base de dados do
+Martelo de toda a empresa e não se toca.
+
 ## Guião de teste (02-10-2026)
 
-O Martelo da pasta principal liga-se à base **martelo_v3_dev** (aparece a
-etiqueta castanha no cabeçalho). Fechar e voltar a abrir o Martelo.
+A etiqueta castanha no cabeçalho diz em que base se está: pelo VS Code,
+«DEVELOPMENT · martelo_v3_dev» ou «BASE REAL · martelo_v3». Fechar e voltar a
+abrir o Martelo.
 
 ### 1. Dar o acesso
 1. Entrar como **admin**.
