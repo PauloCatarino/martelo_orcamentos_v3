@@ -14,8 +14,16 @@ O QUE FAZ, POR ESTA ORDEM
   3. VERIFICA a copia: tem o carimbo de fim, tem as tabelas todas, abre
   4. copia para o segundo sitio: o servidor, em \\\\SERVER_LE\\Backup\\Backup_Martelo_V3
   5. deita fora as antigas pela regra: 14 diarias, 8 semanais, 12 mensais
+  6. guarda tambem a MEMORIA DO CLAUDE (um .zip na subpasta Memoria_Claude dos
+     dois sitios, com a mesma regra de rotacao)
 
-Se qualquer um dos passos 1-3 falhar, nao apaga nada e devolve erro.
+Se qualquer um dos passos 1-3 falhar, nao apaga nada e devolve erro. O passo 6
+nunca deita a copia abaixo: se falhar, fica um AVISO no registo.
+
+A memoria do Claude e' o que o Claude Code aprendeu a trabalhar neste projeto
+(regras do Paulo, armadilhas, decisoes). Vive so' neste PC, fora do
+repositorio, e NUNCA pode ir para o GitHub: o repositorio e' publico e a
+memoria tem nomes de contas e a analise de seguranca.
 
 COMO SE USA
 -----------
@@ -23,6 +31,7 @@ COMO SE USA
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --base martelo_v3
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --copia "\\\\outro\\sitio"
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --sem-copia
+    .venv\\Scripts\\python.exe scripts\\backup_martelo.py --sem-memoria
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --listar
     .venv\\Scripts\\python.exe scripts\\backup_martelo.py --testar-restauro
 
@@ -44,6 +53,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -80,6 +90,13 @@ PADRAO_NOME = re.compile(
     r"^(?P<base>.+)_(?P<data>\d{4}-\d{2}-\d{2})_(?P<hora>\d{4})\.sql\.gz$"
 )
 
+#: Subpasta (nos dois sitios) onde ficam os .zip da memoria do Claude.
+SUBPASTA_MEMORIA = "Memoria_Claude"
+
+PADRAO_MEMORIA = re.compile(
+    r"^memoria_claude_(?P<data>\d{4}-\d{2}-\d{2})_(?P<hora>\d{4})\.zip$"
+)
+
 
 # ---------------------------------------------------------------------------
 # Sitios
@@ -90,6 +107,28 @@ def pasta_local_por_omissao() -> Path:
     raiz = (os.getenv("LOCALAPPDATA") or "").strip()
     base = Path(raiz) if raiz else Path.home()
     return base / "Martelo Orcamentos V3" / "backups"
+
+
+def raiz_principal(raiz: Path) -> Path:
+    """A pasta principal do projeto, mesmo quando o script corre num worktree.
+
+    Os worktrees do Claude vivem em ``<projeto>\\.claude\\worktrees\\<nome>``, mas
+    a memoria e' uma so', a da pasta principal.
+    """
+    if raiz.parent.name == "worktrees" and raiz.parent.parent.name == ".claude":
+        return raiz.parents[2]
+    return raiz
+
+
+def pasta_memoria_por_omissao(raiz: Path = PROJECT_ROOT) -> Path:
+    """Onde o Claude Code guarda a memoria deste projeto.
+
+    O nome da pasta e' o caminho do projeto com tudo o que nao e' letra ou
+    algarismo trocado por '-': ``C:\\Users\\Utilizador\\Documents\\Martelo_Orcamentos_V3``
+    da' ``C--Users-Utilizador-Documents-Martelo-Orcamentos-V3``.
+    """
+    nome = re.sub(r"[^A-Za-z0-9]", "-", str(raiz_principal(raiz)))
+    return Path.home() / ".claude" / "projects" / nome / "memory"
 
 
 def encontrar_mysqldump() -> Path:
@@ -401,8 +440,13 @@ def limpar_antigas(pasta: Path, base: str, agora: datetime) -> list[Path]:
     script gera (nunca em mais nada que esteja na pasta), e nunca deixa a pasta
     com menos de tres copias, aconteca o que acontecer.
     """
-    copias = copias_da_base(pasta, base)
+    return _retirar_as_que_sobram(copias_da_base(pasta, base), agora)
 
+
+def _retirar_as_que_sobram(
+    copias: list[tuple[datetime, Path]], agora: datetime
+) -> list[Path]:
+    """A regra de rotacao, comum as copias da base e da memoria."""
     if len(copias) <= MINIMO_A_GUARDAR:
         return []
 
@@ -417,6 +461,125 @@ def limpar_antigas(pasta: Path, base: str, agora: datetime) -> list[Path]:
             caminho.unlink()
             retiradas.append(caminho)
     return retiradas
+
+
+# ---------------------------------------------------------------------------
+# Memoria do Claude
+# ---------------------------------------------------------------------------
+
+def copias_da_memoria(pasta: Path) -> list[tuple[datetime, Path]]:
+    """Os .zip da memoria nesta pasta, dos mais recentes para tras.
+
+    So' conta ficheiros com o nome exato que este script gera: uma copia feita a
+    mao (por exemplo a pasta ``memoria_2026-10-04``) nunca entra na rotacao.
+    """
+    encontradas = []
+    for caminho in pasta.glob("memoria_claude_*.zip"):
+        encontrado = PADRAO_MEMORIA.match(caminho.name)
+        if not encontrado:
+            continue
+        try:
+            data = datetime.strptime(
+                f"{encontrado.group('data')} {encontrado.group('hora')}", "%Y-%m-%d %H%M"
+            )
+        except ValueError:
+            continue
+        encontradas.append((data, caminho))
+    encontradas.sort(key=lambda par: par[0], reverse=True)
+    return encontradas
+
+
+def limpar_memorias_antigas(pasta: Path, agora: datetime) -> list[Path]:
+    """Mesma regra e mesmas redes de seguranca que as copias da base."""
+    return _retirar_as_que_sobram(copias_da_memoria(pasta), agora)
+
+
+def comprimir_memoria(origem: Path, pasta: Path, agora: datetime) -> tuple[Path, int]:
+    """Comprime a memoria para um .zip em ``pasta`` e confere-o.
+
+    Devolve ``(zip, numero_de_ficheiros)``. Tal como na base, um zip que nao se
+    confere nao conta como copia: se faltar um ficheiro ou algum vier estragado,
+    o zip sai e o erro sobe.
+    """
+    ficheiros = sorted(p for p in origem.rglob("*") if p.is_file())
+    if not ficheiros:
+        raise OSError(f"a pasta da memoria esta' vazia: {origem}")
+
+    pasta.mkdir(parents=True, exist_ok=True)
+    destino = pasta / f"memoria_claude_{agora:%Y-%m-%d_%H%M}.zip"
+    esperados = {p.relative_to(origem).as_posix() for p in ficheiros}
+    try:
+        with zipfile.ZipFile(destino, "w", compression=zipfile.ZIP_DEFLATED) as saida:
+            for caminho in ficheiros:
+                saida.write(caminho, caminho.relative_to(origem).as_posix())
+        with zipfile.ZipFile(destino) as entrada:
+            estragado = entrada.testzip()
+            dentro = set(entrada.namelist())
+        if estragado is not None:
+            raise OSError(f"o zip da memoria tem um ficheiro estragado: {estragado}")
+        if dentro != esperados:
+            raise OSError(
+                f"o zip da memoria tem {len(dentro)} ficheiros e a pasta tem {len(esperados)}"
+            )
+    except (OSError, zipfile.BadZipFile):
+        destino.unlink(missing_ok=True)
+        raise
+    return destino, len(ficheiros)
+
+
+def guardar_memoria(
+    origem: Path | None,
+    pastas: list[Path],
+    agora: datetime,
+    log,
+    *,
+    limpar: bool = True,
+) -> bool:
+    """Passo 5: a memoria do Claude vai para a subpasta Memoria_Claude dos sitios.
+
+    ``pastas[0]`` e' a pasta local (onde o zip nasce e se confere); as outras
+    recebem uma copia dele. Devolve se correu tudo bem. NUNCA levanta erro: a
+    copia da base e' o que importa, e uma falha aqui fica so' como AVISO.
+    """
+    log("[5/5] memoria do Claude")
+    if origem is None:
+        log("      saltado (--sem-memoria)")
+        return True
+    if not origem.is_dir():
+        log(f"      AVISO: nao encontrei a memoria em {origem}")
+        return False
+
+    try:
+        zip_local, quantos = comprimir_memoria(origem, pastas[0] / SUBPASTA_MEMORIA, agora)
+    except (OSError, zipfile.BadZipFile) as erro:
+        log(f"      AVISO: a copia da memoria falhou: {erro}")
+        return False
+    kb = zip_local.stat().st_size / 1024
+    log(f"      OK -> {zip_local}  ({quantos} ficheiros, {kb:.0f} KB, conferido)")
+
+    tudo_bem = True
+    for pasta in pastas[1:]:
+        alvo = pasta / SUBPASTA_MEMORIA
+        if copiar_para(zip_local, alvo):
+            log(f"      OK -> {alvo / zip_local.name}")
+        else:
+            log(f"      AVISO: nao consegui copiar a memoria para {alvo}")
+            tudo_bem = False
+
+    if limpar:
+        for pasta in pastas:
+            alvo = pasta / SUBPASTA_MEMORIA
+            try:
+                retiradas = limpar_memorias_antigas(alvo, agora)
+            except OSError as erro:
+                log(f"      AVISO: nao consegui arrumar {alvo}: {erro}")
+                continue
+            if retiradas:
+                log(f"      {alvo}: tirei {len(retiradas)}")
+                for caminho in retiradas:
+                    log(f"        - {caminho.name}")
+
+    return tudo_bem
 
 
 # ---------------------------------------------------------------------------
@@ -568,9 +731,18 @@ def ler_argumentos(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--sem-procedimentos", action="store_true",
                     help="copia SEM os procedimentos (so' para emergencia -- a base "
                          "restaurada fica sem o martelo_aplicar_grants)")
+    ap.add_argument("--memoria", type=Path, default=None,
+                    help="pasta da memoria do Claude (por omissao, a deste projeto "
+                         "em ~/.claude/projects)")
+    ap.add_argument("--sem-memoria", action="store_true",
+                    help="nao guardar a memoria do Claude")
     args = ap.parse_args(argv)
     if args.sem_copia:
         args.copia = None
+    if args.sem_memoria:
+        args.memoria = None
+    elif args.memoria is None:
+        args.memoria = pasta_memoria_por_omissao()
     return args
 
 
@@ -613,7 +785,7 @@ def main() -> int:
     try:
         com_procedimentos = not args.sem_procedimentos
         tabelas_na_base, rotinas_na_base = contar_na_base(args.base)
-        log(f"[1/4] mysqldump ({tabelas_na_base or '?'} tabelas, "
+        log(f"[1/5] mysqldump ({tabelas_na_base or '?'} tabelas, "
             f"{rotinas_na_base or '?'} procedimentos)")
         if not com_procedimentos:
             log("      AVISO: --sem-procedimentos. Esta copia NAO serve para")
@@ -622,7 +794,7 @@ def main() -> int:
         megabytes = destino.stat().st_size / 1024 / 1024
         log(f"      OK -> {destino}  ({megabytes:.2f} MB)")
 
-        log("[2/4] verificar a copia")
+        log("[2/5] verificar a copia")
         tabelas, rotinas = verificar(
             destino,
             tabelas_na_base,
@@ -630,7 +802,7 @@ def main() -> int:
         )
         log(f"      OK: {tabelas} tabelas, {rotinas} procedimentos, com o carimbo de fim")
 
-        log("[3/4] segunda copia")
+        log("[3/5] segunda copia")
         segunda = False
         if args.copia:
             segunda = copiar_para(destino, args.copia)
@@ -643,7 +815,7 @@ def main() -> int:
             log("             Uma copia que vive no mesmo disco que a base nao")
             log("             protege de nada quando e' o disco que morre.")
 
-        log("[4/4] arrumar as antigas")
+        log("[4/5] arrumar as antigas")
         if args.sem_limpeza:
             log("      saltado (--sem-limpeza)")
         else:
@@ -665,12 +837,28 @@ def main() -> int:
         # a falha nao passar despercebida ate' ao dia em que a copia e' precisa.
         log(str(erro))
         log()
+        # A memoria nao depende da base: guarda-se na mesma.
+        guardar_memoria(
+            args.memoria, [pasta, *filter(None, [args.copia])], agora, log, limpar=False
+        )
+        log()
         log("FALHOU.")
         log.fechar("FALHOU")
         escrever_estado(pasta, f"FALHOU a copia de {args.base} — ver backup.log")
         raise
 
+    # Depois do try de proposito: a memoria nunca deita abaixo a copia da base.
+    memoria_ok = guardar_memoria(
+        args.memoria,
+        [pasta, *filter(None, [args.copia])],
+        agora,
+        log,
+        limpar=not args.sem_limpeza,
+    )
+
     aviso = "" if (args.copia and segunda) else "  (SEM segunda copia)"
+    if not memoria_ok:
+        aviso += "  (memoria do Claude NAO copiada -- ver backup.log)"
     log()
     log("Concluido.")
     log.fechar("OK")

@@ -1254,3 +1254,46 @@ Estado: G1+G2+G3+G4 completos — fim do plano de configuração guiada.
 Próximo: avaliação global do utilizador com dados reais; pendentes antigos
 (placeholder "Selecionar origem…", ligação SISTEMAS_UNIAO, caixote de teste
 completo) e a visão de IA nos menus.
+
+> **Falha no registo (anotada a 2026-10-04):** entre 2026-07-12 e 2026-10-04 os
+> guiões de teste não foram registados neste ficheiro. O Paulo confirmou que a
+> regra se mantém. O que ficou para trás vai ser reposto numa sessão própria; daqui
+> para a frente cada alteração regista aqui o seu guião.
+
+## Cópia de segurança: a memória do Claude entra na cópia das 03:00 (2026-10-04)
+
+Pedido do utilizador: a memória do Claude Code sobre este projeto (118 ficheiros
+com as regras do Paulo, armadilhas e decisões) só existia neste PC, sem cópia.
+
+- `scripts/backup_martelo.py` ganhou o passo **[5/5] memória do Claude**: comprime
+  a pasta da memória para `memoria_claude_AAAA-MM-DD_HHMM.zip`, confere o zip
+  (todos os ficheiros lá dentro, nenhum estragado) e põe-no na subpasta
+  `Memoria_Claude` da pasta local e da do servidor.
+- Rotação igual à da base (14 diárias, 8 semanais, 12 mensais, nunca menos de 3).
+  Só mexe nos zips com o nome exato que o script gera — a cópia feita à mão a
+  04-10 (`memoria_2026-10-04`) nunca é tocada.
+- Se o passo da memória falhar, fica só um AVISO no `backup.log` e no
+  `ultima_copia.txt`: **nunca deita abaixo a cópia da base**. Se for a base a
+  falhar, a memória guarda-se na mesma.
+- `--sem-memoria` desliga o passo; `--memoria <pasta>` escolhe outra pasta.
+- **Nunca vai para o GitHub:** o repositório é público e a memória tem nomes de
+  contas e a análise de segurança. Antes da primeira cópia foi retirada a única
+  password que lá estava escrita.
+- A tarefa agendada não precisou de mudar: corre o script da pasta principal.
+
+Testes automáticos: 12 novos em `tests/test_backup_martelo.py` (caminho da
+memória a partir da pasta principal e de um worktree, zip completo e conferido,
+memória vazia não deixa zip, subpasta nos dois sítios, falhas só como aviso,
+rotação e o que ela nunca pode tocar).
+
+Guião de teste local:
+
+1. Amanhã de manhã, no Explorador do Windows, abrir
+   `\\SERVER_LE\_Lanca_Encanto\LancaEncanto\Dep._Orcamentos\Base_Dados_Orcamento\Backup_Martelo_V3\Memoria_Claude`.
+   Deve lá estar `memoria_claude_2026-10-05_0300.zip`, ao lado da pasta
+   `memoria_2026-10-04` (a cópia feita à mão).
+2. Fazer duplo clique no zip: deve mostrar o `MEMORY.md` e os outros ficheiros `.md`.
+3. Na mesma pasta `Backup_Martelo_V3`, a cópia da base de dados dessa noite deve
+   estar lá como sempre (`martelo_v3_2026-10-05_0300.sql.gz`).
+
+Validação recebida: — (por testar).
