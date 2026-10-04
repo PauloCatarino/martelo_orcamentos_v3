@@ -1297,3 +1297,56 @@ Guião de teste local:
    estar lá como sempre (`martelo_v3_2026-10-05_0300.sql.gz`).
 
 Validação recebida: — (por testar).
+
+## Ferragens para o iMos: ferramentas STEP → DWG + imagem no repositório (2026-10-04)
+
+Pedido do utilizador: separar a união `NIVELADOR_40086` em nivelador esquerdo e
+direito (cada um com o seu código PHC, para o mapeamento do custeio nas listagens),
+gerando os DWG e as imagens a partir dos STEP da Emuca; e guardar as ferramentas,
+porque vão aparecer outros tipos de ferragens para converter.
+
+Entregue na biblioteca do iMos (fora do repositório):
+`EMUCA_4030705_NIVELADOR_LEVEL_UP_DIR` e `EMUCA_4030805_NIVELADOR_LEVEL_UP_ESQ`
+(`.DWG` em `I:\Library\ConnDWG`, `.jpg` 256×256 em `I:\Library\Info\BITMAPS`), no
+mesmo referencial do `GS_SH_6301_RECHTS/LINKS` que a união usava (as três cavilhas
+coincidem), simplificados (cavilhas lisas, excêntricos e lingueta refeitos com
+primitivas): 622 kB e 574 kB.
+
+No repositório, `scripts/imos_ferragens/` (README com o passo a passo, o que muda
+de ferragem para ferragem e as armadilhas da consola OEM do iX CAD):
+
+- `step_para_dwg.ps1` — STEP → DWG com os sólidos soltos + SAT. Explode os blocos
+  por passagens (conta-os antes), porque uma seleção vazia encrava a consola.
+- `cortes.ps1` — corta o sólido em fatias e grava DXF R12 (é assim que se "vê" a
+  peça sem CAD gráfico); avisa se o kernel falhar algum corte.
+- `arestas.ps1`, `instalar_na_biblioteca.ps1` (nunca grava por cima; confere
+  formato 2018, 256×256 e o hash).
+- Python (`python -m scripts.imos_ferragens.<comando>`): `sat` (medir faces/eixos),
+  `arame`, `vistas`, `imagem`, `sobrepor`, `ficha_pdf`.
+- `exemplos/nivelador_levelup.ps1` — a montagem do nivelador, como modelo.
+
+Validação feita por mim: a cadeia toda corrida de novo a partir dos STEP numa pasta
+vazia dá sólidos com o mesmo volume e a mesma caixa dos que foram entregues
+(direito 20 252,8923 mm³, esquerdo 20 415,5485 mm³) e a mesma imagem.
+
+Testes automáticos: 19 novos em `tests/test_imos_ferragens.py` (SAT, leitura dos
+cortes R12 com normal invertida, furo dentro de região, regiões sobrepostas,
+contorno aberto, corte em falta, render, `.ps1` só ASCII, README completo).
+
+Guião de teste local:
+
+1. No iX Organizer → Element Manager → Uniões → _LANCA_ENCANTO → NIVELADORES →
+   NIVELADORES_COZINHAS → NIVELADOR_EMUCA_40308_ESQ: no grupo que tinha o desenho
+   `GS_SH_6301_links_D8630021017_L`, pôr o DWG novo do esquerdo, sem mexer nos pontos
+   de inserção; "Preview Image" = o `.jpg` com o mesmo nome. Igual para o direito
+   (no lugar do `rechts`).
+2. Aplicar as uniões num módulo superior: as 3 cavilhas devem entrar nos furos Ø10
+   da lateral, gancho em cima e virado para a parede; a imagem aparece na lista de
+   ferragens. Confirmar que a barra da lingueta (97,5 mm abaixo da cavilha de cima)
+   cai no 4.º furo do `4F_10MM_NIVELADOR_Lateral`.
+3. Ferramentas: numa janela do PowerShell na pasta do Martelo, correr
+   `.\scripts\imos_ferragens\step_para_dwg.ps1 -Step C:\Users\Utilizador\Downloads\40307.step -Pasta C:\Temp\teste_ferragem`
+   — deve acabar em ~15 s a listar 8 `3DSOLID` e 1 `SURFACE`, com o aviso da SURFACE.
+
+Validação recebida: — (por testar). Nota: às 21:04 já havia em `ConnDWG` versões
+`_R` / `_L` destes DWG gravadas pelo iX CAD (os entregues ficaram como `.bak`).
