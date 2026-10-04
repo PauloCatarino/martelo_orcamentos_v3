@@ -35,11 +35,14 @@ deixa-o fazê-lo. Não procures outro caminho para o mesmo efeito.
 ## 2. Visão geral do projeto
 
 Software interno de orçamentação e preparação de produção de mobiliário por medida.
-Sucessor do Martelo_Orcamentos_V2, que continua **em produção na empresa**.
+Sucessor do Martelo_Orcamentos_V2. Desde 31-08-2026 é o V3 que faz os orçamentos novos
+(continua a numeração do V2); o V2 continua a ser consultado pelos colegas — ver secção 3.
 
 - **Stack:** Python 3.12, PySide6 (Qt), SQLAlchemy 2 + Alembic, MySQL (PyMySQL).
 - **Arrancar:** `python -m app.main` (a partir da raiz, com o `.venv` ativo).
-- **Testes:** `.venv\Scripts\python.exe -m pytest -q` (~2000 testes; devem passar todos).
+- **Testes:** `.venv\Scripts\python.exe -m pytest -q` (mais de 5600 testes em outubro de
+  2026; devem passar todos). Numa cópia de trabalho (worktree) não há `.venv`: usar o da
+  pasta principal, `C:\Users\Utilizador\Documents\Martelo_Orcamentos_V3\.venv\Scripts\python.exe`.
 
 Estrutura: `app/ui` (páginas e diálogos Qt), `app/services` (lógica de negócio),
 `app/repositories` (acesso a dados), `app/models` (SQLAlchemy), `app/domain`,
@@ -53,10 +56,23 @@ Estrutura: `app/ui` (páginas e diálogos Qt), `app/services` (lógica de negóc
 sistema de gestão da empresa: escrever lá pode corromper dados de outros softwares em uso.
 
 **Martelo V2 — SÓ LEITURA.** O código do V2 (`C:\Users\Utilizador\Documents\Martelo_Orcamentos_V2\`)
-serve de referência. Está em produção, usado por vários utilizadores. **Nunca editar.**
+serve de referência. Os colegas continuam a consultá-lo e o V3 lê a base dele (histórico
+de orçamentos). **Nunca editar.**
 
 **`.env` — nunca commitar.** Contém credenciais da base de dados. O mesmo para
 `.claude/settings.local.json`.
+
+**Base real vs base de desenvolvimento.** O `.env` da pasta principal aponta para a
+`martelo_v3_dev`. A base real, a que os colegas usam, é a `martelo_v3`. Scripts e consultas
+vão à dev sem avisar: antes de tirar conclusões sobre dados reais, confirmar a base com
+`SELECT DATABASE()`.
+
+**Migrações que criam tabelas** chamam `martelo_aplicar_grants()`, que precisa de
+`GRANT OPTION`: na base real só se aplicam com a conta root, ou seja, pelo Paulo.
+
+**Versões novas** (instaladores para os PCs dos colegas): só a partir do `main` da pasta
+principal, subindo o número com `scripts/nova_versao.py`. Passo a passo em
+`docs/34_como_fazer_uma_versao_nova.md`.
 
 ---
 
@@ -65,7 +81,9 @@ serve de referência. Está em produção, usado por vários utilizadores. **Nun
 - **Peças horizontais:** a dimensão principal é sempre **comprimento**, nunca "altura".
 - **Commits:** usar `git add -A` (depois de rever `git status`), nunca listar pastas à mão —
   senão ficam de fora models e migrações. Mensagens em português.
-- **Não fazer push** nem criar PRs sem o Paulo pedir.
+- **Envio para o GitHub (push):** no fim de cada alteração, **perguntar sempre** ao Paulo se
+  quer enviar, e só enviar com o sim dele. O repositório é **público**: antes de enviar,
+  procurar passwords e chaves no que vai. Não criar PRs sem ele pedir.
 - **Migrações:** cada alteração aos models precisa da migração Alembic correspondente.
 - **UI:** todos os menus têm uma linha de estado ("supervisor") por baixo dos botões;
   botões e campos editáveis levam sempre tooltip.
@@ -76,7 +94,9 @@ serve de referência. Está em produção, usado por vários utilizadores. **Nun
 
 1. Correr os testes e confirmar que passam.
 2. Escrever um guião de teste passo-a-passo: caminho exato dos menus, valores a introduzir,
-   e resultado esperado.
+   e resultado esperado. Registar o mesmo guião em
+   `docs/17_plano_e_ponto_situacao_martelo_v3.md`.
 3. Confirmar que o código está no branch da **pasta principal** — é de lá que a app corre.
-4. Se algo falhou ou ficou por fazer, dizê-lo claramente. Não apresentar como concluído o
+4. Perguntar ao Paulo se quer enviar para o GitHub (secção 4).
+5. Se algo falhou ou ficou por fazer, dizê-lo claramente. Não apresentar como concluído o
    que não foi verificado.
