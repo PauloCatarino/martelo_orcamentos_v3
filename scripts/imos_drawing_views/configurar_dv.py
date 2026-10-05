@@ -134,7 +134,9 @@ ALCADO_BASE = [
     Linha(1950, "DV_Art_Chao", AZUL, "Chao: inferiores e colunas (larguras em baixo)", {1958: "1"}),
     Linha(1950, "DV_Art_Nichos", PRETO, "Intermedios (larguras em cima)", {1958: "0"}),
     Linha(1950, "DV_Art_Superiores", VERM, "Superiores (larguras em cima)", {1958: "0"}),
-    Linha(1954, "DV_Art_Alturas", PRETO, "Alturas (uma so cadeia)", {1959: "1"}),
+    # 4.ª volta (05-10): com "Separate worktop height" = Sim saíam 3 cadeias pretas repetidas
+    # (810/620/880/120, 810/1380/120, 2190/120); testa-se com Não
+    Linha(1954, "DV_Art_Alturas", PRETO, "Alturas (uma so cadeia)", {1959: "0"}),
     Linha(1952, "", VERDE, "Paredes (largura e altura)", {1958: "1", 2057: "1"}),
 ]
 # 1.ª volta (05-10): o DV_Alcado_Frentes acrescenta cadeias com as folgas das frentes (1,8 / 3,5
@@ -205,16 +207,54 @@ ANOTACAO = [
              ]),
     Anotacao("DV_Alcado_Etiquetas_Modulos", "Alcado: so nome e medidas do modulo",
              ETQ_MODULOS_ALCADO),
-    Anotacao("DV_Planta_Etiquetas", "Planta: nome do modulo + medidas das frentes", [
+    # 4.ª volta (05-10): sem as medidas das frentes (na planta as portas são vistas de cima e
+    # o "2181.4x513.67" caía de lado em cima das linhas); só o nome do módulo
+    Anotacao("DV_Planta_Etiquetas", "Planta: so o nome do modulo", [
         Etiqueta(3, "DV_Art_Chao", (0, 0), (0, 0), (0, 0), NOME_AZUL, "Chao (ao centro, azul)"),
         Etiqueta(3, "DV_Art_Nichos", (0, 0), (0, 0), (0, 0), NOME_AZUL,
                  "Intermedios (ao centro, azul)"),
         Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
                  "Superiores (junto a parede, vermelho)"),
-        Etiqueta(1, "DV_Frentes", (0, -1), (0, 1), (0, -30), FRENTE,
-                 "Portas e gavetas: L x A (a frente da porta)"),
     ]),
 ]
+
+# ----------------------------------------------------------------------------- corte lateral
+
+# Cotagem de corte lateral (tabelas DIMSECTSIDE*, nó 494). Os cortes não saem no Output batch:
+# fazem-se à mão com "Create Section" (tipo Side View) e este princípio cota-os.
+# Não havia nenhum exemplo nas bases: os códigos seguem a regra das cotas de alçado (o número
+# da mensagem do imos.msg): tipos 1966 Article dimension, 1968 Article front, 1969 Niches;
+# atributos 1972 Height dim., 1974 Insertion height dim., 1975 Distance between articles,
+# 1984 Depth dim. Sim = "1", como nos alçados. A CONFIRMAR no primeiro corte.
+CORTE = [
+    Cotagem("DV_Corte_Lateral", "Corte lateral: alturas ao chao, vaos, profundidade, frentes",
+            DIST_1, DIST_N, True, [
+                Linha(1966, "DV_Art_Todos", PRETO, "Artigos: cadeia de alturas do chao + profundidade",
+                      {1972: "1", 1974: "0", 1975: "1", 1984: "1"}),
+                Linha(1969, "DV_Art_Todos", VERM, "Nichos: vaos entre prateleiras"),
+                Linha(1968, "DV_Art_Todos", AZUL, "Frentes: alturas", {1972: "1"}),
+            ]),
+]
+
+# ----------------------------------------------------------------------------- tabela
+
+# Tabela de artigos (tabela ACADTABLE, nó 301): o iMos troca <<IMOSORDERID>> pela obra e põe o
+# resultado numa tabela do AutoCAD. Só os artigos de topo (ID = HIGHARTID), sem rodapés; as
+# medidas vêm da IDBINFO (as mesmas do Article Center). Artigos iguais juntam-se numa linha.
+TABELA = "DV_Tabela_Artigos"
+TABELA_ESTILO = "Standard"
+TABELA_SQL = """SELECT ROW_NUMBER() OVER (ORDER BY MIN(i.POSSTR)) AS [N],
+ i.GROUPNAME AS [Artigo],
+ CAST(ROUND(i.WIDTH, 0) AS int) AS [Largura],
+ CAST(ROUND(i.HEIGHT, 0) AS int) AS [Altura],
+ CAST(ROUND(i.DEPTH, 0) AS int) AS [Prof],
+ COUNT(*) AS [Qtd]
+FROM IDBGRPS g
+JOIN IDBINFO i ON i.ORDERID = g.ORDERID AND i.ID = g.ID
+WHERE g.ORDERID = '<<IMOSORDERID>>' AND g.ID = g.HIGHARTID AND g.TYP = 2
+ AND i.GROUPNAME NOT LIKE 'RDP%'
+GROUP BY i.GROUPNAME, ROUND(i.WIDTH, 0), ROUND(i.HEIGHT, 0), ROUND(i.DEPTH, 0)
+ORDER BY [N]"""
 
 # ----------------------------------------------------------------------------- SQL
 
@@ -337,6 +377,19 @@ def sql_anotacao() -> list[str]:
     return s
 
 
+def sql_tabela() -> list[str]:
+    nome = _so_dv([TABELA])[0]
+    return [
+        "-- tabela",
+        f"DELETE FROM dbo.ACADTABLE WHERE NAME = {lit(nome)};",
+        f"DELETE FROM dbo.ACADTABLEFOLDER WHERE NAME = {lit(nome)} AND TYPE = 301;",
+        *_pasta("ACADTABLEFOLDER"),
+        "INSERT INTO dbo.ACADTABLE (NAME, TEXT, SQLQUERY, TABLESTYLE, CATALOG_ID, WORKPLAN_ID, INORDER, SOURCE, PRODUCER, SYS) "
+        f"VALUES ({lit(nome)}, N'Artigos', {lit(TABELA_SQL)}, {lit(TABELA_ESTILO)}, 0, 0, N'', {lit(SOURCE)}, N'', 0);",
+        f"INSERT INTO dbo.ACADTABLEFOLDER (NAME, TYPE, PARENT_ID) VALUES ({lit(nome)}, 301, @pasta);",
+    ]
+
+
 MOLDURA = "DV_A3_Obra"
 MOLDURA_NOTA = "A3 horizontal de obra (Drawing Views): legenda neutra, sem nome da empresa"
 
@@ -417,7 +470,8 @@ def sql_batch() -> list[str]:
 
 def gerar_sql(dwt: Path | None = None) -> str:
     corpo = (sql_condicoes() + sql_cotagem("DIMELEV", 487, ALCADO)
-             + sql_cotagem("DIMPLAN", 486, PLANTA) + sql_anotacao() + sql_batch())
+             + sql_cotagem("DIMPLAN", 486, PLANTA) + sql_cotagem("DIMSECTSIDE", 494, CORTE)
+             + sql_anotacao() + sql_tabela() + sql_batch())
     if dwt is not None:
         corpo += sql_moldura(dwt)
     return "\n".join([
@@ -491,6 +545,8 @@ def ver() -> None:
         "Alçado": "SELECT NAME, LINENUMBER, DIMTYPE, CONDITION, CAD_DIMSTYLE FROM dbo.DIMELEVLINES WHERE NAME LIKE 'DV[_]%' ORDER BY NAME, LINENUMBER",
         "Planta": "SELECT NAME, LINENUMBER, DIMTYPE, CONDITION, CAD_DIMSTYLE FROM dbo.DIMPLANLINES WHERE NAME LIKE 'DV[_]%' ORDER BY NAME, LINENUMBER",
         "Anotação": "SELECT NAME, NR, OBJECTTYPE, CONDITION, BLOCKNAME FROM dbo.LABELLING WHERE NAME LIKE 'DV[_]%' ORDER BY NAME, NR",
+        "Corte": "SELECT NAME, LINENUMBER, DIMTYPE, CONDITION, CAD_DIMSTYLE FROM dbo.DIMSECTSIDELINES WHERE NAME LIKE 'DV[_]%' ORDER BY NAME, LINENUMBER",
+        "Tabela": "SELECT NAME, TEXT, TABLESTYLE, LEN(SQLQUERY) AS sql_len FROM dbo.ACADTABLE WHERE NAME LIKE 'DV[_]%'",
         "Moldura": "SELECT b.NAME, b.INTERNTYPE, DATALENGTH(b.BINCONTENT) AS bytes, p.DATAFILE FROM dbo.BINDATA b "
                    "LEFT JOIN dbo.DOCMANBORDERPRINCIPLE p ON p.NAME = b.NAME WHERE b.NAME LIKE 'DV[_]%'",
     }
