@@ -1350,3 +1350,43 @@ Guião de teste local:
 
 Validação recebida: — (por testar). Nota: às 21:04 já havia em `ConnDWG` versões
 `_R` / `_L` destes DWG gravadas pelo iX CAD (os entregues ficaram como `.bak`).
+A pedido dele, as imagens passaram a `_R` / `_L` como os DWG. O DWG
+`EMUCA_4030805_NIVELADOR_LEVEL_UP.DWG`, que era igual byte a byte ao `_L`, foi
+**movido** para `C:\Users\Utilizador\Downloads`: o `I:` não tem Reciclagem, por isso
+não foi apagado. Os `.bak` já não existiam.
+
+## Drawing Views do iMos: análise e propostas de layouts (2026-10-05)
+
+Pedido do utilizador: explorar as "Drawing views" do iMos (plantas, alçados e cortes
+automáticos com cotas). Já tinha tentado e nunca chegou a layouts válidos. É **só
+análise**: não se mexeu na configuração do iMos nem na obra de teste, que foi lida
+a partir de uma cópia.
+
+Entregue no repositório:
+
+- `docs/37_drawing_views_imos.md` — como funcionam (vistas = blocos `imosSect*` com
+  camadas `AutoDims`/`ManualDims`/`Label`, princípios de cotagem/anotação/moldura,
+  condições), o que o iX 2025 já faz sozinho (saída "Drawing Views" nos Output batches),
+  o inventário da configuração atual, o diagnóstico da `APAGAR_03` (8 pontos) e o
+  plano F0–F8.
+- `docs/imos_drawing_views/Propostas_Layouts_A3.pdf` — 7 folhas A3:
+  - índice;
+  - diagnóstico com as vistas reais redesenhadas;
+  - propostas de planta, alçado e corte;
+  - folha única;
+  - variante para o cliente.
+
+  As propostas são **maquetas** desenhadas por cima das vistas reais da `APAGAR_03`.
+  A verde, em cada folha, aparece a configuração do iMos que a produz.
+
+Guião (leitura, não há código para testar):
+
+1. Abrir o PDF. A folha 0 deve mostrar a planta, o alçado e o corte da `APAGAR_03`
+   tal como o iMos os gerou, com os 8 problemas numerados.
+2. Folhas 1 a 3: confirmar se o tipo de cotagem (cadeias, distâncias, etiquetas por
+   posição + tabela) é o que a LE quer nos desenhos de obra.
+3. Escolher por onde começar. A proposta é o alçado: F1 moldura `LE_A3_Obra`, depois
+   F2 condições, F3 `LE_Alcado` e F4 `LE_Alcado_Pos`. Fazer cada passo no Element
+   Manager, numa obra de teste **nova**.
+
+Validação recebida: — (por ver).
