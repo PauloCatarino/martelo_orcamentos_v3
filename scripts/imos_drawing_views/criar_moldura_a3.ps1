@@ -39,7 +39,7 @@ param(
     # O iMos guarda o bloco na obra como '<nome>.<moldura>' e, se ja existir, usa a definicao
     # antiga (05-10: a legenda da v7 apareceu fora da folha v8). Cada desenho novo da legenda
     # leva um nome novo.
-    [string]$NomeLegenda = 'DV_A3_Legenda_v8'
+    [string]$NomeLegenda = 'DV_A3_Legenda_v9'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
@@ -52,10 +52,15 @@ Copy-Item $Kit $base -Force
 
 # moldura: x -203..203, y -136..136
 $mx, $my = 203, 136
-# legenda: 180 x 22 no canto inferior direito; linha do meio a meia altura
-$x0, $x1, $y0, $y1 = ($mx - 180), $mx, (-$my), (-$my + 22)
-$ym = $y0 + 11
-$cima = @(@{x = $x0; c = 'Cliente'; t = 'IMOSORDERCUSTOMER'; h = 3.0 },
+# legenda: 180 x 33 no canto inferior direito, 3 linhas de 11 mm (v9, 05-10):
+#   descricao da obra (TEXT_SHORT do cabecalho, ex. "CONJUNTO MODULOS U LAVANDARIA ...")
+#   Cliente | Obra | Data      -- o cliente esta' no CLIENT (IMOSORDERCLIENT = "JF_VIVA");
+#                                 o IMOSORDERCUSTOMER da v8 vinha vazio
+#   Desenho | Escala | Folha | Desenhador
+$x0, $x1, $y0 = ($mx - 180), $mx, (-$my)
+$ym, $ym2, $y1 = ($y0 + 11), ($y0 + 22), ($y0 + 33)
+$topo = @(@{x = $x0; c = 'Descri\U+00E7\U+00E3o'; t = 'IMOSORDERTEXTSHORT'; h = 2.6 })
+$cima = @(@{x = $x0; c = 'Cliente'; t = 'IMOSORDERCLIENT'; h = 3.0 },
           @{x = $x0 + 80; c = 'Obra / Encomenda'; t = 'IMOSORDERID'; h = 2.6 },
           @{x = $x0 + 140; c = 'Data'; t = 'IMOSORDERACTDATE'; h = 2.6 })
 $baixo = @(@{x = $x0; c = 'Desenho'; t = 'IMOSVSLAYOUTNAME'; h = 3.0 },
@@ -72,9 +77,10 @@ $L += @('TEXTSTYLE', 'Arial')
 $L += @('_.RECTANG', '_W', '0.5', '_NON', "-$mx,-$my", '_NON', "$mx,$my")
 $L += @('_.RECTANG', '_W', '0', '_NON', "$x0,$y0", '_NON', "$x1,$y1")
 $L += Linha $x0 $ym $x1 $ym
-foreach ($c in $cima) { if ($c.x -gt $x0) { $L += Linha $c.x $ym $c.x $y1 } }
+$L += Linha $x0 $ym2 $x1 $ym2
+foreach ($c in $cima) { if ($c.x -gt $x0) { $L += Linha $c.x $ym $c.x $ym2 } }
 foreach ($c in $baixo) { if ($c.x -gt $x0) { $L += Linha $c.x $y0 $c.x $ym } }
-foreach ($par in @(@{l = $cima; yt = $y1; yb = $ym }, @{l = $baixo; yt = $ym; yb = $y0 })) {
+foreach ($par in @(@{l = $topo; yt = $y1; yb = $ym2 }, @{l = $cima; yt = $ym2; yb = $ym }, @{l = $baixo; yt = $ym; yb = $y0 })) {
     foreach ($c in $par.l) {
         $L += Texto $c.c 'TL' ($c.x + 1.2) ($par.yt - 1.2) 1.6
         $L += AttDef $c.t 'BL' ($c.x + 1.5) ($par.yb + 2.0) $c.h
