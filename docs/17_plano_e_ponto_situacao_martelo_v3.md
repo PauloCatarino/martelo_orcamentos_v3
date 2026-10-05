@@ -1389,4 +1389,63 @@ Guião (leitura, não há código para testar):
    F2 condições, F3 `LE_Alcado` e F4 `LE_Alcado_Pos`. Fazer cada passo no Element
    Manager, numa obra de teste **nova**.
 
-Validação recebida: — (por ver).
+Validação recebida (05-10, à tarde): o PDF agradou. As folhas 1 a 4 foram aprovadas, com
+estes requisitos:
+
+- tudo em A3 horizontal, sem "Lanca Encanto" nem "LE";
+- cores por tipo de móvel;
+- nome e medidas enquadrados no alçado;
+- folha única com perspetiva, planta, alçado, corte e tabela.
+
+Os nomes `LE_*` do plano passaram a `DV_*` (neutros).
+
+### Volta 1 na base de testes `imos_LE_TESTES` (2026-10-05, tarde)
+
+Autorizado pelo Paulo:
+
+- escrever `DV_*` na `imos_LE_TESTES`;
+- controlar o iX CAD;
+- gravar na obra de teste ORC_260881_2604023 (ele tem cópia);
+- copiar `DV_*` novos para `I:\Library\AttDWG`.
+
+A `imos_LE` não foi tocada (só `SELECT`). Ferramentas novas em `scripts/imos_drawing_views/`
+(README com a receita). O detalhe e os resultados estão no doc 37, secção 6b.
+
+- **Na base de testes** (pasta `DV_Desenhos` de cada árvore):
+  - 10 condições;
+  - cotagem `DV_Planta`, `DV_Alcado` e `DV_Alcado_Frentes`;
+  - etiquetas `DV_Alcado_Etiquetas`, `DV_Alcado_Etiquetas_Modulos` e `DV_Planta_Etiquetas`;
+  - moldura `DV_A3_Obra`;
+  - Output batch `DV_Desenhos_Obra`.
+- **Em `I:\Library\AttDWG`:**
+  - em uso: `DV_Etq_Modulo(_r)`, `DV_Etq_Nome(_r)` e `DV_Etq_Frente`;
+  - sem uso, da 1.ª tentativa: `DV_Artigo_Medidas(_r)` e `DV_Frente_Medidas`. Só se
+    apagam se o Paulo quiser.
+- **Na obra de teste:** a planta e os 2 alçados foram refeitos com as `DV_*` (Refresh view)
+  e gravados.
+  - A planta e o alçado do fundo já saem como as folhas 1 e 2: cores por tipo, uma cadeia
+    de alturas e as etiquetas certas.
+  - Os layouts ainda têm a moldura antiga (STANDARD): falta correr o batch.
+
+Guião de teste (iX CAD **aberto**, base `imos_LE_TESTES`):
+
+1. No iX Organizer, abrir o Element Manager e carregar em "Atualizar" (⟳). Em Outputs →
+   Output Batches deve aparecer a pasta `DV_Desenhos` com o `DV_Desenhos_Obra` (Modo
+   Encomenda). Uma saída "Drawing Views": Layouts & PDF, planta e alçados com `DV_A3_Obra`
+   e "Best scale".
+2. Abrir o Order Manager, pesquisar `2604023` e escolher **ORC_260881_2604023**. Em Output
+   Batches, marcar só `DV_Desenhos_Obra` e carregar em ✓.
+3. Resultado esperado:
+   - PDF em `C:\IMOS_Output_Batches\DV_Desenhos`;
+   - na obra, layouts A3 novos (planta + 1 por parede) com a moldura neutra, legenda
+     preenchida (Cliente JF_VIVA, Obra ORC_260881_2604023, Escala 1:N, Folha) e nenhum
+     nome de campo a vermelho;
+   - etiquetas dos módulos legíveis (texto de ~2,5 mm a 1:20).
+4. No alçado da parede do fundo:
+   - por baixo, 920 | 660 a azul e 720 a vermelho (coluna);
+   - por cima, 1580 a magenta;
+   - à direita, uma só cadeia 880 / 620 / 810 (2310);
+   - nas portas, L×A ao centro.
+
+**Por verificar:** o passo 2. No 1.º teste o iX CAD fechou-se durante o batch e não foi gerado
+nada. Não houve erro no registo do Windows, por isso falta repetir com o iX CAD aberto.

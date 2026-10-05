@@ -170,7 +170,89 @@ e A4 conforme o tamanho da parede. Depois de validado, juntar aos batches `JF_VI
   bloco de posição, como **ficheiros novos** em `I:\Library\Bord` / `AttDWG`.
 - Um **verificador**: lê uma cópia da obra, extrai as vistas e desenha-as (como na folha 0)
   para conferir o resultado sem abrir o iX CAD.
-- A configuração no Element Manager é sempre o Paulo que a faz (é escrita na base do iMos).
+- ~~A configuração no Element Manager é sempre o Paulo que a faz.~~ Revisto a 05-10: o Paulo
+  autorizou-me a escrever as `DV_*` na base de testes `imos_LE_TESTES` (ver 6b). A base real
+  continua só leitura.
+
+## 6b. Volta 1 na base de testes (05-10, à tarde)
+
+O Paulo aprovou o PDF e deixou-me avançar. Autorizou:
+
+- escrever na **`imos_LE_TESTES`**, só linhas `DV_*`;
+- controlar o iX CAD e o iX Organizer;
+- gravar na obra de teste **ORC_260881_2604023** (cozinha/lavandaria em U);
+- copiar ficheiros `DV_*` novos para `I:\Library\AttDWG`.
+
+Ferramentas e receita em [`scripts/imos_drawing_views`](../scripts/imos_drawing_views/README.md).
+
+**Requisitos dele:**
+
+- tudo em A3 horizontal, sem "Lanca Encanto" nem "LE" nas folhas;
+- cores por tipo, com os 5 estilos que já existem: inferiores azul, superiores magenta,
+  colunas vermelho, tampos e alturas preto, paredes verde;
+- no alçado, nome e medidas do módulo enquadrados e medidas das portas e gavetas, com o
+  rodapé sem etiqueta;
+- folha única com perspetiva + planta/alçado + corte + tabela;
+- mais vale gerar layouts a mais do que a menos.
+
+**O que ficou na base** (pasta `DV_Desenhos` em cada árvore do Element Manager):
+
+| Tipo | Princípios |
+|---|---|
+| Condições | `DV_Art_Inferiores` (Z≤250, A≤1250), `DV_Art_Colunas` (Z<250, A>1250), `DV_Art_Nichos`, `DV_Art_Superiores` (Z>1280), `DV_Art_Alturas`, `DV_Art_Todos`, `DV_Frentes(_Baixo/_Cima)`, `DV_Tampos`. Os rodapés ficam sempre de fora (nome começa por `RDP`). |
+| Cotagem | `DV_Planta`, `DV_Alcado` e a variante `DV_Alcado_Frentes`. |
+| Etiquetas | `DV_Alcado_Etiquetas` (módulo + frentes), `DV_Alcado_Etiquetas_Modulos`, `DV_Planta_Etiquetas` (só o nome). |
+| Moldura | `DV_A3_Obra`: 400×270, legenda neutra (Cliente, Obra, Data, Desenho, Escala, Folha, Desenhador), uma janela. |
+| Output batch | `DV_Desenhos_Obra`: planta + alçados, `DV_A3_Obra`, "Best scale", Layouts & PDF em `C:\IMOS_Output_Batches\DV_Desenhos`. |
+
+**Resultado na ORC_260881_2604023** (vistas refeitas com as DV_* e conferidas com o
+`ver_vistas.py`):
+
+- **Planta:** cadeias certas por cor:
+  - azul 720 | 920 | 660 | 600;
+  - vermelho 720 | 2180;
+  - magenta 720 | 1580 | 600;
+  - paredes 2900 / 2950;
+  - lado direito 1160,4 / 1571,5.
+
+  As 6 etiquetas saem com o nome certo. As colunas da parede da direita aparecem rodadas. Os
+  rodapés e as máquinas ficam de fora.
+- **Alçado da parede do fundo:** larguras por fiada e **uma** cadeia de alturas
+  (880 / 620 / 810, total 2310). As etiquetas enquadradas estão certas (por exemplo ARM_02
+  920×880×600) e as portas levam L×A ao centro (por exemplo 446,5 × 801,4).
+- **`DV_Alcado_Frentes`:** carregado demais. Junta cadeias com as folgas das frentes
+  (1,8 / 3,5 mm) e linhas de chamada a atravessar o alçado. Fica `DV_Alcado` como principal.
+
+**Armadilhas encontradas** (e o que foi feito):
+
+1. **Etiquetas minúsculas.** O iMos insere-as à escala 1 no modelo. A 1.ª versão dos blocos
+   (`DV_Artigo_Medidas*`, `DV_Frente_Medidas`) era anotativa e em mm de papel, por isso não
+   aparecia. Foi refeita em mm do modelo, para 1:20, e não anotativa: `DV_Etq_*`. Os
+   ficheiros da 1.ª versão ficaram em `AttDWG` sem uso; só se apagam se o Paulo quiser.
+2. **Escala de anotação (`CANNOSCALE`).** A 1:20 as etiquetas anotativas aparecem, mas as
+   cotas ficam 20 vezes maiores. Fica a 1:1.
+3. **Profundidades na planta.** A "Depth dim" das linhas Furniture põe a cota por cima do
+   desenho. A linha "Furniture depth" põe-na longe, com chamadas a atravessar a planta.
+   Ficou sem profundidades: vão na tabela.
+4. **Correção ao diagnóstico** (ponto 8 da secção 4):
+   - **Camadas:** as `imosSect*` de 14 plantas e 10 alçados também aparecem na
+     ORC_260881_2604023, que nunca teve essas vistas. Vêm com a obra (biblioteca/modelo) e
+     não são restos de tentativas.
+   - **Etiquetas `_Medidas_Artigo`:** estão com FUNCT 1 = "Indexing detail" (legado), e não
+     "Standard".
+   - **Molduras:** a fonte é a base (`BINDATA`), não os ficheiros de `I:\Library\Bord`.
+5. **Batch sem iX CAD.** O Output batch chama o assistente do iX CAD. No 1.º teste o iX CAD
+   fechou-se durante o batch e nada foi gerado: não ficou PDF e o DWG não mudou. **Falta
+   repetir com o iX CAD aberto.**
+
+**Próximos passos:**
+
+1. Correr o batch com o iX CAD aberto e ver os layouts A3 com a `DV_A3_Obra` e o PDF.
+2. Tabela de módulos (princípio Table com SQL sobre `IDBINFO`, `<<IMOSORDERID>>`).
+3. Cortes: falta conhecer os códigos dos atributos (a ajuda descreve-os, a base não tem
+   exemplos). É preciso configurar uma linha no Element Manager e ler a base, como se fez
+   com o batch.
+4. Folha única (moldura com várias janelas) e indicadores de alçado legíveis na planta.
 
 ## 7. Anexo — o que mostra cada vídeo
 
