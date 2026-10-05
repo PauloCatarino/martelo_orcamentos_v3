@@ -35,7 +35,11 @@ param(
     [string]$PaginaPdf = 'PDF_LS_A3',
     # DV_PlotStyle.ctb (criar_ctb_dv.py): o iX_PlotStyle com a cor 254 das linhas escondidas
     # escurecida. Tem de estar em I:\Plotters\Plot Styles.
-    [string]$EstiloImpressao = 'DV_PlotStyle.ctb'
+    [string]$EstiloImpressao = 'DV_PlotStyle.ctb',
+    # O iMos guarda o bloco na obra como '<nome>.<moldura>' e, se ja existir, usa a definicao
+    # antiga (05-10: a legenda da v7 apareceu fora da folha v8). Cada desenho novo da legenda
+    # leva um nome novo.
+    [string]$NomeLegenda = 'DV_A3_Legenda_v8'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
@@ -76,11 +80,11 @@ foreach ($par in @(@{l = $cima; yt = $y1; yb = $ym }, @{l = $baixo; yt = $ym; yb
         $L += AttDef $c.t 'BL' ($c.x + 1.5) ($par.yb + 2.0) $c.h
     }
 }
-# tudo o que esta' dentro da legenda vira o bloco DV_A3_Legenda, ja inserido no lugar
+# tudo o que esta' dentro da legenda vira o bloco da legenda, ja inserido no lugar
 # (a consola nao tem -INSERT: usa-se o modo "Convert to block" do -BLOCK). A selecao por
 # janela so apanha o que esta' no ecra: com a moldura centrada na origem, ZOOM E antes.
 $L += @('_.ZOOM', '_E')
-$L += @('-BLOCK', 'DV_A3_Legenda', 'O', 'C', '_NON', '0,0', '_W', '_NON', "$($x0 - 1),$($y0 - 1)", '_NON', "$($x1 + 1),$($y1 + 1)", '')
+$L += @('-BLOCK', $NomeLegenda, 'O', 'C', '_NON', '0,0', '_W', '_NON', "$($x0 - 1),$($y0 - 1)", '_NON', "$($x1 + 1),$($y1 + 1)", '')
 # janela da vista: toda a largura, por cima da legenda, num layer que nao imprime
 $L += @('-LAYER', '_M', 'DV_JANELA', '_P', '_N', 'DV_JANELA', '')
 $L += @('_.MVIEW', '_NON', "$(-$mx + 2),$($y1 + 2)", '_NON', "$($mx - 2),$($my - 2)")

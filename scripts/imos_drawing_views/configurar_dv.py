@@ -127,8 +127,9 @@ class Cotagem:
     linhas: list
 
 
-# Distâncias em mm de PAPEL ("altura no papel"): 10 mm até à 1.ª linha de cota e 7 mm entre
-# linhas, em qualquer escala.
+# Distâncias em mm de PAPEL ("altura no papel"), iguais em qualquer escala. 3.ª volta (05-10):
+# 10 e 7 mm deixavam as cadeias demasiado afastadas; passa a 8 mm até à 1.ª linha e 5 entre linhas.
+DIST_1, DIST_N = 8, 5
 ALCADO_BASE = [
     Linha(1950, "DV_Art_Chao", AZUL, "Chao: inferiores e colunas (larguras em baixo)", {1958: "1"}),
     Linha(1950, "DV_Art_Nichos", PRETO, "Intermedios (larguras em cima)", {1958: "0"}),
@@ -141,9 +142,9 @@ ALCADO_BASE = [
 # gavetas vão nas etiquetas (pedido do Paulo: sem folgas).
 ALCADO = [
     Cotagem("DV_Alcado", "Alcado A3: larguras por fiada, uma cadeia de alturas, paredes",
-            10, 7, True, ALCADO_BASE),
+            DIST_1, DIST_N, True, ALCADO_BASE),
     Cotagem("DV_Alcado_Frentes", "Alcado A3 + cadeias das frentes (carregado: folgas incluidas)",
-            10, 7, True, ALCADO_BASE + [
+            DIST_1, DIST_N, True, ALCADO_BASE + [
                 Linha(1960, "DV_Frentes_Baixo", PRETO, "Frentes de baixo (larguras)", {1958: "1"}),
                 Linha(1960, "DV_Frentes_Cima", PRETO, "Frentes de cima (larguras)", {1958: "0"}),
                 Linha(1955, "DV_Frentes", PRETO, "Frentes (alturas)"),
@@ -154,7 +155,7 @@ ALCADO = [
 # para não repetir a largura das colunas em três linhas.
 PLANTA = [
     Cotagem("DV_Planta", "Planta A3: chao, tampos, intermedios, superiores, paredes",
-            10, 7, True, [
+            DIST_1, DIST_N, True, [
                 Linha(1950, "DV_Art_Chao", AZUL, "Chao: inferiores e colunas", {1956: "0"}),
                 Linha(1951, "DV_Tampos", PRETO, "Tampos", {1956: "0", 1957: "0"}),
                 Linha(1950, "DV_Art_Nichos", PRETO, "Intermedios", {1956: "0"}),
