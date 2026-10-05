@@ -93,10 +93,12 @@ CONDICOES = [
          MODULO + [("group insertionZ", "<=", Z_CIMA, "FL")]),
     Cond("DV_Art_Verm", ARTIGO, f"Etiqueta vermelha: acima de {Z_CIMA}", E,
          MODULO + [("group insertionZ", ">", Z_CIMA, "FL")]),
-    # com os rodapés (pedido do Paulo, 05-10: faltava a altura do rodapé): a cadeia passa a
-    # ter o ponto do topo do rodapé e mostra rodapé + corpo (120 + 760) em vez de 880
-    Cond("DV_Art_Alturas", ARTIGO, "Modulos e rodapes para a cadeia de alturas", E,
-         [t for t in MODULO if t[0] != "group name"] + [("group depth", ">", "1", "FL")]),
+    # Volta 3 juntou aqui os rodapés e a cadeia de alturas triplicou (810/620/880,
+    # 810/1380/120, 2190/120): o rodapé passa a ter uma linha própria (DV_Rodapes)
+    Cond("DV_Art_Alturas", ARTIGO, "Modulos para a cadeia de alturas (sem rodapes)", E,
+         MODULO + [("group depth", ">", "1", "FL")]),
+    Cond("DV_Rodapes", ARTIGO, "Rodapes (nome comeca por RDP): so a altura", E,
+         [t for t in MODULO if t[0] != "group name"] + [("group name", "B", "RDP", "CI")]),
     Cond("DV_Art_Todos", ARTIGO, "Todos os modulos (sem rodapes, deco, comprados)", E, MODULO),
     Cond("DV_Frentes", PECA, "Portas e frentes de gaveta", OU, FRENTES),
     Cond("DV_Frentes_Baixo", PECA, "Portas e frentes de gaveta abaixo de 1280", E,
@@ -137,6 +139,7 @@ ALCADO_BASE = [
     # 4.ª volta (05-10): com "Separate worktop height" = Sim saíam 3 cadeias pretas repetidas
     # (810/620/880/120, 810/1380/120, 2190/120); testa-se com Não
     Linha(1954, "DV_Art_Alturas", PRETO, "Alturas (uma so cadeia)", {1959: "0"}),
+    Linha(1954, "DV_Rodapes", PRETO, "Altura do rodape", {1959: "0"}),
     Linha(1952, "", VERDE, "Paredes (largura e altura)", {1958: "1", 2057: "1"}),
 ]
 # 1.ª volta (05-10): o DV_Alcado_Frentes acrescenta cadeias com as folgas das frentes (1,8 / 3,5
@@ -232,7 +235,9 @@ CORTE = [
                 Linha(1966, "DV_Art_Todos", PRETO, "Artigos: cadeia de alturas do chao + profundidade",
                       {1972: "1", 1974: "0", 1975: "1", 1984: "1"}),
                 Linha(1969, "DV_Art_Todos", VERM, "Nichos: vaos entre prateleiras"),
-                Linha(1968, "DV_Art_Todos", AZUL, "Frentes: alturas", {1972: "1"}),
+                # 1.º corte (05-10): as frentes saíam com "8" e "0" (recuo e folga das portas):
+                # 1981 Vertical front offset dim. e 1986 Vertical front gap dim. = Não
+                Linha(1968, "DV_Art_Todos", AZUL, "Frentes: alturas", {1972: "1", 1981: "0", 1986: "0"}),
             ]),
 ]
 
