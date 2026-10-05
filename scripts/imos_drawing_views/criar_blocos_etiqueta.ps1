@@ -28,38 +28,75 @@
 param(
     [Parameter(Mandatory)][string]$Saida,
     [switch]$Instalar,
-    [string]$Biblioteca = 'I:\Library\AttDWG'
+    [string]$Biblioteca = 'I:\Library\AttDWG',
+    # 'papel' (volta 2, por defeito): anotativos, mm de papel, texto colorido, sem moldura.
+    # 'modelo' (volta 1.5): mm do modelo para 1:20, nao anotativos, com moldura.
+    [ValidateSet('papel', 'modelo')][string]$Versao = 'papel'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
 
 New-Item -ItemType Directory -Force $Saida | Out-Null
-$modelo = Join-Path $Biblioteca '_Medidas_Artigo.DWG'
 
 # cada bloco comeca numa consola nova, e o ultimo campo de cada lista deixa o modo
 # "Constant" desligado, por isso a ordem abaixo conta
 Reset-AttDef
-$blocos = [ordered]@{
-    'DV_Etq_Modulo' = @(
-        @('_.RECTANG', '_NON', '-300,-100', '_NON', '300,100')
-        AttDef 'IMOSELEMENTARTICLE' 'MC' 0 38 50
-        AttDef 'IMOSARTICLEWIDTH' 'MR' -95 -50 34
-        Texto 'x' 'MC' -80 -50 34
-        AttDef 'IMOSARTICLEHEIGHT' 'MC' 0 -50 34
-        Texto 'x' 'MC' 80 -50 34
-        AttDef 'IMOSARTICLEDEPTH' 'ML' 95 -50 34
-    )
-    'DV_Etq_Nome' = @(
-        @('_.RECTANG', '_NON', '-200,-45', '_NON', '200,45')
-        AttDef 'IMOSELEMENTARTICLE' 'MC' 0 0 50
-    )
-    'DV_Etq_Frente' = @(
-        AttDef 'IMOSPARTWIDTH' 'MR' -18 0 34
-        Texto 'x' 'MC' 0 0 34
-        AttDef 'IMOSPARTHEIGHT' 'ML' 18 0 34
-    )
+if ($Versao -eq 'modelo') {
+    $modelo = Join-Path $Biblioteca '_Medidas_Artigo.DWG'
+    $estilo = 'IMOS'
+    $blocos = [ordered]@{
+        'DV_Etq_Modulo' = @(
+            @('_.RECTANG', '_NON', '-300,-100', '_NON', '300,100')
+            AttDef 'IMOSELEMENTARTICLE' 'MC' 0 38 50
+            AttDef 'IMOSARTICLEWIDTH' 'MR' -95 -50 34
+            Texto 'x' 'MC' -80 -50 34
+            AttDef 'IMOSARTICLEHEIGHT' 'MC' 0 -50 34
+            Texto 'x' 'MC' 80 -50 34
+            AttDef 'IMOSARTICLEDEPTH' 'ML' 95 -50 34
+        )
+        'DV_Etq_Nome' = @(
+            @('_.RECTANG', '_NON', '-200,-45', '_NON', '200,45')
+            AttDef 'IMOSELEMENTARTICLE' 'MC' 0 0 50
+        )
+        'DV_Etq_Frente' = @(
+            AttDef 'IMOSPARTWIDTH' 'MR' -18 0 34
+            Texto 'x' 'MC' 0 0 34
+            AttDef 'IMOSPARTHEIGHT' 'ML' 18 0 34
+        )
+    }
+    $rodar = @('DV_Etq_Modulo', 'DV_Etq_Nome')
+    $cores = @{}
+} else {
+    # Volta 2 (05-10, tarde): o Output batch acerta a escala de anotacao pela escala da
+    # folha, por isso as etiquetas voltam a ser anotativas, em mm de PAPEL (parte do
+    # Article_PosName, que e' anotativo). Sem moldura e com o texto na cor da posicao:
+    # vermelho para os modulos acima de 1490 mm, azul para os outros (pedido do Paulo).
+    # A frente usa os campos PXM da peca (COND.PART_SIZE_*) para ver se saem sem as duas
+    # casas decimais do IMOSPARTWIDTH ("446.50").
+    $modelo = Join-Path $Biblioteca 'Article_PosName.dwg'
+    $estilo = 'STANDARD'
+    $modulo = {
+        AttDef 'IMOSELEMENTARTICLE' 'MC' 0 1.5 2.5
+        AttDef 'IMOSARTICLEWIDTH' 'MR' -4.7 -1.7 1.8
+        Texto 'x' 'MC' -3.9 -1.7 1.8
+        AttDef 'IMOSARTICLEHEIGHT' 'MC' 0 -1.7 1.8
+        Texto 'x' 'MC' 3.9 -1.7 1.8
+        AttDef 'IMOSARTICLEDEPTH' 'ML' 4.7 -1.7 1.8
+    }
+    $blocos = [ordered]@{
+        'DV_Lbl_Modulo_Azul' = @(& $modulo)
+        'DV_Lbl_Modulo_Verm' = @(& $modulo)
+        'DV_Lbl_Nome_Azul'   = @(AttDef 'IMOSELEMENTARTICLE' 'MC' 0 0 2.5)
+        'DV_Lbl_Nome_Verm'   = @(AttDef 'IMOSELEMENTARTICLE' 'MC' 0 0 2.5)
+        'DV_Lbl_Frente'      = @(
+            AttDef 'COND.PART_SIZE_X' 'MR' -0.9 0 1.8
+            Texto 'x' 'MC' 0 0 1.8
+            AttDef 'COND.PART_SIZE_Y' 'ML' 0.9 0 1.8
+        )
+    }
+    $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente')
+    $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
-$rodar = @('DV_Etq_Modulo', 'DV_Etq_Nome')
 
 $feitos = @()
 foreach ($nome in $blocos.Keys) {
@@ -70,8 +107,10 @@ foreach ($nome in $blocos.Keys) {
         $dwg = Join-Path $Saida "$final.dwg"
         if (Test-Path $dwg) { throw "Ja existe: $dwg (apagar a mao antes de repetir)" }
         Copy-Item $modelo $base -Force
-        # o STANDARD deste DWG tem altura fixa (150): o -ATTDEF deixaria de perguntar a altura
-        $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', 'TEXTSTYLE', 'IMOS', '_.ERASE', '_ALL', '')
+        # estilo de texto com altura livre (o STANDARD do _Medidas_Artigo tem altura fixa 150:
+        # o -ATTDEF deixaria de perguntar a altura)
+        $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', 'TEXTSTYLE', $estilo, '_.ERASE', '_ALL', '')
+        foreach ($c in $cores.Keys) { if ($nome -like "*_$c") { $L += @('CECOLOR', $cores[$c]) } }
         $L += $blocos[$nome] | ForEach-Object { $_ }
         if ($r) { $L += @('_.ROTATE', '_ALL', '', '_NON', '0,0', '180') }
         $L += @('_.ZOOM', '_E', '_.SAVEAS', '2018', $dwg)

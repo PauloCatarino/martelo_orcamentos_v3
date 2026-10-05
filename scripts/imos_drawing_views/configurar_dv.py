@@ -44,8 +44,16 @@ SOURCE = "IMOSADMIN"
 E, OU = 0, 2
 ARTIGO, PECA = 10250, 10300
 
-BLUE, MAG, RED, BLACK, GREEN = (
-    "IMOS_VIEW_BLUE", "IMOS_VIEW_MAG", "IMOS_VIEW_RED", "IMOS_VIEW_BLACK", "IMOS_VIEW_GREEN")
+# Estilos de cota DV_* (estilos_cota_dv.py, gravados no config\imosBlocks.dwg, onde o iMos os
+# vai buscar quando o desenho não os tem): mm de PAPEL e anotativos, por isso seguem a escala
+# da folha que o Output batch escolhe. Os IMOS_VIEW_* da LE (texto de 35 mm) só funcionam com
+# a escala de anotação a 1:1: no batch as cotas saíam 20-100 vezes maiores (teste de 05-10).
+# (Os DV_COTA_* da 1.ª tentativa tinham texto de altura fixa e ficaram na ORC_260881_2604023.)
+AZUL, VERM, PRETO, VERDE = "DV_AZUL", "DV_VERMELHO", "DV_PRETO", "DV_VERDE"
+
+# Altura que separa os módulos de baixo dos de cima (pedido do Paulo, 05-10): acima de
+# 1490 mm a vermelho (etiqueta e cotas); do chão até 1490, e as colunas, a azul.
+Z_CIMA = "1490"
 
 # ----------------------------------------------------------------------------- condições
 
@@ -75,12 +83,20 @@ CONDICOES = [
          MODULO + [("group insertionZ", "<=", "250", "FL"), ("group height", "<=", "1250", "FL")]),
     Cond("DV_Art_Colunas", ARTIGO, "Colunas (Z<250, altura>1250)", E,
          MODULO + [("group insertionZ", "<", "250", "FL"), ("group height", ">", "1250", "FL")]),
-    Cond("DV_Art_Nichos", ARTIGO, "Modulos intermedios (250<Z<=1280)", E,
-         MODULO + [("group insertionZ", ">", "250", "FL"), ("group insertionZ", "<=", "1280", "FL")]),
-    Cond("DV_Art_Superiores", ARTIGO, "Modulos suspensos (Z>1280)", E,
-         MODULO + [("group insertionZ", ">", "1280", "FL")]),
-    Cond("DV_Art_Alturas", ARTIGO, "Modulos para a cadeia de alturas (sem rodapes)", E,
-         MODULO + [("group depth", ">", "1", "FL")]),
+    Cond("DV_Art_Chao", ARTIGO, "Modulos do chao: inferiores e colunas (Z<=250)", E,
+         MODULO + [("group insertionZ", "<=", "250", "FL")]),
+    Cond("DV_Art_Nichos", ARTIGO, f"Modulos intermedios (250<Z<={Z_CIMA})", E,
+         MODULO + [("group insertionZ", ">", "250", "FL"), ("group insertionZ", "<=", Z_CIMA, "FL")]),
+    Cond("DV_Art_Superiores", ARTIGO, f"Modulos de cima (Z>{Z_CIMA})", E,
+         MODULO + [("group insertionZ", ">", Z_CIMA, "FL")]),
+    Cond("DV_Art_Azul", ARTIGO, f"Etiqueta azul: do chao ate {Z_CIMA} (inclui colunas)", E,
+         MODULO + [("group insertionZ", "<=", Z_CIMA, "FL")]),
+    Cond("DV_Art_Verm", ARTIGO, f"Etiqueta vermelha: acima de {Z_CIMA}", E,
+         MODULO + [("group insertionZ", ">", Z_CIMA, "FL")]),
+    # com os rodapés (pedido do Paulo, 05-10: faltava a altura do rodapé): a cadeia passa a
+    # ter o ponto do topo do rodapé e mostra rodapé + corpo (120 + 760) em vez de 880
+    Cond("DV_Art_Alturas", ARTIGO, "Modulos e rodapes para a cadeia de alturas", E,
+         [t for t in MODULO if t[0] != "group name"] + [("group depth", ">", "1", "FL")]),
     Cond("DV_Art_Todos", ARTIGO, "Todos os modulos (sem rodapes, deco, comprados)", E, MODULO),
     Cond("DV_Frentes", PECA, "Portas e frentes de gaveta", OU, FRENTES),
     Cond("DV_Frentes_Baixo", PECA, "Portas e frentes de gaveta abaixo de 1280", E,
@@ -111,39 +127,39 @@ class Cotagem:
     linhas: list
 
 
+# Distâncias em mm de PAPEL ("altura no papel"): 10 mm até à 1.ª linha de cota e 7 mm entre
+# linhas, em qualquer escala.
 ALCADO_BASE = [
-    Linha(1950, "DV_Art_Inferiores", BLUE, "Inferiores (larguras em baixo)", {1958: "1"}),
-    Linha(1950, "DV_Art_Colunas", RED, "Colunas (larguras em baixo)", {1958: "1"}),
-    Linha(1950, "DV_Art_Nichos", BLACK, "Intermedios (larguras em cima)", {1958: "0"}),
-    Linha(1950, "DV_Art_Superiores", MAG, "Superiores (larguras em cima)", {1958: "0"}),
-    Linha(1954, "DV_Art_Alturas", BLACK, "Alturas (uma so cadeia)", {1959: "1"}),
-    Linha(1952, "", GREEN, "Paredes (largura e altura)", {1958: "1", 2057: "1"}),
+    Linha(1950, "DV_Art_Chao", AZUL, "Chao: inferiores e colunas (larguras em baixo)", {1958: "1"}),
+    Linha(1950, "DV_Art_Nichos", PRETO, "Intermedios (larguras em cima)", {1958: "0"}),
+    Linha(1950, "DV_Art_Superiores", VERM, "Superiores (larguras em cima)", {1958: "0"}),
+    Linha(1954, "DV_Art_Alturas", PRETO, "Alturas (uma so cadeia)", {1959: "1"}),
+    Linha(1952, "", VERDE, "Paredes (largura e altura)", {1958: "1", 2057: "1"}),
 ]
-# Testado a 05-10: o DV_Alcado sai limpo (uma cadeia de alturas 880/620/810 + 2310). O
-# DV_Alcado_Frentes acrescenta cadeias com as folgas das frentes (1,8 / 3,5 mm) e linhas de
-# chamada a atravessar o alçado: fica como opção; as medidas das portas vão nas etiquetas.
+# 1.ª volta (05-10): o DV_Alcado_Frentes acrescenta cadeias com as folgas das frentes (1,8 / 3,5
+# mm) e linhas de chamada a atravessar o alçado: fica só como opção; as medidas das portas e
+# gavetas vão nas etiquetas (pedido do Paulo: sem folgas).
 ALCADO = [
     Cotagem("DV_Alcado", "Alcado A3: larguras por fiada, uma cadeia de alturas, paredes",
-            150, 150, False, ALCADO_BASE),
+            10, 7, True, ALCADO_BASE),
     Cotagem("DV_Alcado_Frentes", "Alcado A3 + cadeias das frentes (carregado: folgas incluidas)",
-            150, 150, False, ALCADO_BASE + [
-                Linha(1960, "DV_Frentes_Baixo", BLACK, "Frentes de baixo (larguras)", {1958: "1"}),
-                Linha(1960, "DV_Frentes_Cima", BLACK, "Frentes de cima (larguras)", {1958: "0"}),
-                Linha(1955, "DV_Frentes", BLACK, "Frentes (alturas)"),
+            10, 7, True, ALCADO_BASE + [
+                Linha(1960, "DV_Frentes_Baixo", PRETO, "Frentes de baixo (larguras)", {1958: "1"}),
+                Linha(1960, "DV_Frentes_Cima", PRETO, "Frentes de cima (larguras)", {1958: "0"}),
+                Linha(1955, "DV_Frentes", PRETO, "Frentes (alturas)"),
             ]),
 ]
-# Planta, testado a 05-10 na ORC_260881_2604023: com a "Depth dim" (1956) das linhas Furniture
-# a profundidade cai por cima do desenho; com linhas "Furniture depth" (1962, 1963=1) vai para
-# longe, com linhas de chamada a atravessar a planta. Fica sem profundidades: vão na tabela.
+# Planta: sem profundidades (com a "Depth dim" caíam por cima do desenho; com "Furniture depth"
+# iam para longe com linhas a atravessar a planta). Chão numa só cadeia (inferiores + colunas),
+# para não repetir a largura das colunas em três linhas.
 PLANTA = [
-    Cotagem("DV_Planta", "Planta A3: inferiores, colunas, tampos, superiores, paredes",
-            250, 200, False, [
-                Linha(1950, "DV_Art_Inferiores", BLUE, "Inferiores", {1956: "0"}),
-                Linha(1950, "DV_Art_Colunas", RED, "Colunas", {1956: "0"}),
-                Linha(1951, "DV_Tampos", BLACK, "Tampos", {1956: "0", 1957: "0"}),
-                Linha(1950, "DV_Art_Nichos", BLACK, "Intermedios", {1956: "0"}),
-                Linha(1950, "DV_Art_Superiores", MAG, "Superiores", {1956: "0"}),
-                Linha(1952, "", GREEN, "Paredes"),
+    Cotagem("DV_Planta", "Planta A3: chao, tampos, intermedios, superiores, paredes",
+            10, 7, True, [
+                Linha(1950, "DV_Art_Chao", AZUL, "Chao: inferiores e colunas", {1956: "0"}),
+                Linha(1951, "DV_Tampos", PRETO, "Tampos", {1956: "0", 1957: "0"}),
+                Linha(1950, "DV_Art_Nichos", PRETO, "Intermedios", {1956: "0"}),
+                Linha(1950, "DV_Art_Superiores", VERM, "Superiores", {1956: "0"}),
+                Linha(1952, "", VERDE, "Paredes"),
             ]),
 ]
 
@@ -167,29 +183,35 @@ class Anotacao:
     linhas: list
 
 
-# Blocos em I:\Library\AttDWG, feitos pelo criar_blocos_etiqueta.ps1. O iMos insere-os a escala
-# 1 no modelo, por isso vão desenhados em mm do modelo para 1:20 e NÃO são anotativos (os
-# DV_Artigo_Medidas / DV_Frente_Medidas da 1.ª volta eram anotativos e saíam minúsculos).
-BLOCO_MODULO = "DV_Etq_Modulo"   # nome + L x A x P, enquadrado
-BLOCO_NOME = "DV_Etq_Nome"       # só o nome, enquadrado (planta: as medidas vão na tabela)
-BLOCO_FRENTE = "DV_Etq_Frente"   # L x A da porta / frente de gaveta
+# Blocos em I:\Library\AttDWG (criar_blocos_etiqueta.ps1, versão "papel"): anotativos, em mm
+# de papel, sem moldura, texto azul ou vermelho. Seguem a escala de anotação que o Output
+# batch acerta pela escala da folha. (Os DV_Etq_* da volta 1.5 eram em mm do modelo.)
+MOD_AZUL, MOD_VERM = "DV_Lbl_Modulo_Azul", "DV_Lbl_Modulo_Verm"
+NOME_AZUL, NOME_VERM = "DV_Lbl_Nome_Azul", "DV_Lbl_Nome_Verm"
+FRENTE = "DV_Lbl_Frente"
 
-ETQ_MODULO_ALCADO = Etiqueta(3, "DV_Art_Todos", (0, 1), (0, 1), (0, -40), BLOCO_MODULO,
-                             "Modulos: nome + L x A x P (no topo do modulo)")
+ETQ_MODULOS_ALCADO = [
+    Etiqueta(3, "DV_Art_Azul", (0, 1), (0, 1), (0, -40), MOD_AZUL,
+             "Modulos ate 1490: nome + L x A x P (azul)"),
+    Etiqueta(3, "DV_Art_Verm", (0, 1), (0, 1), (0, -40), MOD_VERM,
+             "Modulos acima de 1490 (vermelho)"),
+]
 ANOTACAO = [
-    Anotacao("DV_Alcado_Etiquetas", "Alcado: nome e medidas do modulo + medidas das frentes", [
-        ETQ_MODULO_ALCADO,
-        Etiqueta(1, "DV_Frentes", (0, 0), (0, 0), (0, 0), BLOCO_FRENTE,
-                 "Portas e gavetas: L x A (ao centro)"),
-    ]),
+    Anotacao("DV_Alcado_Etiquetas", "Alcado: nome e medidas do modulo + medidas das frentes",
+             ETQ_MODULOS_ALCADO + [
+                 Etiqueta(1, "DV_Frentes", (0, 0), (0, 0), (0, 0), FRENTE,
+                          "Portas e gavetas: L x A (ao centro)"),
+             ]),
     Anotacao("DV_Alcado_Etiquetas_Modulos", "Alcado: so nome e medidas do modulo",
-             [ETQ_MODULO_ALCADO]),
-    Anotacao("DV_Planta_Etiquetas", "Planta: nome do modulo (as medidas vao na tabela)", [
-        Etiqueta(3, "DV_Art_Inferiores", (0, 0), (0, 0), (0, 0), BLOCO_NOME, "Inferiores (ao centro)"),
-        Etiqueta(3, "DV_Art_Colunas", (0, 0), (0, 0), (0, 0), BLOCO_NOME, "Colunas (ao centro)"),
-        Etiqueta(3, "DV_Art_Nichos", (0, 0), (0, 0), (0, 0), BLOCO_NOME, "Intermedios (ao centro)"),
-        Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), BLOCO_NOME,
-                 "Superiores (junto a parede)"),
+             ETQ_MODULOS_ALCADO),
+    Anotacao("DV_Planta_Etiquetas", "Planta: nome do modulo + medidas das frentes", [
+        Etiqueta(3, "DV_Art_Chao", (0, 0), (0, 0), (0, 0), NOME_AZUL, "Chao (ao centro, azul)"),
+        Etiqueta(3, "DV_Art_Nichos", (0, 0), (0, 0), (0, 0), NOME_AZUL,
+                 "Intermedios (ao centro, azul)"),
+        Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
+                 "Superiores (junto a parede, vermelho)"),
+        Etiqueta(1, "DV_Frentes", (0, -1), (0, 1), (0, -30), FRENTE,
+                 "Portas e gavetas: L x A (a frente da porta)"),
     ]),
 ]
 
@@ -344,7 +366,9 @@ def sql_moldura(dwt: Path) -> list[str]:
 
 BATCH = "DV_Desenhos_Obra"
 BATCH_NOTA = "Drawing Views por obra: planta + alcados em A3 (moldura DV_A3_Obra), layouts e PDF"
-BATCH_SAIDA = r"C:\IMOS_Output_Batches\DV_Desenhos"
+# Com "...\DV_Desenhos" o batch gravou o ficheiro C:\IMOS_Output_Batches\DV_Desenhos.pdf (o fim
+# do caminho vira o nome); com a barra no fim deve usar o nome da obra (a confirmar).
+BATCH_SAIDA = "C:\\IMOS_Output_Batches\\"
 
 # Saída "Drawing views" de um Output batch: CMSOUTPUTITEM.TYPE = 44 e PARAM_3 = JSON.
 # Formato lido da base depois de a configurar no Element Manager (05-10-2026):
@@ -355,14 +379,18 @@ BATCH_SAIDA = r"C:\IMOS_Output_Batches\DV_Desenhos"
 SAIDA_DESENHOS = {
     "submittaldrawingdefinition": {
         "general": {"generate": 3, "outputpath": BATCH_SAIDA},
+        # planta como o Paulo a quer (05-10): sem linhas escondidas, com cor e com conectores
         "planview": {"layout": "DV_A3_Obra", "scaling": 2, "visugrad": 4,
                      "dimensioning": "DV_Planta", "annotation": "DV_Planta_Etiquetas",
-                     "hiddenlines": 0, "contour": 0, "coloration": 0, "connector": 0},
+                     "hiddenlines": 3, "contour": 0, "coloration": 1, "connector": 1},
+        # alçado como o Paulo o afinou nas Vistas 3 e 4 (05-10): linhas escondidas "All",
+        # Secção (= hatch), 2D Symbols e conectores. As escondidas vão para o layer
+        # IMOS_SECTION_BACK_HIDDEN (cor 254): o DV_PlotStyle.ctb da moldura escurece-as.
         "elevation": {"layout": "DV_A3_Obra", "scaling": 2, "visugrad": 4,
                       "dimensioning": "DV_Alcado", "annotation": "DV_Alcado_Etiquetas",
-                      "hiddenlines": 2, "surfacesymbol": 0, "surfacename": 0, "materialsymbol": 0,
-                      "materialname": 0, "hatch": 0, "coloration": 0, "drawingsymbol": 1,
-                      "connector": 0},
+                      "hiddenlines": 0, "surfacesymbol": 0, "surfacename": 0, "materialsymbol": 0,
+                      "materialname": 0, "hatch": 1, "coloration": 0, "drawingsymbol": 1,
+                      "connector": 1},
     }
 }
 

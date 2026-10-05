@@ -4,16 +4,22 @@
 
 .DESCRIPTION
     Parte da moldura de obra A3 do kit (DmLayout_DinA3_order.dwt), para herdar a pagina
-    "PDF_LS_A3" (A3 horizontal, plotter PDF). Apaga a moldura e as 4 janelas do kit e desenha:
+    "PDF_LS_A3" (A3 horizontal, plotter PDF). Apaga tudo o que o kit tem no layout e desenha
+    (versao 8, pedido do Paulo a 05-10: "so o retangulo exterior e o da legenda"):
 
-      - moldura 400 x 270 mm (a do kit tem o mesmo tamanho) e margem interior de 5 mm;
-      - legenda 180 x 26 mm em baixo a direita, com os campos que o iMos preenche:
+      - UM retangulo exterior de 406 x 272 mm (a area imprimivel do A3 "expand" e' 408 x 275);
+      - a legenda, 180 x 22 mm, encostada ao canto inferior direito da moldura, com os campos
+        que o iMos preenche:
           Cliente (IMOSORDERCUSTOMER)   Obra / Encomenda (IMOSORDERID)   Data (IMOSORDERACTDATE)
           Desenho (IMOSVSLAYOUTNAME)    Escala (IMOSVSSCALE)   Folha (IMOSVSLAYOUTPAGE)
           Desenhador (IMOSORDEREMPLOYEE)
-        Os campos nao tem valor por defeito: se o iMos nao os preencher, ficam em branco
-        (nunca aparece o nome do campo, como acontecia na moldura STANDARD);
-      - UMA janela (viewport) grande por cima da legenda, para a vista.
+        Os campos nao tem valor por defeito: se o iMos nao os preencher, ficam em branco;
+      - UMA janela (viewport) com toda a largura, por cima da legenda, num layer que nao
+        imprime (DV_JANELA): no PDF so ficam a moldura e a legenda.
+
+    Tudo esta CENTRADO NA ORIGEM (0,0). O iMos cria cada layout novo com a vista do papel
+    centrada em (0,0) (lido no DWG da obra a 05-10): com a moldura de 0,0 a 400,270 o layout
+    abria descentrado e o Paulo tinha de o centrar a mao.
 
     A legenda e' um bloco (DV_A3_Legenda) com atributos, como a do kit. O layout passa a
     chamar-se DV_A3_Obra. Nada de "Lanca Encanto" nem "LE": a LE trabalha para outros clientes.
@@ -25,7 +31,11 @@
 #>
 param(
     [Parameter(Mandatory)][string]$Saida,
-    [string]$Kit = 'I:\Library\Bord\DmLayout_DinA3_order.dwt'
+    [string]$Kit = 'I:\Library\Bord\DmLayout_DinA3_order.dwt',
+    [string]$PaginaPdf = 'PDF_LS_A3',
+    # DV_PlotStyle.ctb (criar_ctb_dv.py): o iX_PlotStyle com a cor 254 das linhas escondidas
+    # escurecida. Tem de estar em I:\Plotters\Plot Styles.
+    [string]$EstiloImpressao = 'DV_PlotStyle.ctb'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
@@ -36,24 +46,26 @@ $dwg = Join-Path $Saida 'DV_A3_Obra.dwg'
 if (Test-Path $dwg) { throw "Ja existe: $dwg (apagar a mao antes de repetir)" }
 Copy-Item $Kit $base -Force
 
-# legenda: x 215..395, y 5..31; linha do meio em y=18
-$x0, $x1, $y0, $ym, $y1 = 215, 395, 5, 18, 31
-$cima = @(@{x = 215; c = 'Cliente'; t = 'IMOSORDERCUSTOMER'; h = 3.0 },
-          @{x = 295; c = 'Obra / Encomenda'; t = 'IMOSORDERID'; h = 2.6 },
-          @{x = 355; c = 'Data'; t = 'IMOSORDERACTDATE'; h = 2.6 })
-$baixo = @(@{x = 215; c = 'Desenho'; t = 'IMOSVSLAYOUTNAME'; h = 3.0 },
-           @{x = 295; c = 'Escala'; t = 'IMOSVSSCALE'; h = 3.0 },
-           @{x = 320; c = 'Folha'; t = 'IMOSVSLAYOUTPAGE'; h = 3.0 },
-           @{x = 340; c = 'Desenhador'; t = 'IMOSORDEREMPLOYEE'; h = 2.6 })
+# moldura: x -203..203, y -136..136
+$mx, $my = 203, 136
+# legenda: 180 x 22 no canto inferior direito; linha do meio a meia altura
+$x0, $x1, $y0, $y1 = ($mx - 180), $mx, (-$my), (-$my + 22)
+$ym = $y0 + 11
+$cima = @(@{x = $x0; c = 'Cliente'; t = 'IMOSORDERCUSTOMER'; h = 3.0 },
+          @{x = $x0 + 80; c = 'Obra / Encomenda'; t = 'IMOSORDERID'; h = 2.6 },
+          @{x = $x0 + 140; c = 'Data'; t = 'IMOSORDERACTDATE'; h = 2.6 })
+$baixo = @(@{x = $x0; c = 'Desenho'; t = 'IMOSVSLAYOUTNAME'; h = 3.0 },
+           @{x = $x0 + 80; c = 'Escala'; t = 'IMOSVSSCALE'; h = 3.0 },
+           @{x = $x0 + 105; c = 'Folha'; t = 'IMOSVSLAYOUTPAGE'; h = 3.0 },
+           @{x = $x0 + 125; c = 'Desenhador'; t = 'IMOSORDEREMPLOYEE'; h = 2.6 })
 
 Reset-AttDef
 $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', '_.PSPACE', '_.ERASE', '_ALL', '')
 # o estilo "IMOS" do kit tem altura fixa (o -ATTDEF deixa de perguntar a altura e o script
 # desalinha); o "Arial" do kit tem altura livre. A consola nao tem -STYLE.
 $L += @('TEXTSTYLE', 'Arial')
-# moldura exterior fina e interior a 0,5 mm
-$L += @('_.RECTANG', '_W', '0', '_NON', '0,0', '_NON', '400,270')
-$L += @('_.RECTANG', '_W', '0.5', '_NON', '5,5', '_NON', '395,265')
+# moldura exterior a 0,5 mm e a legenda (linhas finas), encostada a moldura
+$L += @('_.RECTANG', '_W', '0.5', '_NON', "-$mx,-$my", '_NON', "$mx,$my")
 $L += @('_.RECTANG', '_W', '0', '_NON', "$x0,$y0", '_NON', "$x1,$y1")
 $L += Linha $x0 $ym $x1 $ym
 foreach ($c in $cima) { if ($c.x -gt $x0) { $L += Linha $c.x $ym $c.x $y1 } }
@@ -61,17 +73,60 @@ foreach ($c in $baixo) { if ($c.x -gt $x0) { $L += Linha $c.x $y0 $c.x $ym } }
 foreach ($par in @(@{l = $cima; yt = $y1; yb = $ym }, @{l = $baixo; yt = $ym; yb = $y0 })) {
     foreach ($c in $par.l) {
         $L += Texto $c.c 'TL' ($c.x + 1.2) ($par.yt - 1.2) 1.6
-        $L += AttDef $c.t 'BL' ($c.x + 1.5) ($par.yb + 2.2) $c.h
+        $L += AttDef $c.t 'BL' ($c.x + 1.5) ($par.yb + 2.0) $c.h
     }
 }
 # tudo o que esta' dentro da legenda vira o bloco DV_A3_Legenda, ja inserido no lugar
-# (a consola nao tem -INSERT: usa-se o modo "Convert to block" do -BLOCK)
+# (a consola nao tem -INSERT: usa-se o modo "Convert to block" do -BLOCK). A selecao por
+# janela so apanha o que esta' no ecra: com a moldura centrada na origem, ZOOM E antes.
+$L += @('_.ZOOM', '_E')
 $L += @('-BLOCK', 'DV_A3_Legenda', 'O', 'C', '_NON', '0,0', '_W', '_NON', "$($x0 - 1),$($y0 - 1)", '_NON', "$($x1 + 1),$($y1 + 1)", '')
-# janela da vista, por cima da legenda
-$L += @('_.MVIEW', '_NON', '7,35', '_NON', '393,263')
+# janela da vista: toda a largura, por cima da legenda, num layer que nao imprime
+$L += @('-LAYER', '_M', 'DV_JANELA', '_P', '_N', 'DV_JANELA', '')
+$L += @('_.MVIEW', '_NON', "$(-$mx + 2),$($y1 + 2)", '_NON', "$($mx - 2),$($my - 2)")
+$L += @('-LAYER', '_S', '0', '')
+$L += @('_.ZOOM', '_E')
 $L += @('LAYOUT', '_R', 'DinA3_order', 'DV_A3_Obra')
 $L += @('_.SAVEAS', '2018', $dwg)
 
+$bruto = Join-Path $Saida 'DV_A3_Obra.passo1.dwg'
+$L[-1] = $bruto
 $log = Invoke-ConsolaIxCad -Dwg $base -Linhas $L -Log (Join-Path $Saida 'DV_A3_Obra.log') -TimeoutSec 120
-if (-not (Test-Path $dwg)) { throw "Nao gravou $dwg (ver DV_A3_Obra.log)" }
-"Criado: $dwg"
+if (-not (Test-Path $bruto)) { throw "Nao gravou $bruto (ver DV_A3_Obra.log)" }
+
+# Estilo de impressao da pagina (I:\Plotters\Plot Styles). O iX_PlotStyle.ctb mantem o
+# vermelho, azul e magenta das cotas e passa os cinzentos (8, 9, 250-253) a preto; o
+# DV_PlotStyle.ctb faz o mesmo e escurece tambem a 254 das linhas escondidas. Sem eles, o PDF
+# sai com as linhas escondidas e de fundo num cinzento quase invisivel (testes 05-10).
+# A consola nao tem -PAGESETUP: muda-se o campo 7 do AcDbPlotSettings no DXF e volta a DWG.
+$dxf = Join-Path $Saida 'DV_A3_Obra.passo2.dxf'
+Invoke-ConsolaIxCad -Dwg $bruto -Linhas ((Get-InicioScript) + @('_.SAVEAS', '_DXF', '16', $dxf)) -Log (Join-Path $Saida 'passo2.log') -TimeoutSec 120 | Out-Null
+#
+# Na mesma passagem a pagina deixa de imprimir "Extents, ajustar a folha" e passa a
+# "Layout, 1:1", com a origem deslocada para o centro do A3 (210 - margem esquerda,
+# 148,5 - margem de baixo; margens do "ISO expand A3" = 5,79 / 10,79). A moldura, centrada
+# na origem, sai assim centrada na folha e em tamanho real (testado com -PLOT na consola).
+$ci = [Globalization.CultureInfo]::InvariantCulture
+$pagina = @{ '7' = $EstiloImpressao; '74' = '5'; '75' = '16'; '142' = '1.0'; '143' = '1.0'; '147' = '1.0' }
+$t = [IO.File]::ReadAllLines($dxf, [Text.Encoding]::Default)
+$mudou = 0
+for ($i = 0; $i -lt $t.Length - 3; $i++) {
+    if ($t[$i].Trim() -eq '1' -and $t[$i + 1] -eq $PaginaPdf) {
+        # o AcDbPlotSettings do layout e o da pagina com nome; acaba no "100" seguinte
+        $margem = @{}
+        for ($j = $i + 2; $j -lt [Math]::Min($i + 90, $t.Length - 1); $j += 2) {
+            $c = $t[$j].Trim()
+            if ($c -eq '100') { break }
+            if ($c -in '40', '41') { $margem[$c] = [double]::Parse($t[$j + 1].Trim(), $ci) }
+            if ($pagina.ContainsKey($c)) { $t[$j + 1] = $pagina[$c]; $mudou++ }
+            if ($c -eq '70') { $t[$j + 1] = [string]([int]$t[$j + 1].Trim() -bor 16) }  # escala standard
+            if ($c -eq '46') { $t[$j + 1] = (210 - $margem['40']).ToString($ci) }
+            if ($c -eq '47') { $t[$j + 1] = (148.5 - $margem['41']).ToString($ci) }
+        }
+    }
+}
+if ($mudou -lt 1) { throw "Nao encontrei a pagina '$PaginaPdf' no DXF" }
+[IO.File]::WriteAllLines($dxf, $t, [Text.Encoding]::Default)
+Invoke-ConsolaIxCad -Dwg $dxf -Linhas ((Get-InicioScript) + @('_.SAVEAS', '2018', $dwg)) -Log (Join-Path $Saida 'passo3.log') -TimeoutSec 120 | Out-Null
+if (-not (Test-Path $dwg)) { throw "Nao gravou $dwg (ver passo3.log)" }
+"Criado: $dwg (estilo de impressao $EstiloImpressao)"
