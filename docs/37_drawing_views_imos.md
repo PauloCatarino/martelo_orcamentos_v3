@@ -468,6 +468,32 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   - impresso numa cópia da APAGAR_15: "—5000—" com o texto ao meio e os "50" ao lado.
   - Cuidado: o texto de comandos só serve se a obra tiver os 4 estilos. Se faltar um, o
     `-DIMSTYLE` descarrila.
+### R6: perspetiva pelo Document Manager e DV_VERMELHO centrado (06-10, por testar)
+
+- **Resultado da R5:** o Zoom, o texto centrado (azul/verde) e as posições ficaram bem. O
+  DV_PRETO só ficou certo depois de o Paulo o mudar à mão na obra (o PDF era anterior); as
+  cotas não têm overrides próprios.
+- **DV_VERMELHO** igual aos outros 4 (`CENTRADOS`). Ficheiros em
+  `Pasta_Transferencia\Estilos_cota_R6`: `imosBlocks.dwg` e o texto de comandos (5 estilos).
+- **Perspetiva:** o batch "Drawing views" só tem planta e alçados. A perspetiva vem do
+  **Document Manager 2.0** (saída "Create Document Manager 2.0 data" do batch, ou à mão em
+  DESIGN → Output).
+  - Princípio `DV_Roup_Perspetiva`: um layout `DV_A3_Roup_Persp`, com uma janela
+    "Perspetiva"; nível 9999 "show object order" (a obra inteira) e VisuLevel 4.
+  - Saída: DWG + impressora com a página `PDF_LS_A3`, para
+    `I:\Factory\Imorder\<obra>\DOC\DV_Perspetiva_3D`.
+  - **Moldura `DV_A3_Roup_Persp`** (`criar_moldura_a3.ps1 -Legenda Roupeiro -LayoutNome
+    DV_A3_Roup_Persp -JanelaDocMan Perspetiva`):
+    - a mesma legenda;
+    - a janela com XDATA `IMOS / DocMan / UserName:Perspetiva` (é assim que a LE dá nome
+      às janelas: `A3_JF_VIVA_FrtEsqCimaPresp_V1`);
+    - vista −1,−1,0.7 (frente-esquerda, de cima) e estilo Realistic.
+    - A consola não tem `-VPOINT`: a direção (16/26/36) e o estilo (348) mudam-se no DXF.
+  - Tabelas escritas: DOCMANPRINCIPLES, LAYOUTS, VIEWPORTS, FUNCATTR, LAYOUTPLOTS,
+    FILENAMEATTR, POSSIBLEVIEWS, PLOTSETTINGS (linha da moldura DV) e pasta (tipo 350).
+  - **Falta:** o número de tipo da saída "Document Manager 2.0" no `CMSOUTPUTITEM`. Nenhum
+    batch da LE a usa. O Paulo junta-a no Element Manager e eu leio-a da base.
+
 - **Cotas verticais longe do alçado:** ficam à direita do **limite** da vista, que o iMos põe
   300 mm depois do último artigo, mais a distância da 1.ª cota (9 mm, a mesma das cotas de
   cima e de baixo). Na Vista 2 a 1:25 eram ~1280 mm do modelo. Só a distância é nossa, e

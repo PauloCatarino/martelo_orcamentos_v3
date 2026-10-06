@@ -1627,4 +1627,33 @@ Guião de teste:
    - continuam as posições afinadas pelo Paulo (portas por cima, artigo da planta no canto
      da frente).
 
+**Resultado (06-10):** ficou bem. O DV_PRETO só mudou depois de o Paulo o mudar à mão na
+obra, e o DV_VERMELHO deve ficar igual aos outros.
+
+## Drawing Views: roupeiros, ronda R6 (2026-10-06)
+
+Feito (doc 37, R6):
+
+- DV_VERMELHO centrado como os outros;
+- folha com a perspetiva pelo Document Manager: princípio `DV_Roup_Perspetiva` + moldura
+  `DV_A3_Roup_Persp`.
+
+Guião de teste:
+
+1. **Estilos:**
+   - na APAGAR_15 aberta, colar na linha de comandos o
+     `Pasta_Transferencia\Estilos_cota_R6\comandos_estilos_APAGAR_15.txt` (Ctrl+A/Ctrl+C no
+     Bloco de Notas, Ctrl+V na linha de comandos) e Ctrl+S;
+   - para as obras novas, copiar o `imosBlocks.dwg` da mesma pasta para o
+     `config\imosBlocks.dwg` (por cima do da R5).
+2. **Perspetiva à mão** (primeiro teste):
+   - Element Manager → ⟳;
+   - no iX CAD com a APAGAR_15: DESIGN → separador Output → Document Manager → escolher
+     **`DV_Roup_Perspetiva`** → Apply → selecionar tudo (`ALL` + Enter);
+   - esperado em `I:\Factory\Imorder\APAGAR_15\DOC\`: `DV_Perspetiva_3D` em PDF e em DWG,
+     com o L inteiro em 3D (Realistic), na folha A3 com a legenda de 2 linhas.
+3. **Se estiver bem:** Element Manager → Output batches → `DV_Desenhos` → **`DV_Roupeiros`**
+   → acrescentar a saída **"Document Manager 2.0"** com o princípio `DV_Roup_Perspetiva`
+   → Guardar. Depois disso eu leio o tipo na base e passo-o para o script.
+
 **Por testar:** tudo.

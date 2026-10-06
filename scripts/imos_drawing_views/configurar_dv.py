@@ -489,6 +489,7 @@ def sql_tabela() -> list[str]:
 MOLDURAS = {
     "DV_A3_Obra": "A3 horizontal de obra (Drawing Views): legenda neutra, sem nome da empresa",
     "DV_A3_Roupeiro": "A3 horizontal de roupeiros (Drawing Views): legenda de 2 linhas com o artigo",
+    "DV_A3_Roup_Persp": "A3 horizontal de roupeiros (Document Manager): janela 'Perspetiva' em 3D",
 }
 
 
@@ -604,10 +605,113 @@ def sql_batch() -> list[str]:
     return s
 
 
+# ----------------------------------------------------------------------------- Document Manager
+
+# R6 (06-10): folha com a perspetiva. O Output batch "Drawing views" só faz planta e alçados
+# (chaves no imosr25.arx); a perspetiva vem do Document Manager 2.0, que se corre à mão no
+# iX CAD (DESIGN > Output) ou num batch ("Create Document Manager 2.0 data"). Tabelas
+# DOCMAN* (lidas a partir do Report_JF_VIVA_Art_Princ da LE, que tem uma janela "Isometric"):
+# - o layout é uma moldura (BINDATA LAYDWT + DOCMANBORDERPRINCIPLE) com janelas com nome:
+#   XDATA IMOS/DocMan/"UserName:<nome>" (criar_moldura_a3.ps1 -JanelaDocMan);
+# - a janela mostra a obra inteira: nível 9999, função "show object order", VisuLevel 4;
+# - as páginas de impressão são as que o layout guarda (PDF_LS_A3, PDF A3 com DV_PlotStyle);
+# - o ficheiro vai para \<Factory>\Imorder\<obra>\DOC\ (ajuda "Configure the File Path").
+@dataclass
+class JanelaDM:
+    numero: int
+    nome: str
+    nivel: int
+    funcao: str
+    filtro: str = ""
+    zoom: int = 1          # ZOOMALL (a LE usa 1)
+    sequencia: int = 1     # COMBINEWITHPREV (a LE usa 1)
+    principal: bool = True
+    atributos: dict = field(default_factory=dict)
+
+
+@dataclass
+class LayoutDM:
+    numero: int
+    moldura: str
+    comentario: str
+    paginas: list
+    ficheiro: list         # (ATTRIBUTETYPE, ATTRIBUTE): 0 texto livre, 1 propriedade
+    janelas: list
+    dwg: bool = True       # como a LE: DWG + impressora (a página PDF_LS_A3 imprime para PDF)
+    impressora: bool = True
+
+
+@dataclass
+class DocMan:
+    nome: str
+    comentario: str
+    layouts: list
+
+
+PAGINA_A3 = ("PDF_LS_A3", "AutoCAD PDF (High Quality Print).pc3", "ISO_expand_A3_(420.00_x_297.00_MM)")
+
+DOCMAN = [
+    DocMan("DV_Roup_Perspetiva", "Roupeiros: folha A3 com a obra inteira em perspetiva (3D, Realistic)", [
+        LayoutDM(1, "DV_A3_Roup_Persp", "A3: perspetiva da obra", [PAGINA_A3[0]],
+                 [(0, "DV_Perspetiva_3D")],
+                 [JanelaDM(1, "Perspetiva", 9999, "show object order", atributos={"VisuLevel": "4"})]),
+    ]),
+]
+
+
+def sql_docman() -> list[str]:
+    nomes = _so_dv([d.nome for d in DOCMAN])
+    molduras = _so_dv(sorted({ly.moldura for d in DOCMAN for ly in d.layouts}))
+    s = ["-- document manager"]
+    for tab in ("DOCMANFUNCATTR", "DOCMANVIEWPORTS", "DOCMANFILENAMEATTR", "DOCMANLAYOUTPLOTS", "DOCMANLAYOUTS"):
+        s.append(f"DELETE FROM dbo.{tab} WHERE NAME IN ({lista(nomes)});")
+    s += [
+        f"DELETE FROM dbo.DOCMANPRINCIPLES WHERE NAME IN ({lista(nomes)});",
+        f"DELETE FROM dbo.DOCMANPRINCIPLESFOLDER WHERE NAME IN ({lista(nomes)}) AND TYPE = 350;",
+        # páginas e janelas conhecidas de cada moldura DV_* (linhas da própria moldura)
+        f"DELETE FROM dbo.DOCMANPLOTSETTINGS WHERE LAYOUT IN ({lista(molduras)});",
+        f"DELETE FROM dbo.DOCMANPOSSIBLEVIEWS WHERE LNAME IN ({lista(molduras)});",
+        *_pasta("DOCMANPRINCIPLESFOLDER"),
+    ]
+    vistos = set()
+    for d in DOCMAN:
+        s.append("INSERT INTO dbo.DOCMANPRINCIPLES (NAME, COMMENT, SOURCE, PRODUCER, SYS, PDFOUTPUT, SKIPSAMEFILENAMES) "
+                 f"VALUES ({lit(d.nome)}, {lit(d.comentario)}, {lit(SOURCE)}, N'', 0, 0, 0);")
+        for ly in d.layouts:
+            s.append("INSERT INTO dbo.DOCMANLAYOUTS (NAME, LNUM, LNAME, COMMENT, DWG, PDF, EPS, PNG, JPG, IMOSEPS, "
+                     f"PRINTER, BW_MODE, FILLCHAR) VALUES ({lit(d.nome)}, {ly.numero}, {lit(ly.moldura)}, "
+                     f"{lit(ly.comentario)}, {lit(ly.dwg)}, 0, 0, 0, 0, 0, {lit(ly.impressora)}, 0, N'_');")
+            for pg in ly.paginas:
+                s.append("INSERT INTO dbo.DOCMANLAYOUTPLOTS (NAME, LNUM, PLOTSETTINGS) "
+                         f"VALUES ({lit(d.nome)}, {ly.numero}, {lit(pg)});")
+            for n, (tipo, valor) in enumerate(ly.ficheiro, start=1):
+                s.append("INSERT INTO dbo.DOCMANFILENAMEATTR (NAME, LNUM, SEQUENCENUM, ATTRIBUTETYPE, ATTRIBUTE, "
+                         f"ATTRIBUTELENGTH, ATTRIBUTESTART) VALUES ({lit(d.nome)}, {ly.numero}, {n}, {tipo}, "
+                         f"{lit(valor)}, 0, 0);")
+            for j in ly.janelas:
+                s.append("INSERT INTO dbo.DOCMANVIEWPORTS (NAME, LNUM, VNUM, VNAME, COMMENT, OBJECTLEVEL, OBJECTFILTER, "
+                         "FUNCTIONNAME, SPOTLIGHTINLEVEL, ZOOMALL, COMBINEWITHPREV, ISMAINVIEW) VALUES ("
+                         f"{lit(d.nome)}, {ly.numero}, {j.numero}, {lit(j.nome)}, N'', {j.nivel}, {lit(j.filtro)}, "
+                         f"{lit(j.funcao)}, 0, {j.zoom}, {j.sequencia}, {lit(j.principal)});")
+                for at, val in j.atributos.items():
+                    s.append("INSERT INTO dbo.DOCMANFUNCATTR (NAME, LNUM, VNUM, ATTRIBUTE, ATTRVALUE) "
+                             f"VALUES ({lit(d.nome)}, {ly.numero}, {j.numero}, {lit(at)}, {lit(val)});")
+                if (ly.moldura, j.nome) not in vistos:
+                    vistos.add((ly.moldura, j.nome))
+                    s.append("INSERT INTO dbo.DOCMANPOSSIBLEVIEWS (LNAME, VNAME) "
+                             f"VALUES ({lit(ly.moldura)}, {lit(j.nome)});")
+            if (ly.moldura, "pagina") not in vistos:
+                vistos.add((ly.moldura, "pagina"))
+                s.append("INSERT INTO dbo.DOCMANPLOTSETTINGS (NAME, PLOTTER, PAPERFMT, ROTATION, LAYOUT) "
+                         f"VALUES ({lit(PAGINA_A3[0])}, {lit(PAGINA_A3[1])}, {lit(PAGINA_A3[2])}, 0, {lit(ly.moldura)});")
+        s.append(f"INSERT INTO dbo.DOCMANPRINCIPLESFOLDER (NAME, TYPE, PARENT_ID) VALUES ({lit(d.nome)}, 350, @pasta);")
+    return s
+
+
 def gerar_sql(molduras: list[Path] | None = None) -> str:
     corpo = (sql_condicoes() + sql_cotagem("DIMELEV", 487, ALCADO)
              + sql_cotagem("DIMPLAN", 486, PLANTA) + sql_cotagem("DIMSECTSIDE", 494, CORTE)
-             + sql_anotacao() + sql_tabela() + sql_batch())
+             + sql_anotacao() + sql_tabela() + sql_batch() + sql_docman())
     for dwt in molduras or []:
         corpo += sql_moldura(dwt)
     return "\n".join([

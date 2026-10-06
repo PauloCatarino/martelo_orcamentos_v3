@@ -57,7 +57,17 @@ param(
     # (8,1 MB -> 4,6 MB, 05-10). O deslocamento depende da pagina; para o layout "1" (A3
     # "full bleed") foi medido num PDF de teste: 203.6,-1.1 centra a moldura na folha.
     [switch]$SemDxf,
-    [string]$OffsetPlot = '203.6,-1.1'
+    [string]$OffsetPlot = '203.6,-1.1',
+    # Layout para o Document Manager (R6, 06-10: folha com a perspetiva): a janela leva um nome
+    # (XDATA IMOS / DocMan / "UserName:<nome>", como os layouts da LE) e uma vista 3D. Sem
+    # nome, o Document Manager nao a encontra.
+    [string]$JanelaDocMan,
+    # direcao da vista: frente-esquerda e de cima (num roupeiro em L, contra a parede do fundo
+    # e a da direita, ve-se a frente das duas pernas)
+    [string]$VistaDir = '-1,-1,0.7',
+    # estilo visual da janela, pelo nome do VISUALSTYLE: Realistic, como o layout "1" do Paulo.
+    # A consola nao tem -VPOINT: a direcao (16/26/36) e o estilo (348) mudam-se no DXF.
+    [string]$EstiloVisual = 'Realistic'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
@@ -211,6 +221,46 @@ for ($i = 0; $i -lt $t.Length - 3; $i++) {
     }
 }
 if ($mudou -lt 1) { throw "Nao encontrei a pagina '$PaginaPdf' no DXF" }
+if ($JanelaDocMan) {
+    # nome da janela para o Document Manager: XDATA no fim da entidade VIEWPORT do layer
+    # DV_JANELA (a aplicacao IMOS ja esta registada no kit)
+    $lista = [Collections.Generic.List[string]]::new($t)
+    # handle do estilo visual pedido (objeto VISUALSTYLE: 5 = handle, 2 = nome)
+    $hEstilo = $null
+    for ($i = 0; $i -lt $lista.Count - 1; $i += 2) {
+        if ($lista[$i].Trim() -ne '0' -or $lista[$i + 1].Trim() -ne 'VISUALSTYLE') { continue }
+        $h = $null
+        for ($j = $i + 2; $j -lt $lista.Count -and $lista[$j].Trim() -ne '0'; $j += 2) {
+            if ($lista[$j].Trim() -eq '5') { $h = $lista[$j + 1].Trim() }
+            if ($lista[$j].Trim() -eq '2' -and $lista[$j + 1].Trim() -eq $EstiloVisual) { $hEstilo = $h }
+        }
+    }
+    if (-not $hEstilo) { throw "Nao encontrei o estilo visual '$EstiloVisual' no DXF" }
+    $dir = $VistaDir.Split(',')
+    $feito = $false
+    for ($i = 0; $i -lt $lista.Count - 1; $i += 2) {
+        if ($lista[$i].Trim() -ne '0' -or $lista[$i + 1].Trim() -ne 'VIEWPORT') { continue }
+        $fim = $i + 2
+        while ($fim -lt $lista.Count -and $lista[$fim].Trim() -ne '0') { $fim += 2 }
+        $layer = $null
+        for ($j = $i + 2; $j -lt $fim; $j += 2) { if ($lista[$j].Trim() -eq '8') { $layer = $lista[$j + 1].Trim(); break } }
+        if ($layer -ne 'DV_JANELA') { continue }
+        for ($j = $i + 2; $j -lt $fim; $j += 2) {
+            switch ($lista[$j].Trim()) {
+                '16' { $lista[$j + 1] = $dir[0] }
+                '26' { $lista[$j + 1] = $dir[1] }
+                '36' { $lista[$j + 1] = $dir[2] }
+                '348' { $lista[$j + 1] = $hEstilo }
+            }
+        }
+        $xd =@('1001', 'IMOS', '1000', 'DocMan', '1002', '{', '1000', "UserName:$JanelaDocMan", '1002', '}')
+        $lista.InsertRange($fim, [string[]]$xd)
+        $feito = $true
+        break
+    }
+    if (-not $feito) { throw "Nao encontrei a janela DV_JANELA no DXF" }
+    $t = $lista.ToArray()
+}
 [IO.File]::WriteAllLines($dxf, $t, [Text.Encoding]::Default)
 Invoke-ConsolaIxCad -Dwg $dxf -Linhas ((Get-InicioScript) + @('_.SAVEAS', '2018', $dwg)) -Log (Join-Path $Saida 'passo3.log') -TimeoutSec 120 | Out-Null
 if (-not (Test-Path $dwg)) { throw "Nao gravou $dwg (ver passo3.log)" }

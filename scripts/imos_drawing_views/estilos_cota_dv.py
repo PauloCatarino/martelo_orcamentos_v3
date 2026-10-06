@@ -55,8 +55,8 @@ COMUNS = [  # (variável, valor) em mm de papel
 # meio (DIMJUST 0), sem fundo (DIMTFILL 0); quando não cabe entre as chamadas, o texto sai
 # para o lado e a linha de cota prolonga-se até ele (DIMTMOVE 0 "Beside the dimension line",
 # DIMATFIT 2 "Text" primeiro, DIMSOXD 0), como o "50" azul, em vez de ir por cima com linha de
-# chamada. O DV_VERMELHO fica como estava (não foi pedido).
-CENTRADOS = {"DV_AZUL", "DV_MAGENTA", "DV_PRETO", "DV_VERDE"}
+# chamada. R6: o DV_VERMELHO também (o Paulo tinha-se esquecido dele).
+CENTRADOS = {"DV_AZUL", "DV_MAGENTA", "DV_PRETO", "DV_VERDE", "DV_VERMELHO"}
 CENTRADO = [("DIMTAD", "0"), ("DIMJUST", "0"), ("DIMTFILL", "0"), ("DIMTMOVE", "0"),
             ("DIMATFIT", "2"), ("DIMSOXD", "0")]
 
