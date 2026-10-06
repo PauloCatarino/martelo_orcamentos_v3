@@ -1590,4 +1590,41 @@ Guião de teste:
    - numa obra **sem vistas** correr o `DV_Roupeiros`;
    - esperado: só "Vista 1" pequeno, à esquerda do desenho, ao nível do chão.
 
+**Resultado (06-10):**
+
+- as etiquetas e os indicadores das vistas aparecem em todas as folhas;
+- o Zoom é o preferido;
+- o corte lateral fica como está.
+
+## Drawing Views: roupeiros, ronda R5 (2026-10-06)
+
+Feito (doc 37, R5):
+
+- `DV_Roupeiros` com Zoom extents (e o `DV_Roupeiros_Zoom` retirado);
+- os valores que o Paulo afinou passam a ser os do script;
+- estilos DV_AZUL/MAGENTA/PRETO/VERDE com o texto centrado, sem fundo e ao lado quando não
+  cabe.
+
+Guião de teste:
+
+1. **Estilos na APAGAR_15** (iX CAD aberto, obra aberta):
+   - abrir `C:\Pasta_Transferencia_Ourem_Calvaria\Estilos_cota_R5\comandos_estilos_APAGAR_15.txt`
+     no Bloco de Notas, Ctrl+A, Ctrl+C;
+   - clicar na linha de comandos do iX CAD, colar com Ctrl+V e carregar em Enter se ficar à
+     espera;
+   - Ctrl+S e fechar o iX CAD;
+   - em alternativa, à mão no Dimension Style Manager, nos 4 estilos:
+     - **Text:** Vertical Centered, Horizontal Centered, Fill None;
+     - **Fit:** "Text" + "Beside the dimension line" e "Suppress arrows" desligado.
+2. **Para as obras novas:** guardar o `%APPDATA%\imos AG\iX CAD 2025\config\imosBlocks.dwg`
+   atual e copiar por cima o de `Estilos_cota_R5`.
+3. Element Manager → ⟳ (o `DV_Roupeiros_Zoom` desaparece). Depois Order Manager →
+   APAGAR_15 → só **`DV_Roupeiros`** → ✓.
+4. No `C:\IMOS_Output_Batches\APAGAR_15_Submittals.pdf`:
+   - o desenho enche a folha, com escalas como 1:19.9;
+   - as cotas têm o texto **ao meio da linha**, sem fundo branco;
+   - os "50" pequenos ficam **ao lado**, com a linha prolongada, sem linha de chamada;
+   - continuam as posições afinadas pelo Paulo (portas por cima, artigo da planta no canto
+     da frente).
+
 **Por testar:** tudo.

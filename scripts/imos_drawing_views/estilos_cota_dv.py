@@ -51,11 +51,41 @@ COMUNS = [  # (variável, valor) em mm de papel
 ]
 
 
+# R5 (06-10, pedido do Paulo para estes 4 estilos): texto centrado na linha (DIMTAD 0) e ao
+# meio (DIMJUST 0), sem fundo (DIMTFILL 0); quando não cabe entre as chamadas, o texto sai
+# para o lado e a linha de cota prolonga-se até ele (DIMTMOVE 0 "Beside the dimension line",
+# DIMATFIT 2 "Text" primeiro, DIMSOXD 0), como o "50" azul, em vez de ir por cima com linha de
+# chamada. O DV_VERMELHO fica como estava (não foi pedido).
+CENTRADOS = {"DV_AZUL", "DV_MAGENTA", "DV_PRETO", "DV_VERDE"}
+CENTRADO = [("DIMTAD", "0"), ("DIMJUST", "0"), ("DIMTFILL", "0"), ("DIMTMOVE", "0"),
+            ("DIMATFIT", "2"), ("DIMSOXD", "0")]
+
+
+def variaveis(nome: str) -> list[tuple[str, str]]:
+    base = dict(COMUNS)
+    if nome in CENTRADOS:
+        base.update(CENTRADO)
+    return list(base.items())
+
+
+def linhas_obra(nomes=sorted(CENTRADOS)) -> list[str]:
+    """Para colar na linha de comandos de uma obra que já tem os estilos DV_* (o desenho manda
+    sobre o imosBlocks.dwg): muda só o que o R5 mudou e regrava cada estilo, anotativo."""
+    out = []
+    for nome in nomes:
+        out += ["-DIMSTYLE", "_R", nome]
+        for var, val in CENTRADO:
+            out += [var, val]
+        # _AN _Y <nome> _Y = regravar anotativo por cima; "" + nome = sair com Restore
+        out += ["-DIMSTYLE", "_AN", "_Y", nome, "_Y", "", nome]
+    return out
+
+
 def linhas_estilos() -> list[str]:
     out = []
     for nome, cor in ESTILOS.items():
         out += ["-DIMSTYLE", "R", "IMOS_VIEW"]
-        for var, val in COMUNS:
+        for var, val in variaveis(nome):
             out += [var, val]
         for var in ("DIMCLRD", "DIMCLRE", "DIMCLRT"):
             out += [var, str(cor)]
@@ -81,6 +111,11 @@ def linhas_imosblocks(destino: str) -> list[str]:
 
 
 def main() -> None:
+    if len(sys.argv) == 3 and sys.argv[1] == "--obra":
+        # texto para colar na linha de comandos da obra aberta (uma resposta por linha)
+        Path(sys.argv[2]).write_bytes(("\r\n".join(linhas_obra()) + "\r\n").encode("ascii"))
+        print(f"Comandos: {sys.argv[2]}")
+        return
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     scr, dwg = Path(sys.argv[1]), sys.argv[2]

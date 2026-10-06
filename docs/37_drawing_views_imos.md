@@ -439,6 +439,40 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   - Nota: o iMos só conta como peça horizontal as que usam os princípios Top shelf, Bottom
     shelf ou Fixed shelf. O rodapé pode não entrar se for uma peça vertical.
 
+**Resultado da R4** (06-10):
+
+- O `ANNOALLVISIBLE` = 1 da moldura **resultou**: as etiquetas e os indicadores das vistas
+  aparecem em todas as folhas.
+- O **Zoom extents ganhou**. As escalas ficam fora da lista (1:19.9, 1:16.8, 1:23), mas as
+  cotas e as etiquetas saem todas.
+- O corte lateral à mão ficou como está ("para não perder mais tempo").
+- O Paulo afinou no Element Manager:
+  - `DV_Roup_Alcado` 9 / 4 mm e `DV_Roup_Planta` 4 / 5 mm;
+  - etiqueta do artigo no alçado a −40 e portas a +30;
+  - artigo do chão na planta em (1, −1) / (−1, 0) com desvio (−700, −350).
+
+### R5 (06-10, por testar)
+
+- **O script passou a escrever os valores do Paulo** (a base ficou igual antes e depois do
+  `--aplicar`).
+- **`DV_Roupeiros` com Zoom extents** (scaling 0). O `DV_Roupeiros_Zoom` saiu da base
+  (`BATCHES_RETIRADOS`).
+- **Estilos `DV_AZUL`, `DV_MAGENTA`, `DV_PRETO` e `DV_VERDE`** (`estilos_cota_dv.py`,
+  `CENTRADO`):
+  - texto ao meio da linha (DIMTAD 0, DIMJUST 0), sem fundo (DIMTFILL 0);
+  - quando não cabe, o texto vai para o lado e a linha prolonga-se (DIMTMOVE 0, DIMATFIT 2,
+    DIMSOXD 0);
+  - o `DV_VERMELHO` não foi pedido e ficou como estava;
+  - o `imosBlocks.dwg` novo e o texto `comandos_estilos_APAGAR_15.txt` (para as obras que
+    já têm os estilos) estão em `Pasta_Transferencia\Estilos_cota_R5`;
+  - impresso numa cópia da APAGAR_15: "—5000—" com o texto ao meio e os "50" ao lado.
+  - Cuidado: o texto de comandos só serve se a obra tiver os 4 estilos. Se faltar um, o
+    `-DIMSTYLE` descarrila.
+- **Cotas verticais longe do alçado:** ficam à direita do **limite** da vista, que o iMos põe
+  300 mm depois do último artigo, mais a distância da 1.ª cota (9 mm, a mesma das cotas de
+  cima e de baixo). Na Vista 2 a 1:25 eram ~1280 mm do modelo. Só a distância é nossa, e
+  baixá-la encosta a cota verde de cima às etiquetas das portas.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

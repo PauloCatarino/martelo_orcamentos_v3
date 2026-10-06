@@ -242,26 +242,31 @@ def _por_nome(principios, nome: str):
 # R2 (06-10): a etiqueta do artigo passa para baixo do artigo, por fora; as cotas afastam-se
 # 14 mm de papel (eram 8) para lhe dar lugar (etiqueta de ~5,5 mm + desvio de 60 mm do modelo,
 # 3 mm a 1:20). Os módulos de cima (acima de 1490) ficam com a etiqueta por cima, por fora.
-# R4: 16 (eram 14) para caber por cima a etiqueta das portas, de 3 linhas
-ROUP_DIST_1 = 16
+# R4: 16 (eram 14) para caber por cima a etiqueta das portas, de 3 linhas.
+# R5 (06-10): valores que o Paulo afinou no Element Manager depois do teste da R4: alçado 9 / 4,
+# planta 4 / 5 (o script passa a escrevê-los, para o --aplicar não os desfazer).
+ROUP_DIST_1, ROUP_DIST_N = 9, 4
+ROUP_PLANTA_DIST_1, ROUP_PLANTA_DIST_N = 4, 5
 # R3 (06-10): a cota das paredes (verde) passa para cima (1958 = 0); a dos móveis (azul) fica
 # em baixo, por baixo da etiqueta do artigo.
 _alcado = _por_nome(ALCADO, "DV_Alcado")
 ALCADO.append(replace(
-    _alcado, nome="DV_Roup_Alcado", dist_primeira=ROUP_DIST_1,
-    descricao="Roupeiros: alcado A3 (cotas a 14 mm, paredes em cima)",
+    _alcado, nome="DV_Roup_Alcado", dist_primeira=ROUP_DIST_1, dist_outras=ROUP_DIST_N,
+    descricao="Roupeiros: alcado A3 (cotas a 9/4 mm, paredes em cima)",
     linhas=[replace(ln, atributos={**ln.atributos, 1958: "0"}) if ln.tipo == 1952 else ln
             for ln in _alcado.linhas]))
 # A planta não tem posição para as larguras dos móveis (só "dentro/fora" para a
 # profundidade, ajuda "Dimensioning Principle – Floor Plan"): a azul fica do lado da parede.
-PLANTA.append(_copia(_por_nome(PLANTA, "DV_Planta"), "DV_Roup_Planta",
-                     "Roupeiros: planta A3 (copia do DV_Planta)"))
+PLANTA.append(replace(_por_nome(PLANTA, "DV_Planta"), nome="DV_Roup_Planta",
+                     descricao="Roupeiros: planta A3 (cotas a 4/5 mm)",
+                     dist_primeira=ROUP_PLANTA_DIST_1, dist_outras=ROUP_PLANTA_DIST_N))
 # R2: DV_Lbl_PortaLxA / DV_Lbl_PortaL. R3: blocos novos com "Porta"/"Gaveta" por cima das
 # medidas, " X " maiúsculo e o artigo da planta com Alt/Cmp/Prof (criar_blocos_etiqueta.ps1).
 # As medidas das frentes ficam com 2 casas (IMOSPART*): nenhum campo da peça vem com 1.
 ANOTACAO += [
     Anotacao("DV_Roup_Alcado_Etiquetas", "Roupeiros: artigo em baixo por fora + Porta/Gaveta L X A", [
-        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -60), "DV_Lbl_Artigo_Azul",
+        # R5: desvios afinados pelo Paulo no Element Manager (artigo -40, portas +30)
+        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -40), "DV_Lbl_Artigo_Azul",
                  "Ate 1490: nome + L X A X P, em baixo, por fora"),
         Etiqueta(3, "DV_Art_Verm", (0, 1), (0, -1), (0, 60), "DV_Lbl_Artigo_Verm",
                  "Acima de 1490: por cima, por fora"),
@@ -269,7 +274,7 @@ ANOTACAO += [
         # linhas do desenho e com as vizinhas. Passam para cima da porta, por fora (110 mm do
         # modelo), em 3 linhas estreitas. As portas que não chegam ao topo ficam com a
         # etiqueta no vão por cima delas.
-        Etiqueta(1, "DV_Portas", (0, 1), (0, -1), (0, 110), "DV_Lbl_Porta_3L",
+        Etiqueta(1, "DV_Portas", (0, 1), (0, -1), (0, 30), "DV_Lbl_Porta_3L",
                  "Portas: 'Porta' / L / A, por cima da porta"),
         Etiqueta(1, "DV_Gavetas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Gaveta_3L",
                  "Frentes de gaveta: 'Gaveta' / L / A (ao centro)"),
@@ -277,8 +282,9 @@ ANOTACAO += [
     # Na planta, a frente do artigo é o lado y = -1 (o +1 é a parede: ver DV_Planta_Etiquetas).
     # A etiqueta do artigo tem 4 linhas (~11 mm): vai mais à frente que a das portas.
     Anotacao("DV_Roup_Planta_Etiquetas", "Roupeiros: 'Porta' + largura + artigo com Alt/Cmp/Prof a frente", [
-        Etiqueta(3, "DV_Art_Chao", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta",
-                 "Chao: nome + Alt/Cmp/Prof, ao meio, a frente do artigo"),
+        # R5: posição do Paulo (canto da frente direito, desviada -700/-350)
+        Etiqueta(3, "DV_Art_Chao", (1, -1), (-1, 0), (-700, -350), "DV_Lbl_Artigo_Planta",
+                 "Chao: nome + Alt/Cmp/Prof, a frente do artigo"),
         Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta",
                  "Intermedios: nome + Alt/Cmp/Prof, a frente do artigo"),
         Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
@@ -558,24 +564,29 @@ BATCHES = [
           "Drawing Views por obra: planta + alcados em A3 (moldura DV_A3_Obra), layouts e PDF",
           saida_desenhos("DV_A3_Obra", "DV_Planta", "DV_Planta_Etiquetas",
                          "DV_Alcado", "DV_Alcado_Etiquetas")),
+    # R5 (06-10): o Paulo prefere o "Zoom extents" (scaling 0): o desenho enche a folha A3,
+    # mesmo com escalas fora da lista (1:19.9, 1:16.8...). Testado com o DV_Roupeiros_Zoom da R4:
+    # as cotas e as etiquetas saem todas.
     Batch("DV_Roupeiros",
-          "Roupeiros: planta + alcados em A3 (moldura DV_A3_Roupeiro, regras DV_Roup_*), layouts e PDF",
+          "Roupeiros: planta + alcados em A3, Zoom extents (moldura DV_A3_Roupeiro, regras DV_Roup_*)",
           saida_desenhos("DV_A3_Roupeiro", "DV_Roup_Planta", "DV_Roup_Planta_Etiquetas",
-                         "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas")),
-    # R4 (06-10), para comparar: igual ao DV_Roupeiros mas com "Zoom extents" (o desenho enche
-    # a janela, escala fora da lista; o Paulo: "a escala não é muito importante"). O PDF vai
-    # para a subpasta Zoom, para não apagar o do DV_Roupeiros.
-    Batch("DV_Roupeiros_Zoom",
-          "Roupeiros (teste): como o DV_Roupeiros, com Zoom extents em vez de Best scale",
-          saida_desenhos("DV_A3_Roupeiro", "DV_Roup_Planta", "DV_Roup_Planta_Etiquetas",
-                         "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas",
-                         escala=0, pasta=BATCH_SAIDA + "Zoom\\")),
+                         "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas", escala=0)),
 ]
+
+
+# Batches DV_* que existiram e saem da base (só os que este script criou)
+BATCHES_RETIRADOS = ["DV_Roupeiros_Zoom"]  # R4: comparação, ganhou o Zoom (R5)
 
 
 def sql_batch() -> list[str]:
     """Output batches DV_* (modo Encomenda = OUTPUTMODE 0), cada um com a saída Drawing views."""
     s = ["-- output batches", *_pasta("CMSOUTPUTBATCHFOLDER")]
+    for nome in _so_dv(BATCHES_RETIRADOS):
+        s += [
+            f"DELETE FROM dbo.CMSOUTPUTITEM WHERE BATCHNAME = {lit(nome)};",
+            f"DELETE FROM dbo.CMSOUTPUTBATCH WHERE NAME = {lit(nome)};",
+            f"DELETE FROM dbo.CMSOUTPUTBATCHFOLDER WHERE NAME = {lit(nome)} AND TYPE = 472;",
+        ]
     for b in BATCHES:
         nome = _so_dv([b.nome])[0]
         s += [
