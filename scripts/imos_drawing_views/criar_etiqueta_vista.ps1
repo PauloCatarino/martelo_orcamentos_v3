@@ -40,7 +40,16 @@ foreach ($n in 'imosLabelElevation', 'imosLabelPlanview') {
     if ($Simples) { $modo = @(if ($n -eq 'imosLabelElevation') { 'alcado' } else { 'planta' }) }
     & $py (Join-Path $PSScriptRoot 'etiqueta_vista_dxf.py') $dxf $novo @modo
     if ($LASTEXITCODE) { throw "etiqueta_vista_dxf.py falhou ($n)" }
-    Invoke-ConsolaIxCad -Dwg $novo -Linhas ((Get-InicioScript) + @('_.ZOOM', '_E', '_.SAVEAS', '2018', $final)) -Log (Join-Path $Saida "$n.passo2.log") -TimeoutSec 120 | Out-Null
+    $pontos = @()
+    if ($Simples) {
+        # R9 (06-10, APAGAR_16): so com o atributo, o bloco nao tem extensao e o iMos inseria-o
+        # em (1E20,1E20): o Zoom extents das folhas ia ate la e o PDF saia vazio. Dois pontos
+        # na camada Defpoints (nao imprime) nos cantos do simbolo com circulo (-69.25,-26.25 a
+        # -20,-3.75), com que o iMos o punha a -80,-96.25 do canto da vista (APAGAR_14 e 15).
+        $pontos = @('-LAYER', '_M', 'Defpoints', '_P', '_N', 'Defpoints', '',
+            '_.POINT', '_NON', '-69.25,-26.25', '_.POINT', '_NON', '-20,-3.75', '-LAYER', '_S', '0', '')
+    }
+    Invoke-ConsolaIxCad -Dwg $novo -Linhas ((Get-InicioScript) + $pontos + @('_.ZOOM', '_E', '_.SAVEAS', '2018', $final)) -Log (Join-Path $Saida "$n.passo2.log") -TimeoutSec 120 | Out-Null
     if (-not (Test-Path $final)) { throw "Nao gravou $final" }
     "Criado: $final"
 }

@@ -576,6 +576,32 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   - `IMOS.dwt`;
   - `comandos_R8_obra_aberta.txt`: para as obras que já existem; já não tem o `-STYLE`.
 
+### R9: PDF vazio na APAGAR_16 = etiqueta da vista sem geometria (06-10, por testar)
+
+- **Sintoma:**
+  - na APAGAR_16 (obra nova, IMOS.dwt R8) o batch `DV_Roupeiros` deu o PDF em branco;
+  - nas folhas `Planta 1`, `Vista 1` e `Vista 2` a escala era `1:447154471544715520`;
+  - a 1556_01_26_JF_VIVA (real, 06-10) tinha o mesmo.
+- **Causa** (DXF das APAGAR_14, 15 e 16):
+  - as janelas `BRef_of_View` tinham o centro em 5E19 e a altura em 1,1E20;
+  - os blocos `imosLabelPlanview` / `imosLabelElevation` estavam inseridos em **(1E20, 1E20)**,
+    e o Zoom extents foi até lá;
+  - nas obras novas entra o bloco da pasta `DrawingFlags`, que era a **versão simples da R4:
+    só o atributo, sem geometria**. Um bloco sem extensão faz o iMos pô-lo em 1E20;
+  - a APAGAR_14 e a 15 tinham o bloco com o círculo (extensão −69,25,−26,25 a −20,−3,75) e o
+    iMos punha-o a −80,−96,25 do canto da vista, a 1:16 e a 1:20.
+  - A R4 nunca foi testada numa obra nova: a APAGAR_15 já tinha o bloco antigo definido.
+- **Correção** (`criar_etiqueta_vista.ps1 -Simples`): os blocos simples levam 2 pontos na
+  camada **Defpoints** (não imprime) nesses mesmos cantos. A extensão volta a ser a do símbolo
+  e a etiqueta fica onde a R4 a desenhou.
+- **Escala da legenda:** o `IMOSVSSCALE` é preenchido pelo iMos já com 1 casa decimal
+  (`1:19.6`, `1:22.5`, `1:16`); o número enorme era só o da janela partida.
+- **Ficheiros:** `Pasta_Transferencia\DrawingFlags_simples_v2`.
+  - Os 2 DWG vão para `config\DrawingFlags`, para as obras novas.
+  - `1_redefinir_alcado.txt` e `2_redefinir_planta.txt` redefinem o bloco numa obra aberta
+    (`-INSERT nome=ficheiro`, depois Esc), porque o bloco que já está no desenho manda sobre o
+    da pasta.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

@@ -1746,3 +1746,30 @@ Guião de teste (ciclo completo):
    - o título com 5 mm;
    - nada gigante.
 5. Dizer o que ficou grande, pequeno ou fora do sítio, com o nome do layout.
+
+**Resultado (06-10):**
+- na APAGAR_16 o PDF do batch saiu vazio e a escala da legenda era 1:447154471544715520;
+- causa: a etiqueta simples da vista (R4) não tem geometria → R9;
+- o Paulo vai passar ele as DV_* para a `imos_LE` pelo Element Manager.
+
+## Drawing Views: PDF vazio corrigido, ronda R9 (2026-10-06)
+
+Feito (doc 37, R9): os blocos simples `imosLabelElevation` e `imosLabelPlanview` levam 2
+pontos na camada Defpoints, que não imprime. Assim o iMos volta a pô-los junto à vista e não
+em 1E20.
+
+Guião de teste:
+
+1. Fechar o iX CAD. Copiar os 2 DWG de `Pasta_Transferencia\DrawingFlags_simples_v2` para
+   `%APPDATA%\imos AG\iX CAD 2025\config\DrawingFlags\` (por cima dos da R4).
+2. **APAGAR_16:**
+   - abrir;
+   - no Bloco de Notas, abrir `1_redefinir_alcado.txt`, Ctrl+A, Ctrl+C;
+   - Ctrl+V na linha de comandos e Enter. Quando pedir o ponto de inserção, carregar **Esc**;
+   - fazer o mesmo com `2_redefinir_planta.txt`;
+   - correr outra vez o batch `DV_Roupeiros`.
+3. Esperado:
+   - o PDF com a planta e os alçados;
+   - na legenda, a escala com 1 casa decimal (ex.: `1:19.6`);
+   - o "Planta 1" / "Vista 1" junto ao desenho.
+4. (Alternativa ao passo 2) criar uma obra nova, que já apanha os blocos novos.
