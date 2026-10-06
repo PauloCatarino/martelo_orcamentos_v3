@@ -276,10 +276,11 @@ ANOTACAO += [
         # linhas do desenho e com as vizinhas. Passam para cima da porta, por fora (110 mm do
         # modelo), em 3 linhas estreitas. As portas que não chegam ao topo ficam com a
         # etiqueta no vão por cima delas.
-        Etiqueta(1, "DV_Portas", (0, 1), (0, -1), (0, 30), "DV_Lbl_Porta_3L",
-                 "Portas: 'Porta' / L / A, por cima da porta"),
-        Etiqueta(1, "DV_Gavetas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Gaveta_3L",
-                 "Frentes de gaveta: 'Gaveta' / L / A (ao centro)"),
+        # R11 (06-10): a altura primeiro, "Porta / A / L" (blocos _AL).
+        Etiqueta(1, "DV_Portas", (0, 1), (0, -1), (0, 30), "DV_Lbl_Porta_AL",
+                 "Portas: 'Porta' / A / L, por cima da porta"),
+        Etiqueta(1, "DV_Gavetas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Gaveta_AL",
+                 "Frentes de gaveta: 'Gaveta' / A / L (ao centro)"),
     ]),
     # Na planta, a frente do artigo é o lado y = -1 (o +1 é a parede: ver DV_Planta_Etiquetas).
     # A etiqueta do artigo tem 4 linhas (~11 mm): vai mais à frente que a das portas.

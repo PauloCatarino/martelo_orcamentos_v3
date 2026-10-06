@@ -97,7 +97,10 @@ def _editar_entidade(ent: list[list[str]]) -> None:
 #   planta: por baixo do canto (à esquerda está a profundidade).
 SIMPLES = {
     # tipo: (x, y, alinhamento horizontal 0 esq. / 2 dir., vertical 1 baixo / 3 cima)
-    "alcado": (-1.0, 6.0, 2, 1),
+    # R11 (APAGAR_01): na linha do chão (y = 6, alinhado por baixo) o "Vista 1" ficava em cima
+    # das cotas verticais da esquerda. Desce para baixo do chão: alinhado por cima em y = 4,5
+    # (o texto fica 1,5 a 4,5 mm abaixo do chão, por baixo das pontas das cotas).
+    "alcado": (-1.0, 4.5, 2, 3),
     "planta": (5.0, -1.0, 0, 3),
 }
 ALTURA_SIMPLES = 3.0

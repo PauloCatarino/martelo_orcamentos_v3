@@ -1806,3 +1806,31 @@ Guião de teste:
    - numa obra nova, cotar uma porta estreita com o `DV_VERMELHO`. Esperado: o número sai por
      cima, com linha de chamada; o `IMOS_Text35` faz o mesmo;
    - nas obras já abertas (APAGAR_17) os estilos são os da obra: ficam como os deixaste.
+
+**Resultado (06-10, APAGAR_01):** as etiquetas já não tocam nas cotas. Pedidos novos → R11.
+
+## Drawing Views: "Vista 1" abaixo do chão e portas "A / L", ronda R11 (2026-10-06)
+
+Feito (doc 37, R11):
+
+- a etiqueta "Vista 1" / "Vista 2" dos alçados desce para baixo da linha do chão
+  (`DrawingFlags_simples_v4`);
+- portas e gavetas com "Porta / A / L" (altura em cima): blocos `DV_Lbl_Porta_AL` /
+  `DV_Lbl_Gaveta_AL` na biblioteca, aplicado na `imos_LE_TESTES`.
+
+Guião de teste:
+
+1. Fechar o iX CAD. Copiar os 2 DWG de `Pasta_Transferencia\DrawingFlags_simples_v4` para
+   `config\DrawingFlags\`.
+2. Abrir a APAGAR_01 (já com o 3.º roupeiro de 2798):
+   - colar `1_redefinir_alcado.txt` na linha de comandos, Enter e **Esc** no ponto;
+   - colar `2_redefinir_planta.txt` da mesma maneira;
+   - Element Manager → ⟳.
+3. Correr o batch `DV_Roupeiros`. Esperado:
+   - nos alçados, o "Vista 1" fica por baixo da linha do chão, sem tocar nas cotas da
+     esquerda;
+   - as portas mostram "Porta", por baixo "A 2561.40" e por baixo "L 412.33".
+4. Se ficar bem, na `imos_LE`:
+   - Element Manager → etiquetas `DV_Roup_Alcado_Etiquetas` → bloco das portas
+     `DV_Lbl_Porta_AL` e das gavetas `DV_Lbl_Gaveta_AL`;
+   - copiar os DWG da v4 para o `DrawingFlags` dos outros PCs.

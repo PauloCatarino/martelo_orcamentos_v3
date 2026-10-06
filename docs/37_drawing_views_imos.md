@@ -633,6 +633,34 @@ Ideias que saíram do PDF da APAGAR_17; o Paulo escolheu a 1 e a 2.
      - `imosBlocks.dwg`;
      - `comandos_obra_aberta.txt`.
 
+### R11: "Vista 1" abaixo do chão e portas "A / L" (06-10, por testar)
+
+O PDF da APAGAR_01 (roupeiro em L + roupeiro isolado de 2510) saiu bem: as 3 folhas, as
+etiquetas já não tocam nas cotas. Pedidos do Paulo:
+
+- **"Vista 1" / "Vista 2" em cima das cotas verticais da esquerda:** a etiqueta do alçado
+  ficava na linha do chão. Desce para baixo do chão: alinhada por cima em y = 4,5 (o texto
+  ocupa 1,5 a 4,5 mm abaixo do chão). Os pontos Defpoints acompanham (−20,1,5 a −1,4,5).
+  Ficheiros em `DrawingFlags_simples_v4`.
+- **Portas de cima para baixo "Porta / A / L":** a altura primeiro. Blocos novos
+  `DV_Lbl_Porta_AL` e `DV_Lbl_Gaveta_AL` (mais os `_r`) em `I:\Library\AttDWG` (nomes novos:
+  as obras guardam a definição dos `_3L`). As gavetas mudam também, para ficarem iguais às
+  portas. Aplicado na `imos_LE_TESTES` (`DV_Roup_Alcado_Etiquetas`).
+- **Separar o alçado por artigo** (pergunta; ainda não foi feito):
+  - o batch "Drawing views" faz um alçado por **parede** (as vistas que o iMos tira da
+    planta), não por artigo. Não há chave no JSON para isso;
+  - por artigo é o trabalho do **Document Manager**. A LE já tem 115 janelas com a função
+    "article dimensioning" (nível 2100 = artigo), e é assim que saem os layouts `1` /
+    `1 (2)` dele;
+  - **caminho A:** uma folha por artigo com um princípio DocMan `DV_Roup_Artigo`
+    (moldura `DV_A3_Roupeiro`, função "article dimensioning" + "show object", nível 2100),
+    corrido à mão ou no batch;
+  - **caminho B:** juntar ao batch o Document Manager que ele já usa;
+  - **caminho C:** na planta, pôr à mão uma seta de vista por artigo (cada uma dá a sua
+    folha).
+- Continuam para depois: as etiquetas duplicadas nas portas sobrepostas (planta) e a porta
+  vista de lado.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

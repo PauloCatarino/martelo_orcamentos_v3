@@ -49,7 +49,8 @@ foreach ($n in 'imosLabelElevation', 'imosLabelPlanview') {
         # R10 (APAGAR_17): o Zoom extents conta com os pontos, e 69 mm a esquerda deixavam a
         # folha com espaco vazio e o desenho mais pequeno. Passam para a volta do texto
         # "Vista 1" (3 mm de altura, ~19 mm de largura; ver SIMPLES no etiqueta_vista_dxf.py).
-        $cantos = if ($n -eq 'imosLabelElevation') { @('-20,6', '-1,9') } else { @('5,-4', '24,-1') }
+        # R11: o do alcado desceu (texto de 1,5 a 4,5).
+        $cantos = if ($n -eq 'imosLabelElevation') { @('-20,1.5', '-1,4.5') } else { @('5,-4', '24,-1') }
         $pontos = @('-LAYER', '_M', 'Defpoints', '_P', '_N', 'Defpoints', '',
             '_.POINT', '_NON', $cantos[0], '_.POINT', '_NON', $cantos[1], '-LAYER', '_S', '0', '')
     }

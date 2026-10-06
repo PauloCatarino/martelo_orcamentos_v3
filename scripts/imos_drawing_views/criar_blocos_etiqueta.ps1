@@ -157,6 +157,22 @@ if ($Versao -eq 'modelo') {
             Texto 'A' 'MR' -2.4 -2.2 1.8
             AttDef 'IMOSPARTHEIGHT' 'ML' -1.8 -2.2 1.8
         )
+        # R11 (06-10, pedido do Paulo sobre a APAGAR_01): de cima para baixo "Porta / A / L",
+        # a altura primeiro. Nomes novos (os _3L ficam como estao nas obras que ja os tem).
+        'DV_Lbl_Porta_AL'      = @(
+            Texto 'Porta' 'MC' 0 2.6 1.5
+            Texto 'A' 'MR' -2.4 0.3 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' -1.8 0.3 1.8
+            Texto 'L' 'MR' -2.4 -2.2 1.8
+            AttDef 'IMOSPARTWIDTH' 'ML' -1.8 -2.2 1.8
+        )
+        'DV_Lbl_Gaveta_AL'     = @(
+            Texto 'Gaveta' 'MC' 0 2.6 1.5
+            Texto 'A' 'MR' -2.4 0.3 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' -1.8 0.3 1.8
+            Texto 'L' 'MR' -2.4 -2.2 1.8
+            AttDef 'IMOSPARTWIDTH' 'ML' -1.8 -2.2 1.8
+        )
         'DV_Lbl_Artigo_Azul'   = @(& $artigo)
         'DV_Lbl_Artigo_Verm'   = @(& $artigo)
         'DV_Lbl_Artigo_Planta' = @(
@@ -173,7 +189,8 @@ if ($Versao -eq 'modelo') {
     }
     $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente',
         'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL', 'DV_Lbl_Porta_Alcado', 'DV_Lbl_Gaveta_Alcado', 'DV_Lbl_Porta_Planta',
-        'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta', 'DV_Lbl_Porta_3L', 'DV_Lbl_Gaveta_3L')
+        'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta', 'DV_Lbl_Porta_3L', 'DV_Lbl_Gaveta_3L',
+        'DV_Lbl_Porta_AL', 'DV_Lbl_Gaveta_AL')
     $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
 
