@@ -31,7 +31,9 @@ param(
     [string]$Biblioteca = 'I:\Library\AttDWG',
     # 'papel' (volta 2, por defeito): anotativos, mm de papel, texto colorido, sem moldura.
     # 'modelo' (volta 1.5): mm do modelo para 1:20, nao anotativos, com moldura.
-    [ValidateSet('papel', 'modelo')][string]$Versao = 'papel'
+    [ValidateSet('papel', 'modelo')][string]$Versao = 'papel',
+    # so estes blocos (os outros ja estao na biblioteca e o -Instalar nunca grava por cima)
+    [string[]]$So
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
@@ -93,13 +95,26 @@ if ($Versao -eq 'modelo') {
             Texto 'x' 'MC' 0 0 1.8
             AttDef 'COND.PART_SIZE_Y' 'ML' 0.9 0 1.8
         )
+        # Roupeiros (06-10). Os COND.PART_SIZE_* saem em bruto (350.785714286: e' o FWIDTH da
+        # base) e na ordem do veio (altura x largura). Os IMOSPART* saem com as casas da
+        # precisao de unidades da obra (LUPREC, 2 nas obras atuais: "446.50"): com LUPREC 1
+        # devem sair "350.8". Ordem L x A, como a do modulo.
+        'DV_Lbl_PortaLxA'    = @(
+            AttDef 'IMOSPARTWIDTH' 'MR' -0.9 0 1.8
+            Texto 'x' 'MC' 0 0 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' 0.9 0 1.8
+        )
+        # na planta so a largura da porta, a frente dela
+        'DV_Lbl_PortaL'      = @(AttDef 'IMOSPARTWIDTH' 'MC' 0 0 1.8)
     }
-    $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente')
+    $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente',
+        'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL')
     $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
 
 $feitos = @()
 foreach ($nome in $blocos.Keys) {
+    if ($So -and $So -notcontains $nome) { continue }
     foreach ($r in @($false, $true)) {
         if ($r -and $rodar -notcontains $nome) { continue }
         $final = if ($r) { "${nome}_r" } else { $nome }

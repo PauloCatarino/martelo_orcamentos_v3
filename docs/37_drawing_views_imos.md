@@ -310,6 +310,48 @@ Na `imos_LE_TESTES`, pasta `DV_Desenhos`:
 - A planta do `DV_Desenhos_Obra` passou a "coloration" 0 no script: foi o Paulo que a
   desligou no Element Manager.
 
+**Resultado da R1** (APAGAR_15): a legenda de 2 linhas saiu certa, mas o **Artigo veio
+vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION`.
+
+### R2: legenda, etiquetas do alçado e portas na planta (06-10, por testar)
+
+- **Legenda `DV_A3_Legenda_Roup_v2`:**
+  - Artigo = `IMOSARTICLEPOSITIONHIERARCHY` (sugestão do Paulo);
+  - por cima, uma **faixa de teste provisória** com outros candidatos:
+    `IMOSARTICLENAME`, `IMOSELEMENTARTICLE`, `IMOSELEMENTGROUPPOSITION`,
+    `IMOSVSDESCRIPT` e `IMOSPLANPOSNAME`;
+  - fica o que for preenchido e a faixa sai na versão seguinte.
+- **Alçado (`DV_Roup_Alcado` + `DV_Roup_Alcado_Etiquetas`):**
+  - a etiqueta do artigo vai para baixo do artigo, por fora (60 mm do modelo);
+  - as cotas afastam-se 14 mm de papel (eram 8) para lhe dar lugar;
+  - os módulos acima de 1490 mm ficam com a etiqueta por cima, por fora.
+- **Portas, alçado:** bloco `DV_Lbl_PortaLxA` com largura × altura (`IMOSPARTWIDTH` ×
+  `IMOSPARTHEIGHT`).
+  - Os `COND.PART_SIZE_*` saíam em bruto (350.785714286 = o `FWIDTH` da base) e na ordem
+    do veio.
+  - A base não tem nenhuma medida arredondada (`FWIDTH` 350.7857), e a ajuda não tem
+    formato de casas decimais.
+  - **Hipótese a testar:** os `IMOS*` saem com as casas da precisão de unidades da obra
+    (`LUPREC`, que é 2 nas obras atuais: "446.50"). Com `LUPREC` 1 devem dar "350.8".
+- **Planta (`DV_Roup_Planta_Etiquetas`):**
+  - a largura de cada porta à frente dela: bloco `DV_Lbl_PortaL`, condição nova
+    `DV_Portas`, sem frentes de gaveta;
+  - o nome do artigo ao meio, à frente do artigo (150 mm do modelo, lado y = −1).
+- **Blocos novos em `I:\Library\AttDWG`:** `DV_Lbl_PortaLxA(_r)` e `DV_Lbl_PortaL(_r)`.
+
+**Cadeia vertical (rodapé, rodateto, caixotes, nicho): não dá com o batch.**
+
+- O batch só gera a planta e os alçados.
+- A cotagem de alçado só tem os tipos Móveis, Alturas, Frentes (alturas/larguras),
+  Paredes, Tampos, Instalação e Faceframe.
+- O RP_A_01 é um só artigo: o rodapé (H75), os interiores (H2352), os remates e o nicho são
+  grupos dentro dele, e as "Alturas" só veem artigos.
+- Quem tem nichos, sub-artigos e peças horizontais da carcaça é a cotagem de **corte de
+  frente** (tabela `DIMSECTFRONT`, tipos 1966 a 1971). Esse corte faz-se à mão ("Create
+  Section", vista de frente).
+- Decisão pendente do Paulo: princípio `DV_Roup_Corte_Frente` para usar à mão, ou perguntar
+  à Enersale se o batch faz cortes.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

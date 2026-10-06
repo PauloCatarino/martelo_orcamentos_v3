@@ -1483,3 +1483,35 @@ Guião de teste (iX CAD **FECHADO**, base `imos_LE_TESTES`):
    preenchem o `IMOSARTICLEPOSITION`. Nesse caso volta-se ao assunto antes da R2.
 
 **Por testar:** tudo (o batch corre no PC do Paulo).
+
+**Resultado (06-10):** a legenda de 2 linhas está certa, mas o Artigo veio vazio.
+
+## Drawing Views: roupeiros, ronda R2 (2026-10-06)
+
+Na `imos_LE_TESTES` (doc 37, secção 6c):
+
+- legenda v2: Artigo = `IMOSARTICLEPOSITIONHIERARCHY` + uma faixa de teste provisória com
+  5 campos candidatos;
+- alçado: etiqueta do artigo em baixo, por fora, e cotas a 14 mm;
+- portas, alçado: L × A com os campos `IMOSPART*`;
+- planta: largura das portas e nome do artigo à frente;
+- blocos novos `DV_Lbl_PortaLxA(_r)` e `DV_Lbl_PortaL(_r)` em `I:\Library\AttDWG`.
+
+Guião de teste (base `imos_LE_TESTES`):
+
+1. **Teste das casas decimais.** Com a APAGAR_15 aberta no iX CAD, escrever `LUPREC`
+   (Enter), `1` (Enter) e gravar (Ctrl+S). Fechar o iX CAD.
+2. Element Manager → ⟳. Depois Order Manager → **APAGAR_15** → Output Batches → só
+   **`DV_Roupeiros`** → ✓.
+3. Em `C:\IMOS_Output_Batches\APAGAR_15_Submittals.pdf`:
+   - **Legenda:** ver se o Artigo mostra RP_A_01, e qual dos 5 campos da faixa "teste:"
+     traz alguma coisa (anotar o nome e o valor);
+   - **Alçado:** a etiqueta "RP_A_01 / 5000x2500x600" está por baixo do roupeiro, fora do
+     desenho, com a cota 5000 mais abaixo; nas portas aparece L × A ao centro, por exemplo
+     **350.8x2344.4** (se sair 350.79x2344.40, o `LUPREC` não manda);
+   - **Planta:** à frente de cada porta, a largura (350.8), e mais à frente RP_A_01, ao
+     meio.
+4. Se as etiquetas da planta saírem rodadas ou por cima das linhas, mandar o PDF assim
+   mesmo.
+
+**Por testar:** tudo.

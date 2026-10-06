@@ -17,7 +17,7 @@ plano e as decisões estão em [`docs/37_drawing_views_imos.md`](../../docs/37_d
 | Ficheiro | Faz |
 |---|---|
 | `configurar_dv.py` | Escreve na `imos_LE_TESTES` as condições, a cotagem de planta e alçado, as etiquetas, as molduras e os Output batches (`DV_Desenhos_Obra` e `DV_Roupeiros`, este com as regras próprias `DV_Roup_*`). Por defeito só mostra o SQL. |
-| `criar_blocos_etiqueta.ps1` | Cria os blocos de etiqueta `DV_Etq_Modulo(_r)`, `DV_Etq_Nome(_r)` e `DV_Etq_Frente` (com `-Instalar`, copia-os para `I:\Library\AttDWG`). |
+| `criar_blocos_etiqueta.ps1` | Cria os blocos de etiqueta `DV_Lbl_*` (versão papel, anotativos; `-So` para criar só alguns, por exemplo os dos roupeiros `DV_Lbl_PortaLxA` e `DV_Lbl_PortaL`) ou, com `-Versao modelo`, os antigos `DV_Etq_*` (com `-Instalar`, copia-os para `I:\Library\AttDWG`). |
 | `criar_moldura_a3.ps1` | Cria o DWT da moldura `DV_A3_Obra` (ou, com `-Legenda Roupeiro`, a `DV_A3_Roupeiro`, de legenda com 2 linhas e o artigo): A3 horizontal, só o retângulo exterior e a legenda, centrada na origem, página "Layout 1:1" com o `DV_PlotStyle.ctb`. |
 | `estilos_cota_dv.py` | Gera o script da consola que cria o `imosBlocks.dwg` com os estilos de cota `DV_AZUL/VERMELHO/PRETO/VERDE/MAGENTA` (mm de papel, anotativos, texto ISO). Vai para `%APPDATA%\imos AG\iX CAD 2025\config`. |
 | `criar_ctb_dv.py` | Cria o `DV_PlotStyle.ctb` (cópia do `iX_PlotStyle.ctb` com a cor 254 das linhas escondidas a cinzento médio e pontilhado). Vai para `I:\Plotters\Plot Styles`. |

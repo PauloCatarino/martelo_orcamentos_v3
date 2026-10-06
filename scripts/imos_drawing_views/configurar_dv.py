@@ -106,6 +106,8 @@ CONDICOES = [
     Cond("DV_Frentes_Cima", PECA, "Portas e frentes de gaveta a partir de 1280", E,
          [("part insertionZ", ">=", "1280", "FL"), ("OU", FRENTES)]),
     Cond("DV_Tampos", PECA, "Tampos", E, [("part type", "=", "work surface", "CI")]),
+    # roupeiros, planta: só as portas (as frentes de gaveta ficam por trás e repetiam medidas)
+    Cond("DV_Portas", PECA, "Portas (sem frentes de gaveta)", OU, FRENTES[:4]),
 ]
 
 # ----------------------------------------------------------------------------- cotagem
@@ -235,15 +237,37 @@ def _por_nome(principios, nome: str):
     return next(p for p in principios if p.nome == nome)
 
 
-ALCADO.append(_copia(_por_nome(ALCADO, "DV_Alcado"), "DV_Roup_Alcado",
-                     "Roupeiros: alcado A3 (copia do DV_Alcado)"))
+# R2 (06-10): a etiqueta do artigo passa para baixo do artigo, por fora; as cotas afastam-se
+# 14 mm de papel (eram 8) para lhe dar lugar (etiqueta de ~5,5 mm + desvio de 60 mm do modelo,
+# 3 mm a 1:20). Os módulos de cima (acima de 1490) ficam com a etiqueta por cima, por fora.
+ROUP_DIST_1 = 14
+ALCADO.append(replace(_por_nome(ALCADO, "DV_Alcado"), nome="DV_Roup_Alcado",
+                      descricao="Roupeiros: alcado A3 (cotas a 14 mm para a etiqueta do artigo)",
+                      dist_primeira=ROUP_DIST_1))
 PLANTA.append(_copia(_por_nome(PLANTA, "DV_Planta"), "DV_Roup_Planta",
                      "Roupeiros: planta A3 (copia do DV_Planta)"))
+PORTA_LXA, PORTA_L = "DV_Lbl_PortaLxA", "DV_Lbl_PortaL"
 ANOTACAO += [
-    _copia(_por_nome(ANOTACAO, "DV_Alcado_Etiquetas"), "DV_Roup_Alcado_Etiquetas",
-           "Roupeiros: etiquetas do alcado (copia do DV_Alcado_Etiquetas)"),
-    _copia(_por_nome(ANOTACAO, "DV_Planta_Etiquetas"), "DV_Roup_Planta_Etiquetas",
-           "Roupeiros: etiquetas da planta (copia do DV_Planta_Etiquetas)"),
+    Anotacao("DV_Roup_Alcado_Etiquetas", "Roupeiros: artigo em baixo por fora + L x A das frentes", [
+        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -60), MOD_AZUL,
+                 "Ate 1490: nome + L x A x P, em baixo, por fora"),
+        Etiqueta(3, "DV_Art_Verm", (0, 1), (0, -1), (0, 60), MOD_VERM,
+                 "Acima de 1490: por cima, por fora"),
+        # IMOSPART* (casas da LUPREC da obra) em vez dos COND.PART_SIZE_* em bruto
+        Etiqueta(1, "DV_Frentes", (0, 0), (0, 0), (0, 0), PORTA_LXA,
+                 "Portas e gavetas: L x A (ao centro)"),
+    ]),
+    # Na planta, a frente do artigo é o lado y = -1 (o +1 é a parede: ver DV_Planta_Etiquetas)
+    Anotacao("DV_Roup_Planta_Etiquetas", "Roupeiros: largura das portas + nome a frente do artigo", [
+        Etiqueta(3, "DV_Art_Chao", (0, -1), (0, 1), (0, -150), NOME_AZUL,
+                 "Chao: nome ao meio, a frente do artigo"),
+        Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -150), NOME_AZUL,
+                 "Intermedios: nome ao meio, a frente do artigo"),
+        Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
+                 "Superiores (junto a parede, vermelho)"),
+        Etiqueta(1, "DV_Portas", (0, 0), (0, 1), (0, -40), PORTA_L,
+                 "Portas: largura, a frente da porta"),
+    ]),
 ]
 
 # ----------------------------------------------------------------------------- corte lateral

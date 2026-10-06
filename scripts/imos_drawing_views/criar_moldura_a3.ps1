@@ -63,7 +63,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
 if ($Legenda -eq 'Roupeiro') {
     if (-not $PSBoundParameters.ContainsKey('LayoutNome')) { $LayoutNome = 'DV_A3_Roupeiro' }
-    if (-not $PSBoundParameters.ContainsKey('NomeLegenda')) { $NomeLegenda = 'DV_A3_Legenda_Roup_v1' }
+    if (-not $PSBoundParameters.ContainsKey('NomeLegenda')) { $NomeLegenda = 'DV_A3_Legenda_Roup_v2' }
 }
 
 New-Item -ItemType Directory -Force $Saida | Out-Null
@@ -85,13 +85,20 @@ $ym, $ym2, $y1 = ($y0 + 11), ($y0 + 22), ($y0 + 33)
 if ($Legenda -eq 'Roupeiro') {
     # 2 linhas de 11 mm (06-10): em cima o artigo e os dados da encomenda, em baixo os da folha.
     # Sai a Descricao (num roupeiro o artigo diz mais) e o Cliente; a Ref. cliente alarga.
-    # O artigo e' o "Numero de posicao" (RP_A_01) = IMOSARTICLEPOSITION. A CONFIRMAR no 1.o
-    # batch: a ajuda lista-o para molduras, mas nao diz se as folhas do batch (de obra) o
-    # preenchem.
+    # O artigo e' o "Numero de posicao" (RP_A_01). R1 (06-10): o IMOSARTICLEPOSITION veio
+    # VAZIO nas folhas do batch (sao de obra, nao de artigo). R2: IMOSARTICLEPOSITIONHIERARCHY
+    # (sugestao do Paulo) + uma faixa de TESTE por cima da legenda com outros candidatos, para
+    # saber num so batch qual e' preenchido. A faixa sai na versao seguinte.
     $y1 = $ym2
     $linhasLegenda = @(
+        @{ yb = $y1; yt = ($y1 + 7); celulas = @(
+            @{x = 0; c = 'teste: IMOSARTICLENAME'; t = 'IMOSARTICLENAME'; h = 2.2 },
+            @{x = 44; c = 'teste: IMOSELEMENTARTICLE'; t = 'IMOSELEMENTARTICLE'; h = 2.2 },
+            @{x = 88; c = 'teste: IMOSELEMENTGROUPPOSITION'; t = 'IMOSELEMENTGROUPPOSITION'; h = 2.2 },
+            @{x = 132; c = 'teste: IMOSVSDESCRIPT'; t = 'IMOSVSDESCRIPT'; h = 2.2 },
+            @{x = 176; c = 'teste: IMOSPLANPOSNAME'; t = 'IMOSPLANPOSNAME'; h = 2.2 }) },
         @{ yb = $ym; yt = $y1; celulas = @(
-            @{x = 0; c = 'Artigo'; t = 'IMOSARTICLEPOSITION'; h = 3.5 },
+            @{x = 0; c = 'Artigo'; t = 'IMOSARTICLEPOSITIONHIERARCHY'; h = 3.5 },
             @{x = 40; c = 'Nome enc. iMOS'; t = 'IMOSORDERSERIES'; h = 2.6 },
             @{x = 100; c = 'Enc. PHC'; t = 'IMOSORDERCOMMISSION'; h = 3.0 },
             @{x = 120; c = 'Ref. cliente'; t = 'IMOSORDERITEM'; h = 2.6 },
@@ -130,7 +137,9 @@ $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', 'LAYOUT', '_S', $Layo
 $L += @('TEXTSTYLE', 'Arial')
 # moldura exterior a 0,5 mm e a legenda (linhas finas), encostada a moldura
 $L += @('_.RECTANG', '_W', '0.5', '_NON', "-$mx,-$my", '_NON', "$mx,$my")
-$L += @('_.RECTANG', '_W', '0', '_NON', "$x0,$y0", '_NON', "$x1,$y1")
+# topo da legenda: inclui a faixa de teste dos roupeiros, se houver
+$yTopo = ($linhasLegenda | ForEach-Object { $_.yt } | Measure-Object -Maximum).Maximum
+$L += @('_.RECTANG', '_W', '0', '_NON', "$x0,$y0", '_NON', "$x1,$yTopo")
 foreach ($ln in $linhasLegenda) {
     if ($ln.yb -gt $y0) { $L += Linha $x0 $ln.yb $x1 $ln.yb }
 }
@@ -148,10 +157,10 @@ foreach ($ln in $linhasLegenda) {
 # apanha o que cabe todo na janela: os atributos medem-se pelo nome do campo, e o
 # IMOSORDERDELIVERYDATE passava a direita da moldura (ficava fora do bloco): janela larga.
 $L += @('_.ZOOM', '_E')
-$L += @('-BLOCK', $NomeLegenda, 'O', 'C', '_NON', '0,0', '_W', '_NON', "$($x0 - 1),$($y0 - 1)", '_NON', "$($x1 + 80),$($y1 + 1)", '')
+$L += @('-BLOCK', $NomeLegenda, 'O', 'C', '_NON', '0,0', '_W', '_NON', "$($x0 - 1),$($y0 - 1)", '_NON', "$($x1 + 80),$($yTopo + 1)", '')
 # janela da vista: toda a largura, por cima da legenda, num layer que nao imprime
 $L += @('-LAYER', '_M', 'DV_JANELA', '_P', '_N', 'DV_JANELA', '')
-$L += @('_.MVIEW', '_NON', "$(-$mx + 2),$($y1 + 2)", '_NON', "$($mx - 2),$($my - 2)")
+$L += @('_.MVIEW', '_NON', "$(-$mx + 2),$($yTopo + 2)", '_NON', "$($mx - 2),$($my - 2)")
 $L += @('-LAYER', '_S', '0', '')
 $L += @('_.ZOOM', '_E')
 if ($LayoutNome -ne $LayoutOrigem) { $L += @('LAYOUT', '_R', $LayoutOrigem, $LayoutNome) }
