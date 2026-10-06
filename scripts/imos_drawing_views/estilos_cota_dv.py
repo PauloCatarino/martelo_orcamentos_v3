@@ -64,8 +64,10 @@ COMUNS = [  # (variável, valor) em mm de papel
 # para o lado e a linha de cota prolonga-se até ele (DIMTMOVE 0 "Beside the dimension line",
 # DIMATFIT 2 "Text" primeiro, DIMSOXD 0), como o "50" azul, em vez de ir por cima com linha de
 # chamada. R6: o DV_VERMELHO também (o Paulo tinha-se esquecido dele).
+# R10 (06-10): o Paulo mudou no iX CAD o "Text placement" para "Over dimension line, with
+# leader" (DIMTMOVE 1): quando o texto não cabe, sai por cima com linha de chamada. Fica assim.
 CENTRADOS = {"DV_AZUL", "DV_MAGENTA", "DV_PRETO", "DV_VERDE", "DV_VERMELHO"}
-CENTRADO = [("DIMTAD", "0"), ("DIMJUST", "0"), ("DIMTFILL", "0"), ("DIMTMOVE", "0"),
+CENTRADO = [("DIMTAD", "0"), ("DIMJUST", "0"), ("DIMTFILL", "0"), ("DIMTMOVE", "1"),
             ("DIMATFIT", "2"), ("DIMSOXD", "0")]
 
 
@@ -105,8 +107,9 @@ ESCALA_MODELO = "1:20"   # escala de anotação do Model: o texto de 2,5 mm vê-
 # Fica com isso, mas com as medidas e o texto dos DV_* (35 -> 2,5 mm de papel; o estilo de
 # texto IMOS_Text35 tem altura fixa 35 e mandava sobre o DIMTXT, por isso o texto passa a ISO).
 COTA_MANUAL = "IMOS_Text35"
-MEDIDAS_IMOS = [("DIMTXSTY", ESTILO_TEXTO), ("DIMTXT", "2.5"), ("DIMASZ", "1.5"), ("DIMEXO", "1"),
-                ("DIMEXE", "1"), ("DIMGAP", "0.6"), ("DIMDLI", "7")]
+# R10: chamadas a 0 / 0 (DIMEXO / DIMEXE), como o Paulo as deixou no IMOS.dwt (14:56).
+MEDIDAS_IMOS = [("DIMTXSTY", ESTILO_TEXTO), ("DIMTXT", "2.5"), ("DIMASZ", "1.5"), ("DIMEXO", "0"),
+                ("DIMEXE", "0"), ("DIMGAP", "0.6"), ("DIMDLI", "7")]
 
 
 def linhas_cota_imos() -> list[str]:
@@ -171,6 +174,14 @@ def _fim_dwt(destino: str) -> list[str]:
     return out + ["_.SAVEAS", "_T", destino, "", ""]
 
 
+def linhas_dwt_cotas(destino: str) -> list[str]:
+    """Script da consola sobre uma CÓPIA de um IMOS.dwt que já tem tudo (R8 em diante): só
+    regrava os DV_* e o IMOS_Text35 com os valores atuais e grava outro .dwt."""
+    out = ["FILEDIA", "0", "CMDDIA", "0", "OSMODE", "0", "OSNAPCOORD", "1"]
+    out += linhas_obra() + linhas_cota_imos() + ["-DIMSTYLE", "_R", COTA_MANUAL]
+    return out + ["_.SAVEAS", "_T", destino, "", ""]
+
+
 def linhas_dwt_r8(destino: str) -> list[str]:
     """Script da consola sobre uma CÓPIA do IMOS.dwt da R7 (o que já tem os DV_*)."""
     return ["FILEDIA", "0", "CMDDIA", "0", "OSMODE", "0", "OSNAPCOORD", "1"] + _fim_dwt(destino)
@@ -226,9 +237,9 @@ def main() -> None:
         Path(sys.argv[2]).write_bytes(("\r\n".join(linhas_manual()) + "\r\n").encode("ascii"))
         print(f"Comandos: {sys.argv[2]}")
         return
-    if len(sys.argv) == 4 and sys.argv[1] in ("--dwt", "--dwt-r8"):
+    if len(sys.argv) == 4 and sys.argv[1] in ("--dwt", "--dwt-r8", "--dwt-cotas"):
         scr = Path(sys.argv[2])
-        f = linhas_dwt if sys.argv[1] == "--dwt" else linhas_dwt_r8
+        f = {"--dwt": linhas_dwt, "--dwt-r8": linhas_dwt_r8, "--dwt-cotas": linhas_dwt_cotas}[sys.argv[1]]
         scr.write_bytes(("\r\n".join(f(sys.argv[3])) + "\r\n").encode("ascii"))
         print(f"Script: {scr}")
         return

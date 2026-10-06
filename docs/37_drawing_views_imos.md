@@ -601,6 +601,37 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   - `1_redefinir_alcado.txt` e `2_redefinir_planta.txt` redefinem o bloco numa obra aberta
     (`-INSERT nome=ficheiro`, depois Esc), porque o bloco que já está no desenho manda sobre o
     da pasta.
+- **Resultado (06-10, APAGAR_17):** o PDF saiu com as 3 folhas e a escala com 1 casa decimal.
+
+### R10: etiquetas sem tocar nas cotas e desenho maior (06-10, por testar)
+
+Ideias que saíram do PDF da APAGAR_17; o Paulo escolheu a 1 e a 2.
+
+1. **Etiquetas por cima das cotas nos alçados:**
+   - em cima, o "Porta / L / A" (3 linhas, ~11 mm) tocava na cota verde das paredes;
+   - em baixo, o nome do artigo tocava na cota azul;
+   - a 1.ª cota do `DV_Roup_Alcado` estava a 9 mm (valor que o Paulo tinha afinado na R5) e
+     passa a **14 mm**. As outras ficam a 4;
+   - aplicado na `imos_LE_TESTES`. Na `imos_LE`, o Paulo muda à mão no Element Manager.
+2. **Espaço vazio à esquerda e em baixo:**
+   - os pontos da R9 estavam a 69 mm do texto e o Zoom extents contava com eles;
+   - passam para a volta do texto (alçado −20,6 a −1,9; planta 5,−4 a 24,−1), em
+     `DrawingFlags_simples_v3`;
+   - **risco:** se o iMos usar o tamanho do bloco para posicionar a etiqueta, ela muda de
+     sítio, mas fica sempre na folha. Se ficar mal, volta-se à v2.
+3. Por fazer (precisa de investigar):
+   - na planta, as colunas com 2 portas (em cima/em baixo) têm 2 etiquetas no mesmo sítio;
+   - na Vista 2, a porta do RP_A_02 vista de lado escreve por cima das vizinhas.
+4. As 2 casas decimais das portas: limite do iMos (IMOSPART*).
+5. **Pedido a meio da ronda (manter):** nos 5 `DV_*`, quando o texto não cabe, vai "Over
+   dimension line, with leader" (`DIMTMOVE 1`, fit "Text"). No IMOS.dwt (gravado por ele às
+   14:56), o `IMOS_Text35` ficou com `DIMTMOVE 1` e chamadas `DIMEXO 0` / `DIMEXE 0`.
+   - O script adota estes valores (`CENTRADO`, `MEDIDAS_IMOS`), para não os desfazer.
+   - Ficheiros em `Pasta_Transferencia\Estilos_R10`:
+     - `IMOS.dwt`: o dele das 14:56 com os 5 DV_* regravados (`--dwt-cotas`); no DXF, mesmos
+       objetos;
+     - `imosBlocks.dwg`;
+     - `comandos_obra_aberta.txt`.
 
 ## 7. Anexo — o que mostra cada vídeo
 

@@ -46,8 +46,12 @@ foreach ($n in 'imosLabelElevation', 'imosLabelPlanview') {
         # em (1E20,1E20): o Zoom extents das folhas ia ate la e o PDF saia vazio. Dois pontos
         # na camada Defpoints (nao imprime) nos cantos do simbolo com circulo (-69.25,-26.25 a
         # -20,-3.75), com que o iMos o punha a -80,-96.25 do canto da vista (APAGAR_14 e 15).
+        # R10 (APAGAR_17): o Zoom extents conta com os pontos, e 69 mm a esquerda deixavam a
+        # folha com espaco vazio e o desenho mais pequeno. Passam para a volta do texto
+        # "Vista 1" (3 mm de altura, ~19 mm de largura; ver SIMPLES no etiqueta_vista_dxf.py).
+        $cantos = if ($n -eq 'imosLabelElevation') { @('-20,6', '-1,9') } else { @('5,-4', '24,-1') }
         $pontos = @('-LAYER', '_M', 'Defpoints', '_P', '_N', 'Defpoints', '',
-            '_.POINT', '_NON', '-69.25,-26.25', '_.POINT', '_NON', '-20,-3.75', '-LAYER', '_S', '0', '')
+            '_.POINT', '_NON', $cantos[0], '_.POINT', '_NON', $cantos[1], '-LAYER', '_S', '0', '')
     }
     Invoke-ConsolaIxCad -Dwg $novo -Linhas ((Get-InicioScript) + $pontos + @('_.ZOOM', '_E', '_.SAVEAS', '2018', $final)) -Log (Join-Path $Saida "$n.passo2.log") -TimeoutSec 120 | Out-Null
     if (-not (Test-Path $final)) { throw "Nao gravou $final" }

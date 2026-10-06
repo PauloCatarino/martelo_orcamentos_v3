@@ -1773,3 +1773,36 @@ Guião de teste:
    - na legenda, a escala com 1 casa decimal (ex.: `1:19.6`);
    - o "Planta 1" / "Vista 1" junto ao desenho.
 4. (Alternativa ao passo 2) criar uma obra nova, que já apanha os blocos novos.
+
+**Resultado (06-10):** na APAGAR_17 o PDF saiu certo (3 folhas, escala 1:17.6 / 1:14.2 /
+1:20.4). O R9 está no GitHub.
+
+## Drawing Views: etiquetas livres das cotas e desenho maior, ronda R10 (2026-10-06)
+
+Feito (doc 37, R10):
+
+- a 1.ª cota do alçado dos roupeiros passa de 9 para 14 mm (aplicado na `imos_LE_TESTES`);
+- os pontos invisíveis da etiqueta da vista ficam só à volta do texto (`DrawingFlags_simples_v3`).
+
+Guião de teste:
+
+1. Fechar o iX CAD. Copiar os 2 DWG de `Pasta_Transferencia\DrawingFlags_simples_v3` para
+   `config\DrawingFlags\` (por cima dos da v2).
+2. Abrir a APAGAR_17:
+   - colar `1_redefinir_alcado.txt` na linha de comandos, Enter e **Esc** no ponto;
+   - o mesmo com `2_redefinir_planta.txt`;
+   - Element Manager → ⟳ (para ler a cota a 14).
+3. Correr o batch `DV_Roupeiros` e comparar com o PDF anterior. Esperado:
+   - nos alçados, a cota verde de cima fica acima das etiquetas "Porta";
+   - o "RP_A_0x / L X A X P" fica entre o desenho e a cota azul, sem lhe tocar;
+   - menos espaço vazio à esquerda e em baixo; o desenho um pouco maior;
+   - o "Planta 1" / "Vista 1" junto ao desenho.
+4. **Se a etiqueta da vista aparecer num sítio estranho:** voltar a copiar os da v2 e dizer-me.
+5. Se ficar bem: na `imos_LE`, Element Manager → cotagem do alçado `DV_Roup_Alcado` →
+   distância da 1.ª cota = 14. Copiar os DWG da v3 para o `DrawingFlags` dos outros PCs.
+6. **Cotas com o texto por cima e linha de chamada** (pedido do Paulo durante a R10):
+   - com o iX CAD fechado, em `config\`, mudar o nome do `IMOS.dwt` para `IMOS_1456.dwt` e
+     copiar os `Pasta_Transferencia\Estilos_R10\IMOS.dwt` e `imosBlocks.dwg` para lá;
+   - numa obra nova, cotar uma porta estreita com o `DV_VERMELHO`. Esperado: o número sai por
+     cima, com linha de chamada; o `IMOS_Text35` faz o mesmo;
+   - nas obras já abertas (APAGAR_17) os estilos são os da obra: ficam como os deixaste.

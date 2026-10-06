@@ -245,14 +245,16 @@ def _por_nome(principios, nome: str):
 # R4: 16 (eram 14) para caber por cima a etiqueta das portas, de 3 linhas.
 # R5 (06-10): valores que o Paulo afinou no Element Manager depois do teste da R4: alçado 9 / 4,
 # planta 4 / 5 (o script passa a escrevê-los, para o --aplicar não os desfazer).
-ROUP_DIST_1, ROUP_DIST_N = 9, 4
+# R10 (06-10, PDF da APAGAR_17): a 9 mm, as etiquetas das portas (3 linhas, ~11 mm) tocavam na
+# cota verde das paredes, em cima, e o nome do artigo na cota azul, em baixo: a 1.ª passa a 14.
+ROUP_DIST_1, ROUP_DIST_N = 14, 4
 ROUP_PLANTA_DIST_1, ROUP_PLANTA_DIST_N = 4, 5
 # R3 (06-10): a cota das paredes (verde) passa para cima (1958 = 0); a dos móveis (azul) fica
 # em baixo, por baixo da etiqueta do artigo.
 _alcado = _por_nome(ALCADO, "DV_Alcado")
 ALCADO.append(replace(
     _alcado, nome="DV_Roup_Alcado", dist_primeira=ROUP_DIST_1, dist_outras=ROUP_DIST_N,
-    descricao="Roupeiros: alcado A3 (cotas a 9/4 mm, paredes em cima)",
+    descricao=f"Roupeiros: alcado A3 (cotas a {ROUP_DIST_1}/{ROUP_DIST_N} mm, paredes em cima)",
     linhas=[replace(ln, atributos={**ln.atributos, 1958: "0"}) if ln.tipo == 1952 else ln
             for ln in _alcado.linhas]))
 # A planta não tem posição para as larguras dos móveis (só "dentro/fora" para a
