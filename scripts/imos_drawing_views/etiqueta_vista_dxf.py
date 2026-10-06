@@ -88,7 +88,48 @@ def _editar_entidade(ent: list[list[str]]) -> None:
                 poe(c, v)
 
 
-def editar(texto: str) -> str:
+# Versão simples (pedido do Paulo, 06-10, R4 dos roupeiros): só o nome da vista ("Vista 1"),
+# sem círculo, linha, número nem escala, encostado ao desenho. O círculo original ficava à
+# ESQUERDA do ponto de inserção (centro em -58,-15 mm de papel: ~930 mm do modelo a 1:16), por
+# isso a etiqueta ficava longe e alargava a vista. O iMos insere a etiqueta 5 mm à esquerda e
+# 6 mm abaixo do canto inferior esquerdo da vista (medido na APAGAR_15: -80,-96 a 1:16).
+#   alçado: à esquerda do desenho, na linha do chão (à direita estão as alturas);
+#   planta: por baixo do canto (à esquerda está a profundidade).
+SIMPLES = {
+    # tipo: (x, y, alinhamento horizontal 0 esq. / 2 dir., vertical 1 baixo / 3 cima)
+    "alcado": (-1.0, 6.0, 2, 1),
+    "planta": (5.0, -1.0, 0, 3),
+}
+ALTURA_SIMPLES = 3.0
+
+
+def _simples(ent: list[list[str]], tipo: str) -> list[list[str]] | None:
+    """Só fica o atributo do nome, reposicionado; o resto sai."""
+    if ent[0][1].strip() != "ATTDEF":
+        return None
+    tag = next(v for c, v in ent if c == "2").strip()
+    if tag != "IMOSSECTIONNAME":
+        return None
+    x, y, h, v = SIMPLES[tipo]
+    novo = []
+    for c, val in ent:
+        if c == "72":
+            continue
+        if c == "11":
+            novo.append(["72", f"{h:>6}"])
+        if c in ("10", "11"):
+            val = _f(x)
+        elif c in ("20", "21"):
+            val = _f(y)
+        elif c == "40":
+            val = _f(ALTURA_SIMPLES)
+        elif c == "74":
+            val = f"{v:>6}"
+        novo.append([c, val])
+    return novo
+
+
+def editar(texto: str, simples: str | None = None) -> str:
     linhas = texto.split("\n")
     pares = _pares(linhas)
     out: list[list[str]] = []
@@ -100,7 +141,9 @@ def editar(texto: str) -> str:
         elif c == "2" and sec == "?":
             sec = v.strip()
         if sec == "ENTITIES" and c == "0":
-            if ent:
+            if ent and simples:
+                out += _simples(ent, simples) or []
+            elif ent:
                 _editar_entidade(ent)
                 out += ent
             ent = [[c, v]] if v.strip() not in ("ENDSEC",) else None
@@ -119,8 +162,11 @@ def main() -> None:
     if len(sys.argv) < 3:
         sys.exit(__doc__)
     ent, sai = sys.argv[1], sys.argv[2]
+    simples = sys.argv[3] if len(sys.argv) > 3 else None  # "alcado" ou "planta"
+    if simples and simples not in SIMPLES:
+        sys.exit(f"Tipo simples desconhecido: {simples} ({', '.join(SIMPLES)})")
     texto = open(ent, encoding="cp1252", errors="replace").read()
-    open(sai, "w", encoding="cp1252", errors="replace", newline="\r\n").write(editar(texto))
+    open(sai, "w", encoding="cp1252", errors="replace", newline="\r\n").write(editar(texto, simples))
     print(f"Gravado: {sai}")
 
 

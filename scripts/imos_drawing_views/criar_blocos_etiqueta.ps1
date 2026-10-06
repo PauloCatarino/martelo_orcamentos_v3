@@ -140,6 +140,23 @@ if ($Versao -eq 'modelo') {
             Texto 'Porta' 'MC' 0 1.2 1.5
             AttDef 'IMOSPARTWIDTH' 'MC' 0 -1.2 1.8
         )
+        # R4 (06-10): no L da APAGAR_15 o "359.83X2481.40" ao centro da porta sobrepunha-se as
+        # vizinhas e as linhas do desenho. Agora 3 linhas estreitas (cabem numa porta de 360 a
+        # 1:25) e o iMos poe-nas por cima da porta, fora do desenho (DV_Roup_Alcado_Etiquetas).
+        'DV_Lbl_Porta_3L'      = @(
+            Texto 'Porta' 'MC' 0 2.6 1.5
+            Texto 'L' 'MR' -2.4 0.3 1.8
+            AttDef 'IMOSPARTWIDTH' 'ML' -1.8 0.3 1.8
+            Texto 'A' 'MR' -2.4 -2.2 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' -1.8 -2.2 1.8
+        )
+        'DV_Lbl_Gaveta_3L'     = @(
+            Texto 'Gaveta' 'MC' 0 2.6 1.5
+            Texto 'L' 'MR' -2.4 0.3 1.8
+            AttDef 'IMOSPARTWIDTH' 'ML' -1.8 0.3 1.8
+            Texto 'A' 'MR' -2.4 -2.2 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' -1.8 -2.2 1.8
+        )
         'DV_Lbl_Artigo_Azul'   = @(& $artigo)
         'DV_Lbl_Artigo_Verm'   = @(& $artigo)
         'DV_Lbl_Artigo_Planta' = @(
@@ -156,7 +173,7 @@ if ($Versao -eq 'modelo') {
     }
     $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente',
         'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL', 'DV_Lbl_Porta_Alcado', 'DV_Lbl_Gaveta_Alcado', 'DV_Lbl_Porta_Planta',
-        'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta')
+        'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta', 'DV_Lbl_Porta_3L', 'DV_Lbl_Gaveta_3L')
     $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
 

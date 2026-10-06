@@ -129,6 +129,12 @@ $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', 'LAYOUT', '_S', $Layo
 # o estilo "IMOS" do kit tem altura fixa (o -ATTDEF deixa de perguntar a altura e o script
 # desalinha); o "Arial" do kit tem altura livre. A consola nao tem -STYLE.
 $L += @('TEXTSTYLE', 'Arial')
+if ($Legenda -eq 'Roupeiro') {
+    # R4 (06-10): as etiquetas das vistas e os indicadores de alcado sao anotativos e so tem
+    # a escala de anotacao da obra (1:16 na APAGAR_15): nas folhas a 1:20 e 1:25 nao
+    # apareciam. Com ANNOALLVISIBLE = 1 (guardado por layout) aparecem a mesma.
+    $L += @('ANNOALLVISIBLE', '1')
+}
 # moldura exterior a 0,5 mm e a legenda (linhas finas), encostada a moldura
 $L += @('_.RECTANG', '_W', '0.5', '_NON', "-$mx,-$my", '_NON', "$mx,$my")
 # topo da legenda: inclui a faixa de teste dos roupeiros, se houver

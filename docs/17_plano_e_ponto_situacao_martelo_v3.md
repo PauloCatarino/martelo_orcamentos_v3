@@ -1547,4 +1547,47 @@ Guião de teste (iX CAD fechado):
      - nas frentes de gaveta, "Gaveta" + medidas;
    - **Legenda:** só 2 linhas, sem a faixa "teste:" e sem a célula Artigo.
 
+**Resultado (06-10):** a planta ficou boa.
+
+- No L, as medidas das portas misturam-se com o desenho.
+- Na planta faltam a etiqueta "Planta 1" e os indicadores das vistas: são anotativos a 1:16
+  e as folhas têm `ANNOALLVISIBLE` = 0.
+
+## Drawing Views: roupeiros, ronda R4 (2026-10-06)
+
+Feito (doc 37, R4):
+
+- portas em 3 linhas por cima da porta, por fora;
+- moldura com `ANNOALLVISIBLE` = 1;
+- batch de comparação `DV_Roupeiros_Zoom`;
+- etiqueta simples da vista (para instalar);
+- regra de corte lateral `DV_Roup_Corte_Lateral`.
+
+Guião de teste:
+
+1. Element Manager → ⟳.
+   - Em Dimensioning → Side-view section dimensioning → `DV_Desenhos` → abrir
+     **`DV_Roup_Corte_Lateral`**.
+   - Na linha 2 (Horizontal carcass parts) confirmar que "Height dim. – Reference" diz
+     **Between parts** e que "Offset of shelf to article" diz **Yes**. Se não, corrigir aí e
+     dizer-me o valor certo.
+2. Com o iX CAD fechado: Order Manager → APAGAR_15 → só **`DV_Roupeiros`** → ✓.
+   - **Planta:** aparecem "Planta 1" e os indicadores "1 Vista 1" / "2 Vista 2".
+   - **Alçados:** por cima de cada porta, fora do desenho, "Porta / L 359.83 / A 2481.40",
+     sem se sobrepor às vizinhas. As cotas verdes ficam mais acima.
+3. Depois, só **`DV_Roupeiros_Zoom`** → ✓. O PDF sai em `C:\IMOS_Output_Batches\Zoom`.
+   Comparar com o do passo 2: o desenho deve encher mais a folha. Ver se as cotas e as
+   etiquetas continuam todas visíveis.
+4. **Corte lateral à mão** (iX CAD aberto, APAGAR_15):
+   - 2D Drawing views → Create Section → Section type **Side view**;
+   - Dimensioning principle **`DV_Roup_Corte_Lateral`**;
+   - cortar a coluna do nicho (a do meio, com gavetas e nicho).
+   - Esperado: a cadeia preta da altura total e da profundidade; a magenta com rodapé,
+     tampos/fundos e rodateto; a vermelha com os nichos.
+5. **Etiqueta simples da vista** (opcional, numa obra nova):
+   - guardar os 2 ficheiros atuais de `%APPDATA%\imos AG\iX CAD 2025\config\DrawingFlags`;
+   - copiar para lá os de `C:\Pasta_Transferencia_Ourem_Calvaria\DrawingFlags_simples`;
+   - numa obra **sem vistas** correr o `DV_Roupeiros`;
+   - esperado: só "Vista 1" pequeno, à esquerda do desenho, ao nível do chão.
+
 **Por testar:** tudo.

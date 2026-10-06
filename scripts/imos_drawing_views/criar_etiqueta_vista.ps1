@@ -11,12 +11,17 @@
     guarda os originais e copia estes por cima (pedido explicito dele). As obras que ja tem
     o bloco definido continuam com o antigo; as obras novas usam o novo.
 
+    Com -Simples (pedido do Paulo, 06-10): so o nome da vista ("Vista 1"), sem circulo, linha,
+    numero nem escala, encostado ao desenho (ver o etiqueta_vista_dxf.py).
+
 .EXAMPLE
     .\criar_etiqueta_vista.ps1 -Saida C:\temp\dv_etiqueta_vista
+    .\criar_etiqueta_vista.ps1 -Saida C:\temp\dv_etiqueta_simples -Simples
 #>
 param(
     [Parameter(Mandatory)][string]$Saida,
-    [string]$Origem = (Join-Path $env:APPDATA 'imos AG\iX CAD 2025\config\DrawingFlags')
+    [string]$Origem = (Join-Path $env:APPDATA 'imos AG\iX CAD 2025\config\DrawingFlags'),
+    [switch]$Simples
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '..\imos_ferragens\_consola.ps1')
@@ -31,7 +36,9 @@ foreach ($n in 'imosLabelElevation', 'imosLabelPlanview') {
     $dxf = Join-Path $Saida "$n.original.dxf"
     $novo = Join-Path $Saida "$n.novo.dxf"
     Invoke-ConsolaIxCad -Dwg $copia -Linhas ((Get-InicioScript) + @('_.SAVEAS', '_DXF', '16', $dxf)) -Log (Join-Path $Saida "$n.passo1.log") -TimeoutSec 120 | Out-Null
-    & $py (Join-Path $PSScriptRoot 'etiqueta_vista_dxf.py') $dxf $novo
+    $modo = @()
+    if ($Simples) { $modo = @(if ($n -eq 'imosLabelElevation') { 'alcado' } else { 'planta' }) }
+    & $py (Join-Path $PSScriptRoot 'etiqueta_vista_dxf.py') $dxf $novo @modo
     if ($LASTEXITCODE) { throw "etiqueta_vista_dxf.py falhou ($n)" }
     Invoke-ConsolaIxCad -Dwg $novo -Linhas ((Get-InicioScript) + @('_.ZOOM', '_E', '_.SAVEAS', '2018', $final)) -Log (Join-Path $Saida "$n.passo2.log") -TimeoutSec 120 | Out-Null
     if (-not (Test-Path $final)) { throw "Nao gravou $final" }

@@ -50,6 +50,7 @@ ARTIGO, PECA = 10250, 10300
 # a escala de anotação a 1:1: no batch as cotas saíam 20-100 vezes maiores (teste de 05-10).
 # (Os DV_COTA_* da 1.ª tentativa tinham texto de altura fixa e ficaram na ORC_260881_2604023.)
 AZUL, VERM, PRETO, VERDE = "DV_AZUL", "DV_VERMELHO", "DV_PRETO", "DV_VERDE"
+MAGENTA = "DV_MAGENTA"
 
 # Altura que separa os módulos de baixo dos de cima (pedido do Paulo, 05-10): acima de
 # 1490 mm a vermelho (etiqueta e cotas); do chão até 1490, e as colunas, a azul.
@@ -241,7 +242,8 @@ def _por_nome(principios, nome: str):
 # R2 (06-10): a etiqueta do artigo passa para baixo do artigo, por fora; as cotas afastam-se
 # 14 mm de papel (eram 8) para lhe dar lugar (etiqueta de ~5,5 mm + desvio de 60 mm do modelo,
 # 3 mm a 1:20). Os módulos de cima (acima de 1490) ficam com a etiqueta por cima, por fora.
-ROUP_DIST_1 = 14
+# R4: 16 (eram 14) para caber por cima a etiqueta das portas, de 3 linhas
+ROUP_DIST_1 = 16
 # R3 (06-10): a cota das paredes (verde) passa para cima (1958 = 0); a dos móveis (azul) fica
 # em baixo, por baixo da etiqueta do artigo.
 _alcado = _por_nome(ALCADO, "DV_Alcado")
@@ -263,10 +265,14 @@ ANOTACAO += [
                  "Ate 1490: nome + L X A X P, em baixo, por fora"),
         Etiqueta(3, "DV_Art_Verm", (0, 1), (0, -1), (0, 60), "DV_Lbl_Artigo_Verm",
                  "Acima de 1490: por cima, por fora"),
-        Etiqueta(1, "DV_Portas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Porta_Alcado",
-                 "Portas: 'Porta' + L X A (ao centro)"),
-        Etiqueta(1, "DV_Gavetas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Gaveta_Alcado",
-                 "Frentes de gaveta: 'Gaveta' + L X A (ao centro)"),
+        # R4 (06-10): no L da APAGAR_15 as medidas ao centro da porta misturavam-se com as
+        # linhas do desenho e com as vizinhas. Passam para cima da porta, por fora (110 mm do
+        # modelo), em 3 linhas estreitas. As portas que não chegam ao topo ficam com a
+        # etiqueta no vão por cima delas.
+        Etiqueta(1, "DV_Portas", (0, 1), (0, -1), (0, 110), "DV_Lbl_Porta_3L",
+                 "Portas: 'Porta' / L / A, por cima da porta"),
+        Etiqueta(1, "DV_Gavetas", (0, 0), (0, 0), (0, 0), "DV_Lbl_Gaveta_3L",
+                 "Frentes de gaveta: 'Gaveta' / L / A (ao centro)"),
     ]),
     # Na planta, a frente do artigo é o lado y = -1 (o +1 é a parede: ver DV_Planta_Etiquetas).
     # A etiqueta do artigo tem 4 linhas (~11 mm): vai mais à frente que a das portas.
@@ -299,6 +305,23 @@ CORTE = [
                 # 1.º corte (05-10): as frentes saíam com "8" e "0" (recuo e folga das portas):
                 # 1981 Vertical front offset dim. e 1986 Vertical front gap dim. = Não
                 Linha(1968, "DV_Art_Todos", AZUL, "Frentes: alturas", {1972: "1", 1981: "0", 1986: "0"}),
+            ]),
+    # Roupeiros (R4, 06-10): a cadeia vertical (rodapé, rodateto, caixotes, nicho) não se faz
+    # no alçado nem no corte de frente (este só cota as medidas do artigo: ajuda
+    # "Front-View Section Dimensioning"). O corte LATERAL tem "Horizontal carcass parts"
+    # (tampos, fundos e prateleiras fixas) e "Niches". Faz-se à mão, um corte por coluna.
+    # Códigos do imos.msg: 1971 Horizontal carcass parts; 1999 Offset of horizontal shelf to
+    # article (= distância ao topo/fundo do artigo); 1995 Height dim. - Reference (0 Part
+    # center / 1 Between parts / 2 ... including bottom offset: A CONFIRMAR no Element Manager,
+    # a ordem foi deduzida da ajuda); 1996 Part thickness dim.
+    Cotagem("DV_Roup_Corte_Lateral", "Roupeiros: corte lateral com alturas, pecas horizontais e nichos",
+            DIST_1, DIST_N, True, [
+                Linha(1966, "DV_Art_Todos", PRETO, "Artigo: altura total + profundidade",
+                      {1972: "1", 1974: "0", 1975: "0", 1984: "1"}),
+                Linha(1971, "DV_Art_Todos", MAGENTA,
+                      "Pecas horizontais: rodape, rodateto, caixotes, prateleiras fixas (entre pecas)",
+                      {1972: "1", 1995: "1", 1999: "1", 1996: "0", 1984: "0"}),
+                Linha(1969, "DV_Art_Todos", VERM, "Nichos: vaos", {1972: "1"}),
             ]),
 ]
 
@@ -501,19 +524,20 @@ BATCH_SAIDA = "C:\\IMOS_Output_Batches\\"
 #   drawingsymbol = "Criar: 2D Symbols".
 
 
-def saida_desenhos(moldura: str, planta: str, planta_etq: str, alcado: str, alcado_etq: str) -> dict:
+def saida_desenhos(moldura: str, planta: str, planta_etq: str, alcado: str, alcado_etq: str,
+                   escala: int = 2, pasta: str = BATCH_SAIDA) -> dict:
     return {
         "submittaldrawingdefinition": {
-            "general": {"generate": 3, "outputpath": BATCH_SAIDA},
+            "general": {"generate": 3, "outputpath": pasta},
             # planta como o Paulo a quer: sem linhas escondidas, com conectores e sem cor
             # (a cor foi ele que a desligou no Element Manager, visto na base a 06-10)
-            "planview": {"layout": moldura, "scaling": 2, "visugrad": 4,
+            "planview": {"layout": moldura, "scaling": escala, "visugrad": 4,
                          "dimensioning": planta, "annotation": planta_etq,
                          "hiddenlines": 3, "contour": 0, "coloration": 0, "connector": 1},
             # alçado como o Paulo o afinou nas Vistas 3 e 4 (05-10): linhas escondidas "All",
             # Secção (= hatch), 2D Symbols e conectores. As escondidas vão para o layer
             # IMOS_SECTION_BACK_HIDDEN (cor 254): o DV_PlotStyle.ctb da moldura escurece-as.
-            "elevation": {"layout": moldura, "scaling": 2, "visugrad": 4,
+            "elevation": {"layout": moldura, "scaling": escala, "visugrad": 4,
                           "dimensioning": alcado, "annotation": alcado_etq,
                           "hiddenlines": 0, "surfacesymbol": 0, "surfacename": 0, "materialsymbol": 0,
                           "materialname": 0, "hatch": 1, "coloration": 0, "drawingsymbol": 1,
@@ -538,6 +562,14 @@ BATCHES = [
           "Roupeiros: planta + alcados em A3 (moldura DV_A3_Roupeiro, regras DV_Roup_*), layouts e PDF",
           saida_desenhos("DV_A3_Roupeiro", "DV_Roup_Planta", "DV_Roup_Planta_Etiquetas",
                          "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas")),
+    # R4 (06-10), para comparar: igual ao DV_Roupeiros mas com "Zoom extents" (o desenho enche
+    # a janela, escala fora da lista; o Paulo: "a escala não é muito importante"). O PDF vai
+    # para a subpasta Zoom, para não apagar o do DV_Roupeiros.
+    Batch("DV_Roupeiros_Zoom",
+          "Roupeiros (teste): como o DV_Roupeiros, com Zoom extents em vez de Best scale",
+          saida_desenhos("DV_A3_Roupeiro", "DV_Roup_Planta", "DV_Roup_Planta_Etiquetas",
+                         "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas",
+                         escala=0, pasta=BATCH_SAIDA + "Zoom\\")),
 ]
 
 

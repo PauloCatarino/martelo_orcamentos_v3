@@ -380,6 +380,65 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   - sem a faixa de teste e sem a célula Artigo;
   - linha 1: Nome enc. iMOS, Enc. PHC, Ref. cliente (larga), Obra, Entrega.
 
+**Resultado da R3** (APAGAR_15, agora em L, 3 folhas):
+
+- a planta ficou boa;
+- nos alçados do L, as medidas das portas ao centro confundem-se com as linhas e com as
+  vizinhas;
+- na planta não aparecem a etiqueta "Planta 1" nem os indicadores "1 Vista 1" / "2 Vista 2"
+  (no modelo existem);
+- a etiqueta da Vista 1 fica longe, e o desenho não enche a folha.
+
+**Diagnóstico** (cópia da APAGAR_15 em DXF):
+
+- **Etiquetas e indicadores escondidos.** Os blocos `imosLabel*` e `imosFlag*` são
+  anotativos e só têm a escala de anotação da obra (1:16). Nas folhas a 1:20 (planta) e a
+  1:25 (Vista 2) ficam escondidos, porque as folhas têm `ANNOALLVISIBLE` = 0. A Vista 1 está
+  a 1:16, por isso mostra a etiqueta. As etiquetas `DV_*` aparecem sempre porque o iMos lhes
+  dá a escala da folha.
+- **Etiqueta longe.**
+  - O iMos insere-a 5 mm à esquerda e 6 mm abaixo do canto inferior esquerdo do limite da
+    vista (−80, −96 a 1:16).
+  - O desenho do bloco está todo à esquerda desse ponto: o círculo fica em −58, −15 mm de
+    papel, cerca de 930 mm do modelo.
+  - Na Vista 1 o limite inclui o corte da asa A do L, por isso a etiqueta fica ainda mais
+    longe.
+- **Batch:** as únicas chaves da saída "Drawing views" são generate, outputpath, layout,
+  scaling, visugrad, dimensioning, annotation, hiddenlines, contour, coloration, connector,
+  surfacesymbol, surfacename, materialsymbol, materialname, hatch e drawingsymbol
+  (`imosr25.arx`). Não há opção para as etiquetas nem para o valor da escala.
+- **Cadeia vertical:** o **corte de frente** só cota as medidas do artigo e as interiores
+  (ajuda "Front-View Section Dimensioning"). Peças horizontais e nichos só existem no
+  **corte lateral**.
+
+### R4 (06-10, por testar)
+
+- **Portas no alçado:**
+  - bloco `DV_Lbl_Porta_3L`: "Porta" / "L 359.83" / "A 2481.40", estreito;
+  - vai **por cima da porta, por fora** (110 mm do modelo);
+  - `DV_Roup_Alcado` com as cotas a 16 mm;
+  - as gavetas ficam ao centro, com `DV_Lbl_Gaveta_3L`.
+- **Moldura `DV_A3_Roupeiro` com `ANNOALLVISIBLE` = 1** no layout, para as etiquetas e os
+  indicadores da obra aparecerem em qualquer escala. Falta ver se o iMos copia este valor
+  para os layouts que cria.
+- **Batch de comparação `DV_Roupeiros_Zoom`:** igual, mas com "Zoom extents" (o desenho
+  enche a janela). O PDF vai para `C:\IMOS_Output_Batches\Zoom`.
+- **Etiqueta simples da vista:** `criar_etiqueta_vista.ps1 -Simples`.
+  - Fica só o nome ("Vista 1"), com 3 mm, encostado ao desenho: no alçado à esquerda, na
+    linha do chão; na planta, por baixo do canto.
+  - Está em `C:\Pasta_Transferencia_Ourem_Calvaria\DrawingFlags_simples`. O Paulo instala
+    no `config\DrawingFlags` (guardar antes os atuais).
+  - Só vale para obras que ainda não tenham o bloco: a obra guarda a definição antiga.
+- **`DV_Roup_Corte_Lateral`** (à mão, um corte lateral por coluna):
+  - artigo: altura e profundidade (preto);
+  - **peças horizontais** (1971, magenta): rodapé, rodateto, tampos e fundos dos caixotes,
+    prateleiras fixas, "entre peças" e com a distância ao topo/fundo;
+  - **nichos** (1969, vermelho).
+  - A CONFIRMAR no Element Manager: os valores de "Height dim. – Reference" (1995 = 1,
+    "Between parts"?) e "Offset of shelf to article" (1999 = 1).
+  - Nota: o iMos só conta como peça horizontal as que usam os princípios Top shelf, Bottom
+    shelf ou Fixed shelf. O rodapé pode não entrar se for uma peça vertical.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |
