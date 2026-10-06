@@ -352,6 +352,34 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
 - Decisão pendente do Paulo: princípio `DV_Roup_Corte_Frente` para usar à mão, ou perguntar
   à Enersale se o batch faz cortes.
 
+**Resultado da R2** (APAGAR_15, 06-10):
+
+- **Planta:** saem as larguras das portas. Ele aprovou e pediu "Porta" por cima da medida.
+- **Artigo na legenda:** vazio, e os 5 campos de teste também. **Não há campo de moldura
+  com o artigo nas folhas de obra.**
+- **Portas:**
+  - saem com 2 casas ("350.79 x 2344.40"), mesmo com `LUPREC` 1 na obra;
+  - os `IMOSPART*` têm sempre 2 casas e os `COND.PART_SIZE_*` vêm em bruto;
+  - o imos.msg não tem nenhum campo da peça arredondado (18037/18038 "Part size X/Y");
+  - na 260881 parecia resolvido porque as medidas eram "redondas" (513.67).
+
+### R3: "Porta", " X ", artigo com Alt/Cmp/Prof, paredes em cima (06-10, por testar)
+
+- **Blocos novos em `AttDWG`** (todos com `_r`). Têm nomes novos porque a obra guarda a
+  definição antiga:
+  - `DV_Lbl_Porta_Alcado` e `DV_Lbl_Gaveta_Alcado`: "Porta"/"Gaveta" + L X A;
+  - `DV_Lbl_Porta_Planta`: "Porta" + largura;
+  - `DV_Lbl_Artigo_Azul/Verm`: "5000 X 2500 X 600";
+  - `DV_Lbl_Artigo_Planta`: nome a preto + "Alt:/Cmp:/Prof:" a azul (exemplo do Paulo).
+- **Condição nova `DV_Gavetas`** (frentes de gaveta).
+- **`DV_Roup_Alcado`:** a cota das paredes (verde) passa para cima (1958 = 0).
+- **Planta:** a cota azul (móveis) **não pode ir para a frente**. A cotagem de planta não
+  tem posição para as larguras, só "dentro/fora" para a profundidade (ajuda
+  "Dimensioning Principle – Floor Plan").
+- **Legenda `DV_A3_Legenda_Roup_v3`:**
+  - sem a faixa de teste e sem a célula Artigo;
+  - linha 1: Nome enc. iMOS, Enc. PHC, Ref. cliente (larga), Obra, Entrega.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

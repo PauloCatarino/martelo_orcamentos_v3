@@ -85,6 +85,15 @@ if ($Versao -eq 'modelo') {
         Texto 'x' 'MC' 3.9 -1.7 1.8
         AttDef 'IMOSARTICLEDEPTH' 'ML' 4.7 -1.7 1.8
     }
+    # alcado dos roupeiros (R3): "5000 X 2500 X 600"; mais largo para caber 1160.4 ao meio
+    $artigo = {
+        AttDef 'IMOSELEMENTARTICLE' 'MC' 0 1.5 2.5
+        AttDef 'IMOSARTICLEWIDTH' 'MR' -6.2 -1.7 1.8
+        Texto 'X' 'MC' -4.8 -1.7 1.8
+        AttDef 'IMOSARTICLEHEIGHT' 'MC' 0 -1.7 1.8
+        Texto 'X' 'MC' 4.8 -1.7 1.8
+        AttDef 'IMOSARTICLEDEPTH' 'ML' 6.2 -1.7 1.8
+    }
     $blocos = [ordered]@{
         'DV_Lbl_Modulo_Azul' = @(& $modulo)
         'DV_Lbl_Modulo_Verm' = @(& $modulo)
@@ -106,9 +115,48 @@ if ($Versao -eq 'modelo') {
         )
         # na planta so a largura da porta, a frente dela
         'DV_Lbl_PortaL'      = @(AttDef 'IMOSPARTWIDTH' 'MC' 0 0 1.8)
+        # R3 dos roupeiros (06-10, pedidos do Paulo sobre o PDF da R2). Nomes novos: a obra
+        # guarda a definicao do bloco e nao a troca se o nome for o mesmo.
+        #  - "Porta" / "Gaveta" por cima das medidas, para se saber a que se referem;
+        #  - " X " maiusculo e com espacos ("5000 X 2500 X 600"), mais legivel;
+        #  - na planta o artigo leva "Alt: / Cmp: / Prof:" por baixo do nome (exemplo dele:
+        #    nome a preto, medidas a azul). Cmp = largura do artigo (pecas horizontais:
+        #    comprimento).
+        # As medidas das frentes ficam com 2 casas: nenhum campo da peca sai arredondado a 1
+        # (COND.PART_SIZE_* em bruto, IMOSPART* sempre com 2; o LUPREC da obra nao mexe).
+        'DV_Lbl_Porta_Alcado'  = @(
+            Texto 'Porta' 'MC' 0 1.6 1.5
+            AttDef 'IMOSPARTWIDTH' 'MR' -1.4 -0.8 1.8
+            Texto 'X' 'MC' 0 -0.8 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' 1.4 -0.8 1.8
+        )
+        'DV_Lbl_Gaveta_Alcado' = @(
+            Texto 'Gaveta' 'MC' 0 1.6 1.5
+            AttDef 'IMOSPARTWIDTH' 'MR' -1.4 -0.8 1.8
+            Texto 'X' 'MC' 0 -0.8 1.8
+            AttDef 'IMOSPARTHEIGHT' 'ML' 1.4 -0.8 1.8
+        )
+        'DV_Lbl_Porta_Planta'  = @(
+            Texto 'Porta' 'MC' 0 1.2 1.5
+            AttDef 'IMOSPARTWIDTH' 'MC' 0 -1.2 1.8
+        )
+        'DV_Lbl_Artigo_Azul'   = @(& $artigo)
+        'DV_Lbl_Artigo_Verm'   = @(& $artigo)
+        'DV_Lbl_Artigo_Planta' = @(
+            @('CECOLOR', '7')
+            AttDef 'IMOSELEMENTARTICLE' 'MC' 0 4.6 2.5
+            @('CECOLOR', '5')
+            Texto 'Alt:' 'MR' -0.6 1.4 1.8
+            AttDef 'IMOSARTICLEHEIGHT' 'ML' 0.6 1.4 1.8
+            Texto 'Cmp:' 'MR' -0.6 -1.4 1.8
+            AttDef 'IMOSARTICLEWIDTH' 'ML' 0.6 -1.4 1.8
+            Texto 'Prof:' 'MR' -0.6 -4.2 1.8
+            AttDef 'IMOSARTICLEDEPTH' 'ML' 0.6 -4.2 1.8
+        )
     }
     $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente',
-        'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL')
+        'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL', 'DV_Lbl_Porta_Alcado', 'DV_Lbl_Gaveta_Alcado', 'DV_Lbl_Porta_Planta',
+        'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta')
     $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
 

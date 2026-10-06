@@ -1514,4 +1514,37 @@ Guião de teste (base `imos_LE_TESTES`):
 4. Se as etiquetas da planta saírem rodadas ou por cima das linhas, mandar o PDF assim
    mesmo.
 
+**Resultado (06-10):**
+
+- a planta com as larguras das portas ficou bem;
+- o Artigo e os 5 campos de teste vieram vazios: não há campo de artigo nas folhas de obra;
+- as portas saem com 2 casas (350.79), mesmo com `LUPREC` 1.
+
+## Drawing Views: roupeiros, ronda R3 (2026-10-06)
+
+Feito na `imos_LE_TESTES` (doc 37, R3):
+
+- "Porta"/"Gaveta" por cima das medidas das frentes;
+- "5000 X 2500 X 600" na etiqueta do artigo;
+- na planta, o artigo com Alt/Cmp/Prof;
+- no alçado, a cota das paredes em cima;
+- a legenda sem a faixa de teste e sem o Artigo.
+
+Guião de teste (iX CAD fechado):
+
+1. Element Manager → ⟳. Depois Order Manager → **APAGAR_15** → Output Batches → só
+   **`DV_Roupeiros`** → ✓.
+2. No `C:\IMOS_Output_Batches\APAGAR_15_Submittals.pdf`:
+   - **Planta:**
+     - à frente de cada porta, "Porta" e por baixo 350.79;
+     - mais à frente, ao meio, RP_A_01 a preto e por baixo, a azul, Alt: 2500, Cmp: 5000 e
+       Prof: 600;
+     - a cota azul continua do lado da parede (não há opção para a pôr à frente);
+   - **Alçado:**
+     - a cota verde das paredes (5000 e os 50) está **em cima**;
+     - por baixo do roupeiro está "RP_A_01" e "5000 X 2500 X 600";
+     - nas portas, "Porta" e por baixo "350.79 X 2344.40";
+     - nas frentes de gaveta, "Gaveta" + medidas;
+   - **Legenda:** só 2 linhas, sem a faixa "teste:" e sem a célula Artigo.
+
 **Por testar:** tudo.

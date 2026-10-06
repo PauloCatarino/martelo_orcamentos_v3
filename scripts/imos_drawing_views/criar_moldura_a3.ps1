@@ -63,7 +63,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
 if ($Legenda -eq 'Roupeiro') {
     if (-not $PSBoundParameters.ContainsKey('LayoutNome')) { $LayoutNome = 'DV_A3_Roupeiro' }
-    if (-not $PSBoundParameters.ContainsKey('NomeLegenda')) { $NomeLegenda = 'DV_A3_Legenda_Roup_v2' }
+    if (-not $PSBoundParameters.ContainsKey('NomeLegenda')) { $NomeLegenda = 'DV_A3_Legenda_Roup_v3' }
 }
 
 New-Item -ItemType Directory -Force $Saida | Out-Null
@@ -83,27 +83,21 @@ $mx, $my = 203, 136
 $x0, $x1, $y0 = ($mx - 220), $mx, (-$my)
 $ym, $ym2, $y1 = ($y0 + 11), ($y0 + 22), ($y0 + 33)
 if ($Legenda -eq 'Roupeiro') {
-    # 2 linhas de 11 mm (06-10): em cima o artigo e os dados da encomenda, em baixo os da folha.
-    # Sai a Descricao (num roupeiro o artigo diz mais) e o Cliente; a Ref. cliente alarga.
-    # O artigo e' o "Numero de posicao" (RP_A_01). R1 (06-10): o IMOSARTICLEPOSITION veio
-    # VAZIO nas folhas do batch (sao de obra, nao de artigo). R2: IMOSARTICLEPOSITIONHIERARCHY
-    # (sugestao do Paulo) + uma faixa de TESTE por cima da legenda com outros candidatos, para
-    # saber num so batch qual e' preenchido. A faixa sai na versao seguinte.
+    # 2 linhas de 11 mm (06-10): em cima os dados da encomenda, em baixo os da folha. Sem
+    # Descricao nem Cliente (pedido do Paulo); a Ref. cliente alarga.
+    # Artigo (RP_A_01): NAO HA campo de moldura que o batch preencha. Testados nas folhas do
+    # batch (sao de obra, nao de artigo) e todos VAZIOS: IMOSARTICLEPOSITION (R1),
+    # IMOSARTICLEPOSITIONHIERARCHY, IMOSARTICLENAME, IMOSELEMENTARTICLE,
+    # IMOSELEMENTGROUPPOSITION, IMOSVSDESCRIPT e IMOSPLANPOSNAME (R2). O artigo vai nas
+    # etiquetas do desenho; a celula saiu na v3.
     $y1 = $ym2
     $linhasLegenda = @(
-        @{ yb = $y1; yt = ($y1 + 7); celulas = @(
-            @{x = 0; c = 'teste: IMOSARTICLENAME'; t = 'IMOSARTICLENAME'; h = 2.2 },
-            @{x = 44; c = 'teste: IMOSELEMENTARTICLE'; t = 'IMOSELEMENTARTICLE'; h = 2.2 },
-            @{x = 88; c = 'teste: IMOSELEMENTGROUPPOSITION'; t = 'IMOSELEMENTGROUPPOSITION'; h = 2.2 },
-            @{x = 132; c = 'teste: IMOSVSDESCRIPT'; t = 'IMOSVSDESCRIPT'; h = 2.2 },
-            @{x = 176; c = 'teste: IMOSPLANPOSNAME'; t = 'IMOSPLANPOSNAME'; h = 2.2 }) },
         @{ yb = $ym; yt = $y1; celulas = @(
-            @{x = 0; c = 'Artigo'; t = 'IMOSARTICLEPOSITIONHIERARCHY'; h = 3.5 },
-            @{x = 40; c = 'Nome enc. iMOS'; t = 'IMOSORDERSERIES'; h = 2.6 },
-            @{x = 100; c = 'Enc. PHC'; t = 'IMOSORDERCOMMISSION'; h = 3.0 },
-            @{x = 120; c = 'Ref. cliente'; t = 'IMOSORDERITEM'; h = 2.6 },
-            @{x = 160; c = 'Obra'; t = 'IMOSORDERID'; h = 2.4 },
-            @{x = 195; c = 'Entrega'; t = 'IMOSORDERDELIVERYDATE'; h = 2.4 }) },
+            @{x = 0; c = 'Nome enc. iMOS'; t = 'IMOSORDERSERIES'; h = 3.0 },
+            @{x = 70; c = 'Enc. PHC'; t = 'IMOSORDERCOMMISSION'; h = 3.0 },
+            @{x = 95; c = 'Ref. cliente'; t = 'IMOSORDERITEM'; h = 3.0 },
+            @{x = 145; c = 'Obra'; t = 'IMOSORDERID'; h = 2.6 },
+            @{x = 192; c = 'Entrega'; t = 'IMOSORDERDELIVERYDATE'; h = 2.4 }) },
         @{ yb = $y0; yt = $ym; celulas = @(
             @{x = 0; c = 'Desenho'; t = 'IMOSVSLAYOUTNAME'; h = 3.0 },
             @{x = 80; c = 'Escala'; t = 'IMOSVSSCALE'; h = 3.0 },
