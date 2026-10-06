@@ -1853,3 +1853,28 @@ Guião de teste:
 3. Se ficar bem, na `imos_LE`, Element Manager:
    - em `DV_Roup_Planta_Etiquetas`, os blocos `DV_Lbl_Artigo_Planta_NV`;
    - em `DV_Roup_Alcado_Etiquetas`, o bloco `DV_Lbl_Artigo_Azul_NV`.
+
+**Correção (06-10):** o artigo fica TODO a vermelho:
+- alçado com o `DV_Lbl_Artigo_Verm`;
+- planta com o `DV_Lbl_Artigo_Planta_Verm`;
+- os `_NV` saíram.
+
+## Drawing Views: DV_Roupeiros na imos_LE e limpeza da AttDWG (2026-10-06)
+
+Feito (doc 37):
+
+- o batch `DV_Roupeiros` e tudo o que usa foi copiado da `imos_LE_TESTES` para a **`imos_LE`**
+  (`publicar_roupeiros.py`), conferido; o `DV_Desenhos_Obra` e as regras dele não foram;
+- 28 blocos `DV_*` sem uso saíram de `I:\Library\AttDWG` para
+  `Pasta_Transferencia\AttDWG_DV_sem_uso`.
+
+Guião de teste:
+
+1. Element Manager **ligado à `imos_LE`** → ⟳. Em Output Batches → `DV_Desenhos` deve
+   aparecer só o `DV_Roupeiros`. As regras `DV_Roup_*`, a moldura `DV_A3_Roupeiro` e as
+   condições `DV_*` devem estar nas pastas `DV_Desenhos`.
+2. Numa obra (base oficial), correr o batch `DV_Roupeiros`. Esperado: o mesmo PDF que na
+   base de testes, com o artigo todo a vermelho na planta e nos alçados.
+3. Nos outros PCs que vão usar: copiar para `config\` o `IMOS.dwt` e o `imosBlocks.dwg`
+   (`Estilos_R10`), e para `config\DrawingFlags` os DWG de `DrawingFlags_simples_v4`.
+4. Se em uns dias nada se queixar da falta de um bloco, apagar a pasta `AttDWG_DV_sem_uso`.

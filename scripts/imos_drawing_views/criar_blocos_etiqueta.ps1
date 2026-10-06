@@ -173,29 +173,14 @@ if ($Versao -eq 'modelo') {
             Texto 'L' 'MR' -2.4 -2.2 1.8
             AttDef 'IMOSPARTWIDTH' 'ML' -1.8 -2.2 1.8
         )
-        # R12 (06-10, pedido do Paulo): o nome do artigo a vermelho (NV = nome vermelho).
-        # Alcado: nome vermelho, "L X A X P" azul. Planta: nome e valor do Cmp vermelhos (como
-        # ele os pintou na APAGAR_01), o resto azul.
-        'DV_Lbl_Artigo_Azul_NV' = @(
-            @('CECOLOR', '1')
-            AttDef 'IMOSELEMENTARTICLE' 'MC' 0 1.5 2.5
-            @('CECOLOR', '5')
-            AttDef 'IMOSARTICLEWIDTH' 'MR' -6.2 -1.7 1.8
-            Texto 'X' 'MC' -4.8 -1.7 1.8
-            AttDef 'IMOSARTICLEHEIGHT' 'MC' 0 -1.7 1.8
-            Texto 'X' 'MC' 4.8 -1.7 1.8
-            AttDef 'IMOSARTICLEDEPTH' 'ML' 6.2 -1.7 1.8
-        )
-        'DV_Lbl_Artigo_Planta_NV' = @(
-            @('CECOLOR', '1')
+        # R12 (06-10, pedido do Paulo): o artigo todo a vermelho. No alcado serve o
+        # DV_Lbl_Artigo_Verm (ja era todo vermelho); na planta este (o sufixo _Verm da a cor 1).
+        'DV_Lbl_Artigo_Planta_Verm' = @(
             AttDef 'IMOSELEMENTARTICLE' 'MC' 0 4.6 2.5
-            @('CECOLOR', '5')
             Texto 'Alt:' 'MR' -0.6 1.4 1.8
             AttDef 'IMOSARTICLEHEIGHT' 'ML' 0.6 1.4 1.8
             Texto 'Cmp:' 'MR' -0.6 -1.4 1.8
-            @('CECOLOR', '1')
             AttDef 'IMOSARTICLEWIDTH' 'ML' 0.6 -1.4 1.8
-            @('CECOLOR', '5')
             Texto 'Prof:' 'MR' -0.6 -4.2 1.8
             AttDef 'IMOSARTICLEDEPTH' 'ML' 0.6 -4.2 1.8
         )
@@ -216,7 +201,7 @@ if ($Versao -eq 'modelo') {
     $rodar = @('DV_Lbl_Modulo_Azul', 'DV_Lbl_Modulo_Verm', 'DV_Lbl_Nome_Azul', 'DV_Lbl_Nome_Verm', 'DV_Lbl_Frente',
         'DV_Lbl_PortaLxA', 'DV_Lbl_PortaL', 'DV_Lbl_Porta_Alcado', 'DV_Lbl_Gaveta_Alcado', 'DV_Lbl_Porta_Planta',
         'DV_Lbl_Artigo_Azul', 'DV_Lbl_Artigo_Verm', 'DV_Lbl_Artigo_Planta', 'DV_Lbl_Porta_3L', 'DV_Lbl_Gaveta_3L',
-        'DV_Lbl_Porta_AL', 'DV_Lbl_Gaveta_AL', 'DV_Lbl_Artigo_Azul_NV', 'DV_Lbl_Artigo_Planta_NV')
+        'DV_Lbl_Porta_AL', 'DV_Lbl_Gaveta_AL', 'DV_Lbl_Artigo_Planta_Verm')
     $cores = @{ 'Azul' = '5'; 'Verm' = '1' }
 }
 

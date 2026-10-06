@@ -672,6 +672,37 @@ etiquetas já não tocam nas cotas. Pedidos do Paulo:
 - **Alteração do Paulo adotada:** `DV_Roup_Planta_Etiquetas`, artigo de chão em Bottom, Left /
   Bottom, Left, com desvio 700 / −300. Era Bottom, Right / Center, Left com −700 / −350.
 - Aplicado na `imos_LE_TESTES`.
+- **Correção (06-10):** o Paulo queria o artigo TODO a vermelho (o "X", "Alt:" e os outros
+  textos fixos não se mudam no editor de atributos).
+  - Alçado: o artigo baixo (`DV_Art_Azul`) passa a usar o `DV_Lbl_Artigo_Verm`, o mesmo dos de
+    cima, que já era todo vermelho.
+  - Planta: bloco novo `DV_Lbl_Artigo_Planta_Verm`, todo vermelho.
+  - Os `_NV` deixam de ser usados.
+
+### Fim da etapa dos roupeiros: passagem para a imos_LE e limpeza (06-10)
+
+- **Passagem para a `imos_LE`** (base oficial, pedido e autorização do Paulo):
+  `publicar_roupeiros.py --aplicar`.
+  - Copia as linhas tal como estão na `imos_LE_TESTES` (com as afinações dele), só do que o
+    batch `DV_Roupeiros` usa: o batch, a moldura `DV_A3_Roupeiro`, `DV_Roup_Planta`,
+    `DV_Roup_Alcado`, `DV_Roup_Corte_Lateral` (à mão), `DV_Roup_Planta_Etiquetas`,
+    `DV_Roup_Alcado_Etiquetas` e as 11 condições que usam.
+  - Cada elemento fica na pasta `DV_Desenhos` da sua árvore.
+  - Não foi: o `DV_Desenhos_Obra`, `DV_Planta`, `DV_Alcado`, `DV_Alcado_Frentes`,
+    `DV_Corte_Lateral`, as etiquetas de obra, a tabela e a moldura `DV_A3_Obra`.
+  - Conferido: as mesmas contagens nas duas bases e as condições iguais termo a termo.
+  - A `imos_LE` já tinha nomes começados por "DV_" noutras tabelas (artigos, ligações,
+    favoritos): são da LE, e o script só toca nas suas tabelas e nos nomes exatos.
+  - Daqui em diante, mudar uma regra dos roupeiros = mudar na TESTES (à mão ou com o
+    `configurar_dv.py`) e voltar a correr o `publicar_roupeiros.py`; ou mudar à mão nas duas.
+- **Limpeza de `I:\Library\AttDWG`** (cruzado com as colunas de blocos das duas bases:
+  `LABELLING.BLOCKNAME`, `DOCMANFUNCATTR.ATTRVALUE`, `articles.ATTBLOCK`, `BATCHBEM.ATTBLOCK`):
+  - os 28 `DV_*` que nenhuma regra usa foram **movidos** (não apagados) para
+    `Pasta_Transferencia\AttDWG_DV_sem_uso`;
+  - ficam 20 `DV_*`: 12 dos roupeiros e 8 que só o `DV_Desenhos_Obra` usa na TESTES (Frente,
+    Modulo_Azul/Verm, Nome_Azul);
+  - dos outros 133 ficheiros, 43 não têm referência nas bases. É uma lista para o Paulo
+    decidir; não mexi em nenhum.
 
 ## 7. Anexo — o que mostra cada vídeo
 

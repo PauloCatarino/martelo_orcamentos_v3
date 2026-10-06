@@ -268,8 +268,8 @@ PLANTA.append(replace(_por_nome(PLANTA, "DV_Planta"), nome="DV_Roup_Planta",
 ANOTACAO += [
     Anotacao("DV_Roup_Alcado_Etiquetas", "Roupeiros: artigo em baixo por fora + Porta/Gaveta L X A", [
         # R5: desvios afinados pelo Paulo no Element Manager (artigo -40, portas +30)
-        # R12 (06-10): o nome do artigo a vermelho, as medidas a azul (bloco _NV)
-        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -40), "DV_Lbl_Artigo_Azul_NV",
+        # R12 (06-10): o artigo todo a vermelho (o mesmo bloco dos de cima)
+        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -40), "DV_Lbl_Artigo_Verm",
                  "Ate 1490: nome + L X A X P, em baixo, por fora"),
         Etiqueta(3, "DV_Art_Verm", (0, 1), (0, -1), (0, 60), "DV_Lbl_Artigo_Verm",
                  "Acima de 1490: por cima, por fora"),
@@ -288,10 +288,10 @@ ANOTACAO += [
     Anotacao("DV_Roup_Planta_Etiquetas", "Roupeiros: 'Porta' + largura + artigo com Alt/Cmp/Prof a frente", [
         # R5: posição do Paulo (canto da frente direito, desviada -700/-350).
         # R12 (06-10): ele mudou no Element Manager para o canto da frente esquerdo (Bottom,
-        # Left / Bottom, Left), desviada 700/-300. Nome e Cmp a vermelho (bloco _NV).
-        Etiqueta(3, "DV_Art_Chao", (-1, -1), (-1, -1), (700, -300), "DV_Lbl_Artigo_Planta_NV",
+        # Left / Bottom, Left), desviada 700/-300. Todo a vermelho.
+        Etiqueta(3, "DV_Art_Chao", (-1, -1), (-1, -1), (700, -300), "DV_Lbl_Artigo_Planta_Verm",
                  "Chao: nome + Alt/Cmp/Prof, a frente do artigo"),
-        Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta_NV",
+        Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta_Verm",
                  "Intermedios: nome + Alt/Cmp/Prof, a frente do artigo"),
         Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
                  "Superiores (junto a parede, vermelho)"),
