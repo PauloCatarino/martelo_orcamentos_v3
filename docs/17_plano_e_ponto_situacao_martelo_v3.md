@@ -1449,3 +1449,37 @@ Guião de teste (iX CAD **aberto**, base `imos_LE_TESTES`):
 
 **Por verificar:** o passo 2. No 1.º teste o iX CAD fechou-se durante o batch e não foi gerado
 nada. Não houve erro no registo do Windows, por isso falta repetir com o iX CAD aberto.
+
+## Drawing Views: batch dos roupeiros, ronda R1 (2026-10-06)
+
+O objetivo final ficou acordado com o Paulo (doc 37, secção 6c): um Output batch por tipo
+de obra, com o `IMOS.dwt` e o layout "1" intocados. A R1 criou na `imos_LE_TESTES`:
+
+- o batch **`DV_Roupeiros`**, com as regras próprias `DV_Roup_*` (por agora cópias das de
+  obra);
+- a moldura **`DV_A3_Roupeiro`**, com uma legenda de 2 linhas:
+  - linha 1: Artigo, Nome enc. iMOS, Enc. PHC, Ref. cliente, Obra, Entrega;
+  - linha 2: Desenho, Escala, Folha, Desenhador, Data.
+
+O `DV_Desenhos_Obra` ficou como estava.
+
+Guião de teste (iX CAD **FECHADO**, base `imos_LE_TESTES`):
+
+1. No iX Organizer, abrir o Element Manager e carregar em "Atualizar" (⟳).
+   - Em Outputs → Output Batches → pasta `DV_Desenhos` devem aparecer o
+     `DV_Desenhos_Obra` e o **`DV_Roupeiros`**.
+   - Em Molduras deve aparecer a **`DV_A3_Roupeiro`**.
+2. Fechar o iX CAD. A APAGAR_15 fica fechada para este teste.
+3. No Order Manager, escolher **APAGAR_15**. Em Output Batches, marcar só **`DV_Roupeiros`**
+   e carregar em ✓.
+4. Resultado esperado em `C:\IMOS_Output_Batches\APAGAR_15_Submittals.pdf` (a cópia anterior
+   é substituída):
+   - a planta e a Vista 1 com o mesmo desenho e as mesmas cotas que hoje;
+   - a legenda nova, com 2 linhas, sem Descrição e sem Cliente;
+   - na linha de cima, **Artigo = RP_A_01**, 1571_01_26_JF_VIVA, 1571, 2604023, APAGAR_15
+     e 20/10/2026;
+   - na linha de baixo, Planta 1 / Vista 1, 1:16, a folha, Paulo e a data de hoje.
+5. **Se o campo Artigo ficar vazio**, a legenda está certa mas as folhas de obra não
+   preenchem o `IMOSARTICLEPOSITION`. Nesse caso volta-se ao assunto antes da R2.
+
+**Por testar:** tudo (o batch corre no PC do Paulo).

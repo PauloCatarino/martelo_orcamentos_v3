@@ -30,7 +30,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -221,6 +221,31 @@ ANOTACAO = [
     ]),
 ]
 
+# ----------------------------------------------------------------------------- roupeiros
+
+# Decisão do Paulo (06-10): um Output batch por tipo de obra, cada um com as suas regras, para
+# que afinar os roupeiros não mexa nas cozinhas. A ronda 1 copia as regras de obra tal como
+# estão; as rondas seguintes (etiqueta do artigo em baixo, portas com 1 casa decimal, cadeia
+# vertical com rodapé/rodateto/caixotes/nicho, portas na planta) mudam só as DV_Roup_*.
+def _copia(principio, nome: str, descricao: str):
+    return replace(principio, nome=nome, descricao=descricao)
+
+
+def _por_nome(principios, nome: str):
+    return next(p for p in principios if p.nome == nome)
+
+
+ALCADO.append(_copia(_por_nome(ALCADO, "DV_Alcado"), "DV_Roup_Alcado",
+                     "Roupeiros: alcado A3 (copia do DV_Alcado)"))
+PLANTA.append(_copia(_por_nome(PLANTA, "DV_Planta"), "DV_Roup_Planta",
+                     "Roupeiros: planta A3 (copia do DV_Planta)"))
+ANOTACAO += [
+    _copia(_por_nome(ANOTACAO, "DV_Alcado_Etiquetas"), "DV_Roup_Alcado_Etiquetas",
+           "Roupeiros: etiquetas do alcado (copia do DV_Alcado_Etiquetas)"),
+    _copia(_por_nome(ANOTACAO, "DV_Planta_Etiquetas"), "DV_Roup_Planta_Etiquetas",
+           "Roupeiros: etiquetas da planta (copia do DV_Planta_Etiquetas)"),
+]
+
 # ----------------------------------------------------------------------------- corte lateral
 
 # Cotagem de corte lateral (tabelas DIMSECTSIDE*, nó 494). Os cortes não saem no Output batch:
@@ -395,8 +420,11 @@ def sql_tabela() -> list[str]:
     ]
 
 
-MOLDURA = "DV_A3_Obra"
-MOLDURA_NOTA = "A3 horizontal de obra (Drawing Views): legenda neutra, sem nome da empresa"
+# O nome da moldura é o nome do ficheiro que o criar_moldura_a3.ps1 grava (<layout>.dwg).
+MOLDURAS = {
+    "DV_A3_Obra": "A3 horizontal de obra (Drawing Views): legenda neutra, sem nome da empresa",
+    "DV_A3_Roupeiro": "A3 horizontal de roupeiros (Drawing Views): legenda de 2 linhas com o artigo",
+}
 
 
 def sql_moldura(dwt: Path) -> list[str]:
@@ -408,7 +436,9 @@ def sql_moldura(dwt: Path) -> list[str]:
     dados = dwt.read_bytes()
     if not dados.startswith(b"AC10"):
         raise SystemExit(f"Não parece um DWG/DWT: {dwt}")
-    nome = _so_dv([MOLDURA])[0]
+    nome = _so_dv([dwt.stem])[0]
+    if nome not in MOLDURAS:
+        raise SystemExit(f"Moldura desconhecida: {nome} (conhecidas: {', '.join(MOLDURAS)})")
     return [
         "-- moldura",
         f"DELETE FROM dbo.BINDATA WHERE NAME = {lit(nome)} AND INTERNTYPE = N'LAYDWT';",
@@ -418,15 +448,13 @@ def sql_moldura(dwt: Path) -> list[str]:
         "INSERT INTO dbo.BINDATA (NAME, INTERNTYPE, BINCONTENT, SOURCE, PRODUCER, SYS) "
         f"VALUES ({lit(nome)}, N'LAYDWT', 0x{dados.hex().upper()}, {lit(SOURCE)}, N'', 0);",
         "INSERT INTO dbo.DOCMANBORDERPRINCIPLE (NAME, COMMENT, DATAFILE, SOURCE, PRODUCER, SYS, PICTURE) "
-        f"VALUES ({lit(nome)}, {lit(MOLDURA_NOTA)}, {lit('DmLayout_' + nome + '.dwt')}, {lit(SOURCE)}, N'', 0, N'');",
+        f"VALUES ({lit(nome)}, {lit(MOLDURAS[nome])}, {lit('DmLayout_' + nome + '.dwt')}, {lit(SOURCE)}, N'', 0, N'');",
         f"INSERT INTO dbo.DOCMANBORDERPRINCIPLEFOLDER (NAME, TYPE, PARENT_ID) VALUES ({lit(nome)}, 480, @pasta);",
     ]
 
 
-BATCH = "DV_Desenhos_Obra"
-BATCH_NOTA = "Drawing Views por obra: planta + alcados em A3 (moldura DV_A3_Obra), layouts e PDF"
 # Com "...\DV_Desenhos" o batch gravou o ficheiro C:\IMOS_Output_Batches\DV_Desenhos.pdf (o fim
-# do caminho vira o nome); com a barra no fim deve usar o nome da obra (a confirmar).
+# do caminho vira o nome); com a barra no fim usa o nome da obra (<obra>_Submittals.pdf).
 BATCH_SAIDA = "C:\\IMOS_Output_Batches\\"
 
 # Saída "Drawing views" de um Output batch: CMSOUTPUTITEM.TYPE = 44 e PARAM_3 = JSON.
@@ -435,49 +463,73 @@ BATCH_SAIDA = "C:\\IMOS_Output_Batches\\"
 #   scaling  0 Zoom extents / 1 Fix scale / 2 Best scale;
 #   visugrad = "Modus" 1..6; hiddenlines 0 All / 1 interior detalhado / 2 interior draft / 3 None;
 #   drawingsymbol = "Criar: 2D Symbols".
-SAIDA_DESENHOS = {
-    "submittaldrawingdefinition": {
-        "general": {"generate": 3, "outputpath": BATCH_SAIDA},
-        # planta como o Paulo a quer (05-10): sem linhas escondidas, com cor e com conectores
-        "planview": {"layout": "DV_A3_Obra", "scaling": 2, "visugrad": 4,
-                     "dimensioning": "DV_Planta", "annotation": "DV_Planta_Etiquetas",
-                     "hiddenlines": 3, "contour": 0, "coloration": 1, "connector": 1},
-        # alçado como o Paulo o afinou nas Vistas 3 e 4 (05-10): linhas escondidas "All",
-        # Secção (= hatch), 2D Symbols e conectores. As escondidas vão para o layer
-        # IMOS_SECTION_BACK_HIDDEN (cor 254): o DV_PlotStyle.ctb da moldura escurece-as.
-        "elevation": {"layout": "DV_A3_Obra", "scaling": 2, "visugrad": 4,
-                      "dimensioning": "DV_Alcado", "annotation": "DV_Alcado_Etiquetas",
-                      "hiddenlines": 0, "surfacesymbol": 0, "surfacename": 0, "materialsymbol": 0,
-                      "materialname": 0, "hatch": 1, "coloration": 0, "drawingsymbol": 1,
-                      "connector": 1},
+
+
+def saida_desenhos(moldura: str, planta: str, planta_etq: str, alcado: str, alcado_etq: str) -> dict:
+    return {
+        "submittaldrawingdefinition": {
+            "general": {"generate": 3, "outputpath": BATCH_SAIDA},
+            # planta como o Paulo a quer: sem linhas escondidas, com conectores e sem cor
+            # (a cor foi ele que a desligou no Element Manager, visto na base a 06-10)
+            "planview": {"layout": moldura, "scaling": 2, "visugrad": 4,
+                         "dimensioning": planta, "annotation": planta_etq,
+                         "hiddenlines": 3, "contour": 0, "coloration": 0, "connector": 1},
+            # alçado como o Paulo o afinou nas Vistas 3 e 4 (05-10): linhas escondidas "All",
+            # Secção (= hatch), 2D Symbols e conectores. As escondidas vão para o layer
+            # IMOS_SECTION_BACK_HIDDEN (cor 254): o DV_PlotStyle.ctb da moldura escurece-as.
+            "elevation": {"layout": moldura, "scaling": 2, "visugrad": 4,
+                          "dimensioning": alcado, "annotation": alcado_etq,
+                          "hiddenlines": 0, "surfacesymbol": 0, "surfacename": 0, "materialsymbol": 0,
+                          "materialname": 0, "hatch": 1, "coloration": 0, "drawingsymbol": 1,
+                          "connector": 1},
+        }
     }
-}
+
+
+@dataclass
+class Batch:
+    nome: str
+    nota: str
+    saida: dict
+
+
+BATCHES = [
+    Batch("DV_Desenhos_Obra",
+          "Drawing Views por obra: planta + alcados em A3 (moldura DV_A3_Obra), layouts e PDF",
+          saida_desenhos("DV_A3_Obra", "DV_Planta", "DV_Planta_Etiquetas",
+                         "DV_Alcado", "DV_Alcado_Etiquetas")),
+    Batch("DV_Roupeiros",
+          "Roupeiros: planta + alcados em A3 (moldura DV_A3_Roupeiro, regras DV_Roup_*), layouts e PDF",
+          saida_desenhos("DV_A3_Roupeiro", "DV_Roup_Planta", "DV_Roup_Planta_Etiquetas",
+                         "DV_Roup_Alcado", "DV_Roup_Alcado_Etiquetas")),
+]
 
 
 def sql_batch() -> list[str]:
-    """Output batch DV_Desenhos_Obra (modo Encomenda = OUTPUTMODE 0) com a saída Drawing views."""
-    nome = _so_dv([BATCH])[0]
-    return [
-        "-- output batch",
-        *_pasta("CMSOUTPUTBATCHFOLDER"),
-        f"DELETE FROM dbo.CMSOUTPUTITEM WHERE BATCHNAME = {lit(nome)};",
-        f"DELETE FROM dbo.CMSOUTPUTBATCH WHERE NAME = {lit(nome)};",
-        f"DELETE FROM dbo.CMSOUTPUTBATCHFOLDER WHERE NAME = {lit(nome)} AND TYPE = 472;",
-        "INSERT INTO dbo.CMSOUTPUTBATCH (NAME, SEQUENCE, TEXTLONG, STARTMODE, SAVEMODE, SOURCE, PRODUCER, SYS, "
-        "FXMMODE, OUTPUTMODE, PARAM_1, PARAM_2, SHOWOUTPUT, TYPE) "
-        f"VALUES ({lit(nome)}, 1, {lit(BATCH_NOTA)}, 1, 1, {lit(SOURCE)}, N'', 0, 0, 0, N'', N'', 1, 0);",
-        "INSERT INTO dbo.CMSOUTPUTITEM (BATCHNAME, ITEMNAME, SEQUENCE, TYPE, PARAM_1, PARAM_2, PARAM_3) "
-        f"VALUES ({lit(nome)}, N'Desenhos A3 (planta + alcados)', 1, 44, N'', N'', "
-        f"{lit(json.dumps(SAIDA_DESENHOS, separators=(',', ':')))});",
-        f"INSERT INTO dbo.CMSOUTPUTBATCHFOLDER (NAME, TYPE, PARENT_ID) VALUES ({lit(nome)}, 472, @pasta);",
-    ]
+    """Output batches DV_* (modo Encomenda = OUTPUTMODE 0), cada um com a saída Drawing views."""
+    s = ["-- output batches", *_pasta("CMSOUTPUTBATCHFOLDER")]
+    for b in BATCHES:
+        nome = _so_dv([b.nome])[0]
+        s += [
+            f"DELETE FROM dbo.CMSOUTPUTITEM WHERE BATCHNAME = {lit(nome)};",
+            f"DELETE FROM dbo.CMSOUTPUTBATCH WHERE NAME = {lit(nome)};",
+            f"DELETE FROM dbo.CMSOUTPUTBATCHFOLDER WHERE NAME = {lit(nome)} AND TYPE = 472;",
+            "INSERT INTO dbo.CMSOUTPUTBATCH (NAME, SEQUENCE, TEXTLONG, STARTMODE, SAVEMODE, SOURCE, PRODUCER, SYS, "
+            "FXMMODE, OUTPUTMODE, PARAM_1, PARAM_2, SHOWOUTPUT, TYPE) "
+            f"VALUES ({lit(nome)}, 1, {lit(b.nota)}, 1, 1, {lit(SOURCE)}, N'', 0, 0, 0, N'', N'', 1, 0);",
+            "INSERT INTO dbo.CMSOUTPUTITEM (BATCHNAME, ITEMNAME, SEQUENCE, TYPE, PARAM_1, PARAM_2, PARAM_3) "
+            f"VALUES ({lit(nome)}, N'Desenhos A3 (planta + alcados)', 1, 44, N'', N'', "
+            f"{lit(json.dumps(b.saida, separators=(',', ':')))});",
+            f"INSERT INTO dbo.CMSOUTPUTBATCHFOLDER (NAME, TYPE, PARENT_ID) VALUES ({lit(nome)}, 472, @pasta);",
+        ]
+    return s
 
 
-def gerar_sql(dwt: Path | None = None) -> str:
+def gerar_sql(molduras: list[Path] | None = None) -> str:
     corpo = (sql_condicoes() + sql_cotagem("DIMELEV", 487, ALCADO)
              + sql_cotagem("DIMPLAN", 486, PLANTA) + sql_cotagem("DIMSECTSIDE", 494, CORTE)
              + sql_anotacao() + sql_tabela() + sql_batch())
-    if dwt is not None:
+    for dwt in molduras or []:
         corpo += sql_moldura(dwt)
     return "\n".join([
         "SET XACT_ABORT ON;",
@@ -566,7 +618,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--aplicar", action="store_true", help=f"escreve as DV_* na {BASE_TESTES}")
     ap.add_argument("--ver", action="store_true", help="lê as DV_* que lá estão")
-    ap.add_argument("--moldura", type=Path, help="DWG/DWT feito pelo criar_moldura_a3.ps1")
+    ap.add_argument("--moldura", type=Path, action="append",
+                    help="DWG/DWT feito pelo criar_moldura_a3.ps1 (<moldura>.dwg); pode repetir-se. "
+                         "Sem --moldura, as molduras que estão na base ficam como estão")
     a = ap.parse_args()
     if a.ver:
         ver()

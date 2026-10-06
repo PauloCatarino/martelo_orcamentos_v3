@@ -26,11 +26,18 @@
 
     O DWT fica num ficheiro; quem o grava na base (BINDATA) e' o configurar_dv.py --moldura.
 
+    Com -Legenda Roupeiro (pedido do Paulo, 06-10) faz a moldura DV_A3_Roupeiro, do Output
+    batch DV_Roupeiros: legenda de 2 linhas, sem Descricao nem Cliente, com o Artigo
+    (numero de posicao, IMOSARTICLEPOSITION) e a Ref. cliente mais larga.
+
 .EXAMPLE
     .\criar_moldura_a3.ps1 -Saida C:\temp\dv_moldura
+    .\criar_moldura_a3.ps1 -Saida C:\temp\dv_roupeiro -Legenda Roupeiro
 #>
 param(
     [Parameter(Mandatory)][string]$Saida,
+    # Obra = legenda de 3 linhas (DV_A3_Obra); Roupeiro = 2 linhas com o artigo (DV_A3_Roupeiro)
+    [ValidateSet('Obra', 'Roupeiro')][string]$Legenda = 'Obra',
     # DWG/DWT de partida. Por defeito a moldura de obra A3 do kit; para refazer o layout "1"
     # do modelo de obra: -Kit <copia do config\IMOS.dwt> -LayoutOrigem 1 -LayoutNome 1
     # -PaginaPdf Layouts_PDFs (o assistente "Layouts" usa esse layout, 05-10).
@@ -54,6 +61,10 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '_dv_comum.ps1')
+if ($Legenda -eq 'Roupeiro') {
+    if (-not $PSBoundParameters.ContainsKey('LayoutNome')) { $LayoutNome = 'DV_A3_Roupeiro' }
+    if (-not $PSBoundParameters.ContainsKey('NomeLegenda')) { $NomeLegenda = 'DV_A3_Legenda_Roup_v1' }
+}
 
 New-Item -ItemType Directory -Force $Saida | Out-Null
 $base = Join-Path $Saida 'base.dwg'
@@ -71,7 +82,30 @@ $mx, $my = 203, 136
 #   O cliente esta' no CLIENT (IMOSORDERCLIENT); o IMOSORDERCUSTOMER vem vazio.
 $x0, $x1, $y0 = ($mx - 220), $mx, (-$my)
 $ym, $ym2, $y1 = ($y0 + 11), ($y0 + 22), ($y0 + 33)
-$linhasLegenda = @(
+if ($Legenda -eq 'Roupeiro') {
+    # 2 linhas de 11 mm (06-10): em cima o artigo e os dados da encomenda, em baixo os da folha.
+    # Sai a Descricao (num roupeiro o artigo diz mais) e o Cliente; a Ref. cliente alarga.
+    # O artigo e' o "Numero de posicao" (RP_A_01) = IMOSARTICLEPOSITION. A CONFIRMAR no 1.o
+    # batch: a ajuda lista-o para molduras, mas nao diz se as folhas do batch (de obra) o
+    # preenchem.
+    $y1 = $ym2
+    $linhasLegenda = @(
+        @{ yb = $ym; yt = $y1; celulas = @(
+            @{x = 0; c = 'Artigo'; t = 'IMOSARTICLEPOSITION'; h = 3.5 },
+            @{x = 40; c = 'Nome enc. iMOS'; t = 'IMOSORDERSERIES'; h = 2.6 },
+            @{x = 100; c = 'Enc. PHC'; t = 'IMOSORDERCOMMISSION'; h = 3.0 },
+            @{x = 120; c = 'Ref. cliente'; t = 'IMOSORDERITEM'; h = 2.6 },
+            @{x = 160; c = 'Obra'; t = 'IMOSORDERID'; h = 2.4 },
+            @{x = 195; c = 'Entrega'; t = 'IMOSORDERDELIVERYDATE'; h = 2.4 }) },
+        @{ yb = $y0; yt = $ym; celulas = @(
+            @{x = 0; c = 'Desenho'; t = 'IMOSVSLAYOUTNAME'; h = 3.0 },
+            @{x = 80; c = 'Escala'; t = 'IMOSVSSCALE'; h = 3.0 },
+            @{x = 110; c = 'Folha'; t = 'IMOSVSLAYOUTPAGE'; h = 3.0 },
+            @{x = 130; c = 'Desenhador'; t = 'IMOSORDEREMPLOYEE'; h = 2.6 },
+            @{x = 180; c = 'Data'; t = 'IMOSORDERACTDATE'; h = 2.6 }) }
+    )
+}
+else { $linhasLegenda = @(
     @{ yb = $ym2; yt = $y1; celulas = @(
         @{x = 0; c = 'Descri\U+00E7\U+00E3o'; t = 'IMOSORDERTEXTSHORT'; h = 2.4 },
         @{x = 140; c = 'Nome enc. iMOS'; t = 'IMOSORDERSERIES'; h = 2.6 }) },
@@ -87,7 +121,7 @@ $linhasLegenda = @(
         @{x = 110; c = 'Folha'; t = 'IMOSVSLAYOUTPAGE'; h = 3.0 },
         @{x = 130; c = 'Desenhador'; t = 'IMOSORDEREMPLOYEE'; h = 2.6 },
         @{x = 180; c = 'Data'; t = 'IMOSORDERACTDATE'; h = 2.6 }) }
-)
+) }
 
 Reset-AttDef
 $L = @(Get-InicioScript) + @('ATTREQ', '0', 'ATTDIA', '0', 'LAYOUT', '_S', $LayoutOrigem, '_.PSPACE', '_.ERASE', '_ALL', '')
@@ -97,8 +131,9 @@ $L += @('TEXTSTYLE', 'Arial')
 # moldura exterior a 0,5 mm e a legenda (linhas finas), encostada a moldura
 $L += @('_.RECTANG', '_W', '0.5', '_NON', "-$mx,-$my", '_NON', "$mx,$my")
 $L += @('_.RECTANG', '_W', '0', '_NON', "$x0,$y0", '_NON', "$x1,$y1")
-$L += Linha $x0 $ym $x1 $ym
-$L += Linha $x0 $ym2 $x1 $ym2
+foreach ($ln in $linhasLegenda) {
+    if ($ln.yb -gt $y0) { $L += Linha $x0 $ln.yb $x1 $ln.yb }
+}
 foreach ($ln in $linhasLegenda) {
     foreach ($c in $ln.celulas) {
         $x = $x0 + $c.x

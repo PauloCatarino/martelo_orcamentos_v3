@@ -254,6 +254,62 @@ Ferramentas e receita em [`scripts/imos_drawing_views`](../scripts/imos_drawing_
    com o batch.
 4. Folha única (moldura com várias janelas) e indicadores de alçado legíveis na planta.
 
+## 6c. Objetivo final acordado e ronda R1 dos roupeiros (06-10)
+
+As voltas 2 a 5 (05-10, noite) estão resumidas no README de `scripts/imos_drawing_views` e
+nos commits fc81906 a 2703144.
+
+### Objetivo final (acordado com o Paulo a 06-10)
+
+1. **O `IMOS.dwt` e o layout "1" não se mexem.** O Paulo copia o "1" para os seus layouts
+   manuais (1(2), 1(3)…). O `IMOS_v2.dwt` fica sem efeito.
+2. **Desenhos automáticos só pelo Output batch**, com o iX CAD fechado. Há um batch por
+   tipo de obra, cada um com as suas regras e a sua moldura:
+   - **`DV_Roupeiros`** agora;
+   - **`DV_Cozinhas`** mais tarde (a legenda das cozinhas mantém a Descrição, porque têm
+     vários artigos).
+3. **Roupeiros:** por cada roupeiro, planta + alçado + **perspetiva** (a perspetiva continua
+   a ser importante). O objetivo é que estes layouts cheguem para o cliente, sem layouts
+   manuais.
+   - **Planta:** medidas das portas, e o nome do artigo ao meio, à frente do artigo.
+   - **Alçado:** nome e medidas do artigo em baixo, por fora; portas com 1 casa decimal;
+     uma cadeia vertical com rodapé, rodateto, caixotes e a posição do nicho.
+   - **Legenda de 2 linhas:** Artigo (número de posição), sem Descrição e sem Cliente, e
+     Ref. cliente mais larga.
+4. **De fora por agora:** tabelas (não inseriram) e cortes automáticos.
+5. **Texto no modelo:** a barra de escala do modelo fica a **1:1**. O `IMOS_Text35` é
+   anotativo e o batch muda a escala da obra (na APAGAR_15 ficou 1:16): 35 × 16 = 560 mm.
+   - Notas: 50 mm no modelo (2,5 mm a 1:20).
+   - Títulos: 70 mm no modelo.
+   - Os estilos `DV_*` não entram no `IMOS.dwt` por agora (decisão dele).
+
+**Rondas, uma de cada vez e cada uma com teste:**
+
+- R1 batch + legenda;
+- R2 etiqueta do artigo e portas com 1 casa decimal;
+- R3 cadeia vertical;
+- R4 planta;
+- depois a perspetiva e as cozinhas.
+
+### R1: batch `DV_Roupeiros` + legenda de 2 linhas (feito a 06-10, por testar)
+
+Na `imos_LE_TESTES`, pasta `DV_Desenhos`:
+
+- **Output batch `DV_Roupeiros`:** igual ao `DV_Desenhos_Obra`, mas com a moldura
+  `DV_A3_Roupeiro` e as regras `DV_Roup_Planta`, `DV_Roup_Alcado`,
+  `DV_Roup_Planta_Etiquetas` e `DV_Roup_Alcado_Etiquetas`.
+  - Na R1 estas regras são cópias das de obra. As rondas seguintes mudam só as
+    `DV_Roup_*`, por isso as cozinhas não são afetadas.
+- **Moldura `DV_A3_Roupeiro`** (`criar_moldura_a3.ps1 -Legenda Roupeiro`, legenda
+  `DV_A3_Legenda_Roup_v1`):
+  - **linha 1:** Artigo (`IMOSARTICLEPOSITION`), Nome enc. iMOS, Enc. PHC, Ref. cliente,
+    Obra, Entrega;
+  - **linha 2:** Desenho, Escala, Folha, Desenhador, Data.
+- **A confirmar no teste:** a ajuda lista o `IMOSARTICLEPOSITION` para molduras, mas não
+  diz se as folhas do batch (que são de obra) o preenchem.
+- A planta do `DV_Desenhos_Obra` passou a "coloration" 0 no script: foi o Paulo que a
+  desligou no Element Manager.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |
