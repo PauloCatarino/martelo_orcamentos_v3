@@ -493,6 +493,12 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
     FILENAMEATTR, POSSIBLEVIEWS, PLOTSETTINGS (linha da moldura DV) e pasta (tipo 350).
   - **Falta:** o número de tipo da saída "Document Manager 2.0" no `CMSOUTPUTITEM`. Nenhum
     batch da LE a usa. O Paulo junta-a no Element Manager e eu leio-a da base.
+  - **Resultado (06-10):** a folha saiu em `APAGAR_15\DOC\DV_Perspetiva_3D` (PDF e DWG),
+    mas o Paulo prefere os Document Managers que já tem. O `DV_Roup_Perspetiva` e a moldura
+    `DV_A3_Roup_Persp` saíram da base (`DOCMAN_RETIRADOS`, `MOLDURAS_RETIRADAS`), e o
+    `DmLayout_DV_A3_Roup_Persp.dwt` saiu da pasta TEMP do iX CAD, a pedido dele. O
+    `-JanelaDocMan` do `criar_moldura_a3.ps1` fica, para quando for preciso dar nome a
+    janelas.
 
 - **Cotas verticais longe do alçado:** ficam à direita do **limite** da vista, que o iMos põe
   300 mm depois do último artigo, mais a distância da 1.ª cota (9 mm, a mesma das cotas de

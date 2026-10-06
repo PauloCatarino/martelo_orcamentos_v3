@@ -489,8 +489,9 @@ def sql_tabela() -> list[str]:
 MOLDURAS = {
     "DV_A3_Obra": "A3 horizontal de obra (Drawing Views): legenda neutra, sem nome da empresa",
     "DV_A3_Roupeiro": "A3 horizontal de roupeiros (Drawing Views): legenda de 2 linhas com o artigo",
-    "DV_A3_Roup_Persp": "A3 horizontal de roupeiros (Document Manager): janela 'Perspetiva' em 3D",
 }
+# Molduras DV_* que existiram e saem da base (com as páginas e janelas do Document Manager)
+MOLDURAS_RETIRADAS = ["DV_A3_Roup_Persp"]  # R6; o Paulo usa os Document Managers que já tem
 
 
 def sql_moldura(dwt: Path) -> list[str]:
@@ -650,18 +651,15 @@ class DocMan:
 
 PAGINA_A3 = ("PDF_LS_A3", "AutoCAD PDF (High Quality Print).pc3", "ISO_expand_A3_(420.00_x_297.00_MM)")
 
-DOCMAN = [
-    DocMan("DV_Roup_Perspetiva", "Roupeiros: folha A3 com a obra inteira em perspetiva (3D, Realistic)", [
-        LayoutDM(1, "DV_A3_Roup_Persp", "A3: perspetiva da obra", [PAGINA_A3[0]],
-                 [(0, "DV_Perspetiva_3D")],
-                 [JanelaDM(1, "Perspetiva", 9999, "show object order", atributos={"VisuLevel": "4"})]),
-    ]),
-]
+# R6 (06-10): o Paulo testou a perspetiva (saiu em <obra>\DOC) mas prefere os Document
+# Managers que já tem: a lista fica vazia e o DV_Roup_Perspetiva sai da base.
+DOCMAN: list = []
+DOCMAN_RETIRADOS = ["DV_Roup_Perspetiva"]
 
 
 def sql_docman() -> list[str]:
-    nomes = _so_dv([d.nome for d in DOCMAN])
-    molduras = _so_dv(sorted({ly.moldura for d in DOCMAN for ly in d.layouts}))
+    nomes = _so_dv([d.nome for d in DOCMAN] + DOCMAN_RETIRADOS)
+    molduras = _so_dv(sorted({ly.moldura for d in DOCMAN for ly in d.layouts} | set(MOLDURAS_RETIRADAS)))
     s = ["-- document manager"]
     for tab in ("DOCMANFUNCATTR", "DOCMANVIEWPORTS", "DOCMANFILENAMEATTR", "DOCMANLAYOUTPLOTS", "DOCMANLAYOUTS"):
         s.append(f"DELETE FROM dbo.{tab} WHERE NAME IN ({lista(nomes)});")
@@ -673,6 +671,12 @@ def sql_docman() -> list[str]:
         f"DELETE FROM dbo.DOCMANPOSSIBLEVIEWS WHERE LNAME IN ({lista(molduras)});",
         *_pasta("DOCMANPRINCIPLESFOLDER"),
     ]
+    for m in _so_dv(MOLDURAS_RETIRADAS):
+        s += [
+            f"DELETE FROM dbo.BINDATA WHERE NAME = {lit(m)} AND INTERNTYPE = N'LAYDWT';",
+            f"DELETE FROM dbo.DOCMANBORDERPRINCIPLE WHERE NAME = {lit(m)};",
+            f"DELETE FROM dbo.DOCMANBORDERPRINCIPLEFOLDER WHERE NAME = {lit(m)} AND TYPE = 480;",
+        ]
     vistos = set()
     for d in DOCMAN:
         s.append("INSERT INTO dbo.DOCMANPRINCIPLES (NAME, COMMENT, SOURCE, PRODUCER, SYS, PDFOUTPUT, SKIPSAMEFILENAMES) "

@@ -1656,4 +1656,7 @@ Guião de teste:
    → acrescentar a saída **"Document Manager 2.0"** com o princípio `DV_Roup_Perspetiva`
    → Guardar. Depois disso eu leio o tipo na base e passo-o para o script.
 
-**Por testar:** tudo.
+**Resultado (06-10):** a perspetiva saiu (`APAGAR_15\DOC\DV_Perspetiva_3D`), mas o Paulo
+vai usar os Document Managers que já tem. O `DV_Roup_Perspetiva` e a moldura
+`DV_A3_Roup_Persp` foram retirados da base, e o `.dwt` da pasta TEMP do iX CAD foi apagado,
+tudo a pedido dele. Os estilos (passo 1) continuam por testar.
