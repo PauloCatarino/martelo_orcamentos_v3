@@ -505,6 +505,48 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
   cima e de baixo). Na Vista 2 a 1:25 eram ~1280 mm do modelo. Só a distância é nossa, e
   baixá-la encosta a cota verde de cima às etiquetas das portas.
 
+### R7: textos e cotas feitos à mão no Model (06-10, por testar)
+
+- **Pedido:** reta final. Os PDFs servem. Falta escrever e cotar à mão no Model (1:1) com texto
+  normal (preto) e títulos (azul), legíveis nos layouts `1` / `1 (2)` e no PDF.
+- **Porque é que as cotas e os textos crescem quando a escala muda** (lido nos DXF da APAGAR_15,
+  da 1556_01_26_JF_VIVA e numa cópia do `config\IMOS.dwt`):
+  - o IMOS.dwt abre as obras com o estilo de texto **`IMOS_Text35`** e a cota
+    **`IMOS_VIEW_RED`**. São anotativos com **35 mm de papel** (`IMOS_Text25`: 25 mm);
+  - a escala de anotação do Model vem a 1:1 e o `ANNOAUTOSCALE` é 4. Quando a escala muda (o
+    batch põe 1:16, 1:25…), cada objeto anotativo ganha essa escala. Um texto de "50" passa
+    a 50 mm **no papel**, ou seja 800 mm no Model a 1:16;
+  - o IMOS.dwt (gravado pelo Paulo a 06-10, 09:49) já traz no Model o título
+    `_01_26_JF_VIVA_()` (135, azul por formatação `\C5`) e a lista de materiais (50), ambos em
+    `IMOS_Text35`: todas as obras novas nascem com eles.
+- **Solução:** estilos anotativos em mm de papel a sério, e o Model a 1:20.
+  - `DV_Texto`: 2,5 mm de papel, camada `DV_Texto` (cor 7, preto na folha).
+  - `DV_Titulo`: 5 mm de papel, camada `DV_Titulo` (cor 5, azul).
+  - Os dois com letra simplex e largura 0,8, a do IMOS_Text35.
+  - Cotas: os `DV_*` (2,5 mm); a atual passa a ser o `DV_VERMELHO`.
+  - Escala de anotação do Model: **1:20**. O texto de 2,5 mm vê-se com 50 mm no Model, como
+    o "50" a que o Paulo está habituado.
+  - Numa janela a 1:16 o texto sai com 2,5 mm e numa a 1:25 também. Numa janela com escala
+    fora da lista (o `1 (2)` estava a 1:25,6), o `ANNOALLVISIBLE 1` mostra-o com a escala
+    mais próxima que o objeto tenha (~2 mm).
+- **Ficheiros** (`estilos_cota_dv.py --manual` / `--dwt`) em `Pasta_Transferencia\Estilos_R7`:
+  - **`comandos_R7_APAGAR_15.txt`**, para colar no Model da APAGAR_15. Faz o mesmo que os da
+    R6 (cotas centradas; na APAGAR_15 o DV_VERMELHO ainda tinha `DIMTMOVE 1`, a cota com
+    chamada) e cria as camadas, os estilos de texto e a escala de anotação 1:20.
+    - Simulado na consola numa cópia: tudo certo.
+    - O `-STYLE` fica no fim. A consola não o tem (lá é `STYLE`), mas o iX CAD normal deve
+      ter: é a única linha não testada.
+  - **`IMOS.dwt`** candidato:
+    - feito na consola a partir de uma cópia do `config\IMOS.dwt`;
+    - comparado o DXF objeto a objeto: só ganhou 5 dimstyles, 2 camadas e 2 estilos de texto;
+    - os 2 textos do Model ganharam a escala 1:20 e ficam ENORMES até o Paulo lhes mudar o
+      estilo para `DV_Titulo` / `DV_Texto`. A consola não muda estilos de MTEXT, por isso
+      esse passo é dele;
+    - o layout `1` fica igual.
+- **imosBlocks.dwg:** o Paulo copiou o da **R5** para `config\DrawingFlags\`. O iMos procura-o
+  em `config\` (onde continua o de 05-10). Falta copiar o da R6 para `config\`. O de
+  `DrawingFlags` não é usado.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |

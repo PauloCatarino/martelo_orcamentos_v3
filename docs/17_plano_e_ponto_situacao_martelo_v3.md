@@ -1660,3 +1660,55 @@ Guião de teste:
 vai usar os Document Managers que já tem. O `DV_Roup_Perspetiva` e a moldura
 `DV_A3_Roup_Persp` foram retirados da base, e o `.dwt` da pasta TEMP do iX CAD foi apagado,
 tudo a pedido dele. Os estilos (passo 1) continuam por testar.
+
+## Drawing Views: textos e cotas à mão, ronda R7 (2026-10-06)
+
+Feito (doc 37, R7):
+
+- estilos de texto anotativos `DV_Texto` (2,5 mm de papel, camada preta) e `DV_Titulo` (5 mm,
+  camada azul);
+- Model a 1:20;
+- cota atual `DV_VERMELHO`;
+- comandos para a APAGAR_15 e um `IMOS.dwt` candidato em `Pasta_Transferencia\Estilos_R7`.
+
+Guião de teste (A primeiro; B só se A ficar bem):
+
+**A. Na APAGAR_15**
+
+0. **imosBlocks:** copiar `Pasta_Transferencia\Estilos_cota_R6\imosBlocks.dwg` para
+   `%APPDATA%\imos AG\iX CAD 2025\config\` (por cima do de 05-10). O que está em
+   `config\DrawingFlags\` não é usado.
+1. **Colar os comandos:**
+   - na APAGAR_15, no separador **Model**, abrir
+     `Pasta_Transferencia\Estilos_R7\comandos_R7_APAGAR_15.txt` no Bloco de Notas;
+   - Ctrl+A, Ctrl+C, clicar na linha de comandos, Ctrl+V e Enter.
+   - Esperado:
+     - nenhum "Unknown command";
+     - a última linha diz que o `DV_Texto` é o estilo de texto atual;
+     - na barra de baixo, a escala de anotação está em 1:20;
+     - a lista de cotas mostra `DV_VERMELHO`.
+2. **Texto novo:**
+   - camada `DV_Texto`, MTEXT "TESTE TEXTO". Esperado: no Model com ~50 mm de altura, preto
+     na folha;
+   - camada `DV_Titulo`, estilo `DV_Titulo`, "TESTE TITULO". Esperado: ~100 mm, azul.
+3. **Cota à mão** (DIMLINEAR numa porta). Esperado: vermelha, número no meio da linha, sem
+   linha de chamada.
+4. **Textos que já existem:** selecionar o título `_01_26_JF_VIVA_()` → Propriedades → Estilo
+   `DV_Titulo`. Se a "Altura do texto no papel" não ficar 5, escrever 5. Fazer o mesmo à lista
+   de materiais com `DV_Texto` e 2,5.
+5. **Layouts `1` e `1 (2)`** (ou voltar a correr o teu Document Manager):
+   - esperado: o texto com a altura das letras da legenda (2,5 mm), o título com o dobro, e
+     as cotas pequenas como as automáticas;
+   - imprimir o PDF e ver se se lê bem;
+   - no `1 (2)` (escala 1:25,6, fora da lista) podem sair um pouco mais pequenos: dizer-me.
+6. Ctrl+S.
+
+**B. Obras novas** (só depois de A):
+
+7. Abrir no iX CAD o `Pasta_Transferencia\Estilos_R7\IMOS.dwt` (Abrir → tipo .dwt). Os 2
+   textos aparecem enormes: é de propósito. Fazer o passo 4 nesses 2 textos e Ctrl+S.
+8. Fechar o iX CAD. Em `config\`, mudar o nome do `IMOS.dwt` para `IMOS_antes_R7.dwt` e copiar
+   para lá o novo.
+9. Criar uma obra de teste (APAGAR_16). Esperado:
+   - estilo de texto `DV_Texto`, cota `DV_VERMELHO` e escala 1:20 já escolhidos;
+   - os 2 textos com tamanho normal no Model e no layout `1`.
