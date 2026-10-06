@@ -546,6 +546,35 @@ vazio**. As folhas do batch são de obra e não preenchem o `IMOSARTICLEPOSITION
 - **imosBlocks.dwg:** o Paulo copiou o da **R5** para `config\DrawingFlags\`. O iMos procura-o
   em `config\` (onde continua o de 05-10). Falta copiar o da R6 para `config\`. O de
   `DrawingFlags` não é usado.
+- **Resultado (06-10):**
+  - o `imosBlocks.dwg` da R6 está no `config\`;
+  - o Paulo instalou o IMOS.dwt da R7 (o original ficou em `IMOS - Cópia (2).dwt`);
+  - na APAGAR_15 o **`-STYLE` não existe no iX CAD**: as linhas a seguir abriram um ARC, que
+    ficou `*Invalid*`, sem nada desenhado. Os estilos de texto só podem vir pelo IMOS.dwt.
+
+### R8: IMOS_Text35 à escala dos DV_* e IMOS.dwt pronto para uma obra nova (06-10, por testar)
+
+- **Pedido:** o Paulo cota no Model com o **`IMOS_Text35`** e quer continuar com ele, mas à
+  escala dos `DV_*`. O texto livre faz com MTEXT e `DV_Texto` / `DV_Titulo`. Vai fazer o ciclo
+  completo numa obra nova.
+- **Cota `IMOS_Text35`:**
+  - fica vermelha, com setas e 1 casa decimal, e anotativa;
+  - medidas dos DV_*: texto 2,5, setas 1,5, chamadas 1/1, afastamento 0,6, linhas
+    paralelas a 7;
+  - o texto passa ao estilo **ISO**, porque o estilo de texto `IMOS_Text35` tem altura fixa
+    35 e mandava sobre o DIMTXT;
+  - comportamento centrado dos DV_*: sem a chamada do `DIMTMOVE 1`;
+  - volta a ser a cota atual;
+  - os `IMOS_VIEW_*` ficam como estavam: são da LE e ninguém os pediu.
+- **Os 2 MTEXT do Model do IMOS.dwt:**
+  - passam a 5 mm (título) e 2,5 mm (lista) de papel, com o `SCALE`, porque a consola não
+    muda o estilo de um MTEXT;
+  - a escala 1:20 acompanha (a mesma posição; no Model a 1:20 ficam com 100 e 50 mm);
+  - a letra é a mesma do `DV_Texto`.
+- **Ficheiros** (`estilos_cota_dv.py --dwt-r8` sobre o IMOS.dwt da R7; o `--dwt` faz tudo a
+  partir do original e dá o mesmo resultado, objeto a objeto) em `Pasta_Transferencia\Estilos_R8`:
+  - `IMOS.dwt`;
+  - `comandos_R8_obra_aberta.txt`: para as obras que já existem; já não tem o `-STYLE`.
 
 ## 7. Anexo — o que mostra cada vídeo
 

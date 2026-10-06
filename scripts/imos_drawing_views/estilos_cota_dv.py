@@ -29,9 +29,11 @@ e nada mais do IMOS.dwt.
 
 Outros usos:
     ... --obra <txt>      comandos para colar numa obra que já tem os DV_* (cotas centradas, R5/R6)
-    ... --manual <txt>    R7: o mesmo + estilos de texto DV_Texto/DV_Titulo, camadas e Model a 1:20
-    ... --dwt <scr> <dwt> R7: script da consola que faz um IMOS.dwt novo a partir de uma CÓPIA do
-                          config\\IMOS.dwt (só acrescenta estilos, camadas e escala; layouts iguais)
+    ... --manual <txt>    o mesmo + IMOS_Text35 à escala dos DV_*, camadas e Model a 1:20 (os
+                          estilos de texto não: o iX CAD não tem -STYLE)
+    ... --dwt <scr> <dwt> script da consola que faz o IMOS.dwt novo a partir de uma CÓPIA do
+                          original (R7 + R8; só acrescenta/ajusta, layouts iguais)
+    ... --dwt-r8 <scr> <dwt>  o mesmo, a partir de uma cópia do IMOS.dwt da R7
 """
 from __future__ import annotations
 
@@ -99,7 +101,31 @@ TEXTOS = {  # nome -> altura no papel (mm); o último fica o estilo atual
 }
 CAMADAS = {"DV_Texto": 7, "DV_Titulo": 5}  # a cor vem da camada: 7 = preto na folha, 5 = azul
 ESCALA_MODELO = "1:20"   # escala de anotação do Model: o texto de 2,5 mm vê-se com 50 mm
-COTA_MANUAL = "DV_VERMELHO"
+# R8: o Paulo cota à mão com o IMOS_Text35 (vermelho, setas, 1 casa decimal) e quer continuar.
+# Fica com isso, mas com as medidas e o texto dos DV_* (35 -> 2,5 mm de papel; o estilo de
+# texto IMOS_Text35 tem altura fixa 35 e mandava sobre o DIMTXT, por isso o texto passa a ISO).
+COTA_MANUAL = "IMOS_Text35"
+MEDIDAS_IMOS = [("DIMTXSTY", ESTILO_TEXTO), ("DIMTXT", "2.5"), ("DIMASZ", "1.5"), ("DIMEXO", "1"),
+                ("DIMEXE", "1"), ("DIMGAP", "0.6"), ("DIMDLI", "7")]
+
+
+def linhas_cota_imos() -> list[str]:
+    """Redefine o IMOS_Text35 (cota) com as medidas e o comportamento dos DV_* (anotativo)."""
+    out = ["-DIMSTYLE", "_R", COTA_MANUAL]
+    for var, val in MEDIDAS_IMOS + CENTRADO:
+        out += [var, val]
+    return out + ["-DIMSTYLE", "_AN", "_Y", COTA_MANUAL, "_Y", "", COTA_MANUAL]
+
+
+# R8: os 2 MTEXT que o Paulo pôs no Model do IMOS.dwt (título azul e lista de materiais) estão
+# no estilo de texto IMOS_Text35 com 135 e 50 mm de PAPEL. A consola não muda o estilo de um
+# MTEXT (o CHANGE não os aceita), mas o SCALE muda a altura no papel e todas as escalas do texto
+# acompanham: o título fica com 5 mm, a lista com 2,5 mm, no mesmo sítio. A letra é a mesma
+# do DV_Texto (simplex 0,8). (janela de seleção a 1:1, ponto de inserção, fator)
+TEXTOS_DWT = [
+    (("-200,-1740", "4500,-2200"), "28.06911352074531,-1744.13859053227", 5 / 135),
+    (("-200,-1100", "4500,-1738"), "620.2358320677331,-1219.592357625775", 2.5 / 50),
+]
 
 
 def linhas_textos(comando: str = "-STYLE") -> list[str]:
@@ -121,28 +147,44 @@ def linhas_camadas() -> list[str]:
 
 
 def linhas_manual() -> list[str]:
-    """Para colar no Model de uma obra aberta (APAGAR_15): cotas DV_* centradas (R6), camadas,
-    escala de anotação e estilos de texto. O -STYLE fica no fim: se o iX CAD não o conhecer,
-    o resto já ficou feito."""
+    """Para colar no Model de uma obra aberta: cotas DV_* centradas (R6), IMOS_Text35 à escala
+    dos DV_* (R8), camadas e escala de anotação. Os estilos de texto DV_Texto/DV_Titulo NÃO
+    vão aqui: o iX CAD não tem -STYLE (teste do Paulo, 06-10), só vêm pelo IMOS.dwt."""
     out = linhas_obra()
+    out += linhas_cota_imos()
     out += linhas_camadas()
-    out += ["ANNOALLVISIBLE", "1", "CANNOSCALE", ESCALA_MODELO, "-DIMSTYLE", "_R", COTA_MANUAL]
-    out += linhas_textos("-STYLE")
+    out += ["ANNOALLVISIBLE", "1", "CANNOSCALE", ESCALA_MODELO]
     return out
 
 
+def _fim_dwt(destino: str) -> list[str]:
+    """R8: IMOS_Text35 à escala dos DV_* e atual, os 2 MTEXT do Model a 5 e 2,5 mm de papel,
+    Model a 1:20 e gravar como template."""
+    out = linhas_cota_imos()
+    # a 1:1 para a janela apanhar o texto pelo tamanho de 1:1; o ZOOM E põe-no no ecrã (sem
+    # isso a seleção por janela da consola não encontra nada)
+    out += ["CANNOSCALE", "1:1", "_.ZOOM", "_E"]
+    for (c1, c2), base, fator in TEXTOS_DWT:
+        out += ["_.SCALE", "_W", "_NON", c1, "_NON", c2, "", "_NON", base, f"{fator:.10f}"]
+    out += ["CANNOSCALE", ESCALA_MODELO, "-DIMSTYLE", "_R", COTA_MANUAL]
+    # Template: medidas (Enter = Metric) e descrição (Enter = vazia)
+    return out + ["_.SAVEAS", "_T", destino, "", ""]
+
+
+def linhas_dwt_r8(destino: str) -> list[str]:
+    """Script da consola sobre uma CÓPIA do IMOS.dwt da R7 (o que já tem os DV_*)."""
+    return ["FILEDIA", "0", "CMDDIA", "0", "OSMODE", "0", "OSNAPCOORD", "1"] + _fim_dwt(destino)
+
+
 def linhas_dwt(destino: str) -> list[str]:
-    """Script da consola sobre uma CÓPIA do config\\IMOS.dwt: junta as cotas DV_*, as camadas e
-    os estilos de texto, deixa-os como atuais, põe o Model a 1:20 e grava outro .dwt.
-    Os layouts (o "1") não são tocados."""
+    """Script da consola sobre uma CÓPIA do IMOS.dwt de antes da R7: junta as cotas DV_*, as
+    camadas e os estilos de texto (R7) e depois o _fim_dwt (R8). Os layouts (o "1") não são
+    tocados."""
     out = ["FILEDIA", "0", "CMDDIA", "0", "OSMODE", "0", "OSNAPCOORD", "1"]
     out += linhas_estilos()
     out += linhas_camadas()
     out += linhas_textos("_.STYLE")
-    out += ["-DIMSTYLE", "_R", COTA_MANUAL, "CANNOSCALE", ESCALA_MODELO]
-    # Template: medidas (Enter = Metric) e descrição (Enter = vazia)
-    out += ["_.SAVEAS", "_T", destino, "", ""]
-    return out
+    return out + _fim_dwt(destino)
 
 
 def linhas_estilos() -> list[str]:
@@ -184,9 +226,10 @@ def main() -> None:
         Path(sys.argv[2]).write_bytes(("\r\n".join(linhas_manual()) + "\r\n").encode("ascii"))
         print(f"Comandos: {sys.argv[2]}")
         return
-    if len(sys.argv) == 4 and sys.argv[1] == "--dwt":
+    if len(sys.argv) == 4 and sys.argv[1] in ("--dwt", "--dwt-r8"):
         scr = Path(sys.argv[2])
-        scr.write_bytes(("\r\n".join(linhas_dwt(sys.argv[3])) + "\r\n").encode("ascii"))
+        f = linhas_dwt if sys.argv[1] == "--dwt" else linhas_dwt_r8
+        scr.write_bytes(("\r\n".join(f(sys.argv[3])) + "\r\n").encode("ascii"))
         print(f"Script: {scr}")
         return
     if len(sys.argv) < 3:

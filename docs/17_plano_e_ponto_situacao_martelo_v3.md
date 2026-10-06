@@ -1712,3 +1712,37 @@ Guião de teste (A primeiro; B só se A ficar bem):
 9. Criar uma obra de teste (APAGAR_16). Esperado:
    - estilo de texto `DV_Texto`, cota `DV_VERMELHO` e escala 1:20 já escolhidos;
    - os 2 textos com tamanho normal no Model e no layout `1`.
+
+**Resultado (06-10):**
+- o imosBlocks da R6 está no `config\`;
+- o Paulo instalou o IMOS.dwt da R7;
+- o `-STYLE` não existe no iX CAD: os estilos de texto só vêm pelo IMOS.dwt;
+- pediu que o `IMOS_Text35` (a cota que usa no Model) fique à escala dos DV_* → R8.
+
+## Drawing Views: IMOS_Text35 e IMOS.dwt para o ciclo completo, ronda R8 (2026-10-06)
+
+Feito (doc 37, R8):
+
+- cota `IMOS_Text35` com as medidas e o comportamento dos `DV_*`. Continua vermelha, com setas
+  e 1 casa decimal, e é a cota atual;
+- os 2 textos do Model do IMOS.dwt com 5 e 2,5 mm de papel;
+- ficheiros em `Pasta_Transferencia\Estilos_R8`.
+
+Guião de teste (ciclo completo):
+
+1. Fechar o iX CAD. Em `%APPDATA%\imos AG\iX CAD 2025\config\`, mudar o nome do `IMOS.dwt`
+   (o da R7) para `IMOS_R7.dwt` e copiar para lá o `Estilos_R8\IMOS.dwt`.
+2. Abrir o iX CAD e criar uma **obra nova**. Esperado no Model:
+   - o título azul e a lista de materiais do tamanho de sempre (~100 e ~50 mm);
+   - a escala de anotação em 1:20;
+   - o estilo de texto `DV_Texto`;
+   - a cota `IMOS_Text35`.
+3. Desenhar os roupeiros como sempre. Cotar à mão com o `IMOS_Text35` (esperado: vermelha,
+   texto ~50 mm no Model, setas, número ao meio, sem linha de chamada). Escrever com MTEXT e
+   `DV_Texto` / `DV_Titulo` (camadas `DV_Texto` / `DV_Titulo` para a cor).
+4. Correr o batch `DV_Roupeiros`, o teu Document Manager e os layouts `1`. Esperado: em todas
+   as folhas e no PDF:
+   - texto e cotas à mão com a altura das letras da legenda (~2,5 mm);
+   - o título com 5 mm;
+   - nada gigante.
+5. Dizer o que ficou grande, pequeno ou fora do sítio, com o nome do layout.
