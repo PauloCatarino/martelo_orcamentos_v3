@@ -1834,3 +1834,22 @@ Guião de teste:
    - Element Manager → etiquetas `DV_Roup_Alcado_Etiquetas` → bloco das portas
      `DV_Lbl_Porta_AL` e das gavetas `DV_Lbl_Gaveta_AL`;
    - copiar os DWG da v4 para o `DrawingFlags` dos outros PCs.
+
+## Drawing Views: nome do artigo a vermelho, ronda R12 (2026-10-06)
+
+Feito (doc 37, R12):
+
+- na planta, o nome do artigo e o valor do Cmp saem a vermelho;
+- no alçado, o nome do artigo sai a vermelho e as medidas a azul;
+- a posição do artigo de chão que o Paulo afinou (700 / −300) passou para o script.
+
+Guião de teste:
+
+1. Element Manager → ⟳.
+2. Na APAGAR_01, correr o batch `DV_Roupeiros`. Esperado:
+   - na planta, "RP_A_01(b)" a vermelho, por baixo "Alt:" azul, "Cmp: 2585" com o número a
+     vermelho e "Prof:" azul, no sítio onde o puseste;
+   - nos alçados, "RP_A_01(a)" a vermelho e "2435 X 2592 X 600" a azul.
+3. Se ficar bem, na `imos_LE`, Element Manager:
+   - em `DV_Roup_Planta_Etiquetas`, os blocos `DV_Lbl_Artigo_Planta_NV`;
+   - em `DV_Roup_Alcado_Etiquetas`, o bloco `DV_Lbl_Artigo_Azul_NV`.

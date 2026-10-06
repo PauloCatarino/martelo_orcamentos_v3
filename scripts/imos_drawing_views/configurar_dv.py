@@ -268,7 +268,8 @@ PLANTA.append(replace(_por_nome(PLANTA, "DV_Planta"), nome="DV_Roup_Planta",
 ANOTACAO += [
     Anotacao("DV_Roup_Alcado_Etiquetas", "Roupeiros: artigo em baixo por fora + Porta/Gaveta L X A", [
         # R5: desvios afinados pelo Paulo no Element Manager (artigo -40, portas +30)
-        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -40), "DV_Lbl_Artigo_Azul",
+        # R12 (06-10): o nome do artigo a vermelho, as medidas a azul (bloco _NV)
+        Etiqueta(3, "DV_Art_Azul", (0, -1), (0, 1), (0, -40), "DV_Lbl_Artigo_Azul_NV",
                  "Ate 1490: nome + L X A X P, em baixo, por fora"),
         Etiqueta(3, "DV_Art_Verm", (0, 1), (0, -1), (0, 60), "DV_Lbl_Artigo_Verm",
                  "Acima de 1490: por cima, por fora"),
@@ -285,10 +286,12 @@ ANOTACAO += [
     # Na planta, a frente do artigo é o lado y = -1 (o +1 é a parede: ver DV_Planta_Etiquetas).
     # A etiqueta do artigo tem 4 linhas (~11 mm): vai mais à frente que a das portas.
     Anotacao("DV_Roup_Planta_Etiquetas", "Roupeiros: 'Porta' + largura + artigo com Alt/Cmp/Prof a frente", [
-        # R5: posição do Paulo (canto da frente direito, desviada -700/-350)
-        Etiqueta(3, "DV_Art_Chao", (1, -1), (-1, 0), (-700, -350), "DV_Lbl_Artigo_Planta",
+        # R5: posição do Paulo (canto da frente direito, desviada -700/-350).
+        # R12 (06-10): ele mudou no Element Manager para o canto da frente esquerdo (Bottom,
+        # Left / Bottom, Left), desviada 700/-300. Nome e Cmp a vermelho (bloco _NV).
+        Etiqueta(3, "DV_Art_Chao", (-1, -1), (-1, -1), (700, -300), "DV_Lbl_Artigo_Planta_NV",
                  "Chao: nome + Alt/Cmp/Prof, a frente do artigo"),
-        Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta",
+        Etiqueta(3, "DV_Art_Nichos", (0, -1), (0, 1), (0, -180), "DV_Lbl_Artigo_Planta_NV",
                  "Intermedios: nome + Alt/Cmp/Prof, a frente do artigo"),
         Etiqueta(3, "DV_Art_Superiores", (0, 1), (0, 1), (0, -30), NOME_VERM,
                  "Superiores (junto a parede, vermelho)"),

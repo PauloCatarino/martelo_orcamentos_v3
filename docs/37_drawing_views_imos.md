@@ -661,6 +661,18 @@ etiquetas já não tocam nas cotas. Pedidos do Paulo:
 - Continuam para depois: as etiquetas duplicadas nas portas sobrepostas (planta) e a porta
   vista de lado.
 
+### R12: nome do artigo a vermelho (06-10, por testar)
+
+- **Pedido:** o nome do artigo a vermelho por defeito.
+  - Na planta: o Paulo pintou à mão o nome e o valor do Cmp de vermelho na APAGAR_01.
+  - No alçado: o nome também.
+- **Blocos novos** em `I:\Library\AttDWG`: `DV_Lbl_Artigo_Planta_NV` (nome e valor do Cmp a
+  vermelho, o resto azul) e `DV_Lbl_Artigo_Azul_NV` (nome a vermelho, "L X A X P" a azul), mais
+  os `_r`. Os antigos ficam como estão.
+- **Alteração do Paulo adotada:** `DV_Roup_Planta_Etiquetas`, artigo de chão em Bottom, Left /
+  Bottom, Left, com desvio 700 / −300. Era Bottom, Right / Center, Left com −700 / −350.
+- Aplicado na `imos_LE_TESTES`.
+
 ## 7. Anexo — o que mostra cada vídeo
 
 | Vídeo | Conteúdo útil |
