@@ -156,6 +156,26 @@ def test_read_workbook_retains_width_and_quantities(tmp_path):
     assert any('1_FERRAGENS / 2_PURCH / 3_SPP' in w for w in warnings)
 
 
+def test_resumo_orlas_do_modelo_novo_le_larg_x_esp(tmp_path):
+    """Modelo de 07-10-2026: REF_CLIENTE em F1/F2, «stock/enc», «Larg X Esp», «Obs.»."""
+    path = tmp_path / 'x.xlsx'
+    w = Workbook()
+    w.active.title = 'LISTAGEM_CUT_RITE'
+    w.active.append(['Title'])
+    w.active.append(['Material', 'Descricao', 'Qt', 'Esp'])
+    s = w.create_sheet('ResumoOrlas')
+    s.append([None, 'Cliente', None, None, 'ENC_PHC', 'REF_CLIENTE'])
+    s.append([None, 'MÓVEIS J.F. VIVA', None, None, 1699, 2607059])
+    s.append([None, 'Material', 'Nome_Orlas', 'ML_QT', 'stock/enc', 'Marca / Ref.', 'Larg X Esp', 'ML', 'Obs.'])
+    s.append([None, 'AGL_19MM', 'PVC_1.0_CARVALHO', 22, 'stock/enc', None, '22 x 1.0', None, None])
+    w.save(path)
+    lines, _warnings = svc.workbook_cost_lines(path)
+    orlas = [l for l in lines if l['kind'] == 'Orlas']
+    assert len(orlas) == 1
+    assert orlas[0]['width'] == '22'
+    assert orlas[0]['quantity'] == '22'
+
+
 def test_o_snapshot_mais_recente_nao_depende_do_relogio(tmp_path, monkeypatch):
     """Dois snapshots no mesmo tique do relógio: vale o segundo, sempre.
 

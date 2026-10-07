@@ -367,17 +367,20 @@ def workbook_cost_lines(path):
             headers = None
             for row in sheet.values:
                 row = tuple(row)
-                if 'ML_QT' in row and 'Nome_Orlas' in row:
-                    headers = {str(v): i for i, v in enumerate(row) if v}
+                # Títulos sem olhar a maiúsculas: o modelo de 07-10-2026 diz
+                # «Larg X Esp», as obras antigas «LARG X ESP».
+                titulos = {str(v).strip().upper(): i for i, v in enumerate(row) if v}
+                if 'ML_QT' in titulos and 'NOME_ORLAS' in titulos:
+                    headers = titulos
                     continue
                 if not headers:
                     continue
                 def val(key):
-                    i = headers.get(key, len(row))
+                    i = headers.get(key.upper(), len(row))
                     return row[i] if i < len(row) else None
                 if not val('Nome_Orlas'):
                     continue
-                name, material, size = str(val('Nome_Orlas')), str(val('Material') or ''), str(val('LARG X ESP') or '')
+                name, material, size = str(val('Nome_Orlas')), str(val('Material') or ''), str(val('Larg X Esp') or '')
                 result.append(cost_line('Orlas', f'orla:{material}:{name}:{size}', name, number(val('ML_QT')), 'ml', width=str(edge_width(size) or ''), thickness=edge_thickness(name), board=material, size=size, source='ResumoOrlas'))
         else:
             warnings.append('ResumoOrlas em falta; custo de orlas por apurar.')

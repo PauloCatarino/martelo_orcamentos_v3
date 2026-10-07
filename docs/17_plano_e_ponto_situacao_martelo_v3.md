@@ -1878,3 +1878,46 @@ Guião de teste:
 3. Nos outros PCs que vão usar: copiar para `config\` o `IMOS.dwt` e o `imosBlocks.dwg`
    (`Estilos_R10`), e para `config\DrawingFlags` os DWG de `DrawingFlags_simples_v4`.
 4. Se em uns dias nada se queixar da falta de um bloco, apagar a pasta `AttDWG_DV_sem_uso`.
+
+## Lista Material: ResumoOrlas com REF_CLIENTE em F e «stock/enc» (2026-10-07)
+
+O Paulo mudou o separador `ResumoOrlas` do modelo `Lista_Material_IMOS_MARTELO.xltm`. Os
+títulos da tabela passaram a ser `stock/enc`, `Larg X Esp` e `Obs.`, e o REF_CLIENTE
+passou para F1. A macro que gera o resumo tinha os títulos antigos escritos no código.
+
+Feito:
+
+- a macro `modResumoOrlas` passou a ter fonte no repositório (`scripts/vba/modResumoOrlas.bas`),
+  e o `atualizar_macros_modelo_lista_material.py` passou a escrevê-la no modelo;
+- REF_CLIENTE em **F1**, valor em **F2**. Numa obra antiga com o REF_CLIENTE em H1/H2,
+  o H1/H2 é limpo;
+- títulos: `Material | Nome_Orlas | ML_QT | stock/enc | Marca / Ref. | Larg X Esp | ML | Obs.`,
+  com as larguras do modelo;
+- cada linha com orla leva `stock/enc`. O que foi escrito à mão nessa coluna fica, menos o
+  antigo `enc`, que passa a `stock/enc`. As obras antigas continuam a ser lidas pelos
+  títulos antigos (`enc`, `Entrada Orlas`);
+- a análise de custo do Martelo lê o `Larg X Esp` sem olhar a maiúsculas. Sem isto, as
+  orlas das obras novas ficavam sem largura;
+- foi escrito no modelo do servidor a 07-10 às 18:04, com cópia
+  `Lista_Material_IMOS_MARTELO_backup_20261007_180455.xltm`. Numa cópia, o projeto VBA
+  compila sem erros. Numa cópia da 1699, a macro deu as mesmas 6 linhas e os mesmos ML.
+
+Guião de teste:
+
+1. Produção → selecionar uma obra nova → **«Lista Material_IMOS»**, que cria o Excel a partir
+   do modelo. Importar o IMOS como de costume, até a `LISTAGEM_CUT_RITE` ter peças com orlas.
+2. No Excel, separador **LISTAGEM_CUT_RITE** → botão **«Calculo Orlas»**. Esperado no
+   separador **ResumoOrlas**:
+   - B1 «Cliente», E1 «ENC_PHC», **F1 «REF_CLIENTE»**; na linha 2 o cliente, a encomenda e
+     **o REF_CLIENTE em F2**. H1/H2 vazios;
+   - títulos da tabela na linha 3: `Material | Nome_Orlas | ML_QT | stock/enc | Marca / Ref. |
+     Larg X Esp | ML | Obs.`;
+   - em **todas** as linhas com orlas, a coluna E diz **`stock/enc`**; `Larg X Esp` no formato
+     `22 x 1.0`.
+3. Na coluna E, trocar uma linha para `stock`, escrever algo em `Obs.` e carregar outra vez
+   em «Calculo Orlas». Esperado: o `stock` e a observação continuam lá.
+4. Numa obra antiga (Excel criado antes de 07-10), nada muda: a macro está dentro de cada
+   Excel e só as obras criadas a partir de agora têm a nova.
+5. Gravar o Excel. Produção → a mesma obra → «Lista Material_IMOS» → janela «Análise da Lista
+   Material» → separador **«Custo de produção (parcial)»**. Esperado: as orlas do
+   ResumoOrlas aparecem com a largura (22, 25…), como antes.

@@ -30,8 +30,14 @@ PASTA_VBA = Path(__file__).resolve().parent / "vba"
 #: entrada (macro `ImportarListasFerragensIMOS_14`, a que a app chama) e usa o
 #: `Import_List_Ferr_Etiq_11` para as ferragens e a etiqueta. O `modulo`
 #: (CUT-RITE) entrou a 29-09-2026: tinha uma macro em falta e o projeto VBA
-#: não compilava.
-MODULOS = ("Import_List_Ferr_Etiq_11", "RenomeiaListagensImos_13", "modulo")
+#: não compilava. O `modResumoOrlas` (folha ResumoOrlas) entrou a 07-10-2026,
+#: quando o REF_CLIENTE passou para F1/F2 e as colunas mudaram de nome.
+MODULOS = (
+    "Import_List_Ferr_Etiq_11",
+    "RenomeiaListagensImos_13",
+    "modulo",
+    "modResumoOrlas",
+)
 
 
 def criar_copia_seguranca(modelo: Path) -> Path:
@@ -86,6 +92,8 @@ def _marcadores(origem: Path) -> tuple[str, ...]:
             "IMOS14_GuardarAnterior",
             "IMOS14_Curto",
             "Sub AplicarPincelFormatacao_CutRite",
+            # ResumoOrlas com "stock/enc" e REF_CLIENTE em F1 (07-10-2026).
+            "VALOR_STOCK_ENC",
         )
         if marcador in texto
     )

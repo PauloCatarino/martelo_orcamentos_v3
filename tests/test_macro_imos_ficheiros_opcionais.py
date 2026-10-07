@@ -11,6 +11,7 @@ no `Lista_Material_IMOS_MARTELO.xltm`.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 VBA = Path(__file__).resolve().parents[1] / "scripts" / "vba"
@@ -20,6 +21,19 @@ MODULO_11 = VBA / "Import_List_Ferr_Etiq_11.bas"
 
 def _codigo(modulo: Path) -> str:
     return modulo.read_text(encoding="cp1252")
+
+
+def _modulos_do_script() -> tuple[str, ...]:
+    """Os módulos que o script escreve no modelo (a lista, não o texto dela)."""
+    spec = importlib.util.spec_from_file_location(
+        "atualizar_macros",
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "atualizar_macros_modelo_lista_material.py",
+    )
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    return script.MODULOS
 
 
 # ---- o módulo de entrada (macro 14) ----------------------------------------
@@ -157,12 +171,7 @@ def test_o_modulo_cutrite_ja_compila() -> None:
 
     assert "Call AplicarPincelFormatacao_CutRite" in codigo
     assert "Private Sub AplicarPincelFormatacao_CutRite()" in codigo
-    script = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "atualizar_macros_modelo_lista_material.py"
-    ).read_text(encoding="utf-8")
-    assert '"RenomeiaListagensImos_13", "modulo")' in script
+    assert "modulo" in _modulos_do_script()
 
 
 def test_o_modulo_13_continua_em_ascii_e_crlf() -> None:
@@ -204,10 +213,7 @@ def test_so_se_apaga_o_separador_que_vai_ser_substituido() -> None:
 
 def test_os_dois_modulos_sao_escritos_no_modelo() -> None:
     """Sem estar na lista, a alteração ficava só no repositório."""
-    script = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "atualizar_macros_modelo_lista_material.py"
-    ).read_text(encoding="utf-8")
+    modulos = _modulos_do_script()
 
-    assert '"Import_List_Ferr_Etiq_11", "RenomeiaListagensImos_13"' in script
+    assert "Import_List_Ferr_Etiq_11" in modulos
+    assert "RenomeiaListagensImos_13" in modulos
