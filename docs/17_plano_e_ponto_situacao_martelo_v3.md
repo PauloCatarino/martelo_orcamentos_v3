@@ -1941,11 +1941,11 @@ Feito:
 
 Guião de teste:
 
-1. Produção → selecionar a obra 1715 → preencher o «Nome Plano CUT-RITE» → **Enviar
-   CUT-RITE**. Esperado: igual a antes, o CUT-RITE recebe as peças.
+1. Produção → selecionar a obra 1715 → preencher o «Nome Plano CUT-RITE» → botão
+   **«CUT-RITE»**. Esperado: igual a antes, o CUT-RITE recebe as peças.
 2. Teste do erro (numa cópia, nunca na obra real): copiar uma Lista Material para uma obra
-   de teste, abri-la no Bloco de Notas, apagar tudo e gravar. Produção → essa obra →
-   **Enviar CUT-RITE**. Esperado: em poucos segundos, a janela «Enviar CUT-RITE» com «Nao
+   de teste, abri-la no Bloco de Notas, apagar tudo e gravar. Produção → essa obra → botão
+   **«CUT-RITE»**. Esperado: em poucos segundos, a janela «Enviar CUT-RITE» com «Nao
    consegui ler a Lista Material para o CUT-RITE. Grave e feche o Excel da obra…» e o
    caminho do ficheiro. O envio não fica parado e o Excel não aparece nos processos do
    Gestor de Tarefas.
