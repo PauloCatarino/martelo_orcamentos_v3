@@ -1635,124 +1635,26 @@ def _load_cutrite_source_table(source_workbook_path: Path) -> tuple[list[object]
             raw_row[13] = CUTRITE_GRAFICO_ORLAS_VALUE
             rows.append(build_cutrite_import_row(raw_row))
         return headers, rows, None
+    except KeyError as exc:
+        raise ValueError(
+            f"A Lista Material nao tem o separador {LISTAGEM_CUT_RITE_SHEET}.\n\n"
+            f"Ficheiro: {source_workbook_path}"
+        ) from exc
     except Exception as exc:
-        # Se o ficheiro estiver aberto no Excel (ou bloqueado), tentamos usar a macro embutida.
-        if source_workbook_path.suffix.lower() == ".xlsm":
-            macro_text, rows = _load_cutrite_source_table_from_excel_macro(source_workbook_path)
-            if rows:
-                headers = build_cutrite_import_headers()
-                return headers, rows, macro_text
-        raise
+        # Até 07-10-2026 havia aqui um plano B: abrir o Excel escondido e correr
+        # as macros GERAR_ResumoOrlas e Copia_Listagem_Software_Cut_Rite. As duas
+        # abrem MsgBox (a segunda SEMPRE, «Listagem copiada para a memória!») e,
+        # com o Excel invisível, ninguém carregava no OK: o envio ficava parado.
+        raise ValueError(
+            "Nao consegui ler a Lista Material para o CUT-RITE.\n\n"
+            "Grave e feche o Excel da obra e tente outra vez. Se continuar, "
+            "abra o ficheiro no Excel e confirme que abre sem erros.\n\n"
+            f"Ficheiro: {source_workbook_path}\n"
+            f"Detalhe: {exc}"
+        ) from exc
     finally:
         if workbook is not None:
             workbook.close()
-
-
-def _load_cutrite_source_table_from_excel_macro(source_workbook_path: Path) -> tuple[str, list[list[object]]]:
-    if source_workbook_path.suffix.lower() != ".xlsm":
-        return "", []
-
-    try:
-        win32_client = importlib.import_module("win32com.client")
-        win32clipboard = importlib.import_module("win32clipboard")
-    except Exception:
-        return "", []
-
-    excel = None
-    workbook = None
-    try:
-        excel = win32_client.DispatchEx("Excel.Application")
-        excel.Visible = False
-        excel.DisplayAlerts = False
-        try:
-            excel.AutomationSecurity = 1
-        except Exception:
-            pass
-
-        workbook = excel.Workbooks.Open(str(source_workbook_path))
-        _run_excel_macro(excel, source_workbook_path.name, "GERAR_ResumoOrlas")
-        _run_excel_macro(excel, source_workbook_path.name, "Copia_Listagem_Software_Cut_Rite")
-        clipboard_text = _read_cutrite_clipboard_text(win32clipboard)
-        return clipboard_text, _parse_cutrite_clipboard_rows(clipboard_text)
-    except Exception:
-        return "", []
-    finally:
-        if workbook is not None:
-            try:
-                workbook.Close(False)
-            except Exception:
-                pass
-        if excel is not None:
-            try:
-                excel.Quit()
-            except Exception:
-                pass
-
-
-def _run_excel_macro(excel, workbook_name: str, macro_name: str) -> None:
-    candidates = (
-        macro_name,
-        f"{workbook_name}!{macro_name}",
-        f"'{workbook_name}'!{macro_name}",
-    )
-    last_error: Optional[Exception] = None
-    for candidate in candidates:
-        try:
-            excel.Run(candidate)
-            return
-        except Exception as exc:
-            last_error = exc
-    if last_error is not None:
-        raise last_error
-
-
-def _read_cutrite_clipboard_text(win32clipboard_module, *, retries: int = 10, delay_seconds: float = 0.3) -> str:
-    last_error: Optional[Exception] = None
-    for attempt in range(retries):
-        try:
-            win32clipboard_module.OpenClipboard()
-            try:
-                return win32clipboard_module.GetClipboardData(win32clipboard_module.CF_UNICODETEXT)
-            finally:
-                win32clipboard_module.CloseClipboard()
-        except Exception as exc:
-            last_error = exc
-            if attempt == retries - 1:
-                break
-            time.sleep(delay_seconds)
-    if last_error is not None:
-        raise last_error
-    return ""
-
-
-def _parse_cutrite_clipboard_rows(clipboard_text: str) -> list[list[object]]:
-    rows: list[list[object]] = []
-    for raw_line in str(clipboard_text or "").splitlines():
-        if not raw_line.strip():
-            continue
-        parts = raw_line.split("\t")
-        row = list(parts[:CUTRITE_EXPORT_MAX_COL])
-        if len(row) < CUTRITE_EXPORT_MAX_COL:
-            row.extend([""] * (CUTRITE_EXPORT_MAX_COL - len(row)))
-        rows.append([_coerce_cutrite_clipboard_cell(value) for value in row])
-    return rows
-
-
-def _coerce_cutrite_clipboard_cell(value: object) -> object:
-    text = _normalize_cutrite_cell(value)
-    if not isinstance(text, str) or not text:
-        return text
-    if re.fullmatch(r"[+-]?\d+", text):
-        try:
-            return int(text)
-        except Exception:
-            return text
-    if re.fullmatch(r"[+-]?\d+\.\d+", text):
-        try:
-            return float(text)
-        except Exception:
-            return text
-    return text
 
 
 def _write_cutrite_import_workbook_with_win32com(

@@ -1921,3 +1921,31 @@ Guião de teste:
 5. Gravar o Excel. Produção → a mesma obra → «Lista Material_IMOS» → janela «Análise da Lista
    Material» → separador **«Custo de produção (parcial)»**. Esperado: as orlas do
    ResumoOrlas aparecem com a largura (22, 25…), como antes.
+
+## Enviar CUT-RITE: sem o Excel escondido (2026-10-07)
+
+O envio para o CUT-RITE lê a `LISTAGEM_CUT_RITE` diretamente do ficheiro. Se essa leitura
+falhasse, havia um plano B, trazido do V2: abrir o Excel escondido e correr as macros
+`GERAR_ResumoOrlas` e `Copia_Listagem_Software_Cut_Rite`. As duas abrem mensagens, e a
+segunda abre sempre «Listagem copiada para a memória!». Com o Excel invisível, ninguém
+carregava no OK e o envio ficava parado no passo «A preparar a listagem CUT-RITE».
+
+Feito:
+
+- o plano B saiu (`cutrite_service.py`). Se o Martelo não conseguir ler a Lista Material,
+  aparece uma janela «Enviar CUT-RITE» com o motivo e a linha de estado diz «Falha ao enviar
+  para o CUT-RITE.». O motivo é «Grave e feche o Excel da obra e tente outra vez», com o
+  caminho do ficheiro e o detalhe do erro;
+- se faltar o separador `LISTAGEM_CUT_RITE`, a mensagem diz isso mesmo;
+- o caso normal não muda. A 1715 lê-se bem (32 linhas), mesmo com o Excel aberto.
+
+Guião de teste:
+
+1. Produção → selecionar a obra 1715 → preencher o «Nome Plano CUT-RITE» → **Enviar
+   CUT-RITE**. Esperado: igual a antes, o CUT-RITE recebe as peças.
+2. Teste do erro (numa cópia, nunca na obra real): copiar uma Lista Material para uma obra
+   de teste, abri-la no Bloco de Notas, apagar tudo e gravar. Produção → essa obra →
+   **Enviar CUT-RITE**. Esperado: em poucos segundos, a janela «Enviar CUT-RITE» com «Nao
+   consegui ler a Lista Material para o CUT-RITE. Grave e feche o Excel da obra…» e o
+   caminho do ficheiro. O envio não fica parado e o Excel não aparece nos processos do
+   Gestor de Tarefas.
