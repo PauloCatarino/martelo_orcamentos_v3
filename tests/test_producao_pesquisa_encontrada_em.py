@@ -1,8 +1,9 @@
 """Produção: a linha de estado diz onde a pesquisa encontrou a obra (08-10-2026).
 
 O Paulo procurou «consola» e apareceu a 1418, que no ecrã não tem «consola» em
-lado nenhum: estava na descrição do orçamento, um campo que a pesquisa lê mas
-que o detalhe da obra não mostra. Agora a linha de estado explica-o.
+lado nenhum: estava na descrição do orçamento. Ele decidiu que a pesquisa da
+Produção procura só nos dados da produção; e a linha de estado diz em que
+campos encontrou cada obra.
 """
 
 from __future__ import annotations
@@ -94,21 +95,15 @@ def _pesquisar(pagina, texto: str) -> None:
     _app.processEvents()
 
 
-def test_campo_escondido_e_explicado_com_o_trecho(pagina) -> None:
+def test_descricao_do_orcamento_nao_conta(pagina) -> None:
     _pesquisar(pagina, "consola")
 
-    assert pagina._selected_processo_id == 1418
-    estado = pagina.status_label.text()
-    assert estado.startswith(modulo.AVISO_ENCONTRADO_EM)
-    assert "Descrição do orçamento" in estado
-    assert "não aparece no ecrã" in estado
-    assert "roupeiro consola 2 gavetas" in estado
+    assert pagina.proxy.rowCount() == 1
+    assert pagina._selected_processo_id == 837
 
 
-def test_campo_visivel_so_diz_o_nome(pagina) -> None:
+def test_linha_de_estado_diz_onde_encontrou(pagina) -> None:
     _pesquisar(pagina, "consola")
-    pagina.table.setCurrentIndex(pagina._indice_visivel_do_processo(837))
-    _app.processEvents()
 
     assert pagina.status_label.text() == (
         f"{modulo.AVISO_ENCONTRADO_EM} Descrição produção."

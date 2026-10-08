@@ -171,29 +171,38 @@ def test_pesquisa_cobre_os_restantes_campos_do_menu() -> None:
         )
 
 
+def test_descricao_do_orcamento_nao_entra_na_pesquisa() -> None:
+    """A 1418 aparecia em «consola» só pela descrição do orçamento.
+
+    Pedido do Paulo (08-10-2026): a pesquisa da Produção procura só nos dados
+    da produção, não no texto que veio do orçamento.
+    """
+    processos = [
+        _processo(
+            descricao_producao="4 ROUPEIROS PORTAS ABRIR",
+            descricao_orcamento="1 roupeiro consola 2 gavetas",
+        ),
+        _processo(descricao_producao="1 CONSOLA SUSPENSA"),
+    ]
+
+    assert filtrar_processos(processos, texto="consola") == [processos[1]]
+
+
 def test_campos_encontrados_explica_porque_a_obra_apareceu() -> None:
-    """A obra 1418 aparecia em «consola» só pela descrição do orçamento."""
-    from app.services.producao_service import (
-        campos_encontrados,
-        termos_pesquisa,
-        trecho_encontrado,
-    )
+    from app.services.producao_service import campos_encontrados, termos_pesquisa
 
     processo = _processo(
         descricao_producao="4 ROUPEIROS PORTAS ABRIR",
-        descricao_orcamento="4 roupeiros portas abrir 1 lavandaria 1 roupeiro consola 2 gavetas",
+        notas1="roupeiro com nicho aberto",
+        descricao_orcamento="1 roupeiro consola 2 gavetas",
     )
-    termos = termos_pesquisa("consola")
 
-    assert campos_encontrados(processo, termos) == ["descricao_orcamento"]
     assert campos_encontrados(processo, termos_pesquisa("roupeiro")) == [
         "descricao_producao",
-        "descricao_orcamento",
+        "notas1",
     ]
+    assert campos_encontrados(processo, termos_pesquisa("consola")) == []
     assert campos_encontrados(processo, []) == []
-    assert trecho_encontrado(processo.descricao_orcamento, termos, palavras_lado=2) == (
-        "…1 roupeiro consola 2 gavetas"
-    )
 
 
 def test_frase_natural_encontra_a_obra() -> None:

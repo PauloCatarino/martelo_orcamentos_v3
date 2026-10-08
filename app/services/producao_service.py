@@ -68,9 +68,12 @@ _PONTUACAO = re.compile(r"[^0-9a-z]+")
 
 #: Campos onde a pesquisa procura — TODOS os do menu Produção.
 #:
-#: Ficam de fora apenas ``imagem_path`` e ``pasta_servidor``: são caminhos do
+#: Ficam de fora ``imagem_path`` e ``pasta_servidor``: são caminhos do
 #: servidor que repetem «SERVER_LE», «Dep_Producao» e o ano em todas as obras,
 #: e cujo conteúdo útil (cliente e nº de encomenda) já está indexado à parte.
+#: Fica também de fora ``descricao_orcamento`` (pedido do Paulo, 08-10-2026): é
+#: texto do orçamento, não da produção, e não aparece no ecrã — uma obra
+#: aparecia em «consola» sem se ver porquê.
 _CAMPOS_PESQUISA = (
     # identificação
     "codigo_processo",
@@ -102,7 +105,6 @@ _CAMPOS_PESQUISA = (
     "notas1",
     "notas2",
     "notas3",
-    "descricao_orcamento",
 )
 
 
@@ -1168,18 +1170,14 @@ ROTULOS_CAMPOS_PESQUISA = {
     "notas1": "Notas 1",
     "notas2": "Notas 2",
     "notas3": "Notas 3",
-    "descricao_orcamento": "Descrição do orçamento",
 }
-
-#: Campos pesquisados que não aparecem no detalhe da obra.
-CAMPOS_PESQUISA_ESCONDIDOS = frozenset({"descricao_orcamento"})
 
 
 def campos_encontrados(processo, termos) -> list[str]:
     """Campos da obra onde está cada palavra procurada, pela ordem do ecrã.
 
-    Serve para explicar porque uma obra apareceu: «consola» pode estar só na
-    descrição do orçamento, que não se vê no detalhe da obra.
+    Serve para explicar porque uma obra apareceu: a palavra pode estar só nas
+    notas, ou num campo que a coluna da tabela mostra cortado.
     """
     if not termos:
         return []
@@ -1192,21 +1190,6 @@ def campos_encontrados(processo, termos) -> list[str]:
         if any(pesquisa_texto.corresponde(indice, [termo]) for termo in termos):
             encontrados.append(campo)
     return encontrados
-
-
-def trecho_encontrado(texto, termos, *, palavras_lado: int = 6) -> str:
-    """Bocado do texto à volta da primeira palavra procurada, para mostrar."""
-    palavras = str(texto or "").split()
-    for posicao, palavra in enumerate(palavras):
-        indice = pesquisa_texto.indexar([palavra])
-        if indice and any(pesquisa_texto.corresponde(indice, [t]) for t in termos):
-            inicio = max(0, posicao - palavras_lado)
-            fim = posicao + palavras_lado + 1
-            trecho = " ".join(palavras[inicio:fim])
-            antes = "…" if inicio > 0 else ""
-            depois = "…" if fim < len(palavras) else ""
-            return f"{antes}{trecho}{depois}"
-    return ""
 
 
 def vocabulario_pesquisa(processos) -> set[str]:

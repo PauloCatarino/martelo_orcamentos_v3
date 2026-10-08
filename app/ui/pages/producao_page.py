@@ -104,7 +104,6 @@ from app.services.permission_service import (
 )
 from app.ui.dialogs.analise_lista_material_dialog import AnaliseListaMaterialDialog
 from app.services.producao_service import (
-    CAMPOS_PESQUISA_ESCONDIDOS,
     ROTULOS_CAMPOS_PESQUISA,
     ProducaoService,
     campos_encontrados,
@@ -118,7 +117,6 @@ from app.services.producao_service import (
     gerar_nome_plano_cut_rite,
     listar_processos_por_encomenda,
     preparar_nova_versao,
-    trecho_encontrado,
 )
 from app.services.producao_ocorrencias_service import contar_ocorrencias
 from app.services.sinonimos_service import carregar_sinonimos
@@ -3713,16 +3711,11 @@ class ProducaoPage(QWidget):
                 self.status_label.clear()
             return
 
-        texto = f"{AVISO_ENCONTRADO_EM} " + ", ".join(
-            ROTULOS_CAMPOS_PESQUISA[campo] for campo in campos
+        self.status_label.setText(
+            f"{AVISO_ENCONTRADO_EM} "
+            + ", ".join(ROTULOS_CAMPOS_PESQUISA[campo] for campo in campos)
+            + "."
         )
-        escondidos = [c for c in campos if c in CAMPOS_PESQUISA_ESCONDIDOS]
-        if escondidos:
-            campo = escondidos[0]
-            trecho = trecho_encontrado(getattr(proc, campo, None), termos)
-            texto += f" — a {ROTULOS_CAMPOS_PESQUISA[campo]} não aparece no ecrã"
-            texto += f": «{trecho}»" if trecho else ""
-        self.status_label.setText(texto + ".")
 
     def _clear_form(self) -> None:
         estados = self._bloquear_sinais_form()

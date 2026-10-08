@@ -1981,23 +1981,25 @@ Feito (motor partilhado com os Orçamentos e o assistente):
 - letras coladas a números separam-se («4gavetas» → «4 gavetas»);
 - o `%` já funcionava e continua: `consola%gavetas` = as duas palavras, em qualquer campo;
 - a linha de estado diz **onde** a pesquisa encontrou a obra selecionada: «Pesquisa
-  encontrada em: Descrição produção, Notas 1.». Se for na descrição do orçamento, junta o
-  bocado de texto, porque esse campo não aparece no ecrã.
+  encontrada em: Descrição produção, Notas 1.»;
+- **a pesquisa deixou de ler a descrição do orçamento** (decisão do Paulo, 08-10): procura
+  só nos dados da produção, os campos que se veem no menu. Com isso a 1418 sai de
+  `consola`.
 
 Antes → depois (base dev, 623 obras): `roupeiro` 623 → 294; `cozinha` 623 → 136; `viva`
-372 → 132; `laca` 233 → 163; `obras da viva com consola` 0 → 9; `consola` 11 → 11.
+372 → 132; `laca` 233 → 163; `obras da viva com consola` 0 → 8; `consola` 11 → 10 (a 1418 saiu).
 
 Guião de teste (olhar para a etiqueta: BASE REAL ou dev):
 
 1. Produção → «Limpar filtros» → desligar «As minhas obras» → Pesquisar: `cozinha`.
    Esperado: só obras com «cozinha» num campo; já não aparecem as obras todas (rodapé
    «N de 755» bem abaixo de 755).
-2. Pesquisar: `consola`. Clicar na obra **1418**. Esperado: na linha de estado, «Pesquisa
-   encontrada em: Descrição do orçamento — a Descrição do orçamento não aparece no ecrã:
-   «…1 roupeiro consola 2 gavetas…»».
-3. Clicar na **0837**. Esperado: «Pesquisa encontrada em: Descrição produção, Notas 1, …».
-4. Pesquisar: `obras da viva com consola`. Esperado: as mesmas obras da J.F. Viva com
-   consola do passo 2 (antes dava 0).
+2. Pesquisar: `consola`. Esperado: a **1418 já não aparece** (só tinha «consola» na
+   descrição do orçamento).
+3. Clicar na **0837**. Esperado: na linha de estado, «Pesquisa encontrada em: Descrição
+   produção, Notas 1.».
+4. Pesquisar: `obras da viva com consola`. Esperado: as obras da J.F. Viva do passo 2
+   (antes dava 0).
 5. Pesquisar: `consola%gavetas`. Esperado: só obras que têm as duas palavras.
 6. Pesquisar: `laca`. Esperado: obras com lacagem/lacado/lacar; nenhuma só por
    «contraplacado».
