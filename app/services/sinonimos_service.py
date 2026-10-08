@@ -11,7 +11,7 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.domain.pesquisa_texto import raizes
+from app.domain.pesquisa_texto import forma_pesquisa
 from app.services.ia_perfil_service import listar_entradas
 
 
@@ -38,35 +38,50 @@ def _formas(valor: str | None) -> list[str]:
     return [parte.strip() for parte in _SEPARADORES.split(valor) if parte.strip()]
 
 
-def grupos_de_sinonimos(entradas) -> list[frozenset[str]]:
-    """Agrupa, por linha do perfil, as raízes que valem umas pelas outras."""
-    grupos: list[frozenset[str]] = []
+#: Uma linha com mais formas do que isto é uma lista de vocabulário («roupeiro;
+#: abrir; correr; cozinha; cama…»), não um grupo de sinónimos. Tratada como
+#: sinónimos, procurar «cozinha» devolvia todos os roupeiros.
+MAXIMO_FORMAS = 6
+
+Forma = tuple[str, ...]
+
+
+def grupos_de_sinonimos(entradas) -> list[frozenset[Forma]]:
+    """Agrupa, por linha do perfil, as formas que valem umas pelas outras.
+
+    Cada forma é a frase toda («guarda-fatos» → ``("guarda", "fato")``), sem
+    palavras de ligação («a Viva» → ``("viva",)``). Antes cada palavra valia
+    sozinha, e «Móveis J.F. Viva» fazia de «a» e «móveis» sinónimos de «viva».
+    """
+    grupos: list[frozenset[Forma]] = []
     for entrada in entradas:
         colunas = _QUADROS.get(entrada.tipo)
         if not colunas:
             continue
 
-        palavras: set[str] = set()
+        formas: set[Forma] = set()
         for coluna in colunas:
-            for forma in _formas(getattr(entrada, coluna, None)):
-                palavras.update(raizes(forma))
+            for texto in _formas(getattr(entrada, coluna, None)):
+                forma = forma_pesquisa(texto)
+                if forma:
+                    formas.add(forma)
 
-        # Uma palavra sozinha não é sinónimo de nada.
-        if len(palavras) > 1:
-            grupos.append(frozenset(palavras))
+        # Uma forma sozinha não é sinónimo de nada; muitas são uma lista.
+        if 1 < len(formas) <= MAXIMO_FORMAS:
+            grupos.append(frozenset(formas))
     return grupos
 
 
-def mapa_de_sinonimos(grupos) -> dict[str, frozenset[str]]:
-    """Converte grupos em «raiz -> raízes que também servem»."""
-    mapa: dict[str, set[str]] = {}
+def mapa_de_sinonimos(grupos) -> dict[Forma, frozenset[Forma]]:
+    """Converte grupos em «forma -> formas que também servem»."""
+    mapa: dict[Forma, set[Forma]] = {}
     for grupo in grupos:
-        for palavra in grupo:
-            mapa.setdefault(palavra, set()).update(grupo)
-    return {palavra: frozenset(alternativas) for palavra, alternativas in mapa.items()}
+        for forma in grupo:
+            mapa.setdefault(forma, set()).update(grupo)
+    return {forma: frozenset(alternativas) for forma, alternativas in mapa.items()}
 
 
-def carregar_sinonimos(session: Session, user_id: int | None) -> dict[str, frozenset[str]]:
+def carregar_sinonimos(session: Session, user_id: int | None) -> dict[Forma, frozenset[Forma]]:
     """Sinónimos de um utilizador; vazio quando não há sessão ou perfil."""
     if not user_id:
         return {}

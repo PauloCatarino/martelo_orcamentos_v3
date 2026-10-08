@@ -8,8 +8,10 @@ from app.domain.pesquisa_texto import (
     expandir_termos,
     indexar,
     normalizar,
+    palavras_procuradas,
     raiz,
     raizes,
+    raizes_pesquisa,
     sugerir_pesquisa,
     sugerir_termo,
 )
@@ -131,3 +133,55 @@ def test_todas_as_palavras_escritas_tem_de_estar_la() -> None:
 
     assert corresponde(indice, expandir_termos("877 reis")) is True
     assert corresponde(indice, expandir_termos("877 silva")) is False
+
+
+def test_pedaco_de_palavra_so_pelo_inicio() -> None:
+    """«laca» encontrava «contraplacado» e «porta» encontrava «transportadora»."""
+    assert corresponde_texto(["CONTRAPLACADO"], "laca") is False
+    assert corresponde_texto(["TRANSPORTADORA"], "porta") is False
+    assert corresponde_texto(["CINZA CLARO"], "aro") is False
+    assert corresponde_texto(["CONTÉM LACAGEM"], "laca") is True
+    assert corresponde_texto(["MDF CANCUN"], "cancu") is True
+
+
+def test_numeros_continuam_a_encontrar_se_pelo_meio() -> None:
+    assert corresponde_texto(["260877"], "877") is True
+    assert corresponde_texto(["260877"], "608") is True
+
+
+def test_letras_coladas_a_algarismos_separam_se() -> None:
+    assert raizes_pesquisa("4gavetas 1460x600mm") == [
+        "4", "gaveta", "1460", "x", "600", "mm",
+    ]
+    assert corresponde_texto(["BLOCO 4GAVETAS"], "gavetas") is True
+    assert corresponde_texto(["AGL 19MM"], "19mm") is True
+
+
+def test_palavras_de_ligacao_nao_contam() -> None:
+    """Uma frase natural não pode obrigar a obra a ter «da», «com» e «obras»."""
+    obra = ["MÓVEIS J.F. VIVA", "1 CONSOLA 2 GAVETAS"]
+
+    assert palavras_procuradas("obras da viva com consola") == ["viva", "consola"]
+    assert corresponde_texto(obra, "obras da viva com consola") is True
+    assert corresponde_texto(obra, "quero ver as obras com consolas") is True
+    assert corresponde_texto(obra, "roupeiros de correr com perfis de alumínio") is False
+
+
+def test_so_palavras_de_ligacao_procura_por_elas() -> None:
+    """Mais vale procurar «de» do que fingir que a caixa está vazia."""
+    assert palavras_procuradas("de") == ["de"]
+    assert corresponde_texto(["SALA DE ESTAR"], "de") is True
+    assert corresponde_texto(["SALA"], "de") is False
+
+
+def test_percentagem_separa_palavras_chave() -> None:
+    """«consola%gavetas» = as duas palavras, em qualquer campo e ordem."""
+    assert corresponde_texto(["1 CONSOLA", "2 GAVETAS"], "consola%gavetas") is True
+    assert corresponde_texto(["1 CONSOLA"], "consola%gavetas") is False
+    assert corresponde_texto(["2 GAVETAS"], "%consola%gavetas%") is False
+
+
+def test_sugerir_pesquisa_nao_corrige_palavras_de_ligacao() -> None:
+    vocabulario = {"roupeiro", "viva"}
+
+    assert sugerir_pesquisa("obras da viva", vocabulario) == ""

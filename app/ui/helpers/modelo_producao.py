@@ -422,6 +422,10 @@ class ProducaoFilterProxy(QSortFilterProxyModel):
         self._enc_phc = enc_phc or ""
         self.invalidateFilter()
 
+    def termos(self) -> list:
+        """Palavras da pesquisa em vigor, já com os sinónimos."""
+        return list(self._termos)
+
     def filterAcceptsRow(  # noqa: N802 (Qt override)
         self,
         source_row: int,

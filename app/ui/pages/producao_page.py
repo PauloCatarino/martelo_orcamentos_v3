@@ -104,7 +104,10 @@ from app.services.permission_service import (
 )
 from app.ui.dialogs.analise_lista_material_dialog import AnaliseListaMaterialDialog
 from app.services.producao_service import (
+    CAMPOS_PESQUISA_ESCONDIDOS,
+    ROTULOS_CAMPOS_PESQUISA,
     ProducaoService,
+    campos_encontrados,
     codigo_processo_com_cliente,
     converter_orcamento,
     criar_nova_versao,
@@ -115,6 +118,7 @@ from app.services.producao_service import (
     gerar_nome_plano_cut_rite,
     listar_processos_por_encomenda,
     preparar_nova_versao,
+    trecho_encontrado,
 )
 from app.services.producao_ocorrencias_service import contar_ocorrencias
 from app.services.sinonimos_service import carregar_sinonimos
@@ -188,6 +192,9 @@ TIPOS_PASTA_PRODUCAO = (
 
 #: Prefixo do aviso de pesquisa sem resultados (usado para o poder limpar).
 AVISO_SEM_RESULTADOS = "Sem resultados para"
+
+#: Prefixo da explicação «porque é que esta obra apareceu na pesquisa».
+AVISO_ENCONTRADO_EM = "Pesquisa encontrada em:"
 
 #: Nome da entrada que representa "sem vista" no combo de vistas.
 VISTA_SEM_FILTROS = "Todas as obras"
@@ -3695,6 +3702,27 @@ class ProducaoPage(QWidget):
             self._a_preencher_form = False
         self._form_original = self._estado_form()
         self._set_dirty(False)
+        self._mostrar_onde_encontrou(proc)
+
+    def _mostrar_onde_encontrou(self, proc: Producao) -> None:
+        """Dizer na linha de estado em que campos a pesquisa apanhou a obra."""
+        termos = self.proxy.termos() if self.campo_pesquisa.texto().strip() else []
+        campos = campos_encontrados(proc, termos)
+        if not campos:
+            if self.status_label.text().startswith(AVISO_ENCONTRADO_EM):
+                self.status_label.clear()
+            return
+
+        texto = f"{AVISO_ENCONTRADO_EM} " + ", ".join(
+            ROTULOS_CAMPOS_PESQUISA[campo] for campo in campos
+        )
+        escondidos = [c for c in campos if c in CAMPOS_PESQUISA_ESCONDIDOS]
+        if escondidos:
+            campo = escondidos[0]
+            trecho = trecho_encontrado(getattr(proc, campo, None), termos)
+            texto += f" — a {ROTULOS_CAMPOS_PESQUISA[campo]} não aparece no ecrã"
+            texto += f": «{trecho}»" if trecho else ""
+        self.status_label.setText(texto + ".")
 
     def _clear_form(self) -> None:
         estados = self._bloquear_sinais_form()

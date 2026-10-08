@@ -1140,6 +1140,75 @@ def indice_pesquisa(processo) -> frozenset[str]:
     )
 
 
+#: Nome de cada campo pesquisado, como aparece no ecrã da Produção.
+ROTULOS_CAMPOS_PESQUISA = {
+    "codigo_processo": "Processo",
+    "ano": "Ano",
+    "num_enc_phc": "Nº Enc PHC",
+    "versao_obra": "Modelo",
+    "versao_plano": "Versão",
+    "nome_cliente": "Cliente",
+    "nome_cliente_simplex": "Cliente simplex",
+    "num_cliente_phc": "Nº Cliente PHC",
+    "ref_cliente": "Ref Cliente",
+    "num_orcamento": "Nº Orçamento",
+    "versao_orc": "V. Orç",
+    "preco_total": "Preço total",
+    "qt_artigos": "Qt artigos",
+    "estado": "Estado",
+    "responsavel": "Responsável",
+    "obra": "Obra",
+    "localizacao": "Localização",
+    "data_inicio": "Data Início",
+    "data_entrega": "Data Entrega",
+    "tipo_pasta": "Tipo Pasta",
+    "descricao_artigos": "Descrição artigos",
+    "materias_usados": "Matérias usados",
+    "descricao_producao": "Descrição produção",
+    "notas1": "Notas 1",
+    "notas2": "Notas 2",
+    "notas3": "Notas 3",
+    "descricao_orcamento": "Descrição do orçamento",
+}
+
+#: Campos pesquisados que não aparecem no detalhe da obra.
+CAMPOS_PESQUISA_ESCONDIDOS = frozenset({"descricao_orcamento"})
+
+
+def campos_encontrados(processo, termos) -> list[str]:
+    """Campos da obra onde está cada palavra procurada, pela ordem do ecrã.
+
+    Serve para explicar porque uma obra apareceu: «consola» pode estar só na
+    descrição do orçamento, que não se vê no detalhe da obra.
+    """
+    if not termos:
+        return []
+
+    encontrados: list[str] = []
+    for campo in _CAMPOS_PESQUISA:
+        indice = pesquisa_texto.indexar([getattr(processo, campo, None)])
+        if not indice:
+            continue
+        if any(pesquisa_texto.corresponde(indice, [termo]) for termo in termos):
+            encontrados.append(campo)
+    return encontrados
+
+
+def trecho_encontrado(texto, termos, *, palavras_lado: int = 6) -> str:
+    """Bocado do texto à volta da primeira palavra procurada, para mostrar."""
+    palavras = str(texto or "").split()
+    for posicao, palavra in enumerate(palavras):
+        indice = pesquisa_texto.indexar([palavra])
+        if indice and any(pesquisa_texto.corresponde(indice, [t]) for t in termos):
+            inicio = max(0, posicao - palavras_lado)
+            fim = posicao + palavras_lado + 1
+            trecho = " ".join(palavras[inicio:fim])
+            antes = "…" if inicio > 0 else ""
+            depois = "…" if fim < len(palavras) else ""
+            return f"{antes}{trecho}{depois}"
+    return ""
+
+
 def vocabulario_pesquisa(processos) -> set[str]:
     """Every root present in a list, for the «quis dizer…» suggestion."""
     vocabulario: set[str] = set()

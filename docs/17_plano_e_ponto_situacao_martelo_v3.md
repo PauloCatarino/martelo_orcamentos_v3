@@ -1949,3 +1949,59 @@ Guião de teste:
    consegui ler a Lista Material para o CUT-RITE. Grave e feche o Excel da obra…» e o
    caminho do ficheiro. O envio não fica parado e o Excel não aparece nos processos do
    Gestor de Tarefas.
+
+## Produção: campo «Pesquisar» mais certeiro (2026-10-08)
+
+O Paulo achava que a pesquisa da Produção nem sempre devolvia obras ligadas ao que escrevia.
+Testado com as 623 obras da base dev, havia três problemas, e nenhum era a «consola» do print:
+
+- **os sinónimos do «meu perfil» estragavam tudo.** Cada palavra de uma linha do perfil valia
+  por todas as outras, incluindo «a», «de», «na». A linha «roupeiro; abrir; correr; …;
+  cozinha | termos de móvel/artigo que uso na pesquisa» fazia `roupeiro`, `cozinha`, `cama`
+  e `mesa` devolverem **as 623 obras**; «a Viva … | MÓVEIS J.F. VIVA» fazia `viva` apanhar
+  qualquer obra com a palavra «a» ou de outro cliente «Móveis…» (372 obras);
+- **as frases não funcionavam:** `obras da viva com consola` obrigava cada obra a ter «obras»,
+  «da» e «com», e dava 0;
+- **o pedaço de palavra apanhava o meio das palavras:** `laca` encontrava «contraplacado» e
+  «instalacao», `porta` encontrava «transportadora», `aro` encontrava «claro».
+
+A 1418 do print estava certa: «consola» está na **descrição do orçamento** («…1 roupeiro
+consola 2 gavetas…»), que a pesquisa lê mas o detalhe da obra não mostra.
+
+Feito (motor partilhado com os Orçamentos e o assistente):
+
+- sinónimos frase a frase: «guarda-fatos» é uma forma com duas palavras, que só conta se a
+  obra tiver as duas; «a Viva» é «viva». Linhas com mais de 6 formas são listas de
+  vocabulário e já não contam como sinónimos (no perfil dele: a lista de 19 termos de
+  móveis, «lacar; verniz; …; velatura» e «Guarnições…»);
+- palavras de ligação e pedidos («de», «da», «com», «obras», «quero ver», «mostra»,
+  «cliente»…) são ignoradas na pesquisa;
+- pedaço de palavra só pelo **início** («roup» → roupeiro, «cancu» → cancun); os números
+  continuam a valer pelo meio («877» → 260877);
+- letras coladas a números separam-se («4gavetas» → «4 gavetas»);
+- o `%` já funcionava e continua: `consola%gavetas` = as duas palavras, em qualquer campo;
+- a linha de estado diz **onde** a pesquisa encontrou a obra selecionada: «Pesquisa
+  encontrada em: Descrição produção, Notas 1.». Se for na descrição do orçamento, junta o
+  bocado de texto, porque esse campo não aparece no ecrã.
+
+Antes → depois (base dev, 623 obras): `roupeiro` 623 → 294; `cozinha` 623 → 136; `viva`
+372 → 132; `laca` 233 → 163; `obras da viva com consola` 0 → 9; `consola` 11 → 11.
+
+Guião de teste (olhar para a etiqueta: BASE REAL ou dev):
+
+1. Produção → «Limpar filtros» → desligar «As minhas obras» → Pesquisar: `cozinha`.
+   Esperado: só obras com «cozinha» num campo; já não aparecem as obras todas (rodapé
+   «N de 755» bem abaixo de 755).
+2. Pesquisar: `consola`. Clicar na obra **1418**. Esperado: na linha de estado, «Pesquisa
+   encontrada em: Descrição do orçamento — a Descrição do orçamento não aparece no ecrã:
+   «…1 roupeiro consola 2 gavetas…»».
+3. Clicar na **0837**. Esperado: «Pesquisa encontrada em: Descrição produção, Notas 1, …».
+4. Pesquisar: `obras da viva com consola`. Esperado: as mesmas obras da J.F. Viva com
+   consola do passo 2 (antes dava 0).
+5. Pesquisar: `consola%gavetas`. Esperado: só obras que têm as duas palavras.
+6. Pesquisar: `laca`. Esperado: obras com lacagem/lacado/lacar; nenhuma só por
+   «contraplacado».
+7. Pesquisar: `viva`. Esperado: obras da J.F. Viva (ou com «viva» escrito); já não
+   aparecem obras de outros clientes «Móveis…».
+8. Apagar a pesquisa (✕). Esperado: a linha de estado deixa de dizer «Pesquisa encontrada
+   em».

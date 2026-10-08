@@ -169,3 +169,37 @@ def test_pesquisa_cobre_os_restantes_campos_do_menu() -> None:
         assert len(filtrar_processos([obra], texto=pesquisa)) == 1, (
             f"nao procura em {campo}"
         )
+
+
+def test_campos_encontrados_explica_porque_a_obra_apareceu() -> None:
+    """A obra 1418 aparecia em «consola» só pela descrição do orçamento."""
+    from app.services.producao_service import (
+        campos_encontrados,
+        termos_pesquisa,
+        trecho_encontrado,
+    )
+
+    processo = _processo(
+        descricao_producao="4 ROUPEIROS PORTAS ABRIR",
+        descricao_orcamento="4 roupeiros portas abrir 1 lavandaria 1 roupeiro consola 2 gavetas",
+    )
+    termos = termos_pesquisa("consola")
+
+    assert campos_encontrados(processo, termos) == ["descricao_orcamento"]
+    assert campos_encontrados(processo, termos_pesquisa("roupeiro")) == [
+        "descricao_producao",
+        "descricao_orcamento",
+    ]
+    assert campos_encontrados(processo, []) == []
+    assert trecho_encontrado(processo.descricao_orcamento, termos, palavras_lado=2) == (
+        "…1 roupeiro consola 2 gavetas"
+    )
+
+
+def test_frase_natural_encontra_a_obra() -> None:
+    processos = [
+        _processo(nome_cliente="MÓVEIS J.F. VIVA", descricao_producao="1 CONSOLA 2 GAVETAS"),
+        _processo(nome_cliente="MÓVEIS J.F. VIVA", descricao_producao="3 ROUPEIROS"),
+    ]
+
+    assert filtrar_processos(processos, texto="obras da viva com consola") == [processos[0]]
