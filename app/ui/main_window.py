@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -32,7 +32,7 @@ from app.services.permission_service import (
     permissions_for_user,
 )
 from app.ui import tema
-from app.ui.icones import decorar_botoes, icone_imagem
+from app.ui.icones import decorar_botoes, icone_menu
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
@@ -152,6 +152,29 @@ class MainWindow(QMainWindow):
         "catalogo_auditoria": "menu.configuracoes",
         "custeio_simplificado_tarifas": "menu.configuracoes",
         "user_management": "menu.configuracoes",
+    }
+
+    #: Um ícone por menu da barra lateral. Pedido do Paulo (10-10-2026): com o
+    #: logótipo do iX no IMOS IX viu que os menus se encontram mais depressa.
+    #: SVG no estilo dos botões (bege e castanho, legíveis também na linha
+    #: selecionada); o IMOS IX leva o logótipo do iX.
+    _ICONES_NAV = {
+        "inicio": "nav_inicio.svg",
+        "ajuda": "ajuda.svg",
+        "orcamentos": "nav_orcamentos.svg",
+        "orcamentos_dashboard": "nav_dashboard.svg",
+        "custeio_auditoria": "nav_auditoria.svg",
+        "arquivo_v2": "nav_arquivo.svg",
+        "materias_primas": "nav_materias_primas.svg",
+        "pesquisa_ia": "nav_pesquisa_ia.svg",
+        "clientes": "nav_clientes.svg",
+        "producao": "nav_producao.svg",
+        "encomendas_phc": "nav_encomendas.svg",
+        "ponto_situacao": "nav_ponto_situacao.svg",
+        "ocorrencias": "nav_ocorrencias.svg",
+        "imos_ix": "imos_ix.png",
+        "registo_horas": "nav_registo_horas.svg",
+        "configuracoes": "nav_configuracoes.svg",
     }
 
     logout_requested = Signal()
@@ -288,12 +311,11 @@ class MainWindow(QMainWindow):
         _criar_item("Encomendas PHC", "encomendas_phc", parent=item_producao)
         _criar_item("Ponto Situa\u00e7\u00e3o", "ponto_situacao", parent=item_producao)
         _criar_item("Ocorr\u00eancias", "ocorrencias", parent=item_producao)
-        # Ferramentas do iX CAD (tradu\u00e7\u00f5es e as que vierem); leva o log\u00f3tipo do iX.
         item_imos = _criar_item("IMOS IX", "imos_ix")
-        item_imos.setIcon(0, icone_imagem("imos_ix.png"))
         item_imos.setToolTip(0, "Ferramentas do iX CAD neste PC (tradu\u00e7\u00f5es do iX)")
         _criar_item("Registo de Horas", "registo_horas")
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
+        self._aplicar_icones_navegacao()
         item_orcamentos.setExpanded(True)
         item_producao.setExpanded(True)
         self._apply_navigation_permissions()
@@ -616,6 +638,14 @@ class MainWindow(QMainWindow):
             # Keeps the app usable during a first migration while still denying
             # technical configuration to normal users.
             return dict(DEFAULT_USER_PERMISSIONS)
+
+    def _aplicar_icones_navegacao(self) -> None:
+        """Põe em cada menu da barra lateral o seu ícone (``_ICONES_NAV``)."""
+        self.nav_tree.setIconSize(QSize(18, 18))
+        for pagina, ficheiro in self._ICONES_NAV.items():
+            item = self._nav_items.get(pagina)
+            if item is not None:
+                item.setIcon(0, icone_menu(ficheiro))
 
     def _apply_navigation_permissions(self) -> None:
         """Hide menu entries that the current account cannot access."""

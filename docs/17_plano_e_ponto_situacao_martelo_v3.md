@@ -2092,3 +2092,36 @@ Guião de teste (a app corre do `main` da pasta principal; reiniciar o Martelo):
 23. «Encontrar sozinho». Esperado: volta ao ficheiro do iX CAD 2025, «19 já certas».
 24. Desmarcar «Avisar ao entrar no Martelo…». Esperado: linha de estado «Aviso
     desligado…». Voltar a marcar.
+
+**Testado pelo Paulo a 10-10-2026** (IMOS IX na base real): «ficou muito bom e prático».
+Pediu a seguir:
+
+### Larguras das colunas nas Traduções do iX + ícones em todos os menus (2026-10-10)
+
+- **Traduções do iX:** as 4 colunas ajustam-se arrastando a divisão dos títulos e a largura
+  fica guardada por utilizador neste PC (o mesmo `ligar_persistencia_larguras` dos outros
+  menus, chave `imos_ix_traducoes`). A coluna «Estado» enche o resto da tabela.
+- **Barra lateral:** cada menu tem o seu ícone, como o do IMOS IX («fica mais fácil de
+  identificar»). 14 ícones novos `app/ui/assets/icons/nav_*.svg`, no estilo dos botões
+  (bege e castanho); a Ajuda usa o `ajuda.svg` que já existia; o IMOS IX mantém o logótipo
+  do iX. Na linha selecionada o ícone vai sobre um quadradinho bege (os traços castanhos
+  desapareciam no castanho da seleção). Lista em `MainWindow._ICONES_NAV`; um teste obriga
+  a que todos os menus tenham ícone.
+
+Guião de teste (reiniciar o Martelo):
+
+1. Olhar para a barra da esquerda. Esperado: todos os menus com ícone — casa (Início),
+   ponto de interrogação (Ajuda), folha com € (Orçamentos), barras (Dashboard), folha com
+   lupa (Auditoria de Custeio), caixa (Arquivo V2), placas empilhadas (Matérias-Primas),
+   lupa com estrela (Pesquisa IA), duas pessoas (Clientes), fábrica (Produção), caixa de
+   encomenda (Encomendas PHC), barras das fases (Ponto Situação), triângulo de aviso
+   (Ocorrências), logótipo do iX (IMOS IX), relógio (Registo de Horas), roda dentada
+   (Configurações).
+2. Clicar em Registo de Horas. Esperado: na linha selecionada (castanha) o relógio vê-se
+   sobre um quadradinho bege.
+3. IMOS IX › Traduções do iX: arrastar a divisão entre «Texto que o iX mostra agora» e
+   «Texto da empresa (Excel)» para a esquerda. Esperado: a coluna estreita, as outras
+   ajustam-se e «Estado» enche o fim.
+4. Ir a outro menu, sair do Martelo e voltar a entrar como `paulo` → IMOS IX. Esperado: as
+   larguras ficaram como as deixou.
+5. Entrar com outra conta no mesmo PC. Esperado: essa conta vê as larguras de origem.

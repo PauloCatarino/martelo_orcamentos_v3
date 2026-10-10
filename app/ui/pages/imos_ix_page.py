@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -43,9 +42,12 @@ from app.ui.dialogs.imos_traducoes_dialogs import (
 from app.ui.helpers import traducoes_imos as config
 from app.ui.helpers.tabela_copiavel import DICA_TABELA, tornar_copiavel
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
+from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 COLUNAS = ("Referência", "Texto que o iX mostra agora", "Texto da empresa (Excel)", "Estado")
 COL_ESTADO = 3
+LARGURAS_PADRAO = (110, 420, 420, 130)
+CHAVE_LARGURAS = "imos_ix_traducoes"
 
 _ESTADOS = {
     servico.ESTADO_CERTA: ("Já está", tema.CINZA_SUAVE, tema.CINZA_ESCURO),
@@ -170,10 +172,13 @@ class TraducoesIxAba(QWidget):
         )
         cabecalho = self.table.horizontalHeader()
         cabecalho.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
-        cabecalho.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        cabecalho.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 110)
-        self.table.setColumnWidth(COL_ESTADO, 130)
+        # Larguras à escolha de cada pessoa (arrastar a divisão dos títulos),
+        # guardadas por utilizador neste PC — pedido do Paulo, 10-10-2026.
+        for coluna, largura in enumerate(LARGURAS_PADRAO):
+            self.table.setColumnWidth(coluna, largura)
+        ligar_persistencia_larguras(self.table, CHAVE_LARGURAS)
+        # A última coluna enche o resto da tabela, para não ficar um vazio à direita.
+        cabecalho.setStretchLastSection(True)
 
         # ---- aviso + botões -------------------------------------------------
         self.aviso_check = QCheckBox(

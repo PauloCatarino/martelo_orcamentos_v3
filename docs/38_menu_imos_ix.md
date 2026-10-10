@@ -34,7 +34,9 @@ Definições). O V3 junta os dois.
   sítio escolhe-o em «Procurar…»; a escolha fica nesse PC.
 - O Excel é igual para todos (Configurações gerais, chave
   `imos_traducoes_excel`); só o administrador o muda.
-- A aba compara as duas coisas: «Já está», «Vai mudar», «Não existe no iX».
+- A aba compara as duas coisas: «Já está», «Vai mudar», «Não existe no iX» (o que vai
+  mudar fica em cima). As larguras das colunas ajustam-se e ficam guardadas por
+  utilizador neste PC.
 - **Aplicar traduções**:
   1. se o iX CAD (`imos.exe`) ou o iX Organizer (`Organizer.exe`) estiverem
      abertos, abre a janela «Feche o iX CAD e o iX Organizer», que vê sozinha

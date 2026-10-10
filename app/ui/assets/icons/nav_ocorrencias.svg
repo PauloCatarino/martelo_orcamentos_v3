@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- triangulo de aviso -->
+  <path d="M12 3.2 21.6 20H2.4z" fill="#F2DEB3" stroke="#5A3E2B" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M12 9.4v5.2" fill="none" stroke="#6D4B16" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="12" cy="17.2" r="1.15" fill="#6D4B16"/>
+</svg>

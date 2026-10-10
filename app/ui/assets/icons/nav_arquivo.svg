@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- caixa de arquivo -->
+  <path d="M4 9h16v10.6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="#EFE7DA" stroke="#5A3E2B" stroke-width="1.4" stroke-linejoin="round"/>
+  <rect x="2.5" y="4" width="19" height="5" rx="1" fill="#8B6F4E" stroke="#5A3E2B" stroke-width="1.4"/>
+  <path d="M9.5 13h5" fill="none" stroke="#5A3E2B" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

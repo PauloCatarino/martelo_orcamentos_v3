@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- lupa com a estrela da IA -->
+  <path d="m14.8 14.8 6 6" fill="none" stroke="#5A3E2B" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="10" cy="10" r="6.6" fill="#EFE7DA" stroke="#5A3E2B" stroke-width="1.6"/>
+  <path d="M10 5.8l1.05 3.15L14.2 10l-3.15 1.05L10 14.2l-1.05-3.15L5.8 10l3.15-1.05z" fill="#8B6F4E" stroke="#5A3E2B" stroke-width="0.6" stroke-linejoin="round"/>
+</svg>

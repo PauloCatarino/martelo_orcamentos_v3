@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- relogio -->
+  <circle cx="12" cy="12" r="9.2" fill="#EFE7DA" stroke="#5A3E2B" stroke-width="1.5"/>
+  <path d="M12 3.8v1.5M20.2 12h-1.5M12 20.2v-1.5M3.8 12h1.5" fill="none" stroke="#8B6F4E" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M12 7V12l3.6 2.4" fill="none" stroke="#5A3E2B" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="12" cy="12" r="1.1" fill="#5A3E2B"/>
+</svg>

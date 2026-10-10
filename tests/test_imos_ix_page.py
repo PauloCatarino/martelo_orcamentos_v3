@@ -63,6 +63,9 @@ def ambiente(qapp, tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     fabrica = sessionmaker(bind=engine)
     monkeypatch.setattr(pagina_mod, "SessionLocal", fabrica)
+    larguras = []
+    monkeypatch.setattr(pagina_mod, "ligar_persistencia_larguras",
+                        lambda tabela, chave, **_k: larguras.append(chave) or False)
     monkeypatch.setattr(config, "caminho_escolhido_neste_pc", lambda: "")
     monkeypatch.setattr(config, "caminho_excel", lambda _s: str(excel))
     monkeypatch.setattr(servico, "localizar_imos_msg", lambda **_k: msg)
@@ -73,7 +76,7 @@ def ambiente(qapp, tmp_path, monkeypatch):
                         lambda: {exe for exe, nome in servico.PROGRAMAS_IX.items() if programas[nome]})
     for modulo in (pagina_mod, janelas):
         monkeypatch.setattr(modulo.diario_bordo, "registar_acao", lambda *_a, **_k: None)
-    yield {"msg": msg, "excel": excel, "programas": programas, "sessao": fabrica}
+    yield {"msg": msg, "excel": excel, "programas": programas, "sessao": fabrica, "larguras": larguras}
     engine.dispose()
 
 
@@ -280,11 +283,43 @@ def test_janela_principal_liga_o_menu_com_icone_e_o_aviso() -> None:
 
     fonte = inspect.getsource(MainWindow)
     assert '_criar_item("IMOS IX", "imos_ix")' in fonte
-    assert 'icone_imagem("imos_ix.png")' in fonte
+    assert MainWindow._ICONES_NAV["imos_ix"] == "imos_ix.png"
     assert '"imos_ix": "menu.imos_ix"' in fonte
     assert "AvisoTraducoesImos(" in fonte
-    icone = Path(pagina_mod.__file__).parents[1] / "assets" / "icons" / "imos_ix.png"
-    assert icone.is_file()
+
+
+def test_todos_os_menus_da_barra_lateral_tem_icone(qapp) -> None:
+    """Pedido do Paulo (10-10-2026): um ícone em cada menu, como o do IMOS IX."""
+    import re
+
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QIcon
+
+    from app.ui.main_window import MainWindow
+
+    fonte = inspect.getsource(MainWindow)
+    paginas = set(re.findall(r'_criar_item\([^,]+,\s*"([a-z0-9_]+)"', fonte))
+    assert len(paginas) >= 16
+    assert paginas == set(MainWindow._ICONES_NAV)
+    pasta = Path(pagina_mod.__file__).parents[1] / "assets" / "icons"
+    for pagina, ficheiro in MainWindow._ICONES_NAV.items():
+        assert (pasta / ficheiro).is_file(), ficheiro
+        imagem = config_icone(ficheiro).pixmap(QSize(18, 18), QIcon.Mode.Selected).toImage()
+        assert not imagem.isNull(), ficheiro
+        # Na linha selecionada vai sobre um quadradinho bege (legível no castanho).
+        assert imagem.pixelColor(0, 9).name().upper() == "#F7F2EA", ficheiro
+        normal = config_icone(ficheiro).pixmap(QSize(18, 18), QIcon.Mode.Normal).toImage()
+        assert imagem != normal, ficheiro
+        # Desenhou alguma coisa (não é um quadrado transparente).
+        assert any(
+            imagem.pixelColor(x, y).alpha() > 0 for x in range(18) for y in range(18)
+        ), ficheiro
+
+
+def config_icone(ficheiro: str):
+    from app.ui.icones import icone_menu
+
+    return icone_menu(ficheiro)
 
 
 def test_ficheiro_escolhido_a_mao_pode_voltar_ao_automatico(ambiente, monkeypatch) -> None:
@@ -298,3 +333,46 @@ def test_ficheiro_escolhido_a_mao_pode_voltar_ao_automatico(ambiente, monkeypatc
     aba.msg_auto_button.click()
     assert guardados == [""]
     assert not aba.msg_auto_button.isVisibleTo(aba)
+
+
+def test_larguras_das_colunas_ajustaveis_e_guardadas_por_utilizador(ambiente) -> None:
+    aba = _aba(ambiente)
+    assert ambiente["larguras"] == [pagina_mod.CHAVE_LARGURAS]
+    cabecalho = aba.table.horizontalHeader()
+    for coluna in range(aba.table.columnCount() - 1):
+        assert aba.table.columnWidth(coluna) == pagina_mod.LARGURAS_PADRAO[coluna]
+    assert cabecalho.stretchLastSection()
+
+
+def test_larguras_gravadas_voltam_na_proxima_vez(qapp, monkeypatch) -> None:
+    """Com o ajudante verdadeiro: o que se arrasta fica guardado e volta (por utilizador)."""
+    from types import SimpleNamespace
+
+    from app.core.session import app_session
+    from app.ui.widgets import larguras_colunas
+
+    valores: dict[str, object] = {}
+
+    class _SettingsEmMemoria:  # nada vai para o registo do Windows
+        def __init__(self, *_args) -> None:
+            pass
+
+        def value(self, chave: str):
+            return valores.get(chave)
+
+        def setValue(self, chave: str, valor) -> None:  # noqa: N802 (Qt API)
+            valores[chave] = valor
+
+    monkeypatch.setattr(larguras_colunas, "QSettings", _SettingsEmMemoria)
+    monkeypatch.setattr(pagina_mod.TraducoesIxAba, "_carregar_aviso", lambda self: None)
+    monkeypatch.setattr(app_session, "current_user", SimpleNamespace(username="paulo"))
+    primeira = pagina_mod.TraducoesIxAba(user_id=None)
+    primeira.table.setColumnWidth(1, 255)
+    assert valores == {"larguras/paulo/imos_ix_traducoes/1": 255}
+    segunda = pagina_mod.TraducoesIxAba(user_id=None)
+    assert segunda.table.columnWidth(1) == 255
+    assert segunda.table.horizontalHeader().sectionResizeMode(1).name == "Interactive"
+    # Outra pessoa no mesmo PC começa com as larguras de origem.
+    monkeypatch.setattr(app_session, "current_user", SimpleNamespace(username="pedro"))
+    outra = pagina_mod.TraducoesIxAba(user_id=None)
+    assert outra.table.columnWidth(1) == pagina_mod.LARGURAS_PADRAO[1]

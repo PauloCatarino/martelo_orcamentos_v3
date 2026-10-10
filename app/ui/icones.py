@@ -42,6 +42,42 @@ def icone_imagem(nome_ficheiro: str) -> QIcon:
     return QIcon(str(_ICONES_DIR / nome_ficheiro))
 
 
+#: Fundo do ícone na linha selecionada (bege claro do tema).
+_FUNDO_ICONE_SELECIONADO = "#F7F2EA"
+
+
+def icone_menu(nome_ficheiro: str, tamanho: int = 18) -> QIcon:
+    """Ícone para a barra lateral, legível também na linha selecionada.
+
+    Os traços dos ícones são castanho-escuro, a mesma cor da linha
+    selecionada: aí desapareciam e ficava só uma mancha clara. Na linha
+    selecionada o desenho vai sobre um quadradinho bege, como o logótipo do
+    iX (que já traz o fundo branco).
+    """
+    from PySide6.QtCore import QRectF, QSize, Qt
+    from PySide6.QtGui import QColor, QPainter, QPixmap
+
+    origem = icone_imagem(nome_ficheiro)
+    icone = QIcon()
+    for lado in (tamanho, tamanho * 2):  # o dobro, para ecrãs com escala
+        normal = origem.pixmap(QSize(lado, lado))
+        icone.addPixmap(normal, QIcon.Mode.Normal)
+        selecionado = QPixmap(lado, lado)
+        selecionado.fill(Qt.GlobalColor.transparent)
+        pintor = QPainter(selecionado)
+        pintor.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pintor.setPen(Qt.PenStyle.NoPen)
+        pintor.setBrush(QColor(_FUNDO_ICONE_SELECIONADO))
+        pintor.drawRoundedRect(QRectF(0, 0, lado, lado), lado * 0.2, lado * 0.2)
+        margem = round(lado * 0.1)
+        pintor.drawPixmap(
+            margem, margem, origem.pixmap(QSize(lado - 2 * margem, lado - 2 * margem))
+        )
+        pintor.end()
+        icone.addPixmap(selecionado, QIcon.Mode.Selected)
+    return icone
+
+
 #: Que ícone leva um botão, a partir do que está escrito nele.
 #:
 #: O programa tem quase 400 botões e os nomes repetem-se de página para
