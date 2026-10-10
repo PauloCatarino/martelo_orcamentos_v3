@@ -319,3 +319,21 @@ def test_larguras_guardadas_na_conta_e_preservadas_ao_pesquisar(page, session, m
     assert prefs.obter_valor(28, "pesquisa_ia_larguras") is None
     page.atualizar_resultados_unificados()
     assert page.todas_table.columnWidth(2) == 317
+
+
+def test_tabelas_e_resposta_deixam_selecionar_e_copiar(page):
+    """Pedido do Paulo (10-10-2026): apanhar texto da Pesquisa IA com Ctrl+C."""
+    from PySide6.QtWidgets import QTableWidget
+    from PySide6.QtCore import Qt
+    for tabela in page._tabelas_por_separador:
+        assert tabela.selectionBehavior() == QTableWidget.SelectionBehavior.SelectItems
+        assert tabela.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu
+    flags = page.resposta_text.textInteractionFlags()
+    assert flags & Qt.TextInteractionFlag.TextSelectableByMouse
+    assert flags & Qt.TextInteractionFlag.TextSelectableByKeyboard
+    page._fonte_recebida("woodstore", None, ([{"Referencia": "H1145 ST10 19mm", "Disponivel": 3}], None))
+    page.resultados_tabs.setCurrentWidget(page.woodstore_table)
+    page.woodstore_table.setCurrentCell(0, 0)
+    assert page.visor_celula.text() == "H1145 ST10 19mm"
+    page.resultados_tabs.setCurrentIndex(0)
+    assert page.visor_celula.text() == (page.todas_table.currentItem().text() if page.todas_table.currentItem() else "")

@@ -2007,3 +2007,88 @@ Guião de teste (olhar para a etiqueta: BASE REAL ou dev):
    aparecem obras de outros clientes «Móveis…».
 8. Apagar a pesquisa (✕). Esperado: a linha de estado deixa de dizer «Pesquisa encontrada
    em».
+
+## Pesquisa IA copiável, Subsídio de Alimentação e menu IMOS IX (2026-10-10)
+
+Três pedidos do Paulo no mesmo dia (maqueta do IMOS IX aprovada antes de programar).
+
+**1. Pesquisa IA: copiar texto.** Nas tabelas só de leitura não dava para apanhar um
+pedaço de texto: a linha inteira ficava selecionada e o Ctrl+C levava só a célula onde se
+tinha clicado, sem se ver qual. Agora (ajudante `app/ui/helpers/tabela_copiavel.py`, nas 6
+tabelas da Pesquisa IA): seleção célula a célula como no Excel; Ctrl+C copia o que está
+selecionado (várias células saem com tabulações, prontas para o Excel); botão direito com
+«Copiar», «Copiar a linha inteira» e «Copiar a tabela toda (com títulos)»; e a barra
+**«Texto da célula:»** por cima dos separadores mostra o texto completo da célula escolhida,
+para selecionar só uma parte (como a barra de fórmulas do Excel). A resposta IA também se
+seleciona com Shift+setas.
+
+**2. Registo de Horas: Subsídio de Alimentação.** Regra (respostas dele de 10-10): só nos
+dias fora do horário normal — sábado, domingo, feriado e dia de férias trabalhado —,
+**1,25 € por hora inteira**, máximo **10 € por dia**; dias úteis não contam, mesmo com horas
+extra. Coluna «Subs. Alimentação» no ecrã, no PDF e na janela de envio; linha própria no
+resumo e no email do dia 2, à parte do total de horas. Doc 36.
+
+**3. Menu IMOS IX › Traduções do iX.** Substitui o `AtualizaIMOSMsgPTG.exe` (feito para o
+iX 2023): lê o Excel `I:\imos_msg.xlsx`, compara com o `imos.msg` do iX deste PC, pede para
+fechar o iX CAD e o Organizer, faz **sempre a cópia** do `imos.msg` antes de gravar e mostra
+linha a linha o que mudou. Aviso ao entrar no Martelo quando o PC tem traduções por aplicar.
+Acesso novo «IMOS IX», que nasce desligado. Doc 38.
+
+Guião de teste (a app corre do `main` da pasta principal; reiniciar o Martelo):
+
+*Pesquisa IA*
+
+1. Orçamentos › Pesquisa IA → Pesquisar: `dobradiça x91` → separador **PHC**.
+2. Clicar na célula «DOBRADIÇA 90ºC/ FECHO SUAVE X91». Esperado: a barra «Texto da célula:»
+   mostra o texto completo.
+3. Na barra, arrastar o rato só sobre `FECHO SUAVE` → Ctrl+C → colar no Bloco de Notas.
+   Esperado: `FECHO SUAVE`.
+4. Na tabela, clicar em `FF00495` e Ctrl+C → colar. Esperado: só `FF00495`.
+5. Arrastar de `FF00495` até ao preço da mesma linha → Ctrl+C → colar no Excel. Esperado:
+   cada valor na sua coluna.
+6. Botão direito numa linha → «Copiar a tabela toda (com títulos)» → colar no Excel.
+   Esperado: títulos na 1.ª linha e todos os artigos por baixo.
+7. Na Resposta IA (à direita), selecionar uma frase → Ctrl+C → colar. Esperado: a frase.
+
+*Registo de Horas* (fazer num mês de teste ou apagar os dias depois)
+
+8. Registo de Horas → duplo clique num **sábado** → 4 horas → Guardar. Esperado: coluna
+   «Subs. Alimentação» = `5,00 €`.
+9. Duplo clique num **domingo** → 9 horas. Esperado: `10,00 €` (máximo do dia).
+10. Um dia de **Férias** com 2h30. Esperado: `2,50 €` (só horas inteiras).
+11. Um dia útil com 8h–17h + 20h–23h. Esperado: coluna vazia (dias úteis não contam).
+12. No «Resumo do mês», a linha a ocre «Subsídio de alimentação» = soma dos dias
+    (17,50 € com os passos 8–10).
+13. «Folha em PDF». Esperado: coluna «Subs. Alim.» e a linha do subsídio no fim do resumo.
+14. «Enviar à contabilidade…» (só ver, Cancelar). Esperado: coluna nova na tabela, linha no
+    resumo e «• Subsídio de alimentação: …» no texto do email.
+
+*Menu IMOS IX*
+
+15. Entrar como **admin** → Configurações → Utilizadores e Acessos → coluna **«IMOS IX»** →
+    marcar para o `paulo` → Guardar. Sair e entrar como `paulo`.
+16. Esperado: na barra da esquerda, **IMOS IX** com o logótipo do iX, entre Produção e
+    Registo de Horas.
+17. IMOS IX → separador «Traduções do iX». Esperado: «Ficheiro do iX» =
+    `C:\Program Files\imos AG\iX CAD 2025\BIN\MSG\imos.msg`, «✓ Encontrado: iX CAD 2025»;
+    fichas do iX CAD/Organizer (aberto/fechado, conforme estiverem); «Excel: 19
+    traduções»; «19 já certas» — este PC já tem tudo aplicado; linha de estado «Tudo
+    certo…».
+18. Testar com o ficheiro de teste (cópia de julho, em
+    `Documentos\Teste_traducoes_iX\imos.msg`): «Procurar…» → escolher esse ficheiro.
+    Esperado: «✓ Escolhido à mão neste PC», **4 por aplicar** em cima da tabela (1220
+    Descrição → Materiais Usados, 6128, 10279, 18012) e o botão «Encontrar sozinho».
+19. Com o iX CAD aberto → «Aplicar traduções». Esperado: janela «Feche o iX CAD e o iX
+    Organizer» com «aberto»; «Continuar» desligado. Fechar os dois programas. Esperado: a
+    janela passa sozinha a «fechado» e «Continuar» liga-se → Continuar.
+20. Esperado: janela com o progresso: cópia `imos.msg.copia_2026-10-10_…`, as 4 linhas
+    «antes → depois», «gravado e confirmado», resumo «4 alterada(s) · 15 já estavam
+    certas». «Abrir pasta da cópia» abre a pasta de teste com a cópia.
+21. Fechar. Esperado: «0 por aplicar», linha de estado «4 tradução(ões) aplicada(s)…».
+    Carregar outra vez em «Aplicar traduções». Esperado: «Nada para aplicar» e nenhuma
+    cópia nova.
+22. «Repor uma cópia…» → escolher a cópia de hoje → Repor esta cópia → Sim. Esperado:
+    volta a «4 por aplicar»; na pasta ficam as duas cópias (nenhuma apagada).
+23. «Encontrar sozinho». Esperado: volta ao ficheiro do iX CAD 2025, «19 já certas».
+24. Desmarcar «Avisar ao entrar no Martelo…». Esperado: linha de estado «Aviso
+    desligado…». Voltar a marcar.

@@ -276,3 +276,7 @@ def test_folha_em_pdf(tmp_path: Path) -> None:
     assert "Total de horas extra" in texto
     assert "Por registar" in texto and "Dias úteis sem registo: 2" in texto
     assert "-8" in texto  # o «−» tipográfico não existe no Helvetica
+    # Subsídio de alimentação: coluna própria e linha no fim do resumo.
+    assert "Subs. Alim." in texto
+    assert "3,75 €" in texto  # sábado com 3h
+    assert "Subsídio de alimentação" in texto

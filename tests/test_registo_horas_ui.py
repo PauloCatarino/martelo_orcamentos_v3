@@ -321,3 +321,20 @@ def test_janela_principal_liga_a_pagina_e_os_avisos() -> None:
     assert '"registo_horas": "menu.registo_horas"' in fonte
     assert "AvisosRegistoHoras(" in fonte
     assert "and not is_admin(self.authenticated_user)" in fonte
+
+
+def test_pagina_mostra_o_subsidio_de_alimentacao(base) -> None:
+    with base() as s:
+        servico = RegistoHorasService(s)
+        servico.guardar_dia(2, date(2026, 10, 3), r.DadosDia(tipo=r.TIPO_FIM_SEMANA, horas=270))
+        servico.guardar_dia(2, date(2026, 10, 2),
+                            r.DadosDia(tipo=r.TIPO_UTIL, entrada=480, saida=1260, almoco=True))
+    pagina = pagina_mod.RegistoHorasPage(user_id=2, nome="Paulo Catarino")
+    pagina._ano, pagina._mes = 2026, 10
+    pagina.carregar()
+    titulo = pagina.table.horizontalHeaderItem(pagina_mod.COL_SUBSIDIO)
+    assert titulo.text() == "Subs. Alimentação"
+    assert "1,25 €" in titulo.toolTip()
+    assert pagina.table.item(2, pagina_mod.COL_SUBSIDIO).text() == "5,00 €"  # sábado, 4h30
+    assert pagina.table.item(1, pagina_mod.COL_SUBSIDIO).text() == ""  # dia útil 8 + 4
+    assert pagina.subsidio_label.text() == "5,00 €"

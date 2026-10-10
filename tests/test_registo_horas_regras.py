@@ -249,3 +249,53 @@ def test_config_ida_e_volta_e_valores_estragados() -> None:
     assert estragada.envio_mensal is False
     assert r.ConfigHoras.de_json("não é json") == r.ConfigHoras()
     assert r.ConfigHoras.de_json(None).inicio_registo == r.INICIO_REGISTO_PADRAO
+
+
+# ---- subsídio de alimentação (regra do Paulo, 10-10-2026) ---------------------------
+@pytest.mark.parametrize(
+    ("tipo", "trabalhado", "centimos"),
+    [
+        (r.TIPO_FIM_SEMANA, 4 * 60, 500),  # sábado com 4h: 4 × 1,25 €
+        (r.TIPO_FIM_SEMANA, 8 * 60, 1000),  # 8h = o máximo
+        (r.TIPO_FIM_SEMANA, 9 * 60, 1000),  # mais de 8h não passa dos 10 €
+        (r.TIPO_FIM_SEMANA, 150, 250),  # 2h30: só as horas inteiras contam
+        (r.TIPO_FIM_SEMANA, 59, 0),  # menos de uma hora inteira
+        (r.TIPO_FERIADO, 3 * 60, 375),  # feriado trabalhado, mesmo a meio da semana
+        (r.TIPO_FERIAS, 2 * 60, 250),  # dia de férias trabalhado
+        (r.TIPO_FERIADO, 0, 0),  # feriado sem trabalhar
+        (r.TIPO_UTIL, 11 * 60, 0),  # dia útil com 3h extra: não conta
+        (r.TIPO_FOLGA, 0, 0),
+    ],
+)
+def test_subsidio_alimentacao_por_dia(tipo, trabalhado, centimos) -> None:
+    assert r.subsidio_alimentacao(tipo, trabalhado) == centimos
+
+
+def test_subsidio_na_linha_e_no_resumo_do_mes() -> None:
+    dias = [
+        r.LinhaDia(data=date(2026, 10, 2), tipo=r.TIPO_UTIL, normais=480, extra=180, trabalhado=660),
+        r.LinhaDia(data=date(2026, 10, 3), tipo=r.TIPO_FIM_SEMANA, extra=240, trabalhado=240),
+        r.LinhaDia(data=date(2026, 10, 4), tipo=r.TIPO_FIM_SEMANA, extra=540, trabalhado=540),
+        r.LinhaDia(data=date(2026, 10, 5), tipo=r.TIPO_FERIADO, extra=180, trabalhado=180),
+        r.LinhaDia(data=date(2026, 10, 6), tipo=r.TIPO_FERIAS, extra=150, trabalhado=150),
+        r.LinhaDia(data=date(2026, 10, 7), tipo=r.TIPO_FOLGA, extra=-480),
+    ]
+    assert [d.subsidio_folha for d in dias] == ["", "5,00 €", "10,00 €", "3,75 €", "2,50 €", ""]
+    resumo = r.resumir_mes(dias)
+    assert resumo.subsidio == 500 + 1000 + 375 + 250
+    assert resumo.linha_subsidio() == ("Subsídio de alimentação", "21,25 €")
+    # As horas continuam a fechar com o total; o subsídio vem à parte, no fim.
+    assert resumo.linhas()[-1][0] == "Total de horas extra"
+    assert resumo.linhas_relatorio()[-1] == resumo.linha_subsidio()
+
+
+def test_formatar_euros() -> None:
+    assert r.formatar_euros(0) == "0,00 €"
+    assert r.formatar_euros(2188) == "21,88 €"
+    assert r.formatar_euros(125050) == "1.250,50 €"
+
+
+def test_email_leva_o_subsidio() -> None:
+    resumo = r.ResumoMes(normais=176 * 60, subsidio=1375)
+    corpo = r.corpo_email("Paulo Catarino", 2026, 10, resumo)
+    assert "• Subsídio de alimentação: 13,75 €" in corpo

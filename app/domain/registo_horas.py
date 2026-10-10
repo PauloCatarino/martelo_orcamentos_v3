@@ -8,7 +8,11 @@ por sua vez copiava as folhas em papel — e o Paulo confirmou-as uma a uma:
   Com menos de 8h a diferença desconta ao mês: «5 − 3»;
 * **fim de semana, feriado e férias**: tudo o que se trabalhou é extra;
 * **folga**: folga paga com horas extra — desconta as horas indicadas, «−8»;
-* **cada mês fecha por si**: o saldo não passa para o mês seguinte.
+* **cada mês fecha por si**: o saldo não passa para o mês seguinte;
+* **subsídio de alimentação** (extra pago pela empresa, 10-10-2026): só nos
+  dias fora do horário normal das 40 horas — sábado, domingo, feriado e dia
+  de férias trabalhado —, 1,25 € por cada hora INTEIRA, até 10 € por dia.
+  As horas extra de um dia útil não contam.
 
 O 2.º período é novo no Martelo: quem sai da empresa às 17h e trabalha mais
 umas horas em casa à noite regista as duas partes, como nas duas colunas
@@ -69,6 +73,15 @@ HORAS_FOLGA_PADRAO = 8 * 60
 #: Limites que a app antiga já usava.
 MAX_HORAS_DIA = 24 * 60
 MAX_ACERTO = 12 * 60
+
+#: Subsídio de alimentação extra (regra do Paulo, 10-10-2026), em cêntimos:
+#: 1,25 € por hora inteira, no máximo 10 € por dia (8 horas ou mais).
+SUBSIDIO_CENTIMOS_POR_HORA = 125
+SUBSIDIO_MAXIMO_DIA_CENTIMOS = 1000
+#: Os dias fora do horário normal. O dia útil não entra, mesmo com horas
+#: extra; a folga desconta, não é trabalho.
+TIPOS_COM_SUBSIDIO = frozenset({TIPO_FIM_SEMANA, TIPO_FERIADO, TIPO_FERIAS})
+ROTULO_SUBSIDIO = "Subsídio de alimentação"
 
 #: O registo oficial começa a 1 de outubro de 2026 (decisão do Paulo); o que
 #: está antes é histórico das folhas em papel e nunca aparece «por registar».
@@ -258,6 +271,25 @@ def calcular_dia(
     return CalculoDia(trabalhado=dados.horas, normais=0, extra=dados.horas)
 
 
+def subsidio_alimentacao(tipo: str, trabalhado: int) -> int:
+    """Cêntimos de subsídio de alimentação de um dia.
+
+    Só fora do horário normal (fim de semana, feriado, férias trabalhadas):
+    1,25 € por hora inteira — 2h30 dá 2,50 € —, até 10 € por dia.
+    """
+    if tipo not in TIPOS_COM_SUBSIDIO or trabalhado <= 0:
+        return 0
+    horas_inteiras = int(trabalhado) // 60
+    return min(horas_inteiras * SUBSIDIO_CENTIMOS_POR_HORA, SUBSIDIO_MAXIMO_DIA_CENTIMOS)
+
+
+def formatar_euros(centimos: int) -> str:
+    """Cêntimos → «21,88 €», «1.250,00 €» (como os preços nos menus)."""
+    euros, resto = divmod(abs(int(centimos)), 100)
+    sinal = MENOS if centimos < 0 else ""
+    return f"{sinal}{euros:,}".replace(",", ".") + f",{resto:02d} €"
+
+
 # ---------------------------------------------------------------------------
 # Escrita das horas (como na folha em papel)
 # ---------------------------------------------------------------------------
@@ -384,6 +416,16 @@ class LinhaDia:
         return horas_como_na_folha(self.tipo, self.normais, self.extra, self.trabalhado)
 
     @property
+    def subsidio(self) -> int:
+        """Subsídio de alimentação do dia, em cêntimos (0 nos dias úteis)."""
+        return subsidio_alimentacao(self.tipo, self.trabalhado)
+
+    @property
+    def subsidio_folha(self) -> str:
+        """«5,00 €» na folha; vazio quando o dia não tem subsídio."""
+        return formatar_euros(self.subsidio) if self.subsidio else ""
+
+    @property
     def horario(self) -> str:
         """«8h – 17h · 20h – 23h» nos dias úteis."""
         if self.tipo != TIPO_UTIL:
@@ -420,6 +462,8 @@ class ResumoMes:
     dias_ferias: int = 0
     dias_feriado: int = 0
     dias_folga: int = 0
+    #: Subsídio de alimentação do mês, em cêntimos.
+    subsidio: int = 0
 
     @property
     def extra_positivo(self) -> int:
@@ -449,12 +493,21 @@ class ResumoMes:
             ("Total de horas extra", formatar_total(self.total_extra)),
         ]
 
+    def linha_subsidio(self) -> tuple[str, str]:
+        """O subsídio vem à parte das horas: é dinheiro, não entra no total."""
+        return (ROTULO_SUBSIDIO, formatar_euros(self.subsidio))
+
+    def linhas_relatorio(self) -> list[tuple[str, str]]:
+        """As horas e, no fim, o subsídio — para o email e a folha em PDF."""
+        return [*self.linhas(), self.linha_subsidio()]
+
 
 def resumir_mes(dias: Iterable[LinhaDia]) -> ResumoMes:
     resumo = ResumoMes()
     for dia in dias:
         resumo.dias_registados += 1
         resumo.normais += dia.normais
+        resumo.subsidio += dia.subsidio
         if dia.extra < 0:
             resumo.descontos += dia.extra
         elif dia.tipo == TIPO_UTIL:
@@ -559,7 +612,9 @@ def assunto_email(nome: str, ano: int, mes: int) -> str:
 
 def corpo_email(nome: str, ano: int, mes: int, resumo: ResumoMes) -> str:
     """Texto simples, editável no diálogo antes de enviar."""
-    linhas = "\n".join(f"• {rotulo}: {valor}" for rotulo, valor in resumo.linhas())
+    linhas = "\n".join(
+        f"• {rotulo}: {valor}" for rotulo, valor in resumo.linhas_relatorio()
+    )
     return (
         "Bom dia,\n\n"
         f"Segue em anexo o registo de horas de {nome} referente a "

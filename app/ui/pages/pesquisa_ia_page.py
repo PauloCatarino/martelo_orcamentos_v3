@@ -38,6 +38,7 @@ from app.services.placas_referencias_service import LinhaReferencia, listar_refe
 from app.services.pesquisa_ia_resposta_service import RespostaIAService
 from app.services.pesquisa_ia_search_service import PesquisaCatalogosService
 from app.ui.helpers.painel_recolhivel import PainelRecolhivel
+from app.ui.helpers.tabela_copiavel import DICA_TABELA, tornar_copiavel
 from app.ui import tema
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
@@ -66,8 +67,10 @@ def _nova_tabela(
     tabela.setHorizontalHeaderLabels(headers)
     tabela.verticalHeader().setVisible(False)
     tabela.setAlternatingRowColors(True)
-    tabela.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     tabela.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+    # Celula a celula, como no Excel: Ctrl+C leva o que se ve selecionado.
+    tornar_copiavel(tabela)
+    tabela.setToolTip(DICA_TABELA)
     cabecalho = tabela.horizontalHeader()
     cabecalho.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     cabecalho.setStretchLastSection(esticar_ultima)
@@ -276,6 +279,9 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
         toolbar.addStretch()
 
         self.status_label = QLabel("")
+        self.status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         self.v3_table, self._v3_restaurado = _nova_tabela(
             self.V3_HEADERS, "pesquisa_ia_v3"
@@ -315,6 +321,16 @@ class PesquisaIAPage(PesquisaIAFluxo, QWidget):
 
         self.resposta_text = QTextEdit()
         self.resposta_text.setReadOnly(True)
+        # So' de leitura, mas o texto escolhe-se com o rato OU com Shift+setas
+        # e leva-se com Ctrl+C (pedido do Paulo, 10-10-2026).
+        self.resposta_text.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        self.resposta_text.setToolTip(
+            "Selecione o texto que quer (rato ou Shift+setas) e carregue em "
+            "Ctrl+C para o copiar. Botão direito: Copiar / Selecionar tudo."
+        )
         self.resposta_text.setMinimumHeight(120)
         self.resposta_text.setPlaceholderText(
             "A resposta IA (com cita\u00e7\u00f5es) aparece aqui depois de "

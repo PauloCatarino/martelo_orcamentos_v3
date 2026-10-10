@@ -23,6 +23,7 @@ from app.domain.pesquisa_ia_consulta import (
 )
 from app.utils.formatters import format_currency
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
+from app.ui.helpers.tabela_copiavel import DICA_TABELA, VisorCelula, tornar_copiavel
 
 _ativos = set()
 _ciclos = set()
@@ -171,6 +172,7 @@ class PesquisaIAFluxo:
         layout.insertLayout(2, controlos)
         self.fontes_status = QLabel("Fontes ainda não consultadas.")
         self.fontes_status.setWordWrap(True)
+        self.fontes_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.insertWidget(4, self.fontes_status)
         # Um único conjunto de resultados; separadores dão acesso às colunas
         # completas de cada fonte sem empilhar quatro tabelas no ecrã.
@@ -178,7 +180,7 @@ class PesquisaIAFluxo:
         self.todas_table = QTableWidget(0, 6)
         self.todas_table.setHorizontalHeaderLabels(["Fonte", "Referência", "Descrição / correspondência", "Valor", "Tipo / unidade", "Origem"])
         self.todas_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.todas_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        tornar_copiavel(self.todas_table)
         self.todas_table.setAlternatingRowColors(True)
         self.todas_table.verticalHeader().hide()
         self.todas_table.setWordWrap(False)
@@ -191,10 +193,28 @@ class PesquisaIAFluxo:
         self.woodstore_table = QTableWidget(0, 10)
         self.woodstore_table.setHorizontalHeaderLabels(["Ident / referência", "Comprimento", "Largura", "Espessura", "Material", "Código", "Quantidade (Lagen)", "Reservadas", "Saldo calculado", "Estado"])
         self.woodstore_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        tornar_copiavel(self.woodstore_table)
         self.woodstore_table.setAlternatingRowColors(True)
         self.woodstore_table.verticalHeader().hide()
-        self.woodstore_table.setToolTip("Só leitura. Quantidade = contagem de registos Lagen; Reservadas = soma Menge. Saldo calculado não confirma pacotes, dimensões úteis ou autorização para consumir uma placa.")
+        self.woodstore_table.setToolTip("Só leitura. Quantidade = contagem de registos Lagen; Reservadas = soma Menge. Saldo calculado não confirma pacotes, dimensões úteis ou autorização para consumir uma placa.\n\n" + DICA_TABELA)
         self.resultados_tabs.addTab(self.woodstore_table, "WoodStore")
+        # Barra de texto da celula (como a barra de formulas do Excel): numa
+        # tabela so' de leitura nao se consegue apanhar SO' um pedaco de uma
+        # descricao; aqui o texto vem inteiro e seleciona-se a parte que se quer.
+        self.visor_celula = VisorCelula()
+        self._tabelas_por_separador = [self.todas_table, self.v3_table, self.phc_table,
+                                       self.referencias_table, self.catalogo_table, self.woodstore_table]
+        for tabela in self._tabelas_por_separador:
+            self.visor_celula.acompanhar(tabela)
+        self.resultados_tabs.currentChanged.connect(
+            lambda indice: self.visor_celula.mostrar_atual_de(
+                self._tabelas_por_separador[indice] if 0 <= indice < len(self._tabelas_por_separador) else None))
+        linha_visor = QHBoxLayout()
+        rotulo_visor = QLabel("Texto da célula:")
+        rotulo_visor.setToolTip(self.visor_celula.toolTip())
+        linha_visor.addWidget(rotulo_visor)
+        linha_visor.addWidget(self.visor_celula, 1)
+        layout.insertLayout(layout.indexOf(self.tabelas_splitter), linha_visor)
         self.tabelas_splitter.addWidget(self.resultados_tabs)
         self.tabelas_splitter.setOrientation(Qt.Orientation.Horizontal)
         self.tabelas_splitter.setSizes([360, 850])
@@ -465,7 +485,7 @@ class PesquisaIAFluxo:
                 item.setToolTip(str(value or ""))
                 self.todas_table.setItem(i, j, item)
         self.resultados_tabs.setTabText(0, f"Todas ({min(total, 300)} de {total})" if total > 300 else f"Todas ({total})")
-        self.todas_table.setToolTip("Duplo clique para ver a origem. A vista geral apresenta até 300 resultados; os separadores mostram cada fonte completa. Refine a pesquisa para encontrar o artigo.")
+        self.todas_table.setToolTip("Duplo clique para ver a origem. A vista geral apresenta até 300 resultados; os separadores mostram cada fonte completa. Refine a pesquisa para encontrar o artigo.\n\n" + DICA_TABELA)
         self.resultados_tabs.setTabText(5, f"WoodStore ({len(self._woodstore_filtrados)})")
         for index, nome, quantidade in ((1,"V3",len(self._v3_filtrados)),(2,"PHC",len(self._phc_filtrados)),
                 (3,"Tabelas",len(self._referencias_filtradas)),(4,"Catálogos",len(self._ultimos_catalogos))):

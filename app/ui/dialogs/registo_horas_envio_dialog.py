@@ -38,7 +38,7 @@ ACAO_ENVIAR = "enviar"
 ACAO_CORRIGIR = "corrigir"
 ACAO_ADIAR = "adiar"
 
-COLUNAS = ("Dia", "Tipo", "Horário", "Normais", "Extra", "Observações")
+COLUNAS = ("Dia", "Tipo", "Horário", "Normais", "Extra", "Subs. Alim.", "Observações")
 
 
 def corpo_html(texto: str) -> str:
@@ -113,13 +113,21 @@ class RegistoHorasEnvioDialog(QDialog):
         # ---- resumo ------------------------------------------------------
         caixa_resumo = QGroupBox("Resumo do mês")
         grelha = QGridLayout(caixa_resumo)
-        for linha, (rotulo, valor) in enumerate(resumo.linhas()):
+        linhas_resumo = resumo.linhas_relatorio()
+        for linha, (rotulo, valor) in enumerate(linhas_resumo):
             etiqueta = QLabel(rotulo)
             numero = QLabel(valor)
             numero.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if linha == len(resumo.linhas()) - 1:
+            if linha == len(linhas_resumo) - 2:
                 etiqueta.setStyleSheet("font-weight: bold;")
                 numero.setStyleSheet("font-weight: bold;")
+            elif linha == len(linhas_resumo) - 1:
+                # O subsídio de alimentação: euros, à parte do total de horas.
+                for rotulo_subsidio in (etiqueta, numero):
+                    rotulo_subsidio.setStyleSheet(
+                        f"background-color: {tema.OCRE_SUAVE}; color: {tema.OCRE_ESCURO};"
+                        " font-weight: bold; padding: 2px 4px;"
+                    )
             grelha.addWidget(etiqueta, linha, 0)
             grelha.addWidget(numero, linha, 1)
 
@@ -130,7 +138,7 @@ class RegistoHorasEnvioDialog(QDialog):
         self.tabela.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tabela.setAlternatingRowColors(True)
         self.tabela.horizontalHeader().setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
-        self.tabela.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.tabela.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self.tabela.setToolTip("Os dias registados neste mês, tal como seguem na folha.")
         for linha, dia in enumerate(dias):
             valores = (
@@ -141,6 +149,7 @@ class RegistoHorasEnvioDialog(QDialog):
                 regra.formatar_total(dia.extra, com_mais=dia.tipo == regra.TIPO_UTIL)
                 if dia.extra
                 else "",
+                dia.subsidio_folha,
                 dia.observacoes_folha(),
             )
             for coluna, valor in enumerate(valores):

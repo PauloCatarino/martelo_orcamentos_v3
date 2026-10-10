@@ -21,6 +21,7 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
         ("menu.producao", "Produção"),
         ("menu.encomendas_phc", "Encomendas PHC"),
         ("menu.ponto_situacao", "Ponto de Situação"),
+        ("menu.imos_ix", "IMOS IX"),
         ("menu.registo_horas", "Registo de Horas"),
         ("menu.configuracoes", "Configurações técnicas"),
     )
@@ -28,7 +29,10 @@ MENU_PERMISSIONS: OrderedDict[str, str] = OrderedDict(
 
 #: Menus que nascem DESLIGADOS numa conta nova: o admin liga-os a quem precisa.
 #: O Registo de Horas é pessoal: só o usa quem não regista no ponto da empresa.
-MENUS_DESLIGADOS_POR_DEFEITO = frozenset({"menu.configuracoes", "menu.registo_horas"})
+#: O IMOS IX mexe em ficheiros do iX CAD do PC: só para quem desenha no iMos.
+MENUS_DESLIGADOS_POR_DEFEITO = frozenset(
+    {"menu.configuracoes", "menu.registo_horas", "menu.imos_ix"}
+)
 
 # Permissões de AÇÃO, ao contrário das de menu: não escondem um menu, travam
 # uma operação concreta. Nascem desligadas — dá-se a quem precisa, em vez de
@@ -182,6 +186,19 @@ DESCRICOES_ACESSOS: OrderedDict[str, DescricaoAcesso] = OrderedDict(
                 "atrasadas e o botão para sincronizar com o PHC as obras de toda a "
                 "gente.",
                 "Produção e Direção.",
+            ),
+        ),
+        (
+            "menu.imos_ix",
+            DescricaoAcesso(
+                "Menus",
+                "IMOS IX",
+                "Ferramentas do iX CAD no PC da pessoa. «Traduções do iX»: põe no "
+                "iX CAD os nomes dos campos que a empresa usa (Excel "
+                "I:\\imos_msg.xlsx), com cópia do ficheiro antes de mexer, e avisa "
+                "ao entrar no Martelo quando o PC tem traduções por aplicar. ESCREVE "
+                "no ficheiro imos.msg do iX CAD desse PC (com o iX fechado).",
+                "Quem desenha no iMos (Preparação).",
             ),
         ),
         (

@@ -32,6 +32,14 @@ por utilizador e os dados na base do Martelo.
 - **Cada mês fecha por si.**
 - Saída igual ou anterior à entrada = dia seguinte.
 - Feriados nacionais calculados (incluindo Sexta-feira Santa e Corpo de Deus).
+- **Subsídio de alimentação** (regra do Paulo, 10-10-2026): extra pago pela
+  empresa pelos dias fora do horário normal das 40 horas — **sábado, domingo,
+  feriado e dia de férias trabalhado**. **1,25 € por cada hora inteira**, no
+  máximo **10 € por dia** (8 horas ou mais = 10 €; 2h30 = 2,50 €). Os dias
+  úteis não contam, mesmo com horas extra; a folga também não. Coluna
+  «Subs. Alimentação» na folha (ecrã, PDF e janela de envio) e linha própria no
+  fim do resumo e do email, à parte do total de horas. Calcula-se a partir das
+  horas gravadas de cada dia (não há coluna nova na base de dados).
 
 ### O que mudou em relação à app antiga (opiniões aplicadas)
 

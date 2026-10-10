@@ -37,6 +37,11 @@ def icone_ficheiro(nome_ficheiro: str) -> QIcon:
     return QIcon(str(_RAIZ_ICONS / nome_ficheiro))
 
 
+def icone_imagem(nome_ficheiro: str) -> QIcon:
+    """QIcon de uma imagem em app/ui/assets/icons (ex.: 'imos_ix.png', o logótipo do iX)."""
+    return QIcon(str(_ICONES_DIR / nome_ficheiro))
+
+
 #: Que ícone leva um botão, a partir do que está escrito nele.
 #:
 #: O programa tem quase 400 botões e os nomes repetem-se de página para

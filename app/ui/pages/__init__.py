@@ -16,6 +16,7 @@ from app.ui.pages.def_valueset_chaves_page import DefValuesetChavesPage
 from app.ui.pages.def_valueset_modelos_page import DefValuesetModelosPage
 from app.ui.pages.encomendas_page import EncomendasPage
 from app.ui.pages.inicio_page import InicioPage
+from app.ui.pages.imos_ix_page import ImosIxPage
 from app.ui.pages.imos_ligacao_page import ImosLigacaoPage
 from app.ui.pages.margens_padrao_page import MargensPadraoPage
 from app.ui.pages.materias_primas_page import MateriasPrimasPage
@@ -50,6 +51,7 @@ __all__ = [
     "DefValuesetModelosPage",
     "EncomendasPage",
     "InicioPage",
+    "ImosIxPage",
     "ImosLigacaoPage",
     "MargensPadraoPage",
     "MateriasPrimasPage",

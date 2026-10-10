@@ -5,7 +5,9 @@ período é o das horas feitas em casa) e as observações — mas com as horas
 normais e as extra em colunas separadas, porque é essa a separação que a
 contabilidade precisa para pagar. No fim, o resumo do mês com as extra por
 tipo de dia (dias úteis, sábados, domingos, feriados, férias): a lei paga-as
-de forma diferente, e é por aí que um dia entram os valores em euros.
+de forma diferente, e é por aí que um dia entram os valores em euros. O
+subsídio de alimentação (fins de semana, feriados e férias trabalhados) tem
+coluna própria e fecha o resumo, à parte do total de horas.
 
 Segue o padrão reportlab de `pedido_material_woodstore_pdf.py`.
 """
@@ -42,6 +44,7 @@ _BEGE = "#F4EBDC"
 _CINZA = "#D9CFC2"
 _FIM_SEMANA = "#F7F2EA"
 _VERMELHO = "#7A231C"
+_SUBSIDIO = "#F2DEB3"
 _RODAPE = (
     "LANÇA ENCANTO · Rua dos Bombeiros Voluntários de Ourém nº 14, Vilar dos "
     "Prazeres · 2490-755 Ourém · www.lancaencanto.pt"
@@ -126,7 +129,10 @@ def gerar_folha_pdf(
     historia.append(campos)
     historia.append(Spacer(1, 4 * mm))
 
-    cabecalho = ["Dia", "", "Entrada", "Saída", "Entrada", "Saída", "Normais", "Extra", "Observações"]
+    cabecalho = [
+        "Dia", "", "Entrada", "Saída", "Entrada", "Saída", "Normais", "Extra",
+        "Subs. Alim.", "Observações",
+    ]
     linhas = [cabecalho]
     estilos = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CASTANHO)),
@@ -146,8 +152,8 @@ def gerar_folha_pdf(
             obs = f"Feriado – {nome_feriado}" if nome_feriado else ""
             if em_falta and dia_data in em_falta:
                 obs = "Por registar"
-                estilos.append(("TEXTCOLOR", (8, indice), (8, indice), colors.HexColor(_VERMELHO)))
-            linha = [str(dia_data.day), regra.SEMANA_CURTO[dia_data.weekday()], "", "", "", "", "", "", Paragraph(_t(obs), celula)]
+                estilos.append(("TEXTCOLOR", (9, indice), (9, indice), colors.HexColor(_VERMELHO)))
+            linha = [str(dia_data.day), regra.SEMANA_CURTO[dia_data.weekday()], "", "", "", "", "", "", "", Paragraph(_t(obs), celula)]
         else:
             util = dia.tipo == regra.TIPO_UTIL
             segundo = util and dia.entrada2 is not None
@@ -163,6 +169,7 @@ def gerar_folha_pdf(
                 regra.formatar_hora(dia.saida2).upper() if segundo else "",
                 regra.formatar_horas(dia.normais) if dia.normais else "",
                 _t(_extra_folha(dia)),
+                _t(dia.subsidio_folha),
                 Paragraph(_t(obs), celula),
             ]
             if dia.extra < 0:
@@ -172,19 +179,21 @@ def gerar_folha_pdf(
         linhas.append(linha)
     tabela = Table(
         linhas,
-        colWidths=[9 * mm, 9 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm, 15 * mm, 15 * mm, 68 * mm],
+        colWidths=[9 * mm, 9 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm, 15 * mm, 15 * mm, 16 * mm, 52 * mm],
         repeatRows=1,
     )
     tabela.setStyle(TableStyle(estilos))
     historia.append(tabela)
     historia.append(Spacer(1, 5 * mm))
 
-    totais = [[Paragraph(_t(rotulo), base), Paragraph(f"<b>{_t(valor)}</b>", base)] for rotulo, valor in resumo.linhas()]
+    totais = [[Paragraph(_t(rotulo), base), Paragraph(f"<b>{_t(valor)}</b>", base)] for rotulo, valor in resumo.linhas_relatorio()]
     quadro = Table(totais, colWidths=[70 * mm, 25 * mm], hAlign="LEFT")
     quadro.setStyle(
         TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor(_CINZA)),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(_BEGE)),
+            # Penúltima: total de horas extra; última: subsídio (em euros).
+            ("BACKGROUND", (0, -2), (-1, -2), colors.HexColor(_BEGE)),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(_SUBSIDIO)),
             ("ALIGN", (1, 0), (1, -1), "RIGHT"),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),

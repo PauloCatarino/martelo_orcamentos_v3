@@ -32,12 +32,13 @@ from app.services.permission_service import (
     permissions_for_user,
 )
 from app.ui import tema
-from app.ui.icones import decorar_botoes
+from app.ui.icones import decorar_botoes, icone_imagem
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.helpers.aviso_atualizacao import AvisoAtualizacao
 from app.ui.helpers.registo_horas_avisos import AvisosRegistoHoras
+from app.ui.helpers.traducoes_imos import AvisoTraducoesImos
 from app.ui.orcamento_tempo_tracker import OrcamentoTempoTracker
 from app.ui.tempo_programas_tracker import TempoProgramasTracker
 from app.ui.pages import (
@@ -56,6 +57,7 @@ from app.ui.pages import (
     DefValuesetModelosPage,
     EncomendasPage,
     InicioPage,
+    ImosIxPage,
     ImosLigacaoPage,
     MargensPadraoPage,
     MateriasPrimasPage,
@@ -115,6 +117,7 @@ class MainWindow(QMainWindow):
         "encomendas_phc": "producao",
         "ponto_situacao": "producao",
         "ocorrencias": "producao",
+        "imos_ix": "imos_ix",
         "registo_horas": "registo_horas",
     }
 
@@ -133,6 +136,7 @@ class MainWindow(QMainWindow):
         "ponto_situacao": "menu.ponto_situacao",
         # As ocorrências vivem dentro da Produção: quem vê obras vê os tickets.
         "ocorrencias": "menu.producao",
+        "imos_ix": "menu.imos_ix",
         "registo_horas": "menu.registo_horas",
         "configuracoes": "menu.configuracoes",
         "pecas": "menu.configuracoes",
@@ -284,6 +288,10 @@ class MainWindow(QMainWindow):
         _criar_item("Encomendas PHC", "encomendas_phc", parent=item_producao)
         _criar_item("Ponto Situa\u00e7\u00e3o", "ponto_situacao", parent=item_producao)
         _criar_item("Ocorr\u00eancias", "ocorrencias", parent=item_producao)
+        # Ferramentas do iX CAD (tradu\u00e7\u00f5es e as que vierem); leva o log\u00f3tipo do iX.
+        item_imos = _criar_item("IMOS IX", "imos_ix")
+        item_imos.setIcon(0, icone_imagem("imos_ix.png"))
+        item_imos.setToolTip(0, "Ferramentas do iX CAD neste PC (tradu\u00e7\u00f5es do iX)")
         _criar_item("Registo de Horas", "registo_horas")
         _criar_item("Configura\u00e7\u00f5es", "configuracoes")
         item_orcamentos.setExpanded(True)
@@ -377,6 +385,15 @@ class MainWindow(QMainWindow):
             if self._permissions.get("menu.registo_horas", False)
             else None
         )
+        # Também só para quem tem o menu: mexe em ficheiros do iX deste PC.
+        self.imos_ix_page = (
+            ImosIxPage(
+                user_id=self.authenticated_user.id if self.authenticated_user else None,
+                admin=is_admin(self.authenticated_user),
+            )
+            if self._permissions.get("menu.imos_ix", False)
+            else None
+        )
         self.user_management_page = (
             UserManagementPage(on_back=lambda: self.show_page("configuracoes"))
             if is_admin(authenticated_user)
@@ -425,6 +442,8 @@ class MainWindow(QMainWindow):
         self._add_page("encomendas_phc", self.encomendas_page)
         self._add_page("ponto_situacao", self.ponto_situacao_page)
         self._add_page("ocorrencias", self.ocorrencias_page)
+        if self.imos_ix_page is not None:
+            self._add_page("imos_ix", self.imos_ix_page)
         if self.registo_horas_page is not None:
             self._add_page("registo_horas", self.registo_horas_page)
         self._add_page("configuracoes", self.configuracoes_page)
@@ -549,6 +568,18 @@ class MainWindow(QMainWindow):
             and not is_admin(self.authenticated_user),
             abrir_dia=self._abrir_registo_horas,
         )
+        # IMOS IX: uma vez por dia, se este PC tiver traduções do iX por
+        # aplicar (Excel com linhas novas ou iX reinstalado). Só pergunta.
+        self._aviso_traducoes_imos = AvisoTraducoesImos(
+            self,
+            ativo=self.imos_ix_page is not None,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            abrir_menu=lambda: self.show_page("imos_ix"),
+        )
         self.show_page("inicio")
 
     def _abrir_registo_horas(self, dia, editar: bool = False) -> None:
@@ -598,6 +629,7 @@ class MainWindow(QMainWindow):
             "encomendas_phc": "menu.encomendas_phc",
             "ponto_situacao": "menu.ponto_situacao",
             "ocorrencias": "menu.producao",
+            "imos_ix": "menu.imos_ix",
             "registo_horas": "menu.registo_horas",
             "configuracoes": "menu.configuracoes",
         }
@@ -894,6 +926,8 @@ class MainWindow(QMainWindow):
             self.arquivo_v2_page.carregar()
         elif name == "registo_horas" and getattr(self, "registo_horas_page", None) is not None:
             self.registo_horas_page.carregar()
+        elif name == "imos_ix" and getattr(self, "imos_ix_page", None) is not None:
+            self.imos_ix_page.carregar()
         if name not in self._page_indexes:
             return
         page_index = self._page_indexes[name]

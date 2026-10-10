@@ -42,10 +42,20 @@ from app.ui.helpers import registo_horas_acoes as acoes
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 
-COLUNAS = ("Dia", "", "Tipo", "Horário", "Horas", "Normais", "Extra", "Observações")
+COLUNAS = (
+    "Dia", "", "Tipo", "Horário", "Horas", "Normais", "Extra",
+    "Subs. Alimentação", "Observações",
+)
 COL_HORARIO = 3
 COL_EXTRA = 6
-COL_OBS = 7
+COL_SUBSIDIO = 7
+COL_OBS = 8
+DICA_SUBSIDIO = (
+    "Subsídio de alimentação: extra pago pela empresa nos dias fora do horário "
+    "normal (sábado, domingo, feriado e dia de férias trabalhado) — 1,25 € por "
+    "cada hora inteira, no máximo 10 € por dia. Os dias úteis não contam, "
+    "mesmo com horas extra."
+)
 #: Quantos meses aparecem na lista «Últimos meses».
 MESES_HISTORICO = 12
 
@@ -137,8 +147,9 @@ class RegistoHorasPage(QWidget):
         cabecalho_tabela = self.table.horizontalHeader()
         cabecalho_tabela.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         cabecalho_tabela.setSectionResizeMode(COL_OBS, QHeaderView.ResizeMode.Stretch)
-        for coluna, largura in enumerate((44, 44, 110, 170, 80, 70, 70)):
+        for coluna, largura in enumerate((44, 44, 110, 170, 80, 70, 70, 120)):
             self.table.setColumnWidth(coluna, largura)
+        self.table.horizontalHeaderItem(COL_SUBSIDIO).setToolTip(DICA_SUBSIDIO)
 
         # ---- painel do lado ----------------------------------------------
         self.resumo_caixa = QGroupBox("Resumo do mês")
@@ -154,13 +165,27 @@ class RegistoHorasPage(QWidget):
             self.resumo_grelha.addWidget(etiqueta, linha, 0)
             self.resumo_grelha.addWidget(valor, linha, 1)
             self._resumo_valores.append(valor)
+        # O subsídio vem à parte do total: é dinheiro, não são horas.
+        rotulo_subsidio, _ = regra.ResumoMes().linha_subsidio()
+        etiqueta_subsidio = QLabel(rotulo_subsidio)
+        self.subsidio_label = QLabel(regra.formatar_euros(0))
+        self.subsidio_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        for rotulo in (etiqueta_subsidio, self.subsidio_label):
+            rotulo.setToolTip(DICA_SUBSIDIO)
+            rotulo.setStyleSheet(
+                f"background-color: {tema.OCRE_SUAVE}; color: {tema.OCRE_ESCURO};"
+                " font-weight: bold; padding: 3px 4px;"
+            )
+        linha_subsidio = len(self._resumo_valores)
+        self.resumo_grelha.addWidget(etiqueta_subsidio, linha_subsidio, 0)
+        self.resumo_grelha.addWidget(self.subsidio_label, linha_subsidio, 1)
         self.contagens_label = QLabel()
         self.contagens_label.setWordWrap(True)
-        self.resumo_grelha.addWidget(self.contagens_label, len(self._resumo_valores), 0, 1, 2)
+        self.resumo_grelha.addWidget(self.contagens_label, linha_subsidio + 1, 0, 1, 2)
         nota = QLabel("Cada mês fecha por si: o saldo não passa para o mês seguinte.")
         nota.setWordWrap(True)
         nota.setStyleSheet(f"color: {tema.CASTANHO_MEDIO};")
-        self.resumo_grelha.addWidget(nota, len(self._resumo_valores) + 1, 0, 1, 2)
+        self.resumo_grelha.addWidget(nota, linha_subsidio + 2, 0, 1, 2)
 
         self.envio_label = QLabel()
         self.envio_label.setWordWrap(True)
@@ -374,13 +399,14 @@ class RegistoHorasPage(QWidget):
                 extra = (
                     regra.formatar_total(registo.extra, com_mais=True) if registo.extra else ""
                 )
+                subsidio = registo.subsidio_folha
                 obs = registo.observacoes_folha()
                 if registo.tipo == regra.TIPO_FERIADO and nome_feriado:
                     obs = " – ".join(p for p in (nome_feriado, registo.observacoes) if p)
             else:
                 tipo = "Feriado" if nome_feriado else ""
                 horario = "por registar" if dia in em_falta else ""
-                horas = normais = extra = ""
+                horas = normais = extra = subsidio = ""
                 obs = nome_feriado
             valores = (
                 str(dia.day),
@@ -390,6 +416,7 @@ class RegistoHorasPage(QWidget):
                 horas,
                 normais,
                 extra,
+                subsidio,
                 obs,
             )
             for coluna, valor in enumerate(valores):
@@ -397,6 +424,10 @@ class RegistoHorasPage(QWidget):
                 item.setData(Qt.ItemDataRole.UserRole, dia)
                 if coluna in (0, 1, 4, 5, 6):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                elif coluna == COL_SUBSIDIO:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
                 if regra.e_fim_de_semana(dia) or nome_feriado:
                     item.setBackground(fundo_fds)
                 if dia == hoje:
@@ -414,6 +445,7 @@ class RegistoHorasPage(QWidget):
     def _preencher_resumo(self, resumo: regra.ResumoMes) -> None:
         for etiqueta, (_rotulo, valor) in zip(self._resumo_valores, resumo.linhas()):
             etiqueta.setText(valor)
+        self.subsidio_label.setText(resumo.linha_subsidio()[1])
         self.contagens_label.setText(
             f"Dias registados: {resumo.dias_registados} · férias: {resumo.dias_ferias} · "
             f"feriados: {resumo.dias_feriado} · folgas: {resumo.dias_folga}"
