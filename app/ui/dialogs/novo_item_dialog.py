@@ -68,6 +68,10 @@ class NovoItemDialog(QDialog):
         # o Enter ficava preso a reabrir esta janela em vez de seguir para o
         # campo seguinte. Continua a abrir-se com a barra de espaços ou o rato.
         self.descricoes_button.setAutoDefault(False)
+        self.descricoes_button.setToolTip(
+            "Abrir as suas descrições pré-definidas e acrescentar as que marcar "
+            "à descrição do item."
+        )
         self.descricoes_button.clicked.connect(self._abrir_descricoes_predefinidas)
         descricao_widget = QWidget()
         descricao_layout = QVBoxLayout(descricao_widget)
@@ -308,7 +312,7 @@ class NovoItemDialog(QDialog):
         if user_id is None:
             self.error_label.setText("Utilizador não identificado.")
             return
-        dialog = DescricoesPredefinidasDialog(self, user_id=user_id)
+        dialog = DescricoesPredefinidasDialog(self, user_id=user_id, destino="Descrição")
         if not dialog.exec():
             return
         self._inserir_descricoes(dialog.checked_entries())

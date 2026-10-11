@@ -33,6 +33,7 @@ from app.domain.orcamento_estados import (
 from app.repositories.cliente_repository import ClienteListaResumo
 from app.repositories.user_repository import UserRepository
 from app.services.orcamento_encomenda_phc_service import EncomendaPhcInput
+from app.ui.widgets.campo_descricoes_predefinidas import campo_com_descricoes
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll
 from app.ui.widgets.corretor_ortografico import ligar_corretor
 
@@ -87,7 +88,8 @@ class EditarOrcamentoDialog(QDialog):
 
         self.setWindowTitle("Editar Orçamento")
         self.setModal(True)
-        self.setMinimumWidth(460)
+        # Espaço para o botão «Descrições…» ao lado do Info 1/2.
+        self.setMinimumWidth(540)
 
         self._cliente_id: int | None = None
         self._proxima_versao: int | None = None
@@ -196,9 +198,24 @@ class EditarOrcamentoDialog(QDialog):
         self.info_1_input = QTextEdit()
         ligar_corretor(self.info_1_input)
         self.info_1_input.setFixedHeight(60)
+        self.info_1_input.setToolTip(
+            "Texto livre do orçamento — normalmente os materiais (ex.: "
+            "INTERIORES MLM LINHO CANCUN). Aparece na coluna «Info 1» da lista."
+        )
         self.info_2_input = QTextEdit()
         ligar_corretor(self.info_2_input)
         self.info_2_input.setFixedHeight(60)
+        self.info_2_input.setToolTip(
+            "Segundo texto livre do orçamento (materiais, notas…). Aparece na "
+            "coluna «Info 2» da lista."
+        )
+        # Os materiais já estão escritos nas descrições pré-definidas dos items.
+        info_1_widget, self.info_1_descricoes_button = campo_com_descricoes(
+            self.info_1_input, "Info 1"
+        )
+        info_2_widget, self.info_2_descricoes_button = campo_com_descricoes(
+            self.info_2_input, "Info 2"
+        )
 
         # Pre-fill from the received data.
         if dados is not None:
@@ -253,8 +270,8 @@ class EditarOrcamentoDialog(QDialog):
         form_layout.addRow("Localização", self.localizacao_input)
         form_layout.addRow("Ref. cliente", self.ref_cliente_input)
         form_layout.addRow(self.encomendas_group)
-        form_layout.addRow("Info 1", self.info_1_input)
-        form_layout.addRow("Info 2", self.info_2_input)
+        form_layout.addRow("Info 1", info_1_widget)
+        form_layout.addRow("Info 2", info_2_widget)
 
         self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel

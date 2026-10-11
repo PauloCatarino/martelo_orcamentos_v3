@@ -2125,3 +2125,57 @@ Guião de teste (reiniciar o Martelo):
 4. Ir a outro menu, sair do Martelo e voltar a entrar como `paulo` → IMOS IX. Esperado: as
    larguras ficaram como as deixou.
 5. Entrar com outra conta no mesmo PC. Esperado: essa conta vê as larguras de origem.
+
+## Orçamentos: descrições pré-definidas no Info 1 e Info 2 (2026-10-11)
+
+O Paulo usa o Info 1 e o Info 2 do orçamento para indicar os materiais («INTERIORES MLM
+LINHO CANCUN», «FRENTES MDF BRANCO») e escrevia-os à mão. Esses textos já existem nas
+**descrições pré-definidas** que se usam na descrição dos items; pediu para ter o mesmo
+menu nos orçamentos.
+
+Feito:
+
+- **Novo Orçamento** e **Editar Orçamento**: botão **«Descrições…»** à direita do Info 1 e do
+  Info 2. Abre o mesmo menu dos items (a mesma lista, de cada utilizador) e acrescenta no
+  fim do campo as descrições marcadas, **uma por linha e sem o «-»/«*» nem a tabulação**
+  que levam na descrição do item. Uma linha que o campo já tenha não se repete. As duas
+  janelas ficaram um pouco mais largas (540) para o botão não roubar espaço ao texto.
+- **Menu das descrições:** o título diz para onde vai o texto («Descrições pré-definidas →
+  Info 1»; nos items «→ Descrição»); linha de estado nova em baixo («Marque…» / «2
+  descrições marcadas — «Inserir» acrescenta-as ao campo «Info 1».»); dicas em todos os
+  botões; e **adicionar ou editar uma descrição já não tira as marcas** às que estavam
+  marcadas (antes, tinha de se marcar tudo outra vez).
+- Componente partilhado: `app/ui/widgets/campo_descricoes_predefinidas.py`. Testes em
+  `tests/test_descricoes_predefinidas_orcamento.py`.
+
+O texto entra tal como está na lista (não passa a maiúsculas).
+
+Guião de teste (reiniciar o Martelo; nada disto grava sem carregar em Guardar):
+
+1. Orçamentos → **«Novo Orçamento»**. Esperado: ao lado do **Info 1** e do **Info 2** um
+   botão «Descrições…»; com o rato por cima aparece a dica «…acrescentar as que marcar ao
+   Info 1…».
+2. «Descrições…» do **Info 1**. Esperado: janela «Descrições pré-definidas → Info 1» com a
+   mesma lista do Novo Item; em baixo, a castanho: «Marque na caixa à esquerda as
+   descrições a inserir no campo «Info 1» e carregue em «Inserir».»
+3. Marcar «Interiores AGL MLM LINHO CANCUN 10/16/19mm» e «Frentes MDF HIDROFUGO BRANCO
+   B3002/MA_19MM». Esperado: linha a verde «2 descrições marcadas — «Inserir» acrescenta-as
+   ao campo «Info 1».»
+4. «Inserir». Esperado: Info 1 com as duas linhas, sem «-» à frente e sem espaço no início;
+   Info 2 continua vazio.
+5. «Descrições…» do Info 1 outra vez → marcar «Interiores AGL MLM LINHO CANCUN…» (a mesma)
+   e «Puxador Fresado 'J'» → Inserir. Esperado: só entra «Puxador Fresado 'J'» numa linha
+   nova; a dos interiores não fica repetida.
+6. «Descrições…» do **Info 2** → marcar «Dobradiças Blum» → «Adicionar» → texto `TESTE
+   INFO` → OK. Esperado: `- TESTE INFO` aparece na lista e «Dobradiças Blum» **continua
+   marcada**; linha de estado «1 descrição marcada…». (Depois pode selecionar `TESTE INFO`
+   e «Eliminar», se não a quiser.) «Inserir». Esperado: Info 2 = «Dobradiças Blum».
+7. **Cancelar** o Novo Orçamento (para não gastar um número de orçamento).
+8. Na lista, selecionar o **261023** (J.F. Viva) → «Editar Orçamento». Esperado: o mesmo
+   botão ao lado do Info 1 e do Info 2; o Info 1 tem o texto que já lá estava.
+9. «Descrições…» do Info 1 → marcar «Frentes AGL MLM BRANCO B3768/SC 19mm» → Inserir.
+   Esperado: a linha entra no fim, por baixo do texto que já existia. Cancelar (ou Guardar,
+   se quiser ficar com ela).
+10. Abrir um orçamento → separador **Items** → «Novo Item» → «Descrições pré-definidas…».
+    Esperado: título «Descrições pré-definidas → Descrição»; ao inserir, a descrição do item
+    continua como antes (com a tabulação e o «-» à frente).

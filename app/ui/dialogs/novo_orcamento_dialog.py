@@ -38,6 +38,7 @@ from app.domain.margens_padrao_types import (
 from app.repositories.user_repository import UserRepository
 from app.services.def_margem_padrao_service import DefMargemPadraoService
 from app.services.system_setting_service import SystemSettingService
+from app.ui.widgets.campo_descricoes_predefinidas import campo_com_descricoes
 from app.ui.widgets.combo_sem_scroll import ComboSemScroll, SpinSemScroll
 from app.ui.widgets.corretor_ortografico import ligar_corretor
 
@@ -82,7 +83,9 @@ class NovoOrcamentoDialog(QDialog):
 
         self.setWindowTitle("Novo Orçamento")
         self.setModal(True)
-        self.setMinimumWidth(460)
+        # Mais larga que antes: o botão «Descrições…» ao lado do Info 1/2
+        # roubava espaço ao texto.
+        self.setMinimumWidth(540)
 
         self._cliente_id: int | None = None
         self._num_cliente_phc: str | None = None
@@ -201,9 +204,24 @@ class NovoOrcamentoDialog(QDialog):
         self.info_1_input = QTextEdit()
         ligar_corretor(self.info_1_input)
         self.info_1_input.setFixedHeight(60)
+        self.info_1_input.setToolTip(
+            "Texto livre do orçamento — normalmente os materiais (ex.: "
+            "INTERIORES MLM LINHO CANCUN). Aparece na coluna «Info 1» da lista."
+        )
         self.info_2_input = QTextEdit()
         ligar_corretor(self.info_2_input)
         self.info_2_input.setFixedHeight(60)
+        self.info_2_input.setToolTip(
+            "Segundo texto livre do orçamento (materiais, notas…). Aparece na "
+            "coluna «Info 2» da lista."
+        )
+        # Os materiais já estão escritos nas descrições pré-definidas dos items.
+        info_1_widget, self.info_1_descricoes_button = campo_com_descricoes(
+            self.info_1_input, "Info 1"
+        )
+        info_2_widget, self.info_2_descricoes_button = campo_com_descricoes(
+            self.info_2_input, "Info 2"
+        )
 
         self.utilizador_combo = ComboSemScroll()
         self._carregar_utilizadores()
@@ -233,8 +251,8 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Designação (PHC)", self.designacao_phc_input)
         form_layout.addRow("Proposta PHC", phc_widget)
         form_layout.addRow("Enc. PHC", self.enc_phc_input)
-        form_layout.addRow("Info 1", self.info_1_input)
-        form_layout.addRow("Info 2", self.info_2_input)
+        form_layout.addRow("Info 1", info_1_widget)
+        form_layout.addRow("Info 2", info_2_widget)
         form_layout.addRow("Utilizador", self.utilizador_combo)
         form_layout.addRow("Margens iniciais:", self.margens_combo)
 
