@@ -443,3 +443,21 @@ def test_dialogo_mostra_a_encomenda_ja_criada_sem_vermelho() -> None:
 
     # O vermelho continua reservado aos bloqueios e à falta de permissão.
     assert "if plano.bloqueios or not self._pode_criar" in fonte
+
+
+def test_resumo_final_diz_os_favoritos_copiados_so_na_encomenda() -> None:
+    from app.services.imos_escrita import NoCriado
+
+    pasta = NoCriado(
+        nome="JF_VIVA", tipo=IMOS_TIPO_PASTA, dir_id=6626, proadmin_id=6600,
+        parent_dir_id=180,
+    )
+    encomenda = NoCriado(
+        nome="1804_01_26_JF_VIVA", tipo=IMOS_TIPO_ENCOMENDA, dir_id=7788,
+        proadmin_id=7765, parent_dir_id=6626, favoritos=891,
+    )
+
+    assert "favoritos" not in imos_encomenda_dialog._linha_criado(pasta)
+    linha = imos_encomenda_dialog._linha_criado(encomenda)
+    assert linha.startswith("• 1804_01_26_JF_VIVA — DIR_ID 7788, PROADMIN 7765")
+    assert "891 favoritos do Article Designer copiados" in linha

@@ -35,6 +35,7 @@ from app.services.imos_encomenda_service import (
 )
 from app.services.imos_escrita import (
     KEY_IMOS_ESCRITA_ATIVA,
+    NoCriado,
     carregar_escrita_ativa,
     explicar_erro_escrita,
 )
@@ -52,6 +53,14 @@ from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 
 COR_EM_FALTA = QColor("#8a5000")
 COR_AVISO = QColor("#b00020")
+
+
+def _linha_criado(no: NoCriado) -> str:
+    """Uma linha do resumo final; a encomenda diz também os favoritos copiados."""
+    linha = f"• {no.nome} — DIR_ID {no.dir_id}, PROADMIN {no.proadmin_id}"
+    if no.tipo == IMOS_TIPO_ENCOMENDA:
+        linha += f"\n   {no.favoritos} favoritos do Article Designer copiados"
+    return linha
 
 
 class ImosEncomendaDialog(QDialog):
@@ -541,10 +550,7 @@ class ImosEncomendaDialog(QDialog):
             return
 
         self._criada = True
-        detalhe = "\n".join(
-            f"• {no.nome} — DIR_ID {no.dir_id}, PROADMIN {no.proadmin_id}"
-            for no in criados
-        )
+        detalhe = "\n".join(_linha_criado(no) for no in criados)
         autor = getattr(app_session.current_user, "nome", "") or getattr(
             app_session.current_user, "username", ""
         )

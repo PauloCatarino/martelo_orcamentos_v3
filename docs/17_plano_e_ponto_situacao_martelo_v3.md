@@ -2407,3 +2407,49 @@ a 24 são de teste: no fim apague-os (passo 13) ou ponha lá as horas verdadeira
     Fechar e voltar a pôr nas Definições o tipo que quer de verdade. Por fim, apagar os dias
     de teste **20** e **24** (abrir o dia → **«Apagar dia»** → Sim) ou pôr lá as horas
     verdadeiras.
+
+## Criar Encomenda IMOS: favoritos do Article Designer (2026-10-19)
+
+Problema apanhado pelo Paulo: nas obras criadas pelo Martelo, no iX CAD › **Article
+Designer**, as setas do **«Princípio de construção»** e da **«Informação de produção»**
+abriam vazias. Nas obras criadas à mão no iX Organizer vêm logo preenchidas.
+
+Causa (comparação da `1804_01_26_JF_VIVA`, do Martelo, com a `1804_01_26_JF_VIVA_copia`,
+feita à mão): ao criar uma obra, o iX Organizer copia a lista global de favoritos
+(`dbo.FAVORITES` com `INORDER` vazio, 891 linhas em 47 listas) para a obra nova. O Martelo
+não fazia essa cópia. Antes de mexer no código, o Paulo correu o script
+`scripts/imos_favoritos/copiar_favoritos_para_obra.sql` sobre a 1804 e as listas passaram a
+aparecer.
+
+Feito:
+
+- **Criar Encomenda IMOS** copia a lista global de favoritos para a encomenda, na mesma
+  transação que a cria. Só copia as listas que a obra ainda não tenha. Continua a ser só
+  INSERT: o Martelo não altera nem apaga nada no iMos.
+- O resumo final diz quantos favoritos foram copiados.
+- O script SQL fica no repositório e serve para acertar à mão uma obra antiga criada pelo
+  Martelo: abre-se no SSMS ligado à `imos_LE`, muda-se `@obra`, corre-se primeiro com
+  `@ensaio = 1` e depois com `@ensaio = 0`.
+- Código em `app/services/imos_escrita.py` (passo 4 do script PowerShell) e
+  `app/ui/dialogs/imos_encomenda_dialog.py`. Testes em `tests/test_imos_escrita.py` e
+  `tests/test_imos_encomenda_dialog.py`. Explicação completa no doc 21, fase E1.
+
+Guião de teste (reiniciar o Martelo; usar a próxima obra verdadeira que precise de
+encomenda no iMos):
+
+1. **Produção** → selecionar a obra (a coluna **«Enc. iMos»** tem de estar vazia) → botão
+   **Funções** → **«Criar Encomenda IMOS…»**. Confirmar o caminho e o nome como sempre.
+2. **«Criar no IMOS»** → **Sim**. Esperado: a mensagem «Criado no iMos por …» com a linha
+   «• <nome da obra> — DIR_ID …, PROADMIN …» e, por baixo dela, **«891 favoritos do Article
+   Designer copiados»**. O número pode ser um pouco diferente: é o tamanho da lista global
+   nesse dia.
+3. **iX Organizer** → **↻** → abrir a obra no **iX CAD** (ou no Martelo: Funções → «Abrir no
+   iX CAD»).
+4. **Article Designer** → artigo novo → **Tipo de peça = Topo** → seta do **«Princípio de
+   construção»**. Esperado: a lista vem preenchida (TP_I_2020, TP_O_2222, TMP_O_2222, …,
+   TP_I_2000_CV_PRF_Ov03_Rf1).
+5. **Tipo de peça = Lateral** → mesma seta. Esperado: LT_2020, LT_2202, LT_GAVTRO_2010, …
+6. Seta da **«Informação de produção»**. Esperado: RODATETO, REGUA_HORIZONTAL, RODAPE,
+   LATERAL, …
+7. Se alguma lista vier vazia, dizer o nome da obra ao Claude: ele confirma na base quantas
+   linhas a obra tem na `FAVORITES`.

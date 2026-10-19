@@ -7,7 +7,9 @@ três barreiras:
 1. Um interruptor explícito (``imos_escrita_ativa``, por defeito desligado).
 2. Só existe uma operação: criar nós na árvore de encomendas. Não há nenhum
    caminho de código que produza ``UPDATE``, ``DELETE`` ou ``DROP``, nem que
-   toque numa tabela que não seja ``dbo.IMORDFOLDER`` ou ``dbo.PROADMIN``.
+   toque numa tabela que não seja ``dbo.IMORDFOLDER``, ``dbo.PROADMIN``,
+   ``dbo.CMSINCIDENTADRESS`` (dados do cliente) ou ``dbo.FAVORITES``
+   (favoritos do Article Designer).
 3. Todos os valores viajam como ``SqlParameter`` tipados com o comprimento
    real da coluna; nada é interpolado no texto da query.
 
@@ -155,6 +157,22 @@ COLUNAS_CONTACTO_RESERVADAS = frozenset(
 # contrário: é a única coisa a mudar.
 CONTACTO_ORDERID_DE = "proadmin"
 
+# --------------------------------------------------------------------------
+# Favoritos do Article Designer (dbo.FAVORITES)
+# --------------------------------------------------------------------------
+#
+# No iX CAD > Article Designer, as setas do «Princípio de construção» e da
+# «Informação de produção» mostram os favoritos da obra: as linhas de
+# dbo.FAVORITES (LIST_TYPE, INORDER, POSITION, NAME) com INORDER = nome da
+# obra. Ao criar uma encomenda, o iX Organizer copia para ela a lista global
+# (INORDER = ''). Sem essa cópia as listas abrem vazias — comparado a
+# 19-10-2026 entre a 1804_01_26_JF_VIVA (Martelo, 0 linhas) e a _copia
+# (Organizer, 891 linhas iguais às globais), e confirmado no iX CAD depois de
+# copiar à mão (scripts/imos_favoritos/copiar_favoritos_para_obra.sql).
+#
+# Só se copiam as listas que a obra ainda não tem: nunca se mexe no que lá
+# esteja. A cópia é um INSERT ... SELECT na mesma transação do nó.
+
 
 @dataclass(frozen=True)
 class NoParaCriar:
@@ -186,6 +204,8 @@ class NoCriado:
     parent_dir_id: int
     # GUID da linha de dados do cliente, quando foi criada.
     contacto_id: str = ""
+    # Linhas de favoritos do Article Designer copiadas da lista global.
+    favoritos: int = 0
 
 
 def carregar_escrita_ativa(session: Session) -> bool:
@@ -369,6 +389,8 @@ def construir_payload(cfg: ImosConfig, nos: list[NoParaCriar]) -> dict[str, Any]
                 "parent_indice": int(no.parent_indice) if tem_indice else None,
                 "campos": _campos_normalizados(no.campos),
                 "contacto": contacto,
+                # Como o iX Organizer: só a encomenda leva os favoritos.
+                "favoritos": no.tipo == IMOS_TIPO_ENCOMENDA,
             }
         )
 
@@ -501,6 +523,18 @@ try {
       $contactoId = $novoId.ToString()
     }
 
+    # 4) favoritos do Article Designer: copia da lista global (INORDER vazio),
+    #    so as listas que a encomenda ainda nao tem
+    $favoritos = 0
+    if ($no.favoritos) {
+      $cmd4 = $conn.CreateCommand()
+      $cmd4.Transaction = $tx
+      $cmd4.CommandText = 'INSERT INTO dbo.FAVORITES (LIST_TYPE, INORDER, POSITION, NAME) SELECT g.LIST_TYPE, @nome, g.POSITION, g.NAME FROM dbo.FAVORITES g WHERE g.INORDER = N'''' AND NOT EXISTS (SELECT 1 FROM dbo.FAVORITES o WHERE o.INORDER = @nome AND o.LIST_TYPE = g.LIST_TYPE); SELECT CAST(@@ROWCOUNT AS int);'
+      $par = $cmd4.Parameters.Add('@nome', [System.Data.SqlDbType]::NVarChar, 30)
+      $par.Value = [string]$no.nome
+      $favoritos = [int]$cmd4.ExecuteScalar()
+    }
+
     $dirIds += $dir
     $criados += [pscustomobject]@{
       nome = [string]$no.nome
@@ -509,6 +543,7 @@ try {
       proadmin_id = $proadminId
       parent_dir_id = $parent
       contacto_id = $contactoId
+      favoritos = $favoritos
     }
   }
 
@@ -593,6 +628,7 @@ def executar_payload(payload: dict[str, Any]) -> list[NoCriado]:
                 proadmin_id=int(item.get("proadmin_id") or 0),
                 parent_dir_id=int(item.get("parent_dir_id") or 0),
                 contacto_id=str(item.get("contacto_id") or ""),
+                favoritos=int(item.get("favoritos") or 0),
             )
             for item in dados
         ]
@@ -623,7 +659,8 @@ def explicar_erro_escrita(exc: Exception) -> str:
     if "permission was denied" in normalizado or "permissão" in normalizado:
         return (
             "O SQL Server recusou a escrita: a conta configurada não tem "
-            "permissão de INSERT em dbo.IMORDFOLDER / dbo.PROADMIN."
+            "permissão de INSERT em dbo.IMORDFOLDER / dbo.PROADMIN / "
+            "dbo.CMSINCIDENTADRESS / dbo.FAVORITES."
         )
     if "read-only" in normalizado or "somente leitura" in normalizado:
         return (

@@ -320,13 +320,14 @@ def test_no_sem_contacto_continua_a_funcionar() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_script_so_conhece_insert_nas_tres_tabelas_permitidas() -> None:
+def test_script_so_conhece_insert_nas_quatro_tabelas_permitidas() -> None:
     script = imos_escrita._powershell_script()
 
     assert script.count("INSERT INTO dbo.IMORDFOLDER") == 1
     assert script.count("INSERT INTO dbo.PROADMIN") == 1
     assert script.count("INSERT INTO dbo.CMSINCIDENTADRESS") == 1
-    assert script.count("INSERT INTO dbo.") == 3
+    assert script.count("INSERT INTO dbo.FAVORITES") == 1
+    assert script.count("INSERT INTO dbo.") == 4
     limpo = (
         script.upper().replace("EXECUTESCALAR", "").replace("EXECUTENONQUERY", "")
     )
@@ -374,6 +375,101 @@ def test_script_liga_proadmin_a_imordfolder_pelo_scope_identity() -> None:
 
 
 # --------------------------------------------------------------------------
+# Favoritos do Article Designer (dbo.FAVORITES)
+# --------------------------------------------------------------------------
+
+
+def _sql_favoritos() -> str:
+    """O texto SQL da cópia dos favoritos, tal como chega ao SQL Server."""
+    script = imos_escrita._powershell_script()
+    linha = next(
+        linha.strip()
+        for linha in script.splitlines()
+        if "INSERT INTO dbo.FAVORITES" in linha
+    )
+    # $cmd4.CommandText = '...'  (aspas simples do PowerShell, '' = ')
+    texto = linha.split("= '", 1)[1].rsplit("'", 1)[0]
+    return texto.replace("''", "'")
+
+
+def test_so_a_encomenda_leva_os_favoritos() -> None:
+    payload = imos_escrita.construir_payload(
+        _cfg(),
+        [
+            _pasta("ANO_2026"),
+            NoParaCriar(
+                nome="1804_01_26_JF_VIVA", tipo=IMOS_TIPO_ENCOMENDA, parent_indice=0
+            ),
+        ],
+    )
+
+    assert [no["favoritos"] for no in payload["nos"]] == [False, True]
+
+
+def test_favoritos_copiam_a_lista_global_com_o_nome_da_encomenda() -> None:
+    sql = _sql_favoritos()
+
+    assert sql.startswith(
+        "INSERT INTO dbo.FAVORITES (LIST_TYPE, INORDER, POSITION, NAME) "
+        "SELECT g.LIST_TYPE, @nome, g.POSITION, g.NAME FROM dbo.FAVORITES g "
+        "WHERE g.INORDER = N''"
+    )
+
+
+def test_favoritos_nunca_mexem_nas_listas_que_a_obra_ja_tem() -> None:
+    sql = _sql_favoritos()
+
+    assert (
+        "NOT EXISTS (SELECT 1 FROM dbo.FAVORITES o "
+        "WHERE o.INORDER = @nome AND o.LIST_TYPE = g.LIST_TYPE);"
+    ) in sql
+    # O número copiado não depende do SET NOCOUNT do servidor.
+    assert sql.endswith("SELECT CAST(@@ROWCOUNT AS int);")
+
+
+def test_favoritos_correm_na_mesma_transacao_e_so_quando_pedidos() -> None:
+    script = imos_escrita._powershell_script()
+    bloco = script.split("# 4) favoritos", 1)[1].split("$dirIds += $dir", 1)[0]
+
+    assert "if ($no.favoritos) {" in bloco
+    assert "$cmd4.Transaction = $tx" in bloco
+    assert (
+        "$cmd4.Parameters.Add('@nome', [System.Data.SqlDbType]::NVarChar, 30)"
+        in bloco
+    )
+    assert "favoritos = $favoritos" in script
+
+
+def test_resultado_traz_os_favoritos_copiados(monkeypatch) -> None:
+    import base64
+    import json
+    import subprocess
+
+    devolvido = [
+        {
+            "nome": "1804_01_26_JF_VIVA",
+            "tipo": IMOS_TIPO_ENCOMENDA,
+            "dir_id": 7788,
+            "proadmin_id": 7765,
+            "parent_dir_id": 6626,
+            "contacto_id": "",
+            "favoritos": 891,
+        }
+    ]
+    saida = base64.b64encode(json.dumps(devolvido).encode("utf-8")).decode("ascii")
+    monkeypatch.setattr(
+        imos_escrita.subprocess,
+        "run",
+        lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=saida, stderr=""),
+    )
+
+    criados = imos_escrita.executar_payload({"conn": "", "nos": []})
+
+    assert criados[0].favoritos == 891
+    assert criados[0].dir_id == 7788
+
+
+# --------------------------------------------------------------------------
 # Resultado
 # --------------------------------------------------------------------------
 
@@ -418,3 +514,4 @@ def test_explicar_erro_traduz_falta_de_permissao() -> None:
     )
 
     assert "não tem permissão de INSERT" in texto
+    assert "dbo.FAVORITES" in texto

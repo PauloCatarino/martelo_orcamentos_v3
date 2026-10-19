@@ -449,6 +449,39 @@ observação na base real. Fica apenas, para quando houver necessidade:
   cria as suas encomendas e a coincidência é improvável. Se um dia deixar de
   ser, a defesa passa por reverificar dentro da transação.
 
+### Favoritos do Article Designer (dbo.FAVORITES) — 19 de outubro de 2026
+
+O utilizador reparou que, nas obras criadas pelo Martelo, as setas do
+«Princípio de construção» e da «Informação de produção» do iX CAD › Article
+Designer abriam vazias. Nas obras criadas à mão no iX Organizer vêm logo
+preenchidas.
+
+A comparação entre `1804_01_26_JF_VIVA` (criada pelo Martelo) e
+`1804_01_26_JF_VIVA_copia` (criada à mão no Organizer) mostrou que a diferença
+está numa quarta tabela, `dbo.FAVORITES` (`LIST_TYPE`, `INORDER`, `POSITION`,
+`NAME`, sem chave). **Ao criar uma encomenda, o Organizer copia para ela a lista
+global de favoritos (`INORDER = ''`), com `INORDER` igual ao nome da obra.** A
+`_copia` tinha 891 linhas em 47 listas, iguais uma a uma às globais. A obra do
+Martelo não tinha nenhuma. O padrão repete-se em todas as obras desde o fim de
+julho: as manuais têm entre 850 e 891 linhas, as do Martelo só têm o que se foi
+usando (0 a 142). Listas que interessam ao Article Designer: 18 Informação de
+produção, 28 Lateral, 29 Costas, 32 Portas, 35 Topo, 36 Fundo, 37 Prateleira
+amovível, 38 Prateleira fixa, 39 Divisória, 41 Gaveta.
+
+Prova antes de mexer no código: o utilizador correu
+`scripts/imos_favoritos/copiar_favoritos_para_obra.sql` sobre a 1804 e as listas
+passaram a aparecer no Article Designer.
+
+Correção: na mesma transação que cria a encomenda, o motor de escrita faz um
+`INSERT ... SELECT` da lista global com o nome da encomenda. Só copia as listas
+que a obra ainda não tenha, e só para encomendas (as pastas não levam). Continua
+a ser só INSERT. O resumo final do diálogo diz quantos favoritos foram copiados.
+O mesmo script SQL serve para acertar à mão uma obra antiga (muda-se `@obra`).
+
+O Organizer escreve ainda uma linha de criação na `DATACHANGELOG` (TYPE 173,
+EVENTTYPE 1) e, às vezes, na `ORDERLOGGING` («New Order»). Nenhuma das duas faz
+falta às obras do Martelo, e não se copiaram.
+
 ## Fase E2 — abrir a obra no iX CAD a partir da Produção
 
 Pedido do utilizador a 2 de outubro de 2026: abrir a obra no iX CAD sem passar
