@@ -2285,3 +2285,45 @@ Guião de teste (reiniciar o Martelo a partir do VS Code, para ver o terminal):
 3. Entrar como **Catia** e trabalhar normalmente mais de 10 minutos. Esperado: não aparece
    nenhuma janela do Assistente nem mensagem de (Não) Adjudicado que seja do Paulo; no
    terminal, nenhum `ERRO`.
+
+## Items do orçamento: setas ↑/↓ para mudar a ordem (2026-10-19)
+
+Pedido do Paulo: no separador **Items** de um orçamento, selecionar um ou mais items e
+subi-los ou descê-los na lista. Até aqui ficavam pela ordem em que tinham sido criados.
+
+Feito:
+
+- Duas setas **↑** e **↓** à direita dos botões **STD / SERIE**. Cada clique move os items
+  selecionados **uma posição**. Vários selecionados (Ctrl/Shift) andam juntos e mantêm a
+  ordem entre eles; quando um bate no princípio ou no fim, os outros continuam até
+  encostarem. Depois de mover, os items continuam selecionados, para se poder carregar
+  outra vez.
+- A ordem nova é a da coluna **Ordem**, do **PDF** e dos **relatórios**. Preços e totais não
+  mudam.
+- A versão fica numerada **1..N**: os buracos deixados por items removidos (havia 2 versões
+  assim na base real) desaparecem ao primeiro movimento.
+- As linhas de **suplemento** (placas não stock) são automáticas e ficam sempre no fim; não
+  se movem.
+- A base tem um índice único (versão, ordem). Trocar o 1 com o 2 diretamente chocava a meio,
+  por isso a ordem nova grava-se em dois passos (`OrcamentoItemRepository.reordenar_items`).
+  Regra pura em `app/domain/mover_selecao.py`; testes em
+  `tests/test_orcamento_items_mover.py`.
+
+Guião de teste (reiniciar o Martelo; se estiver na **BASE REAL**, no fim volte a pôr a ordem
+como estava):
+
+1. Orçamentos → selecionar o **261057** → «Abrir Orçamento» → separador **Items**. Esperado:
+   à direita de **STD / SERIE**, dois botões **↑** e **↓**; com o rato por cima, «Subir os
+   items selecionados uma posição na lista…».
+2. Clicar na linha **3 (RP_03)** → **↑**. Esperado: RP_03 passa para a posição 2 (coluna
+   Ordem = 2), RP_02 desce para 3, a linha continua selecionada e em baixo aparece «Item
+   movido.». A Soma Preço Final continua **2.650,44 €**.
+3. **↑** outra vez. Esperado: RP_03 na posição 1. **↑** mais uma vez. Esperado: nada mexe e
+   aparece «A seleção já está na primeira posição.».
+4. Clicar em RP_03, **Ctrl+clique** em RP_01 (as duas primeiras) → **↓**. Esperado: as duas
+   descem juntas e RP_02 fica em 1. Aparece «2 items movidos.».
+5. Separador **Relatórios** (ou gerar o PDF do orçamento). Esperado: os items saem pela
+   ordem nova.
+6. Sem nada selecionado (clicar numa zona vazia da tabela) → **↓**. Esperado: «Selecione os
+   items a mover (Ctrl/Shift para escolher vários).».
+7. Voltar a pôr RP_01, RP_02, RP_03 pela ordem original com as setas.

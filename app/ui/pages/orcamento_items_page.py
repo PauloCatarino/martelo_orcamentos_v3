@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from decimal import ROUND_HALF_UP, Decimal
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QItemSelectionModel, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -214,6 +214,28 @@ class OrcamentoItemsPage(QWidget):
             lambda: self._on_producao_default_clicked(TIPO_PRODUCAO_SERIE)
         )
 
+        # Mudar a ordem dos items: os selecionados andam uma posição de cada
+        # vez, juntos. É a ordem da lista, do PDF e dos relatórios.
+        self.subir_button = QPushButton("↑")
+        self.subir_button.setToolTip(
+            "Subir os items selecionados uma posição na lista (Ctrl/Shift "
+            "para escolher vários). Muda a ordem no PDF e nos relatórios; "
+            "preços e totais ficam iguais."
+        )
+        self.subir_button.clicked.connect(lambda: self.mover_items_selecionados(para_cima=True))
+        self.descer_button = QPushButton("↓")
+        self.descer_button.setToolTip(
+            "Descer os items selecionados uma posição na lista (Ctrl/Shift "
+            "para escolher vários). Muda a ordem no PDF e nos relatórios; "
+            "preços e totais ficam iguais."
+        )
+        self.descer_button.clicked.connect(
+            lambda: self.mover_items_selecionados(para_cima=False)
+        )
+        for botao in (self.subir_button, self.descer_button):
+            botao.setFixedWidth(34)
+            botao.setStyleSheet("QPushButton { font-weight: bold; font-size: 11pt; }")
+
         # Cria o painel de margens primeiro para os botões "Atualizar Custos",
         # "Perfil" e "Repor Padrão" existirem e poderem ir para esta linha.
         margens_layout = self._criar_painel_margens()
@@ -228,6 +250,9 @@ class OrcamentoItemsPage(QWidget):
         actions_layout.addWidget(self.producao_title_label)
         actions_layout.addWidget(self.producao_std_button)
         actions_layout.addWidget(self.producao_serie_button)
+        actions_layout.addSpacing(16)
+        actions_layout.addWidget(self.subir_button)
+        actions_layout.addWidget(self.descer_button)
         actions_layout.addStretch()
         # Os icones vem do TEXTO de cada botao (ver app/ui/icones.py): a
         # mesma acao fica com a mesma cara em todas as paginas.
@@ -1271,6 +1296,77 @@ class OrcamentoItemsPage(QWidget):
     def _recalcular_custeio_do_item(self, session, item_id: int) -> None:
         """Run the costing Atualizar pipeline for one item (same as the page)."""
         OrcamentoItemCusteioLinhaService(session).recalcular_item_completo(item_id)
+
+    def mover_items_selecionados(self, *, para_cima: bool) -> None:
+        """Subir/descer uma posição os items selecionados (setas ↑/↓)."""
+        selecionados = self._ids_selecionados()
+        # Os suplementos são linhas automáticas (id negativo): ficam no fim.
+        ids = [item_id for item_id in selecionados if item_id > 0]
+        if not ids:
+            self.status_label.setText(
+                "Os suplementos ficam sempre no fim da lista."
+                if selecionados
+                else "Selecione os items a mover (Ctrl/Shift para escolher vários)."
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                movido = OrcamentoItemService(session).mover_items(
+                    self.orcamento_versao_id, ids, para_cima=para_cima
+                )
+        except SQLAlchemyError as erro:
+            diario_bordo.registar_erro(f"Mover items do orçamento: {erro}")
+            self.status_label.setText("Não foi possível mudar a ordem dos items.")
+            return
+
+        if not movido:
+            extremo = "primeira" if para_cima else "última"
+            self.status_label.setText(f"A seleção já está na {extremo} posição.")
+            return
+
+        self.carregar_items()
+        self._selecionar_items(ids)
+        self.status_label.setText(
+            "Item movido." if len(ids) == 1 else f"{len(ids)} items movidos."
+        )
+
+    def _ids_selecionados(self) -> list[int]:
+        """Ids dos items selecionados, pela ordem da lista.
+
+        Só o que está mesmo selecionado: depois de limpar a seleção, a linha
+        «atual» do Qt fica para trás e não se pode mexer sozinha.
+        """
+        modelo_selecao = self.table.selectionModel()
+        linhas = (
+            sorted(indice.row() for indice in modelo_selecao.selectedRows())
+            if modelo_selecao is not None
+            else []
+        )
+        return [
+            self._items_by_row[row].id for row in linhas if row in self._items_by_row
+        ]
+
+    def _selecionar_items(self, item_ids: list[int]) -> None:
+        """Voltar a selecionar os items movidos depois de a lista recarregar."""
+        modelo_selecao = self.table.selectionModel()
+        if modelo_selecao is None:
+            return
+        alvos = set(item_ids)
+        modelo_selecao.clearSelection()
+        flags = (
+            QItemSelectionModel.SelectionFlag.Select
+            | QItemSelectionModel.SelectionFlag.Rows
+        )
+        primeira = None
+        for row, item in sorted(self._items_by_row.items()):
+            if item.id in alvos:
+                modelo_selecao.select(self.table.model().index(row, 0), flags)
+                if primeira is None:
+                    primeira = row
+        if primeira is not None:
+            # Com muitos items, a seleção não pode fugir do ecrã.
+            self.table.scrollTo(self.table.model().index(primeira, 0))
 
     def _get_selected_item_id(self) -> int | None:
         """Return the selected item id from the table."""

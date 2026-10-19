@@ -82,6 +82,32 @@ class OrcamentoItemRepository:
 
         return max(existing_orders) + 1
 
+    def reordenar_items(self, orcamento_versao_id: int, ordered_ids: list[int]) -> None:
+        """Pôr ``ordem`` = 1..N nos items da versão, pela ordem dada.
+
+        ``ordered_ids`` tem de trazer todos os items da versão. A base tem um
+        índice único (versão, ordem): trocar o 1 com o 2 diretamente chocava a
+        meio. Por isso passa primeiro tudo para números negativos e só depois
+        para os definitivos.
+        """
+        items = {
+            item.id: item
+            for item in self.session.execute(
+                select(OrcamentoItem).where(
+                    OrcamentoItem.orcamento_versao_id == orcamento_versao_id
+                )
+            ).scalars()
+        }
+        if set(ordered_ids) != set(items):
+            raise ValueError("A nova ordem tem de trazer todos os items da versão.")
+
+        for posicao, item_id in enumerate(ordered_ids, start=1):
+            items[item_id].ordem = -posicao
+        self.session.flush()
+        for posicao, item_id in enumerate(ordered_ids, start=1):
+            items[item_id].ordem = posicao
+        self.session.flush()
+
     def get_item_by_id(self, item_id: int) -> OrcamentoItemResumo | None:
         """Get one item by id."""
         item = self.session.get(OrcamentoItem, item_id)

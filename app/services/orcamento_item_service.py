@@ -36,6 +36,7 @@ from app.domain.custeio_simplificado import (
     normalizar_modalidade_custeio,
 )
 from app.domain.margens_padrao_types import normalizar_perfil_margens
+from app.domain.mover_selecao import mover_selecao
 from app.repositories.orcamento_item_custeio_linha_repository import (
     OrcamentoItemCusteioLinhaRepository,
 )
@@ -314,6 +315,29 @@ class OrcamentoItemService:
             self.session.commit()
 
         return deleted
+
+    def mover_items(
+        self, orcamento_versao_id: int, item_ids: list[int], *, para_cima: bool
+    ) -> bool:
+        """Subir/descer uma posição os items selecionados. True se algo mexeu.
+
+        Os selecionados andam juntos e param no princípio ou no fim da lista
+        (regra em :func:`app.domain.mover_selecao.mover_selecao`). A versão
+        fica numerada 1..N, o que também tapa os buracos deixados por items
+        removidos. Os suplementos (linhas automáticas, id negativo) não
+        entram: ficam sempre no fim. Preços e totais não mudam, só a ordem
+        com que os items aparecem na lista, no PDF e nos relatórios.
+        """
+        ids = [
+            item.id for item in self.repository.list_items_by_versao(orcamento_versao_id)
+        ]
+        nova_ordem = mover_selecao(ids, item_ids, para_cima=para_cima)
+        if nova_ordem is None:
+            return False
+
+        self.repository.reordenar_items(orcamento_versao_id, nova_ordem)
+        self.session.commit()
+        return True
 
     def recalcular_total_versao(self, orcamento_versao_id: int) -> Decimal:
         """Recalculate the version total, including global material supplements."""
