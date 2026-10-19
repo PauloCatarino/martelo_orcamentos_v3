@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from app.domain.export_paths import (
     escolher_nome_pasta,
     encontrar_pasta_orcamento,
     nome_pasta_orcamento,
+    numero_no_nome_da_pasta,
+    numero_subpasta_versao,
+    proxima_versao_livre,
     renomear_pasta_orcamento,
+    separar_pasta_versao,
     simplificar_cliente,
     subpasta_versao,
+    versoes_nas_subpastas,
 )
 
 
@@ -90,3 +97,43 @@ def test_renomear_pasta_orcamento_destino_existente(tmp_path) -> None:
 
     with pytest.raises(FileExistsError):
         renomear_pasta_orcamento(ano, "260005", "NOME NOVO", "Nome Novo")
+
+
+# --- Orçamentos antigos: versões na pasta-mãe (19-10-2026) -----------------
+
+
+def test_numero_subpasta_versao_so_aceita_dois_digitos():
+    assert numero_subpasta_versao("06") == 6
+    assert numero_subpasta_versao("01") == 1
+    assert numero_subpasta_versao("00") is None
+    assert numero_subpasta_versao("PDF") is None
+    assert numero_subpasta_versao("2026") is None
+    assert numero_subpasta_versao("6") is None
+
+
+def test_versoes_nas_subpastas_ignora_o_que_nao_e_versao():
+    nomes = ["03", "01", "PDF", "02", "Copias", "05", "04"]
+
+    assert versoes_nas_subpastas(nomes) == [1, 2, 3, 4, 5]
+
+
+def test_proxima_versao_livre_e_a_seguir_a_mais_alta():
+    assert proxima_versao_livre(["01", "02", "03", "04", "05"]) == 6
+    # Um buraco não é aproveitado: a seguinte é sempre depois da última.
+    assert proxima_versao_livre(["01", "03"]) == 4
+    assert proxima_versao_livre(["PDF"]) == 1
+    assert proxima_versao_livre([]) == 1
+
+
+def test_separar_pasta_versao_sobe_da_pasta_da_versao_para_a_mae():
+    mae = Path("//server_le/Dep._Orcamentos/2026/260186_INNERE")
+
+    assert separar_pasta_versao(mae / "05") == (mae, 5)
+    assert separar_pasta_versao(mae) == (mae, None)
+
+
+def test_numero_no_nome_da_pasta():
+    assert numero_no_nome_da_pasta("260446_JF_VIVA") == "260446"
+    assert numero_no_nome_da_pasta("1049_COSTA & ZEFERINO") == "1049"
+    assert numero_no_nome_da_pasta("OBRAS_DIVERSAS") is None
+    assert numero_no_nome_da_pasta("") is None

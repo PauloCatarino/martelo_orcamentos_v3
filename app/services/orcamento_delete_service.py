@@ -78,11 +78,9 @@ def eliminar_versao_completo(
         raise ValueError(PRODUCAO_LIGADA_MSG)
 
     if apagar_pasta:
-        export = OrcamentoExportService(session)
-        if remove_orcamento:
-            caminho = export.pasta_orcamento_atual(orcamento_versao_id)
-        else:
-            caminho = export.resolver_pasta_versao(orcamento_versao_id, criar=False)
+        caminho = OrcamentoExportService(session).pasta_a_eliminar(
+            orcamento_versao_id, remove_orcamento=remove_orcamento
+        )
         if caminho is not None and caminho.exists():
             _remover_pasta_orcamento_segura(
                 session,

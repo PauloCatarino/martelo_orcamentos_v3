@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
+
 from app.domain.orcamento_estados import ESTADO_INICIAL
 from app.domain.precos import MargensOrcamento
 from app.repositories.orcamento_repository import (
@@ -612,3 +614,43 @@ def test_duplicar_versao_com_dados_aplica_edicoes_a_nova_versao(monkeypatch) -> 
     evento = session.added[-1]
     assert evento.tipo == "versao"
     assert evento.descricao == "Vers\u00e3o 260001_02 criada (duplicada)"
+
+
+def test_criar_orcamento_antigo_com_versao_usa_pasta_mae(monkeypatch) -> None:
+    """Orçamento do V2 com 01 a 05 no servidor entra no V3 como 06."""
+    service, _session = _make_service(monkeypatch)
+
+    service.criar_orcamento_simples(
+        _criar_data(
+            num_orcamento="260186",
+            pasta_manual="//server_le/Dep._Orcamentos/2026/260186_INNERE",
+            numero_versao=6,
+        )
+    )
+
+    assert _FakeRepository.created_payload["numero_versao"] == 6
+    assert _FakeRepository.created_payload["pasta_manual_por_versao"] is True
+
+
+def test_criar_orcamento_normal_continua_na_versao_01(monkeypatch) -> None:
+    service, _session = _make_service(monkeypatch)
+
+    service.criar_orcamento_simples(_criar_data())
+
+    assert _FakeRepository.created_payload["numero_versao"] == 1
+    assert _FakeRepository.created_payload["pasta_manual_por_versao"] is False
+
+
+def test_criar_orcamento_recusa_versao_fora_de_01_a_99(monkeypatch) -> None:
+    service, session = _make_service(monkeypatch)
+
+    with pytest.raises(ValueError, match="01 e 99"):
+        service.criar_orcamento_simples(
+            _criar_data(
+                num_orcamento="260186",
+                pasta_manual="//server_le/2026/260186_INNERE",
+                numero_versao=100,
+            )
+        )
+
+    assert session.committed is False

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -42,6 +42,12 @@ class Orcamento(Base):
     # Pasta escolhida manualmente (orçamentos antigos); quando preenchida, as
     # exportações gravam diretamente aqui em vez da convenção base/ano/num.
     pasta_manual: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Registos antigos feitos a partir de 19-10-2026: ``pasta_manual`` é a
+    # pasta-mãe e cada versão grava na sua subpasta (``…/260186_INNERE/06``).
+    # Os registados antes ficam a 0 e gravam diretamente na pasta escolhida.
+    pasta_manual_por_versao: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
     # Nº da proposta no PHC (BO.OBRANO). Quando preenchido, este orçamento já
     # está registado no PHC e não deve ser registado outra vez. O ano é o do
     # orçamento — no PHC o OBRANO reinicia a cada ano.

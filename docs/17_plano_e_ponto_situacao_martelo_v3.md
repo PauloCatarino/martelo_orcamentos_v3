@@ -2179,3 +2179,77 @@ Guião de teste (reiniciar o Martelo; nada disto grava sem carregar em Guardar):
 10. Abrir um orçamento → separador **Items** → «Novo Item» → «Descrições pré-definidas…».
     Esperado: título «Descrições pré-definidas → Descrição»; ao inserir, a descrição do item
     continua como antes (com a tabulação e o «-» à frente).
+
+## Orçamentos antigos: entrar no V3 com a versão seguinte (2026-10-19)
+
+Caso real: o **260186 (INNERE)** já tem as versões **01 a 05** no servidor, feitas no
+Martelo V2. Registado no V3 como «Orçamento antigo», entrava sempre como **01**, e os
+ficheiros gravavam soltos na pasta escolhida, ao lado das pastas do V2. Na base real havia
+6 antigos registados, cada um à sua maneira: uns com a pasta-mãe, outros com a pasta de uma
+versão (`260427_PACE/03`, `260851_BRUNO_OLIVEIRA/02`) para contornar o problema.
+
+Decisões do Paulo (19-10-2026):
+
+- A versão do V2 que já tem ficheiros **não se reaproveita**. Cria-se a versão seguinte e
+  copiam-se à mão os ficheiros que interessarem.
+- **Os 6 antigos já registados ficam como estão**, incluindo o 260466 ligado à pasta
+  `260446_JF_VIVA` (gralha antiga, fica assim).
+
+Feito:
+
+- **Novo Orçamento → «Orçamento antigo»**: linha nova **«Versão»** por baixo da pasta. Ao
+  escolher a pasta, o Martelo lê as subpastas `01`…`05` e propõe a seguinte (**06**). Ao lado
+  mostra onde vai gravar («grava em 260186_INNERE/06 · no servidor: 01, 02, 03, 04, 05»).
+- Quem escolher a pasta **de uma versão** (`…/260186_INNERE/05`) fica com a **pasta-mãe**; o
+  Martelo avisa por baixo do caminho.
+- O **N.º orçamento** preenche-se sozinho a partir do nome da pasta, se estiver vazio.
+- **Guardar** recusa uma versão cuja pasta já existe **com ficheiros** e diz qual é a
+  seguinte. Se o número escrito não bater com o da pasta (o caso 260466 / 260446), pergunta
+  antes de gravar (por omissão «Não»).
+- Depois de guardar pergunta «Criar a pasta do orçamento agora?», como nos orçamentos
+  normais. A pasta é a da versão, dentro da pasta-mãe.
+- **Ficheiros:** PDF, Excel e relatórios destes registos novos gravam em
+  `<pasta-mãe>/<versão>` (`260186_INNERE/06`). «Duplicar para versão 07…» vai para a `/07`.
+- **Eliminar:** num antigo com pasta-mãe, «Eliminar Orçamento» com a pasta apaga **só a
+  subpasta da versão do V3**, nunca a pasta-mãe com as versões do V2. Antes, nos que
+  apontavam para a pasta-mãe, era a pasta-mãe inteira.
+- Migração `20261019_119`: coluna `orcamentos.pasta_manual_por_versao` (0 nos registos
+  antigos, que continuam a gravar diretamente na pasta escolhida). Testes em
+  `tests/test_orcamento_antigo_versao.py`, `tests/test_novo_orcamento_antigo_versao.py`,
+  `tests/test_export_paths.py` e `tests/test_orcamento_service.py`.
+
+Guião de teste (reiniciar o Martelo; ver na etiqueta do topo se está na **BASE REAL** ou na
+dev):
+
+1. Orçamentos → **«Novo Orçamento»** → «Escolher cliente…» → INNERE RUI VIEGAS → marcar
+   **«Orçamento antigo (registo manual)»**. Esperado: aparecem Ano, N.º orçamento, Pasta do
+   orçamento e **Versão** («01» e «— escolha primeiro a pasta do orçamento —»).
+2. Ano = **2026**, deixar o N.º orçamento **vazio** → «Escolher pasta…» → `Rede › server_le ›
+   _Lanca_Encanto › LancaEncanto › Dep._Orcamentos › 2026 › 260186_INNERE` → «Selecionar
+   pasta». Esperado: N.º orçamento = **260186**; Versão = **06**; ao lado «grava em
+   260186_INNERE/06 · no servidor: 01, 02, 03, 04, 05».
+3. Mudar a Versão para **05**. Esperado: texto ao lado a castanho «… — atenção: a pasta 05 já
+   existe no servidor». Carregar em **Guardar**. Esperado: não grava; mensagem a vermelho «A
+   versão 05 já existe no servidor e tem ficheiros (do Martelo V2). Escolha uma versão nova —
+   a seguinte é a 06 — …».
+4. «Escolher pasta…» outra vez, entrar em `260186_INNERE` e escolher a pasta **05** →
+   «Selecionar pasta». Esperado: o caminho volta a ser o de `260186_INNERE` (sem o «/05») e por
+   baixo «(escolheu a versão 05: ficou a pasta-mãe)»; Versão = **06**.
+5. Mudar o N.º orçamento para **260187** → Guardar. Esperado: pergunta «O número do orçamento
+   é 260187, mas a pasta escolhida é a do 260186 … Gravar assim mesmo?» → **Não**. Voltar a
+   pôr **260186**.
+6. Versão **06** → **Guardar**. Esperado: pergunta «Orçamento 260186_06 criado. Criar a pasta
+   do orçamento agora?» → **Sim** → «Pasta criada: …\260186_INNERE\06». Na lista aparece o
+   **260186**, versão **06**.
+7. Com o 260186 / 06 selecionado → **«Pasta do Orçamento»**. Esperado: abre
+   `260186_INNERE\06` (vazia); as pastas 01 a 05 continuam lá ao lado, intactas.
+8. Abrir o orçamento, pôr um item e gerar o PDF do orçamento. Esperado: o PDF fica dentro de
+   `260186_INNERE\06`, não solto na `260186_INNERE`.
+9. (Opcional) «Editar Orçamento» → o botão diz **«Duplicar para versão 07…»**. Se duplicar,
+   a pasta da 07 é `260186_INNERE\07`.
+10. (Opcional, para ver que a pasta-mãe está a salvo) Selecionar a versão 07 criada no passo
+    9 → «Eliminar Orçamento» → com a pasta. Esperado: a confirmação mostra só
+    `…\260186_INNERE\07`; depois de eliminar, `260186_INNERE` e as pastas 01 a 06 continuam
+    lá.
+11. Um orçamento **normal** (sem «Orçamento antigo») continua igual: sem linha «Versão» e
+    entra como 01.

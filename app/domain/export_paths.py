@@ -40,6 +40,50 @@ def subpasta_versao(numero_versao: int) -> str:
     return f"{int(numero_versao):02d}"
 
 
+def numero_subpasta_versao(nome: str) -> int | None:
+    """``"06"`` -> 6; None quando o nome não é de uma subpasta de versão."""
+    texto = (nome or "").strip()
+    if len(texto) == 2 and texto.isdigit() and int(texto) > 0:
+        return int(texto)
+    return None
+
+
+def versoes_nas_subpastas(nomes: list[str]) -> list[int]:
+    """Números das subpastas de versão (``01``…``99``) da pasta-mãe, por ordem."""
+    return sorted(
+        {
+            numero
+            for numero in (numero_subpasta_versao(nome) for nome in nomes)
+            if numero is not None
+        }
+    )
+
+
+def proxima_versao_livre(nomes: list[str]) -> int:
+    """Versão a seguir à mais alta que já tem pasta (01…05 -> 6; nenhuma -> 1)."""
+    versoes = versoes_nas_subpastas(nomes)
+    return versoes[-1] + 1 if versoes else 1
+
+
+def separar_pasta_versao(pasta: Path) -> tuple[Path, int | None]:
+    """(pasta-mãe, versão) de uma pasta escolhida para um orçamento antigo.
+
+    Quem escolhe ``…/260186_INNERE/05`` está a apontar para a pasta de uma
+    versão: a pasta do orçamento é a de cima. Qualquer outra pasta já é a
+    pasta-mãe e devolve-se tal e qual, sem versão.
+    """
+    numero = numero_subpasta_versao(pasta.name)
+    if numero is None:
+        return pasta, None
+    return pasta.parent, numero
+
+
+def numero_no_nome_da_pasta(nome_pasta: str) -> str | None:
+    """Número do orçamento no início do nome: ``260446_JF_VIVA`` -> ``"260446"``."""
+    prefixo = (nome_pasta or "").split("_", 1)[0].strip()
+    return prefixo if prefixo.isdigit() else None
+
+
 def escolher_nome_pasta(
     existentes: list[str],
     num_orcamento: str,

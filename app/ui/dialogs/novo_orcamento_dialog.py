@@ -29,6 +29,13 @@ from app.core import diario_bordo
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.domain.clientes_simplex import erro_simplex_orcamento
+from app.domain.export_paths import (
+    numero_no_nome_da_pasta,
+    proxima_versao_livre,
+    separar_pasta_versao,
+    subpasta_versao,
+    versoes_nas_subpastas,
+)
 from app.domain.margens_padrao_types import (
     AMBITO_CLIENTE,
     AMBITO_CLIENTE_FINAL,
@@ -63,9 +70,19 @@ class NovoOrcamentoDialogData:
     ano: int | None = None
     num_orcamento: str | None = None
     pasta_manual: str | None = None
+    # Versão com que o orçamento antigo entra no V3 (o V2 pode já ter as 01 a
+    # 05 no servidor); grava na subpasta dela dentro de ``pasta_manual``.
+    numero_versao: int | None = None
     # Proposta criada no PHC antes de gravar o orçamento: o PHC atribui o
     # número e o V3 mapeia-o (num_orcamento = <ano2><nº4>).
     proposta_phc: str | None = None
+
+
+class _SpinVersao(SpinSemScroll):
+    """Versão com dois dígitos, como as pastas do servidor (6 -> «06»)."""
+
+    def textFromValue(self, value: int) -> str:  # noqa: N802 - API do Qt
+        return subpasta_versao(value)
 
 
 class NovoOrcamentoDialog(QDialog):
@@ -129,15 +146,19 @@ class NovoOrcamentoDialog(QDialog):
         )
 
         self._pasta_manual: str | None = None
+        # Versões que já têm subpasta na pasta escolhida (01…05 do V2).
+        self._versoes_no_servidor: list[int] = []
         self.pasta_label = QLabel("— nenhuma pasta escolhida —")
         self.pasta_label.setWordWrap(True)
         self.pasta_label.setToolTip(
-            "Pasta do servidor onde os ficheiros deste orçamento serão "
-            "gravados (PDF, Excel, relatórios)."
+            "Pasta-mãe do orçamento no servidor (ex.: …/2026/260186_INNERE). "
+            "Cada versão grava na sua subpasta (01, 02…)."
         )
         self.escolher_pasta_button = QPushButton("Escolher pasta…")
         self.escolher_pasta_button.setToolTip(
-            "Selecionar a pasta já existente do orçamento antigo no servidor."
+            "Selecionar a pasta do orçamento antigo no servidor — a pasta-mãe, "
+            "a que tem lá dentro as versões 01, 02… Se escolher a pasta de uma "
+            "versão, o Martelo sobe sozinho para a pasta-mãe."
         )
         self.escolher_pasta_button.clicked.connect(self._escolher_pasta)
         pasta_widget = QWidget()
@@ -146,6 +167,30 @@ class NovoOrcamentoDialog(QDialog):
         pasta_layout.addWidget(self.pasta_label, stretch=1)
         pasta_layout.addWidget(self.escolher_pasta_button)
         self._pasta_widget = pasta_widget
+
+        self.versao_input = _SpinVersao()
+        self.versao_input.setRange(1, 99)
+        self.versao_input.setValue(1)
+        self.versao_input.setToolTip(
+            "Versão com que este orçamento entra no Martelo V3. Ao escolher a "
+            "pasta, o Martelo propõe a seguir à última que já lá existe (com "
+            "01 a 05 no servidor, propõe 06). Os ficheiros gravam na subpasta "
+            "desta versão."
+        )
+        self.versao_input.valueChanged.connect(self._atualizar_info_versao)
+        self.versao_info_label = QLabel("")
+        self.versao_info_label.setWordWrap(True)
+        self.versao_info_label.setToolTip(
+            "Onde vão ficar os ficheiros desta versão e que versões já existem "
+            "no servidor."
+        )
+        versao_widget = QWidget()
+        versao_layout = QHBoxLayout(versao_widget)
+        versao_layout.setContentsMargins(0, 0, 0, 0)
+        versao_layout.addWidget(self.versao_input)
+        versao_layout.addWidget(self.versao_info_label, stretch=1)
+        self._versao_widget = versao_widget
+        self._atualizar_info_versao()
 
         self.obra_input = QLineEdit()
         self.descricao_input = QTextEdit()
@@ -244,6 +289,7 @@ class NovoOrcamentoDialog(QDialog):
         form_layout.addRow("Ano", self.ano_input)
         form_layout.addRow("N.º orçamento", self.num_orcamento_input)
         form_layout.addRow("Pasta do orçamento", pasta_widget)
+        form_layout.addRow("Versão", versao_widget)
         form_layout.addRow("Obra", self.obra_input)
         form_layout.addRow("Descrição", self.descricao_input)
         form_layout.addRow("Localização", self.localizacao_input)
@@ -310,6 +356,7 @@ class NovoOrcamentoDialog(QDialog):
                 else num_do_phc
             ),
             pasta_manual=self._pasta_manual if manual else None,
+            numero_versao=self.versao_input.value() if manual else None,
             proposta_phc=self._proposta_phc if not manual else None,
         )
 
@@ -527,6 +574,7 @@ class NovoOrcamentoDialog(QDialog):
         self._form_layout.setRowVisible(self.ano_input, checked)
         self._form_layout.setRowVisible(self.num_orcamento_input, checked)
         self._form_layout.setRowVisible(self._pasta_widget, checked)
+        self._form_layout.setRowVisible(self._versao_widget, checked)
         # Num orçamento antigo o número é escrito à mão: não há PHC primeiro.
         self._form_layout.setRowVisible(self._phc_widget, not checked)
         self._form_layout.setRowVisible(self.designacao_phc_input, not checked)
@@ -570,8 +618,111 @@ class NovoOrcamentoDialog(QDialog):
         if not pasta:
             return
 
-        self._pasta_manual = pasta
-        self.pasta_label.setText(pasta)
+        self._usar_pasta(pasta)
+
+    def _usar_pasta(self, pasta: str) -> None:
+        """Fixar a pasta-mãe do orçamento antigo e propor a versão seguinte.
+
+        No V2 cada versão tem a sua subpasta (``01``…``05``): o orçamento
+        entra no V3 com a versão a seguir à última que lá está. Quem escolher
+        a pasta de uma versão fica com a pasta-mãe, por cima dela.
+        """
+        mae, versao_escolhida = separar_pasta_versao(Path(pasta))
+        self._pasta_manual = mae.as_posix() if versao_escolhida else pasta
+
+        try:
+            nomes = [p.name for p in Path(self._pasta_manual).iterdir() if p.is_dir()]
+        except OSError:
+            nomes = []
+        self._versoes_no_servidor = versoes_nas_subpastas(nomes)
+
+        texto = self._pasta_manual
+        if versao_escolhida:
+            texto += (
+                f"\n(escolheu a versão {subpasta_versao(versao_escolhida)}: "
+                "ficou a pasta-mãe)"
+            )
+        self.pasta_label.setText(texto)
+
+        # O nº do orçamento está no início do nome da pasta (260186_INNERE).
+        numero = numero_no_nome_da_pasta(Path(self._pasta_manual).name)
+        if numero and not self.num_orcamento_input.text().strip():
+            self.num_orcamento_input.setText(numero)
+
+        self.versao_input.setValue(min(proxima_versao_livre(nomes), 99))
+        self._atualizar_info_versao()
+
+    def _atualizar_info_versao(self, *_args) -> None:
+        """Mostrar onde grava a versão e que versões já existem no servidor."""
+        if not self._pasta_manual:
+            self.versao_info_label.setStyleSheet("")
+            self.versao_info_label.setText("— escolha primeiro a pasta do orçamento —")
+            return
+
+        versao = subpasta_versao(self.versao_input.value())
+        destino = f"grava em {Path(self._pasta_manual).name}/{versao}"
+        if self.versao_input.value() in self._versoes_no_servidor:
+            self.versao_info_label.setStyleSheet(f"color: {tema.TEXTO_AVISO};")
+            self.versao_info_label.setText(
+                f"{destino} — atenção: a pasta {versao} já existe no servidor"
+            )
+            return
+
+        existentes = ", ".join(subpasta_versao(v) for v in self._versoes_no_servidor)
+        self.versao_info_label.setStyleSheet("")
+        self.versao_info_label.setText(
+            f"{destino} · no servidor: {existentes}"
+            if existentes
+            else f"{destino} · ainda sem versões no servidor"
+        )
+
+    def _erro_versao_ocupada(self, data: NovoOrcamentoDialogData) -> str | None:
+        """Mensagem quando a pasta da versão já existe com ficheiros (do V2).
+
+        Decisão do Paulo (19-10-2026): não se grava por cima de uma versão do
+        V2. Cria-se a versão seguinte e copiam-se à mão os ficheiros que
+        interessarem.
+        """
+        versao = data.numero_versao or 1
+        pasta = Path(data.pasta_manual or "") / subpasta_versao(versao)
+        try:
+            ocupada = pasta.is_dir() and any(pasta.iterdir())
+        except OSError:
+            ocupada = False
+        if not ocupada:
+            return None
+
+        seguinte = max([*self._versoes_no_servidor, versao]) + 1
+        return (
+            f"A versão {subpasta_versao(versao)} já existe no servidor e tem "
+            "ficheiros (do Martelo V2). Escolha uma versão nova — a seguinte é "
+            f"a {subpasta_versao(seguinte)} — e, se precisar, copie à mão para "
+            "a pasta dela os ficheiros que interessam."
+        )
+
+    def _confirmar_numero_da_pasta(self, data: NovoOrcamentoDialogData) -> bool:
+        """Avisar quando o número escrito não é o do nome da pasta.
+
+        Já aconteceu: o orçamento 260466 ficou ligado à pasta 260446_JF_VIVA, e
+        o «Abrir pasta» leva desde então a um orçamento que não é o dele.
+        """
+        nome_pasta = Path(data.pasta_manual or "").name
+        numero_pasta = numero_no_nome_da_pasta(nome_pasta)
+        if numero_pasta is None or numero_pasta == data.num_orcamento:
+            return True
+
+        resposta = QMessageBox.question(
+            self,
+            "Número diferente do da pasta",
+            (
+                f"O número do orçamento é {data.num_orcamento}, mas a pasta "
+                f"escolhida é a do {numero_pasta}:\n{nome_pasta}\n\n"
+                "Gravar assim mesmo?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return resposta == QMessageBox.StandardButton.Yes
 
     def _carregar_utilizadores(self) -> None:
         """Populate the active-users combo, preselecting the logged-in user."""
@@ -746,6 +897,13 @@ class NovoOrcamentoDialog(QDialog):
                 self.error_label.setText(
                     f"A pasta escolhida não existe:\n{data.pasta_manual}"
                 )
+                return
+            erro_versao = self._erro_versao_ocupada(data)
+            if erro_versao:
+                self.error_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
+                self.error_label.setText(erro_versao)
+                return
+            if not self._confirmar_numero_da_pasta(data):
                 return
 
         self.accept()

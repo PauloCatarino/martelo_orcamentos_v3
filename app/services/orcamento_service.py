@@ -63,6 +63,10 @@ class CriarOrcamentoSimplesData:
     # pasta de servidor já existente; None mantém a numeração sequencial.
     num_orcamento: str | None = None
     pasta_manual: str | None = None
+    # Versão com que um orçamento antigo entra no V3 (o V2 pode já ter as
+    # 01 a 05 no servidor). Indicada com ``pasta_manual``, essa pasta passa a
+    # ser a pasta-mãe e cada versão grava na sua subpasta (``…/06``).
+    numero_versao: int | None = None
     # Nº da proposta no PHC, quando o orçamento foi registado primeiro no PHC.
     proposta_phc: str | None = None
     # Initial-margins choice: 'STANDARD' / 'CLIENTE' / 'UTILIZADOR' (phase 8T.1).
@@ -189,7 +193,7 @@ class OrcamentoService:
         return self.repository.get_cliente_da_versao(orcamento_versao_id)
 
     def criar_orcamento_simples(self, data: CriarOrcamentoSimplesData) -> OrcamentoCriado:
-        """Create a simple budget with version 01."""
+        """Create a simple budget with version 01 (or the legacy one given)."""
         obra = (data.obra or "").strip()
 
         if data.cliente_id is None:
@@ -208,6 +212,9 @@ class OrcamentoService:
             num_orcamento = self.repository.get_next_num_orcamento(ano)
 
         pasta_manual = (data.pasta_manual or "").strip() or None
+        numero_versao = data.numero_versao or 1
+        if not 1 <= numero_versao <= 99:
+            raise ValueError("A versão tem de estar entre 01 e 99.")
 
         result = self.repository.create_orcamento_com_versao_01(
             ano=ano,
@@ -222,6 +229,10 @@ class OrcamentoService:
             info_1=data.info_1,
             info_2=data.info_2,
             pasta_manual=pasta_manual,
+            pasta_manual_por_versao=(
+                pasta_manual is not None and data.numero_versao is not None
+            ),
+            numero_versao=numero_versao,
             proposta_phc=(data.proposta_phc or "").strip() or None,
             margens=self._resolver_margens_iniciais(data),
             perfil_margens=normalizar_perfil_margens(data.margens_escolha),

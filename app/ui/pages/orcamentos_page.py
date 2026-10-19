@@ -601,6 +601,7 @@ class OrcamentosPage(QWidget):
                         ano=form_data.ano,
                         num_orcamento=form_data.num_orcamento,
                         pasta_manual=form_data.pasta_manual,
+                        numero_versao=form_data.numero_versao,
                         proposta_phc=form_data.proposta_phc,
                         margens_escolha=form_data.margens_escolha,
                     )
@@ -619,9 +620,9 @@ class OrcamentosPage(QWidget):
                 f"Orcamento antigo {result.codigo_versao} criado "
                 f"(pasta: {form_data.pasta_manual})."
             )
-            return
-
-        self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
+        else:
+            self.status_label.setText(f"Orcamento {result.codigo_versao} criado.")
+        # Nos antigos é a subpasta da versão dentro da pasta-mãe (…/06).
         self._perguntar_criar_pasta_novo_orcamento(result)
 
     def _perguntar_criar_pasta_novo_orcamento(self, result) -> None:
@@ -898,7 +899,8 @@ class OrcamentosPage(QWidget):
                 aviso_extra = (
                     "\n\nNota: o registo fica a apontar para uma pasta inexistente."
                 )
-            if orcamento.pasta_manual:
+            # Com pasta-mãe só se apaga a subpasta desta versão (a do V3).
+            if orcamento.pasta_manual and not orcamento.pasta_manual_por_versao:
                 aviso_extra += (
                     "\n\nATENÇÃO: esta é a pasta ANTIGA associada manualmente "
                     "a este orçamento; pode conter ficheiros históricos."
@@ -995,10 +997,9 @@ class OrcamentosPage(QWidget):
         *,
         remove_orcamento: bool,
     ):
-        export = OrcamentoExportService(session)
-        if remove_orcamento:
-            return export.pasta_orcamento_atual(orcamento.orcamento_versao_id)
-        return export.resolver_pasta_versao(orcamento.orcamento_versao_id, criar=False)
+        return OrcamentoExportService(session).pasta_a_eliminar(
+            orcamento.orcamento_versao_id, remove_orcamento=remove_orcamento
+        )
 
     def _mensagem_confirmacao_eliminacao_orcamento(
         self,

@@ -65,12 +65,18 @@ class OrcamentoExportService:
         subpasta do ano que já comece por ``f"{num}_"``. Devolve None quando a
         pasta base não está configurada ou o orçamento/cliente não existe.
 
-        Orçamentos antigos com ``pasta_manual`` gravam diretamente nessa pasta
-        (sem subpasta de versão) — os ficheiros incluem a versão no nome.
+        Orçamentos antigos com ``pasta_manual``: os registados a partir de
+        19-10-2026 (``pasta_manual_por_versao``) gravam na subpasta da versão
+        dentro dessa pasta-mãe (``…/260186_INNERE/06``); os de antes gravam
+        diretamente nela — os ficheiros incluem a versão no nome.
         """
         orcamento = self.orcamento_service.get_orcamento_by_versao_id(orcamento_versao_id)
         if orcamento is not None and orcamento.pasta_manual:
             destino = Path(orcamento.pasta_manual)
+            if orcamento.pasta_manual_por_versao:
+                destino = destino / export_paths.subpasta_versao(
+                    orcamento.numero_versao
+                )
             if criar:
                 destino.mkdir(parents=True, exist_ok=True)
             return destino
@@ -122,6 +128,25 @@ class OrcamentoExportService:
         return export_paths.encontrar_pasta_orcamento(
             ano_dir, orcamento.num_orcamento
         )
+
+    def pasta_a_eliminar(
+        self, orcamento_versao_id: int, *, remove_orcamento: bool
+    ) -> Path | None:
+        """Pasta que «Eliminar» apaga com a versão.
+
+        Normalmente é a da versão, ou a do orçamento inteiro quando se elimina
+        a última versão. Num orçamento antigo com pasta-mãe
+        (``pasta_manual_por_versao``) é sempre só a subpasta da versão: a
+        pasta-mãe guarda as versões do V2, que o V3 não pode levar consigo.
+        """
+        orcamento = self.orcamento_service.get_orcamento_by_versao_id(
+            orcamento_versao_id
+        )
+        if remove_orcamento and not (
+            orcamento is not None and orcamento.pasta_manual_por_versao
+        ):
+            return self.pasta_orcamento_atual(orcamento_versao_id)
+        return self.resolver_pasta_versao(orcamento_versao_id, criar=False)
 
     def nome_pasta_orcamento_pretendido(
         self, orcamento_versao_id: int

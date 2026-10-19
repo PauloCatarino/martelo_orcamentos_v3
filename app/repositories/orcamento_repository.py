@@ -69,6 +69,9 @@ class OrcamentoResumo:
     encomendas_phc_total: int = 0
     # Pasta escolhida manualmente (orçamentos antigos, pré-V3).
     pasta_manual: str | None = None
+    # True: ``pasta_manual`` é a pasta-mãe e cada versão grava na subpasta
+    # dela (``…/06``); False: grava diretamente na pasta escolhida.
+    pasta_manual_por_versao: bool = False
     # Soma dos segundos ativos de todos os utilizadores nesta versão.
     tempo_ativo_segundos: int = 0
 
@@ -260,17 +263,22 @@ class OrcamentoRepository:
         info_1: str | None = None,
         info_2: str | None = None,
         pasta_manual: str | None = None,
+        pasta_manual_por_versao: bool = False,
+        numero_versao: int = 1,
         proposta_phc: str | None = None,
         margens: MargensOrcamento | None = None,
         perfil_margens: str = "STANDARD",
     ) -> OrcamentoCriado:
-        """Create a simple budget with version 01.
+        """Create a simple budget with its first version (normally 01).
 
         ``margens`` are the initial margin values copied into the version;
         None keeps the column defaults (zeros).
 
         ``proposta_phc`` is the PHC proposal number when the budget was
         registered in PHC first.
+
+        ``numero_versao`` só muda nos orçamentos antigos: um orçamento do V2
+        que já tem as versões 01 a 05 no servidor entra no V3 como 06.
         """
         cliente = self.session.get(Cliente, cliente_id)
         if cliente is None:
@@ -287,6 +295,7 @@ class OrcamentoRepository:
             info_1=info_1,
             info_2=info_2,
             pasta_manual=pasta_manual,
+            pasta_manual_por_versao=pasta_manual_por_versao,
             proposta_phc=proposta_phc,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
@@ -294,10 +303,10 @@ class OrcamentoRepository:
         self.session.add(orcamento)
         self.session.flush()
 
-        codigo_versao = self._format_codigo_versao(num_orcamento, 1)
+        codigo_versao = self._format_codigo_versao(num_orcamento, numero_versao)
         versao = OrcamentoVersao(
             orcamento_id=orcamento.id,
-            numero_versao=1,
+            numero_versao=numero_versao,
             codigo_versao=codigo_versao,
             estado=ESTADO_INICIAL,
             enc_phc=enc_phc,
@@ -883,6 +892,7 @@ class OrcamentoRepository:
                 OrcamentoVersao.info_1.label("info_1"),
                 OrcamentoVersao.info_2.label("info_2"),
                 Orcamento.pasta_manual.label("pasta_manual"),
+                Orcamento.pasta_manual_por_versao.label("pasta_manual_por_versao"),
                 OrcamentoVersao.estado.label("estado"),
                 OrcamentoVersao.preco_total.label("preco_total"),
                 OrcamentoVersao.created_at.label("created_at"),
@@ -959,5 +969,6 @@ class OrcamentoRepository:
             tem_preco_manual=bool(row["tem_preco_manual"]),
             encomendas_phc_total=encomendas_total,
             pasta_manual=row["pasta_manual"],
+            pasta_manual_por_versao=bool(row["pasta_manual_por_versao"]),
             tempo_ativo_segundos=int(row["tempo_ativo_segundos"] or 0),
         )
