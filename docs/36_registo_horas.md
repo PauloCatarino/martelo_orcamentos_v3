@@ -58,6 +58,51 @@ por utilizador e os dados na base do Martelo.
 - Mês já enviado: alterar um dia pede confirmação e lembra que é preciso
   reenviar.
 
+## Teletrabalho e várias entradas e saídas (19-10-2026)
+
+Pedido do Paulo: um tipo de dia novo, **Teletrabalho** (dia útil feito parte em
+casa, parte na empresa), e **várias entradas e saídas** no mesmo dia em todos os
+tipos (até aqui, fora do dia útil só se escrevia o total de horas). Antes de mexer
+no código fez-se um mockup em HTML com 15 perguntas
+(`https://claude.ai/artifact/JJFfptuayDhdTqzd8fQfCJ`); as respostas dele:
+
+1. **Teletrabalho conta pelo relógio:** dentro do horário habitual das Definições
+   (08:00–17:00) são horas normais; antes ou depois é extra. O que faltar para as
+   8h desconta ao mês. Exemplo dele: 08–10, consulta, 13–17 e 20–23 → **«6 + 3»** e
+   2h em falta (no total do mês dá o mesmo que «8 + 1», mas a contabilidade vê 3h
+   extra e 2h de desconto, cada uma no seu sítio).
+2. O tempo fora dentro do horário **não desconta se se escrever em «Ausência
+   justificada»** (campo novo, à mão, **só no Teletrabalho**): «pode ter começado a
+   trabalhar em casa e depois foi concluir o trabalho na empresa». No exemplo, 2h →
+   «8 + 3». No Dia útil continua a descontar.
+3. As extra do teletrabalho vão para «Horas extra em dias úteis».
+4. **Não** dá subsídio de alimentação.
+5. Cada pessoa escolhe nas Definições o **tipo de dia habitual** (Dia útil ou
+   Teletrabalho) com que abrem os dias novos de segunda a sexta.
+6. Não se marca Casa/Empresa em cada linha.
+7. O **Dia útil também tem linhas** com o «+»: o 2.º período passa a ser a linha 2.
+8. **Almoço automático:** se um intervalo entre linhas apanha pelo menos meia hora
+   entre as 12h e as 15h, «Descontar almoço» desliga-se sozinho e a janela diz
+   porquê. Se a pessoa o voltar a ligar, avisa que está a descontar duas vezes.
+9. Fim de semana, feriado e férias: caixa «Descontar almoço», desligada por defeito.
+10. Fim de semana, feriado e férias continuam a poder ter **só o total de horas**
+    (caixa «Só o total de horas»).
+11. As linhas ficam **pela ordem do dia** sozinhas; linhas que se sobrepõem dão erro
+    vermelho e não se grava.
+12. Coluna «Horário» com **todas as linhas**: «8h – 10h · 13h – 17h · 20h – 23h».
+13. **PDF: uma coluna «Horário»** em vez das duas Entrada/Saída.
+14. Os **dias antigos** ficam como estão: os de fim de semana/feriado/férias abrem
+    com «Só o total de horas» marcado; os dias úteis com 2.º período abrem com duas
+    linhas. As contas gravadas nunca mudam.
+
+Na base: três colunas novas em `registo_horas_dias` (migração `20261019_120`, só
+acrescenta colunas): `periodos` (JSON com todas as linhas), `ausencia_min` e
+`falta_min` (o que faltou no teletrabalho; `extra_min` fica com o saldo do dia, como
+sempre). As duas primeiras linhas continuam também em `entrada_min`…`saida2_min`,
+que é o que as versões antigas do Martelo leem. **Atenção:** uma versão antiga do
+Martelo que abra a folha de alguém com um dia de Teletrabalho dá erro (não conhece o
+tipo) — instalar a versão nova nos PCs antes de usar o Teletrabalho.
+
 ## Onde está
 
 | O quê | Ficheiro |
@@ -69,6 +114,7 @@ por utilizador e os dados na base do Martelo.
 | Folha em PDF | `app/services/registo_horas_pdf.py` |
 | Página | `app/ui/pages/registo_horas_page.py` |
 | Diálogos (dia, definições, envio) | `app/ui/dialogs/registo_horas_*.py` |
+| Campo de hora que pode ficar vazio («--:--») | `app/ui/widgets/campo_hora.py` |
 | Avisos (lembrete diário, envio do dia 2) | `app/ui/helpers/registo_horas_avisos.py` |
 | Gerar folha + enviar | `app/ui/helpers/registo_horas_acoes.py` |
 

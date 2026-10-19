@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     SmallInteger,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -40,14 +41,28 @@ class RegistoHorasDia(Base):
         BigInteger, ForeignKey("users.id"), nullable=False, index=True
     )
     data: Mapped[date] = mapped_column(Date, nullable=False)
-    #: util | fim_semana | feriado | ferias | folga (ver app.domain.registo_horas).
+    #: util | teletrabalho | fim_semana | feriado | ferias | folga
+    #: (ver app.domain.registo_horas).
     tipo: Mapped[str] = mapped_column(String(16), nullable=False)
     #: Minutos desde a meia-noite; a saída pode passar de 1440 (dia seguinte).
+    #: São a 1.ª e a 2.ª linha Entrada/Saída (as versões antigas do Martelo só
+    #: leem estas); todas as linhas estão em ``periodos``.
     entrada_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     saida_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
-    #: 2.º período do dia útil (ex.: em casa, à noite).
     entrada2_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     saida2_min: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    #: Todas as linhas Entrada/Saída do dia, em JSON: ``[[480, 600], [780, 1020]]``.
+    #: Vazio nos dias que só têm o total de horas e nos gravados antes de 19-10-2026.
+    periodos: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Teletrabalho: horas fora, dentro do horário, que não descontam.
+    ausencia_min: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    #: Teletrabalho: o que faltou para as horas normais (já descontado em
+    #: ``extra_min``, que fica com o saldo do dia).
+    falta_min: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
     desconto_almoco: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )

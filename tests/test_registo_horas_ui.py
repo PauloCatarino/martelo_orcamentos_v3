@@ -6,7 +6,6 @@ import inspect
 from datetime import date, datetime
 
 import pytest
-from PySide6.QtCore import QTime
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 from sqlalchemy import BigInteger, create_engine
 from sqlalchemy.ext.compiler import compiles
@@ -72,8 +71,9 @@ class _Folha:
     def guardar(self, dia, dados, obs):
         self.gravados.append((dia, dados, obs))
         calc = r.calcular_dia(dados)
-        linha = r.LinhaDia(data=dia, tipo=dados.tipo, entrada=dados.entrada, saida=calc.saida,
-                           trabalhado=calc.trabalhado, normais=calc.normais, extra=calc.extra)
+        linha = r.LinhaDia(data=dia, tipo=dados.tipo, periodos=calc.periodos, horas=dados.horas,
+                           trabalhado=calc.trabalhado, normais=calc.normais, extra=calc.extra,
+                           falta=calc.falta, ausencia=calc.ausencia, almoco=dados.almoco)
         self.dias[dia] = linha
         return linha
 
@@ -91,12 +91,12 @@ def test_dia_novo_vem_com_o_horario_habitual_e_mostra_as_contas() -> None:
     folha = _Folha()
     dialogo = _dialogo(folha)
     assert dialogo.tipo() == r.TIPO_UTIL
-    assert dialogo.entrada_edit.time() == QTime(8, 0)
-    assert dialogo.saida_edit.time() == QTime(19, 0)
+    assert [linha.valores() for linha in dialogo.linhas] == [(480, 19 * 60)]
     assert dialogo.almoco_check.isChecked()
     assert dialogo.resultado_label.text() == "8 + 2"
     assert "10h trabalhadas" in dialogo.detalhe_label.text()
     assert not dialogo.apagar_button.isVisible()
+    assert dialogo.linha_ausencia.isHidden()  # só no teletrabalho
 
 
 def test_feriado_e_fim_de_semana_vem_com_o_tipo_certo() -> None:
@@ -104,7 +104,27 @@ def test_feriado_e_fim_de_semana_vem_com_o_tipo_certo() -> None:
     assert _dialogo(folha, dia=date(2026, 10, 5)).tipo() == r.TIPO_FERIADO
     sabado = _dialogo(folha, dia=date(2026, 10, 3))
     assert sabado.tipo() == r.TIPO_FIM_SEMANA
-    assert sabado.bloco_util.isHidden() and not sabado.bloco_horas.isHidden()
+    # Uma linha vazia (não herda as 08:00–17:00), o «Só o total» e sem jantar/acerto.
+    assert [linha.valores() for linha in sabado.linhas] == [(None, None)]
+    assert not sabado.bloco_linhas.isHidden() and sabado.bloco_horas.isHidden()
+    assert not sabado.so_total_check.isHidden() and not sabado.almoco_check.isChecked()
+    assert sabado.jantar_check.isHidden() and sabado.linha_acerto.isHidden()
+    sabado.linhas[0].definir(540, 780)
+    assert sabado.resultado_label.text() == "4"
+    sabado.so_total_check.setChecked(True)
+    assert sabado.bloco_linhas.isHidden() and not sabado.bloco_horas.isHidden()
+
+
+def test_dia_novo_abre_no_tipo_habitual_e_mudar_de_tipo_nao_herda_as_horas() -> None:
+    folha = _Folha()
+    dialogo = _dialogo(folha, dia=date(2026, 10, 20),
+                       config=r.ConfigHoras(tipo_habitual=r.TIPO_TELETRABALHO))
+    assert dialogo.tipo() == r.TIPO_TELETRABALHO
+    assert not dialogo.linha_ausencia.isHidden()
+    dialogo._radios[r.TIPO_FERIAS].setChecked(True)
+    assert [linha.valores() for linha in dialogo.linhas] == [(None, None)]
+    dialogo._radios[r.TIPO_UTIL].setChecked(True)
+    assert [linha.valores() for linha in dialogo.linhas] == [(480, 1020)]
 
 
 def test_guardar_e_seguinte_passa_ao_dia_a_seguir() -> None:
@@ -118,20 +138,114 @@ def test_guardar_e_seguinte_passa_ao_dia_a_seguir() -> None:
     assert dialogo.observacoes_edit.text() == ""
 
 
-def test_segundo_periodo_e_folga() -> None:
+def test_mais_uma_linha_e_folga() -> None:
+    """O caso do Pedro: 08:00–17:00 e mais uma linha em casa à noite."""
     folha = _Folha()
     dialogo = _dialogo(folha)
-    dialogo.saida_edit.setTime(QTime(17, 0))
-    dialogo.segundo_check.setChecked(True)
-    dialogo.entrada2_edit.setTime(QTime(20, 0))
-    dialogo.saida2_edit.setTime(QTime(23, 0))
+    dialogo.linhas[0].saida.definir(17 * 60)
+    dialogo.mais_button.click()
+    assert len(dialogo.linhas) == 2 and dialogo.linhas[1].valores() == (None, None)
+    # As saídas rápidas e o ✕ só na última linha.
+    assert dialogo.linhas[0].rapidas.isHidden() and not dialogo.linhas[1].rapidas.isHidden()
+    assert dialogo.linhas[0].tirar_button.isHidden() and not dialogo.linhas[1].tirar_button.isHidden()
+    dialogo.linhas[1].definir(20 * 60, 23 * 60)
     assert dialogo.resultado_label.text() == "8 + 3"
-    dados = dialogo.dados()
-    assert (dados.entrada2, dados.saida2) == (1200, 1380)
+    assert dialogo.dados().periodos == ((480, 1020), (1200, 1380))
+    dialogo.linhas[1].botoes_rapidos[-1].click()  # «22h»
+    assert dialogo.linhas[1].saida.minutos() == 22 * 60
+    dialogo.linhas[1].tirar_button.click()
+    assert len(dialogo.linhas) == 1 and dialogo.resultado_label.text() == "8"
 
     dialogo._radios[r.TIPO_FOLGA].setChecked(True)
     assert dialogo.horas_spin.value() == 8
     assert dialogo.resultado_label.text() == f"{r.MENOS}8"
+    assert dialogo.bloco_linhas.isHidden()
+
+
+def test_teletrabalho_com_consulta_e_ausencia_justificada() -> None:
+    folha = _Folha()
+    dialogo = _dialogo(folha, dia=date(2026, 10, 20), config=r.ConfigHoras())
+    dialogo._radios[r.TIPO_TELETRABALHO].setChecked(True)
+    dialogo.linhas[0].saida.definir(600)
+    dialogo.mais_button.click()
+    dialogo.linhas[1].definir(780, 1020)
+    # O intervalo 10:00–13:00 já é o almoço: desliga-se sozinho e a janela diz porquê.
+    assert not dialogo.almoco_check.isChecked()
+    assert "10:00 → 13:00" in dialogo.nota_almoco_label.text()
+    dialogo.mais_button.click()
+    dialogo.linhas[2].definir(1200, 1380)
+    assert dialogo.resultado_label.text() == "6 + 3"
+    assert "faltam 2h" in dialogo.detalhe_label.text()
+    dialogo.ausencia_spin.setValue(2)
+    assert dialogo.resultado_label.text() == "8 + 3"
+    dialogo.guardar_button.click()
+    _dia, dados, _obs = folha.gravados[-1]
+    assert dados.ausencia == 120 and len(dados.periodos) == 3
+
+
+def test_almoco_ligado_a_mao_avisa_que_desconta_duas_vezes() -> None:
+    dialogo = _dialogo(_Folha(), config=r.ConfigHoras())
+    dialogo.linhas[0].saida.definir(750)
+    dialogo.mais_button.click()
+    dialogo.linhas[1].definir(810, 1020)
+    assert not dialogo.almoco_check.isChecked()
+    dialogo.almoco_check.click()
+    assert dialogo.almoco_check.isChecked()
+    assert "duas vezes" in dialogo.nota_almoco_label.text()
+    # Tirar a linha que fazia o intervalo não volta a mexer na escolha da pessoa.
+    dialogo.linhas[1].tirar_button.click()
+    assert dialogo.almoco_check.isChecked()
+
+
+def test_linhas_sobrepostas_e_hora_invalida_nao_gravam() -> None:
+    folha = _Folha()
+    dialogo = _dialogo(folha)
+    dialogo.mais_button.click()
+    dialogo.linhas[1].definir(660, 1080)
+    dialogo.guardar_button.click()
+    assert folha.gravados == [] and "sobrepõem-se" in dialogo.erro_label.text()
+    dialogo.linhas[1].saida.lineEdit().setText("25:00")
+    assert "Hora inválida na linha 2" in dialogo.detalhe_label.text()
+    dialogo.guardar_button.click()
+    assert folha.gravados == []
+
+
+def test_linhas_fora_de_ordem_ficam_pela_ordem_ao_guardar() -> None:
+    folha = _Folha()
+    dialogo = _dialogo(folha, config=r.ConfigHoras())
+    dialogo.linhas[0].definir(780, 1020)
+    dialogo.mais_button.click()
+    dialogo.linhas[1].definir(480, 600)
+    dialogo.guardar_seguinte_button.click()
+    assert folha.gravados[0][1].periodos == ((480, 600), (780, 1020))
+    dialogo._ir_para(date(2026, 10, 1))
+    assert [linha.valores() for linha in dialogo.linhas] == [(480, 600), (780, 1020)]
+
+
+def test_dia_antigo_so_com_o_total_abre_assim() -> None:
+    folha = _Folha()
+    folha.dias[date(2026, 10, 4)] = r.LinhaDia(data=date(2026, 10, 4), tipo=r.TIPO_FIM_SEMANA,
+                                              horas=180, trabalhado=180, extra=180)
+    dialogo = _dialogo(folha, dia=date(2026, 10, 4))
+    assert dialogo.so_total_check.isChecked() and dialogo.horas_spin.value() == 3
+    assert "só com o total" in dialogo.nota_dia_label.text()
+    assert dialogo.resultado_label.text() == "3"
+
+
+def test_campo_de_hora_pode_ficar_vazio() -> None:
+    from app.ui.widgets.campo_hora import CampoHora, ler
+
+    assert (ler("830"), ler("0830"), ler("17h"), ler("24:00"), ler(""), ler("abc")) == (
+        510, 510, 1020, 0, None, None,
+    )
+    campo = CampoHora(sugestao=lambda: 13 * 60)
+    assert campo.minutos() is None and not campo.invalido()
+    campo.stepBy(1)  # vazio: a primeira seta põe a hora sugerida
+    assert campo.minutos() == 13 * 60 and campo.text() == "13:00"
+    campo.lineEdit().setText("99")
+    assert campo.invalido()
+    campo.clear()
+    assert campo.minutos() is None
 
 
 def test_erro_fica_no_dialogo_e_nao_grava() -> None:
@@ -338,3 +452,40 @@ def test_pagina_mostra_o_subsidio_de_alimentacao(base) -> None:
     assert pagina.table.item(2, pagina_mod.COL_SUBSIDIO).text() == "5,00 €"  # sábado, 4h30
     assert pagina.table.item(1, pagina_mod.COL_SUBSIDIO).text() == ""  # dia útil 8 + 4
     assert pagina.subsidio_label.text() == "5,00 €"
+
+
+def test_pagina_mostra_o_teletrabalho_com_todas_as_linhas(base) -> None:
+    with base() as s:
+        RegistoHorasService(s).guardar_dia(
+            2, date(2026, 10, 20),
+            r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 600), (780, 1020), (1200, 1380)),
+                       almoco=False),
+            observacoes="Consulta",
+        )
+    pagina = pagina_mod.RegistoHorasPage(user_id=2, nome="Paulo Catarino")
+    pagina._ano, pagina._mes = 2026, 10
+    pagina.carregar()
+    linha = 19
+    assert pagina.table.item(linha, 2).text() == "Teletrabalho"
+    assert pagina.table.item(linha, pagina_mod.COL_HORARIO).text() == "8h – 10h · 13h – 17h · 20h – 23h"
+    assert pagina.table.item(linha, 4).text() == "6 + 3"
+    assert pagina.table.item(linha, pagina_mod.COL_EXTRA).text() == f"+3h · {r.MENOS}2h"
+    assert "teletrabalho: 1" in pagina.contagens_label.text()
+    # Resumo: as 3h extra e as 2h em falta cada uma no seu sítio.
+    valores = dict(zip((rot for rot, _ in r.ResumoMes().linhas()), (l.text() for l in pagina._resumo_valores)))
+    assert valores["Horas extra em dias úteis"] == "3h"
+    assert valores["Descontos (dias com menos horas e folgas)"] == f"{r.MENOS}2h"
+    assert valores["Total de horas extra"] == "1h"
+
+
+def test_definicoes_tem_o_tipo_de_dia_habitual() -> None:
+    from app.ui.dialogs.registo_horas_definicoes_dialog import RegistoHorasDefinicoesDialog
+
+    dialogo = RegistoHorasDefinicoesDialog(
+        None, config=r.ConfigHoras(), nome_conta="Paulo", email_contabilidade="f@x.pt",
+        pode_mudar_email=False,
+    )
+    assert dialogo.tipo_combo.currentData() == r.TIPO_UTIL
+    dialogo.tipo_combo.setCurrentIndex(dialogo.tipo_combo.findData(r.TIPO_TELETRABALHO))
+    assert dialogo.config().tipo_habitual == r.TIPO_TELETRABALHO
+    assert dialogo.tipo_combo.toolTip()

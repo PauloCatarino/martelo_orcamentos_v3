@@ -58,6 +58,66 @@ def test_cada_pessoa_tem_a_sua_folha(servico) -> None:
     assert (pedro.entrada2, pedro.saida2, pedro.extra) == (1200, 1380, 180)
 
 
+def test_teletrabalho_grava_todas_as_linhas_a_falta_e_a_ausencia(servico, session) -> None:
+    dados = r.DadosDia(
+        tipo=r.TIPO_TELETRABALHO,
+        periodos=((780, 1020), (480, 600), (1200, 1380)),  # fora de ordem
+        almoco=False,
+        ausencia=60,
+    )
+    linha = servico.guardar_dia(2, date(2026, 10, 20), dados, observacoes="Consulta")
+    assert (linha.normais, linha.extra, linha.falta, linha.ausencia) == (420, 120, 60, 60)
+    assert linha.periodos == ((480, 600), (780, 1020), (1200, 1380))
+    assert linha.horas_folha == "7 + 3"
+    registo = session.query(RegistoHorasDia).one()
+    assert registo.periodos == "[[480, 600], [780, 1020], [1200, 1380]]"
+    # As duas primeiras linhas também nas colunas de sempre (versões antigas).
+    assert (registo.entrada_min, registo.saida_min, registo.entrada2_min, registo.saida2_min) == (
+        480, 600, 780, 1020,
+    )
+    assert (registo.falta_min, registo.ausencia_min, registo.extra_min) == (60, 60, 120)
+    lido = servico.obter_dia(2, date(2026, 10, 20))
+    assert lido.horario == "8h – 10h · 13h – 17h · 20h – 23h"
+
+
+def test_teletrabalho_usa_o_horario_das_definicoes(servico) -> None:
+    servico.guardar_config(2, r.ConfigHoras(entrada_habitual=540, saida_habitual=1080))
+    linha = servico.guardar_dia(
+        2, date(2026, 10, 20),
+        r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 1020),), almoco=True),
+    )
+    # Das 8 às 9 é antes do horário (9h–18h): extra; e falta 1h para as 8 normais.
+    assert (linha.normais, linha.extra_feito, linha.falta) == (420, 60, 60)
+
+
+def test_fim_de_semana_com_linhas_guarda_tambem_o_total(servico, session) -> None:
+    linha = servico.guardar_dia(
+        2, date(2026, 10, 17),
+        r.DadosDia(tipo=r.TIPO_FIM_SEMANA, periodos=((540, 720), (840, 1020)), almoco=False),
+    )
+    assert (linha.trabalhado, linha.extra, linha.horario) == (360, 360, "9h – 12h · 14h – 17h")
+    assert not linha.so_total
+    registo = session.query(RegistoHorasDia).one()
+    assert registo.horas_min == 360  # o que as versões antigas mostram
+    assert registo.desconto_almoco is False
+    # Só o total, como os dias antigos: sem linhas.
+    servico.guardar_dia(2, date(2026, 10, 18), r.DadosDia(tipo=r.TIPO_FIM_SEMANA, horas=180))
+    domingo = servico.obter_dia(2, date(2026, 10, 18))
+    assert domingo.so_total and domingo.periodos == () and domingo.entrada is None
+
+
+def test_dia_antigo_com_dois_periodos_continua_igual(servico, session) -> None:
+    session.add(RegistoHorasDia(
+        user_id=2, data=date(2026, 10, 6), tipo=r.TIPO_UTIL, entrada_min=480, saida_min=1020,
+        entrada2_min=1200, saida2_min=1380, desconto_almoco=True, trabalhado_min=660,
+        normais_min=480, extra_min=180,
+    ))
+    session.commit()
+    dia = servico.obter_dia(2, date(2026, 10, 6))
+    assert dia.periodos == () and dia.lista_periodos == ((480, 1020), (1200, 1380))
+    assert (dia.horas_folha, dia.falta, dia.ausencia) == ("8 + 3", 0, 0)
+
+
 def test_as_contas_ficam_com_as_horas_normais_de_quando_se_gravou(servico, session) -> None:
     config = r.ConfigHoras(horas_normais_dia=420)
     servico.guardar_config(2, config)
@@ -265,6 +325,9 @@ def test_folha_em_pdf(tmp_path: Path) -> None:
                    observacoes="Em casa"),
         r.LinhaDia(data=date(2026, 9, 4), tipo=r.TIPO_FOLGA, horas=480, extra=-480),
         r.LinhaDia(data=date(2026, 9, 5), tipo=r.TIPO_FIM_SEMANA, horas=180, trabalhado=180, extra=180),
+        r.LinhaDia(data=date(2026, 9, 8), tipo=r.TIPO_TELETRABALHO,
+                   periodos=((480, 600), (780, 1020), (1290, 1410)), trabalhado=540, normais=360,
+                   extra=60, falta=120),
     ]
     caminho = gerar_folha_pdf(
         tmp_path / "sub" / "folha.pdf", nome="Paulo Catarino", ano=2026, mes=9, dias=dias,
@@ -273,6 +336,10 @@ def test_folha_em_pdf(tmp_path: Path) -> None:
     texto = "".join(p.extract_text() for p in PdfReader(str(caminho)).pages)
     assert "Paulo Catarino" in texto and "Setembro" in texto
     assert "20H" in texto and "23H" in texto
+    # Uma coluna «Horário» com todas as linhas do dia (decisão do Paulo, 19-10-2026).
+    assert "Horário" in texto and "Entrada" not in texto
+    assert "13H – 17H" in texto and "21H30 – 23H30" in texto
+    assert "+3 · -2" in texto and "Teletrabalho" in texto
     assert "Total de horas extra" in texto
     assert "Por registar" in texto and "Dias úteis sem registo: 2" in texto
     assert "-8" in texto  # o «−» tipográfico não existe no Helvetica

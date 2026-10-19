@@ -10,6 +10,7 @@ são declaradas pelo próprio.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -50,6 +51,17 @@ class EnvioMes:
     extra: int
 
 
+def ler_periodos(texto: str | None) -> tuple[tuple[int, int], ...]:
+    """O JSON da coluna ``periodos`` → linhas; o que vier estragado não conta."""
+    if not texto:
+        return ()
+    try:
+        dados = json.loads(texto)
+        return tuple((int(e), int(s)) for e, s in dados)
+    except (TypeError, ValueError):
+        return ()
+
+
 def linha_de(registo: RegistoHorasDia) -> regra.LinhaDia:
     return regra.LinhaDia(
         data=registo.data,
@@ -67,6 +79,9 @@ def linha_de(registo: RegistoHorasDia) -> regra.LinhaDia:
         extra=int(registo.extra_min or 0),
         observacoes=registo.observacoes or "",
         origem=registo.origem or ORIGEM_MARTELO,
+        periodos=ler_periodos(registo.periodos),
+        ausencia=int(registo.ausencia_min or 0),
+        falta=int(registo.falta_min or 0),
     )
 
 
@@ -120,22 +135,34 @@ class RegistoHorasService:
                 "Observações demasiado longas (máximo 255 caracteres)."
             )
         calculo = regra.calcular_dia(
-            dados, horas_normais=config.horas_normais_dia, pausa=config.pausa_almoco
+            dados,
+            horas_normais=config.horas_normais_dia,
+            pausa=config.pausa_almoco,
+            horario=config.horario,
         )
-        util = dados.tipo == regra.TIPO_UTIL
+        com_horario = dados.tipo in regra.TIPOS_COM_HORARIO
+        periodos = calculo.periodos
         registo = self._registo(user_id, dia)
         if registo is None:
             registo = RegistoHorasDia(user_id=user_id, data=dia)
             self.session.add(registo)
         registo.tipo = dados.tipo
-        registo.entrada_min = dados.entrada % regra.MINUTOS_DIA if util else None
-        registo.saida_min = calculo.saida if util else None
-        registo.entrada2_min = calculo.entrada2 if util else None
-        registo.saida2_min = calculo.saida2 if util else None
-        registo.desconto_almoco = bool(util and dados.almoco)
-        registo.desconto_jantar = bool(util and dados.jantar)
-        registo.acerto_min = dados.acerto if util else 0
-        registo.horas_min = 0 if util else dados.horas
+        # As duas primeiras linhas também nas colunas de sempre: é o que as
+        # versões antigas do Martelo (noutros PCs) sabem ler.
+        registo.entrada_min = periodos[0][0] if periodos else None
+        registo.saida_min = periodos[0][1] if periodos else None
+        registo.entrada2_min = periodos[1][0] if len(periodos) > 1 else None
+        registo.saida2_min = periodos[1][1] if len(periodos) > 1 else None
+        registo.periodos = json.dumps([list(p) for p in periodos]) if periodos else None
+        registo.desconto_almoco = bool(dados.almoco) and (com_horario or bool(periodos))
+        registo.desconto_jantar = bool(com_horario and dados.jantar)
+        registo.acerto_min = dados.acerto if com_horario else 0
+        # Fora do horário fica sempre o total (com linhas, o que elas somam).
+        registo.horas_min = 0 if com_horario else (
+            dados.horas if dados.tipo == regra.TIPO_FOLGA else calculo.trabalhado
+        )
+        registo.ausencia_min = calculo.ausencia
+        registo.falta_min = calculo.falta
         registo.trabalhado_min = calculo.trabalhado
         registo.normais_min = calculo.normais
         registo.extra_min = calculo.extra

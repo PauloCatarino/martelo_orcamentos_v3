@@ -2327,3 +2327,83 @@ como estava):
 6. Sem nada selecionado (clicar numa zona vazia da tabela) → **↓**. Esperado: «Selecione os
    items a mover (Ctrl/Shift para escolher vários).».
 7. Voltar a pôr RP_01, RP_02, RP_03 pela ordem original com as setas.
+
+## Registo de Horas: Teletrabalho e várias entradas e saídas (2026-10-19)
+
+Pedido do Paulo, com um mockup em HTML e 15 perguntas antes de mexer no código
+(respostas e decisões em `docs/36_registo_horas.md`, secção «Teletrabalho e várias
+entradas e saídas»).
+
+Feito:
+
+- Tipo de dia novo **Teletrabalho**, a seguir a «Dia útil». Conta **pelo relógio**: dentro
+  do horário habitual das Definições (08:00–17:00) são horas normais, antes ou depois é
+  extra, e o que faltar para as 8h desconta ao mês. Campo **«Ausência justificada»** (só
+  neste tipo) para o tempo fora que não desconta. Extra junto com as dos dias úteis; sem
+  subsídio de alimentação.
+- **Linhas Entrada/Saída** em todos os tipos menos a Folga: uma por defeito, o botão
+  **«+ Acrescentar entrada e saída»** acrescenta outra por baixo (até 6), o **✕** tira-a. O
+  «2.º período» do dia útil passou a ser a linha 2. Os botões 17h…22h mudam a saída da
+  última linha. As linhas ficam pela ordem do dia; linhas sobrepostas dão erro e não gravam.
+- **Almoço automático:** um intervalo entre linhas à hora de almoço desliga «Descontar
+  almoço» e a janela diz porquê.
+- Fim de semana, feriado e férias: linhas (vazias por defeito), «Descontar almoço»
+  desligado, e a caixa **«Só o total de horas»** (os dias antigos abrem assim).
+- Folha do mês e janela de envio: coluna «Horário» com todas as linhas; no teletrabalho a
+  coluna Extra mostra «+3h · −2h». **PDF:** uma coluna «Horário» em vez das duas
+  Entrada/Saída. Resumo do mês: as extra e as faltas do teletrabalho cada uma no seu sítio.
+- **Definições:** campo novo «Tipo de dia habitual» (Dia útil / Teletrabalho).
+- Base: migração `20261019_120` (3 colunas em `registo_horas_dias`: `periodos`,
+  `ausencia_min`, `falta_min`). Campo de hora que pode ficar vazio:
+  `app/ui/widgets/campo_hora.py`. Testes em `tests/test_registo_horas_*.py`.
+- Atenção: uma versão antiga do Martelo que abra uma folha com um dia de Teletrabalho dá
+  erro. Fazer versão nova antes de o Pedro (ou o admin noutro PC) ver esses dias.
+
+Guião de teste (reiniciar o Martelo; VS Code → «Martelo V3 — BASE REAL (martelo_v3)»,
+entrar como **paulo** → menu **Registo de Horas**, mês de **outubro de 2026**). Os dias 20
+a 24 são de teste: no fim apague-os (passo 13) ou ponha lá as horas verdadeiras.
+
+1. **Duplo clique na terça 20.** Esperado: a janela tem 6 tipos de dia (**Teletrabalho**
+   a seguir a «Dia útil»), uma linha **1 · Entrada 08:00 · Saída 17:00**
+   com os botões 17h…22h à direita, o botão **«+ Acrescentar entrada e saída»**, e o
+   resultado **«8»** / «8h trabalhadas · sem horas extra».
+2. Marcar **Teletrabalho**. Esperado: o texto por baixo diz «Dentro do horário
+   (08:00–17:00) são horas normais…» e aparece o campo **«Ausência justificada»**.
+3. Na linha 1, Saída **10:00**. Carregar em **«+»** e na linha 2 escrever Entrada **13:00**,
+   Saída **17:00**. Esperado: **«Descontar almoço» desliga-se sozinho** e aparece «Almoço
+   não descontado: o intervalo 10:00 → 13:00 já inclui a pausa.»; resultado **«6 − 2»**, com
+   «faltam 2h para as 8h: descontam ao mês» a vermelho.
+4. Carregar em **«+»**. Esperado: os botões 17h…22h passam para a linha 3 (só a última linha
+   os tem). Na linha 3 escrever Entrada **20:00**, Saída **23:00**. Esperado: **«6 + 3»** / «9h trabalhadas · 3h extra (fora do
+   horário) · faltam 2h para as 8h: descontam ao mês».
+5. **Ausência justificada 2,0 h**, Observações **«Consulta»**. Esperado: **«8 + 3»** /
+   «9h trabalhadas · 2h de ausência justificada · 3h extra (fora do horário)».
+6. **Guardar.** Esperado na folha, dia 20: Tipo **Teletrabalho**, Horário **«8h – 10h ·
+   13h – 17h · 20h – 23h»**, Horas **8 + 3**, Normais **8**, Extra **+3h**, Observações
+   «Teletrabalho – Ausência justificada 2h – Consulta». No resumo, «Dias registados: … ·
+   teletrabalho: 1».
+7. **Linhas sobrepostas:** duplo clique na **quarta 21** → «+» → linha 2 Entrada **11:00**,
+   Saída **18:00**. Esperado: «—» e «As linhas 1 e 2 sobrepõem-se: das 11:00 às 17:00 estaria
+   contado duas vezes.»; **Guardar** não grava (mensagem vermelha). Carregar no **✕** da
+   linha 2: volta a «8».
+8. **Fora de ordem:** ainda no dia 21, linha 1 Entrada **13:00** e Saída **17:00**; «+»;
+   linha 2 Entrada **08:00**, Saída **12:00** e carregar em **Tab**. Esperado: as linhas
+   trocam de lugar (1 = 08:00–12:00, 2 = 13:00–17:00), o almoço desliga-se sozinho
+   (intervalo 12:00 → 13:00) e o resultado é **«8»**. **Fechar** sem guardar.
+9. **Sábado 24:** duplo clique. Esperado: tipo **Fim de semana**, uma linha vazia
+   «--:-- / --:--», «Descontar almoço» desligado, caixa **«Só o total de horas»** e a
+   mensagem «Indique as horas trabalhadas: a entrada e a saída, ou marque «Só o total de
+   horas».». Escrever **09:00–13:00**, «+», **14:00–17:00**. Esperado: **«7»** / «7h extra».
+   **Guardar.** Na folha: Horário «9h – 13h · 14h – 17h», Subs. Alimentação **8,75 €**.
+10. **Dia antigo:** duplo clique no **domingo 4**. Esperado: abre com **«Só o total de
+    horas»** marcado, **3,0 h**, e a nota «Este dia foi registado só com o total…»;
+    resultado «3». **Fechar.**
+11. **Dia com 2.º período:** duplo clique na **segunda 19**. Esperado: duas linhas
+    **08:00–17:00** e **17:00–20:00**, «8 + 3». **Fechar.**
+12. **Folha em PDF.** Esperado: uma só coluna **«Horário»** (já não há Entrada/Saída duas
+    vezes); dia 20 «8H – 10H · 13H – 17H · 20H – 23H», Extra «+3».
+13. **Definições…** → campo novo **«Tipo de dia habitual»** → **Teletrabalho** → Guardar →
+    duplo clique na **quinta 22** (sem registo). Esperado: abre já em **Teletrabalho**.
+    Fechar e voltar a pôr nas Definições o tipo que quer de verdade. Por fim, apagar os dias
+    de teste **20** e **24** (abrir o dia → **«Apagar dia»** → Sim) ou pôr lá as horas
+    verdadeiras.

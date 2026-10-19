@@ -147,7 +147,8 @@ class RegistoHorasPage(QWidget):
         cabecalho_tabela = self.table.horizontalHeader()
         cabecalho_tabela.setStyleSheet(tema.ESTILO_CABECALHO_VISTAS_DADOS)
         cabecalho_tabela.setSectionResizeMode(COL_OBS, QHeaderView.ResizeMode.Stretch)
-        for coluna, largura in enumerate((44, 44, 110, 170, 80, 70, 70, 120)):
+        # O horário leva todas as linhas do dia: «8h – 10h · 13h – 17h · 20h – 23h».
+        for coluna, largura in enumerate((44, 44, 110, 220, 80, 70, 90, 120)):
             self.table.setColumnWidth(coluna, largura)
         self.table.horizontalHeaderItem(COL_SUBSIDIO).setToolTip(DICA_SUBSIDIO)
 
@@ -360,9 +361,11 @@ class RegistoHorasPage(QWidget):
                 "assinalados e o mês não segue para a contabilidade."
             )
         else:
+            entrada, saida = (regra.hora_texto(m) for m in self._config.horario)
             ajuda = (
                 f"Dia útil: até {regra.formatar_total(self._config.horas_normais_dia)} são "
-                "horas normais e o resto é extra; fins de semana, feriados e férias "
+                f"horas normais e o resto é extra; teletrabalho: das {entrada} às {saida} "
+                "são normais e o resto é extra; fins de semana, feriados e férias "
                 "contam tudo como extra; a folga desconta. Duplo clique num dia para "
                 "o registar."
             )
@@ -396,8 +399,9 @@ class RegistoHorasPage(QWidget):
                 horario = registo.horario
                 horas = registo.horas_folha
                 normais = regra.formatar_horas(registo.normais) if registo.normais else ""
-                extra = (
-                    regra.formatar_total(registo.extra, com_mais=True) if registo.extra else ""
+                # No teletrabalho pode haver extra e falta no mesmo dia: «+3h · −2h».
+                extra = " · ".join(
+                    regra.formatar_total(parte, com_mais=True) for parte in registo.extra_partes
                 )
                 subsidio = registo.subsidio_folha
                 obs = registo.observacoes_folha()
@@ -435,8 +439,10 @@ class RegistoHorasPage(QWidget):
                 self.table.setItem(linha, coluna, item)
             if dia in em_falta:
                 self.table.item(linha, COL_HORARIO).setForeground(vermelho)
-            if registo is not None and registo.extra < 0:
+            if registo is not None and registo.desconto < 0:
                 self.table.item(linha, COL_EXTRA).setForeground(vermelho)
+            if registo is not None and registo.horario:
+                self.table.item(linha, COL_HORARIO).setToolTip(registo.horario)
             if dia == hoje:
                 selecionar = linha
         self.table.clearSelection()
@@ -446,9 +452,12 @@ class RegistoHorasPage(QWidget):
         for etiqueta, (_rotulo, valor) in zip(self._resumo_valores, resumo.linhas()):
             etiqueta.setText(valor)
         self.subsidio_label.setText(resumo.linha_subsidio()[1])
+        teletrabalho = (
+            f" · teletrabalho: {resumo.dias_teletrabalho}" if resumo.dias_teletrabalho else ""
+        )
         self.contagens_label.setText(
-            f"Dias registados: {resumo.dias_registados} · férias: {resumo.dias_ferias} · "
-            f"feriados: {resumo.dias_feriado} · folgas: {resumo.dias_folga}"
+            f"Dias registados: {resumo.dias_registados}{teletrabalho} · férias: "
+            f"{resumo.dias_ferias} · feriados: {resumo.dias_feriado} · folgas: {resumo.dias_folga}"
         )
 
     def _preencher_envio(self, envio, historico: bool, em_falta: list[date]) -> None:

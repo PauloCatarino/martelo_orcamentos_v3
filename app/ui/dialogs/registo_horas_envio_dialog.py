@@ -146,15 +146,16 @@ class RegistoHorasEnvioDialog(QDialog):
                 regra.NOMES_TIPOS[dia.tipo].replace(" (desconta)", ""),
                 dia.horario,
                 regra.formatar_horas(dia.normais) if dia.normais else "",
-                regra.formatar_total(dia.extra, com_mais=dia.tipo == regra.TIPO_UTIL)
-                if dia.extra
-                else "",
+                " · ".join(
+                    regra.formatar_total(parte, com_mais=dia.tipo in regra.TIPOS_COM_HORARIO)
+                    for parte in dia.extra_partes
+                ),
                 dia.subsidio_folha,
                 dia.observacoes_folha(),
             )
             for coluna, valor in enumerate(valores):
                 item = QTableWidgetItem(valor)
-                if coluna == 4 and dia.extra < 0:
+                if coluna == 4 and dia.desconto < 0:
                     item.setForeground(Qt.GlobalColor.darkRed)
                 self.tabela.setItem(linha, coluna, item)
         self.tabela.resizeColumnsToContents()

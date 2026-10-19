@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from app.domain import registo_horas as regra
 from app.ui import tema
 from app.ui.widgets.combo_sem_scroll import (
+    ComboSemScroll,
     DataSemScroll,
     HoraSemScroll,
     SpinDuploSemScroll,
@@ -64,12 +65,18 @@ class RegistoHorasDefinicoesDialog(QDialog):
         self.entrada_edit = HoraSemScroll()
         self.entrada_edit.setDisplayFormat("HH:mm")
         self.entrada_edit.setTime(QTime(config.entrada_habitual // 60, config.entrada_habitual % 60))
-        self.entrada_edit.setToolTip("Hora de entrada que aparece já escrita num dia novo.")
+        self.entrada_edit.setToolTip(
+            "Hora de entrada que aparece já escrita num dia novo. No teletrabalho, "
+            "o que se faz dentro deste horário são horas normais e o resto é extra."
+        )
         saida = config.saida_habitual % regra.MINUTOS_DIA
         self.saida_edit = HoraSemScroll()
         self.saida_edit.setDisplayFormat("HH:mm")
         self.saida_edit.setTime(QTime(saida // 60, saida % 60))
-        self.saida_edit.setToolTip("Hora de saída que aparece já escrita num dia novo.")
+        self.saida_edit.setToolTip(
+            "Hora de saída que aparece já escrita num dia novo. No teletrabalho, o "
+            "que se faz depois desta hora conta como extra."
+        )
         horario = QHBoxLayout()
         horario.addWidget(self.entrada_edit)
         horario.addWidget(QLabel("às"))
@@ -97,9 +104,20 @@ class RegistoHorasDefinicoesDialog(QDialog):
         self.almoco_check.setChecked(config.descontar_almoco)
         self.almoco_check.setToolTip("Num dia novo, o «Descontar almoço» já vem marcado.")
 
+        self.tipo_combo = ComboSemScroll()
+        for tipo in (regra.TIPO_UTIL, regra.TIPO_TELETRABALHO):
+            self.tipo_combo.addItem(regra.NOMES_TIPOS[tipo], tipo)
+        self.tipo_combo.setCurrentIndex(max(0, self.tipo_combo.findData(config.tipo_habitual)))
+        self.tipo_combo.setToolTip(
+            "Tipo com que abrem os dias novos de segunda a sexta. Quem trabalha "
+            "quase sempre em teletrabalho escolhe «Teletrabalho»; cada dia pode "
+            "sempre ser mudado à mão."
+        )
+
         caixa_horario = QGroupBox("O meu horário")
         form_horario = QFormLayout(caixa_horario)
         form_horario.addRow("Nome na folha", self.nome_edit)
+        form_horario.addRow("Tipo de dia habitual", self.tipo_combo)
         form_horario.addRow("Horário habitual", horario)
         form_horario.addRow("Horas normais por dia", self.horas_normais_spin)
         form_horario.addRow("Pausa do almoço", self.almoco_spin)
@@ -201,6 +219,7 @@ class RegistoHorasDefinicoesDialog(QDialog):
             envio_mensal=self.envio_check.isChecked(),
             inicio_registo=inicio.toPython(),
             pasta_pdf=self.pasta_edit.text().strip(),
+            tipo_habitual=self.tipo_combo.currentData() or regra.TIPO_UTIL,
         )
 
     def email_contabilidade(self) -> str | None:

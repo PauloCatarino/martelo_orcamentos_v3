@@ -1,9 +1,11 @@
 """Folha de horas do mês em PDF (a que segue para a contabilidade).
 
-Copia a folha em papel que o Paulo usava: Dia, Entrada/Saída duas vezes (o 2.º
-período é o das horas feitas em casa) e as observações — mas com as horas
-normais e as extra em colunas separadas, porque é essa a separação que a
-contabilidade precisa para pagar. No fim, o resumo do mês com as extra por
+Copia a folha em papel que o Paulo usava: Dia, o horário e as observações —
+mas com as horas normais e as extra em colunas separadas, porque é essa a
+separação que a contabilidade precisa para pagar. Desde 19-10-2026 um dia
+pode ter várias entradas e saídas: em vez das duas colunas Entrada/Saída da
+folha em papel, uma coluna «Horário» com todas («8H – 10H · 13H – 17H · …»),
+como no ecrã (decisão do Paulo). No fim, o resumo do mês com as extra por
 tipo de dia (dias úteis, sábados, domingos, feriados, férias): a lei paga-as
 de forma diferente, e é por aí que um dia entram os valores em euros. O
 subsídio de alimentação (fins de semana, feriados e férias trabalhados) tem
@@ -61,12 +63,13 @@ def _t(texto: str) -> str:
 def _extra_folha(dia: regra.LinhaDia) -> str:
     if dia.tipo == regra.TIPO_FOLGA:
         return f"{regra.MENOS}{regra.formatar_horas(-dia.extra)}"
-    if dia.tipo == regra.TIPO_UTIL:
-        if dia.extra > 0:
-            return f"+{regra.formatar_horas(dia.extra)}"
-        if dia.extra < 0:
-            return f"{regra.MENOS}{regra.formatar_horas(-dia.extra)}"
-        return ""
+    if dia.tipo in regra.TIPOS_COM_HORARIO:
+        # No teletrabalho pode haver extra e falta no mesmo dia: «+3 · −2».
+        partes = []
+        for parte in dia.extra_partes:
+            sinal = "+" if parte > 0 else regra.MENOS
+            partes.append(f"{sinal}{regra.formatar_horas(parte)}")
+        return " · ".join(partes)
     return regra.formatar_horas(dia.extra) if dia.extra > 0 else ""
 
 
@@ -90,6 +93,7 @@ def gerar_folha_pdf(
 
     base = ParagraphStyle("base", fontName="Helvetica", fontSize=8, leading=10)
     celula = ParagraphStyle("celula", parent=base, fontSize=7.5, leading=9)
+    centrado = ParagraphStyle("centrado", parent=celula, alignment=1)
     titulo = ParagraphStyle(
         "titulo", parent=base, fontSize=18, leading=22, textColor=colors.HexColor(_CASTANHO),
         alignment=2,
@@ -129,10 +133,9 @@ def gerar_folha_pdf(
     historia.append(campos)
     historia.append(Spacer(1, 4 * mm))
 
-    cabecalho = [
-        "Dia", "", "Entrada", "Saída", "Entrada", "Saída", "Normais", "Extra",
-        "Subs. Alim.", "Observações",
-    ]
+    cabecalho = ["Dia", "", "Horário", "Normais", "Extra", "Subs. Alim.", "Observações"]
+    coluna_obs = len(cabecalho) - 1
+    coluna_extra = 4
     linhas = [cabecalho]
     estilos = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_CASTANHO)),
@@ -152,34 +155,37 @@ def gerar_folha_pdf(
             obs = f"Feriado – {nome_feriado}" if nome_feriado else ""
             if em_falta and dia_data in em_falta:
                 obs = "Por registar"
-                estilos.append(("TEXTCOLOR", (9, indice), (9, indice), colors.HexColor(_VERMELHO)))
-            linha = [str(dia_data.day), regra.SEMANA_CURTO[dia_data.weekday()], "", "", "", "", "", "", "", Paragraph(_t(obs), celula)]
+                estilos.append(
+                    ("TEXTCOLOR", (coluna_obs, indice), (coluna_obs, indice), colors.HexColor(_VERMELHO))
+                )
+            linha = [str(dia_data.day), regra.SEMANA_CURTO[dia_data.weekday()], "", "", "", "", Paragraph(_t(obs), celula)]
         else:
-            util = dia.tipo == regra.TIPO_UTIL
-            segundo = util and dia.entrada2 is not None
             obs = dia.observacoes_folha()
             if nome_feriado and dia.tipo == regra.TIPO_FERIADO:
                 obs = " – ".join(p for p in (f"Feriado ({nome_feriado})", dia.observacoes) if p)
+            horario = (
+                regra.texto_periodos(dia.lista_periodos, maiusculas=True)
+                if dia.tipo != regra.TIPO_FOLGA else ""
+            )
             linha = [
                 str(dia_data.day),
                 regra.SEMANA_CURTO[dia_data.weekday()],
-                regra.formatar_hora(dia.entrada).upper() if util else "",
-                regra.formatar_hora(dia.saida).upper() if util else "",
-                regra.formatar_hora(dia.entrada2).upper() if segundo else "",
-                regra.formatar_hora(dia.saida2).upper() if segundo else "",
+                Paragraph(_t(horario), centrado),
                 regra.formatar_horas(dia.normais) if dia.normais else "",
                 _t(_extra_folha(dia)),
                 _t(dia.subsidio_folha),
                 Paragraph(_t(obs), celula),
             ]
-            if dia.extra < 0:
-                estilos.append(("TEXTCOLOR", (7, indice), (7, indice), colors.HexColor(_VERMELHO)))
+            if dia.desconto < 0:
+                estilos.append(
+                    ("TEXTCOLOR", (coluna_extra, indice), (coluna_extra, indice), colors.HexColor(_VERMELHO))
+                )
         if regra.e_fim_de_semana(dia_data) or nome_feriado:
             estilos.append(("BACKGROUND", (0, indice), (-1, indice), colors.HexColor(_FIM_SEMANA)))
         linhas.append(linha)
     tabela = Table(
         linhas,
-        colWidths=[9 * mm, 9 * mm, 16 * mm, 16 * mm, 16 * mm, 16 * mm, 15 * mm, 15 * mm, 16 * mm, 52 * mm],
+        colWidths=[9 * mm, 9 * mm, 54 * mm, 15 * mm, 19 * mm, 16 * mm, 58 * mm],
         repeatRows=1,
     )
     tabela.setStyle(TableStyle(estilos))
@@ -199,9 +205,12 @@ def gerar_folha_pdf(
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ])
     )
+    teletrabalho = (
+        f" (teletrabalho: {resumo.dias_teletrabalho})" if resumo.dias_teletrabalho else ""
+    )
     contagens = (
         f"Dias registados: {resumo.dias_registados} · dias úteis trabalhados: "
-        f"{resumo.dias_uteis} · férias: {resumo.dias_ferias} · feriados: "
+        f"{resumo.dias_uteis}{teletrabalho} · férias: {resumo.dias_ferias} · feriados: "
         f"{resumo.dias_feriado} · folgas: {resumo.dias_folga}"
     )
     notas = [Paragraph(_t(contagens), base), Spacer(1, 2 * mm)]
