@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -97,6 +97,23 @@ def _ambiente_e_base() -> str:
 def _titulo_da_janela() -> str:
     sufixo = _ambiente_e_base()
     return f"Martelo Orçamentos V3 — {sufixo}" if sufixo else "Martelo Orçamentos V3"
+
+
+def parar_relogios(janela: QObject) -> int:
+    """Parar todos os relógios da janela (avisos diários, assistente…).
+
+    Na «mudança de utilizador» a janela de quem sai fecha-se mas não é
+    destruída. Sem isto, os relógios dela continuavam a dar horas: com a
+    ligação já fechada davam erro (visto a 19-10-2026 no Assistente dos
+    Orçamentos) e, depois de outra pessoa entrar, corriam com a ligação dela
+    mas com os dados de quem saiu. Devolve quantos estavam a contar.
+    """
+    parados = 0
+    for relogio in janela.findChildren(QTimer):
+        if relogio.isActive():
+            relogio.stop()
+            parados += 1
+    return parados
 
 
 class MainWindow(QMainWindow):
@@ -1036,6 +1053,7 @@ class MainWindow(QMainWindow):
             tracker = getattr(self, nome, None)
             if tracker is not None:
                 tracker.encerrar()
+        parar_relogios(self)
         super().closeEvent(event)
 
     def _destacar_nav(self, name: str) -> None:

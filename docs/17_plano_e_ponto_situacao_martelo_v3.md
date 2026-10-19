@@ -2253,3 +2253,35 @@ dev):
     lá.
 11. Um orçamento **normal** (sem «Orçamento antigo») continua igual: sem linha «Versão» e
     entra como 01.
+
+Resultado: **testado pelo Paulo a 19-10** com a Catia, na base real. O 260186_06 ficou
+criado e a pasta também.
+
+### Terminal: avisos de tamanho da janela e relógios depois de mudar de utilizador (2026-10-19)
+
+No mesmo teste, o terminal do VS Code mostrou duas coisas:
+
+- **`QWindowsWindow::setGeometry: Unable to set geometry …`** (8 linhas por cada «Novo
+  Orçamento»). Não é erro: a janela cresce para mostrar o texto novo (pasta, versão,
+  avisos), o Qt pede a altura exata e o Windows, com o ecrã em escala, arredonda-a uns
+  pixels para cima. Entrou no filtro do ruído do Qt (`app/config/qt_message_handler.py`),
+  ao lado do «Could not parse stylesheet».
+- **`ERRO Assistente dos Orçamentos: Could not locate a bind…`**. Era um erro a sério, que
+  já vinha de antes. Na «mudança de utilizador» a janela de quem sai fecha-se mas não é
+  destruída, e os relógios dela (Assistente dos Orçamentos, avisos do PHC, Registo de Horas,
+  traduções do iX, aviso de versão nova) continuavam a dar horas. Sem ninguém entrado davam
+  este erro; depois de outra pessoa entrar, corriam com a ligação dela mas com os dados de
+  quem saiu (podiam mostrar à Catia o resumo ou as mensagens do Paulo). Agora, ao fechar a
+  janela principal, param-se todos os relógios dela (`parar_relogios` em
+  `app/ui/main_window.py`). Testes em `tests/test_main_window_parar_relogios.py`.
+
+Guião de teste (reiniciar o Martelo a partir do VS Code, para ver o terminal):
+
+1. Orçamentos → «Novo Orçamento» → marcar «Orçamento antigo» → escolher a pasta de um
+   orçamento → Cancelar. Esperado: o terminal **não** mostra linhas
+   `QWindowsWindow::setGeometry`.
+2. Botão **«Sair»** no canto de cima, à direita (ao lado de «Reportar problema»). Na janela
+   de login, esperar **mais de 10 minutos** sem entrar. Esperado: o terminal não mostra `ERRO Assistente dos Orçamentos`.
+3. Entrar como **Catia** e trabalhar normalmente mais de 10 minutos. Esperado: não aparece
+   nenhuma janela do Assistente nem mensagem de (Não) Adjudicado que seja do Paulo; no
+   terminal, nenhum `ERRO`.
