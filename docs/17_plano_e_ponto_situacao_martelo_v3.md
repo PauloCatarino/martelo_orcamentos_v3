@@ -2453,3 +2453,41 @@ encomenda no iMos):
    LATERAL, …
 7. Se alguma lista vier vazia, dizer o nome da obra ao Claude: ele confirma na base quantas
    linhas a obra tem na `FAVORITES`.
+
+## Guia do menu Produção para os colegas (2026-10-20)
+
+Pedido do Paulo: com vários utilizadores e muitas opções, faltava uma apresentação que
+explicasse o menu Produção — criar obras (do orçamento e da encomenda PHC), Novo
+Modelo/Versão, encomenda e iX CAD do iMos, listas de ferragens, Lista Material (Excel),
+CUT-RITE (enviar e PDF), Preparação, Imprimir, Exportar documentação, notificar o
+cliente e Ocorrências. Formato escolhido por ele: **HTML + PDF**, que abre em qualquer PC
+sem internet.
+
+Feito (só documentação, o programa não mudou):
+
+- `docs/guias/producao/`: 31 diapositivos com os ecrãs reais do Martelo (obra de exemplo
+  26.1058_01_01_JF_VIVA) e marcações numeradas. Resultado num só ficheiro,
+  `Guia_Producao_Martelo_V3.html` (modo leitura, modo apresentação, imprimir), e no
+  `Guia_Producao_Martelo_V3.pdf`. Como se altera e reconstrói: `LEIA-ME.md` da pasta.
+- Os prints, as imagens e os dois ficheiros finais **ficam fora do GitHub** (`.gitignore`
+  da pasta): têm dados reais de clientes. O email do cliente aparece desfocado.
+- `docs/guias/capturar_janela.py`: captura o Martelo janela a janela, limpo, para os
+  guias dos outros menus.
+- Prints tirados na base real só a abrir janelas e a cancelar: nada foi criado, enviado
+  ou gravado.
+
+Guião de teste (não é preciso reiniciar o Martelo):
+
+1. Explorador de Ficheiros → `C:\Users\Utilizador\Documents\Martelo_Orcamentos_V3\docs\guias\producao`
+   → duplo clique em **`Guia_Producao_Martelo_V3.html`**. Esperado: abre no Edge, com a
+   barra castanha em cima («Martelo V3 · Guia do menu Produção») e os diapositivos uns por
+   baixo dos outros, com os prints visíveis.
+2. Carregar em **☰ Índice**. Esperado: lista dos 31 diapositivos; clicar em
+   «Lista Material: o Excel em 4 passos» salta para o diapositivo 16.
+3. Carregar em **▶ Apresentar**. Esperado: ecrã inteiro, um diapositivo de cada vez.
+   **→** avança, **←** recua, **I** abre o índice, **Esc** volta ao modo leitura no mesmo
+   diapositivo.
+4. No diapositivo 2 (índice) clicar no cartão **«5 CUT-RITE»**. Esperado: salta para o 19.
+5. Abrir **`Guia_Producao_Martelo_V3.pdf`**. Esperado: 31 páginas 16:9, uma por diapositivo.
+6. Rever os textos: o que estiver mal explicado ou faltar, dizer ao Claude o número do
+   diapositivo.

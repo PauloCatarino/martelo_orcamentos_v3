@@ -1,0 +1,1428 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia do menu Produção</title>
+<meta name="description" content="Martelo Orçamentos V3 — como funciona o menu Produção, passo a passo, com os ecrãs reais.">
+<style>
+:root {
+  --castanho: #5A3E2B;
+  --castanho-medio: #8B6F4E;
+  --areia: #EFE7DA;
+  --bege: #F7F2EA;
+  --linha: #D9CFC2;
+  --texto: #2E2A26;
+  --texto-suave: #5F574E;
+  --papel: #FFFDF9;
+  --destaque: #C2410C;
+  --destaque-suave: #FCE9DE;
+  --ok: #315C35;
+  --ok-fundo: #DCEAD8;
+  --aviso: #6D4B16;
+  --aviso-fundo: #F6E7C4;
+  --info: #244A63;
+  --info-fundo: #DCE9F4;
+  --erro: #7A231C;
+  --erro-fundo: #F1D6D1;
+  --fundo-pagina: #E7DFD2;
+  --barra: #2F241B;
+  --barra-texto: #F7F2EA;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fundo-pagina: #1C1713; }
+}
+:root[data-theme="dark"] { --fundo-pagina: #1C1713; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--fundo-pagina);
+  color: var(--texto);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------- barra de cima (só no ecrã) ---------- */
+.topo {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 16px;
+  background: var(--barra); color: var(--barra-texto);
+  box-shadow: 0 2px 10px rgba(0,0,0,.25);
+}
+.topo .marca { font-weight: 700; letter-spacing: .02em; margin-right: auto; font-size: 16px; }
+.topo .marca span { font-weight: 400; opacity: .75; }
+.topo button {
+  font: inherit; font-size: 14px; cursor: pointer;
+  background: transparent; color: var(--barra-texto);
+  border: 1px solid rgba(247,242,234,.35); border-radius: 6px; padding: 6px 12px;
+}
+.topo button:hover { background: rgba(247,242,234,.12); }
+.topo button.principal { background: var(--destaque); border-color: var(--destaque); color: #fff; font-weight: 600; }
+.topo button.principal:hover { background: #a8360a; }
+
+/* ---------- baralho ---------- */
+#deck { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 28px 16px 80px; }
+.frame { position: relative; flex: none; }
+.slide {
+  position: absolute; left: 0; top: 0;
+  width: 1600px; height: 900px;
+  transform-origin: 0 0;
+  background: var(--papel);
+  border-radius: 6px;
+  box-shadow: 0 18px 40px -18px rgba(40,25,10,.45), 0 0 0 1px rgba(90,62,43,.08);
+  padding: 52px 72px 78px;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  font-size: 20px; line-height: 1.45;
+}
+.slide::after { /* filete de cor no topo */
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 8px;
+  background: linear-gradient(90deg, var(--castanho) 0 70%, var(--castanho-medio) 70% 90%, var(--destaque) 90%);
+}
+.rodape {
+  position: absolute; left: 72px; right: 72px; bottom: 24px;
+  display: flex; justify-content: space-between;
+  font-size: 14px; color: #9a8b78;
+  border-top: 1px solid var(--linha); padding-top: 10px;
+}
+.cab { margin-bottom: 24px; flex: none; }
+.kicker { font-size: 15px; letter-spacing: .14em; text-transform: uppercase; color: var(--castanho-medio); font-weight: 700; }
+h1, h2, h3 { color: var(--castanho); margin: 0; }
+h2 { font-size: 40px; line-height: 1.15; margin-top: 6px; font-weight: 700; letter-spacing: -.01em; }
+h3 { font-size: 23px; margin-bottom: 8px; }
+.lead { font-size: 21px; color: var(--texto-suave); margin: 10px 0 0; max-width: 1300px; }
+p { margin: 0 0 12px; }
+.corpo { flex: 1; min-height: 0; display: flex; gap: 40px; align-items: flex-start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.cresce { flex: 1; }
+.pequeno { font-size: 17px; }
+.suave { color: var(--texto-suave); }
+
+/* ---------- peças de texto ---------- */
+.bt {
+  display: inline-block; white-space: nowrap;
+  padding: 0 9px; line-height: 1.55;
+  border: 1px solid #bfb2a0; border-radius: 5px;
+  background: #fff; color: #3b2f25;
+  font-size: .86em; font-weight: 600;
+  box-shadow: 0 1px 0 rgba(0,0,0,.08);
+  vertical-align: 1px;
+}
+.bt.ativo { background: var(--castanho); color: #fff; border-color: var(--castanho); }
+.seta { color: var(--castanho-medio); font-weight: 700; padding: 0 2px; }
+.campo { background: var(--areia); color: var(--castanho); font-weight: 600; padding: 0 6px; border-radius: 4px; white-space: nowrap; }
+.cod { font-family: Consolas, "Cascadia Mono", monospace; font-size: .86em; background: #F1ECE4; padding: 1px 6px; border-radius: 4px; color: #4a3a2c; white-space: nowrap; }
+.nota { border-left: 5px solid var(--info); background: var(--info-fundo); padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 18px; }
+.nota.aviso { border-color: #B7791F; background: var(--aviso-fundo); }
+.nota.ok { border-color: var(--ok); background: var(--ok-fundo); }
+.nota.erro { border-color: var(--erro); background: var(--erro-fundo); }
+.nota b.t { display: block; margin-bottom: 2px; }
+ul.pontos { margin: 0; padding-left: 22px; }
+ul.pontos li { margin-bottom: 8px; }
+ul.pontos li::marker { color: var(--castanho-medio); }
+
+/* listas numeradas: legenda (laranja, igual aos números nos prints) e passos (castanho) */
+ol.legenda, ol.passos { list-style: none; margin: 0; padding: 0; counter-reset: n; }
+ol.legenda > li, ol.passos > li { position: relative; padding-left: 48px; margin-bottom: 13px; counter-increment: n; }
+ol.legenda > li::before, ol.passos > li::before {
+  content: counter(n); position: absolute; left: 0; top: -1px;
+  width: 33px; height: 33px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 17px; color: #fff;
+  background: var(--destaque);
+}
+ol.legenda > li[data-n]::before { content: attr(data-n); }
+ol.passos > li::before { background: var(--castanho); }
+ol.compacto > li { margin-bottom: 9px; }
+ol.espacado > li { margin-bottom: 26px; }
+.grelha2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 36px; }
+.grelha3 { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 30px; }
+
+/* ---------- prints com marcações ---------- */
+.shot { position: relative; flex: none; margin: 0; }
+.shot img { display: block; width: 100%; height: auto; border: 1px solid #cdbfac; border-radius: 8px; box-shadow: 0 14px 30px -14px rgba(60,40,20,.45); background: #fff; }
+.shot.semsombra img { box-shadow: none; }
+.shot figcaption { font-size: 15px; color: var(--texto-suave); margin-top: 8px; }
+.box, .pin { position: absolute; pointer-events: none; }
+.box {
+  left: calc(var(--x) / var(--w) * 100%);
+  top: calc(var(--y) / var(--h) * 100%);
+  width: calc(var(--bw) / var(--w) * 100%);
+  height: calc(var(--bh) / var(--h) * 100%);
+  border: 3px solid var(--destaque); border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.75), 0 0 0 6px rgba(194,65,12,.16);
+}
+.box::before, .pin {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--destaque); color: #fff;
+  border: 3px solid #fff;
+  display: grid; place-items: center;
+  font: 700 17px/1 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 2px 7px rgba(0,0,0,.35);
+}
+/* O número fica por fora da caixa, para não tapar o texto do ecrã. */
+.box::before { content: attr(data-n); position: absolute; left: 0; top: 0; transform: translate(-78%, -78%); }
+.box.pl::before { top: 50%; left: -6px; transform: translate(-100%, -50%); }
+.box.pr::before { left: calc(100% + 6px); top: 50%; transform: translate(0, -50%); }
+.box.tr::before { left: 100%; transform: translate(-22%, -78%); }
+.box.bl::before { top: 100%; transform: translate(-78%, -22%); }
+.box.br::before { left: 100%; top: 100%; transform: translate(-22%, -22%); }
+.box.sem::before { display: none; }
+.pin {
+  left: calc(var(--x) / var(--w) * 100%);
+  top: calc(var(--y) / var(--h) * 100%);
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- capa ---------- */
+.slide.capa { padding: 0; flex-direction: row; background: var(--castanho); color: #fff; }
+.slide.capa::after { display: none; }
+.capa .esq { width: 58%; padding: 90px 80px 70px 90px; display: flex; flex-direction: column; }
+.capa .kicker { color: #E6D4BC; }
+.capa h1 { color: #fff; font-size: 92px; line-height: 1; margin: 22px 0 26px; letter-spacing: -.02em; }
+.capa .sub { font-size: 26px; line-height: 1.4; color: #F1E6D6; max-width: 760px; }
+.capa .meta { margin-top: auto; font-size: 17px; color: #D9C6AD; line-height: 1.7; }
+.capa .meta b { color: #fff; }
+.capa .dir { width: 42%; background: var(--areia); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 50px; gap: 26px; position: relative; }
+.capa .dir img { width: 100%; border-radius: 10px; box-shadow: 0 20px 40px -18px rgba(40,25,10,.5); }
+.capa .dir .teclas { font-size: 16px; color: var(--castanho); text-align: center; line-height: 1.8; }
+.tecla { display: inline-block; min-width: 30px; padding: 1px 8px; border: 1px solid #b9a78f; border-bottom-width: 3px; border-radius: 6px; background: #fff; font-weight: 700; font-size: 14px; color: var(--castanho); text-align: center; }
+
+/* ---------- índice ---------- */
+.cartoes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+.cartao {
+  display: block; text-decoration: none; color: inherit;
+  background: #fff; border: 1px solid var(--linha); border-radius: 12px;
+  padding: 18px 20px 16px; border-top: 6px solid var(--castanho-medio);
+  min-height: 200px;
+}
+.cartao:hover { border-color: var(--destaque); }
+.cartao .num { font-size: 15px; font-weight: 700; color: var(--destaque); letter-spacing: .1em; }
+.cartao h3 { margin: 6px 0 8px; font-size: 24px; }
+.cartao p { font-size: 17px; color: var(--texto-suave); margin: 0; }
+.cartao .pag { font-size: 14px; color: #9a8b78; margin-top: 10px; }
+
+/* ---------- caminho da obra ---------- */
+.caminho { display: grid; grid-template-columns: repeat(4, 1fr); gap: 34px 46px; margin-top: 10px; }
+.etapa { position: relative; background: #fff; border: 1px solid var(--linha); border-radius: 12px; padding: 22px 20px 18px; border-top: 6px solid var(--castanho-medio); min-height: 205px; }
+.etapa .n { position: absolute; top: -20px; left: 16px; width: 38px; height: 38px; border-radius: 50%; background: var(--castanho); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; border: 3px solid var(--papel); }
+.etapa h3 { font-size: 24px; margin: 6px 0 8px; }
+.etapa .onde { font-size: 17px; margin-bottom: 8px; line-height: 1.8; }
+.etapa p { font-size: 17px; color: var(--texto-suave); margin: 0; line-height: 1.4; }
+.etapa:not(.ultimo-da-linha)::after { content: "→"; position: absolute; right: -36px; top: 50%; transform: translateY(-50%); font-size: 28px; color: var(--castanho-medio); font-weight: 700; }
+.estados { display: flex; align-items: center; gap: 12px; margin-top: 40px; flex-wrap: wrap; }
+.estado { padding: 8px 16px; border-radius: 999px; font-weight: 700; font-size: 18px; }
+.estado small { display: block; font-weight: 400; font-size: 14px; }
+.e-desenho { background: var(--info-fundo); color: var(--info); }
+.e-producao { background: var(--aviso-fundo); color: var(--aviso); }
+.e-finalizado { background: var(--ok-fundo); color: var(--ok); }
+.e-arquivado { background: #E3E0DC; color: #4A4641; }
+
+/* ---------- fluxos horizontais ---------- */
+.fluxo { display: flex; align-items: stretch; gap: 0; }
+.fluxo .caixa { flex: 1; background: #fff; border: 1px solid var(--linha); border-radius: 12px; padding: 14px 16px; border-top: 6px solid var(--castanho-medio); }
+.fluxo .caixa.forte { border-top-color: var(--destaque); background: var(--destaque-suave); }
+.fluxo .caixa h3 { font-size: 20px; margin: 0 0 6px; }
+.fluxo .caixa p { font-size: 16px; color: var(--texto-suave); margin: 0 0 6px; line-height: 1.4; }
+.fluxo .caixa .n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--castanho); color: #fff; font-size: 15px; font-weight: 700; margin-right: 6px; vertical-align: 1px; }
+.fluxo .lig { flex: none; width: 34px; display: grid; place-items: center; font-size: 26px; color: var(--castanho-medio); font-weight: 700; }
+
+/* tabela simples */
+table.t { border-collapse: collapse; width: 100%; font-size: 17px; }
+table.t th { text-align: left; background: var(--castanho-medio); color: #fff; font-weight: 600; padding: 7px 12px; }
+table.t td { padding: 7px 12px; border-bottom: 1px solid var(--linha); vertical-align: top; }
+table.t tr:nth-child(even) td { background: var(--bege); }
+
+/* ---------- modo apresentação ---------- */
+body.apresentar { overflow: hidden; background: #120E0A; }
+body.apresentar .topo { display: none; }
+body.apresentar #deck { position: fixed; inset: 0; padding: 0; display: block; }
+body.apresentar .frame { position: absolute; display: none; }
+body.apresentar .frame.atual { display: block; }
+body.apresentar .slide { border-radius: 0; box-shadow: none; }
+.controlos { display: none; }
+body.apresentar .controlos {
+  display: flex; position: fixed; right: 16px; bottom: 14px; z-index: 30;
+  gap: 6px; align-items: center; opacity: .25; transition: opacity .2s;
+  background: rgba(20,14,10,.85); color: #F7F2EA; padding: 6px 8px; border-radius: 8px; font-size: 14px;
+}
+body.apresentar .controlos:hover { opacity: 1; }
+.controlos button { font: inherit; cursor: pointer; background: transparent; color: inherit; border: 1px solid rgba(247,242,234,.3); border-radius: 5px; padding: 3px 10px; }
+.progresso { display: none; }
+body.apresentar .progresso { display: block; position: fixed; left: 0; bottom: 0; height: 4px; background: var(--destaque); z-index: 31; transition: width .2s; }
+
+/* índice flutuante */
+.indice { position: fixed; inset: 0; z-index: 40; background: rgba(18,14,10,.6); display: none; align-items: flex-start; justify-content: center; padding: 60px 16px; }
+.indice.aberto { display: flex; }
+.indice .painel { background: var(--papel); border-radius: 10px; max-width: 760px; width: 100%; max-height: 80vh; overflow: auto; padding: 20px 24px; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+.indice h3 { font-size: 20px; margin-bottom: 10px; }
+.indice ol { margin: 0; padding-left: 34px; columns: 2; column-gap: 30px; }
+.indice li { break-inside: avoid; padding: 3px 0; font-size: 15px; }
+.indice a { color: var(--texto); text-decoration: none; }
+.indice a:hover { color: var(--destaque); text-decoration: underline; }
+
+/* ---------- ?so=N : um só diapositivo, tamanho real (para imagens) ---------- */
+body.so-um { background: #fff; }
+body.so-um .topo { display: none; }
+body.so-um #deck { padding: 0; display: block; }
+body.so-um .frame { display: none; }
+body.so-um .frame.atual { display: block; width: 1600px; height: 900px; }
+body.so-um .slide { transform: none !important; border-radius: 0; box-shadow: none; }
+
+/* ---------- impressão / PDF: um diapositivo por página ---------- */
+@page { size: 1600px 900px; margin: 0; }
+@media print {
+  .topo, .controlos, .progresso, .indice { display: none !important; }
+  body, body.apresentar { background: #fff; overflow: visible; }
+  #deck, body.apresentar #deck { position: static; display: block; padding: 0; }
+  .frame, body.apresentar .frame {
+    position: relative !important; display: block !important;
+    left: auto !important; top: auto !important;
+    width: 1600px !important; height: 900px !important;
+    break-after: page; page-break-after: always; overflow: hidden;
+  }
+  .slide { transform: none !important; border-radius: 0; box-shadow: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div class="marca">Martelo V3 <span>· Guia do menu Produção</span></div>
+  <button type="button" id="b-indice" title="Lista de todos os diapositivos (tecla I)">☰ Índice</button>
+  <button type="button" id="b-imprimir" title="Imprimir ou guardar em PDF (um diapositivo por página)">⎙ Imprimir / PDF</button>
+  <button type="button" id="b-apresentar" class="principal" title="Um diapositivo de cada vez, em ecrã inteiro (setas para mudar, Esc para sair)">▶ Apresentar</button>
+</div>
+
+<div id="deck">
+
+<!-- ===================================================== 1 · CAPA -->
+<section class="slide capa" data-titulo="Capa">
+  <div class="esq">
+    <div class="kicker">Martelo Orçamentos V3 · Guia do utilizador</div>
+    <h1>Menu Produção</h1>
+    <div class="sub">Da encomenda à obra pronta para a fábrica: criar a obra, iMos, Lista Material, CUT-RITE, documentos, cliente e ocorrências.</div>
+    <div class="meta">
+      Versão <b>1.0.29</b> · outubro de 2026<br>
+      Todos os ecrãs são do Martelo real; obra de exemplo <b>26.1058_01_01_JF_VIVA</b>
+    </div>
+  </div>
+  <div class="dir">
+    <img src="img/capa_imagem.webp" alt="Imagem do iMos da obra de exemplo">
+    <div class="teclas">
+      <span class="tecla">→</span> ou <span class="tecla">Espaço</span> avançar ·
+      <span class="tecla">←</span> recuar<br>
+      <span class="tecla">I</span> índice · <span class="tecla">F</span> ecrã inteiro ·
+      <span class="tecla">Esc</span> sair
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 2 · ÍNDICE -->
+<section class="slide" data-titulo="O que vamos ver">
+  <div class="cab">
+    <div class="kicker">Índice</div>
+    <h2>O que vamos ver</h2>
+    <p class="lead">Oito partes, pela ordem em que uma obra anda. Carregue num cartão para saltar para lá.</p>
+  </div>
+  <div class="cartoes">
+    <a class="cartao" href="#s3"><div class="num">1</div><h3>Visão geral</h3><p>O caminho de uma obra, o ecrã, os botões, encontrar uma obra e os dados dela.</p><div class="pag">diapositivos 3 a 9</div></a>
+    <a class="cartao" href="#s10"><div class="num">2</div><h3>Criar a obra</h3><p>A partir do orçamento, a partir da encomenda do PHC, e um novo modelo ou versão.</p><div class="pag">10 a 12</div></a>
+    <a class="cartao" href="#s13"><div class="num">3</div><h3>iMos</h3><p>Criar a encomenda no iMos, abrir a obra no iX CAD e gerar as listas de ferragens.</p><div class="pag">13 a 15</div></a>
+    <a class="cartao" href="#s16"><div class="num">4</div><h3>Lista Material</h3><p>O Excel em 4 passos e a análise de materiais e custos.</p><div class="pag">16 a 18</div></a>
+    <a class="cartao" href="#s19"><div class="num">5</div><h3>CUT-RITE</h3><p>Enviar a lista de corte e guardar o PDF do plano na pasta da obra.</p><div class="pag">19 e 20</div></a>
+    <a class="cartao" href="#s21"><div class="num">6</div><h3>Preparar e documentar</h3><p>Preparação, passar a obra a Produção, imprimir e exportar PDFs.</p><div class="pag">21 a 24</div></a>
+    <a class="cartao" href="#s25"><div class="num">7</div><h3>Cliente e acompanhamento</h3><p>Avisar o cliente e registar as ocorrências da obra.</p><div class="pag">25 a 28</div></a>
+    <a class="cartao" href="#s29"><div class="num">8</div><h3>Consulta rápida</h3><p>Outros botões, problemas comuns e a cábula de uma obra do início ao fim.</p><div class="pag">29 a 31</div></a>
+  </div>
+</section>
+
+<!-- ===================================================== 3 · CAMINHO -->
+<section class="slide" data-titulo="O caminho de uma obra">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>O caminho de uma obra no Martelo</h2>
+    <p class="lead">Cada etapa tem o seu botão no menu Produção. Não é obrigatório fazer todas, mas a ordem é esta.</p>
+  </div>
+  <div class="caminho">
+    <div class="etapa"><div class="n">1</div><h3>Criar a obra</h3><div class="onde"><span class="bt">Converter Orçamento</span> ou <span class="bt">Novo Processo</span></div><p>Obra no Martelo e pasta no servidor.</p></div>
+    <div class="etapa"><div class="n">2</div><h3>Encomenda no iMos</h3><div class="onde"><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Criar Encomenda IMOS…</span></div><p>Pasta do cliente e encomenda com os dados da obra.</p></div>
+    <div class="etapa"><div class="n">3</div><h3>Desenhar</h3><div class="onde"><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Abrir no iX CAD</span></div><p>Abre a encomenda certa, como o Organizer.</p></div>
+    <div class="etapa ultimo-da-linha"><div class="n">4</div><h3>Listas de ferragens</h3><div class="onde"><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Gerar listas iMOS…</span></div><p>Sem abrir o iMos, direto para a pasta da obra.</p></div>
+    <div class="etapa"><div class="n">5</div><h3>Lista Material</h3><div class="onde"><span class="bt">Lista Material_IMOS</span></div><p>Excel com o CSV do iMos, AUTOMATION, ferragens e análise.</p></div>
+    <div class="etapa"><div class="n">6</div><h3>Plano de corte</h3><div class="onde"><span class="bt">CUT-RITE</span><span class="seta">›</span><span class="bt">Enviar</span> / <span class="bt">Exportar PDF</span></div><p>Plano criado no CUT-RITE; PDF na pasta da obra.</p></div>
+    <div class="etapa"><div class="n">7</div><h3>Documentos</h3><div class="onde"><span class="bt">Preparação</span> <span class="bt">Exportar documentação…</span> <span class="bt">Imprimir</span></div><p>O que falta, os PDFs das listagens e a impressão.</p></div>
+    <div class="etapa ultimo-da-linha"><div class="n">8</div><h3>Produção</h3><div class="onde"><span class="campo">Estado</span> = Producao + <span class="bt">Salvar</span></div><p>O supervisor confere; o cliente recebe o email.</p></div>
+  </div>
+  <div class="estados">
+    <span class="suave pequeno" style="margin-right:6px">Estados da obra:</span>
+    <span class="estado e-desenho">Desenho<small>marca você</small></span><span class="seta">→</span>
+    <span class="estado e-producao">Produção<small>marca você</small></span><span class="seta">→</span>
+    <span class="estado e-finalizado">Finalizado<small>vem do PHC / Streamlit</small></span><span class="seta">→</span>
+    <span class="estado e-arquivado">Arquivado<small>vem do PHC / Streamlit</small></span>
+    <span class="suave pequeno" style="margin-left:10px; max-width:360px; line-height:1.35">Durante e depois: <span class="bt">Ocorrências</span> para o que o cliente reportou, o que faltou ou correu mal.</span>
+  </div>
+</section>
+
+<!-- ===================================================== 4 · ECRÃ -->
+<section class="slide" data-titulo="O ecrã da Produção">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>O ecrã da Produção</h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:1090px; margin-left:30px; --w:2560; --h:1140">
+      <img src="img/ecra.webp" alt="Ecrã da Produção com a obra 1058 selecionada">
+      <span class="box pl" data-n="1" style="--x:228; --y:108; --bw:1462; --bh:36"></span>
+      <span class="box pr" data-n="2" style="--x:228; --y:152; --bw:1790; --bh:34"></span>
+      <span class="box pr" data-n="3" style="--x:226; --y:192; --bw:330; --bh:24"></span>
+      <span class="box" data-n="4" style="--x:228; --y:248; --bw:1356; --bh:356"></span>
+      <span class="box tr" data-n="5" style="--x:1586; --y:248; --bw:932; --bh:362"></span>
+      <span class="box" data-n="6" style="--x:228; --y:612; --bw:2290; --bh:336"></span>
+      <span class="box" data-n="7" style="--x:228; --y:960; --bw:2296; --bh:170"></span>
+      <span class="box tr" data-n="8" style="--x:2362; --y:152; --bw:165; --bh:33"></span>
+      <span class="box pl" data-n="9" style="--x:26; --y:368; --bw:162; --bh:134"></span>
+    </figure>
+    <ol class="legenda compacto pequeno cresce">
+      <li><b>Barra de botões</b> — tudo o que se faz a uma obra começa aqui.</li>
+      <li><b>Filtros e pesquisa</b> — para encontrar obras.</li>
+      <li><b>Linha de estado</b> — o Martelo diz aqui o que acabou de fazer, ou porque não fez.</li>
+      <li><b>Detalhe da obra</b> — os dados da obra selecionada. Altere e carregue em <span class="bt">Salvar</span>.</li>
+      <li><b>Imagem do iMos</b> e <b>pasta da obra</b> no servidor.</li>
+      <li><b>Textos</b> — descrição dos artigos, matérias usadas, descrição de produção e três notas.</li>
+      <li><b>Lista de obras</b> — clique numa linha para ver a obra em cima.</li>
+      <li><b>Obras do ano</b> — conta as do responsável escolhido.</li>
+      <li>No menu da esquerda a Produção tem ainda <b>Encomendas PHC</b>, <b>Ponto Situação</b> e <b>Ocorrências</b>.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================================================== 5 · BOTÕES -->
+<section class="slide" data-titulo="A barra de botões">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>A barra de botões</h2>
+    <p class="lead">Selecione primeiro a obra na lista: quase todos os botões trabalham sobre a obra selecionada.</p>
+  </div>
+  <figure class="shot" style="width:1456px; margin-top:22px; --w:1496; --h:48">
+    <img src="img/botoes.webp" alt="Barra de botões da Produção">
+    <span class="pin" style="--x:75; --y:-28">1</span>
+    <span class="pin" style="--x:219; --y:-28">2</span>
+    <span class="pin" style="--x:370; --y:-28">3</span>
+    <span class="pin" style="--x:533; --y:-28">4</span>
+    <span class="pin" style="--x:676; --y:-28">5</span>
+    <span class="pin" style="--x:783; --y:-28">6</span>
+    <span class="pin" style="--x:880; --y:-28">7</span>
+    <span class="pin" style="--x:978; --y:-28">8</span>
+    <span class="pin" style="--x:1062; --y:-28">9</span>
+    <span class="pin" style="--x:1146; --y:-28">10</span>
+    <span class="pin" style="--x:1275; --y:-28">11</span>
+    <span class="pin" style="--x:1406; --y:-28">12</span>
+  </figure>
+  <ol class="legenda grelha3 pequeno" style="margin-top:28px">
+    <li><b>Converter Orçamento</b> — obra a partir de um orçamento adjudicado. <span class="suave">(10)</span></li>
+    <li><b>Novo Processo</b> — obra a partir de uma encomenda do PHC ou do Streamlit. <span class="suave">(11)</span></li>
+    <li><b>Novo Modelo/Versão</b> — outro modelo ou versão da obra selecionada. <span class="suave">(12)</span></li>
+    <li><b>Lista Material_IMOS</b> — cria ou abre o Excel da lista de material. <span class="suave">(16)</span></li>
+    <li><b>CUT-RITE</b> ▾ — enviar a lista de corte e exportar o PDF do plano. <span class="suave">(19–20)</span></li>
+    <li><b>Funções</b> ▾ — iMos, listas, preparação, impressão, PDFs e cliente. <span class="suave">(6)</span></li>
+    <li><b>Ocorrências</b> — o diário da obra; mostra quantos tickets tem. <span class="suave">(26)</span></li>
+    <li><b>Eliminar</b> — apaga o registo e/ou a pasta; pergunta sempre o quê. <span class="suave">(29)</span></li>
+    <li><b>Salvar</b> — fica ativo quando altera algum dado da obra.</li>
+    <li><b>Atualizar</b> — volta a ler a lista de obras.</li>
+    <li><b>Atualizar dados V2</b> — temporário: traz obras do Martelo V2.</li>
+    <li><b>IA Martelo</b> — pesquisa, ponto de situação, PDF, WhatsApp e emails.</li>
+  </ol>
+  <div class="corpo" style="margin-top:auto; align-items:center; flex:none">
+    <figure class="shot" style="width:767px"><img src="img/tooltip.webp" alt="Dica do botão CUT-RITE"></figure>
+    <div class="nota cresce"><b class="t">Não sabe o que um botão faz?</b>Pare o rato em cima dele (ou de um campo): aparece uma explicação, como esta do <span class="bt">CUT-RITE</span>.</div>
+  </div>
+</section>
+
+<!-- ===================================================== 6 · MENUS -->
+<section class="slide" data-titulo="Os menus Funções e CUT-RITE">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>Os menus <span class="bt ativo" style="font-size:.7em">Funções</span> e <span class="bt" style="font-size:.7em">CUT-RITE</span></h2>
+    <p class="lead">Os dois botões com ▾ abrem um menu. As ações valem para a obra selecionada e para a pasta dela.</p>
+  </div>
+  <div class="corpo">
+    <div class="col" style="width:820px">
+      <figure class="shot" style="width:820px"><img src="img/menu_funcoes.webp" alt="Menu Funções aberto"></figure>
+      <figure class="shot" style="width:620px"><img src="img/menu_cutrite.webp" alt="Menu CUT-RITE aberto"></figure>
+    </div>
+    <div class="col cresce">
+      <table class="t">
+        <tr><th>Funções</th><th style="width:70px">Ver</th></tr>
+        <tr><td><b>Abrir no iX CAD</b> — abre a encomenda da obra no iX CAD</td><td>14</td></tr>
+        <tr><td><b>Gerar listas iMOS (ferragens)…</b> — as listas sem abrir o iMos</td><td>15</td></tr>
+        <tr><td><b>Analisar/Completar Lista Material…</b> — materiais e custos</td><td>17–18</td></tr>
+        <tr><td><b>Preparação</b> — o que já está feito na pasta da obra</td><td>21</td></tr>
+        <tr><td><b>Imprimir</b> — documentos da pasta, pela sua ordem</td><td>23</td></tr>
+        <tr><td><b>Exportar documentação…</b> — PDFs das listagens do Excel</td><td>24</td></tr>
+        <tr><td><b>Notificar Cliente</b> — email de que a obra vai para produção</td><td>25</td></tr>
+        <tr><td><b>Criar Encomenda IMOS…</b> — pasta e encomenda no iMos</td><td>13</td></tr>
+        <tr><th>CUT-RITE</th><th></th></tr>
+        <tr><td><b>Enviar CUT-RITE</b> — cria o plano de corte</td><td>19</td></tr>
+        <tr><td><b>Exportar PDF CUT-RITE</b> — PDF do plano para a pasta da obra</td><td>20</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 7 · ENCONTRAR -->
+<section class="slide" data-titulo="Encontrar uma obra">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>Encontrar uma obra</h2>
+    <p class="lead">Os filtros somam-se. Se uma obra «desapareceu», quase sempre é um filtro esquecido: <span class="bt">Limpar filtros</span>.</p>
+  </div>
+  <figure class="shot" style="width:1366px; margin-top:26px; --w:1366; --h:38">
+    <img src="img/filtros_esq.webp" alt="Filtros da esquerda">
+    <span class="pin" style="--x:115; --y:-26">1</span>
+    <span class="pin" style="--x:215; --y:-26">2</span>
+    <span class="pin" style="--x:370; --y:-26">3</span>
+    <span class="pin" style="--x:660; --y:-26">4</span>
+    <span class="pin" style="--x:830; --y:-26">5</span>
+    <span class="pin" style="--x:1100; --y:-26">6</span>
+  </figure>
+  <figure class="shot" style="width:960px; margin-top:22px; --w:960; --h:42">
+    <img src="img/filtros_dir.webp" alt="Filtros da direita">
+    <span class="pin" style="--x:85; --y:68">7</span>
+    <span class="pin" style="--x:242; --y:68">8</span>
+    <span class="pin" style="--x:376; --y:68">9</span>
+    <span class="pin" style="--x:864; --y:68">10</span>
+  </figure>
+  <div class="corpo" style="margin-top:52px">
+    <ol class="legenda compacto pequeno grelha2 cresce">
+      <li><b>Vista</b> — combinações de filtros guardadas, só suas.</li>
+      <li><b>★</b> — guardar os filtros atuais como vista, ou eliminar uma.</li>
+      <li><b>Pesquisar</b> — procura em todos os campos, até nas notas: «TRIADE» encontra a obra pela Notas 1. Vários termos: espaço ou %.</li>
+      <li><b>Nº Enc PHC</b> — só o número da encomenda; vai estreitando enquanto escreve. <span class="cod">182</span> não encontra <span class="cod">_182</span>.</li>
+      <li><b>Estado</b> — Desenho, Produção, Finalizado, Arquivado.</li>
+      <li><b>Cliente</b> — escreva para filtrar a lista e escolha.</li>
+      <li><b>Responsável</b> — de quem é a obra.</li>
+      <li><b>As minhas obras</b> — escolhe o seu nome no Responsável.</li>
+      <li><b>Limpar filtros</b> — volta a mostrar tudo.</li>
+      <li><b>Obras do ano</b> — total do ano para o responsável escolhido.</li>
+    </ol>
+    <div class="nota" style="width:360px"><b class="t">As colunas da lista</b><b>Botão direito</b> no cabeçalho da tabela: escolher as colunas que vê, repor a ordem ou as colunas por defeito. As larguras ficam guardadas para si.</div>
+  </div>
+</section>
+
+<!-- ===================================================== 8 · DETALHE -->
+<section class="slide" data-titulo="O detalhe da obra">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>O detalhe da obra</h2>
+  </div>
+  <div class="corpo">
+    <div class="col" style="width:1000px">
+      <figure class="shot" style="width:1000px; --w:1360; --h:380">
+        <img src="img/form.webp" alt="Formulário do detalhe da obra">
+        <span class="box" data-n="1" style="--x:98; --y:52; --bw:322; --bh:28"></span>
+        <span class="box" data-n="2" style="--x:572; --y:52; --bw:324; --bh:28"></span>
+        <span class="box tr" data-n="3" style="--x:1027; --y:52; --bw:322; --bh:28"></span>
+        <span class="box pl" data-n="4" style="--x:98; --y:100; --bw:1252; --bh:28"></span>
+        <span class="box" data-n="5" style="--x:430; --y:148; --bw:605; --bh:28"></span>
+        <span class="box pr" data-n="6" style="--x:343; --y:198; --bw:24; --bh:24"></span>
+        <span class="box pl" data-n="7" style="--x:98; --y:245; --bw:470; --bh:28"></span>
+        <span class="box pl" data-n="8" style="--x:98; --y:342; --bw:800; --bh:28"></span>
+        <span class="box tr" data-n="9" style="--x:976; --y:342; --bw:372; --bh:28"></span>
+      </figure>
+      <div class="nota" style="margin-top:10px">
+        <b class="t">Como se lê o nome</b>
+        <span class="cod">26.1058_01_01_JF_VIVA</span> = ano 26 · encomenda 1058 · modelo 01 · versão 01 · cliente JF_VIVA<br>
+        <span class="cod">1058_01_26_JF_VIVA</span> (iMos) não tem versão: <b>uma encomenda no iMos por modelo</b>.<br>
+        <span class="cod">1058_01_01_26_JF_VIVA</span> (CUT-RITE) tem versão: <b>um plano de corte por versão</b>.
+      </div>
+    </div>
+    <ol class="legenda compacto pequeno cresce">
+      <li><b>Processo</b> — o código da obra; dá o nome à pasta.</li>
+      <li><b>Nome Plano CUT-RITE</b> — o nome do plano de corte.</li>
+      <li><b>Nome Enc IMOS IX</b> — o nome da encomenda no iMos. O ícone à direita abre a obra no iX CAD.</li>
+      <li><b>Campos sombreados</b> — fixos: vêm do orçamento ou do PHC.</li>
+      <li><b>Modelo</b> e <b>Versão</b> — ver «Novo Modelo/Versão».</li>
+      <li><b>Pasta</b> ao lado do Nº Orçamento — abre a pasta do orçamento.</li>
+      <li><b>Estado</b> — Desenho ou Produção; passar a Produção tem verificação.</li>
+      <li><b>Datas</b> de início e de entrega, que vêm do PHC.</li>
+      <li><b>Tipo Pasta</b> — onde fica a pasta no servidor (Encomenda de Cliente…).</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================================================== 9 · IMAGEM, PASTA, LISTA -->
+<section class="slide" data-titulo="Imagem, pasta e lista de obras">
+  <div class="cab">
+    <div class="kicker">1 · Visão geral</div>
+    <h2>Imagem, pasta da obra e lista de obras</h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:760px; margin-left:30px; --w:948; --h:364">
+      <img src="img/imagem_pasta.webp" alt="Imagem do iMos e pasta da obra">
+      <span class="box" data-n="1" style="--x:168; --y:8; --bw:604; --bh:295"></span>
+      <span class="box pl" data-n="2" style="--x:2; --y:330; --bw:856; --bh:30"></span>
+      <span class="box pr" data-n="3" style="--x:863; --y:330; --bw:70; --bh:30"></span>
+    </figure>
+    <ol class="legenda pequeno cresce" style="min-width:0; margin-left:20px">
+      <li><b>Imagem do iMos</b> — aparece sozinha quando existe na pasta da obra. Clique para a abrir.</li>
+      <li><b>Pasta da obra</b> — o caminho no servidor:<br><span class="cod" style="white-space:normal">2026 › Encomenda de Cliente › 1058_JF_VIVA › 1058_01_JF_VIVA › 1058_01_01_JF_VIVA</span><br>(encomenda › modelo › versão).</li>
+      <li><b>Abrir</b> — abre a pasta no Explorador. Se ainda não existir, cria-a com o nome certo.</li>
+    </ol>
+  </div>
+  <figure class="shot" style="width:1456px; margin-top:34px; --w:2300; --h:175">
+    <img src="img/tabela.webp" alt="Lista de obras">
+    <span class="box tr" data-n="4" style="--x:389; --y:2; --bw:210; --bh:171"></span>
+    <span class="box tr" data-n="5" style="--x:2210; --y:2; --bw:88; --bh:171"></span>
+  </figure>
+  <ol class="legenda pequeno grelha2" style="margin-top:18px">
+    <li data-n="4"><b>Duplo clique no Processo</b> — mostra as pastas de todos os modelos e versões desta encomenda.</li>
+    <li data-n="5"><b>Projeto Cliente</b> — a data em que o email do projeto foi enviado ao cliente.</li>
+  </ol>
+</section>
+
+<!-- ===================================================== 10 · CONVERTER -->
+<section class="slide" data-titulo="Criar a obra a partir do orçamento">
+  <div class="cab">
+    <div class="kicker">2 · Criar a obra</div>
+    <h2>A partir do orçamento: <span class="bt" style="font-size:.7em">Converter Orçamento</span></h2>
+    <p class="lead">Para orçamentos feitos no Martelo V3, já adjudicados e com a encomenda do PHC.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:800px; --w:822; --h:492">
+      <img src="img/converter.webp" alt="Janela Converter Orçamento">
+      <span class="box pl" data-n="1" style="--x:8; --y:40; --bw:435; --bh:32"></span>
+      <span class="box pl" data-n="2" style="--x:12; --y:162; --bw:797; --bh:30"></span>
+      <span class="box tr" data-n="3" style="--x:682; --y:125; --bw:127; --bh:70"></span>
+      <span class="box pl" data-n="4" style="--x:8; --y:414; --bw:805; --bh:32"></span>
+      <span class="box br" data-n="5" style="--x:692; --y:450; --bw:45; --bh:32"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Pesquisar</b> por orçamento, cliente ou encomenda PHC.</li>
+        <li>Só aparecem orçamentos <b>Adjudicados</b>, com <b>Nº Enc PHC</b>, que ainda não passaram para produção. Selecione a linha.</li>
+        <li><b>Pronto?</b> — ✓ quando o orçamento tem tudo o que a conversão precisa.</li>
+        <li>Confirme a <b>Encomenda PHC a converter</b>.</li>
+        <li><b>OK</b> cria a obra.</li>
+      </ol>
+      <div class="nota ok">
+        <b class="t">O que o Martelo faz</b>
+        Copia os dados do orçamento, vai buscar ao PHC a Data Início, a Data Entrega e a Descrição dos artigos, e põe-no a si como Responsável. Depois <b>pergunta se quer criar já a pasta da obra</b> no servidor (se ela já existir, fica só ligada).
+      </div>
+      <div class="nota aviso pequeno">O orçamento não aparece? Confirme no menu Orçamentos que está <b>Adjudicado</b> e tem o <b>Nº Enc PHC</b>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 11 · NOVO PROCESSO -->
+<section class="slide" data-titulo="Criar a obra a partir da encomenda">
+  <div class="cab">
+    <div class="kicker">2 · Criar a obra</div>
+    <h2>A partir da encomenda: <span class="bt" style="font-size:.7em">Novo Processo</span></h2>
+    <p class="lead">Quando não há orçamento no V3 (orçamentos do V2, pedidos diretos): a obra nasce da encomenda.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:830px; --w:1002; --h:612">
+      <img src="img/novo_processo.webp" alt="Janela Novo Processo com a encomenda 1058">
+      <span class="box pl" data-n="1" style="--x:10; --y:40; --bw:420; --bh:32"></span>
+      <span class="box bl" data-n="2" style="--x:14; --y:80; --bw:400; --bh:32"></span>
+      <span class="box tr" data-n="3" style="--x:425; --y:80; --bw:312; --bh:32"></span>
+      <span class="box pl" data-n="4" style="--x:22; --y:145; --bw:960; --bh:395"></span>
+      <span class="box" data-n="5" style="--x:824; --y:570; --bw:98; --bh:32"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li>Escolha o separador: <b>Encomenda de Cliente (PHC)</b> — números como <span class="cod">1058</span> — ou <b>Encomenda Cliente Final (Streamlit)</b> — números com <span class="cod">_</span>, como <span class="cod">_001</span>.</li>
+        <li>Escreva o <b>Ano</b> e o <b>Nº Enc</b> e carregue em <span class="bt">Pesquisar</span>.</li>
+        <li>Filtre as linhas, se precisar.</li>
+        <li>Selecione a linha da encomenda.</li>
+        <li><span class="bt">Criar Processo</span> — cria a obra <b>e a pasta</b> no servidor.</li>
+      </ol>
+      <div class="nota aviso pequeno">
+        <b class="t">A encomenda já tem obra?</b>
+        O Martelo mostra as obras que existem e propõe um <span class="bt">Novo Modelo/Versão</span> em vez de duplicar.
+      </div>
+      <div class="nota pequeno"><span class="cod">111</span> (PHC) e <span class="cod">_111</span> (Streamlit) são <b>obras diferentes</b>: o «_» faz parte do número.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 12 · NOVO MODELO/VERSÃO -->
+<section class="slide" data-titulo="Novo Modelo/Versão">
+  <div class="cab">
+    <div class="kicker">2 · Criar a obra</div>
+    <h2>Outro modelo ou versão: <span class="bt" style="font-size:.7em">Novo Modelo/Versão</span></h2>
+    <p class="lead">Cria uma obra irmã da selecionada, com os mesmos dados, e a pasta dela no servidor.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:560px; --w:622; --h:552">
+      <img src="img/novo_modelo.webp" alt="Janela Novo Modelo/Versão">
+      <span class="box pl" data-n="1" style="--x:10; --y:64; --bw:235; --bh:32"></span>
+      <span class="box pl" data-n="2" style="--x:10; --y:100; --bw:190; --bh:62"></span>
+      <span class="box tr" data-n="3" style="--x:12; --y:200; --bw:598; --bh:300"></span>
+      <span class="box pr" data-n="4" style="--x:30; --y:345; --bw:280; --bh:105"></span>
+      <span class="box" data-n="5" style="--x:487; --y:512; --bw:48; --bh:30"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Sugestão Modelo</b> — o próximo modelo, a começar na versão 01. <b>Sugestão Versão</b> — a próxima versão do modelo atual.</li>
+        <li>Ou escreva à mão: <b>MODELO</b> (01 a 99) e <b>Versão CUT-RITE</b> (01 a 99).</li>
+        <li><b>Pastas existentes</b> no servidor desta encomenda.</li>
+        <li><b>Registos no Streamlit</b> — contam também, mesmo sem pasta.</li>
+        <li><span class="bt">Criar</span> — cria a obra e a pasta.</li>
+      </ol>
+      <div class="fluxo" style="margin-top:6px">
+        <div class="caixa"><h3>Modelo</h3><p>Um desenho no iMos.<br>Novo modelo = nova encomenda iMos: <span class="cod">1058_<b>02</b>_26_JF_VIVA</span></p></div>
+        <div class="lig"></div>
+        <div class="caixa"><h3>Versão</h3><p>Um plano de corte no CUT-RITE.<br>Nova versão = novo plano: <span class="cod">1058_01_<b>05</b>_26_JF_VIVA</span></p></div>
+      </div>
+      <div class="nota aviso pequeno">Se a combinação já existir (pasta ou Streamlit), o Martelo avisa a vermelho. Se não conseguir ler o Streamlit, <b>não cria</b>, para não duplicar: tente outra vez.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 13 · CRIAR ENCOMENDA IMOS -->
+<section class="slide" data-titulo="Criar a encomenda no iMos">
+  <div class="cab">
+    <div class="kicker">3 · iMos</div>
+    <h2><span class="bt" style="font-size:.7em">Funções</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Criar Encomenda IMOS…</span></h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:700px; --w:962; --h:932">
+      <img src="img/criar_imos.webp" alt="Janela Criar Encomenda IMOS">
+      <span class="box" data-n="1" style="--x:16; --y:92; --bw:930; --bh:200"></span>
+      <span class="box" data-n="2" style="--x:16; --y:305; --bw:930; --bh:100"></span>
+      <span class="box" data-n="3" style="--x:16; --y:425; --bw:930; --bh:380"></span>
+      <span class="box pl" data-n="4" style="--x:16; --y:815; --bw:700; --bh:40"></span>
+      <span class="box" data-n="5" style="--x:777; --y:858; --bw:100; --bh:32"></span>
+    </figure>
+    <div class="col cresce">
+      <p>Cria no iMos a <b>pasta do cliente</b> (se faltar) e a <b>encomenda</b> desta obra, já com os dados preenchidos. <b>Primeiro mostra tudo; nada é gravado sem confirmar.</b></p>
+      <ol class="legenda compacto pequeno">
+        <li><b>Onde vai ser criada</b> — LANCA_ENCANTO › ANO › cliente › encomenda: o que já existe e o que vai ser criado.</li>
+        <li><b>Nome da encomenda</b> — vem do Martelo (máximo 30 caracteres).</li>
+        <li><b>O que vai ser gravado</b> — cada campo do Martelo e a coluna do iMos onde vai parar. Duplo clique na Descrição produção ou nas Matérias usados para os corrigir só nesta encomenda.</li>
+        <li>Os problemas aparecem <b>a vermelho</b>. Aqui: a encomenda já existe — o Martelo <b>nunca duplica nem substitui</b>.</li>
+        <li><span class="bt">Criar no IMOS</span> — só fica ativo quando não há nada a vermelho.</li>
+      </ol>
+      <div class="nota pequeno">A encomenda nova recebe também os <b>favoritos do Article Designer</b>. Só aparece a quem tem a permissão de criar encomendas no iMos.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 14 · IX CAD -->
+<section class="slide" data-titulo="Abrir a obra no iX CAD">
+  <div class="cab">
+    <div class="kicker">3 · iMos</div>
+    <h2>Abrir a obra no iX CAD</h2>
+    <p class="lead">O mesmo que o «Abrir iX CAD» do Organizer: abre a encomenda com as propriedades do iMos, não só o ficheiro .dwg.</p>
+  </div>
+  <div class="corpo">
+    <div class="col" style="width:760px">
+      <h3>Dois caminhos</h3>
+      <p>① <span class="bt">Funções</span><span class="seta">›</span><span class="bt">Abrir no iX CAD</span>, ou ② o ícone dentro do campo <span class="campo">Nome Enc IMOS IX</span>:</p>
+      <figure class="shot" style="width:700px; --w:820; --h:260">
+        <img src="img/menu_funcoes.webp" alt="Menu Funções com Abrir no iX CAD">
+        <span class="box pr" data-n="1" style="--x:290; --y:44; --bw:226; --bh:24"></span>
+      </figure>
+      <figure class="shot" style="width:700px; margin-top:18px; --w:468; --h:40">
+        <img src="img/campo_imos.webp" alt="Campo Nome Enc IMOS IX com o ícone do iX CAD">
+        <span class="box pr" data-n="2" style="--x:430; --y:8; --bw:26; --bh:26"></span>
+      </figure>
+      <div class="nota ok" style="margin-top:10px">No fim, a linha de estado diz <span class="cod">Obra 1058_01_26_JF_VIVA aberta no iX CAD.</span></div>
+    </div>
+    <div class="col cresce">
+      <h3>O que o Martelo verifica</h3>
+      <table class="t">
+        <tr><th>Situação</th><th>O que acontece</th></tr>
+        <tr><td>iX CAD aberto</td><td>A obra abre num separador novo.</td></tr>
+        <tr><td>iX CAD fechado</td><td>Pergunta se o deve abrir; pode levar 1–2 minutos.</td></tr>
+        <tr><td>Obra já aberta neste PC</td><td>Traz o iX CAD para a frente.</td></tr>
+        <tr><td>Aberta noutro PC</td><td>Avisa quem a tem; abre só para leitura.</td></tr>
+        <tr><td>Encomenda em produção ou de referência</td><td>Avisa antes e pergunta.</td></tr>
+        <tr><td>Ainda sem desenho</td><td>Avisa que o iX CAD vai criar um desenho novo.</td></tr>
+        <tr><td>Encomenda não existe no iMos</td><td>Não abre: crie-a primeiro (diapositivo 13).</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 15 · LISTAS IMOS -->
+<section class="slide" data-titulo="Listas de ferragens do iMos">
+  <div class="cab">
+    <div class="kicker">3 · iMos</div>
+    <h2><span class="bt" style="font-size:.7em">Funções</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Gerar listas iMOS (ferragens)…</span></h2>
+    <p class="lead">As listas que se exportavam do iMos, geradas pelo Martelo com os mesmos relatórios — sem abrir o iMos e direto para a pasta da obra.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:880px; --w:1002; --h:592">
+      <img src="img/listas_imos.webp" alt="Janela Gerar listas iMOS">
+      <span class="box" data-n="1" style="--x:14; --y:85; --bw:975; --bh:105"></span>
+      <span class="box pl" data-n="2" style="--x:14; --y:240; --bw:200; --bh:156"></span>
+      <span class="box pr" data-n="3" style="--x:783; --y:240; --bw:206; --bh:156"></span>
+      <span class="box" data-n="4" style="--x:206; --y:529; --bw:136; --bh:30"></span>
+      <span class="box tr" data-n="5" style="--x:348; --y:529; --bw:198; --bh:30"></span>
+    </figure>
+    <div class="col cresce">
+      <div class="nota aviso pequeno"><b>Antes:</b> grave o desenho no iMos. As listas saem da <b>última gravação</b>.</div>
+      <ol class="legenda compacto pequeno">
+        <li><b>Obra, encomenda e última gravação</b> do desenho.</li>
+        <li><b>As listas</b>: 2_List_Ferragens, 3_Resumo_Precos (a deixar de usar), 4_Etiqueta_Palete e 5_Custo_Obra_Ferragens.</li>
+        <li><b>Situação</b> — se a lista da pasta saiu da última gravação, se está desatualizada ou se ainda não existe.</li>
+        <li><span class="bt">Gerar listas marcadas</span> — as anteriores vão para <span class="cod">Listas_IMOS_anteriores</span>, com a data.</li>
+        <li><span class="bt">Importar para a Lista Material</span> — leva-as para o Excel (separadores 1_FERRAGENS, 2_PURCH, 3_SPP, 5_ETIQUETA_PALETE, 5_Custo_Obra_Ferragens).</li>
+      </ol>
+      <p class="pequeno suave">É também o <b>passo 3</b> da Lista Material (diapositivo seguinte).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 16 · LISTA MATERIAL -->
+<section class="slide" data-titulo="Lista Material: o Excel em 4 passos">
+  <div class="cab">
+    <div class="kicker">4 · Lista Material</div>
+    <h2><span class="bt" style="font-size:.7em">Lista Material_IMOS</span> — o Excel em 4 passos</h2>
+    <p class="lead">Cria na pasta da obra o <span class="cod">Lista_Material_1058_01_26_JF_VIVA.xlsm</span>, já com os dados da obra, e guia-o pelos passos seguintes. Cada passo pergunta antes.</p>
+  </div>
+  <div class="fluxo">
+    <div class="caixa"><h3><span class="n">0</span>Criar o Excel</h3><p>A partir do modelo, com cliente, datas, matérias e descrições da obra.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">1</span>CSV do iMos</h3><p>Macro <span class="cod">Import_CSV_Imos_1</span> → separador <b>LISTA_ORDENADA</b>. O Excel fica visível para responder às perguntas.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">2</span>AUTOMATION</h3><p>A mesma macro do botão AUTOMATION → preenche a <b>LISTAGEM_CUT_RITE</b>.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">3</span>Ferragens</h3><p>Abre «Gerar listas iMOS» e importa: <b>1_FERRAGENS, 2_PURCH, 3_SPP, 5_ETIQUETA_PALETE, 5_Custo…</b></p></div>
+    <div class="lig">→</div>
+    <div class="caixa forte"><h3><span class="n">4</span>Análise</h3><p>Valida os materiais no Woodstore e mostra os custos (diapositivos 17–18).</p></div>
+  </div>
+  <div class="corpo" style="margin-top:26px">
+    <div class="col" style="width:640px">
+      <h3>Antes de começar</h3>
+      <ul class="pontos pequeno">
+        <li><span class="campo">Nome Enc IMOS IX</span> preenchido.</li>
+        <li>Pasta da obra criada (botão <span class="bt">Abrir</span> ao lado da pasta).</li>
+        <li>CSV exportado do iMos para <span class="cod">I:\Cutrite\Work\Cutrite_Import_CSV</span>, com o nome da encomenda.</li>
+      </ul>
+      <div class="nota pequeno">Pode parar em qualquer passo: continua mais tarde pelos botões do próprio Excel ou por <span class="bt">Funções</span><span class="seta">›</span><span class="bt">Analisar/Completar Lista Material…</span></div>
+    </div>
+    <div class="col cresce">
+      <h3>E se a lista já existir?</h3>
+      <figure class="shot" style="width:593px"><img src="img/lista_existe.webp" alt="Pergunta: a Lista Material já existe"></figure>
+      <p class="pequeno"><b>Abrir a lista existente</b> (o normal) · <b>Criar nova</b> — pergunta outra vez; a antiga <b>não se apaga</b>, fica na pasta com a data e a hora no nome · <b>Cancelar</b>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 17 · ANÁLISE MATERIAIS -->
+<section class="slide" data-titulo="Análise da Lista Material: materiais">
+  <div class="cab">
+    <div class="kicker">4 · Lista Material</div>
+    <h2>Análise da Lista Material — materiais</h2>
+    <p class="lead"><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Analisar/Completar Lista Material…</span> — depois do CSV e da AUTOMATION, com o Excel gravado e fechado.</p>
+  </div>
+  <figure class="shot" style="width:1456px; --w:2000; --h:540">
+    <img src="img/analise_materiais.webp" alt="Separador Materiais Woodstore">
+    <span class="box pl" data-n="1" style="--x:12; --y:64; --bw:640; --bh:34"></span>
+    <span class="box pr" data-n="2" style="--x:20; --y:104; --bw:1300; --bh:52"></span>
+    <span class="box pl" data-n="3" style="--x:24; --y:200; --bw:1038; --bh:30"></span>
+    <span class="box sem" style="--x:24; --y:470; --bw:1038; --bh:30"></span>
+    <span class="box" data-n="4" style="--x:1062; --y:168; --bw:420; --bh:364"></span>
+    <span class="box tr" data-n="5" style="--x:1483; --y:168; --bw:300; --bh:364"></span>
+  </figure>
+  <ol class="legenda compacto pequeno grelha3" style="margin-top:22px">
+    <li><b>Quatro separadores</b>: Materiais, Procedimentos da listagem, Custo de produção, Tempos por setor.</li>
+    <li>As diferenças são <b>avisos</b>: <b>nunca bloqueiam</b> o envio para o CUT-RITE. Sem stock é válido.</li>
+    <li><b>A vermelho</b>: material sem código no Woodstore — o CUT-RITE <b>não o corta</b>. Decida: código existente, «Pedir criação no Woodstore», «Nome temporário» ou «Fora do Cut-Rite».</li>
+    <li><b>Verificação da referência</b> — compara a referência (L166, U767…) com as <span class="campo">Matérias usados</span> da obra.</li>
+    <li><b>Decisão</b> — escolha e carregue em <span class="bt">Aplicar materiais selecionados</span>: muda o Excel.</li>
+    <li style="list-style:none" data-n="+"><b>Pedido de criação no Woodstore (PDF)…</b> — a lista para as compras do que falta criar.</li>
+  </ol>
+</section>
+
+<!-- ===================================================== 18 · ANÁLISE CUSTOS -->
+<section class="slide" data-titulo="Análise da Lista Material: custo de produção">
+  <div class="cab">
+    <div class="kicker">4 · Lista Material</div>
+    <h2>Análise — custo de produção (parcial)</h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:1060px; --w:1700; --h:660">
+      <img src="img/analise_custos.webp" alt="Separador Custo de produção">
+      <span class="box pl" data-n="1" style="--x:20; --y:64; --bw:1660; --bh:140"></span>
+      <span class="box pl" data-n="2" style="--x:20; --y:210; --bw:940; --bh:98"></span>
+      <span class="box tr" data-n="3" style="--x:787; --y:312; --bw:400; --bh:346"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda pequeno">
+        <li><b>Custo PROVISÓRIO</b> — só fica fechado quando a obra estiver Finalizada/Arquivada e todos os pontos tiverem ✓. Os ✗ dizem o que falta.</li>
+        <li><b>Resumo</b>: placas, orlas, ferragens, comprados, SPP e produção.</li>
+        <li><b>Clique para associar…</b> — liga o material a uma matéria-prima do V3 para ter preço. A ligação fica guardada para as próximas obras.</li>
+      </ol>
+      <div class="nota pequeno">Os botões em baixo importam o custo das ferragens, acrescentam linhas à mão (ferragens que não vêm do iMos), atualizam preços e <b>inserem o relatório no Excel</b>.</div>
+      <div class="nota aviso pequeno">É informação para quem orçamenta e prepara; não muda o orçamento.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 19 · CUT-RITE ENVIAR -->
+<section class="slide" data-titulo="CUT-RITE: enviar a lista de corte">
+  <div class="cab">
+    <div class="kicker">5 · CUT-RITE</div>
+    <h2><span class="bt" style="font-size:.7em">CUT-RITE</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Enviar CUT-RITE</span></h2>
+    <p class="lead">Cria o plano de corte no CUT-RITE a partir da <b>LISTAGEM_CUT_RITE</b> da Lista Material. O Martelo trabalha no CUT-RITE por si.</p>
+  </div>
+  <div class="fluxo">
+    <div class="caixa"><h3><span class="n">1</span>Verificação</h3><p>Lê a Lista Material e procura no Woodstore cada material.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">2</span>Avisa, se for preciso</h3><p><b>Reparar e enviar</b> (recalcula o Excel) · <b>Enviar assim</b> · <b>Cancelar</b></p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">3</span>Automação</h3><p>Abre o CUT-RITE (ou usa o aberto), cria o plano com o nome certo, cola a lista de peças e grava.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa forte"><h3><span class="n">4</span>Plano criado</h3><p>«Plano CUT-RITE criado e gravado», com a pasta dos ficheiros.</p></div>
+  </div>
+  <div class="corpo" style="margin-top:28px">
+    <div class="col" style="width:640px">
+      <figure class="shot" style="width:620px"><img src="img/menu_cutrite.webp" alt="Menu CUT-RITE"></figure>
+      <div class="nota erro pequeno"><b class="t">Enquanto a janela de progresso estiver aberta</b>não mexa no rato nem no teclado: o Martelo está a «carregar nos botões» do CUT-RITE.</div>
+    </div>
+    <div class="col cresce">
+      <h3>Precisa de</h3>
+      <ul class="pontos pequeno">
+        <li><span class="campo">Nome Plano CUT-RITE</span> preenchido.</li>
+        <li>Pasta da obra e Lista Material com a LISTAGEM_CUT_RITE preenchida (passo 2).</li>
+      </ul>
+      <div class="nota aviso pequeno"><b class="t">Material sem código no Woodstore</b>Essas peças <b>não são cortadas</b> neste plano. Resolva na Análise (diapositivo 17) ou envie assim, sabendo.</div>
+      <p class="pequeno suave">Depois, no CUT-RITE: otimize o plano como de costume.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 20 · CUT-RITE PDF -->
+<section class="slide" data-titulo="CUT-RITE: PDF do plano para a pasta da obra">
+  <div class="cab">
+    <div class="kicker">5 · CUT-RITE</div>
+    <h2><span class="bt" style="font-size:.7em">CUT-RITE</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Exportar PDF CUT-RITE</span></h2>
+    <p class="lead">Guarda o resumo do plano otimizado em PDF, diretamente na pasta da obra, com o nome do plano.</p>
+  </div>
+  <ol class="passos" style="font-size:21px; max-width:1300px">
+    <li>No <b>CUT-RITE</b>, otimize o plano e abra-o na <b>Vista de impressão</b>.</li>
+    <li>No <b>Martelo</b>, com a obra selecionada: <span class="bt">CUT-RITE</span><span class="seta">›</span><span class="bt">Exportar PDF CUT-RITE</span>.</li>
+    <li>O Martelo vai a <span class="cod">Ficheiro › Imprimir as visualizações</span>, escolhe <span class="cod">Microsoft Print to PDF</span> e grava o PDF. Não mexa no rato até acabar.</li>
+    <li>Resultado: <span class="cod">…\1058_01_01_JF_VIVA\1058_01_01_26_JF_VIVA.pdf</span> — aparece logo na <b>Preparação</b> (Plano CUT-RITE ✓) e no <b>Imprimir</b>.</li>
+  </ol>
+  <div class="corpo" style="margin-top:28px">
+    <figure class="shot" style="width:520px">
+      <img src="img/pdf_cutrite.webp" alt="PDF do plano de corte gerado pelo CUT-RITE">
+      <figcaption>O PDF na pasta da obra, aqui visto na pré-visualização do <b>Imprimir</b>.</figcaption>
+    </figure>
+    <div class="col cresce">
+      <div class="nota erro"><b class="t">«Não foi encontrada a janela 'Vista de impressão' do CUT-RITE»</b>O plano ainda não está na vista de impressão. Abra-a no CUT-RITE e repita.</div>
+      <div class="nota aviso"><b class="t">«Nome Plano CUT-RITE em falta»</b>Preencha o campo no detalhe da obra e carregue em Salvar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 21 · PREPARAÇÃO -->
+<section class="slide" data-titulo="Preparação de Produção">
+  <div class="cab">
+    <div class="kicker">6 · Preparar e documentar</div>
+    <h2><span class="bt" style="font-size:.7em">Funções</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Preparação</span></h2>
+    <p class="lead">Confere o que já está feito na pasta da obra e deixa executar os passos que faltam.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:980px; --w:1400; --h:815">
+      <img src="img/preparacao.webp" alt="Painel Preparação de Produção">
+      <span class="box" data-n="1" style="--x:12; --y:58; --bw:1386; --bh:116"></span>
+      <span class="box pr" data-n="2" style="--x:8; --y:180; --bw:255; --bh:30"></span>
+      <span class="box pr" data-n="3" style="--x:88; --y:218; --bw:96; --bh:30"></span>
+      <span class="box tr" data-n="4" style="--x:68; --y:290; --bw:345; --bh:520"></span>
+      <span class="box pl" data-n="5" style="--x:13; --y:736; --bw:57; --bh:30"></span>
+      <span class="box pr" data-n="6" style="--x:312; --y:775; --bw:100; --bh:32"></span>
+    </figure>
+    <ol class="legenda compacto pequeno cresce">
+      <li><b>Contexto</b> — a obra, a pasta e os nomes iMos / CUT-RITE.</li>
+      <li><b>Pendências obrigatórias</b> — o que impede a obra de estar pronta.</li>
+      <li><b>Preferências…</b> — escolha que verificações quer ver (cada pessoa tem as suas).</li>
+      <li><b>Cada verificação</b>: Caderno de Encargos, Lista Material, ferragens, projeto, etiqueta, orlas, plano CUT-RITE, CONJ e programas CNC. <b>✓ OK</b>, <b>⚠ Desatualizado</b> ou <b>⛔ Bloqueado</b>.</li>
+      <li><b>Ação</b> — botão para fazer o passo que falta (aqui: enviar os programas CNC para as máquinas).</li>
+      <li><b>Obra pronta para Produção</b> — o resumo de tudo.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ===================================================== 22 · PASSAR A PRODUÇÃO -->
+<section class="slide" data-titulo="Passar a obra a Produção">
+  <div class="cab">
+    <div class="kicker">6 · Preparar e documentar</div>
+    <h2>Passar a obra a Produção</h2>
+    <p class="lead">No detalhe da obra: <span class="campo">Estado</span> = <b>Producao</b> e <span class="bt">Salvar</span>. O supervisor confere antes de gravar.</p>
+  </div>
+  <div class="fluxo">
+    <div class="caixa"><h3><span class="n">1</span>Estado → Produção</h3><p>Escolha <b>Producao</b> no Estado e carregue em <b>Salvar</b>.</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">2</span>Supervisor</h3><p>Corre as verificações da Preparação que escolheu (as dos programas CNC são sempre obrigatórias).</p></div>
+    <div class="lig">→</div>
+    <div class="caixa"><h3><span class="n">3a</span>Tudo OK</h3><p>Grava sem perguntar: «tudo validado — a obra entra em Produção».</p></div>
+    <div class="lig">/</div>
+    <div class="caixa"><h3><span class="n">3b</span>Falta algo</h3><p>Janela <b>Supervisor de Produção</b>: abrir a Preparação, voltar a verificar, <b>passar mesmo assim</b> ou <b>cancelar</b> (fica como estava).</p></div>
+    <div class="lig">→</div>
+    <div class="caixa forte"><h3><span class="n">4</span>Cliente</h3><p>Se ligou a opção, prepara o email ao cliente (diapositivo 25).</p></div>
+  </div>
+  <div class="corpo" style="margin-top:26px">
+    <figure class="shot" style="width:390px; --w:562; --h:492">
+      <img src="img/preferencias.webp" alt="Preferências da Preparação">
+      <span class="box pr" data-n="✉" style="--x:10; --y:398; --bw:420; --bh:24"></span>
+    </figure>
+    <div class="col cresce">
+      <p class="pequeno" style="margin:0"><b>Preparação › Preferências…</b> (à esquerda): as verificações que contam para si e, em baixo, a opção ✉ <i>«Ao passar a obra para Produção, preparar o email do projeto para o cliente»</i>.</p>
+      <div class="nota ok"><b class="t">É um aviso, não uma proibição</b>Quem decide é quem está na obra. Se passar «mesmo assim», fica registado com as pendências.</div>
+      <div class="nota pequeno"><b class="t">Só ao entrar em Produção</b>Voltar a gravar uma obra que já está em Produção não abre o supervisor.</div>
+      <div class="nota aviso pequeno"><b class="t">Finalizado e Arquivado</b>Não se marcam no Martelo: vêm do PHC (encomendas de cliente) ou do Streamlit (cliente final) e nunca fazem a obra recuar.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 23 · IMPRIMIR -->
+<section class="slide" data-titulo="Imprimir documentos">
+  <div class="cab">
+    <div class="kicker">6 · Preparar e documentar</div>
+    <h2><span class="bt" style="font-size:.7em">Funções</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Imprimir</span></h2>
+    <p class="lead">Todos os documentos da pasta da obra numa lista, pela ordem em que os quer imprimir. Pré-visualização ao lado.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:1050px; --w:1700; --h:790">
+      <img src="img/imprimir.webp" alt="Janela Imprimir Documentos">
+      <span class="box pl" data-n="1" style="--x:10; --y:25; --bw:660; --bh:32"></span>
+      <span class="box pl" data-n="2" style="--x:12; --y:62; --bw:116; --bh:725"></span>
+      <span class="box" data-n="3" style="--x:885; --y:62; --bw:320; --bh:725"></span>
+      <span class="box tr" data-n="4" style="--x:1205; --y:62; --bw:495; --bh:725"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Subir / Descer</b> muda a ordem; <b>Guardar ordem</b> fica guardada <b>para si</b>, para as próximas obras.</li>
+        <li>Visto = imprime. <b>Prioridade</b> = a ordem de impressão.</li>
+        <li><b>Categoria e origem</b> de cada documento (CUT-RITE, Excel, iMos…).</li>
+        <li>Por documento: <b>quantidade</b>, <b>papel</b> (A4, A3 ou o do PDF), <b>orientação</b>, frente e verso e cor.</li>
+      </ol>
+      <figure class="shot" style="width:222px; --w:222; --h:42">
+        <img src="img/imprimir_btn.webp" alt="Botão Imprimir Selecionados">
+        <span class="box pl" data-n="5" style="--x:12; --y:6; --bw:142; --bh:30"></span>
+      </figure>
+      <ol class="legenda compacto pequeno"><li data-n="5"><b>Imprimir Selecionados</b> — manda tudo para a impressora, pela ordem.</li></ol>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 24 · EXPORTAR DOCUMENTAÇÃO -->
+<section class="slide" data-titulo="Exportar os PDFs das listagens">
+  <div class="cab">
+    <div class="kicker">6 · Preparar e documentar</div>
+    <h2><span class="bt" style="font-size:.7em">Funções</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Exportar documentação…</span></h2>
+    <p class="lead">O Centro de Exportação PDF: as listagens da Lista Material em PDF, para a pasta da obra.</p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:740px; --w:822; --h:672">
+      <img src="img/exportar_pdf.webp" alt="Centro de Exportação PDF">
+      <span class="box pl" data-n="1" style="--x:8; --y:110; --bw:802; --bh:32"></span>
+      <span class="box pl" data-n="2" style="--x:14; --y:185; --bw:790; --bh:258"></span>
+      <span class="box pl" data-n="3" style="--x:12; --y:460; --bw:798; --bh:46"></span>
+      <span class="box pl" data-n="4" style="--x:8; --y:512; --bw:802; --bh:62"></span>
+      <span class="box" data-n="5" style="--x:678; --y:630; --bw:65; --bh:32"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Preset</b> — a sua seleção guardada com um nome; «Predefinido» abre já escolhido.</li>
+        <li><b>Documentos</b> por grupo: Ferragens (Ferragens, Purch e SPP saem <b>num só PDF</b>), Orlas, Etiqueta Palete, Listagem por Artigo, Relatório geral, Acabamentos. A cinzento: sem dados nesta obra.</li>
+        <li><b>Avisos</b> sobre os dados (ex.: peças com acabamento escrito nas notas sem Tipo_Lacagem).</li>
+        <li><b>Destino</b> (a pasta da obra) e opções: ficheiros separados, um <b>pacote combinado</b>, abrir a pasta no fim.</li>
+        <li><span class="bt">Exportar</span>.</li>
+      </ol>
+      <div class="nota pequeno">Se já houver PDFs com o mesmo nome, pergunta: <b>Substituir</b>, <b>Manter e criar _2</b> ou <b>Cancelar</b>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 25 · NOTIFICAR CLIENTE -->
+<section class="slide" data-titulo="Avisar o cliente">
+  <div class="cab">
+    <div class="kicker">7 · Cliente e acompanhamento</div>
+    <h2>Avisar o cliente de que a obra vai para produção</h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:820px; --w:1402; --h:1032">
+      <img src="img/notificar.webp" alt="Email ao cliente preparado pelo Martelo">
+      <span class="box pl" data-n="1" style="--x:84; --y:42; --bw:1306; --bh:62"></span>
+      <span class="box pr" data-n="2" style="--x:84; --y:110; --bw:1306; --bh:28"></span>
+      <span class="box" data-n="3" style="--x:12; --y:168; --bw:1376; --bh:580"></span>
+      <span class="box pl" data-n="4" style="--x:12; --y:780; --bw:1376; --bh:145"></span>
+      <span class="box" data-n="5" style="--x:1258; --y:990; --bw:56; --bh:32"></span>
+    </figure>
+    <div class="col cresce">
+      <div class="grelha2" style="column-gap:16px">
+        <div class="nota pequeno"><b class="t">Automático</b>Ao passar a obra de Desenho para Produção — se ligou a opção em Preparação › Preferências.</div>
+        <div class="nota pequeno"><b class="t">À mão</b><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Notificar Cliente</span>, quando quiser (reenviar, obra antiga…).</div>
+      </div>
+      <ol class="legenda compacto pequeno">
+        <li><b>Destinatário</b> — o email de projeto do cliente (ou o do PHC). <b>CC</b> producao@lancaencanto.pt.</li>
+        <li><b>Assunto</b> com o processo e a Ref. Cliente.</li>
+        <li><b>Corpo</b> com a imagem do iMos, as datas, as matérias-primas e a descrição. Pode mudar tudo.</li>
+        <li><b>Anexo</b> 2_Projeto_Producao.pdf (até 18 MB no total).</li>
+        <li><b>Quem envia é você.</b> Só ao enviar fica a data na coluna <b>Projeto Cliente</b>; Cancelar não regista nada.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 26 · OCORRÊNCIAS -->
+<section class="slide" data-titulo="Ocorrências: o diário da obra">
+  <div class="cab">
+    <div class="kicker">7 · Cliente e acompanhamento</div>
+    <h2><span class="bt" style="font-size:.7em">Ocorrências</span> — o diário da obra</h2>
+    <p class="lead">Cada linha é um ticket: o que o cliente reportou, o que faltou, o que correu mal. <b>Não altera os dados da obra.</b></p>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:860px; --w:1082; --h:752">
+      <img src="img/ocorrencias_obra.webp" alt="Ocorrências de uma obra com um ticket">
+      <span class="box pl" data-n="1" style="--x:8; --y:62; --bw:830; --bh:36"></span>
+      <span class="box pl" data-n="2" style="--x:14; --y:105; --bw:1054; --bh:200"></span>
+      <span class="box pl" data-n="3" style="--x:14; --y:312; --bw:1054; --bh:135"></span>
+      <span class="box pl" data-n="4" style="--x:14; --y:455; --bw:1054; --bh:198"></span>
+      <span class="box pr" data-n="5" style="--x:10; --y:662; --bw:490; --bh:20"></span>
+      <span class="box pl" data-n="6" style="--x:12; --y:685; --bw:566; --bh:34"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Filtros</b> por tipo, estado e responsável.</li>
+        <li><b>Tickets</b> da obra (T1, T2…).</li>
+        <li><b>O que aconteceu</b>, com tipo, gravidade, origem e quem registou.</li>
+        <li><b>Fotos e PDFs</b>, gravados na pasta da obra (<span class="cod">Ocorrencias\T0001</span>).</li>
+        <li>A quem foi enviado pelo <b>Teams</b> e quando.</li>
+        <li><b>Novo ticket</b>, Editar, Mudar estado, <b>Enviar para Teams</b>, <b>PDF desta obra</b>.</li>
+      </ol>
+      <div class="nota pequeno">O botão mostra quantos tickets a obra tem: <span class="bt">Ocorrências (3)</span>.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 27 · NOVO TICKET -->
+<section class="slide" data-titulo="Registar um ticket">
+  <div class="cab">
+    <div class="kicker">7 · Cliente e acompanhamento</div>
+    <h2>Registar um ticket</h2>
+  </div>
+  <div class="corpo">
+    <figure class="shot" style="width:640px; --w:762; --h:672">
+      <img src="img/novo_ticket.webp" alt="Formulário Novo ticket">
+      <span class="box pl" data-n="1" style="--x:84; --y:65; --bw:666; --bh:30"></span>
+      <span class="box pr" data-n="2" style="--x:84; --y:103; --bw:666; --bh:28"></span>
+      <span class="box pl" data-n="3" style="--x:84; --y:140; --bw:666; --bh:30"></span>
+      <span class="box" data-n="4" style="--x:12; --y:200; --bw:738; --bh:224"></span>
+      <span class="box pl" data-n="5" style="--x:12; --y:430; --bw:738; --bh:170"></span>
+      <span class="box" data-n="6" style="--x:605; --y:606; --bw:67; --bh:30"></span>
+    </figure>
+    <div class="col cresce">
+      <ol class="legenda compacto pequeno">
+        <li><b>Assunto</b> numa linha. Ex.: falta prateleira do roupeiro do quarto 2.</li>
+        <li><b>Tipo</b>, <b>Gravidade</b> e <b>Origem</b> (cliente, interno, montagem, transporte).</li>
+        <li><b>Responsável</b>, <b>Estado</b> (Aberto, Em curso, Resolvido, Anulado) e <b>Custo</b>.</li>
+        <li><b>O que aconteceu</b> — e o que se combinou.</li>
+        <li><b>Fotos e PDFs</b>: copie a imagem e <span class="tecla">Ctrl</span>+<span class="tecla">V</span>, ou escolha ficheiros.</li>
+        <li><span class="bt">Registar</span>.</li>
+      </ol>
+      <table class="t">
+        <tr><th>Tipos que contam como erro nosso</th><th>Tipos que não contam</th></tr>
+        <tr><td>Erro de produção · Erro de preparação · Erro de medidas · Peças em falta · Falta de ferragens · Atraso na entrega</td><td>Pedido adicional · Assistência · Informativo · Danificado no transporte · Danificado pelo cliente · Reclamação do cliente · Outro</td></tr>
+      </table>
+      <p class="pequeno suave">Escolher bem o tipo é o que permite, no fim do ano, separar os erros nossos dos pedidos do cliente.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== 28 · TODAS AS OCORRÊNCIAS -->
+<section class="slide" data-titulo="Todas as ocorrências">
+  <div class="cab">
+    <div class="kicker">7 · Cliente e acompanhamento</div>
+    <h2>Todas as ocorrências: menu <span class="bt" style="font-size:.7em">Produção</span><span class="seta">›</span><span class="bt" style="font-size:.7em">Ocorrências</span></h2>
+    <p class="lead">Os tickets de todas as obras numa só lista, no menu da esquerda.</p>
+  </div>
+  <figure class="shot" style="width:1456px; --w:2336; --h:628">
+    <img src="img/pagina_ocorrencias.webp" alt="Página com os tickets de todas as obras">
+    <span class="box pl" data-n="1" style="--x:6; --y:56; --bw:416; --bh:28"></span>
+    <span class="box" data-n="2" style="--x:780; --y:56; --bw:682; --bh:32"></span>
+    <span class="box tr" data-n="3" style="--x:2230; --y:56; --bw:92; --bh:32"></span>
+    <span class="box tr" data-n="4" style="--x:577; --y:102; --bw:161; --bh:520"></span>
+    <span class="box" data-n="5" style="--x:2160; --y:102; --bw:101; --bh:520"></span>
+  </figure>
+  <div class="corpo" style="margin-top:22px">
+    <ol class="legenda compacto pequeno grelha2 cresce">
+      <li><b>Pesquisar</b> no assunto e no texto.</li>
+      <li><b>Filtros</b>: ano, tipo, estado, responsável.</li>
+      <li><b>Atualizar</b> a lista.</li>
+      <li><b>Tipo</b> com cor: vermelho = erro nosso.</li>
+      <li><b>Estado</b>: Aberto / Resolvido.</li>
+      <li data-n="6"><b>Duplo clique</b> numa linha abre os tickets dessa obra.</li>
+    </ol>
+    <figure class="shot" style="width:560px">
+      <img src="img/ocorrencias_rodape.webp" alt="Resumo e botões no fundo da página">
+      <figcaption>No fundo: quantos são erros nossos, <b>Abrir tickets da obra</b> e <b>Exportar PDF</b> (com as fotos).</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ===================================================== 29 · OUTROS BOTÕES -->
+<section class="slide" data-titulo="Outros botões e ajuda">
+  <div class="cab">
+    <div class="kicker">8 · Consulta rápida</div>
+    <h2>Outros botões e ajuda</h2>
+  </div>
+  <div class="grelha2" style="row-gap:20px">
+    <div class="nota erro"><b class="t"><span class="bt">Eliminar</span></b>Pergunta sempre o que apagar: <b>Só registo (BD)</b>, <b>Só pasta (servidor)</b> ou <b>Pasta + registo</b>. Pode ser permanente: na dúvida, Cancelar.</div>
+    <div class="nota"><b class="t"><span class="bt">Salvar</span></b>Fica ativo quando muda um dado da obra. Se mudar de obra sem gravar, o Martelo pergunta: gravar, continuar sem gravar ou ficar.</div>
+    <div class="nota"><b class="t"><span class="bt">Atualizar</span></b>Volta a ler a lista de obras (por exemplo, depois de um colega criar uma obra).</div>
+    <div class="nota"><b class="t"><span class="bt">IA Martelo</span></b>Pergunte em português: ponto de situação de uma obra, as ocorrências dela, um PDF, um texto para WhatsApp ou um email ao cliente.</div>
+    <div class="nota aviso"><b class="t"><span class="bt">Atualizar dados V2</span></b>Temporário, enquanto houver obras no Martelo V2: compara e escolhe o que trazer. O V2 nunca é alterado.</div>
+    <div class="nota ok"><b class="t">Ajuda e «Reportar problema»</b>O menu <b>Ajuda</b> mostra a versão instalada e se há uma nova. O botão <b>Reportar problema</b> (canto superior direito) envia o erro com o que estava a fazer.</div>
+  </div>
+  <div class="nota pequeno" style="margin-top:22px"><b>Linha de estado:</b> debaixo dos botões o Martelo escreve sempre o resultado da última ação («Processo … criado», «Email do projeto não foi enviado», «Envio para o CUT-RITE cancelado»…). Quando algo parece não ter acontecido, leia-a primeiro.</div>
+</section>
+
+<!-- ===================================================== 30 · PROBLEMAS COMUNS -->
+<section class="slide" data-titulo="Problemas comuns">
+  <div class="cab">
+    <div class="kicker">8 · Consulta rápida</div>
+    <h2>Problemas comuns</h2>
+  </div>
+  <table class="t" style="font-size:18px">
+    <tr><th style="width:42%">O Martelo diz…</th><th>O que fazer</th></tr>
+    <tr><td><b>«Não encontrei a pasta desta obra no servidor»</b></td><td>Carregue em <span class="bt">Abrir</span> ao lado da <span class="campo">Pasta da obra</span>: cria-a com o nome certo. Depois repita.</td></tr>
+    <tr><td><b>«Nome Enc IMOS IX em falta»</b> / <b>«Nome Plano CUT-RITE em falta»</b></td><td>Preencha o campo no detalhe da obra e carregue em <span class="bt">Salvar</span>.</td></tr>
+    <tr><td><b>«Confirme se o CSV existe em I:\Cutrite\Work\Cutrite_Import_CSV»</b></td><td>Exporte o CSV no iMos; o nome do ficheiro tem de ter o nome da encomenda.</td></tr>
+    <tr><td><b>«Não foi encontrada a janela 'Vista de impressão'»</b></td><td>No CUT-RITE, abra o plano otimizado na vista de impressão e repita o Exportar PDF.</td></tr>
+    <tr><td><b>«Não foi possível validar os modelos/versões na base de dados do Streamlit»</b></td><td>O Streamlit não respondeu; o Martelo não cria nada para não duplicar. Espere um pouco e tente outra vez.</td></tr>
+    <tr><td><b>«Já existe uma encomenda … nesta pasta do iMos»</b></td><td>A encomenda já foi criada: use <span class="bt">Abrir no iX CAD</span>. O Martelo nunca a substitui.</td></tr>
+    <tr><td><b>«Análise da Lista Material não atribuída a este utilizador»</b></td><td>Peça acesso ao administrador. Entretanto, o envio para o CUT-RITE continua disponível.</td></tr>
+    <tr><td>Uma obra não aparece na lista</td><td><span class="bt">Limpar filtros</span> (ou desligue «As minhas obras»).</td></tr>
+    <tr><td>O Excel da Lista Material está aberto</td><td>Feche-o antes de criar uma nova, importar listas ou enviar para o CUT-RITE.</td></tr>
+  </table>
+</section>
+
+<!-- ===================================================== 31 · CÁBULA -->
+<section class="slide" data-titulo="Cábula: uma obra do início ao fim">
+  <div class="cab">
+    <div class="kicker">8 · Consulta rápida</div>
+    <h2>Cábula: uma obra do início ao fim</h2>
+  </div>
+  <div class="grelha2" style="column-gap:56px; margin-top:10px">
+    <ol class="passos espacado" style="font-size:20px">
+      <li><span class="bt">Converter Orçamento</span> (havia orçamento no V3) ou <span class="bt">Novo Processo</span> (encomenda PHC ou Streamlit). Criar a pasta da obra.</li>
+      <li>Confirmar os dados: <span class="campo">Nome Enc IMOS IX</span>, <span class="campo">Nome Plano CUT-RITE</span>, datas, responsável. <span class="bt">Salvar</span>.</li>
+      <li><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Criar Encomenda IMOS…</span></li>
+      <li><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Abrir no iX CAD</span> e desenhar. Gravar o desenho.</li>
+      <li>No iMos: exportar o CSV e o CONJ.pdf, como de costume.</li>
+      <li><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Gerar listas iMOS (ferragens)…</span></li>
+    </ol>
+    <ol class="passos espacado" style="font-size:20px; counter-reset:n 6">
+      <li><span class="bt">Lista Material_IMOS</span>: passos 1 a 4 (CSV, AUTOMATION, ferragens, análise).</li>
+      <li><span class="bt">CUT-RITE</span><span class="seta">›</span><span class="bt">Enviar CUT-RITE</span>; otimizar no CUT-RITE.</li>
+      <li>Vista de impressão no CUT-RITE ▸ <span class="bt">CUT-RITE</span><span class="seta">›</span><span class="bt">Exportar PDF CUT-RITE</span>.</li>
+      <li><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Exportar documentação…</span> e <span class="bt">Preparação</span> até ficar tudo ✓.</li>
+      <li><span class="campo">Estado</span> = Producao + <span class="bt">Salvar</span> → supervisor → email ao cliente.</li>
+      <li><span class="bt">Funções</span><span class="seta">›</span><span class="bt">Imprimir</span>. E, daqui para a frente, as <span class="bt">Ocorrências</span>.</li>
+    </ol>
+  </div>
+  <div class="nota ok" style="margin-top:auto">Dúvidas ou ideias para melhorar o Martelo: fale com o Paulo, ou use <b>Reportar problema</b> no próprio Martelo.</div>
+</section>
+
+</div><!-- /deck -->
+
+<div class="controlos" aria-label="Controlos da apresentação">
+  <button type="button" id="c-ant" title="Anterior (←)">‹</button>
+  <span id="c-num">1 / 1</span>
+  <button type="button" id="c-seg" title="Seguinte (→)">›</button>
+  <button type="button" id="c-ind" title="Índice (I)">☰</button>
+  <button type="button" id="c-sair" title="Sair da apresentação (Esc)">✕</button>
+</div>
+<div class="progresso" id="progresso"></div>
+
+<div class="indice" id="indice" role="dialog" aria-label="Índice">
+  <div class="painel">
+    <h3>Índice <span class="suave" style="font-size:14px; font-weight:400">— clique para ir; Esc fecha</span></h3>
+    <ol id="indice-lista"></ol>
+  </div>
+</div>
+
+<script>
+(function () {
+  var deck = document.getElementById('deck');
+  var slides = Array.prototype.slice.call(deck.querySelectorAll('.slide'));
+  var total = slides.length;
+  var params = new URLSearchParams(location.search);
+  var paraImprimir = params.has('imprimir') || params.has('so');
+  var atual = 0;
+  var modo = 'ler';
+
+  // Cada diapositivo vai para dentro de uma moldura, que é o que ocupa espaço na página.
+  var frames = slides.map(function (s, i) {
+    var f = document.createElement('div');
+    f.className = 'frame';
+    f.id = 's' + (i + 1);
+    s.parentNode.insertBefore(f, s);
+    f.appendChild(s);
+    if (!s.classList.contains('capa')) {
+      var r = document.createElement('div');
+      r.className = 'rodape';
+      r.innerHTML = '<span>Martelo V3 · Menu Produção</span><span>' + (i + 1) + ' / ' + total + '</span>';
+      s.appendChild(r);
+    }
+    return f;
+  });
+
+  // Índice
+  var lista = document.getElementById('indice-lista');
+  slides.forEach(function (s, i) {
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    a.href = '#s' + (i + 1);
+    a.textContent = s.getAttribute('data-titulo') || ('Diapositivo ' + (i + 1));
+    a.addEventListener('click', function (ev) { ev.preventDefault(); fecharIndice(); ir(i, true); });
+    li.appendChild(a);
+    lista.appendChild(li);
+  });
+
+  function guardar() { try { localStorage.setItem('guiaProducao.slide', String(atual)); } catch (e) {} }
+  function lerGuardado() { try { var v = parseInt(localStorage.getItem('guiaProducao.slide'), 10); return isNaN(v) ? 0 : v; } catch (e) { return 0; } }
+
+  function escalar() {
+    if (paraImprimir) return;
+    if (modo === 'ler') {
+      var largura = Math.min(deck.clientWidth - 32, 1400);
+      var e = largura / 1600;
+      frames.forEach(function (f) {
+        f.style.left = ''; f.style.top = '';
+        f.style.width = largura + 'px';
+        f.style.height = (900 * e) + 'px';
+        f.firstChild.style.transform = 'scale(' + e + ')';
+      });
+    } else {
+      var W = window.innerWidth, H = window.innerHeight;
+      var k = Math.min(W / 1600, H / 900);
+      frames.forEach(function (f, i) {
+        f.style.width = (1600 * k) + 'px';
+        f.style.height = (900 * k) + 'px';
+        f.style.left = ((W - 1600 * k) / 2) + 'px';
+        f.style.top = ((H - 900 * k) / 2) + 'px';
+        f.firstChild.style.transform = 'scale(' + k + ')';
+        f.classList.toggle('atual', i === atual);
+      });
+      document.getElementById('c-num').textContent = (atual + 1) + ' / ' + total;
+      document.getElementById('progresso').style.width = ((atual + 1) / total * 100) + '%';
+    }
+  }
+
+  function ir(i, rolar) {
+    atual = Math.max(0, Math.min(total - 1, i));
+    guardar();
+    if (modo === 'apresentar') { escalar(); }
+    else if (rolar) { frames[atual].scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (history.replaceState) history.replaceState(null, '', '#s' + (atual + 1));
+  }
+
+  function maisVisivel() {
+    var melhor = 0, dist = Infinity;
+    frames.forEach(function (f, i) {
+      var d = Math.abs(f.getBoundingClientRect().top - 60);
+      if (d < dist) { dist = d; melhor = i; }
+    });
+    return melhor;
+  }
+
+  function apresentar() {
+    atual = maisVisivel();
+    modo = 'apresentar';
+    document.body.classList.add('apresentar');
+    escalar();
+    try { if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function () {}); } catch (e) {}
+  }
+  function sair() {
+    modo = 'ler';
+    document.body.classList.remove('apresentar');
+    frames.forEach(function (f) { f.classList.remove('atual'); });
+    escalar();
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}
+    frames[atual].scrollIntoView({ block: 'start' });
+  }
+
+  var indice = document.getElementById('indice');
+  function abrirIndice() { indice.classList.add('aberto'); }
+  function fecharIndice() { indice.classList.remove('aberto'); }
+  indice.addEventListener('click', function (ev) { if (ev.target === indice) fecharIndice(); });
+
+  document.getElementById('b-apresentar').addEventListener('click', apresentar);
+  document.getElementById('b-indice').addEventListener('click', abrirIndice);
+  document.getElementById('b-imprimir').addEventListener('click', function () { window.print(); });
+  document.getElementById('c-ant').addEventListener('click', function (ev) { ev.stopPropagation(); ir(atual - 1); });
+  document.getElementById('c-seg').addEventListener('click', function (ev) { ev.stopPropagation(); ir(atual + 1); });
+  document.getElementById('c-ind').addEventListener('click', function (ev) { ev.stopPropagation(); abrirIndice(); });
+  document.getElementById('c-sair').addEventListener('click', function (ev) { ev.stopPropagation(); sair(); });
+
+  // Cartões do índice (diapositivo 2) e outras ligações internas
+  deck.addEventListener('click', function (ev) {
+    var a = ev.target.closest ? ev.target.closest('a[href^="#s"]') : null;
+    if (a) {
+      ev.preventDefault();
+      ir(parseInt(a.getAttribute('href').slice(2), 10) - 1, true);
+      return;
+    }
+    if (modo !== 'apresentar') return;
+    var x = ev.clientX / window.innerWidth;
+    ir(x < 0.3 ? atual - 1 : atual + 1);
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    var k = ev.key;
+    if (indice.classList.contains('aberto')) {
+      if (k === 'Escape' || k === 'i' || k === 'I') { fecharIndice(); ev.preventDefault(); }
+      return;
+    }
+    if (k === 'i' || k === 'I') { abrirIndice(); ev.preventDefault(); return; }
+    if (modo !== 'apresentar') {
+      if (k === 'p' || k === 'P') { apresentar(); ev.preventDefault(); }
+      return;
+    }
+    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Enter') { ir(atual + 1); ev.preventDefault(); }
+    else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') { ir(atual - 1); ev.preventDefault(); }
+    else if (k === 'Home') { ir(0); ev.preventDefault(); }
+    else if (k === 'End') { ir(total - 1); ev.preventDefault(); }
+    else if (k === 'Escape') { sair(); }
+    else if (k === 'f' || k === 'F') {
+      try { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function () {}); } catch (e) {}
+    }
+  });
+
+  // Em ecrã inteiro o Esc é do navegador e não chega aqui: sair do ecrã
+  // inteiro é também sair da apresentação, senão era preciso carregar duas vezes.
+  document.addEventListener('fullscreenchange', function () {
+    if (!document.fullscreenElement && modo === 'apresentar') { sair(); return; }
+    escalar();
+  });
+  window.addEventListener('resize', escalar);
+
+  if (params.has('so')) {
+    var so = Math.min(total, Math.max(1, parseInt(params.get('so'), 10) || 1)) - 1;
+    frames[so].classList.add('atual');
+    document.body.classList.add('so-um');
+    return;
+  }
+
+  escalar();
+  var m = /^#s(\d+)$/.exec(location.hash);
+  if (m) { atual = Math.min(total, Math.max(1, parseInt(m[1], 10))) - 1; frames[atual].scrollIntoView({ block: 'start' }); }
+  else { atual = lerGuardado(); if (atual > 0 && frames[atual]) frames[atual].scrollIntoView({ block: 'start' }); }
+})();
+</script>
+</body>
+</html>
