@@ -203,6 +203,21 @@ DATA_VAZIA = QDate(1752, 9, 14)
 #: Largura da setinha do calendário, quando o estilo não a souber dizer.
 _LARGURA_SETA_CALENDARIO = 24
 
+#: Passo 4 da Lista Material_IMOS (abrir a Análise da Lista Material no fim
+#: do fluxo). Suprimido por agora: a análise de custos vai ser repensada.
+#: O passo continua a aparecer, mas só avisa e abre o Excel. Pôr a True para
+#: voltar a perguntar se se abre a análise.
+PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO = False
+
+#: Aviso mostrado no passo 4 enquanto a análise estiver suprimida.
+AVISO_PASSO_4_SUPRIMIDO = (
+    "A transformação inicial ficou concluída.\n\n"
+    "O passo 4 — módulo Análise da Lista Material (validar materiais e "
+    "consultar custos) — está suprimido por agora: a análise de custos vai "
+    "ser melhorada antes de voltar a ficar disponível.\n\n"
+    "Ao fechar esta mensagem abre-se o Excel para continuar o trabalho."
+)
+
 
 class CampoData(QDateEdit):
     """Campo de data que, estando vazio, começa em HOJE quando se vai escolher.
@@ -2787,21 +2802,29 @@ class ProducaoPage(QWidget):
             self._gerar_listas_imos(processo, depois_importa=True)
             if self._importar_listas_ferragens(workbook_path):
                 self.status_label.setText(
-                    "Listas de ferragens processadas; a preparar o Assistente."
+                    "Listas de ferragens processadas; falta o passo 4."
                 )
         else:
             self.status_label.setText(
-                "Importação das listas de ferragens ignorada; a preparar o Assistente."
+                "Importação das listas de ferragens ignorada; falta o passo 4."
             )
 
-        analisar = QMessageBox.question(
-            self,
-            "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",
-            "A transformação inicial ficou concluída. Pretende abrir agora o "
-            "módulo Análise da Lista Material para validar materiais e consultar custos?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
+        if PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO:
+            analisar = QMessageBox.question(
+                self,
+                "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",
+                "A transformação inicial ficou concluída. Pretende abrir agora o "
+                "módulo Análise da Lista Material para validar materiais e consultar custos?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "LISTAGEM_CUT_RITE preenchida — passo 4 de 4",
+                AVISO_PASSO_4_SUPRIMIDO,
+            )
+            analisar = QMessageBox.StandardButton.No
         if analisar == QMessageBox.StandardButton.Yes:
             self._rever_lista_material_assistente(processo, explicit=True)
         else:

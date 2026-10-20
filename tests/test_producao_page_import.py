@@ -6,12 +6,82 @@ import inspect
 from pathlib import Path
 
 
+def test_passo_4_suprimido_avisa_e_abre_o_excel(monkeypatch, tmp_path) -> None:
+    from app.ui.pages import producao_page
+    from app.ui.pages.producao_page import ProducaoPage
+
+    # Por agora o passo 4 (Análise da Lista Material) está suprimido.
+    assert producao_page.PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO is False
+
+    workbook_path = tmp_path / "Lista_Material_teste.xlsm"
+    workbook_path.touch()
+    perguntas: list[str] = []
+    avisos: list[tuple[str, str]] = []
+    opened_urls: list[str] = []
+
+    def _question(_parent, title, *_args, **_kwargs):
+        perguntas.append(title)
+        return producao_page.QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(producao_page.QMessageBox, "question", staticmethod(_question))
+    monkeypatch.setattr(
+        producao_page.QMessageBox,
+        "information",
+        staticmethod(lambda _parent, title, text, *_a, **_k: avisos.append((title, text))),
+    )
+    monkeypatch.setattr(producao_page, "execute_import_csv_imos_macro", lambda path: path)
+    monkeypatch.setattr(producao_page, "execute_automation_cutrite_macro", lambda path: path)
+    monkeypatch.setattr(
+        producao_page, "execute_import_listas_ferragens_macro", lambda path: path
+    )
+    monkeypatch.setattr(
+        producao_page.QDesktopServices,
+        "openUrl",
+        staticmethod(lambda url: opened_urls.append(url.toLocalFile()) or True),
+    )
+
+    class _StatusLabel:
+        text = ""
+
+        def setText(self, text: str) -> None:
+            self.text = text
+
+    class _Page:
+        status_label = _StatusLabel()
+
+        def _rever_lista_material_assistente(self, *_args, **_kwargs):
+            raise AssertionError("Com o passo 4 suprimido a análise não abre.")
+
+        def _importar_custo_ferragens(self, _path):
+            pass
+
+        def _gerar_listas_imos(self, _processo, *, depois_importa=False):
+            return 4
+
+        _importar_listas_ferragens = ProducaoPage._importar_listas_ferragens
+
+    page = _Page()
+    ProducaoPage._oferecer_fluxo_inicial_lista_material(page, object(), workbook_path)
+
+    # O passo 4 já não pergunta: só os passos 1 a 3 perguntam.
+    assert [p for p in perguntas if "passo 4" in p] == []
+    assert len(perguntas) == 3
+    # Continua a aparecer, mas como aviso.
+    passo_4 = [aviso for aviso in avisos if "passo 4 de 4" in aviso[0]]
+    assert len(passo_4) == 1
+    assert "suprimido por agora" in passo_4[0][1]
+    assert "melhorada" in passo_4[0][1]
+    assert [Path(path) for path in opened_urls] == [workbook_path]
+    assert "a abrir o Excel" in page.status_label.text
+
+
 def test_resposta_nao_no_passo_4_abre_o_excel_para_trabalho(
     monkeypatch, tmp_path
 ) -> None:
     from app.ui.pages import producao_page
     from app.ui.pages.producao_page import ProducaoPage
 
+    monkeypatch.setattr(producao_page, "PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO", True)
     workbook_path = tmp_path / "Lista_Material_teste.xlsm"
     workbook_path.touch()
     answers = iter(
@@ -77,6 +147,7 @@ def test_importacao_ferragens_ocorre_antes_do_assistente(monkeypatch, tmp_path) 
     from app.ui.pages import producao_page
     from app.ui.pages.producao_page import ProducaoPage
 
+    monkeypatch.setattr(producao_page, "PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO", True)
     workbook_path = tmp_path / "Lista_Material_teste.xlsm"
     workbook_path.touch()
     answers = iter([producao_page.QMessageBox.StandardButton.Yes] * 4)

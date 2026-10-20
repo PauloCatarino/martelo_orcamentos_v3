@@ -2491,3 +2491,44 @@ Guião de teste (não é preciso reiniciar o Martelo):
 5. Abrir **`Guia_Producao_Martelo_V3.pdf`**. Esperado: 31 páginas 16:9, uma por diapositivo.
 6. Rever os textos: o que estiver mal explicado ou faltar, dizer ao Claude o número do
    diapositivo.
+
+## Lista Material_IMOS: passo 4 (Análise) suprimido por agora (2026-10-20)
+
+Pedido do Paulo: o módulo **Análise da Lista Material** (validar materiais e consultar
+custos) ainda não está verdadeiramente concluído e a análise de custos vai ser repensada.
+Para os colegas não o usarem a partir do fluxo da Lista Material, o passo 4 fica
+suprimido por agora.
+
+Feito:
+
+- O passo 4 **continua a aparecer** (mesmo título, «LISTAGEM_CUT_RITE preenchida — passo 4
+  de 4»), mas deixou de perguntar Sim/Não: é só um aviso a dizer que a análise está
+  suprimida por agora porque vai ser melhorada. Ao fechar o aviso abre-se o Excel, como
+  acontecia quando se respondia «Não».
+- A linha de estado depois do passo 3 já não diz «a preparar o Assistente»; diz «falta o
+  passo 4».
+- Para voltar a ligar o passo 4 basta pôr `PASSO_4_ANALISE_LISTA_MATERIAL_ATIVO = True` em
+  `app/ui/pages/producao_page.py`: o código antigo ficou lá, sem mexer.
+- **Não mudou:** Funções › «Analisar/Completar Lista Material…» continua a abrir a análise
+  a quem tiver o acesso «Análise Lista Material» (Utilizadores e Acessos).
+- Testes em `tests/test_producao_page_import.py` (o passo suprimido e, com a constante a
+  True, o comportamento antigo).
+
+Guião de teste (reiniciar o Martelo; usar a próxima obra que precise de Lista Material,
+com o CSV já exportado do iMos para `I:\Cutrite\Work\Cutrite_Import_CSV`):
+
+1. **Produção** → selecionar a obra → botão **«Lista Material_IMOS»**. Se a lista já
+   existir, escolher **«Criar nova»** (a antiga fica na pasta com a data e a hora no nome).
+2. **«Lista Material criada — passo 1 de 4»** → **Yes**. Responder às perguntas da macro no
+   Excel como sempre.
+3. **«CSV IMOS importado — passo 2 de 4»** → **Yes**.
+4. **«Listas de ferragens IMOS — passo 3 de 4»** → **Yes** (fechar a janela «Gerar listas
+   iMOS» quando quiser) ou **No**. Esperado: a linha de estado por baixo dos botões diz
+   «Listas de ferragens processadas; falta o passo 4.» (ou «… ignorada; falta o passo 4.»).
+5. Esperado: aparece **«LISTAGEM_CUT_RITE preenchida — passo 4 de 4»** com o ícone de
+   informação (i) e **só o botão OK**, com o texto «… O passo 4 — módulo Análise da Lista
+   Material (validar materiais e consultar custos) — está suprimido por agora: a análise de
+   custos vai ser melhorada antes de voltar a ficar disponível. …».
+6. **OK**. Esperado: a janela da Análise da Lista Material **não** abre; abre-se o Excel da
+   Lista Material e a linha de estado diz «LISTAGEM_CUT_RITE preenchida; a abrir o Excel
+   para continuar o trabalho.»
