@@ -2255,10 +2255,39 @@ class ProducaoPage(QWidget):
 
         dialog = ImosEncomendaDialog(processo_id=processo.id, parent=self)
         dialog.exec()
-        if dialog.criada:
-            self.status_label.setText(
-                f"Encomenda criada no iMos para {processo.codigo_processo}."
-            )
+        if not dialog.criada:
+            return
+        self.status_label.setText(
+            f"Encomenda criada no iMos para {processo.codigo_processo}."
+        )
+        encomenda = dialog.encomenda_criada
+        if dialog.abrir_a_seguir and encomenda is not None:
+            self._abrir_encomenda_nova_no_ix_cad(encomenda.nome, encomenda.dir_id)
+
+    def _abrir_encomenda_nova_no_ix_cad(self, nome: str, dir_id: int) -> None:
+        """Depois de «Criar Encomenda IMOS»: prepara, abre e grava a obra no iX CAD."""
+        try:
+            with SessionLocal() as session:
+                cfg = load_imos_config(session)
+                pasta_imorder = SystemSettingService(session).obter_valor(
+                    KEY_PASTA_BASE_IMORDER, ""
+                )
+        except SQLAlchemyError as error:
+            QMessageBox.warning(self, "Abrir no iX CAD", str(error))
+            return
+
+        self._abridor().abrir_obra_nova(
+            nome=nome,
+            dir_id=dir_id,
+            cfg=cfg,
+            pasta_imorder_martelo=pasta_imorder,
+        )
+
+    def _abridor(self) -> AbridorIxCad:
+        """Um só abridor por página: um segundo pedido vê o que está a decorrer."""
+        if self._abridor_ix_cad is None:
+            self._abridor_ix_cad = AbridorIxCad(self, self.status_label.setText)
+        return self._abridor_ix_cad
 
     def _abrir_no_ix_cad(self) -> None:
         """Funções > Abrir no iX CAD: a obra selecionada, como no Organizer."""
@@ -2281,9 +2310,7 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Abrir no iX CAD", str(error))
             return
 
-        if self._abridor_ix_cad is None:
-            self._abridor_ix_cad = AbridorIxCad(self, self.status_label.setText)
-        self._abridor_ix_cad.abrir(
+        self._abridor().abrir(
             nome=self.nome_enc_imos_ix_input.text().strip(),
             dir_id=dir_id,
             cfg=cfg,

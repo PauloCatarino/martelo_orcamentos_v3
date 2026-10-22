@@ -116,7 +116,13 @@ def dialogo(monkeypatch):
         *,
         escrita_ativa: bool = True,
         com_permissao: bool = True,
+        com_ix_cad: bool = True,
     ):
+        monkeypatch.setattr(
+            imos_encomenda_dialog,
+            "localizar_instalacao",
+            lambda: SimpleNamespace(versao=17) if com_ix_cad else None,
+        )
         monkeypatch.setattr(
             imos_encomenda_dialog, "SessionLocal", lambda: _SessaoFalsa()
         )
@@ -391,6 +397,81 @@ def test_criar_verifica_a_permissao_mesmo_com_o_botao_ativo(dialogo, monkeypatch
 
     assert avisos and "Não tem permissão" in avisos[0]
     assert dlg.criada is False
+
+
+# --------------------------------------------------------------------------
+# «Abrir no iX CAD e gravar» (fase E3)
+# --------------------------------------------------------------------------
+
+
+def test_opcao_de_abrir_e_gravar_vem_marcada_com_o_ix_cad_instalado(dialogo) -> None:
+    dlg = dialogo(_plano())
+
+    assert dlg.abrir_ix_cad_check.isEnabled() and dlg.abrir_ix_cad_check.isChecked()
+    assert "IMOS.dwt" in dlg.abrir_ix_cad_check.toolTip()
+    assert "Organizer" in dlg.abrir_ix_cad_check.toolTip()
+
+
+def test_sem_ix_cad_neste_pc_a_opcao_fica_desligada_e_explica(dialogo) -> None:
+    dlg = dialogo(_plano(), com_ix_cad=False)
+
+    assert not dlg.abrir_ix_cad_check.isEnabled()
+    assert not dlg.abrir_ix_cad_check.isChecked()
+    assert "não está instalado" in dlg.abrir_ix_cad_check.toolTip()
+
+
+def _criar_com_sucesso(dlg, monkeypatch) -> list[str]:
+    from app.services.imos_escrita import NoCriado
+
+    informacoes: list[str] = []
+    monkeypatch.setattr(
+        imos_encomenda_dialog.QMessageBox,
+        "question",
+        lambda *_a, **_k: imos_encomenda_dialog.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        imos_encomenda_dialog.QMessageBox,
+        "information",
+        lambda *args, **_k: informacoes.append(args[2]),
+    )
+    monkeypatch.setattr(
+        imos_encomenda_dialog,
+        "executar",
+        lambda *_a, **_k: [
+            NoCriado(
+                nome="1260_01_26_LINHAS_DIREITAS", tipo=IMOS_TIPO_ENCOMENDA,
+                dir_id=7797, proadmin_id=7774, parent_dir_id=6641, favoritos=891,
+            )
+        ],
+    )
+    dlg._criar()
+    return informacoes
+
+
+def test_criar_com_a_opcao_marcada_fecha_e_pede_para_abrir(dialogo, monkeypatch) -> None:
+    dlg = dialogo(_plano())
+
+    informacoes = _criar_com_sucesso(dlg, monkeypatch)
+
+    assert dlg.criada and dlg.abrir_a_seguir
+    assert dlg.encomenda_criada is not None
+    assert (dlg.encomenda_criada.nome, dlg.encomenda_criada.dir_id) == (
+        "1260_01_26_LINHAS_DIREITAS",
+        7797,
+    )
+    assert dlg.result() == imos_encomenda_dialog.QDialog.DialogCode.Accepted
+    assert "abre a obra no iX CAD e grava-a" in informacoes[0]
+
+
+def test_criar_com_a_opcao_desmarcada_fica_como_antes(dialogo, monkeypatch) -> None:
+    dlg = dialogo(_plano())
+    dlg.abrir_ix_cad_check.setChecked(False)
+
+    informacoes = _criar_com_sucesso(dlg, monkeypatch)
+
+    assert dlg.criada and not dlg.abrir_a_seguir
+    assert dlg.result() != imos_encomenda_dialog.QDialog.DialogCode.Accepted
+    assert "iX CAD" not in informacoes[0]
 
 
 def test_mensagem_final_diz_quem_criou_e_que_ficou_registado() -> None:

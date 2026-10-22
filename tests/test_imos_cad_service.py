@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import re
 import sys
 import threading
@@ -157,6 +158,115 @@ def test_pasta_dos_desenhos_vem_primeiro_do_ix_cad_deste_pc() -> None:
     assert svc.pasta_imorder_a_usar(inst, r"Z:\Outra") == r"I:\Factory\Imorder"
     assert svc.pasta_imorder_a_usar(sem_pasta, r"Z:\Outra") == r"Z:\Outra"
     assert svc.pasta_imorder_a_usar(None, "") == svc.DEFAULT_PASTA_IMORDER
+
+
+def test_pasta_config_vem_do_registo() -> None:
+    config = r"C:\Users\Utilizador\AppData\Roaming\imos AG\iX CAD 2025\config"
+    registo = [(17, {**_REGISTO[1][1], "CONFIG": config})]
+
+    inst = svc.localizar_instalacao(ler=lambda: registo, existe=lambda _p: True)
+
+    assert inst is not None and inst.pasta_config == config
+
+
+# --------------------------------------------------------------------------
+# Desenho de uma encomenda nova (fase E3)
+# --------------------------------------------------------------------------
+
+
+def _instalacao_com_config(pasta_config: Path) -> svc.InstalacaoIxCad:
+    return svc.InstalacaoIxCad(17, Path("imos.exe"), Path("BIN"), "", str(pasta_config))
+
+
+def _modelo(tmp_path: Path) -> Path:
+    config = tmp_path / "config"
+    config.mkdir()
+    modelo = config / "IMOS.dwt"
+    modelo.write_bytes(b"modelo do iMos")
+    os.utime(modelo, (1_700_000_000, 1_700_000_000))
+    return modelo
+
+
+def test_modelo_e_o_imos_dwt_da_pasta_config(tmp_path) -> None:
+    modelo = _modelo(tmp_path)
+
+    assert svc.modelo_desenho(_instalacao_com_config(modelo.parent)) == modelo
+    assert svc.modelo_desenho(_instalacao_com_config(tmp_path / "nao_existe")) is None
+    assert svc.modelo_desenho(None) is None
+
+
+def test_prepara_a_pasta_e_copia_o_modelo_como_o_organizer(tmp_path) -> None:
+    modelo = _modelo(tmp_path)
+    imorder = tmp_path / "Imorder"
+    imorder.mkdir()
+
+    assert svc.preparar_desenho_novo(str(imorder), NOME, modelo) is True
+
+    desenho = imorder / NOME / f"{NOME}.dwg"
+    assert desenho.read_bytes() == b"modelo do iMos"
+    # Como o FileInfo.CopyTo do Organizer: o desenho fica com a data do modelo.
+    assert desenho.stat().st_mtime == modelo.stat().st_mtime
+
+
+def test_obra_que_ja_tem_desenho_nao_e_tocada(tmp_path) -> None:
+    modelo = _modelo(tmp_path)
+    pasta = tmp_path / "Imorder" / NOME
+    pasta.mkdir(parents=True)
+    existente = pasta / f"{NOME}.DWG"
+    existente.write_bytes(b"desenho a serio")
+
+    assert svc.preparar_desenho_novo(str(tmp_path / "Imorder"), NOME, modelo) is False
+
+    assert existente.read_bytes() == b"desenho a serio"
+    assert [f.name for f in pasta.iterdir()] == [f"{NOME}.DWG"]
+
+
+def test_sem_a_pasta_dos_desenhos_nao_se_cria_nada(tmp_path) -> None:
+    modelo = _modelo(tmp_path)
+
+    with pytest.raises(svc.ErroIxCad, match="não está acessível"):
+        svc.preparar_desenho_novo(str(tmp_path / "I_desligado"), NOME, modelo)
+
+    assert not (tmp_path / "I_desligado").exists()
+
+
+def test_sem_modelo_nao_se_cria_a_pasta(tmp_path) -> None:
+    imorder = tmp_path / "Imorder"
+    imorder.mkdir()
+
+    with pytest.raises(svc.ErroIxCad, match="IMOS.dwt"):
+        svc.preparar_desenho_novo(str(imorder), NOME, None)
+
+    assert list(imorder.iterdir()) == []
+
+
+def test_momento_da_gravacao_do_desenho(tmp_path) -> None:
+    desenho = tmp_path / "x.dwg"
+
+    assert svc.momento_gravacao(desenho) is None
+    desenho.write_bytes(b"x")
+    assert svc.momento_gravacao(desenho) == desenho.stat().st_mtime
+
+
+def test_desenho_ativo_pelo_titulo_da_janela(monkeypatch) -> None:
+    assert svc.desenho_no_titulo(f"iX CAD 2025 - [{NOME}.dwg]") == f"{NOME}.DWG"
+    assert svc.desenho_no_titulo("iX CAD 2025") == ""
+
+    janelas = [
+        (1, "iX Article Center"),
+        (2, f"iX CAD Text Window - {NOME}.dwg"),
+        (3, f"iX CAD 2025 - [{NOME}.dwg]"),
+    ]
+    monkeypatch.setattr(svc, "_janelas_ix_cad", lambda: janelas)
+    assert svc.desenho_ativo() == f"{NOME}.DWG"
+
+    monkeypatch.setattr(svc, "_janelas_ix_cad", lambda: janelas[:2])
+    assert svc.desenho_ativo() == ""
+
+
+def test_comandos_da_obra_nova_sao_os_testados_ao_vivo() -> None:
+    assert svc.COMANDO_SEM_AVISO_CARREGAR == "IMOSENVMODIF DISABLE_LOAD_WARNING 1 "
+    assert svc.COMANDO_GRAVAR == "imosqsave"
 
 
 # --------------------------------------------------------------------------
@@ -390,6 +500,22 @@ def test_nao_escreve_por_cima_de_um_pedido_por_ler(canal_falso) -> None:
 
     assert ctypes.string_at(canal_falso.vista, len(anterior)) == anterior
     assert canal_falso.k.WaitForSingleObject(canal_falso.evento, 0) == 258
+
+
+def test_com_espera_aguarda_que_o_ix_cad_leia_o_pedido_anterior(canal_falso) -> None:
+    anterior = "<IMOS_COMMAND>IMOSENVMODIF".encode("utf-16-le")
+    ctypes.memmove(canal_falso.vista, anterior, len(anterior))
+
+    def _ix_cad_le():
+        canal_falso.k.WaitForSingleObject(canal_falso.evento, 300)
+        ctypes.memset(canal_falso.vista, 0, len(anterior))
+
+    leitor = threading.Thread(target=_ix_cad_le)
+    leitor.start()
+    svc.enviar_comando(COMANDO_REAL, esperar_s=5)
+    leitor.join(5)
+
+    assert ctypes.wstring_at(canal_falso.vista) == "<IMOS_COMMAND>" + COMANDO_REAL
 
 
 def test_enviar_com_o_ix_cad_fechado_explica(monkeypatch) -> None:

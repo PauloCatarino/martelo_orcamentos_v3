@@ -2532,3 +2532,63 @@ com o CSV já exportado do iMos para `I:\Cutrite\Work\Cutrite_Import_CSV`):
 6. **OK**. Esperado: a janela da Análise da Lista Material **não** abre; abre-se o Excel da
    Lista Material e a linha de estado diz «LISTAGEM_CUT_RITE preenchida; a abrir o Excel
    para continuar o trabalho.»
+
+## Criar Encomenda IMOS: abrir e gravar no iX CAD sem o Organizer (2026-10-22)
+
+Pedido do Paulo: depois de criar a encomenda no Martelo, ainda era preciso ir ao iX
+Organizer confirmar e gravar, abrir a obra no iX CAD e voltar a gravá-la como a
+encomenda. A ideia é que o Martelo faça esse ciclo todo.
+
+Análise e teste ao vivo antes do código (22-10, obra de teste `1804_02_26_JF_VIVA`): o
+Organizer, ao criar uma encomenda, copia o `IMOS.dwt` da pasta config do iX CAD do PC para
+`I:\Factory\Imorder\<obra>\<obra>.dwg`. Fazendo o mesmo, abrindo a obra pelo canal do iX
+CAD e pedindo o `imosqsave` (a gravação rápida do iMos), a obra abriu e ficou gravada em
+poucos segundos, sem janelas, com os mesmos ficheiros e os mesmos dados de uma obra feita
+pelo caminho antigo. Detalhe no doc 21, fase E3.
+
+Feito:
+
+- **Criar Encomenda IMOS** tem a opção **«Abrir no iX CAD e gravar»**, marcada quando o
+  PC tem o iX CAD (sem ele fica desligada e a dica diz porquê). Com ela marcada, depois de
+  criar, o diálogo fecha-se e o Martelo prepara a pasta e o desenho, abre a obra no iX CAD
+  e grava-a. Vai dizendo o que faz na linha de estado da Produção.
+- Só grava se o separador ativo do iX CAD for mesmo a obra. Se a obra já tiver desenho, não
+  se mexe nele: só é aberta.
+- Com o iX CAD fechado, pergunta se o deve abrir (como no «Abrir no iX CAD») e grava
+  depois de ele arrancar.
+- Com a opção desmarcada fica tudo como antes.
+- No disco o Martelo só cria (a pasta e o desenho, nunca por cima). Na base do iMos não
+  escreve nada de novo: quem grava a obra é o iX CAD.
+- Código em `app/services/imos_cad_service.py`, `app/ui/helpers/abrir_ix_cad.py`,
+  `app/ui/dialogs/imos_encomenda_dialog.py` e `app/ui/pages/producao_page.py`. Testes em
+  `tests/test_imos_cad_service.py`, `tests/test_abrir_ix_cad.py` e
+  `tests/test_imos_encomenda_dialog.py`.
+
+Guião de teste (reiniciar o Martelo; usar a próxima obra verdadeira que precise de
+encomenda no iMos):
+
+1. Deixar o **iX CAD aberto**, como normalmente. Não é preciso abrir o Organizer.
+2. **Produção** → selecionar a obra (a coluna **«Enc. iMos»** tem de estar vazia) → botão
+   **Funções** → **«Criar Encomenda IMOS…»**. Esperado: ao lado do botão «Criar no IMOS»
+   está a caixa **«Abrir no iX CAD e gravar»** marcada; ao passar o rato, a dica fala do
+   IMOS.dwt e de não ser preciso ir ao Organizer.
+3. **«Criar no IMOS»** → **Yes**. Esperado: «Criado no iMos por …», com os favoritos
+   copiados e, no fim, «A seguir o Martelo abre a obra no iX CAD e grava-a: acompanhe na
+   linha de estado da Produção.» → **OK**. O diálogo fecha-se sozinho.
+4. Olhar para a linha por baixo dos botões da Produção. Esperado, em poucos segundos:
+   «A confirmar a encomenda no iMos…» → «Pedido enviado ao iX CAD…» → «Obra <nome> aberta
+   no iX CAD; a seguir é gravada…» → «A gravar a obra <nome> no iX CAD…» → **«Obra <nome>
+   aberta e gravada no iX CAD: pode desenhar.»**
+5. **iX CAD**. Esperado: separador novo com o nome da obra, **sem asterisco** (está
+   gravada), sem a janela «Guardar encomenda» e sem nenhum aviso. Os dados da encomenda
+   (Nº Enc PHC, cliente, descrição) aparecem e, no Article Designer, as listas do
+   «Princípio de construção» e da «Informação de produção» estão preenchidas.
+6. **Explorador** → `I:\Factory\Imorder\<obra>`. Esperado: `<obra>.dwg`, `<obra>.bak`
+   (com a data do IMOS.dwt, 06/10/2026), `<obra>.FXF`, `<obra>.PNG` e a pasta `XML`.
+7. **Variante com o iX CAD fechado** (noutra obra): no passo 4 aparece «O iX CAD não está
+   aberto. Quer que o Martelo o abra agora…?» → **Yes**. Esperado: «A abrir o iX CAD…» e,
+   quando ele acaba de arrancar, o resto da sequência do passo 4 até «aberta e gravada».
+8. **Variante com a caixa desmarcada**: o diálogo fica aberto depois de criar, a dizer que
+   a encomenda já está criada, e o iX CAD não é tocado (como antes).
+9. Se a linha de estado parar numa mensagem que manda gravar no iX CAD, gravar lá e dizer
+   ao Claude o nome da obra e a mensagem que apareceu.

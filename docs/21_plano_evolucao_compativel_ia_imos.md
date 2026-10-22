@@ -545,3 +545,92 @@ está em `app/services/imos_cad_service.py` e `app/ui/helpers/abrir_ix_cad.py`.
 É uma interface interna e não documentada da imos AG: uma versão nova do iX
 pode mudá-la. Se o canal deixar de responder, o Martelo diz que não conseguiu
 em vez de falhar em silêncio.
+
+## Fase E3 — criar, abrir e gravar sem passar pelo Organizer
+
+Pedido do utilizador a 22 de outubro de 2026: depois de criar a encomenda no
+Martelo, ainda era preciso ir ao iX Organizer «confirmar e gravar», abrir a obra
+no iX CAD e gravá-la «como a encomenda». A ideia é que o Martelo faça o ciclo
+todo.
+
+### Porque é que era preciso o Organizer
+
+O «Abrir no iX CAD» da fase E2 recusa abrir uma obra cuja pasta
+`Imorder\<obra>` ainda não exista — e logo a seguir a criar pelo Martelo ela
+não existe. O Organizer não faz essa verificação: manda o `imosopendwg` e o iX
+CAD cria um desenho novo, que depois tem de ser gravado à mão.
+
+### O que o Organizer faz ao criar uma encomenda
+
+Lido no programa da imos AG (`OrganizerControl.dll` do iX 2023, que é .NET
+Framework e se deixa ler por reflexão; o do 2025 é .NET 8). `AddNewOrder`:
+
+1. linha da árvore, linha da `PROADMIN`, `DATACHANGELOG` e `ORDERLOGGING`;
+2. cópia dos favoritos (a fase E1 já faz o mesmo desde 19-10);
+3. `CreateOrderByImosGen`: o `ImosGen25.dll` (nativo) cria a pasta e um `.FXF`
+   vazio, e o `CoyDWTtoImorder` **copia o `IMOS.dwt` da pasta config do iX CAD
+   para `<Imorder>\<obra>\<obra>.dwg`** — nunca por cima de um desenho que já
+   exista;
+4. a linha da `OT_OH_ORDERHEADERDATA` (o iX CAD também a cria sozinho ao gravar,
+   por isso todas as obras do Martelo a têm).
+
+O `IMOS.dwt` é **de cada PC** (`HKLM\SOFTWARE\imos AG\IMOSACT\<versão>\Install`,
+valor `CONFIG`). Antes de abrir a obra, o Organizer manda também
+`IMOSENVMODIF DISABLE_LOAD_WARNING 1 ` e espera meio segundo.
+
+O robô de automação da própria imos (`WPFFramework` ›
+`SalesImportManager.OutputJobHelper`) faz um ciclo igual ao que se pretende:
+copia o `.dwt` se o desenho faltar, `imosopendwg`, comandos do iMos, fecho. É a
+prova de que o canal aceita outros comandos além do `imosopendwg`.
+
+### Teste ao vivo (22 de outubro de 2026, com o utilizador a observar)
+
+Obra de teste `1804_02_26_JF_VIVA` (DIR_ID 7797), criada pelo Martelo como
+sempre. Sem tocar no Organizer:
+
+1. pasta criada e `IMOS.dwt` do PC copiado para `<obra>.dwg`;
+2. `DISABLE_LOAD_WARNING` + `imosopendwg`: a obra abriu em menos de um segundo,
+   sem avisos, com os dados da encomenda e os favoritos no Article Designer
+   (confirmado pelo utilizador). Abrir não escreve nada na base;
+3. **`imosqsave`** (a gravação rápida do iMos): gravou em meio segundo, **sem
+   janela nenhuma**. Ficaram o `.dwg`, o `.bak` com a data do modelo, o `.FXF`, o
+   `.PNG` e a pasta `XML` — como numa obra criada pelo Organizer. Na base: a
+   data de alteração da `PROADMIN`, a linha `OT_OH` e dois registos de gravação
+   na `DATACHANGELOG`; os dados do Martelo ficaram intactos.
+
+A janela «Guardar encomenda» (árvore + Guardar/Cancel) é a do `imossave`: é o
+passo à mão de antes, e o `imosqsave` evita-o.
+
+### O que o utilizador vê
+
+Em `Produção › Funções › Criar Encomenda IMOS…` há a opção **«Abrir no iX CAD e
+gravar»**, marcada quando o PC tem o iX CAD (sem ele fica desligada, com a
+razão na dica). Depois de criar, o diálogo fecha-se e a Produção continua na
+linha de estado:
+
+1. prepara a pasta e o desenho como o Organizer (se a obra já tiver desenho, não
+   se mexe nele e a obra só é aberta);
+2. abre a obra no iX CAD pelo caminho da fase E2 (com os mesmos avisos, o
+   arranque do iX CAD se estiver fechado e a proteção do Martelo elevado);
+3. três segundos depois de o separador da obra aparecer, e **só se for o
+   separador ativo**, pede o `imosqsave`;
+4. dá a obra por gravada quando a data do desenho muda: «Obra … aberta e gravada
+   no iX CAD: pode desenhar.»
+
+Se algo não correr bem (outro separador ativo, canal ocupado, gravação que não
+acontece), a linha de estado diz o que falta fazer à mão; nada fica a meio sem
+aviso.
+
+### Regras preservadas
+
+- Na base do iMos o Martelo continua a só criar (fase E1); o resto é o iX CAD
+  que escreve, como quando se grava à mão.
+- No disco o Martelo só **cria**: uma pasta e um ficheiro, e nunca por cima de
+  um desenho existente.
+- O `ImosGen25.dll` não é usado: é nativo, pesado e corria dentro do Martelo. O
+  `.FXF` que ele criava nasce na primeira gravação do iX CAD.
+
+Código em `app/services/imos_cad_service.py` (`preparar_desenho_novo`,
+`modelo_desenho`, `desenho_ativo`, `COMANDO_GRAVAR`),
+`app/ui/helpers/abrir_ix_cad.py` (`abrir_obra_nova`) e
+`app/ui/dialogs/imos_encomenda_dialog.py`.

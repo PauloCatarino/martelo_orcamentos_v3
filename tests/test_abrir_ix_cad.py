@@ -34,16 +34,32 @@ class _Cenario:
     """Substitui o iMos/Windows e regista o que o Martelo fez."""
 
     def __init__(self, monkeypatch, *, plano=None, erro=None, canal=svc.ESTADO_CANAL_ATIVO,
-                 instalacao=INSTALACAO, elevado=False, respostas=()):
+                 instalacao=INSTALACAO, elevado=False, respostas=(), copiado=True,
+                 erro_preparar=None):
         self.estados: list[str] = []
         self.avisos: list[str] = []
         self.perguntas: list[str] = []
         self.enviados: list[str] = []
+        self.preparados: list[tuple[str, str]] = []
         self.arranques = 0
         self.frente = 0
         self.canal = canal
         self.abertos: frozenset[str] = frozenset()
+        self.ativo = ""
+        self.gravado: float | None = 1.0
         respostas = list(respostas)
+
+        def _preparar_desenho(pasta, nome, _modelo):
+            if erro_preparar is not None:
+                raise erro_preparar
+            self.preparados.append((pasta, nome))
+            return copiado
+
+        monkeypatch.setattr(svc, "preparar_desenho_novo", _preparar_desenho)
+        monkeypatch.setattr(svc, "modelo_desenho", lambda _inst: Path("IMOS.dwt"))
+        monkeypatch.setattr(svc, "desenho_ativo", lambda: self.ativo)
+        monkeypatch.setattr(svc, "momento_gravacao", lambda _d: self.gravado)
+        monkeypatch.setattr(svc, "PAUSA_DEPOIS_SEM_AVISO_S", 0)
 
         def _preparar(*_a, **_k):
             if erro is not None:
@@ -60,7 +76,9 @@ class _Cenario:
         monkeypatch.setattr(svc, "localizar_instalacao", lambda: instalacao)
         monkeypatch.setattr(svc, "preparar_abertura", _preparar)
         monkeypatch.setattr(svc, "estado_canal", lambda: self.canal)
-        monkeypatch.setattr(svc, "enviar_comando", self.enviados.append)
+        monkeypatch.setattr(
+            svc, "enviar_comando", lambda comando, **_k: self.enviados.append(comando)
+        )
         monkeypatch.setattr(svc, "arrancar_ix_cad", _arrancar)
         monkeypatch.setattr(svc, "trazer_para_frente", _frente)
         monkeypatch.setattr(svc, "martelo_elevado", lambda: elevado)
@@ -81,6 +99,12 @@ class _Cenario:
 
     def abrir(self) -> None:
         self.abridor.abrir(
+            nome=NOME, dir_id=7727, cfg={"server": "s", "database": "d"},  # type: ignore[arg-type]
+            pasta_imorder_martelo="",
+        )
+
+    def abrir_obra_nova(self) -> None:
+        self.abridor.abrir_obra_nova(
             nome=NOME, dir_id=7727, cfg={"server": "s", "database": "d"},  # type: ignore[arg-type]
             pasta_imorder_martelo="",
         )
@@ -254,6 +278,150 @@ def test_pedido_que_nao_aparece_no_ix_cad(monkeypatch) -> None:
     assert "ainda não apareceu" in c.estados[-1]
 
 
+# --------------------------------------------------------------------------
+# Obra nova (fase E3): preparar o desenho, abrir e gravar
+# --------------------------------------------------------------------------
+
+
+def _ate_gravar(c: _Cenario, monkeypatch) -> None:
+    """Obra nova pedida, aberta no iX CAD e já no separador ativo."""
+    c.abrir_obra_nova()
+    c.abertos = frozenset({f"{NOME}.DWG"})
+    c.tique()  # apareceu: passa a «gravar»
+    monkeypatch.setattr(helper, "ESPERA_ANTES_DE_GRAVAR_S", 0)
+    c.ativo = f"{NOME}.DWG"
+
+
+def test_obra_nova_prepara_abre_sem_aviso_e_grava(monkeypatch) -> None:
+    c = _Cenario(monkeypatch)
+
+    c.abrir_obra_nova()
+
+    assert c.preparados == [(r"I:\Factory\Imorder", NOME)]
+    # Como o LoadOrderInAcad do Organizer: primeiro sem o aviso de carregamento.
+    assert c.enviados == [svc.COMANDO_SEM_AVISO_CARREGAR, _plano().comando]
+
+    c.abertos = frozenset({f"{NOME}.DWG"})
+    c.tique()
+    assert "a seguir é gravada" in c.estados[-1]
+    assert c.abridor.ocupado
+
+    monkeypatch.setattr(helper, "ESPERA_ANTES_DE_GRAVAR_S", 0)
+    c.ativo = f"{NOME}.DWG"
+    c.tique()
+    assert c.enviados[-1] == svc.COMANDO_GRAVAR
+    assert c.estados[-1] == f"A gravar a obra {NOME} no iX CAD…"
+
+    c.tique()  # a data do desenho ainda não mudou
+    assert c.abridor.ocupado
+
+    c.gravado = 2.0
+    c.tique()
+    assert c.estados[-1] == f"Obra {NOME} aberta e gravada no iX CAD: pode desenhar."
+    assert not c.abridor._temporizador.isActive()
+    assert c.enviados.count(svc.COMANDO_GRAVAR) == 1
+
+
+def test_obra_nova_que_ja_tinha_desenho_so_abre(monkeypatch) -> None:
+    c = _Cenario(monkeypatch, copiado=False)
+
+    c.abrir_obra_nova()
+    c.abertos = frozenset({f"{NOME}.DWG"})
+    c.tique()
+
+    assert c.enviados == [_plano().comando]
+    assert c.estados[-1] == f"Obra {NOME} aberta no iX CAD."
+
+
+def test_obra_nova_nao_grava_se_o_separador_ativo_for_outro(monkeypatch) -> None:
+    c = _Cenario(monkeypatch)
+    _ate_gravar(c, monkeypatch)
+    c.ativo = "APAGAR_05.DWG"
+
+    c.tique()  # dá tempo ao iX CAD para mudar de separador
+    assert svc.COMANDO_GRAVAR not in c.enviados
+
+    monkeypatch.setattr(helper, "ESPERA_SEPARADOR_ATIVO_S", -1)
+    c.tique()
+    assert svc.COMANDO_GRAVAR not in c.enviados
+    assert "não foi gravada" in c.estados[-1]
+    assert not c.abridor._temporizador.isActive()
+
+
+def test_obra_nova_sem_pasta_dos_desenhos_nao_toca_no_ix_cad(monkeypatch) -> None:
+    c = _Cenario(monkeypatch, erro_preparar=svc.ErroIxCad("A pasta dos desenhos do iMos não está acessível neste PC:\nI:"))
+
+    c.abrir_obra_nova()
+
+    assert "não está acessível" in c.avisos[0]
+    assert c.enviados == [] and c.arranques == 0
+    assert "\n" not in c.estados[-1]
+
+
+def test_obra_nova_sem_ix_cad_instalado_nao_prepara_nada(monkeypatch) -> None:
+    c = _Cenario(monkeypatch, instalacao=None)
+
+    c.abrir_obra_nova()
+
+    assert c.avisos == ["O iX CAD não está instalado neste PC."]
+    assert c.preparados == []
+
+
+def test_gravacao_que_nao_acontece_explica(monkeypatch) -> None:
+    c = _Cenario(monkeypatch)
+    _ate_gravar(c, monkeypatch)
+    c.tique()  # pede a gravação
+
+    monkeypatch.setattr(helper, "GRAVACAO_S", -1)
+    c.tique()
+
+    assert "ainda não foi gravado" in c.estados[-1]
+    assert not c.abridor._temporizador.isActive()
+
+
+def test_pedido_de_gravar_recusado_pelo_canal(monkeypatch) -> None:
+    c = _Cenario(monkeypatch)
+    _ate_gravar(c, monkeypatch)
+
+    def _recusa(comando, **_k):
+        raise svc.ErroIxCad("O iX CAD ainda não leu o pedido anterior.\nEspere.")
+
+    monkeypatch.setattr(svc, "enviar_comando", _recusa)
+    c.tique()
+
+    assert "não foi possível pedir a gravação" in c.estados[-1]
+    assert "Grave-a no iX CAD" in c.estados[-1]
+
+
+def test_segundo_pedido_durante_a_gravacao_nao_mexe_em_nada(monkeypatch) -> None:
+    c = _Cenario(monkeypatch)
+    _ate_gravar(c, monkeypatch)
+    c.tique()
+    enviados = list(c.enviados)
+
+    c.abrir()
+
+    assert "ainda está a gravar" in c.estados[-1]
+    assert c.enviados == enviados
+
+
+def test_obra_nova_com_ix_cad_fechado_arranca_e_depois_grava(monkeypatch) -> None:
+    c = _Cenario(monkeypatch, canal=svc.ESTADO_CANAL_FECHADO, respostas=[True])
+    monkeypatch.setattr(svc, "ESPERA_DEPOIS_DO_CANAL_S", 0)
+
+    c.abrir_obra_nova()
+    assert c.arranques == 1 and c.enviados == []
+
+    c.canal = svc.ESTADO_CANAL_ATIVO
+    c.tique()  # o canal apareceu
+    c.tique()  # pede a obra
+    assert c.enviados == [svc.COMANDO_SEM_AVISO_CARREGAR, _plano().comando]
+
+    c.abertos = frozenset({f"{NOME}.DWG"})
+    c.tique()
+    assert "a seguir é gravada" in c.estados[-1]
+
+
 @pytest.mark.parametrize("onde", ["menu", "campo"])
 def test_producao_tem_a_opcao_no_menu_funcoes_e_no_campo(onde) -> None:
     from app.ui.pages.producao_page import ProducaoPage
@@ -265,3 +433,13 @@ def test_producao_tem_a_opcao_no_menu_funcoes_e_no_campo(onde) -> None:
         assert "self.nome_enc_imos_ix_input.addAction(" in fonte
     abrir = inspect.getsource(ProducaoPage._abrir_no_ix_cad)
     assert "imos_dir_id" in abrir and "load_imos_config" in abrir
+
+
+def test_producao_abre_e_grava_a_encomenda_acabada_de_criar() -> None:
+    from app.ui.pages.producao_page import ProducaoPage
+
+    criar = inspect.getsource(ProducaoPage._abrir_criar_encomenda_imos)
+    assert "dialog.abrir_a_seguir" in criar
+    assert "encomenda.nome, encomenda.dir_id" in criar
+    nova = inspect.getsource(ProducaoPage._abrir_encomenda_nova_no_ix_cad)
+    assert ".abrir_obra_nova(" in nova and "load_imos_config" in nova

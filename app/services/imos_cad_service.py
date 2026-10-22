@@ -14,12 +14,21 @@ fechada (responde, mas devolve erro a tudo).
 
 O Martelo não escreve nada na base do iMos — só lê, para confirmar que a
 encomenda existe. Quem abre e grava o desenho é o próprio iX CAD.
+
+Encomenda acabada de criar pelo Martelo (fase E3): falta-lhe a pasta e o
+desenho, que o Organizer prepara ao criar a encomenda (`CoyDWTtoImorder`: copia
+o `IMOS.dwt` da pasta config do iX CAD para `<Imorder>\\<obra>\\<obra>.dwg`). O
+Martelo faz a mesma cópia, abre a obra e pede ao iX CAD que a grave com o
+`imosqsave` — a gravação rápida do iMos, sem a janela «Guardar encomenda».
+Testado ao vivo a 22-10-2026 com a 1804_02_26_JF_VIVA.
 """
 
 from __future__ import annotations
 
 import ctypes
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -53,6 +62,17 @@ ESPERA_ARRANQUE_S = 180
 CHAVE_REGISTO_IMOS = r"SOFTWARE\imos AG\IMOSACT"
 DEFAULT_PASTA_IMORDER = r"I:\Factory\Imorder"
 
+# O modelo dos desenhos novos: `<CONFIG>\IMOS.dwt`, por PC (cada um tem o seu).
+NOME_MODELO = "IMOS.dwt"
+# Antes do `imosopendwg`, o Organizer desliga o aviso de carregamento do iMos
+# (`LoadOrderInAcad`, com o espaço no fim) e espera meio segundo.
+COMANDO_SEM_AVISO_CARREGAR = "IMOSENVMODIF DISABLE_LOAD_WARNING 1 "
+PAUSA_DEPOIS_SEM_AVISO_S = 0.5
+# Gravação rápida da obra ativa; o `imossave` abre a janela «Guardar encomenda».
+COMANDO_GRAVAR = "imosqsave"
+# Quanto tempo se espera que o iX CAD leia o pedido anterior do canal.
+ESPERA_CANAL_LIVRE_S = 10.0
+
 ESTADO_CANAL_ATIVO = "ativo"
 ESTADO_CANAL_FECHADO = "fechado"
 ESTADO_CANAL_SEM_ACESSO = "sem_acesso"
@@ -82,6 +102,8 @@ class InstalacaoIxCad:
     executavel: Path
     pasta_trabalho: Path
     pasta_imorder: str
+    # Pasta config do iX CAD deste PC (valor CONFIG do registo): tem o IMOS.dwt.
+    pasta_config: str = ""
 
 
 def _versao_da_chave(nome: str) -> int | None:
@@ -146,6 +168,7 @@ def localizar_instalacao(
             executavel=Path(executavel),
             pasta_trabalho=Path(pasta_imos) / "BIN",
             pasta_imorder=valores.get("IMORDERPATH", ""),
+            pasta_config=valores.get("CONFIG", ""),
         )
     return None
 
@@ -316,6 +339,63 @@ def preparar_abertura(
 
 
 # --------------------------------------------------------------------------
+# Desenho de uma encomenda nova (o que o Organizer faz ao criar)
+# --------------------------------------------------------------------------
+
+
+def modelo_desenho(instalacao: InstalacaoIxCad | None) -> Path | None:
+    """O `IMOS.dwt` do iX CAD deste PC, ou ``None`` se não houver."""
+    if instalacao is None or not instalacao.pasta_config:
+        return None
+    modelo = Path(instalacao.pasta_config) / NOME_MODELO
+    return modelo if modelo.is_file() else None
+
+
+def preparar_desenho_novo(
+    pasta_imorder: str, nome_encomenda: str, modelo: Path | None
+) -> bool:
+    """Cria a pasta da obra e copia o modelo para `<obra>.dwg`, como o Organizer.
+
+    Devolve ``False`` sem tocar em nada quando a obra já tem desenho: nunca se
+    escreve por cima. A cópia mantém a data do modelo, como o ``FileInfo.CopyTo``
+    do Organizer (o `.bak` das obras criadas lá tem a data do `IMOS.dwt`).
+    """
+    base = Path(pasta_imorder)
+    if not base.is_dir():
+        raise ErroIxCad(
+            "A pasta dos desenhos do iMos não está acessível neste PC:\n"
+            f"{base}\n\nConfirme se a unidade dos desenhos (I:) está ligada."
+        )
+    desenho = caminho_desenho(pasta_imorder, nome_encomenda)
+    if desenho.parent.is_dir() and any(
+        ficheiro.suffix.casefold() == ".dwg" for ficheiro in desenho.parent.iterdir()
+    ):
+        return False
+    if modelo is None or not modelo.is_file():
+        raise ErroIxCad(
+            f"Não encontrei o modelo {NOME_MODELO} do iX CAD neste PC, por isso "
+            "a obra não foi preparada.\n\nAbra-a pelo iX Organizer."
+        )
+    desenho.parent.mkdir(exist_ok=True)
+    try:
+        # "xb": se entretanto alguém criou o desenho, não se escreve por cima.
+        with open(modelo, "rb") as origem, open(desenho, "xb") as destino:
+            shutil.copyfileobj(origem, destino, 1024 * 1024)
+    except FileExistsError:
+        return False
+    shutil.copystat(modelo, desenho)
+    return True
+
+
+def momento_gravacao(desenho: Path) -> float | None:
+    """Data da última gravação do desenho (para ver se o iX CAD já gravou)."""
+    try:
+        return desenho.stat().st_mtime
+    except OSError:
+        return None
+
+
+# --------------------------------------------------------------------------
 # Windows: o canal, as janelas do iX CAD e o arranque
 # --------------------------------------------------------------------------
 
@@ -405,8 +485,12 @@ def estado_canal() -> str:
     return ESTADO_CANAL_ATIVO
 
 
-def enviar_comando(comando: str) -> None:
-    """Escreve o pedido no canal e acorda o iX CAD, como o Organizer."""
+def enviar_comando(comando: str, *, esperar_s: float = 0.0) -> None:
+    """Escreve o pedido no canal e acorda o iX CAD, como o Organizer.
+
+    Com ``esperar_s``, dá esse tempo ao iX CAD para ler o pedido anterior
+    (vários pedidos seguidos); sem ele, um canal ocupado é logo recusado.
+    """
     dados = mensagem_canal(comando)
     if sys.platform != "win32":
         raise ErroIxCad("O iX CAD só existe no Windows.")
@@ -429,11 +513,14 @@ def enviar_comando(comando: str) -> None:
             try:
                 # O iX CAD apaga o canal depois de ler; se ainda tem texto, o
                 # pedido anterior não foi lido e não se escreve por cima.
-                if ctypes.string_at(vista, 16) != b"\0" * 16:
-                    raise ErroIxCad(
-                        "O iX CAD ainda não leu o pedido anterior. Espere um "
-                        "pouco e tente outra vez."
-                    )
+                limite = time.monotonic() + esperar_s
+                while ctypes.string_at(vista, 16) != b"\0" * 16:
+                    if time.monotonic() >= limite:
+                        raise ErroIxCad(
+                            "O iX CAD ainda não leu o pedido anterior. Espere um "
+                            "pouco e tente outra vez."
+                        )
+                    time.sleep(0.2)
                 ctypes.memmove(vista, dados, len(dados))
             finally:
                 k.UnmapViewOfFile(vista)
@@ -524,6 +611,29 @@ def desenhos_abertos() -> frozenset[str]:
         _juntar(titulo)
         u.EnumChildWindows(hwnd, _filho, 0)
     return frozenset(nomes)
+
+
+_DESENHO_NO_TITULO_RE = re.compile(r"\[([^\[\]]+\.dwg)\]\s*$", re.IGNORECASE)
+
+
+def desenho_no_titulo(titulo: str) -> str:
+    """`iX CAD 2025 - [1804_02_26_JF_VIVA.dwg]` → `1804_02_26_JF_VIVA.DWG`."""
+    encontrado = _DESENHO_NO_TITULO_RE.search(titulo or "")
+    return encontrado.group(1).upper() if encontrado else ""
+
+
+def desenho_ativo() -> str:
+    """O separador ativo do iX CAD deste PC, pelo título da janela principal.
+
+    É o desenho que o `imosqsave` grava: antes de o pedir, confirma-se que é
+    mesmo a obra certa.
+    """
+    for _hwnd, titulo in _janelas_ix_cad():
+        if titulo.startswith("iX CAD") and not titulo.startswith("iX CAD Text Window"):
+            nome = desenho_no_titulo(titulo)
+            if nome:
+                return nome
+    return ""
 
 
 def trazer_para_frente() -> bool:

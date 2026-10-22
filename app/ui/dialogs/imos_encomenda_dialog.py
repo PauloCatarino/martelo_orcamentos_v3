@@ -10,6 +10,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QGroupBox,
     QHBoxLayout,
@@ -27,6 +28,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.core.session import app_session
 from app.db.session import SessionLocal
 from app.models.producao import Producao
+from app.services.imos_cad_service import localizar_instalacao
 from app.services.imos_encomenda_service import (
     COLUNAS_EDITAVEIS,
     PlanoCriacaoImos,
@@ -77,6 +79,10 @@ class ImosEncomendaDialog(QDialog):
         self._escrita_ativa = False
         self._pode_criar = False
         self._criada = False
+        # Encomenda criada e, se pedido, para abrir e gravar no iX CAD a seguir
+        # (fase E3) — quem o faz é a Produção, depois de o diálogo fechar.
+        self._encomenda_criada: NoCriado | None = None
+        self._abrir_a_seguir = False
         # Correções locais de TEXT_SHORT/TEXT_LONG: valem só para esta criação
         # e nunca são gravadas de volta na obra do Martelo.
         self._textos: dict[str, str] = {}
@@ -202,9 +208,26 @@ class ImosEncomendaDialog(QDialog):
         self.fechar_button.setToolTip("Fechar sem criar nada.")
         self.fechar_button.clicked.connect(self.reject)
 
+        self.abrir_ix_cad_check = QCheckBox("Abrir no iX CAD e gravar")
+        if localizar_instalacao() is not None:
+            self.abrir_ix_cad_check.setChecked(True)
+            self.abrir_ix_cad_check.setToolTip(
+                "Depois de criar, o Martelo faz o que hoje se faz à mão no "
+                "Organizer e no iX CAD: prepara a pasta e o desenho da obra (a "
+                "partir do IMOS.dwt deste PC), abre-a no iX CAD e grava-a. "
+                "Não é preciso ir ao Organizer."
+            )
+        else:
+            self.abrir_ix_cad_check.setEnabled(False)
+            self.abrir_ix_cad_check.setToolTip(
+                "O iX CAD não está instalado neste PC: a encomenda é só criada no "
+                "iMos. Abra-a depois num PC com o iX CAD."
+            )
+
         botoes = QHBoxLayout()
         botoes.addWidget(self.recarregar_button)
         botoes.addStretch()
+        botoes.addWidget(self.abrir_ix_cad_check)
         botoes.addWidget(self.criar_button)
         botoes.addWidget(self.fechar_button)
 
@@ -234,6 +257,16 @@ class ImosEncomendaDialog(QDialog):
     def criada(self) -> bool:
         """Indica se a encomenda chegou a ser criada nesta sessão do diálogo."""
         return self._criada
+
+    @property
+    def encomenda_criada(self) -> NoCriado | None:
+        """A encomenda (não as pastas) criada nesta sessão do diálogo."""
+        return self._encomenda_criada
+
+    @property
+    def abrir_a_seguir(self) -> bool:
+        """A encomenda foi criada com «Abrir no iX CAD e gravar» marcado."""
+        return self._abrir_a_seguir
 
     def _recarregar(self, *_args, primeira_vez: bool = False) -> None:
         """Refaz o plano contra o iMos; nada é escrito nesta operação.
@@ -550,12 +583,22 @@ class ImosEncomendaDialog(QDialog):
             return
 
         self._criada = True
+        self._encomenda_criada = next(
+            (no for no in criados if no.tipo == IMOS_TIPO_ENCOMENDA), None
+        )
+        abrir = self.abrir_ix_cad_check.isChecked() and self._encomenda_criada is not None
         detalhe = "\n".join(_linha_criado(no) for no in criados)
         autor = getattr(app_session.current_user, "nome", "") or getattr(
             app_session.current_user, "username", ""
         )
         por_quem = f" por {autor}" if autor else ""
         self.status_label.setText(f"Encomenda criada no iMos{por_quem}.")
+        seguinte = (
+            "\n\nA seguir o Martelo abre a obra no iX CAD e grava-a: acompanhe "
+            "na linha de estado da Produção."
+            if abrir
+            else ""
+        )
         QMessageBox.information(
             self,
             "Criar Encomenda IMOS",
@@ -564,8 +607,15 @@ class ImosEncomendaDialog(QDialog):
             + "\n\nFicou registado na base de dados do Martelo quem criou e "
             "quando: se alguém tentar criar esta encomenda outra vez, o "
             "Martelo avisa."
-            "\n\nNo iX Organizer prima ↻ para a árvore refrescar.",
+            "\n\nNo iX Organizer prima ↻ para a árvore refrescar."
+            + seguinte,
         )
+        if abrir:
+            # O iX CAD pode demorar a arrancar: a espera fica na Produção, que
+            # continua aberta; o diálogo fecha-se já.
+            self._abrir_a_seguir = True
+            self.accept()
+            return
         self._recarregar()
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 (API do Qt)
