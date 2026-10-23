@@ -51,15 +51,35 @@ O par que já está na biblioteca, `RP_CANTO_SEGO_ESQ` / `RP_CANTO_SEGO_DIR`, co
   existe no iX 2025 e no Element Manager (`ElementManagerControl.dll`), e o `imosr25.arx` usa-o no
   código de inserir/copiar/mover artigos (`ArticleHandling`, ao lado de «Refreshing copied article to
   apply modifications!»). **Está vazio nos 1784 registos.** A tradução portuguesa (`PTG;2950`) está
-  vazia: no Element Manager em português o campo pode aparecer sem nome. **Não sei ainda como se
-  dispara** no iX CAD (pelo `MIRROR`? por uma opção ao inserir?). A ajuda online deve dizer.
-  Os 52 PDF de novidades do iX 2025 não falam de espelhar artigos.
+  vazia: no Element Manager em português o campo pode aparecer sem nome.
+  Os 52 PDF de novidades do iX 2025 não falam de espelhar artigos (são do lançamento, não do SR2).
+
+## 3a. Como o iX faz o espelho (ajuda online, lida a 23-10-2026 com o login do Paulo)
+
+Tópicos «Mirror iX Articles and Room Objects» (novidades do **iX 2025 SR2**) e «Mirror – CAD Method».
+O iX do Paulo está na versão **17.0.02.95** (ficheiros de 30-09-2026), que já traz o campo na base, no
+Element Manager e no `imosr25.arx`. Por isso a função já está instalada.
+
+- Usa o próprio **`_MIRROR`** (Designer › Funções CAD, ou escrever o comando). Exige **Article Mode
+  ligado** (barra de estado do CAD) e **3D Editing desligado**.
+- Escolhem-se os artigos e os dois pontos do eixo. Uma janela pergunta se apaga os originais (Sim/Não).
+- **Artigo simétrico:** espelha-se logo, sem mais nada.
+- **Artigo não simétrico** (os roupeiros ESQ/DIR): é preciso ter os **dois** como princípio «Artigo»
+  na biblioteca. O espelho tem de ser feito à mão no iX CAD, «uma imagem exata». No Element Manager ›
+  Artigo › original › «Mirrored article» escolhe-se o outro e grava-se. Ficam «gémeos»: espelhar
+  qualquer um dos dois insere o outro.
+- **Limite:** «as alterações específicas do artigo ou da obra não são tidas em conta». O gémeo entra
+  tal como está na biblioteca. O que se mexeu na obra tem de se refazer.
+- Não serve para peças soltas.
+
+**O que isto quer dizer:** o iX já sabe *trocar* o ESQ pelo DIR, mas não sabe *fazer* o DIR. Fazer o
+DIR (o trabalho de hoje à mão) é exatamente a parte que a ferramenta B automatizaria.
 
 ## 4. Caminhos possíveis
 
 | Caminho | Possível? | Risco | Nota |
 |---|---|---|---|
-| A. Função nativa `MIRRORED_ARTICLE` | **Sim, já existe** (falta saber usar) | nenhum, se testado numa obra de teste | Liga ESQ ↔ DIR na biblioteca. Não *cria* o DIR. |
+| A. Função nativa (`_MIRROR` + «Mirrored article») | **Sim, já instalada** (iX 2025 SR2) | nenhum, se testado numa obra de teste | Troca ESQ ↔ DIR na obra. Não *cria* o DIR, e o gémeo entra sem as alterações feitas na obra. |
 | B. Ferramenta no Martelo «Espelhar artigo» (biblioteca) | **Sim** | baixo: só cria um artigo novo e nunca mexe nos existentes nem nas obras | Lê o ESQ das tabelas `angl*`, faz o DIR com a regra da secção 2 e grava como artigo **novo**, 1.º na `imos_LE_TESTE02` (R02: com linha na `DATACHANGELOG`; R04). Pode preencher o `MIRRORED_ARTICLE` dos dois. |
 | C. Botão/plugin dentro do iX CAD | **Não**, sem a imos | — | O iX CAD é um AutoCAD OEM: sem LISP, sem SCRIPT, COM fechado (já provado). Os 4 módulos .NET que carregam lá dentro têm assinatura `.sig` da imos (`imosRibbon26`, `imosManager.PaletteWrapper26`, `MMF_CommunicationInterface26`, `imosExConnect26`), por isso um plugin nosso não carrega. Um botão da aba «Imos» só chama comandos que já existem, e nenhum edita a estrutura de um artigo. |
 | D. Mexer no programa da imos (engenharia reversa para alterar) | **Não** | alto | Partia a assinatura e a licença, desaparecia na próxima atualização e põe em risco a produção. *Ler* o código para perceber uma interface é diferente e já foi feito (Organizer, canal MMF). |
@@ -75,10 +95,22 @@ O par que já está na biblioteca, `RP_CANTO_SEGO_ESQ` / `RP_CANTO_SEGO_DIR`, co
 
 ## 5. Plano de teste proposto (por fases, cada uma com o OK do Paulo)
 
-- **M0 — sem risco nenhum.** O Paulo entra na ajuda (help.imos3d.com) no browser do Claude e lê-se o
-  tópico «Mirrored article». Pergunta-se à Enersale se o iX 2026 traz espelho de artigos: se vier de
-  origem, não vale a pena fazer o B.
-- **M1 — só leitura.** Ferramenta que lê um artigo da biblioteca e mostra o espelho, sem gravar nada.
+- **M0 — FEITO (23-10-2026).** Ajuda lida (secção 3a): a troca ESQ ↔ DIR é nativa, mas o DIR tem de
+  existir na biblioteca.
+- **T1 — testar a função nativa, sem código (o Paulo, no iX CAD).** Usar o par que ele já fez à mão
+  na APAGAR_14:
+  1. gravar o `RP_A_01_ESQ` e o `RP_A_01_DIR` como princípios «Artigo». Ele escolhe o nome e a pasta,
+     e a base (TESTE02, se a usar no iX CAD; senão numa pasta de testes da `imos_LE`);
+  2. no Element Manager › Artigo › ESQ › Details › «Mirrored article» (pode estar sem nome em
+     português: é a linha depois do princípio de cálculo), escolher o DIR e gravar;
+  3. numa obra de teste, inserir o ESQ, ligar o Article Mode, desligar o 3D Editing e fazer `_MIRROR`
+     com um eixo vertical. Responder «Não» para manter o original;
+  4. esperado: aparece o DIR espelhado ao lado, com a porta simples à esquerda. Depois de gravar a
+     obra, o Claude compara as duas listas de peças, como na secção 2.
+  Ver também o que acontece a um artigo **simétrico** sem gémeo (uma coluna só com porta simples):
+  a porta troca de lado sozinha?
+- **M1 — só leitura, depois do T1.** Ferramenta que lê um artigo da biblioteca e mostra o gémeo, sem
+  gravar nada. O objetivo é fazer automaticamente o DIR que o iX pede (secção 3a).
   Prova: espelhar o `RP_A_01_ESQ` (gravado na biblioteca pelo Paulo) e comparar com o `RP_A_01_DIR`
   que ele fez à mão. Têm de bater: as mesmas peças e medidas, e a porta e as dobradiças do lado certo.
 - **M2 — escrita na TESTE02.** Grava o `_DIR` como artigo novo. O Paulo abre-o no Article Designer,
