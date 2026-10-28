@@ -2648,7 +2648,7 @@ Feito:
   todas as leituras e já pode escrever: é este interruptor que segura a escrita. O aviso do
   Escritório (só leitura) funciona com ele desligado.
 - Migração `20261028_121` (só acrescenta as duas definições; não cria tabelas). Aplicada na
-  `martelo_v3_dev`; **na `martelo_v3` falta aplicar** (pedido ao Paulo).
+  `martelo_v3_dev` e, a 28-10 à noite (com o sim do Paulo), na `martelo_v3`.
 - Código: `app/domain/escritorio_streamlit.py` (regras), `app/services/escritorio_streamlit_service.py`
   (leitura), `app/services/escritorio_streamlit_escrita.py` (escrita — SQL fixo, só `INSERT` e
   `UPDATE` com compare-and-set, nunca `DELETE`; tem um modo `ensaio` que corre tudo e desfaz),
