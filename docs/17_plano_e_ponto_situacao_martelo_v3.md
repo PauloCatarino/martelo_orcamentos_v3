@@ -2700,8 +2700,14 @@ cópia de segurança da base do Streamlit e escolher uma obra de teste.
 1. **Interruptor desligado (nada muda).** Produção → uma obra em Desenho → Estado
    **Producao** → **Salvar**. Esperado: tudo como antes (supervisor, email ao cliente) e
    nenhuma caixa do Escritório.
-2. **Ligar.** Configurações → **Caminhos do Sistema** → pesquisar `streamlit_escrita_ativa`
-   → valor **ON** → **Guardar**. (Na base real a linha só existe depois da migração.)
+2. **Ligar (como `admin`).** As definições do sistema só se gravam com a conta de
+   administrador: o perfil normal (`paulo`) só as lê. **Sair** → entrar como **admin** →
+   Configurações → **Caminhos do Sistema** → pesquisar `str` → linha «Streamlit - Enviar para
+   o Aprovisionamento ao gravar uma obra em Produção (ON/OFF)» → valor **ON** → **Guardar
+   Configurações** → «Configuracoes guardadas com sucesso.» → **Sair** e voltar a entrar como
+   **paulo** (o Streamlit não conhece o `admin` do Martelo). Com a conta `paulo`, a página
+   mostra «Só leitura…» e o Guardar fica cinzento (desde 28-10; antes dizia só «Nao foi
+   possivel guardar» e o valor voltava a OFF).
 3. **Recusa, sem escrever nada.** Produção → obra **26.1472_01_01_JF_VIVA** (do Paulo, ainda
    sem Caderno de Encargos no Streamlit) → **Funções** → **«Enviar para o Aprovisionamento»**.
    Esperado: caixa «Escritório (Streamlit)» com «Falta criar o Caderno de Encargos desta

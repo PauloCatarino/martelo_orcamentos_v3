@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -17,14 +18,36 @@ from PySide6.QtWidgets import (
 )
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import diario_bordo
 from app.db.session import SessionLocal
 from app.repositories.system_setting_repository import SystemSettingResumo
+from app.services import mysql_contas_service
 from app.services.system_setting_service import SystemSettingService
 from app.domain.pesquisa_texto import corresponde_texto, normalizar
 from app.ui.widgets.barra_cabecalho import BarraCabecalho
 from app.ui.widgets.barra_pesquisa import CampoPesquisa
 from app.ui.widgets.larguras_colunas import ligar_persistencia_larguras
 from app.ui.icones import decorar_barra, icone
+
+#: A ``system_settings`` é da casa: o perfil MySQL normal só a lê (ver
+#: ``deploy/mysql_contas_beta.sql``). 1142/1143 = o MySQL recusou o UPDATE.
+_ERROS_SEM_PERMISSAO = (1142, 1143)
+
+MENSAGEM_SO_LEITURA = (
+    "A sua conta só pode consultar estas configurações. Para as alterar, "
+    "entre no Martelo como administrador (admin)."
+)
+
+
+def erro_sem_permissao(exc: BaseException) -> bool:
+    """Se o MySQL recusou a escrita por falta de privilégio (e não por outra razão).
+
+    28-10: o Paulo, com a conta ``paulo`` (perfil normal), mudou um valor para
+    ON, carregou em Guardar e só leu «Nao foi possivel guardar» — sem saber que
+    era a conta.
+    """
+    argumentos = getattr(getattr(exc, "orig", None), "args", None) or ()
+    return bool(argumentos) and argumentos[0] in _ERROS_SEM_PERMISSAO
 
 
 def configuracao_corresponde(configuracao, procurado: str) -> bool:
@@ -69,6 +92,8 @@ class CaminhosSistemaPage(QWidget):
         self._settings_by_row: dict[int, SystemSettingResumo] = {}
         #: Tudo o que veio da base; a tabela mostra só o que passa a pesquisa.
         self._configuracoes: list[SystemSettingResumo] = []
+        #: Conta com perfil normal: vê tudo, não grava nada.
+        self._so_leitura = False
 
         self.cabecalho = BarraCabecalho(
             "Caminhos do Sistema",
@@ -79,9 +104,13 @@ class CaminhosSistemaPage(QWidget):
         )
 
         self.save_button = QPushButton("Guardar Configura\u00e7\u00f5es")
+        self.save_button.setToolTip("Gravar na base os valores alterados na tabela.")
         self.save_button.clicked.connect(self.guardar_configuracoes)
 
         self.refresh_button = QPushButton("Atualizar")
+        self.refresh_button.setToolTip(
+            "Voltar a ler os valores da base (desfaz o que n\u00e3o foi guardado)."
+        )
         self.refresh_button.clicked.connect(self.carregar_configuracoes)
 
         self.voltar_button = QPushButton("Voltar às Configurações")
@@ -110,6 +139,7 @@ class CaminhosSistemaPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._edicao_normal = self.table.editTriggers()
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -147,12 +177,29 @@ class CaminhosSistemaPage(QWidget):
         try:
             with SessionLocal() as session:
                 configuracoes = SystemSettingService(session).listar_configuracoes()
+                so_leitura = mysql_contas_service.contas_geridas(
+                    session
+                ) and not mysql_contas_service.sou_admin_na_base(session)
         except SQLAlchemyError:
             self.status_label.setText("Nao foi possivel carregar os caminhos do sistema.")
             return
 
         self._configuracoes = configuracoes
+        self._aplicar_so_leitura(so_leitura)
         self.aplicar_pesquisa()
+
+    def _aplicar_so_leitura(self, so_leitura: bool) -> None:
+        """Com o perfil normal a base recusa o Guardar: nem se deixa editar."""
+        self._so_leitura = so_leitura
+        self.save_button.setEnabled(not so_leitura)
+        self.save_button.setToolTip(
+            MENSAGEM_SO_LEITURA
+            if so_leitura
+            else "Gravar na base os valores alterados na tabela."
+        )
+        self.table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers if so_leitura else self._edicao_normal
+        )
 
     def aplicar_pesquisa(self, _texto: str | None = None) -> None:
         """Mostrar só os caminhos que correspondem ao que está escrito."""
@@ -180,6 +227,10 @@ class CaminhosSistemaPage(QWidget):
             self.status_label.setText(
                 f"{len(self._configuracoes)} caminhos do sistema."
             )
+        if self._so_leitura:
+            self.status_label.setText(
+                f"{self.status_label.text()}  |  Só leitura. {MENSAGEM_SO_LEITURA}"
+            )
 
     def guardar_configuracoes(self) -> None:
         """Save edited setting values."""
@@ -192,7 +243,15 @@ class CaminhosSistemaPage(QWidget):
         try:
             with SessionLocal() as session:
                 SystemSettingService(session).guardar_varios(valores)
-        except (SQLAlchemyError, ValueError):
+        except SQLAlchemyError as erro:
+            if erro_sem_permissao(erro):
+                self.status_label.setText(f"Não foi guardado. {MENSAGEM_SO_LEITURA}")
+                QMessageBox.warning(self, "Caminhos do Sistema", MENSAGEM_SO_LEITURA)
+                return
+            diario_bordo.registar_erro("Caminhos do Sistema: não guardou", str(erro), erro=erro)
+            self.status_label.setText("Nao foi possivel guardar os caminhos do sistema.")
+            return
+        except ValueError:
             self.status_label.setText("Nao foi possivel guardar os caminhos do sistema.")
             return
 
@@ -225,7 +284,7 @@ class CaminhosSistemaPage(QWidget):
             self.table.setItem(row_index, 1, value_item)
 
             browse_button = QPushButton("Procurar...")
-            browse_button.setEnabled(setting.tipo in self.BROWSE_TYPES)
+            browse_button.setEnabled(setting.tipo in self.BROWSE_TYPES and not self._so_leitura)
             browse_button.setToolTip(f"Selecionar: {dica}")
             browse_button.clicked.connect(lambda _checked=False, row=row_index: self._procurar(row))
             self.table.setCellWidget(row_index, 2, browse_button)
