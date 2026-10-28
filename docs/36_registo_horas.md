@@ -103,6 +103,38 @@ que é o que as versões antigas do Martelo leem. **Atenção:** uma versão ant
 Martelo que abra a folha de alguém com um dia de Teletrabalho dá erro (não conhece o
 tipo) — instalar a versão nova nos PCs antes de usar o Teletrabalho.
 
+## Teletrabalho: só as horas fora do ponto (28-10-2026)
+
+Substitui a regra «pelo relógio» de 19-10. Pedido do Paulo: as horas das 08h–17h ficam
+registadas no **ponto da empresa**; o Martelo só conta as horas fora desse horário e não
+desconta nada. Exemplo dele: 19h–21h = **2h extra** (a regra de 19-10 dava «0 + 2» e −6h no
+mês). Mockup com régua do dia, comparação e 7 perguntas
+(`https://claude.ai/artifact/N3Rfgg521dgXB4jj3cD7qX`); ele aceitou todas as recomendações:
+
+1. **Horas normais: nenhumas.** A folha mostra **«ponto + 2»** (ou só «ponto»); as «Horas
+   normais» do mês não somam estes dias.
+2. Uma linha que apanhe parte do horário **conta só a parte de fora**; a de dentro fica no
+   ponto e a janela mostra-a a cinzento («conta 2h · 9h no ponto», «no ponto, não conta»).
+   Escrever 17h–19h ou o dia todo 08h–19h dá o mesmo.
+3. Um dia sem horas fora do horário **guarda-se vazio** («ponto»), para o lembrete dos dias
+   por registar continuar a servir.
+4. **Sai a «Ausência justificada»** (já não há nada a descontar). Os dias que a têm continuam a
+   mostrá-la na folha.
+5. Um dia novo de Teletrabalho abre com **uma linha vazia**. Os botões 17h…22h põem a saída e,
+   com a entrada vazia, a entrada às 17:00 (o «17h» não, para não dar 24h).
+6. Os dias gravados com a regra de 19-10 **recalculam-se uma vez**, só nos meses ainda não
+   enviados (outubro), mostrando antes e depois: botão «Recalcular teletrabalho (N)…» na
+   página, que pede «Sim» antes de gravar. Os que não fecham as contas ficam como estão.
+7. Resumo, PDF e email com a linha **«Dias em teletrabalho (horário no ponto da empresa)»**.
+
+Ficou também decidido no mockup: o **almoço sai** do Teletrabalho (é dentro do horário);
+jantar e acerto continuam; o horário continua a vir das Definições; as extra vão para
+«Horas extra em dias úteis» e não dão subsídio; os outros tipos de dia não mudam.
+
+Na base nada muda (sem migração): os dias novos gravam `ausencia_min` e `falta_min` a 0 e
+`normais_min` a 0. Um dia de Teletrabalho com horas normais ou falta é da regra de 19-10
+(`LinhaDia.teletrabalho_regra_antiga`) e mostra-se como foi gravado.
+
 ## Onde está
 
 | O quê | Ficheiro |

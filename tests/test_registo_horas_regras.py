@@ -146,71 +146,103 @@ def test_intervalo_que_ja_e_o_almoco(periodos, intervalo) -> None:
     assert r.intervalo_almoco(periodos) == intervalo
 
 
-# ---- teletrabalho (19-10-2026): pelo relógio ---------------------------------------
-def test_teletrabalho_o_exemplo_do_paulo() -> None:
-    """08–10, consulta, 13–17 e 3h à noite: 6 normais, 3 extra e faltam 2."""
-    calculo = _linhas(r.TIPO_TELETRABALHO, (480, 600), (780, 1020), (1200, 1380), almoco=False)
-    assert (calculo.trabalhado, calculo.normais, calculo.falta) == (540, 360, 120)
-    assert (calculo.extra_feito, calculo.desconto, calculo.extra) == (180, -120, 60)
-    assert calculo.fora_horario == 180
-    assert r.horas_como_na_folha(r.TIPO_TELETRABALHO, 360, 60, 540, 120) == "6 + 3"
+# ---- teletrabalho (28-10-2026): o horário está no ponto da empresa ----------------------
+def _tele(*periodos, **kw) -> r.CalculoDia:
+    return _linhas(r.TIPO_TELETRABALHO, *periodos, **kw)
 
 
-def test_teletrabalho_com_ausencia_justificada_nao_desconta() -> None:
-    calculo = _linhas(
-        r.TIPO_TELETRABALHO, (480, 600), (780, 1020), (1200, 1380), almoco=False, ausencia=120
-    )
-    assert (calculo.normais, calculo.extra, calculo.falta, calculo.ausencia) == (480, 180, 0, 120)
-    # A ausência só tapa a falta: nunca vira horas extra.
-    cheio = _linhas(r.TIPO_TELETRABALHO, (480, 1020), almoco=True, ausencia=120)
-    assert (cheio.normais, cheio.extra) == (480, 0)
+@pytest.mark.parametrize(
+    ("periodos", "extra", "no_ponto", "folha"),
+    [
+        (((1140, 1260),), 120, 0, "ponto + 2"),  # o exemplo do Paulo: 19h–21h = 2h extra
+        (((1020, 1140),), 120, 0, "ponto + 2"),  # só a parte de casa, 17h–19h
+        (((480, 1140),), 120, 540, "ponto + 2"),  # o dia todo, 08h–19h: dá o mesmo
+        (((480, 1020), (1200, 1380)), 180, 540, "ponto + 3"),  # o caso do Pedro
+        (((420, 540), (1080, 1200)), 180, 60, "ponto + 3"),  # 07h–09h e 18h–20h
+        (((390, 480), (1320, 90)), 300, 0, "ponto + 5"),  # 06h30–08h e 22h–01h30
+        (((480, 1020),), 0, 540, "ponto"),  # só o horário: nada conta
+    ],
+)
+def test_teletrabalho_so_conta_fora_do_horario(periodos, extra, no_ponto, folha) -> None:
+    calculo = _tele(*periodos)
+    assert (calculo.trabalhado, calculo.normais, calculo.extra) == (extra, 0, extra)
+    assert calculo.no_ponto == no_ponto
+    assert r.horas_como_na_folha(r.TIPO_TELETRABALHO, 0, calculo.extra, calculo.trabalhado) == folha
 
 
-def test_teletrabalho_antes_e_depois_do_horario_e_extra() -> None:
-    # 07:00–16:00 com almoço: das 7 às 8 é extra e falta 1h para as 8 normais.
-    calculo = _linhas(r.TIPO_TELETRABALHO, (420, 960), almoco=True)
-    assert (calculo.normais, calculo.extra_feito, calculo.falta, calculo.extra) == (420, 60, 60, 0)
-    assert r.horas_como_na_folha(r.TIPO_TELETRABALHO, 420, 0, 480, 60) == "7 + 1"
-    # O caso do Pedro em teletrabalho: igual ao dia útil.
-    pedro = _linhas(r.TIPO_TELETRABALHO, (480, 1020), (1200, 1380), almoco=True)
-    assert (pedro.normais, pedro.extra, pedro.falta) == (480, 180, 0)
+def test_teletrabalho_sem_linhas_guarda_o_dia_vazio() -> None:
+    calculo = _tele((None, None))
+    assert (calculo.extra, calculo.periodos, calculo.saida) == (0, (), None)
+    assert r.calcular_dia(r.DadosDia(tipo=r.TIPO_TELETRABALHO)).extra == 0
+    with pytest.raises(r.ErroRegistoHoras, match="Indique a hora de saída"):
+        _tele((1140, None))
 
 
-def test_teletrabalho_usa_o_horario_da_pessoa_e_o_acerto_enche_as_normais() -> None:
-    dados = r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 1020),), almoco=True)
+def test_teletrabalho_sem_almoco_com_jantar_e_acerto() -> None:
+    # O almoço é dentro do horário (no ponto): mesmo marcado, não tira nada.
+    assert _tele((480, 1140), almoco=True).extra == 120
+    assert _tele((1140, 1380), jantar=True).extra == 180  # 19h–23h menos o jantar
+    assert _tele((1140, 1260), acerto=60).extra == 180
+    assert _tele((None, None), acerto=90).extra == 90
+    with pytest.raises(r.ErroRegistoHoras, match="excedem as horas feitas fora do horário"):
+        _tele((1140, 1170), jantar=True)
+
+
+def test_teletrabalho_usa_o_horario_da_pessoa() -> None:
+    dados = r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 1020),))
     nove_as_seis = r.calcular_dia(dados, horario=(540, 1080))
-    assert (nove_as_seis.normais, nove_as_seis.extra_feito, nove_as_seis.falta) == (420, 60, 60)
-    com_acerto = r.calcular_dia(
-        r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 840),), almoco=False, acerto=180)
-    )
-    assert (com_acerto.normais, com_acerto.extra) == (480, 60)
+    assert (nove_as_seis.extra, nove_as_seis.no_ponto) == (60, 480)  # das 8 às 9 é antes
 
 
-def test_teletrabalho_ausencia_fora_dos_limites() -> None:
-    with pytest.raises(r.ErroRegistoHoras, match="ausência justificada"):
-        _linhas(r.TIPO_TELETRABALHO, (480, 1020), ausencia=13 * 60)
+def test_partes_no_horario() -> None:
+    periodos = [(420, 540), (720, 780), (1080, 1200)]
+    assert r.partes_no_horario(periodos, (480, 1020)) == [(480, 540), (720, 780)]
+    assert r.partes_no_horario([(1320, 1530)], (480, 1020)) == []
 
 
 def test_teletrabalho_na_folha_e_no_resumo() -> None:
-    dia = r.LinhaDia(
+    novo = r.LinhaDia(data=date(2026, 10, 27), tipo=r.TIPO_TELETRABALHO, periodos=((1140, 1260),),
+                      trabalhado=120, extra=120)
+    assert (novo.horas_folha, novo.extra_partes, novo.desconto) == ("ponto + 2", (120,), 0)
+    assert novo.observacoes_folha() == "Teletrabalho" and novo.subsidio == 0
+    assert not novo.teletrabalho_regra_antiga
+    vazio = r.LinhaDia(data=date(2026, 10, 28), tipo=r.TIPO_TELETRABALHO)
+    assert (vazio.horas_folha, vazio.horario, vazio.extra_partes) == ("ponto", "", ())
+    # Os dias da regra de 19-10 mostram-se como foram gravados.
+    antigo = r.LinhaDia(
         data=date(2026, 10, 20), tipo=r.TIPO_TELETRABALHO, periodos=((480, 600), (780, 1020), (1200, 1380)),
         trabalhado=540, normais=360, extra=60, falta=120, observacoes="Consulta",
     )
-    assert dia.horas_folha == "6 + 3"
-    assert dia.extra_partes == (180, -120)
-    assert dia.horario == "8h – 10h · 13h – 17h · 20h – 23h"
-    assert dia.observacoes_folha() == "Teletrabalho – Consulta"
-    assert dia.subsidio == 0
+    assert antigo.teletrabalho_regra_antiga
+    assert (antigo.horas_folha, antigo.extra_partes) == ("6 + 3", (180, -120))
+    assert antigo.observacoes_folha() == "Teletrabalho – Consulta"
     com_ausencia = r.LinhaDia(data=date(2026, 10, 21), tipo=r.TIPO_TELETRABALHO,
                               normais=480, extra=180, ausencia=120)
     assert com_ausencia.observacoes_folha() == "Teletrabalho – Ausência justificada 2h"
+    assert com_ausencia.teletrabalho_regra_antiga
+
     resumo = r.resumir_mes([
-        dia,
-        com_ausencia,
-        r.LinhaDia(data=date(2026, 10, 22), tipo=r.TIPO_UTIL, normais=480, extra=60),
+        novo, vazio, r.LinhaDia(data=date(2026, 10, 22), tipo=r.TIPO_UTIL, normais=480, extra=60),
     ])
-    assert (resumo.extra_uteis, resumo.descontos, resumo.total_extra) == (180 + 180 + 60, -120, 300)
+    assert (resumo.normais, resumo.extra_uteis, resumo.descontos) == (480, 180, 0)
     assert (resumo.dias_uteis, resumo.dias_teletrabalho) == (3, 2)
+    assert resumo.linha_teletrabalho() == ("Dias em teletrabalho (horário no ponto da empresa)", "2")
+    relatorio = resumo.linhas_relatorio()
+    assert relatorio[-1] == resumo.linha_teletrabalho()
+    assert relatorio[-2] == resumo.linha_subsidio()
+    corpo = r.corpo_email("Paulo Catarino", 2026, 10, resumo)
+    assert "• Dias em teletrabalho (horário no ponto da empresa): 2" in corpo
+    assert r.ResumoMes().linha_teletrabalho() is None
+
+
+def test_dados_do_dia_gravado_para_refazer_as_contas() -> None:
+    antigo = r.LinhaDia(data=date(2026, 10, 20), tipo=r.TIPO_TELETRABALHO, entrada=480, saida=1260,
+                        almoco=True, jantar=True, acerto=30, normais=480, extra=120)
+    dados = antigo.dados()
+    assert (dados.tipo, dados.periodos, dados.jantar, dados.acerto) == (
+        r.TIPO_TELETRABALHO, ((480, 1260),), True, 30,
+    )
+    assert r.calcular_dia(dados).extra == 240 - 60 + 30
 
 
 def test_dias_antigos_e_so_o_total() -> None:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 
 from sqlalchemy import func, select
@@ -49,6 +49,15 @@ class EnvioMes:
     destinatario: str
     normais: int
     extra: int
+
+
+@dataclass(frozen=True)
+class RecalculoDia:
+    """Um dia de teletrabalho da regra de 19-10: como está e como fica com a de 28-10."""
+
+    antes: regra.LinhaDia
+    depois: regra.LinhaDia | None
+    erro: str = ""
 
 
 def ler_periodos(texto: str | None) -> tuple[tuple[int, int], ...]:
@@ -154,15 +163,21 @@ class RegistoHorasService:
         registo.entrada2_min = periodos[1][0] if len(periodos) > 1 else None
         registo.saida2_min = periodos[1][1] if len(periodos) > 1 else None
         registo.periodos = json.dumps([list(p) for p in periodos]) if periodos else None
-        registo.desconto_almoco = bool(dados.almoco) and (com_horario or bool(periodos))
+        # No teletrabalho o almoço é dentro do horário, que está no ponto.
+        registo.desconto_almoco = (
+            bool(dados.almoco)
+            and dados.tipo != regra.TIPO_TELETRABALHO
+            and (com_horario or bool(periodos))
+        )
         registo.desconto_jantar = bool(com_horario and dados.jantar)
         registo.acerto_min = dados.acerto if com_horario else 0
         # Fora do horário fica sempre o total (com linhas, o que elas somam).
         registo.horas_min = 0 if com_horario else (
             dados.horas if dados.tipo == regra.TIPO_FOLGA else calculo.trabalhado
         )
-        registo.ausencia_min = calculo.ausencia
-        registo.falta_min = calculo.falta
+        # Só a regra de 19-10-2026 do teletrabalho as tinha (dias antigos).
+        registo.ausencia_min = 0
+        registo.falta_min = 0
         registo.trabalhado_min = calculo.trabalhado
         registo.normais_min = calculo.normais
         registo.extra_min = calculo.extra
@@ -171,6 +186,75 @@ class RegistoHorasService:
         registo.origem = ORIGEM_MARTELO
         self.session.commit()
         return linha_de(registo)
+
+    # ---- teletrabalho da regra de 19-10-2026 -------------------------------
+    def teletrabalho_por_recalcular(
+        self, user_id: int, config: regra.ConfigHoras | None = None
+    ) -> list[RecalculoDia]:
+        """Dias de teletrabalho com a regra de 19-10, nos meses ainda por enviar.
+
+        Os meses já enviados à contabilidade ficam como foram (nunca se
+        reescreve um mês pago). ``depois`` é como o dia fica com a regra nova,
+        ou ``None`` se as contas não fecharem (``erro`` diz porquê).
+        """
+        config = config or self.config(user_id)
+        enviados = self.meses_enviados(user_id)
+        registos = self.session.execute(
+            select(RegistoHorasDia)
+            .where(
+                RegistoHorasDia.user_id == user_id,
+                RegistoHorasDia.tipo == regra.TIPO_TELETRABALHO,
+            )
+            .order_by(RegistoHorasDia.data)
+        ).scalars()
+        dias: list[RecalculoDia] = []
+        for registo in registos:
+            antes = linha_de(registo)
+            if not antes.teletrabalho_regra_antiga or (antes.data.year, antes.data.month) in enviados:
+                continue
+            try:
+                calculo = regra.calcular_dia(
+                    antes.dados(),
+                    horas_normais=config.horas_normais_dia,
+                    pausa=config.pausa_almoco,
+                    horario=config.horario,
+                )
+            except regra.ErroRegistoHoras as erro:
+                dias.append(RecalculoDia(antes=antes, depois=None, erro=str(erro)))
+                continue
+            depois = replace(
+                antes,
+                almoco=False,
+                trabalhado=calculo.trabalhado,
+                normais=calculo.normais,
+                extra=calculo.extra,
+                ausencia=0,
+                falta=0,
+            )
+            dias.append(RecalculoDia(antes=antes, depois=depois))
+        return dias
+
+    def recalcular_teletrabalho(
+        self, user_id: int, config: regra.ConfigHoras | None = None
+    ) -> list[date]:
+        """Grava com a regra nova os dias de :meth:`teletrabalho_por_recalcular`.
+
+        Os que não fecham as contas ficam como estão. Devolve os dias gravados.
+        """
+        config = config or self.config(user_id)
+        gravados: list[date] = []
+        for dia in self.teletrabalho_por_recalcular(user_id, config):
+            if dia.depois is None:
+                continue
+            self.guardar_dia(
+                user_id,
+                dia.antes.data,
+                dia.antes.dados(),
+                observacoes=dia.antes.observacoes,
+                config=config,
+            )
+            gravados.append(dia.antes.data)
+        return gravados
 
     def apagar_dia(self, user_id: int, dia: date) -> bool:
         registo = self._registo(user_id, dia)

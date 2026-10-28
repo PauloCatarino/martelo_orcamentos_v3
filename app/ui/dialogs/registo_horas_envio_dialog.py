@@ -109,19 +109,31 @@ class RegistoHorasEnvioDialog(QDialog):
             falta.setWordWrap(True)
             falta.setStyleSheet(f"color: {tema.TEXTO_ERRO}; font-weight: bold;")
             avisos.addWidget(falta)
+        antigos = [d.data for d in dias if d.teletrabalho_regra_antiga]
+        if antigos and ja_enviado is None:
+            regra_antiga = QLabel(
+                f"Atenção: {len(antigos)} dia(s) de Teletrabalho com a regra antiga "
+                f"({regra.lista_de_dias(antigos)}). Carregue em «Corrigir primeiro» e "
+                "depois em «Recalcular teletrabalho…» no Registo de Horas."
+            )
+            regra_antiga.setWordWrap(True)
+            regra_antiga.setStyleSheet(f"color: {tema.TEXTO_ERRO}; font-weight: bold;")
+            avisos.addWidget(regra_antiga)
 
         # ---- resumo ------------------------------------------------------
         caixa_resumo = QGroupBox("Resumo do mês")
         grelha = QGridLayout(caixa_resumo)
         linhas_resumo = resumo.linhas_relatorio()
+        # O total das horas e, logo a seguir, o subsídio (em euros).
+        linha_total = len(resumo.linhas()) - 1
         for linha, (rotulo, valor) in enumerate(linhas_resumo):
             etiqueta = QLabel(rotulo)
             numero = QLabel(valor)
             numero.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if linha == len(linhas_resumo) - 2:
+            if linha == linha_total:
                 etiqueta.setStyleSheet("font-weight: bold;")
                 numero.setStyleSheet("font-weight: bold;")
-            elif linha == len(linhas_resumo) - 1:
+            elif linha == linha_total + 1:
                 # O subsídio de alimentação: euros, à parte do total de horas.
                 for rotulo_subsidio in (etiqueta, numero):
                     rotulo_subsidio.setStyleSheet(

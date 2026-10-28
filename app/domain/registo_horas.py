@@ -21,12 +21,17 @@ postas pela ordem do dia; duas linhas que se sobrepõem são recusadas. O
 «2.º período» de antes é agora a linha 2. Fins de semana, feriados e férias
 também têm linhas (ou só o total de horas, como os dias antigos).
 
-* **teletrabalho** (19-10-2026): dia útil feito parte em casa, parte na
-  empresa, contado **pelo relógio**: dentro do horário habitual (das
-  Definições, 08:00–17:00) são horas normais; antes ou depois é extra. O que
-  faltar para as horas normais desconta ao mês — a não ser que se escreva em
-  «Ausência justificada» (ex.: começou em casa e foi acabar o trabalho à
-  empresa). As extra contam como as de um dia útil; não dá subsídio.
+* **teletrabalho** (28-10-2026, respostas do Paulo ao 2.º mockup): o dia na
+  empresa fica registado no **ponto da empresa**, por isso o horário habitual
+  (das Definições, 08:00–17:00) aqui não conta. Só contam as horas antes ou
+  depois dele, todas como extra, e nada desconta: 19:00–21:00 dá «ponto + 2».
+  Uma linha que apanhe parte do horário conta só a parte de fora. Um dia sem
+  horas fora do horário guarda-se vazio («ponto»), para o lembrete não o
+  pedir. Não há almoço (é dentro do horário); jantar e acerto continuam. As
+  extra contam como as de um dia útil; não dá subsídio. Os dias gravados com
+  a regra de 19-10 (horas normais pelo relógio, falta que desconta, «Ausência
+  justificada») mostram-se como foram gravados; os dos meses ainda por enviar
+  recalculam-se uma vez (:meth:`LinhaDia.teletrabalho_regra_antiga`).
 
 O «acerto» continua a existir para as pausas a mais e para o histórico que
 veio da app antiga.
@@ -78,10 +83,9 @@ AJUDA_TIPOS = {
         "extra. Com menos horas, a diferença desconta ao mês."
     ),
     TIPO_TELETRABALHO: (
-        "Parte do dia em casa, parte na empresa. Dentro do horário habitual são "
-        "horas normais; antes ou depois conta como extra. O que faltar para as "
-        "horas normais desconta ao mês, a não ser que o escreva em «Ausência "
-        "justificada»."
+        "Dia na empresa com horas extra fora do horário. O horário habitual fica "
+        "no ponto da empresa e aqui não conta; só contam as horas antes ou depois "
+        "dele, todas como extra. Não desconta nada."
     ),
     TIPO_FIM_SEMANA: "Todas as horas trabalhadas contam como extra.",
     TIPO_FERIADO: (
@@ -102,7 +106,6 @@ HORAS_FOLGA_PADRAO = 8 * 60
 #: Limites que a app antiga já usava.
 MAX_HORAS_DIA = 24 * 60
 MAX_ACERTO = 12 * 60
-MAX_AUSENCIA = 12 * 60
 #: Linhas Entrada/Saída num dia.
 MAX_PERIODOS = 6
 #: Um intervalo entre linhas que apanhe pelo menos meia hora entre as 12h e as
@@ -119,6 +122,10 @@ SUBSIDIO_MAXIMO_DIA_CENTIMOS = 1000
 #: extra; a folga desconta, não é trabalho.
 TIPOS_COM_SUBSIDIO = frozenset({TIPO_FIM_SEMANA, TIPO_FERIADO, TIPO_FERIAS})
 ROTULO_SUBSIDIO = "Subsídio de alimentação"
+
+#: Teletrabalho: as horas normais estão no ponto da empresa («ponto + 2»).
+PONTO = "ponto"
+ROTULO_TELETRABALHO = "Dias em teletrabalho (horário no ponto da empresa)"
 
 #: O registo oficial começa a 1 de outubro de 2026 (decisão do Paulo); o que
 #: está antes é histórico das folhas em papel e nunca aparece «por registar».
@@ -236,15 +243,14 @@ class DadosDia:
     #: As linhas Entrada/Saída, pela ordem em que estão na janela; uma linha
     #: com as duas horas vazias não conta.
     periodos: tuple[tuple[int | None, int | None], ...] = ()
-    #: Teletrabalho: horas fora, dentro do horário, que não descontam.
-    ausencia: int = 0
 
 
 @dataclass(frozen=True)
 class CalculoDia:
+    #: No teletrabalho, só o que se conta (as horas fora do horário).
     trabalhado: int
     normais: int
-    #: Extra do dia já com o que falta descontado (negativo = desconta).
+    #: Extra do dia (negativo = desconta).
     extra: int
     #: Saídas já com o dia seguinte somado (ex.: 1h30 → 25h30 = 1530).
     saida: int | None = None
@@ -252,21 +258,8 @@ class CalculoDia:
     saida2: int | None = None
     #: As linhas pela ordem do dia, com as saídas do dia seguinte somadas.
     periodos: tuple[tuple[int, int], ...] = ()
-    #: Teletrabalho: o que faltou para as horas normais (já tirado a ``extra``).
-    falta: int = 0
-    ausencia: int = 0
-    #: Teletrabalho: minutos feitos antes ou depois do horário habitual.
-    fora_horario: int = 0
-
-    @property
-    def extra_feito(self) -> int:
-        """As horas extra feitas, antes de descontar o que faltou."""
-        return self.extra + self.falta if self.falta else max(self.extra, 0)
-
-    @property
-    def desconto(self) -> int:
-        """O que desconta ao mês (0 ou negativo)."""
-        return -self.falta if self.falta else min(self.extra, 0)
+    #: Teletrabalho: minutos das linhas dentro do horário, que ficam no ponto.
+    no_ponto: int = 0
 
 
 def _depois_de(hora: int, referencia: int) -> int:
@@ -341,10 +334,18 @@ def intervalo_almoco(periodos: Iterable[tuple[int, int]]) -> tuple[int, int] | N
     return None
 
 
-def _dentro_do_horario(periodos: Iterable[tuple[int, int]], horario: tuple[int, int]) -> int:
+def partes_no_horario(
+    periodos: Iterable[tuple[int, int]], horario: tuple[int, int]
+) -> list[tuple[int, int]]:
+    """Os bocados das linhas que caem dentro do horário (no teletrabalho, ficam no ponto)."""
     inicio, fim = horario
-    fim = _depois_de(fim, inicio) if fim <= inicio else fim
-    return sum(max(0, min(s, fim) - max(e, inicio)) for e, s in periodos)
+    fim = _depois_de(fim, inicio)
+    partes = []
+    for entrada, saida in periodos:
+        de, ate = max(entrada, inicio), min(saida, fim)
+        if ate > de:
+            partes.append((de, ate))
+    return partes
 
 
 def _calculo(
@@ -372,7 +373,7 @@ def calcular_dia(
     """As contas da folha para um dia; ``ErroRegistoHoras`` se não fizer sentido.
 
     ``horario`` é o horário habitual da pessoa (Definições): só o Teletrabalho
-    o usa, para separar as horas normais das extra pelo relógio.
+    o usa — o que fica dentro dele está no ponto da empresa e não conta.
     """
     if dados.tipo not in TIPOS:
         raise ErroRegistoHoras("Tipo de dia inválido.")
@@ -404,53 +405,27 @@ def calcular_dia(
     # Dia útil e teletrabalho.
     if abs(dados.acerto) > MAX_ACERTO:
         raise ErroRegistoHoras("O acerto tem de estar entre −12 e 12 horas.")
+    jantar = pausa if dados.jantar else 0
+
+    if dados.tipo == TIPO_TELETRABALHO:
+        # O horário está no ponto da empresa: só conta o de fora, tudo extra.
+        # Sem linhas também se guarda (o dia fica registado, sem extra).
+        periodos = ordenar_periodos(pedidos)
+        no_ponto = sum(ate - de for de, ate in partes_no_horario(periodos, horario))
+        extra = sum(s - e for e, s in periodos) - no_ponto - jantar + dados.acerto
+        if extra < 0:
+            raise ErroRegistoHoras("Os descontos excedem as horas feitas fora do horário.")
+        return _calculo(extra, 0, extra, periodos, no_ponto=no_ponto)
+
     periodos = ordenar_periodos(pedidos or [(None, None)])
     if not periodos:
         raise ErroRegistoHoras("Indique a hora de entrada e a de saída.")
-    soma = sum(s - e for e, s in periodos)
     almoco = pausa if dados.almoco else 0
-    jantar = pausa if dados.jantar else 0
-    trabalhado = soma + dados.acerto - almoco - jantar
+    trabalhado = sum(s - e for e, s in periodos) + dados.acerto - almoco - jantar
     if trabalhado < 0:
         raise ErroRegistoHoras("Os descontos excedem as horas trabalhadas.")
-
-    if dados.tipo == TIPO_UTIL:
-        return _calculo(
-            trabalhado, min(trabalhado, horas_normais), trabalhado - horas_normais, periodos
-        )
-
-    # Teletrabalho: pelo relógio.
-    if not 0 <= dados.ausencia <= MAX_AUSENCIA:
-        raise ErroRegistoHoras("A ausência justificada tem de estar entre 0 e 12 horas.")
-    dentro = _dentro_do_horario(periodos, horario)
-    fora = soma - dentro
-    # O almoço sai das horas do horário; o jantar, das de fora.
-    tira = min(almoco, dentro)
-    dentro, fora = dentro - tira, fora - (almoco - tira)
-    tira = min(jantar, fora)
-    fora, dentro = fora - tira, dentro - (jantar - tira)
-    if dados.acerto > 0:
-        # Um acerto positivo enche primeiro as horas normais; o resto é extra.
-        enche = min(dados.acerto, max(0, horas_normais - dentro))
-        dentro, fora = dentro + enche, fora + dados.acerto - enche
-    else:
-        dentro += dados.acerto
-    # O que ficou negativo de um lado sai do outro (os dois somam o trabalhado).
-    if dentro < 0:
-        dentro, fora = 0, fora + dentro
-    elif fora < 0:
-        dentro, fora = dentro + fora, 0
-    feito = fora + max(0, dentro - horas_normais)
-    normais = min(dentro + dados.ausencia, horas_normais)
-    falta = max(0, horas_normais - dentro - dados.ausencia)
     return _calculo(
-        trabalhado,
-        normais,
-        feito - falta,
-        periodos,
-        falta=falta,
-        ausencia=dados.ausencia,
-        fora_horario=max(fora, 0),
+        trabalhado, min(trabalhado, horas_normais), trabalhado - horas_normais, periodos
     )
 
 
@@ -527,11 +502,15 @@ def ler_hora(texto: str | None) -> int | None:
 def horas_como_na_folha(
     tipo: str, normais: int, extra: int, trabalhado: int, falta: int = 0
 ) -> str:
-    """«8 + 3», «5 − 3», «8», «6», «−8».
+    """«8 + 3», «5 − 3», «8», «6», «−8», «ponto + 2».
 
-    No teletrabalho pode haver horas extra (fora do horário) e horas em falta
-    no mesmo dia: a folha mostra «6 + 3» e o que falta segue na coluna Extra.
+    No teletrabalho as horas normais estão no ponto da empresa: «ponto + 2», ou
+    só «ponto» num dia sem horas fora do horário. Os dias gravados com a regra
+    de 19-10-2026 têm horas normais e podem ter extra e falta no mesmo dia:
+    «6 + 3», e o que falta segue na coluna Extra.
     """
+    if tipo == TIPO_TELETRABALHO and not normais and not falta:
+        return f"{PONTO} + {formatar_horas(extra)}" if extra > 0 else PONTO
     if tipo in TIPOS_COM_HORARIO:
         feito = extra + falta if falta else max(extra, 0)
         if feito > 0:
@@ -612,9 +591,30 @@ class LinhaDia:
     #: Todas as linhas Entrada/Saída (desde 19-10-2026); vazio nos dias que só
     #: têm ``entrada``/``entrada2`` (os antigos) ou só o total de horas.
     periodos: tuple[tuple[int, int], ...] = ()
-    #: Teletrabalho: ausência justificada e o que faltou para as horas normais.
+    #: Teletrabalho gravado com a regra de 19-10-2026: ausência justificada e
+    #: o que faltou para as horas normais (a regra de 28-10 não tem nenhum).
     ausencia: int = 0
     falta: int = 0
+
+    @property
+    def teletrabalho_regra_antiga(self) -> bool:
+        """Teletrabalho gravado com a regra de 19-10 (horas normais pelo relógio).
+
+        A regra de 28-10 nunca dá horas normais nem falta: com a de 19-10 havia
+        sempre uma das duas.
+        """
+        return self.tipo == TIPO_TELETRABALHO and bool(self.normais or self.falta)
+
+    def dados(self) -> DadosDia:
+        """O que se escreveu neste dia, para voltar a fazer as contas."""
+        return DadosDia(
+            tipo=self.tipo,
+            periodos=self.lista_periodos,
+            almoco=self.almoco,
+            jantar=self.jantar,
+            acerto=self.acerto,
+            horas=self.horas,
+        )
 
     @property
     def lista_periodos(self) -> tuple[tuple[int, int], ...]:
@@ -739,9 +739,16 @@ class ResumoMes:
         """O subsídio vem à parte das horas: é dinheiro, não entra no total."""
         return (ROTULO_SUBSIDIO, formatar_euros(self.subsidio))
 
+    def linha_teletrabalho(self) -> tuple[str, str] | None:
+        """Quantos dias foram de teletrabalho (as horas normais deles estão no ponto)."""
+        if not self.dias_teletrabalho:
+            return None
+        return (ROTULO_TELETRABALHO, str(self.dias_teletrabalho))
+
     def linhas_relatorio(self) -> list[tuple[str, str]]:
-        """As horas e, no fim, o subsídio — para o email e a folha em PDF."""
-        return [*self.linhas(), self.linha_subsidio()]
+        """As horas, o subsídio e, havendo, os dias de teletrabalho — para o email e o PDF."""
+        teletrabalho = self.linha_teletrabalho()
+        return [*self.linhas(), self.linha_subsidio(), *([teletrabalho] if teletrabalho else [])]
 
 
 def resumir_mes(dias: Iterable[LinhaDia]) -> ResumoMes:
@@ -750,7 +757,8 @@ def resumir_mes(dias: Iterable[LinhaDia]) -> ResumoMes:
         resumo.dias_registados += 1
         resumo.normais += dia.normais
         resumo.subsidio += dia.subsidio
-        # O teletrabalho pode ter extra e falta no mesmo dia: cada uma no seu sítio.
+        # O teletrabalho da regra de 19-10 pode ter extra e falta no mesmo dia:
+        # cada uma no seu sítio.
         resumo.descontos += dia.desconto
         feito = dia.extra_feito
         if dia.tipo in TIPOS_COM_HORARIO:
@@ -894,7 +902,7 @@ class ConfigHoras:
 
     @property
     def horario(self) -> tuple[int, int]:
-        """O horário habitual, que separa as horas normais das extra no teletrabalho."""
+        """O horário habitual; no teletrabalho, o que fica dentro dele está no ponto."""
         return (self.entrada_habitual, self.saida_habitual)
 
     def para_json(self) -> str:

@@ -194,23 +194,23 @@ def gerar_folha_pdf(
 
     totais = [[Paragraph(_t(rotulo), base), Paragraph(f"<b>{_t(valor)}</b>", base)] for rotulo, valor in resumo.linhas_relatorio()]
     quadro = Table(totais, colWidths=[70 * mm, 25 * mm], hAlign="LEFT")
+    # O total de horas extra e, logo a seguir, o subsídio (em euros); depois
+    # pode vir a linha dos dias de teletrabalho.
+    linha_total = len(resumo.linhas()) - 1
     quadro.setStyle(
         TableStyle([
             ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor(_CINZA)),
-            # Penúltima: total de horas extra; última: subsídio (em euros).
-            ("BACKGROUND", (0, -2), (-1, -2), colors.HexColor(_BEGE)),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor(_SUBSIDIO)),
+            ("BACKGROUND", (0, linha_total), (-1, linha_total), colors.HexColor(_BEGE)),
+            ("BACKGROUND", (0, linha_total + 1), (-1, linha_total + 1), colors.HexColor(_SUBSIDIO)),
             ("ALIGN", (1, 0), (1, -1), "RIGHT"),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ])
     )
-    teletrabalho = (
-        f" (teletrabalho: {resumo.dias_teletrabalho})" if resumo.dias_teletrabalho else ""
-    )
+    # Os dias de teletrabalho já vão no quadro, com o «horário no ponto».
     contagens = (
         f"Dias registados: {resumo.dias_registados} · dias úteis trabalhados: "
-        f"{resumo.dias_uteis}{teletrabalho} · férias: {resumo.dias_ferias} · feriados: "
+        f"{resumo.dias_uteis} · férias: {resumo.dias_ferias} · feriados: "
         f"{resumo.dias_feriado} · folgas: {resumo.dias_folga}"
     )
     notas = [Paragraph(_t(contagens), base), Spacer(1, 2 * mm)]

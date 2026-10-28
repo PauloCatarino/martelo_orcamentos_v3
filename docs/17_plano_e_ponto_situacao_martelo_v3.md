@@ -2700,3 +2700,70 @@ cópia de segurança da base do Streamlit e escolher uma obra de teste.
    Produção atualizada.
 8. **Desmarcar / Ver depois.** Com duas obras no aviso: desmarcar uma e atualizar a outra →
    a desmarcada não volta a aparecer. Fechar com **«Ver depois»** → volta no dia seguinte.
+
+## Registo de Horas: Teletrabalho só conta as horas fora do ponto (2026-10-28)
+
+Pedido do Paulo: no Teletrabalho as horas das 08h–17h estão no **ponto da empresa**, por isso
+o Martelo só deve contar as horas fora desse horário, todas como extra, sem descontar nada
+(19h–21h = 2h extra; com a regra de 19-10 dava «0 + 2» e −6h no mês). Antes do código, um
+mockup com 7 perguntas (`https://claude.ai/artifact/N3Rfgg521dgXB4jj3cD7qX`); ele aceitou
+as 7 recomendações. Decisões em `docs/36_registo_horas.md`, secção «Teletrabalho: só as
+horas fora do ponto».
+
+Feito:
+
+- **Regra nova do Teletrabalho:** o horário habitual das Definições fica no ponto e não conta;
+  só contam as horas antes ou depois dele, todas extra; nada desconta. A folha mostra
+  **«ponto + 2»** (ou só «ponto»). Uma linha que apanhe parte do horário conta só a parte de
+  fora. Sem almoço; jantar e acerto ficam.
+- **Janela do dia:** um dia novo de Teletrabalho abre com a **linha vazia**; cada linha diz
+  «conta 2h», «conta 2h · 9h no ponto» ou «no ponto, não conta»; os botões 17h…22h, com a
+  entrada vazia, põem a entrada às 17:00. Saiu a «Ausência justificada» e o «Descontar
+  almoço» (só no Teletrabalho). Um dia sem linhas guarda-se («ponto») e o lembrete deixa de o
+  pedir.
+- **Resumo, PDF e email:** linha nova «Dias em teletrabalho (horário no ponto da empresa)».
+- **Dias já gravados com a regra de 19-10:** botão **«Recalcular teletrabalho (N)…»** na página
+  (só aparece se houver dias desses em meses ainda não enviados). Mostra o antes e o depois de
+  cada dia e só grava com «Sim». Os meses já enviados não mudam. A janela de envio avisa se o
+  mês ainda tem dias desses.
+- Sem migração (as colunas `ausencia_min`/`falta_min` ficam a 0 nos dias novos). Testes em
+  `tests/test_registo_horas_*.py`.
+
+Guião de teste (reiniciar o Martelo; VS Code → «Martelo V3 — BASE REAL (martelo_v3)», entrar
+como **paulo** → menu **Registo de Horas**, mês de **outubro de 2026**):
+
+1. **Dias de teletrabalho já gravados.** Se já gravou dias de Teletrabalho em outubro, aparece
+   em baixo, ao lado de «Importar da app antiga…», o botão **«Recalcular teletrabalho (N)…»**.
+   Carregar. Esperado: uma lista com cada dia, por exemplo «ter 27/10:  0 + 2 (−6h)  →  ponto +
+   2 (+2h)», e o total desses dias «passam de … para …». Conferir e carregar em **Sim**.
+   Esperado: na folha esses dias passam a «ponto + N», o botão desaparece e a linha de estado
+   diz «N dia(s) de Teletrabalho recalculado(s) com a regra nova». (Sem dias desses, o botão
+   não aparece: passar ao 2.)
+2. **Dia novo.** Duplo clique num dia útil de outubro sem registo (ex.: **sexta 30**) → marcar
+   **Teletrabalho**. Esperado: o texto por baixo diz «Dia na empresa com horas extra fora do
+   horário. Das 08:00 às 17:00 as horas ficam no ponto da empresa…»; uma linha **vazia**;
+   não há «Descontar almoço» nem «Ausência justificada»; resultado **«ponto»** / «sem horas
+   extra · o horário fica no ponto da empresa · não desconta nada».
+3. Carregar no botão **19h**. Esperado: a linha fica **17:00–19:00**, com «conta 2h» a verde;
+   resultado **«ponto + 2»** / «2h extra (fora do horário) · não desconta nada».
+4. Mudar a Entrada para **08:00** (08:00–19:00). Esperado: continua **«ponto + 2»**; a linha
+   diz «conta 2h · 9h no ponto» e o detalhe «08:00–17:00 fica no ponto da empresa».
+5. Mudar para Entrada **19:00**, Saída **21:00** (o exemplo do pedido). Esperado: **«ponto +
+   2»**. **Guardar.** Na folha: Horas **ponto + 2**, Normais vazio, Extra **+2h**, Observações
+   «Teletrabalho». No resumo: «Descontos» não mexe e o «Total de horas extra» sobe 2h.
+6. **Linha dentro do horário:** abrir outra vez o dia 30 → «+» → linha 2 **10:00–12:00**.
+   Esperado: a linha 2 diz «no ponto, não conta» (cinzento) e o resultado fica **«ponto + 2»**.
+   **Fechar** sem guardar.
+7. **Jantar:** dia 30 → linha 1 **19:00–23:00** → marcar **«Descontar jantar»**. Esperado:
+   **«ponto + 3»**. **Fechar** sem guardar.
+8. **Dia sem horas fora:** duplo clique noutro dia útil por registar → **Teletrabalho** →
+   deixar a linha vazia → **Guardar**. Esperado: grava; na folha Horas **«ponto»** e o dia
+   deixa de aparecer «por registar».
+9. **Folha em PDF.** Esperado: os dias de teletrabalho com Extra «+2»… e, no quadro do fim,
+   depois do subsídio, a linha **«Dias em teletrabalho (horário no ponto da empresa)»** com o
+   número de dias.
+10. **Enviar à contabilidade…** (só ver; **não enviar**). Esperado: no resumo e no texto do
+    email aparece «Dias em teletrabalho (horário no ponto da empresa): N». Carregar em
+    «Corrigir primeiro».
+11. Os dias usados no teste (30 e o do passo 8): apagar («Apagar dia» → Sim) ou pôr lá as horas
+    verdadeiras.

@@ -73,7 +73,7 @@ class _Folha:
         calc = r.calcular_dia(dados)
         linha = r.LinhaDia(data=dia, tipo=dados.tipo, periodos=calc.periodos, horas=dados.horas,
                            trabalhado=calc.trabalhado, normais=calc.normais, extra=calc.extra,
-                           falta=calc.falta, ausencia=calc.ausencia, almoco=dados.almoco)
+                           almoco=dados.almoco)
         self.dias[dia] = linha
         return linha
 
@@ -96,7 +96,7 @@ def test_dia_novo_vem_com_o_horario_habitual_e_mostra_as_contas() -> None:
     assert dialogo.resultado_label.text() == "8 + 2"
     assert "10h trabalhadas" in dialogo.detalhe_label.text()
     assert not dialogo.apagar_button.isVisible()
-    assert dialogo.linha_ausencia.isHidden()  # só no teletrabalho
+    assert dialogo.linhas[0].conta_label.isHidden()  # só no teletrabalho
 
 
 def test_feriado_e_fim_de_semana_vem_com_o_tipo_certo() -> None:
@@ -120,7 +120,11 @@ def test_dia_novo_abre_no_tipo_habitual_e_mudar_de_tipo_nao_herda_as_horas() -> 
     dialogo = _dialogo(folha, dia=date(2026, 10, 20),
                        config=r.ConfigHoras(tipo_habitual=r.TIPO_TELETRABALHO))
     assert dialogo.tipo() == r.TIPO_TELETRABALHO
-    assert not dialogo.linha_ausencia.isHidden()
+    # O horário está no ponto: abre com a linha vazia, sem almoço, e já se pode guardar.
+    assert [linha.valores() for linha in dialogo.linhas] == [(None, None)]
+    assert dialogo.almoco_check.isHidden() and not dialogo.almoco_check.isChecked()
+    assert dialogo.resultado_label.text() == "ponto"
+    assert "o horário fica no ponto da empresa" in dialogo.detalhe_label.text()
     dialogo._radios[r.TIPO_FERIAS].setChecked(True)
     assert [linha.valores() for linha in dialogo.linhas] == [(None, None)]
     dialogo._radios[r.TIPO_UTIL].setChecked(True)
@@ -162,25 +166,57 @@ def test_mais_uma_linha_e_folga() -> None:
     assert dialogo.bloco_linhas.isHidden()
 
 
-def test_teletrabalho_com_consulta_e_ausencia_justificada() -> None:
+def test_teletrabalho_so_conta_as_horas_fora_do_horario() -> None:
     folha = _Folha()
     dialogo = _dialogo(folha, dia=date(2026, 10, 20), config=r.ConfigHoras())
     dialogo._radios[r.TIPO_TELETRABALHO].setChecked(True)
-    dialogo.linhas[0].saida.definir(600)
+    assert [linha.valores() for linha in dialogo.linhas] == [(None, None)]
+    assert not hasattr(dialogo, "ausencia_spin")
+    # «19h» com a entrada vazia: as horas de fora começam quando acaba o horário.
+    dialogo.linhas[0].botoes_rapidos[2].click()
+    assert dialogo.linhas[0].valores() == (1020, 1140)
+    assert dialogo.resultado_label.text() == "ponto + 2"
+    assert dialogo.linhas[0].conta_label.text() == "conta 2h"
+    # O dia inteiro dá o mesmo: o horário fica no ponto (a cinzento).
+    dialogo.linhas[0].definir(480, 1140)
+    assert dialogo.resultado_label.text() == "ponto + 2"
+    assert dialogo.linhas[0].conta_label.text() == "conta 2h · 9h no ponto"
+    detalhe = dialogo.detalhe_label.text()
+    assert "2h extra (fora do horário)" in detalhe
+    assert "08:00–17:00 fica no ponto da empresa" in detalhe and "não desconta nada" in detalhe
     dialogo.mais_button.click()
-    dialogo.linhas[1].definir(780, 1020)
-    # O intervalo 10:00–13:00 já é o almoço: desliga-se sozinho e a janela diz porquê.
-    assert not dialogo.almoco_check.isChecked()
-    assert "10:00 → 13:00" in dialogo.nota_almoco_label.text()
-    dialogo.mais_button.click()
-    dialogo.linhas[2].definir(1200, 1380)
-    assert dialogo.resultado_label.text() == "6 + 3"
-    assert "faltam 2h" in dialogo.detalhe_label.text()
-    dialogo.ausencia_spin.setValue(2)
-    assert dialogo.resultado_label.text() == "8 + 3"
+    dialogo.linhas[1].definir(1200, 1260)
+    assert dialogo.resultado_label.text() == "ponto + 3"
+    dialogo.linhas[0].definir(1020, 1140)
+    dialogo.linhas[1].definir(600, 720)
+    assert dialogo.linhas[1].conta_label.text() == "no ponto, não conta"
+    assert dialogo.resultado_label.text() == "ponto + 2"
+    assert dialogo.nota_almoco_label.isHidden()  # sem almoço no teletrabalho
     dialogo.guardar_button.click()
     _dia, dados, _obs = folha.gravados[-1]
-    assert dados.ausencia == 120 and len(dados.periodos) == 3
+    assert dados.almoco is False and dados.periodos == ((600, 720), (1020, 1140))
+
+
+def test_teletrabalho_vazio_guarda_e_o_17h_nao_faz_um_dia_de_24h() -> None:
+    folha = _Folha()
+    dialogo = _dialogo(folha, dia=date(2026, 10, 20),
+                       config=r.ConfigHoras(tipo_habitual=r.TIPO_TELETRABALHO))
+    dialogo.linhas[0].botoes_rapidos[0].click()  # «17h»
+    assert dialogo.linhas[0].valores() == (None, 1020)
+    dialogo.linhas[0].saida.definir(None)
+    dialogo.guardar_button.click()
+    assert folha.dias[date(2026, 10, 20)].horas_folha == "ponto"
+
+
+def test_teletrabalho_da_regra_antiga_avisa_ao_abrir() -> None:
+    folha = _Folha()
+    folha.dias[date(2026, 10, 27)] = r.LinhaDia(
+        data=date(2026, 10, 27), tipo=r.TIPO_TELETRABALHO, periodos=((1140, 1260),),
+        trabalhado=120, normais=0, extra=-360, falta=480,
+    )
+    dialogo = _dialogo(folha, dia=date(2026, 10, 27), config=r.ConfigHoras())
+    assert "regra antiga do teletrabalho" in dialogo.subtitulo_label.text()
+    assert dialogo.resultado_label.text() == "ponto + 2"  # como fica ao guardar
 
 
 def test_almoco_ligado_a_mao_avisa_que_desconta_duas_vezes() -> None:
@@ -468,14 +504,54 @@ def test_pagina_mostra_o_teletrabalho_com_todas_as_linhas(base) -> None:
     linha = 19
     assert pagina.table.item(linha, 2).text() == "Teletrabalho"
     assert pagina.table.item(linha, pagina_mod.COL_HORARIO).text() == "8h – 10h · 13h – 17h · 20h – 23h"
-    assert pagina.table.item(linha, 4).text() == "6 + 3"
-    assert pagina.table.item(linha, pagina_mod.COL_EXTRA).text() == f"+3h · {r.MENOS}2h"
+    assert pagina.table.item(linha, 4).text() == "ponto + 3"
+    assert pagina.table.item(linha, 5).text() == ""  # as normais estão no ponto
+    assert pagina.table.item(linha, pagina_mod.COL_EXTRA).text() == "+3h"
     assert "teletrabalho: 1" in pagina.contagens_label.text()
-    # Resumo: as 3h extra e as 2h em falta cada uma no seu sítio.
+    # Resumo: só as 3h de fora do horário, e nada desconta.
     valores = dict(zip((rot for rot, _ in r.ResumoMes().linhas()), (l.text() for l in pagina._resumo_valores)))
+    assert valores["Horas normais"] == "0h"
     assert valores["Horas extra em dias úteis"] == "3h"
-    assert valores["Descontos (dias com menos horas e folgas)"] == f"{r.MENOS}2h"
-    assert valores["Total de horas extra"] == "1h"
+    assert valores["Descontos (dias com menos horas e folgas)"] == "0h"
+    assert valores["Total de horas extra"] == "3h"
+    assert pagina.recalcular_button.isHidden()
+
+
+def test_pagina_recalcula_o_teletrabalho_da_regra_antiga(base, monkeypatch) -> None:
+    from app.models.registo_horas import RegistoHorasDia
+
+    with base() as s:
+        s.add(RegistoHorasDia(user_id=2, data=date(2026, 10, 27), tipo=r.TIPO_TELETRABALHO,
+                              entrada_min=1140, saida_min=1260, periodos="[[1140, 1260]]",
+                              trabalhado_min=120, extra_min=-360, falta_min=480))
+        s.commit()
+    pagina = pagina_mod.RegistoHorasPage(user_id=2, nome="Paulo Catarino")
+    pagina._ano, pagina._mes = 2026, 10
+    pagina.carregar()
+    assert not pagina.recalcular_button.isHidden()
+    assert pagina.recalcular_button.text() == "Recalcular teletrabalho (1)…"
+    assert pagina.recalcular_button.toolTip()
+    perguntas = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: perguntas.append(a[2]) or QMessageBox.StandardButton.Yes)
+    pagina.recalcular_button.click()
+    assert f"ter 27/10:  0 + 2 ({r.MENOS}6h)  →  ponto + 2 (+2h)" in perguntas[0]
+    assert f"passam de {r.MENOS}6h para +2h" in perguntas[0]
+    assert pagina.table.item(26, 4).text() == "ponto + 2"
+    assert pagina.recalcular_button.isHidden()
+    assert "1 dia(s) de Teletrabalho recalculado(s)" in pagina.status_label.text()
+
+
+def test_envio_avisa_do_teletrabalho_da_regra_antiga() -> None:
+    dias = [r.LinhaDia(data=date(2026, 10, 27), tipo=r.TIPO_TELETRABALHO, periodos=((1140, 1260),),
+                       trabalhado=120, extra=-360, falta=480),
+            r.LinhaDia(data=date(2026, 10, 28), tipo=r.TIPO_TELETRABALHO, periodos=((1140, 1260),),
+                       trabalhado=120, extra=120)]
+    dialogo = RegistoHorasEnvioDialog(None, nome="Paulo Catarino", ano=2026, mes=10, dias=dias,
+                                      em_falta=[], destinatario="f@x.pt")
+    textos = [w.text() for w in dialogo.findChildren(pagina_mod.QLabel)]
+    assert any("1 dia(s) de Teletrabalho com a regra antiga" in t for t in textos)
+    assert "• Dias em teletrabalho (horário no ponto da empresa): 2" in dialogo.mensagem_edit.toPlainText()
 
 
 def test_definicoes_tem_o_tipo_de_dia_habitual() -> None:

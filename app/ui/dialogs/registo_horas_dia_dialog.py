@@ -12,6 +12,11 @@ dia; se se sobrepõem, a janela avisa a vermelho e não deixa guardar. Quando o
 intervalo entre duas linhas já é a hora de almoço, «Descontar almoço»
 desliga-se sozinho e a janela diz porquê. No fim de semana, feriado e férias
 ainda se pode escrever só o total de horas (é assim que estão os dias antigos).
+
+No Teletrabalho (28-10-2026) o horário habitual está no ponto da empresa: o
+dia novo abre com a linha vazia, para escrever só as horas fora do horário, e
+cada linha diz o que conta e o que fica no ponto. Não há almoço nem «Ausência
+justificada»; um dia sem linhas guarda-se na mesma («ponto»).
 """
 
 from __future__ import annotations
@@ -62,13 +67,11 @@ def _spin_horas(minimo: float, maximo: float, tooltip: str) -> SpinDuploSemScrol
 def ajuda_do_tipo(tipo: str, config: regra.ConfigHoras) -> str:
     """O texto por baixo dos tipos de dia (o do teletrabalho leva o horário da pessoa)."""
     if tipo == regra.TIPO_TELETRABALHO:
-        entrada, saida = config.horario
+        entrada, saida = (regra.hora_texto(m) for m in config.horario)
         return (
-            "Parte do dia em casa, parte na empresa. Dentro do horário "
-            f"({regra.hora_texto(entrada)}–{regra.hora_texto(saida)}) são horas "
-            "normais; antes ou depois conta como extra. O que faltar para as "
-            f"{regra.formatar_total(config.horas_normais_dia)} desconta ao mês, a não "
-            "ser que o escreva em «Ausência justificada»."
+            f"Dia na empresa com horas extra fora do horário. Das {entrada} às {saida} "
+            "as horas ficam no ponto da empresa e aqui não contam. Só contam as horas "
+            f"antes das {entrada} ou depois das {saida}, todas como extra. Não desconta nada."
         )
     return regra.AJUDA_TIPOS[tipo]
 
@@ -90,6 +93,9 @@ class LinhaHorario(QWidget):
         self.tirar_button = QPushButton("✕")
         self.tirar_button.setFixedWidth(30)
         self.tirar_button.clicked.connect(lambda: dialogo._tirar_linha(self))
+        #: No teletrabalho: «conta 2h», «conta 2h · 9h no ponto», «no ponto, não conta».
+        self.conta_label = QLabel()
+        self.conta_label.hide()
 
         self.rapidas = QWidget()
         rapidas = QHBoxLayout(self.rapidas)
@@ -112,6 +118,7 @@ class LinhaHorario(QWidget):
         layout.addWidget(QLabel("Saída"))
         layout.addWidget(self.saida)
         layout.addWidget(self.tirar_button)
+        layout.addWidget(self.conta_label)
         layout.addStretch()
         layout.addWidget(self.rapidas)
 
@@ -258,19 +265,6 @@ class RegistoHorasDiaDialog(QDialog):
         acerto.addWidget(self.acerto_spin)
         acerto.addStretch()
 
-        self.ausencia_spin = _spin_horas(
-            0,
-            12,
-            "Horas em que esteve fora dentro do horário e que não descontam (ex.: "
-            "começou em casa e foi acabar o trabalho à empresa). Aparecem à parte na folha.",
-        )
-        self.linha_ausencia = QWidget()
-        ausencia = QHBoxLayout(self.linha_ausencia)
-        ausencia.setContentsMargins(0, 0, 0, 0)
-        ausencia.addWidget(QLabel("Ausência justificada"))
-        ausencia.addWidget(self.ausencia_spin)
-        ausencia.addStretch()
-
         self.bloco_pausas = QWidget()
         layout_pausas = QVBoxLayout(self.bloco_pausas)
         layout_pausas.setContentsMargins(0, 0, 0, 0)
@@ -278,7 +272,6 @@ class RegistoHorasDiaDialog(QDialog):
         layout_pausas.addLayout(pausas)
         layout_pausas.addWidget(self.nota_almoco_label)
         layout_pausas.addWidget(self.linha_acerto)
-        layout_pausas.addWidget(self.linha_ausencia)
 
         # ---- só o total de horas (folga, e fora do horário sem linhas) ------
         self.horas_label = QLabel("Horas trabalhadas")
@@ -363,7 +356,7 @@ class RegistoHorasDiaDialog(QDialog):
 
         for caixa in (self.almoco_check, self.jantar_check):
             caixa.toggled.connect(self._atualizar_resultado)
-        for spin in (self.acerto_spin, self.ausencia_spin, self.horas_spin):
+        for spin in (self.acerto_spin, self.horas_spin):
             spin.valueChanged.connect(self._atualizar_resultado)
 
         if self._so_leitura:
@@ -404,10 +397,18 @@ class RegistoHorasDiaDialog(QDialog):
     def _usa_linhas(self) -> bool:
         return self.tipo() != regra.TIPO_FOLGA and not self._so_total()
 
+    def _teletrabalho(self) -> bool:
+        return self.tipo() == regra.TIPO_TELETRABALHO
+
     def _periodos_padrao(self, tipo: str) -> list[tuple[int | None, int | None]]:
-        if tipo in regra.TIPOS_COM_HORARIO:
+        # No teletrabalho o horário está no ponto: escrevem-se só as horas de fora.
+        if tipo == regra.TIPO_UTIL:
             return [self._config.horario]
         return [(None, None)]
+
+    def _almoco_padrao(self, tipo: str) -> bool:
+        """O almoço só se desconta por defeito no dia útil (no teletrabalho é no ponto)."""
+        return self._config.descontar_almoco if tipo == regra.TIPO_UTIL else False
 
     def _carregar(self, dia: date) -> None:
         self._dia = dia
@@ -430,6 +431,8 @@ class RegistoHorasDiaDialog(QDialog):
             partes.append("Já registado")
             if registo.origem == "app_antiga":
                 partes.append("veio da app antiga")
+            if registo.teletrabalho_regra_antiga:
+                partes.append("gravado com a regra antiga do teletrabalho (ao guardar, fica com a nova)")
         self.subtitulo_label.setText(" · ".join(partes))
 
         self._a_carregar = True
@@ -444,19 +447,17 @@ class RegistoHorasDiaDialog(QDialog):
                 periodos = list(registo.lista_periodos) or [(None, None)]
                 almoco, jantar = registo.almoco, registo.jantar
                 acerto = registo.acerto if com_horario else 0
-                ausencia = registo.ausencia if tipo == regra.TIPO_TELETRABALHO else 0
                 so_total = registo.so_total
                 horas = registo.horas
             else:
                 periodos = self._periodos_padrao(tipo)
-                almoco = config.descontar_almoco if com_horario else False
-                jantar, acerto, ausencia, so_total = False, 0, 0, False
+                almoco = self._almoco_padrao(tipo)
+                jantar, acerto, so_total = False, 0, False
                 horas = regra.HORAS_FOLGA_PADRAO if tipo == regra.TIPO_FOLGA else 0
             self._definir_linhas(periodos)
             self.almoco_check.setChecked(almoco)
             self.jantar_check.setChecked(jantar)
             self.acerto_spin.setValue(acerto / 60)
-            self.ausencia_spin.setValue(ausencia / 60)
             self.so_total_check.setChecked(so_total)
             self.horas_spin.setValue(horas / 60)
             self.observacoes_edit.setText(registo.observacoes if registo is not None else "")
@@ -537,14 +538,25 @@ class RegistoHorasDiaDialog(QDialog):
 
     def _saida_rapida(self, linha: LinhaHorario, hora: int) -> None:
         if linha.entrada.minutos() is None and linha is self.linhas[0]:
-            linha.entrada.definir(self._config.entrada_habitual)
+            if not self._teletrabalho():
+                linha.entrada.definir(self._config.entrada_habitual)
+            elif hora * 60 > self._config.saida_habitual:
+                # Teletrabalho: as horas de fora começam quando acaba o horário.
+                linha.entrada.definir(self._config.saida_habitual)
         linha.saida.definir(hora * 60)
         self._tocado = True
 
     def _sugestao_entrada(self) -> int | None:
-        """A primeira seta num campo vazio: a saída da linha de cima, ou a entrada habitual."""
+        """A primeira seta num campo vazio: a saída da linha de cima, ou a entrada habitual.
+
+        No teletrabalho, sem linha de cima, é a hora a que acaba o horário.
+        """
         anteriores = [l.saida.minutos() for l in self.linhas if l.saida.minutos() is not None]
-        return anteriores[-1] if anteriores else self._config.entrada_habitual
+        if anteriores:
+            return anteriores[-1]
+        if self._teletrabalho():
+            return self._config.saida_habitual
+        return self._config.entrada_habitual
 
     def _sugestao_saida(self, linha: LinhaHorario) -> int | None:
         if linha.entrada.minutos() is not None:
@@ -616,9 +628,7 @@ class RegistoHorasDiaDialog(QDialog):
             self._a_carregar = True
             try:
                 self._definir_linhas(self._periodos_padrao(tipo))
-                self.almoco_check.setChecked(
-                    self._config.descontar_almoco if tipo in regra.TIPOS_COM_HORARIO else False
-                )
+                self.almoco_check.setChecked(self._almoco_padrao(tipo))
                 self._intervalo_almoco = None
                 self._almoco_desligado_sozinho = False
             finally:
@@ -642,9 +652,9 @@ class RegistoHorasDiaDialog(QDialog):
         linhas = self._usa_linhas()
         self.bloco_linhas.setVisible(linhas)
         self.bloco_pausas.setVisible(linhas)
+        self.almoco_check.setVisible(tipo != regra.TIPO_TELETRABALHO)
         self.jantar_check.setVisible(com_horario)
         self.linha_acerto.setVisible(com_horario)
-        self.linha_ausencia.setVisible(tipo == regra.TIPO_TELETRABALHO)
         self.bloco_horas.setVisible(not linhas)
         self.horas_label.setText(
             "Horas a descontar" if tipo == regra.TIPO_FOLGA else "Horas trabalhadas"
@@ -682,13 +692,9 @@ class RegistoHorasDiaDialog(QDialog):
         return regra.DadosDia(
             tipo=tipo,
             periodos=tuple(linha.valores() for linha in self.linhas),
-            almoco=self.almoco_check.isChecked(),
+            almoco=tipo != regra.TIPO_TELETRABALHO and self.almoco_check.isChecked(),
             jantar=com_horario and self.jantar_check.isChecked(),
             acerto=int(round(self.acerto_spin.value() * 60)) if com_horario else 0,
-            ausencia=(
-                int(round(self.ausencia_spin.value() * 60))
-                if tipo == regra.TIPO_TELETRABALHO else 0
-            ),
         )
 
     def _calcular(self, dados: regra.DadosDia) -> regra.CalculoDia:
@@ -710,12 +716,13 @@ class RegistoHorasDiaDialog(QDialog):
     def _atualizar_resultado(self, *_args) -> None:
         if self._a_carregar:
             return
+        self._atualizar_contas_linhas()
         erro = self._erro_nos_campos()
         if erro:
             self._mostrar_erro(erro)
             self._atualizar_nota_almoco(None)
             return
-        if self._usa_linhas():
+        if self._usa_linhas() and not self._teletrabalho():
             self._almoco_automatico()
         dados = self.dados()
         try:
@@ -726,7 +733,7 @@ class RegistoHorasDiaDialog(QDialog):
             return
         self.resultado_label.setText(
             regra.horas_como_na_folha(
-                dados.tipo, calculo.normais, calculo.extra, calculo.trabalhado, calculo.falta
+                dados.tipo, calculo.normais, calculo.extra, calculo.trabalhado
             )
             or "0"
         )
@@ -739,44 +746,77 @@ class RegistoHorasDiaDialog(QDialog):
         self.detalhe_label.setText(escape(texto))
         self.detalhe_label.setStyleSheet(f"color: {tema.TEXTO_ERRO};")
 
+    def _atualizar_contas_linhas(self) -> None:
+        """No teletrabalho, cada linha diz o que conta e o que fica no ponto (a cinzento)."""
+        teletrabalho = self._teletrabalho() and self._usa_linhas()
+        horario = self._config.horario
+        de, ate = (regra.hora_texto(m) for m in horario)
+        for linha in self.linhas:
+            entrada, saida = linha.valores()
+            if not teletrabalho or entrada is None or saida is None:
+                linha.conta_label.hide()
+                continue
+            ((entrada, saida),) = regra.ordenar_periodos([(entrada, saida)])
+            no_ponto = sum(b - a for a, b in regra.partes_no_horario([(entrada, saida)], horario))
+            conta = saida - entrada - no_ponto
+            total = regra.formatar_total
+            if not conta:
+                texto, fundo, cor = "no ponto, não conta", tema.CINZA_SUAVE, tema.CINZA_ESCURO
+            else:
+                texto = f"conta {total(conta)}" + (f" · {total(no_ponto)} no ponto" if no_ponto else "")
+                fundo, cor = tema.VERDE_SUAVE, tema.VERDE_ESCURO
+            linha.conta_label.setText(texto)
+            linha.conta_label.setStyleSheet(
+                f"background-color: {fundo}; color: {cor}; border-radius: 8px; padding: 1px 8px;"
+            )
+            linha.conta_label.setToolTip(
+                f"Só contam as horas antes das {de} ou depois das {ate}; as do horário "
+                "estão no ponto da empresa."
+            )
+            linha.conta_label.show()
+
     def _detalhe(self, dados: regra.DadosDia, calculo: regra.CalculoDia) -> str:
         total = regra.formatar_total
         vermelho = f"<span style='color: {tema.TEXTO_ERRO};'>{{}}</span>"
+        cinzento = f"<span style='color: {tema.CAMPO_BLOQUEADO_TEXTO};'>{{}}</span>"
         partes: list[str] = []
-        if dados.tipo in regra.TIPOS_COM_HORARIO:
+        if dados.tipo == regra.TIPO_TELETRABALHO:
+            partes.append(
+                f"{total(calculo.extra)} extra (fora do horário)" if calculo.extra
+                else "sem horas extra"
+            )
+            no_ponto = regra.partes_no_horario(calculo.periodos, self._config.horario)
+            if no_ponto:
+                bocados = " e ".join(
+                    f"{regra.hora_texto(de)}–{regra.hora_texto(ate)}" for de, ate in no_ponto
+                )
+                partes.append(cinzento.format(f"{bocados} fica no ponto da empresa"))
+            elif not calculo.periodos:
+                partes.append(cinzento.format("o horário fica no ponto da empresa"))
+            partes.append("não desconta nada")
+        elif dados.tipo == regra.TIPO_UTIL:
             partes.append(f"{total(calculo.trabalhado)} trabalhadas")
-            if calculo.ausencia:
-                partes.append(f"{total(calculo.ausencia)} de ausência justificada")
-            feito = calculo.extra_feito
-            if feito > 0:
-                fora = dados.tipo == regra.TIPO_TELETRABALHO and calculo.fora_horario > 0
-                partes.append(f"{total(feito)} extra" + (" (fora do horário)" if fora else ""))
-            if calculo.desconto < 0:
-                if dados.tipo == regra.TIPO_TELETRABALHO:
-                    texto = (
-                        f"faltam {total(-calculo.desconto)} para as "
-                        f"{total(self._config.horas_normais_dia)}: descontam ao mês"
-                    )
-                else:
-                    texto = f"desconta {total(-calculo.desconto)} ao mês"
-                partes.append(vermelho.format(texto))
-            if feito <= 0 and calculo.desconto == 0:
+            if calculo.extra > 0:
+                partes.append(f"{total(calculo.extra)} extra")
+            elif calculo.extra < 0:
+                partes.append(vermelho.format(f"desconta {total(-calculo.extra)} ao mês"))
+            else:
                 partes.append("sem horas extra")
-            if dados.acerto:
-                partes.append(f"inclui acerto de {total(dados.acerto, com_mais=True)}")
         elif dados.tipo == regra.TIPO_FOLGA:
             partes.append(vermelho.format(f"desconta {total(dados.horas)} ao total do mês"))
         elif calculo.trabalhado:
             partes.append(f"{total(calculo.trabalhado)} extra")
         else:
             partes.append(f"{regra.NOMES_TIPOS[dados.tipo]} sem horas trabalhadas")
+        if dados.tipo in regra.TIPOS_COM_HORARIO and dados.acerto:
+            partes.append(f"inclui acerto de {total(dados.acerto, com_mais=True)}")
         if calculo.periodos and calculo.periodos[-1][1] > regra.MINUTOS_DIA:
             partes.append("acaba no dia seguinte")
         return " · ".join(partes)
 
     def _atualizar_nota_almoco(self, intervalo: tuple[int, int] | None) -> None:
         texto, cor = "", tema.CASTANHO_MEDIO
-        if intervalo is not None and self._usa_linhas():
+        if intervalo is not None and self._usa_linhas() and not self._teletrabalho():
             de, ate = (regra.hora_texto(m) for m in intervalo)
             if self.almoco_check.isChecked():
                 texto = (

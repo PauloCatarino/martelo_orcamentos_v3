@@ -66,16 +66,17 @@ class RegistoHorasDefinicoesDialog(QDialog):
         self.entrada_edit.setDisplayFormat("HH:mm")
         self.entrada_edit.setTime(QTime(config.entrada_habitual // 60, config.entrada_habitual % 60))
         self.entrada_edit.setToolTip(
-            "Hora de entrada que aparece já escrita num dia novo. No teletrabalho, "
-            "o que se faz dentro deste horário são horas normais e o resto é extra."
+            "Hora de entrada que aparece já escrita num dia útil novo. No "
+            "teletrabalho, este horário está no ponto da empresa: só conta o que "
+            "se faz antes ou depois dele, como extra."
         )
         saida = config.saida_habitual % regra.MINUTOS_DIA
         self.saida_edit = HoraSemScroll()
         self.saida_edit.setDisplayFormat("HH:mm")
         self.saida_edit.setTime(QTime(saida // 60, saida % 60))
         self.saida_edit.setToolTip(
-            "Hora de saída que aparece já escrita num dia novo. No teletrabalho, o "
-            "que se faz depois desta hora conta como extra."
+            "Hora de saída que aparece já escrita num dia útil novo. No "
+            "teletrabalho, o que se faz depois desta hora conta como extra."
         )
         horario = QHBoxLayout()
         horario.addWidget(self.entrada_edit)

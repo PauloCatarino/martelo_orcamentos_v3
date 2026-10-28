@@ -241,6 +241,17 @@ class RegistoHorasPage(QWidget):
             "O seu horário habitual, as horas normais por dia, os avisos e a pasta das folhas"
         )
         self.definicoes_button.clicked.connect(self._definicoes)
+        # Só aparece enquanto houver dias de teletrabalho com a regra de 19-10
+        # em meses ainda por enviar (respostas do Paulo, 28-10-2026).
+        self.recalcular_button = QPushButton("Recalcular teletrabalho…")
+        self.recalcular_button.setToolTip(
+            "Há dias de Teletrabalho gravados com a regra antiga (horas normais e "
+            "falta pelo relógio). Mostra como ficam com a regra nova — só as horas "
+            "fora do horário, todas extra — e pede confirmação antes de gravar."
+        )
+        self.recalcular_button.clicked.connect(self._recalcular_teletrabalho)
+        self.recalcular_button.hide()
+        self._por_recalcular = 0
         botoes = QHBoxLayout()
         for botao in (
             self.registar_hoje_button,
@@ -250,6 +261,7 @@ class RegistoHorasPage(QWidget):
         ):
             botoes.addWidget(botao)
         botoes.addStretch()
+        botoes.addWidget(self.recalcular_button)
         botoes.addWidget(self.importar_button)
         botoes.addWidget(self.definicoes_button)
 
@@ -341,6 +353,10 @@ class RegistoHorasPage(QWidget):
                 em_falta = acoes.em_falta_no_mes(
                     servico, self._visto_id, self._ano, self._mes, self._config, hoje
                 )
+                self._por_recalcular = (
+                    0 if self.so_leitura
+                    else len(servico.teletrabalho_por_recalcular(self._visto_id, self._config))
+                )
         except Exception as erro:  # noqa: BLE001 - base em baixo não pode parar o Martelo
             diario_bordo.registar_erro(f"Registo de Horas: {erro}")
             self.status_label.setText(f"Não foi possível ler as horas: {erro}")
@@ -365,9 +381,9 @@ class RegistoHorasPage(QWidget):
             ajuda = (
                 f"Dia útil: até {regra.formatar_total(self._config.horas_normais_dia)} são "
                 f"horas normais e o resto é extra; teletrabalho: das {entrada} às {saida} "
-                "são normais e o resto é extra; fins de semana, feriados e férias "
-                "contam tudo como extra; a folga desconta. Duplo clique num dia para "
-                "o registar."
+                "está no ponto da empresa e só conta o de fora, como extra; fins de "
+                "semana, feriados e férias contam tudo como extra; a folga desconta. "
+                "Duplo clique num dia para o registar."
             )
         self.ajuda_label.setText(ajuda)
         self._preencher_tabela(set(em_falta), hoje)
@@ -381,6 +397,11 @@ class RegistoHorasPage(QWidget):
             self.definicoes_button,
         ):
             botao.setVisible(not self.so_leitura)
+        self.recalcular_button.setVisible(bool(self._por_recalcular))
+        self.recalcular_button.setText(
+            f"Recalcular teletrabalho ({self._por_recalcular})…" if self._por_recalcular
+            else "Recalcular teletrabalho…"
+        )
         self.editar_button.setText("Ver dia" if self.so_leitura else "Editar dia")
 
     def _preencher_tabela(self, em_falta: set[date], hoje: date) -> None:
@@ -639,6 +660,86 @@ class RegistoHorasPage(QWidget):
             return
         self.status_label.setText("Definições do Registo de Horas guardadas.")
         self.carregar()
+
+    def _recalcular_teletrabalho(self) -> None:
+        """Mostra o antes e o depois dos dias da regra de 19-10 e grava-os com a nova."""
+        if self._user_id is None or self.so_leitura:
+            return
+        try:
+            with SessionLocal() as session:
+                dias = RegistoHorasService(session).teletrabalho_por_recalcular(
+                    self._user_id, self._config
+                )
+        except Exception as erro:  # noqa: BLE001
+            QMessageBox.warning(self, acoes.TITULO, f"Não foi possível ler os dias:\n{erro}")
+            return
+        if not dias:
+            self.carregar()
+            return
+
+        def total(minutos: int) -> str:
+            return regra.formatar_total(minutos, com_mais=True)
+
+        linhas = []
+        for dia in dias:
+            antes = dia.antes
+            quando = f"{regra.SEMANA_CURTO[antes.data.weekday()]} {antes.data:%d/%m}"
+            if dia.depois is None:
+                linhas.append(f"{quando}:  {antes.horas_folha} → fica como está ({dia.erro})")
+            else:
+                linhas.append(
+                    f"{quando}:  {antes.horas_folha} ({total(antes.extra)})  →  "
+                    f"{dia.depois.horas_folha} ({total(dia.depois.extra)})"
+                )
+        mudam = [d for d in dias if d.depois is not None]
+        entrada, saida = (regra.hora_texto(m) for m in self._config.horario)
+        texto = (
+            "Estes dias de Teletrabalho foram gravados com a regra antiga (horas "
+            "normais pelo relógio e o que faltava para as 8h a descontar):\n\n"
+            + "\n".join(linhas)
+            + "\n\nCom a regra nova, das "
+            f"{entrada} às {saida} está no ponto da empresa: só contam as horas fora "
+            "do horário, todas como extra, e nada desconta."
+        )
+        if mudam:
+            texto += (
+                f"\n\nNo total do mês estes dias passam de "
+                f"{total(sum(d.antes.extra for d in mudam))} para "
+                f"{total(sum(d.depois.extra for d in mudam))}."
+            )
+        texto += (
+            "\n\nOs meses já enviados à contabilidade não mudam.\n\n"
+            f"Recalcular e gravar {len(mudam)} dia(s)?"
+        )
+        if not mudam:
+            QMessageBox.information(self, acoes.TITULO, texto.rsplit("\n\n", 1)[0])
+            return
+        resposta = QMessageBox.question(
+            self,
+            acoes.TITULO,
+            texto,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resposta != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with SessionLocal() as session:
+                gravados = RegistoHorasService(session).recalcular_teletrabalho(
+                    self._user_id, self._config
+                )
+        except Exception as erro:  # noqa: BLE001
+            QMessageBox.warning(self, acoes.TITULO, f"Não foi possível recalcular:\n{erro}")
+            self.carregar()
+            return
+        diario_bordo.registar_acao(
+            "Registo de Horas — teletrabalho recalculado",
+            ", ".join(d.isoformat() for d in gravados),
+        )
+        self.carregar()
+        self.status_label.setText(
+            f"{len(gravados)} dia(s) de Teletrabalho recalculado(s) com a regra nova."
+        )
 
     def _importar(self) -> None:
         if self._user_id is None or self.so_leitura:

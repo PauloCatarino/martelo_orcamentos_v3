@@ -58,26 +58,33 @@ def test_cada_pessoa_tem_a_sua_folha(servico) -> None:
     assert (pedro.entrada2, pedro.saida2, pedro.extra) == (1200, 1380, 180)
 
 
-def test_teletrabalho_grava_todas_as_linhas_a_falta_e_a_ausencia(servico, session) -> None:
+def test_teletrabalho_grava_todas_as_linhas_e_so_as_horas_de_fora(servico, session) -> None:
     dados = r.DadosDia(
         tipo=r.TIPO_TELETRABALHO,
         periodos=((780, 1020), (480, 600), (1200, 1380)),  # fora de ordem
-        almoco=False,
-        ausencia=60,
+        almoco=True,
     )
     linha = servico.guardar_dia(2, date(2026, 10, 20), dados, observacoes="Consulta")
-    assert (linha.normais, linha.extra, linha.falta, linha.ausencia) == (420, 120, 60, 60)
+    assert (linha.normais, linha.extra, linha.falta, linha.ausencia) == (0, 180, 0, 0)
     assert linha.periodos == ((480, 600), (780, 1020), (1200, 1380))
-    assert linha.horas_folha == "7 + 3"
+    assert linha.horas_folha == "ponto + 3"
     registo = session.query(RegistoHorasDia).one()
     assert registo.periodos == "[[480, 600], [780, 1020], [1200, 1380]]"
     # As duas primeiras linhas também nas colunas de sempre (versões antigas).
     assert (registo.entrada_min, registo.saida_min, registo.entrada2_min, registo.saida2_min) == (
         480, 600, 780, 1020,
     )
-    assert (registo.falta_min, registo.ausencia_min, registo.extra_min) == (60, 60, 120)
+    assert (registo.falta_min, registo.ausencia_min, registo.extra_min) == (0, 0, 180)
+    assert registo.desconto_almoco is False  # o almoço é no ponto
     lido = servico.obter_dia(2, date(2026, 10, 20))
     assert lido.horario == "8h – 10h · 13h – 17h · 20h – 23h"
+
+
+def test_teletrabalho_sem_horas_fora_guarda_o_dia_vazio(servico) -> None:
+    linha = servico.guardar_dia(2, date(2026, 10, 21), r.DadosDia(tipo=r.TIPO_TELETRABALHO))
+    assert (linha.horas_folha, linha.extra, linha.horario) == ("ponto", 0, "")
+    # O dia conta como registado: o lembrete já não o pede.
+    assert date(2026, 10, 21) not in servico.dias_em_falta(2, date(2026, 10, 22), r.ConfigHoras())
 
 
 def test_teletrabalho_usa_o_horario_das_definicoes(servico) -> None:
@@ -86,8 +93,50 @@ def test_teletrabalho_usa_o_horario_das_definicoes(servico) -> None:
         2, date(2026, 10, 20),
         r.DadosDia(tipo=r.TIPO_TELETRABALHO, periodos=((480, 1020),), almoco=True),
     )
-    # Das 8 às 9 é antes do horário (9h–18h): extra; e falta 1h para as 8 normais.
-    assert (linha.normais, linha.extra_feito, linha.falta) == (420, 60, 60)
+    # Das 8 às 9 é antes do horário (9h–18h): conta 1h extra; o resto está no ponto.
+    assert (linha.normais, linha.extra) == (0, 60)
+
+
+def _teletrabalho_antigo(session, dia: date, **kw) -> None:
+    """Um dia gravado com a regra de 19-10 (horas normais e falta pelo relógio)."""
+    valores = dict(
+        user_id=2, data=dia, tipo=r.TIPO_TELETRABALHO, entrada_min=1140, saida_min=1260,
+        periodos="[[1140, 1260]]", desconto_almoco=True, trabalhado_min=120, normais_min=0,
+        extra_min=-360, falta_min=480,
+    )
+    valores.update(kw)
+    session.add(RegistoHorasDia(**valores))
+    session.commit()
+
+
+def test_recalcular_o_teletrabalho_da_regra_antiga(servico, session) -> None:
+    _teletrabalho_antigo(session, date(2026, 10, 27))  # 19h–21h: «0 + 2», −6h no mês
+    _teletrabalho_antigo(session, date(2026, 10, 28), entrada_min=480, saida_min=1140,
+                         periodos="[[480, 1140]]", trabalhado_min=600, normais_min=480,
+                         extra_min=120, falta_min=0, observacoes="Feira")
+    # Jantar com só meia hora fora do horário: as contas não fecham, fica como está.
+    _teletrabalho_antigo(session, date(2026, 10, 29), saida_min=1170, periodos="[[1140, 1170]]",
+                         desconto_jantar=True, trabalhado_min=0, extra_min=-480)
+    # Setembro já foi para a contabilidade: não se mexe.
+    _teletrabalho_antigo(session, date(2026, 9, 29))
+    servico.registar_envio(2, 2026, 9, destinatario="f@x.pt", resumo=r.ResumoMes())
+    servico.guardar_dia(2, date(2026, 10, 30), r.DadosDia(tipo=r.TIPO_TELETRABALHO,
+                                                          periodos=((1140, 1260),)))
+
+    dias = servico.teletrabalho_por_recalcular(2)
+    assert [d.antes.data.day for d in dias] == [27, 28, 29]
+    assert [(d.antes.horas_folha, d.depois and d.depois.horas_folha) for d in dias] == [
+        ("0 + 2", "ponto + 2"), ("8 + 2", "ponto + 2"), (f"0 {r.MENOS} 8", None),
+    ]
+    assert dias[0].depois.extra == 120 and "excedem" in dias[2].erro
+
+    assert servico.recalcular_teletrabalho(2) == [date(2026, 10, 27), date(2026, 10, 28)]
+    dia_27 = servico.obter_dia(2, date(2026, 10, 27))
+    assert (dia_27.normais, dia_27.extra, dia_27.falta, dia_27.almoco) == (0, 120, 0, False)
+    assert servico.obter_dia(2, date(2026, 10, 28)).observacoes == "Feira"
+    assert servico.obter_dia(2, date(2026, 10, 29)).teletrabalho_regra_antiga
+    assert servico.obter_dia(2, date(2026, 9, 29)).teletrabalho_regra_antiga
+    assert [d.antes.data.day for d in servico.teletrabalho_por_recalcular(2)] == [29]
 
 
 def test_fim_de_semana_com_linhas_guarda_tambem_o_total(servico, session) -> None:

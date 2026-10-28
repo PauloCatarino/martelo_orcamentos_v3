@@ -54,12 +54,13 @@ class RegistoHorasDia(Base):
     #: Todas as linhas Entrada/Saída do dia, em JSON: ``[[480, 600], [780, 1020]]``.
     #: Vazio nos dias que só têm o total de horas e nos gravados antes de 19-10-2026.
     periodos: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: Teletrabalho: horas fora, dentro do horário, que não descontam.
+    #: Teletrabalho da regra de 19-10-2026: horas fora, dentro do horário, que
+    #: não descontam. Desde 28-10 o horário está no ponto da empresa: fica 0.
     ausencia_min: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, default=0, server_default="0"
     )
-    #: Teletrabalho: o que faltou para as horas normais (já descontado em
-    #: ``extra_min``, que fica com o saldo do dia).
+    #: Teletrabalho da regra de 19-10-2026: o que faltou para as horas normais
+    #: (já descontado em ``extra_min``). Desde 28-10 nada desconta: fica 0.
     falta_min: Mapped[int] = mapped_column(
         SmallInteger, nullable=False, default=0, server_default="0"
     )
