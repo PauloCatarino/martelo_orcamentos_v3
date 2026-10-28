@@ -2686,6 +2686,13 @@ sentidos. Causas, confirmadas pelo diário, pelo Martelo e pelo Streamlit (só l
 - **Diário:** depois de uma falha, as seguintes só voltavam ao diário após uma volta com
   novidades; agora também após uma volta «sem novidades».
 
+**Segundo teste (28-10, 21h01, base REAL): OK.** Com o interruptor ligado pelo `admin`, o
+Paulo enviou do Martelo a obra **26.1800_01_01_JF_VIVA**. Conferido no Streamlit: evento 144
+`AVANCAR` DESENHO → APROVISIONAMENTO por `paulo_catarino`, motivo «Desenho concluído.»,
+`detalhe.via = "MARTELO"` (versão 1.0.29, posto); a versão no Aprovisionamento; a linha
+`escritorio` no Histórico «Desenho → Aprovisionamento · via MARTELO · motivo: Desenho
+concluído.». O aviso no sentido contrário ficou por testar (não havia mais obras em Desenho).
+
 Para o segundo teste: aplicar a migração 121 na `martelo_v3` (passo 2 do guião) e ligar o
 interruptor. A 1831 serve para o caso feliz (está em Producao: usar **Funções › «Enviar para
 o Aprovisionamento»**). Para o aviso: pôr a 1849 (ou a 1866) em **Desenho** no Martelo,
