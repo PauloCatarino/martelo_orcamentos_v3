@@ -5,8 +5,12 @@ das 09h00 em diante) e o botao «Sincronizar PHC» do Ponto Situacao. A diferenc
 esta' so' no cabecalho -- quando a caixa aparece sozinha tem de se apresentar,
 porque ninguem lhe pediu nada.
 
-O ``Desenho`` e a ``Producao`` nunca chegam aqui: sao estados do utilizador.
-Ver ``app/services/producao_phc_sync_service.py``.
+O ``Desenho`` e a ``Producao`` do PHC nunca chegam aqui: sao estados do
+utilizador. Ver ``app/services/producao_phc_sync_service.py``. A unica
+excecao e' o aviso do Escritorio do Streamlit
+(``app/ui/helpers/verificacao_escritorio_streamlit.py``), que usa esta mesma
+caixa com outro cabecalho: ai' quem avancou a obra foi o proprio desenhador,
+no Streamlit.
 """
 
 from __future__ import annotations
@@ -105,23 +109,40 @@ def _salta_dois_estados(diff: dict) -> bool:
 class ProducaoPhcSyncDialog(QDialog):
     """Lista as mudancas de estado e devolve as que o utilizador aceitou."""
 
-    def __init__(self, diffs, parent=None, *, automatico: bool = False) -> None:
+    def __init__(
+        self,
+        diffs,
+        parent=None,
+        *,
+        automatico: bool = False,
+        titulo: str = "",
+        apresentacao: str = "",
+        dica_ver_depois: str = "",
+    ) -> None:
+        """``titulo``/``apresentacao``/``dica_ver_depois`` trocam os textos de
+        origem, para a mesma caixa servir o aviso do Escritório."""
         super().__init__(parent)
         self.setWindowTitle(
-            "Analisador diário de estados do PHC"
-            if automatico
-            else "Sincronizar estados"
+            titulo
+            or (
+                "Analisador diário de estados do PHC"
+                if automatico
+                else "Sincronizar estados"
+            )
         )
         self.resize(LARGURA_MINIMA, 640)
         self._diffs = list(diffs)
         self._linhas_visiveis = list(range(len(self._diffs)))
         self._ja_ajustou = False
         self._larguras_por_arrumar = False
+        self._dica_ver_depois = dica_ver_depois
 
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        layout.addWidget(self._cabecalho(automatico))
+        layout.addWidget(
+            self._cabecalho(automatico, apresentacao=apresentacao)
+        )
         layout.addWidget(self._resumo())
         layout.addLayout(self._barra_de_filtros())
         layout.addWidget(self._tabela(), 1)
@@ -133,7 +154,7 @@ class ProducaoPhcSyncDialog(QDialog):
         self._aplicar_filtro()
 
     # ---- cabecalho ---------------------------------------------------------
-    def _cabecalho(self, automatico: bool) -> QWidget:
+    def _cabecalho(self, automatico: bool, *, apresentacao: str = "") -> QWidget:
         caixa = QFrame()
         caixa.setFrameShape(QFrame.Shape.NoFrame)
         caixa.setStyleSheet(
@@ -153,7 +174,9 @@ class ProducaoPhcSyncDialog(QDialog):
         icone.setStyleSheet("QLabel { border: none; background: transparent; }")
         linha.addWidget(icone)
 
-        texto = QLabel(APRESENTACAO if automatico else PEDIDO_A_MAO)
+        texto = QLabel(
+            apresentacao or (APRESENTACAO if automatico else PEDIDO_A_MAO)
+        )
         texto.setWordWrap(True)
         texto.setStyleSheet(
             f"QLabel {{ border: none; background: transparent;"
@@ -163,18 +186,26 @@ class ProducaoPhcSyncDialog(QDialog):
         return caixa
 
     def _resumo(self) -> QWidget:
-        arquivar = sum(
-            1
-            for d in self._diffs
-            if tema._normalizar_estado(d.get("estado_sugerido")) == "arquivado"
-        )
-        finalizar = len(self._diffs) - arquivar
+        def quantas(estado: str) -> int:
+            return sum(
+                1
+                for d in self._diffs
+                if tema._normalizar_estado(d.get("estado_sugerido")) == estado
+            )
+
+        arquivar = quantas("arquivado")
+        producao = quantas("producao")
+        finalizar = len(self._diffs) - arquivar - producao
         saltos = sum(1 for d in self._diffs if _salta_dois_estados(d))
 
         caixa = QWidget()
         linha = QHBoxLayout(caixa)
         linha.setContentsMargins(0, 0, 0, 0)
         linha.setSpacing(8)
+        if producao:
+            linha.addWidget(
+                self._etiqueta(f"Para Produção: {producao}", "producao")
+            )
         if arquivar:
             linha.addWidget(
                 self._etiqueta(f"Para arquivar: {arquivar}", "arquivado")
@@ -427,7 +458,9 @@ class ProducaoPhcSyncDialog(QDialog):
         )
         cancelar = self.button_box.button(QDialogButtonBox.StandardButton.Cancel)
         cancelar.setText("Ver depois")
-        cancelar.setToolTip("Fecha sem alterar nada. Volto a avisar amanhã.")
+        cancelar.setToolTip(
+            self._dica_ver_depois or "Fecha sem alterar nada. Volto a avisar amanhã."
+        )
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
         linha.addWidget(self.button_box)

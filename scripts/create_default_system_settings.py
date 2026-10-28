@@ -217,6 +217,21 @@ DEFAULT_SYSTEM_SETTINGS: tuple[SystemSettingSeed, ...] = (
         "ON",
     ),
     SystemSettingSeed(
+        "streamlit_escrita_ativa",
+        "Streamlit - Enviar para o Aprovisionamento ao gravar uma obra em Produção (ON/OFF)",
+        "opcao",
+        "Streamlit",
+        "OFF",
+    ),
+    SystemSettingSeed(
+        "streamlit_mapa_utilizadores",
+        "Streamlit - Utilizador Martelo=utilizador Streamlit, separados por ; "
+        "(só quando a ligação pelo nome não chega; ex.: paulo=paulo_catarino)",
+        "texto",
+        "Streamlit",
+        "",
+    ),
+    SystemSettingSeed(
         PRODUCAO_BASE_PATH_CHAVE,
         "Pasta base Producao",
         "pasta",

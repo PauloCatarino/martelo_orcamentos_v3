@@ -62,6 +62,7 @@ from app.services.relatorio_producao_service import (
     gerar_ocorrencias_pdf,
 )
 from app.ui.dialogs.email_orcamento_dialog import EmailOrcamentoDialog
+from app.ui.helpers import escritorio_producao
 from app.ui.widgets.corretor_ortografico import ligar_corretor
 from app.ui.dialogs.ia_martelo_dialog import IaMarteloDialog
 from app.services.cutrite_service import (
@@ -528,6 +529,23 @@ class ProducaoPage(QWidget):
         )
         self.notificar_cliente_action.triggered.connect(self._notificar_cliente)
 
+        # O mesmo passo que o Gravar dá quando a obra entra em Produção, mas à
+        # mão: para repetir quando o Streamlit estava desligado, ou para uma
+        # obra que já estava em Produção.
+        self.enviar_aprovisionamento_action = QAction(
+            "Enviar para o Aprovisionamento", self
+        )
+        self.enviar_aprovisionamento_action.setIcon(icone("nav_producao"))
+        self.enviar_aprovisionamento_action.setToolTip(
+            "Avançar este modelo/versão no Escritório do Streamlit, de Desenho "
+            "para o Aprovisionamento (fica registado «via MARTELO»). O estado da "
+            "obra no Martelo não muda. Ao gravar uma obra que passa a Produção, "
+            "isto já acontece sozinho."
+        )
+        self.enviar_aprovisionamento_action.triggered.connect(
+            self._enviar_para_aprovisionamento
+        )
+
         self.criar_encomenda_imos_action = QAction("Criar Encomenda IMOS…", self)
         self.criar_encomenda_imos_action.setIcon(
             icone_ficheiro("icon_imos_2025.ico")
@@ -564,14 +582,15 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.addAction(self.imprimir_action)
         self.funcoes_menu.addAction(self.exportar_documentacao_action)
         self.funcoes_menu.addAction(self.notificar_cliente_action)
+        self.funcoes_menu.addAction(self.enviar_aprovisionamento_action)
         self.funcoes_menu.addAction(self.criar_encomenda_imos_action)
 
         self.funcoes_button = QPushButton("Funções")
         self.funcoes_button.setToolTip(
             "Funções sobre a obra e a respetiva pasta: abrir a obra no iX CAD, "
             "gerar as listas de ferragens do iMos, analisar a Lista Material, "
-            "preparar a produção, imprimir, avisar o cliente e criar a "
-            "encomenda no iMos"
+            "preparar a produção, imprimir, avisar o cliente, enviar para o "
+            "Aprovisionamento (Streamlit) e criar a encomenda no iMos"
         )
         self.funcoes_button.setMenu(self.funcoes_menu)
 
@@ -4101,6 +4120,14 @@ class ProducaoPage(QWidget):
         entrou_em_producao = processo_atual is not None and entra_em_producao(
             processo_atual.estado, data["estado"]
         )
+        # O Escritório do Streamlit lê-se ANTES de gravar (os avisos «sem plano
+        # de corte…» pedem um clique), mas só se escreve DEPOIS: o Martelo
+        # grava sempre, haja ou não Streamlit.
+        envio_escritorio = (
+            escritorio_producao.preparar_no_gravar(self, data)
+            if entrou_em_producao
+            else None
+        )
 
         updated_by_id = (
             app_session.current_user.id
@@ -4131,9 +4158,105 @@ class ProducaoPage(QWidget):
             selecionar_id=proc_id if selecionar_id is None else selecionar_id
         )
         self.status_label.setText("Produção guardada.")
+        mensagem_escritorio = ""
+        if envio_escritorio is not None:
+            mensagem_escritorio = escritorio_producao.concluir_no_gravar(
+                self, envio_escritorio, pasta=self._pasta_gravada(proc_id)
+            )
+            if mensagem_escritorio:
+                self.status_label.setText(f"Produção guardada. {mensagem_escritorio}")
         if entrou_em_producao:
             self._avisar_cliente_do_projeto(proc_id)
+            # O email deixa a sua própria frase na linha de estado; a do
+            # Escritório não se pode perder por baixo dela.
+            atual = self.status_label.text()
+            if mensagem_escritorio and mensagem_escritorio not in atual:
+                self.status_label.setText(f"{atual}  |  {mensagem_escritorio}")
         return True
+
+    def _pasta_gravada(self, processo_id: int) -> str:
+        """Pasta da obra no servidor, como está gravada (vai no registo do Escritório)."""
+        try:
+            with SessionLocal() as session:
+                processo = session.get(Producao, processo_id)
+                return str(getattr(processo, "pasta_servidor", "") or "")
+        except SQLAlchemyError:
+            return ""
+
+    def _enviar_para_aprovisionamento(self) -> None:
+        """Funções › Enviar para o Aprovisionamento: só o passo do Streamlit."""
+        if self._processo_selecionado() is None:
+            self.status_label.setText(
+                "Selecione uma obra para a enviar para o Aprovisionamento."
+            )
+            return
+        if not self._resolver_alteracoes_pendentes():
+            return
+        processo = self._processo_selecionado()
+        if processo is None:
+            return
+
+        titulo = escritorio_producao.TITULO
+        if not escritorio_producao.escrita_ligada():
+            QMessageBox.information(
+                self,
+                titulo,
+                "O envio para o Aprovisionamento está desligado neste Martelo.\n\n"
+                "O administrador liga-o em Configurações › Caminhos do Sistema › "
+                "streamlit_escrita_ativa (ON).",
+            )
+            return
+
+        avaliacao, erro = escritorio_producao.avaliar_obra(
+            {
+                "ano": processo.ano,
+                "num_enc_phc": processo.num_enc_phc,
+                "versao_obra": processo.versao_obra,
+                "versao_plano": processo.versao_plano,
+            }
+        )
+        if avaliacao is None:
+            self.status_label.setText(f"Escritório: {erro}")
+            QMessageBox.warning(
+                self, titulo, f"Não consegui ler o Escritório do Streamlit.\n\n{erro}"
+            )
+            return
+        if not avaliacao.pronto:
+            self.status_label.setText(f"Escritório: {avaliacao.mensagem}")
+            QMessageBox.information(self, titulo, avaliacao.mensagem)
+            return
+
+        if avaliacao.avisos:
+            confirmado = escritorio_producao.confirmar_avisos(
+                self, avaliacao, botao_nao="Cancelar"
+            )
+        else:
+            confirmado = (
+                QMessageBox.question(
+                    self,
+                    titulo,
+                    f"Enviar o {avaliacao.chave.descricao} da obra "
+                    f"{processo.codigo_processo} para o Aprovisionamento?\n\n"
+                    "No Streamlit fica registado que foi enviado pelo Martelo, "
+                    f"por {avaliacao.utilizador}.",
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+        if not confirmado:
+            self.status_label.setText("Envio para o Aprovisionamento cancelado.")
+            return
+
+        self.status_label.setText(
+            escritorio_producao.executar_envio(
+                self, avaliacao, pasta=str(processo.pasta_servidor or "")
+            )
+        )
+
+    def avisar_clientes_obras(self, processo_ids) -> None:
+        """Obras que o aviso do Escritório passou a Produção: o mesmo email ao
+        cliente que o Gravar propõe (só para quem tem a opção ligada)."""
+        for processo_id in processo_ids or ():
+            self._avisar_cliente_do_projeto(int(processo_id))
 
     def _converter_orcamento(self) -> None:
         """Open the conversion dialog and create the selected production process."""

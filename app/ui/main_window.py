@@ -35,6 +35,9 @@ from app.ui import tema
 from app.ui.icones import decorar_botoes, icone_menu
 from app.ui.helpers.verificacao_clientes_phc import VerificadorClientesPHC
 from app.ui.helpers.verificacao_estados_phc import VerificadorEstadosPHC
+from app.ui.helpers.verificacao_escritorio_streamlit import (
+    VerificadorEscritorioStreamlit,
+)
 from app.ui.helpers.assistente_orcamentos import AssistenteOrcamentos
 from app.ui.helpers.aviso_atualizacao import AvisoAtualizacao
 from app.ui.helpers.registo_horas_avisos import AvisosRegistoHoras
@@ -548,6 +551,25 @@ class MainWindow(QMainWindow):
         )
         self._verificador_estados_phc.estados_atualizados.connect(
             self.producao_page.carregar_processos
+        )
+        # Aviso (de cinco em cinco minutos) quando o Escritório do Streamlit
+        # tira do Desenho uma obra que no Martelo ainda está em Desenho:
+        # propõe Produção, e o email ao cliente como no Gravar.
+        self._verificador_escritorio = VerificadorEscritorioStreamlit(
+            self,
+            user_id=(
+                self.authenticated_user.id
+                if self.authenticated_user is not None
+                else None
+            ),
+            responsavel=self._primeiro_nome_do_utilizador(),
+            ativo=self._permissions.get("menu.producao", False),
+        )
+        self._verificador_escritorio.estados_atualizados.connect(
+            self.producao_page.carregar_processos
+        )
+        self._verificador_escritorio.obras_em_producao.connect(
+            self.producao_page.avisar_clientes_obras
         )
         # Resumo diário (dias úteis, 8h30) dos orçamentos parados da pessoa.
         # Só com o acesso «Assistente dos Orçamentos», que o admin dá.

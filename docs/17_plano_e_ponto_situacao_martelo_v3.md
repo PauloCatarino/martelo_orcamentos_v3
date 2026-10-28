@@ -2592,3 +2592,111 @@ encomenda no iMos):
    a encomenda já está criada, e o iX CAD não é tocado (como antes).
 9. Se a linha de estado parar numa mensagem que manda gravar no iX CAD, gravar lá e dizer
    ao Claude o nome da obra e a mensagem que apareceu.
+
+## Produção ↔ Escritório do Streamlit: Desenho → Aprovisionamento (2026-10-28)
+
+Pedido do Paulo, com o «prompt mestre» do Leitor_PHC3 (Streamlit): quando uma obra passa a
+**Produção** no menu Produção e se grava, o Martelo continua a fazer o que fazia (gravar,
+supervisor, email ao cliente) e, além disso, avança esse modelo/versão no Escritório do
+Streamlit, de `DESENHO` para `APROVISIONAMENTO` — o mesmo passo do botão «Enviar para o
+Aprovisionamento» do Streamlit, registado «via MARTELO». No sentido contrário, quando alguém
+dá esse passo no Streamlit, o Martelo avisa e propõe pôr a obra em Produção, na mesma caixa
+do analisador de estados do PHC.
+
+Fase 0 (só leitura, 28-10): esquema da base do Streamlit confirmado por `SELECT`; a conta do
+Martelo no Streamlit (`Lanca_Encanto_ReadOnly`) só lia. Ao fim do dia o lado do Streamlit deu-lhe
+`INSERT`+`UPDATE` em `Escritorio_Versoes` e `INSERT` em `Escritorio_Eventos`,
+`TemposProducaoHistorico` e `TemposProducaoHistorico_` (confirmado com `fn_my_permissions`).
+Decisões: as recomendações da Fase 0, todas aceites.
+
+Feito:
+
+- **Gravar → Produção.** Antes de gravar, o Martelo lê o Streamlit (uma só ida, ~1-2 s) e
+  decide pelas regras do próprio Streamlit, pela mesma ordem: assistências (`A###`) e versões
+  ≠ 01 não passam; a obra tem de estar no Escritório «com desenho» e com desenhador; quem
+  grava tem de ter a permissão `Escritorio_Desenhos` (ou ser administrador) e ser o desenhador
+  da obra; tem de haver Caderno de Encargos; se o modelo/versão já saiu do Desenho, diz quando
+  e por quem. Os avisos do Streamlit (sem plano de corte, plano não enviado, sem materiais)
+  aparecem numa caixa com **«Enviar mesmo assim» / «Só gravar no Martelo»**. Depois de gravar
+  no Martelo, escreve no Streamlit numa só transação. **O Streamlit nunca impede nem desfaz o
+  Gravar**: se não responder, a obra fica gravada e uma caixa diz como repetir.
+- **Material só do cliente** (placas do cliente e orla do cliente ou não indicada): como no
+  Streamlit, não passa pelo Aprovisionamento e fica logo libertado para a fábrica
+  (`LIBERTAR_AUTO`, `libertada_por = 'sistema'`).
+- **O registo** (`Escritorio_Eventos`): `tipo = AVANCAR`, `utilizador` = quem gravou (nome do
+  Streamlit), `motivo = «Desenho concluído.»`, `detalhe` com `"via": "MARTELO"`, a versão do
+  Martelo, o PC, a pasta da obra e, quando há, `em_nome_de` e os avisos aceites. Mais uma
+  linha `escritorio` no Histórico do Tempos de Produção:
+  `Desenho → Aprovisionamento · via MARTELO · motivo: Desenho concluído.`
+- **Quem é quem.** Os nomes de utilizador não coincidem (Ana → `ana.felix`, paulo →
+  `paulo_catarino`). O Martelo liga pelo nome da pessoa (completo, depois o primeiro nome);
+  nunca pelo username sozinho, porque o `admin` do Martelo não é o `admin` do Streamlit.
+  Correção à mão em `streamlit_mapa_utilizadores` (ex.: `admin=paulo_catarino`).
+- **Funções › «Enviar para o Aprovisionamento»**: só o passo do Streamlit, para repetir (o
+  Streamlit estava desligado) ou para uma obra que já estava em Produção. Não muda o estado
+  no Martelo.
+- **Aviso do Escritório (Streamlit → Martelo).** De 5 em 5 minutos o Martelo pergunta ao
+  Streamlit se houve algo novo (o `MAX(id)` dos eventos); se houve, procura as **suas** obras
+  em Desenho cujo modelo/versão já está no Aprovisionamento ou libertado e mostra a caixa
+  «Aviso do Escritório (Streamlit)». As marcadas passam a Produção (e, com a opção do email
+  ligada, propõe o email ao cliente como no Gravar); as desmarcadas não voltam a ser
+  perguntadas (só se a etapa mudar); «Ver depois» volta no dia seguinte. Nunca faz uma obra
+  recuar. É a única exceção à regra «Desenho e Produção são do utilizador»: aqui quem avançou
+  foi o próprio desenhador, no Streamlit — o «4 - PRODUÇÃO» do PHC continua ignorado.
+- **Interruptor** `streamlit_escrita_ativa` (Configurações › Caminhos do Sistema), **OFF por
+  omissão**. Com ele desligado, o Gravar fica exatamente como antes. A conta SQL é a mesma de
+  todas as leituras e já pode escrever: é este interruptor que segura a escrita. O aviso do
+  Escritório (só leitura) funciona com ele desligado.
+- Migração `20261028_121` (só acrescenta as duas definições; não cria tabelas). Aplicada na
+  `martelo_v3_dev`; **na `martelo_v3` falta aplicar** (pedido ao Paulo).
+- Código: `app/domain/escritorio_streamlit.py` (regras), `app/services/escritorio_streamlit_service.py`
+  (leitura), `app/services/escritorio_streamlit_escrita.py` (escrita — SQL fixo, só `INSERT` e
+  `UPDATE` com compare-and-set, nunca `DELETE`; tem um modo `ensaio` que corre tudo e desfaz),
+  `app/ui/helpers/escritorio_producao.py`, `app/ui/helpers/verificacao_escritorio_streamlit.py`,
+  `app/ui/pages/producao_page.py`, `app/ui/dialogs/producao_phc_sync_dialog.py`,
+  `app/ui/main_window.py`. Testes em `tests/test_escritorio_streamlit*.py` e
+  `tests/test_verificacao_escritorio_streamlit.py`.
+- Verificado ao vivo, só a ler: as mensagens saem certas para obras reais (sem CE, de outro
+  desenhador, já enviada «em 28/10/2026 14:30 por bruno (via Streamlit)», já libertada); a
+  `admin` do Martelo é recusada; as 6 obras da base real em Desenho que o Streamlit já avançou
+  aparecem no aviso. **A escrita ainda não foi feita contra o Streamlit real.**
+- **Segurança, por resolver:** o `scripts/create_default_system_settings.py` (repositório
+  público) tem a password por omissão desta conta, que agora escreve. Rodar a password no SQL
+  Server e tirá-la do script.
+
+Guião de teste (reiniciar o Martelo). **Atenção:** tanto na base de testes como na real, o
+Martelo fala com o **Streamlit verdadeiro** — os passos 4 a 6 escrevem lá. Antes, fazer uma
+cópia de segurança da base do Streamlit e escolher uma obra de teste.
+
+1. **Interruptor desligado (nada muda).** Produção → uma obra em Desenho → Estado
+   **Producao** → **Salvar**. Esperado: tudo como antes (supervisor, email ao cliente) e
+   nenhuma caixa do Escritório.
+2. **Ligar.** Configurações → **Caminhos do Sistema** → pesquisar `streamlit_escrita_ativa`
+   → valor **ON** → **Guardar**. (Na base real a linha só existe depois da migração.)
+3. **Recusa, sem escrever nada.** Produção → obra **26.1472_01_01_JF_VIVA** (do Paulo, ainda
+   sem Caderno de Encargos no Streamlit) → **Funções** → **«Enviar para o Aprovisionamento»**.
+   Esperado: caixa «Escritório (Streamlit)» com «Falta criar o Caderno de Encargos desta
+   versão (no Streamlit) antes de a enviar.» Variantes: uma obra com Versão 02 → «Só a versão
+   01 de cada modelo segue…»; entrar como **admin** → «Não encontrei «admin» entre os
+   utilizadores do Streamlit…».
+4. **Caso feliz (escreve no Streamlit).** No Streamlit, criar o Caderno de Encargos da obra
+   de teste (ex.: 1472 modelo 01). No Martelo, Produção → essa obra (em Desenho) → Estado
+   **Producao** → **Salvar**. Esperado: se faltar plano de corte/materiais, caixa com os
+   avisos e os botões «Enviar mesmo assim» / «Só gravar no Martelo» → **Enviar mesmo
+   assim**; depois o email ao cliente, como sempre; na linha de estado
+   «… Escritório: ✔ Modelo 01 · Versão 01 enviado para o Aprovisionamento.»
+5. **Conferir no Streamlit.** Escritório → **Aprovisionamento**: a obra aparece (até ~60 s ou
+   «Atualizar»). **Histórico** da obra: «enviada» por `paulo_catarino`, motivo «Desenho
+   concluído.» Tempos de Produção → **Histórico**: linha `escritorio` com
+   «Desenho → Aprovisionamento · via MARTELO · motivo: Desenho concluído.»
+6. **Repetir não duplica.** Funções → «Enviar para o Aprovisionamento» na mesma obra.
+   Esperado: «Este modelo/versão já foi enviado em <data> por paulo_catarino (via MARTELO).»
+   Para desfazer o ensaio: no Streamlit, Aprovisionamento → **«Devolver ao Desenho»**.
+7. **Aviso Streamlit → Martelo.** No Streamlit, Desenhos → enviar para o Aprovisionamento
+   outra obra tua que no Martelo esteja em Desenho. No Martelo, esperar até 5 minutos (ou
+   reiniciar e esperar ~1,5 min). Esperado: caixa **«Aviso do Escritório (Streamlit)»** com a
+   obra, «Desenho → Producao», Fonte «Escritório», «No Aprovisionamento desde <data> (…)» →
+   **«Atualizar as marcadas»** → «1 obra(s) passada(s) a Produção no Martelo.» e a lista da
+   Produção atualizada.
+8. **Desmarcar / Ver depois.** Com duas obras no aviso: desmarcar uma e atualizar a outra →
+   a desmarcada não volta a aparecer. Fechar com **«Ver depois»** → volta no dia seguinte.

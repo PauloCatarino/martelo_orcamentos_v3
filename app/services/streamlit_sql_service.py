@@ -108,7 +108,9 @@ def load_streamlit_config(session: Session) -> StreamlitConfig:
     }
 
 
-def build_connection_string(cfg: StreamlitConfig) -> str:
+def build_connection_string(cfg: StreamlitConfig, *, timeout: int = 60) -> str:
+    """``timeout`` em segundos: o Gravar da Produção usa um curto, porque o
+    servidor do Streamlit é um PC que pode estar desligado."""
     server = (cfg.get("server") or "").strip()
     database = (cfg.get("database") or "").strip()
     user = (cfg.get("user") or "").strip()
@@ -128,7 +130,7 @@ def build_connection_string(cfg: StreamlitConfig) -> str:
         f"Server={_valor(server, 'Servidor')}",
         f"Database={_valor(database, 'Base de Dados')}",
         "Encrypt=False",
-        "Connection Timeout=60",
+        f"Connection Timeout={int(timeout)}",
     ]
     if trusted:
         parts.append("Integrated Security=True")
