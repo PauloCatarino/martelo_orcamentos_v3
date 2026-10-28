@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,30 @@ from app.models.producao import Producao
 from app.services import escritorio_streamlit_service as svc
 from app.services.phc_sql import assert_select_only
 from app.services.system_setting_service import SystemSettingService
+
+
+@pytest.fixture(autouse=True)
+def sem_rede(monkeypatch):
+    """Nenhum teste pergunta à rede pelo IP do PC do Streamlit."""
+    perguntas: list[str] = []
+
+    def nao_sei(nome, *args, **kwargs):
+        perguntas.append(nome)
+        raise socket.gaierror(11001, "Este anfitrião não é conhecido")
+
+    monkeypatch.setattr(svc.socket, "getaddrinfo", nao_sei)
+    return perguntas
+
+
+def _windows_sabe(monkeypatch, ip: str) -> list[str]:
+    perguntas: list[str] = []
+
+    def sabe(nome, *args, **kwargs):
+        perguntas.append(nome)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(svc.socket, "getaddrinfo", sabe)
+    return perguntas
 
 
 @pytest.fixture()
@@ -49,6 +74,40 @@ def test_escrita_desligada_por_omissao(session) -> None:
 
 def test_ligacao_usa_tempo_curto(configurado) -> None:
     assert "Connection Timeout=8;" in svc.ligacao(configurado)
+
+
+def test_ligacao_vai_pelo_ip_quando_o_windows_o_sabe(configurado, monkeypatch) -> None:
+    # 28-10: «Este anfitrião não é conhecido» no SqlClient, com o nome a resolver.
+    perguntas = _windows_sabe(monkeypatch, "192.168.5.210")
+    texto = svc.ligacao(configurado)
+    assert 'Server="192.168.5.210,1433";' in texto
+    assert perguntas == ["SERVIDOR"]
+    # O nome fica nas Configurações: o PC do Streamlit muda de IP.
+    assert SystemSettingService(configurado).obter_valor("streamlit_sql_server", "") == "SERVIDOR,1433"
+
+
+def test_ligacao_fica_com_o_nome_se_o_windows_nao_souber(configurado) -> None:
+    assert 'Server="SERVIDOR,1433";' in svc.ligacao(configurado)
+
+
+@pytest.mark.parametrize(
+    ("servidor", "esperado"),
+    [
+        ("DESKTOP-PTJ4TE6,1433", "10.0.0.7,1433"),
+        ("tcp:DESKTOP-PTJ4TE6,1433", "tcp:10.0.0.7,1433"),
+        (r"SERVER_LE\PHC", r"10.0.0.7\PHC"),
+        ("DESKTOP-PTJ4TE6", "10.0.0.7"),
+    ],
+)
+def test_servidor_por_ip_mantem_porta_e_instancia(monkeypatch, servidor, esperado) -> None:
+    _windows_sabe(monkeypatch, "10.0.0.7")
+    assert svc.servidor_por_ip(servidor) == esperado
+
+
+@pytest.mark.parametrize("servidor", ["192.168.5.210,1433", "localhost", r".\SQLEXPRESS", "(local)", ""])
+def test_servidor_por_ip_nao_pergunta_o_que_nao_e_nome(sem_rede, servidor) -> None:
+    assert svc.servidor_por_ip(servidor) == servidor
+    assert sem_rede == []
 
 
 def test_todas_as_consultas_sao_so_select_e_parametrizadas() -> None:
@@ -174,10 +233,22 @@ def test_ler_token(configurado, monkeypatch) -> None:
         (RuntimeError("A network-related or instance-specific error occurred"), "ligar ao servidor"),
         (RuntimeError("Login failed for user 'conta'."), "recusou o utilizador"),
         (RuntimeError("Invalid object name 'dbo.Escritorio_Versoes'."), "não está instalado"),
+        (RuntimeError("(provider: TCP Provider, error: 0 - Este anfitrião não é conhecido.)"),
+         "ligar ao servidor"),
     ],
 )
 def test_explicar_erro_leitura(erro, texto) -> None:
     assert texto in svc.explicar_erro_leitura(erro)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="o PowerShell só existe no Windows")
+def test_erro_do_powershell_chega_com_os_acentos_certos() -> None:
+    # O caso de 28-10: «O servidor nÆo foi encontrado» não se reconhecia.
+    script = 'throw ("O servidor n" + [char]0x00E3 + "o foi encontrado")'
+    with pytest.raises(RuntimeError) as erro:
+        svc.correr_powershell(script, {}, timeout=60)
+    assert "não foi encontrado" in str(erro.value)
+    assert "ligar ao servidor" in svc.explicar_erro_leitura(erro.value)
 
 
 def test_explicar_erro_nao_mostra_o_caminho_do_script() -> None:

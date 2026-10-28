@@ -15,9 +15,11 @@ e outra vez no PowerShell, como em :mod:`app.services.phc_sql`.
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -70,11 +72,40 @@ def mapa_utilizadores(session: Session) -> dict[str, str]:
     )
 
 
+def servidor_por_ip(servidor: str) -> str:
+    """``DESKTOP-PTJ4TE6,1433`` → ``192.168.5.210,1433``, se o Windows souber o IP.
+
+    A empresa não tem DNS interno: o nome do PC do Streamlit resolve-se pela
+    rede local, e o SqlClient do PowerShell às vezes desiste ao fim dos 8 s com
+    «Este anfitrião não é conhecido» — logo a seguir já liga (28-10). O Python
+    pergunta antes ao Windows e entrega o IP; se não souber, fica o nome, como
+    antes. Nas Configurações continua o nome, porque o PC muda de IP.
+    """
+    partes = re.fullmatch(r"(tcp:)?([^,\\]+)(.*)", (servidor or "").strip(), re.IGNORECASE)
+    if not partes:
+        return servidor
+    prefixo, nome, resto = partes.groups()
+    if nome.strip().casefold() in {".", "localhost", "(local)"}:
+        return servidor
+    try:
+        ipaddress.ip_address(nome.strip())
+        return servidor
+    except ValueError:
+        pass
+    try:
+        enderecos = socket.getaddrinfo(nome.strip(), None, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return servidor
+    if not enderecos:
+        return servidor
+    return f"{prefixo or ''}{enderecos[0][4][0]}{resto}"
+
+
 def ligacao(session: Session) -> str:
     """Connection string do Streamlit, com o tempo de ligação curto."""
-    return st.build_connection_string(
-        st.load_streamlit_config(session), timeout=TIMEOUT_LIGACAO_S
-    )
+    configuracao = st.load_streamlit_config(session)
+    configuracao["server"] = servidor_por_ip(configuracao["server"])
+    return st.build_connection_string(configuracao, timeout=TIMEOUT_LIGACAO_S)
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +115,9 @@ def correr_powershell(script: str, payload: Mapping[str, Any], *, timeout: int) 
     """Corre ``script`` com o ``payload`` (JSON em base64) e devolve o JSON lido.
 
     O script escreve o resultado em base64 no stdout; um erro sai pelo código
-    de saída e pelo stderr.
+    de saída e pelo stderr. O PowerShell escreve na página de código OEM (850),
+    não na do Windows: lido com a errada, «não» chegava «nÆo» e as mensagens
+    do SQL Server deixavam de se reconhecer em :func:`explicar_erro_leitura`.
     """
     payload_b64 = base64.b64encode(
         json.dumps(dict(payload), ensure_ascii=False).encode("utf-8")
@@ -111,7 +144,8 @@ def correr_powershell(script: str, payload: Mapping[str, Any], *, timeout: int) 
                 payload_b64,
             ],
             capture_output=True,
-            text=True,
+            encoding="oem" if os.name == "nt" else None,
+            errors="replace",
             check=False,
             timeout=timeout,
             creationflags=creationflags,
@@ -410,6 +444,8 @@ def explicar_erro_leitura(exc: BaseException) -> str:
         "network-related" in normal
         or "server was not found" in normal
         or "não foi encontrado" in normal
+        or "não é conhecido" in normal
+        or "no such host" in normal
         or "could not open a connection" in normal
     ):
         return "Não consegui ligar ao servidor do Streamlit (desligado ou fora da rede)."

@@ -2664,6 +2664,35 @@ Feito:
   público) tem a password por omissão desta conta, que agora escreve. Rodar a password no SQL
   Server e tirá-la do script.
 
+Primeiro teste do Paulo (28-10, 19h35–20h17, base REAL) — «não aconteceu nada» nos dois
+sentidos. Causas, confirmadas pelo diário, pelo Martelo e pelo Streamlit (só leitura):
+
+- **Martelo → Streamlit (obra 26.1831_01_01_JF_VIVA, gravada Desenho → Producao às 20:16):**
+  a `martelo_v3` não tinha a definição `streamlit_escrita_ativa` (a migração 121 só estava
+  na dev), por isso o Gravar ficou como antes, de propósito. O Streamlit, lido depois, dava
+  esta obra como «pronta a seguir», só com o aviso «plano de corte não enviado».
+- **Streamlit → Martelo (1866 às 20:14 e 1849 às 20:15, enviadas por `paulo_catarino`):**
+  no Martelo as duas já estavam em **Producao** (desde as 15:00 e as 15:57). O aviso só
+  propõe obras que no Martelo ainda estão em Desenho: não tinha nada a perguntar. Correto.
+- **Ligação ao Streamlit intermitente:** às 19:37 e às 19:56 o aviso falhou com «Este
+  anfitrião não é conhecido». O PC do Streamlit mudou outra vez de IP (agora 192.168.5.210) e
+  a empresa não tem DNS interno: o nome resolve-se pela rede local e o SqlClient do PowerShell
+  às vezes desiste ao fim dos 8 s (reproduzido: falha, e a tentativa seguinte liga).
+  **Corrigido:** o Martelo pergunta primeiro o IP ao Windows e liga pelo IP; se o Windows não
+  souber, fica o nome, como antes (`servidor_por_ip`). Nas Configurações continua o nome.
+- **Mensagem de erro ilegível** («nÆo foi encontrado»): o PowerShell escreve na página de
+  código 850 e o Martelo lia na 1252, por isso o erro também não se traduzia para «servidor
+  desligado ou fora da rede». **Corrigido** (lê na página OEM).
+- **Diário:** depois de uma falha, as seguintes só voltavam ao diário após uma volta com
+  novidades; agora também após uma volta «sem novidades».
+
+Para o segundo teste: aplicar a migração 121 na `martelo_v3` (passo 2 do guião) e ligar o
+interruptor. A 1831 serve para o caso feliz (está em Producao: usar **Funções › «Enviar para
+o Aprovisionamento»**). Para o aviso: pôr a 1849 (ou a 1866) em **Desenho** no Martelo,
+gravar, **fechar e voltar a abrir o Martelo** e esperar ~1,5 min — a caixa «Aviso do
+Escritório (Streamlit)» deve propô-la. (Sem reiniciar, só volta a procurar quando houver um
+evento novo no Streamlit.)
+
 Guião de teste (reiniciar o Martelo). **Atenção:** tanto na base de testes como na real, o
 Martelo fala com o **Streamlit verdadeiro** — os passos 4 a 6 escrevem lá. Antes, fazer uma
 cópia de segurança da base do Streamlit e escolher uma obra de teste.
@@ -2693,8 +2722,8 @@ cópia de segurança da base do Streamlit e escolher uma obra de teste.
    Esperado: «Este modelo/versão já foi enviado em <data> por paulo_catarino (via MARTELO).»
    Para desfazer o ensaio: no Streamlit, Aprovisionamento → **«Devolver ao Desenho»**.
 7. **Aviso Streamlit → Martelo.** No Streamlit, Desenhos → enviar para o Aprovisionamento
-   outra obra tua que no Martelo esteja em Desenho. No Martelo, esperar até 5 minutos (ou
-   reiniciar e esperar ~1,5 min). Esperado: caixa **«Aviso do Escritório (Streamlit)»** com a
+   outra obra tua que **no Martelo esteja em Desenho** (se já estiver em Producao, não há
+   aviso — é o esperado). No Martelo, esperar até 5 minutos (ou reiniciar e esperar ~1,5 min). Esperado: caixa **«Aviso do Escritório (Streamlit)»** com a
    obra, «Desenho → Producao», Fonte «Escritório», «No Aprovisionamento desde <data> (…)» →
    **«Atualizar as marcadas»** → «1 obra(s) passada(s) a Produção no Martelo.» e a lista da
    Produção atualizada.

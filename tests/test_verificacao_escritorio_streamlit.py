@@ -111,6 +111,18 @@ def test_streamlit_em_baixo_so_fica_no_diario_uma_vez(_app, monkeypatch) -> None
     objeto.parar()
 
 
+def test_streamlit_que_volta_sem_novidades_deixa_registar_a_proxima_falha(_app, monkeypatch) -> None:
+    # 28-10: falhou às 19:56 e o diário não podia dizer se as voltas seguintes correram.
+    objeto = VerificadorEscritorioStreamlit(user_id=1, ativo=False)
+    erros: list[str] = []
+    monkeypatch.setattr(modulo.diario_bordo, "registar_erro", lambda *a, **k: erros.append(a[0]))
+    objeto._on_falhou("timeout")
+    objeto._on_sem_novidades()
+    objeto._on_falhou("timeout")
+    assert len(erros) == 2
+    objeto.parar()
+
+
 def test_vistos_guardam_recusas_e_esquecem_adiamentos_velhos() -> None:
     hoje = date(2026, 10, 28)
     vistos = {"a": "sempre", "b": "2026-10-27", "c": "2026-10-28"}

@@ -196,6 +196,8 @@ class VerificadorEscritorioStreamlit(QObject):
     # ---- respostas da thread ------------------------------------------------
     @Slot()
     def _on_sem_novidades(self) -> None:
+        # Respondeu: a próxima falha volta a ficar no diário.
+        self._ja_falhou = False
         self._a_trabalhar = False
 
     @Slot(object, object)

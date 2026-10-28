@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import subprocess
 import uuid
 from pathlib import Path
@@ -18,6 +19,16 @@ from app.services import escritorio_streamlit_service as leitura
 from app.services.system_setting_service import SystemSettingService
 
 CLIQUE = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+
+
+@pytest.fixture(autouse=True)
+def sem_rede(monkeypatch):
+    """Nenhum teste pergunta à rede pelo IP do PC do Streamlit."""
+
+    def nao_sei(*args, **kwargs):
+        raise socket.gaierror(11001, "Este anfitrião não é conhecido")
+
+    monkeypatch.setattr(leitura.socket, "getaddrinfo", nao_sei)
 
 
 def _avaliacao(**kw) -> Avaliacao:
