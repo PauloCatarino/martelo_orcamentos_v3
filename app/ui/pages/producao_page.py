@@ -467,7 +467,7 @@ class ProducaoPage(QWidget):
         )
         self.gerar_listas_imos_action.triggered.connect(self._abrir_gerar_listas_imos)
 
-        # ENSAIO (30-10-2026), em paralelo com o CSV do .cfg: a lista de peças
+        # ENSAIO (29-10-2026), em paralelo com o CSV do .cfg: a lista de peças
         # lida pelo Martelo da base do iMos, num Excel à parte numa subpasta.
         self.lista_base_imos_action = QAction(
             "Lista Material da base iMos (ensaio)…", self

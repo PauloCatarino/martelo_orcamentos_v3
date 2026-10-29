@@ -215,7 +215,7 @@ o CSV for **posterior** à última gravação da obra com a lista de peças.
   base); a `imos_LE` não tem tabelas do SIM em uso. O Paulo vai pedir explicações e preço à
   Enersale (29-10-2026): pode interessar para alguns projetos.
 
-## Alternativa em ensaio: a lista lida pelo Martelo da base (30-10-2026)
+## Alternativa em ensaio: a lista lida pelo Martelo da base (29-10-2026)
 
 O `.cfg` não consegue dar o Piso do artigo principal às peças dos sub-artigos. Além disso, o
 `ACCUMULATE` dele junta peças com notas diferentes. Por isso, a pedido do Paulo, o Martelo

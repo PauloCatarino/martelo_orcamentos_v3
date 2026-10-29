@@ -3177,7 +3177,7 @@ ISPEC: `2` no «Topo» (PECA_L) e `0` nas outras. A exportação V1 fica fechada
   - aviso do ISPEC nas Notas;
 - passar o V1 para o princípio por defeito, o que o Paulo faz depois do Excel.
 
-## Lista Material: lista de peças lida da base do iMos, em ENSAIO (2026-10-30)
+## Lista Material: lista de peças lida da base do iMos, em ENSAIO (2026-10-29)
 
 Pedido do Paulo (29-10-2026, noite): explorar a lista de peças tirada diretamente da base do
 iMos, como já se faz nas ferragens, em vez do CSV do `.cfg`. **Em ensaio e em paralelo**: o

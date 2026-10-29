@@ -737,7 +737,7 @@ Private Function FindColByHeaderFlex(ByVal ws As Worksheet, ByVal headerRow As L
 End Function
 
 '====================================================================
-'  ENSAIO 30-10-2026: LISTA FEITA PELO MARTELO A PARTIR DA BASE DO iMos
+'  ENSAIO 29-10-2026: LISTA FEITA PELO MARTELO A PARTIR DA BASE DO iMos
 '--------------------------------------------------------------------
 '  Macro: Import_Base_Imos_1 caminhoCSV
 '

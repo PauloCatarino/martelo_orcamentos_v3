@@ -26,7 +26,7 @@ TEMPLATE_FILENAME = "Lista_Material_IMOS_MARTELO.xltm"
 MACRO_IMPORT_CSV_IMOS = "Import_CSV_Imos_1"
 MACRO_AUTOMATION_CUTRITE = "Preencher_Tabela_Cut_Rite"
 MACRO_IMPORT_LISTAS_FERRAGENS = "ImportarListasFerragensIMOS_14"
-# Ensaio (30-10-2026): a mesma importação, mas da lista que o Martelo lê da base
+# Ensaio (29-10-2026): a mesma importação, mas da lista que o Martelo lê da base
 # do iMos (lista_corte_imos_base_service) em vez do CSV do .cfg.
 MACRO_IMPORT_BASE_IMOS = "Import_Base_Imos_1"
 

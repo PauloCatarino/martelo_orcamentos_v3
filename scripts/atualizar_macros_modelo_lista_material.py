@@ -32,7 +32,7 @@ PASTA_VBA = Path(__file__).resolve().parent / "vba"
 #: (CUT-RITE) entrou a 29-09-2026: tinha uma macro em falta e o projeto VBA
 #: não compilava. O `modResumoOrlas` (folha ResumoOrlas) entrou a 07-10-2026,
 #: quando o REF_CLIENTE passou para F1/F2 e as colunas mudaram de nome. O
-#: `modImportCSVImos_1` (Import_CSV_Imos_1) entrou a 30-10-2026, com a
+#: `modImportCSVImos_1` (Import_CSV_Imos_1) entrou a 29-10-2026, com a
 #: `Import_Base_Imos_1` de ensaio (lista lida pelo Martelo da base do iMos).
 MODULOS = (
     "Import_List_Ferr_Etiq_11",
@@ -97,7 +97,7 @@ def _marcadores(origem: Path) -> tuple[str, ...]:
             "Sub AplicarPincelFormatacao_CutRite",
             # ResumoOrlas com "stock/enc" e REF_CLIENTE em F1 (07-10-2026).
             "VALOR_STOCK_ENC",
-            # Lista lida pelo Martelo da base do iMos, em ensaio (30-10-2026).
+            # Lista lida pelo Martelo da base do iMos, em ensaio (29-10-2026).
             "Sub Import_Base_Imos_1",
         )
         if marcador in texto

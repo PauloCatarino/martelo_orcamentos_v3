@@ -1,7 +1,7 @@
 """Guarda a importação da Lista Material (fonte em scripts/vba/modImportCSVImos_1.bas).
 
 A ``Import_CSV_Imos_1`` (CSV exportado pelo iMos) fica como estava; a
-``Import_Base_Imos_1`` (ensaio de 30-10-2026) faz os mesmos passos sobre o CSV
+``Import_Base_Imos_1`` (ensaio de 29-10-2026) faz os mesmos passos sobre o CSV
 que o Martelo escreve a partir da base do iMos.
 """
 

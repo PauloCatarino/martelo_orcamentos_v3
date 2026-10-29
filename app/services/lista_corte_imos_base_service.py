@@ -1,4 +1,4 @@
-"""Lista de corte das peças lida diretamente da base do iMos (ENSAIO, 30-10-2026).
+"""Lista de corte das peças lida diretamente da base do iMos (ENSAIO, 29-10-2026).
 
 Hoje as peças chegam à Lista Material por um CSV que o próprio iMos escreve com o
 princípio «Processar transferência de dados» (``EXPORT_CSV_CUT_RITE_LE.cfg``), na pasta
