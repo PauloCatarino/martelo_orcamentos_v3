@@ -2984,3 +2984,9 @@ Guião de teste (ronda 4):
    apagar); ArtigoNome = `RP_A_01_ESQ`, `RP_A_01_DIR`, … em todas as linhas.
 4. A seguir: adaptar o Excel da Lista Material (ver `scripts/imos_cfg/README.md`, «Falta no
    Excel»). Só depois o V2 vai para o princípio por defeito (é o Paulo que o importa).
+
+**TESTADO (29-10-2026, 11h44):** o Paulo exportou a `APAGAR_14` com a versão final; o
+`verificar_csv_subartigos.py` dá «OK» (110 linhas; colunas `…;Artigo;SubArtigo;Notas;Notas_1;
+Cliente_Final;ArtigoNome`; as 21 peças do `BL_3GVT_RP_01` no `RP_A_01_ESQ`). A exportação
+está afinada; falta o Excel. Por provar ainda: a correção do `ACCUMULATE` numa obra com o
+mesmo sub-artigo em dois RPs.
