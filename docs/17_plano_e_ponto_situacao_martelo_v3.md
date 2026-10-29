@@ -3024,3 +3024,11 @@ Guião de teste (ronda 5):
    outras, incluindo «Teto» (Artigo `RECORTE_L`); nas `TESTE_*` não há resultado esperado:
    é o que se quer descobrir.
 4. Avisar o Claude: ele confere e decide com o Paulo como apanhar o recorte interior.
+
+**1.ª tentativa (29-10-2026, ~13h): «Erro no ficheiro!APAGAR_14_Lista_Corte.csv».** Não era o
+`.cfg`: o CSV estava aberto noutro programa (Windows 0x80070020, «está a ser utilizado por
+outro processo»; deixava ler mas não escrever, como o Excel) e o iMos não o conseguia
+substituir. O ficheiro ficou como estava às 11h44. Neste PC não havia Excel visível; só um
+`EXCEL.EXE -Embedding` invisível, aberto desde 27-10 às 14h29 por outro programa, sem livros.
+Antes de exportar outra vez: fechar o que tiver o CSV aberto (Excel, também noutro PC; o painel
+de pré-visualização do Explorador com o CSV selecionado). Para ver o CSV, usar o Notepad++.

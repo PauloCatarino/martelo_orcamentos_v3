@@ -30,6 +30,12 @@ verificador.
   `EXPORT_CSV_CUT_RITE_LE_V1` é de ensaio; em 29-10-2026 tinha lá dentro o
   `Homag_DF_Productionmanager.cfg` (por isso saiu um XML, em
   `...\Cutrite_Import_CSV\Productionmanager\Project.xml`).
+- **«Erro no ficheiro!» + nome do CSV** (mensagem 15017 do `imos.msg`, «File error!») = o
+  iMos não conseguiu abrir o CSV para escrever. A 29-10-2026 foi porque o
+  `APAGAR_14_Lista_Corte.csv` estava aberto noutro programa (Windows: 0x80070020, «está a ser
+  utilizado por outro processo»; deixava ler mas não escrever, como faz o Excel). O `.cfg`
+  não tinha culpa. Para ver o CSV sem o prender, usar o Notepad++ / Bloco de Notas, não o
+  Excel — e o Excel, ao gravar, ainda muda o ficheiro (`494.0` → `494`, tira o `;` final).
 - A macro `Import_CSV_Imos_1` do modelo da Lista Material lê o **primeiro** `*.csv` da pasta
   `Cutrite_Import_CSV` (só a de cima) cujo nome tenha a obra, e copia as colunas **por
   posição** (1–22 → `LISTA_ORDENADA` B–W). A passagem para a `LISTAGEM_CUT_RITE` é por
