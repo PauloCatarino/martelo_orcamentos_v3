@@ -219,3 +219,19 @@ def test_producao_passa_a_lista_material_a_janela() -> None:
     abrir = inspect.getsource(ProducaoPage._abrir_gerar_listas_imos)
     # Já importou pela janela: não se volta a perguntar.
     assert abrir.index("if dialog.importou:") < abrir.index("QMessageBox.question(")
+
+
+def test_ensaio_da_lista_da_base_imos_no_menu_funcoes() -> None:
+    import inspect
+
+    from app.ui.pages.producao_page import ProducaoPage
+
+    init = inspect.getsource(ProducaoPage.__init__)
+    assert "self.lista_base_imos_action.setToolTip(" in init
+    assert "self.lista_base_imos_action.triggered.connect(self._lista_material_base_imos)" in init
+    assert "self.funcoes_menu.addAction(self.lista_base_imos_action)" in init
+    fluxo = inspect.getsource(ProducaoPage._lista_material_base_imos)
+    # Em paralelo: nunca a importação normal, e o Excel vai para a subpasta de ensaio.
+    assert "execute_import_base_imos_macro(ensaio.excel, ensaio.csv)" in fluxo
+    assert "execute_import_csv_imos_macro" not in fluxo
+    assert "replace(context, output_path=ensaio.excel)" in fluxo

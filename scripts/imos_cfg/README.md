@@ -214,3 +214,15 @@ o CSV for **posterior** à última gravação da obra com a lista de peças.
   Manager, com as variáveis (medidas, materiais). É módulo à parte (não vem na instalação
   base); a `imos_LE` não tem tabelas do SIM em uso. O Paulo vai pedir explicações e preço à
   Enersale (29-10-2026): pode interessar para alguns projetos.
+
+## Alternativa em ensaio: a lista lida pelo Martelo da base (30-10-2026)
+
+O `.cfg` não consegue dar o Piso do artigo principal às peças dos sub-artigos. Além disso, o
+`ACCUMULATE` dele junta peças com notas diferentes. Por isso, a pedido do Paulo, o Martelo
+passou a fazer a mesma lista **em paralelo**, a ler a base: `app/services/lista_corte_imos_base_service.py`
+(regras no cabeçalho). Na Produção é a opção **Funções** → «Lista Material da base iMos
+(ensaio)…». Escreve o CSV e um relatório da comparação com o CSV do `.cfg` na subpasta
+`Ensaio_Lista_Base_iMos` da obra e, se o Paulo quiser, cria lá um Excel de ensaio
+`Lista_Material_<obra>_BASE.xlsm`. A importação para esse Excel é feita pela macro
+`Import_Base_Imos_1` (`scripts/vba/modImportCSVImos_1.bas`). Guião de teste no doc 17,
+«Lista Material: lista de peças lida da base do iMos».

@@ -230,3 +230,51 @@ def test_ler_obra_so_faz_select_e_recusa_nomes_invalidos():
 def test_obra_que_nao_existe_no_imos():
     with pytest.raises(ValueError, match="Não encontrei"):
         svc.ler_obra({}, "APAGAR_99", executar=lambda cfg, sql: [])
+
+
+# ---- ensaio: ficheiros na subpasta da obra --------------------------------
+
+
+def test_procurar_csv_imos_prefere_o_nome_exato(tmp_path):
+    pasta = tmp_path / "csv"
+    pasta.mkdir()
+    (pasta / "TESTE_SUBARTIGOSAPAGAR_14_Lista_Corte.csv").write_text("x")
+    assert svc.procurar_csv_imos("APAGAR_14", (pasta,)).name.startswith("TESTE_")
+    (pasta / "APAGAR_14_Lista_Corte.csv").write_text("x")
+    assert svc.procurar_csv_imos("APAGAR_14", (pasta,)).name == "APAGAR_14_Lista_Corte.csv"
+    assert svc.procurar_csv_imos("APAGAR_99", (pasta,)) is None
+    assert svc.procurar_csv_imos("APAGAR_14", (tmp_path / "nao_existe",)) is None
+
+
+def test_gravar_ensaio_escreve_csv_e_relatorio_na_subpasta(tmp_path):
+    dados = _dados(nome="APAGAR_14")
+    linhas = svc.montar_lista(dados)
+    csv_imos = svc.escrever_csv(linhas, tmp_path / "cutrite" / "APAGAR_14_Lista_Corte.csv")
+
+    ensaio = svc.gravar_ensaio(tmp_path / "obra", dados, linhas, csv_imos=csv_imos)
+
+    assert ensaio.pasta == tmp_path / "obra" / svc.PASTA_ENSAIO
+    assert ensaio.csv.name == "APAGAR_14_Lista_Corte_Base.csv" and ensaio.csv.is_file()
+    assert ensaio.excel == ensaio.pasta / "Lista_Material_APAGAR_14_BASE.xlsm"
+    assert not ensaio.excel.exists()  # o Excel é criado depois, se o utilizador quiser
+    assert ensaio.comparacao is not None and ensaio.comparacao.iguais
+    texto = ensaio.relatorio.read_text(encoding="utf-8-sig")
+    assert "IGUAIS" in texto and "APAGAR_14" in texto
+    assert "IGUAIS" in ensaio.resumo
+
+
+def test_gravar_ensaio_avisa_quando_o_desenho_e_mais_recente_que_o_csv(tmp_path):
+    from datetime import datetime, timedelta
+
+    linhas = svc.montar_lista(_dados())
+    csv_imos = svc.escrever_csv(linhas, tmp_path / "x.csv")
+    dados = _dados(ultima_gravacao=datetime.now() + timedelta(hours=1))
+    ensaio = svc.gravar_ensaio(tmp_path / "obra", dados, linhas, csv_imos=csv_imos)
+    assert "DEPOIS de o CSV ser exportado" in ensaio.resumo
+
+
+def test_gravar_ensaio_sem_csv_do_imos(tmp_path):
+    dados = _dados()
+    ensaio = svc.gravar_ensaio(tmp_path, dados, svc.montar_lista(dados))
+    assert ensaio.comparacao is None
+    assert "não houve comparação" in ensaio.resumo

@@ -735,3 +735,73 @@ Private Function FindColByHeaderFlex(ByVal ws As Worksheet, ByVal headerRow As L
 
     FindColByHeaderFlex = 0
 End Function
+
+'====================================================================
+'  ENSAIO 30-10-2026: LISTA FEITA PELO MARTELO A PARTIR DA BASE DO iMos
+'--------------------------------------------------------------------
+'  Macro: Import_Base_Imos_1 caminhoCSV
+'
+'  Em paralelo com a Import_CSV_Imos_1, que fica exatamente como estava.
+'  O Martelo lê a obra na base do iMos e escreve um CSV com as mesmas
+'  22 colunas do CSV do iMos (e, no fim, Artigo/SubArtigo, Piso,
+'  ArtigoNome e ISPEC, que ficam só no separador da importação).
+'  Esta macro faz os mesmos passos 1) a 8) da Import_CSV_Imos_1, mas
+'  importa ESSE ficheiro em vez de o procurar na pasta PASTA_CSV.
+'====================================================================
+Public Sub Import_Base_Imos_1(ByVal caminhoCSV As String)
+
+    Dim oldCalc As XlCalculation
+    oldCalc = Application.Calculation
+
+    On Error GoTo EH
+
+    Dim numProcesso As String
+    numProcesso = GetNomeado_Texto("NOME_ENC_IMOS_IX")
+    If Len(Trim$(numProcesso)) = 0 Then
+        MsgBox "A variável NOME_ENC_IMOS_IX está vazia (DEFENICOES!E3).", vbCritical
+        Exit Sub
+    End If
+
+    If Len(caminhoCSV) = 0 Or Len(Dir(caminhoCSV)) = 0 Then
+        MsgBox "Não encontrei a lista feita pelo Martelo:" & vbCrLf & caminhoCSV, vbCritical
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    Dim wsImport As Worksheet
+    Set wsImport = RecriarFolhaImport(numProcesso, "LISTA_ORDENADA")
+
+    ' 1) Limpezas
+    LimparFolhaImport wsImport
+    LimparListaOrdenada ThisWorkbook.Worksheets("LISTA_ORDENADA")
+
+    ' 2) e 3) Importar o CSV do Martelo para wsImport (a partir de A2)
+    ImportarCSV_ParaFolha wsImport, caminhoCSV
+
+    ' 4) a 8) Iguais à Import_CSV_Imos_1
+    Tratar_Linhas_Qt_Zero wsImport
+    CorrigirColunaRP wsImport
+    VerificarECorrigir_Rasgo_Em_Notas wsImport
+    Criar_Lista_Ordenada wsImport, ThisWorkbook.Worksheets("DEFENICOES"), ThisWorkbook.Worksheets("LISTA_ORDENADA")
+    Converter_Veio_ListaOrdenada ThisWorkbook.Worksheets("LISTA_ORDENADA")
+
+    Application.StatusBar = "Lista da base do iMos (Martelo) importada para: " & numProcesso
+    On Error Resume Next
+    CreateObject("WScript.Shell").Popup _
+        "Lista da base do iMos (Martelo) importada para: " & numProcesso, _
+        1, "Microsoft Excel", vbInformation
+    On Error GoTo EH
+CleanExit:
+    Application.Calculation = oldCalc
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+
+EH:
+    MsgBox "Erro em Import_Base_Imos_1:" & vbCrLf & Err.Number & " - " & Err.Description, vbExclamation
+    Resume CleanExit
+
+End Sub

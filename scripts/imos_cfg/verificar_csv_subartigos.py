@@ -72,7 +72,8 @@ def sub_artigos(grps: list[dict], info: list[dict]):
     Cada artigo vem como (nome do grupo, «Name» do artigo = ``IDBINFO.CPID``, que o Paulo
     usa para o piso). Na ``IDBGRPS`` uma peça aponta para o grupo pai (``ASSID``); o
     primeiro grupo de um artigo aponta para o artigo (``ARTID``); um artigo (``TYP`` 2)
-    dentro de outro aponta para o grupo onde está (``ASSID``).
+    dentro de outro aponta para o grupo onde está (``ASSID``) ou diretamente para o
+    artigo de cima (``ARTID``).
     """
     g = {int(r["ID"]): r for r in grps}
     nome = {int(r["ID"]): (r["GROUPNAME"] or "").strip() for r in info}
@@ -86,7 +87,9 @@ def sub_artigos(grps: list[dict], info: list[dict]):
             typ, artid, assid = int(atual["TYP"]), int(atual["ARTID"] or 0), int(atual["ASSID"] or 0)
             if typ == 2:
                 out.append((nome.get(aid) or (atual["NAME"] or "").strip(), cpid.get(aid, "")))
-            atual = g.get(artid) if (typ == 3 and artid) else (g.get(assid) if assid else None)
+            # Um artigo dentro de outro também pode ligar pelo ARTID (obra 1608_03, «AT»).
+            seguinte = artid or assid
+            atual = g.get(seguinte) if seguinte else None
         return out
 
     return acima

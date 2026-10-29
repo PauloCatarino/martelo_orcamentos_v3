@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -81,12 +82,15 @@ from app.services.lista_material_excel_com import (
 from app.services.woodstore_service import query_woodstore
 from app.services.warehouse_board_catalog import WoodstoreBoardCatalogProvider
 from app.services.lista_material_imos_service import (
+    MACRO_IMPORT_BASE_IMOS,
     execute_automation_cutrite_macro,
+    execute_import_base_imos_macro,
     execute_import_csv_imos_macro,
     execute_import_listas_ferragens_macro,
     execute_lista_material_imos,
     prepare_lista_material_imos,
 )
+from app.services import lista_corte_imos_base_service as lista_base_imos
 from app.services.lista_material_assistente_service import (
     ListaMaterialAssistantService,
 )
@@ -463,6 +467,20 @@ class ProducaoPage(QWidget):
         )
         self.gerar_listas_imos_action.triggered.connect(self._abrir_gerar_listas_imos)
 
+        # ENSAIO (30-10-2026), em paralelo com o CSV do .cfg: a lista de peças
+        # lida pelo Martelo da base do iMos, num Excel à parte numa subpasta.
+        self.lista_base_imos_action = QAction(
+            "Lista Material da base iMos (ensaio)…", self
+        )
+        self.lista_base_imos_action.setIcon(icone_ficheiro("icon_excel.ico"))
+        self.lista_base_imos_action.setToolTip(
+            "ENSAIO: ler as peças da obra diretamente da base do iMos (sem o CSV "
+            "exportado pelo iMos), comparar com esse CSV e criar um Excel de ensaio "
+            f"na subpasta «{lista_base_imos.PASTA_ENSAIO}» da obra. A Lista Material "
+            "da obra não é tocada."
+        )
+        self.lista_base_imos_action.triggered.connect(self._lista_material_base_imos)
+
         self.enviar_cutrite_action = QAction(
             icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
         )
@@ -577,6 +595,7 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.addAction(self.abrir_ix_cad_action)
         self.funcoes_menu.addAction(self.gerar_listas_imos_action)
         self.funcoes_menu.addAction(self.analisar_lista_material_action)
+        self.funcoes_menu.addAction(self.lista_base_imos_action)
         self.funcoes_menu.addSeparator()
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
@@ -2517,24 +2536,7 @@ class ProducaoPage(QWidget):
             QMessageBox.warning(self, "Lista Material IMOS", AVISO_PASTA_OBRA_EM_FALTA)
             return
 
-        values = {
-            "RESPONSAVEL": self.responsavel_form_combo.currentText().strip(),
-            "REF_CLIENTE": self.ref_cliente_input.text().strip(),
-            "OBRA": self.obra_input.text().strip(),
-            "NOME_ENC_IMOS_IX": nome_enc,
-            "NUM_CLIENTE_PHC": self.num_cliente_phc_input.text().strip(),
-            "NOME_CLIENTE": self.cliente_input.text().strip(),
-            "NOME_CLIENTE_SIMPLEX": self.cliente_simplex_input.text().strip(),
-            "LOCALIZACAO": self.localizacao_input.text().strip(),
-            "DESCRICAO_PRODUCAO": self.descricao_producao_text.toPlainText().strip(),
-            "DESCRICAO_ARTIGOS": self.descricao_artigos_text.toPlainText().strip(),
-            "MATERIAIS": self.materias_usados_text.toPlainText().strip(),
-            "QTD": self.qt_artigos_input.text().strip(),
-            "PLANO_CORTE": self.nome_plano_corte_input.text().strip(),
-            "DATA_CONCLUSAO": self._texto_data(self.data_entrega_input) or "",
-            "DATA_INICIO": self._texto_data(self.data_inicio_input) or "",
-            "ENC_PHC": self.num_enc_phc_input.text().strip(),
-        }
+        values = self._valores_definicoes_lista_material(nome_enc)
 
         try:
             with SessionLocal() as session:
@@ -2680,6 +2682,199 @@ class ProducaoPage(QWidget):
         else:
             self.status_label.setText("Lista Material criada.")
         self._oferecer_fluxo_inicial_lista_material(processo, output_path)
+
+    def _valores_definicoes_lista_material(self, nome_enc: str) -> dict:
+        """Os dados da obra que vão para a folha DEFENICOES do Excel."""
+        return {
+            "RESPONSAVEL": self.responsavel_form_combo.currentText().strip(),
+            "REF_CLIENTE": self.ref_cliente_input.text().strip(),
+            "OBRA": self.obra_input.text().strip(),
+            "NOME_ENC_IMOS_IX": nome_enc,
+            "NUM_CLIENTE_PHC": self.num_cliente_phc_input.text().strip(),
+            "NOME_CLIENTE": self.cliente_input.text().strip(),
+            "NOME_CLIENTE_SIMPLEX": self.cliente_simplex_input.text().strip(),
+            "LOCALIZACAO": self.localizacao_input.text().strip(),
+            "DESCRICAO_PRODUCAO": self.descricao_producao_text.toPlainText().strip(),
+            "DESCRICAO_ARTIGOS": self.descricao_artigos_text.toPlainText().strip(),
+            "MATERIAIS": self.materias_usados_text.toPlainText().strip(),
+            "QTD": self.qt_artigos_input.text().strip(),
+            "PLANO_CORTE": self.nome_plano_corte_input.text().strip(),
+            "DATA_CONCLUSAO": self._texto_data(self.data_entrega_input) or "",
+            "DATA_INICIO": self._texto_data(self.data_inicio_input) or "",
+            "ENC_PHC": self.num_enc_phc_input.text().strip(),
+        }
+
+    # ---- Lista Material da base do iMos (ENSAIO) ---------------------------
+
+    def _lista_material_base_imos(self) -> None:
+        """Funções > Lista Material da base iMos (ensaio).
+
+        Em paralelo com o caminho normal (CSV do .cfg + Import_CSV_Imos_1), que
+        não muda: lê as peças na base do iMos, compara com o CSV do .cfg e cria
+        um Excel de ensaio na subpasta da obra, sem tocar na Lista Material.
+        """
+        titulo = "Lista Material da base iMos (ensaio)"
+        processo = self._processo_selecionado()
+        if processo is None:
+            self.status_label.setText("Selecione uma obra para o ensaio da lista da base iMos.")
+            return
+        nome_enc = self.nome_enc_imos_ix_input.text().strip()
+        if not nome_enc:
+            QMessageBox.warning(self, titulo, "Nome Enc IMOS IX em falta.")
+            return
+        pasta_obra = self._pasta_servidor_da_obra(processo)
+        if not pasta_obra:
+            QMessageBox.warning(self, titulo, AVISO_PASTA_OBRA_EM_FALTA)
+            return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText(f"A ler a obra {nome_enc} na base do iMos...")
+        QApplication.processEvents()
+        try:
+            with SessionLocal() as session:
+                cfg = load_imos_config(session)
+            dados = lista_base_imos.ler_obra(cfg, nome_enc)
+            linhas = lista_base_imos.montar_lista(dados)
+            if linhas:
+                ensaio = lista_base_imos.gravar_ensaio(
+                    Path(pasta_obra),
+                    dados,
+                    linhas,
+                    csv_imos=lista_base_imos.procurar_csv_imos(nome_enc),
+                )
+        except ValueError as error:
+            QApplication.restoreOverrideCursor()
+            self.status_label.setText("Ensaio da lista da base iMos: nada foi feito.")
+            QMessageBox.warning(self, titulo, str(error))
+            return
+        except Exception as error:  # SQL do iMos, rede, pasta da obra
+            QApplication.restoreOverrideCursor()
+            self.status_label.setText("Ensaio da lista da base iMos: falhou a leitura.")
+            QMessageBox.critical(
+                self, titulo,
+                f"Não foi possível ler a obra na base do iMos.\n\nDetalhe: {error}",
+            )
+            return
+        QApplication.restoreOverrideCursor()
+        if not linhas:
+            self.status_label.setText("Ensaio da lista da base iMos: a obra não tem peças.")
+            QMessageBox.warning(
+                self, titulo,
+                f"A obra «{nome_enc}» não tem peças para cortar na base do iMos.\n\n"
+                "Confirme que o desenho foi gravado no iMos.",
+            )
+            return
+
+        comparacao = ensaio.comparacao
+        if comparacao is None:
+            estado = "sem CSV do iMos para comparar"
+        elif comparacao.iguais:
+            estado = "igual ao CSV do iMos"
+        else:
+            estado = f"{len(comparacao.diferencas)} diferença(s) para o CSV do iMos"
+        self.status_label.setText(f"Lista da base iMos lida: {estado}.")
+
+        criar = QMessageBox.question(
+            self,
+            titulo,
+            f"{ensaio.resumo}\n\nFicheiros na pasta:\n{ensaio.pasta}\n\n"
+            "Criar agora o Excel de ensaio com esta lista?\n\n"
+            f"Fica em «{ensaio.excel.name}», na mesma subpasta. A Lista Material "
+            "da obra não é tocada. O Excel fica visível para responder às "
+            "perguntas da macro, como na importação normal.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if criar != QMessageBox.StandardButton.Yes:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(ensaio.pasta)))
+            self.status_label.setText(
+                "Lista da base iMos e comparação gravadas; o Excel de ensaio não foi criado."
+            )
+            return
+
+        try:
+            with SessionLocal() as session:
+                context = prepare_lista_material_imos(
+                    session,
+                    processo_id=processo.id,
+                    nome_enc_imos=nome_enc,
+                    values=self._valores_definicoes_lista_material(nome_enc),
+                )
+        except ValueError as error:
+            QMessageBox.warning(self, titulo, str(error))
+            return
+        context = replace(context, output_path=ensaio.excel)
+
+        guardado = None
+        if ensaio.excel.exists():
+            try:
+                guardado = self._por_a_lista_de_lado(ensaio.excel)
+            except OSError as error:
+                QMessageBox.critical(
+                    self, titulo,
+                    f"O Excel de ensaio anterior está em uso:\n{ensaio.excel}\n\n"
+                    f"Feche-o e tente outra vez.\n\nDetalhe: {error}",
+                )
+                return
+
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        self.status_label.setText("A criar o Excel de ensaio a partir do modelo...")
+        QApplication.processEvents()
+        try:
+            execute_lista_material_imos(context)
+        except Exception as error:  # Excel COM / PowerShell
+            QApplication.restoreOverrideCursor()
+            self._repor_lista_guardada(guardado, ensaio.excel)
+            QMessageBox.critical(
+                self, titulo, f"Não foi possível criar o Excel de ensaio.\n\nDetalhe: {error}"
+            )
+            return
+        QApplication.restoreOverrideCursor()
+
+        self.status_label.setText("A importar a lista da base iMos no Excel de ensaio...")
+        QApplication.processEvents()
+        try:
+            execute_import_base_imos_macro(ensaio.excel, ensaio.csv)
+        except Exception as error:  # Excel COM / macro VBA
+            self.status_label.setText("A importação da lista da base iMos não foi concluída.")
+            QMessageBox.warning(
+                self, titulo,
+                "Não foi possível importar a lista no Excel de ensaio.\n\n"
+                f"Se o erro disser que a macro {MACRO_IMPORT_BASE_IMOS} não existe, "
+                "o modelo do Excel ainda não a tem.\n\n"
+                f"Detalhe: {error}",
+            )
+            return
+
+        preencher = QMessageBox.question(
+            self,
+            titulo,
+            "A LISTA_ORDENADA do Excel de ensaio foi preenchida.\n\nPretende "
+            "executar agora a transformação AUTOMATION para preencher a "
+            "LISTAGEM_CUT_RITE (a mesma macro do botão AUTOMATION)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if preencher == QMessageBox.StandardButton.Yes:
+            self.status_label.setText("A preencher a LISTAGEM_CUT_RITE do Excel de ensaio...")
+            QApplication.processEvents()
+            try:
+                execute_automation_cutrite_macro(ensaio.excel)
+            except Exception as error:  # Excel COM / macro VBA
+                self.status_label.setText("A transformação AUTOMATION não foi concluída.")
+                QMessageBox.warning(
+                    self, titulo,
+                    f"Não foi possível concluir a transformação.\n\nDetalhe: {error}",
+                )
+                return
+
+        self.status_label.setText(
+            f"Excel de ensaio pronto ({estado}): {ensaio.excel.name}."
+        )
+        if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(ensaio.excel))):
+            QMessageBox.warning(
+                self, titulo, f"Não foi possível abrir o Excel:\n{ensaio.excel}"
+            )
 
     # ---- Lista Material: já existe, o que fazer? ---------------------------
 

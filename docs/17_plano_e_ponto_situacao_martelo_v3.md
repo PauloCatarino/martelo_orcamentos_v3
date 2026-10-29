@@ -3176,3 +3176,80 @@ ISPEC: `2` no «Topo» (PECA_L) e `0` nas outras. A exportação V1 fica fechada
   - `.` → vazio;
   - aviso do ISPEC nas Notas;
 - passar o V1 para o princípio por defeito, o que o Paulo faz depois do Excel.
+
+## Lista Material: lista de peças lida da base do iMos, em ENSAIO (2026-10-30)
+
+Pedido do Paulo (29-10-2026, noite): explorar a lista de peças tirada diretamente da base do
+iMos, como já se faz nas ferragens, em vez do CSV do `.cfg`. **Em ensaio e em paralelo**: o
+caminho normal (CSV do `.cfg` + macro `Import_CSV_Imos_1`) **não muda**. Se ficar complexo,
+aborta-se e volta-se ao CSV. Antes de mexer, o Paulo fez uma cópia do modelo:
+`Lista_Material_IMOS_MARTELO - Cópia.xltm`.
+
+Porquê: o `.cfg` não dá o Piso do artigo principal às peças dos sub-artigos (o gaveteiro da
+APAGAR_14 saía com `49187`, o «Name» do próprio sub-artigo). Além disso, no CSV da 1608_03 o
+`.cfg` junta numa linha peças iguais com notas diferentes: a nota «Rasgo 'Tupia' MDF 3MM 1
+comp» passa para a peça errada no RP_APT4_14.
+
+O que mudou:
+- **Martelo** (`app/services/lista_corte_imos_base_service.py`): lê a obra na base do iMos
+  (só SELECT) e escreve um CSV com as mesmas 22 colunas do CSV do `.cfg`, pela mesma ordem.
+  No fim leva mais quatro colunas: `Artigo/SubArtigo`, `Piso` (do artigo principal, vazio
+  quando é `.`), `ArtigoNome` e `ISPEC`. Compara com o CSV do `.cfg` e escreve um relatório.
+- **Martelo, Produção** → **Funções** → **«Lista Material da base iMos (ensaio)…»**. Tudo vai
+  para a subpasta `Ensaio_Lista_Base_iMos` da obra: o CSV, o relatório e o Excel
+  `Lista_Material_<obra>_BASE.xlsm`. A Lista Material da obra não é tocada, e o Enviar
+  CUT-RITE, o Analisar e os PDFs continuam a usar só a dela.
+- **Modelo do Excel** (`Lista_Material_IMOS_MARTELO.xltm`, no servidor): ganha a macro
+  **`Import_Base_Imos_1`**, que fica no fim do módulo `modImportCSVImos_1` (agora versionado em
+  `scripts/vba`). Faz os mesmos passos da `Import_CSV_Imos_1`: Qt.=0, RP, Rasgo, ordem da
+  DEFENICOES e Veio. A única diferença é que importa o CSV do Martelo. A `Import_CSV_Imos_1`
+  ficou igual, letra a letra.
+
+Confirmado antes de entregar:
+- as 22 colunas são iguais às do CSV do `.cfg` em 8 obras (~2100 linhas);
+- numa cópia do modelo, a macro compila. A LISTA_ORDENADA feita com a lista da base saiu igual
+  à feita com o CSV do `.cfg`:
+  - na **0993_04**, linha a linha;
+  - na **1849_01**, com as mesmas peças e quantidades (só muda a ordem de linhas com a mesma
+    descrição);
+  - na **1608_03**, só nas 4 linhas do RP_APT4_14 em que o `.cfg` troca as notas.
+
+Guião de teste:
+
+1. Fechar o Martelo e voltar a abri-lo (para carregar a versão nova).
+2. **Produção** → escolher a obra **1608_03_26_HIRONDELLES** (o CSV do iMos foi exportado a
+   29-10 às 16h23). Confirmar que o campo **Nome Enc IMOS IX** diz `1608_03_26_HIRONDELLES`.
+3. **Funções** → **«Lista Material da base iMos (ensaio)…»**.
+4. Esperado na 1.ª caixa:
+   - «Lista da base: 480 linhas, 748 peças»;
+   - «CSV do iMos: … 499 linhas, 748 peças»;
+   - «Resultado: 7 diferença(s)», todas no `RP_APT4_14_P_CORRER` (as notas «Rasgo 'Tupia'»
+     e uma no CNC_1).
+
+   Se o desenho tiver sido gravado depois das 16h23, aparece o aviso «o desenho foi gravado
+   DEPOIS de o CSV ser exportado».
+5. Clicar **Sim**. O Excel abre-se e a macro pergunta pelas linhas com **Qt.=0** (o
+   RP_APT7_12 tem quantidade 0 no iMos): responder como na importação normal (**Não**).
+6. Na caixa «A LISTA_ORDENADA do Excel de ensaio foi preenchida», clicar **Sim** para o
+   AUTOMATION. No fim, o Excel de ensaio abre-se.
+7. Esperado:
+   - na pasta da obra, uma subpasta **`Ensaio_Lista_Base_iMos`** com 3 ficheiros:
+     - `1608_03_26_HIRONDELLES_Lista_Corte_Base.csv`;
+     - `1608_03_26_HIRONDELLES_Comparacao_com_CSV_iMos.txt`;
+     - `Lista_Material_1608_03_26_HIRONDELLES_BASE.xlsm`;
+   - a `Lista_Material_1608_03_26_HIRONDELLES.xlsm` da obra com a data de antes;
+   - no Excel de ensaio:
+     - o separador `1608_03_26_HIRONDELLES` tem, depois da coluna BHT, as colunas
+       `Artigo/SubArtigo`, `Piso`, `ArtigoNome` e `ISPEC`;
+     - a LISTA_ORDENADA e a LISTAGEM_CUT_RITE batem com a Lista Material da obra, exceto no
+       RP_APT4_14. Lá, a nota «Rasgo 'Tupia' MDF 3MM 1 comp» fica só nas peças que a têm no
+       iMos.
+8. Repetir com a obra de ensaio do iMos que tem o gaveteiro (**APAGAR_14**), se houver obra no
+   Martelo com esse Nome Enc IMOS IX. No separador da importação, as linhas do
+   `BL_3GVT_RP_01` devem ter **Piso `R/C`**.
+
+Por fazer, depois do ensaio:
+- passar as colunas novas (Artigo/SubArtigo, Piso) para a LISTA_ORDENADA e a
+  LISTAGEM_CUT_RITE;
+- o aviso do ISPEC nas Notas;
+- decidir se o caminho da base substitui o do CSV.

@@ -385,3 +385,23 @@ def test_validacao_dos_passos_confirma_se_a_folha_recebeu_pecas(tmp_path) -> Non
     assert not _sheet_has_material_rows(
         path, "LISTAGEM_CUT_RITE", start_row=3, description_column=1
     )
+
+
+def test_importar_lista_da_base_imos_passa_o_csv_a_macro(monkeypatch, tmp_path) -> None:
+    from app.services import lista_material_imos_service as svc
+
+    path = tmp_path / "Lista_Material_TESTE_BASE.xlsm"
+    csv_path = tmp_path / "TESTE_Lista_Corte_Base.csv"
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        svc, "execute_lista_material_workbook_macro",
+        lambda *args: calls.append(args) or path,
+    )
+    monkeypatch.setattr(svc, "_sheet_has_material_rows", lambda *a, **k: True)
+
+    assert svc.execute_import_base_imos_macro(path, csv_path) == path
+    assert calls == [(path, "Import_Base_Imos_1", str(csv_path))]
+
+    monkeypatch.setattr(svc, "_sheet_has_material_rows", lambda *a, **k: False)
+    with pytest.raises(RuntimeError, match="LISTA_ORDENADA ficou sem peças"):
+        svc.execute_import_base_imos_macro(path, csv_path)

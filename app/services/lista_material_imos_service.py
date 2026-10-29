@@ -26,6 +26,9 @@ TEMPLATE_FILENAME = "Lista_Material_IMOS_MARTELO.xltm"
 MACRO_IMPORT_CSV_IMOS = "Import_CSV_Imos_1"
 MACRO_AUTOMATION_CUTRITE = "Preencher_Tabela_Cut_Rite"
 MACRO_IMPORT_LISTAS_FERRAGENS = "ImportarListasFerragensIMOS_14"
+# Ensaio (30-10-2026): a mesma importação, mas da lista que o Martelo lê da base
+# do iMos (lista_corte_imos_base_service) em vez do CSV do .cfg.
+MACRO_IMPORT_BASE_IMOS = "Import_Base_Imos_1"
 
 
 @dataclass(frozen=True)
@@ -207,6 +210,25 @@ def execute_import_csv_imos_macro(workbook_path: Path) -> Path:
         raise RuntimeError(
             "A macro terminou, mas a LISTA_ORDENADA ficou sem peças. "
             "Confirme se o CSV existe em I:\\Cutrite\\Work\\Cutrite_Import_CSV e se o nome contém a encomenda IMOS."
+        )
+    return path
+
+
+def execute_import_base_imos_macro(workbook_path: Path, csv_path: Path) -> Path:
+    """Importa para a LISTA_ORDENADA o CSV que o Martelo escreveu a partir da base.
+
+    A macro ``Import_Base_Imos_1`` faz os mesmos passos da ``Import_CSV_Imos_1``
+    (Qt.=0, RP, Rasgo, ordem, Veio), só muda o ficheiro de onde lê.
+    """
+    path = execute_lista_material_workbook_macro(
+        workbook_path, MACRO_IMPORT_BASE_IMOS, str(csv_path)
+    )
+    if not _sheet_has_material_rows(
+        path, "LISTA_ORDENADA", start_row=4, description_column=2
+    ):
+        raise RuntimeError(
+            "A macro terminou, mas a LISTA_ORDENADA ficou sem peças.\n\n"
+            f"Lista usada: {csv_path}"
         )
     return path
 

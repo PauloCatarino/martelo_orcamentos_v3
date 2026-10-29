@@ -58,6 +58,15 @@ COLUNAS_IMOS: tuple[str, ...] = (
 COLUNAS_NOVAS: tuple[str, ...] = ("Artigo/SubArtigo", "Piso", "ArtigoNome", "ISPEC")
 COLUNAS_CSV: tuple[str, ...] = COLUNAS_IMOS + COLUNAS_NOVAS
 
+# Onde ficam os ficheiros do ensaio: numa subpasta da obra, para nenhuma função
+# do Martelo (Enviar CUT-RITE, Analisar, PDFs) os confundir com a Lista Material.
+PASTA_ENSAIO = "Ensaio_Lista_Base_iMos"
+# Onde o .cfg escreve o CSV (a mesma pasta da macro Import_CSV_Imos_1).
+PASTAS_CSV_IMOS: tuple[Path, ...] = (
+    Path(r"I:\Cutrite\Work\Cutrite_Import_CSV"),
+    Path(r"\\SERVER_LE\Homag_iX\Cutrite\Work\Cutrite_Import_CSV"),
+)
+
 # O mesmo FILTER do .cfg: só peças cortadas, sem ferragens nem uniões.
 TIPOS_FORA = (11, 15, 16, 17, 18, 19, 20, 43, 44)
 # Orlas: número do perfil na IDBPRF -> coluna do CSV.
@@ -422,4 +431,118 @@ def comparar_com_csv_imos(
         linhas_base=len(linhas),
         linhas_csv=len(linhas_csv),
         diferencas=diferencas,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ensaio: ficheiros na subpasta da obra
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class EnsaioListaBase:
+    """Os ficheiros do ensaio de uma obra e o resultado da comparação."""
+
+    pasta: Path
+    csv: Path
+    relatorio: Path
+    excel: Path
+    csv_imos: Path | None
+    comparacao: ComparacaoLista | None
+    resumo: str
+
+
+def procurar_csv_imos(
+    nome_enc: str, pastas: tuple[Path, ...] = PASTAS_CSV_IMOS
+) -> Path | None:
+    """O CSV do .cfg que a ``Import_CSV_Imos_1`` importaria para esta obra.
+
+    A macro aceita o 1.º ``*.csv`` com o nome da obra; aqui vale primeiro o nome
+    exato que o .cfg escreve (``<obra>_Lista_Corte.csv``).
+    """
+    nome = _texto(nome_enc)
+    if not nome:
+        return None
+    for pasta in pastas:
+        try:
+            exato = pasta / f"{nome}_Lista_Corte.csv"
+            if exato.is_file():
+                return exato
+            if not pasta.is_dir():
+                continue
+            for ficheiro in sorted(pasta.glob("*.csv")):
+                if nome.casefold() in ficheiro.name.casefold():
+                    return ficheiro
+        except OSError:
+            continue
+    return None
+
+
+def _hora(valor: datetime | None) -> str:
+    return valor.strftime("%d-%m-%Y %H:%M") if valor else "(sem data)"
+
+
+def gravar_ensaio(
+    pasta_obra: Path,
+    dados: DadosObraImos,
+    linhas: list[LinhaCorte],
+    *,
+    csv_imos: Path | None = None,
+    agora: datetime | None = None,
+) -> EnsaioListaBase:
+    """Escreve o CSV e o relatório da comparação na subpasta de ensaio da obra."""
+    pasta = Path(pasta_obra) / PASTA_ENSAIO
+    nome = dados.nome
+    csv_base = escrever_csv(linhas, pasta / f"{nome}_Lista_Corte_Base.csv")
+    pecas = sum(l.qt for l in linhas)
+
+    texto = [
+        "Lista de corte lida pelo Martelo da base do iMos — ENSAIO",
+        f"Obra: {nome}",
+        f"Lida em: {_hora(agora or datetime.now())}",
+        f"Desenho gravado no iMos: {_hora(dados.ultima_gravacao)}",
+        f"Lista da base: {len(linhas)} linhas, {pecas:g} peças",
+    ]
+    comparacao = None
+    if csv_imos is None:
+        texto.append("CSV do iMos: não encontrado — não houve comparação.")
+    else:
+        try:
+            exportado = datetime.fromtimestamp(csv_imos.stat().st_mtime)
+            comparacao = comparar_com_csv_imos(linhas, ler_csv(csv_imos))
+        except OSError as erro:
+            texto.append(f"CSV do iMos: não foi possível ler {csv_imos} ({erro}).")
+        else:
+            texto.append(
+                f"CSV do iMos: {csv_imos} (exportado {_hora(exportado)}): "
+                f"{comparacao.linhas_csv} linhas, {comparacao.pecas_csv:g} peças"
+            )
+            if dados.ultima_gravacao and dados.ultima_gravacao > exportado:
+                texto.append(
+                    "ATENÇÃO: o desenho foi gravado DEPOIS de o CSV ser exportado; as "
+                    "diferenças podem ser só isso. Exporte o CSV outra vez para comparar."
+                )
+            if comparacao.iguais:
+                texto.append("Resultado: as peças, quantidades e colunas do CSV são IGUAIS.")
+            else:
+                texto.append(f"Resultado: {len(comparacao.diferencas)} diferença(s):")
+                texto.extend(f"  - {d}" for d in comparacao.diferencas)
+    texto.append(
+        "As linhas iguais em todas as colunas ficam numa só (o .cfg às vezes parte-as); "
+        "por isso o número de linhas pode ser menor com as mesmas peças."
+    )
+    texto.append(
+        "Colunas novas no fim do CSV (ficam no separador da importação, não na "
+        "LISTA_ORDENADA): Artigo/SubArtigo, Piso, ArtigoNome, ISPEC."
+    )
+    resumo = "\r\n".join(texto)
+    relatorio = pasta / f"{nome}_Comparacao_com_CSV_iMos.txt"
+    relatorio.write_text(resumo + "\r\n", encoding="utf-8-sig", newline="")
+    return EnsaioListaBase(
+        pasta=pasta,
+        csv=csv_base,
+        relatorio=relatorio,
+        excel=pasta / f"Lista_Material_{nome}_BASE.xlsm",
+        csv_imos=csv_imos,
+        comparacao=comparacao,
+        resumo=resumo.replace("\r\n", "\n"),
     )
