@@ -19,7 +19,17 @@ destino = Path(sys.argv[1])
 SUB_EXPR = "ARTNR"
 # Colunas depois de Cliente_Final. ArtigoNome = nome do artigo principal, só para o Excel
 # comparar com o SubArtigo (a coluna Artigo mostra a posição, que nas cozinhas é 001, 002...).
-COLUNAS_FIM = [("ArtigoNome", "TOPARTICLE_NAME[ARTNR_NR_ID]")]
+# ISPEC = forma da peça (0 = retangular de 4 lados; 1 = 4 lados com pelo menos um contorno;
+# 2 = mais de 4 lados; 3 = não é painel; 4 também aparece, sem descrição da imos).
+COLUNAS_FIM = [("ArtigoNome", "TOPARTICLE_NAME[ARTNR_NR_ID]"), ("ISPEC", "ISPEC")]
+# Só no ensaio: campos do IDBCCLG25.dll que podem contar as orlas/contornos (para apanhar as
+# peças retangulares com recorte interior, PTYPE 'I' na IDBPRF, que têm ISPEC 0).
+TESTES = [
+    ("TESTE_EDGECOUNT", "EDGECOUNT"),
+    ("TESTE_PRFCNT", "PRFCNT"),
+    ("TESTE_IDBPRF_PRFID", "IDBPRF_PRFID"),
+]
+COLUNAS_FIM = COLUNAS_FIM + TESTES
 
 t = ORIGEM.read_bytes().decode("latin1")
 assert "\r\n" in t
@@ -28,7 +38,8 @@ NL = "\r\n"
 CABECALHO = NL.join([
     ";",
     "; ============================================================================",
-    "; EXPORT_CSV_CUT_RITE_LE_V2.cfg - 29-10-2026 - versão final da exportação",
+    "; EXPORT_CSV_CUT_RITE_LE_V2.cfg - 29-10-2026 - "
+    + ("ENSAIO do ISPEC (colunas TESTE_* no fim)" if TESTES else "versão final da exportação"),
     "; Cópia do EXPORT_CSV_CUT_RITE_LE.cfg (o que está em uso) com estas mudanças:",
     ";  1) A coluna \"RP\" passa a chamar-se \"Artigo\" (o conteúdo é o mesmo: a",
     ";     posição do artigo principal, SPLITLEFT[PARTPOSSTR;.]).",
@@ -41,8 +52,13 @@ CABECALHO = NL.join([
     ";     mostra a posição, que nas cozinhas é 001, 002... (o nome é MB_01_GVT_PL).",
     ";     No iMos, IFEQUAL/IFEMPTY com um campo à cabeça devolvem sempre esse campo",
     ";     (ensaio de 29-10-2026), por isso esta regra não se faz aqui.",
-    ";  4) Saíram as colunas CNC, ABD e BHT (nunca tiveram dados).",
-    ";  5) ACCUMULATE com ARTNR_NR_ID (o artigo onde a peça está): sem isto, peças",
+    ";  4) Coluna \"ISPEC\" no fim (pedido do Paulo, 29-10-2026): a forma da peça,",
+    ";     0 = retangular de 4 lados; 1 = 4 lados com pelo menos um contorno; 2 = mais",
+    ";     de 4 lados; 3 = não é painel (4 também aparece). Para o Excel avisar nas",
+    ";     Notas que a peça não é retangular e pode ter CAM. ATENÇÃO: uma peça",
+    ";     retangular com recorte interior (ex.: REC_CNT_L_RODAPE_FRENTE) tem ISPEC 0.",
+    ";  5) Saíram as colunas CNC, ABD e BHT (nunca tiveram dados).",
+    ";  6) ACCUMULATE com ARTNR_NR_ID (o artigo onde a peça está): sem isto, peças",
     ";     iguais de sub-artigos de RPs diferentes juntavam-se numa só linha com o RP",
     ";     da primeira (ex.: obra CRW_2128_2711_01, 18 laterais de gaveta no RP_01",
     ";     quando são 6 em cada RP_01/02/03).",
@@ -84,7 +100,7 @@ t = trocar(
     t,
     hdr_antigo + NL,
     ";Original (até à V2): " + hdr_antigo + NL
-    + "; V2: RP passa a Artigo; + SubArtigo à direita; sem CNC/ABD/BHT; + ArtigoNome no fim" + NL
+    + "; V2: RP passa a Artigo; + SubArtigo à direita; sem CNC/ABD/BHT; + ArtigoNome e ISPEC no fim" + NL
     + hdr_novo + NL,
 )
 
@@ -113,7 +129,8 @@ t = trocar(
     mat_antigo + NL,
     ";Original (até à V2):" + NL + ";" + mat_antigo + NL
     + "; V2: 1-15 iguais; 16 Artigo (era RP); 17 SubArtigo (ARTNR); 18 Notas; 19 Notas_1;"
-    " 20 Cliente_Final; 21 ArtigoNome (nome do artigo principal, para o Excel)" + NL
+    " 20 Cliente_Final; 21 ArtigoNome (nome do artigo principal, para o Excel); 22 ISPEC"
+    + ("; 23-" + str(N) + " TESTE_* (só no ensaio)" if TESTES else "") + NL
     + mat_novo + NL,
 )
 

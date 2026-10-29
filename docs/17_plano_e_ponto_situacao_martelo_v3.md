@@ -2990,3 +2990,37 @@ Guião de teste (ronda 4):
 Cliente_Final;ArtigoNome`; as 21 peças do `BL_3GVT_RP_01` no `RP_A_01_ESQ`). A exportação
 está afinada; falta o Excel. Por provar ainda: a correção do `ACCUMULATE` numa obra com o
 mesmo sub-artigo em dois RPs.
+
+### Ronda 5: coluna ISPEC, forma da peça (2026-10-29, ENSAIO)
+
+Pedido do Paulo: pôr no CSV o `ISPEC` (0 = retangular de 4 lados, 1 = 4 lados com contorno,
+2 = mais de 4 lados, 3 = não é painel), para o Excel avisar nas Notas que a peça tem forma
+especial e pode ter CAM. Na `APAGAR_14` ele criou duas peças em L para testar: **PECA_L**
+(«Topo», L desenhado com 6 orlas) e **RECORTE_L** («Teto», retangular com o recorte interior
+`REC_CNT_L_CIMA_TRAS`).
+
+Descoberto na base: PECA_L tem **ISPEC 2**; RECORTE_L tem **ISPEC 0**, porque o L é um
+contorno interior (perfil `PTYPE='I'` na `IDBPRF`) e o contorno exterior continua com 4 lados.
+Nas 160 obras recentes há **382 peças (48 obras) assim**, quase todas com recortes de rodapé
+(`REC_CNT_L_RODAPE_FRENTE/TRAS`) — o ISPEC sozinho não as apanha. Valores do ISPEC nessas obras:
+30 676 × 0, 84 × 1, 348 × 2, 108 × 3 e 30 × 4 (o 4 não está documentado). O `ACCUMULATE` não
+junta peças de formas diferentes.
+
+Feito: `.cfg` V2 com a coluna **ISPEC** depois de ArtigoNome e 3 colunas de ensaio
+`TESTE_EDGECOUNT`, `TESTE_PRFCNT`, `TESTE_IDBPRF_PRFID` (campos do motor que podem contar ou
+dizer os perfis, à procura de um que apanhe o recorte interior). O verificador confere o
+ISPEC linha a linha e marca as peças com recorte interior.
+
+Guião de teste (ronda 5):
+
+1. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg` →
+   **Guardar**.
+2. **iX CAD**, obra **APAGAR_14** (com a PECA_L e a RECORTE_L) → gravar com **«Lista de
+   peças»** → **Processar transferência de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ →
+   «Substituir?» **Sim**. Se der erro, mandar a mensagem ao Claude.
+3. Esperado no `APAGAR_14_Lista_Corte.csv` (abrir no Bloco de Notas): 112 linhas (as 110 + as
+   2 peças em L); coluna **ISPEC** = `2` na linha «Topo» (Artigo `PECA_L`) e `0` em todas as
+   outras, incluindo «Teto» (Artigo `RECORTE_L`); nas `TESTE_*` não há resultado esperado:
+   é o que se quer descobrir.
+4. Avisar o Claude: ele confere e decide com o Paulo como apanhar o recorte interior.

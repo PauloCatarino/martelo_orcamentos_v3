@@ -7,7 +7,7 @@ verificador.
 
 | Ficheiro | Faz |
 |---|---|
-| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual — e com o `ACCUMULATE` corrigido. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual, e a coluna **ISPEC** (forma da peça) — e com o `ACCUMULATE` corrigido. **Ensaio do ISPEC:** 3 colunas `TESTE_*` no fim. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
 | `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas do fim (`COLUNAS_FIM`) estão no topo. |
 | `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça. Também confere CSV antigos, só pelo artigo. |
 
@@ -68,6 +68,27 @@ verificador.
   «Grupo Article Designer», `WC_A_01_MOB1_SUITE_B` dentro de `WC_A_01_MOB1_SUIT`: aparecem,
   porque o nome é diferente).
 
+## Forma da peça: `ISPEC` e recortes interiores (29-10-2026)
+
+Pedido do Paulo: saber no CSV se a peça não é retangular de 4 lados, para o Excel pôr um
+aviso nas Notas («forma especial, pode ter CAM»). O campo `ISPEC` (coluna da `IDBGPL`)
+vale 0 = retangular de 4 lados, 1 = 4 lados com pelo menos um contorno, 2 = mais de 4 lados,
+3 = não é painel; também aparece **4** (30 peças, ex. «Frente da base»), sem descrição da imos.
+
+Nas 160 obras mais recentes (peças cortadas): 30 676 com ISPEC 0, 84 com 1, 348 com 2,
+108 com 3, 30 com 4. **Mas o ISPEC não vê os recortes interiores:** uma peça retangular com
+um contorno interior (perfil `PTYPE='I'` na `IDBPRF`, ex. `REC_CNT_L_RODAPE_FRENTE`,
+`REC_CNT_L_CIMA_TRAS`, `CAVIDADE_POCKET`, `FRESAR_RECORTES_VARADO`) continua com ISPEC 0 —
+**382 peças em 48 obras**. Na `APAGAR_14` o Paulo criou as duas variantes: `PECA_L` (L
+desenhado com 6 orlas → ISPEC 2) e `RECORTE_L` (retangular com o recorte
+`REC_CNT_L_CIMA_TRAS` → ISPEC 0). A V2 leva a coluna **ISPEC** e, no ensaio, 3 colunas
+`TESTE_*` (`EDGECOUNT`, `PRFCNT`, `IDBPRF_PRFID`) para ver se algum campo do motor apanha o
+recorte. Se nenhum apanhar, o plano B é um princípio «Views» (SQL próprio sobre a `IDBGPL`,
+Element Manager) ou o Martelo ler a `IDBPRF` diretamente.
+
+O `ACCUMULATE` não junta peças de formas diferentes numa só linha: nas obras recentes não há
+nenhum caso (uma peça com forma especial tem outro princípio de construção, `CPID`).
+
 ## O defeito do `ACCUMULATE` antigo
 
 `ACCUMULATE=CPID;MATID;FLENG;FWIDTH;INFO5;POSSTR;NAME1;AUFTRAG` junta peças iguais com o
@@ -96,7 +117,7 @@ O CSV da V2 **não pode** ir para o princípio por defeito antes disto, porque a
 
 O que mudar: procurar «Artigo» (aceitando «RP» nos CSV antigos); copiar por **nome** de
 cabeçalho; **deixar o SubArtigo vazio quando é igual ao ArtigoNome** (regra do Paulo); o
-ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; na `LISTA_ORDENADA` (linha 3) pôr
+ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; com o ISPEC ≠ 0 (e, se se conseguir, com recorte interior) escrever um aviso nas Notas (texto a decidir com o Paulo); na `LISTA_ORDENADA` (linha 3) pôr
 «SubArtigo» em R, à direita de «Artigo» (Q), com Notas/Notas_1/Cliente_Final em S/T/U e sem
 CNC/ABD/BHT; decidir se o SubArtigo segue para a `LISTAGEM_CUT_RITE`. Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
 para a `LISTAGEM_CUT_RITE` já é por nome (`ARTIGO`, `NOTAS`…). Mudar o modelo só afeta as

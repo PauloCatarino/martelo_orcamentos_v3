@@ -9,7 +9,9 @@ material, comprimento, largura) e compara com o CSV. Serve para:
 
 - validar as colunas Artigo/SubArtigo do ``EXPORT_CSV_CUT_RITE_LE_V2.cfg``;
 - apanhar peças de RPs diferentes juntadas numa só linha (o ``ACCUMULATE`` antigo fazia
-  isso às peças de sub-artigos, por terem ``POSSTR`` vazio).
+  isso às peças de sub-artigos, por terem ``POSSTR`` vazio);
+- conferir a coluna ``ISPEC`` (forma da peça) e listar as peças que não são retangulares ou
+  que têm recorte interior (perfil ``PTYPE='I'`` na ``IDBPRF``, que o ISPEC não apanha).
 
 Só faz SELECT. Uso (a partir da pasta principal do Martelo, para apanhar o ``.env``):
 
@@ -40,7 +42,7 @@ def _sql_texto(valor: str) -> str:
     return "'" + valor.replace("'", "''") + "'"
 
 
-def ler_base(orderid: str) -> tuple[list[dict], list[dict], list[dict]]:
+def ler_base(orderid: str) -> tuple[list[dict], list[dict], list[dict], set[int]]:
     from app.db.session import SessionLocal
     from app.services import imos_sql
 
@@ -54,10 +56,12 @@ def ler_base(orderid: str) -> tuple[list[dict], list[dict], list[dict]]:
     fora = ",".join(str(t) for t in TIPOS_FORA)
     pecas = imos_sql.run_imos_select(
         cfg,
-        "SELECT ID, NAME1, MATID, MATNAME, CLENG, CWIDTH, CNT, PARTPOSSTR FROM IDBGPL "
+        "SELECT ID, NAME1, MATID, MATNAME, CLENG, CWIDTH, CNT, PARTPOSSTR, ISPEC FROM IDBGPL "
         f"WHERE ORDERID={oid} AND (CUT_FLAG <> 0 OR CUT_FLAG IS NULL) AND TYP NOT IN ({fora})",
     )
-    return grps, info, pecas
+    recortes = imos_sql.run_imos_select(
+        cfg, f"SELECT DISTINCT ID FROM IDBPRF WHERE ORDERID={oid} AND PTYPE='I'")
+    return grps, info, pecas, {int(r["ID"]) for r in recortes}
 
 
 def sub_artigos(grps: list[dict], info: list[dict]):
@@ -88,18 +92,22 @@ def _chave(rp, sub, desc, mat, comp, larg):
             round(float(comp), 1), round(float(larg), 1))
 
 
-def esperado(orderid: str) -> dict:
-    grps, info, pecas = ler_base(orderid)
+def esperado(orderid: str) -> tuple[dict, dict]:
+    """Quantidades por chave e, por chave, as formas: {(ISPEC, tem recorte interior)}."""
+    grps, info, pecas, recortes = ler_base(orderid)
     acima = sub_artigos(grps, info)
     soma: dict = defaultdict(float)
+    formas: dict = defaultdict(set)
     for p in pecas:
         arts = acima(int(p["ID"]))
         # = IFEQUAL[ARTNR;TOPARTICLE_NAME[ARTNR_NR_ID];<vazio>;ARTNR] do .cfg
         sub = arts[0] if arts and arts[0] != arts[-1] else ""
         rp = (p["PARTPOSSTR"] or "").split(".")[0]  # = SPLITLEFT[PARTPOSSTR;.] do .cfg
         mat = (p["MATNAME"] or "").strip() or (p["MATID"] or "").strip()  # = REPLACE_EMPTY[MATNAME;MATID]
-        soma[_chave(rp, sub, p["NAME1"] or "", mat, p["CLENG"] or 0, p["CWIDTH"] or 0)] += float(p["CNT"] or 0)
-    return soma
+        k = _chave(rp, sub, p["NAME1"] or "", mat, p["CLENG"] or 0, p["CWIDTH"] or 0)
+        soma[k] += float(p["CNT"] or 0)
+        formas[k].add((str(int(p["ISPEC"] or 0)), int(p["ID"]) in recortes))
+    return soma, formas
 
 
 def ler_csv(caminho: Path) -> tuple[dict, bool, list[dict]]:
@@ -127,7 +135,7 @@ def main() -> int:
         print(f"CSV não encontrado: {caminho}")
         return 2
 
-    base = esperado(a.obra)
+    base, formas = esperado(a.obra)
     lido, tem_sub, linhas = ler_csv(caminho)
 
     print(f"CSV: {caminho}  ({len(linhas)} linhas)")
@@ -155,7 +163,24 @@ def main() -> int:
         print(f"\n{len(difs)} diferença(s)  [Artigo | SubArtigo | descrição | material | comp x larg]  base -> CSV")
         for (rp, sub, desc, mat, c, l), qb, qc in difs[:60]:
             print(f"   {rp} | {sub or '-'} | {desc} | {mat} | {c}x{l}   {qb:g} -> {qc:g}")
-    return 0 if not difs else 1
+
+    erros_forma = 0
+    if linhas and "ISPEC" in linhas[0]:
+        print("\nForma das peças (ISPEC 0 = retangular de 4 lados):")
+        for r in linhas:
+            k = _chave(r["Artigo"], r["SubArtigo"], r["Descricao"], r["Material"], r["Comp."], r["Larg."])
+            na_base = formas.get(k) or formas.get((k[0], "") + k[2:]) or set()
+            ispecs = {i for i, _ in na_base}
+            recorte = any(rec for _, rec in na_base)
+            certo = (r["ISPEC"] or "").strip() in ispecs
+            erros_forma += 0 if certo else 1
+            if r["ISPEC"].strip() not in ("", "0") or recorte or not certo:
+                print(f"   {r['Artigo']} | {r['Descricao']} | {r['Comp.']}x{r['Larg.']} | ISPEC no CSV "
+                      f"{r['ISPEC'] or '-'} (base {'/'.join(sorted(ispecs)) or '?'})"
+                      + (" | RECORTE INTERIOR" if recorte else "") + ("" if certo else "  <- DIFERENTE"))
+        print("   ISPEC certo em todas as linhas." if not erros_forma
+              else f"   {erros_forma} linha(s) com ISPEC diferente da base.")
+    return 0 if not difs and not erros_forma else 1
 
 
 if __name__ == "__main__":
