@@ -8,7 +8,7 @@ verificador.
 | Ficheiro | Faz |
 |---|---|
 | `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual, e a coluna **ISPEC** (forma da peça) — e com o `ACCUMULATE` corrigido. Testada na APAGAR_14 (29-10, 15h05); fica como **cópia de referência**. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
-| `EXPORT_CSV_CUT_RITE_LE_V1.cfg` | **Ensaio (29-10-2026):** a V2 com as colunas 16-18 com os nomes que o Paulo deu no `imos.msg`: `… Cliente; Posicao; Artigo/SubArtigo; Piso; Notas; …; ArtigoNome; ISPEC`. **Piso** = `ART_CPID`, o campo «Name» do artigo. O `V1.cfg` antigo (ensaio do cabeçalho da obra, 07-10) ficou no servidor como `EXPORT_CSV_CUT_RITE_LE_V1.cfg.copia_2026-10-29_173746`. |
+| `EXPORT_CSV_CUT_RITE_LE_V1.cfg` | **Ensaio (29-10-2026):** a V2 com as colunas 16-18 com os nomes que o Paulo deu no `imos.msg`: `… Cliente; Posicao; Artigo/SubArtigo; Piso; Notas; …; ArtigoNome; ISPEC`. **Piso** = `CP90NAME`, o campo «Name» do artigo (o 1.º ensaio, com `ART_CPID`, saiu vazio). O `V1.cfg` antigo (ensaio do cabeçalho da obra, 07-10) ficou no servidor como `EXPORT_CSV_CUT_RITE_LE_V1.cfg.copia_2026-10-29_173746`. |
 | `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas do fim (`COLUNAS_FIM`) estão no topo. |
 | `gerar_cfg_v1_piso.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V1.cfg` a partir da V2 desta pasta (muda só o cabeçalho, as colunas 16-18 e a linha das peças; as da V2 ficam comentadas). |
 | `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça, ISPEC e, no CSV da V1, o Piso. Também confere CSV antigos, só pelo artigo. |
@@ -70,15 +70,39 @@ verificador.
   | 10410 | Pos. Number | Posicao | `IDBINFO.POSSTR` | `POSSTR` (vazio nos sub-artigos); a do principal: `SPLITLEFT[PARTPOSSTR;.]` |
   | 6700 | Hierarchy | Hierarquia de Artigo | (calculado; cinzento no iX CAD) | — |
   | 41 | Name of Element Group | Artigo/SubArtigo | `IDBINFO.GROUPNAME` (= `IDBGRPS.NAME`) | `ARTNR` (artigo mais próximo) |
-  | 1219 | Name | Piso | `IDBINFO.CPID` do artigo | `ART_CPID` (ensaio) |
+  | 1219 | Name | Piso | `IDBINFO.CPID` do artigo | `CP90NAME` (ou `IDBINFO_CPID`); **não** `ART_CPID` |
 
   O «Name» vem com `.` por defeito; num sub-artigo traz o ID dele (ex. `49187` no
   `BL_3GVT_RP_01`). Na `APAGAR_14` o `RP_04_DIR` tem Posicao `Fração_A` e Piso `Piso 1º`.
-- **Prefixo `ART_`** (lido no `IDBCCLG25.dll`, sem documentação da imos): `ART_<coluna>` lê
-  a coluna da `IDBINFO` do artigo da peça (`ARTNR_NR_ID`). O Productionmanager da imos usa o
-  mesmo género de prefixo, `IDBINFO_<coluna>` (`IDBINFO_BOMFACTOR`, `IDBINFO_ID`), no
-  `STRING_POSITION`, que é ao nível do artigo. Outros prefixos no motor: `PROADMIN_`,
-  `IMORDER`, `IDBVERSO_`, `DRAWREF_`, `CMSINCIDENTTEXT_`.
+- **Como o motor lê os campos do artigo** (código do `IDBCCLG25.dll` desmontado a
+  29-10-2026; a imos não documenta isto). Os campos que contêm `HEIGHT`, `WIDTH`, `DEPTH`,
+  `CP90NAME`, `CPID`, `INFO1`–`INFO10` (exceto `IDENT_`/`IDBWG_`/`IDBGPL_INFO*`), `ARTCALC1-3`,
+  `POSSTR`, `PARTPOSSTR`, `SERIALNO`, `ATTVALUEGROUP` ou `PLANPOSDATA[`, e os que começam por
+  `IDBINFO_`, leem a `IDBINFO` do **artigo da peça** (`ARTNR_NR_ID`; com `PLANPOS_POSSTR`,
+  `POSNR_NR_ID`). A coluna lida é:
+  - `CP90NAME` → `CPID`;
+  - `PLANPOS_POSSTR` → `POSSTR`;
+  - `IDBINFO_<coluna>` → `<coluna>` (é como faz o Productionmanager da imos: `IDBINFO_BOMFACTOR`,
+    `IDBINFO_ID`).
+
+  Por isso o `POSSTR` vem vazio nos sub-artigos.
+- **`ART_<campo>` não é a `IDBINFO`:** lê o `CPID` do artigo da peça e procura o `<campo>` no
+  artigo do **catálogo** com esse nome. No ensaio de 29-10 (18h26) o `ART_CPID` saiu vazio em
+  todas as linhas. Outros prefixos no motor: `PROADMIN_`, `IMORDER`, `IDBVERSO_`, `DRAWREF_`,
+  `CMSINCIDENTTEXT_`.
+- **Funções, não campos:** `EDGECOUNT` é uma função (`EDGECOUNT[...]`); sem `[...]` dá «O campo
+  não existe». A tabela de funções do motor tem também `VALUE_FROM_TABLE`, `ASSEMBLY`
+  (`ASSEMBLY[ID;ID;#]`), `ASSEMBLY_DATA`, `PARENTASSEMBLY`, `PARTS_IN_ARTICLE` e
+  `ARTICLE_VARIABLE`, sem documentação. Talvez sirvam para ler o artigo **principal** num
+  sub-artigo.
+- **O «Name» (CPID) nos artigos** (300 obras recentes):
+  - 2571 vezes `.`;
+  - 1272 igual ao nome do grupo;
+  - 1076 o próprio ID;
+  - poucas o nome de um artigo do catálogo (`TULHA_600`, `CESTO_SIGE_…`, `TANQUE_COZINHA`).
+
+  Nestes últimos, o `ART_` e o que o iMos faz pelo catálogo dependem do «Name»: escrever lá o
+  piso pode estragá-los.
 - Funções que o motor aceita (lidas no `IDBCCLG25.dll`): `IFEMPTY`, `IFEQUAL`, `IFNOTBLANK`,
   `IF_GREATER`, `COMPARE`, `REPLACE_EMPTY`, `SPLITLEFT`, `SPLITRIGHT`, `MAKESTRING`, `UPPER`,
   `TEXT[...]`, `TOPARTICLE_NAME`…

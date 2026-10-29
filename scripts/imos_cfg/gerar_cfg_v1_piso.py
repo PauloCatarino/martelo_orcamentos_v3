@@ -8,8 +8,9 @@ o Paulo deu aos campos do artigo no ``imos.msg`` (29-10-2026):
 - 41 «Name of Element Group» → «Artigo/SubArtigo»: o nome do grupo do artigo mais próximo
   da peça (``ARTNR``);
 - 1219 «Name» → «Piso»: o campo «Name» do artigo, que na base é ``IDBINFO.CPID``. No .cfg
-  lê-se com o prefixo ``ART_`` (colunas da ``IDBINFO`` do artigo da peça), visto no
-  ``IDBCCLG25.dll``; a imos não o documenta.
+  é o ``CP90NAME``, que a imos usa nos .cfg dela (o ``IDBCCLG25.dll`` lê-o na coluna CPID da
+  ``IDBINFO`` do artigo da peça, ``ARTNR_NR_ID``). O ``ART_CPID`` do 1.º ensaio saiu vazio:
+  o ``ART_<campo>`` vai ao artigo do CATÁLOGO com o nome que está no «Name».
 
 Mantém latin1 + CRLF. Uso (grava no repositório; depois copiar para ``I:\\CFG`` e
 reimportar no princípio ``EXPORT_CSV_CUT_RITE_LE_V1``):
@@ -22,7 +23,7 @@ from pathlib import Path
 ORIGEM = Path(__file__).with_name("EXPORT_CSV_CUT_RITE_LE_V2.cfg")
 destino = Path(sys.argv[1])
 
-PISO_EXPR = "ART_CPID"
+PISO_EXPR = "CP90NAME"
 
 t = ORIGEM.read_bytes().decode("latin1")
 NL = "\r\n"
@@ -49,9 +50,9 @@ t = trocar(t, titulo_v2, NL.join([
     ";     a peça está (IDBINFO.CPID; ex.: Piso 1º). Num sub-artigo vem o «Name» do",
     ";     sub-artigo, não o do principal (o Excel corrige pelo ArtigoNome); artigos",
     ";     sem piso têm \".\", o valor por defeito.",
-    ";  ATENÇÃO: o prefixo ART_ foi lido no motor (IDBCCLG25.dll), a imos não o",
-    ";  documenta. Se aparecer «O campo não existe na base de dados!», terminar o",
-    ";  idbcclg no Gestor de Tarefas (uma caixa por peça, não fecham com o OK).",
+    ";  O 1.º ensaio usou ART_CPID e saiu vazio: o prefixo ART_ vai ao artigo do",
+    ";  catálogo com o nome que está no «Name». O CP90NAME é o campo que a imos usa",
+    ";  nos .cfg dela para o «Name» do artigo (visto no motor, IDBCCLG25.dll).",
     "; Descrição da V2, de onde este vem:",
     "",
 ]))

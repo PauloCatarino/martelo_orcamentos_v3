@@ -3125,3 +3125,35 @@ Guião de teste (ronda 7):
    - Piso: `Piso 1º` nas linhas do `RP_04_DIR`; `.` nas dos outros artigos; `49187` nas do
      gaveteiro (é o «Name» do sub-artigo; o Excel vai corrigir).
 6. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).
+
+**Resultado (29-10-2026, 18h26):** não houve caixas de erro e as 112 linhas saíram com 23
+colunas. Posicao e Artigo/SubArtigo estão certos: `Apart_B`/`RP_01` (o antigo `RP_A_01_ESQ`,
+agora com Piso `R/C`) e `Fração_A`/`RP_04_DIR`. **O Piso saiu vazio em todas as linhas.**
+
+O código do motor explica porquê. O `ART_<campo>` não lê a `IDBINFO`: lê o «Name» do artigo e
+procura o `<campo>` no artigo do **catálogo** com esse nome. Como «R/C» e «Piso 1º» não são
+artigos do catálogo, vem vazio.
+
+O campo que lê a coluna `CPID` do artigo é o **`CP90NAME`**, que a imos usa nos `.cfg` dela;
+o `IDBINFO_CPID` faz o mesmo.
+
+### Ronda 8: Piso com `CP90NAME` (2026-10-29)
+
+Feito: `gerar_cfg_v1_piso.py` com o Piso = `CP90NAME`. O resto do `.cfg` V1 fica igual (23
+colunas) e foi copiado para `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg`.
+
+Guião de teste (ronda 8):
+
+1. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg` →
+   **Guardar**.
+2. **iX CAD**, obra **APAGAR_14** → gravar com **«Lista de peças»** → **Processar
+   transferência de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ → «Substituir?» **Sim**.
+   Se o CSV estiver aberto no Excel, fechá-lo antes; se não, dá «Erro no ficheiro!».
+3. Esperado no `APAGAR_14_Lista_Corte.csv` (abrir no Notepad++), coluna **Piso**:
+   - `R/C` nas linhas do `RP_01` (Posicao `Apart_B`);
+   - `49187` nas do gaveteiro `BL_3GVT_RP_01`: é o «Name» do sub-artigo, que o Excel vai
+     trocar pelo `R/C` do principal;
+   - `Piso 1º` nas do `RP_04_DIR`;
+   - `.` nas outras.
+4. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).
