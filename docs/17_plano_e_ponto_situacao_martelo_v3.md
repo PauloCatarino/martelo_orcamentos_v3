@@ -3137,7 +3137,7 @@ artigos do catálogo, vem vazio.
 O campo que lê a coluna `CPID` do artigo é o **`CP90NAME`**, que a imos usa nos `.cfg` dela;
 o `IDBINFO_CPID` faz o mesmo.
 
-### Ronda 8: Piso com `CP90NAME` (2026-10-29)
+### Ronda 8: Piso com `CP90NAME` (2026-10-29, TESTADO às 19h40)
 
 Feito: `gerar_cfg_v1_piso.py` com o Piso = `CP90NAME`. O resto do `.cfg` V1 fica igual (23
 colunas) e foi copiado para `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg`.
@@ -3157,3 +3157,22 @@ Guião de teste (ronda 8):
    - `Piso 1º` nas do `RP_04_DIR`;
    - `.` nas outras.
 4. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).
+
+**Resultado (29-10-2026, 19h40): OK.** O CSV tem 112 linhas de peças (196 peças) + cabeçalho,
+todas com 23 colunas e fim de linha CRLF. O verificador confirmou Posicao, Artigo/SubArtigo,
+quantidades, ISPEC e Piso em todas as linhas:
+
+| Posicao | Artigo/SubArtigo | Piso | ArtigoNome | Linhas |
+|---|---|---|---|---|
+| `Apart_B` | `BL_3GVT_RP_01` | `49187` | `RP_01` | 10 |
+| `Apart_B` | `RP_01` | `R/C` | `RP_01` | 21 |
+| `Fração_A` | `RP_04_DIR` | `Piso 1º` | `RP_04_DIR` | 24 |
+| `PECA_L`, `RECORTE_L`, `RP_A_01_DIR`, `RP_A_02_ESQ` | (o mesmo) | `.` | (o mesmo) | 57 |
+
+ISPEC: `2` no «Topo» (PECA_L) e `0` nas outras. A exportação V1 fica fechada. Falta:
+- o Excel (README `scripts/imos_cfg`, «Falta no Excel»):
+  - procurar as colunas pelo nome (Posicao, Artigo/SubArtigo, Piso);
+  - nas linhas de sub-artigos, pôr o Piso do principal (`R/C` em vez de `49187`);
+  - `.` → vazio;
+  - aviso do ISPEC nas Notas;
+- passar o V1 para o princípio por defeito, o que o Paulo faz depois do Excel.
