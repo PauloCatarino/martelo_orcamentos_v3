@@ -1,10 +1,12 @@
 """Confere o CSV da transferência de dados do iMos (lista de corte) contra a base do iMos.
 
 Para cada peça cortada da obra, sobe a árvore ``IDBGRPS`` e sabe em que artigo principal
-(RP) e em que sub-artigo ela está. Depois soma as quantidades por (RP, Sub_Artigo,
-descrição, material, comprimento, largura) e compara com o CSV. Serve para:
+(coluna Artigo, antes RP) e em que artigo mais próximo (coluna SubArtigo = ``ARTNR``: o
+sub-artigo, ou o próprio artigo quando a peça está diretamente nele) ela está. Depois soma
+as quantidades por (Artigo, SubArtigo, descrição, material, comprimento, largura) e compara
+com o CSV. Serve para:
 
-- validar a coluna ``Sub_Artigo`` do ``EXPORT_CSV_CUT_RITE_LE_V2.cfg``;
+- validar as colunas Artigo/SubArtigo do ``EXPORT_CSV_CUT_RITE_LE_V2.cfg``;
 - apanhar peças de RPs diferentes juntadas numa só linha (o ``ACCUMULATE`` antigo fazia
   isso às peças de sub-artigos, por terem ``POSSTR`` vazio).
 
@@ -13,8 +15,9 @@ Só faz SELECT. Uso (a partir da pasta principal do Martelo, para apanhar o ``.e
     python scripts/imos_cfg/verificar_csv_subartigos.py APAGAR_14
     python scripts/imos_cfg/verificar_csv_subartigos.py 1172_01_26_INNERE caminho\\do.csv
 
-Sem caminho, lê ``...\\Cutrite_Import_CSV\\TESTE_SUBARTIGOS\\<obra>_Lista_Corte.csv``. Um CSV
-sem a coluna ``Sub_Artigo`` (o do ``.cfg`` antigo) é conferido só pelo RP.
+Sem caminho, lê ``...\\Cutrite_Import_CSV\\<obra>_Lista_Corte.csv``. Aceita os cabeçalhos
+antigos (``RP``; ``DIAG_ARTNR`` do ensaio de 29-10); um CSV sem SubArtigo (o do ``.cfg``
+antigo) é conferido só pelo artigo.
 """
 from __future__ import annotations
 
@@ -91,7 +94,7 @@ def esperado(orderid: str) -> dict:
     soma: dict = defaultdict(float)
     for p in pecas:
         arts = acima(int(p["ID"]))
-        sub = arts[0] if len(arts) > 1 else ""
+        sub = arts[0] if arts else ""  # = ARTNR do .cfg: o artigo mais próximo da peça
         rp = (p["PARTPOSSTR"] or "").split(".")[0]  # = SPLITLEFT[PARTPOSSTR;.] do .cfg
         mat = (p["MATNAME"] or "").strip() or (p["MATID"] or "").strip()  # = REPLACE_EMPTY[MATNAME;MATID]
         soma[_chave(rp, sub, p["NAME1"] or "", mat, p["CLENG"] or 0, p["CWIDTH"] or 0)] += float(p["CNT"] or 0)
@@ -101,20 +104,22 @@ def esperado(orderid: str) -> dict:
 def ler_csv(caminho: Path) -> tuple[dict, bool, list[dict]]:
     with caminho.open(encoding="latin1", newline="") as f:
         linhas = list(csv.DictReader(f, delimiter=";"))
-    tem_sub = bool(linhas) and "Sub_Artigo" in linhas[0]
+    col_art = next((c for c in ("Artigo", "RP") if linhas and c in linhas[0]), "Artigo")
+    col_sub = next((c for c in ("SubArtigo", "DIAG_ARTNR") if linhas and c in linhas[0]), None)
     soma: dict = defaultdict(float)
     for r in linhas:
-        soma[_chave(r["RP"], r.get("Sub_Artigo") or "", r["Descricao"], r["Material"],
+        r["Artigo"], r["SubArtigo"] = r.get(col_art) or "", (r.get(col_sub) or "") if col_sub else ""
+        soma[_chave(r["Artigo"], r["SubArtigo"], r["Descricao"], r["Material"],
                     r["Comp."], r["Larg."])] += float(r["Qt."] or 0)
-    return soma, tem_sub, linhas
+    return soma, col_sub is not None, linhas
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("obra", help="nome da obra no iMos (PROADMIN.NAME), ex. APAGAR_14")
-    ap.add_argument("csv", nargs="?", help="CSV a conferir (por defeito, o da pasta TESTE_SUBARTIGOS)")
+    ap.add_argument("csv", nargs="?", help="CSV a conferir (por defeito, o da pasta Cutrite_Import_CSV)")
     a = ap.parse_args()
-    caminho = Path(a.csv) if a.csv else PASTA_CSV / "TESTE_SUBARTIGOS" / f"{a.obra}_Lista_Corte.csv"
+    caminho = Path(a.csv) if a.csv else PASTA_CSV / f"{a.obra}_Lista_Corte.csv"
     if not caminho.is_file():
         print(f"CSV não encontrado: {caminho}")
         return 2
@@ -123,14 +128,14 @@ def main() -> int:
     lido, tem_sub, linhas = ler_csv(caminho)
 
     print(f"CSV: {caminho}  ({len(linhas)} linhas)")
-    subs = Counter((k[0], k[1]) for k, q in base.items() if k[1])
-    print(f"Na base: {sum(q for k, q in base.items() if k[1]):.0f} peças em sub-artigos "
-          f"({len(subs)} pares RP/sub-artigo)")
+    subs = Counter((k[0], k[1]) for k, q in base.items() if k[1] and k[1] != k[0])
+    print(f"Na base: {sum(q for k, q in base.items() if k[1] and k[1] != k[0]):.0f} peças em "
+          f"sub-artigos ({len(subs)} pares Artigo/SubArtigo)")
     for (rp, sub), n in sorted(subs.items()):
         print(f"   {rp:<24} {sub}")
 
-    if not tem_sub:  # .cfg antigo: compara só pelo RP
-        print("O CSV não tem a coluna Sub_Artigo: a conferir só pelo RP.")
+    if not tem_sub:  # .cfg antigo: compara só pelo artigo
+        print("O CSV não tem a coluna SubArtigo: a conferir só pelo Artigo.")
         sem_sub: dict = defaultdict(float)
         for k, q in base.items():
             sem_sub[(k[0], "") + k[2:]] += q
@@ -142,19 +147,11 @@ def main() -> int:
         if abs(qb - qc) > 1e-6:
             difs.append((k, qb, qc))
     if not difs:
-        print("\nOK: RP, Sub_Artigo e quantidades do CSV batem certo com a base.")
+        print("\nOK: Artigo, SubArtigo e quantidades do CSV batem certo com a base.")
     else:
-        print(f"\n{len(difs)} diferença(s)  [RP | Sub_Artigo | descrição | material | comp x larg]  base -> CSV")
+        print(f"\n{len(difs)} diferença(s)  [Artigo | SubArtigo | descrição | material | comp x larg]  base -> CSV")
         for (rp, sub, desc, mat, c, l), qb, qc in difs[:60]:
             print(f"   {rp} | {sub or '-'} | {desc} | {mat} | {c}x{l}   {qb:g} -> {qc:g}")
-
-    diag = [c for c in (linhas[0].keys() if linhas else []) if c and c.startswith("DIAG_")]
-    if diag:
-        print("\nColunas DIAG_* (valores distintos por RP / Sub_Artigo):")
-        vistos = Counter(tuple([r["RP"], r.get("Sub_Artigo", "")] + [r[c] for c in diag]) for r in linhas)
-        print("   RP | Sub_Artigo | " + " | ".join(diag) + " | linhas")
-        for v, n in sorted(vistos.items())[:80]:
-            print("   " + " | ".join(x or "-" for x in v) + f" | {n}")
     return 0 if not difs else 1
 
 

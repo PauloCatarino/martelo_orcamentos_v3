@@ -2836,8 +2836,10 @@ Feito (ronda 1, ensaio):
 - `EXPORT_CSV_CUT_RITE_LE_V2.cfg` (em `I:\CFG` e em `scripts/imos_cfg`): igual ao atual nas
   colunas 1–19; coluna 20 **Sub_Artigo** (`IFEMPTY[POSSTR;ARTNR;TEXT[]]`: nome do artigo mais
   próximo quando a peça está num sub-artigo; vazio no resto); sem CNC/ABD/BHT; `ACCUMULATE`
-  com `ARTNR_NR_ID`. Só no ensaio: 4 colunas `DIAG_*` e saída na subpasta
-  `TESTE_SUBARTIGOS` (a macro da Lista Material não a lê).
+  com `ARTNR_NR_ID`. Só no ensaio: 4 colunas `DIAG_*` e `SUBDIRNAME=TESTE_SUBARTIGOS`.
+  **Erro meu (corrigido na ronda 2):** o ficheiro não foi para a subpasta; saiu na pasta de
+  cima com o nome colado (`TESTE_SUBARTIGOSAPAGAR_14_Lista_Corte.csv`), porque o
+  `SUBDIRNAME` só funciona se o nome do ficheiro começar por `\`.
 - `scripts/imos_cfg/verificar_csv_subartigos.py`: compara o CSV com a base do iMos (só
   SELECT). Com o CSV atual da `APAGAR_14` dá «OK» (110 linhas).
 
@@ -2870,3 +2872,46 @@ Guião de teste (ronda 1):
    `DIAG_*` e prepara a versão final (sem `DIAG_*`, na pasta normal). Só depois se decide
    importar no princípio por defeito `EXPORT_CSV_CUT_RITE_LE` e ajustar o modelo da Lista
    Material (coluna U da `LISTA_ORDENADA` passa de «CNC» a «Sub_Artigo»).
+
+### Ronda 2: colunas finais (2026-10-29)
+
+Resultado da ronda 1 (o Paulo testou a `APAGAR_14`; a `CRW_2128_2711_01` ficou de fora por ser
+antiga): `DIAG_ARTNR` sai certo — `BL_3GVT_RP_01` nas 10 linhas (21 peças) do gaveteiro do
+`RP_A_01_ESQ`, o nome do RP nas outras — e o verificador dá «OK» (110 linhas, igual ao CSV
+antigo, por isso o `ARTNR_NR_ID` no `ACCUMULATE` não estragou a junção). A coluna
+`Sub_Artigo` (`IFEMPTY`) falhou: saiu ao contrário. O `TOPARTICLE_NAME[ARTNR_NR_ID]` também
+funciona.
+
+Decisões do Paulo: ordem `… Enc.; Cliente; Artigo; SubArtigo; Notas …` — a coluna **RP passa a
+chamar-se Artigo** e a **SubArtigo** (= `DIAG_ARTNR`, ou seja `ARTNR`) fica à direita; o
+ficheiro volta ao nome normal `<obra>_Lista_Corte.csv`; primeiro afina-se a exportação, depois
+o Excel; é ele que importa o `.cfg` no princípio por defeito quando estiver afinado.
+
+Feito: `EXPORT_CSV_CUT_RITE_LE_V2.cfg` final (em `I:\CFG` e no repositório) — colunas 1–15
+iguais, 16 Artigo, 17 SubArtigo, 18 Notas, 19 Notas_1, 20 Cliente_Final (as duas últimas têm
+dados em obras reais: 15 e 856 linhas em 500 CSV), sem `DIAG_*` nem `SUBDIRNAME`. Nas peças
+fora de sub-artigo o SubArtigo repete o nome do artigo (é o que o `ARTNR` dá).
+
+**Falta no Excel — não esquecer** (detalhe em `scripts/imos_cfg/README.md`, «Falta no
+Excel»): a macro `Import_CSV_Imos_1` procura o cabeçalho «RP» e copia as colunas **por
+posição**; com o CSV novo o SubArtigo cairia em **Notas** e as notas em Notas_1. Por isso o V2
+**não vai para o princípio por defeito** antes de a macro passar a copiar por nome e a
+`LISTA_ORDENADA` ganhar a coluna SubArtigo à direita de Artigo.
+
+Guião de teste (ronda 2):
+
+1. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → botão **↓ (Importar)** → outra vez
+   `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg` (o ficheiro mudou; o iMos usa a cópia que tem na
+   base, por isso é preciso importar de novo) → **Guardar**.
+2. **iX CAD**, obra **APAGAR_14** → gravar com **«Lista de peças»** → **Processar transferência
+   de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓. Se perguntar «Substituir ficheiro
+   existente?» → **Sim**. Esperado: `I:\Cutrite\Work\Cutrite_Import_CSV\APAGAR_14_Lista_Corte.csv`
+   (o normal, substituído — é obra de teste).
+3. Abrir o CSV no Bloco de Notas (não gravar no Excel). Esperado: cabeçalho
+   `Descricao;…;Enc.;Cliente;Artigo;SubArtigo;Notas;Notas_1;Cliente_Final;`; 110 linhas;
+   `BL_3GVT_RP_01` na coluna SubArtigo das 10 linhas do gaveteiro do RP_A_01_ESQ; nas
+   outras, o SubArtigo igual ao Artigo.
+4. **Não** usar o V1 em obras reais até o Excel estar adaptado (o CSV tem o mesmo nome e a
+   Lista Material importá-lo-ia com as colunas trocadas).
+5. Avisar o Claude para conferir com o verificador.
