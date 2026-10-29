@@ -2915,3 +2915,39 @@ Guião de teste (ronda 2):
 4. **Não** usar o V1 em obras reais até o Excel estar adaptado (o CSV tem o mesmo nome e a
    Lista Material importá-lo-ia com as colunas trocadas).
 5. Avisar o Claude para conferir com o verificador.
+
+### Ronda 3: SubArtigo vazio quando o nome é igual ao artigo (2026-10-29, ENSAIO)
+
+Resultado da ronda 2: exportação OK (o Paulo confirmou no Excel). Pedido novo: a coluna
+Artigo fica como está; a **SubArtigo só mostra o nome quando é diferente do nome do artigo
+principal, senão fica vazia**.
+
+Descoberto:
+
+- O `IFEMPTY[x;se_vazio;se_não]` funciona (confirmado no XML do Productionmanager); o que
+  falhou na ronda 1 foi o `TEXT[]` vazio. Para «vazio» usa-se o campo `VENEER_ID`, que está
+  vazio em todas as peças das obras recentes (139 903).
+- A coluna Artigo mostra a **posição**, que em ~9 % dos artigos é um número («1», «001») e não
+  o nome (ex.: `1870_01_26_JF_VIVA`, artigo `RP_A_01a` na posição `1`). Por isso o SubArtigo
+  compara **nome com nome**: `IFEQUAL[ARTNR;TOPARTICLE_NAME[ARTNR_NR_ID];VENEER_ID;ARTNR]`.
+- Com esta regra também aparecem sub-artigos com posição própria e nome diferente («Peça de
+  pontos», «Grupo Article Designer», `WC_A_01_MOB1_SUITE_B`); os artigos compostos com o mesmo
+  nome (ex. `RP_D_15_RC_FRENTE`) ficam vazios.
+- A sintaxe do `IFEQUAL` não está documentada: o ensaio leva 3 colunas `TESTE_*` no fim para a
+  confirmar (e uma alternativa, se falhar).
+
+Guião de teste (ronda 3):
+
+1. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg`
+   (mudou outra vez) → **Guardar**.
+2. **iX CAD**, obra **APAGAR_14** → gravar com **«Lista de peças»** → **Processar transferência
+   de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ → «Substituir?» **Sim**. Se der erro,
+   copiar a mensagem para o Claude.
+3. Esperado em `I:\Cutrite\Work\Cutrite_Import_CSV\APAGAR_14_Lista_Corte.csv`:
+   - **SubArtigo** = `BL_3GVT_RP_01` nas 10 linhas do gaveteiro do RP_A_01_ESQ e **vazio** em
+     todas as outras;
+   - no fim, `TESTE_IFEQUAL_TXT` = `DIFERENTE` no gaveteiro e `IGUAL` no resto;
+     `TESTE_IFEMPTY_CAMPO` = `BL_3GVT_RP_01` no gaveteiro e vazio no resto;
+     `TESTE_IFEMPTY_TXT` = `VAZIO` no gaveteiro e `CHEIO` no resto.
+4. Avisar o Claude: ele confere com o verificador e tira as colunas `TESTE_*` (versão final).

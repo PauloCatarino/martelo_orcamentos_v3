@@ -1,10 +1,10 @@
 """Confere o CSV da transferência de dados do iMos (lista de corte) contra a base do iMos.
 
 Para cada peça cortada da obra, sobe a árvore ``IDBGRPS`` e sabe em que artigo principal
-(coluna Artigo, antes RP) e em que artigo mais próximo (coluna SubArtigo = ``ARTNR``: o
-sub-artigo, ou o próprio artigo quando a peça está diretamente nele) ela está. Depois soma
-as quantidades por (Artigo, SubArtigo, descrição, material, comprimento, largura) e compara
-com o CSV. Serve para:
+(coluna Artigo, antes RP) e em que artigo mais próximo (``ARTNR``) ela está. A coluna
+SubArtigo leva esse nome só quando é diferente do nome do artigo principal; senão fica vazia
+(regra do Paulo, 29-10-2026). Depois soma as quantidades por (Artigo, SubArtigo, descrição,
+material, comprimento, largura) e compara com o CSV. Serve para:
 
 - validar as colunas Artigo/SubArtigo do ``EXPORT_CSV_CUT_RITE_LE_V2.cfg``;
 - apanhar peças de RPs diferentes juntadas numa só linha (o ``ACCUMULATE`` antigo fazia
@@ -15,9 +15,8 @@ Só faz SELECT. Uso (a partir da pasta principal do Martelo, para apanhar o ``.e
     python scripts/imos_cfg/verificar_csv_subartigos.py APAGAR_14
     python scripts/imos_cfg/verificar_csv_subartigos.py 1172_01_26_INNERE caminho\\do.csv
 
-Sem caminho, lê ``...\\Cutrite_Import_CSV\\<obra>_Lista_Corte.csv``. Aceita os cabeçalhos
-antigos (``RP``; ``DIAG_ARTNR`` do ensaio de 29-10); um CSV sem SubArtigo (o do ``.cfg``
-antigo) é conferido só pelo artigo.
+Sem caminho, lê ``...\\Cutrite_Import_CSV\\<obra>_Lista_Corte.csv``. Um CSV do ``.cfg``
+antigo (coluna ``RP``, sem SubArtigo) é conferido só pelo artigo.
 """
 from __future__ import annotations
 
@@ -94,7 +93,8 @@ def esperado(orderid: str) -> dict:
     soma: dict = defaultdict(float)
     for p in pecas:
         arts = acima(int(p["ID"]))
-        sub = arts[0] if arts else ""  # = ARTNR do .cfg: o artigo mais próximo da peça
+        # = IFEQUAL[ARTNR;TOPARTICLE_NAME[ARTNR_NR_ID];<vazio>;ARTNR] do .cfg
+        sub = arts[0] if arts and arts[0] != arts[-1] else ""
         rp = (p["PARTPOSSTR"] or "").split(".")[0]  # = SPLITLEFT[PARTPOSSTR;.] do .cfg
         mat = (p["MATNAME"] or "").strip() or (p["MATID"] or "").strip()  # = REPLACE_EMPTY[MATNAME;MATID]
         soma[_chave(rp, sub, p["NAME1"] or "", mat, p["CLENG"] or 0, p["CWIDTH"] or 0)] += float(p["CNT"] or 0)
@@ -105,7 +105,7 @@ def ler_csv(caminho: Path) -> tuple[dict, bool, list[dict]]:
     with caminho.open(encoding="latin1", newline="") as f:
         linhas = list(csv.DictReader(f, delimiter=";"))
     col_art = next((c for c in ("Artigo", "RP") if linhas and c in linhas[0]), "Artigo")
-    col_sub = next((c for c in ("SubArtigo", "DIAG_ARTNR") if linhas and c in linhas[0]), None)
+    col_sub = "SubArtigo" if linhas and "SubArtigo" in linhas[0] else None
     soma: dict = defaultdict(float)
     for r in linhas:
         r["Artigo"], r["SubArtigo"] = r.get(col_art) or "", (r.get(col_sub) or "") if col_sub else ""
@@ -128,8 +128,8 @@ def main() -> int:
     lido, tem_sub, linhas = ler_csv(caminho)
 
     print(f"CSV: {caminho}  ({len(linhas)} linhas)")
-    subs = Counter((k[0], k[1]) for k, q in base.items() if k[1] and k[1] != k[0])
-    print(f"Na base: {sum(q for k, q in base.items() if k[1] and k[1] != k[0]):.0f} peças em "
+    subs = Counter((k[0], k[1]) for k, q in base.items() if k[1])
+    print(f"Na base: {sum(q for k, q in base.items() if k[1]):.0f} peças em "
           f"sub-artigos ({len(subs)} pares Artigo/SubArtigo)")
     for (rp, sub), n in sorted(subs.items()):
         print(f"   {rp:<24} {sub}")

@@ -7,7 +7,8 @@ verificador.
 
 | Ficheiro | Faz |
 |---|---|
-| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**, **SubArtigo** (`ARTNR`) à direita, sem CNC/ABD/BHT — e com o `ACCUMULATE` corrigido. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** à direita, só com o nome do sub-artigo quando é diferente do nome do artigo principal (vazio no resto); sem CNC/ABD/BHT — e com o `ACCUMULATE` corrigido. **Ronda 3 (ensaio): 3 colunas `TESTE_*` no fim** para confirmar o `IFEQUAL`. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas de ensaio (`TESTES`) estão no topo. |
 | `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça. Também confere CSV antigos, só pelo artigo. |
 
 ## Como o iMos guarda e usa o `.cfg` (descoberto a 29-10-2026)
@@ -47,10 +48,22 @@ verificador.
 - `TOPARTICLE_NAME[ARTNR_NR_ID]` → nome do artigo de topo (dica da imos, KB #00867; confirmado).
 - Funções que o motor aceita (lidas no `IDBCCLG25.dll`): `IFEMPTY`, `IFEQUAL`, `IFNOTBLANK`,
   `IF_GREATER`, `COMPARE`, `REPLACE_EMPTY`, `SPLITLEFT`, `SPLITRIGHT`, `MAKESTRING`, `UPPER`,
-  `TEXT[...]`, `TOPARTICLE_NAME`… A forma `IFEMPTY[x;a;b]` funciona com `TEXT[Ignore]` /
-  `TEXT[MPR]` (Productionmanager), mas **`IFEMPTY[POSSTR;ARTNR;TEXT[]]` não funcionou**: devolveu
-  sempre o próprio `POSSTR` (provavelmente o `TEXT[]` vazio). Para deixar uma célula vazia
-  conforme uma condição ainda não há receita testada.
+  `TEXT[...]`, `TOPARTICLE_NAME`…
+- `IFEMPTY[x;se_vazio;se_não]`: confirmado pelo XML do Productionmanager (peças sem programa
+  CNC → `TEXT[Ignore]`). Mas **`IFEMPTY[POSSTR;ARTNR;TEXT[]]` não funcionou** (devolveu o próprio
+  `POSSTR`): o mais provável é o `TEXT[]` vazio. Para «vazio» usa-se um campo que está sempre
+  vazio: **`VENEER_ID`** (vazio nas 139 903 peças das obras > 7000; o `FLITCH_ID` também).
+- `IFEQUAL[a;b;se_igual;se_diferente]`: sintaxe **por confirmar** na ronda 3 (coluna
+  `TESTE_IFEQUAL_TXT` deve dar `IGUAL` nas peças fora de sub-artigos).
+- **A coluna Artigo mostra a POSIÇÃO, não o nome:** em 450 artigos principais (102 obras,
+  ~9 %) o `POSSTR` é um número (`1`, `001`) e o nome (`GROUPNAME`) é `RP_A_01a`. Por isso o
+  SubArtigo compara **nome com nome** (`ARTNR` contra `TOPARTICLE_NAME[ARTNR_NR_ID]`), não com a
+  coluna Artigo.
+- Sub-artigos nas obras > 7000: 792 sem posição própria (o caso normal: `VARAO_RP_STD`,
+  `GUARNICAO…`, `BL_…`), 257 com posição e o mesmo nome do artigo (artigos compostos, ex.
+  `RP_D_15_RC_FRENTE`: ficam vazios) e 162 com posição e nome diferente («Peça de pontos»,
+  «Grupo Article Designer», `WC_A_01_MOB1_SUITE_B` dentro de `WC_A_01_MOB1_SUIT`: aparecem). A
+  regra pelo `POSSTR` vazio esqueceria estes últimos; a do nome não.
 
 ## O defeito do `ACCUMULATE` antigo
 
@@ -103,4 +116,5 @@ o CSV for **posterior** à última gravação da obra com a lista de peças.
 - **Importar encomendas em XML** («Order XML» / Sales Import Manager, SIM): cria a encomenda
   no iMos e constrói sozinho cada linha a partir de artigos que **já existem** no Element
   Manager, com as variáveis (medidas, materiais). É módulo à parte (não vem na instalação
-  base); a `imos_LE` não tem tabelas do SIM em uso.
+  base); a `imos_LE` não tem tabelas do SIM em uso. O Paulo vai pedir explicações e preço à
+  Enersale (29-10-2026): pode interessar para alguns projetos.
