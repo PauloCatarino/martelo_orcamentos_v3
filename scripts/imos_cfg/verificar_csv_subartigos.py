@@ -1,9 +1,10 @@
 """Confere o CSV da transferência de dados do iMos (lista de corte) contra a base do iMos.
 
 Para cada peça cortada da obra, sobe a árvore ``IDBGRPS`` e sabe em que artigo principal
-(coluna Artigo, antes RP) e em que artigo mais próximo (``ARTNR``) ela está. A coluna
-SubArtigo leva esse nome só quando é diferente do nome do artigo principal; senão fica vazia
-(regra do Paulo, 29-10-2026). Depois soma as quantidades por (Artigo, SubArtigo, descrição,
+(coluna Artigo, antes RP) e em que artigo mais próximo (``ARTNR``) ela está. O SubArtigo só
+conta quando é diferente do nome do artigo principal (regra do Paulo, 29-10-2026); no CSV
+aplica-se a mesma regra que o Excel vai aplicar: SubArtigo vazio quando é igual à coluna
+técnica ``ArtigoNome``. Depois soma as quantidades por (Artigo, SubArtigo, descrição,
 material, comprimento, largura) e compara com o CSV. Serve para:
 
 - validar as colunas Artigo/SubArtigo do ``EXPORT_CSV_CUT_RITE_LE_V2.cfg``;
@@ -109,6 +110,8 @@ def ler_csv(caminho: Path) -> tuple[dict, bool, list[dict]]:
     soma: dict = defaultdict(float)
     for r in linhas:
         r["Artigo"], r["SubArtigo"] = r.get(col_art) or "", (r.get(col_sub) or "") if col_sub else ""
+        if r["SubArtigo"] == (r.get("ArtigoNome") or ""):  # a regra que o Excel vai aplicar
+            r["SubArtigo"] = ""
         soma[_chave(r["Artigo"], r["SubArtigo"], r["Descricao"], r["Material"],
                     r["Comp."], r["Larg."])] += float(r["Qt."] or 0)
     return soma, col_sub is not None, linhas

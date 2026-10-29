@@ -2951,3 +2951,36 @@ Guião de teste (ronda 3):
      `TESTE_IFEMPTY_CAMPO` = `BL_3GVT_RP_01` no gaveteiro e vazio no resto;
      `TESTE_IFEMPTY_TXT` = `VAZIO` no gaveteiro e `CHEIO` no resto.
 4. Avisar o Claude: ele confere com o verificador e tira as colunas `TESTE_*` (versão final).
+
+### Ronda 4: versão final da exportação, regra do SubArtigo no Excel (2026-10-29)
+
+Resultado da ronda 3: o SubArtigo continuou com `RP_A_01_*` nas peças fora de sub-artigos.
+As 3 colunas de teste mostraram porquê: no iMos, `IFEQUAL` e `IFEMPTY` com um campo simples à
+cabeça devolvem **sempre o valor desse campo** (até `IFEMPTY[POSSTR;TEXT[VAZIO];TEXT[CHEIO]]`
+deu `RP_A_01_DIR`). Não há forma de fazer o «vazio se igual» no `.cfg`.
+
+Decisão do Paulo: a regra passa para o **Excel** (como outras regras que a macro já faz ao ler
+o CSV), e o CSV leva no fim uma coluna técnica **ArtigoNome** (nome do artigo principal,
+`TOPARTICLE_NAME[ARTNR_NR_ID]`). O Excel compara o SubArtigo com ela, e não com a coluna
+Artigo, porque o Artigo mostra a posição: nas cozinhas é `001`, `002`… (ex. `1431_02_26_CRW`,
+posição `001` = `MB_01_GVT_PL`); comparar com o Artigo deixaria o SubArtigo preenchido em
+todas as peças dessas obras.
+
+Feito: `EXPORT_CSV_CUT_RITE_LE_V2.cfg` final em `I:\CFG` e no repositório — `… Cliente;
+Artigo; SubArtigo; Notas; Notas_1; Cliente_Final; ArtigoNome`, SubArtigo = `ARTNR`, sem
+colunas de teste. O verificador aplica a mesma regra que o Excel vai aplicar e dá «OK» com os
+dados do ensaio da ronda 1 (que já traziam os dois nomes).
+
+Guião de teste (ronda 4):
+
+1. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg` →
+   **Guardar**.
+2. **iX CAD**, obra **APAGAR_14** → gravar com **«Lista de peças»** → **Processar transferência
+   de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ → «Substituir?» **Sim**.
+3. Esperado em `I:\Cutrite\Work\Cutrite_Import_CSV\APAGAR_14_Lista_Corte.csv`: cabeçalho
+   `…;Cliente;Artigo;SubArtigo;Notas;Notas_1;Cliente_Final;ArtigoNome;`; 110 linhas; SubArtigo =
+   `BL_3GVT_RP_01` no gaveteiro do RP_A_01_ESQ e o nome do RP no resto (o Excel é que o vai
+   apagar); ArtigoNome = `RP_A_01_ESQ`, `RP_A_01_DIR`, … em todas as linhas.
+4. A seguir: adaptar o Excel da Lista Material (ver `scripts/imos_cfg/README.md`, «Falta no
+   Excel»). Só depois o V2 vai para o princípio por defeito (é o Paulo que o importa).

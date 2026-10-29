@@ -7,8 +7,8 @@ verificador.
 
 | Ficheiro | Faz |
 |---|---|
-| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** à direita, só com o nome do sub-artigo quando é diferente do nome do artigo principal (vazio no resto); sem CNC/ABD/BHT — e com o `ACCUMULATE` corrigido. **Ronda 3 (ensaio): 3 colunas `TESTE_*` no fim** para confirmar o `IFEQUAL`. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
-| `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas de ensaio (`TESTES`) estão no topo. |
+| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual — e com o `ACCUMULATE` corrigido. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas do fim (`COLUNAS_FIM`) estão no topo. |
 | `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça. Também confere CSV antigos, só pelo artigo. |
 
 ## Como o iMos guarda e usa o `.cfg` (descoberto a 29-10-2026)
@@ -49,21 +49,24 @@ verificador.
 - Funções que o motor aceita (lidas no `IDBCCLG25.dll`): `IFEMPTY`, `IFEQUAL`, `IFNOTBLANK`,
   `IF_GREATER`, `COMPARE`, `REPLACE_EMPTY`, `SPLITLEFT`, `SPLITRIGHT`, `MAKESTRING`, `UPPER`,
   `TEXT[...]`, `TOPARTICLE_NAME`…
-- `IFEMPTY[x;se_vazio;se_não]`: confirmado pelo XML do Productionmanager (peças sem programa
-  CNC → `TEXT[Ignore]`). Mas **`IFEMPTY[POSSTR;ARTNR;TEXT[]]` não funcionou** (devolveu o próprio
-  `POSSTR`): o mais provável é o `TEXT[]` vazio. Para «vazio» usa-se um campo que está sempre
-  vazio: **`VENEER_ID`** (vazio nas 139 903 peças das obras > 7000; o `FLITCH_ID` também).
-- `IFEQUAL[a;b;se_igual;se_diferente]`: sintaxe **por confirmar** na ronda 3 (coluna
-  `TESTE_IFEQUAL_TXT` deve dar `IGUAL` nas peças fora de sub-artigos).
+- **Condições (`IFEMPTY`, `IFEQUAL`) não servem com um campo simples à cabeça.** O
+  `IFEMPTY[x;se_vazio;se_não]` funciona no Productionmanager porque à cabeça está uma função
+  (`PXM_PROGRAM_INFO[...]`; peças sem programa → `TEXT[Ignore]`). Na ronda 3 (29-10-2026,
+  `APAGAR_14`) `IFEQUAL[ARTNR;TOPARTICLE_NAME[ARTNR_NR_ID];…]`, `IFEMPTY[POSSTR;ARTNR;VENEER_ID]`
+  e até `IFEMPTY[POSSTR;TEXT[VAZIO];TEXT[CHEIO]]` devolveram **sempre o valor do primeiro
+  campo**. Regras do tipo «se igual, vazio» fazem-se no Excel.
+- `VENEER_ID` e `FLITCH_ID` estão vazios nas 139 903 peças das obras > 7000 (serviriam de
+  «vazio»; o `TEXT[]` vazio também não funciona).
 - **A coluna Artigo mostra a POSIÇÃO, não o nome:** em 450 artigos principais (102 obras,
-  ~9 %) o `POSSTR` é um número (`1`, `001`) e o nome (`GROUPNAME`) é `RP_A_01a`. Por isso o
-  SubArtigo compara **nome com nome** (`ARTNR` contra `TOPARTICLE_NAME[ARTNR_NR_ID]`), não com a
-  coluna Artigo.
+  ~9 %; quase todas as cozinhas, ex. `1431_02_26_CRW`: posição `001`, nome `MB_01_GVT_PL`) o
+  `POSSTR` é um número e o nome (`GROUPNAME`) está noutro sítio. Por isso o CSV leva a coluna
+  técnica **ArtigoNome** (`TOPARTICLE_NAME[ARTNR_NR_ID]`) e o Excel compara o SubArtigo com
+  ela, não com a coluna Artigo (decisão do Paulo, 29-10-2026).
 - Sub-artigos nas obras > 7000: 792 sem posição própria (o caso normal: `VARAO_RP_STD`,
   `GUARNICAO…`, `BL_…`), 257 com posição e o mesmo nome do artigo (artigos compostos, ex.
   `RP_D_15_RC_FRENTE`: ficam vazios) e 162 com posição e nome diferente («Peça de pontos»,
-  «Grupo Article Designer», `WC_A_01_MOB1_SUITE_B` dentro de `WC_A_01_MOB1_SUIT`: aparecem). A
-  regra pelo `POSSTR` vazio esqueceria estes últimos; a do nome não.
+  «Grupo Article Designer», `WC_A_01_MOB1_SUITE_B` dentro de `WC_A_01_MOB1_SUIT`: aparecem,
+  porque o nome é diferente).
 
 ## O defeito do `ACCUMULATE` antigo
 
@@ -92,9 +95,10 @@ O CSV da V2 **não pode** ir para o princípio por defeito antes disto, porque a
    Cliente_Final — e as Notas passam para a `LISTAGEM_CUT_RITE` (por nome) e para o Cut-Rite.
 
 O que mudar: procurar «Artigo» (aceitando «RP» nos CSV antigos); copiar por **nome** de
-cabeçalho; na `LISTA_ORDENADA` (linha 3) pôr «SubArtigo» em R, à direita de «Artigo» (Q), com
-Notas/Notas_1/Cliente_Final em S/T/U e sem CNC/ABD/BHT; decidir se o SubArtigo segue para a
-`LISTAGEM_CUT_RITE`. Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
+cabeçalho; **deixar o SubArtigo vazio quando é igual ao ArtigoNome** (regra do Paulo); o
+ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; na `LISTA_ORDENADA` (linha 3) pôr
+«SubArtigo» em R, à direita de «Artigo» (Q), com Notas/Notas_1/Cliente_Final em S/T/U e sem
+CNC/ABD/BHT; decidir se o SubArtigo segue para a `LISTAGEM_CUT_RITE`. Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
 para a `LISTAGEM_CUT_RITE` já é por nome (`ARTIGO`, `NOTAS`…). Mudar o modelo só afeta as
 Listas Material criadas depois.
 
