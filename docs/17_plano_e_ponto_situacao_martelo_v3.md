@@ -2809,3 +2809,64 @@ como **paulo** → menu **Registo de Horas**, mês de **outubro de 2026**):
     «Corrigir primeiro».
 11. Os dias usados no teste (30 e o do passo 8): apagar («Apagar dia» → Sim) ou pôr lá as horas
     verdadeiras.
+
+## CSV do iMos para a Lista Material: coluna Sub_Artigo (2026-10-29, ENSAIO ronda 1)
+
+Pedido do Paulo: no CSV que o iMos exporta para a Lista Material
+(`I:\Cutrite\Work\Cutrite_Import_CSV\<obra>_Lista_Corte.csv`) não sai o nome dos artigos que
+estão **dentro** do artigo principal (ex.: o bloco de gavetas `BL_3GVT_RP_01`, Group type =
+Artigo, dentro do `RP_A_01_ESQ` na obra de teste `APAGAR_14`). Quer um `.cfg` novo com uma
+coluna para esses sub-artigos; as colunas CNC/ABD/BHT podem sair. Não mexe no programa
+Martelo: é um `.cfg` do iMos e um verificador. Detalhe em `scripts/imos_cfg/README.md`.
+
+Descoberto:
+
+- O `.cfg` que o iMos usa está **dentro da base** (`BINDATA`), não na pasta `I:\CFG`: tem de
+  ser importado no princípio (Element Manager). O princípio de ensaio
+  `EXPORT_CSV_CUT_RITE_LE_V1` tinha lá dentro o `Homag_DF_Productionmanager.cfg` — por isso o
+  teste dele saiu em XML, em `I:\Cutrite\Work\Cutrite_Import_CSV\Productionmanager\Project.xml`.
+- **Defeito que já existe:** o `ACCUMULATE` atual junta peças iguais de sub-artigos de RPs
+  diferentes numa só linha, com o RP da primeira (as peças de sub-artigos têm `POSSTR`
+  vazio). O total corta-se certo, mas a coluna Artigo fica errada. Visto em 5 obras com o CSV
+  posterior à última gravação; ex.: `CRW_2128_2711_01`, «Gaveteiro Lateral Gaveta 451×135»
+  são 6 no RP_01 + 6 no RP_02 + 6 no RP_03 e o CSV tem 18 no RP_01.
+
+Feito (ronda 1, ensaio):
+
+- `EXPORT_CSV_CUT_RITE_LE_V2.cfg` (em `I:\CFG` e em `scripts/imos_cfg`): igual ao atual nas
+  colunas 1–19; coluna 20 **Sub_Artigo** (`IFEMPTY[POSSTR;ARTNR;TEXT[]]`: nome do artigo mais
+  próximo quando a peça está num sub-artigo; vazio no resto); sem CNC/ABD/BHT; `ACCUMULATE`
+  com `ARTNR_NR_ID`. Só no ensaio: 4 colunas `DIAG_*` e saída na subpasta
+  `TESTE_SUBARTIGOS` (a macro da Lista Material não a lê).
+- `scripts/imos_cfg/verificar_csv_subartigos.py`: compara o CSV com a base do iMos (só
+  SELECT). Com o CSV atual da `APAGAR_14` dá «OK» (110 linhas).
+
+Guião de teste (ronda 1):
+
+1. **Element Manager** → **Processar transferência de dados** → pasta **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1**. Em «Default Settings», botão **↓ (Importar)** → escolher
+   `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg` (= `\\SERVER_LE\Homag_iX\CFG`). Esperado: o campo
+   **File** passa a `EXPORT_CSV_CUT_RITE_LE_V2.cfg`. Não mexer em «Set as Default»,
+   «Configuration of path» (Standard) nem «Output path» (`I:\Cutrite\Work\Cutrite_Import_CSV`).
+   **Guardar**. (Nada se perde: o Productionmanager continua no princípio
+   `Homag_DF_Productionmanager` e o ficheiro na pasta CFG.)
+2. **iX CAD** com a obra **APAGAR_14** aberta → gravar com a caixa **«Lista de peças»**
+   marcada → **DESIGN › Output › Processar transferência de dados** → marcar **só**
+   `EXPORT_CSV_CUT_RITE_LE_V1` → ✓. Esperado: «Todos os ficheiros foram criados!» e o
+   ficheiro novo `I:\Cutrite\Work\Cutrite_Import_CSV\TESTE_SUBARTIGOS\APAGAR_14_Lista_Corte.csv`.
+   O `APAGAR_14_Lista_Corte.csv` da pasta de cima **não** muda.
+3. Abrir esse CSV no Bloco de Notas. Esperado: o cabeçalho acaba em
+   `Cliente_Final;Sub_Artigo;DIAG_ARTNR;DIAG_TOPO;DIAG_POSSTR;DIAG_ARTNR_NR_ID;`; as linhas do
+   bloco de gavetas do **RP_A_01_ESQ** (Gaveteiro Tampo/Fundo/Lateral/Vista, Frente de gaveta,
+   Gaveteiro Lateral/Traseira/Fundo Gaveta — 21 peças) têm `BL_3GVT_RP_01` na coluna
+   Sub_Artigo; todas as outras linhas têm Sub_Artigo vazio.
+4. **iX Organizer** → **Order Manager** → selecionar a obra **CRW_2128_2711_01** (obra
+   antiga, só se lê) → **Processar transferência de dados** → **só**
+   `EXPORT_CSV_CUT_RITE_LE_V1` → ✓. Esperado:
+   `...\TESTE_SUBARTIGOS\CRW_2128_2711_01_Lista_Corte.csv`, com o «GAVETEIRO 3GV + 1VISTA» na
+   coluna Sub_Artigo e as peças do gaveteiro **separadas por RP** (ex.: «Gaveteiro Lateral
+   Gaveta 451×135» com Qt. 6 no RP_01, 6 no RP_02 e 6 no RP_03, e não 18 no RP_01).
+5. Avisar o Claude: ele corre `verificar_csv_subartigos.py` nas duas obras, lê as colunas
+   `DIAG_*` e prepara a versão final (sem `DIAG_*`, na pasta normal). Só depois se decide
+   importar no princípio por defeito `EXPORT_CSV_CUT_RITE_LE` e ajustar o modelo da Lista
+   Material (coluna U da `LISTA_ORDENADA` passa de «CNC» a «Sub_Artigo»).
