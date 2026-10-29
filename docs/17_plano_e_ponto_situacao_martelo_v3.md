@@ -3047,7 +3047,7 @@ que interessava:
 
 Os recortes interiores ficam para o plano B (princípio «Views» ou o Martelo ler a `IDBPRF`).
 
-### Ronda 6: `.cfg` V2 final, sem colunas de ensaio (2026-10-29)
+### Ronda 6: `.cfg` V2 final, sem colunas de ensaio (2026-10-29, TESTADO às 15h05)
 
 Feito: `gerar_cfg_v2.py` com `TESTES = []`. O `.cfg` fica com 22 colunas,
 `…;Cliente_Final;ArtigoNome;ISPEC;`, e foi copiado para `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg`
@@ -3067,3 +3067,13 @@ Guião de teste (ronda 6):
    com 22 colunas, a acabar em `…;ArtigoNome;ISPEC;`; **ISPEC** = `2` no «Topo» (Artigo
    `PECA_L`) e `0` nas outras, incluindo o «Teto» do `RECORTE_L`.
 5. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).
+
+**Resultado (29-10-2026, 15h05): OK.** Sem caixas de erro. O CSV tem 112 linhas de peças +
+cabeçalho, todas com 22 colunas e fim de linha CRLF. O verificador diz «Artigo, SubArtigo e
+quantidades do CSV batem certo com a base» e «ISPEC certo em todas as linhas»: `2` no «Topo»
+(`PECA_L`), `0` no «Teto» (`RECORTE_L`, que tem recorte interior e por isso não é apanhado
+pelo ISPEC) e `0` nas outras. A exportação V2 está fechada. Falta:
+- o Excel (README `scripts/imos_cfg`, «Falta no Excel»), incluindo o texto do aviso do ISPEC;
+- o plano B para os recortes interiores;
+- provar o `ACCUMULATE` numa obra com o mesmo sub-artigo em dois RPs;
+- depois disto, o Paulo passa a V2 para o princípio por defeito.
