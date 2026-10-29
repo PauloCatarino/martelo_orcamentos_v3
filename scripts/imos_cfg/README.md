@@ -7,9 +7,11 @@ verificador.
 
 | Ficheiro | Faz |
 |---|---|
-| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual, e a coluna **ISPEC** (forma da peça) — e com o `ACCUMULATE` corrigido. **Ensaio do ISPEC:** 3 colunas `TESTE_*` no fim. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `EXPORT_CSV_CUT_RITE_LE_V2.cfg` | Cópia do `EXPORT_CSV_CUT_RITE_LE.cfg` em uso com as colunas pedidas pelo Paulo (29-10-2026): `… Enc.; Cliente; Artigo; SubArtigo; Notas; Notas_1; Cliente_Final` — **RP** passa a **Artigo**; **SubArtigo** (`ARTNR`, o artigo mais próximo da peça) à direita; sem CNC/ABD/BHT; no fim a coluna técnica **ArtigoNome** (nome do artigo principal), que o Excel usa para deixar o SubArtigo vazio quando é igual, e a coluna **ISPEC** (forma da peça) — e com o `ACCUMULATE` corrigido. Testada na APAGAR_14 (29-10, 15h05); fica como **cópia de referência**. Só para obras de teste até o modelo da Lista Material ser adaptado (ver «Falta no Excel»). |
+| `EXPORT_CSV_CUT_RITE_LE_V1.cfg` | **Ensaio (29-10-2026):** a V2 com as colunas 16-18 com os nomes que o Paulo deu no `imos.msg`: `… Cliente; Posicao; Artigo/SubArtigo; Piso; Notas; …; ArtigoNome; ISPEC`. **Piso** = `ART_CPID`, o campo «Name» do artigo. O `V1.cfg` antigo (ensaio do cabeçalho da obra, 07-10) ficou no servidor como `EXPORT_CSV_CUT_RITE_LE_V1.cfg.copia_2026-10-29_173746`. |
 | `gerar_cfg_v2.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V2.cfg` a partir do `.cfg` em uso (latin1 + CRLF, só troca as linhas ativas; as antigas ficam comentadas). A fórmula do SubArtigo e as colunas do fim (`COLUNAS_FIM`) estão no topo. |
-| `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça. Também confere CSV antigos, só pelo artigo. |
+| `gerar_cfg_v1_piso.py` | Gera o `EXPORT_CSV_CUT_RITE_LE_V1.cfg` a partir da V2 desta pasta (muda só o cabeçalho, as colunas 16-18 e a linha das peças; as da V2 ficam comentadas). |
+| `verificar_csv_subartigos.py` | Lê um CSV exportado e compara-o com a base do iMos (só SELECT): Artigo, SubArtigo e quantidades por peça, ISPEC e, no CSV da V1, o Piso. Também confere CSV antigos, só pelo artigo. |
 
 ## Como o iMos guarda e usa o `.cfg` (descoberto a 29-10-2026)
 
@@ -59,6 +61,24 @@ verificador.
   gaveteiro, `RP_A_01_ESQ` nas outras (confirmado no ensaio da `APAGAR_14`, 29-10).
   `ARTNR_NR_ID` → o seu ID (49187 para o BL; o `%s` imprime IDs numéricos sem problema).
 - `TOPARTICLE_NAME[ARTNR_NR_ID]` → nome do artigo de topo (dica da imos, KB #00867; confirmado).
+  Não há outras funções `TOPARTICLE_*` no motor.
+- **Os campos do artigo no iX CAD e na base** (o Paulo traduziu-os no `imos.msg` a 29-10-2026;
+  o `imos.msg` é UTF-8, linhas `PTG;<n>\t;<texto>`):
+
+  | Mensagem | Original (ENG) | Paulo (PTG) | Na base | No `.cfg` |
+  |---|---|---|---|---|
+  | 10410 | Pos. Number | Posicao | `IDBINFO.POSSTR` | `POSSTR` (vazio nos sub-artigos); a do principal: `SPLITLEFT[PARTPOSSTR;.]` |
+  | 6700 | Hierarchy | Hierarquia de Artigo | (calculado; cinzento no iX CAD) | — |
+  | 41 | Name of Element Group | Artigo/SubArtigo | `IDBINFO.GROUPNAME` (= `IDBGRPS.NAME`) | `ARTNR` (artigo mais próximo) |
+  | 1219 | Name | Piso | `IDBINFO.CPID` do artigo | `ART_CPID` (ensaio) |
+
+  O «Name» vem com `.` por defeito; num sub-artigo traz o ID dele (ex. `49187` no
+  `BL_3GVT_RP_01`). Na `APAGAR_14` o `RP_04_DIR` tem Posicao `Fração_A` e Piso `Piso 1º`.
+- **Prefixo `ART_`** (lido no `IDBCCLG25.dll`, sem documentação da imos): `ART_<coluna>` lê
+  a coluna da `IDBINFO` do artigo da peça (`ARTNR_NR_ID`). O Productionmanager da imos usa o
+  mesmo género de prefixo, `IDBINFO_<coluna>` (`IDBINFO_BOMFACTOR`, `IDBINFO_ID`), no
+  `STRING_POSITION`, que é ao nível do artigo. Outros prefixos no motor: `PROADMIN_`,
+  `IMORDER`, `IDBVERSO_`, `DRAWREF_`, `CMSINCIDENTTEXT_`.
 - Funções que o motor aceita (lidas no `IDBCCLG25.dll`): `IFEMPTY`, `IFEQUAL`, `IFNOTBLANK`,
   `IF_GREATER`, `COMPARE`, `REPLACE_EMPTY`, `SPLITLEFT`, `SPLITRIGHT`, `MAKESTRING`, `UPPER`,
   `TEXT[...]`, `TOPARTICLE_NAME`…
@@ -139,7 +159,14 @@ O que mudar: procurar «Artigo» (aceitando «RP» nos CSV antigos); copiar por 
 cabeçalho; **deixar o SubArtigo vazio quando é igual ao ArtigoNome** (regra do Paulo); o
 ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; o ISPEC também é técnico: com o ISPEC ≠ 0 (e, com o plano B, com recorte interior) escrever um aviso nas Notas (texto a decidir com o Paulo); na `LISTA_ORDENADA` (linha 3) pôr
 «SubArtigo» em R, à direita de «Artigo» (Q), com Notas/Notas_1/Cliente_Final em S/T/U e sem
-CNC/ABD/BHT; decidir se o SubArtigo segue para a `LISTAGEM_CUT_RITE`. Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
+CNC/ABD/BHT; decidir se o SubArtigo segue para a `LISTAGEM_CUT_RITE`.
+
+Com o `.cfg` V1, os nomes passam a Posicao / Artigo/SubArtigo / Piso, e o Piso traz mais uma
+regra. Nas linhas de sub-artigos vem o «Name» do sub-artigo e não o piso: o Excel põe lá o
+Piso do artigo principal, procurando-o nas linhas em que Artigo/SubArtigo = ArtigoNome. O `.`
+(sem piso) fica vazio.
+
+Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
 para a `LISTAGEM_CUT_RITE` já é por nome (`ARTIGO`, `NOTAS`…). Mudar o modelo só afeta as
 Listas Material criadas depois.
 

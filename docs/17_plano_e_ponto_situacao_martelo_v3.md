@@ -3077,3 +3077,51 @@ pelo ISPEC) e `0` nas outras. A exportação V2 está fechada. Falta:
 - o plano B para os recortes interiores;
 - provar o `ACCUMULATE` numa obra com o mesmo sub-artigo em dois RPs;
 - depois disto, o Paulo passa a V2 para o princípio por defeito.
+
+### Ronda 7: `.cfg` V1 com Posicao, Artigo/SubArtigo e Piso (2026-10-29, ENSAIO)
+
+O Paulo deu nomes novos, no `imos.msg`, aos campos do artigo no iX CAD:
+- 10410 «Pos. Number» passa a **Posicao**;
+- 6700 «Hierarchy» passa a **Hierarquia de Artigo**;
+- 41 «Name of Element Group» passa a **Artigo/SubArtigo**;
+- 1219 «Name» passa a **Piso**.
+
+Pediu um `.cfg` com as colunas Posicao, Artigo/SubArtigo e Piso. Esse `.cfg` é o
+`EXPORT_CSV_CUT_RITE_LE_V1.cfg`, feito a partir da V2, que fica como cópia de referência.
+
+Descoberto na base:
+- O Piso é a coluna `IDBINFO.CPID` do artigo. Na `APAGAR_14` o `RP_04_DIR` tem Posicao
+  `Fração_A` e Piso `Piso 1º`; os outros artigos têm `.` (o valor por defeito).
+- Num sub-artigo o «Name» é o ID dele (`49187` no `BL_3GVT_RP_01`).
+- No `.cfg`, a Posicao e o Artigo/SubArtigo já existiam: são as colunas Artigo e SubArtigo da
+  V2, com outro nome.
+- Para o Piso usa-se `ART_CPID`. O prefixo `ART_` lê as colunas da `IDBINFO` do artigo da
+  peça. Foi lido no motor (`IDBCCLG25.dll`) e a imos não o documenta: é o que este ensaio
+  confirma.
+
+Feito: `gerar_cfg_v1_piso.py` gera o `.cfg` com 23 colunas,
+`…;Cliente;Posicao;Artigo/SubArtigo;Piso;Notas;Notas_1;Cliente_Final;ArtigoNome;ISPEC;`, e
+copiou-se para `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg`. O `V1.cfg` antigo (ensaio do cabeçalho
+da obra, de 07-10) ficou em `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg.copia_2026-10-29_173746`. O
+verificador passou a conferir também o Piso.
+
+Guião de teste (ronda 7):
+
+1. Se o `EXPORT_CSV_CUT_RITE_LE_V1.cfg` estiver aberto no Notepad++, ele pergunta se quer
+   recarregar: **Sim** (não gravar por cima).
+2. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V1.cfg` →
+   **Guardar**.
+3. **iX CAD**, obra **APAGAR_14** (com o `RP_04_DIR`: Posicao `Fração_A`, Piso `Piso 1º`) →
+   gravar com **«Lista de peças»** → **Processar transferência de dados** → **só**
+   `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ → «Substituir?» **Sim**.
+4. Se aparecer «Erro no ficheiro de configuração… ART_CPID… O campo não existe na base de
+   dados!»: **Gestor de Tarefas** → **idbcclg** → **Terminar tarefa**, e avisar o Claude. O
+   prefixo `ART_` não serve e o Piso tem de vir por outro caminho.
+5. Esperado no `APAGAR_14_Lista_Corte.csv` (abrir no Notepad++): 112 linhas de peças, todas
+   com 23 colunas.
+   - Posicao: `Fração_A` nas linhas do `RP_04_DIR` e o nome nas outras.
+   - Artigo/SubArtigo: `RP_04_DIR` (ou `BL_3GVT_RP_01` no gaveteiro do `RP_A_01_ESQ`).
+   - Piso: `Piso 1º` nas linhas do `RP_04_DIR`; `.` nas dos outros artigos; `49187` nas do
+     gaveteiro (é o «Name» do sub-artigo; o Excel vai corrigir).
+6. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).

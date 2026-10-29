@@ -11,7 +11,9 @@ material, comprimento, largura) e compara com o CSV. Serve para:
 - apanhar peças de RPs diferentes juntadas numa só linha (o ``ACCUMULATE`` antigo fazia
   isso às peças de sub-artigos, por terem ``POSSTR`` vazio);
 - conferir a coluna ``ISPEC`` (forma da peça) e listar as peças que não são retangulares ou
-  que têm recorte interior (perfil ``PTYPE='I'`` na ``IDBPRF``, que o ISPEC não apanha).
+  que têm recorte interior (perfil ``PTYPE='I'`` na ``IDBPRF``, que o ISPEC não apanha);
+- no CSV do ``.cfg`` V1 (colunas Posicao, Artigo/SubArtigo e Piso), conferir o Piso: o
+  «Name» (``IDBINFO.CPID``) do artigo onde a peça está.
 
 Só faz SELECT. Uso (a partir da pasta principal do Martelo, para apanhar o ``.env``):
 
@@ -52,7 +54,7 @@ def ler_base(orderid: str) -> tuple[list[dict], list[dict], list[dict], set[int]
     grps = imos_sql.run_imos_select(
         cfg, f"SELECT ID, TYP, ARTID, ASSID, NAME FROM IDBGRPS WHERE ORDERID={oid}")
     info = imos_sql.run_imos_select(
-        cfg, f"SELECT ID, GROUPNAME FROM IDBINFO WHERE ORDERID={oid}")
+        cfg, f"SELECT ID, GROUPNAME, CPID FROM IDBINFO WHERE ORDERID={oid}")
     fora = ",".join(str(t) for t in TIPOS_FORA)
     pecas = imos_sql.run_imos_select(
         cfg,
@@ -67,20 +69,23 @@ def ler_base(orderid: str) -> tuple[list[dict], list[dict], list[dict], set[int]
 def sub_artigos(grps: list[dict], info: list[dict]):
     """Devolve f(id_peca) -> lista dos artigos acima da peça, do mais próximo ao de topo.
 
-    Na ``IDBGRPS`` uma peça aponta para o grupo pai (``ASSID``); o primeiro grupo de um
-    artigo aponta para o artigo (``ARTID``); um artigo (``TYP`` 2) dentro de outro aponta
-    para o grupo onde está (``ASSID``).
+    Cada artigo vem como (nome do grupo, «Name» do artigo = ``IDBINFO.CPID``, que o Paulo
+    usa para o piso). Na ``IDBGRPS`` uma peça aponta para o grupo pai (``ASSID``); o
+    primeiro grupo de um artigo aponta para o artigo (``ARTID``); um artigo (``TYP`` 2)
+    dentro de outro aponta para o grupo onde está (``ASSID``).
     """
     g = {int(r["ID"]): r for r in grps}
     nome = {int(r["ID"]): (r["GROUPNAME"] or "").strip() for r in info}
+    cpid = {int(r["ID"]): (r["CPID"] or "").strip() for r in info}
 
-    def acima(pid: int) -> list[str]:
+    def acima(pid: int) -> list[tuple[str, str]]:
         out, atual, vistos = [], g.get(pid), set()
         while atual is not None and int(atual["ID"]) not in vistos:
-            vistos.add(int(atual["ID"]))
+            aid = int(atual["ID"])
+            vistos.add(aid)
             typ, artid, assid = int(atual["TYP"]), int(atual["ARTID"] or 0), int(atual["ASSID"] or 0)
             if typ == 2:
-                out.append(nome.get(int(atual["ID"])) or (atual["NAME"] or "").strip())
+                out.append((nome.get(aid) or (atual["NAME"] or "").strip(), cpid.get(aid, "")))
             atual = g.get(artid) if (typ == 3 and artid) else (g.get(assid) if assid else None)
         return out
 
@@ -92,29 +97,33 @@ def _chave(rp, sub, desc, mat, comp, larg):
             round(float(comp), 1), round(float(larg), 1))
 
 
-def esperado(orderid: str) -> tuple[dict, dict]:
-    """Quantidades por chave e, por chave, as formas: {(ISPEC, tem recorte interior)}."""
+def esperado(orderid: str) -> tuple[dict, dict, dict]:
+    """Quantidades por chave e, por chave, as formas {(ISPEC, tem recorte interior)} e os
+    pisos {«Name» do artigo mais próximo da peça} (= ``ART_CPID`` do .cfg V1)."""
     grps, info, pecas, recortes = ler_base(orderid)
     acima = sub_artigos(grps, info)
     soma: dict = defaultdict(float)
     formas: dict = defaultdict(set)
+    pisos: dict = defaultdict(set)
     for p in pecas:
         arts = acima(int(p["ID"]))
-        # = IFEQUAL[ARTNR;TOPARTICLE_NAME[ARTNR_NR_ID];<vazio>;ARTNR] do .cfg
-        sub = arts[0] if arts and arts[0] != arts[-1] else ""
+        # SubArtigo vazio quando é igual ao nome do artigo principal (a regra do Excel)
+        sub = arts[0][0] if arts and arts[0][0] != arts[-1][0] else ""
         rp = (p["PARTPOSSTR"] or "").split(".")[0]  # = SPLITLEFT[PARTPOSSTR;.] do .cfg
         mat = (p["MATNAME"] or "").strip() or (p["MATID"] or "").strip()  # = REPLACE_EMPTY[MATNAME;MATID]
         k = _chave(rp, sub, p["NAME1"] or "", mat, p["CLENG"] or 0, p["CWIDTH"] or 0)
         soma[k] += float(p["CNT"] or 0)
         formas[k].add((str(int(p["ISPEC"] or 0)), int(p["ID"]) in recortes))
-    return soma, formas
+        pisos[k].add(arts[0][1] if arts else "")
+    return soma, formas, pisos
 
 
 def ler_csv(caminho: Path) -> tuple[dict, bool, list[dict]]:
     with caminho.open(encoding="latin1", newline="") as f:
         linhas = list(csv.DictReader(f, delimiter=";"))
-    col_art = next((c for c in ("Artigo", "RP") if linhas and c in linhas[0]), "Artigo")
-    col_sub = "SubArtigo" if linhas and "SubArtigo" in linhas[0] else None
+    # .cfg V1 (Posicao, Artigo/SubArtigo), V2 (Artigo, SubArtigo) ou o antigo (RP)
+    col_art = next((c for c in ("Posicao", "Artigo", "RP") if linhas and c in linhas[0]), "Artigo")
+    col_sub = next((c for c in ("Artigo/SubArtigo", "SubArtigo") if linhas and c in linhas[0]), None)
     soma: dict = defaultdict(float)
     for r in linhas:
         r["Artigo"], r["SubArtigo"] = r.get(col_art) or "", (r.get(col_sub) or "") if col_sub else ""
@@ -135,7 +144,7 @@ def main() -> int:
         print(f"CSV não encontrado: {caminho}")
         return 2
 
-    base, formas = esperado(a.obra)
+    base, formas, pisos = esperado(a.obra)
     lido, tem_sub, linhas = ler_csv(caminho)
 
     print(f"CSV: {caminho}  ({len(linhas)} linhas)")
@@ -180,7 +189,24 @@ def main() -> int:
                       + (" | RECORTE INTERIOR" if recorte else "") + ("" if certo else "  <- DIFERENTE"))
         print("   ISPEC certo em todas as linhas." if not erros_forma
               else f"   {erros_forma} linha(s) com ISPEC diferente da base.")
-    return 0 if not difs and not erros_forma else 1
+
+    erros_piso = 0
+    if linhas and "Piso" in linhas[0]:
+        print("\nPiso («Name» do artigo onde a peça está; «.» = sem piso):")
+        vistos = Counter()
+        for r in linhas:
+            k = _chave(r["Artigo"], r["SubArtigo"], r["Descricao"], r["Material"], r["Comp."], r["Larg."])
+            na_base = pisos.get(k) or pisos.get((k[0], "") + k[2:]) or set()
+            piso = (r["Piso"] or "").strip()
+            certo = piso in na_base
+            erros_piso += 0 if certo else 1
+            vistos[(r["Artigo"], r.get("Artigo/SubArtigo") or r["SubArtigo"], piso, certo)] += 1
+        for (art, sub, piso, certo), n in sorted(vistos.items()):
+            print(f"   {art:<14} {sub:<16} Piso {piso or '-':<10} {n:>3} linha(s)"
+                  + ("" if certo else "  <- DIFERENTE da base"))
+        print("   Piso certo em todas as linhas." if not erros_piso
+              else f"   {erros_piso} linha(s) com Piso diferente da base.")
+    return 0 if not difs and not erros_forma and not erros_piso else 1
 
 
 if __name__ == "__main__":
