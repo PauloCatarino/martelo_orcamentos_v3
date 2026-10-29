@@ -22,13 +22,11 @@ SUB_EXPR = "ARTNR"
 # ISPEC = forma da peça (0 = retangular de 4 lados; 1 = 4 lados com pelo menos um contorno;
 # 2 = mais de 4 lados; 3 = não é painel; 4 também aparece, sem descrição da imos).
 COLUNAS_FIM = [("ArtigoNome", "TOPARTICLE_NAME[ARTNR_NR_ID]"), ("ISPEC", "ISPEC")]
-# Só no ensaio: campos do IDBCCLG25.dll que podem contar as orlas/contornos (para apanhar as
-# peças retangulares com recorte interior, PTYPE 'I' na IDBPRF, que têm ISPEC 0).
-TESTES = [
-    ("TESTE_EDGECOUNT", "EDGECOUNT"),
-    ("TESTE_PRFCNT", "PRFCNT"),
-    ("TESTE_IDBPRF_PRFID", "IDBPRF_PRFID"),
-]
+# Colunas de ensaio (cabeçalho TESTE_<nome>). Ensaio de 29-10-2026 para apanhar as peças
+# retangulares com recorte interior (PTYPE 'I' na IDBPRF, que têm ISPEC 0): EDGECOUNT e
+# PRFCNT não existem (uma caixa «O campo não existe na base de dados!» por peça, que prende
+# o idbcclg.exe, e a linha perde essas colunas); IDBPRF_PRFID sai vazio. Nenhum serve.
+TESTES: list[tuple[str, str]] = []
 COLUNAS_FIM = COLUNAS_FIM + TESTES
 
 t = ORIGEM.read_bytes().decode("latin1")

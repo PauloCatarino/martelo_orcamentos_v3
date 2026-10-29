@@ -3032,3 +3032,38 @@ substituir. O ficheiro ficou como estava às 11h44. Neste PC não havia Excel vi
 `EXCEL.EXE -Embedding` invisível, aberto desde 27-10 às 14h29 por outro programa, sem livros.
 Antes de exportar outra vez: fechar o que tiver o CSV aberto (Excel, também noutro PC; o painel
 de pré-visualização do Explorador com o CSV selecionado). Para ver o CSV, usar o Notepad++.
+
+**2.ª tentativa (29-10-2026, 14h38): caixas «Erro no ficheiro de configuração.
+Chave:STRING_MAT / EDGECOUNT (e PRFCNT) / O campo não existe na base de dados!»**, uma atrás da
+outra (uma por peça e por campo). Quem as mostrava era o `idbcclg.exe`, o motor da
+transferência, que corre à parte do iX CAD e ficou preso. O OK enviado de fora não as
+fechava, por isso o Claude terminou o processo, a pedido do Paulo.
+
+O CSV ficou escrito até meio (54 linhas, a última cortada) e as linhas saíram com 23 colunas
+em vez de 25, porque os campos que não existem desaparecem da linha. Mesmo assim mostrou o
+que interessava:
+- **ISPEC certo:** `2` no «Topo» (`PECA_L`) e `0` no «Teto» (`RECORTE_L`) e nas outras peças.
+- **Nenhum `TESTE_*` serve:** `EDGECOUNT` e `PRFCNT` não existem, e o `IDBPRF_PRFID` sai vazio.
+
+Os recortes interiores ficam para o plano B (princípio «Views» ou o Martelo ler a `IDBPRF`).
+
+### Ronda 6: `.cfg` V2 final, sem colunas de ensaio (2026-10-29)
+
+Feito: `gerar_cfg_v2.py` com `TESTES = []`. O `.cfg` fica com 22 colunas,
+`…;Cliente_Final;ArtigoNome;ISPEC;`, e foi copiado para `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg`
+(igual ao do repositório).
+
+Guião de teste (ronda 6):
+
+1. Se voltar a aparecer uma caixa «IDBCCLG25» que não fecha: **Gestor de Tarefas** →
+   **idbcclg** → **Terminar tarefa** (não mexe na obra).
+2. **Element Manager** → **Processar transferência de dados** → **LANCA_ENCANTO** →
+   **EXPORT_CSV_CUT_RITE_LE_V1** → **↓ (Importar)** → `I:\CFG\EXPORT_CSV_CUT_RITE_LE_V2.cfg` →
+   **Guardar**. Sem isto o iMos continua com o `.cfg` do ensaio e as caixas voltam.
+3. **iX CAD**, obra **APAGAR_14** → gravar com **«Lista de peças»** → **Processar
+   transferência de dados** → **só** `EXPORT_CSV_CUT_RITE_LE_V1` → ✓ → «Substituir?» **Sim**.
+   Não deve aparecer nenhuma caixa de erro.
+4. Esperado no `APAGAR_14_Lista_Corte.csv` (abrir no Notepad++): 112 linhas de peças, todas
+   com 22 colunas, a acabar em `…;ArtigoNome;ISPEC;`; **ISPEC** = `2` no «Topo» (Artigo
+   `PECA_L`) e `0` nas outras, incluindo o «Teto» do `RECORTE_L`.
+5. Avisar o Claude: ele corre o verificador (`verificar_csv_subartigos.py APAGAR_14`).

@@ -36,6 +36,13 @@ verificador.
   utilizado por outro processo»; deixava ler mas não escrever, como faz o Excel). O `.cfg`
   não tinha culpa. Para ver o CSV sem o prender, usar o Notepad++ / Bloco de Notas, não o
   Excel — e o Excel, ao gravar, ainda muda o ficheiro (`494.0` → `494`, tira o `;` final).
+- **Um campo que não existe no `STRING_MAT`** dá a caixa «Erro no ficheiro de configuração.
+  Chave:STRING_MAT / <campo> / O campo não existe na base de dados!» **uma vez por peça e por
+  campo**. Quem a mostra é o `idbcclg.exe` (`...\iX CAD 2025\BIN\`), um processo à parte do
+  iX CAD, que fica preso nela. A 29-10-2026 o OK enviado de fora não a fechava. A solução foi
+  terminar o processo (Gestor de Tarefas → `idbcclg` → Terminar tarefa), o que não mexe na
+  obra. A linha sai **sem** essas colunas (as seguintes andam para a esquerda) e o CSV pode
+  ficar cortado a meio: não serve, exporta-se outra vez.
 - A macro `Import_CSV_Imos_1` do modelo da Lista Material lê o **primeiro** `*.csv` da pasta
   `Cutrite_Import_CSV` (só a de cima) cujo nome tenha a obra, e copia as colunas **por
   posição** (1–22 → `LISTA_ORDENADA` B–W). A passagem para a `LISTAGEM_CUT_RITE` é por
@@ -87,10 +94,17 @@ um contorno interior (perfil `PTYPE='I'` na `IDBPRF`, ex. `REC_CNT_L_RODAPE_FREN
 `REC_CNT_L_CIMA_TRAS`, `CAVIDADE_POCKET`, `FRESAR_RECORTES_VARADO`) continua com ISPEC 0 —
 **382 peças em 48 obras**. Na `APAGAR_14` o Paulo criou as duas variantes: `PECA_L` (L
 desenhado com 6 orlas → ISPEC 2) e `RECORTE_L` (retangular com o recorte
-`REC_CNT_L_CIMA_TRAS` → ISPEC 0). A V2 leva a coluna **ISPEC** e, no ensaio, 3 colunas
-`TESTE_*` (`EDGECOUNT`, `PRFCNT`, `IDBPRF_PRFID`) para ver se algum campo do motor apanha o
-recorte. Se nenhum apanhar, o plano B é um princípio «Views» (SQL próprio sobre a `IDBGPL`,
-Element Manager) ou o Martelo ler a `IDBPRF` diretamente.
+`REC_CNT_L_CIMA_TRAS` → ISPEC 0). A V2 leva a coluna **ISPEC**, confirmada no ensaio de
+29-10-2026: «Topo» (`PECA_L`) saiu com 2 e «Teto» (`RECORTE_L`) com 0.
+
+No mesmo ensaio foram 3 colunas `TESTE_*` à procura de um campo do motor que apanhasse o
+recorte, e nenhum serviu:
+- `EDGECOUNT` e `PRFCNT` **não existem** (caixa de erro por peça; ver «Erro no ficheiro de
+  configuração» acima);
+- `IDBPRF_PRFID` sai vazio.
+
+Para avisar também dos recortes interiores fica o plano B: um princípio «Views» (SQL próprio
+sobre a `IDBGPL`/`IDBPRF`, Element Manager) ou o Martelo ler a `IDBPRF` diretamente.
 
 O `ACCUMULATE` não junta peças de formas diferentes numa só linha: nas obras recentes não há
 nenhum caso (uma peça com forma especial tem outro princípio de construção, `CPID`).
@@ -123,7 +137,7 @@ O CSV da V2 **não pode** ir para o princípio por defeito antes disto, porque a
 
 O que mudar: procurar «Artigo» (aceitando «RP» nos CSV antigos); copiar por **nome** de
 cabeçalho; **deixar o SubArtigo vazio quando é igual ao ArtigoNome** (regra do Paulo); o
-ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; com o ISPEC ≠ 0 (e, se se conseguir, com recorte interior) escrever um aviso nas Notas (texto a decidir com o Paulo); na `LISTA_ORDENADA` (linha 3) pôr
+ArtigoNome é técnico e não passa para a `LISTA_ORDENADA`; o ISPEC também é técnico: com o ISPEC ≠ 0 (e, com o plano B, com recorte interior) escrever um aviso nas Notas (texto a decidir com o Paulo); na `LISTA_ORDENADA` (linha 3) pôr
 «SubArtigo» em R, à direita de «Artigo» (Q), com Notas/Notas_1/Cliente_Final em S/T/U e sem
 CNC/ABD/BHT; decidir se o SubArtigo segue para a `LISTAGEM_CUT_RITE`. Nenhuma fórmula do modelo aponta para a `LISTA_ORDENADA`, e a passagem
 para a `LISTAGEM_CUT_RITE` já é por nome (`ARTIGO`, `NOTAS`…). Mudar o modelo só afeta as
