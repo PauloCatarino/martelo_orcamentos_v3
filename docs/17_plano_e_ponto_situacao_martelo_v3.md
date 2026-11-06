@@ -3282,3 +3282,107 @@ Guião de teste:
    `copia_app_antiga_horarios_2026-10-04.sql` (38 KB).
 
 Validação recebida: — (por testar).
+
+## Lista Material: coluna «Colar» para as colagens, em ENSAIO (2026-11-06)
+
+Pedido do Paulo: testar na fábrica uma coluna nova, «Colar», na LISTAGEM_CUT_RITE, logo a
+seguir à CNC_2. Serve para as peças que se colam para chegar à espessura do iMos: o material
+tem uma espessura (Esp.Mat) e o iMos outra (Esp, coluna M), e a linha fica a vermelho. Até
+agora escrevia-se nas Notas «colar 19+19 = 38» ou «colar ID 14+14». Passa a haver um código
+(guia PROCESSO_ESPECIAL), preenchido por um menu: `[CNC_]conjunto[_orlas][_CNC]`, por
+exemplo `CNC_20+21x2+22x2_O4L_CNC` ou `14+14_O4L_CNC`. **O modelo de sempre não muda**: o
+ensaio usa uma cópia.
+
+Decisões do Paulo (06-11-2026):
+- o Cut-Rite passa a receber **24 colunas**, com a Colar a seguir à CNC_2;
+- duas peças do mesmo ID sozinhas escrevem-se `14+14`;
+- 2 comprimentos + 2 larguras escrevem-se `O4L`.
+
+O que mudou:
+- **Modelo novo no servidor** `Lista_Material_IMOS_MARTELO_COLAR.xltm`, ao lado do de
+  sempre. É criado por `scripts/criar_modelo_lista_material_colar.py` a partir do de sempre,
+  que fica igual. Tem:
+  - a coluna Colar (V) e um botão verde «Colar»;
+  - o menu de colagens, que abre com o botão ou com duplo clique numa célula da Colar
+    (`frmColar`; regras no `modColar`);
+  - a «Copia Listagem CUT_RITE» a copiar até à +Larg (agora a X) e a conferir a Colar antes.
+
+  As macros estão em `scripts/vba/colar`. Ao inserir a coluna, o Excel acertou sozinho as
+  fórmulas da Lacagem (Z → AA), o alerta vermelho do Material e a área de impressão.
+- **Martelo, Produção → Funções → «Lista Material com coluna Colar (ensaio)…»**: o mesmo que
+  o botão «Lista Material_IMOS», mas com o modelo novo. O livro é a Lista Material da obra:
+  o Enviar CUT-RITE, o Analisar e os PDFs usam-no.
+- **Enviar CUT-RITE**: 23 colunas como sempre; 24 quando o livro tem a Colar logo a seguir
+  à CNC_2. Se a Colar estiver noutro sítio, para com uma mensagem. A verificação antes do
+  envio avisa dos códigos mal escritos ou desencontrados (regras em
+  `app/domain/codigo_colar.py`, iguais às do VBA).
+- **Fica igual no modelo de sempre**, porque o Martelo procura estas colunas pela posição
+  certa em cada modelo:
+  - a ligação da folha Lacagem ao Tipo_Lacagem;
+  - o SourceID / Estado_Assistente da Análise, que ia para AA/AB fixas e no modelo Colar
+    apagava o Tipo_Lacagem.
+
+Confirmado antes de entregar:
+- todos os testes do Martelo passam;
+- a regra do código dá o mesmo no VBA e no Python nos 14 casos do guia;
+- numa cópia, com a obra 0993_04:
+  - o livro criado tem a Colar na V e o SourceID na AB;
+  - a AUTOMATION preencheu 336 linhas;
+  - o menu gravou e editou conjuntos, e a verificação apanhou um conjunto desencontrado;
+  - o Enviar CUT-RITE montou 24 colunas com o código na 22.ª;
+- com o modelo de sempre, as colunas e o SourceID (AA) ficam como antes.
+
+**Antes do teste: no Cut-Rite, acrescentar à lista de peças uma coluna de texto logo a seguir
+à CNC_2.** Sem ela, uma lista do modelo Colar enviada para o Cut-Rite põe o código no
++comp e o +comp no +Larg.
+
+Guião de teste:
+
+1. Fechar o Martelo e voltar a abri-lo.
+2. **Produção** → escolher a obra de teste (com o CSV do iMos já exportado) → **Funções** →
+   **«Lista Material com coluna Colar (ensaio)…»**. Se a obra já tem Lista Material, escolher
+   «Criar nova (substitui a atual)»: a anterior fica na pasta com a data no nome.
+   - Esperado na linha de estado: «Lista Material criada (modelo de ensaio com a coluna
+     Colar).»
+3. **Passo 1 de 4** → Sim (importar o CSV do iMos). **Passo 2** → Sim (AUTOMATION), como
+   sempre.
+4. No Excel, separador **LISTAGEM_CUT_RITE**:
+   - a coluna **V «Colar»** fica entre a CNC_2 e o +comp;
+   - há um botão verde «Colar» por cima dela;
+   - ao clicar numa célula da Colar aparece a dica «Duplo clique: menu Colar…».
+5. **Duplo clique** na célula Colar de uma peça com o Material a vermelho, por exemplo um
+   tampo de 38 mm em material de 19 mm (ID 14). Esperado:
+   - abre «Colar - peças a colar (ensaio)», com essa peça no conjunto;
+   - a lista de cima mostra só as linhas a vermelho.
+6. **Conjunto da mesma peça duas vezes:**
+   - no conjunto, selecionar a peça e clicar **+1**: o código fica «14+14»;
+   - escolher «2 comprimentos (OC2)» e «2 larguras (OL2)»: fica «14+14_O4L»;
+   - marcar «CNC depois da colagem»: fica «14+14_O4L_CNC»;
+   - ao lado do conjunto deve aparecer «… 19x2 = 38 mm / Esp no iMos: 38 mm»;
+   - clicar **Gravar nas peças do conjunto**. Esperado na linha de estado: «Código
+     «14+14_O4L_CNC» gravado em 1 linha(s): ID 14.»
+7. **Conjunto de linhas diferentes:**
+   - selecionar o ID 20 em cima → **Juntar ao conjunto**;
+   - pôr «Quantas de cada» = 2, selecionar o ID 21 → **Juntar**: o código fica «20+21x2»;
+   - marcar «CNC antes da colagem» e **Gravar**.
+   - Esperado: as linhas ID 20 e ID 21 ficam as duas com «CNC_20+21x2».
+8. **Numeração mudada:**
+   - inserir uma linha acima da ID 20 (os IDs andam um para a frente);
+   - botão «Colar» → **Verificar toda a listagem**.
+   - Esperado: aviso de que o código «CNC_20+21x2» não inclui o ID 21 e de que a numeração
+     mudou.
+   - Desfazer (Ctrl+Z) ou refazer o conjunto.
+9. **Copia Listagem CUT_RITE**: com códigos a corrigir, pergunta antes de copiar. A cópia vai
+   da A à X (24 colunas).
+10. Gravar e fechar o Excel. **CUT-RITE → Enviar CUT-RITE**. Esperado:
+    - com códigos desencontrados, aparece a caixa com «COLUNA COLAR — …»;
+    - no Cut-Rite, os códigos ficam na coluna nova;
+    - o +comp e o +Larg ficam nos sítios de sempre.
+11. Numa obra qualquer, o botão **«Lista Material_IMOS»** continua a dar a lista sem a coluna
+    Colar.
+
+Por fazer, depois do teste:
+- o Streamlit ainda não lê o código;
+- se a Colar ficar, passar o modelo Colar a modelo de sempre. As correções às macros comuns
+  (`atualizar_macros_modelo_lista_material.py`) só vão para o modelo de sempre; para o Colar,
+  volta-se a correr o `criar_modelo_lista_material_colar.py`.

@@ -83,6 +83,8 @@ from app.services.woodstore_service import query_woodstore
 from app.services.warehouse_board_catalog import WoodstoreBoardCatalogProvider
 from app.services.lista_material_imos_service import (
     MACRO_IMPORT_BASE_IMOS,
+    TEMPLATE_FILENAME,
+    TEMPLATE_FILENAME_COLAR,
     execute_automation_cutrite_macro,
     execute_import_base_imos_macro,
     execute_import_csv_imos_macro,
@@ -481,6 +483,23 @@ class ProducaoPage(QWidget):
         )
         self.lista_base_imos_action.triggered.connect(self._lista_material_base_imos)
 
+        # ENSAIO (06-11-2026): a Lista Material da obra feita com a cópia do
+        # modelo que tem a coluna «Colar» (colagens, para a fábrica e o Cut-Rite).
+        self.lista_colar_action = QAction(
+            "Lista Material com coluna Colar (ensaio)…", self
+        )
+        self.lista_colar_action.setIcon(icone_ficheiro("icon_excel.ico"))
+        self.lista_colar_action.setToolTip(
+            "ENSAIO: criar a Lista Material da obra com o modelo "
+            f"«{TEMPLATE_FILENAME_COLAR}», igual ao de sempre mais a coluna Colar a "
+            "seguir à CNC_2 e o menu de colagens (duplo clique na coluna Colar). "
+            "O Cut-Rite passa a receber essa coluna: tem de a ter na lista de peças. "
+            "O botão «Lista Material_IMOS» continua a usar o modelo de sempre."
+        )
+        self.lista_colar_action.triggered.connect(
+            lambda: self._lista_material_imos(modelo=TEMPLATE_FILENAME_COLAR)
+        )
+
         self.enviar_cutrite_action = QAction(
             icone_ficheiro("icon_cut_rite.ico"), "Enviar CUT-RITE", self
         )
@@ -596,6 +615,7 @@ class ProducaoPage(QWidget):
         self.funcoes_menu.addAction(self.gerar_listas_imos_action)
         self.funcoes_menu.addAction(self.analisar_lista_material_action)
         self.funcoes_menu.addAction(self.lista_base_imos_action)
+        self.funcoes_menu.addAction(self.lista_colar_action)
         self.funcoes_menu.addSeparator()
         self.funcoes_menu.addAction(self.preparacao_action)
         self.funcoes_menu.addAction(self.imprimir_action)
@@ -2519,7 +2539,13 @@ class ProducaoPage(QWidget):
             diario_bordo.registar_acao("Ligou a pasta que já existia à obra", caminho)
         return caminho
 
-    def _lista_material_imos(self) -> None:
+    def _lista_material_imos(self, *_sinal, modelo: str = TEMPLATE_FILENAME) -> None:
+        """Criar a Lista Material da obra a partir do modelo do Excel.
+
+        ``modelo`` = o ficheiro .xltm: o de sempre (botão «Lista Material_IMOS») ou
+        o de ensaio com a coluna Colar (Funções). ``*_sinal`` apanha o ``checked``
+        que o ``clicked`` do botão manda.
+        """
         processo = self._processo_selecionado()
         if processo is None:
             self.status_label.setText("Selecione um processo para gerar a Lista Material.")
@@ -2545,6 +2571,7 @@ class ProducaoPage(QWidget):
                     processo_id=processo.id,
                     nome_enc_imos=nome_enc,
                     values=values,
+                    template_filename=modelo,
                 )
         except ValueError as error:
             if str(error).startswith("Modelo Excel nao encontrado"):
@@ -2619,6 +2646,7 @@ class ProducaoPage(QWidget):
                 processo_id=processo.id,
                 nome_enc_imos=nome_enc,
                 values=values,
+                template_filename=modelo,
             )
 
         # A lista antiga sai da frente ANTES de se escrever a nova, e só é
@@ -2675,12 +2703,13 @@ class ProducaoPage(QWidget):
                 f"da configuração.\n\nDetalhe: {error}",
             )
 
+        com_colar = " (modelo de ensaio com a coluna Colar)" if modelo != TEMPLATE_FILENAME else ""
         if guardada is not None:
             self.status_label.setText(
-                f"Lista Material substituída. A anterior ficou em «{guardada.name}»."
+                f"Lista Material substituída{com_colar}. A anterior ficou em «{guardada.name}»."
             )
         else:
-            self.status_label.setText("Lista Material criada.")
+            self.status_label.setText(f"Lista Material criada{com_colar}.")
         self._oferecer_fluxo_inicial_lista_material(processo, output_path)
 
     def _valores_definicoes_lista_material(self, nome_enc: str) -> dict:
@@ -3463,7 +3492,11 @@ class ProducaoPage(QWidget):
                 or "Verificação feita: todos os materiais existem no Woodstore."
             )
             return True
-        if not resultado.materiais_em_falta and not resultado.colunas_com_erro:
+        if (
+            not resultado.materiais_em_falta
+            and not resultado.colunas_com_erro
+            and not resultado.colar_problemas
+        ):
             self.status_label.setText(resultado.woodstore_aviso)
             return True
 

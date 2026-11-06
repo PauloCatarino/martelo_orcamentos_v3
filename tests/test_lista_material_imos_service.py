@@ -258,7 +258,10 @@ def test_lista_material_imos_ps_script_tem_mapeamento_excel() -> None:
     assert "Get-OrCreateSheet $wb 'SUGESTOES'" in script
     assert "Get-OrCreateSheet $wb 'VALIDACAO'" in script
     assert "Get-OrCreateSheet $wb 'LOG'" in script
-    assert "$wsCutTechnical.Range('AA2').Value2 = 'SourceID'" in script
+    # SourceID logo a seguir à tabela (AA no modelo de sempre; AB no da coluna Colar).
+    assert "$colSource = $loTec.Range.Column + $loTec.Range.Columns.Count" in script
+    assert "$wsCutTechnical.Cells.Item(2, $colSource).Value2 = 'SourceID'" in script
+    assert "Range('AA2')" not in script
     assert "Analisar/Completar Lista Material" in script
     assert "Substituições por Artigo/RP." in script
 

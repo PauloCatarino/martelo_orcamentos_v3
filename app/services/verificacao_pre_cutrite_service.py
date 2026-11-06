@@ -20,11 +20,15 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
+from app.domain import codigo_colar
 from app.services.cutrite_service import (
+    CUTRITE_COLUNA_COLAR,
     CUTRITE_EXPORT_HEADERS,
     CUTRITE_SOURCE_DATA_START_ROW,
     CUTRITE_SOURCE_HEADER_ROW,
+    CUTRITE_SOURCE_MAX_COL,
     LISTAGEM_CUT_RITE_SHEET,
+    cutrite_export_column_count,
 )
 
 # Em inglês e em português: depende da língua do Excel que gravou o livro.
@@ -63,12 +67,15 @@ class VerificacaoPreCutRite:
     colunas_com_erro: list[ColunaComErro] = field(default_factory=list)
     woodstore_verificado: bool = True
     woodstore_aviso: str = ""
+    # Coluna Colar (modelo de ensaio COLAR): códigos mal escritos ou desencontrados.
+    colar_problemas: list[str] = field(default_factory=list)
 
     @property
     def tudo_certo(self) -> bool:
         return (
             not self.materiais_em_falta
             and not self.colunas_com_erro
+            and not self.colar_problemas
             and self.woodstore_verificado
         )
 
@@ -87,22 +94,24 @@ def ler_linhas(path: Path) -> list[dict]:
         if LISTAGEM_CUT_RITE_SHEET not in book.sheetnames:
             raise ValueError(f"Folha {LISTAGEM_CUT_RITE_SHEET} em falta.")
         sheet = book[LISTAGEM_CUT_RITE_SHEET]
-        colunas = len(CUTRITE_EXPORT_HEADERS)
         cabecalho = next(
             sheet.iter_rows(
                 min_row=CUTRITE_SOURCE_HEADER_ROW,
                 max_row=CUTRITE_SOURCE_HEADER_ROW,
-                max_col=colunas,
+                max_col=CUTRITE_SOURCE_MAX_COL,
                 values_only=True,
             ),
             (),
         )
+        # 23 colunas, ou 24 com a Colar do modelo de ensaio (a seguir à CNC_2).
+        colunas = cutrite_export_column_count(cabecalho)
+        cabecalho = list(cabecalho[:colunas]) + [None] * (colunas - len(cabecalho))
+        padrao = list(CUTRITE_EXPORT_HEADERS)
+        if colunas > len(padrao):
+            padrao.insert(padrao.index("CNC_2") + 1, CUTRITE_COLUNA_COLAR)
         # Os nomes do próprio livro mandam; o "+comp" do modelo traz uma
         # mudança de linha no fim.
-        nomes = [
-            str(nome or "").strip() or CUTRITE_EXPORT_HEADERS[i]
-            for i, nome in enumerate(list(cabecalho) + [None] * (colunas - len(cabecalho)))
-        ]
+        nomes = [str(nome or "").strip() or padrao[i] for i, nome in enumerate(cabecalho)]
         linhas = []
         for valores in sheet.iter_rows(
             min_row=CUTRITE_SOURCE_DATA_START_ROW, max_col=colunas, values_only=True
@@ -139,6 +148,10 @@ def verificar(
         ColunaComErro(coluna, len(valores), valores[0])
         for coluna, valores in erros.items()
     ]
+    if any(CUTRITE_COLUNA_COLAR in linha for linha in linhas):
+        resultado.colar_problemas = codigo_colar.problemas_na_listagem(
+            (linha.get("ID"), linha.get(CUTRITE_COLUNA_COLAR)) for linha in linhas
+        )
 
     if codigos_woodstore is None:
         resultado.woodstore_verificado = False
@@ -221,6 +234,18 @@ def texto_do_aviso(resultado: VerificacaoPreCutRite, *, pode_reparar: bool = Tru
                 if pode_reparar
                 else ""
             )
+        )
+    if resultado.colar_problemas:
+        if partes:
+            partes.append("")
+        partes.append("COLUNA COLAR — códigos que a fábrica pode ler mal:")
+        for problema in resultado.colar_problemas[:12]:
+            partes.append(f"   • {problema}")
+        if len(resultado.colar_problemas) > 12:
+            partes.append(f"   • … e mais {len(resultado.colar_problemas) - 12}.")
+        partes.append(
+            "\nCorrija no Excel com o menu «Colar» (duplo clique na coluna Colar) e "
+            "grave antes de enviar."
         )
     if not resultado.woodstore_verificado:
         if partes:

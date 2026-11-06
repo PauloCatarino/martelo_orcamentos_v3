@@ -349,8 +349,9 @@ def _ler_listagem(folha, analise: AnaliseAcabamentos) -> None:
             )
 
 
+# Tipo_Lacagem na coluna Z; no modelo de ensaio com a coluna Colar, na AA.
 _ORIGEM_TIPO = re.compile(
-    r"LISTAGEM_CUT_RITE'?!\$?Z\$?(\d+)", re.IGNORECASE
+    r"LISTAGEM_CUT_RITE'?!\$?(?:Z|AA)\$?(\d+)", re.IGNORECASE
 )
 _CAMPOS_CABECALHO = (
     ("Tipo", lambda chave: chave.startswith("TIPO")),

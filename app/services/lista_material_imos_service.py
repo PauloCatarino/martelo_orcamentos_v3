@@ -23,6 +23,10 @@ from app.services.system_setting_service import SystemSettingService
 
 KEY_PASTA_BASE_DADOS_ORCAMENTO = "pasta_base_dados_orcamento"
 TEMPLATE_FILENAME = "Lista_Material_IMOS_MARTELO.xltm"
+# Ensaio (06-11-2026): cópia do modelo com a coluna «Colar» a seguir à CNC_2 na
+# LISTAGEM_CUT_RITE e o menu de colagens (scripts/criar_modelo_lista_material_colar.py).
+# O modelo de sempre fica como está.
+TEMPLATE_FILENAME_COLAR = "Lista_Material_IMOS_MARTELO_COLAR.xltm"
 MACRO_IMPORT_CSV_IMOS = "Import_CSV_Imos_1"
 MACRO_AUTOMATION_CUTRITE = "Preencher_Tabela_Cut_Rite"
 MACRO_IMPORT_LISTAS_FERRAGENS = "ImportarListasFerragensIMOS_14"
@@ -46,6 +50,7 @@ def prepare_lista_material_imos(
     processo_id: int,
     nome_enc_imos: str,
     values: dict,
+    template_filename: str = TEMPLATE_FILENAME,
 ) -> ListaMaterialImosContext:
     processo = session.get(Producao, int(processo_id))
     if processo is None:
@@ -70,7 +75,7 @@ def prepare_lista_material_imos(
             "Modelo Excel nao encontrado: a setting 'Pasta Base Dados Orcamento' "
             "nao esta configurada em Caminhos do Sistema."
         )
-    template_path = Path(base_txt) / TEMPLATE_FILENAME
+    template_path = Path(base_txt) / template_filename
     if not template_path.is_file():
         raise ValueError(f"Modelo Excel nao encontrado:\n{template_path}")
 
@@ -390,13 +395,23 @@ try {
       $log.Cells.Item(2,3).Value2 = 'Livro criado pelo Martelo V3'
 
       $wsCutTechnical = $wb.Worksheets.Item('LISTAGEM_CUT_RITE')
-      $wsCutTechnical.Range('AA2').Value2 = 'SourceID'
-      $wsCutTechnical.Range('AB2').Value2 = 'Estado_Assistente'
-      $wsCutTechnical.Range('AA3').Formula = '=IF(A3<>"","SRC-"&TEXT(ROW()-2,"000000"),"")'
-      $wsCutTechnical.Range('AB3').Value2 = ''
+      # Logo a seguir à Tabela_Cut_Rite: AA/AB no modelo de sempre; AB/AC no de
+      # ensaio com a coluna Colar, onde a AA é o Tipo_Lacagem.
+      $colSource = 27
+      try {
+        $loTec = $wsCutTechnical.ListObjects.Item('Tabela_Cut_Rite')
+        $colSource = $loTec.Range.Column + $loTec.Range.Columns.Count
+        [Runtime.InteropServices.Marshal]::ReleaseComObject($loTec) | Out-Null
+      } catch { }
+      $wsCutTechnical.Cells.Item(2, $colSource).Value2 = 'SourceID'
+      $wsCutTechnical.Cells.Item(2, $colSource + 1).Value2 = 'Estado_Assistente'
+      $wsCutTechnical.Cells.Item(3, $colSource).Formula = '=IF(A3<>"","SRC-"&TEXT(ROW()-2,"000000"),"")'
+      $wsCutTechnical.Cells.Item(3, $colSource + 1).Value2 = ''
       try {
         $lastRow = [Math]::Max(3, $wsCutTechnical.UsedRange.Rows.Count)
-        if ($lastRow -gt 3) { $wsCutTechnical.Range("AA3:AA$lastRow").FillDown() }
+        if ($lastRow -gt 3) {
+          $wsCutTechnical.Range($wsCutTechnical.Cells.Item(3, $colSource), $wsCutTechnical.Cells.Item($lastRow, $colSource)).FillDown() | Out-Null
+        }
       } catch { }
       [Runtime.InteropServices.Marshal]::ReleaseComObject($wsCutTechnical) | Out-Null
       foreach ($s in @($assistant,$raw,$suggestions,$validation,$log)) {

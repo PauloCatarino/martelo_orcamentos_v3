@@ -1357,6 +1357,27 @@ def read_material_rows(workbook_path: Path) -> list[MaterialRow]:
     return read_material_table(workbook_path)[1]
 
 
+def _coluna_depois_da_tabela(cutrite) -> int:
+    """Coluna do SourceID na LISTAGEM_CUT_RITE.
+
+    Se já há um cabeçalho «SourceID» na linha 2, é essa: a tabela costuma crescer e
+    engolir o SourceID e o Estado_Assistente que o Martelo escreve ao lado dela.
+    Senão, a 1.ª coluna à direita da Tabela_Cut_Rite: AA (27) no modelo de sempre,
+    AB no de ensaio com a coluna Colar, onde a AA é o Tipo_Lacagem.
+    """
+    try:
+        for coluna in range(1, 61):
+            if str(cutrite.Cells.Item(2, coluna).Value or "").strip() == "SourceID":
+                return coluna
+    except Exception:
+        pass
+    try:
+        tabela = cutrite.ListObjects.Item("Tabela_Cut_Rite").Range
+        return int(tabela.Column) + int(tabela.Columns.Count)
+    except Exception:  # livro antigo sem a tabela com este nome
+        return 27
+
+
 def prepare_workbook_for_assistant(
     workbook_path: Path,
     *,
@@ -1466,8 +1487,12 @@ def prepare_workbook_for_assistant(
             ).Font.Bold = True
 
         cutrite = workbook.Worksheets.Item(SHEET_CUTRITE)
-        cutrite.Cells.Item(2, 27).Value2 = "SourceID"
-        cutrite.Cells.Item(2, 28).Value2 = "Estado_Assistente"
+        # Logo a seguir à tabela: AA/AB no modelo de sempre, AB/AC no de ensaio
+        # com a coluna Colar (aí a AA é o Tipo_Lacagem).
+        col_source = _coluna_depois_da_tabela(cutrite)
+        col_estado = col_source + 1
+        cutrite.Cells.Item(2, col_source).Value2 = "SourceID"
+        cutrite.Cells.Item(2, col_estado).Value2 = "Estado_Assistente"
         last_row = max(
             int(cutrite.Cells(cutrite.Rows.Count, 1).End(-4162).Row),
             int(cutrite.Cells(cutrite.Rows.Count, 2).End(-4162).Row),
@@ -1478,11 +1503,11 @@ def prepare_workbook_for_assistant(
                 cutrite.Cells.Item(row_number, 2).Value or ""
             ).strip():
                 continue
-            if not str(cutrite.Cells.Item(row_number, 27).Value or "").strip():
-                cutrite.Cells.Item(row_number, 27).Value2 = f"SRC-{row_number - 2:06d}"
+            if not str(cutrite.Cells.Item(row_number, col_source).Value or "").strip():
+                cutrite.Cells.Item(row_number, col_source).Value2 = f"SRC-{row_number - 2:06d}"
                 assigned += 1
-            if not str(cutrite.Cells.Item(row_number, 28).Value or "").strip():
-                cutrite.Cells.Item(row_number, 28).Value2 = "POR_ANALISAR"
+            if not str(cutrite.Cells.Item(row_number, col_estado).Value or "").strip():
+                cutrite.Cells.Item(row_number, col_estado).Value2 = "POR_ANALISAR"
 
         if assigned:
             log = _sheet("LOG")
@@ -1542,12 +1567,13 @@ def apply_workbook_decisions(
             header = str(sheet.Cells.Item(2, column).Value or "").strip()
             if header:
                 header_map[header] = column
+        livre = _coluna_depois_da_tabela(sheet)
         if "SourceID" not in header_map:
-            header_map["SourceID"] = 27
-            sheet.Cells.Item(2, 27).Value2 = "SourceID"
+            header_map["SourceID"] = livre
+            sheet.Cells.Item(2, livre).Value2 = "SourceID"
         if "Estado_Assistente" not in header_map:
-            header_map["Estado_Assistente"] = 28
-            sheet.Cells.Item(2, 28).Value2 = "Estado_Assistente"
+            header_map["Estado_Assistente"] = livre + 1
+            sheet.Cells.Item(2, livre + 1).Value2 = "Estado_Assistente"
         def _sheet(name: str):
             try:
                 return workbook.Worksheets.Item(name)

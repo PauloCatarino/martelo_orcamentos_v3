@@ -62,6 +62,11 @@ CUTRITE_EXPORT_HEADERS = (
 )
 CUTRITE_GRAFICO_ORLAS_VALUE = "111:111:000:000"
 CUTRITE_EXPORT_MAX_COL = len(CUTRITE_EXPORT_HEADERS)
+# Ensaio de 06-11-2026 (modelo Lista_Material_IMOS_MARTELO_COLAR.xltm): a coluna
+# «Colar» fica logo a seguir à CNC_2 e vai para o Cut-Rite nesse sítio, que tem
+# de ter a mesma coluna na lista de peças. O Cut-Rite lê as colunas pela ordem.
+CUTRITE_COLUNA_COLAR = "Colar"
+CUTRITE_POSICAO_COLAR = CUTRITE_EXPORT_HEADERS.index("CNC_2") + 1
 CUTRITE_MAIN_TITLE_FRAGMENT = "schnitt profit modular"
 CUTRITE_PARTS_WINDOW_NAME = "lista de pecas"
 CUTRITE_IMPORT_WINDOW_NAME = "importacao - pecas"
@@ -264,6 +269,26 @@ def build_cutrite_import_headers() -> list[str]:
     return list(CUTRITE_EXPORT_HEADERS)
 
 
+def cutrite_export_column_count(headers: Sequence[object]) -> int:
+    """Quantas colunas da LISTAGEM_CUT_RITE vão para o Cut-Rite, a contar da A.
+
+    23 no modelo de sempre (Descricao a +Larg); 24 quando o livro tem a coluna
+    Colar, que tem de estar logo a seguir à CNC_2: noutro sítio, o +comp e o
+    +Larg chegavam trocados ao Cut-Rite.
+    """
+    nomes = [str(nome or "").strip().casefold() for nome in headers]
+    alvo = CUTRITE_COLUNA_COLAR.casefold()
+    if alvo not in nomes:
+        return CUTRITE_EXPORT_MAX_COL
+    if nomes.index(alvo) != CUTRITE_POSICAO_COLAR:
+        raise ValueError(
+            f"A coluna «{CUTRITE_COLUNA_COLAR}» da {LISTAGEM_CUT_RITE_SHEET} tem de estar "
+            "logo a seguir à CNC_2: é por essa ordem que o Cut-Rite lê as colunas.\n\n"
+            "Volte a pô-la nesse sítio, grave o Excel e envie outra vez."
+        )
+    return CUTRITE_EXPORT_MAX_COL + 1
+
+
 def build_cutrite_import_row(values: Sequence[object]) -> list[object]:
     row = list(values[:CUTRITE_SOURCE_MAX_COL])
     if len(row) < CUTRITE_SOURCE_MAX_COL:
@@ -347,10 +372,11 @@ def build_cutrite_import_workbook(
     headers, rows, macro_paste_text = _load_cutrite_source_table(context.source_workbook_path)
     if not rows:
         raise ValueError("A folha LISTAGEM_CUT_RITE nao contem linhas validas para importar.")
-    export_rows = [_select_cutrite_export_columns(row) for row in rows]
+    ncols = cutrite_export_column_count(headers)
+    export_rows = [_select_cutrite_export_columns(row, ncols) for row in rows]
     normalized_paste_text = _normalize_cutrite_macro_paste_text(macro_paste_text)
     if not normalized_paste_text:
-        normalized_paste_text = _build_cutrite_paste_text(export_rows)
+        normalized_paste_text = _build_cutrite_paste_text(export_rows, ncols)
     return context.import_workbook_path, export_rows, normalized_paste_text
 
 
@@ -362,7 +388,9 @@ def execute_cutrite_import(
 ) -> CutRiteExecutionResult:
     _report_cutrite_progress(progress_callback, "A preparar a listagem CUT-RITE.")
     import_workbook_path, export_rows, macro_paste_text = build_cutrite_import_workbook(context)
-    paste_text = macro_paste_text or _build_cutrite_paste_text(export_rows)
+    paste_text = macro_paste_text or _build_cutrite_paste_text(
+        export_rows, len(export_rows[0]) if export_rows else CUTRITE_EXPORT_MAX_COL
+    )
     _report_cutrite_progress(progress_callback, "A iniciar a automacao do CUT-RITE.")
     cutrite_was_running, launched_cutrite = _execute_cutrite_ui_import(
         context,
@@ -1411,9 +1439,11 @@ def _normalize_cutrite_cell(value: object) -> object:
     return value
 
 
-def _build_cutrite_paste_text(rows: Sequence[Sequence[object]]) -> str:
+def _build_cutrite_paste_text(
+    rows: Sequence[Sequence[object]], ncols: int = CUTRITE_EXPORT_MAX_COL
+) -> str:
     return "\r\n".join(
-        "\t".join(_format_cutrite_paste_cell(value) for value in row[:CUTRITE_EXPORT_MAX_COL])
+        "\t".join(_format_cutrite_paste_cell(value) for value in row[:ncols])
         for row in rows
     )
 
@@ -1435,8 +1465,10 @@ def _format_cutrite_paste_cell(value: object) -> str:
     return str(normalized)
 
 
-def _select_cutrite_export_columns(row: Sequence[object]) -> list[object]:
-    return list(row[:CUTRITE_EXPORT_MAX_COL])
+def _select_cutrite_export_columns(
+    row: Sequence[object], ncols: int = CUTRITE_EXPORT_MAX_COL
+) -> list[object]:
+    return list(row[:ncols])
 
 
 def prepare_cutrite_runtime_workdir(cutrite_root: Path, cutrite_profile_dir: Path) -> Path:
