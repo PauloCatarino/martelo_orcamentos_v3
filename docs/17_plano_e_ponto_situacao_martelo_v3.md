@@ -3253,3 +3253,33 @@ Por fazer, depois do ensaio:
   LISTAGEM_CUT_RITE;
 - o aviso do ISPEC nas Notas;
 - decidir se o caminho da base substitui o do CSV.
+
+## Cópias de segurança: pasta nova no servidor (2026-11-06)
+
+Pedido do utilizador (04-10): as cópias do Martelo passam a ficar em
+`\\SERVER_LE\Backup\Backup_Martelo_V3`, junto dos outros backups da empresa (iMos,
+Streamlit, PCs), em vez de `...\Dep._Orcamentos\Base_Dados_Orcamento\Backup_Martelo_V3`.
+
+- O código mudou a 04-10 (`3ce83b3`): o `scripts/backup_martelo.py` usa a pasta nova por
+  omissão (`PASTA_SERVIDOR`) e o instalador da tarefa também.
+- Faltava a permissão: este PC entra no servidor com a conta `gestao`, que só podia ler a
+  pasta nova. O administrador da empresa deu a escrita a 06-11.
+- 06-11: as 161 cópias da pasta antiga (base, `Memoria_Claude` e `memoria_2026-10-04`)
+  foram copiadas para a pasta nova e conferidas uma a uma (SHA-256). A cópia da antiga app
+  das horas (`copia_app_antiga_horarios_2026-10-04.sql`) ficou na subpasta `Registo_Horas`.
+- A tarefa «Martelo V3 - copia de seguranca» passou a usar `--copia
+  "\\SERVER_LE\Backup\Backup_Martelo_V3"`. A hora e a conta não mudaram. A cópia de
+  teste das 13h33 de 06-11 correu bem: base (65 tabelas, 5 procedimentos) e memória do
+  Claude chegaram à pasta nova.
+- A pasta antiga deixou de receber cópias. Quem a apaga é o Paulo.
+
+Guião de teste:
+
+1. Na manhã seguinte, no Explorador do Windows, abrir `\\SERVER_LE\Backup\Backup_Martelo_V3`.
+   Deve estar lá a cópia dessa noite, `martelo_v3_<data>_0200.sql.gz` (cerca de 6,5 MB).
+2. Abrir a subpasta `Memoria_Claude`: deve estar lá `memoria_claude_<data>_0200.zip`.
+3. Abrir a subpasta `Registo_Horas`: deve estar lá
+   `copia_app_antiga_horarios_2026-10-04.sql` (38 KB).
+4. Na pasta antiga não deve aparecer nenhuma cópia nova depois de 06-11.
+
+Validação recebida: — (por testar).
