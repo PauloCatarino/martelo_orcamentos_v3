@@ -3271,7 +3271,7 @@ Streamlit, PCs), em vez de `...\Dep._Orcamentos\Base_Dados_Orcamento\Backup_Mart
   "\\SERVER_LE\Backup\Backup_Martelo_V3"`. A hora e a conta não mudaram. A cópia de
   teste das 13h33 de 06-11 correu bem: base (65 tabelas, 5 procedimentos) e memória do
   Claude chegaram à pasta nova.
-- A pasta antiga deixou de receber cópias. Quem a apaga é o Paulo.
+- A pasta antiga deixou de receber cópias e o Paulo apagou-a a 06-11.
 
 Guião de teste:
 
@@ -3280,6 +3280,5 @@ Guião de teste:
 2. Abrir a subpasta `Memoria_Claude`: deve estar lá `memoria_claude_<data>_0200.zip`.
 3. Abrir a subpasta `Registo_Horas`: deve estar lá
    `copia_app_antiga_horarios_2026-10-04.sql` (38 KB).
-4. Na pasta antiga não deve aparecer nenhuma cópia nova depois de 06-11.
 
 Validação recebida: — (por testar).
