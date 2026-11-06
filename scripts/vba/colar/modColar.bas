@@ -114,6 +114,21 @@ Public Function ColarIdDaLinha(ByVal lo As ListObject, ByVal linha As Long, ByVa
 Fim:
 End Function
 
+' Índice da coluna "+comp" ou "+Larg" (nomeNormalizado = "COMP" ou "LARG"): a que
+' começa por "+", para não a confundir com a Comp e a Larg da peça.
+Public Function ColarIndiceMais(ByVal nomeNormalizado As String) As Long
+    Dim lo As ListObject, i As Long, nome As String
+    Set lo = ColarTabela()
+    If lo Is Nothing Then Exit Function
+    For i = 1 To lo.ListColumns.Count
+        nome = Trim$(Replace(Replace(CStr(lo.ListColumns(i).Name), vbLf, ""), vbCr, ""))
+        If Left$(nome, 1) = "+" And ColarNormalizar(nome) = nomeNormalizado Then
+            ColarIndiceMais = i
+            Exit Function
+        End If
+    Next i
+End Function
+
 ' Linha da tabela (1..n) com este ID; 0 = não existe.
 Public Function ColarLinhaDoId(ByVal ident As String) As Long
     Dim lo As ListObject, colId As Long, r As Long
@@ -349,12 +364,20 @@ End Function
 ' Escreve o código em todas as linhas do conjunto e tira-o das linhas que tinham
 ' o código antigo e já não são do conjunto. Devolve o texto para a linha de estado,
 ' ou "" quando não gravou (IDs em falta ou o utilizador disse que não).
+'   mudarQt  : a Qt de cada peça do conjunto passa a ser quantas entram nele, quando
+'              são 2 ou mais (5+5 -> Qt 2): é o que o Cut-Rite tem de cortar.
+'   maisComp / maisLarg : excedente de corte para as colunas +comp e +Larg (por
+'              defeito 20 no menu); vazio = não mexe nessas colunas.
 Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
                             ByVal codigoAntigo As String, _
-                            Optional ByVal perguntar As Boolean = True) As String
+                            Optional ByVal perguntar As Boolean = True, _
+                            Optional ByVal mudarQt As Boolean = False, _
+                            Optional ByVal maisComp As String = "", _
+                            Optional ByVal maisLarg As String = "") As String
     Dim lo As ListObject, colId As Long, colColar As Long, r As Long
+    Dim colQt As Long, colMaisComp As Long, colMaisLarg As Long
     Dim idTxt As String, atual As String, k As Variant
-    Dim faltam As String, conflitos As String, escritos As String
+    Dim faltam As String, conflitos As String, escritos As String, qts As String
     Dim n As Long, tirados As Long
 
     Set lo = ColarTabela()
@@ -364,6 +387,9 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
     colColar = ColarIndice("COLAR")
     If colId = 0 Or colColar = 0 Then Exit Function
     If Len(codigo) = 0 Then Exit Function
+    colQt = ColarIndice("QT")
+    colMaisComp = ColarIndiceMais("COMP")
+    colMaisLarg = ColarIndiceMais("LARG")
 
     For Each k In conj.Keys
         If ColarLinhaDoId(CStr(k)) = 0 Then faltam = faltam & " " & k
@@ -401,6 +427,18 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
                 .NumberFormat = "@"
                 .Value = codigo
             End With
+            If mudarQt And colQt > 0 Then
+                If CLng(conj(idTxt)) >= 2 Then
+                    lo.DataBodyRange.Cells(r, colQt).Value = CLng(conj(idTxt))
+                    qts = qts & IIf(Len(qts) > 0, ", ", "") & "ID " & idTxt & " = " & CLng(conj(idTxt))
+                End If
+            End If
+            If Len(Trim$(maisComp)) > 0 And colMaisComp > 0 Then
+                lo.DataBodyRange.Cells(r, colMaisComp).Value = Val(Replace(maisComp, ",", "."))
+            End If
+            If Len(Trim$(maisLarg)) > 0 And colMaisLarg > 0 Then
+                lo.DataBodyRange.Cells(r, colMaisLarg).Value = Val(Replace(maisLarg, ",", "."))
+            End If
             n = n + 1
             If Len(escritos) > 0 Then escritos = escritos & ", "
             escritos = escritos & idTxt
@@ -411,6 +449,10 @@ Public Function ColarGravar(ByVal conj As Object, ByVal codigo As String, _
     Next r
 
     ColarGravar = "Código «" & codigo & "» gravado em " & n & " linha(s): ID " & escritos & "."
+    If Len(qts) > 0 Then ColarGravar = ColarGravar & " Qt: " & qts & "."
+    If Len(Trim$(maisComp)) > 0 Or Len(Trim$(maisLarg)) > 0 Then
+        ColarGravar = ColarGravar & " +comp " & maisComp & " / +Larg " & maisLarg & "."
+    End If
     If tirados > 0 Then
         ColarGravar = ColarGravar & " Tirado de " & tirados & " linha(s) que já não são do conjunto."
     End If

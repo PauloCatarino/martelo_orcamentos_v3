@@ -5,15 +5,27 @@ Option Explicit
 '--------------------------------------------------------------------
 '  Abre-se com o botão "Colar" da LISTAGEM_CUT_RITE ou com duplo clique numa
 '  célula da coluna Colar. O utilizador escolhe as peças a colar (pelo ID),
-'  quantas de cada, o que passa na CNC e que orla leva depois da colagem;
-'  o menu monta o código e grava-o em todas as peças do conjunto.
+'  quantas de cada, o que passa na CNC e que orla leva depois da colagem
+'  (clicando nas arestas do desenho da peça); o menu monta o código e grava-o
+'  em todas as peças do conjunto, com a Qt e os excedentes +comp/+Larg.
 '
 '  O formulário no modelo está vazio: os controlos criam-se aqui, no
 '  UserForm_Initialize, para o menu todo viver em texto no repositório do
 '  Martelo (scripts/vba/colar/frmColar.vba). As regras estão no modColar.
+'
+'  2.ª ronda (06-11-2026, pedido do Paulo no teste da obra 1935_01):
+'    - Qt das peças = quantas entram no conjunto (5+5 -> Qt 2);
+'    - espessuras com tolerância (as colas também contam): o que manda é a Esp do iMos;
+'    - +comp / +Larg = 20 por defeito (excedente de corte), editáveis;
+'    - pesquisa na lista das peças;
+'    - orlas depois da colagem clicando nas arestas do desenho da peça.
 '====================================================================
 
+Private Const EXCEDENTE_POR_DEFEITO As String = "20"
+Private Const TOLERANCIA_MM As Double = 2
+
 Private WithEvents lstPecas As MSForms.ListBox
+Private WithEvents txtPesquisa As MSForms.TextBox
 Private WithEvents chkSoVermelhas As MSForms.CheckBox
 Private WithEvents btnAdicionar As MSForms.CommandButton
 Private WithEvents lstConjunto As MSForms.ListBox
@@ -22,14 +34,25 @@ Private WithEvents btnMais As MSForms.CommandButton
 Private WithEvents btnMenos As MSForms.CommandButton
 Private WithEvents chkCncInicio As MSForms.CheckBox
 Private WithEvents chkCncFim As MSForms.CheckBox
-Private WithEvents cmbComp As MSForms.ComboBox
-Private WithEvents cmbLarg As MSForms.ComboBox
 Private WithEvents chkRaio As MSForms.CheckBox
+Private WithEvents lblArestaC1 As MSForms.Label
+Private WithEvents lblArestaC2 As MSForms.Label
+Private WithEvents lblArestaL1 As MSForms.Label
+Private WithEvents lblArestaL2 As MSForms.Label
+Private WithEvents btnQuatroLados As MSForms.CommandButton
+Private WithEvents btnSemOrla As MSForms.CommandButton
 Private WithEvents btnGravar As MSForms.CommandButton
 Private WithEvents btnLimpar As MSForms.CommandButton
 Private WithEvents btnVerificar As MSForms.CommandButton
 Private WithEvents btnFechar As MSForms.CommandButton
 Private txtQt As MSForms.TextBox
+Private txtMaisComp As MSForms.TextBox
+Private txtMaisLarg As MSForms.TextBox
+Private chkMudarQt As MSForms.CheckBox
+Private lblPeca As MSForms.Label
+Private lblMedidaC As MSForms.Label
+Private lblMedidaL As MSForms.Label
+Private lblCodigoOrlas As MSForms.Label
 Private lblCodigo As MSForms.Label
 Private lblEsp As MSForms.Label
 Private lblEstado As MSForms.Label
@@ -39,7 +62,18 @@ Private mCodigoAntigo As String  ' código da linha de onde o menu abriu (para ed
 Private mLo As ListObject
 Private cId As Long, cDesc As Long, cMat As Long, cComp As Long, cLarg As Long
 Private cQt As Long, cEsp As Long, cEspMat As Long, cEspFinal As Long, cColar As Long
+Private cMaisComp As Long, cMaisLarg As Long
 Private mAPreparar As Boolean
+' Arestas com orla depois da colagem: C1 (comprimento de baixo), C2 (de cima),
+' L1 (largura da esquerda), L2 (da direita).
+Private mC1 As Boolean, mC2 As Boolean, mL1 As Boolean, mL2 As Boolean
+
+' Zona do desenho da peça
+Private Const DES_ESQ As Single = 330
+Private Const DES_TOPO As Single = 404
+Private Const DES_LARG As Single = 230
+Private Const DES_ALT As Single = 96
+Private Const LARG_ARESTA As Single = 7
 
 '====================================================================
 '  ABRIR
@@ -48,7 +82,7 @@ Private Sub UserForm_Initialize()
     mAPreparar = True
     Me.Caption = "Colar - peças a colar (ensaio)"
     Me.Width = 760
-    Me.Height = 572
+    Me.Height = 662
     Set mConj = CreateObject("Scripting.Dictionary")
     Set mLo = ColarTabela()
     cId = ColarIndice("ID")
@@ -61,6 +95,8 @@ Private Sub UserForm_Initialize()
     cEspMat = ColarIndice("ESPMAT")
     cEspFinal = ColarIndice("ESPFINAL")
     cColar = ColarIndice("COLAR")
+    cMaisComp = ColarIndiceMais("COMP")
+    cMaisLarg = ColarIndiceMais("LARG")
 
     CriarControlos
     chkSoVermelhas.Value = (ContarVermelhas() > 0)
@@ -94,95 +130,132 @@ Private Function Rotulo(ByVal nome As String, ByVal texto As String, ByVal esque
     Set Rotulo = l
 End Function
 
+Private Function Aresta(ByVal nome As String, ByVal dica As String) As MSForms.Label
+    Dim l As MSForms.Label
+    Set l = Novo("Forms.Label.1", nome, DES_ESQ, DES_TOPO, LARG_ARESTA, LARG_ARESTA, dica)
+    l.Caption = ""
+    l.BackStyle = fmBackStyleOpaque
+    l.MousePointer = fmMousePointerUpArrow
+    Set Aresta = l
+End Function
+
 Private Sub CriarControlos()
+    Dim l As MSForms.Label
+
     Rotulo "lblAjuda", "Escolha as peças que se colam (linhas da LISTAGEM_CUT_RITE, pelo ID), o que passa " & _
         "na CNC e a orla depois da colagem. «Gravar» escreve o código na coluna Colar de todas as peças " & _
-        "do conjunto. Preencha a Colar no fim: se inserir ou apagar linhas, os IDs mudam.", 8, 6, 736, 28
+        "do conjunto (e a Qt e o +comp/+Larg). Preencha a Colar no fim: se inserir ou apagar linhas, os IDs mudam.", _
+        8, 6, 736, 28
 
+    ' 1. Peças da listagem
     Rotulo "lbl1", "1. Peças da listagem   (ID | Descrição | Material | Comp x Larg | Qt | Esp.Mat | Esp | Colar)", _
         8, 40, 470, 14, True
     Set chkSoVermelhas = Novo("Forms.CheckBox.1", "chkSoVermelhas", 486, 38, 258, 16, _
         "Mostrar só as linhas com o Material a vermelho: a espessura do material é diferente da Esp do iMos.")
     chkSoVermelhas.Caption = "Só as linhas a vermelho (espessura diferente)"
+    Rotulo "lblPesquisa", "Pesquisar:", 8, 60, 52, 14
+    Set txtPesquisa = Novo("Forms.TextBox.1", "txtPesquisa", 62, 57, 682, 18, _
+        "Filtrar a lista: escreva parte do ID, da descrição, do material, das medidas ou do código " & _
+        "(várias palavras = todas têm de aparecer).")
 
-    Set lstPecas = Novo("Forms.ListBox.1", "lstPecas", 8, 56, 736, 146, _
+    Set lstPecas = Novo("Forms.ListBox.1", "lstPecas", 8, 80, 736, 132, _
         "Selecione uma ou mais peças (Ctrl/Shift para várias) e carregue em «Juntar ao conjunto», " & _
         "ou faça duplo clique numa peça.")
     lstPecas.ColumnCount = 8
     lstPecas.ColumnWidths = "28;150;206;84;26;42;30;160"
     lstPecas.MultiSelect = fmMultiSelectExtended
 
-    Rotulo "lblQt", "Quantas de cada:", 8, 212, 80, 14
-    Set txtQt = Novo("Forms.TextBox.1", "txtQt", 88, 209, 34, 18, _
+    Rotulo "lblQt", "Quantas de cada:", 8, 222, 80, 14
+    Set txtQt = Novo("Forms.TextBox.1", "txtQt", 88, 219, 34, 18, _
         "Quantas peças de cada linha escolhida entram no conjunto (ex.: 2 para duas peças iguais).")
     txtQt.Text = "1"
-    Set btnAdicionar = Novo("Forms.CommandButton.1", "btnAdicionar", 130, 207, 170, 22, _
+    Set btnAdicionar = Novo("Forms.CommandButton.1", "btnAdicionar", 130, 217, 170, 22, _
         "Juntar as peças selecionadas ao conjunto, com a quantidade ao lado.")
     btnAdicionar.Caption = "Juntar ao conjunto"
 
-    Rotulo "lbl2", "2. Conjunto a colar   (ID | Qt | Descrição | Esp.Mat | Esp)", 8, 238, 460, 14, True
-    Set lstConjunto = Novo("Forms.ListBox.1", "lstConjunto", 8, 254, 460, 108, _
+    ' 2. Conjunto
+    Rotulo "lbl2", "2. Conjunto a colar   (ID | Qt | Descrição | Esp.Mat | Esp)", 8, 248, 460, 14, True
+    Set lstConjunto = Novo("Forms.ListBox.1", "lstConjunto", 8, 264, 460, 96, _
         "As peças do conjunto. Selecione uma para lhe mudar a quantidade ou a tirar.")
     lstConjunto.ColumnCount = 5
     lstConjunto.ColumnWidths = "30;28;270;60;40"
-    Set btnMais = Novo("Forms.CommandButton.1", "btnMais", 476, 254, 40, 22, _
+    Set btnMais = Novo("Forms.CommandButton.1", "btnMais", 476, 264, 40, 22, _
         "Mais uma peça do ID selecionado no conjunto.")
     btnMais.Caption = "+1"
-    Set btnMenos = Novo("Forms.CommandButton.1", "btnMenos", 520, 254, 40, 22, _
+    Set btnMenos = Novo("Forms.CommandButton.1", "btnMenos", 520, 264, 40, 22, _
         "Menos uma peça do ID selecionado (a 0 sai do conjunto).")
     btnMenos.Caption = "-1"
-    Set btnTirar = Novo("Forms.CommandButton.1", "btnTirar", 564, 254, 120, 22, _
+    Set btnTirar = Novo("Forms.CommandButton.1", "btnTirar", 564, 264, 120, 22, _
         "Tirar do conjunto a peça selecionada.")
     btnTirar.Caption = "Tirar do conjunto"
-    Set lblEsp = Rotulo("lblEsp", "", 476, 282, 268, 80)
+    Set lblEsp = Rotulo("lblEsp", "", 476, 290, 268, 70)
 
-    Rotulo "lbl3", "3. CNC", 8, 370, 120, 14, True
-    Set chkCncInicio = Novo("Forms.CheckBox.1", "chkCncInicio", 8, 386, 260, 16, _
+    ' 3. CNC, Qt e excedentes
+    Rotulo "lbl3", "3. CNC, quantidade e excedentes de corte", 8, 370, 300, 14, True
+    Set chkCncInicio = Novo("Forms.CheckBox.1", "chkCncInicio", 8, 386, 290, 16, _
         "As peças passam na CNC ANTES de serem coladas (o código começa por CNC_).")
     chkCncInicio.Caption = "CNC antes da colagem (CNC no início)"
-    Set chkCncFim = Novo("Forms.CheckBox.1", "chkCncFim", 8, 404, 260, 16, _
+    Set chkCncFim = Novo("Forms.CheckBox.1", "chkCncFim", 8, 404, 290, 16, _
         "O conjunto já colado passa na CNC no FIM (o código acaba em _CNC).")
     chkCncFim.Caption = "CNC depois da colagem (CNC no fim)"
+    Set chkMudarQt = Novo("Forms.CheckBox.1", "chkMudarQt", 8, 428, 300, 16, _
+        "A Qt de cada peça passa a ser quantas entram no conjunto (5+5 -> Qt 2): é o que o Cut-Rite corta.")
+    chkMudarQt.Caption = "Qt da peça = quantas entram no conjunto"
+    chkMudarQt.Value = True
+    Rotulo "lblMais", "Excedente de corte:   +comp", 8, 454, 124, 14
+    Set txtMaisComp = Novo("Forms.TextBox.1", "txtMaisComp", 134, 451, 36, 18, _
+        "Milímetros a mais no comprimento, para acertar depois de colar (coluna +comp). Vazio = não mexe.")
+    txtMaisComp.Text = EXCEDENTE_POR_DEFEITO
+    Rotulo "lblMaisL", "+Larg", 178, 454, 30, 14
+    Set txtMaisLarg = Novo("Forms.TextBox.1", "txtMaisLarg", 210, 451, 36, 18, _
+        "Milímetros a mais na largura, para acertar depois de colar (coluna +Larg). Vazio = não mexe.")
+    txtMaisLarg.Text = EXCEDENTE_POR_DEFEITO
+    Rotulo "lblMaisNota", "(a etiqueta do Cut-Rite mostra a medida da peça e a de corte)", 8, 474, 300, 24
 
-    Rotulo "lbl4", "4. Orlar depois da colagem", 280, 370, 300, 14, True
-    Set cmbComp = Novo("Forms.ComboBox.1", "cmbComp", 280, 386, 150, 18, _
-        "Orla nos comprimentos do conjunto já colado: OC1 = 1 comprimento, OC2 = 2 comprimentos.")
-    cmbComp.Style = fmStyleDropDownList
-    cmbComp.AddItem "Sem orla nos comprimentos"
-    cmbComp.AddItem "1 comprimento (OC1)"
-    cmbComp.AddItem "2 comprimentos (OC2)"
-    cmbComp.ListIndex = 0
-    Set cmbLarg = Novo("Forms.ComboBox.1", "cmbLarg", 440, 386, 150, 18, _
-        "Orla nas larguras do conjunto já colado: OL1 = 1 largura, OL2 = 2 larguras. " & _
-        "2 comprimentos + 2 larguras = O4L (4 lados).")
-    cmbLarg.Style = fmStyleDropDownList
-    cmbLarg.AddItem "Sem orla nas larguras"
-    cmbLarg.AddItem "1 largura (OL1)"
-    cmbLarg.AddItem "2 larguras (OL2)"
-    cmbLarg.ListIndex = 0
-    Set chkRaio = Novo("Forms.CheckBox.1", "chkRaio", 600, 387, 144, 16, _
+    ' 4. Orlas: desenho da peça com as arestas a clicar
+    Rotulo "lbl4", "4. Orlar depois da colagem - clique nas arestas da peça", 320, 370, 424, 14, True
+    Set lblPeca = Rotulo("lblPeca", "", DES_ESQ, DES_TOPO, DES_LARG, DES_ALT)
+    lblPeca.BackStyle = fmBackStyleOpaque
+    lblPeca.BackColor = RGB(240, 236, 228)
+    lblPeca.TextAlign = fmTextAlignCenter
+    lblPeca.Font.Size = 8
+    Set lblArestaC1 = Aresta("lblArestaC1", "C1 - comprimento: clique para pôr ou tirar a orla.")
+    Set lblArestaC2 = Aresta("lblArestaC2", "C2 - comprimento: clique para pôr ou tirar a orla.")
+    Set lblArestaL1 = Aresta("lblArestaL1", "L1 - largura: clique para pôr ou tirar a orla.")
+    Set lblArestaL2 = Aresta("lblArestaL2", "L2 - largura: clique para pôr ou tirar a orla.")
+    Set lblMedidaC = Rotulo("lblMedidaC", "", DES_ESQ, DES_TOPO + DES_ALT + 4, DES_LARG, 14)
+    lblMedidaC.TextAlign = fmTextAlignCenter
+    Set lblMedidaL = Rotulo("lblMedidaL", "", DES_ESQ + DES_LARG + 4, DES_TOPO + DES_ALT / 2 - 7, 60, 14)
+    Set btnQuatroLados = Novo("Forms.CommandButton.1", "btnQuatroLados", 630, 404, 114, 22, _
+        "Orla nas 4 arestas (O4L).")
+    btnQuatroLados.Caption = "4 lados (O4L)"
+    Set btnSemOrla = Novo("Forms.CommandButton.1", "btnSemOrla", 630, 430, 114, 22, _
+        "Tirar a orla de todas as arestas.")
+    btnSemOrla.Caption = "Sem orla"
+    Set chkRaio = Novo("Forms.CheckBox.1", "chkRaio", 630, 458, 114, 16, _
         "Orlar o raio / meia-lua depois da colagem (OR).")
     chkRaio.Caption = "Raio / meia-lua (OR)"
+    Set lblCodigoOrlas = Rotulo("lblCodigoOrlas", "", 630, 480, 114, 28, True)
     Rotulo "lblNotaOrla", "A orla que a peça já leva antes de colar continua nas colunas Orla da própria peça.", _
-        280, 408, 464, 14
+        320, 518, 424, 14
 
-    Set lblCodigo = Rotulo("lblCodigo", "", 8, 430, 736, 24, True)
+    Set lblCodigo = Rotulo("lblCodigo", "", 8, 536, 736, 24, True)
     lblCodigo.Font.Size = 14
 
-    Set btnGravar = Novo("Forms.CommandButton.1", "btnGravar", 8, 462, 210, 26, _
-        "Escrever este código na coluna Colar de todas as peças do conjunto.")
+    Set btnGravar = Novo("Forms.CommandButton.1", "btnGravar", 8, 566, 210, 26, _
+        "Escrever este código na coluna Colar de todas as peças do conjunto (e a Qt e o +comp/+Larg).")
     btnGravar.Caption = "Gravar nas peças do conjunto"
-    Set btnLimpar = Novo("Forms.CommandButton.1", "btnLimpar", 226, 462, 200, 26, _
-        "Apagar o código da coluna Colar das peças deste conjunto.")
+    Set btnLimpar = Novo("Forms.CommandButton.1", "btnLimpar", 226, 566, 200, 26, _
+        "Apagar o código da coluna Colar das peças deste conjunto (a Qt e o +comp/+Larg ficam como estão).")
     btnLimpar.Caption = "Tirar o código destas peças"
-    Set btnVerificar = Novo("Forms.CommandButton.1", "btnVerificar", 434, 462, 190, 26, _
+    Set btnVerificar = Novo("Forms.CommandButton.1", "btnVerificar", 434, 566, 190, 26, _
         "Conferir os códigos de toda a listagem (IDs que não existem, conjuntos desencontrados).")
     btnVerificar.Caption = "Verificar toda a listagem"
-    Set btnFechar = Novo("Forms.CommandButton.1", "btnFechar", 644, 462, 100, 26, "Fechar o menu.")
+    Set btnFechar = Novo("Forms.CommandButton.1", "btnFechar", 644, 566, 100, 26, "Fechar o menu.")
     btnFechar.Caption = "Fechar"
 
     ' Linha de estado ("supervisor") por baixo dos botões
-    Set lblEstado = Rotulo("lblEstado", "", 8, 496, 736, 40)
+    Set lblEstado = Rotulo("lblEstado", "", 8, 600, 736, 34)
     lblEstado.ForeColor = RGB(90, 90, 90)
 End Sub
 
@@ -216,6 +289,25 @@ Private Function ContarVermelhas() As Long
     Next r
 End Function
 
+' Todas as palavras da pesquisa aparecem no texto da linha.
+Private Function PassaPesquisa(ByVal linha As Long) As Boolean
+    Dim palavras() As String, texto As String, i As Long
+    If Len(Trim$(txtPesquisa.Text)) = 0 Then
+        PassaPesquisa = True
+        Exit Function
+    End If
+    texto = LCase$(Celula(linha, cId) & " " & Celula(linha, cDesc) & " " & Celula(linha, cMat) & " " & _
+                   Celula(linha, cComp) & " " & Celula(linha, cLarg) & " " & Celula(linha, cEsp) & " " & _
+                   Celula(linha, cColar))
+    palavras = Split(LCase$(Trim$(txtPesquisa.Text)), " ")
+    For i = LBound(palavras) To UBound(palavras)
+        If Len(palavras(i)) > 0 Then
+            If InStr(texto, palavras(i)) = 0 Then Exit Function
+        End If
+    Next i
+    PassaPesquisa = True
+End Function
+
 Private Sub PreencherPecas()
     Dim r As Long, i As Long
     lstPecas.Clear
@@ -223,7 +315,7 @@ Private Sub PreencherPecas()
     If mLo.DataBodyRange Is Nothing Then Exit Sub
     For r = 1 To mLo.ListRows.Count
         If Len(Celula(r, cDesc)) > 0 Or Len(Celula(r, cMat)) > 0 Then
-            If (Not chkSoVermelhas.Value) Or EspDiferente(r) Then
+            If ((Not chkSoVermelhas.Value) Or EspDiferente(r)) And PassaPesquisa(r) Then
                 lstPecas.AddItem Celula(r, cId)
                 i = lstPecas.ListCount - 1
                 lstPecas.List(i, 1) = Celula(r, cDesc)
@@ -267,9 +359,11 @@ Private Sub PrepararPelaCelulaAtiva()
             Set mConj = conj
             chkCncInicio.Value = ci
             chkCncFim.Value = cf
-            cmbComp.ListIndex = nc
-            cmbLarg.ListIndex = nl
+            mC1 = (nc >= 1): mC2 = (nc = 2)
+            mL1 = (nl >= 1): mL2 = (nl = 2)
             chkRaio.Value = ra
+            If Len(Celula(r, cMaisComp)) > 0 Then txtMaisComp.Text = Celula(r, cMaisComp)
+            If Len(Celula(r, cMaisLarg)) > 0 Then txtMaisLarg.Text = Celula(r, cMaisLarg)
             Estado "A editar o conjunto «" & cod & "». «Gravar» muda o código em todas as peças dele."
             Exit Sub
         End If
@@ -281,11 +375,19 @@ Private Sub PrepararPelaCelulaAtiva()
 End Sub
 
 '====================================================================
-'  CONJUNTO E CÓDIGO
+'  CONJUNTO, DESENHO E CÓDIGO
 '====================================================================
+Private Function NComp() As Long
+    NComp = IIf(mC1, 1, 0) + IIf(mC2, 1, 0)
+End Function
+
+Private Function NLarg() As Long
+    NLarg = IIf(mL1, 1, 0) + IIf(mL2, 1, 0)
+End Function
+
 Private Function CodigoAtual() As String
     CodigoAtual = ColarMontar(chkCncInicio.Value, mConj, _
-        ColarOrlasTexto(cmbComp.ListIndex, cmbLarg.ListIndex, chkRaio.Value), chkCncFim.Value)
+        ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value), chkCncFim.Value)
 End Function
 
 Private Function Numero(ByVal s As String) As Double
@@ -297,13 +399,64 @@ Private Function Numero(ByVal s As String) As Double
     End If
 End Function
 
+' Desenha a 1.ª peça do conjunto com as proporções Comp x Larg e as arestas.
+Private Sub DesenharPeca()
+    Dim comp As Double, larg As Double, w As Single, h As Single, x As Single, y As Single
+    Dim r As Long, k As Variant, desc As String
+    comp = 600: larg = 400
+    For Each k In mConj.Keys
+        r = ColarLinhaDoId(CStr(k))
+        If r > 0 Then
+            If Numero(Celula(r, cComp)) > 0 Then comp = Numero(Celula(r, cComp))
+            If Numero(Celula(r, cLarg)) > 0 Then larg = Numero(Celula(r, cLarg))
+            desc = Celula(r, cDesc)
+            Exit For
+        End If
+    Next k
+    ' Comprimento na horizontal; proporção limitada para caber e ser clicável.
+    w = DES_LARG
+    h = w * larg / comp
+    If h > DES_ALT Then
+        h = DES_ALT
+        w = h * comp / larg
+    End If
+    If h < 22 Then h = 22
+    If w < 40 Then w = 40
+    x = DES_ESQ + (DES_LARG - w) / 2
+    y = DES_TOPO + (DES_ALT - h) / 2
+
+    lblPeca.Left = x: lblPeca.Top = y: lblPeca.Width = w: lblPeca.Height = h
+    lblPeca.Caption = vbLf & desc
+    PorAresta lblArestaC2, x, y - LARG_ARESTA, w, LARG_ARESTA, mC2          ' C2 em cima
+    PorAresta lblArestaC1, x, y + h, w, LARG_ARESTA, mC1               ' C1 em baixo
+    PorAresta lblArestaL1, x - LARG_ARESTA, y, LARG_ARESTA, h, mL1          ' L1 à esquerda
+    PorAresta lblArestaL2, x + w, y, LARG_ARESTA, h, mL2               ' L2 à direita
+    lblMedidaC.Left = x: lblMedidaC.Width = w: lblMedidaC.Top = y + h + LARG_ARESTA + 2
+    lblMedidaC.Caption = "C1  " & comp & " mm  (C2 em cima)"
+    lblMedidaL.Left = x + w + LARG_ARESTA + 4: lblMedidaL.Top = y + h / 2 - 7
+    lblMedidaL.Caption = "L2  " & larg
+    lblCodigoOrlas.Caption = "Orlas: " & IIf(Len(ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value)) = 0, _
+        "nenhuma", ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value))
+End Sub
+
+Private Sub PorAresta(ByVal l As MSForms.Label, ByVal x As Single, ByVal y As Single, _
+                      ByVal w As Single, ByVal h As Single, ByVal comOrla As Boolean)
+    l.Left = x: l.Top = y: l.Width = w: l.Height = h
+    If comOrla Then
+        l.BackColor = RGB(92, 64, 46)        ' orla
+    Else
+        l.BackColor = RGB(215, 215, 215)     ' sem orla
+    End If
+End Sub
+
 Private Sub Atualizar()
     Dim k As Variant, r As Long, i As Long, q As Long
-    Dim soma As Double, partes As String, alvos As String, espTxt As String, cod As String
-    Dim semEsp As Boolean
+    Dim soma As Double, partes As String, alvo As Double, espTxt As String, cod As String
+    Dim semEsp As Boolean, avaliacao As String
     If mAPreparar Then Exit Sub
 
     lstConjunto.Clear
+    alvo = -1
     For Each k In mConj.Keys
         q = CLng(mConj(k))
         r = ColarLinhaDoId(CStr(k))
@@ -322,9 +475,7 @@ Private Sub Atualizar()
             End If
             If Len(partes) > 0 Then partes = partes & " + "
             If q = 1 Then partes = partes & espTxt Else partes = partes & espTxt & "x" & q
-            If Len(Celula(r, cEsp)) > 0 And InStr(" " & alvos & " ", " " & Celula(r, cEsp) & " ") = 0 Then
-                alvos = Trim$(alvos & " " & Celula(r, cEsp))
-            End If
+            If Numero(Celula(r, cEsp)) > alvo Then alvo = Numero(Celula(r, cEsp))
         Else
             lstConjunto.List(i, 2) = "(este ID não existe na listagem)"
         End If
@@ -332,14 +483,19 @@ Private Sub Atualizar()
 
     If mConj.Count = 0 Then
         lblEsp.Caption = ""
-    ElseIf semEsp Then
-        lblEsp.Caption = "Espessuras do conjunto: " & partes & " (há peças sem Esp.Mat)." & vbLf & _
-                         "Esp no iMos: " & alvos
+    ElseIf semEsp Or alvo < 0 Then
+        lblEsp.Caption = "Espessuras do conjunto: " & partes & " (há peças sem Esp.Mat ou sem Esp)."
     Else
-        lblEsp.Caption = "Espessuras do conjunto, uma em cima da outra: " & partes & " = " & soma & " mm" & vbLf & _
-                         "Esp no iMos: " & alvos & " mm" & vbLf & _
-                         "(só para conferir: nem todas as colagens são empilhadas)"
+        If Abs(alvo - soma) <= TOLERANCIA_MM Then
+            avaliacao = "perto da Esp do iMos (as colas também contam)"
+        Else
+            avaliacao = "LONGE da Esp do iMos: confirme o conjunto ou se há material com esta espessura no Woodstore"
+        End If
+        lblEsp.Caption = "Esp no iMos: " & alvo & " mm  (é a que manda)" & vbLf & _
+                         "Materiais: " & partes & " = aprox. " & soma & " mm" & vbLf & avaliacao
     End If
+
+    DesenharPeca
 
     cod = CodigoAtual()
     If ColarTotalPecas(mConj) < 2 Then
@@ -369,12 +525,29 @@ Private Sub JuntarId(ByVal ident As String, ByVal q As Long)
     End If
 End Sub
 
+Private Sub Repor()
+    Set mConj = CreateObject("Scripting.Dictionary")
+    mCodigoAntigo = ""
+    chkCncInicio.Value = False
+    chkCncFim.Value = False
+    mC1 = False: mC2 = False: mL1 = False: mL2 = False
+    chkRaio.Value = False
+    txtMaisComp.Text = EXCEDENTE_POR_DEFEITO
+    txtMaisLarg.Text = EXCEDENTE_POR_DEFEITO
+End Sub
+
 '====================================================================
 '  EVENTOS
 '====================================================================
 Private Sub chkSoVermelhas_Click()
     If mAPreparar Then Exit Sub
     PreencherPecas
+End Sub
+
+Private Sub txtPesquisa_Change()
+    If mAPreparar Then Exit Sub
+    PreencherPecas
+    Estado lstPecas.ListCount & " peça(s) na lista."
 End Sub
 
 Private Sub btnAdicionar_Click()
@@ -447,15 +620,37 @@ Private Sub chkCncFim_Click()
     Atualizar
 End Sub
 
-Private Sub cmbComp_Change()
-    Atualizar
-End Sub
-
-Private Sub cmbLarg_Change()
-    Atualizar
-End Sub
-
 Private Sub chkRaio_Click()
+    Atualizar
+End Sub
+
+Private Sub lblArestaC1_Click()
+    mC1 = Not mC1
+    Atualizar
+End Sub
+
+Private Sub lblArestaC2_Click()
+    mC2 = Not mC2
+    Atualizar
+End Sub
+
+Private Sub lblArestaL1_Click()
+    mL1 = Not mL1
+    Atualizar
+End Sub
+
+Private Sub lblArestaL2_Click()
+    mL2 = Not mL2
+    Atualizar
+End Sub
+
+Private Sub btnQuatroLados_Click()
+    mC1 = True: mC2 = True: mL1 = True: mL2 = True
+    Atualizar
+End Sub
+
+Private Sub btnSemOrla_Click()
+    mC1 = False: mC2 = False: mL1 = False: mL2 = False
     Atualizar
 End Sub
 
@@ -466,19 +661,14 @@ Private Sub btnGravar_Click()
         Exit Sub
     End If
     cod = CodigoAtual()
-    msg = ColarGravar(mConj, cod, mCodigoAntigo, True)
+    msg = ColarGravar(mConj, cod, mCodigoAntigo, True, CBool(chkMudarQt.Value), _
+                      Trim$(txtMaisComp.Text), Trim$(txtMaisLarg.Text))
     If Len(msg) = 0 Then
         Estado "Nada foi gravado."
         Exit Sub
     End If
     ' Pronto para o conjunto seguinte.
-    Set mConj = CreateObject("Scripting.Dictionary")
-    mCodigoAntigo = ""
-    chkCncInicio.Value = False
-    chkCncFim.Value = False
-    cmbComp.ListIndex = 0
-    cmbLarg.ListIndex = 0
-    chkRaio.Value = False
+    Repor
     PreencherPecas
     Atualizar
     Estado msg
@@ -490,13 +680,14 @@ Private Sub btnLimpar_Click()
         Estado "Não há peças no conjunto."
         Exit Sub
     End If
-    If MsgBox("Apagar o código da coluna Colar das peças deste conjunto?", _
+    If MsgBox("Apagar o código da coluna Colar das peças deste conjunto?" & vbCrLf & _
+              "(a Qt e o +comp/+Larg ficam como estão)", _
               vbYesNo + vbQuestion + vbDefaultButton2, "Colar") <> vbYes Then Exit Sub
     n = ColarLimpar(mConj, mCodigoAntigo)
-    mCodigoAntigo = ""
+    Repor
     PreencherPecas
     Atualizar
-    Estado "Código tirado de " & n & " linha(s)."
+    Estado "Código tirado de " & n & " linha(s). Reveja a Qt e o +comp/+Larg dessas peças."
 End Sub
 
 Private Sub btnVerificar_Click()

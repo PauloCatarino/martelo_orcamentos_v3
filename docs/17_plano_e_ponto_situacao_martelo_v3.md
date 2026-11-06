@@ -3386,3 +3386,64 @@ Por fazer, depois do teste:
 - se a Colar ficar, passar o modelo Colar a modelo de sempre. As correções às macros comuns
   (`atualizar_macros_modelo_lista_material.py`) só vão para o modelo de sempre; para o Colar,
   volta-se a correr o `criar_modelo_lista_material_colar.py`.
+
+### Coluna «Colar», 2.ª ronda (2026-11-06, depois do 1.º teste na obra 1935_01_01_JF_VIVA)
+
+Pedidos do Paulo, já no menu Colar:
+- **Qt:** a Qt de cada peça do conjunto passa a ser quantas entram nele (5+5 → Qt 2), porque o
+  Cut-Rite tem de cortar todas. A opção «Qt da peça = quantas entram no conjunto» vem marcada;
+  com 1 peça desse ID, a Qt fica como estava.
+- **Espessuras:** a soma das espessuras é aproximada, porque as colas também contam. O que
+  manda é a Esp do iMos. O menu diz se a soma fica perto (até 2 mm) ou longe; se fica longe,
+  sugere ver o conjunto ou se há material com essa espessura no Woodstore.
+- **Excedente de corte:** +comp e +Larg a 20 por defeito, editáveis no menu. Ficam nas colunas
+  +comp/+Larg das peças do conjunto e vão para o Cut-Rite, onde a etiqueta mostra a medida da
+  peça e a de corte. Vazio = não mexe nessas colunas.
+- **Pesquisa** por cima da lista das peças, para listas longas (todas as palavras escritas têm
+  de aparecer).
+- **Orlas depois da colagem num desenho da peça:** um retângulo com as proporções Comp x
+  Larg da 1.ª peça do conjunto. Clica-se nas arestas C1/C2 (comprimentos) e L1/L2 (larguras)
+  para pôr ou tirar a orla; o código das orlas vai aparecendo (OC2, OL1, O4L…). Há botões
+  «4 lados (O4L)» e «Sem orla», e o «Raio / meia-lua (OR)».
+
+«Tirar o código destas peças» não repõe a Qt nem o +comp/+Larg: o menu avisa para os rever.
+
+Confirmado numa cópia (obra 0993_04):
+- o projeto VBA compila e o VBA dá o mesmo que o Martelo nos 14 casos;
+- o conjunto 3+3 pôs a Qt da peça 3 a 2 e +comp/+Larg a 20 (chegam ao Cut-Rite na 23.ª e
+  24.ª colunas);
+- a pesquisa «lateral» deixou 86 peças;
+- ao abrir numa linha com código, o desenho fica com as arestas desse código.
+
+O desenho não foi visto no ecrã: confirmar no teste que fica legível.
+
+O modelo `Lista_Material_IMOS_MARTELO_COLAR.xltm` do servidor foi refeito. O da 1.ª ronda
+ficou ao lado, como `..._COLAR_anterior_20261106_160328.xltm`. **A Lista Material da obra
+1935_01 foi feita com o modelo da 1.ª ronda e não tem o menu novo**: para o ver, criar outra
+vez a lista com a opção das Funções.
+
+Guião de teste:
+
+1. Produção → obra **26.1935_01_01_JF_VIVA** → Funções → «Lista Material com coluna Colar
+   (ensaio)…» → «Criar nova (substitui a atual)». A anterior fica com a data no nome.
+2. Passo 1 (CSV) e passo 2 (AUTOMATION) como sempre.
+3. LISTAGEM_CUT_RITE → duplo clique na célula Colar do «Lateral» a vermelho (ID 3, 2358 x 75,
+   Esp 30,2, material de 19).
+4. No campo **Pesquisar**, escrever «lateral». Esperado: a lista fica só com as laterais.
+5. No conjunto, selecionar o ID 3 e clicar **+1**. Esperado:
+   - o código fica «3+3»;
+   - ao lado do conjunto aparece «Esp no iMos: 30,2 mm (é a que manda)», depois «19x2 =
+     aprox. 38 mm» e «LONGE da Esp do iMos…».
+6. No desenho, clicar nas duas arestas compridas (C1 e C2). Esperado:
+   - elas ficam castanhas;
+   - «Orlas: OC2»;
+   - o código fica «3+3_OC2».
+7. Marcar «CNC depois da colagem»: o código fica «3+3_OC2_CNC». Os excedentes ficam a 20 e 20.
+8. **Gravar**. Esperado:
+   - na linha de estado: «Código «3+3_OC2_CNC» gravado em 1 linha(s): ID 3. Qt: ID 3 = 2.
+     +comp 20 / +Larg 20.»;
+   - na folha, a linha ID 3 fica com Qt 2, Colar «3+3_OC2_CNC», +comp 20 e +Larg 20.
+9. Duplo clique outra vez na mesma célula Colar. Esperado: o menu abre a editar o conjunto,
+   com as arestas C1/C2 castanhas e a CNC no fim marcada.
+10. «Copia Listagem CUT_RITE» / Enviar CUT-RITE (com a coluna Colar já criada no Cut-Rite).
+    Esperado: a etiqueta mostra a medida da peça e a de corte (+20).

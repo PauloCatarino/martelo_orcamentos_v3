@@ -59,8 +59,35 @@ def test_menu_cria_os_controlos_com_dicas_e_linha_de_estado():
     assert len(re.findall(r'Novo\("Forms\.(?:CommandButton|CheckBox|ComboBox|TextBox|ListBox)\.1", "\w+", [^)]*,\s*_?\s*"', codigo)) >= 1
     assert codigo.count("ControlTipText") >= 1
     assert 'Set lblEstado = Rotulo("lblEstado"' in codigo
-    assert "msg = ColarGravar(mConj, cod, mCodigoAntigo, True)" in codigo
+    assert "msg = ColarGravar(mConj, cod, mCodigoAntigo, True, CBool(chkMudarQt.Value)," in codigo
     assert "problemas = ColarProblemas(15)" in codigo
+
+
+def test_gravar_muda_a_qt_e_os_excedentes():
+    codigo = _ler(COLAR / "modColar.bas")
+    assert "Public Function ColarIndiceMais(" in codigo
+    assert "Optional ByVal mudarQt As Boolean = False" in codigo
+    # 5+5 -> Qt 2: o Cut-Rite corta as peças todas do conjunto.
+    assert "If CLng(conj(idTxt)) >= 2 Then" in codigo
+    assert "lo.DataBodyRange.Cells(r, colMaisComp).Value" in codigo
+    assert "lo.DataBodyRange.Cells(r, colMaisLarg).Value" in codigo
+
+
+def test_menu_2a_ronda_pesquisa_excedentes_tolerancia_e_arestas():
+    codigo = _ler(COLAR / "frmColar.vba")
+    assert 'Private Const EXCEDENTE_POR_DEFEITO As String = "20"' in codigo
+    assert "Private Sub txtPesquisa_Change()" in codigo
+    assert "PassaPesquisa(r)" in codigo
+    assert "Private Const TOLERANCIA_MM As Double = 2" in codigo
+    assert "(é a que manda)" in codigo
+    for aresta in ("C1", "C2", "L1", "L2"):
+        assert f"Private Sub lblAresta{aresta}_Click()" in codigo
+    assert "ColarOrlasTexto(NComp(), NLarg(), chkRaio.Value)" in codigo
+    assert "CBool(chkMudarQt.Value)" in codigo
+    # O VBA não distingue maiúsculas: uma constante e uma função com o mesmo nome não compilam.
+    nomes = re.findall(r"^(?:Private|Public) (?:Const|Function|Sub) (\w+)", codigo, re.MULTILINE)
+    minusculas = [n.lower() for n in nomes]
+    assert len(minusculas) == len(set(minusculas))
 
 
 def test_copia_listagem_do_colar_vai_ate_ao_mais_larg_e_confere_a_colar():
