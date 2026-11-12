@@ -1063,5 +1063,5 @@ def import_hardware_cost(path, source, *, substituir=False):
             src.Close(False)
         if book is not None:
             book.Close(False)
-        excel.Quit()
+        excel_com.fechar_excel(excel)
     return archive_hardware_file(path, source)

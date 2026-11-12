@@ -3583,8 +3583,8 @@ Regras:
 - **O desperdício de 8 % e o arredondamento para cima ficam iguais.**
 - **Avisos novos** (folha Avisos_Orlas e caixa no fim): `COLAR_CODIGO_INVALIDO`,
   `COLAR_ID_EM_FALTA`, `COLAR_QT_NAO_DIVIDE`, `COLAR_LADO_NAO_BATE`, `COLAR_SEM_ORLA`.
-- **Correção de passagem:** no resumo, o material saía `..._30.MM` em vez de `..._30MM`. Está
-  corrigido no modelo COLAR; no de sempre continua o defeito.
+- ~~**Correção de passagem:** o `..._30.MM`~~ — **desfeita a 12-11**: o `.MM` é um alerta de
+  propósito (material colado), ver a secção seguinte.
 
 **Menu Colar.** O aviso que era só para o O4L passa a ver lado a lado:
 - orla nos comprimentos (ou OR) com Comp diferentes → aviso;
@@ -3622,3 +3622,56 @@ Guião de teste (obra 1854):
    - «Calculo Orlas» → esperado o aviso «Colagens (coluna Colar): 1» e, na folha Avisos_Orlas,
      `COLAR_LADO_NAO_BATE`.
 6. Conferir que as linhas sem Colar dão os mesmos ml que antes.
+
+### ResumoOrlas: material colado `_38.MM` e linha sem orla; Excel «Livro2» (2026-11-12, obra 1854)
+
+Pedido do Paulo, depois de testar a obra 1854 (ID 45 + ID 45, O4L, sem orla nas colunas):
+
+- **Nome do material colado:** família + **espessura depois de colar** + `.MM`, ex.
+  `AGL_MLM_ACACIA_H1277/ST9_38.MM`. A espessura é a **soma das Esp.Mat** das peças do conjunto
+  (19 + 19 = 38; `9x2+11` com 19 dá 57). Pode diferir um pouco da Esp do iMos (coluna M): manda
+  a soma. A fita é pela mesma espessura. O `.MM` é o **alerta de material colado**, de propósito.
+- **O `_30.MM` das linhas sem código volta** (a «correção» da secção anterior foi desfeita): é o
+  alerta antigo de material que vai ser colado.
+- **Conjunto sem orla nas colunas Orla:** já não desaparece. Aparece a linha do material colado com
+  os ml e o **Nome_Orlas vazio**, para o utilizador escrever a orla. Continua o aviso
+  `COLAR_SEM_ORLA` (com o texto novo), sem o aviso de espessura da orla.
+- **O que o utilizador escreve nessa linha fica:** ao carregar outra vez em «Calculo Orlas», a linha
+  sai com a orla que ele escreveu (e o Stock/Enc, Marca, LargXEsp, ML e Obs dele).
+
+Confirmado em cópias das obras 0993_04, 1935_01 e 1854_01. O ensaio em Python compara **todas as
+linhas** do ResumoOrlas e o resultado é igual, sem colagens e com 4 conjuntos:
+- os 3 conjuntos da secção anterior;
+- um conjunto `X+X_O4L` de uma peça sem orla, que dá a linha `..._24.MM` ou `..._20.MM` com o
+  Nome_Orlas vazio.
+
+Escrevi `PVC_1.0_TESTE_MAO` nessa linha e gerei outra vez: a orla e a Obs ficaram.
+
+**Excel «Livro2.xlsx — Guardar alterações?» antes do passo 4.**
+- **Causa:** o passo 2 (AUTOMATION) corre num Excel visível com os alertas ligados. No fim, o
+  Martelo fechava a lista da obra e fazia `Quit`. Se as macros tinham deixado um livro em branco
+  aberto («Livro2»), o Excel perguntava se o queria gravar.
+- **Correção:** `lista_material_excel_com.fechar_excel` desliga os alertas, fecha **sem gravar**
+  os livros que esse Excel (só do Martelo) ainda tem abertos, e sai. A lista da obra já foi gravada
+  antes.
+- **Onde:** no passo AUTOMATION (`execute_lista_material_workbook_macro`) e na importação das
+  ferragens (`import_hardware_cost`).
+
+Testes novos em `tests/test_lista_material_excel_fechar.py`. O modelo COLAR do servidor foi refeito;
+o anterior ficou `..._COLAR_anterior_20261112_191137.xltm`.
+
+Guião de teste (obra 1854):
+
+1. Produção → obra 1854 → Funções → «Lista Material com coluna Colar (ensaio)…» → «Criar nova
+   (substitui a atual)» → passos 1, 2, 3. Esperado: **não aparece** a caixa «Livro2.xlsx —
+   Guardar alterações?». Só abre o Excel da obra.
+2. No Excel: colar o ID 45 consigo próprio (2 vezes) → «O4L» → nº de conjuntos à escolha → Gravar.
+3. Botão «Calculo Orlas». Esperado:
+   - o aviso `COLAR_SEM_ORLA`;
+   - no ResumoOrlas, uma linha `AGL_MLM_ACACIA_H1277/ST9_38.MM` (38 = 19 + 19) com os ml e o
+     **Nome_Orlas vazio**.
+4. Escrever a orla nessa linha (ex.: `PVC_1.0_ACACIA`) e uma Obs → «Calculo Orlas» outra vez.
+   Esperado: a linha fica com a orla e a Obs escritas.
+5. Um conjunto **com** orla nas colunas (ex.: ID com PVC, `X+X_O4L`). Esperado: a linha
+   `..._38.MM | PVC_...` com os ml depois de colar. As orlas das colunas ficam no material de 19.
+6. Numa peça sem código com Esp do iMos ≠ Esp.Mat. Esperado: a linha `..._30.MM` como sempre.

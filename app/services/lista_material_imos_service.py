@@ -15,6 +15,7 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.producao import Producao
+from app.services import lista_material_excel_com as excel_com
 from app.services.producao_pastas_service import (
     AVISO_PASTA_OBRA_EM_FALTA,
     garantir_pasta_servidor,
@@ -181,8 +182,8 @@ def execute_lista_material_workbook_macro(
     finally:
         if workbook is not None:
             workbook.Close(False)
-        if excel is not None:
-            excel.Quit()
+        # Sem «Guardar alterações a Livro2?» por cima do passo seguinte.
+        excel_com.fechar_excel(excel)
 
 
 def _sheet_has_material_rows(

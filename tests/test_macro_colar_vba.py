@@ -145,7 +145,17 @@ def test_resumo_orlas_do_colar_conta_antes_e_depois_de_colar():
     assert "motivo = ColarLer(CStr(codigo), conj, ci, cf, nc, nl, ra)" in colar
     assert "nConj = qtPrimeiro / CDbl(conj(primeiroId))" in colar
     assert "If ra Then mlLados = mlLados + compMax   ' OR (raio / meia-lua) conta 1 comprimento" in colar
-    assert "AccOrlaMl dict, BuildResumoMaterial(material, espFinal, espMat), orla, ml, espFinal" in colar
+    # Material colado: família + soma das Esp.Mat + ".MM" (alerta), ex. _38.MM.
+    assert "AccOrlaMl dict, MaterialColado(material, espColada), orla, ml, espColada" in colar
+    assert "espColada = espColada + espId * CDbl(conj(k))" in colar
+    assert 'MaterialColado = MaterialFamilyKey(material) & "_" & espTxt & ".MM"' in colar
+    # Sem orla: a linha aparece com o Nome_Orlas vazio, e o que o utilizador lá escrever fica.
+    assert "If ml <= 0 Then Exit Sub   ' orla vazia" in colar
+    assert 'dict("#MAT#" & material).Add orla' in colar
+    assert "If dictManual.Exists(chaveManual) Then" in colar
+    assert "If espOrla <= 0 And Len(parts(1)) > 0 Then" in colar
+    # O «_30.MM» das linhas sem código é um alerta de propósito: não se corrige.
+    assert "Right$(FormatEspMaterial, 1)" not in colar
     for aviso in ("COLAR_CODIGO_INVALIDO", "COLAR_ID_EM_FALTA", "COLAR_QT_NAO_DIVIDE",
                   "COLAR_LADO_NAO_BATE", "COLAR_SEM_ORLA"):
         assert f'"{aviso}"' in colar

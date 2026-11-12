@@ -56,6 +56,34 @@ def recalcular(excel) -> None:
         pass
 
 
+def fechar_excel(excel) -> None:
+    """Fechar o Excel que o Martelo abriu, sem caixas de «Guardar alterações?».
+
+    Este Excel (``DispatchEx``) é só do Martelo: o livro da obra já foi gravado.
+    Se ficou mais algum livro aberto (um «Livro2» em branco, criado pelo meio das
+    macros), o ``Quit`` perguntava se o queria gravar em Documentos, e a pergunta
+    aparecia por cima do passo 4 da Lista Material (12-11-2026, obra 1854).
+    """
+    if excel is None:
+        return
+    try:
+        excel.DisplayAlerts = False
+    except Exception:
+        pass
+    try:
+        for indice in range(int(excel.Workbooks.Count), 0, -1):
+            try:
+                excel.Workbooks.Item(indice).Close(False)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        excel.Quit()
+    except Exception:
+        pass
+
+
 def reparar_formulas(path: Path) -> None:
     """Abrir, recalcular e gravar: repõe os valores das colunas com macros."""
     path = Path(path)

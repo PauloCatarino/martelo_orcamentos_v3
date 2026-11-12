@@ -17,7 +17,12 @@ Option Explicit
 '     contam UMA vez por conjunto: nº de conjuntos = Qt do 1.º ID do código / peças
 '     desse ID no conjunto (47+47 com Qt 16 -> 8; 47+48 com Qt 6 e 6 -> 6). Medidas:
 '     as comuns às peças (se não baterem, a maior + aviso); OR conta 1 comprimento;
-'     fita pela Esp.Final; orla = a 1.ª orla das colunas Orla das peças do conjunto.
+'     orla = a 1.ª orla das colunas Orla das peças do conjunto (sem nenhuma, a linha
+'     aparece com o Nome_Orlas vazio para o utilizador escrever, e o que ele escrever
+'     fica nas vezes seguintes);
+'   - material colado no resumo: família + espessura depois de colar (soma das Esp.Mat
+'     das peças do conjunto) + ".MM", ex. AGL_MLM_ACACIA_H1277/ST9_38.MM (o ".MM" é o
+'     alerta de material colado); fita pela mesma espessura.
 '===========================
 ' Objetivo do módulo:
 '   Este módulo lê a tabela Tabela_Cut_Rite da folha LISTAGEM_CUT_RITE,
@@ -330,10 +335,27 @@ NextRow:
         largFita = CLng(dict(k)(1))
         mlQt = CeilInt(mlBase * (1 + DESPERDICIO))
 
+        Dim chaveManual As Variant
+        chaveManual = k
+        If Len(parts(1)) = 0 Then
+            ' Material colado sem orla: se o utilizador já escreveu a orla nesta linha
+            ' (numa geração anterior), fica a dele.
+            Dim orlaManual As Variant
+            If dictManual.Exists("#MAT#" & parts(0)) Then
+                For Each orlaManual In dictManual("#MAT#" & parts(0))
+                    If Not dict.Exists(parts(0) & "|" & CStr(orlaManual)) Then
+                        parts(1) = CStr(orlaManual)
+                        chaveManual = parts(0) & "|" & parts(1)
+                        Exit For
+                    End If
+                Next orlaManual
+            End If
+        End If
+
         espOrla = ExtractOrlaEsp(parts(1))
         largXEspCalc = FormatLargXEsp(largFita, espOrla)
 
-        If espOrla <= 0 Then
+        If espOrla <= 0 And Len(parts(1)) > 0 Then
             AddAviso avisos, "ESP_ORLA_NAO_ENCONTRADA", 0, "", parts(0), 0, "NOME_ORLA", parts(1), _
                      "O nome da orla não tem espessura identificável. Exemplos aceites: PVC_0.4_..., FOL_1.0_..., ABS_0.4_..., ABS:0.8_..., ORLA_LASER_1.2"
         End If
@@ -347,9 +369,9 @@ NextRow:
         outArr(i, 7) = vbNullString
         outArr(i, 8) = vbNullString
 
-        If dictManual.Exists(k) Then
+        If dictManual.Exists(chaveManual) Then
             Dim man As Variant
-            man = dictManual(k)
+            man = dictManual(chaveManual)
 
             ' "enc" era o valor por omissão antigo: passa a "stock/enc";
             ' o que o utilizador escreveu à mão (ex.: "stock") fica.
@@ -427,6 +449,7 @@ Private Sub ResumoOrlas_Colagens(ByVal dict As Object, ByVal dictSets As Object,
     Dim compIguais As Boolean, largIguais As Boolean, primeiro As Boolean
     Dim espFinal As Double, espMat As Double, material As String, orla As String
     Dim linha1 As Long, id1 As String, mlLados As Double, ml As Double
+    Dim espIds As Object, espColada As Double, espId As Double
 
     For Each codigo In dictSets.keys
         Set linhas = dictSets(codigo)
@@ -451,7 +474,13 @@ Private Sub ResumoOrlas_Colagens(ByVal dict As Object, ByVal dictSets As Object,
         compMax = 0: largMax = 0: espFinal = 0: espMat = 0
         compIguais = True: largIguais = True: primeiro = True
         orla = "": material = ""
+        Set espIds = CreateObject("Scripting.Dictionary")
         For Each item In linhas
+            If Not espIds.Exists(CStr(item(1))) Then
+                espId = CDbl(item(7))
+                If espId <= 0 Then espId = ExtractMaterialEsp(CStr(item(2)))
+                espIds.Add CStr(item(1)), espId
+            End If
             If CStr(item(1)) = primeiroId And qtPrimeiro < 0 Then qtPrimeiro = CDbl(item(5))
             If primeiro Then
                 c0 = CDbl(item(3)): l0 = CDbl(item(4))
@@ -493,15 +522,25 @@ Private Sub ResumoOrlas_Colagens(ByVal dict As Object, ByVal dictSets As Object,
         End If
         If Len(orla) = 0 Then
             AddAviso avisos, "COLAR_SEM_ORLA", linha1, id1, material, espFinal, "COLAR", CStr(codigo), _
-                     "As peças do conjunto não têm orla nas colunas Orla: não sei que orla usar depois de colar. " & _
-                     "Acrescente-a à mão no ResumoOrlas."
-            GoTo ProximoCodigo
+                     "As peças do conjunto não têm orla nas colunas Orla: a linha do material colado aparece " & _
+                     "no ResumoOrlas com o Nome_Orlas vazio. Escreva lá a orla."
         End If
+
+        ' Espessura depois de colar = soma das Esp.Mat das peças do conjunto (19+19 -> 38).
+        ' Pode diferir um pouco da Esp do iMos (coluna M): manda a soma.
+        espColada = 0
+        For Each k In conj.keys
+            espId = 0
+            If espIds.Exists(CStr(k)) Then espId = CDbl(espIds(CStr(k)))
+            If espId <= 0 Then espColada = 0: Exit For
+            espColada = espColada + espId * CDbl(conj(k))
+        Next k
+        If espColada <= 0 Then espColada = espFinal
 
         mlLados = nc * compMax + nl * largMax
         If ra Then mlLados = mlLados + compMax   ' OR (raio / meia-lua) conta 1 comprimento
         ml = (mlLados / 1000#) * nConj
-        AccOrlaMl dict, BuildResumoMaterial(material, espFinal, espMat), orla, ml, espFinal
+        AccOrlaMl dict, MaterialColado(material, espColada), orla, ml, espColada
 ProximoCodigo:
     Next codigo
 End Sub
@@ -510,7 +549,7 @@ End Sub
 Private Sub AccOrlaMl(ByVal dict As Object, ByVal material As String, ByVal orla As String, _
                       ByVal ml As Double, ByVal espPeca As Double)
     Dim key As String, largFita As Long, arr As Variant
-    If ml <= 0 Or Len(orla) = 0 Then Exit Sub
+    If ml <= 0 Then Exit Sub   ' orla vazia: linha com Nome_Orlas por preencher
     key = material & "|" & orla
     largFita = GetLarguraFita(CeilInt(espPeca))
     If Not dict.Exists(key) Then
@@ -522,6 +561,19 @@ Private Sub AccOrlaMl(ByVal dict As Object, ByVal material As String, ByVal orla
         dict(key) = arr
     End If
 End Sub
+
+' Nome do material colado: família + espessura depois de colar + ".MM"
+' (AGL_..._38.MM). O ".MM" é o alerta de material colado (Paulo, 12-11-2026).
+Private Function MaterialColado(ByVal material As String, ByVal espColada As Double) As String
+    Dim espTxt As String
+    espTxt = Replace(Format(espColada, "0.############"), ",", ".")
+    If Right$(espTxt, 1) = "." Then espTxt = Left$(espTxt, Len(espTxt) - 1)
+    If espColada <= 0 Then
+        MaterialColado = CleanText(material)
+    Else
+        MaterialColado = MaterialFamilyKey(material) & "_" & espTxt & ".MM"
+    End If
+End Function
 
 '------------------------------------------------------------
 ' ACUMULADOR
@@ -832,6 +884,10 @@ Private Function LoadManual_ResumoOrlas(ByVal ws As Worksheet) As Object
 
         key = material & "|" & orla
 
+        ' Orlas escritas por material, para a linha do material colado sem orla.
+        If Not dict.Exists("#MAT#" & material) Then dict.Add "#MAT#" & material, New Collection
+        dict("#MAT#" & material).Add orla
+
         dict(key) = Array( _
             IIf(cEnc > 0, lo.DataBodyRange.Cells(r, cEnc).Value, vbNullString), _
             IIf(cMarca > 0, lo.DataBodyRange.Cells(r, cMarca).Value, vbNullString), _
@@ -1058,9 +1114,6 @@ Private Function FormatEspMaterial(ByVal esp As Double) As String
 
     If esp <= 0 Then Exit Function
     FormatEspMaterial = Replace(Format(esp, "0.############"), ",", ".")
-    ' O Format deixa o separador no fim nos inteiros (30 -> "30."), e o material saía
-    ' AGL_..._30.MM no resumo. Corrigido só no modelo COLAR (12-11-2026).
-    If Right$(FormatEspMaterial, 1) = "." Then FormatEspMaterial = Left$(FormatEspMaterial, Len(FormatEspMaterial) - 1)
 
 End Function
 
